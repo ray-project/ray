@@ -53,10 +53,8 @@ public class NetworkUtil {
       ds.setReuseAddress(true);
       return true;
     } catch (IOException ignored) {
+      /* should not be thrown */
+      return false;
     }
-
-    /* should not be thrown */
-
-    return false;
   }
 }

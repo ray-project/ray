@@ -4,7 +4,7 @@ import org.ray.core.RayRuntime;
 import org.ray.core.model.WorkerMode;
 
 /**
- *
+ * The main function of DefaultDriver.
  */
 public class DefaultDriver {
 
@@ -22,7 +22,7 @@ public class DefaultDriver {
           .getStringValue("ray.java.start", "driver_class", "",
               "java class which main is served as the driver in a java worker");
       Class<?> cls = Class.forName(driverClass);
-      cls.getMethod("main", String[].class).invoke(null, (Object) new String[]{});
+      cls.getMethod("main", String[].class).invoke(null, (Object) new String[] {});
     } catch (Throwable e) {
       e.printStackTrace();
       System.exit(-1);

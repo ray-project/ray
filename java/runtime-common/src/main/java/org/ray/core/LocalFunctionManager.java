@@ -13,16 +13,47 @@ import org.ray.spi.model.RayMethod;
 import org.ray.util.logger.RayLog;
 
 /**
- * local function manager which pulls remote functions on demand
+ * local function manager which pulls remote functions on demand.
  */
 public class LocalFunctionManager {
 
+  private final RemoteFunctionManager remoteLoader;
+  private final ConcurrentHashMap<UniqueID, FunctionTable> functionTables
+      = new ConcurrentHashMap<>();
+
   /**
    * initialize load function manager using remote function manager to pull remote functions on
-   * demand
+   * demand.
    */
   public LocalFunctionManager(RemoteFunctionManager remoteLoader) {
     this.remoteLoader = remoteLoader;
+  }
+
+  /**
+   * get local method for executing, which pulls information from remote repo on-demand, therefore
+   * it may block for a while if the related resources (e.g., jars) are not ready on local machine
+   */
+  public Pair<ClassLoader, RayMethod> getMethod(UniqueID driverId, UniqueID methodId,
+                                                FunctionArg[] args) throws NoSuchMethodException,
+      SecurityException, ClassNotFoundException {
+    FunctionTable funcs = loadDriverFunctions(driverId);
+    RayMethod m;
+
+    // hooked methods
+    if (!UniqueIdHelper.isLambdaFunction(methodId)) {
+      m = funcs.functions.get(methodId);
+      if (null == m) {
+        throw new RuntimeException(
+            "DriverId " + driverId + " load remote function methodId:" + methodId + " failed");
+      }
+    } else { // remote lambda
+      assert args.length >= 2;
+      String fname = Serializer.decode(args[args.length - 2].data);
+      Method fm = Class.forName(fname).getMethod("execute", Object[].class);
+      m = new RayMethod(fm);
+    }
+
+    return Pair.of(funcs.linkedFunctions.loader, m);
   }
 
   private synchronized FunctionTable loadDriverFunctions(UniqueID driverId) {
@@ -50,9 +81,7 @@ public class LocalFunctionManager {
       }
 
       functionTables.put(driverId, funcs);
-    }
-    // reSync automatically
-    else {
+    } else { // reSync automatically
       // more functions are loaded
       if (funcs.linkedFunctions.functions.size() > funcs.functions.size()) {
         for (MethodId mid : funcs.linkedFunctions.functions) {
@@ -71,36 +100,7 @@ public class LocalFunctionManager {
   }
 
   /**
-   * get local method for executing, which pulls information from remote repo on-demand, therefore
-   * it may block for a while if the related resources (e.g., jars) are not ready on local machine
-   */
-  public Pair<ClassLoader, RayMethod> getMethod(UniqueID driverId, UniqueID methodId,
-      FunctionArg[] args) throws NoSuchMethodException, SecurityException, ClassNotFoundException {
-    FunctionTable funcs = loadDriverFunctions(driverId);
-    RayMethod m;
-
-    // hooked methods
-    if (!UniqueIdHelper.isLambdaFunction(methodId)) {
-      m = funcs.functions.get(methodId);
-      if (null == m) {
-        throw new RuntimeException(
-            "DriverId " + driverId + " load remote function methodId:" + methodId + " failed");
-      }
-    }
-
-    // remote lambda
-    else {
-      assert args.length >= 2;
-      String fname = Serializer.decode(args[args.length - 2].data);
-      Method fm = Class.forName(fname).getMethod("execute", Object[].class);
-      m = new RayMethod(fm);
-    }
-
-    return Pair.of(funcs.linkedFunctions.loader, m);
-  }
-
-  /**
-   * unload the functions when the driver is declared dead
+   * unload the functions when the driver is declared dead.
    */
   public synchronized void removeApp(UniqueID driverId) {
     FunctionTable funcs = functionTables.get(driverId);
@@ -115,7 +115,4 @@ public class LocalFunctionManager {
     public final ConcurrentHashMap<UniqueID, RayMethod> functions = new ConcurrentHashMap<>();
     public LoadedFunctions linkedFunctions;
   }
-
-  private final RemoteFunctionManager remoteLoader;
-  private final ConcurrentHashMap<UniqueID, FunctionTable> functionTables = new ConcurrentHashMap<>();
 }

@@ -6,8 +6,6 @@ import org.ray.api.internal.RayFunc;
 @FunctionalInterface
 public interface RayFunc_0_1<R0> extends RayFunc {
 
-  R0 apply() throws Throwable;
-
   static <R0> R0 execute(Object[] args) throws Throwable {
     String name = (String) args[args.length - 2];
     assert (name.equals(RayFunc_0_1.class.getName()));
@@ -15,5 +13,7 @@ public interface RayFunc_0_1<R0> extends RayFunc {
     RayFunc_0_1<R0> f = SerializationUtils.deserialize(funcBytes);
     return f.apply();
   }
+
+  R0 apply() throws Throwable;
 
 }

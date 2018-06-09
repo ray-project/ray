@@ -13,55 +13,9 @@ import org.ray.spi.model.TaskSpec;
 import org.ray.util.logger.RayLog;
 
 /**
- * JNI-based local scheduler link provider
+ * JNI-based local scheduler link provider.
  */
 public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
-
-  public DefaultLocalSchedulerClient(String schedulerSockName, UniqueID clientId, UniqueID actorId,
-      boolean isWorker, long numGpus) {
-    _client = _init(schedulerSockName, clientId.getBytes(), actorId.getBytes(), isWorker,
-        numGpus);
-  }
-
-
-  @Override
-  public void submitTask(TaskSpec task) {
-    ByteBuffer info = TaskSpec2Info(task);
-    byte[] a = null;
-    if(!task.actorId.isNil()) {
-      a = task.cursorId.getBytes();
-    }
-    _submitTask(_client, a, info, info.position(), info.remaining());
-  }
-
-  @Override
-  public TaskSpec getTaskTodo() {
-    byte[] bytes = _getTaskTodo(_client);
-    assert (null != bytes);
-    ByteBuffer bb = ByteBuffer.wrap(bytes);
-    return TaskInfo2Spec(bb);
-  }
-
-  public void destroy() {
-    _destroy(_client);
-  }
-
-  @Override
-  public void notifyUnblocked() {
-    _notify_unblocked(_client);
-  }
-
-  @Override
-  public void reconstructObject(UniqueID objectId) {
-    _reconstruct_object(_client, objectId.getBytes());
-  }
-
-  @Override
-  public void markTaskPutDependency(UniqueID taskId, UniqueID objectId) {
-    _put_object(_client, taskId.getBytes(), objectId.getBytes());
-  }
-
-  private long _client = 0;
 
   private static ThreadLocal<ByteBuffer> _taskBuffer = ThreadLocal.withInitial(() -> {
     ByteBuffer bb = ByteBuffer
@@ -69,89 +23,64 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
     bb.order(ByteOrder.LITTLE_ENDIAN);
     return bb;
   });
+  private long client = 0;
 
-  public static ByteBuffer TaskSpec2Info(TaskSpec task) {
-    ByteBuffer bb = _taskBuffer.get();
-    bb.clear();
-
-    FlatBufferBuilder fbb = new FlatBufferBuilder(bb);
-
-    int driver_idOffset = fbb.createString(task.driverId.ToByteBuffer());
-    int task_idOffset = fbb.createString(task.taskId.ToByteBuffer());
-    int parent_task_idOffset = fbb.createString(task.parentTaskId.ToByteBuffer());
-    int parent_counter = task.parentCounter;
-    int actorCreate_idOffset = fbb.createString(task.createActorId.ToByteBuffer());
-    int actorCreateDummy_idOffset = fbb.createString(UniqueID.nil.ToByteBuffer());
-    int actor_idOffset = fbb.createString(task.actorId.ToByteBuffer());
-    int actor_handle_idOffset = fbb.createString(task.actorHandleId.ToByteBuffer());
-    int actor_counter = task.actorCounter;
-    int function_idOffset = fbb.createString(task.functionId.ToByteBuffer());
-
-    // serialize args
-    int[] argsOffsets = new int[task.args.length];
-    for (int i = 0; i < argsOffsets.length; i++) {
-
-      int object_idOffset = 0;
-      int dataOffset = 0;
-      if (task.args[i].ids != null) {
-        int id_count = task.args[i].ids.size();
-        int[] idOffsets = new int[id_count];
-        for (int k = 0; k < id_count; k++) {
-          idOffsets[k] = fbb.createString(task.args[i].ids.get(k).ToByteBuffer());
-        }
-        object_idOffset = fbb.createVectorOfTables(idOffsets);
-      }
-      if (task.args[i].data != null) {
-        dataOffset = fbb.createString(ByteBuffer.wrap(task.args[i].data));
-      }
-
-      argsOffsets[i] = Arg.createArg(fbb, object_idOffset, dataOffset);
-    }
-    int argsOffset = fbb.createVectorOfTables(argsOffsets);
-
-    // serialize returns
-    int return_count = task.returnIds.length;
-    int[] returnsOffsets = new int[return_count];
-    for (int k = 0; k < return_count; k++) {
-      returnsOffsets[k] = fbb.createString(task.returnIds[k].ToByteBuffer());
-    }
-    int returnsOffset = fbb.createVectorOfTables(returnsOffsets);
-
-    // serialize required resources
-    // The required_resources vector indicates the quantities of the different
-    // resources required by this task. The index in this vector corresponds to
-    // the resource type defined in the ResourceIndex enum. For example,
-
-    int[] required_resourcesOffsets = new int[1];
-    for (int i = 0; i < required_resourcesOffsets.length; i++) {
-        int keyOffset = 0;
-        keyOffset = fbb.createString(ByteBuffer.wrap("CPU".getBytes()));
-        required_resourcesOffsets[i] = ResourcePair.createResourcePair(fbb,keyOffset,0.0);
-    }
-    int requiredResourcesOffset = fbb.createVectorOfTables(required_resourcesOffsets);
-
-    int root = TaskInfo.createTaskInfo(
-        fbb, driver_idOffset, task_idOffset,
-        parent_task_idOffset, parent_counter,
-        actorCreate_idOffset, actorCreateDummy_idOffset,
-        actor_idOffset, actor_handle_idOffset, actor_counter,
-        false, function_idOffset,
-        argsOffset, returnsOffset, requiredResourcesOffset);
-
-    fbb.finish(root);
-    ByteBuffer buffer = fbb.dataBuffer();
-
-    if (buffer.remaining() > RayRuntime.getParams().max_submit_task_buffer_size_bytes) {
-      RayLog.core.error(
-          "Allocated buffer is not enough to transfer the task specification: " + RayRuntime
-              .getParams().max_submit_task_buffer_size_bytes + " vs " + buffer.remaining());
-      assert (false);
-    }
-
-    return buffer;
+  public DefaultLocalSchedulerClient(String schedulerSockName, UniqueID clientId, UniqueID actorId,
+                                     boolean isWorker, long numGpus) {
+    client = _init(schedulerSockName, clientId.getBytes(), actorId.getBytes(), isWorker,
+        numGpus);
   }
 
-  public static TaskSpec TaskInfo2Spec(ByteBuffer bb) {
+  private static native long _init(String localSchedulerSocket, byte[] workerId, byte[] actorId,
+                                   boolean isWorker, long numGpus);
+
+  private static native byte[] _computePutId(long client, byte[] taskId, int putIndex);
+
+  private static native void _task_done(long client);
+
+  @Override
+  public void submitTask(TaskSpec task) {
+    ByteBuffer info = taskSpec2Info(task);
+    byte[] a = null;
+    if (!task.actorId.isNil()) {
+      a = task.cursorId.getBytes();
+    }
+    _submitTask(client, a, info, info.position(), info.remaining());
+  }
+
+  @Override
+  public TaskSpec getTaskTodo() {
+    byte[] bytes = _getTaskTodo(client);
+    assert (null != bytes);
+    ByteBuffer bb = ByteBuffer.wrap(bytes);
+    return taskInfo2Spec(bb);
+  }
+
+  @Override
+  public void markTaskPutDependency(UniqueID taskId, UniqueID objectId) {
+    _put_object(client, taskId.getBytes(), objectId.getBytes());
+  }
+
+  @Override
+  public void reconstructObject(UniqueID objectId) {
+    _reconstruct_object(client, objectId.getBytes());
+  }
+
+  @Override
+  public void notifyUnblocked() {
+    _notify_unblocked(client);
+  }
+
+  private static native void _notify_unblocked(long client);
+
+  private static native void _reconstruct_object(long client, byte[] objectId);
+
+  private static native void _put_object(long client, byte[] taskId, byte[] objectId);
+
+  // return TaskInfo (in FlatBuffer)
+  private static native byte[] _getTaskTodo(long client);
+
+  public static TaskSpec taskInfo2Spec(ByteBuffer bb) {
     bb.order(ByteOrder.LITTLE_ENDIAN);
     TaskInfo info = TaskInfo.getRootAsTaskInfo(bb);
 
@@ -171,10 +100,10 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
       FunctionArg darg = new FunctionArg();
       Arg sarg = info.args(i);
 
-      int id_count = sarg.objectIdsLength();
-      if (id_count > 0) {
+      int idCount = sarg.objectIdsLength();
+      if (idCount > 0) {
         darg.ids = new ArrayList<>();
-        for (int j = 0; j < id_count; j++) {
+        for (int j = 0; j < idCount; j++) {
           ByteBuffer lbb = sarg.objectIdAsByteBuffer(j);
           assert (lbb != null && lbb.remaining() > 0);
           darg.ids.add(new UniqueID(lbb));
@@ -203,24 +132,94 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
     return spec;
   }
 
-  native private static long _init(String localSchedulerSocket, byte[] workerId, byte[] actorId,
-      boolean isWorker, long numGpus);
+  public static ByteBuffer taskSpec2Info(TaskSpec task) {
+    ByteBuffer bb = _taskBuffer.get();
+    bb.clear();
+
+    FlatBufferBuilder fbb = new FlatBufferBuilder(bb);
+
+    final int driverIdOffset = fbb.createString(task.driverId.toByteBuffer());
+    final int taskIdOffset = fbb.createString(task.taskId.toByteBuffer());
+    final int parentTaskIdOffset = fbb.createString(task.parentTaskId.toByteBuffer());
+    final int parentCounter = task.parentCounter;
+    final int actorCreateIdOffset = fbb.createString(task.createActorId.toByteBuffer());
+    final int actorCreateDummyIdOffset = fbb.createString(UniqueID.nil.toByteBuffer());
+    final int actorIdOffset = fbb.createString(task.actorId.toByteBuffer());
+    final int actorHandleIdOffset = fbb.createString(task.actorHandleId.toByteBuffer());
+    final int actorCounter = task.actorCounter;
+    final int functionIdOffset = fbb.createString(task.functionId.toByteBuffer());
+
+    // serialize args
+    int[] argsOffsets = new int[task.args.length];
+    for (int i = 0; i < argsOffsets.length; i++) {
+
+      int objectIdOffset = 0;
+      int dataOffset = 0;
+      if (task.args[i].ids != null) {
+        int idCount = task.args[i].ids.size();
+        int[] idOffsets = new int[idCount];
+        for (int k = 0; k < idCount; k++) {
+          idOffsets[k] = fbb.createString(task.args[i].ids.get(k).toByteBuffer());
+        }
+        objectIdOffset = fbb.createVectorOfTables(idOffsets);
+      }
+      if (task.args[i].data != null) {
+        dataOffset = fbb.createString(ByteBuffer.wrap(task.args[i].data));
+      }
+
+      argsOffsets[i] = Arg.createArg(fbb, objectIdOffset, dataOffset);
+    }
+    int argsOffset = fbb.createVectorOfTables(argsOffsets);
+
+    // serialize returns
+    int returnCount = task.returnIds.length;
+    int[] returnsOffsets = new int[returnCount];
+    for (int k = 0; k < returnCount; k++) {
+      returnsOffsets[k] = fbb.createString(task.returnIds[k].toByteBuffer());
+    }
+    int returnsOffset = fbb.createVectorOfTables(returnsOffsets);
+
+    // serialize required resources
+    // The required_resources vector indicates the quantities of the different
+    // resources required by this task. The index in this vector corresponds to
+    // the resource type defined in the ResourceIndex enum. For example,
+
+    int[]requiredResourcesOffsets = new int[1];
+    for (int i = 0; i < requiredResourcesOffsets.length; i++) {
+      int keyOffset = 0;
+      keyOffset = fbb.createString(ByteBuffer.wrap("CPU".getBytes()));
+      requiredResourcesOffsets[i] = ResourcePair.createResourcePair(fbb, keyOffset, 0.0);
+    }
+    int requiredResourcesOffset = fbb.createVectorOfTables(requiredResourcesOffsets);
+
+    int root = TaskInfo.createTaskInfo(
+        fbb, driverIdOffset, taskIdOffset,
+        parentTaskIdOffset, parentCounter,
+        actorCreateIdOffset, actorCreateDummyIdOffset,
+        actorIdOffset, actorHandleIdOffset, actorCounter,
+        false, functionIdOffset,
+        argsOffset, returnsOffset, requiredResourcesOffset);
+
+    fbb.finish(root);
+    ByteBuffer buffer = fbb.dataBuffer();
+
+    if (buffer.remaining() > RayRuntime.getParams().max_submit_task_buffer_size_bytes) {
+      RayLog.core.error(
+          "Allocated buffer is not enough to transfer the task specification: " + RayRuntime
+              .getParams().max_submit_task_buffer_size_bytes + " vs " + buffer.remaining());
+      assert (false);
+    }
+
+    return buffer;
+  }
 
   // task -> TaskInfo (with FlatBuffer)
-  native private static void _submitTask(long client, byte[] cursorId, /*Direct*/ByteBuffer task, int pos, int sz);
+  private static native void _submitTask(long client, byte[] cursorId, /*Direct*/ByteBuffer task,
+                                         int pos, int sz);
 
-  // return TaskInfo (in FlatBuffer)
-  native private static byte[] _getTaskTodo(long client);
+  public void destroy() {
+    _destroy(client);
+  }
 
-  native private static byte[] _computePutId(long client, byte[] taskId, int putIndex);
-
-  native private static void _destroy(long client);
-
-  native private static void _task_done(long client);
-
-  native private static void _reconstruct_object(long client, byte[] objectId);
-
-  native private static void _notify_unblocked(long client);
-
-  native private static void _put_object(long client, byte[] taskId, byte[] objectId);
+  private static native void _destroy(long client);
 }

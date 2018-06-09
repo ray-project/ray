@@ -11,29 +11,9 @@ import org.ray.util.FileUtil;
 
 /**
  * given a directory of document files on each "machine", we would like to count the appearance of
- * some word
+ * some word.
  */
 public class WordCountTest {
-
-  //@Test
-  public void test() {
-    int sum = mapReduce();
-    Assert.assertEquals(sum, 143);
-  }
-
-  public int mapReduce() {
-    RayObject<List<String>> machines = Ray.call(WordCountTest::getMachineList);
-    RayObject<Integer> total = null;
-    for (String machine : machines.get()) {
-      RayObject<Integer> wordcount = Ray.call(WordCountTest::countWord, machine, "ray");
-      if (total == null) {
-        total = wordcount;
-      } else {
-        total = Ray.call(WordCountTest::sum, total, wordcount);
-      }
-    }
-    return total.get();
-  }
 
   @RayRemote
   public static List<String> getMachineList() {
@@ -70,5 +50,25 @@ public class WordCountTest {
   @RayRemote
   public static Integer sum(Integer a, Integer/*TODO modify int to Integer in ASM hook*/ b) {
     return a + b;
+  }
+
+  //@Test
+  public void test() {
+    int sum = mapReduce();
+    Assert.assertEquals(sum, 143);
+  }
+
+  public int mapReduce() {
+    RayObject<List<String>> machines = Ray.call(WordCountTest::getMachineList);
+    RayObject<Integer> total = null;
+    for (String machine : machines.get()) {
+      RayObject<Integer> wordcount = Ray.call(WordCountTest::countWord, machine, "ray");
+      if (total == null) {
+        total = wordcount;
+      } else {
+        total = Ray.call(WordCountTest::sum, total, wordcount);
+      }
+    }
+    return total.get();
   }
 }

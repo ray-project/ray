@@ -38,15 +38,16 @@ public class RayList<E> extends ArrayList<E> {
     return ids.contains(o);
   }
 
-  @RayDisabled
-  @Deprecated
   @Override
-  public Iterator<E> iterator() {
-    throw new UnsupportedOperationException();
+  public int indexOf(Object o) {
+    //throw new UnsupportedOperationException();
+    return ids.indexOf(o);
   }
 
-  public Iterator<RayObject<E>> Iterator() {
-    return ids.iterator();
+  @Override
+  public int lastIndexOf(Object o) {
+    //throw new UnsupportedOperationException();
+    return ids.lastIndexOf(o);
   }
 
   @Override
@@ -61,6 +62,30 @@ public class RayList<E> extends ArrayList<E> {
     return ids.toArray(a);
   }
 
+  @Override
+  public E get(int index) {
+    return ids.get(index).get();
+  }
+
+  public List<E> get() {
+    List<UniqueID> objectIds = new ArrayList<>();
+    for (RayObject<E> id : ids) {
+      objectIds.add(id.getId());
+    }
+    return Ray.get(objectIds);
+  }
+
+  @RayDisabled
+  @Deprecated
+  @Override
+  public E set(int index, E element) {
+    throw new UnsupportedOperationException();
+  }
+
+  public RayObject<E> set(int index, RayObject<E> element) {
+    return ids.set(index, element);
+  }
+
   @RayDisabled
   @Deprecated
   @Override
@@ -68,8 +93,26 @@ public class RayList<E> extends ArrayList<E> {
     throw new UnsupportedOperationException();
   }
 
+  @RayDisabled
+  @Deprecated
+  @Override
+  public void add(int index, E element) {
+    throw new UnsupportedOperationException();
+  }
+
   public boolean add(RayObject<E> e) {
     return ids.add(e);
+  }
+
+  public void add(int index, RayObject<E> element) {
+    ids.add(index, element);
+  }
+
+  @RayDisabled
+  @Deprecated
+  @Override
+  public E remove(int index) {
+    throw new UnsupportedOperationException();
   }
 
   @Override
@@ -79,9 +122,9 @@ public class RayList<E> extends ArrayList<E> {
   }
 
   @Override
-  public boolean containsAll(Collection<?> c) {
+  public void clear() {
     //throw new UnsupportedOperationException();
-    return ids.containsAll(c);
+    ids.clear();
   }
 
   @RayDisabled
@@ -110,84 +153,11 @@ public class RayList<E> extends ArrayList<E> {
     return ids.retainAll(c);
   }
 
-  @Override
-  public void clear() {
-    //throw new UnsupportedOperationException();
-    ids.clear();
-  }
-
-  public List<E> get() {
-    List<UniqueID> objectIds = new ArrayList<>();
-    for (RayObject<E> id : ids) {
-      objectIds.add(id.getId());
-    }
-    return Ray.get(objectIds);
-  }
-
-  public <T> List<T> getMeta() {
-    List<UniqueID> objectIds = new ArrayList<>();
-    for (RayObject<E> id : ids) {
-      objectIds.add(id.getId());
-    }
-    return Ray.getMeta(objectIds);
-  }
-
-  @Override
-  public E get(int index) {
-    return ids.get(index).get();
-  }
-
-  public <TM> TM getMeta(int index) {
-    return ids.get(index).getMeta();
-  }
-
-  public RayObject<E> Get(int index) {
-    return ids.get(index);
-  }
-
   @RayDisabled
   @Deprecated
   @Override
-  public E set(int index, E element) {
+  public ListIterator<E> listIterator(int index) {
     throw new UnsupportedOperationException();
-  }
-
-  public RayObject<E> set(int index, RayObject<E> element) {
-    return ids.set(index, element);
-  }
-
-  @RayDisabled
-  @Deprecated
-  @Override
-  public void add(int index, E element) {
-    throw new UnsupportedOperationException();
-  }
-
-  public void add(int index, RayObject<E> element) {
-    ids.add(index, element);
-  }
-
-  @RayDisabled
-  @Deprecated
-  @Override
-  public E remove(int index) {
-    throw new UnsupportedOperationException();
-  }
-
-  public RayObject<E> Remove(int index) {
-    return ids.remove(index);
-  }
-
-  @Override
-  public int indexOf(Object o) {
-    //throw new UnsupportedOperationException();
-    return ids.indexOf(o);
-  }
-
-  @Override
-  public int lastIndexOf(Object o) {
-    //throw new UnsupportedOperationException();
-    return ids.lastIndexOf(o);
   }
 
   @RayDisabled
@@ -200,7 +170,7 @@ public class RayList<E> extends ArrayList<E> {
   @RayDisabled
   @Deprecated
   @Override
-  public ListIterator<E> listIterator(int index) {
+  public Iterator<E> iterator() {
     throw new UnsupportedOperationException();
   }
 
@@ -209,5 +179,35 @@ public class RayList<E> extends ArrayList<E> {
   @Override
   public List<E> subList(int fromIndex, int toIndex) {
     throw new UnsupportedOperationException();
+  }
+
+  public Iterator<RayObject<E>> Iterator() {
+    return ids.iterator();
+  }
+
+  @Override
+  public boolean containsAll(Collection<?> c) {
+    //throw new UnsupportedOperationException();
+    return ids.containsAll(c);
+  }
+
+  public <T> List<T> getMeta() {
+    List<UniqueID> objectIds = new ArrayList<>();
+    for (RayObject<E> id : ids) {
+      objectIds.add(id.getId());
+    }
+    return Ray.getMeta(objectIds);
+  }
+
+  public <TMT> TMT getMeta(int index) {
+    return ids.get(index).getMeta();
+  }
+
+  public RayObject<E> Get(int index) {
+    return ids.get(index);
+  }
+
+  public RayObject<E> Remove(int index) {
+    return ids.remove(index);
   }
 }

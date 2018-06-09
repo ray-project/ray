@@ -20,7 +20,7 @@ import org.ray.spi.model.TaskSpec;
 import org.ray.util.exception.TaskExecutionException;
 
 /**
- * arguments wrap and unwrap
+ * arguments wrap and unwrap.
  */
 public class ArgumentsBuilder {
 
@@ -36,12 +36,10 @@ public class ArgumentsBuilder {
       } else if (oarg.getClass().equals(RayActor.class)) {
         // serialize actor unique id
         if (k == 0) {
-          RayActorID aid = new RayActorID();
-          aid.Id = ((RayActor) oarg).getId();
+          RayActorId aid = new RayActorId();
+          aid.id = ((RayActor) oarg).getId();
           fargs[k].data = Serializer.encode(aid);
-        }
-        // serialize actor handle
-        else {
+        } else { // serialize actor handle
           fargs[k].data = Serializer.encode(oarg);
         }
 
@@ -85,17 +83,17 @@ public class ArgumentsBuilder {
   @SuppressWarnings({"rawtypes", "unchecked"})
   public static Pair<Object, Object[]> unwrap(TaskSpec task, Method m, ClassLoader classLoader)
       throws TaskExecutionException {
-    FunctionArg fargs[] = task.args;
-    Object this_ = null;
-    Object realArgs[];
+    FunctionArg[] fargs = task.args;
+    Object current = null;
+    Object[] realArgs;
 
     int start = 0;
 
     // check actor method
     if (!Modifier.isStatic(m.getModifiers())) {
       start = 1;
-      RayActorID actorId = Serializer.decode(fargs[0].data, classLoader);
-      this_ = RayRuntime.getInstance().getLocalActor(actorId.Id);
+      RayActorId actorId = Serializer.decode(fargs[0].data, classLoader);
+      current = RayRuntime.getInstance().getLocalActor(actorId.id);
       realArgs = new Object[fargs.length - 1];
     } else {
       realArgs = new Object[fargs.length];
@@ -110,22 +108,16 @@ public class ArgumentsBuilder {
         Object obj = Serializer.decode(farg.data, classLoader);
 
         // due to remote lambda, method may be static
-        if (obj instanceof RayActorID) {
+        if (obj instanceof RayActorId) {
           assert (k == 0);
-          realArgs[raIndex] = RayRuntime.getInstance().getLocalActor(((RayActorID) obj).Id);
+          realArgs[raIndex] = RayRuntime.getInstance().getLocalActor(((RayActorId) obj).id);
         } else {
           realArgs[raIndex] = obj;
         }
-      }
-
-      // only ids, big data or single object id
-      else if (farg.data == null) {
+      } else if (farg.data == null) { // only ids, big data or single object id
         assert (farg.ids.size() == 1);
         realArgs[raIndex] = RayRuntime.getInstance().get(farg.ids.get(0));
-      }
-
-      // both id and data, could be RayList or RayMap only
-      else {
+      } else { // both id and data, could be RayList or RayMap only
         Object idBag = Serializer.decode(farg.data, classLoader);
         if (idBag instanceof RayMapArg) {
           Map newMap = new HashMap<>();
@@ -144,7 +136,7 @@ public class ArgumentsBuilder {
         }
       }
     }
-    return Pair.of(this_, realArgs);
+    return Pair.of(current, realArgs);
   }
 
   //for recognition
@@ -161,9 +153,9 @@ public class ArgumentsBuilder {
 
   }
 
-  public static class RayActorID implements Serializable {
+  public static class RayActorId implements Serializable {
 
     private static final long serialVersionUID = 3993646395842605166L;
-    public UniqueID Id;
+    public UniqueID id;
   }
 }
