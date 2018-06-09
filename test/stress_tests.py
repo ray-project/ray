@@ -490,7 +490,7 @@ class ReconstructionTests(unittest.TestCase):
         # for-loop should hang on its first iteration and push an error to the
         # driver.
         ray.worker.global_worker.local_scheduler_client.reconstruct_objects(
-            args[0].id(), False)
+            [args[0].id()], False)
 
         def error_check(errors):
             return len(errors) > 1
