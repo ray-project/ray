@@ -11,7 +11,8 @@ import org.ray.core.RayRuntime;
 import org.ray.core.UniqueIdHelper;
 
 @RunWith(MyRunner.class)
-public class UniqueIdTest {
+public class UIdTest {
+
 
   @RayRemote
   public static String hi(Integer i) {
@@ -23,7 +24,7 @@ public class UniqueIdTest {
     UniqueID tid = UniqueIdHelper.nextTaskId(0xdeadbeefL);
     UniqueIdHelper.setTest(tid, true);
     System.out.println("Tested task id = " + tid);
-    RayFunc_1_1<Integer, String> f = UniqueIdTest::hi;
+    RayFunc_1_1<Integer, String> f = UIdTest::hi;
     RayObject<String> result = new RayObject<>(
         RayRuntime.getInstance().call(
             tid,
