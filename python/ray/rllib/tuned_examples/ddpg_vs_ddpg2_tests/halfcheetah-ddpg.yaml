@@ -1,68 +1,17 @@
-# This configuration can expect to reach 2000 reward in 100k-110k timesteps
+# This configuration can expect to reach 2000 reward in 125k-150k timesteps
 halfcheetah-ddpg:
     env: HalfCheetah-v2
     run: DDPG
     stop:
-        # episode_reward_mean: 2000
-        # time_total_s: 18000
-        training_iteration: 250
+        episode_reward_mean: 2000
+        time_total_s: 5400 # 90 minutes
     config:
-        # Same parameter, same default values
-        actor_lr: 0.0001
-        critic_lr: 0.001
-        gamma: 0.99
-        env_config: {}
-        noise_scale: 0.1
-        exploration_theta: 0.15
-        exploration_sigma: 0.2
-
-        # Same parameter, different values (set to default values of DDPG2)
-        num_workers: 1
         timesteps_per_iteration: 1000
         tau: 0.001
         buffer_size: 10000
         learning_starts: 500
         clip_rewards: False
-        prioritized_replay: False
+        prioritized_replay: True
         train_batch_size: 64
-
-        # Different parameters (different values)
-        # === Exploration ===
-        schedule_max_timesteps: 100000
-        exploration_fraction: 0.1
-        exploration_final_eps: 0.02
-        target_network_update_freq: 0
-        # === Optimization ===
-        sample_batch_size: 1
-        use_huber: False
-        huber_threshold: 1.0
-        l2_reg: 0 # original: 1e-6
-        random_starts: False # original: True
-        num_gpus_per_worker: 0
-        optimizer_class: "LocalSyncReplayOptimizer"
-        optimizer_config: {}
-        per_worker_exploration: False
-        worker_side_prioritization: False
-        # === Tensorflow ===
-        tf_session_args: {
-            "device_count": {
-                "CPU": 2
-            },
-            "log_device_placement": False,
-            "allow_soft_placement": True,
-            "gpu_options": {
-                "allow_growth": True
-            },
-            "inter_op_parallelism_threads": 1,
-            "intra_op_parallelism_threads": 1,
-        }
-        # === Model ===
-        actor_hiddens: [64, 64]
-        critic_hiddens: [64, 64]
-        n_step: 1
-        model: {}
-        # === Replay Buffer ===
-        smoothing_num_episodes: 1
-        prioritized_replay_alpha: 0.6
-        prioritized_replay_beta: 0.4
-        prioritized_replay_eps: 0.000001
+        random_starts: False
+        smoothing_num_episodes: 10
