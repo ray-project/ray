@@ -1,0 +1,56 @@
+/**
+ * Alipay.com Inc.
+ * Copyright (c) 2004-2018 All Rights Reserved.
+ */
+package org.ray.spi.model;
+
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
+import org.ray.api.RayRemote;
+import org.ray.api.UniqueID;
+
+
+public final class RayTaskMethods {
+
+  public final Class clazz;
+  public final Map<UniqueID, RayMethod> functions;
+
+  public RayTaskMethods(Class clazz,
+      Map<UniqueID, RayMethod> functions) {
+    this.clazz = clazz;
+    this.functions = Collections.unmodifiableMap(new HashMap<>(functions));
+  }
+
+  public static RayTaskMethods formClass(String clazzName, ClassLoader classLoader) {
+    try {
+      Class clazz = Class.forName(clazzName, true, classLoader);
+      Method[] methods = clazz.getMethods();
+      Map<UniqueID, RayMethod> functions = new HashMap<>(methods.length * 2);
+
+      for (Method m : methods) {
+        if (!Modifier.isStatic(m.getModifiers())) {
+          continue;
+        }
+        //task method only for static
+        RayRemote remoteAnnotation = m.getAnnotation(RayRemote.class);
+        if (remoteAnnotation == null) {
+          continue;
+        }
+        RayMethod rayMethod = RayMethod.from(m, null);
+        functions.put(rayMethod.getFuncId(), rayMethod);
+      }
+      return new RayTaskMethods(clazz, functions);
+    } catch (Exception e) {
+      throw new RuntimeException("failed to get RayTaskMethods from " + clazzName, e);
+    }
+  }
+
+  @Override
+  public String toString() {
+    return String.format("RayTaskMethods:%s, funcNum=%s", clazz, functions.size());
+  }
+
+}
