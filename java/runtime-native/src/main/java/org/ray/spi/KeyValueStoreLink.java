@@ -5,36 +5,36 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Ray K/V abstraction
+ * Ray K/V abstraction.
  */
 public interface KeyValueStoreLink {
 
   /**
-   * set address of kv store: format "ip:port"
+   * set address of kv store: format "ip:port".
    */
   void setAddr(String addr);
 
   /**
-   * check if the kvstore client connected
+   * check if the kvstore client connected.
    */
   void checkConnected() throws Exception;
 
   /**
-   * set Key-value into State Store, such as redis
+   * set Key-value into State Store, such as redis.
    *
    * @param key   the key to set
    * @param value the value to set
    * @param field the field is being set when the item is a hash If it is not hash field should be
    *              filled with null
    * @return If the key(or field) already exists, and the StateStoreSet just produced an update of
-   * the value, 0 is returned, otherwise if a new key(or field) is created 1 is returned.
+   *     the value, 0 is returned, otherwise if a new key(or field) is created 1 is returned.
    */
   Long set(final String key, final String value, final String field);
 
   Long set(final byte[] key, final byte[] value, final byte[] field);
 
   /**
-   * multi hash value set
+   * multi hash value set.
    *
    * @param key  the key in kvStore
    * @param hash the multi hash value to be set
@@ -45,19 +45,19 @@ public interface KeyValueStoreLink {
   String hmset(final byte[] key, final Map<byte[], byte[]> hash);
 
   /**
-   * multi hash value get
+   * multi hash value get.
    *
    * @param key    the key in kvStore
    * @param fields the fields to be get
    * @return Multi Bulk Reply specifically a list of all the values associated with the specified
-   * fields, in the same order of the request.
+   *     fields, in the same order of the request.
    */
   List<String> hmget(final String key, final String... fields);
 
   List<byte[]> hmget(final byte[] key, final byte[]... fields);
 
   /**
-   * get the value of the specified key from State Store
+   * get the value of the specified key from State Store.
    *
    * @param key   the key to get
    * @param field the field is being got when the item is a hash If it is not hash field should be
@@ -69,30 +69,30 @@ public interface KeyValueStoreLink {
   byte[] get(final byte[] key, final byte[] field);
 
   /**
-   * delete the key(or the specified field of the key) from State Store
+   * delete the key(or the specified field of the key) from State Store.
    *
    * @param key   the key to delete
    * @param field the field is to delete when the item is a hash If it is not hash field should be
    *              filled with null
    * @return Integer reply, specifically: an integer greater than 0 if the key(or the field) was
-   * removed 0 if none of the specified key existed
+   *     removed 0 if none of the specified key existed
    */
   Long delete(final String key, final String field);
 
   Long delete(final byte[] key, final byte[] field);
 
   /**
-   * get all keys which fit the pattern
+   * get all keys which fit the pattern.
    */
   Set<byte[]> keys(final byte[] pattern);
 
   /**
-   * get all keys which fit the pattern
+   * get all keys which fit the pattern.
    */
   Set<String> keys(String pattern);
 
   /**
-   * get all hash of the key
+   * get all hash of the key.
    */
   Map<byte[], byte[]> hgetAll(final byte[] key);
 
@@ -104,14 +104,16 @@ public interface KeyValueStoreLink {
   List<String> lrange(final String key, final long start, final long end);
 
   /**
+   * Rpush.
    * @return Integer reply, specifically, the number of elements inside the list after the push
-   * operation.
+   *     operation.
    */
   Long rpush(final String key, final String... strings);
 
   Long rpush(final byte[] key, final byte[]... strings);
 
   /**
+   * Publish.
    * @param channel To which channel the message will be published
    * @param message What to publish
    * @return the number of clients that received the message

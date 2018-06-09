@@ -13,7 +13,7 @@ import org.ray.spi.model.AddressInfo;
 import org.ray.util.logger.RayLog;
 
 /**
- * A class used to interface with the Ray control state
+ * A class used to interface with the Ray control state.
  */
 public class StateStoreProxyImpl implements StateStoreProxy {
 

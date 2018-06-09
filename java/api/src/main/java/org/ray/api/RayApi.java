@@ -7,12 +7,12 @@ import org.ray.api.internal.Callable;
 import org.ray.util.exception.TaskExecutionException;
 
 /**
- * Ray runtime abstraction
+ * Ray runtime abstraction.
  */
 public interface RayApi {
 
   /**
-   * Put obj into object store
+   * Put obj into object store.
    *
    * @return RayObject
    */
@@ -21,12 +21,12 @@ public interface RayApi {
   <T, TMT> RayObject<T> put(T obj, TMT metadata);
 
   /**
-   * Get real obj from object store
+   * Get real obj from object store.
    */
   <T> T get(UniqueID objectId) throws TaskExecutionException;
 
   /**
-   * Get real objects from object store
+   * Get real objects from object store.
    *
    * @param objectIds list of ids of objects to get
    */
@@ -37,7 +37,7 @@ public interface RayApi {
   <T> List<T> getMeta(List<UniqueID> objectIds) throws TaskExecutionException;
 
   /**
-   * wait until timeout or enough RayObjects are ready
+   * wait until timeout or enough RayObjects are ready.
    *
    * @param waitfor    wait for who
    * @param numReturns how many of ready is enough
@@ -46,12 +46,12 @@ public interface RayApi {
   <T> WaitResult<T> wait(RayList<T> waitfor, int numReturns, int timeout);
 
   /**
-   * create remote actor
+   * create remote actor.
    */
   <T> RayActor<T> create(Class<T> cls);
 
   /**
-   * submit a new task by invoking a remote function
+   * submit a new task by invoking a remote function.
    *
    * @param taskId      nil
    * @param funcRun     the target running function with @RayRemote
@@ -68,7 +68,7 @@ public interface RayApi {
    * In some cases, we would like the return value of a remote function to be splitted into multiple
    * parts so that they are consumed by multiple further functions separately (potentially on
    * different machines). We therefore introduce this API so that developers can annotate the
-   * outputs with a set of labels (usually with Integer or String)
+   * outputs with a set of labels (usually with Integer or String).
    *
    * @param taskId    nil
    * @param funcRun   the target running function with @RayRemote
@@ -85,7 +85,7 @@ public interface RayApi {
                                                  Object... args);
 
   /**
-   * a special case for the above RID-based labeling as <0...returnCount - 1>
+   * a special case for the above RID-based labeling as <0...returnCount - 1>.
    *
    * @param taskId      nil
    * @param funcRun     the target running function with @RayRemote

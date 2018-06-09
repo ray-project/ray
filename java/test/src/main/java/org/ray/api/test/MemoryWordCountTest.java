@@ -10,7 +10,7 @@ import org.junit.runner.RunWith;
 import org.ray.api.experiment.mr.MemoryMapReduce;
 
 /**
- * test the MapReduce interface
+ * test the MapReduce interface.
  */
 @RunWith(MyRunner.class)
 public class MemoryWordCountTest {

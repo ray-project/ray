@@ -3,7 +3,7 @@ package org.ray.util.generator;
 import java.util.Set;
 
 /**
- * Share util for generators
+ * Share util for generators.
  */
 public class Share {
 
@@ -11,7 +11,7 @@ public class Share {
   public static final int MAX_R = 4;
 
   /**
-   * T0, T1, T2, T3, R
+   * T0, T1, T2, T3, R.
    */
   public static String buildClassDeclare(int tcount, int rcount) {
     StringBuilder sb = new StringBuilder();
@@ -34,7 +34,7 @@ public class Share {
   }
 
   /**
-   * T0 t0, T1 t1, T2 t2, T3 t3
+   * T0 t0, T1 t1, T2 t2, T3 t3.
    */
   public static String buildParameter(int tcount, String tr, Set<Integer> whichTisFuture) {
     StringBuilder sb = new StringBuilder();
@@ -51,7 +51,7 @@ public class Share {
   }
 
   /**
-   * t0, t1, t2
+   * t0, t1, t2.
    */
   public static String buildParameterUse(int tcount, String tr) {
     StringBuilder sb = new StringBuilder();
@@ -99,8 +99,6 @@ public class Share {
 
   }
 
-  /**
-   */
   public static String buildRpcReturn(int rcount) {
     if (rcount == 0) {
       return "RayMap<RID, R>";

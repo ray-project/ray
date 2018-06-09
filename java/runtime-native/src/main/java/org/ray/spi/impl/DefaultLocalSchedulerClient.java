@@ -13,7 +13,7 @@ import org.ray.spi.model.TaskSpec;
 import org.ray.util.logger.RayLog;
 
 /**
- * JNI-based local scheduler link provider
+ * JNI-based local scheduler link provider.
  */
 public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
 

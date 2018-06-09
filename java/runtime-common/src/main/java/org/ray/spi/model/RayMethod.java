@@ -3,7 +3,7 @@ package org.ray.spi.model;
 import java.lang.reflect.Method;
 
 /**
- * method info
+ * method info.
  */
 public class RayMethod {
 

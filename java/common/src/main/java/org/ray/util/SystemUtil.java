@@ -6,7 +6,7 @@ import java.util.concurrent.locks.ReentrantLock;
 import org.ray.util.logger.RayLog;
 
 /**
- * some utilities for system process
+ * some utilities for system process.
  */
 public class SystemUtil {
 

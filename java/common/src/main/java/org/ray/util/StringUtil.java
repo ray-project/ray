@@ -7,6 +7,7 @@ import java.util.Vector;
 public class StringUtil {
 
   /**
+   * split.
    * @param s         input string
    * @param splitters common splitters
    * @param open      open braces

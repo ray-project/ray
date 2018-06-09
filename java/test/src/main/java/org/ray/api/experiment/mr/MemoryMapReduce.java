@@ -13,7 +13,7 @@ import org.ray.api.RayObject;
 import org.ray.api.RayRemote;
 
 /**
- * mimic the MapReduce interface atop of Ray API (in memory version)
+ * mimic the MapReduce interface atop of Ray API (in memory version).
  */
 public class MemoryMapReduce<TInputT, TMapKeyT, TMapValueT, TReduceValueT> {
 

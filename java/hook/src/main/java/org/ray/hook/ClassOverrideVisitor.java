@@ -7,7 +7,7 @@ import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 
 /**
- * rewrite phase 2
+ * rewrite phase 2.
  */
 public class ClassOverrideVisitor extends ClassVisitor {
 

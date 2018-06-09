@@ -11,7 +11,7 @@ import org.ray.util.FileUtil;
 
 /**
  * given a directory of document files on each "machine", we would like to count the appearance of
- * some word
+ * some word.
  */
 public class WordCountTest {
 

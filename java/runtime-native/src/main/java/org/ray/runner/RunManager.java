@@ -22,7 +22,7 @@ import org.ray.util.logger.RayLog;
 import redis.clients.jedis.Jedis;
 
 /**
- * Ray service management on one box
+ * Ray service management on one box.
  */
 public class RunManager {
 

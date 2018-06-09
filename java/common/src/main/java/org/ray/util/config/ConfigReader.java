@@ -225,9 +225,7 @@ public class ConfigReader {
   /**
    * get a string list from a whole section as keys e.g., [core] data_dirs = local.dirs # or
    * cluster.dirs
-   * <p>
    * [local.dirs] /home/xxx/1 /home/yyy/2
-   * <p>
    * [cluster.dirs] ...
    *
    * @param sectionKey          e.g., core

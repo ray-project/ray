@@ -25,7 +25,7 @@ import org.ray.hook.runtime.LoadedFunctions;
 import org.ray.util.logger.RayLog;
 
 /**
- * rewrite jars to new jars with methods marked using Ray annotations
+ * rewrite jars to new jars with methods marked using Ray annotations.
  */
 public class JarRewriter {
 

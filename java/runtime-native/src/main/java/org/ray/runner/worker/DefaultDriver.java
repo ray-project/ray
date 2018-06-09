@@ -4,7 +4,7 @@ import org.ray.core.RayRuntime;
 import org.ray.core.model.WorkerMode;
 
 /**
- *
+ * The main function of DefaultDriver.
  */
 public class DefaultDriver {
 

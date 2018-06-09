@@ -17,7 +17,7 @@ import org.apache.commons.io.filefilter.RegexFileFilter;
 import org.ray.util.logger.RayLog;
 
 /**
- * load and unload jars from a dir
+ * load and unload jars from a dir.
  */
 public class JarLoader {
 

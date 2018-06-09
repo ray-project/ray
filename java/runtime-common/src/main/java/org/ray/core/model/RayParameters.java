@@ -6,7 +6,7 @@ import org.ray.util.config.AConfig;
 import org.ray.util.config.ConfigReader;
 
 /**
- * Runtime parameters of Ray process
+ * Runtime parameters of Ray process.
  */
 public class RayParameters {
 

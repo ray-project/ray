@@ -11,7 +11,7 @@ import org.objectweb.asm.Type;
 import org.ray.util.logger.RayLog;
 
 /**
- * Represent a Method in a Class
+ * Represent a Method in a Class.
  */
 public class MethodId {
 

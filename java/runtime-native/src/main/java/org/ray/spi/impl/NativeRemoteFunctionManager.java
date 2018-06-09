@@ -17,7 +17,7 @@ import org.ray.util.SystemUtil;
 import org.ray.util.logger.RayLog;
 
 /**
- * native implementation of remote function manager
+ * native implementation of remote function manager.
  */
 public class NativeRemoteFunctionManager implements RemoteFunctionManager {
 

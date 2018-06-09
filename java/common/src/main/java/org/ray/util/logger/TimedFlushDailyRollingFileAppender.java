@@ -7,7 +7,7 @@ import org.apache.log4j.Layout;
 import org.apache.log4j.RollingFileAppender;
 
 /**
- * Normal log appender
+ * Normal log appender.
  */
 public class TimedFlushDailyRollingFileAppender extends RollingFileAppender {
 

@@ -11,7 +11,7 @@ import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 
 /**
- * rewrite phase 1
+ * rewrite phase 1.
  */
 public class ClassDetectVisitor extends ClassVisitor {
 

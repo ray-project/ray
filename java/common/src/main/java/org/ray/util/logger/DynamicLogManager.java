@@ -11,12 +11,11 @@ import org.apache.log4j.RollingFileAppender;
 import org.ray.util.SystemUtil;
 
 /**
- * Manager for dynamic loggers
+ * Manager for dynamic loggers.
  */
 public class DynamicLogManager {
 
   protected static final String DAY_DATE_PATTERN = "'.'yyyy-MM-dd";
-  /**  */
   private static final int LOG_CACHE_SIZE = 32 * 1024;
   //    private final static String                          HOUR_DATE_PATTERN     = "'
   // .'yyyy-MM-dd_HH";

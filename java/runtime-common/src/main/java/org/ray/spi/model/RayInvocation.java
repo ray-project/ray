@@ -10,14 +10,14 @@ public class RayInvocation {
 
   private static final RayActor<?> nil = new RayActor<>(UniqueID.nil, UniqueID.nil);
   /**
-   * unique id for a method
+   * unique id for a method.
    *
    * @see UniqueID
    */
   private final byte[] id;
   private final RayActor<?> actor;
   /**
-   * function arguments
+   * function arguments.
    */
   private Object[] args;
 

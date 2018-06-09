@@ -13,7 +13,7 @@ import org.ray.spi.model.RayMethod;
 import org.ray.util.logger.RayLog;
 
 /**
- * local function manager which pulls remote functions on demand
+ * local function manager which pulls remote functions on demand.
  */
 public class LocalFunctionManager {
 
@@ -23,7 +23,7 @@ public class LocalFunctionManager {
 
   /**
    * initialize load function manager using remote function manager to pull remote functions on
-   * demand
+   * demand.
    */
   public LocalFunctionManager(RemoteFunctionManager remoteLoader) {
     this.remoteLoader = remoteLoader;
@@ -100,7 +100,7 @@ public class LocalFunctionManager {
   }
 
   /**
-   * unload the functions when the driver is declared dead
+   * unload the functions when the driver is declared dead.
    */
   public synchronized void removeApp(UniqueID driverId) {
     FunctionTable funcs = functionTables.get(driverId);

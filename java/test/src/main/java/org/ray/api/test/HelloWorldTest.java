@@ -9,7 +9,7 @@ import org.ray.api.RayRemote;
 import org.ray.util.logger.RayLog;
 
 /**
- * Hello world
+ * Hello world.
  */
 @RunWith(MyRunner.class)
 public class HelloWorldTest {

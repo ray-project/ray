@@ -3,7 +3,7 @@ package org.ray.util.logger;
 import org.apache.log4j.Logger;
 
 /**
- * A logger which prints output to console
+ * A logger which prints output to console.
  */
 public class ConsoleLogger extends Logger {
 

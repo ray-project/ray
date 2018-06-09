@@ -7,7 +7,7 @@ import org.apache.log4j.Logger;
 import org.ray.util.CommonUtil;
 
 /**
- * Dynamic logger without properties configuration file
+ * Dynamic logger without properties configuration file.
  */
 public class DynamicLog {
 
@@ -28,14 +28,14 @@ public class DynamicLog {
   }
 
   /**
-   * set the context prefix for all logs
+   * set the context prefix for all logs.
    */
   public static void setContextPrefix(String prefix) {
     PREFIX.set(prefix);
   }
 
   /**
-   * set the level for all logs
+   * set the level for all logs.
    */
   public static void setLogLevel(String level) {
     if (logLevelSetFlag) { /* one shot, avoid the risk of multithreading */
@@ -174,7 +174,7 @@ public class DynamicLog {
   }
 
   /**
-   * Print sample error log
+   * Print sample error log.
    */
   public boolean sampleError(Object sampleKeyO, String log, Throwable e) {
     String sampleKey = sampleKeyO.toString();

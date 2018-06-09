@@ -7,14 +7,14 @@ import org.ray.util.logger.DynamicLog;
 import org.ray.util.logger.RayLog;
 
 /**
- * Ray API
+ * Ray API.
  */
 public final class Ray extends Rpc {
 
   private static RayApi impl = null;
 
   /**
-   * initialize the current worker or the single-box cluster
+   * initialize the current worker or the single-box cluster.
    */
   public static void init() {
     if (impl == null) {
@@ -23,7 +23,7 @@ public final class Ray extends Rpc {
   }
 
   /**
-   * Put obj into object store
+   * Put obj into object store.
    */
   public static <T> RayObject<T> put(T obj) {
     return impl.put(obj);
@@ -34,7 +34,7 @@ public final class Ray extends Rpc {
   }
 
   /**
-   * Get obj(s) from object store
+   * Get obj(s) from object store.
    */
   static <T> T get(UniqueID objectId) throws TaskExecutionException {
     return impl.get(objectId);
@@ -53,7 +53,7 @@ public final class Ray extends Rpc {
   }
 
   /**
-   * wait until timeout or enough RayObject are ready
+   * wait until timeout or enough RayObject are ready.
    *
    * @param waitfor             wait for who
    * @param numReturns          how many of ready is enough
@@ -79,7 +79,7 @@ public final class Ray extends Rpc {
   }
 
   /**
-   * create actor object
+   * create actor object.
    */
   public static <T> RayActor<T> create(Class<T> cls) {
     try {
@@ -97,21 +97,21 @@ public final class Ray extends Rpc {
   }
 
   /**
-   * get underlying runtime
+   * get underlying runtime.
    */
   static RayApi internal() {
     return impl;
   }
 
   /**
-   * whether to use remote lambda
+   * whether to use remote lambda.
    */
   public static boolean isRemoteLambda() {
     return impl.isRemoteLambda();
   }
 
   /**
-   * for ray's app's log
+   * for ray's app's log.
    */
   public static DynamicLog getRappLogger() {
     return RayLog.rapp;

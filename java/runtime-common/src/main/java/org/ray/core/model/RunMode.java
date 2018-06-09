@@ -19,7 +19,7 @@ public enum RunMode {
   }
 
   /**
-   * Getter method for property <tt>remoteLambda</tt>
+   * Getter method for property <tt>remoteLambda</tt>.
    *
    * @return property value of remoteLambda
    */
@@ -28,7 +28,7 @@ public enum RunMode {
   }
 
   /**
-   * Getter method for property <tt>staticRewrite</tt>
+   * Getter method for property <tt>staticRewrite</tt>.
    *
    * @return property value of staticRewrite
    */
@@ -37,7 +37,7 @@ public enum RunMode {
   }
 
   /**
-   * Getter method for property <tt>devPathManager</tt>
+   * Getter method for property <tt>devPathManager</tt>.
    *
    * @return property value of devPathManager
    */
@@ -46,7 +46,7 @@ public enum RunMode {
   }
 
   /**
-   * Getter method for property <tt>nativeRuntime</tt>
+   * Getter method for property <tt>nativeRuntime</tt>.
    *
    * @return property value of nativeRuntime
    */

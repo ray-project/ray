@@ -9,23 +9,23 @@ public class WorkerContext {
   private static final ThreadLocal<WorkerContext> currentWorkerCtx =
       ThreadLocal.withInitial(() -> init(RayRuntime.getParams()));
   /**
-   * id of worker
+   * id of worker.
    */
   public static UniqueID workerID = UniqueID.randomId();
   /**
-   * current doing task
+   * current doing task.
    */
   private TaskSpec currentTask;
   /**
-   * current app classloader
+   * current app classloader.
    */
   private ClassLoader currentClassLoader;
   /**
-   * how many puts done by current task
+   * how many puts done by current task.
    */
   private int currentTaskPutCount;
   /**
-   * how many calls done by current task
+   * how many calls done by current task.
    */
   private int currentTaskCallCount;
 

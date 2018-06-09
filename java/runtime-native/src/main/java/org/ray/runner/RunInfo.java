@@ -6,7 +6,7 @@ import java.util.List;
 import org.ray.spi.model.AddressInfo;
 
 /**
- * information of kinds of processes
+ * information of kinds of processes.
  */
 public class RunInfo {
 

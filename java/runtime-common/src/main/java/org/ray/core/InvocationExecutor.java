@@ -14,7 +14,7 @@ import org.ray.util.exception.TaskExecutionException;
 import org.ray.util.logger.RayLog;
 
 /**
- * how to execute a invocation
+ * how to execute a invocation.
  */
 public class InvocationExecutor {
 

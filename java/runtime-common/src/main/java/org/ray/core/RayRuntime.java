@@ -34,7 +34,7 @@ import org.ray.util.logger.DynamicLogManager;
 import org.ray.util.logger.RayLog;
 
 /**
- * Core functionality to implement Ray APIs
+ * Core functionality to implement Ray APIs.
  */
 public abstract class RayRuntime implements RayApi {
 
@@ -168,7 +168,7 @@ public abstract class RayRuntime implements RayApi {
   }
 
   /**
-   * start runtime
+   * start runtime.
    */
   public abstract void start(RayParameters params) throws Exception;
 
@@ -187,7 +187,7 @@ public abstract class RayRuntime implements RayApi {
   }
 
   /***********
-   * RayApi methods
+   * RayApi methods.
    ***********/
 
   public <T, TMT> void putRaw(UniqueID taskId, UniqueID objectId, T obj, TMT metadata) {
@@ -216,7 +216,7 @@ public abstract class RayRuntime implements RayApi {
 
   /**
    * get the to-be-returned objects identities of the currently running task, empty array if not
-   * inside any
+   * inside any.
    */
   public UniqueID getCurrentTaskNextPutId() {
     return worker.getCurrentTaskNextPutId();
@@ -446,7 +446,7 @@ public abstract class RayRuntime implements RayApi {
   }
 
   /***********
-   * Internal Methods
+   * Internal Methods.
    ***********/
 
   public void loop() {
@@ -454,7 +454,7 @@ public abstract class RayRuntime implements RayApi {
   }
 
   /**
-   * get actor with given id
+   * get actor with given id.
    */
   public abstract Object getLocalActor(UniqueID id);
 

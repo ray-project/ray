@@ -3,7 +3,7 @@ package org.ray.api;
 import org.apache.commons.lang3.ArrayUtils;
 
 /**
- * Real object or ray future proxy for multiple returns
+ * Real object or ray future proxy for multiple returns.
  */
 public class RayObjects {
 

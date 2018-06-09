@@ -5,9 +5,6 @@ import java.io.DataOutputStream;
 
 public interface FileStoreLink {
 
-  /**
-   *
-   */
   boolean mkdirs(String f);
 
   /**

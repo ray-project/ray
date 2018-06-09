@@ -19,7 +19,7 @@ import org.ray.api.returns.MultipleReturns2;
 import org.ray.api.returns.RayObjects2;
 
 /**
- * types test
+ * types test.
  */
 @RunWith(MyRunner.class)
 public class TypesTest {

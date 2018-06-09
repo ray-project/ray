@@ -6,9 +6,7 @@ package org.ray.spi.impl;
  */
 public class PlasmaObjectExistsException extends Exception {
 
-  /**
-   *
-   */
+
   private static final long serialVersionUID = 9128880292504270291L;
 
   public PlasmaObjectExistsException() {

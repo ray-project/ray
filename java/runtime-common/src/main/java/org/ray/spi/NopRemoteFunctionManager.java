@@ -7,7 +7,7 @@ import org.ray.hook.runtime.LoadedFunctions;
 import org.ray.util.logger.RayLog;
 
 /**
- * mock version of remote function manager using local loaded jars + runtime hook
+ * mock version of remote function manager using local loaded jars + runtime hook.
  */
 public class NopRemoteFunctionManager implements RemoteFunctionManager {
 

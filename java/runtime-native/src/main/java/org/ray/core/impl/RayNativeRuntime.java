@@ -32,7 +32,7 @@ import org.ray.util.exception.TaskExecutionException;
 import org.ray.util.logger.RayLog;
 
 /**
- * native runtime for local box and cluster run
+ * native runtime for local box and cluster run.
  */
 public class RayNativeRuntime extends RayRuntime {
 
