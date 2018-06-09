@@ -172,7 +172,7 @@ class PPOAgent(Agent):
             batch_index = 0
             num_batches = (
                 int(tuples_per_device) // int(model.per_device_batch_size))
-            loss, policy_loss, vf_loss, kl, entropy = [], [], [], [], []
+            loss, policy_graph, vf_loss, kl, entropy = [], [], [], [], []
             permutation = np.random.permutation(num_batches)
             # Prepare to drop into the debugger
             if self.iteration == config["tf_debug_iteration"]:
@@ -181,26 +181,26 @@ class PPOAgent(Agent):
                 full_trace = (
                     i == 0 and self.iteration == 0 and
                     batch_index == config["full_trace_nth_sgd_batch"])
-                batch_loss, batch_policy_loss, batch_vf_loss, batch_kl, \
+                batch_loss, batch_policy_graph, batch_vf_loss, batch_kl, \
                     batch_entropy = model.run_sgd_minibatch(
                         permutation[batch_index] * model.per_device_batch_size,
                         self.kl_coeff, full_trace,
                         self.file_writer)
                 loss.append(batch_loss)
-                policy_loss.append(batch_policy_loss)
+                policy_graph.append(batch_policy_graph)
                 vf_loss.append(batch_vf_loss)
                 kl.append(batch_kl)
                 entropy.append(batch_entropy)
                 batch_index += 1
             loss = np.mean(loss)
-            policy_loss = np.mean(policy_loss)
+            policy_graph = np.mean(policy_graph)
             vf_loss = np.mean(vf_loss)
             kl = np.mean(kl)
             entropy = np.mean(entropy)
             sgd_end = time.time()
             print(
                 "{:>15}{:15.5e}{:15.5e}{:15.5e}{:15.5e}{:15.5e}".format(
-                    i, loss, policy_loss, vf_loss, kl, entropy))
+                    i, loss, policy_graph, vf_loss, kl, entropy))
 
             values = []
             if i == config["num_sgd_iter"] - 1:
@@ -299,4 +299,5 @@ class PPOAgent(Agent):
     def compute_action(self, observation):
         observation = self.local_evaluator.obs_filter(
             observation, update=False)
-        return self.local_evaluator.common_policy.compute(observation)[0]
+        return self.local_evaluator.common_policy.compute_single_action(
+            observation, [], False)[0]

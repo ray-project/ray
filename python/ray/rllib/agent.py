@@ -61,7 +61,7 @@ class Agent(Trainable):
     """
 
     _allow_unknown_configs = False
-    _allow_unknown_subkeys = []
+    _allow_unknown_subkeys = ["env_config", "model", "optimizer"]
 
     @classmethod
     def resource_help(cls, config):

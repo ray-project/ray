@@ -17,8 +17,7 @@ class BCEvaluator(PolicyEvaluator):
         env = ModelCatalog.get_preprocessor_as_wrapper(registry, env_creator(
             config["env_config"]), config["model"])
         self.dataset = ExperienceDataset(config["dataset_path"])
-        # TODO(rliaw): should change this to be just env.observation_space
-        self.policy = BCPolicy(registry, env.observation_space.shape,
+        self.policy = BCPolicy(registry, env.observation_space,
                                env.action_space, config)
         self.config = config
         self.logdir = logdir
