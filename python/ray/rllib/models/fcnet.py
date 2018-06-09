@@ -13,7 +13,7 @@ class FullyConnectedNetwork(Model):
     """Generic fully connected network."""
 
     def _init(self, inputs, num_outputs, options):
-        hiddens = options.get("fcnet_hiddens", [64, 64])
+        hiddens = options.get("fcnet_hiddens", [100, 50, 25])
 
         fcnet_activation = options.get("fcnet_activation", "tanh")
         if fcnet_activation == "tanh":
