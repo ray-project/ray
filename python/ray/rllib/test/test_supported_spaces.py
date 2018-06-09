@@ -36,32 +36,6 @@ OBSERVATION_SPACES_TO_TEST = {
         Box(0.0, 1.0, (5,), dtype=np.float32)]),
 }
 
-# (alg, action_space, obs_space)
-KNOWN_FAILURES = [
-    # TODO(ekl) multiagent support for a3c
-    ("A3C", "implicit_tuple", "atari"),
-    ("A3C", "implicit_tuple", "atari_ram"),
-    ("A3C", "implicit_tuple", "discrete"),
-    ("A3C", "implicit_tuple", "image"),
-    ("A3C", "implicit_tuple", "mixed_tuple"),
-    ("A3C", "implicit_tuple", "simple_tuple"),
-    ("A3C", "implicit_tuple", "vector"),
-    ("A3C", "mixed_tuple", "atari"),
-    ("A3C", "mixed_tuple", "atari_ram"),
-    ("A3C", "mixed_tuple", "discrete"),
-    ("A3C", "mixed_tuple", "image"),
-    ("A3C", "mixed_tuple", "mixed_tuple"),
-    ("A3C", "mixed_tuple", "simple_tuple"),
-    ("A3C", "mixed_tuple", "vector"),
-    ("A3C", "simple_tuple", "atari"),
-    ("A3C", "simple_tuple", "atari_ram"),
-    ("A3C", "simple_tuple", "discrete"),
-    ("A3C", "simple_tuple", "image"),
-    ("A3C", "simple_tuple", "mixed_tuple"),
-    ("A3C", "simple_tuple", "simple_tuple"),
-    ("A3C", "simple_tuple", "vector"),
-]
-
 
 def make_stub_env(action_space, obs_space):
     class StubEnv(gym.Env):
@@ -135,19 +109,13 @@ class ModelSupportedSpaces(unittest.TestCase):
             {"num_workers": 1, "optimizer": {}},
             stats)
         num_unexpected_errors = 0
-        num_unexpected_success = 0
         for (alg, a_name, o_name), stat in sorted(stats.items()):
-            if stat in ["ok", "unsupported"]:
-                if (alg, a_name, o_name) in KNOWN_FAILURES:
-                    num_unexpected_success += 1
-            else:
-                if (alg, a_name, o_name) not in KNOWN_FAILURES:
-                    num_unexpected_errors += 1
+            if stat not in ["ok", "unsupported"]:
+                num_unexpected_errors += 1
             print(
                 alg, "action_space", a_name, "obs_space", o_name,
                 "result", stat)
         self.assertEqual(num_unexpected_errors, 0)
-        self.assertEqual(num_unexpected_success, 0)
 
 
 if __name__ == "__main__":

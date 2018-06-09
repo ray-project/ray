@@ -1,9 +1,8 @@
-cartpole-a3c:
+cartpole-pg:
     env: CartPole-v0
-    run: A3C
+    run: PG
     stop:
         episode_reward_mean: 200
-        time_total_s: 600
+        time_total_s: 300
     config:
         num_workers: 1
-        gamma: 0.95

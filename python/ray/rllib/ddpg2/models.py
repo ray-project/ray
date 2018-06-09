@@ -227,7 +227,7 @@ class DDPGActorCritic():
         self.critic_vars.set_weights(critic_weights)
         self.actor_vars.set_weights(actor_weights)
 
-    def compute(self, ob):
+    def compute_single_action(self, ob, h, is_training):
         """Returns action, given state."""
         flattened_ob = np.reshape(ob, [-1, np.prod(ob.shape)])
         action = self.sess.run(self.output_action, {self.obs: flattened_ob})
@@ -235,7 +235,10 @@ class DDPGActorCritic():
             action += self.epsilon * self.rand_process.sample()
             if (self.epsilon > 0):
                 self.epsilon -= self.config["noise_epsilon"]
-        return action[0], {}
+        return action[0], [], {}
 
     def value(self, *args):
         return 0
+
+    def get_initial_state(self):
+        return []

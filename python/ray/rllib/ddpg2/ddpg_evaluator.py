@@ -9,7 +9,7 @@ from ray.rllib.ddpg2.models import DDPGModel
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.optimizers import PolicyEvaluator
 from ray.rllib.utils.filter import NoFilter
-from ray.rllib.utils.process_rollout import process_rollout
+from ray.rllib.utils.process_rollout import compute_advantages
 from ray.rllib.utils.sampler import SyncSampler
 
 
@@ -34,9 +34,7 @@ class DDPGEvaluator(PolicyEvaluator):
 
         # since each sample is one step, no discounting needs to be applied;
         # this does not involve config["gamma"]
-        samples = process_rollout(
-                    rollout, NoFilter(),
-                    gamma=1.0, use_gae=False)
+        samples = compute_advantages(rollout, 0.0, gamma=1.0, use_gae=False)
 
         return samples
 

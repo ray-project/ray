@@ -1,9 +1,10 @@
-cartpole-dqn:
+cartpole-a3c:
     env: CartPole-v0
-    run: DQN
+    run: A3C
     stop:
         episode_reward_mean: 200
         time_total_s: 600
     config:
-        n_step: 3
+        num_workers: 1
         gamma: 0.95
+        use_pytorch: true

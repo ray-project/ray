@@ -31,6 +31,12 @@ TrainingResult = namedtuple(
         # (Optional) The mean episode reward if applicable.
         "episode_reward_mean",
 
+        # (Optional) The min episode reward if applicable.
+        "episode_reward_min",
+
+        # (Optional) The max episode reward if applicable.
+        "episode_reward_max",
+
         # (Optional) The mean episode length if applicable.
         "episode_len_mean",
 

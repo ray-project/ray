@@ -38,18 +38,24 @@ class PolicyOptimizer(object):
 
         Args:
             evaluator_cls (class): Python class of the evaluators to create.
-            evaluator_args (list): List of constructor args for the evaluators.
+            evaluator_args (list|dict): Constructor args for the evaluators.
             num_workers (int): Number of remote evaluators to create in
                 addition to a local evaluator. This can be zero or greater.
             optimizer_config (dict): Keyword arguments to pass to the
                 optimizer class constructor.
         """
 
-        local_evaluator = evaluator_cls(*evaluator_args)
         remote_cls = ray.remote(**evaluator_resources)(evaluator_cls)
-        remote_evaluators = [
-            remote_cls.remote(*evaluator_args)
-            for _ in range(num_workers)]
+        if isinstance(evaluator_args, list):
+            local_evaluator = evaluator_cls(*evaluator_args)
+            remote_evaluators = [
+                remote_cls.remote(*evaluator_args)
+                for _ in range(num_workers)]
+        else:
+            local_evaluator = evaluator_cls(**evaluator_args)
+            remote_evaluators = [
+                remote_cls.remote(**evaluator_args)
+                for _ in range(num_workers)]
         return cls(optimizer_config, local_evaluator, remote_evaluators)
 
     def __init__(self, config, local_evaluator, remote_evaluators):
