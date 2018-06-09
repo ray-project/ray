@@ -1,0 +1,24 @@
+# This configuration can expect to reach 90 reward in 10k-20k timesteps
+mountaincarcontinuous-ddpg:
+    env: MountainCarContinuous-v0
+    run: DDPG
+    stop:
+        episode_reward_mean: 90
+        time_total_s: 900 # 15 minutes
+    config:
+        noise_scale: 0.75
+        timesteps_per_iteration: 1000
+        tau: 0.01 
+        learning_starts: 1000
+        clip_rewards: False
+        prioritized_replay: False
+        train_batch_size: 64
+        exploration_fraction: 0.4
+        l2_reg: 0.00001
+        random_starts: False 
+        actor_hiddens: [32, 64]
+        critic_hiddens: [64, 64]
+        n_step: 3
+        buffer_size: 50000
+        smoothing_num_episodes: 10
+        
