@@ -1523,12 +1523,12 @@ class ResourcesTest(unittest.TestCase):
         # Create an actor that requires 0.7 of the custom resource.
         f1 = Foo2._submit([], {}, resources={"Custom": 0.7})
         ray.get(f1.method.remote())
-        # # Make sure that we cannot create an actor that requires 0.7 of the
-        # # custom resource. TODO(rkn): Re-enable this once ray.wait is
-        # # implemented.
-        # f2 = Foo2._submit([], {}, resources={"Custom": 0.7})
-        # ready, _ = ray.wait(f2.method.remote(), timeout=500)
-        # assert len(ready) == 0
+        # Make sure that we cannot create an actor that requires 0.7 of the
+        # custom resource. TODO(rkn): Re-enable this once ray.wait is
+        # implemented.
+        f2 = Foo2._submit([], {}, resources={"Custom": 0.7})
+        ready, _ = ray.wait([f2.method.remote()], timeout=500)
+        assert len(ready) == 0
         # Make sure we can start an actor that requries only 0.3 of the custom
         # resource.
         f3 = Foo2._submit([], {}, resources={"Custom": 0.3})
