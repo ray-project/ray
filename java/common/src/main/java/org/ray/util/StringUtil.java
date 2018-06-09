@@ -6,29 +6,15 @@ import java.util.Vector;
 
 public class StringUtil {
 
-  // Holds the start of an element and which brace started it.
-  private static class Start {
-
-    // The brace number from the braces string in use.
-    final int brace;
-    // The position in the string it was seen.
-    final int pos;
-
-    // Constructor.
-    public Start(int brace, int pos) {
-      this.brace = brace;
-      this.pos = pos;
-    }
-  }
-
   /**
-   * @param s input string
+   * split.
+   * @param s         input string
    * @param splitters common splitters
-   * @param open open braces
-   * @param close close braces
+   * @param open      open braces
+   * @param close     close braces
    * @return output array list
    */
-  public static Vector<String> Split(String s, String splitters, String open, String close) {
+  public static Vector<String> split(String s, String splitters, String open, String close) {
     // The splits.
     Vector<String> split = new Vector<>();
     // The stack.
@@ -129,6 +115,21 @@ public class StringUtil {
       sb.append(obj).append(concatenator);
     }
     return objs.length == 0 ? "" : sb.substring(0, sb.length() - concatenator.length());
+  }
+
+  // Holds the start of an element and which brace started it.
+  private static class Start {
+
+    // The brace number from the braces string in use.
+    final int brace;
+    // The position in the string it was seen.
+    final int pos;
+
+    // Constructor.
+    public Start(int brace, int pos) {
+      this.brace = brace;
+      this.pos = pos;
+    }
   }
 }
 

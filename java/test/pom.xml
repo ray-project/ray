@@ -1,128 +1,128 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<project xmlns="http://maven.apache.org/POM/4.0.0"
-  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
-  <parent>
-    <groupId>org.ray.parent</groupId>
-    <artifactId>ray-superpom</artifactId>
-    <version>1.0</version>
-  </parent>
-  <modelVersion>4.0.0</modelVersion>
+<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xmlns="http://maven.apache.org/POM/4.0.0"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+    <parent>
+        <groupId>org.ray.parent</groupId>
+        <artifactId>ray-superpom</artifactId>
+        <version>1.0</version>
+    </parent>
+    <modelVersion>4.0.0</modelVersion>
 
-  <groupId>org.ray</groupId>
-  <artifactId>ray-test</artifactId>
+    <groupId>org.ray</groupId>
+    <artifactId>ray-test</artifactId>
 
-  <name>java test cases for ray</name>
-  <description>java test cases for ray</description>
-  <url></url>
+    <name>java test cases for ray</name>
+    <description>java test cases for ray</description>
+    <url></url>
 
-  <packaging>jar</packaging>
+    <packaging>jar</packaging>
 
-  <dependencies>
-    <dependency>
-      <groupId>org.ray</groupId>
-      <artifactId>ray-api</artifactId>
-      <version>1.0</version>
-    </dependency>
+    <dependencies>
+        <dependency>
+            <groupId>org.ray</groupId>
+            <artifactId>ray-api</artifactId>
+            <version>1.0</version>
+        </dependency>
 
-    <dependency>
-      <groupId>org.ray</groupId>
-      <artifactId>ray-runtime-common</artifactId>
-      <version>1.0</version>
-    </dependency>
+        <dependency>
+            <groupId>org.ray</groupId>
+            <artifactId>ray-runtime-common</artifactId>
+            <version>1.0</version>
+        </dependency>
 
-    <dependency>
-      <groupId>org.ray</groupId>
-      <artifactId>ray-runtime-native</artifactId>
-      <version>1.0</version>
-    </dependency>
+        <dependency>
+            <groupId>org.ray</groupId>
+            <artifactId>ray-runtime-native</artifactId>
+            <version>1.0</version>
+        </dependency>
 
-    <dependency>
-      <groupId>org.ray</groupId>
-      <artifactId>ray-runtime-dev</artifactId>
-      <version>1.0</version>
-    </dependency>
+        <dependency>
+            <groupId>org.ray</groupId>
+            <artifactId>ray-runtime-dev</artifactId>
+            <version>1.0</version>
+        </dependency>
 
-    <dependency>
-      <groupId>org.ray</groupId>
-      <artifactId>ray-common</artifactId>
-      <version>1.0</version>
-    </dependency>
+        <dependency>
+            <groupId>org.ray</groupId>
+            <artifactId>ray-common</artifactId>
+            <version>1.0</version>
+        </dependency>
 
-    <dependency>
-      <groupId>org.ray</groupId>
-      <artifactId>ray-hook</artifactId>
-      <version>1.0</version>
-    </dependency>
+        <dependency>
+            <groupId>org.ray</groupId>
+            <artifactId>ray-hook</artifactId>
+            <version>1.0</version>
+        </dependency>
 
-    <dependency>
-      <groupId>junit</groupId>
-      <artifactId>junit</artifactId>
-      <version>4.11</version>
-      <!-- <scope>test</scope> -->
-    </dependency>
+        <dependency>
+            <groupId>junit</groupId>
+            <artifactId>junit</artifactId>
+            <version>4.11</version>
+            <!-- <scope>test</scope> -->
+        </dependency>
 
-    <!-- https://mvnrepository.com/artifact/commons-collections/commons-collections -->
-    <dependency>
-      <groupId>commons-collections</groupId>
-      <artifactId>commons-collections</artifactId>
-      <version>3.2.2</version>
-    </dependency>
+        <!-- https://mvnrepository.com/artifact/commons-collections/commons-collections -->
+        <dependency>
+            <groupId>commons-collections</groupId>
+            <artifactId>commons-collections</artifactId>
+            <version>3.2.2</version>
+        </dependency>
 
-    <dependency>
-      <groupId>com.google.guava</groupId>
-      <artifactId>guava</artifactId>
-      <version>19.0</version>
-    </dependency>
-  </dependencies>
-  <build>
-    <plugins>
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-surefire-plugin</artifactId>
-        <version>2.21.0</version>
-        <configuration>
-          <!-- <properties>
-            <property>
-              <name>listener</name>
-              <value>org.ray.api.test.TestListener</value>
-            </property>
-          </properties> -->
-          <environmentVariables>
-            <RAY_CONFIG>${basedir}/../ray.config.ini</RAY_CONFIG>
-          </environmentVariables>
-          <argLine>-ea
-            -Djava.library.path=${basedir}/../../build/src/plasma:${basedir}/../../build/src/local_scheduler
-            -noverify
-            -DlogOutput=console
-          </argLine>
-          <testSourceDirectory>${basedir}/src/main/java/</testSourceDirectory>
-          <testClassesDirectory>${project.build.directory}/classes/</testClassesDirectory>
-        </configuration>
-      </plugin>
+        <dependency>
+            <groupId>com.google.guava</groupId>
+            <artifactId>guava</artifactId>
+            <version>19.0</version>
+        </dependency>
+    </dependencies>
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>2.21.0</version>
+                <configuration>
+                    <!-- <properties>
+                      <property>
+                        <name>listener</name>
+                        <value>org.ray.api.test.TestListener</value>
+                      </property>
+                    </properties> -->
+                    <environmentVariables>
+                        <RAY_CONFIG>${basedir}/../ray.config.ini</RAY_CONFIG>
+                    </environmentVariables>
+                    <argLine>-ea
+                        -Djava.library.path=${basedir}/../../build/src/plasma:${basedir}/../../build/src/local_scheduler
+                        -noverify
+                        -DlogOutput=console
+                    </argLine>
+                    <testSourceDirectory>${basedir}/src/main/java/</testSourceDirectory>
+                    <testClassesDirectory>${project.build.directory}/classes/</testClassesDirectory>
+                </configuration>
+            </plugin>
 
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-dependency-plugin</artifactId>
-        <executions>
-          <execution>
-            <id>copy-dependencies</id>
-            <phase>package</phase>
-            <goals>
-              <goal>copy-dependencies</goal>
-            </goals>
-            <configuration>
-              <outputDirectory>${basedir}/lib</outputDirectory>
-              <overWriteReleases>false</overWriteReleases>
-              <overWriteSnapshots>false</overWriteSnapshots>
-              <overWriteIfNewer>true</overWriteIfNewer>
-            </configuration>
-          </execution>
-        </executions>
-      </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>copy-dependencies</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>copy-dependencies</goal>
+                        </goals>
+                        <configuration>
+                            <outputDirectory>${basedir}/lib</outputDirectory>
+                            <overWriteReleases>false</overWriteReleases>
+                            <overWriteSnapshots>false</overWriteSnapshots>
+                            <overWriteIfNewer>true</overWriteIfNewer>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
 
-    </plugins>
-  </build>
+        </plugins>
+    </build>
 
 </project>

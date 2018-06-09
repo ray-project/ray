@@ -5,10 +5,11 @@ import java.lang.reflect.InvocationTargetException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-
 import org.apache.arrow.plasma.ObjectStoreLink;
 import org.apache.arrow.plasma.PlasmaClient;
-import org.ray.api.*;
+import org.ray.api.RayActor;
+import org.ray.api.RayRemote;
+import org.ray.api.UniqueID;
 import org.ray.api.funcs.RayFunc_2_1;
 import org.ray.core.RayRuntime;
 import org.ray.core.UniqueIdHelper;
@@ -31,7 +32,7 @@ import org.ray.util.exception.TaskExecutionException;
 import org.ray.util.logger.RayLog;
 
 /**
- * native runtime for local box and cluster run
+ * native runtime for local box and cluster run.
  */
 public class RayNativeRuntime extends RayRuntime {
 
@@ -44,23 +45,10 @@ public class RayNativeRuntime extends RayRuntime {
   private StateStoreProxy stateStoreProxy;
   private KeyValueStoreLink kvStore = null;
   private RunManager manager = null;
-
-  @Override
-  public void cleanUp() {
-    if (null != manager) {
-      manager.cleanup(true);
-    }
-  }
+  private Object actor = null;
+  private UniqueID actorId = UniqueID.nil;
 
   protected RayNativeRuntime() {
-  }
-
-  private void initStateStore(String redisAddress) throws Exception {
-    kvStore = new RedisClient();
-    kvStore.SetAddr(redisAddress);
-    stateStoreProxy = new StateStoreProxyImpl(kvStore);
-    //stateStoreProxy.setStore(kvStore);
-    stateStoreProxy.initializeGlobalState();
   }
 
   @Override
@@ -86,13 +74,14 @@ public class RayNativeRuntime extends RayRuntime {
     }
 
     // initialize remote function manager
-    RemoteFunctionManager funcMgr = params.run_mode.isStaticRewrite() ?
-        new NativeRemoteFunctionManager(kvStore) :
+    RemoteFunctionManager funcMgr = params.run_mode.isStaticRewrite()
+        ? new NativeRemoteFunctionManager(kvStore) :
         new NopRemoteFunctionManager(params.driver_id);
 
     // initialize worker context
     if (params.worker_mode == WorkerMode.DRIVER) {
-      // TODO: The relationship between workerID, driver_id and dummy_task.driver_id should be recheck carefully
+      // TODO: The relationship between workerID, driver_id and dummy_task.driver_id should be
+      // recheck carefully
       WorkerContext.workerID = params.driver_id;
     }
     WorkerContext.init(params);
@@ -109,20 +98,21 @@ public class RayNativeRuntime extends RayRuntime {
     if (params.worker_mode != WorkerMode.NONE) {
       String overwrites = "";
       // initialize the links
-      int release_delay = RayRuntime.configReader
+      int releaseDelay = RayRuntime.configReader
           .getIntegerValue("ray", "plasma_default_release_delay", 0,
               "how many release requests should be delayed in plasma client");
-      ObjectStoreLink pLink = new PlasmaClient(params.object_store_name, params.object_store_manager_name, release_delay);
+      ObjectStoreLink plink = new PlasmaClient(params.object_store_name, params
+          .object_store_manager_name, releaseDelay);
 
-      LocalSchedulerLink sLink = new DefaultLocalSchedulerClient(
+      LocalSchedulerLink slink = new DefaultLocalSchedulerClient(
           params.local_scheduler_name,
-          WorkerContext.currentWorkerID(),
+          WorkerContext.currentWorkerId(),
           UniqueID.nil,
           isWorker,
           0
       );
 
-      init(sLink, pLink, funcMgr, pathConfig);
+      init(slink, plink, funcMgr, pathConfig);
 
       // register
       registerWorker(isWorker, params.node_ip_address, params.object_store_name,
@@ -136,24 +126,48 @@ public class RayNativeRuntime extends RayRuntime {
     );
   }
 
+  @Override
+  public void cleanUp() {
+    if (null != manager) {
+      manager.cleanup(true);
+    }
+  }
+
+  @Override
+  public Object getLocalActor(UniqueID id) {
+    if (actorId.equals(id)) {
+      return actor;
+    } else {
+      return null;
+    }
+  }
+
   private void startOnebox(RayParameters params, PathConfig paths) throws Exception {
     params.cleanup = true;
     manager = new RunManager(params, paths, RayRuntime.configReader);
     manager.startRayHead();
 
     params.redis_address = manager.info().redisAddress;
-    params.object_store_name = manager.info().local_stores.get(0).storeName;
-    params.object_store_manager_name = manager.info().local_stores.get(0).managerName;
-    params.local_scheduler_name = manager.info().local_stores.get(0).schedulerName;
+    params.object_store_name = manager.info().localStores.get(0).storeName;
+    params.object_store_manager_name = manager.info().localStores.get(0).managerName;
+    params.local_scheduler_name = manager.info().localStores.get(0).schedulerName;
     //params.node_ip_address = NetworkUtil.getIpAddress();
   }
 
-  private void registerWorker(boolean isWorker, String node_ip_address, String storeName,
-      String managerName, String schedulerName) {
+  private void initStateStore(String redisAddress) throws Exception {
+    kvStore = new RedisClient();
+    kvStore.setAddr(redisAddress);
+    stateStoreProxy = new StateStoreProxyImpl(kvStore);
+    //stateStoreProxy.setStore(kvStore);
+    stateStoreProxy.initializeGlobalState();
+  }
+
+  private void registerWorker(boolean isWorker, String nodeIpAddress, String storeName,
+                              String managerName, String schedulerName) {
     Map<String, String> workerInfo = new HashMap<>();
-    String workerId = new String(WorkerContext.currentWorkerID().getBytes());
+    String workerId = new String(WorkerContext.currentWorkerId().getBytes());
     if (!isWorker) {
-      workerInfo.put("node_ip_address", node_ip_address);
+      workerInfo.put("node_ip_address", nodeIpAddress);
       workerInfo.put("driver_id", workerId);
       workerInfo.put("start_time", String.valueOf(System.currentTimeMillis()));
       workerInfo.put("plasma_store_socket", storeName);
@@ -161,29 +175,15 @@ public class RayNativeRuntime extends RayRuntime {
       workerInfo.put("local_scheduler_socket", schedulerName);
       workerInfo.put("name", System.getProperty("user.dir"));
       //TODO: worker.redis_client.hmset(b"Drivers:" + worker.workerId, driver_info)
-      kvStore.Hmset("Drivers:" + workerId, workerInfo);
+      kvStore.hmset("Drivers:" + workerId, workerInfo);
     } else {
-      workerInfo.put("node_ip_address", node_ip_address);
-      //TODO:
-            /*
-             "stdout_file": os.path.abspath(log_stdout_file.name),
-             "stderr_file": os.path.abspath(log_stderr_file.name),
-             */
+      workerInfo.put("node_ip_address", nodeIpAddress);
       workerInfo.put("plasma_store_socket", storeName);
       workerInfo.put("plasma_manager_socket", managerName);
       workerInfo.put("local_scheduler_socket", schedulerName);
       //TODO: b"Workers:" + worker.workerId,
-      kvStore.Hmset("Workers:" + workerId, workerInfo);
+      kvStore.hmset("Workers:" + workerId, workerInfo);
     }
-  }
-
-  private Object _actor = null;
-  private UniqueID actorID = UniqueID.nil;
-
-  @RayRemote
-  public static byte[] createActorInActor(byte[] actorId, String className) {
-    ((RayNativeRuntime) RayRuntime.getInstance()).localCreateActorInActor(actorId, className);
-    return actorId;
   }
 
   @SuppressWarnings("unchecked")
@@ -202,7 +202,7 @@ public class RayNativeRuntime extends RayRuntime {
           RayFunc_2_1.class,
           createActorLambda,
           1,
-          new Object[]{actorId.getBytes(), cls.getName()}
+          new Object[] {actorId.getBytes(), cls.getName()}
       ).getObjs()[0].getId();
     } else {
       cursorId = worker.rpcCreateActor(
@@ -210,16 +210,22 @@ public class RayNativeRuntime extends RayRuntime {
           actorId,
           () -> RayNativeRuntime.createActorInActor(null, null),
           1,
-          new Object[]{actorId.getBytes(), cls.getName()}
+          new Object[] {actorId.getBytes(), cls.getName()}
       ).getObjs()[0].getId();
     }
     actor.setTaskCursor(cursorId);
     return actor;
   }
 
+  @RayRemote
+  public static byte[] createActorInActor(byte[] actorId, String className) {
+    ((RayNativeRuntime) RayRuntime.getInstance()).localCreateActorInActor(actorId, className);
+    return actorId;
+  }
+
   public Object localCreateActorInActor(byte[] actorId, String className) {
     try {
-      actorID = new UniqueID(actorId);
+      this.actorId = new UniqueID(actorId);
       Class<?> cls = Class.forName(className, true, Thread.currentThread().getContextClassLoader());
 
       Constructor<?>[] cts = cls.getConstructors();
@@ -227,25 +233,18 @@ public class RayNativeRuntime extends RayRuntime {
         System.err.println(ct.getName() + ", param count = " + ct.getParameterCount());
       }
 
-      _actor = cls.getConstructor(new Class<?>[0]).newInstance();
-      RayLog.core.info("create actor " + actorID + " inside actor ok");
-      return _actor;
-    } catch (ClassNotFoundException | InstantiationException | IllegalAccessException | IllegalArgumentException | InvocationTargetException | NoSuchMethodException | SecurityException e) {
+      actor = cls.getConstructor(new Class<?>[0]).newInstance();
+      RayLog.core.info("create actor " + this.actorId + " inside actor ok");
+      return actor;
+    } catch (ClassNotFoundException | InstantiationException | IllegalAccessException
+        | IllegalArgumentException | InvocationTargetException | NoSuchMethodException
+        | SecurityException e) {
       e.printStackTrace();
-      String log = "create actor " + actorID + " for " + className + "  failed, ex = " + e
+      String log = "create actor " + this.actorId + " for " + className + "  failed, ex = " + e
           .getMessage();
       System.err.println(log);
       RayLog.core.error(log, e);
       throw new TaskExecutionException(log, e);
-    }
-  }
-
-  @Override
-  public Object getLocalActor(UniqueID id) {
-    if (actorID.equals(id)) {
-      return _actor;
-    } else {
-      return null;
     }
   }
 }

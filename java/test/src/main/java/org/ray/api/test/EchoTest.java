@@ -8,9 +8,25 @@ import org.ray.api.RayRemote;
 @RunWith(MyRunner.class)
 public class EchoTest {
 
+  @RayRemote
+  public static String hi() {
+    return "hi";
+  }
+
+  @RayRemote
+  public static String who(String who) {
+    return who;
+  }
+
+  @RayRemote
+  public static String recho(String pre, String who) {
+    return pre + ", " + who + "!";
+  }
+
   @Test
   public void test() {
-    long startTime, endTime;
+    long startTime = 0;
+    long endTime = 0;
     for (int i = 0; i < 100; i++) {
       startTime = System.nanoTime();
       String ret = echo("Ray++" + i);
@@ -19,28 +35,12 @@ public class EchoTest {
     }
   }
 
-
   public String echo(String who) {
 
     return Ray.call(
         EchoTest::recho,
-        Ray.call(EchoTest::Hi),
-        Ray.call(EchoTest::Who, who)
+        Ray.call(EchoTest::hi),
+        Ray.call(EchoTest::who, who)
     ).get();
-  }
-
-  @RayRemote
-  public static String Hi() {
-    return "Hi";
-  }
-
-  @RayRemote
-  public static String Who(String who) {
-    return who;
-  }
-
-  @RayRemote
-  public static String recho(String pre, String who) {
-    return pre + ", " + who + "!";
   }
 }

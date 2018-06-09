@@ -17,13 +17,13 @@ import org.apache.commons.io.filefilter.RegexFileFilter;
 import org.ray.util.logger.RayLog;
 
 /**
- * load and unload jars from a dir
+ * load and unload jars from a dir.
  */
 public class JarLoader {
 
-  private static Method AddUrl = InitAddUrl();
+  private static Method AddUrl = initAddUrl();
 
-  private static Method InitAddUrl() {
+  private static Method initAddUrl() {
     try {
       Method m = URLClassLoader.class.getDeclaredMethod("addURL", URL.class);
       m.setAccessible(true);
@@ -57,10 +57,6 @@ public class JarLoader {
     }
 
     return loadJar(jars, explicitLoadForHook);
-  }
-
-  public static void unloadJars(ClassLoader loader) {
-    // TODO:
   }
 
   private static URLClassLoader loadJar(Collection<File> appJars, boolean explicitLoadForHook) {
@@ -127,5 +123,9 @@ public class JarLoader {
     );
 
     jars.addAll(files);
+  }
+
+  public static void unloadJars(ClassLoader loader) {
+    // TODO:
   }
 }

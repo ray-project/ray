@@ -18,11 +18,11 @@ public class RedisClient implements KeyValueStoreLink {
   }
 
   public RedisClient(String addr) {
-    SetAddr(addr);
+    setAddr(addr);
   }
 
   @Override
-  public synchronized void SetAddr(String addr) {
+  public synchronized void setAddr(String addr) {
     if (StringUtils.isEmpty(redisAddress)) {
       redisAddress = addr;
       String[] ipPort = addr.split(":");
@@ -34,14 +34,14 @@ public class RedisClient implements KeyValueStoreLink {
   }
 
   @Override
-  public void CheckConnected() throws Exception {
+  public void checkConnected() throws Exception {
     if (jedisPool == null) {
       throw new Exception("the GlobalState API can't be used before ray init.");
     }
   }
 
   @Override
-  public Long Set(final String key, final String value, final String field) {
+  public Long set(final String key, final String value, final String field) {
     try (Jedis jedis = jedisPool.getResource()) {
       if (field == null) {
         jedis.set(key, value);
@@ -54,7 +54,7 @@ public class RedisClient implements KeyValueStoreLink {
   }
 
   @Override
-  public Long Set(byte[] key, byte[] value, byte[] field) {
+  public Long set(byte[] key, byte[] value, byte[] field) {
     try (Jedis jedis = jedisPool.getResource()) {
       if (field == null) {
         jedis.set(key, value);
@@ -67,7 +67,36 @@ public class RedisClient implements KeyValueStoreLink {
   }
 
   @Override
-  public String Get(final String key, final String field) {
+  public String hmset(String key, Map<String, String> hash) {
+    try (Jedis jedis = jedisPool.getResource()) {
+      return jedis.hmset(key, hash);
+    }
+
+  }
+
+  @Override
+  public String hmset(byte[] key, Map<byte[], byte[]> hash) {
+    try (Jedis jedis = jedisPool.getResource()) {
+      return jedis.hmset(key, hash);
+    }
+  }
+
+  @Override
+  public List<String> hmget(String key, String... fields) {
+    try (Jedis jedis = jedisPool.getResource()) {
+      return jedis.hmget(key, fields);
+    }
+  }
+
+  @Override
+  public List<byte[]> hmget(byte[] key, byte[]... fields) {
+    try (Jedis jedis = jedisPool.getResource()) {
+      return jedis.hmget(key, fields);
+    }
+  }
+
+  @Override
+  public String get(final String key, final String field) {
     try (Jedis jedis = jedisPool.getResource()) {
       if (field == null) {
         return jedis.get(key);
@@ -79,7 +108,7 @@ public class RedisClient implements KeyValueStoreLink {
   }
 
   @Override
-  public byte[] Get(byte[] key, byte[] field) {
+  public byte[] get(byte[] key, byte[] field) {
     try (Jedis jedis = jedisPool.getResource()) {
       if (field == null) {
         return jedis.get(key);
@@ -91,7 +120,7 @@ public class RedisClient implements KeyValueStoreLink {
   }
 
   @Override
-  public Long Delete(final String key, final String field) {
+  public Long delete(final String key, final String field) {
     try (Jedis jedis = jedisPool.getResource()) {
       if (field == null) {
         return jedis.del(key);
@@ -103,7 +132,7 @@ public class RedisClient implements KeyValueStoreLink {
   }
 
   @Override
-  public Long Delete(byte[] key, byte[] field) {
+  public Long delete(byte[] key, byte[] field) {
     try (Jedis jedis = jedisPool.getResource()) {
       if (field == null) {
         return jedis.del(key);
@@ -115,43 +144,14 @@ public class RedisClient implements KeyValueStoreLink {
   }
 
   @Override
-  public String Hmset(String key, Map<String, String> hash) {
-    try (Jedis jedis = jedisPool.getResource()) {
-      return jedis.hmset(key, hash);
-    }
-
-  }
-
-  @Override
-  public String Hmset(byte[] key, Map<byte[], byte[]> hash) {
-    try (Jedis jedis = jedisPool.getResource()) {
-      return jedis.hmset(key, hash);
-    }
-  }
-
-  @Override
-  public List<String> Hmget(String key, String... fields) {
-    try (Jedis jedis = jedisPool.getResource()) {
-      return jedis.hmget(key, fields);
-    }
-  }
-
-  @Override
-  public List<byte[]> Hmget(byte[] key, byte[]... fields) {
-    try (Jedis jedis = jedisPool.getResource()) {
-      return jedis.hmget(key, fields);
-    }
-  }
-
-  @Override
-  public Set<byte[]> Keys(byte[] pattern) {
+  public Set<byte[]> keys(byte[] pattern) {
     try (Jedis jedis = jedisPool.getResource()) {
       return jedis.keys(pattern);
     }
   }
 
   @Override
-  public Set<String> Keys(String pattern) {
+  public Set<String> keys(String pattern) {
     try (Jedis jedis = jedisPool.getResource()) {
       return jedis.keys(pattern);
     }
@@ -165,42 +165,42 @@ public class RedisClient implements KeyValueStoreLink {
   }
 
   @Override
-  public List<String> Lrange(String key, long start, long end) {
+  public List<String> lrange(String key, long start, long end) {
     try (Jedis jedis = jedisPool.getResource()) {
       return jedis.lrange(key, start, end);
     }
   }
 
   @Override
-  public Long Rpush(String key, String... strings) {
+  public Long rpush(String key, String... strings) {
     try (Jedis jedis = jedisPool.getResource()) {
       return jedis.rpush(key, strings);
     }
   }
 
   @Override
-  public Long Rpush(byte[] key, byte[]... strings) {
+  public Long rpush(byte[] key, byte[]... strings) {
     try (Jedis jedis = jedisPool.getResource()) {
       return jedis.rpush(key, strings);
     }
   }
 
   @Override
-  public Long Publish(String channel, String message) {
+  public Long publish(String channel, String message) {
     try (Jedis jedis = jedisPool.getResource()) {
       return jedis.publish(channel, message);
     }
   }
 
   @Override
-  public Long Publish(byte[] channel, byte[] message) {
+  public Long publish(byte[] channel, byte[] message) {
     try (Jedis jedis = jedisPool.getResource()) {
       return jedis.publish(channel, message);
     }
   }
 
   @Override
-  public Object GetImpl() {
+  public Object getImpl() {
     return jedisPool;
   }
 }

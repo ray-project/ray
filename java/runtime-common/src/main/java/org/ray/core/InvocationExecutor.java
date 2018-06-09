@@ -14,7 +14,7 @@ import org.ray.util.exception.TaskExecutionException;
 import org.ray.util.logger.RayLog;
 
 /**
- * how to execute a invocation
+ * how to execute a invocation.
  */
 public class InvocationExecutor {
 
@@ -67,18 +67,14 @@ public class InvocationExecutor {
     }
   }
 
-  private static void safePut(UniqueID objectId, Object obj) {
-    RayRuntime.getInstance().putRaw(objectId, obj);
-  }
-
   private static void executeInternal(TaskSpec task, Pair<ClassLoader, RayMethod> pr,
-      String taskdesc)
+                                      String taskdesc)
       throws IllegalAccessException, IllegalArgumentException, InvocationTargetException {
     Method m = pr.getRight().invokable;
     Map<?, UniqueID> userRayReturnIdMap = null;
     Class<?> returnType = m.getReturnType(); // TODO: not ready for multiple return etc.
     boolean hasMultiReturn = false;
-    if(task.returnIds != null && task.returnIds.length > 0) {
+    if (task.returnIds != null && task.returnIds.length > 0) {
       hasMultiReturn = UniqueIdHelper.hasMultipleReturnOrNotFromReturnObjectId(task.returnIds[0]);
     }
 
@@ -94,10 +90,10 @@ public class InvocationExecutor {
     if (!UniqueIdHelper.isLambdaFunction(task.functionId)) {
       result = m.invoke(realArgs.getLeft(), realArgs.getRight());
     } else {
-      result = m.invoke(realArgs.getLeft(), new Object[]{realArgs.getRight()});
+      result = m.invoke(realArgs.getLeft(), new Object[] {realArgs.getRight()});
     }
 
-    if(task.returnIds == null || task.returnIds.length == 0) {
+    if (task.returnIds == null || task.returnIds.length == 0) {
       return;
     }
     // set result into storage
@@ -146,5 +142,9 @@ public class InvocationExecutor {
   private static String formatTaskExecutionExceptionMsg(TaskSpec task, String funcName) {
     return "Execute task " + task.taskId
         + " failed with function name = " + funcName;
+  }
+
+  private static void safePut(UniqueID objectId, Object obj) {
+    RayRuntime.getInstance().putRaw(objectId, obj);
   }
 }

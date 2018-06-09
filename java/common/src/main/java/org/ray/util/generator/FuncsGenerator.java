@@ -2,7 +2,7 @@ package org.ray.util.generator;
 
 import java.io.IOException;
 import org.ray.util.FileUtil;
-import org.ray.util.generator.Composition.TR;
+import org.ray.util.generator.Composition.Tr;
 
 /**
  * Generate all classes in org.ray.api.funcs
@@ -16,10 +16,10 @@ public class FuncsGenerator {
   }
 
   private static void generate(String rootdir) throws IOException {
-    for (TR tr : Composition.calculate(Share.MAX_T, Share.MAX_R)) {
-      String str = build(tr.Tcount, tr.Rcount);
-      String file = rootdir + "/RayFunc_" + tr.Tcount + "_"
-          + (tr.Rcount <= 0 ? (tr.Rcount == 0 ? "n" : "n_list") : tr.Rcount) + ".java";
+    for (Tr tr : Composition.calculate(Share.MAX_T, Share.MAX_R)) {
+      String str = build(tr.tcount, tr.rcount);
+      String file = rootdir + "/RayFunc_" + tr.tcount + "_"
+          + (tr.rcount <= 0 ? (tr.rcount == 0 ? "n" : "n_list") : tr.rcount) + ".java";
       FileUtil.overrideFile(file, str);
       System.err.println("override " + file);
     }
@@ -34,20 +34,21 @@ public class FuncsGenerator {
    *
    * public static <R0> R0 execute(Object[] args) throws Throwable { String name =
    * (String)args[args.length - 2]; assert (name.equals(RayFunc_0_1.class.getName())); byte[]
-   * funcBytes = (byte[])args[args.length - 1]; RayFunc_0_1<R0> f = (RayFunc_0_1<R0>)SerializationUtils.deserialize(funcBytes);
+   * funcBytes = (byte[])args[args.length - 1]; RayFunc_0_1<R0> f = (RayFunc_0_1<R0>)
+   * SerializationUtils.deserialize(funcBytes);
    * return f.apply(); } }
    */
-  private static String build(int Tcount, int Rcount) {
+  private static String build(int tcount, int rcount) {
     StringBuilder sb = new StringBuilder();
     String tname =
-        "Ray" + "Func_" + Tcount + "_" + (Rcount <= 0 ? (Rcount == 0 ? "n" : "n_list") : Rcount);
-    String gname = tname + "<" + Share.buildClassDeclare(Tcount, Rcount) + ">";
+        "Ray" + "Func_" + tcount + "_" + (rcount <= 0 ? (rcount == 0 ? "n" : "n_list") : rcount);
+    final String gname = tname + "<" + Share.buildClassDeclare(tcount, rcount) + ">";
 
     sb.append("package org.ray.api.funcs;").append("\n");
-    if (Rcount > 1) {
+    if (rcount > 1) {
       sb.append("import org.ray.api.returns.*;").append("\n");
     }
-    if (Rcount <= 0) {
+    if (rcount <= 0) {
       sb.append("import java.util.Collection;").append("\n");
       sb.append("import java.util.List;").append("\n");
       sb.append("import java.util.Map;").append("\n");
@@ -60,14 +61,14 @@ public class FuncsGenerator {
     sb.append("@FunctionalInterface").append("\n");
     sb.append("public interface ").append(gname).append(" extends RayFunc {")
         .append("\n");
-    sb.append("\t").append(Share.buildFuncReturn(Rcount)).append(" apply(")
-        .append(Rcount == 0 ? ("Collection<RID> returnids" + (Tcount > 0 ? ", " : "")) : "")
-        .append(Share.buildParameter(Tcount, "T", null)).append(") throws Throwable;")
+    sb.append("\t").append(Share.buildFuncReturn(rcount)).append(" apply(")
+        .append(rcount == 0 ? ("Collection<RID> returnids" + (tcount > 0 ? ", " : "")) : "")
+        .append(Share.buildParameter(tcount, "T", null)).append(") throws Throwable;")
         .append("\n");
 
     sb.append("\t\n");
-    sb.append("\tpublic static " + "<").append(Share.buildClassDeclare(Tcount, Rcount))
-        .append(">").append(" ").append(Share.buildFuncReturn(Rcount))
+    sb.append("\tpublic static " + "<").append(Share.buildClassDeclare(tcount, rcount))
+        .append(">").append(" ").append(Share.buildFuncReturn(rcount))
         .append(" execute(Object[] args) throws Throwable {").append("\n");
     sb.append("\t\tString name = (String)args[args.length - 2];").append("\n");
     sb.append("\t\tassert (name.equals(").append(tname).append(".class.getName()));").append("\n");
@@ -75,8 +76,8 @@ public class FuncsGenerator {
     sb.append("\t\t").append(gname).append(" f = SerializationUtils.deserialize(funcBytes);")
         .append("\n");
     sb.append("\t\treturn f.apply(")
-        .append(Rcount == 0 ? ("(Collection<RID>)args[0]" + (Tcount > 0 ? ", " : "")) : "")
-        .append(Share.buildParameterUse2(Tcount, Rcount == 0 ? 1 : 0, "T", "args[", "]"))
+        .append(rcount == 0 ? ("(Collection<RID>)args[0]" + (tcount > 0 ? ", " : "")) : "")
+        .append(Share.buildParameterUse2(tcount, rcount == 0 ? 1 : 0, "T", "args[", "]"))
         .append(");").append("\n");
     sb.append("\t}").append("\n");
     sb.append("\t\n");

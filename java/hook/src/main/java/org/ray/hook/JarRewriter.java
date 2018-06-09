@@ -6,7 +6,6 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.lang.reflect.Method;
-import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Enumeration;
@@ -26,7 +25,7 @@ import org.ray.hook.runtime.LoadedFunctions;
 import org.ray.util.logger.RayLog;
 
 /**
- * rewrite jars to new jars with methods marked using Ray annotations
+ * rewrite jars to new jars with methods marked using Ray annotations.
  */
 public class JarRewriter {
 
@@ -51,10 +50,32 @@ public class JarRewriter {
     rewrite(args[0], args[1]);
   }
 
+  public static LoadedFunctions load(String dir, String baseDir)
+      throws FileNotFoundException, SecurityException {
+    List<String> functions = JarRewriter.getRewrittenFunctions(dir);
+    LoadedFunctions efuncs = new LoadedFunctions();
+    efuncs.loader = JarLoader.loadJars(dir, false);
+
+    for (String func : functions) {
+      MethodId mid = new MethodId(func, efuncs.loader);
+      efuncs.functions.add(mid);
+    }
+
+    if (baseDir != null && !baseDir.equals("")) {
+      List<String> baseFunctions = JarRewriter.getRewrittenFunctions(baseDir);
+      for (String func : baseFunctions) {
+        MethodId mid = new MethodId(func, efuncs.loader);
+        efuncs.functions.add(mid);
+      }
+    }
+
+    return efuncs;
+  }
+
   public static void rewrite(String fromDir, String toDir) throws IOException, DataFormatException {
     File fromDirFile = new File(fromDir);
     File toDirFileTmp = new File(toDir + ".tmp");
-    File toDirFile = new File(toDir);
+    final File toDirFile = new File(toDir);
 
     File[] topFiles = fromDirFile.listFiles();
     if (topFiles.length != 1 || !topFiles[0].isDirectory()) {
@@ -103,57 +124,6 @@ public class JarRewriter {
     FileUtils.moveDirectory(toDirFileTmp, toDirFile);
   }
 
-  public static LoadedFunctions load(String dir, String baseDir)
-      throws FileNotFoundException, SecurityException {
-    List<String> functions = JarRewriter.getRewrittenFunctions(dir);
-    LoadedFunctions efuncs = new LoadedFunctions();
-    efuncs.loader = JarLoader.loadJars(dir, false);
-
-    for (String func : functions) {
-      MethodId mid = new MethodId(func, efuncs.loader);
-      efuncs.functions.add(mid);
-    }
-
-    if (baseDir != null && !baseDir.equals("")) {
-      List<String> baseFunctions = JarRewriter.getRewrittenFunctions(baseDir);
-      for (String func : baseFunctions) {
-        MethodId mid = new MethodId(func, efuncs.loader);
-        efuncs.functions.add(mid);
-      }
-    }
-
-    return efuncs;
-  }
-
-  public static LoadedFunctions loadBase(String baseDir)
-      throws FileNotFoundException, SecurityException {
-    List<String> functions = JarRewriter.getRewrittenFunctions(baseDir);
-    LoadedFunctions efuncs = new LoadedFunctions();
-    efuncs.loader = null;
-
-    for (String func : functions) {
-      MethodId mid = new MethodId(func, efuncs.loader);
-      efuncs.functions.add(mid);
-    }
-
-    return efuncs;
-  }
-
-  public static List<String> getRewrittenFunctions(String rewrittenDir)
-      throws FileNotFoundException {
-    ArrayList<String> functions = new ArrayList<>();
-    Scanner s = new Scanner(new File(rewrittenDir + "/" + FUNCTIONS_FILE));
-    while (s.hasNext()) {
-      String f = s.next();
-      if (!f.startsWith("(")) {
-        functions.add(f);
-      }
-    }
-    s.close();
-
-    return functions;
-  }
-
   public static void rewrite(JarFile from, String to, BiConsumer<ClassLoader, MethodId> consumer)
       throws IOException {
 
@@ -170,7 +140,8 @@ public class JarRewriter {
       if (!je.isDirectory() && je.getName().endsWith(".class")) {
         className = je.getName().substring(0, je.getName().length() - ".class".length());
 
-        //System.err.println("XXXXXX " + from.getName() + " :: " + je.getName() + " - " + className);
+        //System.err.println("XXXXXX " + from.getName() + " :: " + je.getName() + " - " +
+        // className);
         ClassAdapter.Result result = ClassAdapter.hookClass(null, className, jeBytes);
         if (result.classBuffer != jeBytes) {
           String logInfo = "Rewrite class " + className + " from " + jeBytes.length + " bytes to "
@@ -197,5 +168,34 @@ public class JarRewriter {
 
     ojStream.close();
     ofStream.close();
+  }
+
+  public static List<String> getRewrittenFunctions(String rewrittenDir)
+      throws FileNotFoundException {
+    ArrayList<String> functions = new ArrayList<>();
+    Scanner s = new Scanner(new File(rewrittenDir + "/" + FUNCTIONS_FILE));
+    while (s.hasNext()) {
+      String f = s.next();
+      if (!f.startsWith("(")) {
+        functions.add(f);
+      }
+    }
+    s.close();
+
+    return functions;
+  }
+
+  public static LoadedFunctions loadBase(String baseDir)
+      throws FileNotFoundException, SecurityException {
+    List<String> functions = JarRewriter.getRewrittenFunctions(baseDir);
+    LoadedFunctions efuncs = new LoadedFunctions();
+    efuncs.loader = null;
+
+    for (String func : functions) {
+      MethodId mid = new MethodId(func, efuncs.loader);
+      efuncs.functions.add(mid);
+    }
+
+    return efuncs;
   }
 }

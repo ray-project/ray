@@ -11,20 +11,16 @@ import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 
 /**
- * rewrite phase 1
+ * rewrite phase 1.
  */
 public class ClassDetectVisitor extends ClassVisitor {
 
+  static int count = 0;
   final String className;
   final Set<MethodId> rayMethods = new HashSet<>();
-  boolean isActor = false;
-  static int count = 0;
-  int actorCalls = 0;
   final ClassLoader loader;
-
-  public int actorCalls() {
-    return actorCalls;
-  }
+  boolean isActor = false;
+  int actorCalls = 0;
 
   public ClassDetectVisitor(ClassLoader loader, ClassVisitor origin, String className) {
     super(Opcodes.ASM6, origin);
@@ -32,15 +28,12 @@ public class ClassDetectVisitor extends ClassVisitor {
     this.loader = loader;
   }
 
-  public Set<MethodId> detectedMethods() {
-    return rayMethods;
+  public int actorCalls() {
+    return actorCalls;
   }
 
-  @Override
-  public void visitInnerClass(String name, String outerName,
-      String innerName, int access) {
-    // System.err.println("visist inner class " + outerName + "$" + innerName);
-    super.visitInnerClass(name, outerName, innerName, access);
+  public Set<MethodId> detectedMethods() {
+    return rayMethods;
   }
 
   @Override
@@ -51,20 +44,16 @@ public class ClassDetectVisitor extends ClassVisitor {
     return super.visitAnnotation(desc, visible);
   }
 
-  private void visitRayMethod(int access, String name, String mdesc) {
-    if (name.equals("<init>")) {
-      return;
-    }
-
-    MethodId m = new MethodId(className, name, mdesc, (access & Opcodes.ACC_STATIC) != 0, loader);
-    rayMethods.add(m);
-    //System.err.println("Visit " + m.toString());
-    count++;
+  @Override
+  public void visitInnerClass(String name, String outerName,
+                              String innerName, int access) {
+    // System.err.println("visist inner class " + outerName + "$" + innerName);
+    super.visitInnerClass(name, outerName, innerName, access);
   }
 
   @Override
   public MethodVisitor visitMethod(int access, String name, String mdesc, String signature,
-      String[] exceptions) {
+                                   String[] exceptions) {
     //System.out.println("Visit " + className + "." + name);
     if (isActor && (access & Opcodes.ACC_PUBLIC) != 0) {
       visitRayMethod(access, name, mdesc);
@@ -81,41 +70,9 @@ public class ClassDetectVisitor extends ClassVisitor {
         return super.visitAnnotation(adesc, visible);
       }
 
-      private boolean isValidCallParameterOrReturnType(Type t) {
-        if (t.equals(Type.VOID_TYPE)) {
-          return false;
-        }
-        if (t.equals(Type.BOOLEAN_TYPE)) {
-          return false;
-        }
-        if (t.equals(Type.CHAR_TYPE)) {
-          return false;
-        }
-        if (t.equals(Type.BYTE_TYPE)) {
-          return false;
-        }
-        if (t.equals(Type.SHORT_TYPE)) {
-          return false;
-        }
-        if (t.equals(Type.INT_TYPE)) {
-          return false;
-        }
-        if (t.equals(Type.FLOAT_TYPE)) {
-          return false;
-        }
-        if (t.equals(Type.LONG_TYPE)) {
-          return false;
-        }
-        if (t.equals(Type.DOUBLE_TYPE)) {
-          return false;
-        }
-
-        return true;
-      }
-
       @Override
       public void visitInvokeDynamicInsn(String name, String desc, Handle bsm,
-          Object... bsmArgs) {
+                                         Object... bsmArgs) {
 
         // fix all actor calls from InvokeVirtual to InvokeStatic
         if (desc.contains("org/ray/api/funcs/RayFunc_")) {
@@ -151,7 +108,8 @@ public class ClassDetectVisitor extends ClassVisitor {
                     dsptr,
                     h.isInterface());
                 bsmArgs[i] = newh;
-                //System.err.println("Change ray.call from " + h + " -> " + newh + ", isInterface = " + h.isInterface());
+                //System.err.println("Change ray.call from " + h + " -> " + newh + ", isInterface
+                // = " + h.isInterface());
                 ++actorCalls;
               }
             }
@@ -159,6 +117,49 @@ public class ClassDetectVisitor extends ClassVisitor {
         }
         super.visitInvokeDynamicInsn(name, desc, bsm, bsmArgs);
       }
+
+      private boolean isValidCallParameterOrReturnType(Type t) {
+        if (t.equals(Type.VOID_TYPE)) {
+          return false;
+        }
+        if (t.equals(Type.BOOLEAN_TYPE)) {
+          return false;
+        }
+        if (t.equals(Type.CHAR_TYPE)) {
+          return false;
+        }
+        if (t.equals(Type.BYTE_TYPE)) {
+          return false;
+        }
+        if (t.equals(Type.SHORT_TYPE)) {
+          return false;
+        }
+        if (t.equals(Type.INT_TYPE)) {
+          return false;
+        }
+        if (t.equals(Type.FLOAT_TYPE)) {
+          return false;
+        }
+        if (t.equals(Type.LONG_TYPE)) {
+          return false;
+        }
+        if (t.equals(Type.DOUBLE_TYPE)) {
+          return false;
+        }
+
+        return true;
+      }
     };
+  }
+
+  private void visitRayMethod(int access, String name, String mdesc) {
+    if (name.equals("<init>")) {
+      return;
+    }
+
+    MethodId m = new MethodId(className, name, mdesc, (access & Opcodes.ACC_STATIC) != 0, loader);
+    rayMethods.add(m);
+    //System.err.println("Visit " + m.toString());
+    count++;
   }
 }

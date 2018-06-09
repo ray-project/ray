@@ -1,7 +1,7 @@
 package org.ray.hook.runtime;
 
 /**
- * method mode switch at runtime
+ * method mode switch at runtime.
  */
 public class MethodSwitcher {
 

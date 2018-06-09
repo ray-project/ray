@@ -7,75 +7,33 @@ import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 
 /**
- * rewrite phase 2
+ * rewrite phase 2.
  */
 public class ClassOverrideVisitor extends ClassVisitor {
 
   final String className;
   final Set<MethodId> rayRemoteMethods;
-  MethodVisitor ClinitVisitor;
-
-  // init the static added field in <clinit>
-  // static {
-  //     assign value to _hashOf_XXX
-  // }
-  class StaticBlockVisitor extends MethodVisitor {
-
-    StaticBlockVisitor(MethodVisitor mv) {
-      super(Opcodes.ASM6, mv);
-    }
-
-    @Override
-    public void visitCode() {
-      super.visitCode();
-
-      // assign value for added hash fields within <clinit>
-      for (MethodId m : rayRemoteMethods) {
-        byte[] hash = m.getSha1Hash();
-        insertByteArray(hash);
-        mv.visitFieldInsn(Opcodes.PUTSTATIC, className, m.getStaticHashValueFieldName(), "[B");
-
-        System.out.println("assign field: " + m.getStaticHashValueFieldName() + " = " + MethodId
-            .toHexHashString(hash));
-      }
-    }
-
-    private void insertByteArray(byte[] bytes) {
-      int length = bytes.length;
-      assert (length < Short.MAX_VALUE);
-      mv.visitIntInsn(Opcodes.SIPUSH, length);
-      mv.visitIntInsn(Opcodes.NEWARRAY, Opcodes.T_BYTE);
-      mv.visitInsn(Opcodes.DUP);
-      for (int i = 0; i < length; ++i) {
-        mv.visitIntInsn(Opcodes.BIPUSH, i);
-        mv.visitIntInsn(Opcodes.BIPUSH, bytes[i]);
-        mv.visitInsn(Opcodes.BASTORE);
-        if (i < (length - 1)) {
-          mv.visitInsn(Opcodes.DUP);
-        }
-      }
-    }
-
-  }
+  MethodVisitor clinitVisitor;
 
   public ClassOverrideVisitor(ClassVisitor origin, String className,
-      Set<MethodId> rayRemoteMethods) {
+                              Set<MethodId> rayRemoteMethods) {
     super(Opcodes.ASM6, origin);
     this.className = className;
     this.rayRemoteMethods = rayRemoteMethods;
-    this.ClinitVisitor = null;
+    this.clinitVisitor = null;
   }
 
   @Override
   public MethodVisitor visitMethod(int access, String name, String desc, String signature,
-      String[] exceptions) {
-    if ("<clinit>".equals(name) && ClinitVisitor == null) {
+                                   String[] exceptions) {
+    if ("<clinit>".equals(name) && clinitVisitor == null) {
       MethodVisitor mv = super.visitMethod(access, name, desc, signature, exceptions);
-      ClinitVisitor = new StaticBlockVisitor(mv);
-      return ClinitVisitor;// dispatch the ASM modifications (assign values to the preComputedxxx static field) to the ClinitVisitor
+      clinitVisitor = new StaticBlockVisitor(mv);
+      return clinitVisitor;// dispatch the ASM modifications (assign values to the preComputedxxx
+      // static field) to the clinitVisitor
     }
 
-    ClassVisitor this_ = this;
+    ClassVisitor current = this;
     MethodId m = new MethodId(className, name, desc, (access & Opcodes.ACC_STATIC) != 0, null);
     if (rayRemoteMethods.contains(m)) {
       if (m.isStaticMethod()) {
@@ -86,10 +44,11 @@ public class ClassOverrideVisitor extends ClassVisitor {
             // step 1: add a field for the function id of this method
             System.out.println("add field: " + m.getStaticHashValueFieldName());
             String fieldName = m.getStaticHashValueFieldName();
-            this_.visitField(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, fieldName, "[B",
+            current.visitField(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, fieldName, "[B",
                 null, null);
 
-            // step 2: rewrite current method so if MethodSwitcher returns true, returns the added function id directly
+            // step 2: rewrite current method so if MethodSwitcher returns true, returns the
+            // added function id directly
             // else call the original method
             mv.visitFieldInsn(Opcodes.GETSTATIC, className, fieldName, "[B");
             mv.visitMethodInsn(Opcodes.INVOKESTATIC, "org/ray/hook/runtime/MethodSwitcher",
@@ -103,10 +62,7 @@ public class ClassOverrideVisitor extends ClassVisitor {
             mv.visitCode();// real work
           }
         };
-      }
-
-      // non-static
-      else {
+      } else { // non-static
         return super.visitMethod(access, name, desc, signature, exceptions);
       }
     } else {
@@ -116,7 +72,7 @@ public class ClassOverrideVisitor extends ClassVisitor {
 
   @Override
   public void visitEnd() {
-    if (ClinitVisitor == null) { // works fine
+    if (clinitVisitor == null) { // works fine
       // Create an empty static block and let our method
       // visitor modify it the same way it modifies an
       // existing static block
@@ -163,14 +119,6 @@ public class ClassOverrideVisitor extends ClassVisitor {
         org.objectweb.asm.Type[] args = org.objectweb.asm.Type
             .getArgumentTypes(mid.getIdMethodDesc());
         int argCount = args.length;
-                /*
-                for (int i = 0; i < argCount; ++i) {
-                    String ldsptr = args[i].getDescriptor();
-                    if (!ldsptr.endsWith(";"))
-                        ldsptr =  "L" + ldsptr + ";";
-                    mv.visitLocalVariable("arg" + i, ldsptr, null, l0, l2, i);    
-                }
-                */
         mv.visitMaxs(2, argCount);
         mv.visitEnd();
       }
@@ -218,6 +166,49 @@ public class ClassOverrideVisitor extends ClassVisitor {
   private String sayReturnType(String str) {
     int left = str.lastIndexOf(")") + 1;
     return str.substring(left);
+  }
+
+  // init the static added field in <clinit>
+  // static {
+  //     assign value to _hashOf_XXX
+  // }
+  class StaticBlockVisitor extends MethodVisitor {
+
+    StaticBlockVisitor(MethodVisitor mv) {
+      super(Opcodes.ASM6, mv);
+    }
+
+    @Override
+    public void visitCode() {
+      super.visitCode();
+
+      // assign value for added hash fields within <clinit>
+      for (MethodId m : rayRemoteMethods) {
+        byte[] hash = m.getSha1Hash();
+        insertByteArray(hash);
+        mv.visitFieldInsn(Opcodes.PUTSTATIC, className, m.getStaticHashValueFieldName(), "[B");
+
+        System.out.println("assign field: " + m.getStaticHashValueFieldName() + " = " + MethodId
+            .toHexHashString(hash));
+      }
+    }
+
+    private void insertByteArray(byte[] bytes) {
+      int length = bytes.length;
+      assert (length < Short.MAX_VALUE);
+      mv.visitIntInsn(Opcodes.SIPUSH, length);
+      mv.visitIntInsn(Opcodes.NEWARRAY, Opcodes.T_BYTE);
+      mv.visitInsn(Opcodes.DUP);
+      for (int i = 0; i < length; ++i) {
+        mv.visitIntInsn(Opcodes.BIPUSH, i);
+        mv.visitIntInsn(Opcodes.BIPUSH, bytes[i]);
+        mv.visitInsn(Opcodes.BASTORE);
+        if (i < (length - 1)) {
+          mv.visitInsn(Opcodes.DUP);
+        }
+      }
+    }
+
   }
 
 }
