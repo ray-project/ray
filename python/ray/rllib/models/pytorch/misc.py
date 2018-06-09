@@ -24,8 +24,7 @@ def var_to_np(var):
 def normc_initializer(std=1.0):
     def initializer(tensor):
         tensor.data.normal_(0, 1)
-        tensor.data *= std / torch.sqrt(
-            tensor.data.pow(2).sum(1, keepdim=True))
+        tensor.data *= std / (tensor.data**2).sum(1, keepdim=True).sqrt()
 
     return initializer
 
