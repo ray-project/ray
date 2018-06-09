@@ -13,7 +13,7 @@ from ray.rllib.utils.process_rollout import compute_advantages
 
 
 class MockPolicyGraph(PolicyGraph):
-    def compute_actions(self, obs_batch, state_batches, is_training=False):
+    def compute_actions(self, obs_batch, hidden_state_batches, is_training=False):
         return [0] * len(obs_batch), [], {}
 
     def postprocess_trajectory(self, batch):

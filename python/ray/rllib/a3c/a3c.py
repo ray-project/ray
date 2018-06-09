@@ -147,10 +147,10 @@ class A3CAgent(Agent):
         ])
         self.local_evaluator.restore(extra_data["local_state"])
 
-    def compute_action(self, observation, state=None):
-        if state is None:
-            state = []
+    def compute_action(self, observation, hidden_state=None):
+        if hidden_state is None:
+            hidden_state = []
         obs = self.local_evaluator.obs_filter(observation, update=False)
         return self.local_evaluator.for_policy(
             lambda p: p.compute_single_action(
-                obs, state, is_training=False)[0])
+                obs, hidden_state, is_training=False)[0])

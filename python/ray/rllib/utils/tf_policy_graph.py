@@ -30,7 +30,7 @@ class TFPolicyGraph(PolicyGraph):
 
     def __init__(
             self, sess, obs_input, action_sampler, loss, loss_inputs,
-            is_training, state_inputs=None, state_outputs=None):
+            is_training, hidden_state_inputs=None, hidden_state_outputs=None):
         """Initialize the policy.
 
         Arguments:
@@ -42,8 +42,8 @@ class TFPolicyGraph(PolicyGraph):
                 SampleBatch column key returned by postprocess_trajectory().
             is_training (Tensor): input placeholder for whether we are
                 currently training the policy.
-            state_inputs (list): list of RNN state output Tensors.
-            state_outputs (list): list of initial state values.
+            hidden_state_inputs (list): list of RNN state output Tensors.
+            hidden_state_outputs (list): list of initial state values.
         """
 
         self._sess = sess
@@ -52,8 +52,8 @@ class TFPolicyGraph(PolicyGraph):
         self._loss = loss
         self._loss_inputs = loss_inputs
         self._is_training = is_training
-        self._state_inputs = state_inputs or []
-        self._state_outputs = state_outputs or []
+        self._state_inputs = hidden_state_inputs or []
+        self._state_outputs = hidden_state_outputs or []
         self._optimizer = self.optimizer()
         self._grads_and_vars = self.gradients(self._optimizer)
         self._grads = [g for (g, v) in self._grads_and_vars]
@@ -65,14 +65,14 @@ class TFPolicyGraph(PolicyGraph):
             len(self.get_initial_state())
 
     def compute_actions(
-            self, obs_batch, state_batches=None, is_training=False):
-        state_batches = state_batches or []
-        assert len(self._state_inputs) == len(state_batches), \
-            (self._state_inputs, state_batches)
+            self, obs_batch, hidden_state_batches=None, is_training=False):
+        hidden_state_batches = hidden_state_batches or []
+        assert len(self._state_inputs) == len(hidden_state_batches), \
+            (self._state_inputs, hidden_state_batches)
         feed_dict = self.extra_compute_action_feed_dict()
         feed_dict[self._obs_input] = obs_batch
         feed_dict[self._is_training] = is_training
-        for ph, value in zip(self._state_inputs, state_batches):
+        for ph, value in zip(self._state_inputs, hidden_state_batches):
             feed_dict[ph] = value
         fetches = self._sess.run(
             ([self._sampler] + self._state_outputs +

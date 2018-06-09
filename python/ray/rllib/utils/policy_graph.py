@@ -28,12 +28,12 @@ class PolicyGraph(object):
         """
         pass
 
-    def compute_actions(self, obs_batch, state_batches, is_training=False):
+    def compute_actions(self, obs_batch, hidden_state_batches, is_training=False):
         """Compute actions for the current policy.
 
         Arguments:
             obs_batch (np.ndarray): batch of observations
-            state_batches (list): list of RNN state input batches, if any
+            hidden_state_batches (list): list of RNN state input batches, if any
             is_training (bool): whether we are training the policy
 
         Returns:
@@ -46,12 +46,12 @@ class PolicyGraph(object):
         """
         raise NotImplementedError
 
-    def compute_single_action(self, obs, state, is_training=False):
+    def compute_single_action(self, obs, hidden_state, is_training=False):
         """Unbatched version of compute_actions.
 
         Arguments:
             obs (obj): single observation
-            state_batches (list): list of RNN state inputs, if any
+            hidden_state (list): list of RNN state inputs, if any
             is_training (bool): whether we are training the policy
 
         Returns:
