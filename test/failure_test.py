@@ -26,7 +26,7 @@ def wait_for_errors(error_type, num_errors, timeout=10):
         if len(relevant_errors(error_type)) >= num_errors:
             return
         time.sleep(0.1)
-    print("Timing out of wait.")
+    raise Exception("Timing out of wait.")
 
 
 class TaskStatusTest(unittest.TestCase):

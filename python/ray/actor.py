@@ -331,7 +331,7 @@ def fetch_and_register_actor(actor_class_key, worker):
         # Log the error message.
         push_error_to_driver(
             worker.redis_client,
-            "register_actor_signatures",
+            "register_actor",
             traceback_str,
             driver_id,
             data={"actor_id": actor_id_str})
