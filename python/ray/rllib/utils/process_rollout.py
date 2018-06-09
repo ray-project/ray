@@ -25,10 +25,8 @@ def compute_advantages(rollout, last_r, gamma, lambda_=1.0, use_gae=True):
         SampleBatch (SampleBatch): Object with experience from rollout and
             processed rewards."""
 
-    traj = {}
     trajsize = len(rollout["actions"])
-    for key in rollout:
-        traj[key] = np.stack(rollout[key])
+    traj = {k: np.stack(v) for k, v in rollout.items()}
 
     if use_gae:
         assert "vf_preds" in rollout, "Values not found!"
