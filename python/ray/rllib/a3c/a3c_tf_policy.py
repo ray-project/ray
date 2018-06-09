@@ -69,7 +69,7 @@ class A3CTFPolicyGraph(TFPolicyGraph):
         self.pi_loss = - tf.reduce_sum(log_prob * self.adv)
 
         delta = self.vf - self.r
-        self.vf_loss = 0.5 * tf.reduce_sum(tf.square(delta))
+        self.vf_loss = tf.reduce_sum(delta**2) / 2
         self.entropy = tf.reduce_sum(self.action_dist.entropy())
         self.loss = (self.pi_loss +
                      self.vf_loss * self.config["vf_loss_coeff"] +

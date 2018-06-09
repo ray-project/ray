@@ -24,7 +24,7 @@ class DDPGActor(Model):
         out = slim.fully_connected(
              net, num_outputs, activation_fn=tf.nn.tanh,
              weights_initializer=w_init)
-        scaled_out = tf.multiply(out, ac_bound)
+        scaled_out = out * ac_bound
         return scaled_out, net
 
 
@@ -42,7 +42,7 @@ class DDPGCritic(Model):
             weights_initializer=w_normal)
         t2 = slim.fully_connected(
             action, 300, activation_fn=None, weights_initializer=w_normal)
-        net = tf.nn.relu(tf.add(t1, t2))
+        net = tf.nn.relu(t1 + t2)
 
         out = slim.fully_connected(
              net, 1, activation_fn=None, weights_initializer=w_init)

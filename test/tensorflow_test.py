@@ -18,7 +18,7 @@ def make_linear_network(w_name=None, b_name=None):
     b = tf.Variable(tf.zeros([1]), name=b_name)
     y = w * x_data + b
     # Return the loss and weight initializer.
-    return (tf.reduce_mean(tf.square(y - y_data)),
+    return (tf.reduce_mean((y - y_data)**2),
             tf.global_variables_initializer(), x_data, y_data)
 
 

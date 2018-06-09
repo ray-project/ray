@@ -263,7 +263,7 @@ class ResNet(object):
             if var.op.name.find(r'DW') > 0:
                 costs.append(tf.nn.l2_loss(var))
 
-        return tf.multiply(self.hps.weight_decay_rate, tf.add_n(costs))
+        return self.hps.weight_decay_rate * tf.add_n(costs)
 
     def _conv(self, name, x, filter_size, in_filters, out_filters, strides):
         """Convolution."""

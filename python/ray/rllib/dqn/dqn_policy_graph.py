@@ -12,7 +12,6 @@ from ray.rllib.optimizers.sample_batch import SampleBatch
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.tf_policy_graph import TFPolicyGraph
 
-
 Q_SCOPE = "q_func"
 Q_TARGET_SCOPE = "target_q_func"
 
@@ -286,9 +285,9 @@ def _build_action_network(
 def _huber_loss(x, delta=1.0):
     """Reference: https://en.wikipedia.org/wiki/Huber_loss"""
     return tf.where(
-        tf.abs(x) < delta,
-        tf.square(x) * 0.5,
-        delta * (tf.abs(x) - 0.5 * delta))
+        abs(x) < delta,
+        x**2 / 2 ,
+        delta * (abs(x) - delta / 2))
 
 
 def _minimize_and_clip(optimizer, objective, var_list, clip_val=10):

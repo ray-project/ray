@@ -14,7 +14,6 @@ from ray.rllib.models import ModelCatalog
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.tf_policy_graph import TFPolicyGraph
 
-
 A_SCOPE = "a_func"
 P_SCOPE = "p_func"
 P_TARGET_SCOPE = "target_p_func"
@@ -189,22 +188,21 @@ class DDPGPolicyGraph(TFPolicyGraph):
         if config.get("use_huber"):
             errors = _huber_loss(self.td_error, config.get("huber_threshold"))
         else:
-            errors = 0.5 * tf.square(self.td_error)
+            errors = self.td_error**2 / 2
 
         self.loss = tf.reduce_mean(self.importance_weights * errors)
 
         # for policy gradient
-        self.actor_loss = -1.0 * tf.reduce_mean(q_tp0)
+        self.actor_loss = -tf.reduce_mean(q_tp0)
 
         if config["l2_reg"] is not None:
             for var in self.p_func_vars:
                 if "bias" not in var.name:
                     self.actor_loss += (
-                        config["l2_reg"] * 0.5 * tf.nn.l2_loss(var))
+                            config["l2_reg"] * tf.nn.l2_loss(var)) / 2
             for var in self.q_func_vars:
                 if "bias" not in var.name:
-                    self.loss += config["l2_reg"] * 0.5 * tf.nn.l2_loss(
-                        var)
+                    self.loss += config["l2_reg"] * tf.nn.l2_loss(var) / 2
 
         # update_target_fn will be called periodically to copy Q network to
         # target Q network
