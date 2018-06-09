@@ -6,6 +6,7 @@ import tensorflow as tf
 import numpy as np
 from ray.rllib.utils.reshaper import Reshaper
 
+# TODO(alok): Use tf/torch Distributions to clean this up.
 
 class ActionDistribution(object):
     """The policy action distribution of an agent.
