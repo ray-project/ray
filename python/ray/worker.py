@@ -448,8 +448,9 @@ class Worker(object):
                 self.plasma_client.fetch(plain_object_ids[i:(
                     i + ray._config.worker_fetch_request_size())])
             else:
-                self.local_scheduler_client.reconstruct_objects(object_ids[i:(
-                    i + ray._config.worker_fetch_request_size())], True)
+                self.local_scheduler_client.reconstruct_objects(
+                    object_ids[i:(
+                        i + ray._config.worker_fetch_request_size())], True)
 
         # Get the objects. We initially try to get the objects immediately.
         final_results = self.retrieve_and_deserialize(plain_object_ids, 0)
@@ -484,7 +485,8 @@ class Worker(object):
                 else:
                     self.local_scheduler_client.reconstruct_objects(
                         ray_object_ids_to_fetch[i:(
-                            i + ray._config.worker_fetch_request_size())], True)
+                            i + ray._config.worker_fetch_request_size())],
+                        True)
             results = self.retrieve_and_deserialize(
                 object_ids_to_fetch,
                 max([

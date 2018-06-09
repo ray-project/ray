@@ -140,7 +140,7 @@ void local_scheduler_task_done(LocalSchedulerConnection *conn) {
 
 void local_scheduler_reconstruct_objects(
     LocalSchedulerConnection *conn,
-    const std::vector<ObjectID>& object_ids,
+    const std::vector<ObjectID> &object_ids,
     bool fetch_only) {
   flatbuffers::FlatBufferBuilder fbb;
   auto object_ids_message = to_flatbuf(fbb, object_ids);
