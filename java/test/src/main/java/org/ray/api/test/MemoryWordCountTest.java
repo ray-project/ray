@@ -15,21 +15,6 @@ import org.ray.api.experiment.mr.MemoryMapReduce;
 @RunWith(MyRunner.class)
 public class MemoryWordCountTest {
 
-  public static class MemoryWordCount extends MemoryMapReduce<String, String, Integer, Integer> {
-
-    public List<Pair<String, Integer>> Map(String input) {
-      ArrayList<Pair<String, Integer>> counts = new ArrayList<>();
-      for (String s : input.split(" ")) {
-        counts.add(Pair.of(s, 1));
-      }
-      return counts;
-    }
-
-    public Integer Reduce(String k, List<Integer> values) {
-      return values.size();
-    }
-  }
-
   @Test
   public void test() {
     List<List<String>> iinputs = new ArrayList<>();
@@ -55,7 +40,7 @@ public class MemoryWordCountTest {
     iinputs.add(inputs);
 
     MemoryWordCount wc = new MemoryWordCount();
-    SortedMap<String, Integer> result = wc.Run(iinputs, 2, 2);
+    SortedMap<String, Integer> result = wc.run(iinputs, 2, 2);
 
     Assert.assertEquals(6, (int) result.get("0"));
     Assert.assertEquals(6, (int) result.get("1"));
@@ -67,5 +52,20 @@ public class MemoryWordCountTest {
     Assert.assertEquals(6, (int) result.get("7"));
     Assert.assertEquals(6, (int) result.get("8"));
     Assert.assertEquals(6, (int) result.get("9"));
+  }
+
+  public static class MemoryWordCount extends MemoryMapReduce<String, String, Integer, Integer> {
+
+    public List<Pair<String, Integer>> map(String input) {
+      ArrayList<Pair<String, Integer>> counts = new ArrayList<>();
+      for (String s : input.split(" ")) {
+        counts.add(Pair.of(s, 1));
+      }
+      return counts;
+    }
+
+    public Integer reduce(String k, List<Integer> values) {
+      return values.size();
+    }
   }
 }

@@ -15,6 +15,6 @@ public @interface RayRemote {
   /**
    * whether to use external I/O pool to execute the function
    */
-  boolean externalIO() default false;
+  boolean externalIo() default false;
 
 }

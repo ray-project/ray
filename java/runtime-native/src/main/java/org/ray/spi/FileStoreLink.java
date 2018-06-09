@@ -32,11 +32,12 @@ public interface FileStoreLink {
   boolean isFile(String f);
 
   /**
-   * Delete a file.
+   * delete a file.
    *
-   * @param f the path to delete.
+   * @param f         the path to delete.
    * @param recursive if path is a directory and set to true, the directory is deleted else throws
-   * an exception. In case of a file the recursive can be set to either true or false.
+   *                  an exception. In case of a file the recursive can be set to either true or
+   *                  false.
    * @return true if delete is successful else false.
    */
   boolean delete(String f, boolean recursive);

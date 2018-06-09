@@ -57,11 +57,6 @@ public class RayActor<T> extends RayObject<T> implements Externalizable {
     this.taskCursor = taskCursor;
   }
 
-  public UniqueID computeNextActorHandleId() {
-    byte[] bytes = Sha1Digestor.digest(actorHandleId.id, ++forksNum);
-    return new UniqueID(bytes);
-  }
-
   public UniqueID getActorHandleId() {
     return actorHandleId;
   }
@@ -75,6 +70,11 @@ public class RayActor<T> extends RayObject<T> implements Externalizable {
     out.writeObject(this.id);
     out.writeObject(this.computeNextActorHandleId());
     out.writeObject(this.taskCursor);
+  }
+
+  public UniqueID computeNextActorHandleId() {
+    byte[] bytes = Sha1Digestor.digest(actorHandleId.id, ++forksNum);
+    return new UniqueID(bytes);
   }
 
   @Override

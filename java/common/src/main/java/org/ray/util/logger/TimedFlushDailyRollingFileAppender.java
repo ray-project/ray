@@ -11,7 +11,11 @@ import org.apache.log4j.RollingFileAppender;
  */
 public class TimedFlushDailyRollingFileAppender extends RollingFileAppender {
 
-  private final static Set<TimedFlushDailyRollingFileAppender> all = new HashSet<>();
+  private static final Set<TimedFlushDailyRollingFileAppender> all = new HashSet<>();
+
+  static {
+    new TimedFlushLogThread().start();
+  }
 
   public TimedFlushDailyRollingFileAppender() {
     super();
@@ -25,10 +29,6 @@ public class TimedFlushDailyRollingFileAppender extends RollingFileAppender {
     synchronized (all) {
       all.add(this);
     }
-  }
-
-  static {
-    new TimedFlushLogThread().start();
   }
 
   private void flush() {

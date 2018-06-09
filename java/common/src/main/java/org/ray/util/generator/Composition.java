@@ -9,20 +9,8 @@ import java.util.List;
  */
 public class Composition {
 
-  public static class TR {
-
-    public final int Tcount;
-    public final int Rcount;
-
-    public TR(int tcount, int rcount) {
-      super();
-      Tcount = tcount;
-      Rcount = rcount;
-    }
-  }
-
-  public static List<TR> calculate(int maxT, int maxR) {
-    List<TR> ret = new ArrayList<>();
+  public static List<Tr> calculate(int maxT, int maxR) {
+    List<Tr> ret = new ArrayList<>();
     for (int t = 0; t <= maxT; t++) {
 
       // <= 0 for dynamic return count
@@ -30,9 +18,21 @@ public class Composition {
       // -1 for call_n returns RayObject<>[N]
 
       for (int r = -1; r <= maxR; r++) {
-        ret.add(new TR(t, r));
+        ret.add(new Tr(t, r));
       }
     }
     return ret;
+  }
+
+  public static class Tr {
+
+    public final int tcount;
+    public final int rcount;
+
+    public Tr(int tcount, int rcount) {
+      super();
+      this.tcount = tcount;
+      this.rcount = rcount;
+    }
   }
 }

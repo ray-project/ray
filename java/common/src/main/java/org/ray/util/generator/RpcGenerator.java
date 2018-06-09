@@ -4,7 +4,7 @@ import java.io.IOException;
 import java.util.HashSet;
 import java.util.Set;
 import org.ray.util.FileUtil;
-import org.ray.util.generator.Composition.TR;
+import org.ray.util.generator.Composition.Tr;
 
 /**
  * Generate Rpc.java
@@ -29,90 +29,75 @@ public class RpcGenerator {
 
     sb.append("@SuppressWarnings({\"rawtypes\", \"unchecked\"})\n");
     sb.append("class Rpc {\n");
-    for (TR tr : Composition.calculate(Share.MAX_T, Share.MAX_R)) {
-      buildCall(sb, tr.Tcount, tr.Rcount);
+    for (Tr tr : Composition.calculate(Share.MAX_T, Share.MAX_R)) {
+      buildCall(sb, tr.tcount, tr.rcount);
     }
     sb.append("}\n");
     return sb.toString();
   }
 
-  private static void buildCall(StringBuilder sb, int Tcount, int Rcount) {
-    for (Set<Integer> whichTisFuture : whichTisFutureComposition(Tcount)) {
-      sb.append(buildCall(Tcount, Rcount, whichTisFuture));
+  private static void buildCall(StringBuilder sb, int tcount, int rcount) {
+    for (Set<Integer> whichTisFuture : whichTisFutureComposition(tcount)) {
+      sb.append(buildCall(tcount, rcount, whichTisFuture));
     }
   }
 
-  /**
-   * public static <T0, R0> RayObject<R0> call(RayFunc_1_1<T0, R0> f, RayObject<T0> arg) { return
-   * Ray.runtime().rpc(() -> f.apply(null), arg).objs[0]; }
-   */
-  private static String buildCall(int Tcount, int Rcount, Set<Integer> whichTisFuture) {
+  private static String buildCall(int tcount, int rcount, Set<Integer> whichTisFuture) {
     StringBuilder sb = new StringBuilder();
-    String parameter = (Tcount == 0 ? ""
-        : ", " + Share.buildParameter(Tcount, "T", whichTisFuture));
-    sb.append("\tpublic static <").append(Share.buildClassDeclare(Tcount, Rcount)).append("> ")
-        .append(Share.buildRpcReturn(Rcount)).append(" call")
-        .append(Rcount == 1 ? "" : (Rcount <= 0 ? "_n" : ("_" + Rcount))).append("(RayFunc_")
-        .append(Tcount).append("_")
-        .append(Rcount <= 0 ? (Rcount == 0 ? "n" : "n_list") : Rcount).append("<")
-        .append(Share.buildClassDeclare(Tcount, Rcount)).append("> f").append(
-        Rcount <= 0 ? (Rcount == 0 ? ", Collection<RID> returnids" : ", Integer returnCount")
+    String parameter = (tcount == 0 ? ""
+        : ", " + Share.buildParameter(tcount, "T", whichTisFuture));
+    sb.append("\tpublic static <").append(Share.buildClassDeclare(tcount, rcount)).append("> ")
+        .append(Share.buildRpcReturn(rcount)).append(" call")
+        .append(rcount == 1 ? "" : (rcount <= 0 ? "_n" : ("_" + rcount))).append("(RayFunc_")
+        .append(tcount).append("_")
+        .append(rcount <= 0 ? (rcount == 0 ? "n" : "n_list") : rcount).append("<")
+        .append(Share.buildClassDeclare(tcount, rcount)).append("> f").append(
+        rcount <= 0 ? (rcount == 0 ? ", Collection<RID> returnids" : ", Integer returnCount")
             : "").append(parameter).append(") {\n");
-        
-        /*
-         * public static <R0> RayObject<R0> call(RayFunc_0_1<R0> f) {
-                if (Ray.Parameters().remoteLambda()) {
-                    return Ray.internal().call(RayFunc_0_1.class, f, 1).objs[0];
-                }
-                else {
-                    return Ray.internal().call(() -> f.apply(), 1).objs[0];
-                }
-            }
-         */
 
     String nulls = Share.buildRepeat("null",
-        Tcount + (Rcount == 0 ? 1/*for first arg map*/ : 0));
-    String parameterUse = (Tcount == 0 ? "" : (", " + Share.buildParameterUse(Tcount, "T")));
+        tcount + (rcount == 0 ? 1/*for first arg map*/ : 0));
+    String parameterUse = (tcount == 0 ? "" : (", " + Share.buildParameterUse(tcount, "T")));
     String labmdaUse = "RayFunc_"
-        + Tcount + "_" + (Rcount <= 0 ? (Rcount == 0 ? "n" : "n_list") : Rcount)
+        + tcount + "_" + (rcount <= 0 ? (rcount == 0 ? "n" : "n_list") : rcount)
         + ".class, f";
 
     sb.append("\t\tif (Ray.Parameters().remoteLambda()) {\n");
-    if (Rcount == 1) {
+    if (rcount == 1) {
       sb.append("\t\t\treturn Ray.internal().call(null, ").append(labmdaUse).append(", 1")
           .append(parameterUse).append(").objs[0];")
           .append("\n");
-    } else if (Rcount == 0) {
+    } else if (rcount == 0) {
       sb.append("\t\t\treturn Ray.internal().callWithReturnLabels(null, ")
           .append(labmdaUse).append(", returnids").append(parameterUse).append(");")
           .append("\n");
-    } else if (Rcount < 0) {
+    } else if (rcount < 0) {
       sb.append("\t\t\treturn Ray.internal().callWithReturnIndices(null, ")
           .append(labmdaUse).append(", returnCount").append(parameterUse).append(");")
           .append("\n");
     } else {
-      sb.append("\t\t\treturn new RayObjects").append(Rcount)
-          .append("(Ray.internal().call(null, ").append(labmdaUse).append(", ").append(Rcount)
+      sb.append("\t\t\treturn new RayObjects").append(rcount)
+          .append("(Ray.internal().call(null, ").append(labmdaUse).append(", ").append(rcount)
           .append(parameterUse).append(").objs);")
           .append("\n");
     }
     sb.append("\t\t} else {\n");
-    if (Rcount == 1) {
+    if (rcount == 1) {
       sb.append("\t\t\treturn Ray.internal().call(null, () -> f.apply(").append(nulls)
           .append("), 1").append(parameterUse).append(").objs[0];")
           .append("\n");
-    } else if (Rcount == 0) {
+    } else if (rcount == 0) {
       sb.append("\t\t\treturn Ray.internal().callWithReturnLabels(null, () -> f.apply(")
           .append(nulls).append("), returnids").append(parameterUse).append(");")
           .append("\n");
-    } else if (Rcount < 0) {
+    } else if (rcount < 0) {
       sb.append("\t\t\treturn Ray.internal().callWithReturnIndices(null, () -> f.apply(")
           .append(nulls).append("), returnCount").append(parameterUse).append(");")
           .append("\n");
     } else {
-      sb.append("\t\t\treturn new RayObjects").append(Rcount)
+      sb.append("\t\t\treturn new RayObjects").append(rcount)
           .append("(Ray.internal().call(null, () -> f.apply(").append(nulls).append("), ")
-          .append(Rcount).append(parameterUse).append(").objs);")
+          .append(rcount).append(parameterUse).append(").objs);")
           .append("\n");
     }
     sb.append("\t\t}\n");
@@ -120,34 +105,34 @@ public class RpcGenerator {
     return sb.toString();
   }
 
-  private static Set<Set<Integer>> whichTisFutureComposition(int Tcount) {
+  private static Set<Set<Integer>> whichTisFutureComposition(int tcount) {
     Set<Set<Integer>> ret = new HashSet<>();
-    Set<Integer> N = new HashSet<>();
-    for (int k = 0; k < Tcount; k++) {
-      N.add(k);
+    Set<Integer> n = new HashSet<>();
+    for (int k = 0; k < tcount; k++) {
+      n.add(k);
     }
-    for (int k = 0; k <= Tcount; k++) {
-      ret.addAll(CNn(N, k));
+    for (int k = 0; k <= tcount; k++) {
+      ret.addAll(cnn(n, k));
     }
     return ret;
   }
 
   //pick n numbers in N
-  private static Set<Set<Integer>> CNn(Set<Integer> N, int n) {
+  private static Set<Set<Integer>> cnn(Set<Integer> bigN, int n) {
     C c = new C();
     for (int k = 0; k < n; k++) {
-      c.mul(N);
+      c.mul(bigN);
     }
-    return c.v;
+    return c.vc;
   }
 
   static class C {
 
-    Set<Set<Integer>> v;
+    Set<Set<Integer>> vc;
 
     public C() {
-      v = new HashSet<>();
-      v.add(new HashSet<>());
+      vc = new HashSet<>();
+      vc.add(new HashSet<>());
     }
 
     void mul(Set<Integer> ns) {
@@ -155,12 +140,12 @@ public class RpcGenerator {
       for (int n : ns) {
         ret.addAll(mul(n));
       }
-      this.v = ret;
+      this.vc = ret;
     }
 
     Set<Set<Integer>> mul(int n) {
       Set<Set<Integer>> ret = new HashSet<>();
-      for (Set<Integer> s : v) {
+      for (Set<Integer> s : vc) {
         if (s.contains(n)) {
           continue;
         }

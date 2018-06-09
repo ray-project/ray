@@ -21,20 +21,10 @@ import org.ray.util.logger.RayLog;
 
 public class RayDevRuntime extends RayRuntime {
 
+  private final ConcurrentHashMap<UniqueID, Object> actors = new ConcurrentHashMap<>();
+
   protected RayDevRuntime() {
   }
-
-  @Override
-  public void start(RayParameters params) {
-    PathConfig pathConfig = new PathConfig(configReader);
-    RemoteFunctionManager rfm = new NopRemoteFunctionManager(params.driver_id);
-    MockObjectStore store = new MockObjectStore();
-    MockLocalScheduler scheduler = new MockLocalScheduler(store);
-    init(scheduler, store, rfm, pathConfig);
-    scheduler.setLocalFunctionManager(this.functions);
-  }
-
-  private final ConcurrentHashMap<UniqueID, Object> actors = new ConcurrentHashMap<>();
 
   @RayRemote
   private static byte[] createActor(String className) {
@@ -56,7 +46,9 @@ public class RayDevRuntime extends RayRuntime {
       actors.put(actorId, r);
       RayLog.core.info("TaskId " + taskId + ", create actor ok " + actorId);
       return actorId.getBytes();
-    } catch (ClassNotFoundException | InstantiationException | IllegalAccessException | IllegalArgumentException | InvocationTargetException | NoSuchMethodException | SecurityException e) {
+    } catch (ClassNotFoundException | InstantiationException | IllegalAccessException
+        | IllegalArgumentException | InvocationTargetException | NoSuchMethodException
+        | SecurityException e) {
       // TODO Auto-generated catch block
       e.printStackTrace();
       String logInfo =
@@ -69,8 +61,18 @@ public class RayDevRuntime extends RayRuntime {
   }
 
   @Override
-  public <T> RayActor<T> create(Class<T> cls) {
-    return new RayActor<>(Ray.call(RayDevRuntime::createActor, cls.getName()).getId());
+  public void start(RayParameters params) {
+    PathConfig pathConfig = new PathConfig(configReader);
+    RemoteFunctionManager rfm = new NopRemoteFunctionManager(params.driver_id);
+    MockObjectStore store = new MockObjectStore();
+    MockLocalScheduler scheduler = new MockLocalScheduler(store);
+    init(scheduler, store, rfm, pathConfig);
+    scheduler.setLocalFunctionManager(this.functions);
+  }
+
+  @Override
+  public void cleanUp() {
+    // nothing to do
   }
 
   @Override
@@ -79,7 +81,7 @@ public class RayDevRuntime extends RayRuntime {
   }
 
   @Override
-  public void cleanUp() {
-    // nothing to do
+  public <T> RayActor<T> create(Class<T> cls) {
+    return new RayActor<>(Ray.call(RayDevRuntime::createActor, cls.getName()).getId());
   }
 }

@@ -12,16 +12,10 @@ public class RunInfo {
 
   public String redisAddress;
   public List<String> redisShards;
-  public List<AddressInfo> local_stores = new ArrayList<>();
+  public List<AddressInfo> localStores = new ArrayList<>();
   public ArrayList<List<ProcessInfo>> allProcesses = initProcessInfoArray();
   public ArrayList<List<Process>> toBeCleanedProcesses = initProcessArray();
   public ArrayList<ProcessInfo> deadProcess = new ArrayList<>();
-
-  public enum ProcessType {
-    PT_WORKER, PT_LOCAL_SCHEDULER, PT_PLASMA_MANAGER, PT_PLASMA_STORE,
-    PT_GLOBAL_SCHEDULER, PT_REDIS_SERVER, PT_WEB_UI,
-    PT_DRIVER
-  }
 
   private ArrayList<List<Process>> initProcessArray() {
     ArrayList<List<Process>> processes = new ArrayList<>();
@@ -37,5 +31,11 @@ public class RunInfo {
       processes.add(Collections.synchronizedList(new ArrayList<>()));
     }
     return processes;
+  }
+
+  public enum ProcessType {
+    PT_WORKER, PT_LOCAL_SCHEDULER, PT_PLASMA_MANAGER, PT_PLASMA_STORE,
+    PT_GLOBAL_SCHEDULER, PT_REDIS_SERVER, PT_WEB_UI,
+    PT_DRIVER
   }
 }

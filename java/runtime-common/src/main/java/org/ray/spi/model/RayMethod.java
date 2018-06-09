@@ -11,6 +11,11 @@ public class RayMethod {
   public final String fullName;
   // TODO: other annotated information
 
+  public RayMethod(Method m) {
+    invokable = m;
+    fullName = m.getDeclaringClass().getName() + "." + m.getName();
+  }
+
   public void check() {
     for (Class<?> paramCls : invokable.getParameterTypes()) {
       if (paramCls.isPrimitive()) {
@@ -18,10 +23,5 @@ public class RayMethod {
             "@RayRemote function " + fullName + " must have all non-primitive typed parameters");
       }
     }
-  }
-
-  public RayMethod(Method m) {
-    invokable = m;
-    fullName = m.getDeclaringClass().getName() + "." + m.getName();
   }
 }

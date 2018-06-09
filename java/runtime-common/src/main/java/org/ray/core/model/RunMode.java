@@ -5,21 +5,18 @@ public enum RunMode {
   SINGLE_BOX(true, false, true, true),      // remote lambda, dev path, native runtime
   CLUSTER(false, true, false, true);        // static rewrite, deploy path, naive runtime
 
+  private final boolean remoteLambda;
+  private final boolean staticRewrite;
+  private final boolean devPathManager;
+  private final boolean nativeRuntime;
+
   RunMode(boolean remoteLambda, boolean staticRewrite, boolean devPathManager,
-      boolean nativeRuntime) {
+          boolean nativeRuntime) {
     this.remoteLambda = remoteLambda;
     this.staticRewrite = staticRewrite;
     this.devPathManager = devPathManager;
     this.nativeRuntime = nativeRuntime;
   }
-
-  private final boolean remoteLambda;
-
-  private final boolean staticRewrite;
-
-  private final boolean devPathManager;
-
-  private final boolean nativeRuntime;
 
   /**
    * Getter method for property <tt>remoteLambda</tt>

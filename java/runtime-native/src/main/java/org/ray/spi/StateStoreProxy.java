@@ -28,5 +28,5 @@ public interface StateStoreProxy {
   /**
    * @return list of address information
    */
-  List<AddressInfo> getAddressInfo(final String node_ip_address, int num_retries);
+  List<AddressInfo> getAddressInfo(final String nodeIpAddress, int numRetries);
 }

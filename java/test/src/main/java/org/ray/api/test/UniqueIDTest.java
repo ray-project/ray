@@ -11,14 +11,19 @@ import org.ray.core.RayRuntime;
 import org.ray.core.UniqueIdHelper;
 
 @RunWith(MyRunner.class)
-public class UniqueIDTest {
+public class UniqueIdTest {
+
+  @RayRemote
+  public static String hi(Integer i) {
+    return "hi" + i;
+  }
 
   @Test
   public void test() {
     UniqueID tid = UniqueIdHelper.nextTaskId(0xdeadbeefL);
     UniqueIdHelper.setTest(tid, true);
     System.out.println("Tested task id = " + tid);
-    RayFunc_1_1<Integer, String> f = UniqueIDTest::hi;
+    RayFunc_1_1<Integer, String> f = UniqueIdTest::hi;
     RayObject<String> result = new RayObject<>(
         RayRuntime.getInstance().call(
             tid,
@@ -29,10 +34,5 @@ public class UniqueIDTest {
     );
     System.out.println("Tested task return object id = " + result.getId());
     Assert.assertEquals("hi1", result.get());
-  }
-
-  @RayRemote
-  public static String hi(Integer i) {
-    return "hi" + i;
   }
 }

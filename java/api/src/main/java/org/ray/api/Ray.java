@@ -11,6 +11,8 @@ import org.ray.util.logger.RayLog;
  */
 public final class Ray extends Rpc {
 
+  private static RayApi impl = null;
+
   /**
    * initialize the current worker or the single-box cluster
    */
@@ -27,7 +29,7 @@ public final class Ray extends Rpc {
     return impl.put(obj);
   }
 
-  public static <T, TM> RayObject<T> put(T obj, TM metadata) {
+  public static <T, TMT> RayObject<T> put(T obj, TMT metadata) {
     return impl.put(obj, metadata);
   }
 
@@ -38,12 +40,12 @@ public final class Ray extends Rpc {
     return impl.get(objectId);
   }
 
-  static <T> T getMeta(UniqueID objectId) throws TaskExecutionException {
-    return impl.getMeta(objectId);
-  }
-
   static <T> List<T> get(List<UniqueID> objectIds) throws TaskExecutionException {
     return impl.get(objectIds);
+  }
+
+  static <T> T getMeta(UniqueID objectId) throws TaskExecutionException {
+    return impl.getMeta(objectId);
   }
 
   static <T> List<T> getMeta(List<UniqueID> objectIds) throws TaskExecutionException {
@@ -53,12 +55,12 @@ public final class Ray extends Rpc {
   /**
    * wait until timeout or enough RayObject are ready
    *
-   * @param waitfor wait for who
-   * @param numReturns how many of ready is enough
+   * @param waitfor             wait for who
+   * @param numReturns          how many of ready is enough
    * @param timeoutMilliseconds in millisecond
    */
   public static <T> WaitResult<T> wait(RayList<T> waitfor, int numReturns,
-      int timeoutMilliseconds) {
+                                       int timeoutMilliseconds) {
     return impl.wait(waitfor, numReturns, timeoutMilliseconds);
   }
 
@@ -107,8 +109,6 @@ public final class Ray extends Rpc {
   public static boolean isRemoteLambda() {
     return impl.isRemoteLambda();
   }
-
-  private static RayApi impl = null;
 
   /**
    * for ray's app's log

@@ -7,7 +7,7 @@ public class MultipleReturns {
 
   protected final Object[] values;
 
-  public MultipleReturns(Object values[]) {
+  public MultipleReturns(Object[] values) {
     this.values = values;
   }
 

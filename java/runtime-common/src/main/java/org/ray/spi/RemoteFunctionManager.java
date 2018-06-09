@@ -8,9 +8,8 @@ import org.ray.hook.runtime.LoadedFunctions;
  */
 public interface RemoteFunctionManager {
 
-  /**
-   * register <resourceId, resource> mapping, and upload resource
-   *
+  /*
+   * register <resourceId, resource> mapping, and upload resource.
    * this function is invoked by app proxy or other stand-alone tools it should detect for
    * duplication first though
    *
@@ -28,16 +27,14 @@ public interface RemoteFunctionManager {
 
   /**
    * remove resource by its hash id
-   *
    * be careful of invoking this function to make sure it is no longer used
    *
    * @param resourceId SHA-1 hash of the resource zip bytes
    */
   void unregisterResource(UniqueID resourceId);
 
-  /**
-   * register the <driver, resource> mapping to repo
-   *
+  /*
+   * register the <driver, resource> mapping to repo,
    * this function is invoked by whoever initiates the driver id
    */
   void registerApp(UniqueID driverId, UniqueID resourceId);
@@ -49,9 +46,8 @@ public interface RemoteFunctionManager {
    */
   UniqueID getAppResourceId(UniqueID driverId);
 
-  /**
+  /*
    * unregister <dirver, resource> mapping
-   *
    * this function is called when the driver exits or detected dead
    */
   void unregisterApp(UniqueID driverId);
@@ -64,7 +60,7 @@ public interface RemoteFunctionManager {
 
   /**
    * unload functions for this driver
-   *
+   * <p>
    * this function is used by the workers on demand when a driver is dead
    */
   void unloadFunctions(UniqueID driverId);

@@ -8,7 +8,6 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class ConfigSection {
 
-  public String sectionKey;
-
   public final Map<String, ConfigItem<?>> itemMap = new ConcurrentHashMap<>();
+  public String sectionKey;
 }

@@ -10,13 +10,13 @@ public class MethodHash {
     this.hash = hash;
   }
 
-  public byte[] getHash() {
-    return hash;
-  }
-
   @Override
   public int hashCode() {
     return Arrays.hashCode(getHash());
+  }
+
+  public byte[] getHash() {
+    return hash;
   }
 
   @Override
