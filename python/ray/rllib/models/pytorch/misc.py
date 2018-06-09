@@ -8,13 +8,13 @@ import torch
 
 
 def convert_batch(trajectory):
-    """Convert trajectory from numpy to PT variable"""
+    """Convert trajectory from NumPy to PyTorch tensor"""
     states = torch.from_numpy(trajectory["obs"]).float()
-    acs = torch.from_numpy(trajectory["actions"])
-    advs = torch.from_numpy(
-        trajectory["advantages"].copy()).float().reshape(-1)
-    rs = torch.from_numpy(trajectory["rewards"]).float().reshape(-1)
-    return states, acs, advs, rs
+    actions = torch.from_numpy(trajectory["actions"])
+    # `torch.tensor()` implicitly copies, unlike `torch.from_numpy`
+    advantages = torch.tensor(trajectory["advantages"]).float().reshape(-1)
+    rewards = torch.from_numpy(trajectory["rewards"]).float().reshape(-1)
+    return states, actions, advantages, rewards
 
 
 def var_to_np(var):
