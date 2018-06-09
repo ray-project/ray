@@ -91,7 +91,7 @@ static PyObject *PyLocalSchedulerClient_reconstruct_objects(PyObject *self,
   }
   bool fetch_only = PyObject_IsTrue(py_fetch_only);
   Py_ssize_t n = PyList_Size(py_object_ids);
-  for (int i = 0; i < n; i++) {
+  for (int64_t i = 0; i < n; ++i) {
     ObjectID object_id;
     PyObject *py_object_id = PyList_GetItem(py_object_ids, i);
     if (!PyObjectToUniqueID(py_object_id, &object_id)) {
@@ -100,7 +100,7 @@ static PyObject *PyLocalSchedulerClient_reconstruct_objects(PyObject *self,
     object_ids.push_back(object_id);
   }
   local_scheduler_reconstruct_objects(
-      ((PyLocalSchedulerClient *) self)->local_scheduler_connection, object_ids,
+      reinterpret_cast<PyLocalSchedulerClient *>(self)->local_scheduler_connection, object_ids,
       fetch_only);
   Py_RETURN_NONE;
 }
