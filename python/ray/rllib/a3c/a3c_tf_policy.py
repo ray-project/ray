@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import tensorflow as tf
 import gym
+
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.process_rollout import compute_advantages
 from ray.rllib.utils.tf_policy_graph import TFPolicyGraph

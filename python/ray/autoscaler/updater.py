@@ -39,14 +39,16 @@ class NodeUpdater(object):
                  setup_cmds,
                  runtime_hash,
                  redirect_output=True,
-                 process_runner=subprocess):
+                 process_runner=subprocess,
+                 use_internal_ip=False):
         self.daemon = True
         self.process_runner = process_runner
+        self.node_id = node_id
+        self.use_internal_ip = use_internal_ip
         self.provider = get_node_provider(provider_config, cluster_name)
         self.ssh_private_key = auth_config["ssh_private_key"]
         self.ssh_user = auth_config["ssh_user"]
-        self.ssh_ip = self.provider.external_ip(node_id)
-        self.node_id = node_id
+        self.ssh_ip = self.get_node_ip()
         self.file_mounts = {
             remote: os.path.expanduser(local)
             for remote, local in file_mounts.items()
@@ -64,6 +66,12 @@ class NodeUpdater(object):
             self.output_name = "(console)"
             self.stdout = sys.stdout
             self.stderr = sys.stderr
+
+    def get_node_ip(self):
+        if self.use_internal_ip:
+            return self.provider.internal_ip(self.node_id)
+        else:
+            return self.provider.external_ip(self.node_id)
 
     def run(self):
         print("NodeUpdater: Updating {} to {}, logging to {}".format(
@@ -107,7 +115,7 @@ class NodeUpdater(object):
             print(
                 "NodeUpdater: Waiting for IP of {}...".format(self.node_id),
                 file=self.stdout)
-            self.ssh_ip = self.provider.external_ip(self.node_id)
+            self.ssh_ip = self.get_node_ip()
             if self.ssh_ip is not None:
                 break
             time.sleep(10)

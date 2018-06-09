@@ -3,7 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import pickle
-import queue
+from six.moves import queue
 
 import ray
 from ray.rllib.bc.experience_dataset import ExperienceDataset
