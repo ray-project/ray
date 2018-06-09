@@ -27,6 +27,7 @@ REGISTER_ACTOR_PUSH_ERROR = "register_actor"
 WORKER_CRASH_PUSH_ERROR = "worker_crash"
 WORKER_DIED_PUSH_ERROR = "worker_died"
 PUT_RECONSTRUCTION_PUSH_ERROR = "put_reconstruction"
+HASH_MISMATCH_PUSH_ERROR = "object_hash_mismatch"
 
 # If a remote function or actor (or some other export) has serialized size
 # greater than this quantity, print an warning.
