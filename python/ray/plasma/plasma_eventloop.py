@@ -141,6 +141,9 @@ class PlasmaPoll(selectors.BaseSelector):
         self.waiting_dict.clear()
     
     def select(self, timeout=None):
+        if not self.waiting_dict:
+            return []
+        
         polling_ids = list(self.waiting_dict.keys())
         ready_keys = []
         object_ids, _ = ray.wait(polling_ids, num_returns=len(polling_ids), timeout=timeout, worker=self.worker)
@@ -194,12 +197,29 @@ class PlasmaSelectorEventLoop(asyncio.BaseEventLoop):
             self._selector.close()
             self._selector = None
     
-    @asyncio.coroutine
+    def _register_future(self, future):
+        future = asyncio.ensure_future(future, loop=self)
+        fut = self.create_future()
+        
+        def callback(_future):
+            object_id = _future.result()
+            assert isinstance(object_id, ray.local_scheduler.ObjectID)
+            reg_future = self._register_id(object_id)
+            
+            def reg_callback(_fut):
+                result = _fut.result()
+                fut.set_result(result)
+            
+            reg_future.add_done_callback(reg_callback)
+        
+        future.add_done_callback(callback)
+        return fut
+    
     def _register_id(self, object_id):
         self._check_closed()
         
-        if asyncio.isfuture(object_id):
-            object_id = yield from object_id
+        if not isinstance(object_id, ray.local_scheduler.ObjectID):
+            return self._register_future(object_id)
         
         try:
             key = self._selector.get_key(object_id)
@@ -216,11 +236,11 @@ class PlasmaSelectorEventLoop(asyncio.BaseEventLoop):
             self._selector.register(fut, events=None, data=handle)
         else:
             # Keep a unique Future object for an object_id. Increase ref_count instead.
-            fut = key.data
+            fut = key.fileobj
         
         fut.inc_refcount()
         
-        return (yield from fut)
+        return fut
     
     def _release(self, *fut):
         for f in fut:
@@ -231,11 +251,11 @@ class PlasmaSelectorEventLoop(asyncio.BaseEventLoop):
     @asyncio.coroutine
     def get(self, object_ids):
         if not isinstance(object_ids, list):
-            ready_id = yield from self._register_id(object_ids)
-            return ray.get(ready_id, worker=self._worker)
+            ready_ids = yield from self._register_id(object_ids)
         else:
             ready_ids = yield from asyncio.gather(*[self._register_id(oid) for oid in object_ids], loop=self)
-            return ray.get(ready_ids, worker=self._worker)
+        
+        return ray.get(ready_ids, worker=self._worker)
     
     @asyncio.coroutine
     def wait(self, object_ids, num_returns=1, timeout=None):
