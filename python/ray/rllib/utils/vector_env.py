@@ -35,7 +35,14 @@ class VectorEnv(object):
 
 
 class _VectorizedGymEnv(VectorEnv):
-    """A gym environment wrapped to implement VectorEnv."""
+    """Internal wrapper for gym envs to implement VectorEnv.
+
+    Arguents:
+        make_env (func|None): Factory that produces a new gym env. Must be
+            defined if the number of existing envs is less than num_envs.
+        existing_envs (list): List of existing gym envs.
+        num_envs (int): Desired num gym envs to keep total.
+    """
 
     def __init__(self, make_env, existing_envs, num_envs):
         self.make_env = make_env

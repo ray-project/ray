@@ -11,7 +11,7 @@ from ray.rllib.models import ModelCatalog
 from ray.rllib.optimizers import SampleBatch
 from ray.rllib.optimizers.policy_evaluator import PolicyEvaluator
 from ray.rllib.utils.async_vector_env import AsyncVectorEnv, _VectorEnvToAsync
-from ray.rllib.utils.atari_wrappers import wrap_deepmind
+from ray.rllib.utils.atari_wrappers import wrap_deepmind, is_atari
 from ray.rllib.utils.compression import pack
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.sampler import AsyncSampler, SyncSampler
@@ -126,7 +126,7 @@ class CommonPolicyEvaluator(PolicyEvaluator):
             compress_observations (bool): If true, compress the observations
                 returned.
             num_envs (int): If more than one, will create multiple envs
-                and vectorize the computation of actions. This has no affect if
+                and vectorize the computation of actions. This has no effect if
                 if the env already implements VectorEnv.
             observation_filter (str): Name of observation filter to use.
             registry (tune.Registry): User-registered objects. Pass in the
@@ -152,14 +152,13 @@ class CommonPolicyEvaluator(PolicyEvaluator):
         self.compress_observations = compress_observations
 
         self.env = env_creator(env_config)
-        is_atari = hasattr(self.env, "unwrapped") and \
-            hasattr(self.env.unwrapped, "ale")
         if isinstance(self.env, VectorEnv) or \
                 isinstance(self.env, ServingEnv) or \
                 isinstance(self.env, AsyncVectorEnv):
             def wrap(env):
                 return env  # we can't auto-wrap these env types
-        elif is_atari and "custom_preprocessor" not in model_config and \
+        elif is_atari(self.env) and \
+                "custom_preprocessor" not in model_config and \
                 preprocessor_pref == "deepmind":
             def wrap(env):
                 return wrap_deepmind(env, dim=model_config.get("dim", 80))
