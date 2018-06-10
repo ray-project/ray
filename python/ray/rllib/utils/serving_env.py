@@ -11,10 +11,10 @@ from ray.rllib.utils.async_vector_env import AsyncVectorEnv
 class ServingEnv(threading.Thread):
     """Environment that provides policy serving.
 
-    Unlike simulator envs, control is inverted. The agent queries the env to
-    obtain actions and records observations and rewards for training. This is
-    in contrast to gym.Env, where the algorithm drives the simulation through
-    env.step() calls.
+    Unlike simulator envs, control is inverted. The environment queries the
+    policy to obtain actions and logs observations and rewards for training.
+    This is in contrast to gym.Env, where the algorithm drives the simulation
+    through env.step() calls.
 
     You can use ServingEnv as the backend for policy serving (by serving HTTP
     requests in the run loop), for ingesting offline logs data (by reading
@@ -29,10 +29,9 @@ class ServingEnv(threading.Thread):
         >>> agent = DQNAgent(env="my_env")
         >>> while True:
               print(agent.train())
-
     """
 
-    def __init__(self, action_space, observation_space):
+    def __init__(self, action_space, observation_space, max_concurrent=100):
         threading.Thread.__init__(self)
         self.daemon = True
         self.action_space = action_space
@@ -42,6 +41,7 @@ class ServingEnv(threading.Thread):
         self._num_episodes = 0
         self._cur_default_episode_id = None
         self._results_avail_condition = threading.Condition()
+        self._max_concurrent_episodes = max_concurrent
 
     def run(self):
         """Override this to implement the run loop.
@@ -175,10 +175,15 @@ class _ServingEnvToAsync(AsyncVectorEnv):
             results = self._poll()
             if not self.serving_env.isAlive():
                 raise Exception("Serving thread has stopped.")
+        limit = self.serving_env._max_concurrent_episodes
+        assert len(results[0]) < limit, \
+            ("Too many concurrent episodes, were some leaked? This ServingEnv "
+             "was created with max_concurrent={}".format(limit))
         return results
 
     def _poll(self):
         all_obs, all_rewards, all_dones, all_infos = {}, {}, {}, {}
+        off_policy_actions = {}
         for eid, episode in self.serving_env._episodes.copy().items():
             data = episode.get_data()
             if episode.cur_done:
@@ -188,7 +193,9 @@ class _ServingEnvToAsync(AsyncVectorEnv):
                 all_rewards[eid] = data["reward"]
                 all_dones[eid] = data["done"]
                 all_infos[eid] = data["info"]
-        return all_obs, all_rewards, all_dones, all_infos
+                if "off_policy_action" in data:
+                    off_policy_actions[eid] = data["off_policy_action"]
+        return all_obs, all_rewards, all_dones, all_infos, off_policy_actions
 
     def send_actions(self, action_dict):
         for eid, action in action_dict.items():
@@ -216,6 +223,7 @@ class _Episode(object):
         self.new_observation = observation
         self.new_action = action
         self._send()
+        self.action_queue.get(True, timeout=60.0)
 
     def wait_for_action(self, observation):
         self.new_observation = observation
@@ -233,8 +241,9 @@ class _Episode(object):
             "reward": self.cur_reward,
             "done": self.cur_done,
             "info": self.cur_info,
-            "taken_action": self.new_action,
         }
+        if self.new_action is not None:
+            item["off_policy_action"] = self.new_action
         self.new_observation = None
         self.new_action = None
         self.cur_reward = 0.0

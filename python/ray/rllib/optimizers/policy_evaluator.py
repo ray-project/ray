@@ -105,6 +105,11 @@ class PolicyEvaluator(object):
 
         return os.uname()[1]
 
+    def apply(self, func, *args):
+        """Apply the given function to this evaluator instance."""
+
+        return func(self, *args)
+
 
 class TFMultiGPUSupport(PolicyEvaluator):
     """The multi-GPU TF optimizer requires additional TF-specific support.

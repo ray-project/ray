@@ -7,11 +7,13 @@ import time
 import unittest
 
 import ray
+from ray.rllib.pg import PGAgent
 from ray.rllib.utils.common_policy_evaluator import CommonPolicyEvaluator, \
     collect_metrics
 from ray.rllib.utils.policy_graph import PolicyGraph
 from ray.rllib.utils.process_rollout import compute_advantages
 from ray.rllib.utils.vector_env import VectorEnv
+from ray.tune.registry import register_env
 
 
 class MockPolicyGraph(PolicyGraph):
@@ -80,6 +82,15 @@ class TestCommonPolicyEvaluator(unittest.TestCase):
         for key in ["obs", "actions", "rewards", "dones", "advantages"]:
             self.assertIn(key, batch)
         self.assertGreater(batch["advantages"][0], 1)
+
+    def testQueryEvaluators(self):
+        register_env("test", lambda _: gym.make("CartPole-v0"))
+        pg = PGAgent(env="test", config={"num_workers": 2, "batch_size": 5})
+        results = pg.optimizer.foreach_evaluator(lambda ev: ev.batch_steps)
+        results2 = pg.optimizer.foreach_evaluator_with_index(
+            lambda ev, i: (i, ev.batch_steps))
+        self.assertEqual(results, [5, 5, 5])
+        self.assertEqual(results2, [(0, 5), (1, 5), (2, 5)])
 
     def testMetrics(self):
         ev = CommonPolicyEvaluator(
@@ -239,5 +250,5 @@ class TestCommonPolicyEvaluator(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    ray.init()
+    ray.init(num_cpus=5)
     unittest.main(verbosity=2)

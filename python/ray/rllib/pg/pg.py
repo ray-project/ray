@@ -12,7 +12,7 @@ from ray.tune.trial import Resources
 
 DEFAULT_CONFIG = {
     # Number of workers (excluding master)
-    "num_workers": 4,
+    "num_workers": 0,
     # Number of environments to evaluate vectorwise per worker.
     "vector_width": 1,
     # Size of rollout batch

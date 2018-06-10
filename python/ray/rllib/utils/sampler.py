@@ -188,7 +188,8 @@ def _env_runner(
 
     while True:
         # Get observations from ready envs
-        unfiltered_obs, rewards, dones, _ = async_vector_env.poll()
+        unfiltered_obs, rewards, dones, _, off_policy_actions = \
+            async_vector_env.poll()
         ready_eids = []
         ready_obs = []
         ready_rnn_states = []
@@ -267,7 +268,8 @@ def _env_runner(
         for f_i, column in enumerate(new_rnn_state_cols):
             pi_info_cols["state_out_{}".format(f_i)] = column
 
-        # Return computed actions to ready envs
+        # Return computed actions to ready envs. We also send to envs that have
+        # taken off-policy actions; those envs are free to ignore the action.
         async_vector_env.send_actions({
             ready_eids[i]: a for i, a in enumerate(actions)})
 
@@ -275,7 +277,10 @@ def _env_runner(
         for i in range(len(ready_obs)):
             eid = ready_eids[i]
             episode = episodes[eid]
-            episode.last_action = actions[i]
+            if eid in off_policy_actions:
+                episode.last_action = off_policy_actions[eid]
+            else:
+                episode.last_action = actions[i]
             episode.rnn_state = [column[i] for column in new_rnn_state_cols]
             episode.last_pi_info = {
                 k: column[i] for k, column in pi_info_cols.items()}

@@ -80,7 +80,7 @@ class _VectorEnvToAsync(AsyncVectorEnv):
         self.cur_rewards = {}
         self.cur_dones = {}
         self.cur_infos = {}
-        return new_obs, rewards, dones, infos
+        return new_obs, rewards, dones, infos, {}
 
     def send_actions(self, action_dict):
         action_vector = [None] * self.vector_width

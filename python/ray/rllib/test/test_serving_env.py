@@ -4,10 +4,12 @@ from __future__ import print_function
 
 import gym
 import numpy as np
+import random
 import unittest
 import uuid
 
 import ray
+from ray.rllib.dqn import DQNAgent
 from ray.rllib.pg import PGAgent
 from ray.rllib.utils.common_policy_evaluator import CommonPolicyEvaluator
 from ray.rllib.utils.serving_env import ServingEnv
@@ -26,6 +28,49 @@ class SimpleServing(ServingEnv):
         obs = self.env.reset()
         while True:
             action = self.get_action(obs)
+            obs, reward, done, info = self.env.step(action)
+            self.log_returns(reward, info=info)
+            if done:
+                self.end_episode(obs)
+                obs = self.env.reset()
+                self.start_episode()
+
+
+class PartOffPolicyServing(ServingEnv):
+    def __init__(self, env, off_pol_frac):
+        ServingEnv.__init__(self, env.action_space, env.observation_space)
+        self.env = env
+        self.off_pol_frac = off_pol_frac
+
+    def run(self):
+        self.start_episode()
+        obs = self.env.reset()
+        while True:
+            if random.random() < self.off_pol_frac:
+                action = self.env.action_space.sample()
+                self.log_action(obs, action)
+            else:
+                action = self.get_action(obs)
+            obs, reward, done, info = self.env.step(action)
+            self.log_returns(reward, info=info)
+            if done:
+                self.end_episode(obs)
+                obs = self.env.reset()
+                self.start_episode()
+
+
+class SimpleOffPolicyServing(ServingEnv):
+    def __init__(self, env):
+        ServingEnv.__init__(self, env.action_space, env.observation_space)
+        self.env = env
+
+    def run(self):
+        self.start_episode()
+        obs = self.env.reset()
+        while True:
+            # Take random actions
+            action = self.env.action_space.sample()
+            self.log_action(obs, action)
             obs, reward, done, info = self.env.step(action)
             self.log_returns(reward, info=info)
             if done:
@@ -71,7 +116,7 @@ class TestServingEnv(unittest.TestCase):
             policy_graph=MockPolicyGraph,
             batch_steps=40,
             truncate_episodes=False)
-        for _ in range(10):
+        for _ in range(3):
             batch = ev.sample()
             self.assertEqual(batch.count, 50)
 
@@ -81,9 +126,19 @@ class TestServingEnv(unittest.TestCase):
             policy_graph=MockPolicyGraph,
             batch_steps=40,
             truncate_episodes=True)
-        for _ in range(10):
+        for _ in range(3):
             batch = ev.sample()
             self.assertEqual(batch.count, 40)
+
+    def testServingEnvOffPolicy(self):
+        ev = CommonPolicyEvaluator(
+            env_creator=lambda _: SimpleOffPolicyServing(MockEnv(25)),
+            policy_graph=MockPolicyGraph,
+            batch_steps=40,
+            truncate_episodes=False)
+        for _ in range(3):
+            batch = ev.sample()
+            self.assertEqual(batch.count, 50)
 
     def testServingEnvBadActions(self):
         ev = CommonPolicyEvaluator(
@@ -104,10 +159,23 @@ class TestServingEnv(unittest.TestCase):
         ev.sample()
         self.assertRaises(Exception, lambda: ev.sample())
 
+    def testTrainCartpoleOffPolicy(self):
+        register_env(
+            "test3", lambda _: PartOffPolicyServing(
+                gym.make("CartPole-v0"), off_pol_frac=0.2))
+        dqn = DQNAgent(env="test3", config={"exploration_fraction": 0.001})
+        for i in range(100):
+            result = dqn.train()
+            print("Iteration {}, reward {}, timesteps {}".format(
+                i, result.episode_reward_mean, result.timesteps_total))
+            if result.episode_reward_mean >= 100:
+                return
+        raise Exception("failed to improve reward")
+
     def testTrainCartpole(self):
         register_env(
             "test", lambda _: SimpleServing(gym.make("CartPole-v0")))
-        pg = PGAgent(env="test", config={"num_workers": 1})
+        pg = PGAgent(env="test", config={"num_workers": 0})
         for i in range(100):
             result = pg.train()
             print("Iteration {}, reward {}, timesteps {}".format(
@@ -119,7 +187,7 @@ class TestServingEnv(unittest.TestCase):
     def testTrainCartpoleMulti(self):
         register_env(
             "test2", lambda _: MultiServing(lambda: gym.make("CartPole-v0")))
-        pg = PGAgent(env="test2", config={"num_workers": 1})
+        pg = PGAgent(env="test2", config={"num_workers": 0})
         for i in range(100):
             result = pg.train()
             print("Iteration {}, reward {}, timesteps {}".format(

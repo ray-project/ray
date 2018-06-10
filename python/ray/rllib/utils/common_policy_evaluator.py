@@ -242,11 +242,6 @@ class CommonPolicyEvaluator(PolicyEvaluator):
 
         return batch
 
-    def apply(self, func):
-        """Apply the given function to this evaluator instance."""
-
-        return func(self)
-
     def for_policy(self, func):
         """Apply the given function to this evaluator's default policy."""
 
