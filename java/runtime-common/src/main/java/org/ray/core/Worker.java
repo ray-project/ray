@@ -1,7 +1,9 @@
 package org.ray.core;
 
+import com.google.common.base.Preconditions;
 import java.io.Serializable;
 import java.lang.invoke.SerializedLambda;
+import java.util.Arrays;
 import java.util.Collection;
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.tuple.Pair;
@@ -11,7 +13,6 @@ import org.ray.api.RayMap;
 import org.ray.api.RayObject;
 import org.ray.api.RayObjects;
 import org.ray.api.UniqueID;
-import org.ray.api.internal.Callable;
 import org.ray.spi.LocalSchedulerProxy;
 import org.ray.spi.model.RayInvocation;
 import org.ray.spi.model.RayMethod;
@@ -52,7 +53,8 @@ public class Worker {
     }
 
     try {
-      Pair<ClassLoader, RayMethod> pr = funcs.getMethod(task.driverId, task.functionId, task.args);
+      Pair<ClassLoader, RayMethod> pr = funcs
+          .getMethod(task.driverId, task.actorId, task.functionId, task.args);
       WorkerContext.prepare(task, pr.getLeft());
       InvocationExecutor.execute(task, pr);
     } catch (NoSuchMethodException | SecurityException | ClassNotFoundException e) {
@@ -72,28 +74,28 @@ public class Worker {
   }
 
   private RayObjects taskSubmit(UniqueID taskId,
-      byte[] fid,
+      MethodId methodId,
       int returnCount,
       boolean multiReturn,
       Object[] args) {
-    RayInvocation ri = new RayInvocation(fid, args);
+    RayInvocation ri = createRemoteInvocation(methodId, args, RayActor.nil);
     return scheduler.submit(taskId, ri, returnCount, multiReturn);
   }
 
   private RayObjects actorTaskSubmit(UniqueID taskId,
-      byte[] fid,
+      MethodId methodId,
       int returnCount,
       boolean multiReturn,
       Object[] args,
       RayActor<?> actor) {
-    RayInvocation ri = new RayInvocation(fid, args, actor);
+    RayInvocation ri = createRemoteInvocation(methodId, args, actor);
     RayObjects returnObjs = scheduler.submit(taskId, ri, returnCount + 1, multiReturn);
     actor.setTaskCursor(returnObjs.pop().getId());
     return returnObjs;
   }
 
   private RayObjects submit(UniqueID taskId,
-      byte[] fid,
+      MethodId methodId,
       int returnCount,
       boolean multiReturn,
       Object[] args) {
@@ -101,79 +103,44 @@ public class Worker {
       taskId = UniqueIdHelper.nextTaskId(-1);
     }
     if (args.length > 0 && args[0].getClass().equals(RayActor.class)) {
-      return actorTaskSubmit(taskId, fid, returnCount, multiReturn, args, (RayActor<?>) args[0]);
+      return actorTaskSubmit(taskId, methodId, returnCount, multiReturn, args,
+          (RayActor<?>) args[0]);
     } else {
-      return taskSubmit(taskId, fid, returnCount, multiReturn, args);
+      return taskSubmit(taskId, methodId, returnCount, multiReturn, args);
     }
   }
 
-  public RayObjects rpc(UniqueID taskId, Callable funcRun, int returnCount, Object[] args) {
-    byte[] fid = fidFromHook(funcRun);
-    return submit(taskId, fid, returnCount, false, args);
-  }
-
-  public RayObjects rpcCreateActor(UniqueID taskId, UniqueID createActorId, Callable funcRun,
-      int returnCount,
-      Object[] args) {
-    byte[] fid = fidFromHook(funcRun);
-    RayInvocation ri = new RayInvocation(fid, new Object[]{});
-    return scheduler.submit(taskId, createActorId, ri, returnCount, false);
-  }
 
   public RayObjects rpc(UniqueID taskId, Class<?> funcCls, Serializable lambda,
       int returnCount, Object[] args) {
-    byte[] fid = fidFromSerialLambda(lambda);
-
-    return submit(taskId, fid, returnCount, false, args);
+    MethodId mid = methodIdOf(lambda);
+    return submit(taskId, mid, returnCount, false, args);
   }
 
   public RayObjects rpcCreateActor(UniqueID taskId, UniqueID createActorId,
       Class<?> funcCls, Serializable lambda, int returnCount, Object[] args) {
-    byte[] fid = fidFromSerialLambda(lambda);
-    RayInvocation ri = new RayInvocation(fid, args);
+    Preconditions.checkNotNull(taskId);
+    MethodId mid = methodIdOf(lambda);
+    RayInvocation ri = createRemoteInvocation(mid, args, RayActor.nil);
     return scheduler.submit(taskId, createActorId, ri, returnCount, false);
-  }
-
-  public <R, RID> RayMap<RID, R> rpcWithReturnLabels(UniqueID taskId, Callable funcRun,
-      Collection<RID> returnids,
-      Object[] args) {
-    byte[] fid = fidFromHook(funcRun);
-    if (taskId == null) {
-      taskId = UniqueIdHelper.nextTaskId(-1);
-    }
-    return scheduler.submit(taskId, new RayInvocation(fid, args), returnids);
   }
 
   public <R, RID> RayMap<RID, R> rpcWithReturnLabels(UniqueID taskId, Class<?> funcCls,
       Serializable lambda, Collection<RID> returnids,
       Object[] args) {
-    byte[] fid = fidFromSerialLambda(lambda);
+    MethodId mid = methodIdOf(lambda);
     if (taskId == null) {
       taskId = UniqueIdHelper.nextTaskId(-1);
     }
-
-    return scheduler.submit(taskId, new RayInvocation(fid, args), returnids);
+    RayInvocation ri = createRemoteInvocation(mid, args, RayActor.nil);
+    return scheduler.submit(taskId, ri, returnids);
   }
 
-  public <R> RayList<R> rpcWithReturnIndices(UniqueID taskId, Callable funcRun,
-      Integer returnCount,
-      Object[] args) {
-    byte[] fid = fidFromHook(funcRun);
-    RayObjects objs = submit(taskId, fid, returnCount, true, args);
-    RayList<R> rets = new RayList<>();
-    for (RayObject obj : objs.getObjs()) {
-      rets.add(obj);
-    }
-    return rets;
-  }
-
-  @SuppressWarnings("unchecked")
   public <R> RayList<R> rpcWithReturnIndices(UniqueID taskId, Class<?> funcCls,
       Serializable lambda, Integer returnCount,
       Object[] args) {
-    byte[] fid = fidFromSerialLambda(lambda);
-    RayObjects objs = submit(taskId, fid, returnCount, true, args);
-
+    MethodId mid = methodIdOf(lambda);
+    RayObjects objs = submit(taskId, mid, returnCount, true, args);
     RayList<R> rets = new RayList<>();
     for (RayObject obj : objs.getObjs()) {
       rets.add(obj);
@@ -181,14 +148,26 @@ public class Worker {
     return rets;
   }
 
-  private byte[] fidFromHook(Callable funcRun) {
-    return new byte[0];
+  private RayInvocation createRemoteInvocation(MethodId methodId, Object[] args,
+      RayActor<?> actor) {
+    UniqueID driverId = WorkerContext.currentTask().driverId;
+
+    Object[] ls = Arrays.copyOf(args, args.length + 1);
+    ls[args.length] = methodId.className;
+
+    RayMethod method = functions
+        .getMethod(driverId, actor.getId(), new UniqueID(methodId.getSha1Hash()),
+            methodId.className);
+
+    RayInvocation ri = new RayInvocation(methodId.className, method.getFuncId(),
+        args, method.remoteAnnotation, actor);
+    return ri;
   }
 
-  private byte[] fidFromSerialLambda(Serializable serialLambda) {
+  private MethodId methodIdOf(Serializable serialLambda) {
     SerializedLambda lambda = LambdaUtils.getSerializedLambda(serialLambda);
-    MethodId mid = MethodId.transferSerializedLambda(lambda);
-    return mid.getSha1Hash();
+    MethodId mid = MethodId.fromSerializedLambda(lambda);
+    return mid;
   }
 
   public UniqueID getCurrentTaskID() {

@@ -1,6 +1,7 @@
 package org.ray.spi.model;
 
 import org.ray.api.RayActor;
+import org.ray.api.RayRemote;
 import org.ray.api.UniqueID;
 
 /**
@@ -10,31 +11,29 @@ public class RayInvocation {
 
   /**
    * unique id for a method
-   *
-   * @see UniqueID
    */
-  private final byte[] id;
+  private final UniqueID id;
+
+  public final String className;
+
+  private final RayRemote remoteAnnotation;
   /**
    * function arguments
    */
   private Object[] args;
 
-  private final RayActor<?> actor;
+  private RayActor<?> actor;
 
-  private static final RayActor<?> nil = new RayActor<>(UniqueID.nil, UniqueID.nil);
-
-  public RayInvocation(byte[] id, Object[] args) {
-    this(id, args, nil);
-  }
-
-  public RayInvocation(byte[] id, Object[] args, RayActor<?> actor) {
+  public RayInvocation(String className, UniqueID id, Object[] args, RayRemote remoteAnnotation, RayActor<?> actor) {
     super();
+    this.className = className;
     this.id = id;
     this.args = args;
     this.actor = actor;
+    this.remoteAnnotation = remoteAnnotation;
   }
 
-  public byte[] getId() {
+  public UniqueID getId() {
     return id;
   }
 
@@ -48,6 +47,10 @@ public class RayInvocation {
 
   public RayActor<?> getActor() {
     return actor;
+  }
+
+  public RayRemote getRemoteAnnotation() {
+    return remoteAnnotation;
   }
 
 }

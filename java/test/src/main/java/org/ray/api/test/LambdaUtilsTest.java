@@ -12,6 +12,7 @@ import java.lang.invoke.SerializedLambda;
 import java.lang.reflect.Method;
 import java.util.concurrent.TimeUnit;
 import org.junit.Assert;
+import org.junit.Test;
 import org.ray.api.funcs.RayFunc_0_1;
 import org.ray.api.funcs.RayFunc_1_1;
 import org.ray.api.funcs.RayFunc_3_1;
@@ -43,7 +44,7 @@ public class LambdaUtilsTest {
     }
   }
 
-  //  @Test
+//  @Test
   public void testLambdaSer() throws Exception {
     testCall0(LambdaUtilsTest::call0);
     testCall1(LambdaUtilsTest::call1, Long.valueOf(System.currentTimeMillis()));
@@ -123,7 +124,7 @@ public class LambdaUtilsTest {
     long start = System.nanoTime();
     for (int i = 0; i < n; i++) {
       SerializedLambda lambda = LambdaUtils.getSerializedLambda(f, forceNew);
-      MethodId mid = MethodId.transferSerializedLambda(lambda, forceNew);
+      MethodId mid = MethodId.fromSerializedLambda(lambda, forceNew);
     }
     long end = System.nanoTime();
     System.out.println(String.format("remoteLambdaParse(new=%s):total=%sms, one=%s", forceNew,
@@ -163,7 +164,7 @@ public class LambdaUtilsTest {
 
   public static void testCall0(RayFunc_0_1 f) {
     SerializedLambda lambda = LambdaUtils.getSerializedLambda(f);
-    MethodId mid = MethodId.transferSerializedLambda(lambda);
+    MethodId mid = MethodId.fromSerializedLambda(lambda);
     System.out.println(mid);
     Assert.assertEquals(mid.load(), CALL0);
     Assert.assertTrue(mid.isStatic());
@@ -171,7 +172,7 @@ public class LambdaUtilsTest {
 
   public static <T, R> void testCall1(RayFunc_1_1<T, R> f, T t) {
     SerializedLambda lambda = LambdaUtils.getSerializedLambda(f);
-    MethodId mid = MethodId.transferSerializedLambda(lambda);
+    MethodId mid = MethodId.fromSerializedLambda(lambda);
     System.out.println(mid);
     Assert.assertEquals(mid.load(), CALL1);
     Assert.assertTrue(mid.isStatic());
@@ -179,7 +180,7 @@ public class LambdaUtilsTest {
 
   public static <T, R> void testCall2(RayFunc_1_1<T, R> f) {
     SerializedLambda lambda = LambdaUtils.getSerializedLambda(f);
-    MethodId mid = MethodId.transferSerializedLambda(lambda);
+    MethodId mid = MethodId.fromSerializedLambda(lambda);
     System.out.println(mid);
     Assert.assertEquals(mid.load(), CALL2);
     Assert.assertTrue(!mid.isStatic());
@@ -188,7 +189,7 @@ public class LambdaUtilsTest {
 
   public static <T0, T1, T2, R0> void testCall3(RayFunc_3_1<T0, T1, T2, R0> f) {
     SerializedLambda lambda = LambdaUtils.getSerializedLambda(f);
-    MethodId mid = MethodId.transferSerializedLambda(lambda);
+    MethodId mid = MethodId.fromSerializedLambda(lambda);
     System.out.println(mid);
     Assert.assertEquals(mid.load(), CALL3);
     Assert.assertTrue(!mid.isStatic());

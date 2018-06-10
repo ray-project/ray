@@ -1,19 +1,23 @@
 package org.ray.core;
 
-import java.lang.reflect.Method;
+import com.google.common.base.Preconditions;
 import java.util.concurrent.ConcurrentHashMap;
 import org.apache.commons.lang3.tuple.Pair;
 import org.ray.api.UniqueID;
 import org.ray.spi.RemoteFunctionManager;
 import org.ray.spi.model.FunctionArg;
+import org.ray.spi.model.RayActorMethods;
 import org.ray.spi.model.RayMethod;
-import org.ray.util.MethodId;
+import org.ray.spi.model.RayTaskMethods;
 import org.ray.util.logger.RayLog;
 
 /**
  * local function manager which pulls remote functions on demand
  */
 public class LocalFunctionManager {
+
+  private final RemoteFunctionManager remoteLoader;
+  private final ConcurrentHashMap<UniqueID, FunctionTable> functionTables = new ConcurrentHashMap<>();
 
   /**
    * initialize load function manager using remote function manager to pull remote functions on
@@ -23,63 +27,51 @@ public class LocalFunctionManager {
     this.remoteLoader = remoteLoader;
   }
 
-  private synchronized FunctionTable loadDriverFunctions(UniqueID driverId) {
+  private FunctionTable loadDriverFunctions(UniqueID driverId) {
     FunctionTable functionTable = functionTables.get(driverId);
-    if (null == functionTable) {
-      RayLog.core.debug("DriverId " + driverId + " Try to load functions");
-      LoadedFunctions funcs = remoteLoader.loadFunctions(driverId);
-      if (funcs == null) {
-        throw new RuntimeException("Cannot find resource for app " + driverId.toString());
+    if (functionTable == null) {
+      RayLog.core.info("DriverId " + driverId + " Try to load functions");
+      ClassLoader classLoader = remoteLoader.loadResource(driverId);
+      if (classLoader == null) {
+        throw new RuntimeException(
+            "Cannot find resource' classLoader for app " + driverId.toString());
       }
-      functionTable = new FunctionTable(funcs);
-      for (MethodId mid : functionTable.linkedFunctions.functions) {
-        Method m = mid.load(funcs.loader);
-        assert (m != null);
-        RayMethod v = new RayMethod(m);
-        v.check();
-        UniqueID k = new UniqueID(mid.getSha1Hash());
-        String logInfo =
-            "DriverId" + driverId + " load remote function " + m.getName() + ", hash = " + k
-                .toString();
-        RayLog.core.debug(logInfo);
-        functionTable.functions.put(k, v);
-      }
-
+      functionTable = new FunctionTable(classLoader);
       functionTables.put(driverId, functionTable);
-    }
-    // reSync automatically
-    else {
-      // more functions are loaded
-      if (functionTable.linkedFunctions.functions.size() > functionTable.functions.size()) {
-        for (MethodId mid : functionTable.linkedFunctions.functions) {
-          UniqueID k = new UniqueID(mid.getSha1Hash());
-          if (!functionTable.functions.containsKey(k)) {
-            Method m = mid.load();
-            assert (m != null);
-            RayMethod v = new RayMethod(m);
-            v.check();
-            functionTable.functions.put(k, v);
-          }
-        }
-      }
     }
     return functionTable;
   }
 
+  RayMethod getMethod(UniqueID driverId, UniqueID actorId,
+      UniqueID methodId, String className) {
+    //assert the driver's resource is load
+    FunctionTable functionTable = functionTables.get(driverId);
+    Preconditions.checkNotNull(functionTable, "driver's resource is not loaded:%s", driverId);
+    RayMethod method = actorId.isNil() ? functionTable.getTaskMethod(methodId, className)
+        : functionTable.getActorMethod(methodId, className);
+    Preconditions
+        .checkNotNull(method, "method not found, class=%s, methodId=%s, driverId=%s", className,
+            methodId, driverId);
+    return method;
+  }
   /**
    * get local method for executing, which pulls information from remote repo on-demand, therefore
    * it may block for a while if the related resources (e.g., jars) are not ready on local machine
    */
-  public Pair<ClassLoader, RayMethod> getMethod(UniqueID driverId, UniqueID methodId,
+  public Pair<ClassLoader, RayMethod> getMethod(UniqueID driverId, UniqueID actorId,
+      UniqueID methodId,
       FunctionArg[] args) throws NoSuchMethodException, SecurityException, ClassNotFoundException {
+    Preconditions.checkArgument(args.length >= 1, "method's args len %<=1", args.length);
     FunctionTable funcs = loadDriverFunctions(driverId);
-    final RayMethod m = funcs.functions.get(methodId);
+    String className = (String) Serializer.decode(args[args.length - 1].data);
+    final RayMethod m = actorId.isNil() ? funcs.getTaskMethod(methodId, className)
+        : funcs.getActorMethod(methodId, className);
     if (m == null) {
       throw new RuntimeException(
           "DriverId " + driverId + " load remote function methodId:" + methodId + " failed");
     }
-
-    return Pair.of(funcs.linkedFunctions.loader, m);
+    m.check();
+    return Pair.of(funcs.classLoader, m);
   }
 
   /**
@@ -89,20 +81,48 @@ public class LocalFunctionManager {
     FunctionTable funcs = functionTables.get(driverId);
     if (funcs != null) {
       functionTables.remove(driverId);
-      JarLoader.unloadJars(funcs.linkedFunctions.loader);
+      remoteLoader.unloadFunctions(driverId);
     }
   }
 
   private static class FunctionTable {
 
-    final ConcurrentHashMap<UniqueID, RayMethod> functions = new ConcurrentHashMap<>();
-    final LoadedFunctions linkedFunctions;
+    final ClassLoader classLoader;
+    final ConcurrentHashMap<String, RayTaskMethods> taskMethods = new ConcurrentHashMap<>();
+    final ConcurrentHashMap<String, RayActorMethods> actors = new ConcurrentHashMap<>();
 
-    FunctionTable(LoadedFunctions funcs) {
-      this.linkedFunctions = funcs;
+    FunctionTable(ClassLoader classLoader) {
+      this.classLoader = classLoader;
+    }
+
+    RayMethod getTaskMethod(UniqueID methodId, String className) {
+      RayTaskMethods tasks = taskMethods.get(className);
+      if (tasks == null) {
+        tasks = RayTaskMethods.formClass(className, classLoader);
+        RayLog.core.info("create RayTaskMethods:" + tasks);
+        taskMethods.put(className, tasks);
+        RayMethod m = tasks.functions.get(methodId);
+        if (m != null) {
+          return m;
+        }
+      }
+      //it is a actor static func
+      return getActorMethod(methodId, className, true);
+    }
+
+    RayMethod getActorMethod(UniqueID methodId, String className) {
+      return getActorMethod(methodId, className, false);
+    }
+
+    private RayMethod getActorMethod(UniqueID methodId, String className, boolean isStatic) {
+      RayActorMethods actor = actors.get(className);
+      if (actor == null) {
+        actor = RayActorMethods.formClass(className, classLoader);
+        RayLog.core.info("create RayActorMethods:" + actor);
+        actors.put(className, actor);
+      }
+      return isStatic ? actor.staticFunctions.get(methodId) : actor.functions.get(methodId);
     }
   }
 
-  private final RemoteFunctionManager remoteLoader;
-  private final ConcurrentHashMap<UniqueID, FunctionTable> functionTables = new ConcurrentHashMap<>();
 }

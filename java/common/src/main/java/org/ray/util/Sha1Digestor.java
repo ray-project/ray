@@ -29,9 +29,13 @@ public class Sha1Digestor {
     return dg.digest();
   }
 
-  public static byte[] getSha1Hash(String str) {
+  public static byte[] digest(String str) {
+    return digest(str.getBytes(StringUtil.UTF8));
+  }
+
+  public static byte[] digest(byte[] src) {
     MessageDigest dg = md.get();
     dg.reset();
-    return dg.digest(str.getBytes(StringUtil.UTF8));
+    return dg.digest(src);
   }
 }

@@ -36,10 +36,13 @@ public final class MethodId {
    */
 
   private static final ConcurrentHashMap<String, MethodId> MAP = new ConcurrentHashMap<>(256);
-  private final String className;
-  private final String methodName;
-  private final String methodDesc;
-  private final boolean isStatic;
+  /**
+   * format A.B.C.cname
+   */
+  public final String className;
+  public final String methodName;
+  public final String methodDesc;
+  public final boolean isStatic;
   private final String encoding;
 
   private final byte[] digest;
@@ -59,33 +62,57 @@ public final class MethodId {
         encoding(className, methodName, methodDesc, isStatic));
   }
 
+
   private static String encoding(String className, String methodName, String methodDesc,
       boolean isStatic) {
     StringBuilder sb = new StringBuilder(512);
-    sb.append(className).append('.').append(methodName).append("::").append(methodDesc).append("&&")
+    sb.append(className).append('/').append(methodName).append("::").append(methodDesc).append("&&")
         .append(isStatic);
     return sb.toString();
   }
 
-  public static MethodId transferSerializedLambda(SerializedLambda lambda) {
-    return transferSerializedLambda(lambda, false);
+  public static MethodId fromMethod(Method method, boolean forceNew) {
+    final boolean isstatic = Modifier.isStatic(method.getModifiers());
+    final String className = method.getDeclaringClass().getName();
+    final String methodName = method.getName();
+    final Type type = Type.getType(method);
+    final String methodDesc = type.getDescriptor();
+    final String encoding = encoding(className, methodName,
+        methodDesc, isstatic);
+    if (forceNew) {
+      return new MethodId(className, methodName,
+          methodDesc, isstatic, encoding);
+    }
+    MethodId m = MAP.get(encoding);
+    if (m == null) {
+      m = new MethodId(className, methodName,
+          methodDesc, isstatic, encoding);
+      MAP.putIfAbsent(encoding, m);
+      m = MAP.get(encoding);
+    }
+    return m;
   }
 
-  public static MethodId transferSerializedLambda(SerializedLambda lambda, boolean forceNew) {
+  public static MethodId fromSerializedLambda(SerializedLambda lambda) {
+    return fromSerializedLambda(lambda, false);
+  }
+
+  public static MethodId fromSerializedLambda(SerializedLambda lambda, boolean forceNew) {
     if (lambda.getCapturedArgCount() != 0) {
       throw new IllegalArgumentException("could not transfer a lambda which is closer");
     }
     //REF_invokeStatic
-    boolean isstatic = lambda.getImplMethodKind() == 6;
-    final String encoding = encoding(lambda.getImplClass(), lambda.getImplMethodName(),
+    final boolean isstatic = lambda.getImplMethodKind() == 6;
+    final String className = lambda.getImplClass().replace('/', '.');
+    final String encoding = encoding(className, lambda.getImplMethodName(),
         lambda.getImplMethodSignature(), isstatic);
-    if(forceNew){
-      return new MethodId(lambda.getImplClass(), lambda.getImplMethodName(),
+    if (forceNew) {
+      return new MethodId(className, lambda.getImplMethodName(),
           lambda.getImplMethodSignature(), isstatic, encoding);
     }
     MethodId m = MAP.get(encoding);
     if (m == null) {
-      m = new MethodId(lambda.getImplClass(), lambda.getImplMethodName(),
+      m = new MethodId(className, lambda.getImplMethodName(),
           lambda.getImplMethodSignature(), isstatic, encoding);
       MAP.putIfAbsent(encoding, m);
       m = MAP.get(encoding);
@@ -98,18 +125,17 @@ public final class MethodId {
   }
 
   public Method load(ClassLoader loader) {
-    String loadClsName = className.replace('/', '.');
-    Class<?> cls;
+    Class<?> cls = null;
     try {
       RayLog.core.debug(
-          "load class " + loadClsName + " from class loader " + (loader == null ? this.getClass()
+          "load class " + className + " from class loader " + (loader == null ? this.getClass()
               .getClassLoader() : loader)
               + " for method " + toString() + " with ID = " + toHexHashString()
       );
       cls = Class
-          .forName(loadClsName, true, loader == null ? this.getClass().getClassLoader() : loader);
+          .forName(className, true, loader == null ? this.getClass().getClassLoader() : loader);
     } catch (Throwable e) {
-      RayLog.core.error("Cannot load class " + loadClsName, e);
+      RayLog.core.error("Cannot load class " + className, e);
       return null;
     }
 
@@ -148,7 +174,7 @@ public final class MethodId {
   }
 
   private byte[] getSha1Hash0() {
-    byte[] digests = Sha1Digestor.getSha1Hash(encoding);
+    byte[] digests = Sha1Digestor.digest(encoding);
     ByteBuffer bb = ByteBuffer.wrap(digests);
     bb.order(ByteOrder.LITTLE_ENDIAN);
     if (methodName.contains("createActorStage1")) {
@@ -199,22 +225,6 @@ public final class MethodId {
   @Override
   public String toString() {
     return encoding;
-  }
-
-  public String getClassName() {
-    return className;
-  }
-
-  public String getMethodName() {
-    return methodName;
-  }
-
-  public String getMethodDesc() {
-    return methodDesc;
-  }
-
-  public boolean isStatic() {
-    return isStatic;
   }
 
 }

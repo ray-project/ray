@@ -101,13 +101,6 @@ public final class Ray extends Rpc {
     return impl;
   }
 
-  /**
-   * whether to use remote lambda
-   */
-  public static boolean isRemoteLambda() {
-    return impl.isRemoteLambda();
-  }
-
   private static RayApi impl = null;
 
   /**

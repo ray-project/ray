@@ -2,7 +2,6 @@ This directory contains the java worker, with the following components.
 
 -  java/api: Ray API definition
 -  java/common: utilities
--  java/hook: binary rewrite of the Java byte-code for remote execution
 -  java/runtime-common: common implementation of the runtime in worker
 -  java/runtime-dev: a pure-java mock implementation of the runtime for
    fast development
