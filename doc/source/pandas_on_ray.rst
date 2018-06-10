@@ -68,7 +68,7 @@ You can find an example on our recent `blog post`_ or on the
 `Jupyter Notebook`_ that we used to create the blog post.
 
 .. _`installation page`: http://ray.readthedocs.io/en/latest/installation.html
-.. _`here`: http://ray.readthedocs.io/en/latest/pandas_currently_supported.html
+.. _`here`: http://ray.readthedocs.io/en/latest/pandas_supported.html
 .. _`open an issue`: http://github.com/ray-project/ray/issues
 .. _`blog post`: http://rise.cs.berkeley.edu/blog/pandas-on-ray
 .. _`Jupyter Notebook`: http://gist.github.com/devin-petersohn/f424d9fb5579a96507c709a36d487f24#file-pandas_on_ray_blog_post_0-ipynb
