@@ -102,8 +102,7 @@ class CommonPolicyEvaluator(PolicyEvaluator):
             registry=None,
             env_config=None,
             model_config=None,
-            policy_config=None,
-            init_hook=None):
+            policy_config=None):
         """Initialize a policy evaluator.
 
         Arguments:
@@ -135,11 +134,7 @@ class CommonPolicyEvaluator(PolicyEvaluator):
             env_config (dict): Config to pass to the env creator.
             model_config (dict): Config to use when creating the policy model.
             policy_config (dict): Config to pass to the policy.
-            init_hook (func): Function to call on init.
         """
-
-        if init_hook:
-            init_hook(self)
 
         registry = registry or get_registry()
         env_config = env_config or {}
