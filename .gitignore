@@ -147,3 +147,9 @@ build
 
 # Vscode
 .vscode/
+
+*.iml
+java/test
+java/*/target
+java/target/
+java/run
