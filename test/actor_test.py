@@ -11,6 +11,7 @@ import time
 import unittest
 
 import ray
+import ray.ray_constants as ray_constants
 import ray.test.test_utils
 
 
@@ -1569,7 +1570,8 @@ class ActorReconstruction(unittest.TestCase):
         errors = ray.error_info()
         self.assertLess(0, len(errors))
         for error in errors:
-            self.assertEqual(error[b"type"], b"checkpoint")
+            self.assertEqual(error["type"],
+                             ray_constants.CHECKPOINT_PUSH_ERROR)
 
     @unittest.skipIf(
         os.environ.get('RAY_USE_NEW_GCS', False), "Hanging with new GCS API.")
@@ -1599,7 +1601,8 @@ class ActorReconstruction(unittest.TestCase):
         errors = ray.error_info()
         self.assertEqual(len(errors), 1)
         for error in errors:
-            self.assertEqual(error[b"type"], b"checkpoint")
+            self.assertEqual(error["type"],
+                             ray_constants.CHECKPOINT_PUSH_ERROR)
 
     @unittest.skip("Fork/join consistency not yet implemented.")
     def testDistributedHandle(self):

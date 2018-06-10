@@ -8,6 +8,8 @@ import ray
 import numpy as np
 import time
 
+import ray.ray_constants as ray_constants
+
 
 class TaskTests(unittest.TestCase):
     def testSubmittingTasks(self):
@@ -451,7 +453,8 @@ class ReconstructionTests(unittest.TestCase):
         errors = self.wait_for_errors(error_check)
         # Make sure all the errors have the correct type.
         self.assertTrue(
-            all(error[b"type"] == b"object_hash_mismatch" for error in errors))
+            all(error["type"] == ray_constants.HASH_MISMATCH_PUSH_ERROR
+                for error in errors))
 
     @unittest.skipIf(
         os.environ.get('RAY_USE_NEW_GCS', False), "Hanging with new GCS API.")
@@ -497,7 +500,8 @@ class ReconstructionTests(unittest.TestCase):
 
         errors = self.wait_for_errors(error_check)
         self.assertTrue(
-            all(error[b"type"] == b"put_reconstruction" for error in errors))
+            all(error["type"] == ray_constants.PUT_RECONSTRUCTION_PUSH_ERROR
+                for error in errors))
 
 
 class ReconstructionTestsMultinode(ReconstructionTests):
