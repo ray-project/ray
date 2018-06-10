@@ -468,8 +468,8 @@ void NodeManager::ProcessClientMessage(
       // Get the CPU resources required by the running task.
       const auto required_resources = task.GetTaskSpecification().GetRequiredResources();
       double required_cpus = required_resources.GetNumCpus();
-      const ResourceSet cpu_resources(std::unordered_map<std::string, double>(
-          {{kCPU_ResourceLabel, required_cpus}}));
+      const ResourceSet cpu_resources(
+          std::unordered_map<std::string, double>({{kCPU_ResourceLabel, required_cpus}}));
 
       // Check if we can reacquire the CPU resources.
       bool oversubscribed = !local_available_resources_.Contains(cpu_resources);
@@ -487,10 +487,11 @@ void NodeManager::ProcessClientMessage(
         // In this case, we simply don't reacquire the CPU resources for the worker.
         // The worker can keep running and when the task finishes, it will simply
         // not have any CPU resources to release.
-        RAY_LOG(WARNING) << "Resources oversubscribed: "
-                         << cluster_resource_map_[
-                                gcs_client_->client_table().GetLocalClientId()]
-                                    .GetAvailableResources().ToString();
+        RAY_LOG(WARNING)
+            << "Resources oversubscribed: "
+            << cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()]
+                   .GetAvailableResources()
+                   .ToString();
       }
 
       // Mark the task as running again.
