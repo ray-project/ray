@@ -28,6 +28,7 @@ import ray.services as services
 import ray.signature
 import ray.local_scheduler
 import ray.plasma
+import ray.ray_constants as ray_constants
 from ray.utils import random_string, binary_to_hex, is_cython
 
 # Import flatbuffer bindings.
@@ -415,7 +416,7 @@ class Worker(object):
                     if not warning_sent:
                         ray.utils.push_error_to_driver(
                             self.redis_client,
-                            "wait_for_class",
+                            ray_constants.WAIT_FOR_CLASS_PUSH_ERROR,
                             warning_message,
                             driver_id=self.task_driver_id.id())
                     warning_sent = True
@@ -637,6 +638,19 @@ class Worker(object):
             else:
                 del function.__globals__[function.__name__]
 
+        if len(pickled_function) > ray_constants.PICKLE_OBJECT_WARNING_SIZE:
+            warning_message = ("Warning: The remote function {} has size {} "
+                               "when pickled. It will be stored in Redis, "
+                               "which could cause memory issues. This may "
+                               "mean that the function definition uses a "
+                               "large array or other object.".format(
+                                   function_name, len(pickled_function)))
+            ray.utils.push_error_to_driver(
+                self.redis_client,
+                ray_constants.PICKLING_LARGE_OBJECT_PUSH_ERROR,
+                warning_message,
+                driver_id=self.task_driver_id.id())
+
         self.redis_client.hmset(
             key, {
                 "driver_id": self.task_driver_id.id(),
@@ -684,6 +698,22 @@ class Worker(object):
                 # In this case, the function has already been exported, so
                 # we don't need to export it again.
                 return
+
+            if (len(pickled_function) >
+                    ray_constants.PICKLE_OBJECT_WARNING_SIZE):
+                warning_message = ("Warning: The function {} has size {} when "
+                                   "pickled. It will be stored in Redis, "
+                                   "which could cause memory issues. This may "
+                                   "mean that the remote function definition "
+                                   "uses a large array or other object."
+                                   .format(function.__name__,
+                                           len(pickled_function)))
+                ray.utils.push_error_to_driver(
+                    self.redis_client,
+                    ray_constants.PICKLING_LARGE_OBJECT_PUSH_ERROR,
+                    warning_message,
+                    driver_id=self.task_driver_id.id())
+
             # Run the function on all workers.
             self.redis_client.hmset(
                 key, {
@@ -735,7 +765,7 @@ class Worker(object):
                     if not warning_sent:
                         ray.utils.push_error_to_driver(
                             self.redis_client,
-                            "wait_for_function",
+                            ray_constants.WAIT_FOR_FUNCTION_PUSH_ERROR,
                             warning_message,
                             driver_id=driver_id)
                     warning_sent = True
@@ -896,7 +926,7 @@ class Worker(object):
         # Log the error message.
         ray.utils.push_error_to_driver(
             self.redis_client,
-            "task",
+            ray_constants.TASK_PUSH_ERROR,
             str(failure_object),
             driver_id=self.task_driver_id.id(),
             data={
@@ -1132,6 +1162,11 @@ def error_info(worker=global_worker):
     for error_key in error_keys:
         if error_applies_to_driver(error_key, worker=worker):
             error_contents = worker.redis_client.hgetall(error_key)
+            error_contents = {
+                "type": error_contents[b"type"].decode("ascii"),
+                "message": error_contents[b"message"].decode("ascii"),
+                "data": error_contents[b"data"].decode("ascii")
+            }
             errors.append(error_contents)
 
     return errors
@@ -1823,7 +1858,7 @@ def fetch_and_register_remote_function(key, worker=global_worker):
         # Log the error message.
         ray.utils.push_error_to_driver(
             worker.redis_client,
-            "register_remote_function",
+            ray_constants.REGISTER_REMOTE_FUNCTION_PUSH_ERROR,
             traceback_str,
             driver_id=driver_id,
             data={
@@ -1868,7 +1903,7 @@ def fetch_and_execute_function_to_run(key, worker=global_worker):
                                      and hasattr(function, "__name__")) else ""
         ray.utils.push_error_to_driver(
             worker.redis_client,
-            "function_to_run",
+            ray_constants.FUNCTION_TO_RUN_PUSH_ERROR,
             traceback_str,
             driver_id=driver_id,
             data={"name": name})
@@ -2028,7 +2063,7 @@ def connect(info,
             traceback_str = traceback.format_exc()
             ray.utils.push_error_to_driver(
                 worker.redis_client,
-                "version_mismatch",
+                ray_constants.VERSION_MISMATCH_PUSH_ERROR,
                 traceback_str,
                 driver_id=None)
 

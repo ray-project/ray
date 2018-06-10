@@ -68,8 +68,7 @@ class MultiNodeTest(unittest.TestCase):
 
         # Make sure we got the error.
         self.assertEqual(len(ray.error_info()), 1)
-        self.assertIn(error_string1,
-                      ray.error_info()[0][b"message"].decode("ascii"))
+        self.assertIn(error_string1, ray.error_info()[0]["message"])
 
         # Start another driver and make sure that it does not receive this
         # error. Make the other driver throw an error, and make sure it
@@ -97,7 +96,7 @@ while len(ray.error_info()) != 1:
     time.sleep(0.1)
 assert len(ray.error_info()) == 1
 
-assert "{}" in ray.error_info()[0][b"message"].decode("ascii")
+assert "{}" in ray.error_info()[0]["message"]
 
 print("success")
 """.format(self.redis_address, error_string2, error_string2)
@@ -109,8 +108,7 @@ print("success")
         # Make sure that the other error message doesn't show up for this
         # driver.
         self.assertEqual(len(ray.error_info()), 1)
-        self.assertIn(error_string1,
-                      ray.error_info()[0][b"message"].decode("ascii"))
+        self.assertIn(error_string1, ray.error_info()[0]["message"])
 
     def testRemoteFunctionIsolation(self):
         # This test will run multiple remote functions with the same names in
