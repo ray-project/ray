@@ -8,6 +8,7 @@ import threading
 from ray.rllib.utils.async_vector_env import AsyncVectorEnv
 
 
+# TODO(ekl): implement log_action()
 class ServingEnv(threading.Thread):
     """Environment that provides policy serving.
 
@@ -29,6 +30,7 @@ class ServingEnv(threading.Thread):
         >>> agent = DQNAgent(env="my_env")
         >>> while True:
               print(agent.train())
+
     """
 
     def __init__(self, action_space, observation_space):
