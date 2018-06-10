@@ -75,8 +75,8 @@ public interface RayApi {
    * @param args arguments to this funcRun, can be its original form or RayObject<original-type>
    * @return a set of ray objects with their labels and return ids
    */
-  <R, RID> RayMap<RID, R> callWithReturnLabels(UniqueID taskId, Class<?> funcCls,
-      Serializable lambda, Collection<RID> returnids, Object... args);
+  <R, RIDT> RayMap<RIDT, R> callWithReturnLabels(UniqueID taskId, Class<?> funcCls,
+      Serializable lambda, Collection<RIDT> returnids, Object... args);
 
   /**
    * a special case for the above RID-based labeling as <0...returnCount - 1>.

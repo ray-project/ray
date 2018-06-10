@@ -9,6 +9,8 @@ public class StringUtil {
 
   public static final Charset UTF8 = Charset.forName("UTF-8");
 
+  private static final char[] HEX_CHARS = "0123456789abcdef".toCharArray();
+
   /**
    * split.
    * @param s         input string
@@ -120,14 +122,13 @@ public class StringUtil {
     return objs.length == 0 ? "" : sb.substring(0, sb.length() - concatenator.length());
   }
 
-  private static final char[] CHARS = "0123456789abcdef".toCharArray();
   public static String toHexHashString(byte[] id) {
     StringBuilder sb = new StringBuilder(20);
     assert (id.length == 20);
     for (int i = 0; i < 20; i++) {
       int val = id[i] & 0xff;
-      sb.append(CHARS[val >> 4]);
-      sb.append(CHARS[val & 0xf]);
+      sb.append(HEX_CHARS[val >> 4]);
+      sb.append(HEX_CHARS[val & 0xf]);
     }
     return sb.toString();
   }

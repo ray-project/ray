@@ -1,7 +1,3 @@
-/**
- * Alipay.com Inc.
- * Copyright (c) 2004-2018 All Rights Reserved.
- */
 package org.ray.api.test;
 
 import java.io.ByteArrayInputStream;
@@ -44,7 +40,7 @@ public class LambdaUtilsTest {
     }
   }
 
-//  @Test
+  @Test
   public void testLambdaSer() throws Exception {
     testCall0(LambdaUtilsTest::call0);
     testCall1(LambdaUtilsTest::call1, Long.valueOf(System.currentTimeMillis()));
@@ -82,7 +78,6 @@ public class LambdaUtilsTest {
     testRemoteLambdaSerde(LambdaUtilsTest::call3, 1, false, false);
     end = System.nanoTime();
     System.out.println("one sertime:" + (end - start));
-
 
     //test serde one new call's time, no class cache
     start = System.nanoTime();

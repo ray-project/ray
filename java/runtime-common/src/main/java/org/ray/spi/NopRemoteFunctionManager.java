@@ -3,7 +3,7 @@ package org.ray.spi;
 import org.ray.api.UniqueID;
 
 /**
- * mock version of remote function manager using local loaded jars
+ * mock version of remote function manager using local loaded jars.
  */
 public class NopRemoteFunctionManager implements RemoteFunctionManager {
 

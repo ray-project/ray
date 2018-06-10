@@ -1,7 +1,3 @@
-/**
- * Alipay.com Inc.
- * Copyright (c) 2004-2018 All Rights Reserved.
- */
 package org.ray.spi.model;
 
 import java.lang.reflect.Method;
@@ -27,18 +23,19 @@ public final class RayTaskMethods {
   public static RayTaskMethods formClass(String clazzName, ClassLoader classLoader) {
     try {
       Class clazz = Class.forName(clazzName, true, classLoader);
-      Method[] methods = clazz.getMethods();
+      Method[] methods = clazz.getDeclaredMethods();
       Map<UniqueID, RayMethod> functions = new HashMap<>(methods.length * 2);
 
       for (Method m : methods) {
         if (!Modifier.isStatic(m.getModifiers())) {
           continue;
         }
-        //task method only for static
+        //task method only for static.
         RayRemote remoteAnnotation = m.getAnnotation(RayRemote.class);
         if (remoteAnnotation == null) {
           continue;
         }
+        m.setAccessible(true);
         RayMethod rayMethod = RayMethod.from(m, null);
         functions.put(rayMethod.getFuncId(), rayMethod);
       }
@@ -50,7 +47,8 @@ public final class RayTaskMethods {
 
   @Override
   public String toString() {
-    return String.format("RayTaskMethods:%s, funcNum=%s", clazz, functions.size());
+    return String
+        .format("RayTaskMethods:%s, funcNum=%s:{%s}", clazz, functions.size(), functions.values());
   }
 
 }

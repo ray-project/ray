@@ -1,7 +1,3 @@
-/**
- * Alipay.com Inc.
- * Copyright (c) 2004-2018 All Rights Reserved.
- */
 package org.ray.util;
 
 import java.lang.invoke.SerializedLambda;
@@ -12,12 +8,10 @@ import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.concurrent.ConcurrentHashMap;
-import jdk.internal.org.objectweb.asm.Type;
+import org.objectweb.asm.Type;
 import org.ray.util.logger.RayLog;
 
-/**
- *
- */
+
 public final class MethodId {
 
   /**
@@ -32,7 +26,7 @@ public final class MethodId {
    * REF_invokeSpecial           = 7,
    * REF_newInvokeSpecial        = 8,
    * REF_invokeInterface         = 9,
-   * REF_LIMIT                  = 10;
+   * REF_LIMIT                  = 10.
    */
 
   private static final ConcurrentHashMap<String, MethodId> MAP = new ConcurrentHashMap<>(256);

@@ -52,7 +52,7 @@ public interface RemoteFunctionManager {
   void unregisterApp(UniqueID driverId);
 
   /**
-   * load resource
+   * load resource.
    */
   ClassLoader loadResource(UniqueID driverId);
 

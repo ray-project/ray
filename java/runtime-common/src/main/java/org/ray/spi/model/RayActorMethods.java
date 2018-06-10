@@ -1,7 +1,3 @@
-/**
- * Alipay.com Inc.
- * Copyright (c) 2004-2018 All Rights Reserved.
- */
 package org.ray.spi.model;
 
 import com.google.common.base.Preconditions;
@@ -20,7 +16,7 @@ public final class RayActorMethods {
   public final RayRemote remoteAnnotation;
   public final Map<UniqueID, RayMethod> functions;
   /**
-   * the static function in Actor, call as task
+   * the static function in Actor, call as task.
    */
   public final Map<UniqueID, RayMethod> staticFunctions;
 
@@ -37,12 +33,15 @@ public final class RayActorMethods {
       Class clazz = Class.forName(clazzName, true, classLoader);
       RayRemote remoteAnnotation = (RayRemote) clazz.getAnnotation(RayRemote.class);
       Preconditions
-          .checkNotNull(remoteAnnotation, "% must declare @RayRemote", clazzName);
-      Method[] methods = clazz.getMethods();
+          .checkNotNull(remoteAnnotation, "%s must declare @RayRemote", clazzName);
+      Method[] methods = clazz.getDeclaredMethods();
       Map<UniqueID, RayMethod> functions = new HashMap<>(methods.length * 2);
       Map<UniqueID, RayMethod> staticFunctions = new HashMap<>(methods.length * 2);
 
       for (Method m : methods) {
+        if (!Modifier.isPublic(m.getModifiers())) {
+          continue;
+        }
         RayMethod rayMethod = RayMethod.from(m, remoteAnnotation);
         if (Modifier.isStatic(m.getModifiers())) {
           staticFunctions.put(rayMethod.getFuncId(), rayMethod);
@@ -58,8 +57,10 @@ public final class RayActorMethods {
 
   @Override
   public String toString() {
-    return String.format("RayActorMethods:%s, funcNum=%s, sfuncNum=%s", clazz, functions.size(),
-        staticFunctions.size());
+    return String
+        .format("RayActorMethods:%s, funcNum=%s:{%s}, sfuncNum=%s:{%s}", clazz, functions.size(),
+            functions.values(),
+            staticFunctions.size(), staticFunctions.values());
   }
 
 }

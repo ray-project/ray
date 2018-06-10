@@ -1,7 +1,3 @@
-/**
- * Alipay.com Inc.
- * Copyright (c) 2004-2018 All Rights Reserved.
- */
 package org.ray.util;
 
 import java.io.Serializable;
@@ -15,11 +11,13 @@ import java.util.WeakHashMap;
 public final class LambdaUtils {
 
   /* use ThreadLocal to avoid lock. </br>
-   * the lamda class is dymainc create, maybe a lot of this named like CLASSNAME$$Lambda$1/2104457164.
+   * the lamda class is dymainc create, maybe a lot of this named like
+   * CLASSNAME$$Lambda$1/2104457164.
    * use WeakHashMap avoid oom
    */
-  private static final ThreadLocal<WeakHashMap<Class<Serializable>, SerializedLambda>> REPLACE_METHOD_MAPS = ThreadLocal
-      .withInitial(() -> new WeakHashMap<>());
+  private static final ThreadLocal<WeakHashMap<Class<Serializable>, SerializedLambda>>
+      REPLACE_METHOD_MAPS
+      = ThreadLocal.withInitial(() -> new WeakHashMap<>());
 
   private LambdaUtils() {
   }

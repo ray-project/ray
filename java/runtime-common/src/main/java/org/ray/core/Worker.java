@@ -126,8 +126,8 @@ public class Worker {
     return scheduler.submit(taskId, createActorId, ri, returnCount, false);
   }
 
-  public <R, RID> RayMap<RID, R> rpcWithReturnLabels(UniqueID taskId, Class<?> funcCls,
-      Serializable lambda, Collection<RID> returnids,
+  public <R, RIDT> RayMap<RIDT, R> rpcWithReturnLabels(UniqueID taskId, Class<?> funcCls,
+      Serializable lambda, Collection<RIDT> returnids,
       Object[] args) {
     MethodId mid = methodIdOf(lambda);
     if (taskId == null) {
@@ -158,10 +158,10 @@ public class Worker {
 
     RayMethod method = functions
         .getMethod(driverId, actor.getId(), new UniqueID(methodId.getSha1Hash()),
-            methodId.className);
+            methodId.className).getRight();
 
     RayInvocation ri = new RayInvocation(methodId.className, method.getFuncId(),
-        args, method.remoteAnnotation, actor);
+        ls, method.remoteAnnotation, actor);
     return ri;
   }
 

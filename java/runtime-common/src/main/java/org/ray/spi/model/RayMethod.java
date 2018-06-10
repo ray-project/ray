@@ -36,8 +36,11 @@ public class RayMethod {
     RayRemote remoteAnnotation = m.getAnnotation(RayRemote.class);
     MethodId mid = MethodId.fromMethod(m, false);
     UniqueID funcId = new UniqueID(mid.getSha1Hash());
-    return new RayMethod(m, remoteAnnotation != null ? remoteAnnotation : parentRemoteAnnotation,
+    RayMethod method = new RayMethod(m,
+        remoteAnnotation != null ? remoteAnnotation : parentRemoteAnnotation,
         funcId);
+    method.check();
+    return method;
   }
 
   @Override

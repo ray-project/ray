@@ -50,11 +50,6 @@
             <version>1.0</version>
         </dependency>
 
-        <dependency>
-            <groupId>org.ray</groupId>
-            <artifactId>ray-hook</artifactId>
-            <version>1.0</version>
-        </dependency>
     </dependencies>
     <build>
         <plugins>

@@ -10,13 +10,11 @@ import org.ray.api.UniqueID;
 public class RayInvocation {
 
   private static final RayActor<?> nil = new RayActor<>(UniqueID.nil, UniqueID.nil);
+  public final String className;
   /**
-   * unique id for a method
+   * unique id for a method.
    */
   private final UniqueID id;
-
-  public final String className;
-
   private final RayRemote remoteAnnotation;
   /**
    * function arguments.
@@ -26,7 +24,8 @@ public class RayInvocation {
 
   private RayActor<?> actor;
 
-  public RayInvocation(String className, UniqueID id, Object[] args, RayRemote remoteAnnotation, RayActor<?> actor) {
+  public RayInvocation(String className, UniqueID id, Object[] args, RayRemote remoteAnnotation,
+      RayActor<?> actor) {
     this.className = className;
     this.id = id;
     this.args = args;

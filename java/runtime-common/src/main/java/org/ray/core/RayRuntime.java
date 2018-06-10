@@ -19,7 +19,6 @@ import org.ray.api.RayObject;
 import org.ray.api.RayObjects;
 import org.ray.api.UniqueID;
 import org.ray.api.WaitResult;
-import org.ray.api.internal.Callable;
 import org.ray.core.model.RayParameters;
 import org.ray.spi.LocalSchedulerLink;
 import org.ray.spi.LocalSchedulerProxy;

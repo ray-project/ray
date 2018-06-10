@@ -44,18 +44,19 @@ public class LocalFunctionManager {
     return functionTable;
   }
 
-  RayMethod getMethod(UniqueID driverId, UniqueID actorId,
+  Pair<ClassLoader, RayMethod> getMethod(UniqueID driverId, UniqueID actorId,
       UniqueID methodId, String className) {
     //assert the driver's resource is load
-    FunctionTable functionTable = functionTables.get(driverId);
+    FunctionTable functionTable = loadDriverFunctions(driverId);
     Preconditions.checkNotNull(functionTable, "driver's resource is not loaded:%s", driverId);
     RayMethod method = actorId.isNil() ? functionTable.getTaskMethod(methodId, className)
         : functionTable.getActorMethod(methodId, className);
     Preconditions
         .checkNotNull(method, "method not found, class=%s, methodId=%s, driverId=%s", className,
             methodId, driverId);
-    return method;
+    return Pair.of(functionTable.classLoader, method);
   }
+
   /**
    * get local method for executing, which pulls information from remote repo on-demand, therefore
    * it may block for a while if the related resources (e.g., jars) are not ready on local machine
@@ -63,21 +64,13 @@ public class LocalFunctionManager {
   public Pair<ClassLoader, RayMethod> getMethod(UniqueID driverId, UniqueID actorId,
       UniqueID methodId,
       FunctionArg[] args) throws NoSuchMethodException, SecurityException, ClassNotFoundException {
-    Preconditions.checkArgument(args.length >= 1, "method's args len %<=1", args.length);
-    FunctionTable funcs = loadDriverFunctions(driverId);
+    Preconditions.checkArgument(args.length >= 1, "method's args len %s<=1", args.length);
     String className = (String) Serializer.decode(args[args.length - 1].data);
-    final RayMethod m = actorId.isNil() ? funcs.getTaskMethod(methodId, className)
-        : funcs.getActorMethod(methodId, className);
-    if (m == null) {
-      throw new RuntimeException(
-          "DriverId " + driverId + " load remote function methodId:" + methodId + " failed");
-    }
-    m.check();
-    return Pair.of(funcs.classLoader, m);
+    return getMethod(driverId, actorId, methodId, className);
   }
 
   /**
-   * unload the functions when the driver is declared dead
+   * unload the functions when the driver is declared dead.
    */
   public synchronized void removeApp(UniqueID driverId) {
     FunctionTable funcs = functionTables.get(driverId);
@@ -103,10 +96,10 @@ public class LocalFunctionManager {
         tasks = RayTaskMethods.formClass(className, classLoader);
         RayLog.core.info("create RayTaskMethods:" + tasks);
         taskMethods.put(className, tasks);
-        RayMethod m = tasks.functions.get(methodId);
-        if (m != null) {
-          return m;
-        }
+      }
+      RayMethod m = tasks.functions.get(methodId);
+      if (m != null) {
+        return m;
       }
       //it is a actor static func
       return getActorMethod(methodId, className, true);

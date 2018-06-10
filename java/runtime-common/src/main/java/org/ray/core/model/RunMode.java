@@ -13,7 +13,7 @@ public enum RunMode {
   }
 
   /**
-   * the jar has add to java -cp, no need to load jar after started
+   * the jar has add to java -cp, no need to load jar after started.
    */
   private final boolean devPathManager;
 
