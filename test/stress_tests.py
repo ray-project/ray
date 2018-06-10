@@ -12,6 +12,9 @@ import ray.ray_constants as ray_constants
 
 
 class TaskTests(unittest.TestCase):
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") == "1",
+        "This test does not work with xray yet.")
     def testSubmittingTasks(self):
         for num_local_schedulers in [1, 4]:
             for num_workers_per_scheduler in [4]:
@@ -41,6 +44,9 @@ class TaskTests(unittest.TestCase):
                 self.assertTrue(ray.services.all_processes_alive())
                 ray.worker.cleanup()
 
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") == "1",
+        "This test does not work with xray yet.")
     def testDependencies(self):
         for num_local_schedulers in [1, 4]:
             for num_workers_per_scheduler in [4]:
@@ -123,6 +129,9 @@ class TaskTests(unittest.TestCase):
         self.assertTrue(ray.services.all_processes_alive())
         ray.worker.cleanup()
 
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") == "1",
+        "This test does not work with xray yet.")
     def testWait(self):
         for num_local_schedulers in [1, 4]:
             for num_workers_per_scheduler in [4]:
@@ -158,6 +167,9 @@ class TaskTests(unittest.TestCase):
                 ray.worker.cleanup()
 
 
+@unittest.skipIf(
+    os.environ.get("RAY_USE_XRAY") == "1",
+    "This test does not work with xray yet.")
 class ReconstructionTests(unittest.TestCase):
 
     num_local_schedulers = 1
@@ -504,6 +516,9 @@ class ReconstructionTests(unittest.TestCase):
                 for error in errors))
 
 
+@unittest.skipIf(
+    os.environ.get("RAY_USE_XRAY") == "1",
+    "This test does not work with xray yet.")
 class ReconstructionTestsMultinode(ReconstructionTests):
 
     # Run the same tests as the single-node suite, but with 4 local schedulers,

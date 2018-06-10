@@ -82,6 +82,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       heartbeat_timer_(io_service),
       heartbeat_period_ms_(config.heartbeat_period_ms),
       local_resources_(config.resource_config),
+      local_available_resources_(config.resource_config),
       worker_pool_(config.num_initial_workers,
                    static_cast<int>(config.resource_config.GetNumCpus()),
                    config.worker_command),
@@ -321,14 +322,12 @@ void NodeManager::DispatchTasks() {
   if (scheduled_tasks.empty()) {
     return;
   }
-  const ClientID &my_client_id = gcs_client_->client_table().GetLocalClientId();
 
   for (const auto &task : scheduled_tasks) {
-    const auto &local_resources =
-        cluster_resource_map_[my_client_id].GetAvailableResources();
     const auto &task_resources = task.GetTaskSpecification().GetRequiredResources();
-    if (!task_resources.IsSubset(local_resources)) {
+    if (!local_available_resources_.Contains(task_resources)) {
       // Not enough local resources for this task right now, skip this task.
+      // TODO(rkn): We should always skip node managers that have 0 CPUs.
       continue;
     }
     // We have enough resources for this task. Assign task.
@@ -370,6 +369,8 @@ void NodeManager::ProcessClientMessage(
   case protocol::MessageType::DisconnectClient: {
     // Remove the dead worker from the pool and stop listening for messages.
     const std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
+
+    // This if statement distinguishes workers from drivers.
     if (worker) {
       // TODO(swang): Handle the case where the worker is killed while
       // executing a task. Clean up the assigned task's resources, return an
@@ -377,6 +378,22 @@ void NodeManager::ProcessClientMessage(
       // RAY_CHECK(worker->GetAssignedTaskId().is_nil())
       //    << "Worker died while executing task: " << worker->GetAssignedTaskId();
       worker_pool_.DisconnectWorker(worker);
+
+      const ClientID &client_id = gcs_client_->client_table().GetLocalClientId();
+
+      // Return the resources that were being used by this worker.
+      auto const &task_resources = worker->GetTaskResourceIds();
+      local_available_resources_.Release(task_resources);
+      cluster_resource_map_[client_id].Release(task_resources.ToResourceSet());
+      worker->ResetTaskResourceIds();
+
+      auto const &lifetime_resources = worker->GetLifetimeResourceIds();
+      local_available_resources_.Release(lifetime_resources);
+      cluster_resource_map_[client_id].Release(lifetime_resources.ToResourceSet());
+      worker->ResetLifetimeResourceIds();
+
+      // Since some resources may have been released, we can try to dispatch more tasks.
+      DispatchTasks();
     }
     return;
   } break;
@@ -420,9 +437,13 @@ void NodeManager::ProcessClientMessage(
           double required_cpus = required_resources.GetNumCpus();
           const std::unordered_map<std::string, double> cpu_resources = {
               {kCPU_ResourceLabel, required_cpus}};
+
           // Release the CPU resources.
+          auto const cpu_resource_ids = worker->ReleaseTaskCpuResources();
+          local_available_resources_.Release(cpu_resource_ids);
           RAY_CHECK(cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()]
                         .Release(ResourceSet(cpu_resources)));
+
           // Mark the task as blocked.
           local_queues_.QueueBlockedTasks(tasks);
           worker->MarkBlocked();
@@ -447,18 +468,32 @@ void NodeManager::ProcessClientMessage(
       // Get the CPU resources required by the running task.
       const auto required_resources = task.GetTaskSpecification().GetRequiredResources();
       double required_cpus = required_resources.GetNumCpus();
-      const std::unordered_map<std::string, double> cpu_resources = {
-          {kCPU_ResourceLabel, required_cpus}};
-      // Acquire the CPU resources.
-      bool oversubscribed =
-          !cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].Acquire(
-              ResourceSet(cpu_resources));
-      if (oversubscribed) {
-        const SchedulingResources &local_resources =
-            cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()];
-        RAY_LOG(WARNING) << "Resources oversubscribed: "
-                         << local_resources.GetAvailableResources().ToString();
+      const ResourceSet cpu_resources(
+          std::unordered_map<std::string, double>({{kCPU_ResourceLabel, required_cpus}}));
+
+      // Check if we can reacquire the CPU resources.
+      bool oversubscribed = !local_available_resources_.Contains(cpu_resources);
+
+      if (!oversubscribed) {
+        // Reacquire the CPU resources for the worker. Note that care needs to be
+        // taken if the user is using the specific CPU IDs since the IDs that we
+        // reacquire here may be different from the ones that the task started with.
+        auto const resource_ids = local_available_resources_.Acquire(cpu_resources);
+        worker->AcquireTaskCpuResources(resource_ids);
+        RAY_CHECK(
+            cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].Acquire(
+                cpu_resources));
+      } else {
+        // In this case, we simply don't reacquire the CPU resources for the worker.
+        // The worker can keep running and when the task finishes, it will simply
+        // not have any CPU resources to release.
+        RAY_LOG(WARNING)
+            << "Resources oversubscribed: "
+            << cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()]
+                   .GetAvailableResources()
+                   .ToString();
       }
+
       // Mark the task as running again.
       local_queues_.QueueRunningTasks(tasks);
       worker->MarkUnblocked();
@@ -512,6 +547,11 @@ void NodeManager::ProcessNodeManagerMessage(TcpClientConnection &node_manager_cl
     RAY_LOG(DEBUG) << "got task " << task.GetTaskSpecification().TaskId()
                    << " spillback=" << task.GetTaskExecutionSpecReadonly().NumForwards();
     SubmitTask(task, uncommitted_lineage);
+  } break;
+  case protocol::MessageType::DisconnectClient: {
+    // TODO(rkn): We need to do some cleanup here.
+    RAY_LOG(INFO) << "Received disconnect message from remote node manager. "
+                  << "We need to do some cleanup here.";
   } break;
   default:
     RAY_LOG(FATAL) << "Received unexpected message type " << message_type;
@@ -670,18 +710,32 @@ void NodeManager::AssignTask(Task &task) {
 
   RAY_LOG(DEBUG) << "Assigning task to worker with pid " << worker->Pid();
   flatbuffers::FlatBufferBuilder fbb;
+
+  const ClientID &my_client_id = gcs_client_->client_table().GetLocalClientId();
+
+  // Resource accounting: acquire resources for the assigned task.
+  auto acquired_resources =
+      local_available_resources_.Acquire(spec.GetRequiredResources());
+  RAY_CHECK(
+      this->cluster_resource_map_[my_client_id].Acquire(spec.GetRequiredResources()));
+
+  if (spec.IsActorCreationTask()) {
+    worker->SetLifetimeResourceIds(acquired_resources);
+  } else {
+    worker->SetTaskResourceIds(acquired_resources);
+  }
+
+  ResourceIdSet resource_id_set =
+      worker->GetTaskResourceIds().Plus(worker->GetLifetimeResourceIds());
+  auto resource_id_set_flatbuf = resource_id_set.ToFlatbuf(fbb);
+
   auto message = protocol::CreateGetTaskReply(fbb, spec.ToFlatbuffer(fbb),
-                                              fbb.CreateVector(std::vector<int>()));
+                                              fbb.CreateVector(resource_id_set_flatbuf));
   fbb.Finish(message);
   auto status = worker->Connection()->WriteMessage(
       static_cast<int64_t>(protocol::MessageType::ExecuteTask), fbb.GetSize(),
       fbb.GetBufferPointer());
   if (status.ok()) {
-    // Resource accounting: acquire resources for the assigned task.
-    const ClientID &my_client_id = gcs_client_->client_table().GetLocalClientId();
-    RAY_CHECK(
-        this->cluster_resource_map_[my_client_id].Acquire(spec.GetRequiredResources()));
-
     // We successfully assigned the task to the worker.
     worker->AssignTaskId(spec.TaskId());
     // If the task was an actor task, then record this execution to guarantee
@@ -715,7 +769,7 @@ void NodeManager::AssignTask(Task &task) {
     // We failed to send the task to the worker, so disconnect the worker.
     ProcessClientMessage(worker->Connection(),
                          static_cast<int64_t>(protocol::MessageType::DisconnectClient),
-                         NULL);
+                         nullptr);
     // Queue this task for future assignment. The task will be assigned to a
     // worker once one becomes available.
     local_queues_.QueueScheduledTasks(std::vector<Task>({task}));
@@ -751,6 +805,9 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
     // lifetime of the actor, so we do not release any resources here.
   } else {
     // Release task's resources.
+    local_available_resources_.Release(worker.GetTaskResourceIds());
+    worker.ResetTaskResourceIds();
+
     RAY_CHECK(this->cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()]
                   .Release(task.GetTaskSpecification().GetRequiredResources()));
   }
