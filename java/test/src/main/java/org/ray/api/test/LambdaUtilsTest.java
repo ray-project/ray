@@ -167,7 +167,7 @@ public class LambdaUtilsTest {
     MethodId mid = MethodId.fromSerializedLambda(lambda);
     System.out.println(mid);
     Assert.assertEquals(mid.load(), CALL0);
-    Assert.assertTrue(mid.isStatic());
+    Assert.assertTrue(mid.isStatic);
   }
 
   public static <T, R> void testCall1(RayFunc_1_1<T, R> f, T t) {
@@ -175,7 +175,7 @@ public class LambdaUtilsTest {
     MethodId mid = MethodId.fromSerializedLambda(lambda);
     System.out.println(mid);
     Assert.assertEquals(mid.load(), CALL1);
-    Assert.assertTrue(mid.isStatic());
+    Assert.assertTrue(mid.isStatic);
   }
 
   public static <T, R> void testCall2(RayFunc_1_1<T, R> f) {
@@ -183,7 +183,7 @@ public class LambdaUtilsTest {
     MethodId mid = MethodId.fromSerializedLambda(lambda);
     System.out.println(mid);
     Assert.assertEquals(mid.load(), CALL2);
-    Assert.assertTrue(!mid.isStatic());
+    Assert.assertTrue(!mid.isStatic);
   }
 
 
@@ -192,7 +192,7 @@ public class LambdaUtilsTest {
     MethodId mid = MethodId.fromSerializedLambda(lambda);
     System.out.println(mid);
     Assert.assertEquals(mid.load(), CALL3);
-    Assert.assertTrue(!mid.isStatic());
+    Assert.assertTrue(!mid.isStatic);
   }
 
   public static String call0() {

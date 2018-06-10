@@ -55,6 +55,4 @@ public class NopRemoteFunctionManager implements RemoteFunctionManager {
     // never
     //assert (startupDriverId().equals(driverId));
   }
-
-
 }

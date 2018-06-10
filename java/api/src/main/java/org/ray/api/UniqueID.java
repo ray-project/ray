@@ -1,6 +1,5 @@
 package org.ray.api;
 
-
 import java.io.Serializable;
 import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
@@ -13,10 +12,9 @@ import org.ray.util.StringUtil;
  */
 public class UniqueID implements Serializable {
 
-  private static final long serialVersionUID = 8588849129675565761L;
-
   public static final int LENGTH = 20;
-
+  public static final UniqueID nil = genNil();
+  private static final long serialVersionUID = 8588849129675565761L;
   byte[] id;
 
   public UniqueID(byte[] id) {
@@ -43,16 +41,32 @@ public class UniqueID implements Serializable {
     }
   }
 
+
   @Override
   public String toString() {
     return StringUtil.toHexHashString(id);
+  }
+
+  public static UniqueID genNil() {
+    byte[] b = new byte[LENGTH];
+    for (int i = 0; i < b.length; i++) {
+      b[i] = (byte) 0xFF;
+    }
+
+    return new UniqueID(b);
+  }
+
+  public static UniqueID randomId() {
+    byte[] b = new byte[LENGTH];
+    new Random().nextBytes(b);
+    return new UniqueID(b);
   }
 
   public byte[] getBytes() {
     return id;
   }
 
-  public ByteBuffer ToByteBuffer() {
+  public ByteBuffer toByteBuffer() {
     return ByteBuffer.wrap(id);
   }
 
@@ -92,22 +106,5 @@ public class UniqueID implements Serializable {
       }
     }
     return true;
-  }
-
-  public static final UniqueID nil = genNil();
-
-  public static UniqueID genNil() {
-    byte[] b = new byte[LENGTH];
-    for (int i = 0; i < b.length; i++) {
-      b[i] = (byte) 0xFF;
-    }
-
-    return new UniqueID(b);
-  }
-
-  public static UniqueID randomID() {
-    byte[] b = new byte[LENGTH];
-    new Random().nextBytes(b);
-    return new UniqueID(b);
   }
 }

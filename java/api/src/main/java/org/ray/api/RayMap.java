@@ -32,15 +32,8 @@ public class RayMap<K, V> extends HashMap<K, V> {
   }
 
   @Override
-  public boolean containsKey(Object key) {
-    //throw new UnsupportedOperationException();
-    return ids.containsKey(key);
-  }
-
-  @Override
-  public boolean containsValue(Object value) {
-    //throw new UnsupportedOperationException();
-    return ids.containsValue(value);
+  public V get(Object key) {
+    return ids.get(key).get();
   }
 
   // TODO: try to use multiple get
@@ -52,26 +45,10 @@ public class RayMap<K, V> extends HashMap<K, V> {
     return objs;
   }
 
-  public <TM> Map<K, TM> getMeta() {
-    Map<K, TM> metas = new HashMap<>();
-    for (Map.Entry<K, RayObject<V>> id : ids.entrySet()) {
-      TM meta = id.getValue().getMeta();
-      metas.put(id.getKey(), meta);
-    }
-    return metas;
-  }
-
   @Override
-  public V get(Object key) {
-    return ids.get(key).get();
-  }
-
-  public <TM> TM getMeta(K key) {
-    return ids.get(key).getMeta();
-  }
-
-  public RayObject<V> Get(K key) {
-    return ids.get(key);
+  public boolean containsKey(Object key) {
+    //throw new UnsupportedOperationException();
+    return ids.containsKey(key);
   }
 
   @RayDisabled
@@ -88,18 +65,14 @@ public class RayMap<K, V> extends HashMap<K, V> {
   @RayDisabled
   @Deprecated
   @Override
-  public V remove(Object key) {
+  public void putAll(Map<? extends K, ? extends V> m) {
     throw new UnsupportedOperationException();
-  }
-
-  public RayObject<V> Remove(K key) {
-    return ids.remove(key);
   }
 
   @RayDisabled
   @Deprecated
   @Override
-  public void putAll(Map<? extends K, ? extends V> m) {
+  public V remove(Object key) {
     throw new UnsupportedOperationException();
   }
 
@@ -107,6 +80,12 @@ public class RayMap<K, V> extends HashMap<K, V> {
   public void clear() {
     //throw new UnsupportedOperationException();
     ids.clear();
+  }
+
+  @Override
+  public boolean containsValue(Object value) {
+    //throw new UnsupportedOperationException();
+    return ids.containsValue(value);
   }
 
   @Override
@@ -121,15 +100,36 @@ public class RayMap<K, V> extends HashMap<K, V> {
     throw new UnsupportedOperationException();
   }
 
-  public Collection<RayObject<V>> Values() {
-    return ids.values();
-  }
-
   @RayDisabled
   @Deprecated
   @Override
   public Set<java.util.Map.Entry<K, V>> entrySet() {
     throw new UnsupportedOperationException();
+  }
+
+  public <TMT> Map<K, TMT> getMeta() {
+    Map<K, TMT> metas = new HashMap<>();
+    for (Map.Entry<K, RayObject<V>> id : ids.entrySet()) {
+      TMT meta = id.getValue().getMeta();
+      metas.put(id.getKey(), meta);
+    }
+    return metas;
+  }
+
+  public <TMT> TMT getMeta(K key) {
+    return ids.get(key).getMeta();
+  }
+
+  public RayObject<V> Get(K key) {
+    return ids.get(key);
+  }
+
+  public RayObject<V> Remove(K key) {
+    return ids.remove(key);
+  }
+
+  public Collection<RayObject<V>> Values() {
+    return ids.values();
   }
 
   public Set<java.util.Map.Entry<K, RayObject<V>>> EntrySet() {

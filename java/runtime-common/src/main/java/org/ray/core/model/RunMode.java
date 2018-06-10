@@ -5,6 +5,7 @@ public enum RunMode {
   SINGLE_BOX(true, true),      // dev path, native runtime
   CLUSTER(false, true);        // deploy path, naive runtime
 
+
   RunMode(boolean devPathManager,
       boolean nativeRuntime) {
     this.devPathManager = devPathManager;
@@ -19,7 +20,7 @@ public enum RunMode {
   private final boolean nativeRuntime;
 
   /**
-   * Getter method for property <tt>devPathManager</tt>
+   * Getter method for property <tt>devPathManager</tt>.
    *
    * @return property value of devPathManager
    */
@@ -28,7 +29,7 @@ public enum RunMode {
   }
 
   /**
-   * Getter method for property <tt>nativeRuntime</tt>
+   * Getter method for property <tt>nativeRuntime</tt>.
    *
    * @return property value of nativeRuntime
    */

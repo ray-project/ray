@@ -4,7 +4,7 @@ package org.ray.api.returns;
 public class MultipleReturns2<R0, R1> extends MultipleReturns {
 
   public MultipleReturns2(R0 r0, R1 r1) {
-    super(new Object[]{r0, r1});
+    super(new Object[] {r0, r1});
   }
 
   public R0 get0() {

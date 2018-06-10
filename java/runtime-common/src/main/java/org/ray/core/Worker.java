@@ -73,6 +73,7 @@ public class Worker {
 
   }
 
+
   private RayObjects taskSubmit(UniqueID taskId,
       MethodId methodId,
       int returnCount,
@@ -170,11 +171,11 @@ public class Worker {
     return mid;
   }
 
-  public UniqueID getCurrentTaskID() {
+  public UniqueID getCurrentTaskId() {
     return WorkerContext.currentTask().taskId;
   }
 
-  public UniqueID getCurrentTaskNextPutID() {
+  public UniqueID getCurrentTaskNextPutId() {
     return UniqueIdHelper.taskComputePutId(
         WorkerContext.currentTask().taskId, WorkerContext.nextPutIndex());
   }

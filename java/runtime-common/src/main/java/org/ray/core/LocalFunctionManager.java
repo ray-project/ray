@@ -12,16 +12,18 @@ import org.ray.spi.model.RayTaskMethods;
 import org.ray.util.logger.RayLog;
 
 /**
- * local function manager which pulls remote functions on demand
+ * local function manager which pulls remote functions on demand.
  */
 public class LocalFunctionManager {
 
   private final RemoteFunctionManager remoteLoader;
-  private final ConcurrentHashMap<UniqueID, FunctionTable> functionTables = new ConcurrentHashMap<>();
+
+  private final ConcurrentHashMap<UniqueID, FunctionTable> functionTables
+      = new ConcurrentHashMap<>();
 
   /**
    * initialize load function manager using remote function manager to pull remote functions on
-   * demand
+   * demand.
    */
   public LocalFunctionManager(RemoteFunctionManager remoteLoader) {
     this.remoteLoader = remoteLoader;
@@ -124,5 +126,4 @@ public class LocalFunctionManager {
       return isStatic ? actor.staticFunctions.get(methodId) : actor.functions.get(methodId);
     }
   }
-
 }

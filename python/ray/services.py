@@ -1464,7 +1464,7 @@ def start_ray_processes(address_info=None,
         # Start any raylets that do not exist yet.
         for i in range(len(raylet_socket_names), num_local_schedulers):
             raylet_stdout_file, raylet_stderr_file = new_log_files(
-                "raylet_{}".format(i), redirect_output=redirect_output)
+                "raylet_{}".format(i), redirect_output=redirect_worker_output)
             address_info["raylet_socket_names"].append(
                 start_raylet(
                     redis_address,

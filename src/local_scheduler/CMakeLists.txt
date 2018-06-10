@@ -50,7 +50,7 @@ set(LOCAL_SCHEDULER_FBS_OUTPUT_FILES
 
 add_custom_command(
   OUTPUT ${LOCAL_SCHEDULER_FBS_OUTPUT_FILES}
-  COMMAND ${FLATBUFFERS_COMPILER} -c -o ${OUTPUT_DIR} ${LOCAL_SCHEDULER_FBS_SRC} --gen-object-api
+  COMMAND ${FLATBUFFERS_COMPILER} -c -o ${OUTPUT_DIR} ${LOCAL_SCHEDULER_FBS_SRC} --gen-object-api --scoped-enums
   DEPENDS ${FBS_DEPENDS}
   COMMENT "Running flatc compiler on ${LOCAL_SCHEDULER_FBS_SRC}"
   VERBATIM)
@@ -70,24 +70,29 @@ add_executable(local_scheduler_tests test/local_scheduler_tests.cc local_schedul
 target_link_libraries(local_scheduler_tests local_scheduler_client common ${HIREDIS_LIB} ${PLASMA_STATIC_LIB} ray_static ${ARROW_STATIC_LIB} -lpthread ${Boost_SYSTEM_LIBRARY})
 target_compile_options(local_scheduler_tests PUBLIC "-DLOCAL_SCHEDULER_TEST")
 
+macro(get_local_scheduler_library LANG VAR)
+  set(${VAR} "local_scheduler_library_${LANG}")
+endmacro()
+
 macro(set_local_scheduler_library LANG)
+  get_local_scheduler_library(${LANG} LOCAL_SCHEDULER_LIBRARY_LANG)
   include_directories("${CMAKE_CURRENT_LIST_DIR}/../common/lib/${LANG}/")
 
   file(GLOB LOCAL_SCHEDULER_LIBRARY_${LANG}_SRC
     lib/${LANG}/*.cc
     ${CMAKE_CURRENT_LIST_DIR}/../common/lib/${LANG}/*.cc)
-  add_library(local_scheduler_library_${LANG} SHARED
+  add_library(${LOCAL_SCHEDULER_LIBRARY_LANG} SHARED
     ${LOCAL_SCHEDULER_LIBRARY_${LANG}_SRC})
 
     if(APPLE)
-      target_link_libraries(local_scheduler_library_${LANG} "-undefined dynamic_lookup" local_scheduler_client common ray_static ${PLASMA_STATIC_LIB} ${ARROW_STATIC_LIB} ${Boost_SYSTEM_LIBRARY})
+      target_link_libraries(${LOCAL_SCHEDULER_LIBRARY_LANG} "-undefined dynamic_lookup" local_scheduler_client common ray_static ${PLASMA_STATIC_LIB} ${ARROW_STATIC_LIB} ${Boost_SYSTEM_LIBRARY})
     else(APPLE)
-      target_link_libraries(local_scheduler_library_${LANG} local_scheduler_client common ray_static ${PLASMA_STATIC_LIB} ${ARROW_STATIC_LIB} ${Boost_SYSTEM_LIBRARY})
+      target_link_libraries(${LOCAL_SCHEDULER_LIBRARY_LANG} local_scheduler_client common ray_static ${PLASMA_STATIC_LIB} ${ARROW_STATIC_LIB} ${Boost_SYSTEM_LIBRARY})
     endif(APPLE)
 
-  add_dependencies(local_scheduler_library_${LANG} gen_local_scheduler_fbs)
+  add_dependencies(${LOCAL_SCHEDULER_LIBRARY_LANG} gen_local_scheduler_fbs)
 
-  install(TARGETS local_scheduler_library_${LANG} DESTINATION ${CMAKE_SOURCE_DIR}/local_scheduler)
+  install(TARGETS ${LOCAL_SCHEDULER_LIBRARY_LANG} DESTINATION ${CMAKE_SOURCE_DIR}/local_scheduler)
 endmacro()
 
 if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")

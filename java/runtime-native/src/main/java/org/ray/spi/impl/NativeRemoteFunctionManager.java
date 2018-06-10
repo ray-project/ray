@@ -14,7 +14,7 @@ import org.ray.util.SystemUtil;
 import org.ray.util.logger.RayLog;
 
 /**
- * native implementation of remote function manager
+ * native implementation of remote function manager.
  */
 public class NativeRemoteFunctionManager implements RemoteFunctionManager {
 
@@ -22,6 +22,7 @@ public class NativeRemoteFunctionManager implements RemoteFunctionManager {
   private MessageDigest md;
   private final String appDir = System.getProperty("user.dir") + "/apps";
   private final KeyValueStoreLink kvStore;
+
 
   public NativeRemoteFunctionManager(KeyValueStoreLink kvStore) throws NoSuchAlgorithmException {
     this.kvStore = kvStore;
@@ -41,33 +42,34 @@ public class NativeRemoteFunctionManager implements RemoteFunctionManager {
     UniqueID resourceId = new UniqueID(digest);
 
     // TODO: resources must be saved in persistent store
-    kvStore.Set(resourceId.getBytes(), resourceZip, null);
+    kvStore.set(resourceId.getBytes(), resourceZip, null);
+
     return resourceId;
   }
 
   @Override
   public byte[] getResource(UniqueID resourceId) {
-    return kvStore.Get(resourceId.getBytes(), null);
+    return kvStore.get(resourceId.getBytes(), null);
   }
 
   @Override
   public void unregisterResource(UniqueID resourceId) {
-    kvStore.Delete(resourceId.getBytes(), null);
+    kvStore.delete(resourceId.getBytes(), null);
   }
 
   @Override
   public void registerApp(UniqueID driverId, UniqueID resourceId) {
-    kvStore.Set("App2ResMap", resourceId.toString(), driverId.toString());
+    kvStore.set("App2ResMap", resourceId.toString(), driverId.toString());
   }
 
   @Override
   public UniqueID getAppResourceId(UniqueID driverId) {
-    return new UniqueID(kvStore.Get("App2ResMap", driverId.toString()));
+    return new UniqueID(kvStore.get("App2ResMap", driverId.toString()));
   }
 
   @Override
   public void unregisterApp(UniqueID driverId) {
-    kvStore.Delete("App2ResMap", driverId.toString());
+    kvStore.delete("App2ResMap", driverId.toString());
   }
 
   @Override
@@ -87,9 +89,10 @@ public class NativeRemoteFunctionManager implements RemoteFunctionManager {
   private ClassLoader initLoadedApps(UniqueID driverId) {
     try {
       RayLog.core.info("initLoadedApps" + driverId.toString());
+
       ClassLoader cl = loadedApps.get(driverId);
       if (cl == null) {
-        UniqueID resId = new UniqueID(kvStore.Get("App2ResMap", driverId.toString()));
+        UniqueID resId = new UniqueID(kvStore.get("App2ResMap", driverId.toString()));
         byte[] res = getResource(resId);
         if (res == null) {
           throw new RuntimeException("get resource null, the resId " + resId.toString());
@@ -125,5 +128,4 @@ public class NativeRemoteFunctionManager implements RemoteFunctionManager {
       RayLog.rapp.error("unload function for " + driverId + " failed, ex = " + e.getMessage(), e);
     }
   }
-
 }

@@ -15,78 +15,9 @@ import org.ray.util.logger.RayLog;
 
 public abstract class RayBenchmarkTest<T> implements Serializable {
 
-  private static final long serialVersionUID = 416045641835782523L;
-
   //not thread safe ,but we only have one thread here
   public static final DecimalFormat df = new DecimalFormat("00.00");
-
-  private static void printList(List<Long> list) {
-    int len = list.size();
-    int middle = len / 2;
-    int almostHundred = (int) (len * 0.9999);
-    int ninetyNine = (int) (len * 0.99);
-    int ninetyFive = (int) (len * 0.95);
-    int ninety = (int) (len * 0.9);
-    int fifty = (int) (len * 0.5);
-
-    RayLog.core.error("Final result of rt as below:");
-    RayLog.core.error("max: " + list.get(len - 1) + "μs");
-    RayLog.core.error("min: " + list.get(0) + "μs");
-    RayLog.core.error("median: " + list.get(middle) + "μs");
-    RayLog.core.error("99.99% data smaller than: " + list.get(almostHundred) + "μs");
-    RayLog.core.error("99% data smaller than: " + list.get(ninetyNine) + "μs");
-    RayLog.core.error("95% data smaller than: " + list.get(ninetyFive) + "μs");
-    RayLog.core.error("90% data smaller than: " + list.get(ninety) + "μs");
-    RayLog.core.error("50% data smaller than: " + list.get(fifty) + "μs");
-  }
-
-  public void singleLatencyTest(int times, RayActor rayActor) {
-
-    List<Long> counterList = new ArrayList<>();
-    for (int i = 0; i < times; i++) {
-      long startTime = System.nanoTime();
-      RayObject<RemoteResult<T>> rayObject = rayCall(rayActor);
-      RemoteResult<T> remoteResult = rayObject.get();
-      T t = remoteResult.getResult();
-      long endTime = System.nanoTime();
-      long costTime = endTime - startTime;
-      counterList.add(costTime / 1000);
-      RayLog.core.warn("SINGLE_LATENCY_cost_time: " + costTime + " us");
-      Assert.assertTrue(checkResult(t));
-    }
-    Collections.sort(counterList);
-    printList(counterList);
-  }
-
-  public void rateLimiterPressureTest(PressureTestParameter pressureTestParameter) {
-
-    pressureTestParameter.setPressureTestType(PressureTestType.RATE_LIMITER);
-    notSinglePressTest(pressureTestParameter);
-  }
-
-  public void maxPressureTest(PressureTestParameter pressureTestParameter) {
-
-    pressureTestParameter.setPressureTestType(PressureTestType.MAX);
-    notSinglePressTest(pressureTestParameter);
-  }
-
-  private void notSinglePressTest(PressureTestParameter pressureTestParameter) {
-
-    List<Long> counterList = new ArrayList<>();
-    int clientNum = pressureTestParameter.getClientNum();
-    RayObject<List<Long>>[] rayObjects = new RayObject[clientNum];
-
-    for (int i = 0; i < clientNum; i++) {
-      rayObjects[i] = Ray.call(RayBenchmarkTest::singleClient, pressureTestParameter);
-    }
-    for (int i = 0; i < clientNum; i++) {
-      List<Long> subCounterList = rayObjects[i].get();
-      Assert.assertNotNull(subCounterList);
-      counterList.addAll(subCounterList);
-    }
-    Collections.sort(counterList);
-    printList(counterList);
-  }
+  private static final long serialVersionUID = 416045641835782523L;
 
   @RayRemote
   private static List<Long> singleClient(PressureTestParameter pressureTestParameter) {
@@ -117,10 +48,6 @@ public abstract class RayBenchmarkTest<T> implements Serializable {
         if (rateLimiter != null) {
           rateLimiter.acquire();
         }
-//                Date currentTime = new Date();
-//                String dateString = formatter.format(currentTime);
-//                RayLog.core.info(logPrefix + "_startTime: " + dateString);
-
         RemoteResultWrapper temp = new RemoteResultWrapper();
         temp.setStartTime(System.nanoTime());
         temp.setRayObject(rayBenchmarkTest.rayCall(pressureTestParameter.getRayActor()));
@@ -145,8 +72,76 @@ public abstract class RayBenchmarkTest<T> implements Serializable {
     }
   }
 
-  abstract public RayObject<RemoteResult<T>> rayCall(RayActor rayActor);
+  public void singleLatencyTest(int times, RayActor rayActor) {
 
-  abstract public boolean checkResult(T t);
+    List<Long> counterList = new ArrayList<>();
+    for (int i = 0; i < times; i++) {
+      long startTime = System.nanoTime();
+      RayObject<RemoteResult<T>> rayObject = rayCall(rayActor);
+      RemoteResult<T> remoteResult = rayObject.get();
+      T t = remoteResult.getResult();
+      long endTime = System.nanoTime();
+      long costTime = endTime - startTime;
+      counterList.add(costTime / 1000);
+      RayLog.core.warn("SINGLE_LATENCY_cost_time: " + costTime + " us");
+      Assert.assertTrue(checkResult(t));
+    }
+    Collections.sort(counterList);
+    printList(counterList);
+  }
+
+  public abstract RayObject<RemoteResult<T>> rayCall(RayActor rayActor);
+
+  public abstract boolean checkResult(T t);
+
+  private void printList(List<Long> list) {
+    int len = list.size();
+    int middle = len / 2;
+    int almostHundred = (int) (len * 0.9999);
+    int ninetyNine = (int) (len * 0.99);
+    int ninetyFive = (int) (len * 0.95);
+    int ninety = (int) (len * 0.9);
+    int fifty = (int) (len * 0.5);
+
+    RayLog.core.error("Final result of rt as below:");
+    RayLog.core.error("max: " + list.get(len - 1) + "μs");
+    RayLog.core.error("min: " + list.get(0) + "μs");
+    RayLog.core.error("median: " + list.get(middle) + "μs");
+    RayLog.core.error("99.99% data smaller than: " + list.get(almostHundred) + "μs");
+    RayLog.core.error("99% data smaller than: " + list.get(ninetyNine) + "μs");
+    RayLog.core.error("95% data smaller than: " + list.get(ninetyFive) + "μs");
+    RayLog.core.error("90% data smaller than: " + list.get(ninety) + "μs");
+    RayLog.core.error("50% data smaller than: " + list.get(fifty) + "μs");
+  }
+
+  public void rateLimiterPressureTest(PressureTestParameter pressureTestParameter) {
+
+    pressureTestParameter.setPressureTestType(PressureTestType.RATE_LIMITER);
+    notSinglePressTest(pressureTestParameter);
+  }
+
+  private void notSinglePressTest(PressureTestParameter pressureTestParameter) {
+
+    List<Long> counterList = new ArrayList<>();
+    int clientNum = pressureTestParameter.getClientNum();
+    RayObject<List<Long>>[] rayObjects = new RayObject[clientNum];
+
+    for (int i = 0; i < clientNum; i++) {
+      rayObjects[i] = Ray.call(RayBenchmarkTest::singleClient, pressureTestParameter);
+    }
+    for (int i = 0; i < clientNum; i++) {
+      List<Long> subCounterList = rayObjects[i].get();
+      Assert.assertNotNull(subCounterList);
+      counterList.addAll(subCounterList);
+    }
+    Collections.sort(counterList);
+    printList(counterList);
+  }
+
+  public void maxPressureTest(PressureTestParameter pressureTestParameter) {
+
+    pressureTestParameter.setPressureTestType(PressureTestType.MAX);
+    notSinglePressTest(pressureTestParameter);
+  }
 
 }

@@ -518,26 +518,31 @@ void TaskSpec_free(TaskSpec *spec);
 
 /** The scheduling_state can be used as a flag when we are listening
  *  for an event, for example TASK_WAITING | TASK_SCHEDULED. */
-typedef enum {
+enum class TaskStatus : uint {
   /** The task is waiting to be scheduled. */
-  TASK_STATUS_WAITING = 1,
+  WAITING = 1,
   /** The task has been scheduled to a node, but has not been queued yet. */
-  TASK_STATUS_SCHEDULED = 2,
+  SCHEDULED = 2,
   /** The task has been queued on a node, where it will wait for its
    *  dependencies to become ready and a worker to become available. */
-  TASK_STATUS_QUEUED = 4,
+  QUEUED = 4,
   /** The task is running on a worker. */
-  TASK_STATUS_RUNNING = 8,
+  RUNNING = 8,
   /** The task is done executing. */
-  TASK_STATUS_DONE = 16,
+  DONE = 16,
   /** The task was not able to finish. */
-  TASK_STATUS_LOST = 32,
+  LOST = 32,
   /** The task will be submitted for reexecution. */
-  TASK_STATUS_RECONSTRUCTING = 64,
+  RECONSTRUCTING = 64,
   /** An actor task is cached at a local scheduler and is waiting for the
    *  corresponding actor to be created. */
-  TASK_STATUS_ACTOR_CACHED = 128
-} scheduling_state;
+  ACTOR_CACHED = 128
+};
+
+inline TaskStatus operator|(const TaskStatus &a, const TaskStatus &b) {
+  uint c = static_cast<uint>(a) | static_cast<uint>(b);
+  return static_cast<TaskStatus>(c);
+}
 
 /** A task is an execution of a task specification.  It has a state of execution
  * (see scheduling_state) and the ID of the local scheduler it is scheduled on
@@ -545,7 +550,7 @@ typedef enum {
 
 struct Task {
   /** The scheduling state of the task. */
-  int state;
+  TaskStatus state;
   /** The ID of the local scheduler involved. */
   DBClientID local_scheduler_id;
   /** The execution specification for this task. */
@@ -562,12 +567,12 @@ struct Task {
  */
 Task *Task_alloc(const TaskSpec *spec,
                  int64_t task_spec_size,
-                 int state,
+                 TaskStatus state,
                  DBClientID local_scheduler_id,
                  const std::vector<ObjectID> &execution_dependencies);
 
 Task *Task_alloc(TaskExecutionSpec &execution_spec,
-                 int state,
+                 TaskStatus state,
                  DBClientID local_scheduler_id);
 
 /**
@@ -582,10 +587,10 @@ Task *Task_copy(Task *other);
 int64_t Task_size(Task *task);
 
 /** The scheduling state of the task. */
-int Task_state(Task *task);
+TaskStatus Task_state(Task *task);
 
 /** Update the schedule state of the task. */
-void Task_set_state(Task *task, int state);
+void Task_set_state(Task *task, TaskStatus state);
 
 /** Local scheduler this task has been assigned to or is running on. */
 DBClientID Task_local_scheduler(Task *task);

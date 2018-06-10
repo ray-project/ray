@@ -9,8 +9,7 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class CurrentUseConfig {
 
-  public String filePath;
-
   public final Map<String, ConfigSection> sectionMap = new ConcurrentHashMap<>();
+  public String filePath;
 
 }

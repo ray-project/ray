@@ -2,13 +2,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
-
-import ray
-from ray.rllib.optimizers import LocalSyncOptimizer
-from ray.rllib.pg.pg_evaluator import PGEvaluator
 from ray.rllib.agent import Agent
-from ray.tune.result import TrainingResult
+from ray.rllib.optimizers import LocalSyncOptimizer
+from ray.rllib.pg.pg_policy_graph import PGPolicyGraph
+from ray.rllib.utils.common_policy_evaluator import CommonPolicyEvaluator, \
+    collect_metrics
 from ray.tune.trial import Resources
 
 
@@ -33,7 +31,6 @@ DEFAULT_CONFIG = {
 
 
 class PGAgent(Agent):
-
     """Simple policy gradient agent.
 
     This is an example agent to show how to implement algorithms in RLlib.
@@ -50,34 +47,28 @@ class PGAgent(Agent):
 
     def _init(self):
         self.optimizer = LocalSyncOptimizer.make(
-            evaluator_cls=PGEvaluator,
-            evaluator_args=[self.registry, self.env_creator, self.config],
+            evaluator_cls=CommonPolicyEvaluator,
+            evaluator_args={
+                "env_creator": self.env_creator,
+                "policy_graph": PGPolicyGraph,
+                "batch_steps": self.config["batch_size"],
+                "batch_mode": "truncate_episodes",
+                "registry": self.registry,
+                "model_config": self.config["model"],
+                "env_config": self.config["env_config"],
+                "policy_config": self.config,
+            },
             num_workers=self.config["num_workers"],
             optimizer_config=self.config["optimizer"])
 
     def _train(self):
         self.optimizer.step()
+        return collect_metrics(
+            self.optimizer.local_evaluator, self.optimizer.remote_evaluators)
 
-        episode_rewards = []
-        episode_lengths = []
-        metric_lists = [a.get_completed_rollout_metrics.remote()
-                        for a in self.optimizer.remote_evaluators]
-        for metrics in metric_lists:
-            for episode in ray.get(metrics):
-                episode_lengths.append(episode.episode_length)
-                episode_rewards.append(episode.episode_reward)
-        avg_reward = np.mean(episode_rewards)
-        avg_length = np.mean(episode_lengths)
-        timesteps = np.sum(episode_lengths)
-
-        result = TrainingResult(
-            episode_reward_mean=avg_reward,
-            episode_len_mean=avg_length,
-            timesteps_this_iter=timesteps,
-            info={})
-
-        return result
-
-    def compute_action(self, obs):
-        action, info = self.optimizer.local_evaluator.policy.compute(obs)
-        return action
+    def compute_action(self, observation, state=None):
+        if state is None:
+            state = []
+        return self.local_evaluator.for_policy(
+            lambda p: p.compute_single_action(
+                observation, state, is_training=False)[0])

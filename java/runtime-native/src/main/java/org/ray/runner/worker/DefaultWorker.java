@@ -4,7 +4,7 @@ import org.ray.core.RayRuntime;
 import org.ray.core.model.WorkerMode;
 
 /**
- * default worker implementation
+ * default worker implementation.
  */
 public class DefaultWorker {
 

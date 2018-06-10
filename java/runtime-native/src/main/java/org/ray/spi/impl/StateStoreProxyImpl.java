@@ -13,7 +13,7 @@ import org.ray.spi.model.AddressInfo;
 import org.ray.util.logger.RayLog;
 
 /**
- * A class used to interface with the Ray control state
+ * A class used to interface with the Ray control state.
  */
 public class StateStoreProxyImpl implements StateStoreProxy {
 
@@ -28,17 +28,13 @@ public class StateStoreProxyImpl implements StateStoreProxy {
     this.rayKvStore = rayKvStore;
   }
 
-  public void checkConnected() throws Exception {
-    rayKvStore.CheckConnected();
-  }
-
   public synchronized void initializeGlobalState() throws Exception {
 
     String es;
 
     checkConnected();
 
-    String s = rayKvStore.Get("NumRedisShards", null);
+    String s = rayKvStore.get("NumRedisShards", null);
     if (s == null) {
       throw new Exception("NumRedisShards not found in redis.");
     }
@@ -47,7 +43,7 @@ public class StateStoreProxyImpl implements StateStoreProxy {
       es = String.format("Expected at least one Redis shard, found %d", numRedisShards);
       throw new Exception(es);
     }
-    List<String> ipAddressPorts = rayKvStore.Lrange("RedisShards", 0, -1);
+    List<String> ipAddressPorts = rayKvStore.lrange("RedisShards", 0, -1);
     if (ipAddressPorts.size() != numRedisShards) {
       es = String.format("Expected %d Redis shard addresses, found %d.", numRedisShards,
           ipAddressPorts.size());
@@ -61,32 +57,45 @@ public class StateStoreProxyImpl implements StateStoreProxy {
 
   }
 
+  public void checkConnected() throws Exception {
+    rayKvStore.checkConnected();
+  }
+
   public synchronized Set<String> keys(final String pattern) {
     Set<String> allKeys = new HashSet<>();
     Set<String> tmpKey;
-    for (KeyValueStoreLink a_shardStoreList : shardStoreList) {
-      tmpKey = a_shardStoreList.Keys(pattern);
+    for (KeyValueStoreLink ashardStoreList : shardStoreList) {
+      tmpKey = ashardStoreList.keys(pattern);
       allKeys.addAll(tmpKey);
     }
 
     return allKeys;
+
   }
 
-  private byte[] CharsetEncode(String str, String Charset) throws UnsupportedEncodingException {
-    if (str != null) {
-      return str.getBytes(Charset);
+  public List<AddressInfo> getAddressInfo(final String nodeIpAddress, int numRetries) {
+    int count = 0;
+    while (count < numRetries) {
+      try {
+        return getAddressInfoHelper(nodeIpAddress);
+      } catch (Exception e) {
+        try {
+          TimeUnit.MILLISECONDS.sleep(1000);
+        } catch (InterruptedException ie) {
+          RayLog.core.error("error at StateStoreProxyImpl getAddressInfo", e);
+          throw new RuntimeException(e);
+        }
+      }
+      count++;
     }
-    return null;
-  }
-
-  private String CharsetDecode(byte[] bs, String Charset) throws UnsupportedEncodingException {
-    return new String(bs, Charset);
+    throw new RuntimeException("cannot get address info from state store");
   }
 
   /*
    * get address info of one node from primary redis
    * @param: node ip address, usually local ip address
-   * @return: a list of SchedulerInfo which contains storeName, managerName, managerPort and schedulerName
+   * @return: a list of SchedulerInfo which contains storeName, managerName, managerPort and
+   * schedulerName
    * @note：Redis data key is "CL:*", redis data value is a hash.
    *        The hash contains the following：
    *        "deleted" : 0/1
@@ -103,7 +112,7 @@ public class StateStoreProxyImpl implements StateStoreProxy {
     }
     List<AddressInfo> schedulerInfo = new ArrayList<>();
 
-    Set<byte[]> cks = rayKvStore.Keys("CL:*".getBytes());
+    Set<byte[]> cks = rayKvStore.keys("CL:*".getBytes());
     byte[] key;
     List<Map<byte[], byte[]>> plasmaManager = new ArrayList<>();
     List<Map<byte[], byte[]>> localScheduler = new ArrayList<>();
@@ -111,7 +120,7 @@ public class StateStoreProxyImpl implements StateStoreProxy {
       key = ck;
       Map<byte[], byte[]> info = rayKvStore.hgetAll(key);
 
-      String deleted = CharsetDecode(info.get("deleted".getBytes()), "US-ASCII");
+      String deleted = charsetDecode(info.get("deleted".getBytes()), "US-ASCII");
       if (deleted != null) {
         if (Boolean.getBoolean(deleted)) {
           continue;
@@ -126,9 +135,9 @@ public class StateStoreProxyImpl implements StateStoreProxy {
         throw new Exception("no client_type in any client");
       }
 
-      if (CharsetDecode(info.get("nodeIpAddress".getBytes()), "US-ASCII")
+      if (charsetDecode(info.get("nodeIpAddress".getBytes()), "US-ASCII")
           .equals(nodeIpAddress)) {
-        String clientType = CharsetDecode(info.get("client_type".getBytes()), "US-ASCII");
+        String clientType = charsetDecode(info.get("client_type".getBytes()), "US-ASCII");
         if (clientType.equals("plasmaManager")) {
           plasmaManager.add(info);
         } else if (clientType.equals("localScheduler")) {
@@ -145,30 +154,30 @@ public class StateStoreProxyImpl implements StateStoreProxy {
 
     for (int i = 0; i < plasmaManager.size(); i++) {
       AddressInfo si = new AddressInfo();
-      si.storeName = CharsetDecode(plasmaManager.get(i).get("store_socket_name".getBytes()),
+      si.storeName = charsetDecode(plasmaManager.get(i).get("store_socket_name".getBytes()),
           "US-ASCII");
-      si.managerName = CharsetDecode(plasmaManager.get(i).get("manager_socket_name".getBytes()),
+      si.managerName = charsetDecode(plasmaManager.get(i).get("manager_socket_name".getBytes()),
           "US-ASCII");
 
       byte[] rpc = plasmaManager.get(i).get("manager_rpc_name".getBytes());
       if (rpc != null) {
-        si.managerRpcAddr = CharsetDecode(rpc, "US-ASCII");
+        si.managerRpcAddr = charsetDecode(rpc, "US-ASCII");
       }
 
       rpc = plasmaManager.get(i).get("store_rpc_name".getBytes());
       if (rpc != null) {
-        si.storeRpcAddr = CharsetDecode(rpc, "US-ASCII");
+        si.storeRpcAddr = charsetDecode(rpc, "US-ASCII");
       }
 
-      String managerAddr = CharsetDecode(plasmaManager.get(i).get("manager_address".getBytes()),
+      String managerAddr = charsetDecode(plasmaManager.get(i).get("manager_address".getBytes()),
           "US-ASCII");
       si.managerPort = Integer.parseInt(managerAddr.split(":")[1]);
-      si.schedulerName = CharsetDecode(
+      si.schedulerName = charsetDecode(
           localScheduler.get(i).get("local_scheduler_socket_name".getBytes()), "US-ASCII");
 
       rpc = localScheduler.get(i).get("local_scheduler_rpc_name".getBytes());
       if (rpc != null) {
-        si.schedulerRpcAddr = CharsetDecode(rpc, "US-ASCII");
+        si.schedulerRpcAddr = charsetDecode(rpc, "US-ASCII");
       }
 
       schedulerInfo.add(si);
@@ -177,21 +186,14 @@ public class StateStoreProxyImpl implements StateStoreProxy {
     return schedulerInfo;
   }
 
-  public List<AddressInfo> getAddressInfo(final String node_ip_address, int numRetries) {
-    int count = 0;
-    while (count < numRetries) {
-      try {
-        return getAddressInfoHelper(node_ip_address);
-      } catch (Exception e) {
-        try {
-          TimeUnit.MILLISECONDS.sleep(1000);
-        } catch (InterruptedException ie) {
-          RayLog.core.error("error at StateStoreProxyImpl getAddressInfo", e);
-          throw new RuntimeException(e);
-        }
-      }
-      count++;
+  private String charsetDecode(byte[] bs, String charset) throws UnsupportedEncodingException {
+    return new String(bs, charset);
+  }
+
+  private byte[] charsetEncode(String str, String charset) throws UnsupportedEncodingException {
+    if (str != null) {
+      return str.getBytes(charset);
     }
-    throw new RuntimeException("cannot get address info from state store");
+    return null;
   }
 }

@@ -2,80 +2,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import six.moves.queue as queue
-import threading
 from collections import namedtuple
 import numpy as np
+import six.moves.queue as queue
+import threading
 
-
-class PartialRollout(object):
-    """A piece of a complete rollout.
-
-    We run our agent, and process its experience once it has processed enough
-    steps.
-
-    Attributes:
-        data (dict): Stores rollout data. All numpy arrays other than
-            `observations` and `features` will be squeezed.
-        last_r (float): Value of next state. Used for bootstrapping.
-    """
-
-    fields = ["obs", "actions", "rewards", "new_obs", "dones", "features"]
-
-    def __init__(self, extra_fields=None):
-        """Initializers internals. Maintains a `last_r` field
-        in support of partial rollouts, used in bootstrapping advantage
-        estimation.
-
-        Args:
-            extra_fields: Optional field for object to keep track.
-        """
-        if extra_fields:
-            self.fields.extend(extra_fields)
-        self.data = {k: [] for k in self.fields}
-        self.last_r = 0.0
-
-    def add(self, **kwargs):
-        for k, v in kwargs.items():
-            self.data[k] += [v]
-
-    def extend(self, other_rollout):
-        """Extends internal data structure. Assumes other_rollout contains
-        data that occured afterwards."""
-
-        assert not self.is_terminal()
-        assert all(k in other_rollout.fields for k in self.fields)
-        for k, v in other_rollout.data.items():
-            self.data[k].extend(v)
-        self.last_r = other_rollout.last_r
-
-    def is_terminal(self):
-        """Check if terminal.
-
-        Returns:
-            terminal (bool): if rollout has terminated."""
-        return self.data["dones"][-1]
-
-    def __getitem__(self, key):
-        return self.data[key]
-
-    def __setitem__(self, key, item):
-        self.data[key] = item
-
-    def keys(self):
-        return self.data.keys()
-
-    def items(self):
-        return self.data.items()
-
-    def __iter__(self):
-        return self.data.__iter__()
-
-    def __next__(self):
-        return self.data.__next__()
-
-    def __contains__(self, x):
-        return x in self.data
+from ray.rllib.optimizers.sample_batch import SampleBatchBuilder
 
 
 CompletedRollout = namedtuple("CompletedRollout",
@@ -92,7 +24,9 @@ class SyncSampler(object):
     thread."""
     _async = False
 
-    def __init__(self, env, policy, obs_filter, num_local_steps, horizon=None):
+    def __init__(
+            self, env, policy, obs_filter, num_local_steps, horizon=None,
+            pack=False):
         self.num_local_steps = num_local_steps
         self.horizon = horizon
         self.env = env
@@ -100,7 +34,7 @@ class SyncSampler(object):
         self._obs_filter = obs_filter
         self.rollout_provider = _env_runner(self.env, self.policy,
                                             self.num_local_steps, self.horizon,
-                                            self._obs_filter)
+                                            self._obs_filter, pack)
         self.metrics_queue = queue.Queue()
 
     def get_data(self):
@@ -128,7 +62,9 @@ class AsyncSampler(threading.Thread):
     accumulate and the gradient can be calculated on up to 5 batches."""
     _async = True
 
-    def __init__(self, env, policy, obs_filter, num_local_steps, horizon=None):
+    def __init__(
+            self, env, policy, obs_filter, num_local_steps, horizon=None,
+            pack=False):
         assert getattr(
             obs_filter, "is_concurrent",
             False), ("Observation Filter must support concurrent updates.")
@@ -142,6 +78,7 @@ class AsyncSampler(threading.Thread):
         self._obs_filter = obs_filter
         self.started = False
         self.daemon = True
+        self.pack = pack
 
     def run(self):
         self.started = True
@@ -154,7 +91,7 @@ class AsyncSampler(threading.Thread):
     def _run(self):
         rollout_provider = _env_runner(self.env, self.policy,
                                        self.num_local_steps, self.horizon,
-                                       self._obs_filter)
+                                       self._obs_filter, self.pack)
         while True:
             # The timeout variable exists because apparently, if one worker
             # dies, the other workers won't die with it, unless the timeout is
@@ -169,18 +106,18 @@ class AsyncSampler(threading.Thread):
         """Gets currently accumulated data.
 
         Returns:
-            rollout (PartialRollout): trajectory data (unprocessed)
+            rollout (SampleBatch): trajectory data (unprocessed)
         """
         assert self.started, "Sampler never started running!"
         rollout = self.queue.get(timeout=600.0)
         if isinstance(rollout, BaseException):
             raise rollout
-        while not rollout.is_terminal():
+        while not rollout["dones"][-1]:
             try:
                 part = self.queue.get_nowait()
                 if isinstance(part, BaseException):
                     raise rollout
-                rollout.extend(part)
+                rollout = rollout.concat(part)
             except queue.Empty:
                 break
         return rollout
@@ -195,7 +132,7 @@ class AsyncSampler(threading.Thread):
         return completed
 
 
-def _env_runner(env, policy, num_local_steps, horizon, obs_filter):
+def _env_runner(env, policy, num_local_steps, horizon, obs_filter, pack):
     """This implements the logic of the thread runner.
 
     It continually runs the policy, and as long as the rollout exceeds a
@@ -206,12 +143,16 @@ def _env_runner(env, policy, num_local_steps, horizon, obs_filter):
     Args:
         env: Environment generated by env_creator
         policy: Policy used to interact with environment. Also sets fields
-            to be included in `PartialRollout`
-        num_local_steps: Number of steps before `PartialRollout` is yielded.
+            to be included in `SampleBatch`
+        num_local_steps: Number of steps before `SampleBatch` is yielded. Set
+            to infinity to yield complete episodes.
+        horizon: Horizon of the episode.
         obs_filter: Filter used to process observations.
+        pack: Whether to pack multiple episodes into each batch. This
+            guarantees batches will be exactly `num_local_steps` in size.
 
     Yields:
-        rollout (PartialRollout): Object containing state, action, reward,
+        rollout (SampleBatch): Object containing state, action, reward,
             terminal condition, and other fields as dictated by `policy`.
     """
     last_observation = obs_filter(env.reset())
@@ -221,24 +162,23 @@ def _env_runner(env, policy, num_local_steps, horizon, obs_filter):
         print("Warning, no horizon specified, assuming infinite")
     if not horizon:
         horizon = 999999
-    if hasattr(policy, "get_initial_features"):
-        last_features = policy.get_initial_features()
-    else:
-        last_features = []
+    last_features = policy.get_initial_state()
     features = last_features
     length = 0
     rewards = 0
     rollout_number = 0
 
     while True:
-        terminal_end = False
-        rollout = PartialRollout(extra_fields=policy.other_output)
+        batch_builder = SampleBatchBuilder()
 
         for _ in range(num_local_steps):
-            action, pi_info = policy.compute(last_observation, *last_features)
-            if policy.is_recurrent:
-                features = pi_info["features"]
-                del pi_info["features"]
+            # Assume batch size one for now
+            action, features, pi_info = policy.compute_single_action(
+                last_observation, last_features, is_training=True)
+            for i, state_value in enumerate(last_features):
+                pi_info["state_in_{}".format(i)] = state_value
+            for i, state_value in enumerate(features):
+                pi_info["state_out_{}".format(i)] = state_value
             observation, reward, terminal, info = env.step(action)
             observation = obs_filter(observation)
 
@@ -252,12 +192,11 @@ def _env_runner(env, policy, num_local_steps, horizon, obs_filter):
                 action = np.concatenate(action, axis=0).flatten()
 
             # Collect the experience.
-            rollout.add(
+            batch_builder.add_values(
                 obs=last_observation,
                 actions=action,
                 rewards=reward,
                 dones=terminal,
-                features=last_features,
                 new_obs=observation,
                 **pi_info)
 
@@ -265,24 +204,18 @@ def _env_runner(env, policy, num_local_steps, horizon, obs_filter):
             last_features = features
 
             if terminal:
-                terminal_end = True
                 yield CompletedRollout(length, rewards)
 
-                if (length >= horizon
-                        or not env.metadata.get("semantics.autoreset")):
+                if (length >= horizon or
+                        not env.metadata.get("semantics.autoreset")):
                     last_observation = obs_filter(env.reset())
-                    if hasattr(policy, "get_initial_features"):
-                        last_features = policy.get_initial_features()
-                    else:
-                        last_features = []
+                    last_features = policy.get_initial_state()
                     rollout_number += 1
                     length = 0
                     rewards = 0
-                    break
-
-        if not terminal_end:
-            rollout.last_r = policy.value(last_observation, *last_features)
+                    if not pack:
+                        break
 
         # Once we have enough experience, yield it, and have the ThreadRunner
         # place it on a queue.
-        yield rollout
+        yield batch_builder.build()

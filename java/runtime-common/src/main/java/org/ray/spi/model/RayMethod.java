@@ -6,7 +6,7 @@ import org.ray.api.UniqueID;
 import org.ray.util.MethodId;
 
 /**
- * method info
+ * method info.
  */
 public class RayMethod {
 
@@ -23,7 +23,6 @@ public class RayMethod {
       }
     }
   }
-
 
   private RayMethod(Method m, RayRemote remoteAnnotation, UniqueID funcId) {
     this.invokable = m;
@@ -49,5 +48,4 @@ public class RayMethod {
   public UniqueID getFuncId() {
     return funcId;
   }
-
 }
