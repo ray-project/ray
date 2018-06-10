@@ -24,6 +24,8 @@ class ServingEnv(threading.Thread):
     ServingEnv supports both on-policy serving (through self.get_action()), and
     off-policy serving (through self.log_action()).
 
+    TODO: Provide a HTTP server/client example based on ServingEnv.
+
     Examples:
         >>> register_env("my_env", lambda config: YourServingEnv(config))
         >>> agent = DQNAgent(env="my_env")
@@ -32,6 +34,15 @@ class ServingEnv(threading.Thread):
     """
 
     def __init__(self, action_space, observation_space, max_concurrent=100):
+        """Initialize a serving env.
+
+        Arguments:
+            action_space (gym.Space): Action space of the env.
+            observation_space (gym.Space): Observation space of the env.
+            max_concurrent (int): Max number of active episodes to allow at
+                once. Exceeding this limit raises an error.
+        """
+
         threading.Thread.__init__(self)
         self.daemon = True
         self.action_space = action_space
@@ -61,8 +72,9 @@ class ServingEnv(threading.Thread):
         """Record the start of an episode.
 
         Arguments:
-            episode_id (str): Unique string id for the episode or None if there
-                is only going to be a single active episode.
+            episode_id (str): Unique string id for the episode or None for
+                it to be auto-assigned. Auto-assignment only works if there
+                is at most one active episode at a time.
         """
 
         if episode_id is None:
@@ -88,7 +100,7 @@ class ServingEnv(threading.Thread):
         return episode_id
 
     def get_action(self, observation, episode_id=None):
-        """Record an observation and get the policy action.
+        """Record an observation and get the on-policy action.
 
         Arguments:
             observation (obj): Current environment observation.
@@ -102,7 +114,7 @@ class ServingEnv(threading.Thread):
         return episode.wait_for_action(observation)
 
     def log_action(self, observation, action, episode_id=None):
-        """Record an observation and action taken.
+        """Record an observation and (off-policy) action taken.
 
         Arguments:
             observation (obj): Current environment observation.
@@ -111,7 +123,7 @@ class ServingEnv(threading.Thread):
         """
 
         episode = self._get(episode_id)
-        return episode.log_action(observation, action)
+        episode.log_action(observation, action)
 
     def log_returns(self, reward, info=None, episode_id=None):
         """Record returns from the environment.
@@ -163,6 +175,8 @@ class ServingEnv(threading.Thread):
 
 
 class _ServingEnvToAsync(AsyncVectorEnv):
+    """Internal adapter of ServingEnv to AsyncVectorEnv."""
+
     def __init__(self, serving_env):
         self.serving_env = serving_env
         serving_env.start()
@@ -203,6 +217,8 @@ class _ServingEnvToAsync(AsyncVectorEnv):
 
 
 class _Episode(object):
+    """Tracked state for each active episode."""
+
     def __init__(self, episode_id, results_avail_condition):
         self.episode_id = episode_id
         self.results_avail_condition = results_avail_condition
