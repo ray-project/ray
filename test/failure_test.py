@@ -371,6 +371,9 @@ class WorkerDeath(unittest.TestCase):
         self.assertRaises(Exception, lambda: ray.get(task2))
 
 
+@unittest.skipIf(
+    os.environ.get("RAY_USE_XRAY") == "1",
+    "This test does not work with xray yet.")
 class PutErrorTest(unittest.TestCase):
     def tearDown(self):
         ray.worker.cleanup()

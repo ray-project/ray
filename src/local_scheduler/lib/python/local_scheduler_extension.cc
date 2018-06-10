@@ -20,14 +20,16 @@ static int PyLocalSchedulerClient_init(PyLocalSchedulerClient *self,
   char *socket_name;
   UniqueID client_id;
   PyObject *is_worker;
-  if (!PyArg_ParseTuple(args, "sO&O", &socket_name, PyStringToUniqueID,
-                        &client_id, &is_worker)) {
+  PyObject *use_raylet;
+  if (!PyArg_ParseTuple(args, "sO&OO", &socket_name, PyStringToUniqueID,
+                        &client_id, &is_worker, &use_raylet)) {
     self->local_scheduler_connection = NULL;
     return -1;
   }
   /* Connect to the local scheduler. */
   self->local_scheduler_connection = LocalSchedulerConnection_init(
-      socket_name, client_id, (bool) PyObject_IsTrue(is_worker));
+      socket_name, client_id, static_cast<bool>(PyObject_IsTrue(is_worker)),
+      static_cast<bool>(PyObject_IsTrue(use_raylet)));
   return 0;
 }
 
@@ -73,9 +75,15 @@ static PyObject *PyLocalSchedulerClient_get_task(PyObject *self) {
   /* Drop the global interpreter lock while we get a task because
    * local_scheduler_get_task may block for a long time. */
   Py_BEGIN_ALLOW_THREADS
-  task_spec = local_scheduler_get_task(
-      ((PyLocalSchedulerClient *) self)->local_scheduler_connection,
-      &task_size);
+  if (!reinterpret_cast<PyLocalSchedulerClient *>(self)->local_scheduler_connection->use_raylet) {
+    task_spec = local_scheduler_get_task(
+        reinterpret_cast<PyLocalSchedulerClient *>(self)->local_scheduler_connection,
+        &task_size);
+  } else {
+    task_spec = local_scheduler_get_task_raylet(
+        reinterpret_cast<PyLocalSchedulerClient *>(self)->local_scheduler_connection,
+        &task_size);
+  }
   Py_END_ALLOW_THREADS
   return PyTask_make(task_spec, task_size);
 }
@@ -162,6 +170,39 @@ static PyObject *PyLocalSchedulerClient_gpu_ids(PyObject *self) {
     PyList_SetItem(gpu_ids_list, i, PyLong_FromLong(gpu_ids[i]));
   }
   return gpu_ids_list;
+}
+
+// NOTE(rkn): This function only makes sense for the raylet code path.
+static PyObject *PyLocalSchedulerClient_resource_ids(PyObject *self) {
+  // Construct a Python dictionary of resource IDs and resource fractions.
+  PyObject *resource_ids = PyDict_New();
+
+  for (auto const &resource_info :
+       reinterpret_cast<PyLocalSchedulerClient *>(self)
+           ->local_scheduler_connection->resource_ids_) {
+    auto const &resource_name = resource_info.first;
+    auto const &ids_and_fractions = resource_info.second;
+
+#if PY_MAJOR_VERSION >= 3
+    PyObject *key =
+        PyUnicode_FromStringAndSize(resource_name.data(), resource_name.size());
+#else
+    PyObject *key =
+        PyBytes_FromStringAndSize(resource_name.data(), resource_name.size());
+#endif
+    PyObject *value = PyList_New(ids_and_fractions.size());
+    for (size_t i = 0; i < ids_and_fractions.size(); ++i) {
+      auto const &id_and_fraction = ids_and_fractions[i];
+      PyObject *id_fraction_pair =
+          Py_BuildValue("(Ld)", id_and_fraction.first, id_and_fraction.second);
+      PyList_SetItem(value, i, id_fraction_pair);
+    }
+    PyDict_SetItem(resource_ids, key, value);
+    Py_DECREF(key);
+    Py_DECREF(value);
+  }
+
+  return resource_ids;
 }
 
 static PyObject *PyLocalSchedulerClient_get_actor_frontier(PyObject *self,
@@ -263,6 +304,9 @@ static PyMethodDef PyLocalSchedulerClient_methods[] = {
      METH_VARARGS, "Return the object ID for a put call within a task."},
     {"gpu_ids", (PyCFunction) PyLocalSchedulerClient_gpu_ids, METH_NOARGS,
      "Get the IDs of the GPUs that are reserved for this client."},
+    {"resource_ids", (PyCFunction) PyLocalSchedulerClient_resource_ids,
+     METH_NOARGS,
+     "Get the IDs of the resources that are reserved for this client."},
     {"get_actor_frontier",
      (PyCFunction) PyLocalSchedulerClient_get_actor_frontier, METH_VARARGS, ""},
     {"set_actor_frontier",

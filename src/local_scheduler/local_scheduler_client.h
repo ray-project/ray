@@ -6,11 +6,19 @@
 #include "ray/raylet/task_spec.h"
 
 struct LocalSchedulerConnection {
+  /// True if we should use the raylet code path and false otherwise.
+  bool use_raylet;
   /** File descriptor of the Unix domain socket that connects to local
    *  scheduler. */
   int conn;
-  /** The IDs of the GPUs that this client can use. */
+  /** The IDs of the GPUs that this client can use. NOTE(rkn): This is only used
+   *  by legacy Ray and will be deprecated. */
   std::vector<int> gpu_ids;
+  /// A map from resource name to the resource IDs that are currently reserved
+  /// for this worker. Each pair consists of the resource ID and the fraction
+  /// of that resource allocated for this worker.
+  std::unordered_map<std::string, std::vector<std::pair<int64_t, double>>>
+      resource_ids_;
 };
 
 /**
@@ -20,12 +28,15 @@ struct LocalSchedulerConnection {
  *        local scheduler.
  * @param is_worker Whether this client is a worker. If it is a worker, an
  *        additional message will be sent to register as one.
+ * @param use_raylet True if we should use the raylet code path and false
+ *        otherwise.
  * @return The connection information.
  */
 LocalSchedulerConnection *LocalSchedulerConnection_init(
     const char *local_scheduler_socket,
     UniqueID worker_id,
-    bool is_worker);
+    bool is_worker,
+    bool use_raylet);
 
 /**
  * Disconnect from the local scheduler.
@@ -101,6 +112,16 @@ void local_scheduler_log_event(LocalSchedulerConnection *conn,
  */
 TaskSpec *local_scheduler_get_task(LocalSchedulerConnection *conn,
                                    int64_t *task_size);
+
+/// Get next task for this client. This will block until the scheduler assigns
+/// a task to this worker. This allocates and returns a task, and so the task
+/// must be freed by the caller.
+///
+/// \param conn The connection information.
+/// \param task_size A pointer to fill out with the task size.
+/// \return The address of the assigned task.
+TaskSpec *local_scheduler_get_task_raylet(LocalSchedulerConnection *conn,
+                                          int64_t *task_size);
 
 /**
  * Tell the local scheduler that the client has finished executing a task.
