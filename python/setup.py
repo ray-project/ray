@@ -61,11 +61,7 @@ else:
 
 optional_ray_files += ray_autoscaler_files
 
-extras = {
-    "rllib": [
-        "pyyaml", "gym[atari]", "opencv-python", "lz4", "scipy"
-    ]
-}
+extras = {"rllib": ["pyyaml", "gym[atari]", "opencv-python", "lz4", "scipy"]}
 
 
 class build_ext(_build_ext.build_ext):
