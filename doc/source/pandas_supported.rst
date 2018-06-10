@@ -2,7 +2,7 @@ Pandas on Ray Supported Methods
 ===============================
 
 For your convenience, we have compiled a list of currently implemented APIs and
-methods available in Pandas on Ray.
+methods available in **Pandas on Ray**.
 
 DataFrame
 ---------
