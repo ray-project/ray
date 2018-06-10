@@ -736,7 +736,8 @@ Questions on implementation details
 -----------------------------------
 
 If you have a question about the implementation details or would like more
-information about an API or method in **Pandas on Ray**, please contact the
-developer Google Group.
+information about an API or method in **Pandas on Ray**, please contact the ray
+developer `mailing list`_.
 
 .. _`github repo`: https://github.com/ray-project/ray/issues
+.. _`mailing list`: https://groups.google.com/forum/#!forum/ray-dev
