@@ -3191,13 +3191,6 @@ def test___array__(ray_df, pandas_df):
     assert np.array_equal(ray_df.__array__(), pandas_df.__array__())
 
 
-def test___array_wrap__():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.__array_wrap__(None)
-
-
 def test___getstate__():
     ray_df = create_test_dataframe()
 
