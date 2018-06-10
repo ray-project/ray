@@ -1,7 +1,6 @@
 package org.ray.spi;
 
 import org.ray.api.UniqueID;
-import org.ray.hook.runtime.LoadedFunctions;
 
 /**
  * register and load functions from function table.
@@ -53,10 +52,9 @@ public interface RemoteFunctionManager {
   void unregisterApp(UniqueID driverId);
 
   /**
-   * load resource and functions for this driver this function is used by the workers on demand when
-   * a required function is not found in {@code LocalFunctionManager}.
+   * load resource.
    */
-  LoadedFunctions loadFunctions(UniqueID driverId);
+  ClassLoader loadResource(UniqueID driverId);
 
   /**
    * unload functions for this driver

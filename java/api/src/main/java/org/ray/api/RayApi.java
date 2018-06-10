@@ -3,7 +3,6 @@ package org.ray.api;
 import java.io.Serializable;
 import java.util.Collection;
 import java.util.List;
-import org.ray.api.internal.Callable;
 import org.ray.util.exception.TaskExecutionException;
 
 /**
@@ -53,14 +52,13 @@ public interface RayApi {
   /**
    * submit a new task by invoking a remote function.
    *
-   * @param taskId      nil
-   * @param funcRun     the target running function with @RayRemote
+   * @param taskId nil
+   * @param funcCls the ray function's class
+   * @param lambda the lambda
    * @param returnCount the number of to-be-returned objects from funcRun
    * @param args        arguments to this funcRun, can be its original form or RayObject
    * @return a set of ray objects with their return ids
    */
-  RayObjects call(UniqueID taskId, Callable funcRun, int returnCount, Object... args);
-
   RayObjects call(UniqueID taskId, Class<?> funcCls, Serializable lambda, int returnCount,
                   Object... args);
 
@@ -70,35 +68,27 @@ public interface RayApi {
    * different machines). We therefore introduce this API so that developers can annotate the
    * outputs with a set of labels (usually with Integer or String).
    *
-   * @param taskId    nil
-   * @param funcRun   the target running function with @RayRemote
-   * @param returnIds a set of labels to be used by the returned objects
-   * @param args      arguments to this funcRun, can be its original form or
-   *                  RayObject<original-type>
+   * @param taskId nil
+   * @param funcCls the ray function's class
+   * @param lambda the lambda
+   * @param returnids a set of labels to be used by the returned objects
+   * @param args arguments to this funcRun, can be its original form or RayObject<original-type>
    * @return a set of ray objects with their labels and return ids
    */
-  <R, RIDT> RayMap<RIDT, R> callWithReturnLabels(UniqueID taskId, Callable funcRun,
-                                                 Collection<RIDT> returnIds, Object... args);
-
   <R, RIDT> RayMap<RIDT, R> callWithReturnLabels(UniqueID taskId, Class<?> funcCls,
-                                                 Serializable lambda, Collection<RIDT> returnids,
-                                                 Object... args);
+      Serializable lambda, Collection<RIDT> returnids, Object... args);
 
   /**
    * a special case for the above RID-based labeling as <0...returnCount - 1>.
    *
-   * @param taskId      nil
-   * @param funcRun     the target running function with @RayRemote
+   * @param taskId nil
+   * @param funcCls the ray function's class
+   * @param lambda the lambda
    * @param returnCount the number of to-be-returned objects from funcRun
    * @param args        arguments to this funcRun, can be its original form or
    *                    RayObject<original-type>
    * @return an array of returned objects with their Unique ids
    */
-  <R> RayList<R> callWithReturnIndices(UniqueID taskId, Callable funcRun, Integer returnCount,
-                                       Object... args);
-
   <R> RayList<R> callWithReturnIndices(UniqueID taskId, Class<?> funcCls, Serializable lambda,
-                                       Integer returnCount, Object... args);
-
-  boolean isRemoteLambda();
+      Integer returnCount, Object... args);
 }

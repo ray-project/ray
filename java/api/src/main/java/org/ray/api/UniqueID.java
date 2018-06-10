@@ -5,6 +5,7 @@ import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
 import java.util.Arrays;
 import java.util.Random;
+import org.ray.util.StringUtil;
 
 /**
  * Unique ID for task, worker, function...
@@ -38,6 +39,12 @@ public class UniqueID implements Serializable {
       int second = c2 <= '9' ? (c2 - '0') : (c2 - 'a' + 0xa);
       id[i] = (byte) (first * 16 + second);
     }
+  }
+
+
+  @Override
+  public String toString() {
+    return StringUtil.toHexHashString(id);
   }
 
   public static UniqueID genNil() {
@@ -90,18 +97,6 @@ public class UniqueID implements Serializable {
 
     UniqueID r = (UniqueID) obj;
     return Arrays.equals(id, r.id);
-  }
-
-  @Override
-  public String toString() {
-    String s = "";
-    String hex = "0123456789abcdef";
-    for (int i = 0; i < LENGTH; i++) {
-      int val = id[i] & 0xff;
-      s += hex.charAt(val >> 4);
-      s += hex.charAt(val & 0xf);
-    }
-    return s;
   }
 
   public boolean isNil() {

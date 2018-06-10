@@ -27,7 +27,7 @@ public class RayDevRuntime extends RayRuntime {
   }
 
   @RayRemote
-  private static byte[] createActor(String className) {
+  public static byte[] createActor(String className) {
     return ((RayDevRuntime) RayRuntime.getInstance()).createLocalActor(className);
   }
 
