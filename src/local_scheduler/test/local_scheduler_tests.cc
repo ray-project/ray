@@ -244,7 +244,8 @@ TEST object_reconstruction_test(void) {
 
     /* Trigger reconstruction, and run the event loop again. */
     ObjectID return_id = TaskSpec_return(spec, 0);
-    local_scheduler_reconstruct_object(worker, return_id);
+    local_scheduler_reconstruct_objects(worker,
+                                        std::vector<ObjectID>({return_id}));
     event_loop_add_timer(local_scheduler->loop, 500,
                          (event_loop_timer_handler) timeout_handler, NULL);
     event_loop_run(local_scheduler->loop);
@@ -369,7 +370,8 @@ TEST object_reconstruction_recursive_test(void) {
     }
     /* Trigger reconstruction for the last object. */
     ObjectID return_id = TaskSpec_return(specs[NUM_TASKS - 1].Spec(), 0);
-    local_scheduler_reconstruct_object(worker, return_id);
+    local_scheduler_reconstruct_objects(worker,
+                                        std::vector<ObjectID>({return_id}));
     /* Run the event loop again. All tasks should be resubmitted. */
     event_loop_add_timer(local_scheduler->loop, 500,
                          (event_loop_timer_handler) timeout_handler, NULL);
@@ -437,7 +439,8 @@ TEST object_reconstruction_suppression_test(void) {
         0);
     /* Trigger a reconstruction. We will check that no tasks get queued as a
      * result of this line in the event loop process. */
-    local_scheduler_reconstruct_object(worker, return_id);
+    local_scheduler_reconstruct_objects(worker,
+                                        std::vector<ObjectID>({return_id}));
     /* Clean up. */
     free(task_assigned);
     LocalSchedulerMock_free(local_scheduler);

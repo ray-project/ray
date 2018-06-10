@@ -188,7 +188,7 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1reconstruct_1object(
   // objectId);
   UniqueIdFromJByteArray o(env, oid);
   auto client = reinterpret_cast<LocalSchedulerConnection *>(c);
-  local_scheduler_reconstruct_object(client, *o.PID);
+  local_scheduler_reconstruct_objects(client, {*o.PID});
 }
 
 /*
