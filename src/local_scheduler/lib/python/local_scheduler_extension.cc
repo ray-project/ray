@@ -100,8 +100,9 @@ static PyObject *PyLocalSchedulerClient_reconstruct_objects(PyObject *self,
     object_ids.push_back(object_id);
   }
   local_scheduler_reconstruct_objects(
-      reinterpret_cast<PyLocalSchedulerClient *>(self)->local_scheduler_connection, object_ids,
-      fetch_only);
+      reinterpret_cast<PyLocalSchedulerClient *>(self)
+          ->local_scheduler_connection,
+      object_ids, fetch_only);
   Py_RETURN_NONE;
 }
 
