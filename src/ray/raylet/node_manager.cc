@@ -41,6 +41,14 @@ RAY_CHECK_ENUM(protocol::MessageType::GetActorFrontierReply,
 RAY_CHECK_ENUM(protocol::MessageType::SetActorFrontier,
                local_scheduler_protocol::MessageType::SetActorFrontier);
 
+// TODO(rkn): This function appears in at least three places. It should be deduplicated.
+int64_t current_time_ms_duplicate() {
+  std::chrono::milliseconds ms_since_epoch =
+      std::chrono::duration_cast<std::chrono::milliseconds>(
+          std::chrono::steady_clock::now().time_since_epoch());
+  return ms_since_epoch.count();
+}
+
 /// A helper function to determine whether a given actor task has already been executed
 /// according to the given actor registry. Returns true if the task is a duplicate.
 bool CheckDuplicateActorTask(
@@ -372,11 +380,26 @@ void NodeManager::ProcessClientMessage(
 
     // This if statement distinguishes workers from drivers.
     if (worker) {
-      // TODO(swang): Handle the case where the worker is killed while
-      // executing a task. Clean up the assigned task's resources, return an
-      // error to the driver.
-      // RAY_CHECK(worker->GetAssignedTaskId().is_nil())
-      //    << "Worker died while executing task: " << worker->GetAssignedTaskId();
+      // Handle the case where the worker is killed while executing a task.
+      // Clean up the assigned task's resources, push an error to the driver.
+      const TaskID &task_id = worker->GetAssignedTaskId();
+      if (!task_id.is_nil()) {
+        auto const &running_tasks = local_queues_.GetRunningTasks();
+        // TODO(rkn): This is too heavyweight just to get the task's driver ID.
+        auto const it = std::find_if(
+            running_tasks.begin(), running_tasks.end(),
+            [task_id](const Task &task) {
+              return task.GetTaskSpecification().TaskId() == task_id;
+            });
+        RAY_CHECK(running_tasks.size() != 0);
+        RAY_CHECK(it != running_tasks.end());
+        JobID job_id = it->GetTaskSpecification().DriverId();
+        std::string error_message = "A worker died while executing task " +
+                                    task_id.hex() + ".";
+        RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
+            job_id, error_message, current_time_ms_duplicate()));
+      }
+
       worker_pool_.DisconnectWorker(worker);
 
       const ClientID &client_id = gcs_client_->client_table().GetLocalClientId();
@@ -520,6 +543,16 @@ void NodeManager::ProcessClientMessage(
                                    fbb.GetSize(), fbb.GetBufferPointer()));
         });
     RAY_CHECK_OK(status);
+  } break;
+  case protocol::MessageType::PushErrorRequest: {
+    auto message = flatbuffers::GetRoot<protocol::PushErrorRequest>(message_data);
+
+    JobID job_id = from_flatbuf(*message->job_id());
+    auto const &error_message = string_from_flatbuf(*message->error_message());
+    double timestamp = message->timestamp();
+
+    RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
+        job_id, error_message, timestamp));
   } break;
 
   default:

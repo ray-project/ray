@@ -415,7 +415,7 @@ class Worker(object):
                                        "may be a bug.")
                     if not warning_sent:
                         ray.utils.push_error_to_driver(
-                            self.redis_client,
+                            self,
                             ray_constants.WAIT_FOR_CLASS_PUSH_ERROR,
                             warning_message,
                             driver_id=self.task_driver_id.id())
@@ -663,7 +663,7 @@ class Worker(object):
                                "large array or other object.".format(
                                    function_name, len(pickled_function)))
             ray.utils.push_error_to_driver(
-                self.redis_client,
+                self,
                 ray_constants.PICKLING_LARGE_OBJECT_PUSH_ERROR,
                 warning_message,
                 driver_id=self.task_driver_id.id())
@@ -726,7 +726,7 @@ class Worker(object):
                                    .format(function.__name__,
                                            len(pickled_function)))
                 ray.utils.push_error_to_driver(
-                    self.redis_client,
+                    self,
                     ray_constants.PICKLING_LARGE_OBJECT_PUSH_ERROR,
                     warning_message,
                     driver_id=self.task_driver_id.id())
@@ -781,7 +781,7 @@ class Worker(object):
                                        "Ray.")
                     if not warning_sent:
                         ray.utils.push_error_to_driver(
-                            self.redis_client,
+                            self,
                             ray_constants.WAIT_FOR_FUNCTION_PUSH_ERROR,
                             warning_message,
                             driver_id=driver_id)
@@ -942,7 +942,7 @@ class Worker(object):
         self._store_outputs_in_objstore(return_object_ids, failure_objects)
         # Log the error message.
         ray.utils.push_error_to_driver(
-            self.redis_client,
+            self,
             ray_constants.TASK_PUSH_ERROR,
             str(failure_object),
             driver_id=self.task_driver_id.id(),
@@ -1200,6 +1200,10 @@ def error_info(worker=global_worker):
     """Return information about failed tasks."""
     worker.check_connected()
     check_main_thread()
+
+    if worker.use_raylet:
+        raise Exception("TODO")
+
     error_keys = worker.redis_client.lrange("ErrorKeys", 0, -1)
     errors = []
     for error_key in error_keys:
@@ -1819,6 +1823,74 @@ def custom_excepthook(type, value, tb):
 sys.excepthook = custom_excepthook
 
 
+def print_error_messages_raylet(worker):
+    """Print error messages in the background on the driver.
+
+    This runs in a separate thread on the driver and prints error messages in
+    the background.
+    """
+    if not worker.use_raylet:
+        raise Exception("This function is specific to the raylet code path.")
+
+    worker.error_message_pubsub_client = worker.redis_client.pubsub(
+        ignore_subscribe_messages=True)
+    # Exports that are published after the call to
+    # error_message_pubsub_client.subscribe and before the call to
+    # error_message_pubsub_client.listen will still be processed in the loop.
+
+    # TODO(rkn): Clean this up.
+    # generic_error_channel = str(state.TablePubsub.ERROR_INFO).encode("ascii") + b":" + 20 * b"\x00"
+    # job_error_channel = str(state.TablePubsub.ERROR_INFO).encode("ascii") + b":" + worker.task_driver_id.id()
+
+    # Really we should just subscribe to the errors for this specific job.
+    # However, currently all errors seem to be published on the same channel.
+    error_pubsub_channel = str(state.TablePubsub.ERROR_INFO).encode("ascii")
+    worker.error_message_pubsub_client.subscribe(error_pubsub_channel)
+    # worker.error_message_pubsub_client.psubscribe("*")
+
+    # Keep a set of all the error messages that we've seen so far in order to
+    # avoid printing the same error message repeatedly. This is especially
+    # important when running a script inside of a tool like screen where
+    # scrolling is difficult.
+    old_error_messages = set()
+
+    # Get the exports that occurred before the call to subscribe.
+    with worker.lock:
+        error_messages = global_state.error_messages(worker.task_driver_id)
+        for error_message in error_messages:
+            if error_message not in old_error_messages:
+                print(error_message)
+                old_error_messages.add(error_message)
+            else:
+                print("Suppressing duplicate error message.")
+
+    try:
+        for msg in worker.error_message_pubsub_client.listen():
+
+            gcs_entry = state.GcsTableEntry.GetRootAsGcsTableEntry(msg["data"],
+                                                                   0)
+            assert gcs_entry.EntriesLength() == 1
+            error_data = state.ErrorTableData.GetRootAsErrorTableData(
+                gcs_entry.Entries(0), 0)
+            NIL_JOB_ID = 20 * b"\x00"
+            job_id = error_data.JobId()
+            if job_id not in [worker.task_driver_id.id(), NIL_JOB_ID]:
+                continue
+
+            error_message = error_data.ErrorMessage().decode("ascii")
+
+            if error_message not in old_error_messages:
+                print(error_message)
+                old_error_messages.add(error_message)
+            else:
+                print("Suppressing duplicate error message.")
+
+    except redis.ConnectionError:
+        # When Redis terminates the listen call will throw a ConnectionError,
+        # which we catch here.
+        pass
+
+
 def print_error_messages(worker):
     """Print error messages in the background on the driver.
 
@@ -1907,7 +1979,7 @@ def fetch_and_register_remote_function(key, worker=global_worker):
         traceback_str = ray.utils.format_error_message(traceback.format_exc())
         # Log the error message.
         ray.utils.push_error_to_driver(
-            worker.redis_client,
+            worker,
             ray_constants.REGISTER_REMOTE_FUNCTION_PUSH_ERROR,
             traceback_str,
             driver_id=driver_id,
@@ -1952,7 +2024,7 @@ def fetch_and_execute_function_to_run(key, worker=global_worker):
         name = function.__name__ if ("function" in locals()
                                      and hasattr(function, "__name__")) else ""
         ray.utils.push_error_to_driver(
-            worker.redis_client,
+            worker,
             ray_constants.FUNCTION_TO_RUN_PUSH_ERROR,
             traceback_str,
             driver_id=driver_id,
@@ -2112,7 +2184,7 @@ def connect(info,
         elif mode == WORKER_MODE:
             traceback_str = traceback.format_exc()
             ray.utils.push_error_to_driver(
-                worker.redis_client,
+                worker,
                 ray_constants.VERSION_MISMATCH_PUSH_ERROR,
                 traceback_str,
                 driver_id=None)
@@ -2271,7 +2343,11 @@ def connect(info,
     # temporarily using this implementation which constantly queries the
     # scheduler for new error messages.
     if mode == SCRIPT_MODE:
-        t = threading.Thread(target=print_error_messages, args=(worker, ))
+        if not worker.use_raylet:
+            t = threading.Thread(target=print_error_messages, args=(worker, ))
+        else:
+            t = threading.Thread(target=print_error_messages_raylet,
+                                 args=(worker, ))
         # Making the thread a daemon causes it to exit when the main thread
         # exits.
         t.daemon = True

@@ -418,7 +418,26 @@ Status TaskTableTestAndUpdate(AsyncGcsClient *gcs_client, const TaskID &task_id,
                               SchedulingState update_state,
                               const TaskTable::TestAndUpdateCallback &callback);
 
-using ErrorTable = Table<TaskID, ErrorTableData>;
+class ErrorTable : private Log<JobID, ErrorTableData> {
+ public:
+  ErrorTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client)
+      : Log(context, client) {
+    pubsub_channel_ = TablePubsub::ERROR_INFO;
+    prefix_ = TablePrefix::ERROR_INFO;
+  };
+
+  /// Push an error message for a specific job.
+  ///
+  /// TODO(rkn): We need to make sure that the errors are unique because
+  /// duplicate messages currently cause failures (the GCS doesn't allow it).
+  ///
+  /// \param job_id The ID of the job that generated the error. If the error
+  /// should be pushed to all jobs, then this should be nil.
+  /// \param error_message The error message to push.
+  /// \return Status.
+  Status PushErrorToDriver(const JobID &job_id, const std::string &error_message,
+                           double timestamp);
+};
 
 using CustomSerializerTable = Table<ClassID, CustomSerializerData>;
 

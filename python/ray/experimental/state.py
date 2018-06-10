@@ -21,7 +21,10 @@ from ray.core.generated.ResultTableReply import ResultTableReply
 from ray.core.generated.TaskExecutionDependencies import \
     TaskExecutionDependencies
 
+from ray.core.generated.TablePrefix import TablePrefix
+from ray.core.generated.TablePubsub import TablePubsub
 from ray.core.generated.ClientTableData import ClientTableData
+from ray.core.generated.ErrorTableData import ErrorTableData
 from ray.core.generated.GcsTableEntry import GcsTableEntry
 from ray.core.generated.ObjectTableData import ObjectTableData
 
@@ -41,11 +44,13 @@ OBJECT_CHANNEL_PREFIX = "OC:"
 # TODO(rkn): We should use scoped enums, in which case we should be able to
 # just access the flatbuffer generated values.
 TablePrefix_RAYLET_TASK = 2
-TablePrefix_RAYLET_TASK_string = "TASK"
+TablePrefix_RAYLET_TASK_string = "RAYLET_TASK"
 TablePrefix_CLIENT = 3
 TablePrefix_CLIENT_string = "CLIENT"
 TablePrefix_OBJECT = 4
 TablePrefix_OBJECT_string = "OBJECT"
+TablePrefix_ERROR_INFO = 9
+TablePrefix_ERROR_INFO_string = "ERROR_INFO"
 
 # This mapping from integer to task state string must be kept up-to-date with
 # the scheduling_state enum in task.h.
@@ -289,9 +294,9 @@ class GlobalState(object):
                 ])
             else:
                 object_keys = self.redis_client.keys(
-                    TablePrefix_OBJECT_string + ":*")
+                    TablePrefix_OBJECT_string + "*")
                 object_ids_binary = {
-                    key[len(TablePrefix_OBJECT_string + ":"):]
+                    key[len(TablePrefix_OBJECT_string):]
                     for key in object_keys
                 }
 
@@ -438,9 +443,9 @@ class GlobalState(object):
                 ]
             else:
                 task_table_keys = self.redis_client.keys(
-                    TablePrefix_RAYLET_TASK_string + ":*")
+                    TablePrefix_RAYLET_TASK_string + "*")
                 task_ids_binary = [
-                    key[len(TablePrefix_RAYLET_TASK_string + ":"):]
+                    key[len(TablePrefix_RAYLET_TASK_string):]
                     for key in task_table_keys
                 ]
 
@@ -1146,3 +1151,44 @@ class GlobalState(object):
                     resources[key] += value
 
         return dict(resources)
+
+    def _error_messages(self, job_id):
+        """
+        """
+        message = self.redis_client.execute_command(
+            "RAY.TABLE_LOOKUP", TablePrefix.ERROR_INFO, "", job_id.id())
+
+        # If there are no errors, return early.
+        if message is None:
+            return []
+
+        gcs_entries = GcsTableEntry.GetRootAsGcsTableEntry(message, 0)
+        error_messages = []
+        for i in range(gcs_entries.EntriesLength()):
+            error_data = ErrorTableData.GetRootAsErrorTableData(
+                gcs_entries.Entries(i), 0)
+            error_message = {
+                "message": error_data.ErrorMessage().decode("ascii"),
+                "timestamp": error_data.Timestamp(),
+            }
+            error_messages.append(error_message)
+        return error_messages
+
+    def error_messages(self, job_id=None):
+        """
+        """
+        if not self.use_raylet:
+            raise Exception("The error_messages method is only supported in "
+                            "the raylet code path.")
+
+        if job_id is not None:
+            return self._error_messages(job_id)
+
+        error_table_keys = self.redis_client.keys(
+            TablePrefix_ERROR_INFO_string + "*")
+        job_ids = [key[len(TablePrefix_ERROR_INFO_string):]
+                   for key in error_table_keys]
+
+        return {
+            binary_to_hex(job_id): self._error_messages(ray.ObjectID(job_id))
+            for job_id in job_ids}

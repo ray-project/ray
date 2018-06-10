@@ -164,7 +164,7 @@ def save_and_log_checkpoint(worker, actor):
         traceback_str = ray.utils.format_error_message(traceback.format_exc())
         # Log the error message.
         ray.utils.push_error_to_driver(
-            worker.redis_client,
+            worker,
             ray_constants.CHECKPOINT_PUSH_ERROR,
             traceback_str,
             driver_id=worker.task_driver_id.id(),
@@ -188,7 +188,7 @@ def restore_and_log_checkpoint(worker, actor):
         traceback_str = ray.utils.format_error_message(traceback.format_exc())
         # Log the error message.
         ray.utils.push_error_to_driver(
-            worker.redis_client,
+            worker,
             ray_constants.CHECKPOINT_PUSH_ERROR,
             traceback_str,
             driver_id=worker.task_driver_id.id(),
@@ -330,7 +330,7 @@ def fetch_and_register_actor(actor_class_key, worker):
         traceback_str = ray.utils.format_error_message(traceback.format_exc())
         # Log the error message.
         push_error_to_driver(
-            worker.redis_client,
+            worker,
             ray_constants.REGISTER_ACTOR_PUSH_ERROR,
             traceback_str,
             driver_id,
@@ -402,7 +402,7 @@ def export_actor_class(class_id, Class, actor_method_names,
                            .format(actor_class_info["class_name"],
                                    len(actor_class_info["class"])))
         ray.utils.push_error_to_driver(
-            worker.redis_client,
+            worker,
             ray_constants.PICKLING_LARGE_OBJECT_PUSH_ERROR,
             warning_message,
             driver_id=worker.task_driver_id.id())

@@ -7,6 +7,7 @@ import hashlib
 import numpy as np
 import os
 import sys
+import time
 import uuid
 
 import ray.local_scheduler
@@ -45,7 +46,7 @@ def format_error_message(exception_message, task_exception=False):
     return "\n".join(lines)
 
 
-def push_error_to_driver(redis_client,
+def push_error_to_driver(worker,
                          error_type,
                          message,
                          driver_id=None,
@@ -53,7 +54,7 @@ def push_error_to_driver(redis_client,
     """Push an error message to the driver to be printed in the background.
 
     Args:
-        redis_client: The redis client to use.
+        worker: The worker to use.
         error_type (str): The type of the error.
         message (str): The message that will be printed in the background
             on the driver.
@@ -66,13 +67,16 @@ def push_error_to_driver(redis_client,
         driver_id = DRIVER_ID_LENGTH * b"\x00"
     error_key = ERROR_KEY_PREFIX + driver_id + b":" + _random_string()
     data = {} if data is None else data
-    redis_client.hmset(error_key, {
-        "type": error_type,
-        "message": message,
-        "data": data
-    })
-    redis_client.rpush("ErrorKeys", error_key)
-
+    if not worker.use_raylet:
+        worker.redis_client.hmset(error_key, {
+            "type": error_type,
+            "message": message,
+            "data": data
+        })
+        worker.redis_client.rpush("ErrorKeys", error_key)
+    else:
+        worker.local_scheduler_client.push_error(ray.ObjectID(driver_id),
+                                                 message, time.time())
 
 def is_cython(obj):
     """Check if an object is a Cython function or method"""
