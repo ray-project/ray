@@ -4,7 +4,6 @@ from __future__ import print_function
 
 from six.moves import queue
 import threading
-import time
 
 from ray.rllib.utils.async_vector_env import AsyncVectorEnv
 
@@ -38,8 +37,10 @@ class ServingEnv(threading.Thread):
         self.action_space = action_space
         self.observation_space = observation_space
         self._episodes = {}
+        self._finished = set()
         self._num_episodes = 0
         self._cur_default_episode_id = None
+        self._results_avail_condition = threading.Condition()
 
     def run(self):
         """Override this to implement the run loop.
@@ -63,7 +64,7 @@ class ServingEnv(threading.Thread):
                 is only going to be a single active episode.
         """
 
-        if not episode_id:
+        if episode_id is None:
             if self._cur_default_episode_id:
                 raise ValueError(
                     "An existing episode is still active. You must pass "
@@ -73,11 +74,15 @@ class ServingEnv(threading.Thread):
             self._cur_default_episode_id = episode_id
             self._num_episodes += 1
 
+        if episode_id in self._finished:
+            raise ValueError(
+                "Episode {} has already completed.".format(episode_id))
+
         if episode_id in self._episodes:
             raise ValueError(
                 "Episode {} is already started".format(episode_id))
 
-        self._episodes[episode_id] = _Episode()
+        self._episodes[episode_id] = _Episode(self._results_avail_condition)
         return episode_id
 
     def get_action(self, observation, episode_id=None):
@@ -91,7 +96,13 @@ class ServingEnv(threading.Thread):
             action (obj): Action from the env action space.
         """
 
-        episode_id = episode_id or self._cur_default_episode_id
+        if episode_id is None:
+            episode_id = self._cur_default_episode_id
+
+        if episode_id in self._finished:
+            raise ValueError(
+                "Episode {} has already completed.".format(episode_id))
+
         if episode_id not in self._episodes:
             raise ValueError("Episode {} not found.".format(episode_id))
 
@@ -113,7 +124,13 @@ class ServingEnv(threading.Thread):
             action (obj): Action from the env action space.
         """
 
-        episode_id = episode_id or self._cur_default_episode_id
+        if episode_id is None:
+            episode_id = self._cur_default_episode_id
+
+        if episode_id in self._finished:
+            raise ValueError(
+                "Episode {} has already completed.".format(episode_id))
+
         if episode_id not in self._episodes:
             raise ValueError("Episode {} not found.".format(episode_id))
 
@@ -130,10 +147,17 @@ class ServingEnv(threading.Thread):
             observation (obj): Current environment observation.
         """
 
-        episode_id = episode_id or self._cur_default_episode_id
+        if episode_id is None:
+            episode_id = self._cur_default_episode_id
+
+        if episode_id in self._finished:
+            raise ValueError(
+                "Episode {} has already completed.".format(episode_id))
+
         if episode_id not in self._episodes:
             raise ValueError("Episode {} not found.".format(episode_id))
 
+        self._finished.add(episode_id)
         self._cur_default_episode_id = None
         episode = self._episodes[episode_id]
         episode.done(observation)
@@ -147,7 +171,8 @@ class _ServingEnvToAsync(AsyncVectorEnv):
     def poll(self):
         results = self._poll()
         while len(results[0]) == 0:
-            time.sleep(.001)
+            with self.serving_env._results_avail_condition:
+                self.serving_env._results_avail_condition.wait()
             results = self._poll()
             if not self.serving_env.isAlive():
                 raise Exception("Serving thread has stopped.")
@@ -172,9 +197,10 @@ class _ServingEnvToAsync(AsyncVectorEnv):
 
 
 class _Episode(object):
-    def __init__(self):
-        self.data_queue = queue.Queue(maxsize=1)
-        self.action_queue = queue.Queue(maxsize=1)
+    def __init__(self, results_avail_condition):
+        self.results_avail_condition = results_avail_condition
+        self.data_queue = queue.Queue()
+        self.action_queue = queue.Queue()
         self.new_observation = None
         self.cur_reward = 0.0
         self.cur_done = False
@@ -204,4 +230,6 @@ class _Episode(object):
         }
         self.new_observation = None
         self.cur_reward = 0.0
-        self.data_queue.put_nowait(item)
+        with self.results_avail_condition:
+            self.data_queue.put_nowait(item)
+            self.results_avail_condition.notify()

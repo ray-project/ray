@@ -223,8 +223,6 @@ def _postprocess_dqn(policy_graph, sample_batch):
         "obs": obs, "actions": actions, "rewards": rewards,
         "new_obs": new_obs, "dones": dones,
         "weights": np.ones_like(rewards)})
-    assert batch.count == policy_graph.config["sample_batch_size"], \
-        (batch.count, policy_graph.config["sample_batch_size"])
 
     # Prioritize on the worker side
     if policy_graph.config["worker_side_prioritization"]:
