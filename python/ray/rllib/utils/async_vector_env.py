@@ -31,6 +31,10 @@ class AsyncVectorEnv(object):
     def send_actions(self, action_dict):
         raise NotImplementedError
 
+    def send_error(self, error):
+        """Notify that an error has occured."""
+        pass
+
     def try_reset(self, agent_id):
         """Attempt to reset the agent with the given id.
 

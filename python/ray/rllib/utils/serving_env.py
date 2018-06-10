@@ -8,7 +8,6 @@ import threading
 from ray.rllib.utils.async_vector_env import AsyncVectorEnv
 
 
-# TODO(ekl): implement log_action()
 class ServingEnv(threading.Thread):
     """Environment that provides policy serving.
 
@@ -84,7 +83,8 @@ class ServingEnv(threading.Thread):
             raise ValueError(
                 "Episode {} is already started".format(episode_id))
 
-        self._episodes[episode_id] = _Episode(self._results_avail_condition)
+        self._episodes[episode_id] = _Episode(
+            episode_id, self._results_avail_condition)
         return episode_id
 
     def get_action(self, observation, episode_id=None):
@@ -98,18 +98,20 @@ class ServingEnv(threading.Thread):
             action (obj): Action from the env action space.
         """
 
-        if episode_id is None:
-            episode_id = self._cur_default_episode_id
-
-        if episode_id in self._finished:
-            raise ValueError(
-                "Episode {} has already completed.".format(episode_id))
-
-        if episode_id not in self._episodes:
-            raise ValueError("Episode {} not found.".format(episode_id))
-
-        episode = self._episodes[episode_id]
+        episode = self._get(episode_id)
         return episode.wait_for_action(observation)
+
+    def log_action(self, observation, action, episode_id=None):
+        """Record an observation and action taken.
+
+        Arguments:
+            observation (obj): Current environment observation.
+            action (obj): Action for the observation.
+            episode_id (str): Episode id passed to start_episode() or None.
+        """
+
+        episode = self._get(episode_id)
+        return episode.log_action(observation, action)
 
     def log_returns(self, reward, info=None, episode_id=None):
         """Record returns from the environment.
@@ -126,17 +128,7 @@ class ServingEnv(threading.Thread):
             action (obj): Action from the env action space.
         """
 
-        if episode_id is None:
-            episode_id = self._cur_default_episode_id
-
-        if episode_id in self._finished:
-            raise ValueError(
-                "Episode {} has already completed.".format(episode_id))
-
-        if episode_id not in self._episodes:
-            raise ValueError("Episode {} not found.".format(episode_id))
-
-        episode = self._episodes[episode_id]
+        episode = self._get(episode_id)
         episode.cur_reward += reward
         if info:
             episode.cur_info = info
@@ -149,6 +141,14 @@ class ServingEnv(threading.Thread):
             observation (obj): Current environment observation.
         """
 
+        episode = self._get(episode_id)
+        self._finished.add(episode.episode_id)
+        self._cur_default_episode_id = None
+        episode.done(observation)
+
+    def _get(self, episode_id=None):
+        """Get a started episode or raise an error."""
+
         if episode_id is None:
             episode_id = self._cur_default_episode_id
 
@@ -159,10 +159,7 @@ class ServingEnv(threading.Thread):
         if episode_id not in self._episodes:
             raise ValueError("Episode {} not found.".format(episode_id))
 
-        self._finished.add(episode_id)
-        self._cur_default_episode_id = None
-        episode = self._episodes[episode_id]
-        episode.done(observation)
+        return self._episodes[episode_id]
 
 
 class _ServingEnvToAsync(AsyncVectorEnv):
@@ -199,11 +196,13 @@ class _ServingEnvToAsync(AsyncVectorEnv):
 
 
 class _Episode(object):
-    def __init__(self, results_avail_condition):
+    def __init__(self, episode_id, results_avail_condition):
+        self.episode_id = episode_id
         self.results_avail_condition = results_avail_condition
         self.data_queue = queue.Queue()
         self.action_queue = queue.Queue()
         self.new_observation = None
+        self.new_action = None
         self.cur_reward = 0.0
         self.cur_done = False
         self.cur_info = {}
@@ -212,6 +211,11 @@ class _Episode(object):
         if self.data_queue.empty():
             return None
         return self.data_queue.get_nowait()
+
+    def log_action(self, observation, action):
+        self.new_observation = observation
+        self.new_action = action
+        self._send()
 
     def wait_for_action(self, observation):
         self.new_observation = observation
@@ -229,8 +233,10 @@ class _Episode(object):
             "reward": self.cur_reward,
             "done": self.cur_done,
             "info": self.cur_info,
+            "taken_action": self.new_action,
         }
         self.new_observation = None
+        self.new_action = None
         self.cur_reward = 0.0
         with self.results_avail_condition:
             self.data_queue.put_nowait(item)

@@ -22,6 +22,14 @@ class MockPolicyGraph(PolicyGraph):
         return compute_advantages(batch, 100.0, 0.9, use_gae=False)
 
 
+class BadPolicyGraph(PolicyGraph):
+    def compute_actions(self, obs_batch, state_batches, is_training=False):
+        raise Exception("intentional error")
+
+    def postprocess_trajectory(self, batch):
+        return compute_advantages(batch, 100.0, 0.9, use_gae=False)
+
+
 class MockEnv(gym.Env):
     def __init__(self, episode_length):
         self.episode_length = episode_length

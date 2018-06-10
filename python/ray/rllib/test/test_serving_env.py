@@ -11,8 +11,8 @@ import ray
 from ray.rllib.pg import PGAgent
 from ray.rllib.utils.common_policy_evaluator import CommonPolicyEvaluator
 from ray.rllib.utils.serving_env import ServingEnv
-from ray.rllib.test.test_common_policy_evaluator import MockPolicyGraph, \
-    MockEnv
+from ray.rllib.test.test_common_policy_evaluator import BadPolicyGraph, \
+    MockPolicyGraph, MockEnv
 from ray.tune.registry import register_env
 
 
@@ -84,6 +84,15 @@ class TestServingEnv(unittest.TestCase):
         for _ in range(10):
             batch = ev.sample()
             self.assertEqual(batch.count, 40)
+
+    def testServingEnvBadActions(self):
+        ev = CommonPolicyEvaluator(
+            env_creator=lambda _: SimpleServing(MockEnv(25)),
+            policy_graph=BadPolicyGraph,
+            sample_async=True,
+            batch_steps=40,
+            truncate_episodes=True)
+        self.assertRaises(Exception, lambda: ev.sample())
 
     def testServingEnvHorizonNotSupported(self):
         ev = CommonPolicyEvaluator(
