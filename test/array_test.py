@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import numpy as np
 from numpy.testing import assert_equal, assert_almost_equal
 import sys
@@ -74,6 +75,9 @@ class DistributedArrayTest(unittest.TestCase):
                 np.zeros([da.BLOCK_SIZE, da.BLOCK_SIZE])
             ]))
 
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") == "1",
+        "This test does not work with xray yet.")
     def testMethods(self):
         for module in [
                 ra.core, ra.random, ra.linalg, da.core, da.random, da.linalg
