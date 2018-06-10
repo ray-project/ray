@@ -100,7 +100,7 @@ class A3CAgent(Agent):
         self.local_evaluator = CommonPolicyEvaluator(
             self.env_creator, self.policy_cls,
             batch_steps=self.config["batch_size"],
-            batch_mode="truncate_episodes",
+            truncate_episodes=True,
             tf_session_creator=session_creator,
             registry=self.registry, env_config=self.config["env_config"],
             model_config=self.config["model"], policy_config=self.config,
@@ -109,7 +109,7 @@ class A3CAgent(Agent):
             remote_cls.remote(
                 self.env_creator, self.policy_cls,
                 batch_steps=self.config["batch_size"],
-                batch_mode="truncate_episodes", sample_async=True,
+                truncate_episodes=True, sample_async=True,
                 tf_session_creator=session_creator,
                 registry=self.registry, env_config=self.config["env_config"],
                 model_config=self.config["model"], policy_config=self.config,

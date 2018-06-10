@@ -2,13 +2,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from collections import namedtuple
+from collections import defaultdict, namedtuple
 import numpy as np
 import six.moves.queue as queue
 import threading
 
 from ray.rllib.optimizers.sample_batch import SampleBatchBuilder
 from ray.rllib.utils.vector_env import VectorEnv
+from ray.rllib.utils.async_vector_env import AsyncVectorEnv, _VectorEnvToAsync
 
 
 CompletedRollout = namedtuple("CompletedRollout",
@@ -27,14 +28,16 @@ class SyncSampler(object):
     def __init__(
             self, env, policy, obs_filter, num_local_steps,
             horizon=None, pack=False):
-        if not hasattr(env, "vector_reset"):
-            env = VectorEnv.wrap(make_env=None, existing_envs=[env])
-        self.vector_env = env
+        if not isinstance(env, AsyncVectorEnv):
+            if not isinstance(env, VectorEnv):
+                env = VectorEnv.wrap(make_env=None, existing_envs=[env])
+            env = _VectorEnvToAsync(env)
+        self.async_vector_env = env
         self.num_local_steps = num_local_steps
         self.horizon = horizon
         self.policy = policy
         self._obs_filter = obs_filter
-        self.rollout_provider = _env_runner(self.vector_env, self.policy,
+        self.rollout_provider = _env_runner(self.async_vector_env, self.policy,
                                             self.num_local_steps, self.horizon,
                                             self._obs_filter, pack)
         self.metrics_queue = queue.Queue()
@@ -69,9 +72,11 @@ class AsyncSampler(threading.Thread):
         assert getattr(
             obs_filter, "is_concurrent",
             False), ("Observation Filter must support concurrent updates.")
-        if not hasattr(env, "vector_reset"):
-            env = VectorEnv.wrap(make_env=None, existing_envs=[env])
-        self.vector_env = env
+        if not isinstance(env, AsyncVectorEnv):
+            if not isinstance(env, VectorEnv):
+                env = VectorEnv.wrap(make_env=None, existing_envs=[env])
+            env = _VectorEnvToAsync(env)
+        self.async_vector_env = env
         threading.Thread.__init__(self)
         self.queue = queue.Queue(5)
         self.metrics_queue = queue.Queue()
@@ -90,7 +95,7 @@ class AsyncSampler(threading.Thread):
             raise e
 
     def _run(self):
-        rollout_provider = _env_runner(self.vector_env, self.policy,
+        rollout_provider = _env_runner(self.async_vector_env, self.policy,
                                        self.num_local_steps, self.horizon,
                                        self._obs_filter, self.pack)
         while True:
@@ -111,8 +116,7 @@ class AsyncSampler(threading.Thread):
             raise rollout
 
         # We can't auto-concat rollouts in vector mode
-        if not hasattr(self.vector_env, "vector_width") or \
-                self.vector_env.vector_width > 1:
+        if self.async_vector_env.vector_width > 1:
             return rollout
 
         # Auto-concat rollouts; TODO(ekl) is this important for A3C perf?
@@ -137,7 +141,7 @@ class AsyncSampler(threading.Thread):
 
 
 def _env_runner(
-        vector_env, policy, num_local_steps, horizon, obs_filter, pack):
+        async_vector_env, policy, num_local_steps, horizon, obs_filter, pack):
     """This implements the logic of the thread runner.
 
     It continually runs the policy, and as long as the rollout exceeds a
@@ -146,9 +150,9 @@ def _env_runner(
     `num_local_steps` is reached.
 
     Args:
-        vector_env: env implementing vector_reset() and vector_step().
+        async_vector_env: env implementing AsyncVectorEnv.
         policy: Policy used to interact with environment. Also sets fields
-            to be included in `SampleBatch`
+            to be included in `SampleBatch`.
         num_local_steps: Number of steps before `SampleBatch` is yielded. Set
             to infinity to yield complete episodes.
         horizon: Horizon of the episode.
@@ -163,83 +167,138 @@ def _env_runner(
 
     try:
         if not horizon:
-            horizon = vector_env.first_env().spec.max_episode_steps
+            horizon = async_vector_env.get_unwrapped().spec.max_episode_steps
     except Exception:
         print("Warning, no horizon specified, assuming infinite")
     if not horizon:
-        horizon = 999999
+        horizon = float("inf")
 
-    last_observations = [obs_filter(o) for o in vector_env.vector_reset()]
-    vector_width = len(last_observations)
+    # Pool of batch builders, which can be shared across episodes to pack
+    # trajectory data.
+    batch_builder_pool = []
 
-    def init_rnn():
-        states = policy.get_initial_state()
-        state_vector = [[s] for s in states]
-        for _ in range(vector_width - 1):
-            for i, s in enumerate(policy.get_initial_state()):
-                state_vector[i] = s
-        return state_vector
+    def get_batch_builder():
+        if batch_builder_pool:
+            return batch_builder_pool.pop()
+        else:
+            return SampleBatchBuilder()
 
-    last_rnn_states = init_rnn()
-
-    rnn_states = last_rnn_states
-    episode_lengths = [0] * vector_width
-    episode_rewards = [0] * vector_width
-
-    batch_builders = [
-        SampleBatchBuilder() for _ in range(vector_width)]
+    episodes = defaultdict(
+        lambda: _Episode(policy.get_initial_state(), get_batch_builder))
 
     while True:
-        actions, rnn_states, pi_infos = policy.compute_actions(
-            last_observations, last_rnn_states, is_training=True)
+        # Get observations from ready envs
+        unfiltered_obs, rewards, dones, _ = async_vector_env.poll()
+        ready_eids = []
+        ready_obs = []
+        ready_rnn_states = []
 
-        # Add RNN state info
-        for f_i, column in enumerate(last_rnn_states):
-            pi_infos["state_in_{}".format(f_i)] = column
-        for f_i, column in enumerate(rnn_states):
-            pi_infos["state_out_{}".format(f_i)] = column
+        # Process and record the new observations
+        for eid, raw_obs in unfiltered_obs.items():
+            episode = episodes[eid]
+            filtered_obs = obs_filter(raw_obs)
+            ready_eids.append(eid)
+            ready_obs.append(filtered_obs)
+            ready_rnn_states.append(episode.rnn_state)
 
-        # Vectorized env step
-        observations, rewards, dones, _ = vector_env.vector_step(actions)
+            if episode.last_observation is None:
+                episode.last_observation = filtered_obs
+                continue  # This is the initial observation after a reset
 
-        # Process transitions for each child environment
-        for i in range(vector_width):
-            episode_lengths[i] += 1
-            episode_rewards[i] += rewards[i]
-            observations[i] = obs_filter(observations[i])
+            episode.length += 1
+            episode.total_reward += rewards[eid]
 
             # Handle episode terminations
-            if dones[i] or episode_lengths[i] >= horizon:
+            if dones[eid] or episode.length >= horizon:
                 done = True
-                yield CompletedRollout(
-                    episode_lengths[i], episode_rewards[i])
+                yield CompletedRollout(episode.length, episode.total_reward)
             else:
                 done = False
 
-            # Concatenate multiagent actions
-            if isinstance(actions[i], list):
-                actions[i] = np.concatenate(actions[i], axis=0).flatten()
-
-            # Collect the experience.
-            batch_builders[i].add_values(
-                obs=last_observations[i],
-                actions=actions[i],
-                rewards=rewards[i],
+            episode.batch_builder.add_values(
+                obs=episode.last_observation,
+                actions=episode.last_action_flat(),
+                rewards=rewards[eid],
                 dones=done,
-                new_obs=observations[i],
-                **{k: v[i] for k, v in pi_infos.items()})
+                new_obs=filtered_obs,
+                **episode.last_pi_info)
 
             if (done and not pack) or \
-                    batch_builders[i].count >= num_local_steps:
-                yield batch_builders[i].build_and_reset()
+                    episode.batch_builder.count >= num_local_steps:
+                yield episode.batch_builder.build_and_reset(
+                    policy.postprocess_trajectory)
+            elif done:
+                # Make sure postprocessor never goes across episode boundaries
+                episode.batch_builder.postprocess_batch_so_far(
+                    policy.postprocess_trajectory)
 
             if done:
-                observations[i] = vector_env.reset_at(i)
-                state = policy.get_initial_state()
-                for f_i in enumerate(state):
-                    last_rnn_states[f_i][i] = state[f_i]
-                episode_lengths[i] = 0
-                episode_rewards[i] = 0
+                # Handle episode termination
+                batch_builder_pool.append(episode.batch_builder)
+                del episodes[eid]
+                resetted_obs = async_vector_env.try_reset(eid)
+                if resetted_obs is None:
+                    # Reset not supported, drop this env from the ready list
+                    assert horizon == float("inf"), \
+                        "Setting episode horizon requires reset() support."
+                    ready_eids.pop()
+                    ready_obs.pop()
+                    ready_rnn_states.pop()
+                else:
+                    # Reset successful, put in the new obs as ready
+                    episode = episodes[eid]
+                    episode.last_observation = obs_filter(resetted_obs)
+                    ready_obs[-1] = episode.last_observation
+                    ready_rnn_states[-1] = episode.rnn_state
+            else:
+                episode.last_observation = filtered_obs
 
-        last_observations = observations
-        last_rnn_states = rnn_states
+        if not ready_eids:
+            continue  # No actions to take
+
+        # Compute action for ready envs
+        ready_rnn_state_cols = _to_column_format(ready_rnn_states)
+        actions, new_rnn_state_cols, pi_info_cols = policy.compute_actions(
+            ready_obs, ready_rnn_state_cols, is_training=True)
+
+        # Add RNN state info
+        for f_i, column in enumerate(ready_rnn_state_cols):
+            pi_info_cols["state_in_{}".format(f_i)] = column
+        for f_i, column in enumerate(new_rnn_state_cols):
+            pi_info_cols["state_out_{}".format(f_i)] = column
+
+        # Return computed actions to ready envs
+        async_vector_env.send_actions({
+            ready_eids[i]: a for i, a in enumerate(actions)})
+
+        # Store the computed action info
+        for i in range(len(ready_obs)):
+            eid = ready_eids[i]
+            episode = episodes[eid]
+            episode.last_action = actions[i]
+            episode.rnn_state = [column[i] for column in new_rnn_state_cols]
+            episode.last_pi_info = {
+                k: column[i] for k, column in pi_info_cols.items()}
+
+
+def _to_column_format(rnn_state_rows):
+    num_cols = len(rnn_state_rows[0])
+    return [
+        [row[i] for row in rnn_state_rows] for i in range(num_cols)]
+
+
+class _Episode(object):
+    def __init__(self, rnn_state, batch_builder_factory):
+        self.rnn_state = rnn_state
+        self.batch_builder = batch_builder_factory()
+        self.last_action = None
+        self.last_observation = None
+        self.last_pi_info = None
+        self.total_reward = 0.0
+        self.length = 0
+
+    def last_action_flat(self):
+        # Concatenate multiagent actions
+        if isinstance(self.last_action, list):
+            return np.concatenate(self.last_action, axis=0).flatten()
+        return self.last_action

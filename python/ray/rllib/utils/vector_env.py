@@ -7,21 +7,21 @@ import threading
 
 
 class VectorEnv(object):
-    """An environment that supports batch evaluation."""
+    """An environment that supports batch evaluation.
+
+    Subclasses must define the following attributes:
+
+    Attributes:
+        action_space (gym.Space): Action space of individual envs.
+        observation_space (gym.Space): Observation space of individual envs.
+        vector_width (int): Number of envs to batch over.
+    """
 
     @staticmethod
     def wrap(make_env=None, existing_envs=None, vector_width=1):
         return _VectorizedGymEnv(make_env, existing_envs or [], vector_width)
 
-    @property
-    def action_space(self):
-        raise NotImplementedError
-
-    @property
-    def observation_space(self):
-        raise NotImplementedError
-
-    def vector_reset(self, vector_width):
+    def vector_reset(self):
         raise NotImplementedError
 
     def reset_at(self, index):
@@ -30,7 +30,7 @@ class VectorEnv(object):
     def vector_step(self, actions):
         raise NotImplementedError
 
-    def first_env(self):
+    def get_unwrapped(self):
         raise NotImplementedError
 
 
@@ -67,7 +67,7 @@ class _VectorizedGymEnv(VectorEnv):
             info_batch.append(info)
         return obs_batch, rew_batch, done_batch, info_batch
 
-    def first_env(self):
+    def get_unwrapped(self):
         return self.envs[0]
 
 

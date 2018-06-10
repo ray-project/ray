@@ -54,7 +54,7 @@ class PGAgent(Agent):
                 "env_creator": self.env_creator,
                 "policy_graph": PGPolicyGraph,
                 "batch_steps": self.config["batch_size"],
-                "batch_mode": "truncate_episodes",
+                "truncate_episodes": True,
                 "registry": self.registry,
                 "model_config": self.config["model"],
                 "env_config": self.config["env_config"],

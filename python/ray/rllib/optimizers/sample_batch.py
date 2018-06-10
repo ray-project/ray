@@ -10,6 +10,7 @@ class SampleBatchBuilder(object):
     """Util to build a SampleBatch incrementally."""
 
     def __init__(self):
+        self.postprocessed = []
         self.buffers = collections.defaultdict(list)
         self.count = 0
 
@@ -18,10 +19,20 @@ class SampleBatchBuilder(object):
             self.buffers[k].append(v)
         self.count += 1
 
-    def build_and_reset(self):
+    def postprocess_batch_so_far(self, postprocessor):
+        batch = postprocessor(self._build_buffers())
+        self.postprocessed.append(batch)
+
+    def build_and_reset(self, postprocessor):
+        self.postprocess_batch_so_far(postprocessor)
+        batch = SampleBatch.concat_samples(self.postprocessed)
+        self.postprocessed = []
+        self.count = 0
+        return batch
+
+    def _build_buffers(self):
         batch = SampleBatch({k: np.array(v) for k, v in self.buffers.items()})
         self.buffers.clear()
-        self.count = 0
         return batch
 
 
