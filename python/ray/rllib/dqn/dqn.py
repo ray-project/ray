@@ -90,7 +90,7 @@ DEFAULT_CONFIG = {
     # you"re using the Async or Ape-X optimizers.
     "num_workers": 0,
     # Number of environments to evaluate vectorwise per worker.
-    "vector_width": 1,
+    "num_envs": 1,
     # Whether to allocate GPUs for workers (if > 0).
     "num_gpus_per_worker": 0,
     # Whether to allocate CPUs for workers (if > 0).
@@ -131,7 +131,7 @@ class DQNAgent(Agent):
             compress_observations=True,
             registry=self.registry, env_config=self.config["env_config"],
             model_config=self.config["model"], policy_config=self.config,
-            vector_width=self.config["vector_width"])
+            num_envs=self.config["num_envs"])
         remote_cls = CommonPolicyEvaluator.as_remote(
             num_cpus=self.config["num_cpus_per_worker"],
             num_gpus=self.config["num_gpus_per_worker"])
@@ -143,7 +143,7 @@ class DQNAgent(Agent):
                 compress_observations=True,
                 registry=self.registry, env_config=self.config["env_config"],
                 model_config=self.config["model"], policy_config=self.config,
-                vector_width=self.config["vector_width"])
+                num_envs=self.config["num_envs"])
             for _ in range(self.config["num_workers"])]
 
         self.exploration0 = self._make_exploration_schedule(0)

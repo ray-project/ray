@@ -49,12 +49,12 @@ class MockEnv(gym.Env):
 
 
 class MockVectorEnv(VectorEnv):
-    def __init__(self, episode_length, vector_width):
+    def __init__(self, episode_length, num_envs):
         self.envs = [
-            MockEnv(episode_length) for _ in range(vector_width)]
+            MockEnv(episode_length) for _ in range(num_envs)]
         self.observation_space = gym.spaces.Discrete(1)
         self.action_space = gym.spaces.Discrete(2)
-        self.vector_width = vector_width
+        self.num_envs = num_envs
 
     def vector_reset(self):
         return [e.reset() for e in self.envs]
@@ -132,7 +132,7 @@ class TestCommonPolicyEvaluator(unittest.TestCase):
             env_creator=lambda _: MockEnv(episode_length=20),
             policy_graph=MockPolicyGraph,
             truncate_episodes=True,
-            batch_steps=10, vector_width=8)
+            batch_steps=10, num_envs=8)
         for _ in range(8):
             batch = ev.sample()
             self.assertEqual(batch.count, 10)
@@ -147,7 +147,7 @@ class TestCommonPolicyEvaluator(unittest.TestCase):
     def testVectorEnvSupport(self):
         ev = CommonPolicyEvaluator(
             env_creator=lambda _: MockVectorEnv(
-                episode_length=20, vector_width=8),
+                episode_length=20, num_envs=8),
             policy_graph=MockPolicyGraph,
             truncate_episodes=True,
             batch_steps=10)

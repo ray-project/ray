@@ -116,7 +116,7 @@ class AsyncSampler(threading.Thread):
             raise rollout
 
         # We can't auto-concat rollouts in vector mode
-        if self.async_vector_env.vector_width > 1:
+        if self.async_vector_env.num_envs > 1:
             return rollout
 
         # Auto-concat rollouts; TODO(ekl) is this important for A3C perf?

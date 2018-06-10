@@ -18,7 +18,7 @@ DEFAULT_CONFIG = {
     # Number of workers (excluding master)
     "num_workers": 2,
     # Number of environments to evaluate vectorwise per worker.
-    "vector_width": 1,
+    "num_envs": 1,
     # Size of rollout batch
     "batch_size": 10,
     # Use LSTM model - only applicable for image states
@@ -104,7 +104,7 @@ class A3CAgent(Agent):
             tf_session_creator=session_creator,
             registry=self.registry, env_config=self.config["env_config"],
             model_config=self.config["model"], policy_config=self.config,
-            vector_width=self.config["vector_width"])
+            num_envs=self.config["num_envs"])
         self.remote_evaluators = [
             remote_cls.remote(
                 self.env_creator, self.policy_cls,
@@ -113,7 +113,7 @@ class A3CAgent(Agent):
                 tf_session_creator=session_creator,
                 registry=self.registry, env_config=self.config["env_config"],
                 model_config=self.config["model"], policy_config=self.config,
-                vector_width=self.config["vector_width"])
+                num_envs=self.config["num_envs"])
             for i in range(self.config["num_workers"])]
 
         self.optimizer = AsyncOptimizer(

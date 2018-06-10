@@ -96,7 +96,7 @@ DEFAULT_CONFIG = {
     # you"re using the Async or Ape-X optimizers.
     "num_workers": 0,
     # Number of environments to evaluate vectorwise per worker.
-    "vector_width": 1,
+    "num_envs": 1,
     # Whether to allocate GPUs for workers (if > 0).
     "num_gpus_per_worker": 0,
     # Whether to allocate CPUs for workers (if > 0).

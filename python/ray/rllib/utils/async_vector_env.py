@@ -88,11 +88,11 @@ class _VectorEnvToAsync(AsyncVectorEnv):
 
     def __init__(self, vector_env):
         self.vector_env = vector_env
-        self.vector_width = vector_env.vector_width
+        self.num_envs = vector_env.num_envs
         self.new_obs = self.vector_env.vector_reset()
-        self.cur_rewards = [None for _ in range(self.vector_width)]
-        self.cur_dones = [False for _ in range(self.vector_width)]
-        self.cur_infos = [None for _ in range(self.vector_width)]
+        self.cur_rewards = [None for _ in range(self.num_envs)]
+        self.cur_dones = [False for _ in range(self.num_envs)]
+        self.cur_infos = [None for _ in range(self.num_envs)]
 
     def poll(self):
         new_obs = {i: o for i, o in enumerate(self.new_obs)}
@@ -106,8 +106,8 @@ class _VectorEnvToAsync(AsyncVectorEnv):
         return new_obs, rewards, dones, infos, {}
 
     def send_actions(self, action_dict):
-        action_vector = [None] * self.vector_width
-        for i in range(self.vector_width):
+        action_vector = [None] * self.num_envs
+        for i in range(self.num_envs):
             action_vector[i] = action_dict[i]
         self.new_obs, self.cur_rewards, self.cur_dones, self.cur_infos = \
             self.vector_env.vector_step(action_vector)

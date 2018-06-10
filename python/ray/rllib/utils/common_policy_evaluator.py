@@ -97,7 +97,7 @@ class CommonPolicyEvaluator(PolicyEvaluator):
             preprocessor_pref="rllib",
             sample_async=False,
             compress_observations=False,
-            vector_width=1,
+            num_envs=1,
             observation_filter="NoFilter",
             registry=None,
             env_config=None,
@@ -125,7 +125,7 @@ class CommonPolicyEvaluator(PolicyEvaluator):
                 to be slightly off-policy.
             compress_observations (bool): If true, compress the observations
                 returned.
-            vector_width (int): If more than one, will create multiple envs
+            num_envs (int): If more than one, will create multiple envs
                 and vectorize the computation of actions. This has no affect if
                 if the env already implements VectorEnv.
             observation_filter (str): Name of observation filter to use.
@@ -197,14 +197,14 @@ class CommonPolicyEvaluator(PolicyEvaluator):
             observation_filter, self.env.observation_space.shape)
         self.filters = {"obs_filter": self.obs_filter}
 
-        # Always use vector env for consistency even if vector_width = 1
+        # Always use vector env for consistency even if num_envs = 1
         if not isinstance(self.env, AsyncVectorEnv):
             if isinstance(self.env, ServingEnv):
                 self.vector_env = _ServingEnvToAsync(self.env)
             else:
                 if not isinstance(self.env, VectorEnv):
                     self.env = VectorEnv.wrap(
-                        make_env, [self.env], vector_width=vector_width)
+                        make_env, [self.env], num_envs=num_envs)
                 self.vector_env = _VectorEnvToAsync(self.env)
         else:
             self.vector_env = self.env

@@ -14,12 +14,12 @@ class VectorEnv(object):
     Attributes:
         action_space (gym.Space): Action space of individual envs.
         observation_space (gym.Space): Observation space of individual envs.
-        vector_width (int): Number of envs to batch over.
+        num_envs (int): Number of envs to batch over.
     """
 
     @staticmethod
-    def wrap(make_env=None, existing_envs=None, vector_width=1):
-        return _VectorizedGymEnv(make_env, existing_envs or [], vector_width)
+    def wrap(make_env=None, existing_envs=None, num_envs=1):
+        return _VectorizedGymEnv(make_env, existing_envs or [], num_envs)
 
     def vector_reset(self):
         raise NotImplementedError
@@ -37,16 +37,16 @@ class VectorEnv(object):
 class _VectorizedGymEnv(VectorEnv):
     """A gym environment wrapped to implement VectorEnv."""
 
-    def __init__(self, make_env, existing_envs, vector_width):
+    def __init__(self, make_env, existing_envs, num_envs):
         self.make_env = make_env
         self.envs = existing_envs
-        self.vector_width = vector_width
-        if make_env and vector_width > 1:
+        self.num_envs = num_envs
+        if make_env and num_envs > 1:
             self.resetter = _AsyncResetter(
-                make_env, int(self.vector_width ** 0.5))
+                make_env, int(self.num_envs ** 0.5))
         else:
             self.resetter = _SimpleResetter(make_env)
-        while len(self.envs) < self.vector_width:
+        while len(self.envs) < self.num_envs:
             self.envs.append(self.make_env())
 
     def vector_reset(self):
@@ -59,7 +59,7 @@ class _VectorizedGymEnv(VectorEnv):
 
     def vector_step(self, actions):
         obs_batch, rew_batch, done_batch, info_batch = [], [], [], []
-        for i in range(self.vector_width):
+        for i in range(self.num_envs):
             obs, rew, done, info = self.envs[i].step(actions[i])
             obs_batch.append(obs)
             rew_batch.append(rew)
