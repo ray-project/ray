@@ -46,7 +46,7 @@ DataFrame
 | ``__getitem__``           | Y                  | Returns a pandas Series (see Series section below) |
 |                           |                    |                                                    |
 |                           |                    | ``key`` parameter as type DataFrame not yet        |
-|                           |                    | supported,                                         |
+|                           |                    | supported                                          |
 |                           |                    |                                                    |
 |                           |                    | ``MultiIndex`` columns not yet supported           |
 +---------------------------+--------------------+----------------------------------------------------+
@@ -156,8 +156,8 @@ DataFrame
 +---------------------------+--------------------+----------------------------------------------------+
 | ``add_suffix``            | Y                  |                                                    |
 +---------------------------+--------------------+----------------------------------------------------+
-| ``agg``                   | Y                  | Not yet optimized: Can return DataFrame or Series, |
-|                           |                    | dictionary ``func`` arguments not yet supported,   |
+| ``agg``                   | Y                  | Not yet optimized: Can return DataFrame or Series  |
+|                           |                    | dictionary ``func`` arguments not yet supported    |
 |                           |                    | string ``func`` arguments that are numpy operations|
 |                           |                    | not yet supported                                  |
 +---------------------------+--------------------+----------------------------------------------------+
@@ -316,9 +316,11 @@ DataFrame
 +---------------------------+--------------------+----------------------------------------------------+
 | ``get_values``            | N                  | N/A, Not Yet Implemented                           |
 +---------------------------+--------------------+----------------------------------------------------+
-|                           |                    | Not yet optimized, will require Distributed Series,|
-| ``groupby``               | Y                  | ``level`` parameter not yet supported, lists of    |
-|                           |                    | columns not yet supported                          |
+| ``groupby``               | Y                  | Not yet optimized, will require Distributed Series |
+|                           |                    |                                                    |
+|                           |                    | ``level`` parameter not yet supported              |
+|                           |                    |                                                    |
+|                           |                    | ``by`` with a list of columns not yet supported    |
 +---------------------------+--------------------+----------------------------------------------------+
 | ``gt``                    | Y                  | See ``__gt__``                                     |
 |                           |                    |                                                    |
