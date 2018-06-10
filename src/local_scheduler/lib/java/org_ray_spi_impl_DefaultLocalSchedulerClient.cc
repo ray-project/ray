@@ -47,8 +47,9 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1init(JNIEnv *env,
   //     byte[] workerId, byte[] actorId, boolean isWorker, long numGpus);
   UniqueIdFromJByteArray worker_id(env, wid);
   const char *nativeString = env->GetStringUTFChars(sockName, JNI_FALSE);
-  auto client =
-      LocalSchedulerConnection_init(nativeString, *worker_id.PID, isWorker);
+  bool use_raylet = false;
+  auto client = LocalSchedulerConnection_init(nativeString, *worker_id.PID,
+                                              isWorker, use_raylet);
   env->ReleaseStringUTFChars(sockName, nativeString);
   return reinterpret_cast<jlong>(client);
 }
