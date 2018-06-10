@@ -81,14 +81,28 @@ static PyObject *PyLocalSchedulerClient_get_task(PyObject *self) {
 }
 // clang-format on
 
-static PyObject *PyLocalSchedulerClient_reconstruct_object(PyObject *self,
-                                                           PyObject *args) {
-  ObjectID object_id;
-  if (!PyArg_ParseTuple(args, "O&", PyStringToUniqueID, &object_id)) {
+static PyObject *PyLocalSchedulerClient_reconstruct_objects(PyObject *self,
+                                                            PyObject *args) {
+  PyObject *py_object_ids;
+  PyObject *py_fetch_only;
+  std::vector<ObjectID> object_ids;
+  if (!PyArg_ParseTuple(args, "OO", &py_object_ids, &py_fetch_only)) {
     return NULL;
   }
-  local_scheduler_reconstruct_object(
-      ((PyLocalSchedulerClient *) self)->local_scheduler_connection, object_id);
+  bool fetch_only = PyObject_IsTrue(py_fetch_only);
+  Py_ssize_t n = PyList_Size(py_object_ids);
+  for (int64_t i = 0; i < n; ++i) {
+    ObjectID object_id;
+    PyObject *py_object_id = PyList_GetItem(py_object_ids, i);
+    if (!PyObjectToUniqueID(py_object_id, &object_id)) {
+      return NULL;
+    }
+    object_ids.push_back(object_id);
+  }
+  local_scheduler_reconstruct_objects(
+      reinterpret_cast<PyLocalSchedulerClient *>(self)
+          ->local_scheduler_connection,
+      object_ids, fetch_only);
   Py_RETURN_NONE;
 }
 
@@ -238,8 +252,8 @@ static PyMethodDef PyLocalSchedulerClient_methods[] = {
      "Submit a task to the local scheduler."},
     {"get_task", (PyCFunction) PyLocalSchedulerClient_get_task, METH_NOARGS,
      "Get a task from the local scheduler."},
-    {"reconstruct_object",
-     (PyCFunction) PyLocalSchedulerClient_reconstruct_object, METH_VARARGS,
+    {"reconstruct_objects",
+     (PyCFunction) PyLocalSchedulerClient_reconstruct_objects, METH_VARARGS,
      "Ask the local scheduler to reconstruct an object."},
     {"log_event", (PyCFunction) PyLocalSchedulerClient_log_event, METH_VARARGS,
      "Log an event to the event log through the local scheduler."},

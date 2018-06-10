@@ -111,14 +111,17 @@ TaskSpec *local_scheduler_get_task(LocalSchedulerConnection *conn,
 void local_scheduler_task_done(LocalSchedulerConnection *conn);
 
 /**
- * Tell the local scheduler to reconstruct an object.
+ * Tell the local scheduler to reconstruct or fetch objects.
  *
  * @param conn The connection information.
- * @param object_id The ID of the object to reconstruct.
+ * @param object_ids The IDs of the objects to reconstruct.
+ * @param fetch_only Only fetch objects, do not reconstruct them.
  * @return Void.
  */
-void local_scheduler_reconstruct_object(LocalSchedulerConnection *conn,
-                                        ObjectID object_id);
+void local_scheduler_reconstruct_objects(
+    LocalSchedulerConnection *conn,
+    const std::vector<ObjectID> &object_ids,
+    bool fetch_only = false);
 
 /**
  * Send a log message to the local scheduler.
