@@ -1,11 +1,15 @@
 Pandas on Ray Supported Methods
 ===============================
 
-For your convenience, we have compiled a list of currently implemented methods
-in Pandas on Ray.
+For your convenience, we have compiled a list of currently implemented APIs and
+methods available in Pandas on Ray.
 
 DataFrame
 ---------
+
+The following table lists both implemented and not implemented methods. If you
+have need of an operation that is listed as not implemented, feel free to open
+an issue on the `github repo`_. Contributions are also welcome!
 
 +---------------------------+--------------------+----------------------------------------------------+
 | DataFrame method          | Implemented?       | Limitations/Notes for Current implementation       |
@@ -727,3 +731,12 @@ from ``pd.<op>``, e.g. ``pd.concat``.
 * NaT
 * PeriodIndex
 * Categorical
+
+Questions on implementation details
+-----------------------------------
+
+If you have a question about the implementation details or would like more
+information about an API or method in **Pandas on Ray**, please contact the
+developer Google Group.
+
+.. _`github repo`: https://github.com/ray-project/ray/issues
