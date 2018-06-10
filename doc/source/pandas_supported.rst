@@ -2,8 +2,7 @@ Pandas on Ray Supported Methods
 ===============================
 
 For your convenience, we have compiled a list of currently implemented methods
-in Pandas on Ray. Each of these methods will link to the pandas documentation
-page for the most recent release.
+in Pandas on Ray.
 
 DataFrame
 ---------
@@ -11,7 +10,7 @@ DataFrame
 +---------------------------+--------------------+----------------------------------------------------+
 | DataFrame method          | Implemented?       | Limitations/Notes for Current implementation       |
 +---------------------------+--------------------+----------------------------------------------------+
-| ```T```_                  | Y                  |                                                    |
+| ``T``                     | Y                  |                                                    |
 +---------------------------+--------------------+----------------------------------------------------+
 | ``__abs__``               | Y                  |                                                    |
 +---------------------------+--------------------+----------------------------------------------------+
@@ -648,4 +647,83 @@ DataFrame
 | ``xs``                    | N                  | N/A, Not Yet Implemented                           |
 +---------------------------+--------------------+----------------------------------------------------+
 
-.. _`T`: http://pandas.pydata.org/pandas-docs/version/0.23/generated/pandas.DataFrame.transpose.html
+Series
+------
+
+Currently, whenever a Series is used or returned, we use a **pandas** Series.
+In the future, we're going to implement a distributed Series, but until then
+there will be some performance bottlenecks. The **pandas** Series is completely
+compatible with all operations that both require and return one in
+**Pandas on Ray**.
+
+IO
+--
+
+A number of IO methods default to **pandas**. We have parallelized
+``read_csv`` and ``read_parquet``, though many of the remaining methods can be
+relatively easily paralleized.
+
++--------------------+--------------------+----------------------------------------------------+
+| IO method          | Implemented?       | Limitations/Notes for Current implementation       |
++--------------------+--------------------+----------------------------------------------------+
+| ``read_csv``       | Y                  |                                                    |
++--------------------+--------------------+----------------------------------------------------+
+| ``read_parquet``   | Y                  |                                                    |
++--------------------+--------------------+----------------------------------------------------+
+| ``read_json``      | Y                  | Defaults to pandas implementation                  |
++--------------------+--------------------+----------------------------------------------------+
+| ``read_html``      | Y                  | Defaults to pandas implementation                  |
++--------------------+--------------------+----------------------------------------------------+
+| ``read_clipboard`` | Y                  | Defaults to pandas implementation                  |
++--------------------+--------------------+----------------------------------------------------+
+| ``read_excel``     | Y                  | Defaults to pandas implementation                  |
++--------------------+--------------------+----------------------------------------------------+
+| ``read_hdf``       | Y                  | Defaults to pandas implementation                  |
++--------------------+--------------------+----------------------------------------------------+
+| ``read_feather``   | Y                  | Defaults to pandas implementation                  |
++--------------------+--------------------+----------------------------------------------------+
+| ``read_msgpack``   | Y                  | Defaults to pandas implementation                  |
++--------------------+--------------------+----------------------------------------------------+
+| ``read_stata``     | Y                  | Defaults to pandas implementation                  |
++--------------------+--------------------+----------------------------------------------------+
+| ``read_sas``       | Y                  | Defaults to pandas implementation                  |
++--------------------+--------------------+----------------------------------------------------+
+| ``read_pickle``    | Y                  | Defaults to pandas implementation                  |
++--------------------+--------------------+----------------------------------------------------+
+| ``read_sql``       | Y                  | Defaults to pandas implementation                  |
++--------------------+--------------------+----------------------------------------------------+
+
+List of Other Supported Operations Available on Import
+------------------------------------------------------
+
+If you ``import ray.dataframe as pd`` the following operations are available
+from ``pd.<op>``, e.g. ``pd.concat``.
+
+* concat
+* eval
+* unique
+* value_counts
+* cut
+* to_numeric
+* factorize
+* test
+* qcut
+* match
+* to_datetime
+* get_dummies
+* Panel
+* date_range
+* Index
+* MultiIndex
+* Series
+* bdate_range
+* DatetimeIndex
+* to_timedelta
+* set_eng_float_format
+* set_option
+* CategoricalIndex
+* Timedelta
+* Timestamp
+* NaT
+* PeriodIndex
+* Categorical
