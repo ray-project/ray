@@ -1847,9 +1847,6 @@ class WorkerPoolTests(unittest.TestCase):
 
         ray.get([f.remote() for _ in range(100)])
 
-    @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
     def testBlockingTasks(self):
         ray.init(num_cpus=1)
 
@@ -1879,9 +1876,6 @@ class WorkerPoolTests(unittest.TestCase):
 
         ray.get(sleep.remote())
 
-    @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
     def testMaxCallTasks(self):
         ray.init(num_cpus=1)
 

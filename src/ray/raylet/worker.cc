@@ -61,6 +61,21 @@ void Worker::SetTaskResourceIds(ResourceIdSet &resource_ids) {
   task_resource_ids_ = resource_ids;
 }
 
+ResourceIdSet Worker::ReleaseTaskCpuResources() {
+  auto cpu_resources = task_resource_ids_.GetCpuResources();
+  // The "acquire" terminology is a bit confusing here. The resources are being
+  // "acquired" from the task_resource_ids_ object, and so the worker is losing
+  // some resources.
+  task_resource_ids_.Acquire(cpu_resources.ToResourceSet());
+  return cpu_resources;
+}
+
+void Worker::AcquireTaskCpuResources(const ResourceIdSet &cpu_resources) {
+  // The "release" terminology is a bit confusing here. The resources are being
+  // given back to the worker and so "released" by the caller.
+  task_resource_ids_.Release(cpu_resources);
+}
+
 }  // namespace raylet
 
 }  // end namespace ray

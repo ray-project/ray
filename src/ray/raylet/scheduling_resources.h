@@ -274,6 +274,11 @@ class ResourceIdSet {
   /// \return The resource name to resource IDs mapping.
   const std::unordered_map<std::string, ResourceIds> &AvailableResources() const;
 
+  /// Return the CPU resources.
+  ///
+  /// \return The CPU resources.
+  ResourceIdSet GetCpuResources() const;
+
   /// \brief Get a mapping from each resource to the total quantity.
   ///
   /// \return A mapping from each resource to the total quantity.

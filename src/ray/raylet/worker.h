@@ -39,6 +39,8 @@ class Worker {
   const ResourceIdSet &GetTaskResourceIds() const;
   void SetTaskResourceIds(ResourceIdSet &resource_ids);
   void ResetTaskResourceIds();
+  ResourceIdSet ReleaseTaskCpuResources();
+  void AcquireTaskCpuResources(const ResourceIdSet &cpu_resources);
 
  private:
   /// The worker's PID.

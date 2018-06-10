@@ -369,6 +369,16 @@ const std::unordered_map<std::string, ResourceIds> &ResourceIdSet::AvailableReso
   return available_resources_;
 }
 
+ResourceIdSet ResourceIdSet::GetCpuResources() const {
+  std::unordered_map<std::string, ResourceIds> cpu_resources;
+
+  auto it = available_resources_.find(kCPU_ResourceLabel);
+  if (it != available_resources_.end()) {
+    cpu_resources.insert(*it);
+  }
+  return ResourceIdSet(cpu_resources);
+}
+
 ResourceSet ResourceIdSet::ToResourceSet() const {
   std::unordered_map<std::string, double> resource_set;
   for (auto const &resource_pair : available_resources_) {
