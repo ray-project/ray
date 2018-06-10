@@ -24,6 +24,8 @@ class ServingEnv(threading.Thread):
     ServingEnv supports both on-policy serving (through self.get_action()), and
     off-policy serving (through self.log_action()).
 
+    This env is thread-safe, but individual episodes must be executed serially.
+
     TODO: Provide a HTTP server/client example based on ServingEnv.
 
     Examples:
