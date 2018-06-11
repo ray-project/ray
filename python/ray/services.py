@@ -1013,7 +1013,7 @@ def start_gateway(node_ip_address,
         all_processes[PROCESS_TYPE_WORKER].append(p)
     record_log_files_in_redis(redis_address, node_ip_address,
                               [stdout_file, stderr_file])
-    
+
     gateway_path = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "gateway.py")
     command = [
@@ -1574,8 +1574,7 @@ def start_ray_processes(address_info=None,
 
         start_gateway(
             node_ip_address,
-            # TODO (dsuo): Should make this an option
-            5432,
+            gateway_port,
             local_scheduler_name,
             redis_address,
             stdout_file=gateway_stdout_file,
@@ -1775,7 +1774,8 @@ def start_ray_head(address_info=None,
         huge_pages=huge_pages,
         autoscaling_config=autoscaling_config,
         use_raylet=use_raylet,
-        with_gateway=with_gateway)
+        with_gateway=with_gateway,
+        gateway_port=gateway_port)
 
 
 def try_to_create_directory(directory_path):

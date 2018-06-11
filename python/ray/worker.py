@@ -274,7 +274,7 @@ class Worker(object):
         cluster.
 
         args:
-            mode: One of SCRIPT_MODE, WORKER_MODE, PYTHON_MODE, 
+            mode: One of SCRIPT_MODE, WORKER_MODE, PYTHON_MODE,
                 SILENT_MODE, and CLIENT_MODE.
         """
         self.mode = mode
@@ -1528,7 +1528,6 @@ def _init(address_info=None,
     if driver_mode == PYTHON_MODE:
         driver_address_info = {}
     if driver_mode == CLIENT_MODE:
-        # TODO (dsuo): assumes redis address == node address
         driver_address_info = {
             "node_ip_address": address_info["node_ip_address"],
             "redis_address": address_info["redis_address"],
@@ -1539,7 +1538,7 @@ def _init(address_info=None,
         # TODO (dsuo): ignore raylets for now
         driver_address_info["local_scheduler_socket_name"] = "/tmp/ray_client" + str(np.random.randint(0, 99999999)).zfill(8)
 
-        # TODO (dsuo): move this into services.py
+        # TODO (dsuo): move this into connect()
         command = [
             "socat", "UNIX-LISTEN:" + \
             driver_address_info["local_scheduler_socket_name"] + \
