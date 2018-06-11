@@ -2,7 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import gym
+from gym import spaces
 
 import ray
 from ray.rllib.dqn import DQNAgent
@@ -17,9 +17,8 @@ SERVER_PORT = 8900
 
 class CartpoleServing(ServingEnv):
     def __init__(self):
-        self.env = gym.make("CartPole-v0")
         ServingEnv.__init__(
-            self, self.env.action_space, self.env.observation_space)
+            self, spaces.Discrete(2), spaces.Box(low=-10, high=10, shape=(4,)))
 
     def run(self):
         print("Starting policy server at {}:{}".format(
