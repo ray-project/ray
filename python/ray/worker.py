@@ -1537,18 +1537,6 @@ def _init(address_info=None,
         # TODO (dsuo): generate this name more meaningfully
         # TODO (dsuo): ignore raylets for now
         driver_address_info["local_scheduler_socket_name"] = "/tmp/ray_client" + str(np.random.randint(0, 99999999)).zfill(8)
-
-        # TODO (dsuo): move this into connect()
-        command = [
-            "socat", "UNIX-LISTEN:" + \
-            driver_address_info["local_scheduler_socket_name"] + \
-            ",reuseaddr,fork", "TCP:" + redis_address.split(":")[0] + ":" + \
-            str(driver_address_info["gateway_port"])
-        ]
-
-        # TODO (dsuo): handle cleanup, logging, etc
-        p = subprocess.Popen(command, stdout=None, stderr=None)
-
     else:
         driver_address_info = {
             "node_ip_address": node_ip_address,
@@ -1984,6 +1972,7 @@ def connect(info,
     # All workers start out as non-actors. A worker can be turned into an actor
     # after it is created.
     worker.actor_id = NIL_ACTOR_ID
+    # TODO (dsuo): why is this flag set here and not after checking connections?
     worker.connected = True
     worker.set_mode(mode)
     worker.use_raylet = use_raylet
@@ -1997,6 +1986,20 @@ def connect(info,
     # create_worker or to start the worker service.
     if mode == PYTHON_MODE:
         return
+    # If running Ray in CLIENT_MODE, open proxy for local scheduler
+    # to head node
+    elif mode == CLIENT_MODE:
+        command = [
+            "socat", "UNIX-LISTEN:" + \
+            info["local_scheduler_socket_name"] + \
+            ",reuseaddr,fork", "TCP:" + info["redis_address"].split(":")[0] + ":" + \
+            str(info["gateway_port"])
+        ]
+        print(" ".join(command))
+
+        # TODO (dsuo): handle cleanup, logging, etc
+        p = subprocess.Popen(command, stdout=None, stderr=None)
+
     # Set the node IP address.
     worker.node_ip_address = info["node_ip_address"]
     worker.redis_address = info["redis_address"]
@@ -2092,7 +2095,6 @@ def connect(info,
         raise Exception("This code should be unreachable.")
 
     # TODO (dsuo): ignore object store if in CLIENT_MODE
-
     if mode != CLIENT_MODE:
         # Create an object store client.
         if not worker.use_raylet:
@@ -2129,6 +2131,8 @@ def connect(info,
         # drivers, the task driver ID is used to keep track of which driver is
         # responsible for the task so that error messages will be propagated to
         # the correct driver.
+        # TODO (dsuo): do we need to use head node's driver ID instead of
+        # client's driver ID?
         worker.task_driver_id = ray.local_scheduler.ObjectID(worker.worker_id)
         # Reset the state of the numpy random number generator.
         np.random.set_state(numpy_state)
@@ -2189,6 +2193,7 @@ def connect(info,
         t.daemon = True
         t.start()
 
+    # TODO (dsuo): does CLIENT_MODE need this?
     if mode in [SCRIPT_MODE, SILENT_MODE]:
         # Add the directory containing the script that is running to the Python
         # paths of the workers. Also add the current directory. Note that this
@@ -2240,6 +2245,9 @@ def disconnect(worker=global_worker):
     worker.cached_functions_to_run = []
     worker.cached_remote_functions_and_actors = []
     worker.serialization_context = pyarrow.SerializationContext()
+
+    # TODO (dsuo): we should wrap socat in a script so we don't kill all socat
+    subprocess.call(["killall socat"], shell=True)
 
 
 def _try_to_compute_deterministic_class_id(cls, depth=5):
