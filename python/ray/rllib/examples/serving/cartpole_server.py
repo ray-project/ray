@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 from gym import spaces
 
 import ray
@@ -13,6 +14,7 @@ from ray.tune.registry import register_env
 
 SERVER_ADDRESS = "localhost"
 SERVER_PORT = 8900
+CHECKPOINT_FILE = "last_checkpoint.out"
 
 
 class CartpoleServing(ServingEnv):
@@ -39,6 +41,16 @@ if __name__ == "__main__":
         "timesteps_per_iteration": 200,
     })
 
+    # Attempt to restore from checkpoint if possible.
+    if os.path.exists(CHECKPOINT_FILE):
+        checkpoint_path = open(CHECKPOINT_FILE).read()
+        print("Restoring from checkpoint path", checkpoint_path)
+        dqn.restore(checkpoint_path)
+
     # Serving and training loop
     while True:
         print(pretty_print(dqn.train()))
+        checkpoint_path = dqn.save()
+        print("Last checkpoint", checkpoint_path)
+        with open(CHECKPOINT_FILE, "w") as f:
+            f.write(checkpoint_path)
