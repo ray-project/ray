@@ -1537,7 +1537,7 @@ def _init(address_info=None,
 
         # TODO (dsuo): generate this name more meaningfully
         # TODO (dsuo): ignore raylets for now
-        driver_address_info["local_scheduler_socket_name"] = "/tmp/ray_client"
+        driver_address_info["local_scheduler_socket_name"] = "/tmp/ray_client" + str(np.random.randint(0, 99999999)).zfill(8)
 
         # TODO (dsuo): move this into services.py
         command = [
