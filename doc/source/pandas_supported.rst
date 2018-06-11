@@ -171,10 +171,10 @@ an issue on the `github repo`_. Contributions are also welcome!
 +---------------------------+--------------------+----------------------------------------------------+
 | ``agg``                   | Y                  | Not yet optimized: Can return DataFrame or Series  |
 |                           |                    |                                                    |
-|                           |                    | passing a dictionary for the ``func`` parameter    |
+|                           |                    | Passing a dictionary for the ``func`` parameter    |
 |                           |                    | not yet supported                                  |
 |                           |                    |                                                    |
-|                           |                    | passing the string name of a numpy operation for   |
+|                           |                    | Passing the string name of a numpy operation for   |
 |                           |                    | the ``func`` parameter not yet supported           |
 +---------------------------+--------------------+----------------------------------------------------+
 | ``aggregate``             | Y                  | See ``agg``                                        |
