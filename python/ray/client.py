@@ -80,3 +80,5 @@ class Client(object):
 
         print(res.status_code)
 
+    def get(self, object_id):
+        pass

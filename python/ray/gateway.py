@@ -6,20 +6,20 @@ from pyarrow import plasma as plasma
 import sys
 
 app = Flask(__name__)
-client = None
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
     if request.method == 'POST':
-        id = request.files['id'].read()
+        id = request.files['object_id'].read()
         data = request.files['value'].read()
         ctx = pyarrow.default_serialization_context()
 
         value = ctx.deserialize(data)
-        print(value, id)
-        client.put(
+        print(value, id, file=sys.stderr)
+        print(plasma_client)
+        plasma_client.put(
             value,
-            object_id=pyarrow.plasma.ObjectID(id),
+            object_id=plasma.ObjectID(id),
             memcopy_threads=12,
             serialization_context=ctx)
         return id, 402
@@ -66,14 +66,14 @@ def start(plasma_store_socket_name,
           address,
           port,
           debug):
-    app.run(host=address,
-            port=port,
-            debug=debug)
-    client = plasma.connect(
+    global plasma_client
+    plasma_client = plasma.connect(
         plasma_store_socket_name,
         plasma_manager_socket_name,
         64)
-    print(plasma_store_socket_name, plasma_manager_socket_name, file=sys.stderr)
-
+    app.run(host=address,
+            port=port,
+            debug=debug)
+    
 if __name__ == '__main__':
     start()
