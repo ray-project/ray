@@ -12,6 +12,7 @@ import ray
 
 from .utils import _inherit_docstrings, _reindex_helper
 from .concat import concat
+from .index_metadata import _IndexMetadata
 
 
 @_inherit_docstrings(pandas.core.groupby.DataFrameGroupBy,
@@ -208,6 +209,9 @@ class DataFrameGroupBy(object):
                     num_return_vals=len(new_df._block_partitions))
                     for block in new_df._block_partitions.T]).T
                 new_df.index = self._index
+                new_df._row_metadata = \
+                    _IndexMetadata(new_df._block_partitions[:, 0],
+                                   index=new_df.index, axis=0)
         else:
             if isinstance(result[0], pd.Series):
                 # Applied an aggregation function
@@ -223,6 +227,9 @@ class DataFrameGroupBy(object):
                     num_return_vals=new_df._block_partitions.shape[1])
                     for block in new_df._block_partitions])
                 new_df.columns = self._columns
+                new_df._col_metadata = \
+                    _IndexMetadata(new_df._block_partitions[0, :],
+                                   index=new_df.columns, axis=1)
         return new_df
 
     @property
@@ -392,6 +399,9 @@ class DataFrameGroupBy(object):
                 num_return_vals=len(new_df._block_partitions))
                 for block in new_df._block_partitions.T]).T
             new_df.index = sorted_index
+            new_df._row_metadata = \
+                _IndexMetadata(new_df._block_partitions[:, 0],
+                               index=new_df.index, axis=0)
 
         return new_df
 
@@ -447,6 +457,9 @@ class DataFrameGroupBy(object):
                 num_return_vals=len(new_df._block_partitions))
                 for block in new_df._block_partitions.T]).T
             new_df.index = sorted_index
+            new_df._row_metadata = \
+                _IndexMetadata(new_df._block_partitions[:, 0],
+                               index=new_df.index, axis=0)
 
         return new_df
 
@@ -516,6 +529,9 @@ class DataFrameGroupBy(object):
                 num_return_vals=len(new_df._block_partitions))
                 for block in new_df._block_partitions.T]).T
             new_df.index = self._index
+            new_df._row_metadata = \
+                _IndexMetadata(new_df._block_partitions[:, 0],
+                               index=new_df.index, axis=0)
         else:
             new_df._block_partitions = np.array([_reindex_helper._submit(
                 args=tuple([new_df.columns, self._columns, 0,
@@ -524,6 +540,9 @@ class DataFrameGroupBy(object):
                 num_return_vals=new_df._block_partitions.shape[1])
                 for block in new_df._block_partitions])
             new_df.columns = self._columns
+            new_df._col_metadata = \
+                _IndexMetadata(new_df._block_partitions[0, :],
+                               index=new_df.columns, axis=1)
 
         return new_df
 

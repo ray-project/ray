@@ -196,7 +196,10 @@ class DataFrame(object):
 
     def _get_row_partitions(self):
         empty_rows_mask = self._row_metadata._lengths > 0
-        self._block_partitions = self._block_partitions[empty_rows_mask, :]
+        if any(empty_rows_mask):
+            self._row_metadata._lengths = \
+                self._row_metadata._lengths[empty_rows_mask]
+            self._block_partitions = self._block_partitions[empty_rows_mask, :]
         return [_blocks_to_row.remote(*part)
                 for i, part in enumerate(self._block_partitions)]
 
@@ -209,7 +212,10 @@ class DataFrame(object):
 
     def _get_col_partitions(self):
         empty_cols_mask = self._col_metadata._lengths > 0
-        self._block_partitions = self._block_partitions[:, empty_cols_mask]
+        if any(empty_cols_mask):
+            self._col_metadata._lengths \
+                = self._col_metadata._lengths[empty_cols_mask]
+            self._block_partitions = self._block_partitions[:, empty_cols_mask]
         return [_blocks_to_col.remote(*self._block_partitions[:, i])
                 for i in range(self._block_partitions.shape[1])]
 
@@ -493,7 +499,7 @@ class DataFrame(object):
             True if the DataFrame is empty.
             False otherwise.
         """
-        return self._block_partitions.size == 0
+        return self._row_metadata._empty
 
     @property
     def values(self):

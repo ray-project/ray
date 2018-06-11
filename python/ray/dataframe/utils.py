@@ -155,6 +155,11 @@ def _get_widths(df):
         return 0
 
 
+def _get_empty(df):
+    """Return True if the DataFrame is empty"""
+    return df.empty
+
+
 def _partition_pandas_dataframe(df, num_partitions=None, row_chunksize=None):
     """Partitions a Pandas DataFrame object.
     Args:
@@ -223,8 +228,7 @@ def to_pandas(df):
     Returns:
         A new pandas DataFrame.
     """
-    pd_df = pd.concat(ray.get(df._row_partitions), copy=False) \
-        if len(df._row_partitions) > 0 else pd.DataFrame()
+    pd_df = pd.concat(ray.get(df._row_partitions), copy=False)
     pd_df.index = df.index
     pd_df.columns = df.columns
     return pd_df
@@ -344,11 +348,18 @@ def _build_row_lengths(df_row):
 def _build_coord_df(lengths, index):
     """Build the coordinate dataframe over all partitions."""
     filtered_lengths = [x for x in lengths if x > 0]
-    coords = np.vstack([np.column_stack((np.full(l, i), np.arange(l)))
-                        for i, l in enumerate(filtered_lengths)])
-
+    coords = None
+    if len(filtered_lengths) > 0:
+        coords = np.vstack([np.column_stack((np.full(l, i), np.arange(l)))
+                            for i, l in enumerate(filtered_lengths)])
     col_names = ("partition", "index_within_partition")
     return pd.DataFrame(coords, index=index, columns=col_names)
+
+
+@ray.remote
+def _check_empty(dfs):
+    """Check if all partitions are empty"""
+    return all(ray.get([_deploy_func.remote(_get_empty, d) for d in dfs]))
 
 
 def _create_block_partitions(partitions, axis=0, length=None):
