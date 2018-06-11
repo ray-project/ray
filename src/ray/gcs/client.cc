@@ -19,7 +19,7 @@ AsyncGcsClient::AsyncGcsClient(const ClientID &client_id, CommandType command_ty
 }
 
 AsyncGcsClient::AsyncGcsClient(const ClientID &client_id)
-    : AsyncGcsClient(client_id, CommandType::kRegular) {}
+    : AsyncGcsClient(client_id, CommandType::kChain) {}
 
 AsyncGcsClient::AsyncGcsClient(CommandType command_type)
     : AsyncGcsClient(ClientID::from_random(), command_type) {}

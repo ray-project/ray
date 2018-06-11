@@ -647,6 +647,7 @@ int TableAdd_DoPublish(RedisModuleCtx *ctx,
 int TableAdd_RedisCommand(RedisModuleCtx *ctx,
                           RedisModuleString **argv,
                           int argc) {
+  RAY_CHECK(0) << "TableAdd";
   RedisModule_AutoMemory(ctx);
   TableAdd_DoWrite(ctx, argv, argc, /*mutated_key_str=*/nullptr);
   return TableAdd_DoPublish(ctx, argv, argc);
@@ -656,6 +657,7 @@ int TableAdd_RedisCommand(RedisModuleCtx *ctx,
 int ChainTableAdd_RedisCommand(RedisModuleCtx *ctx,
                                RedisModuleString **argv,
                                int argc) {
+  RAY_CHECK(0) << "ChainTableAdd";
   return module.ChainReplicate(ctx, argv, argc, /*node_func=*/TableAdd_DoWrite,
                                /*tail_func=*/TableAdd_DoPublish);
 }
