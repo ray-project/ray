@@ -99,7 +99,6 @@ class ServingEnv(threading.Thread):
 
         self._episodes[episode_id] = _Episode(
             episode_id, self._results_avail_condition)
-        return episode_id
 
     def get_action(self, observation, episode_id=None):
         """Record an observation and get the on-policy action.
@@ -137,9 +136,6 @@ class ServingEnv(threading.Thread):
         Arguments:
             episode_id (str): Episode id passed to start_episode() or None.
             reward (float): Reward from the environment.
-
-        Returns:
-            action (obj): Action from the env action space.
         """
 
         episode = self._get(episode_id)
