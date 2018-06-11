@@ -30,9 +30,9 @@ SSH into the head node, ``source activate tensorflow_p36``, and then run Ray pro
 Quick start (GCP)
 -----------------
 
-First, install the Google API client (``pip install google-api-python-client``) and set up your GCP credentials.
+First, install the Google API client (``pip install google-api-python-client``), set up your GCP credentials, and create a new GCP project.
 
-Then you're ready to go. The provided `ray/python/ray/autoscaler/gcp/example-full.yaml <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/gcp/example-full.yaml>`__ cluster config file will create a small cluster with a n1-standard-2 head node (on-demand) configured to autoscale up to two n1-standard-2 `preemptible workers <https://cloud.google.com/preemptible-vms/>`__.
+Then you're ready to go. The provided `ray/python/ray/autoscaler/gcp/example-full.yaml <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/gcp/example-full.yaml>`__ cluster config file will create a small cluster with a n1-standard-2 head node (on-demand) configured to autoscale up to two n1-standard-2 `preemptible workers <https://cloud.google.com/preemptible-vms/>`__. Note that you'll need to fill in your project id in those templates.
 
 Try it out by running these commands from your personal computer. Once the cluster is started, you can then
 SSH into the head node and then run Ray programs with ``ray.init(redis_address="localhost:6379")``.
