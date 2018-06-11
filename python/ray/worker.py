@@ -302,11 +302,14 @@ class Worker(object):
                                 "type {}.".format(type(value)))
             counter += 1
             try:
-                self.plasma_client.put(
-                    value,
-                    object_id=pyarrow.plasma.ObjectID(object_id.id()),
-                    memcopy_threads=self.memcopy_threads,
-                    serialization_context=self.serialization_context)
+                if global_worker.mode == CLIENT_MODE:
+                    print("client")
+                else:
+                    self.plasma_client.put(
+                        value,
+                        object_id=pyarrow.plasma.ObjectID(object_id.id()),
+                        memcopy_threads=self.memcopy_threads,
+                        serialization_context=self.serialization_context)
                 break
             except pyarrow.SerializationCallbackError as e:
                 try:
@@ -1355,7 +1358,8 @@ def _init(address_info=None,
           plasma_directory=None,
           huge_pages=False,
           include_webui=True,
-          use_raylet=False):
+          use_raylet=False,
+          client_socket_name=None):
     """Helper method to connect to an existing Ray cluster or start a new one.
 
     This method handles two cases. Either a Ray cluster already exists and we
@@ -1413,6 +1417,8 @@ def _init(address_info=None,
             UI, which is a Jupyter notebook.
         use_raylet: True if the new raylet code path should be used. This is
             not supported yet.
+        client_socket_name: The named pipe that forwards local scheduler client
+            to remote head node for processing.
 
     Returns:
         Address information about the started processes.
@@ -1536,7 +1542,22 @@ def _init(address_info=None,
 
         # TODO (dsuo): generate this name more meaningfully
         # TODO (dsuo): ignore raylets for now
-        driver_address_info["local_scheduler_socket_name"] = "/tmp/ray_client" + str(np.random.randint(0, 99999999)).zfill(8)
+        if client_socket_name is None:
+            driver_address_info["local_scheduler_socket_name"] = "/tmp/ray_client" + str(np.random.randint(0, 99999999)).zfill(8)
+
+            # TODO (dsuo): should move to connect()
+            command = [
+                "socat", "UNIX-LISTEN:" + \
+                driver_address_info["local_scheduler_socket_name"] + \
+                ",reuseaddr,fork", "TCP:" + driver_address_info["redis_address"].split(":")[0] + ":" + \
+                str(driver_address_info["gateway_port"])
+            ]
+            print(" ".join(command))
+
+            # TODO (dsuo): handle cleanup, logging, etc
+            p = subprocess.Popen(command, stdout=None, stderr=None)
+        else:
+            driver_address_info["local_scheduler_socket_name"] = client_socket_name
     else:
         driver_address_info = {
             "node_ip_address": node_ip_address,
@@ -1580,7 +1601,8 @@ def init(redis_address=None,
          include_webui=True,
          object_store_memory=None,
          use_raylet=False,
-         gateway_port=5432):
+         gateway_port=5432,
+         client_socket_name=None):
     """Connect to an existing Ray cluster or start one and connect to it.
 
     This method handles two cases. Either a Ray cluster already exists and we
@@ -1628,6 +1650,8 @@ def init(redis_address=None,
         use_raylet: True if the new raylet code path should be used. This is
             not supported yet.
         gateway_port: The port that socat will listen on for commands to forward.
+        client_socket_name: The named pipe that forwards local scheduler client
+            to remote head node for processing.
 
 
     Returns:
@@ -1664,7 +1688,8 @@ def init(redis_address=None,
         huge_pages=huge_pages,
         include_webui=include_webui,
         object_store_memory=object_store_memory,
-        use_raylet=use_raylet)
+        use_raylet=use_raylet,
+        client_socket_name=client_socket_name)
 
 
 def cleanup(worker=global_worker):
@@ -1986,19 +2011,6 @@ def connect(info,
     # create_worker or to start the worker service.
     if mode == PYTHON_MODE:
         return
-    # If running Ray in CLIENT_MODE, open proxy for local scheduler
-    # to head node
-    elif mode == CLIENT_MODE:
-        command = [
-            "socat", "UNIX-LISTEN:" + \
-            info["local_scheduler_socket_name"] + \
-            ",reuseaddr,fork", "TCP:" + info["redis_address"].split(":")[0] + ":" + \
-            str(info["gateway_port"])
-        ]
-        print(" ".join(command))
-
-        # TODO (dsuo): handle cleanup, logging, etc
-        p = subprocess.Popen(command, stdout=None, stderr=None)
 
     # Set the node IP address.
     worker.node_ip_address = info["node_ip_address"]
