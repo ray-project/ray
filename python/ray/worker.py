@@ -31,6 +31,7 @@ import ray.local_scheduler
 import ray.plasma
 from ray.utils import (FunctionProperties, random_string, binary_to_hex,
                        is_cython)
+from ray.client import Client
 
 # Import flatbuffer bindings.
 from ray.core.generated.ClientTableData import ClientTableData
@@ -249,6 +250,9 @@ class Worker(object):
         # When the worker is constructed. Record the original value of the
         # CUDA_VISIBLE_DEVICES environment variable.
         self.original_gpu_ids = ray.utils.get_cuda_visible_devices()
+        # Workers typically are not external clients
+        # TODO (dsuo): should rename this so it's clear what "client" means
+        self.client = None
 
     def set_mode(self, mode):
         """Set the mode of the worker.
@@ -302,8 +306,10 @@ class Worker(object):
                                 "type {}.".format(type(value)))
             counter += 1
             try:
-                if global_worker.mode == CLIENT_MODE:
-                    print("client")
+                if self.mode == CLIENT_MODE:
+                    self.client.put(
+                        value,
+                        object_id=object_id.id())
                 else:
                     self.plasma_client.put(
                         value,
@@ -1133,6 +1139,8 @@ def error_info(worker=global_worker):
     return errors
 
 
+# TODO (dsuo): unclear if we care about this in CLIENT_MODE or if we can
+# just rely on the fact that Ray workers will have this same initialization.
 def _initialize_serialization(worker=global_worker):
     """Initialize the serialization library.
 
@@ -1159,7 +1167,7 @@ def _initialize_serialization(worker=global_worker):
         custom_serializer=objectid_custom_serializer,
         custom_deserializer=objectid_custom_deserializer)
 
-    if worker.mode in [SCRIPT_MODE, SILENT_MODE]:
+    if worker.mode in [SCRIPT_MODE, SILENT_MODE, CLIENT_MODE]:
         # These should only be called on the driver because
         # register_custom_serializer will export the class to all of the
         # workers.
@@ -1537,27 +1545,25 @@ def _init(address_info=None,
         driver_address_info = {
             "node_ip_address": address_info["node_ip_address"],
             "redis_address": address_info["redis_address"],
-            "gateway_port": address_info["gateway_port"]
+            "gateway_port": address_info["gateway_port"],
         }
 
         # TODO (dsuo): generate this name more meaningfully
         # TODO (dsuo): ignore raylets for now
         if client_socket_name is None:
             driver_address_info["local_scheduler_socket_name"] = "/tmp/ray_client" + str(np.random.randint(0, 99999999)).zfill(8)
-
-            # TODO (dsuo): should move to connect()
-            command = [
-                "socat", "UNIX-LISTEN:" + \
-                driver_address_info["local_scheduler_socket_name"] + \
-                ",reuseaddr,fork", "TCP:" + driver_address_info["redis_address"].split(":")[0] + ":" + \
-                str(driver_address_info["gateway_port"])
-            ]
-            print(" ".join(command))
-
-            # TODO (dsuo): handle cleanup, logging, etc
-            p = subprocess.Popen(command, stdout=None, stderr=None)
         else:
             driver_address_info["local_scheduler_socket_name"] = client_socket_name
+
+        global_worker.client = Client(
+            gateway_address=driver_address_info["redis_address"].split(":")[0],
+            gateway_port=driver_address_info["gateway_port"],
+            gateway_data_port=5000,
+            client_socket_name=driver_address_info["local_scheduler_socket_name"] if \
+                client_socket_name is None else None,
+            # memcopy_threads=global_worker.memcopy_threads,
+            # serialization_context=global_worker.serialization_context
+        )
     else:
         driver_address_info = {
             "node_ip_address": node_ip_address,
@@ -2182,6 +2188,7 @@ def connect(info,
     # Initialize the serialization library. This registers some classes, and so
     # it must be run before we export all of the cached remote functions.
     _initialize_serialization()
+    worker.client.serialization_context = worker.serialization_context
 
     # Start a thread to import exports from the driver or from other workers.
     # Note that the driver also has an import thread, which is used only to
