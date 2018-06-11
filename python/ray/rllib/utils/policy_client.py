@@ -24,17 +24,20 @@ class PolicyClient(object):
     def __init__(self, address):
         self._address = address
 
-    def start_episode(self, episode_id=None):
+    def start_episode(self, episode_id=None, training_enabled=True):
         """Record the start of an episode.
 
         Arguments:
             episode_id (str): Unique string id for the episode or None for
                 it to be auto-assigned. Auto-assignment only works if there
                 is at most one active episode at a time.
+            training_enabled (bool): Whether to enable training the policy
+                based on experiences from this episode.
         """
         self._send({
             "command": PolicyClient.START_EPISODE,
             "episode_id": episode_id,
+            "training_enabled": training_enabled,
         })
 
     def get_action(self, observation, episode_id=None):

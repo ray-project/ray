@@ -2,6 +2,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+"""Example of running a policy server. Copy this file for your use case.
+
+To try this out, in two separate shells run:
+    $ python cartpole_server.py
+    $ python cartpole_client.py
+"""
+
 import os
 from gym import spaces
 
@@ -32,6 +39,9 @@ class CartpoleServing(ServingEnv):
 if __name__ == "__main__":
     ray.init()
     register_env("srv", lambda _: CartpoleServing())
+
+    # We use DQN since it supports off-policy actions, but you can choose and
+    # configure any agent.
     dqn = DQNAgent(env="srv", config={
         # Use a single process to avoid needing to set up a load balancer
         "num_workers": 0,

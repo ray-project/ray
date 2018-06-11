@@ -26,8 +26,6 @@ class ServingEnv(threading.Thread):
 
     This env is thread-safe, but individual episodes must be executed serially.
 
-    TODO: Provide a HTTP server/client example based on ServingEnv.
-
     Examples:
         >>> register_env("my_env", lambda config: YourServingEnv(config))
         >>> agent = DQNAgent(env="my_env")
@@ -70,13 +68,15 @@ class ServingEnv(threading.Thread):
         """
         raise NotImplementedError
 
-    def start_episode(self, episode_id=None):
+    def start_episode(self, episode_id=None, training_enabled=True):
         """Record the start of an episode.
 
         Arguments:
             episode_id (str): Unique string id for the episode or None for
                 it to be auto-assigned. Auto-assignment only works if there
                 is at most one active episode at a time.
+            training_enabled (bool): Whether to use experiences for this
+                episode to improve the policy.
         """
 
         if episode_id is None:
@@ -98,7 +98,7 @@ class ServingEnv(threading.Thread):
                 "Episode {} is already started".format(episode_id))
 
         self._episodes[episode_id] = _Episode(
-            episode_id, self._results_avail_condition)
+            episode_id, self._results_avail_condition, training_enabled)
 
     def get_action(self, observation, episode_id=None):
         """Record an observation and get the on-policy action.
@@ -141,7 +141,7 @@ class ServingEnv(threading.Thread):
         episode = self._get(episode_id)
         episode.cur_reward += reward
         if info:
-            episode.cur_info = info
+            episode.cur_info = info or {}
 
     def end_episode(self, observation, episode_id=None):
         """Record the end of an episode.
@@ -217,9 +217,10 @@ class _ServingEnvToAsync(AsyncVectorEnv):
 class _Episode(object):
     """Tracked state for each active episode."""
 
-    def __init__(self, episode_id, results_avail_condition):
+    def __init__(self, episode_id, results_avail_condition, training_enabled):
         self.episode_id = episode_id
         self.results_avail_condition = results_avail_condition
+        self.training_enabled = training_enabled
         self.data_queue = queue.Queue()
         self.action_queue = queue.Queue()
         self.new_observation = None
@@ -258,6 +259,8 @@ class _Episode(object):
         }
         if self.new_action is not None:
             item["off_policy_action"] = self.new_action
+        if not self.training_enabled:
+            item["info"]["training_enabled"] = False
         self.new_observation = None
         self.new_action = None
         self.cur_reward = 0.0

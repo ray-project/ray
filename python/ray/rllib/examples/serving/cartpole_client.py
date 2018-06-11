@@ -2,6 +2,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+"""Example of querying a policy server. Copy this file for your use case.
+
+To try this out, in two separate shells run:
+    $ python cartpole_server.py
+    $ python cartpole_client.py
+"""
+
 import argparse
 import gym
 import uuid
@@ -10,6 +17,8 @@ from ray.rllib.utils.policy_client import PolicyClient
 
 
 parser = argparse.ArgumentParser()
+parser.add_argument(
+    "--no-train", action="store_true", help="Whether to disable training.")
 parser.add_argument(
     "--off-policy", action="store_true",
     help="Whether to take random instead of on-policy actions.")
@@ -25,7 +34,7 @@ if __name__ == "__main__":
     client = PolicyClient("http://localhost:8900")
 
     eid = new_eid()
-    client.start_episode(eid)
+    client.start_episode(eid, training_enabled=not args.no_train)
     obs = env.reset()
     rewards = 0
 
@@ -44,4 +53,4 @@ if __name__ == "__main__":
             client.end_episode(obs, episode_id=eid)
             obs = env.reset()
             eid = new_eid()
-            client.start_episode(eid)
+            client.start_episode(eid, training_enabled=not args.no_train)
