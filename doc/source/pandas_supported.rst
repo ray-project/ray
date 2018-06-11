@@ -2,7 +2,17 @@ Pandas on Ray Supported Methods
 ===============================
 
 For your convenience, we have compiled a list of currently implemented APIs and
-methods available in **Pandas on Ray**.
+methods available in **Pandas on Ray**. This documentation is updated as new
+methods and APIs are merged into the master branch, and not necessarily correct
+as of the most recent release. In order to install the latest wheels, follow
+the directions found here_
+
+Questions on implementation details
+-----------------------------------
+
+If you have a question about the implementation details or would like more
+information about an API or method in **Pandas on Ray**, please contact the ray
+developer `mailing list`_.
 
 DataFrame
 ---------
@@ -160,9 +170,12 @@ an issue on the `github repo`_. Contributions are also welcome!
 | ``add_suffix``            | Y                  |                                                    |
 +---------------------------+--------------------+----------------------------------------------------+
 | ``agg``                   | Y                  | Not yet optimized: Can return DataFrame or Series  |
-|                           |                    | dictionary ``func`` arguments not yet supported    |
-|                           |                    | string ``func`` arguments that are numpy operations|
+|                           |                    |                                                    |
+|                           |                    | passing a dictionary for the ``func`` parameter    |
 |                           |                    | not yet supported                                  |
+|                           |                    |                                                    |
+|                           |                    | passing the string name of a numpy operation for   |
+|                           |                    | the ``func`` parameter not yet supported           |
 +---------------------------+--------------------+----------------------------------------------------+
 | ``aggregate``             | Y                  | See ``agg``                                        |
 +---------------------------+--------------------+----------------------------------------------------+
@@ -665,7 +678,10 @@ IO
 
 A number of IO methods default to **pandas**. We have parallelized
 ``read_csv`` and ``read_parquet``, though many of the remaining methods can be
-relatively easily paralleized.
+relatively easily parallelized. Some of the operations default to the
+**pandas** implementation, meaning it will read in serially as a single,
+non-distributed DataFrame and distribute it. Performance will be affected by
+this.
 
 +--------------------+--------------------+----------------------------------------------------+
 | IO method          | Implemented?       | Limitations/Notes for Current implementation       |
@@ -701,7 +717,9 @@ List of Other Supported Operations Available on Import
 ------------------------------------------------------
 
 If you ``import ray.dataframe as pd`` the following operations are available
-from ``pd.<op>``, e.g. ``pd.concat``.
+from ``pd.<op>``, e.g. ``pd.concat``. If you do not see an operation that
+**pandas** enables and would like to request it, feel free to `open an issue`_.
+Make sure you tell us your primary use-case so we can make it happen faster!
 
 * concat
 * eval
@@ -732,12 +750,7 @@ from ``pd.<op>``, e.g. ``pd.concat``.
 * PeriodIndex
 * Categorical
 
-Questions on implementation details
------------------------------------
-
-If you have a question about the implementation details or would like more
-information about an API or method in **Pandas on Ray**, please contact the ray
-developer `mailing list`_.
-
 .. _`github repo`: https://github.com/ray-project/ray/issues
 .. _`mailing list`: https://groups.google.com/forum/#!forum/ray-dev
+.. _here: http://ray.readthedocs.io/en/latest/installation.html#trying-the-latest-version-of-ray
+.. _`open an issue`: https://github.com/ray-project/ray/issues
