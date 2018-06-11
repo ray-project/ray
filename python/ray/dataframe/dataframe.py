@@ -4926,9 +4926,8 @@ class DataFrame(object):
         return to_pandas(self).__array__(dtype=dtype)
 
     def __array_wrap__(self, result, context=None):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        # TODO: This is very inefficient, see also __array__ and as_matrix
+        return to_pandas(self).__array_wrap__(result, context=context)
 
     def __getstate__(self):
         raise NotImplementedError(
