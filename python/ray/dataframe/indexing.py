@@ -13,7 +13,7 @@ _LocIndexer and _iLocIndexer is responsible for indexer specific logic and
 An illustration is available at
 https://github.com/ray-project/ray/pull/1955#issuecomment-386781826
 """
-import pandas as pd
+import pandas
 import numpy as np
 import ray
 from warnings import warn
@@ -96,7 +96,7 @@ def _is_enlargement(locator, coord_df):
     """
     if is_list_like(locator) and not is_slice(
             locator) and len(locator) > 0 and not is_boolean_array(locator):
-        n_diff_elems = len(pd.Index(locator).difference(coord_df.index))
+        n_diff_elems = len(pandas.Index(locator).difference(coord_df.index))
         is_enlargement_boolean = n_diff_elems > 0
         return is_enlargement_boolean
     return False
@@ -140,8 +140,8 @@ class _Location_Indexer_Base():
     def __getitem__(self, row_lookup, col_lookup, ndim):
         """
         Args:
-            row_lookup: A pd dataframe, a partial view from row_coord_df
-            col_lookup: A pd dataframe, a partial view from col_coord_df
+            row_lookup: A pandas dataframe, a partial view from row_coord_df
+            col_lookup: A pandas dataframe, a partial view from col_coord_df
             ndim: the dimension of returned data
         """
         if ndim == 2:
@@ -152,7 +152,7 @@ class _Location_Indexer_Base():
             result = ray.get(_blocks_to_col.remote(*extracted)).squeeze()
 
             if is_scalar(result):
-                result = pd.Series(result)
+                result = pandas.Series(result)
 
             scaler_axis = row_lookup if len(row_lookup) == 1 else col_lookup
             series_name = scaler_axis.iloc[0].name
@@ -213,8 +213,8 @@ class _Location_Indexer_Base():
     def __setitem__(self, row_lookup, col_lookup, item):
         """
         Args:
-            row_lookup: A pd dataframe, a partial view from row_coord_df
-            col_lookup: A pd dataframe, a partial view from col_coord_df
+            row_lookup: A pandas dataframe, a partial view from row_coord_df
+            col_lookup: A pandas dataframe, a partial view from col_coord_df
             item: The new item needs to be set. It can be any shape that's
                 broadcastable to the product of the lookup tables.
         """
@@ -348,14 +348,14 @@ class _Loc_Indexer(_Location_Indexer_Base):
             [self.block_oids, nan_blks], axis=0 if row_based_bool else 1)
 
         # 3. Prepare metadata to return
-        nan_coord_df = pd.DataFrame(data=[{
+        nan_coord_df = pandas.DataFrame(data=[{
             '': name,
             'partition': blk_part_n_row if row_based_bool else blk_part_n_col,
             'index_within_partition': i
         } for name, i in zip(nan_labels, np.arange(num_nan_labels))
         ]).set_index('')
 
-        coord_df = pd.concat([major_meta._coord_df, nan_coord_df])
+        coord_df = pandas.concat([major_meta._coord_df, nan_coord_df])
         coord_df = coord_df.loc[locator]  # Re-index that allows duplicates
 
         lens = major_meta._lengths
@@ -370,7 +370,7 @@ class _Loc_Indexer(_Location_Indexer_Base):
         Returns:
              nan_labels: The labels needs to be added
         """
-        locator_as_index = pd.Index(locator)
+        locator_as_index = pandas.Index(locator)
 
         nan_labels = locator_as_index.difference(base_index)
         common_labels = locator_as_index.intersection(base_index)
