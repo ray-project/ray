@@ -2188,7 +2188,8 @@ def connect(info,
     # Initialize the serialization library. This registers some classes, and so
     # it must be run before we export all of the cached remote functions.
     _initialize_serialization()
-    worker.client.serialization_context = worker.serialization_context
+    if worker.client is not None:
+        worker.client.serialization_context = worker.serialization_context
 
     # Start a thread to import exports from the driver or from other workers.
     # Note that the driver also has an import thread, which is used only to

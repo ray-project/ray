@@ -980,6 +980,8 @@ def start_raylet(redis_address,
 def start_gateway(node_ip_address,
                   gateway_port,
                   local_scheduler_name,
+                  store_socket_name,
+                  manager_socket_name,
                   redis_address,
                   stdout_file=None,
                   stderr_file=None,
@@ -992,6 +994,8 @@ def start_gateway(node_ip_address,
         gateway_port: The port that socat will listen on for commands to forward.
         local_scheduler_name: The named socket that the gateway should forward
            commands to.
+        store_socket_name: The named pipe for the Plasma store.
+        manager_socket_name: The named pipe for the Plasma manager.
         redis_address (str): The address that the Redis server is listening on.
         stdout_file: A file handle opened for writing to redirect stdout to. If
             no redirection should happen, then this should be None.
@@ -1017,7 +1021,8 @@ def start_gateway(node_ip_address,
     gateway_path = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "gateway.py")
     command = [
-        sys.executable, "-u", gateway_path
+        sys.executable, "-u", gateway_path, "-s",
+        store_socket_name, "-m", manager_socket_name
     ]
     p = subprocess.Popen(command, stdout=stdout_file, stderr=stderr_file)
     if cleanup:
@@ -1576,6 +1581,8 @@ def start_ray_processes(address_info=None,
             node_ip_address,
             gateway_port,
             local_scheduler_name,
+            object_store_addresses[0].name,
+            object_store_addresses[0].manager_name,
             redis_address,
             stdout_file=gateway_stdout_file,
             stderr_file=gateway_stderr_file,
