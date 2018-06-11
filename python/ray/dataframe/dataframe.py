@@ -213,8 +213,8 @@ class DataFrame(object):
     def _get_col_partitions(self):
         empty_cols_mask = self._col_metadata._lengths > 0
         if any(empty_cols_mask):
-            self._col_metadata._lengths \
-                = self._col_metadata._lengths[empty_cols_mask]
+            self._col_metadata._lengths = \
+                self._col_metadata._lengths[empty_cols_mask]
             self._block_partitions = self._block_partitions[:, empty_cols_mask]
         return [_blocks_to_col.remote(*self._block_partitions[:, i])
                 for i in range(self._block_partitions.shape[1])]
