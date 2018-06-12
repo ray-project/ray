@@ -1,4 +1,4 @@
-from __future__ import absolute_import
+urom __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
@@ -115,7 +115,7 @@ class TestServingEnv(unittest.TestCase):
             env_creator=lambda _: SimpleServing(MockEnv(25)),
             policy_graph=MockPolicyGraph,
             batch_steps=40,
-            truncate_episodes=False)
+            batch_mode="complete_episodes")
         for _ in range(3):
             batch = ev.sample()
             self.assertEqual(batch.count, 50)
@@ -125,7 +125,7 @@ class TestServingEnv(unittest.TestCase):
             env_creator=lambda _: SimpleServing(MockEnv(25)),
             policy_graph=MockPolicyGraph,
             batch_steps=40,
-            truncate_episodes=True)
+            batch_mode="truncate_episodes")
         for _ in range(3):
             batch = ev.sample()
             self.assertEqual(batch.count, 40)
@@ -135,7 +135,7 @@ class TestServingEnv(unittest.TestCase):
             env_creator=lambda _: SimpleOffPolicyServing(MockEnv(25)),
             policy_graph=MockPolicyGraph,
             batch_steps=40,
-            truncate_episodes=False)
+            batch_mode="complete_episodes")
         for _ in range(3):
             batch = ev.sample()
             self.assertEqual(batch.count, 50)
@@ -146,7 +146,7 @@ class TestServingEnv(unittest.TestCase):
             policy_graph=BadPolicyGraph,
             sample_async=True,
             batch_steps=40,
-            truncate_episodes=True)
+            batch_mode="truncate_episodes")
         self.assertRaises(Exception, lambda: ev.sample())
 
     def testServingEnvHorizonNotSupported(self):
@@ -155,7 +155,7 @@ class TestServingEnv(unittest.TestCase):
             policy_graph=MockPolicyGraph,
             episode_horizon=20,
             batch_steps=10,
-            truncate_episodes=False)
+            batch_mode="complete_episodes")
         ev.sample()
         self.assertRaises(Exception, lambda: ev.sample())
 
