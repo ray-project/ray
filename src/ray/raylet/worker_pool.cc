@@ -42,11 +42,6 @@ WorkerPool::~WorkerPool() {
     kill(pid, SIGKILL);
     waitpid(pid, NULL, 0);
   }
-
-  pool_.clear();
-  actor_pool_.clear();
-  registered_workers_.clear();
-  starting_worker_processes_.clear();
 }
 
 uint32_t WorkerPool::Size() const {
