@@ -347,83 +347,41 @@ public class RunManager {
       String storeName = "/tmp/plasma_store" + rpcPort;
 
       // store
-      startObjectStore(rpcPort, storeName, info, params.working_directory + "/store",
+      startObjectStore(rpcPort, info, params.working_directory + "/store",
           params.redis_address, params.node_ip_address, params.redirect, params.cleanup);
 
-<<<<<<< HEAD
-      if (!useRaylet) {
+      if (!params.use_raylet) {
         // store manager
         startObjectManager(i, info,
             params.working_directory + "/storeManager", params.redis_address,
             params.node_ip_address, params.redirect, params.cleanup);
-=======
-      // store manager
-      startObjectManager(i, info,
-          params.working_directory + "/storeManager", params.redis_address,
-          params.node_ip_address, params.redirect, params.cleanup);
+      }  
+      
+      // start local scheduler
+      int workerCount = 0;
 
-      runInfo.localStores.add(info);
-    }
->>>>>>> master
-
-        // start local scheduler
-        int workerCount = 0;
-
-<<<<<<< HEAD
-        if (params.start_workers_from_local_scheduler) {
-          workerCount = local_num_workers[i];
-          local_num_workers[i] = 0;
-        }
-  
-        startLocalScheduler(i, runInfo.local_stores.get(i),
-            params.num_cpus[i], params.num_gpus[i], workerCount,
-            params.working_directory + "/localScheduler", params.redis_address,
-            params.node_ip_address, params.redirect, params.cleanup);
-      } else {
-        // start local scheduler
-        int workerCount = 0;
-
-        if (params.start_workers_from_local_scheduler) {
-          workerCount = local_num_workers[i];
-          local_num_workers[i] = 0;
-        }
-        
-        startRaylet(i, storeName, runInfo.local_stores.get(i),
-=======
       if (params.start_workers_from_local_scheduler) {
         workerCount = localNumWorkers[i];
         localNumWorkers[i] = 0;
       }
 
-      startLocalScheduler(i, runInfo.localStores.get(i),
->>>>>>> master
-          params.num_cpus[i], params.num_gpus[i], workerCount,
-          params.working_directory + "/raylet", params.redis_address,
-          params.node_ip_address, params.redirect, params.cleanup);
+      if (!params.use_raylet) {
+        startLocalScheduler(i, runInfo.localStores.get(i),
+            params.num_cpus[i], params.num_gpus[i], workerCount,
+            params.working_directory + "/raylet", params.redis_address,
+            params.node_ip_address, params.redirect, params.cleanup);
+      } else {
+        startRaylet(i, storeName, runInfo.localStores.get(i),
+            params.num_cpus[i], params.num_gpus[i], workerCount,
+            params.working_directory + "/raylet", params.redis_address,
+            params.node_ip_address, params.redirect, params.cleanup);
       }
 
-      runInfo.local_stores.add(info);
+      runInfo.localStores.add(info);
     }
 
     // start local workers
     for (int i = 0; i < params.num_local_schedulers; i++) {
-<<<<<<< HEAD
-      runInfo.local_stores.get(i).workerCount = local_num_workers[i];
-      for (int j = 0; j < local_num_workers[i]; j++) {
-        if (!useRaylet) {
-          startWorker(runInfo.local_stores.get(i).storeName,
-                  runInfo.local_stores.get(i).managerName, runInfo.local_stores.get(i).schedulerName,
-                  params.working_directory + "/worker" + i + "." + j, params.redis_address,
-                  params.node_ip_address, UniqueID.nil, "",
-                  params.redirect, params.cleanup);
-        } else {
-          startWorker(runInfo.local_stores.get(i).storeName,
-                  runInfo.local_stores.get(i).rayletName,
-                  params.working_directory + "/worker" + i + "." + j, params.redis_address,
-                  params.node_ip_address, UniqueID.nil, "",
-                  params.redirect, params.cleanup);
-        }
-=======
       runInfo.localStores.get(i).workerCount = localNumWorkers[i];
       for (int j = 0; j < localNumWorkers[i]; j++) {
         startWorker(runInfo.localStores.get(i).storeName,
@@ -431,7 +389,6 @@ public class RunManager {
             params.working_directory + "/worker" + i + "." + j, params.redis_address,
             params.node_ip_address, UniqueID.nil, "",
             params.redirect, params.cleanup);
->>>>>>> master
       }
     }
 
@@ -822,18 +779,13 @@ public class RunManager {
     );
   }
 
-<<<<<<< HEAD
-  private void startObjectStore(int rpcPort, String name, AddressInfo info, String workDir, String redisAddress,
-      String ip, boolean redirect, boolean cleanup) {
-    int occupiedMemoryMB = params.object_store_occupied_memory_MB;
-    long memoryBytes = occupiedMemoryMB * 1000000;
-=======
   private void startObjectStore(int index, AddressInfo info, String workDir, String redisAddress,
                                 String ip, boolean redirect, boolean cleanup) {
     int occupiedMemoryMb = params.object_store_occupied_memory_MB;
     long memoryBytes = occupiedMemoryMb * 1000000;
->>>>>>> master
     String filePath = paths.store;
+    int rpcPort = params.object_store_rpc_port + index;
+    String name = "/tmp/plasma_store" + rpcPort;
     String rpcAddr = "";
     String cmd = filePath + " -s " + name + " -m " + memoryBytes;
 

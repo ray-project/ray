@@ -23,12 +23,12 @@ public class DefaultRayletClient extends DefaultLocalSchedulerClient implements 
 
   @Override
   public void submitTask(TaskSpec task) {
-    ByteBuffer info = TaskSpec2Info(task);
+    ByteBuffer info = taskSpec2Info(task);
     byte[] a = null;
     if(!task.actorId.isNil()) {
       a = task.cursorId.getBytes();
     }
-    _submitTask(_client, a, info, info.position(), info.remaining(), true);
+    _submitTask(client, a, info, info.position(), info.remaining(), true);
   }
 
   // interface methods --------------------
@@ -73,7 +73,7 @@ public class DefaultRayletClient extends DefaultLocalSchedulerClient implements 
 
   @Override
   public List<byte[]> wait(byte[][] objectIds, int timeoutMs, int numReturns) {
-    byte[][] readys = _wait(_client, objectIds, timeoutMs, numReturns);
+    byte[][] readys = _wait(client, objectIds, timeoutMs, numReturns);
 
     List<byte[]> ret = new ArrayList<>();
     for (byte[] ready : readys) {

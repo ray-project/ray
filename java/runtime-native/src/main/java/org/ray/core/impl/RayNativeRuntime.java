@@ -161,12 +161,35 @@ public class RayNativeRuntime extends RayRuntime {
     //params.node_ip_address = NetworkUtil.getIpAddress();
   }
 
-  private void initStateStore(String redisAddress) throws Exception {
+  private void initStateStore(String redisAddress, boolean useRaylet) throws Exception {
     kvStore = new RedisClient();
     kvStore.setAddr(redisAddress);
-    stateStoreProxy = new StateStoreProxyImpl(kvStore);
+    stateStoreProxy = useRaylet ? new StateStoreProxyImpl(kvStore) 
+                                : new RayletStateStoreProxyImpl(kvStore);
     //stateStoreProxy.setStore(kvStore);
     stateStoreProxy.initializeGlobalState();
+  }
+
+  private void registerWorker(boolean isWorker, String nodeIpAddress, String storeName,
+                              String rayletName) {
+    Map<String, String> workerInfo = new HashMap<>();
+    String workerId = new String(WorkerContext.currentWorkerId().getBytes());
+    if (!isWorker) {
+      workerInfo.put("node_ip_address", nodeIpAddress);
+      workerInfo.put("driver_id", workerId);
+      workerInfo.put("start_time", String.valueOf(System.currentTimeMillis()));
+      workerInfo.put("plasma_store_socket", storeName);
+      workerInfo.put("raylet_socket", rayletName);
+      workerInfo.put("name", System.getProperty("user.dir"));
+      //TODO: worker.redis_client.hmset(b"Drivers:" + worker.workerId, driver_info)
+      kvStore.hmset("Drivers:" + workerId, workerInfo);
+    } else {
+      workerInfo.put("node_ip_address", nodeIpAddress);
+      workerInfo.put("plasma_store_socket", storeName);
+      workerInfo.put("raylet_socket", rayletName);
+      //TODO: b"Workers:" + worker.workerId,
+      kvStore.hmset("Workers:" + workerId, workerInfo);
+    }
   }
 
   private void registerWorker(boolean isWorker, String nodeIpAddress, String storeName,

@@ -37,17 +37,13 @@ public class RayletStateStoreProxyImpl implements StateStoreProxy {
     this.rayKvStore = rayKvStore;
   }
 
-  public void checkConnected() throws Exception {
-    rayKvStore.CheckConnected();
-  }
-
   public synchronized void initializeGlobalState() throws Exception {
 
     String es;
 
-    checkConnected();
+    rayKvStore.checkConnected();
 
-    String s = rayKvStore.Get("NumRedisShards", null);
+    String s = rayKvStore.get("NumRedisShards", null);
     if (s == null) {
       throw new Exception("NumRedisShards not found in redis.");
     }
@@ -56,7 +52,7 @@ public class RayletStateStoreProxyImpl implements StateStoreProxy {
       es = String.format("Expected at least one Redis shard, found %d", numRedisShards);
       throw new Exception(es);
     }
-    List<String> ipAddressPorts = rayKvStore.Lrange("RedisShards", 0, -1);
+    List<String> ipAddressPorts = rayKvStore.lrange("RedisShards", 0, -1);
     if (ipAddressPorts.size() != numRedisShards) {
       es = String.format("Expected %d Redis shard addresses, found %d.", numRedisShards,
           ipAddressPorts.size());
@@ -74,7 +70,7 @@ public class RayletStateStoreProxyImpl implements StateStoreProxy {
     Set<String> allKeys = new HashSet<>();
     Set<String> tmpKey;
     for (KeyValueStoreLink a_shardStoreList : shardStoreList) {
-      tmpKey = a_shardStoreList.Keys(pattern);
+      tmpKey = a_shardStoreList.keys(pattern);
       allKeys.addAll(tmpKey);
     }
 
