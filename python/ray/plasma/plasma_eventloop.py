@@ -33,8 +33,7 @@ def _wait(fs, timeout, num_returns, loop):
     def _on_completion(f):
         nonlocal n_finished
         n_finished += 1
-        
-        if n_finished >= num_returns and (not f.cancelled() and f.exception() is not None):
+        if n_finished >= num_returns:
             if timeout_handle is not None:
                 timeout_handle.cancel()
             if not waiter.done():
@@ -76,6 +75,9 @@ class PlasmaObjectFuture(asyncio.Future):
     
     def complete(self):
         self.set_result(self.object_id)
+    
+    def __repr__(self):
+        return super().__repr__() + "{object_id=%s, ref_count=%d}" % (self.object_id, self.ref_count)
 
 
 class PlasmaEpoll(selectors.BaseSelector):
@@ -199,12 +201,17 @@ class PlasmaSelectorEventLoop(asyncio.BaseEventLoop):
     
     def _register_future(self, future):
         future = asyncio.ensure_future(future, loop=self)
-        fut = self.create_future()
+        fut = PlasmaObjectFuture(loop=self, object_id=ray.local_scheduler.ObjectID(b'\0' * 20))
+        if self.get_debug():
+            print("Processing indirect future %s" % future)
         
         def callback(_future):
             object_id = _future.result()
             assert isinstance(object_id, ray.local_scheduler.ObjectID)
+            if self.get_debug():
+                print("Registering indirect future...")
             reg_future = self._register_id(object_id)
+            fut.object_id = object_id  # here we get the waiting id
             
             def reg_callback(_fut):
                 result = _fut.result()
@@ -229,14 +236,21 @@ class PlasmaSelectorEventLoop(asyncio.BaseEventLoop):
                 if future.cancelled():
                     return
                 future.complete()
+                # done object_ids should all be unregistered
                 self._selector.unregister(future)
+                if self.get_debug():
+                    print("%s removed from the selector." % future)
             
             fut = PlasmaObjectFuture(loop=self, object_id=object_id)
             handle = asyncio.events.Handle(callback, args=[fut], loop=self)
             self._selector.register(fut, events=None, data=handle)
+            if self.get_debug():
+                print("%s added to the selector." % fut)
         else:
             # Keep a unique Future object for an object_id. Increase ref_count instead.
             fut = key.fileobj
+            if self.get_debug():
+                print("%s exists." % fut)
         
         fut.inc_refcount()
         
@@ -258,10 +272,15 @@ class PlasmaSelectorEventLoop(asyncio.BaseEventLoop):
         return ray.get(ready_ids, worker=self._worker)
     
     @asyncio.coroutine
-    def wait(self, object_ids, num_returns=1, timeout=None):
+    def wait(self, object_ids, num_returns=1, timeout=None, return_exact_num=True):
         futures = [self._register_id(oid) for oid in object_ids]
         _done, _pending = yield from _wait(futures, timeout=timeout, num_returns=num_returns, loop=self)
-        done = [fut.object_id for fut in _done]  # done object_ids should all be unregistered
+        
+        self._release(*_pending)
+        done = [fut.object_id for fut in _done]
         pending = [fut.object_id for fut in _pending]
-        self._release(*pending)
+        
+        if return_exact_num and len(done) > num_returns:
+            done, pending = done[:num_returns], done[num_returns:] + pending
+        
         return done, pending
