@@ -330,13 +330,10 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
 
 @click.command()
 def stop():
-    # TODO: We really should wrap socat in a script so we don't kill every
-    # socat instance, including those that may have nothing to do with ray
-    # (admittedly unlikely and we probably won't use socat beyond this prototype)
     subprocess.call(
         [
             "killall global_scheduler plasma_store plasma_manager "
-            "local_scheduler raylet raylet_monitor socat"
+            "local_scheduler raylet raylet_monitor"
         ],
         shell=True)
 
@@ -376,6 +373,14 @@ def stop():
     subprocess.call(
         [
             "kill $(ps aux | grep gateway.py | grep -v grep | "
+            "awk '{ print $2 }') 2> /dev/null"
+        ],
+        shell=True)
+
+    # Find the PID of the Ray gateway socat process and kill it.
+    subprocess.call(
+        [
+            "kill $(ps aux | grep \"socat TCP-LISTEN\" | grep -v grep | "
             "awk '{ print $2 }') 2> /dev/null"
         ],
         shell=True)

@@ -1,28 +1,59 @@
 import click
-from flask import Flask, request
+from flask import Flask, request, send_file
+import io
 import pickle
 import pyarrow
 from pyarrow import plasma as plasma
 import sys
 
 app = Flask(__name__)
+ctx = pyarrow.default_serialization_context()
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
-    if request.method == 'POST':
-        id = request.files['object_id'].read()
-        data = request.files['value'].read()
-        ctx = pyarrow.default_serialization_context()
+    """TODO (dsuo): Add comments.
 
+    TODO (dsuo): Maybe care about batching
+    TODO (dsuo): REST is nice conceptually, but probably too much overhead
+    TODO (dsuo): Move logic to C++ (keep as head node process)
+
+    NOTE: We do an extra serialize during get and extra deserialize during
+        put.
+    """
+    if request.method == 'POST':
+        object_id = request.files['object_id'].read()
+        data = request.files['value'].read()
         value = ctx.deserialize(data)
-        print(value, id, file=sys.stderr)
-        print(plasma_client)
+
         plasma_client.put(
             value,
-            object_id=plasma.ObjectID(id),
+            object_id=plasma.ObjectID(object_id),
             memcopy_threads=12,
             serialization_context=ctx)
-        return id, 402
+
+        return object_id, 402
+    elif request.method == 'GET' and 'object_ids' in request.args:
+        object_ids = [plasma.ObjectID(bytes.fromhex(object_id)) for object_id in \
+            request.args['object_ids'].split(",")]
+
+        # Fetch remote objects
+        # TODO (dsuo): maybe care about batching
+        plasma_client.fetch(object_ids)
+
+        # Get local objects
+        # TODO (dsuo): Handle object not available
+        results = plasma_client.get(
+            object_ids,
+            5000,
+            ctx)
+
+        # TODO (dsuo): serialize results into one object
+        # TODO (dsuo): this may cause problems if the object we're getting back
+        # is an array
+        data = ctx.serialize(results).to_buffer().to_pybytes()
+
+        return send_file(io.BytesIO(data), mimetype="application/octet-stream")
+        
     else:
         return '''
         <html><body><h1>hi!</h1></body></html>

@@ -306,16 +306,11 @@ class Worker(object):
                                 "type {}.".format(type(value)))
             counter += 1
             try:
-                if self.mode == CLIENT_MODE:
-                    self.client.put(
-                        value,
-                        object_id=object_id.id())
-                else:
-                    self.plasma_client.put(
-                        value,
-                        object_id=pyarrow.plasma.ObjectID(object_id.id()),
-                        memcopy_threads=self.memcopy_threads,
-                        serialization_context=self.serialization_context)
+                self.plasma_client.put(
+                    value,
+                    object_id=pyarrow.plasma.ObjectID(object_id.id()),
+                    memcopy_threads=self.memcopy_threads,
+                    serialization_context=self.serialization_context)
                 break
             except pyarrow.SerializationCallbackError as e:
                 try:
@@ -2266,8 +2261,12 @@ def disconnect(worker=global_worker):
     worker.cached_remote_functions_and_actors = []
     worker.serialization_context = pyarrow.SerializationContext()
 
-    # TODO (dsuo): we should wrap socat in a script so we don't kill all socat
-    subprocess.call(["killall socat"], shell=True)
+    subprocess.call(
+        [
+            "kill $(ps aux | grep \"socat UNIX-LISTEN\" | grep -v grep | "
+            "awk '{ print $2 }') 2> /dev/null"
+        ],
+        shell=True)
 
 
 def _try_to_compute_deterministic_class_id(cls, depth=5):
@@ -2508,13 +2507,21 @@ def get(object_ids, worker=global_worker):
             # actually be a value not an objectid).
             return object_ids
         if isinstance(object_ids, list):
-            values = worker.get_object(object_ids)
+            # Same as put; likely want to reuse validation / retry logic, but
+            # branching here for now for simplicity
+            if worker.mode == CLIENT_MODE:
+                values = worker.client.get(object_ids)
+            else:
+                values = worker.get_object(object_ids)
             for i, value in enumerate(values):
                 if isinstance(value, RayTaskError):
                     raise RayGetError(object_ids[i], value)
             return values
         else:
-            value = worker.get_object([object_ids])[0]
+            if worker.mode == CLIENT_MODE:
+                value = worker.client.get([object_ids])[0]
+            else:
+                value = worker.get_object([object_ids])[0]
             if isinstance(value, RayTaskError):
                 # If the result is a RayTaskError, then the task that created
                 # this object failed, and we should propagate the error message
@@ -2541,7 +2548,15 @@ def put(value, worker=global_worker):
             return value
         object_id = worker.local_scheduler_client.compute_put_id(
             worker.current_task_id, worker.put_index, worker.use_raylet)
-        worker.put_object(object_id, value)
+
+        # For now, branch here to keep things simple, but likely want to
+        # reuse validation, retry logic
+        if worker.mode == CLIENT_MODE:
+            worker.client.put(
+                value,
+                object_id=object_id.id())
+        else:
+            worker.put_object(object_id, value)
         worker.put_index += 1
         return object_id
 
