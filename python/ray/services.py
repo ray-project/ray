@@ -22,6 +22,7 @@ import redis
 
 import pyarrow
 # Ray modules
+import ray.ray_constants
 import ray.global_scheduler as global_scheduler
 import ray.local_scheduler
 import ray.plasma
@@ -798,11 +799,13 @@ def start_ui(redis_address, stdout_file=None, stderr_file=None, cleanup=True):
         return webui_url
 
 
-def check_and_update_resources(resources):
+def check_and_update_resources(resources, use_raylet):
     """Sanity check a resource dictionary and add sensible defaults.
 
     Args:
         resources: A dictionary mapping resource names to resource quantities.
+        use_raylet: True if we are using the raylet code path and false
+            otherwise.
 
     Returns:
         A new resource dictionary.
@@ -837,6 +840,14 @@ def check_and_update_resources(resources):
     for _, resource_quantity in resources.items():
         assert (isinstance(resource_quantity, int)
                 or isinstance(resource_quantity, float))
+        if (isinstance(resource_quantity, float)
+                and not resource_quantity.is_integer()):
+            raise ValueError("Resource quantities must all be whole numbers.")
+
+        if (use_raylet and
+                resource_quantity > ray.ray_constants.MAX_RESOURCE_QUANTITY):
+            raise ValueError("Resource quantities must be at most {}."
+                             .format(ray.ray_constants.MAX_RESOURCE_QUANTITY))
 
     return resources
 
@@ -879,7 +890,7 @@ def start_local_scheduler(redis_address,
     Return:
         The name of the local scheduler socket.
     """
-    resources = check_and_update_resources(resources)
+    resources = check_and_update_resources(resources, False)
 
     print("Starting local scheduler with the following resources: {}."
           .format(resources))
@@ -932,7 +943,7 @@ def start_raylet(redis_address,
     Returns:
         The raylet socket name.
     """
-    static_resources = check_and_update_resources(resources)
+    static_resources = check_and_update_resources(resources, True)
 
     # Format the resource argument in a form like 'CPU,1.0,GPU,0,Custom,3'.
     resource_argument = ",".join([
@@ -1464,7 +1475,7 @@ def start_ray_processes(address_info=None,
         # Start any raylets that do not exist yet.
         for i in range(len(raylet_socket_names), num_local_schedulers):
             raylet_stdout_file, raylet_stderr_file = new_log_files(
-                "raylet_{}".format(i), redirect_output=redirect_output)
+                "raylet_{}".format(i), redirect_output=redirect_worker_output)
             address_info["raylet_socket_names"].append(
                 start_raylet(
                     redis_address,

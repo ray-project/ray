@@ -6,11 +6,19 @@
 #include "ray/raylet/task_spec.h"
 
 struct LocalSchedulerConnection {
+  /// True if we should use the raylet code path and false otherwise.
+  bool use_raylet;
   /** File descriptor of the Unix domain socket that connects to local
    *  scheduler. */
   int conn;
-  /** The IDs of the GPUs that this client can use. */
+  /** The IDs of the GPUs that this client can use. NOTE(rkn): This is only used
+   *  by legacy Ray and will be deprecated. */
   std::vector<int> gpu_ids;
+  /// A map from resource name to the resource IDs that are currently reserved
+  /// for this worker. Each pair consists of the resource ID and the fraction
+  /// of that resource allocated for this worker.
+  std::unordered_map<std::string, std::vector<std::pair<int64_t, double>>>
+      resource_ids_;
 };
 
 /**
@@ -20,12 +28,15 @@ struct LocalSchedulerConnection {
  *        local scheduler.
  * @param is_worker Whether this client is a worker. If it is a worker, an
  *        additional message will be sent to register as one.
+ * @param use_raylet True if we should use the raylet code path and false
+ *        otherwise.
  * @return The connection information.
  */
 LocalSchedulerConnection *LocalSchedulerConnection_init(
     const char *local_scheduler_socket,
     UniqueID worker_id,
-    bool is_worker);
+    bool is_worker,
+    bool use_raylet);
 
 /**
  * Disconnect from the local scheduler.
@@ -102,6 +113,16 @@ void local_scheduler_log_event(LocalSchedulerConnection *conn,
 TaskSpec *local_scheduler_get_task(LocalSchedulerConnection *conn,
                                    int64_t *task_size);
 
+/// Get next task for this client. This will block until the scheduler assigns
+/// a task to this worker. This allocates and returns a task, and so the task
+/// must be freed by the caller.
+///
+/// \param conn The connection information.
+/// \param task_size A pointer to fill out with the task size.
+/// \return The address of the assigned task.
+TaskSpec *local_scheduler_get_task_raylet(LocalSchedulerConnection *conn,
+                                          int64_t *task_size);
+
 /**
  * Tell the local scheduler that the client has finished executing a task.
  *
@@ -111,14 +132,17 @@ TaskSpec *local_scheduler_get_task(LocalSchedulerConnection *conn,
 void local_scheduler_task_done(LocalSchedulerConnection *conn);
 
 /**
- * Tell the local scheduler to reconstruct an object.
+ * Tell the local scheduler to reconstruct or fetch objects.
  *
  * @param conn The connection information.
- * @param object_id The ID of the object to reconstruct.
+ * @param object_ids The IDs of the objects to reconstruct.
+ * @param fetch_only Only fetch objects, do not reconstruct them.
  * @return Void.
  */
-void local_scheduler_reconstruct_object(LocalSchedulerConnection *conn,
-                                        ObjectID object_id);
+void local_scheduler_reconstruct_objects(
+    LocalSchedulerConnection *conn,
+    const std::vector<ObjectID> &object_ids,
+    bool fetch_only = false);
 
 /**
  * Send a log message to the local scheduler.
@@ -168,5 +192,23 @@ const std::vector<uint8_t> local_scheduler_get_actor_frontier(
  */
 void local_scheduler_set_actor_frontier(LocalSchedulerConnection *conn,
                                         const std::vector<uint8_t> &frontier);
+
+/// Wait for the given objects until timeout expires or num_return objects are
+/// found.
+///
+/// \param conn The connection information.
+/// \param object_ids The objects to wait for.
+/// \param num_returns The number of objects to wait for.
+/// \param timeout_milliseconds Duration, in milliseconds, to wait before
+/// returning.
+/// \param wait_local Whether to wait for objects to appear on this node.
+/// \return A pair with the first element containing the object ids that were
+/// found, and the second element the objects that were not found.
+std::pair<std::vector<ObjectID>, std::vector<ObjectID>> local_scheduler_wait(
+    LocalSchedulerConnection *conn,
+    const std::vector<ObjectID> &object_ids,
+    int num_returns,
+    int64_t timeout_milliseconds,
+    bool wait_local);
 
 #endif

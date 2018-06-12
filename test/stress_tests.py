@@ -8,8 +8,13 @@ import ray
 import numpy as np
 import time
 
+import ray.ray_constants as ray_constants
+
 
 class TaskTests(unittest.TestCase):
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") == "1",
+        "This test does not work with xray yet.")
     def testSubmittingTasks(self):
         for num_local_schedulers in [1, 4]:
             for num_workers_per_scheduler in [4]:
@@ -39,6 +44,9 @@ class TaskTests(unittest.TestCase):
                 self.assertTrue(ray.services.all_processes_alive())
                 ray.worker.cleanup()
 
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") == "1",
+        "This test does not work with xray yet.")
     def testDependencies(self):
         for num_local_schedulers in [1, 4]:
             for num_workers_per_scheduler in [4]:
@@ -159,6 +167,9 @@ class TaskTests(unittest.TestCase):
                 ray.worker.cleanup()
 
 
+@unittest.skipIf(
+    os.environ.get("RAY_USE_XRAY") == "1",
+    "This test does not work with xray yet.")
 class ReconstructionTests(unittest.TestCase):
 
     num_local_schedulers = 1
@@ -454,7 +465,8 @@ class ReconstructionTests(unittest.TestCase):
         errors = self.wait_for_errors(error_check)
         # Make sure all the errors have the correct type.
         self.assertTrue(
-            all(error[b"type"] == b"object_hash_mismatch" for error in errors))
+            all(error["type"] == ray_constants.HASH_MISMATCH_PUSH_ERROR
+                for error in errors))
 
     @unittest.skipIf(
         os.environ.get('RAY_USE_NEW_GCS', False), "Hanging with new GCS API.")
@@ -492,17 +504,21 @@ class ReconstructionTests(unittest.TestCase):
         # were evicted and whose originating tasks are still running, this
         # for-loop should hang on its first iteration and push an error to the
         # driver.
-        ray.worker.global_worker.local_scheduler_client.reconstruct_object(
-            args[0].id())
+        ray.worker.global_worker.local_scheduler_client.reconstruct_objects(
+            [args[0]], False)
 
         def error_check(errors):
             return len(errors) > 1
 
         errors = self.wait_for_errors(error_check)
         self.assertTrue(
-            all(error[b"type"] == b"put_reconstruction" for error in errors))
+            all(error["type"] == ray_constants.PUT_RECONSTRUCTION_PUSH_ERROR
+                for error in errors))
 
 
+@unittest.skipIf(
+    os.environ.get("RAY_USE_XRAY") == "1",
+    "This test does not work with xray yet.")
 class ReconstructionTestsMultinode(ReconstructionTests):
 
     # Run the same tests as the single-node suite, but with 4 local schedulers,

@@ -20,14 +20,16 @@ static int PyLocalSchedulerClient_init(PyLocalSchedulerClient *self,
   char *socket_name;
   UniqueID client_id;
   PyObject *is_worker;
-  if (!PyArg_ParseTuple(args, "sO&O", &socket_name, PyStringToUniqueID,
-                        &client_id, &is_worker)) {
+  PyObject *use_raylet;
+  if (!PyArg_ParseTuple(args, "sO&OO", &socket_name, PyStringToUniqueID,
+                        &client_id, &is_worker, &use_raylet)) {
     self->local_scheduler_connection = NULL;
     return -1;
   }
   /* Connect to the local scheduler. */
   self->local_scheduler_connection = LocalSchedulerConnection_init(
-      socket_name, client_id, (bool) PyObject_IsTrue(is_worker));
+      socket_name, client_id, static_cast<bool>(PyObject_IsTrue(is_worker)),
+      static_cast<bool>(PyObject_IsTrue(use_raylet)));
   return 0;
 }
 
@@ -73,22 +75,42 @@ static PyObject *PyLocalSchedulerClient_get_task(PyObject *self) {
   /* Drop the global interpreter lock while we get a task because
    * local_scheduler_get_task may block for a long time. */
   Py_BEGIN_ALLOW_THREADS
-  task_spec = local_scheduler_get_task(
-      ((PyLocalSchedulerClient *) self)->local_scheduler_connection,
-      &task_size);
+  if (!reinterpret_cast<PyLocalSchedulerClient *>(self)->local_scheduler_connection->use_raylet) {
+    task_spec = local_scheduler_get_task(
+        reinterpret_cast<PyLocalSchedulerClient *>(self)->local_scheduler_connection,
+        &task_size);
+  } else {
+    task_spec = local_scheduler_get_task_raylet(
+        reinterpret_cast<PyLocalSchedulerClient *>(self)->local_scheduler_connection,
+        &task_size);
+  }
   Py_END_ALLOW_THREADS
   return PyTask_make(task_spec, task_size);
 }
 // clang-format on
 
-static PyObject *PyLocalSchedulerClient_reconstruct_object(PyObject *self,
-                                                           PyObject *args) {
-  ObjectID object_id;
-  if (!PyArg_ParseTuple(args, "O&", PyStringToUniqueID, &object_id)) {
+static PyObject *PyLocalSchedulerClient_reconstruct_objects(PyObject *self,
+                                                            PyObject *args) {
+  PyObject *py_object_ids;
+  PyObject *py_fetch_only;
+  std::vector<ObjectID> object_ids;
+  if (!PyArg_ParseTuple(args, "OO", &py_object_ids, &py_fetch_only)) {
     return NULL;
   }
-  local_scheduler_reconstruct_object(
-      ((PyLocalSchedulerClient *) self)->local_scheduler_connection, object_id);
+  bool fetch_only = PyObject_IsTrue(py_fetch_only);
+  Py_ssize_t n = PyList_Size(py_object_ids);
+  for (int64_t i = 0; i < n; ++i) {
+    ObjectID object_id;
+    PyObject *py_object_id = PyList_GetItem(py_object_ids, i);
+    if (!PyObjectToUniqueID(py_object_id, &object_id)) {
+      return NULL;
+    }
+    object_ids.push_back(object_id);
+  }
+  local_scheduler_reconstruct_objects(
+      reinterpret_cast<PyLocalSchedulerClient *>(self)
+          ->local_scheduler_connection,
+      object_ids, fetch_only);
   Py_RETURN_NONE;
 }
 
@@ -150,6 +172,39 @@ static PyObject *PyLocalSchedulerClient_gpu_ids(PyObject *self) {
   return gpu_ids_list;
 }
 
+// NOTE(rkn): This function only makes sense for the raylet code path.
+static PyObject *PyLocalSchedulerClient_resource_ids(PyObject *self) {
+  // Construct a Python dictionary of resource IDs and resource fractions.
+  PyObject *resource_ids = PyDict_New();
+
+  for (auto const &resource_info :
+       reinterpret_cast<PyLocalSchedulerClient *>(self)
+           ->local_scheduler_connection->resource_ids_) {
+    auto const &resource_name = resource_info.first;
+    auto const &ids_and_fractions = resource_info.second;
+
+#if PY_MAJOR_VERSION >= 3
+    PyObject *key =
+        PyUnicode_FromStringAndSize(resource_name.data(), resource_name.size());
+#else
+    PyObject *key =
+        PyBytes_FromStringAndSize(resource_name.data(), resource_name.size());
+#endif
+    PyObject *value = PyList_New(ids_and_fractions.size());
+    for (size_t i = 0; i < ids_and_fractions.size(); ++i) {
+      auto const &id_and_fraction = ids_and_fractions[i];
+      PyObject *id_fraction_pair =
+          Py_BuildValue("(Ld)", id_and_fraction.first, id_and_fraction.second);
+      PyList_SetItem(value, i, id_fraction_pair);
+    }
+    PyDict_SetItem(resource_ids, key, value);
+    Py_DECREF(key);
+    Py_DECREF(value);
+  }
+
+  return resource_ids;
+}
+
 static PyObject *PyLocalSchedulerClient_get_actor_frontier(PyObject *self,
                                                            PyObject *args) {
   ActorID actor_id;
@@ -179,6 +234,58 @@ static PyObject *PyLocalSchedulerClient_set_actor_frontier(PyObject *self,
   Py_RETURN_NONE;
 }
 
+static PyObject *PyLocalSchedulerClient_wait(PyObject *self, PyObject *args) {
+  PyObject *py_object_ids;
+  int num_returns;
+  int64_t timeout_ms;
+  PyObject *py_wait_local;
+
+  if (!PyArg_ParseTuple(args, "OilO", &py_object_ids, &num_returns, &timeout_ms,
+                        &py_wait_local)) {
+    return NULL;
+  }
+
+  bool wait_local = PyObject_IsTrue(py_wait_local);
+
+  // Convert object ids.
+  PyObject *iter = PyObject_GetIter(py_object_ids);
+  if (!iter) {
+    return NULL;
+  }
+  std::vector<ObjectID> object_ids;
+  while (true) {
+    PyObject *next = PyIter_Next(iter);
+    ObjectID object_id;
+    if (!next) {
+      break;
+    }
+    if (!PyObjectToUniqueID(next, &object_id)) {
+      // Error parsing object id.
+      return NULL;
+    }
+    object_ids.push_back(object_id);
+  }
+
+  // Invoke wait.
+  std::pair<std::vector<ObjectID>, std::vector<ObjectID>> result =
+      local_scheduler_wait(reinterpret_cast<PyLocalSchedulerClient *>(self)
+                               ->local_scheduler_connection,
+                           object_ids, num_returns, timeout_ms,
+                           static_cast<bool>(wait_local));
+
+  // Convert result to py object.
+  PyObject *py_found = PyList_New(static_cast<Py_ssize_t>(result.first.size()));
+  for (uint i = 0; i < result.first.size(); ++i) {
+    PyList_SetItem(py_found, i, PyObjectID_make(result.first[i]));
+  }
+  PyObject *py_remaining =
+      PyList_New(static_cast<Py_ssize_t>(result.second.size()));
+  for (uint i = 0; i < result.second.size(); ++i) {
+    PyList_SetItem(py_remaining, i, PyObjectID_make(result.second[i]));
+  }
+  return Py_BuildValue("(OO)", py_found, py_remaining);
+}
+
 static PyMethodDef PyLocalSchedulerClient_methods[] = {
     {"disconnect", (PyCFunction) PyLocalSchedulerClient_disconnect, METH_NOARGS,
      "Notify the local scheduler that this client is exiting gracefully."},
@@ -186,8 +293,8 @@ static PyMethodDef PyLocalSchedulerClient_methods[] = {
      "Submit a task to the local scheduler."},
     {"get_task", (PyCFunction) PyLocalSchedulerClient_get_task, METH_NOARGS,
      "Get a task from the local scheduler."},
-    {"reconstruct_object",
-     (PyCFunction) PyLocalSchedulerClient_reconstruct_object, METH_VARARGS,
+    {"reconstruct_objects",
+     (PyCFunction) PyLocalSchedulerClient_reconstruct_objects, METH_VARARGS,
      "Ask the local scheduler to reconstruct an object."},
     {"log_event", (PyCFunction) PyLocalSchedulerClient_log_event, METH_VARARGS,
      "Log an event to the event log through the local scheduler."},
@@ -197,10 +304,15 @@ static PyMethodDef PyLocalSchedulerClient_methods[] = {
      METH_VARARGS, "Return the object ID for a put call within a task."},
     {"gpu_ids", (PyCFunction) PyLocalSchedulerClient_gpu_ids, METH_NOARGS,
      "Get the IDs of the GPUs that are reserved for this client."},
+    {"resource_ids", (PyCFunction) PyLocalSchedulerClient_resource_ids,
+     METH_NOARGS,
+     "Get the IDs of the resources that are reserved for this client."},
     {"get_actor_frontier",
      (PyCFunction) PyLocalSchedulerClient_get_actor_frontier, METH_VARARGS, ""},
     {"set_actor_frontier",
      (PyCFunction) PyLocalSchedulerClient_set_actor_frontier, METH_VARARGS, ""},
+    {"wait", (PyCFunction) PyLocalSchedulerClient_wait, METH_VARARGS,
+     "Wait for a list of objects to be created."},
     {NULL} /* Sentinel */
 };
 

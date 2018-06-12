@@ -387,7 +387,7 @@ void finish_killed_task(LocalSchedulerState *state,
   }
   /* Mark the task as done. */
   if (state->db != NULL) {
-    Task *task = Task_alloc(execution_spec, TASK_STATUS_DONE,
+    Task *task = Task_alloc(execution_spec, TaskStatus::DONE,
                             get_db_client_id(state->db));
 #if !RAY_USE_NEW_GCS
     // In most cases, task_table_update would be appropriate, however, it is
@@ -502,7 +502,7 @@ void queue_actor_task(LocalSchedulerState *state,
 
   /* Update the task table. */
   if (state->db != NULL) {
-    Task *task = Task_alloc(execution_spec, TASK_STATUS_QUEUED,
+    Task *task = Task_alloc(execution_spec, TaskStatus::QUEUED,
                             get_db_client_id(state->db));
     if (from_global_scheduler) {
       /* If the task is from the global scheduler, it's already been added to
@@ -887,7 +887,7 @@ void spillback_tasks_handler(LocalSchedulerState *state) {
                         << " ";
         }
         push_error(state->db, TaskSpec_driver_id(spec),
-                   ACTOR_NOT_CREATED_ERROR_INDEX, error_message.str());
+                   ErrorIndex::ACTOR_NOT_CREATED, error_message.str());
       }
     }
 
@@ -1001,7 +1001,7 @@ std::list<TaskExecutionSpec>::iterator queue_task(
    * task table to notify others that we have queued it. */
   if (state->db != NULL) {
     Task *task =
-        Task_alloc(task_entry, TASK_STATUS_QUEUED, get_db_client_id(state->db));
+        Task_alloc(task_entry, TaskStatus::QUEUED, get_db_client_id(state->db));
 #if !RAY_USE_NEW_GCS
     if (from_global_scheduler) {
       /* If the task is from the global scheduler, it's already been added to
@@ -1132,7 +1132,7 @@ void give_task_to_local_scheduler_retry(UniqueID id,
                                         void *user_data) {
   LocalSchedulerState *state = (LocalSchedulerState *) user_context;
   Task *task = (Task *) user_data;
-  RAY_CHECK(Task_state(task) == TASK_STATUS_SCHEDULED);
+  RAY_CHECK(Task_state(task) == TaskStatus::SCHEDULED);
 
   TaskExecutionSpec *execution_spec = Task_task_execution_spec(task);
   TaskSpec *spec = execution_spec->Spec();
@@ -1203,7 +1203,7 @@ void give_task_to_local_scheduler(LocalSchedulerState *state,
   /* Assign the task to the relevant local scheduler. */
   RAY_CHECK(state->config.global_scheduler_exists);
   Task *task =
-      Task_alloc(execution_spec, TASK_STATUS_SCHEDULED, local_scheduler_id);
+      Task_alloc(execution_spec, TaskStatus::SCHEDULED, local_scheduler_id);
 #if !RAY_USE_NEW_GCS
   auto retryInfo = RetryInfo{
       .num_retries = 0,  // This value is unused.
@@ -1223,7 +1223,7 @@ void give_task_to_global_scheduler_retry(UniqueID id,
                                          void *user_data) {
   LocalSchedulerState *state = (LocalSchedulerState *) user_context;
   Task *task = (Task *) user_data;
-  RAY_CHECK(Task_state(task) == TASK_STATUS_WAITING);
+  RAY_CHECK(Task_state(task) == TaskStatus::WAITING);
 
   TaskExecutionSpec *execution_spec = Task_task_execution_spec(task);
   TaskSpec *spec = execution_spec->Spec();
@@ -1250,7 +1250,7 @@ void give_task_to_global_scheduler(LocalSchedulerState *state,
   }
   /* Pass on the task to the global scheduler. */
   RAY_CHECK(state->config.global_scheduler_exists);
-  Task *task = Task_alloc(execution_spec, TASK_STATUS_WAITING,
+  Task *task = Task_alloc(execution_spec, TaskStatus::WAITING,
                           get_db_client_id(state->db));
 #if !RAY_USE_NEW_GCS
   RAY_CHECK(state->db != NULL);
@@ -1326,7 +1326,7 @@ void handle_actor_task_submitted(LocalSchedulerState *state,
   if (state->actor_mapping.count(actor_id) == 0) {
     // Create a copy of the task to write to the task table.
     Task *task = Task_alloc(
-        task_spec, execution_spec.SpecSize(), TASK_STATUS_ACTOR_CACHED,
+        task_spec, execution_spec.SpecSize(), TaskStatus::ACTOR_CACHED,
         get_db_client_id(state->db), execution_spec.ExecutionDependencies());
 
     /* Add this task to a queue of tasks that have been submitted but the local

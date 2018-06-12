@@ -11,20 +11,9 @@ import org.ray.api.test.MyRunner;
 @RunWith(MyRunner.class)
 public class MaxPressureTest extends RayBenchmarkTest {
 
-  private static final long serialVersionUID = -1684518885171395952L;
-
   public static final int clientNum = 2;
-
   public static final int totalNum = 10;
-
-  @Test
-  public void Test() {
-    PressureTestParameter pressureTestParameter = new PressureTestParameter();
-    pressureTestParameter.setClientNum(clientNum);
-    pressureTestParameter.setTotalNum(totalNum);
-    pressureTestParameter.setRayBenchmarkTest(this);
-    super.maxPressureTest(pressureTestParameter);
-  }
+  private static final long serialVersionUID = -1684518885171395952L;
 
   @RayRemote
   public static RemoteResult<Integer> currentTime() {
@@ -34,15 +23,24 @@ public class MaxPressureTest extends RayBenchmarkTest {
     return remoteResult;
   }
 
-  @Override
-  public boolean checkResult(Object o) {
-    return (int) o == 0;
+  @Test
+  public void test() {
+    PressureTestParameter pressureTestParameter = new PressureTestParameter();
+    pressureTestParameter.setClientNum(clientNum);
+    pressureTestParameter.setTotalNum(totalNum);
+    pressureTestParameter.setRayBenchmarkTest(this);
+    super.maxPressureTest(pressureTestParameter);
   }
 
   @Override
   public RayObject<RemoteResult<Integer>> rayCall(RayActor rayActor) {
 
     return Ray.call(MaxPressureTest::currentTime);
+  }
+
+  @Override
+  public boolean checkResult(Object o) {
+    return (int) o == 0;
   }
 
 }

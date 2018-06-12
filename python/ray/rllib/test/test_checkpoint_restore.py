@@ -17,18 +17,19 @@ def get_mean_action(alg, obs):
     return np.mean(out)
 
 
-ray.init()
+ray.init(num_cpus=10)
 
 CONFIGS = {
-    "ES": {"episodes_per_batch": 10, "timesteps_per_batch": 100},
+    "ES": {"episodes_per_batch": 10, "timesteps_per_batch": 100,
+           "num_workers": 2},
     "DQN": {},
-    "DDPG": {"noise_scale": 0.0},
-    "PPO": {"num_sgd_iter": 5, "timesteps_per_batch": 1000},
-    "A3C": {"use_lstm": False},
+    "DDPG": {"noise_scale": 0.0, "timesteps_per_iteration": 100},
+    "PPO": {"num_sgd_iter": 5, "timesteps_per_batch": 1000, "num_workers": 2},
+    "A3C": {"use_lstm": False, "num_workers": 1},
 }
 
 
-def test(use_object_store, alg_name):
+def test(use_object_store, alg_name, failures):
     cls = get_agent_class(alg_name)
     if alg_name == "DDPG":
         alg1 = cls(config=CONFIGS[name], env="Pendulum-v0")
@@ -55,12 +56,15 @@ def test(use_object_store, alg_name):
         a1 = get_mean_action(alg1, obs)
         a2 = get_mean_action(alg2, obs)
         print("Checking computed actions", alg1, obs, a1, a2)
-        assert abs(a1 - a2) < .1, (a1, a2)
+        if abs(a1 - a2) > .1:
+            failures.append((alg_name, [a1, a2]))
 
 
 if __name__ == "__main__":
+    failures = []
     for use_object_store in [False, True]:
         for name in ["ES", "DQN", "DDPG", "PPO", "A3C"]:
-            test(use_object_store, name)
+            test(use_object_store, name, failures)
 
+    assert not failures, failures
     print("All checkpoint restore tests passed!")

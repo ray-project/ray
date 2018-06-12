@@ -20,35 +20,25 @@ public class MultipleReturnGenerator {
   }
 
   /**
-   * package org.ray.api.returns;
-   *
-   * public class MultipleReturns2<R0, R1> extends MultipleReturns {
-   *
-   * public MultipleReturns2(R0 r0, R1 r1) { super(new Object[] { r0, r1 }); }
-   *
-   * public R0 get0() { return (R0) this.values[0]; }
-   *
-   * public R1 get1() { return (R1) this.values[1]; }
-   *
-   * }
+   * package org.ray.api.returns.
    */
-  private static String build(int Rcount) {
+  private static String build(int rcount) {
     StringBuilder sb = new StringBuilder();
     sb.append("package org.ray.api.returns;").append("\n");
     sb.append("import org.ray.api.*;").append("\n");
     sb.append("@SuppressWarnings(\"unchecked\")");
-    sb.append("public class MultipleReturns").append(Rcount).append("<")
-        .append(Share.buildClassDeclare(0, Rcount)).append("> extends MultipleReturns {")
+    sb.append("public class MultipleReturns").append(rcount).append("<")
+        .append(Share.buildClassDeclare(0, rcount)).append("> extends MultipleReturns {")
         .append("\n");
-    sb.append("\tpublic MultipleReturns").append(Rcount).append("(")
-        .append(Share.buildParameter(Rcount, "R", null)).append(") {")
+    sb.append("\tpublic MultipleReturns").append(rcount).append("(")
+        .append(Share.buildParameter(rcount, "R", null)).append(") {")
         .append("\n");
-    sb.append("\t\tsuper(new Object[] { ").append(Share.buildParameterUse(Rcount, "R"))
+    sb.append("\t\tsuper(new Object[] { ").append(Share.buildParameterUse(rcount, "R"))
         .append(" });")
         .append("\n");
     sb.append("\t}").append("\n");
 
-    for (int k = 0; k < Rcount; k++) {
+    for (int k = 0; k < rcount; k++) {
       sb.append(buildGetter(k));
     }
 

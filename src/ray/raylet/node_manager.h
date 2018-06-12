@@ -115,6 +115,8 @@ class NodeManager {
   uint64_t heartbeat_period_ms_;
   /// The resources local to this node.
   const SchedulingResources local_resources_;
+  /// The resources (and specific resource IDs) that are currently available.
+  ResourceIdSet local_available_resources_;
   // TODO(atumanov): Add resource information from other nodes.
   std::unordered_map<ClientID, SchedulingResources> cluster_resource_map_;
   /// A pool of workers.

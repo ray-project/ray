@@ -17,13 +17,13 @@ def ray_df_equals_pandas(ray_df, pandas_df):
 
 
 @pytest.fixture
-def ray_series_equals_pandas(ray_df, pandas_df):
-    return ray_df.equals(pandas_df)
+def ray_series_equals_pandas(ray_series, pandas_series):
+    return ray_series.equals(pandas_series)
 
 
 @pytest.fixture
 def ray_df_equals(ray_df1, ray_df2):
-    return to_pandas(ray_df1).equals(to_pandas(ray_df2))
+    return ray_df1.equals(ray_df2)
 
 
 @pytest.fixture
@@ -3189,13 +3189,6 @@ def test___round__():
 @pytest.fixture
 def test___array__(ray_df, pandas_df):
     assert np.array_equal(ray_df.__array__(), pandas_df.__array__())
-
-
-def test___array_wrap__():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.__array_wrap__(None)
 
 
 def test___getstate__():

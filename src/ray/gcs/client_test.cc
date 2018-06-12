@@ -301,13 +301,13 @@ TEST_F(TestGcsWithAsio, TestLogAppendAt) {
 // Task table callbacks.
 void TaskAdded(gcs::AsyncGcsClient *client, const TaskID &id,
                const TaskTableDataT &data) {
-  ASSERT_EQ(data.scheduling_state, SchedulingState_SCHEDULED);
+  ASSERT_EQ(data.scheduling_state, SchedulingState::SCHEDULED);
   ASSERT_EQ(data.scheduler_id, kRandomId);
 }
 
 void TaskLookupHelper(gcs::AsyncGcsClient *client, const TaskID &id,
                       const TaskTableDataT &data, bool do_stop) {
-  ASSERT_EQ(data.scheduling_state, SchedulingState_SCHEDULED);
+  ASSERT_EQ(data.scheduling_state, SchedulingState::SCHEDULED);
   ASSERT_EQ(data.scheduler_id, kRandomId);
   if (do_stop) {
     test->Stop();
@@ -328,7 +328,7 @@ void TaskLookupFailure(gcs::AsyncGcsClient *client, const TaskID &id) {
 
 void TaskLookupAfterUpdate(gcs::AsyncGcsClient *client, const TaskID &id,
                            const TaskTableDataT &data) {
-  ASSERT_EQ(data.scheduling_state, SchedulingState_LOST);
+  ASSERT_EQ(data.scheduling_state, SchedulingState::LOST);
   test->Stop();
 }
 
@@ -345,7 +345,7 @@ void TaskUpdateCallback(gcs::AsyncGcsClient *client, const TaskID &task_id,
 
 void TestTaskTable(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> client) {
   auto data = std::make_shared<TaskTableDataT>();
-  data->scheduling_state = SchedulingState_SCHEDULED;
+  data->scheduling_state = SchedulingState::SCHEDULED;
   ClientID local_scheduler_id = ClientID::from_binary(kRandomId);
   data->scheduler_id = local_scheduler_id.binary();
   TaskID task_id = TaskID::from_random();
@@ -354,8 +354,8 @@ void TestTaskTable(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> cli
       client->task_table().Lookup(job_id, task_id, &TaskLookup, &TaskLookupFailure));
   auto update = std::make_shared<TaskTableTestAndUpdateT>();
   update->test_scheduler_id = local_scheduler_id.binary();
-  update->test_state_bitmask = SchedulingState_SCHEDULED;
-  update->update_state = SchedulingState_LOST;
+  update->test_state_bitmask = SchedulingState::SCHEDULED;
+  update->update_state = SchedulingState::LOST;
   // After test-and-setting, the callback will lookup the current state of the
   // task.
   RAY_CHECK_OK(

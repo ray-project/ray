@@ -7,9 +7,11 @@ import org.ray.hook.runtime.LoadedFunctions;
 import org.ray.util.logger.RayLog;
 
 /**
- * mock version of remote function manager using local loaded jars + runtime hook
+ * mock version of remote function manager using local loaded jars + runtime hook.
  */
 public class NopRemoteFunctionManager implements RemoteFunctionManager {
+
+  private final LoadedFunctions loadedFunctions = new LoadedFunctions();
 
   public NopRemoteFunctionManager(UniqueID driverId) {
     //onLoad(driverId, Agent.hookedMethods);
@@ -48,17 +50,6 @@ public class NopRemoteFunctionManager implements RemoteFunctionManager {
     // nothing to do
   }
 
-  private void onLoad(UniqueID driverId, Set<MethodId> methods) {
-    //assert (startupDriverId().equals(driverId));
-    for (MethodId mid : methods) {
-      onLoad(mid);
-    }
-  }
-
-  private void onLoad(MethodId mid) {
-    loadedFunctions.functions.add(mid);
-  }
-
   @Override
   public LoadedFunctions loadFunctions(UniqueID driverId) {
     //assert (startupDriverId().equals(driverId));
@@ -76,5 +67,14 @@ public class NopRemoteFunctionManager implements RemoteFunctionManager {
     //assert (startupDriverId().equals(driverId));
   }
 
-  private final LoadedFunctions loadedFunctions = new LoadedFunctions();
+  private void onLoad(UniqueID driverId, Set<MethodId> methods) {
+    //assert (startupDriverId().equals(driverId));
+    for (MethodId mid : methods) {
+      onLoad(mid);
+    }
+  }
+
+  private void onLoad(MethodId mid) {
+    loadedFunctions.functions.add(mid);
+  }
 }

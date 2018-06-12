@@ -11,27 +11,26 @@ import org.objectweb.asm.Type;
 import org.ray.util.logger.RayLog;
 
 /**
- * Represent a Method in a Class
+ * Represent a Method in a Class.
  */
 public class MethodId {
 
+  static final String getFunctionIdPostfix = "_function_id";
   String className;
   String methodName;
   String methodDesc;
   boolean isStatic;
   ClassLoader loader;
 
-  static final String getFunctionIdPostfix = "_function_id";
-
-  public MethodId(String cls, String method, String mdesc, boolean isstatic, ClassLoader loader_) {
+  public MethodId(String cls, String method, String mdesc, boolean isstatic, ClassLoader loader) {
     className = cls;
     methodName = method;
     methodDesc = mdesc;
     isStatic = isstatic;
-    loader = loader_;
+    this.loader = loader;
   }
 
-  public MethodId(String encodedString, ClassLoader loader_) {
+  public MethodId(String encodedString, ClassLoader loader) {
     // className + "." + methodName + "::" + methodDesc + "&&" + isStatic;
     int lastPos3 = encodedString.lastIndexOf("&&");
     int lastPos2 = encodedString.lastIndexOf("::");
@@ -45,7 +44,24 @@ public class MethodId {
     methodName = encodedString.substring(lastPos1 + ".".length(), lastPos2);
     methodDesc = encodedString.substring(lastPos2 + "::".length(), lastPos3);
     isStatic = Boolean.parseBoolean(encodedString.substring(lastPos3 + "&&".length()));
-    loader = loader_;
+    this.loader = loader;
+  }
+
+  public static String toHexHashString(byte[] id) {
+    String s = "";
+    String hex = "0123456789abcdef";
+    assert (id.length == 20);
+    for (int i = 0; i < 20; i++) {
+      int val = id[i] & 0xff;
+      s += hex.charAt(val >> 4);
+      s += hex.charAt(val & 0xf);
+    }
+    return s;
+  }
+
+  private String toHexHashString() {
+    byte[] id = this.getSha1Hash();
+    return toHexHashString(id);
   }
 
   public String getClassName() {
@@ -74,23 +90,6 @@ public class MethodId {
 
   public String getIdMethodDesc() {
     return "(L" + this.className + ";" + this.methodDesc.substring(1);
-  }
-
-  public static String toHexHashString(byte[] id) {
-    String s = "";
-    String hex = "0123456789abcdef";
-    assert (id.length == 20);
-    for (int i = 0; i < 20; i++) {
-      int val = id[i] & 0xff;
-      s += hex.charAt(val >> 4);
-      s += hex.charAt(val & 0xf);
-    }
-    return s;
-  }
-
-  private String toHexHashString() {
-    byte[] id = this.getSha1Hash();
-    return toHexHashString(id);
   }
 
   public Method load() {
@@ -153,7 +152,8 @@ public class MethodId {
                   : "<nil>") + " vs id-hash: " + toHexHashString());
         }
       }
-    } catch (NoSuchFieldException | SecurityException | IllegalArgumentException | IllegalAccessException e) {
+    } catch (NoSuchFieldException | SecurityException | IllegalArgumentException
+        | IllegalAccessException e) {
       RayLog.core.error("load method hash field failed for " + toString(), e);
     }
     return m;

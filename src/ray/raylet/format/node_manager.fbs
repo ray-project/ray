@@ -29,9 +29,9 @@ enum MessageType:int {
   // Tell a worker to execute a task. This is sent from a local scheduler to a
   // worker.
   ExecuteTask,
-  // Reconstruct a possibly lost object. This is sent from a worker to a local
-  // scheduler.
-  ReconstructObject,
+  // Reconstruct or fetch possibly lost objects. This is sent from a worker to
+  // a local scheduler.
+  ReconstructObjects,
   // For a worker that was blocked on some object(s), tell the local scheduler
   // that the worker is now unblocked. This is sent from a worker to a local
   // scheduler.
@@ -53,7 +53,12 @@ enum MessageType:int {
   // making their execution dependencies available.
   SetActorFrontier,
   // A node manager request to process a task forwarded from another node manager.
-  ForwardTaskRequest
+  ForwardTaskRequest,
+  // Wait for objects to be ready either from local or remote Plasma stores.
+  WaitRequest,
+  // The response message to WaitRequest; replies with the objects found and objects
+  // remaining.
+  WaitReply
 }
 
 table TaskExecutionSpecification {
@@ -76,12 +81,24 @@ table SubmitTaskRequest {
   task_spec: string;
 }
 
+// This message describes a given resource that is reserved for a worker.
+table ResourceIdSetInfo {
+  // The name of the resource.
+  resource_name: string;
+  // The resource IDs reserved for this worker.
+  resource_ids: [long];
+  // The fraction of each resource ID that is reserved for this worker. Note
+  // that the length of this list must be the same as the length of
+  // resource_ids.
+  resource_fractions: [double];
+}
+
 // This message is sent from the local scheduler to a worker.
 table GetTaskReply {
   // A string of bytes representing the task specification.
   task_spec: string;
-  // The IDs of the GPUs that the worker is allowed to use for this task.
-  gpu_ids: [int];
+  // A list of the resources reserved for this worker.
+  fractional_resource_ids: [ResourceIdSetInfo];
 }
 
 // This struct is used to register a new worker with the local scheduler.
@@ -113,7 +130,27 @@ table ForwardTaskRequest {
   uncommitted_tasks: [Task];
 }
 
-table ReconstructObject {
-  // Object ID of the object that needs to be reconstructed.
-  object_id: string;
+table ReconstructObjects {
+  // List of object IDs of the objects that we want to reconstruct or fetch.
+  object_ids: [string];
+  // Do we only want to fetch the objects or also reconstruct them?
+  fetch_only: bool;
+}
+
+table WaitRequest {
+  // List of object ids we'll be waiting on.
+  object_ids: [string];
+  // Number of objects expected to be returned, if available.
+  num_ready_objects: int;
+  // timeout
+  timeout: long;
+  // Whether to wait until objects appear locally.
+  wait_local: bool;
+}
+
+table WaitReply {
+  // List of object ids found.
+  found: [string];
+  // List of object ids not found.
+  remaining: [string];
 }

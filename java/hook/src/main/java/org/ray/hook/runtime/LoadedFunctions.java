@@ -7,6 +7,6 @@ import org.ray.hook.MethodId;
 
 public class LoadedFunctions {
 
-  public ClassLoader loader = null;
   public final Set<MethodId> functions = Collections.synchronizedSet(new HashSet<>());
+  public ClassLoader loader = null;
 }

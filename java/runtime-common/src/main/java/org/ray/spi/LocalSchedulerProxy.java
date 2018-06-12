@@ -29,27 +29,27 @@ public class LocalSchedulerProxy {
   }
 
   public RayObjects submit(UniqueID taskId, RayInvocation invocation, int returnCount,
-      boolean multiReturn) {
+                           boolean multiReturn) {
     UniqueID[] returnIds = buildReturnIds(taskId, returnCount, multiReturn);
     this.doSubmit(invocation, taskId, returnIds, UniqueID.nil);
     return new RayObjects(returnIds);
   }
 
   public RayObjects submit(UniqueID taskId, UniqueID createActorId, RayInvocation invocation,
-      int returnCount, boolean multiReturn) {
+                           int returnCount, boolean multiReturn) {
     UniqueID[] returnIds = buildReturnIds(taskId, returnCount, multiReturn);
     this.doSubmit(invocation, taskId, returnIds, createActorId);
     return new RayObjects(returnIds);
   }
 
-  public <R, RID> RayMap<RID, R> submit(UniqueID taskId, RayInvocation invocation,
-      Collection<RID> userReturnIds) {
+  public <R, RIDT> RayMap<RIDT, R> submit(UniqueID taskId, RayInvocation invocation,
+                                          Collection<RIDT> userReturnIds) {
     UniqueID[] returnIds = buildReturnIds(taskId, userReturnIds.size(), true);
 
-    RayMap<RID, R> ret = new RayMap<>();
-    Map<RID, UniqueID> returnidmapArg = new HashMap<>();
+    RayMap<RIDT, R> ret = new RayMap<>();
+    Map<RIDT, UniqueID> returnidmapArg = new HashMap<>();
     int index = 0;
-    for (RID userReturnId : userReturnIds) {
+    for (RIDT userReturnId : userReturnIds) {
       if (returnidmapArg.containsKey(userReturnId)) {
         RayLog.core.error("TaskId " + taskId + " userReturnId is duplicate " + userReturnId);
         continue;
@@ -63,10 +63,10 @@ public class LocalSchedulerProxy {
       System.arraycopy(returnIds, 0, newReturnIds, 0, index);
       returnIds = newReturnIds;
     }
-    Object args[] = invocation.getArgs();
+    Object[] args = invocation.getArgs();
     Object[] newargs;
     if (args == null) {
-      newargs = new Object[]{returnidmapArg};
+      newargs = new Object[] {returnidmapArg};
     } else {
       newargs = new Object[args.length + 1];
       newargs[0] = returnidmapArg;
@@ -77,10 +77,19 @@ public class LocalSchedulerProxy {
     return ret;
   }
 
-  private void doSubmit(RayInvocation invocation, UniqueID taskId,
-      UniqueID[] returnIds, UniqueID createActorId) {
+  // build Object IDs of return values.
+  private UniqueID[] buildReturnIds(UniqueID taskId, int returnCount, boolean multiReturn) {
+    UniqueID[] returnIds = new UniqueID[returnCount];
+    for (int k = 0; k < returnCount; k++) {
+      returnIds[k] = UniqueIdHelper.taskComputeReturnId(taskId, k, multiReturn);
+    }
+    return returnIds;
+  }
 
-    TaskSpec current = WorkerContext.currentTask();
+  private void doSubmit(RayInvocation invocation, UniqueID taskId,
+                        UniqueID[] returnIds, UniqueID createActorId) {
+
+    final TaskSpec current = WorkerContext.currentTask();
     TaskSpec task = new TaskSpec();
     task.actorCounter = invocation.getActor().increaseTaskCounter();
     task.actorId = invocation.getActor().getId();
@@ -101,17 +110,8 @@ public class LocalSchedulerProxy {
         "Task " + taskId + " submitted, functionId = " + task.functionId + " actorId = "
             + task.actorId + ", driverId = " + task.driverId + ", return_ids = " + Arrays
             .toString(returnIds) + ", currentTask " + WorkerContext.currentTask().taskId
-                + " cursorId = " + task.cursorId);
+            + " cursorId = " + task.cursorId);
     scheduler.submitTask(task);
-  }
-
-  // build Object IDs of return values.
-  private UniqueID[] buildReturnIds(UniqueID taskId, int returnCount, boolean multiReturn) {
-    UniqueID[] returnIds = new UniqueID[returnCount];
-    for (int k = 0; k < returnCount; k++) {
-      returnIds[k] = UniqueIdHelper.taskComputeReturnId(taskId, k, multiReturn);
-    }
-    return returnIds;
   }
 
   public TaskSpec getTask() {

@@ -7,5 +7,10 @@ mvn clean install -pl plasma -am -Dmaven.test.skip
 popd
 pushd $ROOT_DIR/../java
 mvn clean install -Dmaven.test.skip
-mvn test
+check_style=$(mvn checkstyle:check)
+echo "${check_style}"
+[[ ${check_style} =~ "BUILD FAILURE" ]] && exit 1
+mvn_test=$(mvn test)
+echo "${mvn_test}"
+[[ ${mvn_test} =~ "BUILD SUCCESS" ]] || exit 1
 popd

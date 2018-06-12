@@ -136,7 +136,7 @@ int64_t task_table_delayed_add_task(event_loop *loop,
 
 void task_table_test_callback(Task *callback_task, void *user_data) {
   task_table_test_callback_called = 1;
-  RAY_CHECK(Task_state(callback_task) == TASK_STATUS_SCHEDULED);
+  RAY_CHECK(Task_state(callback_task) == TaskStatus::SCHEDULED);
   RAY_CHECK(Task_size(callback_task) == Task_size(task_table_test_task));
   RAY_CHECK(Task_equals(callback_task, task_table_test_task));
   event_loop *loop = (event_loop *) user_data;
@@ -152,13 +152,13 @@ TEST task_table_test(void) {
   DBClientID local_scheduler_id = DBClientID::from_random();
   TaskExecutionSpec spec = example_task_execution_spec(1, 1);
   task_table_test_task =
-      Task_alloc(spec, TASK_STATUS_SCHEDULED, local_scheduler_id);
+      Task_alloc(spec, TaskStatus::SCHEDULED, local_scheduler_id);
   RetryInfo retry = {
       .num_retries = NUM_RETRIES,
       .timeout = TIMEOUT,
       .fail_callback = task_table_test_fail_callback,
   };
-  task_table_subscribe(db, local_scheduler_id, TASK_STATUS_SCHEDULED,
+  task_table_subscribe(db, local_scheduler_id, TaskStatus::SCHEDULED,
                        task_table_test_callback, (void *) loop, &retry, NULL,
                        (void *) loop);
   event_loop_add_timer(
@@ -186,13 +186,13 @@ TEST task_table_all_test(void) {
   TaskExecutionSpec spec = example_task_execution_spec(1, 1);
   /* Schedule two tasks on different local local schedulers. */
   Task *task1 =
-      Task_alloc(spec, TASK_STATUS_SCHEDULED, DBClientID::from_random());
+      Task_alloc(spec, TaskStatus::SCHEDULED, DBClientID::from_random());
   Task *task2 =
-      Task_alloc(spec, TASK_STATUS_SCHEDULED, DBClientID::from_random());
+      Task_alloc(spec, TaskStatus::SCHEDULED, DBClientID::from_random());
   RetryInfo retry = {
       .num_retries = NUM_RETRIES, .timeout = TIMEOUT, .fail_callback = NULL,
   };
-  task_table_subscribe(db, UniqueID::nil(), TASK_STATUS_SCHEDULED,
+  task_table_subscribe(db, UniqueID::nil(), TaskStatus::SCHEDULED,
                        task_table_all_test_callback, NULL, &retry, NULL, NULL);
   event_loop_add_timer(loop, 50, (event_loop_timer_handler) timeout_handler,
                        NULL);
@@ -211,7 +211,7 @@ TEST task_table_all_test(void) {
 }
 
 TEST unique_client_id_test(void) {
-  enum { num_conns = 100 };
+  const int num_conns = 100;
 
   DBClientID ids[num_conns];
   DBHandle *db;

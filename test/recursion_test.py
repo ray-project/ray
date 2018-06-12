@@ -8,7 +8,7 @@ from __future__ import print_function
 
 import ray
 
-ray.init()
+ray.init(num_cpus=1)
 
 
 @ray.remote

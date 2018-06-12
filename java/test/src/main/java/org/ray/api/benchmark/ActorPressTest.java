@@ -46,19 +46,6 @@ public class ActorPressTest extends RayBenchmarkTest {
     super.rateLimiterPressureTest(pressureTestParameter);
   }
 
-  @RayRemote
-  public static class Adder {
-
-    public RemoteResult<Integer> add(Integer n) {
-      RemoteResult<Integer> remoteResult = new RemoteResult<>();
-      remoteResult.setResult(sum += n);
-      remoteResult.setFinishTime(System.nanoTime());
-      return remoteResult;
-    }
-
-    private Integer sum = 0;
-  }
-
   @Override
   public RayObject<RemoteResult<Integer>> rayCall(RayActor rayActor) {
     return Ray.call(Adder::add, (RayActor<Adder>) rayActor, 10);
@@ -67,6 +54,19 @@ public class ActorPressTest extends RayBenchmarkTest {
   @Override
   public boolean checkResult(Object o) {
     return true;
+  }
+
+  @RayRemote
+  public static class Adder {
+
+    private Integer sum = 0;
+
+    public RemoteResult<Integer> add(Integer n) {
+      RemoteResult<Integer> remoteResult = new RemoteResult<>();
+      remoteResult.setResult(sum += n);
+      remoteResult.setFinishTime(System.nanoTime());
+      return remoteResult;
+    }
   }
 
 }
