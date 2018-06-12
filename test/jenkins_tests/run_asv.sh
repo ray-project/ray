@@ -6,7 +6,7 @@ set -e
 # Show explicitly which commands are currently running.
 set -x
 
-BUCKET_NAME=raylogs
+BUCKET_NAME=ray-integration-testing/ASV
 COMMIT=$(cat /ray/git-rev)
 ASV_RESULTS_DIR=/ray/python/ASV_RESULTS
 pip install awscli
