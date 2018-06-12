@@ -1,0 +1,22 @@
+<!DOCTYPE suppressions PUBLIC
+"-//Puppy Crawl//DTD Suppressions 1.1//EN"
+"http://www.puppycrawl.com/dtds/suppressions_1_1.dtd">
+
+<suppressions>
+  <suppress checks="ParameterNameCheck" files="Arg.java"/>
+  <suppress checks="MethodNameCheck" files="Arg.java"/>
+  <suppress checks="MethodNameCheck" files="DefaultLocalSchedulerClient.java"/>
+  <suppress checks="MemberNameCheck" files="PathConfig.java"/>
+  <suppress checks="MemberNameCheck" files="RayParameters.java"/>
+  <suppress checks="AbbreviationAsWordInNameCheck" files="RayParameters.java"/>
+  <suppress checks="MethodNameCheck" files="ResourcePair.java"/>
+  <suppress checks="ParameterNameCheck" files="ResourcePair.java"/>
+  <suppress checks="ParameterNameCheck" files="TaskInfo.java"/>
+  <suppress checks="MethodNameCheck" files="TaskInfo.java"/>
+  <suppress checks="MethodNameCheck" files="RayMap.java"/>
+  <suppress checks="MethodNameCheck" files="RayList.java"/>
+  <suppress checks="OverloadMethodsDeclarationOrderCheck" files="Rpc.java"/>
+  <suppress checks="MethodTypeParameterNameCheck" files="Rpc.java"/>
+  <suppress checks="AbbreviationAsWordInNameCheck" files="UniqueID.java"/>
+  <suppress checks="TypeNameCheck" files="RayFunc_[0-9]_.+\.java"/>
+</suppressions>

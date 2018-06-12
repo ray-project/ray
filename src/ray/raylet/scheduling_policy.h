@@ -18,8 +18,8 @@ class SchedulingPolicy {
   /// \brief SchedulingPolicy constructor.
   ///
   /// \param scheduling_queue: reference to a scheduler queues object for access to
-  ///        tasks.
-  /// \return None.
+  /// tasks.
+  /// \return Void.
   SchedulingPolicy(const SchedulingQueue &scheduling_queue);
 
   /// Perform a scheduling operation, given a set of cluster resources and

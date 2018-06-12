@@ -1,21 +1,14 @@
 package org.ray.example;
 
+import java.io.Serializable;
 import org.ray.api.Ray;
 import org.ray.api.RayObject;
 import org.ray.api.RayRemote;
 import org.ray.core.RayRuntime;
 import org.ray.util.logger.RayLog;
 
-import java.io.Serializable;
+public class HelloWorld implements Serializable {
 
-public class HelloWorld implements Serializable{
-
-
-  public static String sayHelloWorld() {
-    RayObject<String> hello = Ray.call(HelloWorld::sayHello);
-    RayObject<String> world = Ray.call(HelloWorld::sayWorld);
-    return Ray.call(HelloWorld::merge, hello, world).get();
-  }
 
   @RayRemote
   public static String sayHello() {
@@ -39,18 +32,22 @@ public class HelloWorld implements Serializable{
 
   public static void main(String[] args) throws Exception {
     try {
-        Ray.init();
-        String helloWorld = HelloWorld.sayHelloWorld();
-        RayLog.rapp.info(helloWorld);
-        assert helloWorld.equals("hello,world!");
-    }
-    catch (Throwable t) {
+      Ray.init();
+      String helloWorld = HelloWorld.sayHelloWorld();
+      RayLog.rapp.info(helloWorld);
+      assert helloWorld.equals("hello,world!");
+    } catch (Throwable t) {
       t.printStackTrace();
-    }
-    finally {
+    } finally {
       RayRuntime.getInstance().cleanUp();
     }
 
 
+  }
+
+  public static String sayHelloWorld() {
+    RayObject<String> hello = Ray.call(HelloWorld::sayHello);
+    RayObject<String> world = Ray.call(HelloWorld::sayWorld);
+    return Ray.call(HelloWorld::merge, hello, world).get();
   }
 }

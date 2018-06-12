@@ -9,7 +9,6 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-
 import org.apache.arrow.plasma.ObjectStoreLink;
 import org.apache.commons.lang3.tuple.Pair;
 import org.ray.api.Ray;
@@ -35,19 +34,20 @@ import org.ray.util.logger.DynamicLogManager;
 import org.ray.util.logger.RayLog;
 
 /**
- * Core functionality to implement Ray APIs
+ * Core functionality to implement Ray APIs.
  */
 public abstract class RayRuntime implements RayApi {
 
-  protected static RayRuntime ins = null;
-
-  protected static RayParameters params = null;
-
-  private static boolean fromRayInit = false;
-
   public static ConfigReader configReader;
-
-  public abstract void cleanUp();
+  protected static RayRuntime ins = null;
+  protected static RayParameters params = null;
+  private static boolean fromRayInit = false;
+  protected Worker worker;
+  protected LocalSchedulerProxy localSchedulerProxy;
+  protected ObjectStoreProxy objectStoreProxy;
+  protected LocalFunctionManager functions;
+  protected RemoteFunctionManager remoteFunctionManager;
+  protected PathConfig pathConfig;
 
   // app level Ray.init()
   // make it private so there is no direct usage but only from Ray.init
@@ -63,24 +63,6 @@ public abstract class RayRuntime implements RayApi {
       }
     }
     return ins;
-  }
-
-  // init with command line args
-  // --config=ray.config.ini --overwrite=updateConfigStr
-  public static RayRuntime init(String[] args) throws Exception {
-    String config = null;
-    String updateConfig = null;
-    for (String arg : args) {
-      if (arg.startsWith("--config=")) {
-        config = arg.substring("--config=".length());
-      } else if (arg.startsWith("--overwrite=")) {
-        updateConfig = arg.substring("--overwrite=".length());
-      } else {
-        throw new RuntimeException("Input argument " + arg
-            + " is not recognized, please use --overwrite to merge it into config file");
-      }
-    }
-    return init(config, updateConfig);
   }
 
   // engine level RayRuntime.init(xx, xx)
@@ -114,9 +96,43 @@ public abstract class RayRuntime implements RayApi {
     return ins;
   }
 
+  // init with command line args
+  // --config=ray.config.ini --overwrite=updateConfigStr
+  public static RayRuntime init(String[] args) throws Exception {
+    String config = null;
+    String updateConfig = null;
+    for (String arg : args) {
+      if (arg.startsWith("--config=")) {
+        config = arg.substring("--config=".length());
+      } else if (arg.startsWith("--overwrite=")) {
+        updateConfig = arg.substring("--overwrite=".length());
+      } else {
+        throw new RuntimeException("Input argument " + arg
+            + " is not recognized, please use --overwrite to merge it into config file");
+      }
+    }
+    return init(config, updateConfig);
+  }
+
+  protected void init(
+      LocalSchedulerLink slink,
+      ObjectStoreLink plink,
+      RemoteFunctionManager remoteLoader,
+      PathConfig pathManager
+  ) {
+    UniqueIdHelper.setThreadRandomSeed(UniqueIdHelper.getUniqueness(params.driver_id));
+    remoteFunctionManager = remoteLoader;
+    pathConfig = pathManager;
+
+    functions = new LocalFunctionManager(remoteLoader);
+    localSchedulerProxy = new LocalSchedulerProxy(slink);
+    objectStoreProxy = new ObjectStoreProxy(plink);
+    worker = new Worker(localSchedulerProxy, functions);
+  }
+
   private static RayRuntime instantiate(RayParameters params) {
-    String className = params.run_mode.isNativeRuntime() ?
-        "org.ray.core.impl.RayNativeRuntime" : "org.ray.core.impl.RayDevRuntime";
+    String className = params.run_mode.isNativeRuntime()
+        ? "org.ray.core.impl.RayNativeRuntime" : "org.ray.core.impl.RayDevRuntime";
 
     RayRuntime runtime;
     try {
@@ -129,7 +145,8 @@ public abstract class RayRuntime implements RayApi {
       runtime = (RayRuntime) cons.newInstance();
       cons.setAccessible(false);
     } catch (InstantiationException | IllegalAccessException | IllegalArgumentException
-        | InvocationTargetException | SecurityException | ClassNotFoundException | NoSuchMethodException e) {
+        | InvocationTargetException | SecurityException | ClassNotFoundException
+        | NoSuchMethodException e) {
       RayLog.core
           .error("Load class " + className + " failed for run-mode " + params.run_mode.toString(),
               e);
@@ -150,6 +167,11 @@ public abstract class RayRuntime implements RayApi {
     return runtime;
   }
 
+  /**
+   * start runtime.
+   */
+  public abstract void start(RayParameters params) throws Exception;
+
   public static RayRuntime getInstance() {
     return ins;
   }
@@ -158,27 +180,46 @@ public abstract class RayRuntime implements RayApi {
     return params;
   }
 
-  /*********** RayApi methods ***********/
-
-  public <T, TM> void putRaw(UniqueID taskId, UniqueID objectId, T obj, TM metadata) {
-    RayLog.core.info("Task " + taskId.toString() + " Object " + objectId.toString() + " put");
-    localSchedulerProxy.markTaskPutDependency(taskId, objectId);
-    objectStoreProxy.put(objectId, obj, metadata);
-  }
+  public abstract void cleanUp();
 
   public <T> void putRaw(UniqueID taskId, UniqueID objectId, T obj) {
     putRaw(taskId, objectId, obj, null);
   }
 
+  /***********
+   * RayApi methods.
+   ***********/
+
+  public <T, TMT> void putRaw(UniqueID taskId, UniqueID objectId, T obj, TMT metadata) {
+    RayLog.core.info("Task " + taskId.toString() + " Object " + objectId.toString() + " put");
+    localSchedulerProxy.markTaskPutDependency(taskId, objectId);
+    objectStoreProxy.put(objectId, obj, metadata);
+  }
+
   public <T> void putRaw(UniqueID objectId, T obj) {
-    UniqueID taskId = getCurrentTaskID();
+    UniqueID taskId = getCurrentTaskId();
     putRaw(taskId, objectId, obj, null);
   }
 
   public <T> void putRaw(T obj) {
-    UniqueID taskId = getCurrentTaskID();
-    UniqueID objectId = getCurrentTaskNextPutID();
+    UniqueID taskId = getCurrentTaskId();
+    UniqueID objectId = getCurrentTaskNextPutId();
     putRaw(taskId, objectId, obj, null);
+  }
+
+  /**
+   * get the task identity of the currently running task, UniqueID.Nil if not inside any
+   */
+  public UniqueID getCurrentTaskId() {
+    return worker.getCurrentTaskId();
+  }
+
+  /**
+   * get the to-be-returned objects identities of the currently running task, empty array if not
+   * inside any.
+   */
+  public UniqueID getCurrentTaskNextPutId() {
+    return worker.getCurrentTaskNextPutId();
   }
 
   @Override
@@ -187,9 +228,9 @@ public abstract class RayRuntime implements RayApi {
   }
 
   @Override
-  public <T, TM> RayObject<T> put(T obj, TM metadata) {
-    UniqueID taskId = getCurrentTaskID();
-    UniqueID objectId = getCurrentTaskNextPutID();
+  public <T, TMT> RayObject<T> put(T obj, TMT metadata) {
+    UniqueID taskId = getCurrentTaskId();
+    UniqueID objectId = getCurrentTaskNextPutId();
     putRaw(taskId, objectId, obj, metadata);
     return new RayObject<>(objectId);
   }
@@ -200,58 +241,13 @@ public abstract class RayRuntime implements RayApi {
   }
 
   @Override
-  public <T> T getMeta(UniqueID objectId) throws TaskExecutionException {
-    return doGet(objectId, true);
-  }
-
-  private <T> T doGet(UniqueID objectId, boolean isMetadata) throws TaskExecutionException {
-
-    boolean wasBlocked = false;
-    UniqueID taskId = getCurrentTaskID();
-    try {
-      // Do an initial fetch.
-      objectStoreProxy.fetch(objectId);
-
-      // Get the object. We initially try to get the object immediately.
-      Pair<T, GetStatus> ret = objectStoreProxy
-          .get(objectId, params.default_first_check_timeout_ms, isMetadata);
-
-      wasBlocked = (ret.getRight() != GetStatus.SUCCESS);
-
-      // Try reconstructing the object. Try to get it until at least PlasmaLink.GET_TIMEOUT_MS
-      // milliseconds passes, then repeat.
-      while (ret.getRight() != GetStatus.SUCCESS) {
-        RayLog.core.warn(
-            "Task " + taskId + " Object " + objectId.toString() + " get failed, reconstruct ...");
-        localSchedulerProxy.reconstructObject(objectId);
-
-        // Do another fetch
-        objectStoreProxy.fetch(objectId);
-
-        ret = objectStoreProxy.get(objectId, params.default_get_check_interval_ms,
-            isMetadata);//check the result every 5s, but it will return once available
-      }
-      RayLog.core.debug(
-          "Task " + taskId + " Object " + objectId.toString() + " get" + ", the result " + ret
-              .getLeft());
-      return ret.getLeft();
-    } catch (TaskExecutionException e) {
-      RayLog.core
-          .error("Task " + taskId + " Object " + objectId.toString() + " get with Exception", e);
-      throw e;
-    } finally {
-      // If the object was not able to get locally, let the local scheduler
-      // know that we're now unblocked.
-      if (wasBlocked) {
-        localSchedulerProxy.notifyUnblocked();
-      }
-    }
-
+  public <T> List<T> get(List<UniqueID> objectIds) throws TaskExecutionException {
+    return doGet(objectIds, false);
   }
 
   @Override
-  public <T> List<T> get(List<UniqueID> objectIds) throws TaskExecutionException {
-    return doGet(objectIds, false);
+  public <T> T getMeta(UniqueID objectId) throws TaskExecutionException {
+    return doGet(objectId, true);
   }
 
   @Override
@@ -259,26 +255,59 @@ public abstract class RayRuntime implements RayApi {
     return doGet(objectIds, true);
   }
 
-  // We divide the fetch into smaller fetches so as to not block the manager
-  // for a prolonged period of time in a single call.
-  private void dividedFetch(List<UniqueID> objectIds) {
-    int fetchSize = objectStoreProxy.getFetchSize();
+  @Override
+  public <T> WaitResult<T> wait(RayList<T> waitfor, int numReturns, int timeout) {
+    return objectStoreProxy.wait(waitfor, numReturns, timeout);
+  }
 
-    int numObjectIds = objectIds.size();
-    for (int i = 0; i < numObjectIds; i += fetchSize) {
-      int endIndex = i + fetchSize;
-      if (endIndex < numObjectIds) {
-        objectStoreProxy.fetch(objectIds.subList(i, endIndex));
-      } else {
-        objectStoreProxy.fetch(objectIds.subList(i, numObjectIds));
-      }
-    }
+  @Override
+  public RayObjects call(UniqueID taskId, Callable funcRun, int returnCount, Object... args) {
+    return worker.rpc(taskId, funcRun, returnCount, args);
+  }
+
+  @Override
+  public RayObjects call(UniqueID taskId, Class<?> funcCls, Serializable lambda, int returnCount,
+                         Object... args) {
+    return worker.rpc(taskId, UniqueID.nil, funcCls, lambda, returnCount, args);
+  }
+
+  @Override
+  public <R, RIDT> RayMap<RIDT, R> callWithReturnLabels(UniqueID taskId, Callable funcRun,
+                                                        Collection<RIDT> returnIds,
+                                                        Object... args) {
+    return worker.rpcWithReturnLabels(taskId, funcRun, returnIds, args);
+  }
+
+  @Override
+  public <R, RIDT> RayMap<RIDT, R> callWithReturnLabels(UniqueID taskId, Class<?> funcCls,
+                                                        Serializable lambda, Collection<RIDT>
+                                                          returnids,
+                                                        Object... args) {
+    return worker.rpcWithReturnLabels(taskId, funcCls, lambda, returnids, args);
+  }
+
+  @Override
+  public <R> RayList<R> callWithReturnIndices(UniqueID taskId, Callable funcRun,
+                                              Integer returnCount, Object... args) {
+    return worker.rpcWithReturnIndices(taskId, funcRun, returnCount, args);
+  }
+
+  @Override
+  public <R> RayList<R> callWithReturnIndices(UniqueID taskId, Class<?> funcCls,
+                                              Serializable lambda, Integer returnCount, Object...
+                                                  args) {
+    return worker.rpcWithReturnIndices(taskId, funcCls, lambda, returnCount, args);
+  }
+
+  @Override
+  public boolean isRemoteLambda() {
+    return params.run_mode.isRemoteLambda();
   }
 
   private <T> List<T> doGet(List<UniqueID> objectIds, boolean isMetadata)
       throws TaskExecutionException {
     boolean wasBlocked = false;
-    UniqueID taskId = getCurrentTaskID();
+    UniqueID taskId = getCurrentTaskId();
     try {
       int numObjectIds = objectIds.size();
 
@@ -348,53 +377,65 @@ public abstract class RayRuntime implements RayApi {
 
   }
 
-  @Override
-  public <T> WaitResult<T> wait(RayList<T> waitfor, int numReturns, int timeout) {
-    return objectStoreProxy.wait(waitfor, numReturns, timeout);
+  private <T> T doGet(UniqueID objectId, boolean isMetadata) throws TaskExecutionException {
+
+    boolean wasBlocked = false;
+    UniqueID taskId = getCurrentTaskId();
+    try {
+      // Do an initial fetch.
+      objectStoreProxy.fetch(objectId);
+
+      // Get the object. We initially try to get the object immediately.
+      Pair<T, GetStatus> ret = objectStoreProxy
+          .get(objectId, params.default_first_check_timeout_ms, isMetadata);
+
+      wasBlocked = (ret.getRight() != GetStatus.SUCCESS);
+
+      // Try reconstructing the object. Try to get it until at least PlasmaLink.GET_TIMEOUT_MS
+      // milliseconds passes, then repeat.
+      while (ret.getRight() != GetStatus.SUCCESS) {
+        RayLog.core.warn(
+            "Task " + taskId + " Object " + objectId.toString() + " get failed, reconstruct ...");
+        localSchedulerProxy.reconstructObject(objectId);
+
+        // Do another fetch
+        objectStoreProxy.fetch(objectId);
+
+        ret = objectStoreProxy.get(objectId, params.default_get_check_interval_ms,
+            isMetadata);//check the result every 5s, but it will return once available
+      }
+      RayLog.core.debug(
+          "Task " + taskId + " Object " + objectId.toString() + " get" + ", the result " + ret
+              .getLeft());
+      return ret.getLeft();
+    } catch (TaskExecutionException e) {
+      RayLog.core
+          .error("Task " + taskId + " Object " + objectId.toString() + " get with Exception", e);
+      throw e;
+    } finally {
+      // If the object was not able to get locally, let the local scheduler
+      // know that we're now unblocked.
+      if (wasBlocked) {
+        localSchedulerProxy.notifyUnblocked();
+      }
+    }
+
   }
 
-  @Override
-  public RayObjects call(UniqueID taskId, Callable funcRun, int returnCount, Object... args) {
-    return worker.rpc(taskId, funcRun, returnCount, args);
-  }
+  // We divide the fetch into smaller fetches so as to not block the manager
+  // for a prolonged period of time in a single call.
+  private void dividedFetch(List<UniqueID> objectIds) {
+    int fetchSize = objectStoreProxy.getFetchSize();
 
-  @Override
-  public RayObjects call(UniqueID taskId, Class<?> funcCls, Serializable lambda, int returnCount,
-      Object... args) {
-    return worker.rpc(taskId, UniqueID.nil, funcCls, lambda, returnCount, args);
-  }
-
-  @Override
-  public <R, RID> RayMap<RID, R> callWithReturnLabels(UniqueID taskId, Callable funcRun,
-      Collection<RID> returnIds,
-      Object... args) {
-    return worker.rpcWithReturnLabels(taskId, funcRun, returnIds, args);
-  }
-
-  @Override
-  public <R, RID> RayMap<RID, R> callWithReturnLabels(UniqueID taskId, Class<?> funcCls,
-      Serializable lambda, Collection<RID> returnids,
-      Object... args) {
-    return worker.rpcWithReturnLabels(taskId, funcCls, lambda, returnids, args);
-  }
-
-  @Override
-  public <R> RayList<R> callWithReturnIndices(UniqueID taskId, Callable funcRun,
-      Integer returnCount, Object... args) {
-    return worker.rpcWithReturnIndices(taskId, funcRun, returnCount, args);
-  }
-
-  @Override
-  public <R> RayList<R> callWithReturnIndices(UniqueID taskId, Class<?> funcCls,
-      Serializable lambda, Integer returnCount, Object... args) {
-    return worker.rpcWithReturnIndices(taskId, funcCls, lambda, returnCount, args);
-  }
-
-  /**
-   * get the task identity of the currently running task, UniqueID.Nil if not inside any
-   */
-  public UniqueID getCurrentTaskID() {
-    return worker.getCurrentTaskID();
+    int numObjectIds = objectIds.size();
+    for (int i = 0; i < numObjectIds; i += fetchSize) {
+      int endIndex = i + fetchSize;
+      if (endIndex < numObjectIds) {
+        objectStoreProxy.fetch(objectIds.subList(i, endIndex));
+      } else {
+        objectStoreProxy.fetch(objectIds.subList(i, numObjectIds));
+      }
+    }
   }
 
   /**
@@ -404,48 +445,16 @@ public abstract class RayRuntime implements RayApi {
     return worker.getCurrentTaskReturnIDs();
   }
 
-  /**
-   * get the to-be-returned objects identities of the currently running task, empty array if not
-   * inside any
-   */
-  public UniqueID getCurrentTaskNextPutID() {
-    return worker.getCurrentTaskNextPutID();
-  }
-
-  @Override
-  public boolean isRemoteLambda() {
-    return params.run_mode.isRemoteLambda();
-  }
-
-  protected void init(
-      LocalSchedulerLink slink,
-      ObjectStoreLink plink,
-      RemoteFunctionManager remoteLoader,
-      PathConfig pathManager
-  ) {
-    UniqueIdHelper.setThreadRandomSeed(UniqueIdHelper.getUniqueness(params.driver_id));
-    remoteFunctionManager = remoteLoader;
-    pathConfig = pathManager;
-
-    functions = new LocalFunctionManager(remoteLoader);
-    localSchedulerProxy = new LocalSchedulerProxy(slink);
-    objectStoreProxy = new ObjectStoreProxy(plink);
-    worker = new Worker(localSchedulerProxy, functions);
-  }
-
-  /*********** Internal Methods ***********/
+  /***********
+   * Internal Methods.
+   ***********/
 
   public void loop() {
     worker.loop();
   }
 
   /**
-   * start runtime
-   */
-  public abstract void start(RayParameters params) throws Exception;
-
-  /**
-   * get actor with given id
+   * get actor with given id.
    */
   public abstract Object getLocalActor(UniqueID id);
 
@@ -456,11 +465,4 @@ public abstract class RayRuntime implements RayApi {
   public RemoteFunctionManager getRemoteFunctionManager() {
     return remoteFunctionManager;
   }
-
-  protected Worker worker;
-  protected LocalSchedulerProxy localSchedulerProxy;
-  protected ObjectStoreProxy objectStoreProxy;
-  protected LocalFunctionManager functions;
-  protected RemoteFunctionManager remoteFunctionManager;
-  protected PathConfig pathConfig;
 }

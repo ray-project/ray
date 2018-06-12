@@ -2,17 +2,22 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import numpy as np
 
 
-def arrayify(s):
-    if type(s) in [int, float, str, np.ndarray]:
-        return s
-    elif type(s) is list:
-        # recursive call to convert LazyFrames to arrays
-        return np.array([arrayify(x) for x in s])
-    else:
-        return np.array(s)
+class SampleBatchBuilder(object):
+    """Util to build a SampleBatch incrementally."""
+
+    def __init__(self):
+        self.buffers = collections.defaultdict(list)
+
+    def add_values(self, **values):
+        for k, v in values.items():
+            self.buffers[k].append(v)
+
+    def build(self):
+        return SampleBatch({k: np.array(v) for k, v in self.buffers.items()})
 
 
 class SampleBatch(object):

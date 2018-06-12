@@ -7,7 +7,7 @@ import java.io.ObjectOutput;
 import org.ray.util.Sha1Digestor;
 
 /**
- * Ray actor abstraction
+ * Ray actor abstraction.
  */
 public class RayActor<T> extends RayObject<T> implements Externalizable {
 
@@ -40,7 +40,7 @@ public class RayActor<T> extends RayObject<T> implements Externalizable {
   }
 
   /**
-   * Getter method for property <tt>taskCursor</tt>
+   * Getter method for property <tt>taskCursor</tt>.
    *
    * @return property value of taskCursor
    */
@@ -49,17 +49,12 @@ public class RayActor<T> extends RayObject<T> implements Externalizable {
   }
 
   /**
-   * Setter method for property <tt>taskCursor</tt>
+   * Setter method for property <tt>taskCursor</tt>.
    *
    * @param taskCursor value to be assigned to property taskCursor
    */
   public void setTaskCursor(UniqueID taskCursor) {
     this.taskCursor = taskCursor;
-  }
-
-  public UniqueID computeNextActorHandleId() {
-    byte[] bytes = Sha1Digestor.digest(actorHandleId.id, ++forksNum);
-    return new UniqueID(bytes);
   }
 
   public UniqueID getActorHandleId() {
@@ -75,6 +70,11 @@ public class RayActor<T> extends RayObject<T> implements Externalizable {
     out.writeObject(this.id);
     out.writeObject(this.computeNextActorHandleId());
     out.writeObject(this.taskCursor);
+  }
+
+  public UniqueID computeNextActorHandleId() {
+    byte[] bytes = Sha1Digestor.digest(actorHandleId.id, ++forksNum);
+    return new UniqueID(bytes);
   }
 
   @Override

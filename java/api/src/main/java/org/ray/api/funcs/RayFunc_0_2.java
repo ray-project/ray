@@ -7,8 +7,6 @@ import org.ray.api.returns.MultipleReturns2;
 @FunctionalInterface
 public interface RayFunc_0_2<R0, R1> extends RayFunc {
 
-  MultipleReturns2<R0, R1> apply() throws Throwable;
-
   static <R0, R1> MultipleReturns2<R0, R1> execute(Object[] args) throws Throwable {
     String name = (String) args[args.length - 2];
     assert (name.equals(RayFunc_0_2.class.getName()));
@@ -16,5 +14,7 @@ public interface RayFunc_0_2<R0, R1> extends RayFunc {
     RayFunc_0_2<R0, R1> f = SerializationUtils.deserialize(funcBytes);
     return f.apply();
   }
+
+  MultipleReturns2<R0, R1> apply() throws Throwable;
 
 }

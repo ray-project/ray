@@ -15,8 +15,10 @@ using MessageType = ray::local_scheduler::protocol::MessageType;
 LocalSchedulerConnection *LocalSchedulerConnection_init(
     const char *local_scheduler_socket,
     UniqueID client_id,
-    bool is_worker) {
+    bool is_worker,
+    bool use_raylet) {
   LocalSchedulerConnection *result = new LocalSchedulerConnection();
+  result->use_raylet = use_raylet;
   result->conn = connect_ipc_sock_retry(local_scheduler_socket, -1, -1);
 
   /* Register with the local scheduler.
@@ -133,19 +135,82 @@ TaskSpec *local_scheduler_get_task(LocalSchedulerConnection *conn,
   return spec;
 }
 
+// This is temporarily duplicated from local_scheduler_get_task while we have
+// the raylet and non-raylet code paths.
+TaskSpec *local_scheduler_get_task_raylet(LocalSchedulerConnection *conn,
+                                          int64_t *task_size) {
+  write_message(conn->conn, static_cast<int64_t>(MessageType::GetTask), 0,
+                NULL);
+  int64_t type;
+  int64_t reply_size;
+  uint8_t *reply;
+  // Receive a task from the local scheduler. This will block until the local
+  // scheduler gives this client a task.
+  read_message(conn->conn, &type, &reply_size, &reply);
+  if (type == static_cast<int64_t>(CommonMessageType::DISCONNECT_CLIENT)) {
+    RAY_LOG(DEBUG) << "Exiting because local scheduler closed connection.";
+    exit(1);
+  }
+  RAY_CHECK(type == static_cast<int64_t>(MessageType::ExecuteTask));
+
+  // Parse the flatbuffer object.
+  auto reply_message = flatbuffers::GetRoot<ray::protocol::GetTaskReply>(reply);
+
+  // Create a copy of the task spec so we can free the reply.
+  *task_size = reply_message->task_spec()->size();
+  const TaskSpec *data =
+      reinterpret_cast<const TaskSpec *>(reply_message->task_spec()->data());
+  TaskSpec *spec = TaskSpec_copy(const_cast<TaskSpec *>(data), *task_size);
+
+  // Set the resource IDs for this task.
+  conn->resource_ids_.clear();
+  for (size_t i = 0; i < reply_message->fractional_resource_ids()->size();
+       ++i) {
+    auto const &fractional_resource_ids =
+        reply_message->fractional_resource_ids()->Get(i);
+    auto &acquired_resources = conn->resource_ids_[string_from_flatbuf(
+        *fractional_resource_ids->resource_name())];
+
+    size_t num_resource_ids = fractional_resource_ids->resource_ids()->size();
+    size_t num_resource_fractions =
+        fractional_resource_ids->resource_fractions()->size();
+    RAY_CHECK(num_resource_ids == num_resource_fractions);
+    RAY_CHECK(num_resource_ids > 0);
+    for (size_t j = 0; j < num_resource_ids; ++j) {
+      int64_t resource_id = fractional_resource_ids->resource_ids()->Get(j);
+      double resource_fraction =
+          fractional_resource_ids->resource_fractions()->Get(j);
+      if (num_resource_ids > 1) {
+        int64_t whole_fraction = resource_fraction;
+        RAY_CHECK(whole_fraction == resource_fraction);
+      }
+      acquired_resources.push_back(
+          std::make_pair(resource_id, resource_fraction));
+    }
+  }
+
+  // Free the original message from the local scheduler.
+  free(reply);
+  // Return the copy of the task spec and pass ownership to the caller.
+  return spec;
+}
+
 void local_scheduler_task_done(LocalSchedulerConnection *conn) {
   write_message(conn->conn, static_cast<int64_t>(MessageType::TaskDone), 0,
                 NULL);
 }
 
-void local_scheduler_reconstruct_object(LocalSchedulerConnection *conn,
-                                        ObjectID object_id) {
+void local_scheduler_reconstruct_objects(
+    LocalSchedulerConnection *conn,
+    const std::vector<ObjectID> &object_ids,
+    bool fetch_only) {
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = ray::local_scheduler::protocol::CreateReconstructObject(
-      fbb, to_flatbuf(fbb, object_id));
+  auto object_ids_message = to_flatbuf(fbb, object_ids);
+  auto message = ray::local_scheduler::protocol::CreateReconstructObjects(
+      fbb, object_ids_message, fetch_only);
   fbb.Finish(message);
   write_message(conn->conn,
-                static_cast<int64_t>(MessageType::ReconstructObject),
+                static_cast<int64_t>(MessageType::ReconstructObjects),
                 fbb.GetSize(), fbb.GetBufferPointer());
   /* TODO(swang): Propagate the error. */
 }

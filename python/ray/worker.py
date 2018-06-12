@@ -28,6 +28,7 @@ import ray.services as services
 import ray.signature
 import ray.local_scheduler
 import ray.plasma
+import ray.ray_constants as ray_constants
 from ray.utils import random_string, binary_to_hex, is_cython
 
 # Import flatbuffer bindings.
@@ -415,7 +416,7 @@ class Worker(object):
                     if not warning_sent:
                         ray.utils.push_error_to_driver(
                             self.redis_client,
-                            "wait_for_class",
+                            ray_constants.WAIT_FOR_CLASS_PUSH_ERROR,
                             warning_message,
                             driver_id=self.task_driver_id.id())
                     warning_sent = True
@@ -448,7 +449,9 @@ class Worker(object):
                 self.plasma_client.fetch(plain_object_ids[i:(
                     i + ray._config.worker_fetch_request_size())])
             else:
-                print("plasma_client.fetch has not been implemented yet")
+                self.local_scheduler_client.reconstruct_objects(
+                    object_ids[i:(
+                        i + ray._config.worker_fetch_request_size())], True)
 
         # Get the objects. We initially try to get the objects immediately.
         final_results = self.retrieve_and_deserialize(plain_object_ids, 0)
@@ -465,20 +468,26 @@ class Worker(object):
         # repeat.
         while len(unready_ids) > 0:
             for unready_id in unready_ids:
-                self.local_scheduler_client.reconstruct_object(unready_id)
+                self.local_scheduler_client.reconstruct_objects(
+                    [ray.ObjectID(unready_id)], False)
             # Do another fetch for objects that aren't available locally yet,
             # in case they were evicted since the last fetch. We divide the
             # fetch into smaller fetches so as to not block the manager for a
             # prolonged period of time in a single call.
             object_ids_to_fetch = list(
                 map(plasma.ObjectID, unready_ids.keys()))
+            ray_object_ids_to_fetch = list(
+                map(ray.ObjectID, unready_ids.keys()))
             for i in range(0, len(object_ids_to_fetch),
                            ray._config.worker_fetch_request_size()):
                 if not self.use_raylet:
                     self.plasma_client.fetch(object_ids_to_fetch[i:(
                         i + ray._config.worker_fetch_request_size())])
                 else:
-                    print("plasma_client.fetch has not been implemented yet")
+                    self.local_scheduler_client.reconstruct_objects(
+                        ray_object_ids_to_fetch[i:(
+                            i + ray._config.worker_fetch_request_size())],
+                        True)
             results = self.retrieve_and_deserialize(
                 object_ids_to_fetch,
                 max([
@@ -583,6 +592,15 @@ class Worker(object):
 
             if resources is None:
                 raise ValueError("The resources dictionary is required.")
+            for value in resources.values():
+                assert (isinstance(value, int) or isinstance(value, float))
+                if value < 0:
+                    raise ValueError(
+                        "Resource quantities must be nonnegative.")
+                if (value >= 1 and isinstance(value, float)
+                        and not value.is_integer()):
+                    raise ValueError(
+                        "Resource quantities must all be whole numbers.")
 
             # Submit the task to local scheduler.
             task = ray.local_scheduler.Task(
@@ -637,6 +655,19 @@ class Worker(object):
             else:
                 del function.__globals__[function.__name__]
 
+        if len(pickled_function) > ray_constants.PICKLE_OBJECT_WARNING_SIZE:
+            warning_message = ("Warning: The remote function {} has size {} "
+                               "when pickled. It will be stored in Redis, "
+                               "which could cause memory issues. This may "
+                               "mean that the function definition uses a "
+                               "large array or other object.".format(
+                                   function_name, len(pickled_function)))
+            ray.utils.push_error_to_driver(
+                self.redis_client,
+                ray_constants.PICKLING_LARGE_OBJECT_PUSH_ERROR,
+                warning_message,
+                driver_id=self.task_driver_id.id())
+
         self.redis_client.hmset(
             key, {
                 "driver_id": self.task_driver_id.id(),
@@ -684,6 +715,22 @@ class Worker(object):
                 # In this case, the function has already been exported, so
                 # we don't need to export it again.
                 return
+
+            if (len(pickled_function) >
+                    ray_constants.PICKLE_OBJECT_WARNING_SIZE):
+                warning_message = ("Warning: The function {} has size {} when "
+                                   "pickled. It will be stored in Redis, "
+                                   "which could cause memory issues. This may "
+                                   "mean that the remote function definition "
+                                   "uses a large array or other object."
+                                   .format(function.__name__,
+                                           len(pickled_function)))
+                ray.utils.push_error_to_driver(
+                    self.redis_client,
+                    ray_constants.PICKLING_LARGE_OBJECT_PUSH_ERROR,
+                    warning_message,
+                    driver_id=self.task_driver_id.id())
+
             # Run the function on all workers.
             self.redis_client.hmset(
                 key, {
@@ -735,7 +782,7 @@ class Worker(object):
                     if not warning_sent:
                         ray.utils.push_error_to_driver(
                             self.redis_client,
-                            "wait_for_function",
+                            ray_constants.WAIT_FOR_FUNCTION_PUSH_ERROR,
                             warning_message,
                             driver_id=driver_id)
                     warning_sent = True
@@ -896,7 +943,7 @@ class Worker(object):
         # Log the error message.
         ray.utils.push_error_to_driver(
             self.redis_client,
-            "task",
+            ray_constants.TASK_PUSH_ERROR,
             str(failure_object),
             driver_id=self.task_driver_id.id(),
             data={
@@ -1025,7 +1072,13 @@ def get_gpu_ids():
         raise Exception("ray.get_gpu_ids() currently does not work in PYTHON "
                         "MODE.")
 
-    assigned_ids = global_worker.local_scheduler_client.gpu_ids()
+    if not global_worker.use_raylet:
+        assigned_ids = global_worker.local_scheduler_client.gpu_ids()
+    else:
+        all_resource_ids = global_worker.local_scheduler_client.resource_ids()
+        assigned_ids = [
+            resource_id for resource_id, _ in all_resource_ids.get("GPU", [])
+        ]
     # If the user had already set CUDA_VISIBLE_DEVICES, then respect that (in
     # the sense that only GPU IDs that appear in CUDA_VISIBLE_DEVICES should be
     # returned).
@@ -1035,6 +1088,26 @@ def get_gpu_ids():
         ]
 
     return assigned_ids
+
+
+def get_resource_ids():
+    """Get the IDs of the resources that are available to the worker.
+
+    Returns:
+        A dictionary mapping the name of a resource to a list of pairs, where
+            each pair consists of the ID of a resource and the fraction of that
+            resource reserved for this worker.
+    """
+    if not global_worker.use_raylet:
+        raise Exception("ray.get_resource_ids() is only supported in the "
+                        "raylet code path.")
+
+    if _mode() == PYTHON_MODE:
+        raise Exception(
+            "ray.get_resource_ids() currently does not work in PYTHON "
+            "MODE.")
+
+    return global_worker.local_scheduler_client.resource_ids()
 
 
 def _webui_url_helper(client):
@@ -1132,6 +1205,11 @@ def error_info(worker=global_worker):
     for error_key in error_keys:
         if error_applies_to_driver(error_key, worker=worker):
             error_contents = worker.redis_client.hgetall(error_key)
+            error_contents = {
+                "type": error_contents[b"type"].decode("ascii"),
+                "message": error_contents[b"message"].decode("ascii"),
+                "data": error_contents[b"data"].decode("ascii")
+            }
             errors.append(error_contents)
 
     return errors
@@ -1381,7 +1459,7 @@ def _init(address_info=None,
           plasma_directory=None,
           huge_pages=False,
           include_webui=True,
-          use_raylet=False):
+          use_raylet=None):
     """Helper method to connect to an existing Ray cluster or start a new one.
 
     This method handles two cases. Either a Ray cluster already exists and we
@@ -1823,7 +1901,7 @@ def fetch_and_register_remote_function(key, worker=global_worker):
         # Log the error message.
         ray.utils.push_error_to_driver(
             worker.redis_client,
-            "register_remote_function",
+            ray_constants.REGISTER_REMOTE_FUNCTION_PUSH_ERROR,
             traceback_str,
             driver_id=driver_id,
             data={
@@ -1868,7 +1946,7 @@ def fetch_and_execute_function_to_run(key, worker=global_worker):
                                      and hasattr(function, "__name__")) else ""
         ray.utils.push_error_to_driver(
             worker.redis_client,
-            "function_to_run",
+            ray_constants.FUNCTION_TO_RUN_PUSH_ERROR,
             traceback_str,
             driver_id=driver_id,
             data={"name": name})
@@ -2028,7 +2106,7 @@ def connect(info,
             traceback_str = traceback.format_exc()
             ray.utils.push_error_to_driver(
                 worker.redis_client,
-                "version_mismatch",
+                ray_constants.VERSION_MISMATCH_PUSH_ERROR,
                 traceback_str,
                 driver_id=None)
 
@@ -2106,7 +2184,7 @@ def connect(info,
         local_scheduler_socket = info["raylet_socket_name"]
 
     worker.local_scheduler_client = ray.local_scheduler.LocalSchedulerClient(
-        local_scheduler_socket, worker.worker_id, is_worker)
+        local_scheduler_socket, worker.worker_id, is_worker, worker.use_raylet)
 
     # If this is a driver, set the current task ID, the task driver ID, and set
     # the task index to 0.

@@ -6,21 +6,10 @@ import org.objectweb.asm.ClassWriter;
 
 public class ClassAdapter {
 
-  public static class Result {
-
-    public byte[] classBuffer;
-    public Set<MethodId> changedMethods;
-  }
-
   public static Result hookClass(ClassLoader loader, String className, byte[] classfileBuffer) {
     // we have to comment out this quick filter as this is not accurate
     // e.g., org/ray/api/test/ActorTest$Adder.class is skipped!!!
     // even worse, this is non-deterministic...
-        /*
-        if (detectBody.contains("org/ray/hook/")) {
-            return classfileBuffer;
-        }
-        */
 
     ClassReader reader = new ClassReader(classfileBuffer);
     ClassWriter writer = new ClassWriter(reader, 0);
@@ -45,5 +34,11 @@ public class ClassAdapter {
     rr.changedMethods = pre.detectedMethods();
     rr.classBuffer = result;
     return rr;
+  }
+
+  public static class Result {
+
+    public byte[] classBuffer;
+    public Set<MethodId> changedMethods;
   }
 }

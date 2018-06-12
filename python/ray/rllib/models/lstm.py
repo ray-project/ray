@@ -35,8 +35,8 @@ class LSTM(Model):
             lstm = rnn.rnn_cell.BasicLSTMCell(size, state_is_tuple=True)
         step_size = tf.shape(self.x)[:1]
 
-        c_init = np.zeros((1, lstm.state_size.c), np.float32)
-        h_init = np.zeros((1, lstm.state_size.h), np.float32)
+        c_init = np.zeros(lstm.state_size.c, np.float32)
+        h_init = np.zeros(lstm.state_size.h, np.float32)
         self.state_init = [c_init, h_init]
         c_in = tf.placeholder(tf.float32, [1, lstm.state_size.c])
         h_in = tf.placeholder(tf.float32, [1, lstm.state_size.h])

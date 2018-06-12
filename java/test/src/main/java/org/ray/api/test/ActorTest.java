@@ -14,8 +14,14 @@ import org.ray.api.UniqueID;
 @RunWith(MyRunner.class)
 public class ActorTest {
 
+  @RayRemote
+  public static Integer sayWorld(Integer n, RayActor<ActorTest.Adder> adder) {
+    RayObject<Integer> result = Ray.call(ActorTest.Adder::add, adder, 1);
+    return result.get() + n;
+  }
+
   @Test
-  public void Test() {
+  public void test() {
 
     RayActor<ActorTest.Adder> adder = Ray.create(ActorTest.Adder.class);
     Ray.call(Adder::set, adder, 10);
@@ -55,6 +61,11 @@ public class ActorTest {
   public static class Adder {
 
     private List<RayObject<Integer>> objectList;
+    private Integer sum = 0;
+
+    public static Integer add2(Integer n) {
+      return n + 1;
+    }
 
     public Integer set(Integer n) {
       sum = n;
@@ -69,10 +80,6 @@ public class ActorTest {
       return (sum += n);
     }
 
-    public static Integer add2(Integer n) {
-      return n + 1;
-    }
-
     public Integer setObjectList(List<RayObject<Integer>> objectList) {
       this.objectList = objectList;
       return 1;
@@ -81,14 +88,6 @@ public class ActorTest {
     public Integer testObjectList() {
       return ((RayObject<Integer>) objectList.get(0)).get();
     }
-
-    private Integer sum = 0;
-  }
-
-  @RayRemote
-  public static Integer sayWorld(Integer n, RayActor<ActorTest.Adder> adder) {
-    RayObject<Integer> result = Ray.call(ActorTest.Adder::add, adder, 1);
-    return result.get() + n;
   }
 
   @RayRemote
@@ -99,6 +98,11 @@ public class ActorTest {
     private List<RayActor<Adder>> adderList;
 
     private UniqueID id;
+    private Integer sum = 0;
+
+    public static Integer add2(Adder a, Integer n) {
+      return n + 1;
+    }
 
     public Integer set(Integer n) {
       sum = n;
@@ -119,10 +123,6 @@ public class ActorTest {
 
     public Integer add(Integer n) {
       return (sum += n);
-    }
-
-    public static Integer add2(Adder a, Integer n) {
-      return n + 1;
     }
 
     public RayActor<Adder> getAdder() {
@@ -148,7 +148,5 @@ public class ActorTest {
       this.adderList = adderList;
       return 0;
     }
-
-    private Integer sum = 0;
   }
 }
