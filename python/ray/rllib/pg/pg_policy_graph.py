@@ -18,8 +18,7 @@ class PGPolicyGraph(TFPolicyGraph):
         self.x = tf.placeholder(tf.float32, shape=[None]+list(obs_space.shape))
         dist_class, self.logit_dim = ModelCatalog.get_action_dist(action_space)
         self.model = ModelCatalog.get_model(
-            registry, self.x, self.logit_dim,
-            options=self.config.get("model", {}))
+            registry, self.x, self.logit_dim, options=self.config["model"])
         self.dist = dist_class(self.model.outputs)  # logit for each action
 
         # setup policy loss
@@ -43,4 +42,4 @@ class PGPolicyGraph(TFPolicyGraph):
 
     def postprocess_trajectory(self, sample_batch, other_agent_batches=None):
         return compute_advantages(
-            sample_batch, 0.0, self.config.get("gamma", 0.99), use_gae=False)
+            sample_batch, 0.0, self.config["gamma"], use_gae=False)

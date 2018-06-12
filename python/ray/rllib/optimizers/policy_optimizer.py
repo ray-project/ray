@@ -120,7 +120,10 @@ class PolicyOptimizer(object):
         return local_result + remote_results
 
     def foreach_evaluator_with_index(self, func):
-        """Apply the given function to each evaluator instance."""
+        """Apply the given function to each evaluator instance.
+
+        The index will be passed as the second arg to the given function.
+        """
 
         local_result = [func(self.local_evaluator, 0)]
         remote_results = ray.get(

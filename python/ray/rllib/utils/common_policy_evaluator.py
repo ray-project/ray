@@ -115,7 +115,8 @@ class CommonPolicyEvaluator(PolicyEvaluator):
             batch_steps (int): The target number of env transitions to include
                 in each sample batch returned from this evaluator.
             truncate_episodes (bool): Whether to allow episodes to be truncated
-                if the trajectory exceeds the batch size.
+                if the trajectory exceeds the batch size. This means that
+                long episodes may be split across multiple calls to sample().
             episode_horizon (int): Whether to stop episodes at this horizon.
             preprocessor_pref (str): Whether to prefer RLlib preprocessors
                 ("rllib") or deepmind ("deepmind") when applicable.

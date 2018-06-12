@@ -250,7 +250,7 @@ def _env_runner(
                     episode = episodes[eid]
                     episode.last_observation = obs_filter(resetted_obs)
                     ready_obs[-1] = episode.last_observation
-                    ready_rnn_states[-1] = episode.rnn_state
+                    ready_rnn_states[-1] = episode.init_rnn_state
             else:
                 episode.last_observation = filtered_obs
 
@@ -293,8 +293,8 @@ def _to_column_format(rnn_state_rows):
 
 
 class _Episode(object):
-    def __init__(self, rnn_state, batch_builder_factory):
-        self.rnn_state = rnn_state
+    def __init__(self, init_rnn_state, batch_builder_factory):
+        self.rnn_state = init_rnn_state
         self.batch_builder = batch_builder_factory()
         self.last_action = None
         self.last_observation = None
