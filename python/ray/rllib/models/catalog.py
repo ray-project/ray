@@ -11,7 +11,8 @@ from ray.tune.registry import RLLIB_MODEL, RLLIB_PREPROCESSOR, \
     _default_registry
 
 from ray.rllib.models.action_dist import (
-    Categorical, Deterministic, DiagGaussian, MultiActionDistribution)
+    Categorical, Deterministic, DiagGaussian, MultiActionDistribution,
+    squash_to_range)
 from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.models.fcnet import FullyConnectedNetwork
 from ray.rllib.models.visionnet import VisionNetwork
@@ -69,9 +70,15 @@ class ModelCatalog(object):
 
         if isinstance(action_space, gym.spaces.Box):
             if dist_type is None:
-                return DiagGaussian, action_space.shape[0] * 2
+                return (
+                    squash_to_range(
+                        DiagGaussian, action_space.low, action_space.high),
+                    action_space.shape[0] * 2)
             elif dist_type == 'deterministic':
-                return Deterministic, action_space.shape[0]
+                return (
+                    squash_to_range(
+                        Deterministic, action_space.low, action_space.high),
+                    action_space.shape[0])
         elif isinstance(action_space, gym.spaces.Discrete):
             return Categorical, action_space.n
         elif isinstance(action_space, gym.spaces.Tuple):

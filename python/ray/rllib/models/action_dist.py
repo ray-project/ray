@@ -112,6 +112,34 @@ class Deterministic(ActionDistribution):
         return self.inputs
 
 
+def squash_to_range(dist_cls, low, high):
+    """Squashes an action distribution to a range in (low, high).
+
+    Arguments:
+        dist_cls (class): ActionDistribution class to wrap.
+        low (float|array): Scalar value or array of values.
+        high (float|array): Scalar value or array of values.
+    """
+
+    class SquashToRangeWrapper(dist_cls):
+        def __init__(self, inputs):
+            dist_cls.__init__(self, inputs)
+
+        def logp(self, x):
+            return dist_cls.logp(self, x)
+
+        def kl(self, other):
+            return dist_cls.kl(self, other)
+
+        def entropy(self):
+            return dist_cls.entropy(self)
+
+        def sample(self):
+            return low + tf.sigmoid(dist_cls.sample(self)) * (high - low)
+
+    return SquashToRangeWrapper
+
+
 class MultiActionDistribution(ActionDistribution):
     """Action distribution that operates for list of actions.
 
