@@ -57,7 +57,7 @@ void WorkerPool::StartWorkerProcess(bool force_start) {
   RAY_CHECK(!worker_command_.empty()) << "No worker command provided";
   // The first condition makes sure that we are always starting up to
   // num_cpus_ number of processes in parallel.
-  if (starting_worker_processes_.size() > num_cpus_ && !force_start) {
+  if (static_cast<int>(starting_worker_processes_.size()) > num_cpus_ && !force_start) {
     // Workers have been started, but not registered. Force start disabled -- returning.
     RAY_LOG(DEBUG) << starting_worker_processes_.size()
                    << " worker processes pending registration";
