@@ -16,7 +16,7 @@ To visualize benchmarks, you must copy the S3 bucket down to `$RAY_DIR/python`. 
 
 ```
 cd $RAY_DIR/python
-aws s3 sync s3://BUCKET/ .
+aws s3 sync s3://$BUCKET/ASV/ .
 ```
 Then, you can run:
 ```
@@ -24,4 +24,4 @@ asv publish --no-pull
 asv preview
 ```
 
-This creates 
+This creates the directory and then launches a server.
