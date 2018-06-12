@@ -66,21 +66,29 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1submitTask(
     jbyteArray cursorId,
     jobject buff,
     jint pos,
-    jint sz) {
+    jint sz,
+    jboolean useRaylet) {
   // task -> TaskInfo (with FlatBuffer)
   // native private static void _submitTask(long client, /*Direct*/ByteBuffer
   // task);
   auto client = reinterpret_cast<LocalSchedulerConnection *>(c);
-  TaskSpec *task =
-      reinterpret_cast<char *>(env->GetDirectBufferAddress(buff)) + pos;
+  
   std::vector<ObjectID> execution_dependencies;
   if (cursorId != nullptr) {
     UniqueIdFromJByteArray cursor_id(env, cursorId);
     execution_dependencies.push_back(*cursor_id.PID);
   }
-  TaskExecutionSpec taskExecutionSpec =
-      TaskExecutionSpec(execution_dependencies, task, sz);
-  local_scheduler_submit(client, taskExecutionSpec);
+  if (!useRaylet) {
+    TaskSpec *task =
+        reinterpret_cast<char *>(env->GetDirectBufferAddress(buff)) + pos;
+    TaskExecutionSpec taskExecutionSpec =
+        TaskExecutionSpec(execution_dependencies, task, sz);
+    local_scheduler_submit(client, taskExecutionSpec);
+  } else {
+    auto data = reinterpret_cast<uint8_t *>(env->GetDirectBufferAddress(buff)) + pos;
+    ray::raylet::TaskSpecification task_spec(data, sz);
+    local_scheduler_submit_raylet(client, execution_dependencies, task_spec);
+  }
 }
 
 /*

@@ -31,7 +31,7 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
     if(!task.actorId.isNil()) {
       a = task.cursorId.getBytes();
     }
-    _submitTask(_client, a, info, info.position(), info.remaining());
+    _submitTask(_client, a, info, info.position(), info.remaining(), false);
   }
 
   @Override
@@ -61,7 +61,7 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
     _put_object(_client, taskId.getBytes(), objectId.getBytes());
   }
 
-  private long _client = 0;
+  protected long _client = 0;
 
   private static ThreadLocal<ByteBuffer> _taskBuffer = ThreadLocal.withInitial(() -> {
     ByteBuffer bb = ByteBuffer
@@ -207,7 +207,8 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
       boolean isWorker, long numGpus);
 
   // task -> TaskInfo (with FlatBuffer)
-  native private static void _submitTask(long client, byte[] cursorId, /*Direct*/ByteBuffer task, int pos, int sz);
+  native protected static void _submitTask(long client, byte[] cursorId, /*Direct*/ByteBuffer task, 
+    int pos, int sz, boolean useRaylet);
 
   // return TaskInfo (in FlatBuffer)
   native private static byte[] _getTaskTodo(long client);
