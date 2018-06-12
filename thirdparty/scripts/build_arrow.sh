@@ -41,8 +41,15 @@ else
 fi
 
 # Download and compile arrow if it isn't already present.
-if [[ ! -d $TP_DIR/../python/ray/pyarrow_files/pyarrow ]]; then
+if [[ ! -d $TP_DIR/../python/ray/pyarrow_files/pyarrow || \
+  "$LANGUAGE" == "java" && ! -f $TP_DIR/../build/src/plasma/libplasma_java.dylib ]]; then
     echo "building arrow"
+
+    if [[ "$LANGUAGE" == "java" && ! -f $TP_DIR/../build/src/plasma/libplasma_java.dylib ]]; then
+      rm -rf $TP_DIR/build/arrow
+      rm -rf $TP_DIR/build/parquet-cpp
+      rm -rf $TP_DIR/pkg/arrow
+    fi
 
     if [[ ! -d $TP_DIR/build/arrow ]]; then
       git clone https://github.com/apache/arrow.git "$TP_DIR/build/arrow"
@@ -53,7 +60,7 @@ if [[ ! -d $TP_DIR/../python/ray/pyarrow_files/pyarrow ]]; then
     # The PR for this commit is https://github.com/apache/arrow/pull/2065. We
     # include the link here to make it easier to find the right commit because
     # Arrow often rewrites git history and invalidates certain commits.
-    git checkout ce23c06469de9cf0c3e38e35cdb8d135f341b964
+    git checkout 34890cc133d6761bdedc53e0b88374ccd7641c55
 
     cd cpp
     if [ ! -d "build" ]; then
