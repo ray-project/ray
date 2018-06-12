@@ -23,7 +23,7 @@ class WorkerPoolMock : public WorkerPool {
     }
     // Either no workers are pending registration or the worker start is being forced.
     RAY_LOG(DEBUG) << "starting new worker process, worker pool size " << Size();
-    AddStartingWorkerProcess(pid);
+    starting_worker_processes_.emplace(std::make_pair(pid, num_workers_per_process_));
   }
 
   int NumWorkerProcessesStarting() const { return starting_worker_processes_.size(); }

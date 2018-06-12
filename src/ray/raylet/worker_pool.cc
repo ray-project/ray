@@ -52,7 +52,7 @@ void WorkerPool::StartWorkerProcess(bool force_start) {
   RAY_CHECK(!worker_command_.empty()) << "No worker command provided";
   // The first condition makes sure that we are always starting up to
   // num_cpus_ number of processes in parallel.
-  if (static_cast<int>(starting_worker_processes_.size()) > num_cpus_ && !force_start) {
+  if (static_cast<int>(starting_worker_processes_.size()) >= num_cpus_ && !force_start) {
     // Workers have been started, but not registered. Force start disabled -- returning.
     RAY_LOG(DEBUG) << starting_worker_processes_.size()
                    << " worker processes pending registration";
@@ -154,11 +154,6 @@ bool removeWorker(std::list<std::shared_ptr<Worker>> &worker_pool,
 bool WorkerPool::DisconnectWorker(std::shared_ptr<Worker> worker) {
   RAY_CHECK(removeWorker(registered_workers_, worker));
   return removeWorker(pool_, worker);
-}
-
-// Protected WorkerPool methods.
-void WorkerPool::AddStartingWorkerProcess(pid_t pid) {
-  starting_worker_processes_.emplace(std::make_pair(pid, num_workers_per_process_));
 }
 
 }  // namespace raylet
