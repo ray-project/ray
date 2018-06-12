@@ -89,10 +89,10 @@ class WorkerPool {
   /// A map from the pids of worker processes that are starting
   /// to the number of their unregistered workers.
   std::unordered_map<pid_t, int> starting_worker_processes_;
-
- private:
   /// The number of workers per process.
   int num_workers_per_process_;
+
+ private:
   /// The number of CPUs this Raylet has available.
   int num_cpus_;
   /// The command and arguments used to start the worker.
