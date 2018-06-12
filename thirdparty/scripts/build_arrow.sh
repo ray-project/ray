@@ -45,7 +45,8 @@ if [[ ! -d $TP_DIR/../python/ray/pyarrow_files/pyarrow || \
   "$LANGUAGE" == "java" && ! -f $TP_DIR/../build/src/plasma/libplasma_java.dylib ]]; then
     echo "building arrow"
 
-    if [[ "$LANGUAGE" == "java" && ! -f $TP_DIR/../build/src/plasma/libplasma_java.dylib ]]; then
+    # Make sure arrow will be built again when building ray for java later than python
+    if [[ "$LANGUAGE" == "java" ]]; then
       rm -rf $TP_DIR/build/arrow
       rm -rf $TP_DIR/build/parquet-cpp
       rm -rf $TP_DIR/pkg/arrow
@@ -57,10 +58,10 @@ if [[ ! -d $TP_DIR/../python/ray/pyarrow_files/pyarrow || \
 
     pushd $TP_DIR/build/arrow
     git fetch origin master
-    # The PR for this commit is https://github.com/apache/arrow/pull/2065. We
+    # The PR for this commit is https://github.com/apache/arrow/pull/2128. We
     # include the link here to make it easier to find the right commit because
     # Arrow often rewrites git history and invalidates certain commits.
-    git checkout 34890cc133d6761bdedc53e0b88374ccd7641c55
+    git checkout 6b80fa824ed6b621122eb17f46106936fa72dd4b
 
     cd cpp
     if [ ! -d "build" ]; then
