@@ -1,10 +1,10 @@
 Cloud Setup and Auto-Scaling
 ============================
 
-The ``ray create_or_update`` command starts an AWS Ray cluster from your personal computer. Once the cluster is up, you can then SSH into it to run Ray programs.
+The ``ray create_or_update`` command starts an AWS or GCP Ray cluster from your personal computer. Once the cluster is up, you can then SSH into it to run Ray programs.
 
-Quick start
------------
+Quick start (AWS)
+-----------------
 
 First, install boto (``pip install boto3``) and configure your AWS credentials in ``~/.aws/credentials``,
 as described in `the boto docs <http://boto3.readthedocs.io/en/latest/guide/configuration.html>`__.
@@ -12,7 +12,7 @@ as described in `the boto docs <http://boto3.readthedocs.io/en/latest/guide/conf
 Then you're ready to go. The provided `ray/python/ray/autoscaler/aws/example-full.yaml <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/aws/example-full.yaml>`__ cluster config file will create a small cluster with a m5.large head node (on-demand) configured to autoscale up to two m5.large `spot workers <https://aws.amazon.com/ec2/spot/>`__.
 
 Try it out by running these commands from your personal computer. Once the cluster is started, you can then
-SSH into the head node, ``source activate tensorflow_p36``, and then run Ray programs with ``ray.init(redis_address=ray.services.get_node_ip_address() + ":6379")``.
+SSH into the head node, ``source activate tensorflow_p36``, and then run Ray programs with ``ray.init(redis_address="localhost:6379")``.
 
 .. code-block:: bash
 
@@ -26,6 +26,32 @@ SSH into the head node, ``source activate tensorflow_p36``, and then run Ray pro
 
     # Teardown the cluster
     $ ray teardown ray/python/ray/autoscaler/aws/example-full.yaml
+
+Quick start (GCP)
+-----------------
+
+First, install the Google API client (``pip install google-api-python-client``), set up your GCP credentials, and create a new GCP project.
+
+Then you're ready to go. The provided `ray/python/ray/autoscaler/gcp/example-full.yaml <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/gcp/example-full.yaml>`__ cluster config file will create a small cluster with a n1-standard-2 head node (on-demand) configured to autoscale up to two n1-standard-2 `preemptible workers <https://cloud.google.com/preemptible-vms/>`__. Note that you'll need to fill in your project id in those templates.
+
+Try it out by running these commands from your personal computer. Once the cluster is started, you can then
+SSH into the head node and then run Ray programs with ``ray.init(redis_address="localhost:6379")``.
+
+.. code-block:: bash
+
+    # Create or update the cluster. When the command finishes, it will print
+    # out the command that can be used to SSH into the cluster head node.
+    $ ray create_or_update ray/python/ray/autoscaler/gcp/example-full.yaml
+
+    # Reconfigure autoscaling behavior without interrupting running jobs
+    $ ray create_or_update ray/python/ray/autoscaler/gcp/example-full.yaml \
+        --max-workers=N --no-restart
+
+    # Teardown the cluster
+    $ ray teardown ray/python/ray/autoscaler/gcp/example-full.yaml
+
+Port-forwarding applications
+----------------------------
 
 To run connect to applications running on the cluster (e.g. Jupyter notebook) using a web browser, you can forward the port to your local machine using SSH:
 
@@ -52,14 +78,14 @@ Autoscaling
 
 Ray clusters come with a load-based auto-scaler. When cluster resource usage exceeds a configurable threshold (80% by default), new nodes will be launched up the specified ``max_workers`` limit. When nodes are idle for more than a timeout, they will be removed, down to the ``min_workers`` limit. The head node is never removed.
 
-The default idle timeout is 5 minutes. This is to prevent excessive node churn which could impact performance and increase costs (in AWS there is a minimum billing charge of 1 minute per instance, after which usage is billed by the second).
+The default idle timeout is 5 minutes. This is to prevent excessive node churn which could impact performance and increase costs (in AWS / GCP there is a minimum billing charge of 1 minute per instance, after which usage is billed by the second).
 
 Monitoring cluster status
 -------------------------
 
 You can monitor cluster usage and auto-scaling status by tailing the autoscaling logs in ``/tmp/raylogs/monitor-*``.
 
-The Ray autoscaler also reports per-node status in the form of instance tags. In the AWS console, you can click on a Node, go the the "Tags" pane, and add the ``ray:NodeStatus`` tag as a column. This lets you see per-node statuses at a glance:
+The Ray autoscaler also reports per-node status in the form of instance tags. In your cloud provider console, you can click on a Node, go the the "Tags" pane, and add the ``ray-node-status`` tag as a column. This lets you see per-node statuses at a glance:
 
 .. image:: autoscaler-status.png
 
@@ -68,7 +94,7 @@ Customizing cluster setup
 
 You are encouraged to copy the example YAML file and modify it to your needs. This may include adding additional setup commands to install libraries or sync local data files.
 
-.. note:: After you have customized the nodes, it is also a good idea to create a new machine image (AMI) and use that in the config file. This reduces worker setup time, improving the efficiency of auto-scaling.
+.. note:: After you have customized the nodes, it is also a good idea to create a new machine image and use that in the config file. This reduces worker setup time, improving the efficiency of auto-scaling.
 
 The setup commands you use should ideally be *idempotent*, that is, can be run more than once. This allows Ray to update nodes after they have been created. You can usually make commands idempotent with small modifications, e.g. ``git clone foo`` can be rewritten as ``test -e foo || git clone foo`` which checks if the repo is already cloned first.
 
