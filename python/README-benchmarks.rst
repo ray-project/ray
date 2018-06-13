@@ -14,14 +14,16 @@ Visualizing Benchmarks
 
 To visualize benchmarks, you must copy the S3 bucket down to `$RAY_DIR/python`. Assuming asv is installed,
 
-```
-cd $RAY_DIR/python
-aws s3 sync s3://$BUCKET/ASV/ .
-```
+.. code-block::
+
+  cd $RAY_DIR/python
+  aws s3 sync s3://$BUCKET/ASV/ .
+
 Then, you can run:
-```
-asv publish --no-pull
-asv preview
-```
+
+.. code-block::
+
+  asv publish --no-pull
+  asv preview
 
 This creates the directory and then launches a server.
