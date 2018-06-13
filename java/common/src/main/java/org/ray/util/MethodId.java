@@ -59,7 +59,6 @@ public final class MethodId {
     this.digest = getSha1Hash0();
   }
 
-
   private static String encode(String className, String methodName, String methodDesc,
       boolean isStatic) {
     StringBuilder sb = new StringBuilder(512);
@@ -91,10 +90,10 @@ public final class MethodId {
       final SerializedLambda lambda = LambdaUtils.getSerializedLambda(serial);
       Preconditions.checkArgument(lambda.getCapturedArgCount() == 0, "could not transfer a lambda "
           + "which is closure");
-      final boolean isstatic = lambda.getImplMethodKind() == MethodHandleInfo.REF_invokeStatic;
+      final boolean isStatic = lambda.getImplMethodKind() == MethodHandleInfo.REF_invokeStatic;
       final String className = lambda.getImplClass().replace('/', '.');
       id = new MethodId(className, lambda.getImplMethodName(),
-          lambda.getImplMethodSignature(), isstatic);
+          lambda.getImplMethodSignature(), isStatic);
       if (!forceNew) {
         map.put(clazz, id);
       }
