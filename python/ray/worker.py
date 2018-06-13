@@ -2524,7 +2524,9 @@ def get(object_ids, worker=global_worker):
             return values
         else:
             if worker.mode == CLIENT_MODE:
-                value = worker.client.get([object_ids])[0]
+                value = worker.client.get([object_ids])
+                if isinstance(value, list):
+                    value = value[0]
             else:
                 value = worker.get_object([object_ids])[0]
             if isinstance(value, RayTaskError):
