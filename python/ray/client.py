@@ -91,14 +91,9 @@ class Client(object):
         """
 
         # TODO (dsuo): ignore batching
-        for object_id in object_ids:
-            print(object_id)
-
         # TODO (dsuo): would be nice to not encode / decode ObjectIDs
         param = ",".join([object_id.id().hex() for \
                          object_id in object_ids])
-
-        print(param)
 
         res = requests.get(url=self.url,
                            params={

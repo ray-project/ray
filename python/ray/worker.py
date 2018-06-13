@@ -1447,9 +1447,6 @@ def _init(address_info=None,
     if driver_mode == PYTHON_MODE:
         # If starting Ray in PYTHON_MODE, don't start any other processes.
         pass
-    elif driver_mode == CLIENT_MODE:
-        # If starting Ray in CLIENT_MODE, don't start any other processes.
-        pass
     elif start_ray_local:
         # In this case, we launch a scheduler, a new object store, and some
         # workers, and we connect to them. We do not launch any processes that
@@ -1491,7 +1488,15 @@ def _init(address_info=None,
             plasma_directory=plasma_directory,
             huge_pages=huge_pages,
             include_webui=include_webui,
-            use_raylet=use_raylet)
+            use_raylet=use_raylet,
+            with_gateway=(driver_mode == CLIENT_MODE),
+            gateway_port=address_info.get("gateway_port") if \
+            driver_mode == CLIENT_MODE else None
+        )
+    elif driver_mode == CLIENT_MODE:
+        # If starting Ray in CLIENT_MODE and we aren't starting Ray locally
+        # (i.e., not testing), don't start any other processes.
+        pass
     else:
         if redis_address is None:
             raise Exception("When connecting to an existing cluster, "

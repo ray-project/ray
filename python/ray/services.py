@@ -1420,6 +1420,7 @@ def start_ray_processes(address_info=None,
         redis_shards = [shard.decode("ascii") for shard in redis_shards]
         address_info["redis_shards"] = redis_shards
 
+
     # Start the log monitor, if necessary.
     if include_log_monitor:
         log_monitor_stdout_file, log_monitor_stderr_file = new_log_files(
