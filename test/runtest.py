@@ -4,6 +4,7 @@ import os
 import re
 import string
 import sys
+import threading
 import time
 import unittest
 from collections import defaultdict, namedtuple, OrderedDict
@@ -1105,6 +1106,25 @@ class APITest(unittest.TestCase):
         # Verify that we cannot call get on a regular value.
         with self.assertRaises(Exception):
             ray.get(3)
+
+    def testMultithreading(self):
+        self.init_ray(driver_mode=ray.SILENT_MODE)
+
+        @ray.remote
+        def f():
+            pass
+
+        def g(n):
+            for _ in range(1000 // n):
+                ray.get([f.remote() for _ in range(n)])
+
+        threads = [
+            threading.Thread(target=g, args=(n, ))
+            for n in [1, 5, 10, 100, 1000]
+        ]
+
+        [thread.start() for thread in threads]
+        [thread.join() for thread in threads]
 
 
 @unittest.skipIf(

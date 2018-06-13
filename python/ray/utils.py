@@ -3,10 +3,12 @@ from __future__ import division
 from __future__ import print_function
 
 import binascii
+import functools
 import hashlib
 import numpy as np
 import os
 import sys
+import threading
 import time
 import uuid
 
@@ -268,3 +270,32 @@ def merge_dicts(d1, d2):
     d = d1.copy()
     d.update(d2)
     return d
+
+
+class ThreadSafeProxy(object):
+
+    def __init__(self, orig_obj, lock):
+        self.orig_obj = orig_obj
+        self.lock = lock
+        self._wrapper_cache = {}
+
+    def __getattr__(self, attr):
+        orig_attr = getattr(self.orig_obj, attr)
+        if callable(orig_attr):
+            wrapper = self._wrapper_cache.get(attr)
+            if wrapper is None:
+                @functools.wraps(orig_attr)
+                def _wrapper(*args, **kwargs):
+                    with self.lock:
+                        return orig_attr(*args, **kwargs)
+                self._wrapper_cache[attr] = wrapper = _wrapper
+            return wrapper
+        else:
+            return orig_attr
+
+
+def thread_safe_client(client, lock=None):
+    """Create a thread safe proxy which guards every method call with a lock, for the given client."""
+    if lock is None:
+        lock = threading.Lock()
+    return ThreadSafeProxy(client, lock)

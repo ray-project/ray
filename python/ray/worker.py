@@ -30,7 +30,12 @@ import ray.signature
 import ray.local_scheduler
 import ray.plasma
 import ray.ray_constants as ray_constants
-from ray.utils import random_string, binary_to_hex, is_cython
+from ray.utils import (
+    binary_to_hex,
+    is_cython,
+    random_string,
+    thread_safe_client,
+)
 
 SCRIPT_MODE = 0
 WORKER_MODE = 1
@@ -556,7 +561,6 @@ class Worker(object):
             The return object IDs for this task.
         """
         with log_span("ray:submit_task", worker=self):
-            check_main_thread()
             if actor_id is None:
                 assert actor_handle_id is None
                 actor_id = ray.ObjectID(NIL_ACTOR_ID)
@@ -628,7 +632,6 @@ class Worker(object):
             decorated_function: The decorated function (this is used to enable
                 the remote function to recursively call itself).
         """
-        check_main_thread()
         if self.mode not in [SCRIPT_MODE, SILENT_MODE]:
             raise Exception("export_remote_function can only be called on a "
                             "driver.")
@@ -690,7 +693,6 @@ class Worker(object):
                 should not take any arguments. If it returns anything, its
                 return values will not be used.
         """
-        check_main_thread()
         # If ray.init has not been called yet, then cache the function and
         # export it when connect is called. Otherwise, run the function on all
         # workers.
@@ -1049,7 +1051,6 @@ class Worker(object):
 
         signal.signal(signal.SIGTERM, exit)
 
-        check_main_thread()
         while True:
             task = self._get_next_task_from_local_scheduler()
             self._wait_for_and_process_task(task)
@@ -1149,20 +1150,6 @@ class RayConnectionError(Exception):
     pass
 
 
-def check_main_thread():
-    """Check that we are currently on the main thread.
-
-    Raises:
-        Exception: An exception is raised if this is called on a thread other
-            than the main thread.
-    """
-    if threading.current_thread().getName() != "MainThread":
-        raise Exception("The Ray methods are not thread safe and must be "
-                        "called from the main thread. This method was called "
-                        "from thread {}."
-                        .format(threading.current_thread().getName()))
-
-
 def print_failed_task(task_status):
     """Print information about failed tasks.
 
@@ -1197,12 +1184,9 @@ def error_applies_to_driver(error_key, worker=global_worker):
 def error_info(worker=global_worker):
     """Return information about failed tasks."""
     worker.check_connected()
-    check_main_thread()
-
     if worker.use_raylet:
         return (global_state.error_messages(job_id=worker.task_driver_id) +
                 global_state.error_messages(job_id=ray_constants.NIL_JOB_ID))
-
     error_keys = worker.redis_client.lrange("ErrorKeys", 0, -1)
     errors = []
     for error_key in error_keys:
@@ -1526,7 +1510,6 @@ def _init(address_info=None,
         Exception: An exception is raised if an inappropriate combination of
             arguments is passed in.
     """
-    check_main_thread()
     if driver_mode not in [SCRIPT_MODE, PYTHON_MODE, SILENT_MODE]:
         raise Exception("Driver_mode must be in [ray.SCRIPT_MODE, "
                         "ray.PYTHON_MODE, ray.SILENT_MODE].")
@@ -2128,7 +2111,6 @@ def connect(info,
         use_raylet: True if the new raylet code path should be used. This is
             not supported yet.
     """
-    check_main_thread()
     # Do some basic checking to make sure we didn't call ray.init twice.
     error_message = "Perhaps you called ray.init twice by accident?"
     assert not worker.connected, error_message
@@ -2166,8 +2148,9 @@ def connect(info,
 
     # Create a Redis client.
     redis_ip_address, redis_port = info["redis_address"].split(":")
-    worker.redis_client = redis.StrictRedis(
-        host=redis_ip_address, port=int(redis_port))
+    worker.redis_client = thread_safe_client(
+        redis.StrictRedis(host=redis_ip_address, port=int(redis_port))
+    )
 
     # For driver's check that the version information matches the version
     # information that the Ray cluster was started with.
@@ -2247,19 +2230,23 @@ def connect(info,
 
     # Create an object store client.
     if not worker.use_raylet:
-        worker.plasma_client = plasma.connect(info["store_socket_name"],
-                                              info["manager_socket_name"], 64)
+        worker.plasma_client = thread_safe_client(
+            plasma.connect(info["store_socket_name"], info["manager_socket_name"], 64)
+        )
     else:
-        worker.plasma_client = plasma.connect(info["store_socket_name"], "",
-                                              64)
+        worker.plasma_client = thread_safe_client(
+            plasma.connect(info["store_socket_name"], "", 64)
+        )
 
     if not worker.use_raylet:
         local_scheduler_socket = info["local_scheduler_socket_name"]
     else:
         local_scheduler_socket = info["raylet_socket_name"]
 
-    worker.local_scheduler_client = ray.local_scheduler.LocalSchedulerClient(
-        local_scheduler_socket, worker.worker_id, is_worker, worker.use_raylet)
+    worker.local_scheduler_client = thread_safe_client(
+        ray.local_scheduler.LocalSchedulerClient(
+            local_scheduler_socket, worker.worker_id, is_worker, worker.use_raylet)
+    )
 
     # If this is a driver, set the current task ID, the task driver ID, and set
     # the task index to 0.
@@ -2627,7 +2614,6 @@ def get(object_ids, worker=global_worker):
     """
     worker.check_connected()
     with log_span("ray:get", worker=worker):
-        check_main_thread()
 
         if worker.mode == PYTHON_MODE:
             # In PYTHON_MODE, ray.get is the identity operation (the input will
@@ -2660,8 +2646,6 @@ def put(value, worker=global_worker):
     """
     worker.check_connected()
     with log_span("ray:put", worker=worker):
-        check_main_thread()
-
         if worker.mode == PYTHON_MODE:
             # In PYTHON_MODE, ray.put is the identity operation.
             return value
@@ -2718,8 +2702,6 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
 
     worker.check_connected()
     with log_span("ray:wait", worker=worker):
-        check_main_thread()
-
         # When Ray is run in PYTHON_MODE, all functions are run immediately,
         # so all objects in object_id are ready.
         if worker.mode == PYTHON_MODE:
