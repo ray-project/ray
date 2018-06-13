@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# This needs to be run in the build tree, which is normally ray/python/ray/core
+# This needs to be run in the build tree, which is normally ray/build
 
 # Cause the script to exit if a single command fails.
 set -e
@@ -20,21 +20,31 @@ if [ ! -d "$RAY_ROOT/python" ]; then
   exit 1
 fi
 
-CORE_DIR="$RAY_ROOT/python/ray/core"
+CORE_DIR="$RAY_ROOT/build"
 REDIS_DIR="$CORE_DIR/src/common/thirdparty/redis/src"
 REDIS_MODULE="$CORE_DIR/src/common/redis_module/libray_redis_module.so"
 STORE_EXEC="$CORE_DIR/src/plasma/plasma_store"
 VALGRIND_CMD="valgrind --track-origins=yes --leak-check=full --show-leak-kinds=all --leak-check-heuristics=stdstring --error-exitcode=1"
 
+if [[ "${RAY_USE_NEW_GCS}" = "on" ]]; then
+    REDIS_SERVER="$CORE_DIR/src/credis/redis/src/redis-server"
+
+    CREDIS_MODULE="$CORE_DIR/src/credis/build/src/libmember.so"
+    LOAD_MODULE_ARGS="--loadmodule ${CREDIS_MODULE} --loadmodule ${REDIS_MODULE}"
+else
+    REDIS_SERVER="${REDIS_DIR}/redis-server"
+    LOAD_MODULE_ARGS="--loadmodule ${REDIS_MODULE}"
+fi
+
 echo "$STORE_EXEC"
-echo "$REDIS_DIR/redis-server --loglevel warning --loadmodule $REDIS_MODULE --port 6379"
+echo "${REDIS_SERVER} --loglevel warning ${LOAD_MODULE_ARGS} --port 6379"
 echo "$REDIS_DIR/redis-cli -p 6379 shutdown"
 
 # Allow cleanup commands to fail.
 killall plasma_store || true
 $REDIS_DIR/redis-cli -p 6379 shutdown || true
 sleep 1s
-$REDIS_DIR/redis-server --loglevel warning --loadmodule $REDIS_MODULE --port 6379 &
+${REDIS_SERVER} --loglevel warning ${LOAD_MODULE_ARGS} --port 6379 &
 sleep 1s
 
 # Run tests.

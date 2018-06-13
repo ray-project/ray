@@ -15,11 +15,11 @@
  *
  */
 
-typedef enum {
+enum class GlobalSchedulerAlgorithm {
   SCHED_ALGORITHM_ROUND_ROBIN = 1,
   SCHED_ALGORITHM_TRANSFER_AWARE = 2,
   SCHED_ALGORITHM_MAX
-} global_scheduler_algorithm;
+};
 
 /// The class encapsulating state managed by the global scheduling policy.
 class GlobalSchedulerPolicyState {

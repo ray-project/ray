@@ -31,7 +31,7 @@ namespace ray {
 
 struct ObjectManagerConfig {
   /// The time in milliseconds to wait before retrying a pull
-  /// that failed due to client id lookup.
+  /// that fails due to client id lookup.
   uint pull_timeout_ms;
   /// Maximum number of sends allowed.
   int max_sends;
@@ -39,12 +39,24 @@ struct ObjectManagerConfig {
   int max_receives;
   /// Object chunk size, in bytes
   uint64_t object_chunk_size;
-  // TODO(hme): Implement num retries (to avoid infinite retries).
+  /// The stored socked name.
   std::string store_socket_name;
+  /// The time in milliseconds to wait until a Push request
+  /// fails due to unsatisfied local object. Special value:
+  /// Negative: waiting infinitely.
+  /// 0: giving up retrying immediately.
+  int push_timeout_ms;
+};
+
+class ObjectManagerInterface {
+ public:
+  virtual ray::Status Pull(const ObjectID &object_id) = 0;
+  virtual ray::Status Cancel(const ObjectID &object_id) = 0;
+  virtual ~ObjectManagerInterface(){};
 };
 
 // TODO(hme): Add success/failure callbacks for push and pull.
-class ObjectManager {
+class ObjectManager : public ObjectManagerInterface {
  public:
   /// Implicitly instantiates Ray implementation of ObjectDirectory.
   ///
@@ -67,6 +79,9 @@ class ObjectManager {
                          std::unique_ptr<ObjectDirectoryInterface> od);
 
   ~ObjectManager();
+
+  /// Register GCS-related functionality.
+  void RegisterGcs();
 
   /// Subscribe to notifications of objects added to local store.
   /// Upon subscribing, the callback will be invoked for all objects that
@@ -129,23 +144,26 @@ class ObjectManager {
   ray::Status Cancel(const ObjectID &object_id);
 
   /// Callback definition for wait.
-  using WaitCallback = std::function<void(const ray::Status, uint64_t,
-                                          const std::vector<ray::ObjectID> &)>;
-  /// Wait for timeout_ms before invoking the provided callback.
-  /// If num_ready_objects is satisfied before the timeout, then
-  /// invoke the callback.
+  using WaitCallback = std::function<void(const std::vector<ray::ObjectID> &found,
+                                          const std::vector<ray::ObjectID> &remaining)>;
+  /// Wait until either num_required_objects are located or wait_ms has elapsed,
+  /// then invoke the provided callback.
   ///
   /// \param object_ids The object ids to wait on.
   /// \param timeout_ms The time in milliseconds to wait before invoking the callback.
-  /// \param num_ready_objects The minimum number of objects required before
+  /// \param num_required_objects The minimum number of objects required before
   /// invoking the callback.
+  /// \param wait_local Whether to wait until objects arrive to this node's store.
   /// \param callback Invoked when either timeout_ms is satisfied OR num_ready_objects
   /// is satisfied.
   /// \return Status of whether the wait successfully initiated.
-  ray::Status Wait(const std::vector<ObjectID> &object_ids, uint64_t timeout_ms,
-                   int num_ready_objects, const WaitCallback &callback);
+  ray::Status Wait(const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
+                   uint64_t num_required_objects, bool wait_local,
+                   const WaitCallback &callback);
 
  private:
+  friend class TestObjectManager;
+
   ClientID client_id_;
   const ObjectManagerConfig config_;
   std::unique_ptr<ObjectDirectoryInterface> object_directory_;
@@ -178,12 +196,64 @@ class ObjectManager {
   /// Connection pool for reusing outgoing connections to remote object managers.
   ConnectionPool connection_pool_;
 
-  /// Timeout for failed pull requests.
-  std::unordered_map<ObjectID, std::shared_ptr<boost::asio::deadline_timer>>
-      pull_requests_;
-
   /// Cache of locally available objects.
   std::unordered_map<ObjectID, ObjectInfoT> local_objects_;
+
+  /// This is used as the callback identifier in Pull for
+  /// SubscribeObjectLocations. We only need one identifier because we never need to
+  /// subscribe multiple times to the same object during Pull.
+  UniqueID object_directory_pull_callback_id_ = UniqueID::from_random();
+
+  struct WaitState {
+    WaitState(asio::io_service &service, int64_t timeout_ms, const WaitCallback &callback)
+        : timeout_ms(timeout_ms),
+          timeout_timer(std::unique_ptr<boost::asio::deadline_timer>(
+              new boost::asio::deadline_timer(
+                  service, boost::posix_time::milliseconds(timeout_ms)))),
+          callback(callback) {}
+    /// The period of time to wait before invoking the callback.
+    int64_t timeout_ms;
+    /// The timer used whenever wait_ms > 0.
+    std::unique_ptr<boost::asio::deadline_timer> timeout_timer;
+    /// The callback invoked when WaitCallback is complete.
+    WaitCallback callback;
+    /// Ordered input object_ids.
+    std::vector<ObjectID> object_id_order;
+    /// The objects that have not yet been found.
+    std::unordered_set<ObjectID> remaining;
+    /// The objects that have been found.
+    std::unordered_set<ObjectID> found;
+    /// Objects that have been requested either by Lookup or Subscribe.
+    std::unordered_set<ObjectID> requested_objects;
+    /// The number of required objects.
+    uint64_t num_required_objects;
+  };
+
+  /// A set of active wait requests.
+  std::unordered_map<UniqueID, WaitState> active_wait_requests_;
+
+  /// Creates a wait request and adds it to active_wait_requests_.
+  ray::Status AddWaitRequest(const UniqueID &wait_id,
+                             const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
+                             uint64_t num_required_objects, bool wait_local,
+                             const WaitCallback &callback);
+
+  /// Lookup any remaining objects that are not local. This is invoked after
+  /// the wait request is created and local objects are identified.
+  ray::Status LookupRemainingWaitObjects(const UniqueID &wait_id);
+
+  /// Invoked when lookup for remaining objects has been invoked. This method subscribes
+  /// to any remaining objects if wait conditions have not yet been satisfied.
+  void SubscribeRemainingWaitObjects(const UniqueID &wait_id);
+  /// Completion handler for Wait.
+  void WaitComplete(const UniqueID &wait_id);
+
+  /// Maintains a map of push requests that have not been fulfilled due to an object not
+  /// being local. Objects are removed from this map after push_timeout_ms have elapsed.
+  std::unordered_map<
+      ObjectID,
+      std::unordered_map<ClientID, std::unique_ptr<boost::asio::deadline_timer>>>
+      unfulfilled_push_requests_;
 
   /// Handle starting, running, and stopping asio io_service.
   void StartIOService();
@@ -197,17 +267,6 @@ class ObjectManager {
   /// Register object remove with directory.
   void NotifyDirectoryObjectDeleted(const ObjectID &object_id);
 
-  /// Wait wait_ms milliseconds before triggering a pull request for object_id.
-  /// This is invoked when a pull fails. Only point of failure currently considered
-  /// is GetLocationsFailed.
-  void SchedulePull(const ObjectID &object_id, int wait_ms);
-
-  /// Part of an asynchronous sequence of Pull methods.
-  /// Gets the location of an object before invoking PullEstablishConnection.
-  /// Guaranteed to execute on main_service_ thread.
-  /// Executes on main_service_ thread.
-  ray::Status PullGetLocations(const ObjectID &object_id);
-
   /// Part of an asynchronous sequence of Pull methods.
   /// Uses an existing connection or creates a connection to ClientID.
   /// Executes on main_service_ thread.
@@ -218,10 +277,6 @@ class ObjectManager {
   /// ObjectDirectory.
   void GetLocationsSuccess(const std::vector<ray::ClientID> &client_ids,
                            const ray::ObjectID &object_id);
-
-  /// Private callback implementation for failure on get location. Called from
-  /// ObjectDirectory.
-  void GetLocationsFailed(const ObjectID &object_id);
 
   /// Synchronously send a pull request via remote object manager connection.
   /// Executes on main_service_ thread.
@@ -267,6 +322,8 @@ class ObjectManager {
   /// Handles disconnect message of an existing client connection.
   void DisconnectClient(std::shared_ptr<TcpClientConnection> &conn,
                         const uint8_t *message);
+  /// Handle Push task timeout.
+  void HandlePushTaskTimeout(const ObjectID &object_id, const ClientID &client_id);
 };
 
 }  // namespace ray

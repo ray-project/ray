@@ -33,6 +33,8 @@ class ObjectDirectoryInterface {
   using InfoSuccessCallback = std::function<void(const ray::RemoteConnectionInfo &info)>;
   using InfoFailureCallback = std::function<void(ray::Status status)>;
 
+  virtual void RegisterBackend() = 0;
+
   /// This is used to establish object manager client connections.
   ///
   /// \param client_id The client for which information is required.
@@ -43,27 +45,42 @@ class ObjectDirectoryInterface {
                                      const InfoSuccessCallback &success_cb,
                                      const InfoFailureCallback &fail_cb) = 0;
 
-  // Callbacks for GetLocations.
-  using OnLocationsSuccess = std::function<void(const std::vector<ray::ClientID> &v,
-                                                const ray::ObjectID &object_id)>;
-  using OnLocationsFailure = std::function<void(const ray::ObjectID &object_id)>;
+  /// Callback for object location notifications.
+  using OnLocationsFound = std::function<void(const std::vector<ray::ClientID> &,
+                                              const ray::ObjectID &object_id)>;
 
-  /// Asynchronously obtain the locations of an object by ObjectID.
-  /// This is used to handle object pulls.
+  /// Lookup object locations. Callback may be invoked with empty list of client ids.
   ///
+  /// \param object_id The object's ObjectID.
+  /// \param callback Invoked with (possibly empty) list of client ids and object_id.
+  /// \return Status of whether async call to backend succeeded.
+  virtual ray::Status LookupLocations(const ObjectID &object_id,
+                                      const OnLocationsFound &callback) = 0;
+
+  /// Subscribe to be notified of locations (ClientID) of the given object.
+  /// The callback will be invoked whenever locations are obtained for the
+  /// specified object. The callback provided to this method may fire immediately,
+  /// within the call to this method, if any other listener is subscribed to the same
+  /// object: This occurs when location data for the object has already been obtained.
+  ///
+  /// \param callback_id The id associated with the specified callback. This is
+  /// needed when UnsubscribeObjectLocations is called.
   /// \param object_id The required object's ObjectID.
-  /// \param success_cb Invoked upon success with list of remote connection info.
-  /// \param fail_cb Invoked upon failure with ray status and object id.
-  /// \return Status of whether this asynchronous request succeeded.
-  virtual ray::Status GetLocations(const ObjectID &object_id,
-                                   const OnLocationsSuccess &success_cb,
-                                   const OnLocationsFailure &fail_cb) = 0;
+  /// \param success_cb Invoked with non-empty list of client ids and object_id.
+  /// \return Status of whether subscription succeeded.
+  virtual ray::Status SubscribeObjectLocations(const UniqueID &callback_id,
+                                               const ObjectID &object_id,
+                                               const OnLocationsFound &callback) = 0;
 
-  /// Cancels the invocation of the callback associated with callback_id.
+  /// Unsubscribe to object location notifications.
   ///
-  /// \param object_id The object id invoked with GetLocations.
-  /// \return Status of whether this method succeeded.
-  virtual ray::Status Cancel(const ObjectID &object_id) = 0;
+  /// \param callback_id The id associated with a callback. This was given
+  /// at subscription time, and unsubscribes the corresponding callback from
+  /// further notifications about the given object's location.
+  /// \param object_id The object id invoked with Subscribe.
+  /// \return Status of unsubscribing from object location notifications.
+  virtual ray::Status UnsubscribeObjectLocations(const UniqueID &callback_id,
+                                                 const ObjectID &object_id) = 0;
 
   /// Report objects added to this node's store to the object directory.
   ///
@@ -90,42 +107,47 @@ class ObjectDirectory : public ObjectDirectoryInterface {
   ObjectDirectory() = default;
   ~ObjectDirectory() override = default;
 
+  void RegisterBackend() override;
+
   ray::Status GetInformation(const ClientID &client_id,
                              const InfoSuccessCallback &success_callback,
                              const InfoFailureCallback &fail_callback) override;
-  ray::Status GetLocations(const ObjectID &object_id,
-                           const OnLocationsSuccess &success_callback,
-                           const OnLocationsFailure &fail_callback) override;
-  ray::Status Cancel(const ObjectID &object_id) override;
+
+  ray::Status LookupLocations(const ObjectID &object_id,
+                              const OnLocationsFound &callback) override;
+
+  ray::Status SubscribeObjectLocations(const UniqueID &callback_id,
+                                       const ObjectID &object_id,
+                                       const OnLocationsFound &callback) override;
+  ray::Status UnsubscribeObjectLocations(const UniqueID &callback_id,
+                                         const ObjectID &object_id) override;
+
   ray::Status ReportObjectAdded(const ObjectID &object_id, const ClientID &client_id,
                                 const ObjectInfoT &object_info) override;
   ray::Status ReportObjectRemoved(const ObjectID &object_id,
                                   const ClientID &client_id) override;
   /// Ray only (not part of the OD interface).
-  ObjectDirectory(std::shared_ptr<gcs::AsyncGcsClient> gcs_client);
+  ObjectDirectory(std::shared_ptr<gcs::AsyncGcsClient> &gcs_client);
 
   /// ObjectDirectory should not be copied.
   RAY_DISALLOW_COPY_AND_ASSIGN(ObjectDirectory);
 
  private:
   /// Callbacks associated with a call to GetLocations.
-  // TODO(hme): I think these can be removed.
-  struct ODCallbacks {
-    OnLocationsSuccess success_cb;
-    OnLocationsFailure fail_cb;
+  struct LocationListenerState {
+    /// The callback to invoke when object locations are found.
+    std::unordered_map<UniqueID, OnLocationsFound> callbacks;
+    /// The current set of known locations of this object.
+    std::unordered_set<ClientID> current_object_locations;
   };
 
-  /// GetLocations registers a request for locations.
-  /// This function actually carries out that request.
-  ray::Status ExecuteGetLocations(const ObjectID &object_id);
-  /// Invoked when call to ExecuteGetLocations completes.
-  void GetLocationsComplete(const ObjectID &object_id,
-                            const std::vector<ObjectTableDataT> &location_entries);
-
-  /// Maintain map of in-flight GetLocation requests.
-  std::unordered_map<ObjectID, ODCallbacks> existing_requests_;
+  /// Info about subscribers to object locations.
+  std::unordered_map<ObjectID, LocationListenerState> listeners_;
   /// Reference to the gcs client.
   std::shared_ptr<gcs::AsyncGcsClient> gcs_client_;
+  /// Map from object ID to the number of times it's been evicted on this
+  /// node before.
+  std::unordered_map<ObjectID, int> object_evictions_;
 };
 
 }  // namespace ray

@@ -32,6 +32,7 @@ std::vector<ObjectID> TaskExecutionSpecification::ExecutionDependencies() const 
 
 void TaskExecutionSpecification::SetExecutionDependencies(
     const std::vector<ObjectID> &dependencies) {
+  execution_spec_.dependencies.clear();
   for (const auto &dependency : dependencies) {
     execution_spec_.dependencies.push_back(dependency.binary());
   }

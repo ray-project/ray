@@ -10,8 +10,9 @@ namespace ray {
 namespace raylet {
 
 /// A constructor that initializes a worker pool with num_workers workers.
-WorkerPool::WorkerPool(int num_workers, const std::vector<std::string> &worker_command)
-    : worker_command_(worker_command) {
+WorkerPool::WorkerPool(int num_workers, int num_cpus,
+                       const std::vector<std::string> &worker_command)
+    : num_cpus_(num_cpus), worker_command_(worker_command) {
   // Ignore SIGCHLD signals. If we don't do this, then worker processes will
   // become zombies instead of dying gracefully.
   signal(SIGCHLD, SIG_IGN);
@@ -52,7 +53,9 @@ uint32_t WorkerPool::Size() const {
 
 void WorkerPool::StartWorker(bool force_start) {
   RAY_CHECK(!worker_command_.empty()) << "No worker command provided";
-  if (!started_worker_pids_.empty() && !force_start) {
+  // The first condition makes sure that we are always starting up to
+  // num_cpus_ number of processes in parallel.
+  if (NumWorkersStarting() > num_cpus_ && !force_start) {
     // Workers have been started, but not registered. Force start disabled -- returning.
     RAY_LOG(DEBUG) << started_worker_pids_.size() << " workers pending registration";
     return;
@@ -90,8 +93,9 @@ void WorkerPool::RegisterWorker(std::shared_ptr<Worker> worker) {
   auto pid = worker->Pid();
   RAY_LOG(DEBUG) << "Registering worker with pid " << pid;
   registered_workers_.push_back(std::move(worker));
-  RAY_CHECK(started_worker_pids_.count(pid) > 0);
-  started_worker_pids_.erase(pid);
+  auto it = started_worker_pids_.find(pid);
+  RAY_CHECK(it != started_worker_pids_.end());
+  started_worker_pids_.erase(it);
 }
 
 std::shared_ptr<Worker> WorkerPool::GetRegisteredWorker(
@@ -154,7 +158,7 @@ bool WorkerPool::DisconnectWorker(std::shared_ptr<Worker> worker) {
 // Protected WorkerPool methods.
 void WorkerPool::AddStartedWorker(pid_t pid) { started_worker_pids_.insert(pid); }
 
-uint32_t WorkerPool::NumStartedWorkers() const { return started_worker_pids_.size(); }
+int WorkerPool::NumWorkersStarting() const { return started_worker_pids_.size(); }
 
 }  // namespace raylet
 

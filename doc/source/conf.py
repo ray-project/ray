@@ -38,7 +38,10 @@ MOCK_MODULES = ["gym",
                 "ray.core.generated.TaskReply",
                 "ray.core.generated.ResultTableReply",
                 "ray.core.generated.TaskExecutionDependencies",
-                "ray.core.generated.ClientTableData"]
+                "ray.core.generated.ClientTableData",
+                "ray.core.generated.GcsTableEntry",
+                "ray.core.generated.ObjectTableData",
+                "ray.core.generated.ray.protocol.Task"]
 for mod_name in MOCK_MODULES:
   sys.modules[mod_name] = mock.Mock()
 

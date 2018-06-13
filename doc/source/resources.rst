@@ -108,16 +108,3 @@ decorator.
   @ray.remote(resources={'Resource2': 1})
   def f():
       return 1
-
-Current Limitations
--------------------
-
-We are working to remove the following limitations.
-
-- **Actor Resource Requirements:** Currently only GPUs are used to determine
-  actor placement.
-- **Recovering from Bad Scheduling:** Currently Ray does not recover from poor
-  scheduling decisions. For example, suppose there are two GPUs (on separate
-  machines) in the cluster and we wish to run two GPU tasks. There are scenarios
-  in which both tasks can be accidentally scheduled on the same machine, which
-  will result in poor load balancing.

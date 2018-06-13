@@ -2,32 +2,26 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import ray
 import tensorflow as tf
-from ray.rllib.a3c.policy import Policy
+import gym
+
+import ray
 from ray.rllib.models.catalog import ModelCatalog
 
 
-class BCPolicy(Policy):
-    def __init__(self, registry, ob_space, action_space, config, name="local",
-                 summarize=True):
-        super(BCPolicy, self).__init__(ob_space, action_space, name, summarize)
+class BCPolicy(object):
+    def __init__(self, registry, obs_space, action_space, config):
         self.registry = registry
         self.local_steps = 0
         self.config = config
-        self.summarize = summarize
-        worker_device = "/job:localhost/replica:0/task:0/cpu:0"
-        self.g = tf.Graph()
-        with self.g.as_default(), tf.device(worker_device):
-            with tf.variable_scope(name):
-                self._setup_graph(ob_space, action_space)
-            print("Setting up loss")
-            self.setup_loss(action_space)
-            self.setup_gradients()
-            self.initialize()
+        self.summarize = config.get("summarize")
+        self._setup_graph(obs_space, action_space)
+        self.setup_loss(action_space)
+        self.setup_gradients()
+        self.initialize()
 
-    def _setup_graph(self, ob_space, ac_space):
-        self.x = tf.placeholder(tf.float32, [None] + list(ob_space))
+    def _setup_graph(self, obs_space, ac_space):
+        self.x = tf.placeholder(tf.float32, [None] + list(obs_space.shape))
         dist_class, self.logit_dim = ModelCatalog.get_action_dist(ac_space)
         self._model = ModelCatalog.get_model(
             self.registry, self.x, self.logit_dim, self.config["model"])
@@ -38,7 +32,16 @@ class BCPolicy(Policy):
                                           tf.get_variable_scope().name)
 
     def setup_loss(self, action_space):
-        self.ac = tf.placeholder(tf.int64, [None], name="ac")
+        if isinstance(action_space, gym.spaces.Box):
+            self.ac = tf.placeholder(tf.float32,
+                                     [None] + list(action_space.shape),
+                                     name="ac")
+        elif isinstance(action_space, gym.spaces.Discrete):
+            self.ac = tf.placeholder(tf.int64, [None], name="ac")
+        else:
+            raise NotImplementedError(
+                "action space" + str(type(action_space)) +
+                "currently not supported")
         log_prob = self.curr_dist.logp(self.ac)
         self.pi_loss = - tf.reduce_sum(log_prob)
         self.loss = self.pi_loss

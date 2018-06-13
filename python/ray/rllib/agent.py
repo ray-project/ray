@@ -61,7 +61,7 @@ class Agent(Trainable):
     """
 
     _allow_unknown_configs = False
-    _allow_unknown_subkeys = []
+    _allow_unknown_subkeys = ["env_config", "model", "optimizer"]
 
     @classmethod
     def resource_help(cls, config):
@@ -231,10 +231,7 @@ class _ParameterTuningAgent(_MockAgent):
 def get_agent_class(alg):
     """Returns the class of a known agent given its name."""
 
-    if alg == "DDPG2":
-        from ray.rllib import ddpg2
-        return ddpg2.DDPG2Agent
-    elif alg == "DDPG":
+    if alg == "DDPG":
         from ray.rllib import ddpg
         return ddpg.DDPGAgent
     elif alg == "APEX_DDPG":

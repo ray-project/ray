@@ -15,7 +15,7 @@ RLlib's policy optimizers serve as the basis for RLlib's reference algorithms, w
 
 - Deep Q Networks (`DQN <https://github.com/ray-project/ray/tree/master/python/ray/rllib/dqn>`__).
 
-- Deep Deterministic Policy Gradients (`DDPG <https://github.com/ray-project/ray/tree/master/python/ray/rllib/ddpg>`__, `DDPG2 <https://github.com/ray-project/ray/tree/master/python/ray/rllib/ddpg2>`__).
+- Deep Deterministic Policy Gradients (`DDPG <https://github.com/ray-project/ray/tree/master/python/ray/rllib/ddpg>`__).
 
 - Ape-X Distributed Prioritized Experience Replay, including both `DQN <https://github.com/ray-project/ray/blob/master/python/ray/rllib/dqn/apex.py>`__ and `DDPG <https://github.com/ray-project/ray/blob/master/python/ray/rllib/ddpg/apex.py>`__ variants.
 
@@ -31,15 +31,27 @@ including custom ones written and registered by the user.
 Installation
 ------------
 
-RLlib has extra dependencies on top of **ray**. You might also want to clone the Ray repo for convenient access to RLlib helper scripts:
+RLlib has extra dependencies on top of **ray**. First, you'll need into install either PyTorch or TensorFlow.
+For usage of PyTorch models, visit the `PyTorch website <http://pytorch.org/>`__
+for instructions on installing PyTorch.
+
+.. code-block:: bash
+
+  pip install tensorflow  # or tensorflow-gpu
+
+Then, install Ray with extra RLlib dependencies:
 
 .. code-block:: bash
 
   pip install 'ray[rllib]'
+
+You might also want to clone the Ray repo for convenient access to RLlib helper scripts:
+
+.. code-block:: bash
+
   git clone https://github.com/ray-project/ray
 
-For usage of PyTorch models, visit the `PyTorch website <http://pytorch.org/>`__
-for instructions on installing PyTorch.
+
 
 Getting Started
 ---------------
@@ -76,7 +88,7 @@ The ``train.py`` script has a number of options you can show by running
 The most important options are for choosing the environment
 with ``--env`` (any OpenAI gym environment including ones registered by the user
 can be used) and for choosing the algorithm with ``--run``
-(available options are ``PPO``, ``PG``, ``A3C``, ``ES``, ``DDPG``, ``DDPG2``, ``DQN``, ``APEX``, and ``APEX_DDPG2``).
+(available options are ``PPO``, ``PG``, ``A3C``, ``ES``, ``DDPG``, ``DDPG2``, ``DQN``, ``APEX``, and ``APEX_DDPG``).
 
 Specifying Parameters
 ~~~~~~~~~~~~~~~~~~~~~
@@ -91,7 +103,7 @@ Each algorithm has specific hyperparameters that can be set with ``--config`` - 
 `DDPG <https://github.com/ray-project/ray/blob/master/python/ray/rllib/ddpg/ddpg.py>`__,
 `DDPG2 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/ddpg2/ddpg.py>`__,
 `APEX <https://github.com/ray-project/ray/blob/master/python/ray/rllib/dqn/apex.py>`__, and
-`APEX_DDPG2 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/ddpg2/apex.py>`__.
+`APEX_DDPG <https://github.com/ray-project/ray/blob/master/python/ray/rllib/ddpg/apex.py>`__.
 
 In an example below, we train A3C by specifying 8 workers through the config flag.
 function that creates the env to refer to it by name. The contents of the env_config agent config field will be passed to that function to allow the environment to be configured. The return type should be an OpenAI gym.Env. For example:

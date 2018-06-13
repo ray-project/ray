@@ -4,27 +4,33 @@ from __future__ import print_function
 
 from ray.rllib.dqn.dqn import DQNAgent, DEFAULT_CONFIG as DQN_CONFIG
 from ray.tune.trial import Resources
+from ray.utils import merge_dicts
 
-APEX_DEFAULT_CONFIG = dict(DQN_CONFIG, **dict(
-    optimizer_class="ApexOptimizer",
-    optimizer_config=dict(DQN_CONFIG["optimizer_config"], **dict(
-        max_weight_sync_delay=400,
-        num_replay_buffer_shards=4,
-        debug=False,
-    )),
-    n_step=3,
-    gpu=True,
-    num_workers=32,
-    buffer_size=2000000,
-    learning_starts=50000,
-    train_batch_size=512,
-    sample_batch_size=50,
-    max_weight_sync_delay=400,
-    target_network_update_freq=500000,
-    timesteps_per_iteration=25000,
-    per_worker_exploration=True,
-    worker_side_prioritization=True,
-))
+APEX_DEFAULT_CONFIG = merge_dicts(
+    DQN_CONFIG,
+    {
+        "optimizer_class": "ApexOptimizer",
+        "optimizer_config":
+            merge_dicts(
+                DQN_CONFIG["optimizer_config"], {
+                    "max_weight_sync_delay": 400,
+                    "num_replay_buffer_shards": 4,
+                    "debug": False
+                }),
+        "n_step": 3,
+        "gpu": True,
+        "num_workers": 32,
+        "buffer_size": 2000000,
+        "learning_starts": 50000,
+        "train_batch_size": 512,
+        "sample_batch_size": 50,
+        "max_weight_sync_delay": 400,
+        "target_network_update_freq": 500000,
+        "timesteps_per_iteration": 25000,
+        "per_worker_exploration": True,
+        "worker_side_prioritization": True,
+    },
+)
 
 
 class ApexAgent(DQNAgent):

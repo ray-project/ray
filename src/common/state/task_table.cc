@@ -39,8 +39,8 @@ void task_table_test_and_update(
     DBHandle *db_handle,
     TaskID task_id,
     DBClientID test_local_scheduler_id,
-    int test_state_bitmask,
-    int update_state,
+    TaskStatus test_state_bitmask,
+    TaskStatus update_state,
     RetryInfo *retry,
     task_table_test_and_update_callback done_callback,
     void *user_context) {
@@ -60,7 +60,7 @@ void task_table_test_and_update(
 /* TODO(swang): A corresponding task_table_unsubscribe. */
 void task_table_subscribe(DBHandle *db_handle,
                           DBClientID local_scheduler_id,
-                          int state_filter,
+                          TaskStatus state_filter,
                           task_table_subscribe_callback subscribe_callback,
                           void *subscribe_context,
                           RetryInfo *retry,

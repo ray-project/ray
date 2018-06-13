@@ -27,6 +27,10 @@ class RedisContext;
 
 class AsyncGcsClient;
 
+/// Specifies whether commands issued to a table should be regular or chain-replicated
+/// (when available).
+enum class CommandType { kRegular, kChain };
+
 /// \class PubsubInterface
 ///
 /// The interface for a pubsub storage system. The client of a storage system
@@ -44,7 +48,11 @@ class PubsubInterface {
 
 /// \class Log
 ///
-/// A GCS table where every entry is an append-only log.
+/// A GCS table where every entry is an append-only log. This class is not
+/// meant to be used directly. All log classes should derive from this class
+/// and override the prefix_ member with a unique prefix for that log, and the
+/// pubsub_channel_ member if pubsub is required.
+///
 /// Example tables backed by Log:
 ///   ObjectTable: Stores a log of which clients have added or evicted an
 ///                object.
@@ -77,8 +85,8 @@ class Log : virtual public PubsubInterface<ID> {
   Log(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client)
       : context_(context),
         client_(client),
-        pubsub_channel_(TablePubsub_NO_PUBLISH),
-        prefix_(TablePrefix_UNUSED),
+        pubsub_channel_(TablePubsub::NO_PUBLISH),
+        prefix_(TablePrefix::UNUSED),
         subscribe_callback_index_(-1){};
 
   /// Append a log entry to a key.
@@ -171,15 +179,20 @@ class Log : virtual public PubsubInterface<ID> {
   /// The GCS client.
   AsyncGcsClient *client_;
   /// The pubsub channel to subscribe to for notifications about keys in this
-  /// table. If no notifications are required, this may be set to
-  /// TablePubsub_NO_PUBLISH.
+  /// table. If no notifications are required, this should be set to
+  /// TablePubsub_NO_PUBLISH. If notifications are required, then this must be
+  /// unique across all instances of Log.
   TablePubsub pubsub_channel_;
-  /// The prefix to use for keys in this table.
+  /// The prefix to use for keys in this table. This must be unique across all
+  /// instances of Log.
   TablePrefix prefix_;
   /// The index in the RedisCallbackManager for the callback that is called
   /// when we receive notifications. This is >= 0 iff we have subscribed to the
   /// table, otherwise -1.
   int64_t subscribe_callback_index_;
+
+  /// Commands to a GCS table can either be regular (default) or chain-replicated.
+  CommandType command_type_ = CommandType::kRegular;
 };
 
 template <typename ID, typename Data>
@@ -194,7 +207,11 @@ class TableInterface {
 
 /// \class Table
 ///
-/// A GCS table where every entry is a single data item.
+/// A GCS table where every entry is a single data item. This class is not
+/// meant to be used directly. All table classes should derive from this class
+/// and override the prefix_ member with a unique prefix for that table, and
+/// the pubsub_channel_ member if pubsub is required.
+///
 /// Example tables backed by Log:
 ///   TaskTable: Stores Task metadata needed for executing the task.
 template <typename ID, typename Data>
@@ -249,14 +266,15 @@ class Table : private Log<ID, Data>,
   using Log<ID, Data>::client_;
   using Log<ID, Data>::pubsub_channel_;
   using Log<ID, Data>::prefix_;
+  using Log<ID, Data>::command_type_;
 };
 
 class ObjectTable : public Log<ObjectID, ObjectTableData> {
  public:
   ObjectTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client)
       : Log(context, client) {
-    pubsub_channel_ = TablePubsub_OBJECT;
-    prefix_ = TablePrefix_OBJECT;
+    pubsub_channel_ = TablePubsub::OBJECT;
+    prefix_ = TablePrefix::OBJECT;
   };
   virtual ~ObjectTable(){};
 };
@@ -265,8 +283,8 @@ class HeartbeatTable : public Table<ClientID, HeartbeatTableData> {
  public:
   HeartbeatTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client)
       : Table(context, client) {
-    pubsub_channel_ = TablePubsub_HEARTBEAT;
-    prefix_ = TablePrefix_HEARTBEAT;
+    pubsub_channel_ = TablePubsub::HEARTBEAT;
+    prefix_ = TablePrefix::HEARTBEAT;
   }
   virtual ~HeartbeatTable() {}
 };
@@ -275,8 +293,8 @@ class FunctionTable : public Table<ObjectID, FunctionTableData> {
  public:
   FunctionTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client)
       : Table(context, client) {
-    pubsub_channel_ = TablePubsub_NO_PUBLISH;
-    prefix_ = TablePrefix_FUNCTION;
+    pubsub_channel_ = TablePubsub::NO_PUBLISH;
+    prefix_ = TablePrefix::FUNCTION;
   };
 };
 
@@ -287,8 +305,8 @@ class ActorTable : public Log<ActorID, ActorTableData> {
  public:
   ActorTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client)
       : Log(context, client) {
-    pubsub_channel_ = TablePubsub_ACTOR;
-    prefix_ = TablePrefix_TASK_RECONSTRUCTION;
+    pubsub_channel_ = TablePubsub::ACTOR;
+    prefix_ = TablePrefix::ACTOR;
   }
 };
 
@@ -297,8 +315,7 @@ class TaskReconstructionLog : public Log<TaskID, TaskReconstructionData> {
   TaskReconstructionLog(const std::shared_ptr<RedisContext> &context,
                         AsyncGcsClient *client)
       : Log(context, client) {
-    pubsub_channel_ = TablePubsub_ACTOR;
-    prefix_ = TablePrefix_ACTOR;
+    prefix_ = TablePrefix::TASK_RECONSTRUCTION;
   }
 };
 
@@ -308,9 +325,15 @@ class TaskTable : public Table<TaskID, ray::protocol::Task> {
  public:
   TaskTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client)
       : Table(context, client) {
-    pubsub_channel_ = TablePubsub_RAYLET_TASK;
-    prefix_ = TablePrefix_RAYLET_TASK;
+    pubsub_channel_ = TablePubsub::RAYLET_TASK;
+    prefix_ = TablePrefix::RAYLET_TASK;
   }
+
+  TaskTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client,
+            gcs::CommandType command_type)
+      : TaskTable(context, client) {
+    command_type_ = command_type;
+  };
 };
 
 }  // namespace raylet
@@ -319,10 +342,15 @@ class TaskTable : public Table<TaskID, TaskTableData> {
  public:
   TaskTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client)
       : Table(context, client) {
-    pubsub_channel_ = TablePubsub_TASK;
-    prefix_ = TablePrefix_TASK;
+    pubsub_channel_ = TablePubsub::TASK;
+    prefix_ = TablePrefix::TASK;
   };
-  ~TaskTable(){};
+
+  TaskTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client,
+            gcs::CommandType command_type)
+      : TaskTable(context, client) {
+    command_type_ = command_type;
+  }
 
   using TestAndUpdateCallback =
       std::function<void(AsyncGcsClient *client, const TaskID &id,
@@ -389,7 +417,8 @@ class TaskTable : public Table<TaskID, TaskTableData> {
 Status TaskTableAdd(AsyncGcsClient *gcs_client, Task *task);
 
 Status TaskTableTestAndUpdate(AsyncGcsClient *gcs_client, const TaskID &task_id,
-                              const ClientID &local_scheduler_id, int test_state_bitmask,
+                              const ClientID &local_scheduler_id,
+                              SchedulingState test_state_bitmask,
                               SchedulingState update_state,
                               const TaskTable::TestAndUpdateCallback &callback);
 
@@ -421,8 +450,8 @@ class ClientTable : private Log<UniqueID, ClientTableData> {
         disconnected_(false),
         client_id_(client_id),
         local_client_() {
-    pubsub_channel_ = TablePubsub_CLIENT;
-    prefix_ = TablePrefix_CLIENT;
+    pubsub_channel_ = TablePubsub::CLIENT;
+    prefix_ = TablePrefix::CLIENT;
 
     // Set the local client's ID.
     local_client_.client_id = client_id.binary();
