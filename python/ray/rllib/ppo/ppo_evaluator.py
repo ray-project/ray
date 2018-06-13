@@ -30,8 +30,7 @@ class PPOEvaluator(PolicyEvaluator):
     network weights. When run as a remote agent, only this graph is used.
     """
 
-    def __init__(self, registry, env_creator, config, logdir, is_remote):
-        self.registry = registry
+    def __init__(self, env_creator, config, logdir, is_remote):
         self.is_remote = is_remote
         if is_remote:
             os.environ["CUDA_VISIBLE_DEVICES"] = ""
@@ -42,7 +41,7 @@ class PPOEvaluator(PolicyEvaluator):
         self.config = config
         self.logdir = logdir
         self.env = ModelCatalog.get_preprocessor_as_wrapper(
-            registry, env_creator(config["env_config"]), config["model"])
+            env_creator(config["env_config"]), config["model"])
         if is_remote:
             config_proto = tf.ConfigProto()
         else:
@@ -90,7 +89,7 @@ class PPOEvaluator(PolicyEvaluator):
                 self.env.observation_space, self.env.action_space,
                 obs, vtargets, advs, acts, plog, pvf_preds, self.logit_dim,
                 self.kl_coeff, self.distribution_class, self.config,
-                self.sess, self.registry)
+                self.sess)
 
         self.par_opt = LocalSyncParallelOptimizer(
             tf.train.AdamOptimizer(self.config["sgd_stepsize"]),

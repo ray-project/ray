@@ -53,7 +53,6 @@ class PGAgent(Agent):
                 "policy_graph": PGPolicyGraph,
                 "batch_steps": self.config["batch_size"],
                 "batch_mode": "truncate_episodes",
-                "registry": self.registry,
                 "model_config": self.config["model"],
                 "env_config": self.config["env_config"],
                 "policy_config": self.config,

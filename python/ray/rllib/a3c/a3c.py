@@ -100,7 +100,7 @@ class A3CAgent(Agent):
             batch_steps=self.config["batch_size"],
             batch_mode="truncate_episodes",
             tf_session_creator=session_creator,
-            registry=self.registry, env_config=self.config["env_config"],
+            env_config=self.config["env_config"],
             model_config=self.config["model"], policy_config=self.config)
         self.remote_evaluators = [
             remote_cls.remote(
@@ -108,7 +108,7 @@ class A3CAgent(Agent):
                 batch_steps=self.config["batch_size"],
                 batch_mode="truncate_episodes", sample_async=True,
                 tf_session_creator=session_creator,
-                registry=self.registry, env_config=self.config["env_config"],
+                env_config=self.config["env_config"],
                 model_config=self.config["model"], policy_config=self.config)
             for i in range(self.config["num_workers"])]
 

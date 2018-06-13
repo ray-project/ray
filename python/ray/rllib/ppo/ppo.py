@@ -108,14 +108,13 @@ class PPOAgent(Agent):
         self.global_step = 0
         self.kl_coeff = self.config["kl_coeff"]
         self.local_evaluator = PPOEvaluator(
-            self.registry, self.env_creator, self.config, self.logdir, False)
+            self.env_creator, self.config, self.logdir, False)
         RemotePPOEvaluator = ray.remote(
             num_cpus=self.config["num_cpus_per_worker"],
             num_gpus=self.config["num_gpus_per_worker"])(PPOEvaluator)
         self.remote_evaluators = [
             RemotePPOEvaluator.remote(
-                self.registry, self.env_creator, self.config, self.logdir,
-                True)
+                self.env_creator, self.config, self.logdir, True)
             for _ in range(self.config["num_workers"])]
         self.start_time = time.time()
         if self.config["write_logs"]:

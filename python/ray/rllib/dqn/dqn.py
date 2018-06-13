@@ -127,7 +127,7 @@ class DQNAgent(Agent):
             batch_steps=adjusted_batch_size,
             batch_mode="pack_episodes", preprocessor_pref="deepmind",
             compress_observations=True,
-            registry=self.registry, env_config=self.config["env_config"],
+            env_config=self.config["env_config"],
             model_config=self.config["model"], policy_config=self.config)
         remote_cls = CommonPolicyEvaluator.as_remote(
             num_cpus=self.config["num_cpus_per_worker"],
@@ -138,7 +138,7 @@ class DQNAgent(Agent):
                 batch_steps=adjusted_batch_size,
                 batch_mode="pack_episodes", preprocessor_pref="deepmind",
                 compress_observations=True,
-                registry=self.registry, env_config=self.config["env_config"],
+                env_config=self.config["env_config"],
                 model_config=self.config["model"], policy_config=self.config)
             for _ in range(self.config["num_workers"])]
 

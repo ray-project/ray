@@ -10,8 +10,7 @@ from ray.rllib.models.catalog import ModelCatalog
 
 
 class BCPolicy(object):
-    def __init__(self, registry, obs_space, action_space, config):
-        self.registry = registry
+    def __init__(self, obs_space, action_space, config):
         self.local_steps = 0
         self.config = config
         self.summarize = config.get("summarize")
@@ -24,7 +23,7 @@ class BCPolicy(object):
         self.x = tf.placeholder(tf.float32, [None] + list(obs_space.shape))
         dist_class, self.logit_dim = ModelCatalog.get_action_dist(ac_space)
         self._model = ModelCatalog.get_model(
-            self.registry, self.x, self.logit_dim, self.config["model"])
+            self.x, self.logit_dim, self.config["model"])
         self.logits = self._model.outputs
         self.curr_dist = dist_class(self.logits)
         self.sample = self.curr_dist.sample()

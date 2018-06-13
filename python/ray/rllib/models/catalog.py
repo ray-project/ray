@@ -8,7 +8,7 @@ import tensorflow as tf
 from functools import partial
 
 from ray.tune.registry import RLLIB_MODEL, RLLIB_PREPROCESSOR, \
-    _default_registry
+    _global_registry
 
 from ray.rllib.models.action_dist import (
     Categorical, Deterministic, DiagGaussian, MultiActionDistribution)
@@ -45,7 +45,7 @@ class ModelCatalog(object):
         >>> observation = prep.transform(raw_observation)
 
         >>> dist_cls, dist_dim = ModelCatalog.get_action_dist(env.action_space)
-        >>> model = ModelCatalog.get_model(registry, inputs, dist_dim)
+        >>> model = ModelCatalog.get_model(inputs, dist_dim)
         >>> dist = dist_cls(model.outputs)
         >>> action = dist.sample()
     """
@@ -123,11 +123,10 @@ class ModelCatalog(object):
                                       " not supported".format(action_space))
 
     @staticmethod
-    def get_model(registry, inputs, num_outputs, options={}):
+    def get_model(inputs, num_outputs, options={}):
         """Returns a suitable model conforming to given input and output specs.
 
         Args:
-            registry (obj): Registry of named objects (ray.tune.registry).
             inputs (Tensor): The input tensor to the model.
             num_outputs (int): The size of the output vector of the model.
             options (dict): Optional args to pass to the model constructor.
@@ -139,7 +138,7 @@ class ModelCatalog(object):
         if "custom_model" in options:
             model = options["custom_model"]
             print("Using custom model {}".format(model))
-            return registry.get(RLLIB_MODEL, model)(
+            return _global_registry.get(RLLIB_MODEL, model)(
                 inputs, num_outputs, options)
 
         obs_rank = len(inputs.shape) - 1
@@ -156,12 +155,11 @@ class ModelCatalog(object):
         return FullyConnectedNetwork(inputs, num_outputs, options)
 
     @staticmethod
-    def get_torch_model(registry, input_shape, num_outputs, options={}):
+    def get_torch_model(input_shape, num_outputs, options={}):
         """Returns a PyTorch suitable model. This is currently only supported
         in A3C.
 
         Args:
-            registry (obj): Registry of named objects (ray.tune.registry).
             input_shape (tuple): The input shape to the model.
             num_outputs (int): The size of the output vector of the model.
             options (dict): Optional args to pass to the model constructor.
@@ -177,7 +175,7 @@ class ModelCatalog(object):
         if "custom_model" in options:
             model = options["custom_model"]
             print("Using custom torch model {}".format(model))
-            return registry.get(RLLIB_MODEL, model)(
+            return _global_registry.get(RLLIB_MODEL, model)(
                 input_shape, num_outputs, options)
 
         # TODO(alok): fix to handle Discrete(n) state spaces
@@ -191,11 +189,10 @@ class ModelCatalog(object):
         return PyTorchFCNet(input_shape[0], num_outputs, options)
 
     @staticmethod
-    def get_preprocessor(registry, env, options={}):
+    def get_preprocessor(env, options={}):
         """Returns a suitable processor for the given environment.
 
         Args:
-            registry (obj): Registry of named objects (ray.tune.registry).
             env (gym.Env): The gym environment to preprocess.
             options (dict): Options to pass to the preprocessor.
 
@@ -211,18 +208,17 @@ class ModelCatalog(object):
         if "custom_preprocessor" in options:
             preprocessor = options["custom_preprocessor"]
             print("Using custom preprocessor {}".format(preprocessor))
-            return registry.get(RLLIB_PREPROCESSOR, preprocessor)(
+            return _global_registry.get(RLLIB_PREPROCESSOR, preprocessor)(
                 env.observation_space, options)
 
         preprocessor = get_preprocessor(env.observation_space)
         return preprocessor(env.observation_space, options)
 
     @staticmethod
-    def get_preprocessor_as_wrapper(registry, env, options={}):
+    def get_preprocessor_as_wrapper(env, options={}):
         """Returns a preprocessor as a gym observation wrapper.
 
         Args:
-            registry (obj): Registry of named objects (ray.tune.registry).
             env (gym.Env): The gym environment to wrap.
             options (dict): Options to pass to the preprocessor.
 
@@ -230,7 +226,7 @@ class ModelCatalog(object):
             wrapper (gym.ObservationWrapper): Preprocessor in wrapper form.
         """
 
-        preprocessor = ModelCatalog.get_preprocessor(registry, env, options)
+        preprocessor = ModelCatalog.get_preprocessor(env, options)
         return _RLlibPreprocessorWrapper(env, preprocessor)
 
     @staticmethod
@@ -244,7 +240,7 @@ class ModelCatalog(object):
             preprocessor_name (str): Name to register the preprocessor under.
             preprocessor_class (type): Python class of the preprocessor.
         """
-        _default_registry.register(
+        _global_registry.register(
             RLLIB_PREPROCESSOR, preprocessor_name, preprocessor_class)
 
     @staticmethod
@@ -258,7 +254,7 @@ class ModelCatalog(object):
             model_name (str): Name to register the model under.
             model_class (type): Python class of the model.
         """
-        _default_registry.register(RLLIB_MODEL, model_name, model_class)
+        _global_registry.register(RLLIB_MODEL, model_name, model_class)
 
 
 class _RLlibPreprocessorWrapper(gym.ObservationWrapper):

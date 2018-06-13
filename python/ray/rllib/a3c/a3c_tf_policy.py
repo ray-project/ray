@@ -13,8 +13,7 @@ from ray.rllib.utils.tf_policy_graph import TFPolicyGraph
 class A3CTFPolicyGraph(TFPolicyGraph):
     """The TF policy base class."""
 
-    def __init__(self, ob_space, action_space, registry, config):
-        self.registry = registry
+    def __init__(self, ob_space, action_space, config):
         self.local_steps = 0
         self.config = config
         self.summarize = config.get("summarize")

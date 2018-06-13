@@ -16,14 +16,14 @@ class SharedTorchPolicy(TorchPolicy):
     other_output = ["vf_preds"]
     is_recurrent = False
 
-    def __init__(self, registry, ob_space, ac_space, config, **kwargs):
-        super(SharedTorchPolicy, self).__init__(registry, ob_space, ac_space,
+    def __init__(self, ob_space, ac_space, config, **kwargs):
+        super(SharedTorchPolicy, self).__init__(ob_space, ac_space,
                                                 config, **kwargs)
 
     def _setup_graph(self, ob_space, ac_space):
         _, self.logit_dim = ModelCatalog.get_action_dist(ac_space)
         self._model = ModelCatalog.get_torch_model(
-            self.registry, ob_space, self.logit_dim, self.config["model"])
+            ob_space, self.logit_dim, self.config["model"])
         self.optimizer = torch.optim.Adam(
             self._model.parameters(), lr=self.config["lr"])
 

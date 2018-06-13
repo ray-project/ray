@@ -15,13 +15,11 @@ class TorchPolicy(Policy):
     in the future."""
 
     def __init__(self,
-                 registry,
                  ob_space,
                  action_space,
                  config,
                  name="local",
                  summarize=True):
-        self.registry = registry
         self.local_steps = 0
         self.config = config
         self.summarize = summarize

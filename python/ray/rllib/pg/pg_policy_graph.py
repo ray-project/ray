@@ -11,14 +11,14 @@ from ray.rllib.utils.tf_policy_graph import TFPolicyGraph
 
 class PGPolicyGraph(TFPolicyGraph):
 
-    def __init__(self, obs_space, action_space, registry, config):
+    def __init__(self, obs_space, action_space, config):
         self.config = config
 
         # setup policy
         self.x = tf.placeholder(tf.float32, shape=[None]+list(obs_space.shape))
         dist_class, self.logit_dim = ModelCatalog.get_action_dist(action_space)
         self.model = ModelCatalog.get_model(
-            registry, self.x, self.logit_dim, options=self.config["model"])
+            self.x, self.logit_dim, options=self.config["model"])
         self.dist = dist_class(self.model.outputs)  # logit for each action
 
         # setup policy loss

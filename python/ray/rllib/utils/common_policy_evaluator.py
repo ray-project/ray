@@ -14,7 +14,6 @@ from ray.rllib.utils.compression import pack
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.sampler import AsyncSampler, SyncSampler
 from ray.rllib.utils.tf_policy_graph import TFPolicyGraph
-from ray.tune.registry import get_registry
 from ray.tune.result import TrainingResult
 
 
@@ -93,7 +92,6 @@ class CommonPolicyEvaluator(PolicyEvaluator):
             sample_async=False,
             compress_observations=False,
             observation_filter="NoFilter",
-            registry=None,
             env_config=None,
             model_config=None,
             policy_config=None):
@@ -123,15 +121,11 @@ class CommonPolicyEvaluator(PolicyEvaluator):
             compress_observations (bool): If true, compress the observations
                 returned.
             observation_filter (str): Name of observation filter to use.
-            registry (tune.Registry): User-registered objects. Pass in the
-                value from tune.registry.get_registry() if you're having
-                trouble resolving things like custom envs.
             env_config (dict): Config to pass to the env creator.
             model_config (dict): Config to use when creating the policy model.
             policy_config (dict): Config to pass to the policy.
         """
 
-        registry = registry or get_registry()
         env_config = env_config or {}
         policy_config = policy_config or {}
         model_config = model_config or {}
@@ -151,7 +145,7 @@ class CommonPolicyEvaluator(PolicyEvaluator):
             self.env = wrap_deepmind(self.env, dim=model_config.get("dim", 80))
         else:
             self.env = ModelCatalog.get_preprocessor_as_wrapper(
-                registry, self.env, model_config)
+                self.env, model_config)
 
         self.vectorized = hasattr(self.env, "vector_reset")
         self.policy_map = {}
@@ -166,11 +160,11 @@ class CommonPolicyEvaluator(PolicyEvaluator):
                 with self.sess.as_default():
                     policy = policy_graph(
                         self.env.observation_space, self.env.action_space,
-                        registry, policy_config)
+                        policy_config)
         else:
             policy = policy_graph(
                 self.env.observation_space, self.env.action_space,
-                registry, policy_config)
+                policy_config)
         self.policy_map = {
             "default": policy
         }
