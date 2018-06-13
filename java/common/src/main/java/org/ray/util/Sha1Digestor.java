@@ -15,6 +15,7 @@ public class Sha1Digestor {
     }
   });
 
+
   private static final ThreadLocal<ByteBuffer> longBuffer = ThreadLocal
       .withInitial(() -> ByteBuffer.allocate(Long.SIZE / Byte.SIZE));
 
@@ -26,5 +27,15 @@ public class Sha1Digestor {
     dg.update(src);
     dg.update(longBuffer.get().putLong(addIndex).array());
     return dg.digest();
+  }
+
+  public static byte[] digest(String str) {
+    return digest(str.getBytes(StringUtil.UTF8));
+  }
+
+  public static byte[] digest(byte[] src) {
+    MessageDigest dg = md.get();
+    dg.reset();
+    return dg.digest(src);
   }
 }

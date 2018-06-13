@@ -1,40 +1,23 @@
 package org.ray.core.model;
 
 public enum RunMode {
-  SINGLE_PROCESS(true, false, true, false), // remote lambda, dev path, dev runtime
-  SINGLE_BOX(true, false, true, true),      // remote lambda, dev path, native runtime
-  CLUSTER(false, true, false, true);        // static rewrite, deploy path, naive runtime
+  SINGLE_PROCESS(true, false), // dev path, dev runtime
+  SINGLE_BOX(true, true),      // dev path, native runtime
+  CLUSTER(false, true);        // deploy path, naive runtime
 
-  private final boolean remoteLambda;
-  private final boolean staticRewrite;
-  private final boolean devPathManager;
-  private final boolean nativeRuntime;
 
-  RunMode(boolean remoteLambda, boolean staticRewrite, boolean devPathManager,
-          boolean nativeRuntime) {
-    this.remoteLambda = remoteLambda;
-    this.staticRewrite = staticRewrite;
+  RunMode(boolean devPathManager,
+      boolean nativeRuntime) {
     this.devPathManager = devPathManager;
     this.nativeRuntime = nativeRuntime;
   }
 
   /**
-   * Getter method for property <tt>remoteLambda</tt>.
-   *
-   * @return property value of remoteLambda
+   * the jar has add to java -cp, no need to load jar after started.
    */
-  public boolean isRemoteLambda() {
-    return remoteLambda;
-  }
+  private final boolean devPathManager;
 
-  /**
-   * Getter method for property <tt>staticRewrite</tt>.
-   *
-   * @return property value of staticRewrite
-   */
-  public boolean isStaticRewrite() {
-    return staticRewrite;
-  }
+  private final boolean nativeRuntime;
 
   /**
    * Getter method for property <tt>devPathManager</tt>.
