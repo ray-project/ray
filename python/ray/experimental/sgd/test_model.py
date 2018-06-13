@@ -42,3 +42,6 @@ class TFBenchModel(object):
             logits=logits, labels=self.labels)
         self.loss = tf.reduce_mean(loss, name='xentropy-loss')
         self.optimizer = tf.train.GradientDescentOptimizer(1e-6)
+
+    def get_feed_dict(self):
+        return {}

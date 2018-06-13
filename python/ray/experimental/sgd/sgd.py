@@ -203,9 +203,15 @@ class SGDWorker(object):
 
     def compute_gradients(self, verbose):
         start = time.time()
+        feed_dict = {}
+        # Aggregate feed dicts for each model on this worker.
+        for model in self.models:
+            feed_dict.update(model.get_feed_dict())
+        # We only need to fetch the first per_device_grad, since they are
+        # averaged across all devices by allreduce.
         fetches = self.sess.run(
             [self.models[0].loss, self.per_device_grads[0],
-             self.nccl_control_out])
+             self.nccl_control_out], feed_dict=feed_dict)
         if verbose:
             print("compute grad interior time", time.time() - start)
         return fetches
