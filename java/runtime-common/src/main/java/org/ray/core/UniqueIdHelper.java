@@ -249,12 +249,6 @@ public class UniqueIdHelper {
     return taskId;
   }
 
-  public static boolean isLambdaFunction(UniqueID functionId) {
-    ByteBuffer wbb = ByteBuffer.wrap(functionId.getBytes());
-    wbb.order(ByteOrder.LITTLE_ENDIAN);
-    return wbb.getLong() == 0xffffffffffffffffL;
-  }
-
   public static void markCreateActorStage1Function(UniqueID functionId) {
     ByteBuffer wbb = ByteBuffer.wrap(functionId.getBytes());
     wbb.order(ByteOrder.LITTLE_ENDIAN);
