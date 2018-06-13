@@ -46,7 +46,7 @@ public class LocalFunctionManager {
 
   Pair<ClassLoader, RayMethod> getMethod(UniqueID driverId, UniqueID actorId,
       UniqueID methodId, String className) {
-    //assert the driver's resource is load
+    // assert the driver's resource is load.
     FunctionTable functionTable = loadDriverFunctions(driverId);
     Preconditions.checkNotNull(functionTable, "driver's resource is not loaded:%s", driverId);
     RayMethod method = actorId.isNil() ? functionTable.getTaskMethod(methodId, className)
@@ -101,7 +101,7 @@ public class LocalFunctionManager {
       if (m != null) {
         return m;
       }
-      //it is a actor static func
+      // it is a actor static func.
       return getActorMethod(methodId, className, true);
     }
 

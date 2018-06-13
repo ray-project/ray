@@ -15,25 +15,39 @@ import org.objectweb.asm.Type;
 import org.ray.util.logger.RayLog;
 
 
+/**
+ * An instance of RayFunc is a lambda.
+ * MethodId describe the information of the called function in lambda.<br/>
+ * e.g. Ray.call(Foo::foo), the MethodId of the lambda Foo::foo is:<br/>
+ * MethodId.className = Foo <br/>
+ * MethodId.methodName = foo <br/>
+ * MethodId.methodDesc = describe the types of args and return.
+ * see org.objectweb.asm.Type.getDescriptor.
+ */
 public final class MethodId {
 
-  /* use ThreadLocal to avoid lock. </br>
-   * A cache from the lambda instances to SerializedLambda.
+  /**
+   * use ThreadLocal to avoid lock.
+   * A cache from the lambda instances to MethodId.
    * Note: the lambda instances are dynamically created per call site,
    * we use WeakHashMap to avoid OOM.
    */
   private static final ThreadLocal<WeakHashMap<Class<Serializable>, MethodId>>
       CACHE = ThreadLocal.withInitial(() -> new WeakHashMap<>());
 
-  /**
-   * format A.B.C.cname
-   */
   public final String className;
   public final String methodName;
+
   public final String methodDesc;
   public final boolean isStatic;
+  /**
+   * encode the className,methodName,methodDesc,isStatic as an uniquel id.
+   */
   private final String encoding;
 
+  /**
+   * sha1 from the encoding, used as functionId.
+   */
   private final byte[] digest;
 
   public MethodId(String className, String methodName, String methodDesc, boolean isStatic) {

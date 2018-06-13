@@ -32,7 +32,8 @@ public class JarLoader {
   }
 
   public static void unloadJars(ClassLoader loader) {
-    // TODO:
+    // now do nothing, if no ref to the loader and loader's class.
+    // they would be gc.
   }
 
   private static URLClassLoader loadJar(Collection<File> appJars, boolean explicitLoad) {

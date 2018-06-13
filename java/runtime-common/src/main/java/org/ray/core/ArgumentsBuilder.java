@@ -84,7 +84,7 @@ public class ArgumentsBuilder {
   @SuppressWarnings({"rawtypes", "unchecked"})
   public static Pair<Object, Object[]> unwrap(TaskSpec task, Method m, ClassLoader classLoader)
       throws TaskExecutionException {
-    //the last arg is className
+    // the last arg is className
 
     FunctionArg[] fargs = Arrays.copyOf(task.args, task.args.length - 1);
     Object current = null;
