@@ -86,7 +86,7 @@ class WorkerPool {
   uint32_t Size() const;
 
  protected:
-  /// A map from the pids of worker processes that are starting
+  /// A map from the pids of starting worker processes
   /// to the number of their unregistered workers.
   std::unordered_map<pid_t, int> starting_worker_processes_;
   /// The number of workers per process.

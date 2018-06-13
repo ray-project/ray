@@ -15,9 +15,9 @@ class WorkerPoolMock : public WorkerPool {
   WorkerPoolMock() : WorkerPool(0, NUM_WORKERS_PER_PROCESS, 0, {}) {}
 
   void StartWorkerProcess(pid_t pid, bool force_start = false) {
-    if (NumWorkerProcessesStarting() > 0 && !force_start) {
+    if (starting_worker_processes_.size() > 0 && !force_start) {
       // Workers have been started, but not registered. Force start disabled -- returning.
-      RAY_LOG(DEBUG) << NumWorkerProcessesStarting()
+      RAY_LOG(DEBUG) << starting_worker_processes_.size()
                      << " worker processes pending registration";
       return;
     }
