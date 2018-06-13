@@ -1712,7 +1712,7 @@ def cleanup(worker=global_worker):
     if hasattr(worker, "plasma_client"):
         worker.plasma_client.disconnect()
 
-    if worker.mode in [SCRIPT_MODE, SILENT_MODE]:
+    if worker.mode in [SCRIPT_MODE, SILENT_MODE, CLIENT_MODE]:
         # If this is a driver, push the finish time to Redis and clean up any
         # other services that were started with the driver.
         worker.redis_client.hmset(b"Drivers:" + worker.worker_id,
