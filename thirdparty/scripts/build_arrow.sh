@@ -41,8 +41,16 @@ else
 fi
 
 # Download and compile arrow if it isn't already present.
-if [[ ! -d $TP_DIR/../python/ray/pyarrow_files/pyarrow ]]; then
+if [[ ! -d $TP_DIR/../python/ray/pyarrow_files/pyarrow || \
+  "$LANGUAGE" == "java" && ! -f $TP_DIR/../build/src/plasma/libplasma_java.dylib ]]; then
     echo "building arrow"
+
+    # Make sure arrow will be built again when building ray for java later than python
+    if [[ "$LANGUAGE" == "java" ]]; then
+      rm -rf $TP_DIR/build/arrow
+      rm -rf $TP_DIR/build/parquet-cpp
+      rm -rf $TP_DIR/pkg/arrow
+    fi
 
     if [[ ! -d $TP_DIR/build/arrow ]]; then
       git clone https://github.com/apache/arrow.git "$TP_DIR/build/arrow"
