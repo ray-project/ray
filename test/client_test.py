@@ -23,8 +23,16 @@ class ClientTest(unittest.TestCase):
     def testBasicClient(self):
         ray.init(driver_mode=ray.CLIENT_MODE)
 
-        a = ray.put(1)
-        self.assertEqual(ray.get(a), 1)
+        data = 1
+        a = ray.put(data)
+        self.assertEqual(ray.get(a), data)
+
+    def testArrayClient(self):
+        ray.init(driver_mode=ray.CLIENT_MODE)
+
+        data = [1, 2, 3]
+        a = ray.put(data)
+        self.assertSequenceEqual(ray.get(a), data)
 
     def testNumpyClient(self):
         ray.init(driver_mode=ray.CLIENT_MODE)
