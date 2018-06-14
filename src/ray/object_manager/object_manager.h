@@ -164,74 +164,6 @@ class ObjectManager : public ObjectManagerInterface {
  private:
   friend class TestObjectManager;
 
-  ClientID client_id_;
-  const ObjectManagerConfig config_;
-  std::unique_ptr<ObjectDirectoryInterface> object_directory_;
-  ObjectStoreNotificationManager store_notification_;
-  ObjectBufferPool buffer_pool_;
-
-  /// This runs on a thread pool dedicated to sending objects.
-  boost::asio::io_service send_service_;
-  /// This runs on a thread pool dedicated to receiving objects.
-  boost::asio::io_service receive_service_;
-
-  /// Weak reference to main service. We ensure this object is destroyed before
-  /// main_service_ is stopped.
-  boost::asio::io_service *main_service_;
-
-  /// Used to create "work" for send_service_.
-  /// Without this, if send_service_ has no more sends to process, it will stop.
-  boost::asio::io_service::work send_work_;
-  /// Used to create "work" for receive_service_.
-  /// Without this, if receive_service_ has no more receives to process, it will stop.
-  boost::asio::io_service::work receive_work_;
-
-  /// Runs the send service, which handle
-  /// all outgoing object transfers.
-  std::vector<std::thread> send_threads_;
-  /// Runs the receive service, which handle
-  /// all incoming object transfers.
-  std::vector<std::thread> receive_threads_;
-
-  /// Connection pool for reusing outgoing connections to remote object managers.
-  ConnectionPool connection_pool_;
-
-  /// Cache of locally available objects.
-  std::unordered_map<ObjectID, ObjectInfoT> local_objects_;
-
-  /// This is used as the callback identifier in Pull for
-  /// SubscribeObjectLocations. We only need one identifier because we never need to
-  /// subscribe multiple times to the same object during Pull.
-  UniqueID object_directory_pull_callback_id_ = UniqueID::from_random();
-
-  struct WaitState {
-    WaitState(asio::io_service &service, int64_t timeout_ms, const WaitCallback &callback)
-        : timeout_ms(timeout_ms),
-          timeout_timer(std::unique_ptr<boost::asio::deadline_timer>(
-              new boost::asio::deadline_timer(
-                  service, boost::posix_time::milliseconds(timeout_ms)))),
-          callback(callback) {}
-    /// The period of time to wait before invoking the callback.
-    int64_t timeout_ms;
-    /// The timer used whenever wait_ms > 0.
-    std::unique_ptr<boost::asio::deadline_timer> timeout_timer;
-    /// The callback invoked when WaitCallback is complete.
-    WaitCallback callback;
-    /// Ordered input object_ids.
-    std::vector<ObjectID> object_id_order;
-    /// The objects that have not yet been found.
-    std::unordered_set<ObjectID> remaining;
-    /// The objects that have been found.
-    std::unordered_set<ObjectID> found;
-    /// Objects that have been requested either by Lookup or Subscribe.
-    std::unordered_set<ObjectID> requested_objects;
-    /// The number of required objects.
-    uint64_t num_required_objects;
-  };
-
-  /// A set of active wait requests.
-  std::unordered_map<UniqueID, WaitState> active_wait_requests_;
-
   /// Creates a wait request and adds it to active_wait_requests_.
   ray::Status AddWaitRequest(const UniqueID &wait_id,
                              const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
@@ -247,13 +179,6 @@ class ObjectManager : public ObjectManagerInterface {
   void SubscribeRemainingWaitObjects(const UniqueID &wait_id);
   /// Completion handler for Wait.
   void WaitComplete(const UniqueID &wait_id);
-
-  /// Maintains a map of push requests that have not been fulfilled due to an object not
-  /// being local. Objects are removed from this map after push_timeout_ms have elapsed.
-  std::unordered_map<
-      ObjectID,
-      std::unordered_map<ClientID, std::unique_ptr<boost::asio::deadline_timer>>>
-      unfulfilled_push_requests_;
 
   /// Handle starting, running, and stopping asio io_service.
   void StartIOService();
@@ -324,6 +249,81 @@ class ObjectManager : public ObjectManagerInterface {
                         const uint8_t *message);
   /// Handle Push task timeout.
   void HandlePushTaskTimeout(const ObjectID &object_id, const ClientID &client_id);
+
+  ClientID client_id_;
+  const ObjectManagerConfig config_;
+  std::unique_ptr<ObjectDirectoryInterface> object_directory_;
+  ObjectStoreNotificationManager store_notification_;
+  ObjectBufferPool buffer_pool_;
+
+  /// This runs on a thread pool dedicated to sending objects.
+  boost::asio::io_service send_service_;
+  /// This runs on a thread pool dedicated to receiving objects.
+  boost::asio::io_service receive_service_;
+
+  /// Weak reference to main service. We ensure this object is destroyed before
+  /// main_service_ is stopped.
+  boost::asio::io_service *main_service_;
+
+  /// Used to create "work" for send_service_.
+  /// Without this, if send_service_ has no more sends to process, it will stop.
+  boost::asio::io_service::work send_work_;
+  /// Used to create "work" for receive_service_.
+  /// Without this, if receive_service_ has no more receives to process, it will stop.
+  boost::asio::io_service::work receive_work_;
+
+  /// Runs the send service, which handle
+  /// all outgoing object transfers.
+  std::vector<std::thread> send_threads_;
+  /// Runs the receive service, which handle
+  /// all incoming object transfers.
+  std::vector<std::thread> receive_threads_;
+
+  /// Connection pool for reusing outgoing connections to remote object managers.
+  ConnectionPool connection_pool_;
+
+  /// Cache of locally available objects.
+  std::unordered_map<ObjectID, ObjectInfoT> local_objects_;
+
+  /// Maintains a map of push requests that have not been fulfilled due to an object not
+  /// being local. Objects are removed from this map after push_timeout_ms have elapsed.
+  std::unordered_map<
+      ObjectID,
+      std::unordered_map<ClientID, std::unique_ptr<boost::asio::deadline_timer>>>
+      unfulfilled_push_requests_;
+
+  /// This is used as the callback identifier in Pull for
+  /// SubscribeObjectLocations. We only need one identifier because we never need to
+  /// subscribe multiple times to the same object during Pull.
+  UniqueID object_directory_pull_callback_id_ = UniqueID::from_random();
+
+  struct WaitState {
+    WaitState(asio::io_service &service, int64_t timeout_ms, const WaitCallback &callback)
+        : timeout_ms(timeout_ms),
+          timeout_timer(std::unique_ptr<boost::asio::deadline_timer>(
+              new boost::asio::deadline_timer(
+                  service, boost::posix_time::milliseconds(timeout_ms)))),
+          callback(callback) {}
+    /// The period of time to wait before invoking the callback.
+    int64_t timeout_ms;
+    /// The timer used whenever wait_ms > 0.
+    std::unique_ptr<boost::asio::deadline_timer> timeout_timer;
+    /// The callback invoked when WaitCallback is complete.
+    WaitCallback callback;
+    /// Ordered input object_ids.
+    std::vector<ObjectID> object_id_order;
+    /// The objects that have not yet been found.
+    std::unordered_set<ObjectID> remaining;
+    /// The objects that have been found.
+    std::unordered_set<ObjectID> found;
+    /// Objects that have been requested either by Lookup or Subscribe.
+    std::unordered_set<ObjectID> requested_objects;
+    /// The number of required objects.
+    uint64_t num_required_objects;
+  };
+
+  /// A set of active wait requests.
+  std::unordered_map<UniqueID, WaitState> active_wait_requests_;
 };
 
 }  // namespace ray
