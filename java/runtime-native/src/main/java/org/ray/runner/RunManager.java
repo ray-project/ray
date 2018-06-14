@@ -366,12 +366,12 @@ public class RunManager {
       }
 
       if (!params.use_raylet) {
-        startLocalScheduler(i, runInfo.localStores.get(i),
+        startLocalScheduler(i, info,
             params.num_cpus[i], params.num_gpus[i], workerCount,
-            params.working_directory + "/raylet", params.redis_address,
+            params.working_directory + "/localsc", params.redis_address,
             params.node_ip_address, params.redirect, params.cleanup);
       } else {
-        startRaylet(i, storeName, runInfo.localStores.get(i),
+        startRaylet(i, storeName, info,
             params.num_cpus[i], params.num_gpus[i], workerCount,
             params.working_directory + "/raylet", params.redis_address,
             params.node_ip_address, params.redirect, params.cleanup);
