@@ -252,7 +252,7 @@ def _env_runner(
                     episode = episodes[eid]
                     episode.last_observation = obs_filter(resetted_obs)
                     ready_obs[-1] = episode.last_observation
-                    ready_rnn_states[-1] = episode.init_rnn_state
+                    ready_rnn_states[-1] = episode.rnn_state
             else:
                 episode.last_observation = filtered_obs
 
