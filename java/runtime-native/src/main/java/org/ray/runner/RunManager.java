@@ -22,7 +22,7 @@ import org.ray.util.logger.RayLog;
 import redis.clients.jedis.Jedis;
 
 /**
- * Ray service management on one box
+ * Ray service management on one box.
  */
 public class RunManager {
 
@@ -40,6 +40,21 @@ public class RunManager {
 
   private RunInfo runInfo = new RunInfo();
 
+  public RunManager(RayParameters params, PathConfig paths, ConfigReader configReader) {
+    this.params = params;
+    this.paths = paths;
+    this.configReader = configReader;
+  }
+
+  private static boolean killProcess(Process p) {
+    if (p.isAlive()) {
+      p.destroyForcibly();
+      return true;
+    } else {
+      return false;
+    }
+  }
+
   public RunInfo info() {
     return runInfo;
   }
@@ -54,12 +69,6 @@ public class RunManager {
 
   public String getProcStderrFileName() {
     return procStderrFileName;
-  }
-
-  public RunManager(RayParameters params, PathConfig paths, ConfigReader configReader) {
-    this.params = params;
-    this.paths = paths;
-    this.configReader = configReader;
   }
 
   public void startRayHead() throws Exception {
@@ -97,6 +106,44 @@ public class RunManager {
     params.start_redis_shards = false;
 
     startRayProcesses();
+  }
+
+  public Process startDriver(String mainClass, String redisAddress, UniqueID driverId,
+                             String workDir, String ip,
+                             String driverClass, String additonalClassPaths, String
+                                 additionalConfigs) {
+    String driverConfigs =
+        "ray.java.start.driver_id=" + driverId + ";ray.java.start.driver_class=" + driverClass;
+    if (null != additionalConfigs) {
+      additionalConfigs += ";" + driverConfigs;
+    } else {
+      additionalConfigs = driverConfigs;
+    }
+
+    return startJavaProcess(
+        RunInfo.ProcessType.PT_DRIVER,
+        mainClass,
+        additonalClassPaths,
+        additionalConfigs,
+        "",
+        workDir,
+        ip,
+        redisAddress,
+        true,
+        false,
+        null
+    );
+  }
+
+  private Process startJavaProcess(RunInfo.ProcessType pt, String mainClass,
+                                   String additonalClassPaths, String additionalConfigs,
+                                   String additionalJvmArgs, String workDir, String ip, String
+                                       redisAddr, boolean redirect,
+                                   boolean cleanup, String agentlibAddr) {
+
+    String cmd = buildJavaProcessCommand(pt, mainClass, additonalClassPaths, additionalConfigs,
+        additionalJvmArgs, workDir, ip, redisAddr, agentlibAddr);
+    return startProcess(cmd.split(" "), null, pt, workDir, redisAddr, ip, redirect, cleanup);
   }
 
   private String buildJavaProcessCommand(
@@ -137,44 +184,89 @@ public class RunManager {
     return cmd;
   }
 
-  private Process startJavaProcess(RunInfo.ProcessType pt, String mainClass,
-      String additonalClassPaths, String additionalConfigs,
-      String additionalJvmArgs, String workDir, String ip, String redisAddr, boolean redirect,
-      boolean cleanup, String agentlibAddr) {
-
-    String cmd = buildJavaProcessCommand(pt, mainClass, additonalClassPaths, additionalConfigs,
-        additionalJvmArgs, workDir, ip, redisAddr, agentlibAddr);
-    return startProcess(cmd.split(" "), null, pt, workDir, redisAddr, ip, redirect, cleanup);
-  }
-
-  public Process startDriver(String mainClass, String redisAddress, UniqueID driverId,
-      String workDir, String ip,
-      String driverClass, String additonalClassPaths, String additionalConfigs) {
-    String driverConfigs =
-        "ray.java.start.driver_id=" + driverId + ";ray.java.start.driver_class=" + driverClass;
-    if (null != additionalConfigs) {
-      additionalConfigs += ";" + driverConfigs;
-    } else {
-      additionalConfigs = driverConfigs;
+  private Process startProcess(String[] cmd, Map<String, String> env, RunInfo.ProcessType type,
+                               String workDir,
+                               String redisAddress, String ip, boolean redirect,
+                               boolean cleanup) {
+    File wdir = new File(workDir);
+    if (!wdir.exists()) {
+      wdir.mkdirs();
     }
 
-    return startJavaProcess(
-        RunInfo.ProcessType.PT_DRIVER,
-        mainClass,
-        additonalClassPaths,
-        additionalConfigs,
-        "",
-        workDir,
-        ip,
-        redisAddress,
-        true,
-        false,
-        null
-    );
+    int processIndex = runInfo.allProcesses.get(type.ordinal()).size();
+    ProcessBuilder builder;
+    List<String> newCmd = Arrays.stream(cmd).filter(s -> s.length() > 0)
+        .collect(Collectors.toList());
+    builder = new ProcessBuilder(newCmd);
+    builder.directory(new File(workDir));
+    if (redirect) {
+      String stdoutFile;
+      String stderrFile;
+      stdoutFile = workDir + "/" + processIndex + ".out.txt";
+      stderrFile = workDir + "/" + processIndex + ".err.txt";
+      builder.redirectOutput(new File(stdoutFile));
+      builder.redirectError(new File(stderrFile));
+      List<String> stdFileList = new ArrayList<>();
+      stdFileList.add(stdoutFile);
+      stdFileList.add(stderrFile);
+      record_log_files_in_redis(redisAddress, ip, stdFileList);
+      procStdoutFileName = stdoutFile;
+      procStderrFileName = stderrFile;
+    }
+
+    if (env != null && !env.isEmpty()) {
+      builder.environment().putAll(env);
+    }
+
+    Process p = null;
+    try {
+      p = builder.start();
+    } catch (IOException e) {
+      RayLog.core
+          .error("Start process " + Arrays.toString(cmd).replace(',', ' ') + " in working dir '"
+                  + workDir + "' failed",
+              e);
+      return null;
+    }
+
+    RayLog.core.info(
+        "Start process " + p.hashCode() + " OK, cmd = " + Arrays.toString(cmd).replace(',', ' ')
+            + ", working dir = '" + workDir + "'" + (redirect ? ", redirect" : ", no redirect"));
+
+    if (cleanup) {
+      runInfo.toBeCleanedProcesses.get(type.ordinal()).add(p);
+    }
+
+    ProcessInfo processInfo = new ProcessInfo();
+    processInfo.cmd = cmd;
+    processInfo.type = type;
+    processInfo.workDir = workDir;
+    processInfo.redisAddress = redisAddress;
+    processInfo.ip = ip;
+    processInfo.redirect = redirect;
+    processInfo.cleanup = cleanup;
+    processInfo.process = p;
+    runInfo.allProcesses.get(type.ordinal()).add(processInfo);
+
+    return p;
+  }
+
+  private void record_log_files_in_redis(String redisAddress, String nodeIpAddress,
+                                         List<String> logfiles) {
+    if (redisAddress != null && !redisAddress.isEmpty() && nodeIpAddress != null
+        && !nodeIpAddress.isEmpty() && logfiles.size() > 0) {
+      String[] ipPort = redisAddress.split(":");
+      Jedis jedisClient = new Jedis(ipPort[0], Integer.parseInt(ipPort[1]));
+      String logFileListKey = String.format("LOG_FILENAMES:{%s}", nodeIpAddress);
+      for (String logfile : logfiles) {
+        jedisClient.rpush(logFileListKey, logfile);
+      }
+      jedisClient.close();
+    }
   }
 
   public void startRayProcesses() {
-    Jedis _redis_client = null;
+    Jedis redisClient = null;
 
     RayLog.core.info("start ray processes @ " + params.node_ip_address + " ...");
 
@@ -185,14 +277,14 @@ public class RunManager {
       params.redis_address = primaryShards.get(0);
 
       String[] args = params.redis_address.split(":");
-      _redis_client = new Jedis(args[0], Integer.parseInt(args[1]));
+      redisClient = new Jedis(args[0], Integer.parseInt(args[1]));
 
       // Register the number of Redis shards in the primary shard, so that clients
       // know how many redis shards to expect under RedisShards.
-      _redis_client.set("NumRedisShards", Integer.toString(params.num_redis_shards));
+      redisClient.set("NumRedisShards", Integer.toString(params.num_redis_shards));
     } else {
       String[] args = params.redis_address.split(":");
-      _redis_client = new Jedis(args[0], Integer.parseInt(args[1]));
+      redisClient = new Jedis(args[0], Integer.parseInt(args[1]));
     }
     runInfo.redisAddress = params.redis_address;
 
@@ -206,10 +298,10 @@ public class RunManager {
       // Store redis shard information in the primary redis shard.
       for (int i = 0; i < runInfo.redisShards.size(); i++) {
         String addr = runInfo.redisShards.get(i);
-        _redis_client.rpush("RedisShards", addr);
+        redisClient.rpush("RedisShards", addr);
       }
     }
-    _redis_client.close();
+    redisClient.close();
 
     // start global scheduler
     if (params.include_global_scheduler) {
@@ -236,12 +328,12 @@ public class RunManager {
       assert (params.num_gpus.length == params.num_local_schedulers);
     }
 
-    int[] local_num_workers = new int[params.num_local_schedulers];
+    int[] localNumWorkers = new int[params.num_local_schedulers];
     if (params.num_workers == 0) {
-      System.arraycopy(params.num_cpus, 0, local_num_workers, 0, params.num_local_schedulers);
+      System.arraycopy(params.num_cpus, 0, localNumWorkers, 0, params.num_local_schedulers);
     } else {
       for (int i = 0; i < params.num_local_schedulers; i++) {
-        local_num_workers[i] = params.num_workers;
+        localNumWorkers[i] = params.num_workers;
       }
     }
 
@@ -257,7 +349,7 @@ public class RunManager {
           params.working_directory + "/storeManager", params.redis_address,
           params.node_ip_address, params.redirect, params.cleanup);
 
-      runInfo.local_stores.add(info);
+      runInfo.localStores.add(info);
     }
 
     // start local scheduler
@@ -265,11 +357,11 @@ public class RunManager {
       int workerCount = 0;
 
       if (params.start_workers_from_local_scheduler) {
-        workerCount = local_num_workers[i];
-        local_num_workers[i] = 0;
+        workerCount = localNumWorkers[i];
+        localNumWorkers[i] = 0;
       }
 
-      startLocalScheduler(i, runInfo.local_stores.get(i),
+      startLocalScheduler(i, runInfo.localStores.get(i),
           params.num_cpus[i], params.num_gpus[i], workerCount,
           params.working_directory + "/localScheduler", params.redis_address,
           params.node_ip_address, params.redirect, params.cleanup);
@@ -277,13 +369,13 @@ public class RunManager {
 
     // start local workers
     for (int i = 0; i < params.num_local_schedulers; i++) {
-      runInfo.local_stores.get(i).workerCount = local_num_workers[i];
-      for (int j = 0; j < local_num_workers[i]; j++) {
-        startWorker(runInfo.local_stores.get(i).storeName,
-                runInfo.local_stores.get(i).managerName, runInfo.local_stores.get(i).schedulerName,
-                params.working_directory + "/worker" + i + "." + j, params.redis_address,
-                params.node_ip_address, UniqueID.nil, "",
-                params.redirect, params.cleanup);
+      runInfo.localStores.get(i).workerCount = localNumWorkers[i];
+      for (int j = 0; j < localNumWorkers[i]; j++) {
+        startWorker(runInfo.localStores.get(i).storeName,
+            runInfo.localStores.get(i).managerName, runInfo.localStores.get(i).schedulerName,
+            params.working_directory + "/worker" + i + "." + j, params.redis_address,
+            params.node_ip_address, UniqueID.nil, "",
+            params.redirect, params.cleanup);
       }
     }
 
@@ -302,10 +394,11 @@ public class RunManager {
       }
 
       ProcessInfo p;
-      for (int j = 0; j < runInfo.allProcesses.get(i).size();) {
+      for (int j = 0; j < runInfo.allProcesses.get(i).size(); ) {
         p = runInfo.allProcesses.get(i).get(j);
         if (!p.process.isAlive()) {
-          RayLog.core.error("Process " + p.hashCode() + " is not alive!" + " Process Type " + types[i].name());
+          RayLog.core.error("Process " + p.hashCode() + " is not alive!" + " Process Type "
+              + types[i].name());
           runInfo.deadProcess.add(p);
           runInfo.allProcesses.get(i).remove(j);
         } else {
@@ -378,96 +471,6 @@ public class RunManager {
     }
   }
 
-  private void record_log_files_in_redis(String redis_address, String node_ip_address,
-      List<String> logfiles) {
-    if (redis_address != null && !redis_address.isEmpty() && node_ip_address != null
-        && !node_ip_address.isEmpty() && logfiles.size() > 0) {
-      String[] ip_port = redis_address.split(":");
-      Jedis jedis_client = new Jedis(ip_port[0], Integer.parseInt(ip_port[1]));
-      String log_file_list_key = String.format("LOG_FILENAMES:{%s}", node_ip_address);
-      for (String logfile : logfiles) {
-        jedis_client.rpush(log_file_list_key, logfile);
-      }
-      jedis_client.close();
-    }
-  }
-
-  private Process startProcess(String[] cmd, Map<String, String> env, RunInfo.ProcessType type,
-      String workDir,
-      String redisAddress, String ip, boolean redirect,
-      boolean cleanup) {
-    File wdir = new File(workDir);
-    if (!wdir.exists()) {
-      wdir.mkdirs();
-    }
-
-    int processIndex = runInfo.allProcesses.get(type.ordinal()).size();
-    ProcessBuilder builder;
-    List<String> newCmd = Arrays.stream(cmd).filter(s -> s.length() > 0)
-        .collect(Collectors.toList());
-    builder = new ProcessBuilder(newCmd);
-    builder.directory(new File(workDir));
-    if (redirect) {
-      String stdout_file;
-      String stderr_file;
-      stdout_file = workDir + "/" + processIndex + ".out.txt";
-      stderr_file = workDir + "/" + processIndex + ".err.txt";
-      builder.redirectOutput(new File(stdout_file));
-      builder.redirectError(new File(stderr_file));
-      List<String> std_file_list = new ArrayList<>();
-      std_file_list.add(stdout_file);
-      std_file_list.add(stderr_file);
-      record_log_files_in_redis(redisAddress, ip, std_file_list);
-      procStdoutFileName = stdout_file;
-      procStderrFileName = stderr_file;
-    }
-
-    if (env != null && !env.isEmpty()) {
-      builder.environment().putAll(env);
-    }
-
-    Process p = null;
-    try {
-      p = builder.start();
-    } catch (IOException e) {
-      RayLog.core
-          .error("Start process " + Arrays.toString(cmd).replace(',', ' ') + " in working dir '"
-                  + workDir + "' failed",
-              e);
-      return null;
-    }
-
-    RayLog.core.info(
-        "Start process " + p.hashCode() + " OK, cmd = " + Arrays.toString(cmd).replace(',', ' ')
-            + ", working dir = '" + workDir + "'" + (redirect ? ", redirect" : ", no redirect"));
-
-    if (cleanup) {
-      runInfo.toBeCleanedProcesses.get(type.ordinal()).add(p);
-    }
-
-    ProcessInfo processInfo = new ProcessInfo();
-    processInfo.cmd = cmd;
-    processInfo.type = type;
-    processInfo.workDir = workDir;
-    processInfo.redisAddress = redisAddress;
-    processInfo.ip = ip;
-    processInfo.redirect = redirect;
-    processInfo.cleanup = cleanup;
-    processInfo.process = p;
-    runInfo.allProcesses.get(type.ordinal()).add(processInfo);
-
-    return p;
-  }
-
-  private static boolean killProcess(Process p) {
-    if (p.isAlive()) {
-      p.destroyForcibly();
-      return true;
-    } else {
-      return false;
-    }
-  }
-
   //
   // start a redis server
   //
@@ -481,7 +484,7 @@ public class RunManager {
   // @return primary redis shard address
   //
   private List<String> startRedis(String workDir, String ip, int port, int numOfShards,
-      boolean redirect, boolean cleanup) {
+                                  boolean redirect, boolean cleanup) {
     ArrayList<String> shards = new ArrayList<>();
     String addr;
     for (int i = 0; i < numOfShards; i++) {
@@ -509,7 +512,7 @@ public class RunManager {
   // @return redis server address
   //
   private String startRedisInstance(String workDir, String ip, int port,
-      boolean redirect, boolean cleanup) {
+                                    boolean redirect, boolean cleanup) {
     String redisFilePath = paths.redis_server;
     String redisModule = paths.redis_module;
 
@@ -531,6 +534,7 @@ public class RunManager {
     try {
       TimeUnit.MILLISECONDS.sleep(300);
     } catch (InterruptedException e) {
+      e.printStackTrace();
     }
 
     Jedis client = new Jedis(params.node_ip_address, port);
@@ -546,7 +550,7 @@ public class RunManager {
   }
 
   private void startGlobalScheduler(String workDir, String redisAddress, String ip,
-      boolean redirect, boolean cleanup) {
+                                    boolean redirect, boolean cleanup) {
     String filePath = paths.global_scheduler;
     String cmd = filePath + " -r " + redisAddress + " -h " + ip;
 
@@ -592,9 +596,9 @@ public class RunManager {
    * start
    */
   private void startLocalScheduler(int index, AddressInfo info, int numCpus,
-      int numGpus, int numWorkers, String workDir,
-      String redisAddress, String ip, boolean redirect,
-      boolean cleanup) {
+                                   int numGpus, int numWorkers, String workDir,
+                                   String redisAddress, String ip, boolean redirect,
+                                   boolean cleanup) {
     //if (numCpus <= 0)
     //    numCpus = Runtime.getRuntime().availableProcessors();
     if (numGpus <= 0) {
@@ -606,7 +610,7 @@ public class RunManager {
     String name = "/tmp/scheduler" + rpcPort;
     String rpcAddr = "";
     String cmd = filePath + " -s " + name + " -p " + info.storeName + " -h " + ip + " -n "
-        + numWorkers + " -c " + "CPU," + INT16_MAX +",GPU,0";
+        + numWorkers + " -c " + "CPU," + INT16_MAX + ",GPU,0";
 
     assert (info.managerName.length() > 0);
     assert (info.storeName.length() > 0);
@@ -616,7 +620,7 @@ public class RunManager {
 
     String workerCmd = null;
     workerCmd = buildWorkerCommand(true, info.storeName, info.managerName, name, UniqueID.nil,
-            "", workDir + rpcPort, ip, redisAddress);
+        "", workDir + rpcPort, ip, redisAddress);
     cmd += " -w \"" + workerCmd + "\"";
 
     if (redisAddress.length() > 0) {
@@ -627,7 +631,7 @@ public class RunManager {
     }
 
     Map<String, String> env = null;
-    String[] cmds = StringUtil.Split(cmd, " ", "\"", "\"").toArray(new String[0]);
+    String[] cmds = StringUtil.split(cmd, " ", "\"", "\"").toArray(new String[0]);
     Process p = startProcess(cmds, env, RunInfo.ProcessType.PT_LOCAL_SCHEDULER,
         workDir + rpcPort, redisAddress, ip, redirect, cleanup);
 
@@ -635,6 +639,7 @@ public class RunManager {
       try {
         TimeUnit.MILLISECONDS.sleep(100);
       } catch (InterruptedException e) {
+        e.printStackTrace();
       }
     }
 
@@ -649,8 +654,9 @@ public class RunManager {
   }
 
   private String buildWorkerCommand(boolean isFromLocalScheduler, String storeName,
-      String storeManagerName, String localSchedulerName,
-      UniqueID actorId, String actorClass, String workDir, String ip, String redisAddress) {
+                                    String storeManagerName, String localSchedulerName,
+                                    UniqueID actorId, String actorClass, String workDir, String
+                                        ip, String redisAddress) {
     String workerConfigs = "ray.java.start.object_store_name=" + storeName
         + ";ray.java.start.object_store_manager_name=" + storeManagerName
         + ";ray.java.start.worker_mode=WORKER"
@@ -680,9 +686,9 @@ public class RunManager {
   }
 
   private void startObjectStore(int index, AddressInfo info, String workDir, String redisAddress,
-      String ip, boolean redirect, boolean cleanup) {
-    int occupiedMemoryMB = params.object_store_occupied_memory_MB;
-    long memoryBytes = occupiedMemoryMB * 1000000;
+                                String ip, boolean redirect, boolean cleanup) {
+    int occupiedMemoryMb = params.object_store_occupied_memory_MB;
+    long memoryBytes = occupiedMemoryMb * 1000000;
     String filePath = paths.store;
     int rpcPort = params.object_store_rpc_port + index;
     String name = "/tmp/plasma_store" + rpcPort;
@@ -697,6 +703,7 @@ public class RunManager {
       try {
         TimeUnit.MILLISECONDS.sleep(100);
       } catch (InterruptedException e) {
+        e.printStackTrace();
       }
     }
 
@@ -711,8 +718,8 @@ public class RunManager {
   }
 
   private AddressInfo startObjectManager(int index, AddressInfo info, String workDir,
-      String redisAddress, String ip, boolean redirect,
-      boolean cleanup) {
+                                         String redisAddress, String ip, boolean redirect,
+                                         boolean cleanup) {
     String filePath = paths.store_manager;
     int rpcPort = params.object_store_manager_rpc_port + index;
     String name = "/tmp/plasma_manager" + rpcPort;
@@ -730,6 +737,7 @@ public class RunManager {
       try {
         TimeUnit.MILLISECONDS.sleep(100);
       } catch (InterruptedException e) {
+        e.printStackTrace();
       }
     }
 
@@ -744,9 +752,9 @@ public class RunManager {
   }
 
   public void startWorker(String storeName, String storeManagerName,
-      String localSchedulerName, String workDir, String redisAddress,
-      String ip, UniqueID actorId, String actorClass,
-      boolean redirect, boolean cleanup) {
+                          String localSchedulerName, String workDir, String redisAddress,
+                          String ip, UniqueID actorId, String actorClass,
+                          boolean redirect, boolean cleanup) {
     String cmd = buildWorkerCommand(false, storeName, storeManagerName, localSchedulerName, actorId,
         actorClass, workDir, ip, redisAddress);
     startProcess(cmd.split(" "), null, RunInfo.ProcessType.PT_WORKER, workDir, redisAddress, ip,

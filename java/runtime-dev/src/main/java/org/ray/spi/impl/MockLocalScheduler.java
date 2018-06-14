@@ -15,26 +15,38 @@ import org.ray.spi.model.TaskSpec;
  */
 public class MockLocalScheduler implements LocalSchedulerLink {
 
-  private final Map<UniqueID, Map<UniqueID, TaskSpec>> waitTasks_ = new ConcurrentHashMap<>();
-  private final MockObjectStore store_;
-  private LocalFunctionManager functions_ = null;
+  private final Map<UniqueID, Map<UniqueID, TaskSpec>> waitTasks = new ConcurrentHashMap<>();
+  private final MockObjectStore store;
+  private LocalFunctionManager functions = null;
 
   public MockLocalScheduler(MockObjectStore store) {
-    store_ = store;
+    this.store = store;
     store.registerScheduler(this);
   }
 
   public void setLocalFunctionManager(LocalFunctionManager mgr) {
-    functions_ = mgr;
+    functions = mgr;
   }
 
   public void onObjectPut(UniqueID id) {
-    Map<UniqueID, TaskSpec> bucket = waitTasks_.get(id);
+    Map<UniqueID, TaskSpec> bucket = waitTasks.get(id);
     if (bucket != null) {
-      waitTasks_.remove(id);
+      waitTasks.remove(id);
       for (TaskSpec ts : bucket.values()) {
         submitTask(ts);
       }
+    }
+  }
+
+  @Override
+  public void submitTask(TaskSpec task) {
+    UniqueID id = isTaskReady(task);
+    if (id == null) {
+      Worker.execute(task, functions);
+    } else {
+      Map<UniqueID, TaskSpec> bucket = waitTasks
+          .computeIfAbsent(id, id_ -> new ConcurrentHashMap<>());
+      bucket.put(id, task);
     }
   }
 
@@ -42,25 +54,13 @@ public class MockLocalScheduler implements LocalSchedulerLink {
     for (FunctionArg arg : spec.args) {
       if (arg.ids != null) {
         for (UniqueID id : arg.ids) {
-          if (!store_.isObjectReady(id)) {
+          if (!store.isObjectReady(id)) {
             return id;
           }
         }
       }
     }
     return null;
-  }
-
-  @Override
-  public void submitTask(TaskSpec task) {
-    UniqueID id = isTaskReady(task);
-    if (id == null) {
-      Worker.execute(task, functions_);
-    } else {
-      Map<UniqueID, TaskSpec> bucket = waitTasks_
-          .computeIfAbsent(id, id_ -> new ConcurrentHashMap<>());
-      bucket.put(id, task);
-    }
   }
 
   @Override

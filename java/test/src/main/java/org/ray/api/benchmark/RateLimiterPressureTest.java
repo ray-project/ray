@@ -11,23 +11,10 @@ import org.ray.api.test.MyRunner;
 @RunWith(MyRunner.class)
 public class RateLimiterPressureTest extends RayBenchmarkTest {
 
-  private static final long serialVersionUID = 6616958120966144235L;
-
   public static final int clientNum = 2;
-
   public static final int totalQps = 2;
-
   public static final int duration = 10;
-
-  @Test
-  public void Test() {
-    PressureTestParameter pressureTestParameter = new PressureTestParameter();
-    pressureTestParameter.setClientNum(clientNum);
-    pressureTestParameter.setTotalQps(totalQps);
-    pressureTestParameter.setDuration(duration);
-    pressureTestParameter.setRayBenchmarkTest(this);
-    super.rateLimiterPressureTest(pressureTestParameter);
-  }
+  private static final long serialVersionUID = 6616958120966144235L;
 
   @RayRemote
   public static RemoteResult<Integer> currentTime() {
@@ -37,14 +24,24 @@ public class RateLimiterPressureTest extends RayBenchmarkTest {
     return remoteResult;
   }
 
-  @Override
-  public boolean checkResult(Object o) {
-    return (int) o == 0;
+  @Test
+  public void test() {
+    PressureTestParameter pressureTestParameter = new PressureTestParameter();
+    pressureTestParameter.setClientNum(clientNum);
+    pressureTestParameter.setTotalQps(totalQps);
+    pressureTestParameter.setDuration(duration);
+    pressureTestParameter.setRayBenchmarkTest(this);
+    super.rateLimiterPressureTest(pressureTestParameter);
   }
 
   @Override
   public RayObject<RemoteResult<Integer>> rayCall(RayActor rayActor) {
 
     return Ray.call(RateLimiterPressureTest::currentTime);
+  }
+
+  @Override
+  public boolean checkResult(Object o) {
+    return (int) o == 0;
   }
 }

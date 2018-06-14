@@ -147,9 +147,11 @@ build
 
 # Vscode
 .vscode/
-java/**/.settings
-java/**/.classpath
-java/**/.project
+
+*.iml
 java/**/target
 java/**/bin
 java/**/lib
+java/**/.settings
+java/**/.classpath
+java/**/.project

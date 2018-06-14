@@ -97,6 +97,18 @@ if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
   add_custom_target(copy_ray ALL
       DEPENDS ${build_ray_file_list})
 
+  # Make sure that the Python extensions are built before copying the files.
+  if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
+    get_local_scheduler_library("python" LOCAL_SCHEDULER_LIBRARY_LANG)
+    add_dependencies(copy_ray ${LOCAL_SCHEDULER_LIBRARY_LANG})
+  endif()
+  if ("${CMAKE_RAY_LANG_JAVA}" STREQUAL "YES")
+    get_local_scheduler_library("java" LOCAL_SCHEDULER_LIBRARY_LANG)
+    add_dependencies(copy_ray ${LOCAL_SCHEDULER_LIBRARY_LANG})
+  endif()
+
+  add_dependencies(copy_ray ray_redis_module)
+
   foreach(file ${ray_file_list})
   add_custom_command(TARGET copy_ray POST_BUILD
                     COMMAND ${CMAKE_COMMAND} -E

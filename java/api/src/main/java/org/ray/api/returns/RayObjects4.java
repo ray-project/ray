@@ -11,7 +11,7 @@ public class RayObjects4<R0, R1, R2, R3> extends RayObjects {
     super(ids);
   }
 
-  public RayObjects4(RayObject objs[]) {
+  public RayObjects4(RayObject[] objs) {
     super(objs);
   }
 

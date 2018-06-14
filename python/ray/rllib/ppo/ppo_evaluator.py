@@ -16,8 +16,8 @@ from ray.rllib.optimizers.multi_gpu_impl import LocalSyncParallelOptimizer
 from ray.rllib.models import ModelCatalog
 from ray.rllib.utils.sampler import SyncSampler
 from ray.rllib.utils.filter import get_filter, MeanStdFilter
-from ray.rllib.utils.process_rollout import process_rollout
-from ray.rllib.ppo.loss import ProximalPolicyLoss
+from ray.rllib.utils.process_rollout import compute_advantages
+from ray.rllib.ppo.loss import ProximalPolicyGraph
 
 
 # TODO(rliaw): Move this onto LocalMultiGPUOptimizer
@@ -86,7 +86,7 @@ class PPOEvaluator(PolicyEvaluator):
             self.per_device_batch_size = int(self.batch_size / len(devices))
 
         def build_loss(obs, vtargets, advs, acts, plog, pvf_preds):
-            return ProximalPolicyLoss(
+            return ProximalPolicyGraph(
                 self.env.observation_space, self.env.action_space,
                 obs, vtargets, advs, acts, plog, pvf_preds, self.logit_dim,
                 self.kl_coeff, self.distribution_class, self.config,
@@ -190,8 +190,9 @@ class PPOEvaluator(PolicyEvaluator):
 
         while num_steps_so_far < self.config["min_steps_per_task"]:
             rollout = self.sampler.get_data()
-            samples = process_rollout(
-                rollout, self.rew_filter, self.config["gamma"],
+            last_r = 0.0  # note: not needed since we don't truncate rollouts
+            samples = compute_advantages(
+                rollout, last_r, self.config["gamma"],
                 self.config["lambda"], use_gae=self.config["use_gae"])
             num_steps_so_far += samples.count
             all_samples.append(samples)

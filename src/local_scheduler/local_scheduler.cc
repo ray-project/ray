@@ -1163,10 +1163,10 @@ void process_message(event_loop *loop,
       handle_actor_worker_available(state, state->algorithm_state, worker);
     }
   } break;
-  case static_cast<int64_t>(MessageType::ReconstructObject): {
-    auto message =
-        flatbuffers::GetRoot<ray::local_scheduler::protocol::ReconstructObject>(
-            input);
+  case static_cast<int64_t>(MessageType::ReconstructObjects): {
+    auto message = flatbuffers::GetRoot<
+        ray::local_scheduler::protocol::ReconstructObjects>(input);
+    RAY_CHECK(!message->fetch_only());
     if (worker->task_in_progress != NULL && !worker->is_blocked) {
       /* If the worker was executing a task (i.e. non-driver) and it wasn't
        * already blocked on an object that's not locally available, update its
@@ -1190,7 +1190,9 @@ void process_message(event_loop *loop,
       }
       print_worker_info("Reconstructing", state->algorithm_state);
     }
-    reconstruct_object(state, from_flatbuf(*message->object_id()));
+    RAY_CHECK(message->object_ids()->size() == 1);
+    ObjectID object_id = from_flatbuf(*message->object_ids()->Get(0));
+    reconstruct_object(state, object_id);
   } break;
   case static_cast<int64_t>(CommonMessageType::DISCONNECT_CLIENT): {
     RAY_LOG(DEBUG) << "Disconnecting client on fd " << client_sock;

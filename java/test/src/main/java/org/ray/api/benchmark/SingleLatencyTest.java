@@ -11,20 +11,19 @@ import org.ray.api.test.MyRunner;
 @RunWith(MyRunner.class)
 public class SingleLatencyTest extends RayBenchmarkTest {
 
-  private static final long serialVersionUID = 3559601273941694468L;
-
   public static final int totalNum = 10;
-
-  @Test
-  public void Test() {
-    super.singleLatencyTest(totalNum, null);
-  }
+  private static final long serialVersionUID = 3559601273941694468L;
 
   @RayRemote
   public static RemoteResult<Integer> doFunc() {
     RemoteResult<Integer> remoteResult = new RemoteResult<>();
     remoteResult.setResult(1);
     return remoteResult;
+  }
+
+  @Test
+  public void test() {
+    super.singleLatencyTest(totalNum, null);
   }
 
   @Override

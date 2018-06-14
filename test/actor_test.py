@@ -11,6 +11,7 @@ import time
 import unittest
 
 import ray
+import ray.ray_constants as ray_constants
 import ray.test.test_utils
 
 
@@ -377,9 +378,6 @@ class ActorMethods(unittest.TestCase):
         # called.
         self.assertEqual(ray.get(Actor.remote().method.remote()), 1)
 
-    @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
     def testActorDeletionWithGPUs(self):
         ray.init(num_workers=0, num_gpus=1)
 
@@ -734,9 +732,6 @@ class ActorsOnMultipleNodes(unittest.TestCase):
     def tearDown(self):
         ray.worker.cleanup()
 
-    @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
     def testActorsOnNodesWithNoCPUs(self):
         ray.init(num_cpus=0)
 
@@ -798,6 +793,9 @@ class ActorsWithGPUs(unittest.TestCase):
 
     @unittest.skipIf(
         os.environ.get('RAY_USE_NEW_GCS', False), "Crashing with new GCS API.")
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") == "1",
+        "This test does not work with xray yet.")
     def testActorGPUs(self):
         num_local_schedulers = 3
         num_gpus_per_scheduler = 4
@@ -842,6 +840,9 @@ class ActorsWithGPUs(unittest.TestCase):
         ready_ids, _ = ray.wait([a.get_location_and_ids.remote()], timeout=10)
         self.assertEqual(ready_ids, [])
 
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") == "1",
+        "This test does not work with xray yet.")
     def testActorMultipleGPUs(self):
         num_local_schedulers = 3
         num_gpus_per_scheduler = 5
@@ -915,6 +916,9 @@ class ActorsWithGPUs(unittest.TestCase):
         ready_ids, _ = ray.wait([a.get_location_and_ids.remote()], timeout=10)
         self.assertEqual(ready_ids, [])
 
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") == "1",
+        "This test does not work with xray yet.")
     def testActorDifferentNumbersOfGPUs(self):
         # Test that we can create actors on two nodes that have different
         # numbers of GPUs.
@@ -958,6 +962,9 @@ class ActorsWithGPUs(unittest.TestCase):
         ready_ids, _ = ray.wait([a.get_location_and_ids.remote()], timeout=10)
         self.assertEqual(ready_ids, [])
 
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") == "1",
+        "This test does not work with xray yet.")
     def testActorMultipleGPUsFromMultipleTasks(self):
         num_local_schedulers = 10
         num_gpus_per_scheduler = 10
@@ -1005,6 +1012,9 @@ class ActorsWithGPUs(unittest.TestCase):
         self.assertEqual(ready_ids, [])
 
     @unittest.skipIf(sys.version_info < (3, 0), "This test requires Python 3.")
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") == "1",
+        "This test does not work with xray yet.")
     def testActorsAndTasksWithGPUs(self):
         num_local_schedulers = 3
         num_gpus_per_scheduler = 6
@@ -1152,9 +1162,6 @@ class ActorsWithGPUs(unittest.TestCase):
         ready_ids, remaining_ids = ray.wait(results, timeout=1000)
         self.assertEqual(len(ready_ids), 0)
 
-    @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
     def testActorsAndTasksWithGPUsVersionTwo(self):
         # Create tasks and actors that both use GPUs and make sure that they
         # are given different GPUs
@@ -1227,9 +1234,6 @@ class ActorsWithGPUs(unittest.TestCase):
             self.assertLess(interval1[1], interval2[0])
             self.assertLess(interval2[0], interval2[1])
 
-    @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
     def testBlockingActorTask(self):
         ray.init(num_cpus=1, num_gpus=1)
 
@@ -1282,6 +1286,9 @@ class ActorsWithGPUs(unittest.TestCase):
         self.assertEqual(remaining_ids, [x_id])
 
 
+@unittest.skipIf(
+    os.environ.get("RAY_USE_XRAY") == "1",
+    "This test does not work with xray yet.")
 class ActorReconstruction(unittest.TestCase):
     def tearDown(self):
         ray.worker.cleanup()
@@ -1569,7 +1576,8 @@ class ActorReconstruction(unittest.TestCase):
         errors = ray.error_info()
         self.assertLess(0, len(errors))
         for error in errors:
-            self.assertEqual(error[b"type"], b"checkpoint")
+            self.assertEqual(error["type"],
+                             ray_constants.CHECKPOINT_PUSH_ERROR)
 
     @unittest.skipIf(
         os.environ.get('RAY_USE_NEW_GCS', False), "Hanging with new GCS API.")
@@ -1599,7 +1607,8 @@ class ActorReconstruction(unittest.TestCase):
         errors = ray.error_info()
         self.assertEqual(len(errors), 1)
         for error in errors:
-            self.assertEqual(error[b"type"], b"checkpoint")
+            self.assertEqual(error["type"],
+                             ray_constants.CHECKPOINT_PUSH_ERROR)
 
     @unittest.skip("Fork/join consistency not yet implemented.")
     def testDistributedHandle(self):
@@ -2035,9 +2044,6 @@ class ActorPlacementAndResources(unittest.TestCase):
         for location in locations2:
             self.assertNotEqual(location, local_plasma)
 
-    @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
     def testCreatingMoreActorsThanResources(self):
         ray.init(
             num_workers=0,

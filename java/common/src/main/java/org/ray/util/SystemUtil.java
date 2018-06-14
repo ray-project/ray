@@ -6,9 +6,12 @@ import java.util.concurrent.locks.ReentrantLock;
 import org.ray.util.logger.RayLog;
 
 /**
- * some utilities for system process
+ * some utilities for system process.
  */
 public class SystemUtil {
+
+  static final ReentrantLock pidlock = new ReentrantLock();
+  static Integer pid;
 
   public static String userHome() {
     return System.getProperty("user.home");
@@ -35,9 +38,6 @@ public class SystemUtil {
       return false;
     }
   }
-
-  static Integer pid;
-  static final ReentrantLock pidlock = new ReentrantLock();
 
   public static int pid() {
     if (pid == null) {

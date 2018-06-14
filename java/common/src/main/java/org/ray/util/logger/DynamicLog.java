@@ -7,7 +7,7 @@ import org.apache.log4j.Logger;
 import org.ray.util.CommonUtil;
 
 /**
- * Dynamic logger without properties configuration file
+ * Dynamic logger without properties configuration file.
  */
 public class DynamicLog {
 
@@ -16,12 +16,11 @@ public class DynamicLog {
   private static LogLevel logLevel = LogLevel.DEBUG;
 
   private static Boolean logLevelSetFlag = false;
+  private static Map<String/*Samplekey*/, SampleStatis> sampleStatis = new ConcurrentHashMap<>();
+  private final String key;
 
-  /**
-   * set the context prefix for all logs
-   */
-  public static void setContextPrefix(String prefix) {
-    PREFIX.set(prefix);
+  private DynamicLog(String key) {
+    this.key = key;
   }
 
   public static String getContextPrefix() {
@@ -29,7 +28,14 @@ public class DynamicLog {
   }
 
   /**
-   * set the level for all logs
+   * set the context prefix for all logs.
+   */
+  public static void setContextPrefix(String prefix) {
+    PREFIX.set(prefix);
+  }
+
+  /**
+   * set the level for all logs.
    */
   public static void setLogLevel(String level) {
     if (logLevelSetFlag) { /* one shot, avoid the risk of multithreading */
@@ -39,13 +45,17 @@ public class DynamicLog {
     logLevel = LogLevel.of(level);
   }
 
-  private static LogLevel getenumLogLevel() {
-    return logLevel;
+  public static DynamicLog registerName(String name) {
+    return DynamicLogNameRegister.registerName(name);
+  }
+
+  public static Collection<DynamicLog> values() {
+    return DynamicLogNameRegister.names.values();
   }
 
   @Override
-  public String toString() {
-    return this.getKey();
+  public int hashCode() {
+    return this.toString().hashCode();
   }
 
   @Override
@@ -54,12 +64,31 @@ public class DynamicLog {
   }
 
   @Override
-  public int hashCode() {
-    return this.toString().hashCode();
+  public String toString() {
+    return this.getKey();
+  }
+
+  public String getKey() {
+    return this.key;
+  }
+
+  public void debug(String log) {
+    if (!getenumLogLevel().needLog(LogLevel.DEBUG)) {
+      return;
+    }
+    log = wrap("debug", log);
+    Logger[] loggers = DynamicLogManager.getLogs(this);
+    for (Logger logger : loggers) {
+      logger.debug(log);
+    }
+  }
+
+  private static LogLevel getenumLogLevel() {
+    return logLevel;
   }
 
   private String wrap(String level, String log) {
-    StackTraceElement stes[] = Thread.currentThread().getStackTrace();
+    StackTraceElement[] stes = Thread.currentThread().getStackTrace();
     String ret = "[" + level + "]" + "[" + stes[3].getFileName() + ":" + stes[3].getLineNumber()
         + "] - " + (log == null ? "" : log);
     String prefix = PREFIX.get();
@@ -69,23 +98,12 @@ public class DynamicLog {
     return ret;
   }
 
-  public void debug(String log) {
-    if (!getenumLogLevel().needLog(LogLevel.DEBUG)) {
-      return;
-    }
-    log = wrap("debug", log);
-    Logger loggers[] = DynamicLogManager.getLogs(this);
-    for (Logger logger : loggers) {
-      logger.debug(log);
-    }
-  }
-
   public void info(String log) {
     if (!getenumLogLevel().needLog(LogLevel.INFO)) {
       return;
     }
     log = wrap("info", log);
-    Logger loggers[] = DynamicLogManager.getLogs(this);
+    Logger[] loggers = DynamicLogManager.getLogs(this);
     for (Logger logger : loggers) {
       logger.info(log);
     }
@@ -96,7 +114,7 @@ public class DynamicLog {
       return;
     }
     log = wrap("warn", log);
-    Logger loggers[] = DynamicLogManager.getLogs(this);
+    Logger[] loggers = DynamicLogManager.getLogs(this);
     for (Logger logger : loggers) {
       logger.warn(log);
     }
@@ -107,20 +125,9 @@ public class DynamicLog {
       return;
     }
     log = wrap("warn", log);
-    Logger loggers[] = DynamicLogManager.getLogs(this);
+    Logger[] loggers = DynamicLogManager.getLogs(this);
     for (Logger logger : loggers) {
       logger.warn(log, e);
-    }
-  }
-
-  public void error(String log) {
-    if (!getenumLogLevel().needLog(LogLevel.ERROR)) {
-      return;
-    }
-    log = wrap("error", log);
-    Logger loggers[] = DynamicLogManager.getLogs(this);
-    for (Logger logger : loggers) {
-      logger.error(log);
     }
   }
 
@@ -134,9 +141,20 @@ public class DynamicLog {
       return;
     }
 
-    Logger loggers[] = DynamicLogManager.getLogs(this);
+    Logger[] loggers = DynamicLogManager.getLogs(this);
     for (Logger logger : loggers) {
       logger.error(log, e);
+    }
+  }
+
+  public void error(String log) {
+    if (!getenumLogLevel().needLog(LogLevel.ERROR)) {
+      return;
+    }
+    log = wrap("error", log);
+    Logger[] loggers = DynamicLogManager.getLogs(this);
+    for (Logger logger : loggers) {
+      logger.error(log);
     }
   }
 
@@ -149,10 +167,41 @@ public class DynamicLog {
       error(log);
       return;
     }
-    Logger loggers[] = DynamicLogManager.getLogs(this);
+    Logger[] loggers = DynamicLogManager.getLogs(this);
     for (Logger logger : loggers) {
       logger.error(log, e);
     }
+  }
+
+  /**
+   * Print sample error log.
+   */
+  public boolean sampleError(Object sampleKeyO, String log, Throwable e) {
+    String sampleKey = sampleKeyO.toString();
+    try {
+      SampleStatis ss = sampleStatis.computeIfAbsent(sampleKey, k -> new SampleStatis());
+      if (ss.gamble()) {
+        Logger[] loggers = DynamicLogManager.getLogs(this);
+        for (Logger logger : loggers) {
+          if (e != null) {
+            logger.error("[" + sampleKey + "] - " + log, e);
+          } else {
+            logger.error("[" + sampleKey + "] - " + log);
+          }
+        }
+        return true;
+      } else {
+        return false;
+      }
+    } finally {
+      if (sampleStatis.size() > 100000) {
+        sampleStatis = new ConcurrentHashMap<>();
+      }
+    }
+  }
+
+  public String getDefaultLogFileName() {
+    return this.key + ".log";
   }
 
   //statistic for sampling
@@ -183,57 +232,6 @@ public class DynamicLog {
         return false;
       }
     }
-  }
-
-  private static Map<String/*Samplekey*/, SampleStatis> sampleStatis = new ConcurrentHashMap<>();
-
-  /**
-   * Print sample error log
-   */
-  public boolean sampleError(Object sampleKeyO, String log, Throwable e) {
-    String sampleKey = sampleKeyO.toString();
-    try {
-      SampleStatis ss = sampleStatis.computeIfAbsent(sampleKey, k -> new SampleStatis());
-      if (ss.gamble()) {
-        Logger loggers[] = DynamicLogManager.getLogs(this);
-        for (Logger logger : loggers) {
-          if (e != null) {
-            logger.error("[" + sampleKey + "] - " + log, e);
-          } else {
-            logger.error("[" + sampleKey + "] - " + log);
-          }
-        }
-        return true;
-      } else {
-        return false;
-      }
-    } finally {
-      if (sampleStatis.size() > 100000) {
-        sampleStatis = new ConcurrentHashMap<>();
-      }
-    }
-  }
-
-  private final String key;
-
-  private DynamicLog(String key) {
-    this.key = key;
-  }
-
-  public String getKey() {
-    return this.key;
-  }
-
-  public String getDefaultLogFileName() {
-    return this.key + ".log";
-  }
-
-  public static DynamicLog registerName(String name) {
-    return DynamicLogNameRegister.registerName(name);
-  }
-
-  public static Collection<DynamicLog> values() {
-    return DynamicLogNameRegister.names.values();
   }
 
   public static class DynamicLogNameRegister {
