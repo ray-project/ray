@@ -2,6 +2,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import random
+
 import boto3
 from botocore.config import Config
 
@@ -34,6 +36,9 @@ class AWSNodeProvider(NodeProvider):
         config = Config(retries={'max_attempts': BOTO_MAX_RETRIES})
         self.ec2 = boto3.resource(
             "ec2", region_name=provider_config["region"], config=config)
+
+        # Try availability zones round-robin, starting from random offset
+        self.subnet_idx = random.randint(0, 100)
 
         # Cache of node objects from the last nodes() call. This avoids
         # excessive DescribeInstances requests.
@@ -121,9 +126,13 @@ class AWSNodeProvider(NodeProvider):
                 "Key": k,
                 "Value": v,
             })
+        subnet_ids = conf.pop('SubnetIds')
+        subnet_id = subnet_ids[self.subnet_idx % len(subnet_ids)]
+        self.subnet_idx += 1
         conf.update({
             "MinCount": 1,
             "MaxCount": count,
+            "SubnetId": subnet_id,
             "TagSpecifications": conf.get("TagSpecifications", []) + [{
                 "ResourceType": "instance",
                 "Tags": tag_pairs,
