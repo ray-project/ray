@@ -68,7 +68,7 @@ public class InvocationExecutor {
   }
 
   private static void executeInternal(TaskSpec task, Pair<ClassLoader, RayMethod> pr,
-                                      String taskdesc)
+      String taskdesc)
       throws IllegalAccessException, IllegalArgumentException, InvocationTargetException {
     Method m = pr.getRight().invokable;
     Map<?, UniqueID> userRayReturnIdMap = null;
@@ -86,11 +86,12 @@ public class InvocationExecutor {
     }
 
     // execute
-    Object result;
-    if (!UniqueIdHelper.isLambdaFunction(task.functionId)) {
+    Object result = null;
+    try {
       result = m.invoke(realArgs.getLeft(), realArgs.getRight());
-    } else {
-      result = m.invoke(realArgs.getLeft(), new Object[] {realArgs.getRight()});
+    } catch (IllegalAccessException | IllegalArgumentException | InvocationTargetException e) {
+      RayLog.core.error("invoke failed:" + m);
+      throw e;
     }
 
     if (task.returnIds == null || task.returnIds.length == 0) {

@@ -83,7 +83,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       heartbeat_period_ms_(config.heartbeat_period_ms),
       local_resources_(config.resource_config),
       local_available_resources_(config.resource_config),
-      worker_pool_(config.num_initial_workers,
+      worker_pool_(config.num_initial_workers, config.num_workers_per_process,
                    static_cast<int>(config.resource_config.GetNumCpus()),
                    config.worker_command),
       local_queues_(SchedulingQueue()),
@@ -700,7 +700,7 @@ void NodeManager::AssignTask(Task &task) {
     if (!spec.IsActorTask()) {
       // There are no more non-actor workers available to execute this task.
       // Start a new worker.
-      worker_pool_.StartWorker();
+      worker_pool_.StartWorkerProcess();
     }
     // Queue this task for future assignment. The task will be assigned to a
     // worker once one becomes available.
