@@ -1120,13 +1120,17 @@ class APITest(unittest.TestCase):
             res = [ray.put(i) for i in range(1000 // n)]
             ray.wait(res, len(res))
 
-        threads = [
-            threading.Thread(target=g, args=(n, ))
-            for n in [1, 5, 10, 100, 1000]
-        ]
+        @ray.remote
+        def multi_thread_worker():
+            threads = [
+                threading.Thread(target=g, args=(n, ))
+                for n in [1, 5, 10, 100, 1000]
+            ]
 
-        [thread.start() for thread in threads]
-        [thread.join() for thread in threads]
+            [thread.start() for thread in threads]
+            [thread.join() for thread in threads]
+
+        multi_thread_worker.remote()
 
 
 @unittest.skipIf(

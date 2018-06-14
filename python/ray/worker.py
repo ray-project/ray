@@ -201,6 +201,7 @@ class Worker(object):
             that connect has been called already.
         cached_functions_to_run (List): A list of functions to run on all of
             the workers that should be exported as soon as connect is called.
+        reconstruction_lock (Lock): A lock object used to guard object reconstruction.
     """
 
     def __init__(self):
@@ -236,6 +237,7 @@ class Worker(object):
         # When the worker is constructed. Record the original value of the
         # CUDA_VISIBLE_DEVICES environment variable.
         self.original_gpu_ids = ray.utils.get_cuda_visible_devices()
+        self.reconstruction_lock = threading.Lock()
 
     def check_connected(self):
         """Check if the worker is connected.
@@ -465,51 +467,52 @@ class Worker(object):
             for (i, val) in enumerate(final_results)
             if val is plasma.ObjectNotAvailable
         }
-        was_blocked = (len(unready_ids) > 0)
-        # Try reconstructing any objects we haven't gotten yet. Try to get them
-        # until at least get_timeout_milliseconds milliseconds passes, then
-        # repeat.
-        while len(unready_ids) > 0:
-            for unready_id in unready_ids:
-                self.local_scheduler_client.reconstruct_objects(
-                    [ray.ObjectID(unready_id)], False)
-            # Do another fetch for objects that aren't available locally yet,
-            # in case they were evicted since the last fetch. We divide the
-            # fetch into smaller fetches so as to not block the manager for a
-            # prolonged period of time in a single call.
-            object_ids_to_fetch = list(
-                map(plasma.ObjectID, unready_ids.keys()))
-            ray_object_ids_to_fetch = list(
-                map(ray.ObjectID, unready_ids.keys()))
-            for i in range(0, len(object_ids_to_fetch),
-                           ray._config.worker_fetch_request_size()):
-                if not self.use_raylet:
-                    self.plasma_client.fetch(object_ids_to_fetch[i:(
-                        i + ray._config.worker_fetch_request_size())])
-                else:
-                    self.local_scheduler_client.reconstruct_objects(
-                        ray_object_ids_to_fetch[i:(
-                            i + ray._config.worker_fetch_request_size())],
-                        True)
-            results = self.retrieve_and_deserialize(
-                object_ids_to_fetch,
-                max([
-                    ray._config.get_timeout_milliseconds(),
-                    int(0.01 * len(unready_ids))
-                ]))
-            # Remove any entries for objects we received during this iteration
-            # so we don't retrieve the same object twice.
-            for i, val in enumerate(results):
-                if val is not plasma.ObjectNotAvailable:
-                    object_id = object_ids_to_fetch[i].binary()
-                    index = unready_ids[object_id]
-                    final_results[index] = val
-                    unready_ids.pop(object_id)
 
-        # If there were objects that we weren't able to get locally, let the
-        # local scheduler know that we're now unblocked.
-        if was_blocked:
-            self.local_scheduler_client.notify_unblocked()
+        if len(unready_ids) > 0:
+            with self.reconstruction_lock:
+                # Try reconstructing any objects we haven't gotten yet. Try to get them
+                # until at least get_timeout_milliseconds milliseconds passes, then
+                # repeat.
+                while len(unready_ids) > 0:
+                    for unready_id in unready_ids:
+                        self.local_scheduler_client.reconstruct_objects(
+                            [ray.ObjectID(unready_id)], False)
+                    # Do another fetch for objects that aren't available locally yet,
+                    # in case they were evicted since the last fetch. We divide the
+                    # fetch into smaller fetches so as to not block the manager for a
+                    # prolonged period of time in a single call.
+                    object_ids_to_fetch = list(
+                        map(plasma.ObjectID, unready_ids.keys()))
+                    ray_object_ids_to_fetch = list(
+                        map(ray.ObjectID, unready_ids.keys()))
+                    for i in range(0, len(object_ids_to_fetch),
+                                   ray._config.worker_fetch_request_size()):
+                        if not self.use_raylet:
+                            self.plasma_client.fetch(object_ids_to_fetch[i:(
+                                i + ray._config.worker_fetch_request_size())])
+                        else:
+                            self.local_scheduler_client.reconstruct_objects(
+                                ray_object_ids_to_fetch[i:(
+                                    i + ray._config.worker_fetch_request_size())],
+                                True)
+                    results = self.retrieve_and_deserialize(
+                        object_ids_to_fetch,
+                        max([
+                            ray._config.get_timeout_milliseconds(),
+                            int(0.01 * len(unready_ids))
+                        ]))
+                    # Remove any entries for objects we received during this iteration
+                    # so we don't retrieve the same object twice.
+                    for i, val in enumerate(results):
+                        if val is not plasma.ObjectNotAvailable:
+                            object_id = object_ids_to_fetch[i].binary()
+                            index = unready_ids[object_id]
+                            final_results[index] = val
+                            unready_ids.pop(object_id)
+
+                # If there were objects that we weren't able to get locally, let the
+                # local scheduler know that we're now unblocked.
+                self.local_scheduler_client.notify_unblocked()
 
         assert len(final_results) == len(object_ids)
         return final_results
