@@ -86,6 +86,7 @@ setup_commands:
     # - sudo pkill -9 dpkg || true
     # - sudo dpkg --configure -a
     # Install basics.
+    - ray stop
     - sudo apt-get update
     - sudo apt-get install -y cmake pkg-config build-essential autoconf curl libtool unzip flex bison python
     # Install Anaconda.
@@ -95,7 +96,7 @@ setup_commands:
     # Build Ray.
     - git clone https://github.com/AdamGleave/ray.git || true
     - pip install boto3==1.4.8 cython==0.27.3
-    - cd ray/python; git fetch; git checkout multiple-azs; pip install -e . --verbose
+    - cd ray/python; git fetch; git checkout multiple-azs; git pull; pip install -e . --verbose
 
 # Custom commands that will be run on the head node after common setup.
 head_setup_commands: []
