@@ -347,7 +347,7 @@ public class RunManager {
       String storeName = "/tmp/plasma_store" + rpcPort;
 
       // store
-      startObjectStore(rpcPort, info, params.working_directory + "/store",
+      startObjectStore(i, info, params.working_directory + "/store",
           params.redis_address, params.node_ip_address, params.redirect, params.cleanup);
 
       if (!params.use_raylet) {
