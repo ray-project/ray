@@ -1117,6 +1117,8 @@ class APITest(unittest.TestCase):
         def g(n):
             for _ in range(1000 // n):
                 ray.get([f.remote() for _ in range(n)])
+            res = [ray.put(i) for i in range(1000 // n)]
+            ray.wait(res, len(res))
 
         threads = [
             threading.Thread(target=g, args=(n, ))
