@@ -312,6 +312,35 @@ def test_from_csv():
     teardown_csv_file()
 
 
+def test_from_csv_chunksize():
+    setup_csv_file(SMALL_ROW_SIZE)
+
+    # Tests __next__ and correctness of reader as an iterator
+    rdf_reader = pd.read_csv(TEST_CSV_FILENAME, chunksize=1)
+    pd_reader = pandas.read_csv(TEST_CSV_FILENAME, chunksize=1)
+
+    for ray_df, pd_df in zip(rdf_reader, pd_reader):
+        assert ray_df_equals_pandas(ray_df, pd_df)
+
+    # Tests that get_chunk works correctly
+    rdf_reader = pd.read_csv(TEST_CSV_FILENAME, chunksize=1)
+    pd_reader = pandas.read_csv(TEST_CSV_FILENAME, chunksize=1)
+
+    ray_df = rdf_reader.get_chunk(1)
+    pd_df = pd_reader.get_chunk(1)
+
+    assert ray_df_equals_pandas(ray_df, pd_df)
+
+    # Tests that read works correctly
+    rdf_reader = pd.read_csv(TEST_CSV_FILENAME, chunksize=1)
+    pd_reader = pandas.read_csv(TEST_CSV_FILENAME, chunksize=1)
+
+    ray_df = rdf_reader.read()
+    pd_df = pd_reader.read()
+
+    assert ray_df_equals_pandas(ray_df, pd_df)
+
+
 def test_from_json():
     setup_json_file(SMALL_ROW_SIZE)
 
