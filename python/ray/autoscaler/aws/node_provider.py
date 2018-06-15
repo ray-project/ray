@@ -126,7 +126,9 @@ class AWSNodeProvider(NodeProvider):
                 "Key": k,
                 "Value": v,
             })
-        subnet_ids = conf.pop('SubnetIds')
+        # SubnetIds is not a real config key: we must resolve to a
+        # single SubnetId before invoking the AWS API.
+        subnet_ids = conf.pop("SubnetIds")
         subnet_id = subnet_ids[self.subnet_idx % len(subnet_ids)]
         self.subnet_idx += 1
         conf.update({
