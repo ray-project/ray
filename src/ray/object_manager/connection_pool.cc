@@ -109,4 +109,12 @@ void ConnectionPool::Return(SenderMapType &conn_map, const ClientID &client_id,
   RAY_LOG(DEBUG) << "Return " << client_id << " " << conn_map[client_id].size();
 }
 
+uint64_t ConnectionPool::CountSender(ConnectionType type, const ClientID &client_id) {
+  std::unique_lock<std::mutex> guard(connection_mutex);
+  SenderMapType &conn_map = (type == ConnectionType::MESSAGE)
+                                ? message_send_connections_
+                                : transfer_send_connections_;
+  return Count(conn_map, client_id);
+}
+
 }  // namespace ray

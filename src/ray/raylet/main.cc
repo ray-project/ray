@@ -61,6 +61,8 @@ int main(int argc, char *argv[]) {
       RayConfig::instance().object_manager_push_timeout_ms();
   object_manager_config.object_chunk_size =
       RayConfig::instance().object_manager_default_chunk_size();
+  object_manager_config.max_sender_connection_count =
+      RayConfig::instance().max_sender_connection_count();
 
   //  initialize mock gcs & object directory
   auto gcs_client = std::make_shared<ray::gcs::AsyncGcsClient>();

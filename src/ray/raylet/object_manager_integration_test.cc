@@ -57,6 +57,7 @@ class TestObjectManagerBase : public ::testing::Test {
     ObjectManagerConfig om_config_1;
     om_config_1.store_socket_name = store_sock_1;
     om_config_1.push_timeout_ms = 10000;
+    om_config_1.max_sender_connection_count = 5;
     server1.reset(new ray::raylet::Raylet(
         main_service, "raylet_1", "0.0.0.0", "127.0.0.1", 6379,
         GetNodeManagerConfig("raylet_1", store_sock_1), om_config_1, gcs_client_1));
@@ -66,6 +67,7 @@ class TestObjectManagerBase : public ::testing::Test {
     ObjectManagerConfig om_config_2;
     om_config_2.store_socket_name = store_sock_2;
     om_config_2.push_timeout_ms = 10000;
+    om_config_2.max_sender_connection_count = 5;
     server2.reset(new ray::raylet::Raylet(
         main_service, "raylet_2", "0.0.0.0", "127.0.0.1", 6379,
         GetNodeManagerConfig("raylet_2", store_sock_2), om_config_2, gcs_client_2));

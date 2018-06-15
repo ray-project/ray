@@ -88,6 +88,9 @@ class ConnectionPool {
   /// This object cannot be copied for thread-safety.
   RAY_DISALLOW_COPY_AND_ASSIGN(ConnectionPool);
 
+  /// Count the sender connections for target ConnectionType.
+  uint64_t CountSender(ConnectionType type, const ClientID &client_id);
+
  private:
   /// A container type that maps ClientID to a connection type.
   using SenderMapType =

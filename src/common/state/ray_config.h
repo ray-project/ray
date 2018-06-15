@@ -102,6 +102,10 @@ class RayConfig {
     return object_manager_max_receives_;
   }
 
+  uint32_t max_sender_connection_count() const {
+    return max_sender_connection_count_;
+  }
+
   uint64_t object_manager_default_chunk_size() const {
     return object_manager_default_chunk_size_;
   }
@@ -144,6 +148,7 @@ class RayConfig {
         object_manager_push_timeout_ms_(10000),
         object_manager_max_sends_(2),
         object_manager_max_receives_(2),
+        max_sender_connection_count_(5),
         object_manager_default_chunk_size_(100000000),
         num_workers_per_process_(1) {}
 
@@ -249,6 +254,11 @@ class RayConfig {
 
   /// Maximum number of concurrent receives allowed by the object manager.
   int object_manager_max_receives_;
+
+  /// The maximum sender connections allowed to a single Client.
+  /// 0: No limit on the sender connection.
+  /// Positive: the maximum number for sender connection.
+  uint32_t max_sender_connection_count_;
 
   /// Default chunk size for multi-chunk transfers to use in the object manager.
   /// In the object manager, no single thread is permitted to transfer more
