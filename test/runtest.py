@@ -1120,8 +1120,7 @@ class APITest(unittest.TestCase):
             res = [ray.put(i) for i in range(1000 // n)]
             ray.wait(res, len(res))
 
-        @ray.remote
-        def multi_thread_worker():
+        def test_multi_threading():
             threads = [
                 threading.Thread(target=g, args=(n, ))
                 for n in [1, 5, 10, 100, 1000]
@@ -1130,7 +1129,14 @@ class APITest(unittest.TestCase):
             [thread.start() for thread in threads]
             [thread.join() for thread in threads]
 
-        multi_thread_worker.remote()
+        @ray.remote
+        def test_multi_threading_in_worker():
+            test_multi_threading()
+
+        # test multi-threading in the driver
+        test_multi_threading()
+        # test multi-threading in the worker
+        ray.get(test_multi_threading_in_worker.remote())
 
 
 @unittest.skipIf(

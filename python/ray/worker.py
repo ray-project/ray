@@ -481,20 +481,23 @@ class Worker(object):
                     # in case they were evicted since the last fetch. We divide the
                     # fetch into smaller fetches so as to not block the manager for a
                     # prolonged period of time in a single call.
-                    object_ids_to_fetch = list(
-                        map(plasma.ObjectID, unready_ids.keys()))
-                    ray_object_ids_to_fetch = list(
-                        map(ray.ObjectID, unready_ids.keys()))
+                    object_ids_to_fetch = [
+                        plasma.ObjectID(i) for i in unready_ids.keys()
+                    ]
+                    ray_object_ids_to_fetch = [
+                        ray.ObjectID(i) for i in unready_ids.keys()
+                    ]
+                    fetch_request_size = (
+                        ray._config.worker_fetch_request_size())
                     for i in range(0, len(object_ids_to_fetch),
-                                   ray._config.worker_fetch_request_size()):
+                                   fetch_request_size):
                         if not self.use_raylet:
                             self.plasma_client.fetch(object_ids_to_fetch[i:(
-                                i + ray._config.worker_fetch_request_size())])
+                                i + fetch_request_size)])
                         else:
                             self.local_scheduler_client.reconstruct_objects(
                                 ray_object_ids_to_fetch[i:(
-                                    i + ray._config.worker_fetch_request_size())],
-                                True)
+                                    i + fetch_request_size)], True)
                     results = self.retrieve_and_deserialize(
                         object_ids_to_fetch,
                         max([
@@ -2152,8 +2155,7 @@ def connect(info,
     # Create a Redis client.
     redis_ip_address, redis_port = info["redis_address"].split(":")
     worker.redis_client = thread_safe_client(
-        redis.StrictRedis(host=redis_ip_address, port=int(redis_port))
-    )
+        redis.StrictRedis(host=redis_ip_address, port=int(redis_port)))
 
     # For driver's check that the version information matches the version
     # information that the Ray cluster was started with.
@@ -2234,12 +2236,11 @@ def connect(info,
     # Create an object store client.
     if not worker.use_raylet:
         worker.plasma_client = thread_safe_client(
-            plasma.connect(info["store_socket_name"], info["manager_socket_name"], 64)
-        )
+            plasma.connect(info["store_socket_name"],
+                           info["manager_socket_name"], 64))
     else:
         worker.plasma_client = thread_safe_client(
-            plasma.connect(info["store_socket_name"], "", 64)
-        )
+            plasma.connect(info["store_socket_name"], "", 64))
 
     if not worker.use_raylet:
         local_scheduler_socket = info["local_scheduler_socket_name"]
@@ -2247,9 +2248,9 @@ def connect(info,
         local_scheduler_socket = info["raylet_socket_name"]
 
     worker.local_scheduler_client = thread_safe_client(
-        ray.local_scheduler.LocalSchedulerClient(
-            local_scheduler_socket, worker.worker_id, is_worker, worker.use_raylet)
-    )
+        ray.local_scheduler.LocalSchedulerClient(local_scheduler_socket,
+                                                 worker.worker_id, is_worker,
+                                                 worker.use_raylet))
 
     # If this is a driver, set the current task ID, the task driver ID, and set
     # the task index to 0.

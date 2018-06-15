@@ -282,7 +282,6 @@ class _ThreadSafeProxy(object):
         _wrapper_cache (dict): a cache from original object's methods to the proxy methods.
     """
 
-
     def __init__(self, orig_obj, lock):
         self.orig_obj = orig_obj
         self.lock = lock
@@ -298,11 +297,14 @@ class _ThreadSafeProxy(object):
             # return a wrapper that guards the original method with a lock.
             wrapper = self._wrapper_cache.get(attr)
             if wrapper is None:
+
                 @functools.wraps(orig_attr)
                 def _wrapper(*args, **kwargs):
                     with self.lock:
                         return orig_attr(*args, **kwargs)
-                self._wrapper_cache[attr] = wrapper = _wrapper
+
+                self._wrapper_cache[attr] = _wrapper
+                wrapper = _wrapper
             return wrapper
 
 
