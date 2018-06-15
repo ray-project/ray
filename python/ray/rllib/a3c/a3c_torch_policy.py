@@ -39,8 +39,7 @@ class SharedTorchPolicy(PolicyGraph):
         with self.lock:
             ob = torch.from_numpy(np.array(obs)).float()
             logits, values = self._model(ob)
-            samples = F.softmax(logits, dim=1).multinomial(1)
-            values = values.squeeze(1)
+            samples = F.softmax(logits, dim=1).multinomial(1).squeeze(0)
             return var_to_np(samples), [], {"vf_preds": var_to_np(values)}
 
     def compute_gradients(self, samples):

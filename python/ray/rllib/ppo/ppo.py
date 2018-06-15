@@ -69,7 +69,7 @@ DEFAULT_CONFIG = {
     # number of steps is obtained
     "min_steps_per_task": 200,
     # Number of actors used to collect the rollouts
-    "num_workers": 5,
+    "num_workers": 2,
     # Whether to allocate GPUs for workers (if > 0).
     "num_gpus_per_worker": 0,
     # Whether to allocate CPUs for workers (if > 0).
