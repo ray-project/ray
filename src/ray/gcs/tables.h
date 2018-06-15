@@ -433,10 +433,12 @@ class ErrorTable : private Log<JobID, ErrorTableData> {
   ///
   /// \param job_id The ID of the job that generated the error. If the error
   /// should be pushed to all jobs, then this should be nil.
+  /// \param type The type of the error.
   /// \param error_message The error message to push.
+  /// \param timestamp The timestamp of the error.
   /// \return Status.
-  Status PushErrorToDriver(const JobID &job_id, const std::string &error_message,
-                           double timestamp);
+  Status PushErrorToDriver(const JobID &job_id, const std::string &type,
+                           const std::string &error_message, double timestamp);
 };
 
 using CustomSerializerTable = Table<ClassID, CustomSerializerData>;

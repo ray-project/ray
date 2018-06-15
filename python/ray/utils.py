@@ -11,6 +11,7 @@ import time
 import uuid
 
 import ray.local_scheduler
+import ray.ray_constants as ray_constants
 
 ERROR_KEY_PREFIX = b"Error:"
 DRIVER_ID_LENGTH = 20
@@ -64,7 +65,7 @@ def push_error_to_driver(worker,
             will be serialized with json and stored in Redis.
     """
     if driver_id is None:
-        driver_id = DRIVER_ID_LENGTH * b"\x00"
+        driver_id = ray_constants.NIL_JOB_ID.id()
     error_key = ERROR_KEY_PREFIX + driver_id + b":" + _random_string()
     data = {} if data is None else data
     if not worker.use_raylet:
@@ -75,8 +76,8 @@ def push_error_to_driver(worker,
         })
         worker.redis_client.rpush("ErrorKeys", error_key)
     else:
-        worker.local_scheduler_client.push_error(ray.ObjectID(driver_id),
-                                                 message, time.time())
+        worker.local_scheduler_client.push_error(
+            ray.ObjectID(driver_id), error_type, message, time.time())
 
 def is_cython(obj):
     """Check if an object is a Cython function or method"""

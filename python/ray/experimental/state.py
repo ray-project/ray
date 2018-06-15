@@ -1168,6 +1168,7 @@ class GlobalState(object):
             error_data = ErrorTableData.GetRootAsErrorTableData(
                 gcs_entries.Entries(i), 0)
             error_message = {
+                "type": error_data.Type().decode("ascii"),
                 "message": error_data.ErrorMessage().decode("ascii"),
                 "timestamp": error_data.Timestamp(),
             }

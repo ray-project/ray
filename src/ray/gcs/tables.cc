@@ -184,10 +184,12 @@ Status Table<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id
 }
 
 Status ErrorTable::PushErrorToDriver(const JobID &job_id,
+                                     const std::string &type,
                                      const std::string &error_message,
                                      double timestamp) {
   auto data = std::make_shared<ErrorTableDataT>();
   data->job_id = job_id.binary();
+  data->type = type;
   data->error_message = error_message;
   data->timestamp = timestamp;
   return Append(job_id, job_id, data,

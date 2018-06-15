@@ -1202,7 +1202,8 @@ def error_info(worker=global_worker):
     check_main_thread()
 
     if worker.use_raylet:
-        raise Exception("TODO")
+        return (global_state.error_messages(job_id=worker.task_driver_id) +
+                global_state.error_messages(job_id=ray_constants.NIL_JOB_ID))
 
     error_keys = worker.redis_client.lrange("ErrorKeys", 0, -1)
     errors = []

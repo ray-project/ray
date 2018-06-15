@@ -394,10 +394,11 @@ void NodeManager::ProcessClientMessage(
         RAY_CHECK(running_tasks.size() != 0);
         RAY_CHECK(it != running_tasks.end());
         JobID job_id = it->GetTaskSpecification().DriverId();
-        std::string error_message = "A worker died while executing task " +
-                                    task_id.hex() + ".";
+        std::string type = "worker_died";  // TODO(rkn): Define this constant somewhere else.
+        std::ostringstream error_message;
+        error_message << "A worker died while executing task " << task_id.hex() << ".";
         RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
-            job_id, error_message, current_time_ms_duplicate()));
+            job_id, type, error_message.str(), current_time_ms_duplicate()));
       }
 
       worker_pool_.DisconnectWorker(worker);
@@ -548,11 +549,12 @@ void NodeManager::ProcessClientMessage(
     auto message = flatbuffers::GetRoot<protocol::PushErrorRequest>(message_data);
 
     JobID job_id = from_flatbuf(*message->job_id());
+    auto const &type = string_from_flatbuf(*message->type());
     auto const &error_message = string_from_flatbuf(*message->error_message());
     double timestamp = message->timestamp();
 
     RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
-        job_id, error_message, timestamp));
+        job_id, type, error_message, timestamp));
   } break;
 
   default:

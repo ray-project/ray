@@ -215,11 +215,13 @@ std::pair<std::vector<ObjectID>, std::vector<ObjectID>> local_scheduler_wait(
 ///
 /// \param conn The connection information.
 /// \param The ID of the job that the error is for.
+/// \param The type of the error.
 /// \param The error message.
 /// \param The timestamp of the error.
 /// \return Void.
 void local_scheduler_push_error(LocalSchedulerConnection *conn,
                                 const JobID &job_id,
+                                const std::string &type,
                                 const std::string &error_message,
                                 double timestamp);
 

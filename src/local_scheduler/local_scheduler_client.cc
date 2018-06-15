@@ -309,11 +309,13 @@ std::pair<std::vector<ObjectID>, std::vector<ObjectID>> local_scheduler_wait(
 
 void local_scheduler_push_error(LocalSchedulerConnection *conn,
                                 const JobID &job_id,
+                                const std::string &type,
                                 const std::string &error_message,
                                 double timestamp) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = ray::protocol::CreatePushErrorRequest(
-      fbb, to_flatbuf(fbb, job_id), fbb.CreateString(error_message), timestamp);
+      fbb, to_flatbuf(fbb, job_id), fbb.CreateString(type),
+      fbb.CreateString(error_message), timestamp);
   fbb.Finish(message);
 
   write_message(

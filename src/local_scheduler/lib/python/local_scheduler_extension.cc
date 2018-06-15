@@ -289,17 +289,21 @@ static PyObject *PyLocalSchedulerClient_wait(PyObject *self, PyObject *args) {
 static PyObject *PyLocalSchedulerClient_push_error(PyObject *self,
                                                    PyObject *args) {
   JobID job_id;
+  const char *type;
+  int type_length;
   const char *error_message;
   int error_message_length;
   double timestamp;
-  if (!PyArg_ParseTuple(args, "O&s#d", &PyObjectToUniqueID, &job_id,
-                        &error_message, &error_message_length, &timestamp)) {
+  if (!PyArg_ParseTuple(args, "O&s#s#d", &PyObjectToUniqueID, &job_id,
+                        &type, &type_length, &error_message,
+                        &error_message_length, &timestamp)) {
     return NULL;
   }
 
   local_scheduler_push_error(
       reinterpret_cast<PyLocalSchedulerClient *>(self)->local_scheduler_connection,
-      job_id, std::string(error_message, error_message_length), timestamp);
+      job_id, std::string(type, type_length),
+      std::string(error_message, error_message_length), timestamp);
 
   Py_RETURN_NONE;
 }
