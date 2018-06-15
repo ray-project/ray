@@ -66,7 +66,7 @@
 	              </execution>
 	          </executions>
 	          <configuration>
-	              <configLocation>checkstyle.xml</configLocation>
+	              <configLocation>../../java/checkstyle.xml</configLocation>
 	              <encoding>UTF-8</encoding>
 	              <consoleOutput>true</consoleOutput>
 	              <failsOnError>false</failsOnError>

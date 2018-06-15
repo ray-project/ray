@@ -1,4 +1,4 @@
-package org.ray.on.yarn;
+package org.ray.yarn;
 
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;

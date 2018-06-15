@@ -1,4 +1,4 @@
-package org.ray.on.yarn;
+package org.ray.yarn;
 
 import org.apache.hadoop.yarn.api.records.Container;
 

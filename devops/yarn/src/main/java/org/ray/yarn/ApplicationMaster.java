@@ -1,4 +1,4 @@
-package org.ray.on.yarn;
+package org.ray.yarn;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.Maps;

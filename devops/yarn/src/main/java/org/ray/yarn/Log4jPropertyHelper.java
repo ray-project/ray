@@ -1,4 +1,4 @@
-package org.ray.on.yarn;
+package org.ray.yarn;
 
 import java.io.FileInputStream;
 import java.io.InputStream;

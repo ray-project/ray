@@ -1,4 +1,4 @@
-package org.ray.on.yarn;
+package org.ray.yarn;
 
 import com.google.common.collect.Maps;
 import java.io.IOException;
@@ -176,7 +176,7 @@ public class Client {
   }
 
   public Client(Configuration conf) throws Exception {
-    this("org.ray.on.yarn.ApplicationMaster", conf);
+    this("org.ray.yarn.ApplicationMaster", conf);
   }
 
   Client(String appMasterMainClass, Configuration conf) {
