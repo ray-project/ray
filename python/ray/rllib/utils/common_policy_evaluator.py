@@ -113,15 +113,18 @@ class CommonPolicyEvaluator(PolicyEvaluator):
             batch_steps (int): The target number of env transitions to include
                 in each sample batch returned from this evaluator.
             batch_mode (str): One of the following batch modes:
-                "truncate_episodes": Each call to sample() will return a batch of exactly
-                    `batch_steps` in size. Episodes may be truncated in order to meet this size
-                    requirement. When `num_envs > 1`, episodes will be truncated to sequences of
+                "truncate_episodes": Each call to sample() will return a batch
+                    of exactly `batch_steps` in size. Episodes may be truncated
+                    in order to meet this size requirement. When
+                    `num_envs > 1`, episodes will be truncated to sequences of
                     `batch_size / num_envs` in length.
-                "complete_episodes": Each call to sample() will return a batch of at least
-                    `batch_steps in size. Episodes will not be truncated, but multiple episodes
-                    may be packed within one batch to meet the batch size. Note that when
-                    `num_envs > 1`, episode steps will be buffered until the episode completes,
-                    and hence batches may contain significant amounts of off-policy data.
+                "complete_episodes": Each call to sample() will return a batch
+                    of at least `batch_steps in size. Episodes will not be
+                    truncated, but multiple episodes may be packed within one
+                    batch to meet the batch size. Note that when
+                    `num_envs > 1`, episode steps will be buffered until the
+                    episode completes, and hence batches may contain
+                    significant amounts of off-policy data.
             episode_horizon (int): Whether to stop episodes at this horizon.
             preprocessor_pref (str): Whether to prefer RLlib preprocessors
                 ("rllib") or deepmind ("deepmind") when applicable.
