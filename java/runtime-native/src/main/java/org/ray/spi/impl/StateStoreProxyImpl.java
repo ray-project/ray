@@ -186,11 +186,11 @@ public class StateStoreProxyImpl implements StateStoreProxy {
     return schedulerInfo;
   }
 
-  private String charsetDecode(byte[] bs, String charset) throws UnsupportedEncodingException {
+  protected String charsetDecode(byte[] bs, String charset) throws UnsupportedEncodingException {
     return new String(bs, charset);
   }
 
-  private byte[] charsetEncode(String str, String charset) throws UnsupportedEncodingException {
+  protected byte[] charsetEncode(String str, String charset) throws UnsupportedEncodingException {
     if (str != null) {
       return str.getBytes(charset);
     }

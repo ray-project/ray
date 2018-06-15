@@ -1,16 +1,13 @@
 package org.ray.spi.impl;
-import com.google.flatbuffers.FlatBufferBuilder;
-import java.nio.ByteBuffer;
+
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.apache.commons.lang3.StringUtils;
 import org.ray.spi.KeyValueStoreLink;
-import org.ray.api.UniqueID;
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.JedisPool;
 import redis.clients.jedis.JedisPoolConfig;
-import redis.clients.jedis.Protocol.Command;
 
 public class RedisClient implements KeyValueStoreLink {
 
@@ -210,10 +207,11 @@ public class RedisClient implements KeyValueStoreLink {
   }
 
   @Override
-  public byte[] SendCommand(String command, int commandType, byte[] objectID) {
-    return execute_command(command, commandType, objectID);
+  public byte[] sendCommand(String command, int commandType, byte[] objectId) {
+    return execute_command(command, commandType, objectId);
   }
   
   private static native void connect(String redisAddress);
+  
   private static native byte[] execute_command(String command, int commandType, byte[] objectId);
 }

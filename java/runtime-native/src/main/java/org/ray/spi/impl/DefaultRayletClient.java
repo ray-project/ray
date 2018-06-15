@@ -6,10 +6,10 @@ import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import org.apache.arrow.plasma.ObjectStoreLink;
 import org.ray.api.UniqueID;
 import org.ray.core.RayRuntime;
 import org.ray.spi.impl.DefaultLocalSchedulerClient;
-import org.apache.arrow.plasma.ObjectStoreLink;
 import org.ray.spi.model.FunctionArg;
 import org.ray.spi.model.TaskSpec;
 import org.ray.util.logger.RayLog;
@@ -25,7 +25,7 @@ public class DefaultRayletClient extends DefaultLocalSchedulerClient implements 
   public void submitTask(TaskSpec task) {
     ByteBuffer info = taskSpec2Info(task);
     byte[] a = null;
-    if(!task.actorId.isNil()) {
+    if (!task.actorId.isNil()) {
       a = task.cursorId.getBytes();
     }
     _submitTask(client, a, info, info.position(), info.remaining(), true);
@@ -73,7 +73,7 @@ public class DefaultRayletClient extends DefaultLocalSchedulerClient implements 
 
   @Override
   public List<byte[]> wait(byte[][] objectIds, int timeoutMs, int numReturns) {
-    byte[][] readys = _wait(client, objectIds, timeoutMs, numReturns);
+    byte[][] readys = waitObject(client, objectIds, timeoutMs, numReturns);
 
     List<byte[]> ret = new ArrayList<>();
     for (byte[] ready : readys) {
@@ -107,6 +107,17 @@ public class DefaultRayletClient extends DefaultLocalSchedulerClient implements 
     return 0;
   }
 
+  /**
+   * Check if the object is present and has been sealed in the PlasmaStore.
+   *
+   * @param objectId used to identify an object.
+   */
+  @Override
+  public boolean contains(byte[] objectId) {
+    // return PlasmaClientJNI.contains(conn, objectId);
+    return false;
+  }
+
   // wrapper methods --------------------
 
   /**
@@ -128,17 +139,6 @@ public class DefaultRayletClient extends DefaultLocalSchedulerClient implements 
     // PlasmaClientJNI.release(conn, objectId);
   }
 
-  /**
-   * Check if the object is present and has been sealed in the PlasmaStore.
-   *
-   * @param objectId used to identify an object.
-   */
-  @Override
-  public boolean contains(byte[] objectId) {
-    // return PlasmaClientJNI.contains(conn, objectId);
-    return false;
-  }
-
-  native private static byte[][] _wait(long conn, byte[][] object_ids, int timeout_ms,
-      int num_returns);
+  private static native byte[][] waitObject(long conn, byte[][] objectIds, 
+      int timeout, int numReturns);
 }

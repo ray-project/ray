@@ -153,7 +153,7 @@ build
 # Java
 java/**/target
 java/run
-java/test/lib
+java/**/lib
 java/**/.settings
 java/**/.classpath
 java/**/.project

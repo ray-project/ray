@@ -124,6 +124,6 @@ public interface KeyValueStoreLink {
 
   Object getImpl();
 
-  byte[] SendCommand(String command, int commandType, byte[] objectID);
+  byte[] sendCommand(String command, int commandType, byte[] objectId);
 
 }

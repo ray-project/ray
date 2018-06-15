@@ -674,37 +674,38 @@ public class RunManager {
   }
 
   private void startRaylet(int index, String storeName, AddressInfo info, int numCpus,
-    int numGpus, int numWorkers, String workDir,
-    String redisAddress, String ip, boolean redirect,
-    boolean cleanup) {
+      int numGpus, int numWorkers, String workDir,
+      String redisAddress, String ip, boolean redirect,
+      boolean cleanup) {
 
     int rpcPort = params.local_scheduler_rpc_port + index;
-    String raylet_name = "/tmp/raylet" + rpcPort;
+    String rayletName = "/tmp/raylet" + rpcPort;
 
     String filePath = paths.raylet;
     
     String workerCmd = null;
-    workerCmd = buildWorkerCommand(info.storeName, raylet_name, UniqueID.nil,
+    workerCmd = buildWorkerCommand(info.storeName, rayletName, UniqueID.nil,
             "", workDir + rpcPort, ip, redisAddress);
 
     int sep = redisAddress.indexOf(':');
-    assert(sep != -1);
-    String gcs_ip_address = redisAddress.substring(0, sep);
-    String gcs_port = redisAddress.substring(sep + 1);
+    assert (sep != -1);
+    String gcsIp = redisAddress.substring(0, sep);
+    String gcsPort = redisAddress.substring(sep + 1);
     
-    String resource_argument = "GPU," + numGpus + "CPU," + numCpus;
+    String resourceArgument = "GPU," + numGpus + "CPU," + numCpus;
 
-    String[] cmds = new String[]{filePath, raylet_name, storeName, ip, gcs_ip_address, 
-                                 gcs_port, "" + numWorkers, workerCmd, resource_argument};
+    String[] cmds = new String[]{filePath, rayletName, storeName, ip, gcsIp, 
+                                 gcsPort, "" + numWorkers, workerCmd, resourceArgument};
 
     Map<String, String> env = null;
     Process p = startProcess(cmds, env, RunInfo.ProcessType.PT_RAYLET,
-        workDir , redisAddress, ip, redirect, cleanup);
+        workDir, redisAddress, ip, redirect, cleanup);
 
     if (p != null && p.isAlive()) {
       try {
         TimeUnit.MILLISECONDS.sleep(100);
       } catch (InterruptedException e) {
+        e.printStackTrace();
       }
     }
 
@@ -713,7 +714,7 @@ public class RunManager {
       info.schedulerRpcAddr = "";
       throw new RuntimeException("Start local scheduler failed ...");
     } else {
-      info.schedulerName = raylet_name;
+      info.schedulerName = rayletName;
       info.schedulerRpcAddr = ip + ":" + rpcPort;
     }
   }
