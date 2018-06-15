@@ -35,23 +35,23 @@ public class RayObjectsGenerator {
    *
    * public RayObject<R1> r1() { return objs[1]; } }
    */
-  private static String build(int Rcount) {
+  private static String build(int rcount) {
     StringBuilder sb = new StringBuilder();
     sb.append("package org.ray.api.returns;\n");
     sb.append("import org.ray.api.*;\n");
     sb.append("import org.ray.spi.model.UniqueID;\n");
     sb.append("@SuppressWarnings({\"rawtypes\", \"unchecked\"})");
-    sb.append("public class RayObjects").append(Rcount).append("<")
-        .append(Share.buildClassDeclare(0, Rcount)).append("> extends RayObjects {")
+    sb.append("public class RayObjects").append(rcount).append("<")
+        .append(Share.buildClassDeclare(0, rcount)).append("> extends RayObjects {")
         .append("\n");
-    sb.append("\tpublic RayObjects").append(Rcount).append("(UniqueID[] ids) {").append("\n");
+    sb.append("\tpublic RayObjects").append(rcount).append("(UniqueID[] ids) {").append("\n");
     sb.append("\t\tsuper(ids);").append("\n");
     sb.append("\t}").append("\n");
-    sb.append("\tpublic RayObjects").append(Rcount).append("(RayObject objs[]) {").append("\n");
+    sb.append("\tpublic RayObjects").append(rcount).append("(RayObject objs[]) {").append("\n");
     sb.append("\t\tsuper(objs);").append("\n");
     sb.append("\t}").append("\n");
 
-    for (int k = 0; k < Rcount; k++) {
+    for (int k = 0; k < rcount; k++) {
       sb.append(buildGetter(k));
     }
 
@@ -59,9 +59,6 @@ public class RayObjectsGenerator {
     return sb.toString();
   }
 
-  /**
-   * public RayObject<R0> r0() { return objs[0]; }
-   */
   private static String buildGetter(int index) {
     return "\tpublic RayObject<R" + index + "> r" + index + "() {\n"
         + "\t\treturn objs[" + index + "];\n"

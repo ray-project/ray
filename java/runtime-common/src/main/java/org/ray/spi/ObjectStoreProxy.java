@@ -2,7 +2,6 @@ package org.ray.spi;
 
 import java.util.ArrayList;
 import java.util.List;
-
 import org.apache.arrow.plasma.ObjectStoreLink;
 import org.apache.commons.lang3.tuple.Pair;
 import org.ray.api.RayList;
@@ -19,19 +18,21 @@ import org.ray.util.exception.TaskExecutionException;
  */
 public class ObjectStoreProxy {
 
-  public enum GetStatus {SUCCESS, FAILED}
-
   private final ObjectStoreLink store;
-
-  private final int GET_TIMEOUT_MS = 1000;
+  private final int getTimeoutMs = 1000;
 
   public ObjectStoreProxy(ObjectStoreLink store) {
     this.store = store;
   }
 
-  public <T> Pair<T, GetStatus> get(UniqueID id, int timeout_ms, boolean isMetadata)
+  public <T> Pair<T, GetStatus> get(UniqueID objectId, boolean isMetadata)
       throws TaskExecutionException {
-    byte[] obj = store.get(id.getBytes(), timeout_ms, isMetadata);
+    return get(objectId, getTimeoutMs, isMetadata);
+  }
+
+  public <T> Pair<T, GetStatus> get(UniqueID id, int timeoutMs, boolean isMetadata)
+      throws TaskExecutionException {
+    byte[] obj = store.get(id.getBytes(), timeoutMs, isMetadata);
     if (obj != null) {
       T t = Serializer.decode(obj, WorkerContext.currentClassLoader());
       store.release(id.getBytes());
@@ -44,9 +45,9 @@ public class ObjectStoreProxy {
     }
   }
 
-  public <T> Pair<T, GetStatus> get(UniqueID objectId, boolean isMetadata)
+  public <T> List<Pair<T, GetStatus>> get(List<UniqueID> objectIds, boolean isMetadata)
       throws TaskExecutionException {
-    return get(objectId, GET_TIMEOUT_MS, isMetadata);
+    return get(objectIds, getTimeoutMs, isMetadata);
   }
 
   public <T> List<Pair<T, GetStatus>> get(List<UniqueID> ids, int timeoutMs, boolean isMetadata)
@@ -69,9 +70,13 @@ public class ObjectStoreProxy {
     return ret;
   }
 
-  public <T> List<Pair<T, GetStatus>> get(List<UniqueID> objectIds, boolean isMetadata)
-      throws TaskExecutionException {
-    return get(objectIds, GET_TIMEOUT_MS, isMetadata);
+  private static byte[][] getIdBytes(List<UniqueID> objectIds) {
+    int size = objectIds.size();
+    byte[][] ids = new byte[size][];
+    for (int i = 0; i < size; i++) {
+      ids[i] = objectIds.get(i).getBytes();
+    }
+    return ids;
   }
 
   public void put(UniqueID id, Object obj, Object metadata) {
@@ -111,12 +116,7 @@ public class ObjectStoreProxy {
   }
 
 
-  private static byte[][] getIdBytes(List<UniqueID> objectIds) {
-    int size = objectIds.size();
-    byte[][] ids = new byte[size][];
-    for (int i = 0; i < size; i++) {
-      ids[i] = objectIds.get(i).getBytes();
-    }
-    return ids;
+  public enum GetStatus {
+    SUCCESS, FAILED
   }
 }

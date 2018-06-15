@@ -7,7 +7,8 @@ public class ObjectUtil {
   public static <T> T newObject(Class<T> cls) {
     try {
       return cls.getConstructor().newInstance();
-    } catch (InstantiationException | IllegalAccessException | NoSuchMethodException | InvocationTargetException e) {
+    } catch (InstantiationException | IllegalAccessException | NoSuchMethodException
+        | InvocationTargetException e) {
       e.printStackTrace();
       return null;
     }

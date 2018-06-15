@@ -53,16 +53,23 @@ std::unordered_map<TaskID, ClientID> SchedulingPolicy::Schedule(
         client_keys.push_back(node_client_id);
       }
     }
-    RAY_CHECK(!client_keys.empty());
 
-    // Choose index at random.
-    // Initialize a uniform integer distribution over the key space.
-    // TODO(atumanov): change uniform random to discrete, weighted by resource capacity.
-    std::uniform_int_distribution<int> distribution(0, client_keys.size() - 1);
-    int client_key_index = distribution(gen_);
-    decision[task_id] = client_keys[client_key_index];
-    RAY_LOG(DEBUG) << "[SchedulingPolicy] idx=" << client_key_index << " " << task_id
-                   << " --> " << client_keys[client_key_index];
+    if (!client_keys.empty()) {
+      // Choose index at random.
+      // Initialize a uniform integer distribution over the key space.
+      // TODO(atumanov): change uniform random to discrete, weighted by resource capacity.
+      std::uniform_int_distribution<int> distribution(0, client_keys.size() - 1);
+      int client_key_index = distribution(gen_);
+      decision[task_id] = client_keys[client_key_index];
+      RAY_LOG(DEBUG) << "[SchedulingPolicy] idx=" << client_key_index << " " << task_id
+                     << " --> " << client_keys[client_key_index];
+    } else {
+      // There are no nodes that can feasibily execute this task. TODO(rkn): Propagate a
+      // warning to the user.
+      RAY_LOG(WARNING) << "This task requires "
+                       << t.GetTaskSpecification().GetRequiredResources().ToString()
+                       << ", but no nodes have the necessary resources.";
+    }
   }
   return decision;
 }

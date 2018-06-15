@@ -6,9 +6,7 @@ package org.ray.spi.impl;
  */
 public class PlasmaObjectExistsException extends Exception {
 
-  /**
-   *
-   */
+
   private static final long serialVersionUID = 9128880292504270291L;
 
   public PlasmaObjectExistsException() {
@@ -16,7 +14,7 @@ public class PlasmaObjectExistsException extends Exception {
   }
 
   public PlasmaObjectExistsException(String message, Throwable cause, boolean enableSuppression,
-      boolean writableStackTrace) {
+                                     boolean writableStackTrace) {
     super(message, cause, enableSuppression, writableStackTrace);
   }
 

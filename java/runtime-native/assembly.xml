@@ -1,15 +1,15 @@
 <assembly>
-  <id>ear</id>
-  <formats>
-    <format>zip</format>
-  </formats>
-  <dependencySets>
-    <dependencySet>
-      <useProjectArtifact>true</useProjectArtifact>
-      <outputDirectory>lib</outputDirectory>
-    </dependencySet>
-  </dependencySets>
-  <fileSets>
+    <id>ear</id>
+    <formats>
+        <format>zip</format>
+    </formats>
+    <dependencySets>
+        <dependencySet>
+            <useProjectArtifact>true</useProjectArtifact>
+            <outputDirectory>lib</outputDirectory>
+        </dependencySet>
+    </dependencySets>
+    <fileSets>
 
-  </fileSets>
+    </fileSets>
 </assembly>
