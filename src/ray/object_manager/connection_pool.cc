@@ -2,7 +2,8 @@
 
 namespace ray {
 
-ConnectionPool::ConnectionPool() {}
+ConnectionPool::ConnectionPool(uint32_t max_sender_connection)
+    : max_sender_connection_count(max_sender_connection) {}
 
 void ConnectionPool::RegisterReceiver(ConnectionType type, const ClientID &client_id,
                                       std::shared_ptr<TcpClientConnection> &conn) {
@@ -109,12 +110,16 @@ void ConnectionPool::Return(SenderMapType &conn_map, const ClientID &client_id,
   RAY_LOG(DEBUG) << "Return " << client_id << " " << conn_map[client_id].size();
 }
 
-uint64_t ConnectionPool::CountSender(ConnectionType type, const ClientID &client_id) {
-  std::unique_lock<std::mutex> guard(connection_mutex);
+bool ConnectionPool::CanAddSender(ConnectionType type, const ClientID &client_id) {
+  if (max_sender_connection_count == 0) {
+    // There is no limit on the connection.
+    return true;
+  }
   SenderMapType &conn_map = (type == ConnectionType::MESSAGE)
                                 ? message_send_connections_
                                 : transfer_send_connections_;
-  return Count(conn_map, client_id);
+  std::unique_lock<std::mutex> guard(connection_mutex);
+  return Count(conn_map, client_id) < max_sender_connection_count;
 }
 
 }  // namespace ray

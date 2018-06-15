@@ -260,12 +260,12 @@ class ObjectManager : public ObjectManagerInterface {
    private:
     std::mutex mutex;
 
-    std::unordered_map<ClientID, std::list<T>> cached_tasks;
+    std::unordered_map<ClientID, std::deque<T>> cached_tasks;
 
    public:
-    void AddTask(const ClientID &client_id, T &&task) {
+    void AddTask(const ClientID &client_id, T &task) {
       std::unique_lock<std::mutex> guard(mutex);
-      cached_tasks[client_id].emplace_back(std::move(task));
+      cached_tasks[client_id].emplace_back(task);
     }
 
     bool PopTask(const ClientID &client_id, T &task) {
@@ -273,7 +273,7 @@ class ObjectManager : public ObjectManagerInterface {
       auto iter = cached_tasks.find(client_id);
       if (iter != cached_tasks.end()) {
         RAY_CHECK(iter->second.size() > 0);
-        task = std::move(iter->second.front());
+        task = iter->second.front();
         iter->second.pop_front();
         if (iter->second.empty()) {
           cached_tasks.erase(iter);
