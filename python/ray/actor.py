@@ -884,13 +884,13 @@ class ActorHandle(object):
             "actor_id": self._ray_actor_id.id(),
             "class_name": self._ray_class_name,
             "actor_forks": self._ray_actor_forks,
-            "actor_cursor": self._ray_actor_cursor.id(),
+            "actor_cursor": self._ray_actor_cursor.id() if self._ray_actor_cursor is not None else None,
             "actor_counter": 0,  # Reset the actor counter.
             "actor_method_names": self._ray_actor_method_names,
             "method_signatures": self._ray_method_signatures,
             "method_num_return_vals": self._ray_method_num_return_vals,
             "actor_creation_dummy_object_id": self.
-            _ray_actor_creation_dummy_object_id.id(),
+            _ray_actor_creation_dummy_object_id.id() if self._ray_actor_creation_dummy_object_id is not None else None,
             "actor_method_cpus": self._ray_actor_method_cpus,
             "actor_driver_id": self._ray_actor_driver_id.id(),
             "previous_actor_handle_id": self._ray_actor_handle_id.id()
@@ -929,12 +929,12 @@ class ActorHandle(object):
         self.__init__(
             ray.ObjectID(state["actor_id"]),
             state["class_name"],
-            ray.ObjectID(state["actor_cursor"]),
+            ray.ObjectID(state["actor_cursor"]) if state["actor_cursor"] is not None else None,
             state["actor_counter"],
             state["actor_method_names"],
             state["method_signatures"],
             state["method_num_return_vals"],
-            ray.ObjectID(state["actor_creation_dummy_object_id"]),
+            ray.ObjectID(state["actor_creation_dummy_object_id"]) if state["actor_creation_dummy_object_id"] is not None else None,
             state["actor_method_cpus"],
             actor_driver_id,
             actor_handle_id=actor_handle_id,
