@@ -71,6 +71,7 @@ class SampleBatch(object):
     @staticmethod
     def concat_samples(samples):
         out = {}
+        samples = [s for s in samples if s.count > 0]
         for k in samples[0].keys():
             out[k] = np.concatenate([s[k] for s in samples])
         return SampleBatch(out)
