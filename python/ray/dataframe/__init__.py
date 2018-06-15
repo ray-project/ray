@@ -2,7 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import pandas as pd
+import pandas
 # TODO: In the future `set_option` or similar needs to run on every node
 # in order to keep all pandas instances across nodes consistent
 from pandas import (eval, unique, value_counts, cut, to_numeric, factorize,
@@ -12,11 +12,11 @@ from pandas import (eval, unique, value_counts, cut, to_numeric, factorize,
                     set_option, NaT, PeriodIndex, Categorical)
 import threading
 
-pd_version = pd.__version__
-pd_major = int(pd_version.split(".")[0])
-pd_minor = int(pd_version.split(".")[1])
+pandas_version = pandas.__version__
+pandas_major = int(pandas_version.split(".")[0])
+pandas_minor = int(pandas_version.split(".")[1])
 
-if pd_major == 0 and pd_minor != 22:
+if pandas_major == 0 and pandas_minor != 22:
     raise Exception("In order to use Pandas on Ray, your pandas version must "
                     "be 0.22. You can run 'pip install pandas==0.22'")
 

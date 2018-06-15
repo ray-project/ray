@@ -3,7 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
-import pandas as pd
+import pandas
 import numpy as np
 import ray
 
@@ -119,14 +119,14 @@ def _get_nan_block_id(n_row=1, n_col=1, transpose=False):
     shape = (n_row, n_col)
     if shape not in _NAN_BLOCKS:
         arr = np.tile(np.array(np.NaN), shape)
-        _NAN_BLOCKS[shape] = ray.put(pd.DataFrame(data=arr))
+        _NAN_BLOCKS[shape] = ray.put(pandas.DataFrame(data=arr))
     return _NAN_BLOCKS[shape]
 
 
 def _get_lengths(df):
     """Gets the length of the dataframe.
     Args:
-        df: A remote pd.DataFrame object.
+        df: A remote pandas.DataFrame object.
     Returns:
         Returns an integer length of the dataframe object. If the attempt
             fails, returns 0 as the length.
@@ -142,7 +142,7 @@ def _get_lengths(df):
 def _get_widths(df):
     """Gets the width (number of columns) of the dataframe.
     Args:
-        df: A remote pd.DataFrame object.
+        df: A remote pandas.DataFrame object.
     Returns:
         Returns an integer width of the dataframe object. If the attempt
             fails, returns 0 as the length.
@@ -153,6 +153,11 @@ def _get_widths(df):
     # DataFrames
     except TypeError:
         return 0
+
+
+def _get_empty(df):
+    """Return True if the DataFrame is empty"""
+    return df.empty
 
 
 def _partition_pandas_dataframe(df, num_partitions=None, row_chunksize=None):
@@ -178,10 +183,10 @@ def _partition_pandas_dataframe(df, num_partitions=None, row_chunksize=None):
     row_partitions = []
     while len(temp_df) > row_chunksize:
         t_df = temp_df[:row_chunksize]
-        # reset_index here because we want a pd.RangeIndex
+        # reset_index here because we want a pandas.RangeIndex
         # within the partitions. It is smaller and sometimes faster.
         t_df.reset_index(drop=True, inplace=True)
-        t_df.columns = pd.RangeIndex(0, len(t_df.columns))
+        t_df.columns = pandas.RangeIndex(0, len(t_df.columns))
         top = ray.put(t_df)
         row_partitions.append(top)
         temp_df = temp_df[row_chunksize:]
@@ -190,7 +195,7 @@ def _partition_pandas_dataframe(df, num_partitions=None, row_chunksize=None):
         # This call is necessary to prevent modifying original df
         temp_df = temp_df[:]
         temp_df.reset_index(drop=True, inplace=True)
-        temp_df.columns = pd.RangeIndex(0, len(temp_df.columns))
+        temp_df.columns = pandas.RangeIndex(0, len(temp_df.columns))
         row_partitions.append(ray.put(temp_df))
 
     return row_partitions
@@ -223,10 +228,10 @@ def to_pandas(df):
     Returns:
         A new pandas DataFrame.
     """
-    pd_df = pd.concat(ray.get(df._row_partitions), copy=False)
-    pd_df.index = df.index
-    pd_df.columns = df.columns
-    return pd_df
+    pandas_df = pandas.concat(ray.get(df._row_partitions), copy=False)
+    pandas_df.index = df.index
+    pandas_df.columns = df.columns
+    return pandas_df
 
 
 @ray.remote
@@ -342,17 +347,27 @@ def _build_row_lengths(df_row):
 @ray.remote
 def _build_coord_df(lengths, index):
     """Build the coordinate dataframe over all partitions."""
-    coords = np.vstack([np.column_stack((np.full(l, i), np.arange(l)))
-                        for i, l in enumerate(lengths)])
-
+    filtered_lengths = [x for x in lengths if x > 0]
+    coords = None
+    if len(filtered_lengths) > 0:
+        coords = np.vstack([np.column_stack((np.full(l, i), np.arange(l)))
+                            for i, l in enumerate(filtered_lengths)])
     col_names = ("partition", "index_within_partition")
-    return pd.DataFrame(coords, index=index, columns=col_names)
+    return pandas.DataFrame(coords, index=index, columns=col_names)
+
+
+@ray.remote
+def _check_empty(dfs):
+    """Check if all partitions are empty"""
+    return all(ray.get([_deploy_func.remote(_get_empty, d) for d in dfs]))
 
 
 def _create_block_partitions(partitions, axis=0, length=None):
 
     if length is not None and length != 0 and get_npartitions() > length:
         npartitions = length
+    elif length == 0:
+        npartitions = 1
     else:
         npartitions = get_npartitions()
 
@@ -385,8 +400,8 @@ def create_blocks_helper(df, npartitions, axis):
         if df.shape[axis ^ 1] % npartitions == 0 \
         else df.shape[axis ^ 1] // npartitions + 1
 
-    # if not isinstance(df.columns, pd.RangeIndex):
-    #     df.columns = pd.RangeIndex(0, len(df.columns))
+    # if not isinstance(df.columns, pandas.RangeIndex):
+    #     df.columns = pandas.RangeIndex(0, len(df.columns))
 
     blocks = [df.iloc[:, i * block_size: (i + 1) * block_size]
               if axis == 0
@@ -394,7 +409,7 @@ def create_blocks_helper(df, npartitions, axis):
               for i in range(npartitions)]
 
     for block in blocks:
-        block.columns = pd.RangeIndex(0, len(block.columns))
+        block.columns = pandas.RangeIndex(0, len(block.columns))
         block.reset_index(inplace=True, drop=True)
     return blocks
 
@@ -403,20 +418,20 @@ def create_blocks_helper(df, npartitions, axis):
 @ray.remote
 def _blocks_to_col(*partition):
     if len(partition):
-        return pd.concat(partition, axis=0, copy=False)\
+        return pandas.concat(partition, axis=0, copy=False)\
             .reset_index(drop=True)
     else:
-        return pd.Series()
+        return pandas.Series()
 
 
 @memoize
 @ray.remote
 def _blocks_to_row(*partition):
-    row_part = pd.concat(partition, axis=1, copy=False)\
+    row_part = pandas.concat(partition, axis=1, copy=False)\
         .reset_index(drop=True)
     # Because our block partitions contain different indices (for the
     # columns), this change is needed to ensure correctness.
-    row_part.columns = pd.RangeIndex(0, len(row_part.columns))
+    row_part.columns = pandas.RangeIndex(0, len(row_part.columns))
     return row_part
 
 
@@ -468,7 +483,7 @@ def _reindex_helper(old_index, new_index, axis, npartitions, *df):
     Returns:
         A new set of blocks made up of DataFrames.
     """
-    df = pd.concat(df, axis=axis ^ 1)
+    df = pandas.concat(df, axis=axis ^ 1)
     if axis == 1:
         df.index = old_index
     elif axis == 0:
@@ -497,12 +512,12 @@ def _co_op_helper(func, left_columns, right_columns, left_df_len, left_idx,
     Returns:
          A new set of blocks for the partitioned DataFrame.
     """
-    left = pd.concat(zipped[:left_df_len], axis=1, copy=False).copy()
+    left = pandas.concat(zipped[:left_df_len], axis=1, copy=False).copy()
     left.columns = left_columns
     if left_idx is not None:
         left.index = left_idx
 
-    right = pd.concat(zipped[left_df_len:], axis=1, copy=False).copy()
+    right = pandas.concat(zipped[left_df_len:], axis=1, copy=False).copy()
     right.columns = right_columns
 
     new_rows = func(left, right)
@@ -546,7 +561,7 @@ def _match_partitioning(column_partition, lengths, index):
     column_partition.index = index
     for length in lengths:
         if len(column_partition) == 0:
-            partitioned_list.append(pd.DataFrame(columns=columns))
+            partitioned_list.append(pandas.DataFrame(columns=columns))
             continue
 
         partitioned_list.append(column_partition.iloc[:length, :])
@@ -570,4 +585,4 @@ def fix_blocks_dimensions(blocks, axis):
 @ray.remote
 def _compile_remote_dtypes(*column_of_blocks):
     small_dfs = [df.loc[0:0] for df in column_of_blocks]
-    return pd.concat(small_dfs, copy=False).dtypes
+    return pandas.concat(small_dfs, copy=False).dtypes
