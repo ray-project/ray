@@ -215,15 +215,17 @@ class CommonPolicyEvaluator(PolicyEvaluator):
         if self.batch_mode == "truncate_episodes":
             if batch_steps % num_envs != 0:
                 raise ValueError(
-                    "In 'truncate_episodes' batch mode, `batch_steps` must be evenly "
-                    "divisible by `num_envs`. Got {} and {}.".format(batch_steps, num_envs))
+                    "In 'truncate_episodes' batch mode, `batch_steps` must be "
+                    "evenly divisible by `num_envs`. Got {} and {}.".format(
+                        batch_steps, num_envs))
             batch_steps = batch_steps // num_envs
             pack_episodes = True
         elif self.batch_mode == "complete_episodes":
             batch_steps = float("inf")  # never cut episodes
-            pack_episodes = False  # sampler will return 1 episode per data poll
+            pack_episodes = False  # sampler will return 1 episode per poll
         else:
-            raise ValueError("Unsupported batch mode: {}".format(self.batch_mode))
+            raise ValueError(
+                "Unsupported batch mode: {}".format(self.batch_mode))
         if sample_async:
             self.sampler = AsyncSampler(
                 self.vector_env, self.policy_map["default"], self.obs_filter,
