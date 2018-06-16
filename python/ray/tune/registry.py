@@ -8,7 +8,7 @@ import numpy as np
 import pickle
 
 import ray
-from ray.experimental.internal_kv import ___internal_kv_initialized, \
+from ray.experimental.internal_kv import __internal_kv_initialized, \
     __internal_kv_get, __internal_kv_put
 
 TRAINABLE_CLASS = "trainable_class"
@@ -78,18 +78,18 @@ class _Registry(object):
             raise TuneError("Unknown category {} not among {}".format(
                 category, KNOWN_CATEGORIES))
         self._to_flush[(category, key)] = pickle.dumps(value)
-        if ___internal_kv_initialized():
+        if __internal_kv_initialized():
             self.flush_values()
 
     def contains(self, category, key):
-        if ___internal_kv_initialized():
+        if __internal_kv_initialized():
             value = __internal_kv_get(_make_key(category, key))
             return value is not None
         else:
             return (category, key) in self._to_flush
 
     def get(self, category, key):
-        if ___internal_kv_initialized():
+        if __internal_kv_initialized():
             value = __internal_kv_get(_make_key(category, key))
             if value is None:
                 raise ValueError(
