@@ -8,6 +8,8 @@ import numpy as np
 import pickle
 
 import ray
+from ray.experimental.internal_kv import ___internal_kv_initialized, \
+    __internal_kv_get, __internal_kv_put
 
 TRAINABLE_CLASS = "trainable_class"
 ENV_CREATOR = "env_creator"
@@ -51,24 +53,19 @@ def register_env(name, env_creator):
     _global_registry.register(ENV_CREATOR, name, env_creator)
 
 
-def _redis_key(category, key):
-    """Generate a Redis key for the given category and key.
+def _make_key(category, key):
+    """Generate a binary key for the given category and key.
 
     Args:
         category (str): The category of the item
         key (str): The unique identifier for the item
 
     Returns:
-        The key to use for storing a the value in Redis.
+        The key to use for storing a the value.
     """
     return (
         b"TuneRegistry:" + category.encode("ascii") + b"/" +
         key.encode("ascii"))
-
-
-def _ray_initialized():
-    worker = ray.worker.get_global_worker()
-    return hasattr(worker, "redis_client")
 
 
 class _Registry(object):
@@ -81,23 +78,19 @@ class _Registry(object):
             raise TuneError("Unknown category {} not among {}".format(
                 category, KNOWN_CATEGORIES))
         self._to_flush[(category, key)] = pickle.dumps(value)
-        if _ray_initialized():
-            self.flush_values_to_redis()
+        if ___internal_kv_initialized():
+            self.flush_values()
 
     def contains(self, category, key):
-        if _ray_initialized():
-            redis_key = _redis_key(category, key)
-            worker = ray.worker.get_global_worker()
-            value = worker.redis_client.hget(redis_key, "value")
+        if ___internal_kv_initialized():
+            value = __internal_kv_get(_make_key(category, key))
             return value is not None
         else:
             return (category, key) in self._to_flush
 
     def get(self, category, key):
-        if _ray_initialized():
-            redis_key = _redis_key(category, key)
-            worker = ray.worker.get_global_worker()
-            value = worker.redis_client.hget(redis_key, "value")
+        if ___internal_kv_initialized():
+            value = __internal_kv_get(_make_key(category, key))
             if value is None:
                 raise ValueError(
                     "Registry value for {}/{} doesn't exist.".format(
@@ -106,13 +99,11 @@ class _Registry(object):
         else:
             return pickle.loads(self._to_flush[(category, key)])
 
-    def flush_values_to_redis(self):
-        worker = ray.worker.get_global_worker()
+    def flush_values(self):
         for (category, key), value in self._to_flush.items():
-            redis_key = _redis_key(category, key)
-            worker.redis_client.hset(redis_key, "value", value)
+            __internal_kv_put(_make_key(category, key), value)
         self._to_flush.clear()
 
 
 _global_registry = _Registry()
-ray.worker._post_init_hooks.append(_global_registry.flush_values_to_redis)
+ray.worker._post_init_hooks.append(_global_registry.flush_values)
