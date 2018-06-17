@@ -149,16 +149,6 @@ class TestServingEnv(unittest.TestCase):
             batch_mode="truncate_episodes")
         self.assertRaises(Exception, lambda: ev.sample())
 
-    def testServingEnvHorizonNotSupported(self):
-        ev = CommonPolicyEvaluator(
-            env_creator=lambda _: SimpleServing(MockEnv(25)),
-            policy_graph=MockPolicyGraph,
-            episode_horizon=20,
-            batch_steps=10,
-            batch_mode="complete_episodes")
-        ev.sample()
-        self.assertRaises(Exception, lambda: ev.sample())
-
     def testTrainCartpoleOffPolicy(self):
         register_env(
             "test3", lambda _: PartOffPolicyServing(
