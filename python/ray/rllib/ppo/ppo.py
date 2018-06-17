@@ -117,7 +117,6 @@ class PPOAgent(Agent):
                 self.registry, self.env_creator, self.config, self.logdir,
                 True)
             for _ in range(self.config["num_workers"])]
-        self.start_time = time.time()
         if self.config["write_logs"]:
             self.file_writer = tf.summary.FileWriter(
                 self.logdir, self.local_evaluator.sess.graph)
@@ -138,9 +137,6 @@ class PPOAgent(Agent):
                 "tasks will be wasted. Consider decreasing "
                 "min_steps_per_task or increasing timesteps_per_batch.")
 
-        print("===> iteration", self.iteration)
-
-        iter_start = time.time()
         weights = ray.put(model.get_weights())
         [a.set_weights.remote(weights) for a in agents]
         samples = collect_samples(agents, config, self.local_evaluator)
@@ -151,32 +147,21 @@ class PPOAgent(Agent):
             return (value - value.mean()) / max(1e-4, value.std())
 
         samples.data["advantages"] = standardized(samples["advantages"])
-
-        rollouts_end = time.time()
         print("Computing policy (iterations=" + str(config["num_sgd_iter"]) +
               ", stepsize=" + str(config["sgd_stepsize"]) + "):")
         names = [
             "iter", "total loss", "policy loss", "vf loss", "kl", "entropy"]
         print(("{:>15}" * len(names)).format(*names))
         samples.shuffle()
-        shuffle_end = time.time()
         tuples_per_device = model.load_data(
             samples, self.iteration == 0 and config["full_trace_data_load"])
-        load_end = time.time()
-        rollouts_time = rollouts_end - iter_start
-        shuffle_time = shuffle_end - rollouts_end
-        load_time = load_end - shuffle_end
-        sgd_time = 0
         for i in range(config["num_sgd_iter"]):
-            sgd_start = time.time()
             batch_index = 0
             num_batches = (
                 int(tuples_per_device) // int(model.per_device_batch_size))
             loss, policy_graph, vf_loss, kl, entropy = [], [], [], [], []
             permutation = np.random.permutation(num_batches)
             # Prepare to drop into the debugger
-            if self.iteration == config["tf_debug_iteration"]:
-                model.sess = tf_debug.LocalCLIDebugWrapperSession(model.sess)
             while batch_index < num_batches:
                 full_trace = (
                     i == 0 and self.iteration == 0 and
@@ -197,32 +182,9 @@ class PPOAgent(Agent):
             vf_loss = np.mean(vf_loss)
             kl = np.mean(kl)
             entropy = np.mean(entropy)
-            sgd_end = time.time()
             print(
                 "{:>15}{:15.5e}{:15.5e}{:15.5e}{:15.5e}{:15.5e}".format(
                     i, loss, policy_graph, vf_loss, kl, entropy))
-
-            values = []
-            if i == config["num_sgd_iter"] - 1:
-                metric_prefix = "ppo/sgd/final_iter/"
-                values.append(tf.Summary.Value(
-                    tag=metric_prefix + "kl_coeff",
-                    simple_value=self.kl_coeff))
-                values.extend([
-                    tf.Summary.Value(
-                        tag=metric_prefix + "mean_entropy",
-                        simple_value=entropy),
-                    tf.Summary.Value(
-                        tag=metric_prefix + "mean_loss",
-                        simple_value=loss),
-                    tf.Summary.Value(
-                        tag=metric_prefix + "mean_kl",
-                        simple_value=kl)])
-                if self.file_writer:
-                    sgd_stats = tf.Summary(value=values)
-                    self.file_writer.add_summary(sgd_stats, self.global_step)
-            self.global_step += 1
-            sgd_time += sgd_end - sgd_start
         if kl > 2.0 * config["kl_target"]:
             self.kl_coeff *= 1.5
         elif kl < 0.5 * config["kl_target"]:
@@ -231,11 +193,6 @@ class PPOAgent(Agent):
         info = {
             "kl_divergence": kl,
             "kl_coefficient": self.kl_coeff,
-            "rollouts_time": rollouts_time,
-            "shuffle_time": shuffle_time,
-            "load_time": load_time,
-            "sgd_time": sgd_time,
-            "sample_throughput": len(samples["obs"]) / sgd_time
         }
 
         FilterManager.synchronize(
