@@ -15,14 +15,14 @@ class MultiAgentFullyConnectedNetwork(Model):
     def _init(self, inputs, num_outputs, options):
 
         # Split the input and output tensors
-        input_shapes = options["custom_options"]["multiagent_obs_shapes"]
-        output_shapes = options["custom_options"]["multiagent_act_shapes"]
+        custom_options = options["custom_options"]
+        input_shapes = custom_options["multiagent_obs_shapes"]
+        output_shapes = custom_options["multiagent_act_shapes"]
         input_reshaper = Reshaper(input_shapes)
         output_reshaper = Reshaper(output_shapes)
         split_inputs = input_reshaper.split_tensor(inputs)
         num_actions = output_reshaper.split_number(num_outputs)
 
-        custom_options = options["custom_options"]
         hiddens = custom_options.get("multiagent_fcnet_hiddens",
                                      [[256, 256]]*1)
 

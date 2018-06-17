@@ -18,6 +18,10 @@ class ProximalPolicyGraph(object):
             prev_logits, prev_vf_preds, logit_dim,
             kl_coeff, distribution_class, config, sess, registry):
         self.prev_dist = distribution_class(prev_logits)
+        self.shared_model = (config["model"].get("custom_options", {}).
+                             get("multiagent_shared_model", False))
+        self.num_agents = len(config["model"].get(
+            "custom_options", {}).get("multiagent_obs_shapes", [1]))
 
         # Saved so that we can compute actions given different observations
         self.observations = observations
@@ -38,18 +42,46 @@ class ProximalPolicyGraph(object):
                     registry, observations, 1, vf_config).outputs
             self.value_function = tf.reshape(self.value_function, [-1])
 
-        # Make loss functions.
-        self.ratio = tf.exp(self.curr_dist.logp(actions) -
-                            self.prev_dist.logp(actions))
+        curr_logp = self.curr_dist.logp(actions)
+        prev_logp = self.prev_dist.logp(actions)
         self.kl = self.prev_dist.kl(self.curr_dist)
-        self.mean_kl = tf.reduce_mean(self.kl)
         self.entropy = self.curr_dist.entropy()
+
+        # handle everything uniform as if it were the multiagent case
+        if not isinstance(curr_logp, list):
+            self.kl = [self.kl]
+            curr_logp = [curr_logp]
+            prev_logp = [prev_logp]
+            self.entropy = [self.entropy]
+
+        # Make loss functions.
+        self.ratio = [tf.exp(curr - prev)
+                      for curr, prev in zip(curr_logp, prev_logp)]
+        self.mean_kl = [tf.reduce_mean(kl_i) for kl_i in self.kl]
         self.mean_entropy = tf.reduce_mean(self.entropy)
-        self.surr1 = self.ratio * advantages
-        self.surr2 = tf.clip_by_value(self.ratio, 1 - config["clip_param"],
-                                      1 + config["clip_param"]) * advantages
-        self.surr = tf.minimum(self.surr1, self.surr2)
+        self.surr1 = [ratio_i * advantages for ratio_i in self.ratio]
+        self.surr2 = [tf.clip_by_value(ratio_i, 1 - config["clip_param"],
+                                       1 + config["clip_param"]) * advantages
+                      for ratio_i in self.ratio]
+        self.surr = [tf.minimum(surr1_i, surr2_i) for surr1_i, surr2_i in
+                     zip(self.surr1, self.surr2)]
+        self.surr = tf.add_n(self.surr)
         self.mean_policy_loss = tf.reduce_mean(-self.surr)
+
+        self.entropy = tf.add_n(self.entropy)
+        entropy_prod = config["entropy_coeff"]*self.entropy
+
+        # there's only one kl value for a shared model
+        if self.shared_model:
+            kl_prod = tf.add_n([kl_coeff[0] * kl_i for
+                                i, kl_i in enumerate(self.kl)])
+            # all the above values have been rescaled by num_agents
+            self.surr /= self.num_agents
+            kl_prod /= self.num_agents
+            entropy_prod /= self.num_agents
+        else:
+            kl_prod = tf.add_n([kl_coeff[i] * kl_i for
+                                i, kl_i in enumerate(self.kl)])
 
         if config["use_gae"]:
             # We use a huber loss here to be more robust against outliers,
@@ -63,15 +95,14 @@ class ProximalPolicyGraph(object):
             self.vf_loss = tf.minimum(self.vf_loss1, self.vf_loss2)
             self.mean_vf_loss = tf.reduce_mean(self.vf_loss)
             self.loss = tf.reduce_mean(
-                -self.surr + kl_coeff * self.kl +
+                -self.surr + kl_prod +
                 config["vf_loss_coeff"] * self.vf_loss -
-                config["entropy_coeff"] * self.entropy)
+                entropy_prod)
         else:
             self.mean_vf_loss = tf.constant(0.0)
             self.loss = tf.reduce_mean(
                 -self.surr +
-                kl_coeff * self.kl -
-                config["entropy_coeff"] * self.entropy)
+                kl_prod - entropy_prod)
 
         self.sess = sess
 

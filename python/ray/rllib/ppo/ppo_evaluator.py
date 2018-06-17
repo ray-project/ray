@@ -55,8 +55,15 @@ class PPOEvaluator(PolicyEvaluator):
 
         # Defines the training inputs:
         # The coefficient of the KL penalty.
+        shared_model = (self.config["model"].get("custom_options", {}).
+                        get("multiagent_shared_model", False))
+        if shared_model:
+            num_kl_terms = 1
+        else:
+            num_kl_terms = len(self.config["model"].get("custom_options", {}).
+                               get("multiagent_obs_shapes", [1]))
         self.kl_coeff = tf.placeholder(
-            name="newkl", shape=(), dtype=tf.float32)
+            name="newkl", shape=(num_kl_terms,), dtype=tf.float32)
 
         # The input observations.
         self.observations = tf.placeholder(
