@@ -60,7 +60,7 @@ class LocalSyncParallelOptimizer(object):
         self.logdir = logdir
 
         # First initialize the shared loss network
-        with tf.variable_scope(TOWER_SCOPE_NAME):
+        with tf.name_scope(TOWER_SCOPE_NAME):
             self._shared_loss = build_loss(*input_placeholders)
 
         # Then setup the per-device loss graphs that use the shared weights
@@ -192,7 +192,7 @@ class LocalSyncParallelOptimizer(object):
 
     def _setup_device(self, device, device_input_placeholders):
         with tf.device(device):
-            with tf.variable_scope(TOWER_SCOPE_NAME, reuse=True):
+            with tf.name_scope(TOWER_SCOPE_NAME):
                 device_input_batches = []
                 device_input_slices = []
                 for ph in device_input_placeholders:

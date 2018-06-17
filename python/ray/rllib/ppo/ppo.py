@@ -106,7 +106,7 @@ class PPOAgent(Agent):
 
     def _init(self):
         self.global_step = 0
-        self.kl_coeff = self.config["kl_coeff"]
+        self.kl_coeff_val = self.config["kl_coeff"]
         self.local_evaluator = PPOEvaluator(
             self.registry, self.env_creator, self.config, self.logdir, False)
         RemotePPOEvaluator = ray.remote(
@@ -153,30 +153,46 @@ class PPOAgent(Agent):
             "iter", "total loss", "policy loss", "vf loss", "kl", "entropy"]
         print(("{:>15}" * len(names)).format(*names))
         samples.shuffle()
-        tuples_per_device = model.load_data(
-            samples, self.iteration == 0 and config["full_trace_data_load"])
+
+        use_gae = self.config["use_gae"]
+        dummy = np.zeros_like(samples["advantages"])
+        tuples_per_device = self.local_evaluator.par_opt.load_data(
+            self.local_evaluator.sess,
+            [samples["obs"],
+             samples["value_targets"] if use_gae else dummy,
+             samples["advantages"],
+             samples["actions"],
+             samples["logprobs"],
+             samples["vf_preds"] if use_gae else dummy])
+
+        # tuples_per_device = model.load_data(
+        #     samples, self.iteration == 0 and config["full_trace_data_load"])
         for i in range(config["num_sgd_iter"]):
-            batch_index = 0
             num_batches = (
                 int(tuples_per_device) // int(model.per_device_batch_size))
             loss, policy_graph, vf_loss, kl, entropy = [], [], [], [], []
             permutation = np.random.permutation(num_batches)
             # Prepare to drop into the debugger
-            while batch_index < num_batches:
+            for batch_index in range(num_batches):
                 full_trace = (
                     i == 0 and self.iteration == 0 and
                     batch_index == config["full_trace_nth_sgd_batch"])
                 batch_loss, batch_policy_graph, batch_vf_loss, batch_kl, \
-                    batch_entropy = model.run_sgd_minibatch(
+                    batch_entropy = self.local_evaluator.par_opt.optimize(
+                        self.local_evaluator.sess,
                         permutation[batch_index] * model.per_device_batch_size,
-                        self.kl_coeff, full_trace,
-                        self.file_writer)
+                        extra_ops=[
+                            self.local_evaluator.mean_loss,
+                            self.local_evaluator.mean_policy_loss,
+                            self.local_evaluator.mean_vf_loss,
+                            self.local_evaluator.mean_kl,
+                            self.local_evaluator.mean_entropy],
+                        extra_feed_dict={self.local_evaluator.kl_coeff: self.kl_coeff_val})
                 loss.append(batch_loss)
                 policy_graph.append(batch_policy_graph)
                 vf_loss.append(batch_vf_loss)
                 kl.append(batch_kl)
                 entropy.append(batch_entropy)
-                batch_index += 1
             loss = np.mean(loss)
             policy_graph = np.mean(policy_graph)
             vf_loss = np.mean(vf_loss)
@@ -186,13 +202,13 @@ class PPOAgent(Agent):
                 "{:>15}{:15.5e}{:15.5e}{:15.5e}{:15.5e}{:15.5e}".format(
                     i, loss, policy_graph, vf_loss, kl, entropy))
         if kl > 2.0 * config["kl_target"]:
-            self.kl_coeff *= 1.5
+            self.kl_coeff_val *= 1.5
         elif kl < 0.5 * config["kl_target"]:
-            self.kl_coeff *= 0.5
+            self.kl_coeff_val *= 0.5
 
         info = {
             "kl_divergence": kl,
-            "kl_coefficient": self.kl_coeff,
+            "kl_coefficient": self.kl_coeff_val,
         }
 
         FilterManager.synchronize(
@@ -238,7 +254,7 @@ class PPOAgent(Agent):
         extra_data = [
             self.local_evaluator.save(),
             self.global_step,
-            self.kl_coeff,
+            self.kl_coeff_val,
             agent_state]
         pickle.dump(extra_data, open(checkpoint_path + ".extra_data", "wb"))
         return checkpoint_path
@@ -248,7 +264,7 @@ class PPOAgent(Agent):
         extra_data = pickle.load(open(checkpoint_path + ".extra_data", "rb"))
         self.local_evaluator.restore(extra_data[0])
         self.global_step = extra_data[1]
-        self.kl_coeff = extra_data[2]
+        self.kl_coeff_val = extra_data[2]
         ray.get([
             a.restore.remote(o)
                 for (a, o) in zip(self.remote_evaluators, extra_data[3])])

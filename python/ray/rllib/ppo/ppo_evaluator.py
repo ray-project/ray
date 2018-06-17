@@ -95,16 +95,45 @@ class PPOEvaluator(PolicyEvaluator):
                 self.kl_coeff, self.distribution_class, self.config,
                 self.sess, self.registry)
 
-        self.par_opt = LocalSyncParallelOptimizer(
-            tf.train.AdamOptimizer(self.config["sgd_stepsize"]),
-            self.devices,
-            [self.observations, self.value_targets, self.advantages,
-             self.actions, self.prev_logits, self.prev_vf_preds],
-            self.per_device_batch_size,
-            build_loss,
-            self.logdir)
+        # TEMPORARY
+        main_thread_scope = tf.get_variable_scope()
+        with tf.variable_scope(main_thread_scope, reuse=tf.AUTO_REUSE):
+            inputs = [
+                self.observations, self.value_targets, self.advantages,
+                self.actions, self.prev_logits, self.prev_vf_preds
+            ]
+            self.common_policy = build_loss(*inputs)
+            self.par_opt = LocalSyncParallelOptimizer(
+                tf.train.AdamOptimizer(self.config["sgd_stepsize"]),
+                self.devices,
+                inputs,
+                self.per_device_batch_size,
+                build_loss,
+                self.logdir)
 
         # Metric ops
+        self.init_extra_ops()
+
+        # References to the model weights
+        self.variables = ray.experimental.TensorFlowVariables(
+            self.common_policy.loss, self.sess)
+        self.obs_filter = get_filter(
+            config["observation_filter"], self.env.observation_space.shape)
+        self.rew_filter = MeanStdFilter((), clip=5.0)
+        self.filters = {"obs_filter": self.obs_filter,
+                        "rew_filter": self.rew_filter}
+        self.sampler = SyncSampler(
+            self.env, self.common_policy, self.obs_filter,
+            self.config["horizon"], self.config["horizon"])
+        self.sess.run(tf.global_variables_initializer())
+
+    def compute_gradients(self, samples):
+        raise NotImplementedError
+
+    def apply_gradients(self, grads):
+        raise NotImplementedError
+
+    def init_extra_ops(self):
         with tf.name_scope("test_outputs"):
             policies = self.par_opt.get_device_losses()
             self.mean_loss = tf.reduce_mean(
@@ -122,50 +151,6 @@ class PPOEvaluator(PolicyEvaluator):
             self.mean_entropy = tf.reduce_mean(
                 tf.stack(values=[
                     policy.mean_entropy for policy in policies]), 0)
-
-        # References to the model weights
-        self.common_policy = self.par_opt.get_common_loss()
-        self.variables = ray.experimental.TensorFlowVariables(
-            self.common_policy.loss, self.sess)
-        self.obs_filter = get_filter(
-            config["observation_filter"], self.env.observation_space.shape)
-        self.rew_filter = MeanStdFilter((), clip=5.0)
-        self.filters = {"obs_filter": self.obs_filter,
-                        "rew_filter": self.rew_filter}
-        self.sampler = SyncSampler(
-            self.env, self.common_policy, self.obs_filter,
-            self.config["horizon"], self.config["horizon"])
-        self.sess.run(tf.global_variables_initializer())
-
-    def load_data(self, trajectories, full_trace):
-        use_gae = self.config["use_gae"]
-        dummy = np.zeros_like(trajectories["advantages"])
-        return self.par_opt.load_data(
-            self.sess,
-            [trajectories["obs"],
-             trajectories["value_targets"] if use_gae else dummy,
-             trajectories["advantages"],
-             trajectories["actions"],
-             trajectories["logprobs"],
-             trajectories["vf_preds"] if use_gae else dummy],
-            full_trace=full_trace)
-
-    def run_sgd_minibatch(
-            self, batch_index, kl_coeff, full_trace, file_writer):
-        return self.par_opt.optimize(
-            self.sess,
-            batch_index,
-            extra_ops=[
-                self.mean_loss, self.mean_policy_loss, self.mean_vf_loss,
-                self.mean_kl, self.mean_entropy],
-            extra_feed_dict={self.kl_coeff: kl_coeff},
-            file_writer=file_writer if full_trace else None)
-
-    def compute_gradients(self, samples):
-        raise NotImplementedError
-
-    def apply_gradients(self, grads):
-        raise NotImplementedError
 
     def save(self):
         filters = self.get_filters(flush_after=True)
