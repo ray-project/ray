@@ -181,12 +181,7 @@ class PPOAgent(Agent):
                     batch_entropy = self.local_evaluator.par_opt.optimize(
                         self.local_evaluator.sess,
                         permutation[batch_index] * model.per_device_batch_size,
-                        extra_ops=[
-                            self.local_evaluator.mean_loss,
-                            self.local_evaluator.mean_policy_loss,
-                            self.local_evaluator.mean_vf_loss,
-                            self.local_evaluator.mean_kl,
-                            self.local_evaluator.mean_entropy],
+                        extra_ops=list(self.local_evaluator.extra_ops.values()),
                         extra_feed_dict={self.local_evaluator.kl_coeff: self.kl_coeff_val})
                 loss.append(batch_loss)
                 policy_graph.append(batch_policy_graph)

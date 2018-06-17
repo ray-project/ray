@@ -5,6 +5,7 @@ from __future__ import print_function
 import pickle
 import tensorflow as tf
 import os
+from collections import OrderedDict
 
 from tensorflow.python import debug as tf_debug
 
@@ -112,7 +113,8 @@ class PPOEvaluator(PolicyEvaluator):
                 self.logdir)
 
         # Metric ops
-        self.init_extra_ops()
+        self.extra_ops = self.init_extra_ops(
+            self.par_opt.get_device_losses())
 
         # References to the model weights
         self.variables = ray.experimental.TensorFlowVariables(
@@ -133,24 +135,26 @@ class PPOEvaluator(PolicyEvaluator):
     def apply_gradients(self, grads):
         raise NotImplementedError
 
-    def init_extra_ops(self):
+    def init_extra_ops(self, device_losses):
+        tower_avg_ops = OrderedDict()
         with tf.name_scope("test_outputs"):
-            policies = self.par_opt.get_device_losses()
-            self.mean_loss = tf.reduce_mean(
+            policies = device_losses
+            tower_avg_ops["loss"] = tf.reduce_mean(
                 tf.stack(values=[
                     policy.loss for policy in policies]), 0)
-            self.mean_policy_loss = tf.reduce_mean(
+            tower_avg_ops["policy_loss"] = tf.reduce_mean(
                 tf.stack(values=[
                     policy.mean_policy_loss for policy in policies]), 0)
-            self.mean_vf_loss = tf.reduce_mean(
+            tower_avg_ops["vf_loss"] = tf.reduce_mean(
                 tf.stack(values=[
                     policy.mean_vf_loss for policy in policies]), 0)
-            self.mean_kl = tf.reduce_mean(
+            tower_avg_ops["kl"] = tf.reduce_mean(
                 tf.stack(values=[
                     policy.mean_kl for policy in policies]), 0)
-            self.mean_entropy = tf.reduce_mean(
+            tower_avg_ops["entropy"] = tf.reduce_mean(
                 tf.stack(values=[
                     policy.mean_entropy for policy in policies]), 0)
+        return tower_avg_ops
 
     def save(self):
         filters = self.get_filters(flush_after=True)
