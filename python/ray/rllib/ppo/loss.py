@@ -60,7 +60,7 @@ class ProximalPolicyGraph(object):
                 self.value_function - prev_vf_preds,
                 -config["clip_param"], config["clip_param"])
             self.vf_loss2 = tf.square(vf_clipped - value_targets)
-            self.vf_loss = tf.minimum(self.vf_loss1, self.vf_loss2)
+            self.vf_loss = tf.maximum(self.vf_loss1, self.vf_loss2)
             self.mean_vf_loss = tf.reduce_mean(self.vf_loss)
             self.loss = tf.reduce_mean(
                 -self.surr + kl_coeff * self.kl +
