@@ -21,13 +21,11 @@ ROOT_DIR=$TP_DIR/..
 if [[ "${RAY_USE_NEW_GCS}" = "on" ]]; then
   pushd "$TP_DIR/pkg/"
     rm -rf credis
-    # git clone --recursive https://github.com/ray-project/credis
-    git clone --recursive https://github.com/concretevitamin/credis-1 credis
+    git clone --recursive https://github.com/ray-project/credis
   popd
 
   pushd "$TP_DIR/pkg/credis"
-    # https://github.com/ray-project/credis/commit/28de4a2be70cc060760ae4731362ff18ecc2077f
-  git checkout 846683c2526228abc6d7
+    git checkout 24e8dee320fbd57293a82eaaef591a6097aca4f7
 
     # If the above commit points to different submodules' commits than
     # origin's head, this updates the submodules.

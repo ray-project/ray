@@ -18,6 +18,8 @@ AsyncGcsClient::AsyncGcsClient(const ClientID &client_id, CommandType command_ty
   command_type_ = command_type;
 }
 
+// Use of kChain currently only applies to Table::Add which affects only the
+// task table, and when RAY_USE_NEW_GCS is set at compile time.
 AsyncGcsClient::AsyncGcsClient(const ClientID &client_id)
     : AsyncGcsClient(client_id, CommandType::kChain) {}
 
@@ -67,7 +69,6 @@ FunctionTable &AsyncGcsClient::function_table() { return *function_table_; }
 ClassTable &AsyncGcsClient::class_table() { return *class_table_; }
 
 HeartbeatTable &AsyncGcsClient::heartbeat_table() { return *heartbeat_table_; }
-
 }  // namespace gcs
 
 }  // namespace ray

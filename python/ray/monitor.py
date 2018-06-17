@@ -10,6 +10,7 @@ import time
 from collections import Counter, defaultdict
 
 import ray
+import ray.cloudpickle as pickle
 import ray.utils
 import redis
 # Import flatbuffer bindings.
@@ -87,16 +88,7 @@ class Monitor(object):
             managers that were up at one point and have died since then.
     """
 
-    def __init__(
-            self,
-            redis_address,
-            redis_port,
-            autoscaling_config,
-            # Experimental GCS flushing policy.  Need RAY_USE_NEW_GCS flag
-            # during compilation as well as run time.
-            flush_when_at_least_bytes=(1 << 31),
-            flush_period_secs=10,
-            flush_num_entries_each_time=10000):
+    def __init__(self, redis_address, redis_port, autoscaling_config):
         # Initialize the Redis clients.
         self.state = ray.experimental.state.GlobalState()
         self.state._initialize_global_state(redis_address, redis_port)
@@ -124,29 +116,15 @@ class Monitor(object):
 
         # Experimental feature: GCS flushing.
         self.issue_gcs_flushes = "RAY_USE_NEW_GCS" in os.environ
+        self.gcs_flush_policy = None
         if self.issue_gcs_flushes:
-            self.last_flush_timestamp = -1
-            self.flush_when_at_least_bytes = flush_when_at_least_bytes
-            self.flush_period_secs = flush_period_secs
-            self.flush_num_entries_each_time = flush_num_entries_each_time
-            # For now, we take the first data shard ("head") to issue flushes.
-            shards = self.redis.lrange(b"RedisShards", 0, -1)
-            addr, port = shards[0].split(b":")
-            self.redis_shard0 = redis.StrictRedis(host=addr, port=port, db=0)
-
-            # Configure policy.
+            # For now, we take the primary redis server to issue flushes,
+            # because task table entries are stored there under this flag.
             try:
-                reply = self.redis_shard0.execute_command(
-                    "CONFIGURE_FLUSH_POLICY {} {} {}".format(
-                        self.flush_when_at_least_bytes,
-                        self.flush_period_secs,
-                        self.flush_num_entries_each_time))
+                self.redis.execute_command("HEAD.FLUSH 0")
             except redis.exceptions.ResponseError as e:
-                reply = str(e)
-            log.info("Reply of configuring flush policy: {}".format(reply))
-            if reply != b"OK":
-                # This happens if GCS is started in a mode without flushing
-                # support.
+                log.info("Turning off flushing due to exception: {}".format(
+                    str(e)))
                 self.issue_gcs_flushes = False
 
     def subscribe(self, channel):
@@ -579,31 +557,27 @@ class Monitor(object):
         RAY_USE_NEW_GCS set, and Ray must be started at run time with the flag
         as well.
         """
-        if self.issue_gcs_flushes:
-            # Example policy values:
-            # flush_when_at_least_bytes 2GB
-            # flush_period_secs 10s
-            # flush_num_entries_each_time 10k
-            #
-            # This means
-            # (1) If the GCS shard uses less than 2GB of memory, no flushing
-            #     would take place.  This should cover most Ray runs.
-            # (2) The GCS shard will only honor a flush request, if it's issued
-            #     after 10 seconds since the last processed flush.  In
-            #     particular this means it's okay for the Monitor to issue
-            #     requests more frequently than this param.
-            # (3) When processing a flush, the shard will flush at most 10k
-            #     entries.  This is to control the latency of each request.
-            #
-            # Note, flush rate == (flush period) * (num entries each
-            # time).  So applications that have a heavier GCS load can tune
-            # these params.
-            if time.time() - self.last_flush_timestamp < self.flush_period_secs:
+        if not self.issue_gcs_flushes:
+            return
+        if self.gcs_flush_policy is None:
+            serialized = self.redis.get("gcs_flushing_policy")
+            if serialized is None:
+                # Client has not set any policy; by default flushing is off.
                 return
-            num_flushed = self.redis_shard0.execute_command("HEAD.FLUSH")
-            self.last_flush_timestamp = time.time()
-            if num_flushed > 0:
-                log.debug("Flushed {} entries out of GCS".format(num_flushed))
+            self.gcs_flush_policy = pickle.loads(serialized)
+
+        if not self.gcs_flush_policy.should_flush(self.redis):
+            return
+
+        max_entries_to_flush = self.gcs_flush_policy.num_entries_to_flush()
+        num_flushed = self.redis.execute_command(
+            "HEAD.FLUSH {}".format(max_entries_to_flush))
+        log.info('num_flushed {}'.format(num_flushed))
+
+        # This flushes event log and log files.
+        ray.experimental.flush_redis_unsafe(self.redis)
+
+        self.gcs_flush_policy.record_flush()
 
     def run(self):
         """Run the monitor.
@@ -640,7 +614,6 @@ class Monitor(object):
                       len(self.dead_plasma_managers)))
 
         # Handle messages from the subscription channels.
-        last_fired = time.time()
         while True:
             # Update the mapping from local scheduler client ID to IP address.
             # This is only used to update the load metrics for the autoscaler.
