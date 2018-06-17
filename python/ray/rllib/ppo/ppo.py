@@ -43,7 +43,7 @@ DEFAULT_CONFIG = {
         "log_device_placement": False,
         "allow_soft_placement": True,
         "intra_op_parallelism_threads": 1,
-        "inter_op_parallelism_threads": 2,
+        "inter_op_parallelism_threads": 1,
     },
     # Batch size for policy evaluations for rollouts
     "rollout_batchsize": 1,

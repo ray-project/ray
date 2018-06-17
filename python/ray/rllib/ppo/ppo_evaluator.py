@@ -14,6 +14,7 @@ import ray
 from ray.rllib.optimizers import PolicyEvaluator, SampleBatch
 from ray.rllib.optimizers.multi_gpu_impl import LocalSyncParallelOptimizer
 from ray.rllib.models import ModelCatalog
+from ray.rllib.utils import seed
 from ray.rllib.utils.sampler import SyncSampler
 from ray.rllib.utils.filter import get_filter, MeanStdFilter
 from ray.rllib.utils.process_rollout import compute_advantages
@@ -31,6 +32,7 @@ class PPOEvaluator(PolicyEvaluator):
     """
 
     def __init__(self, registry, env_creator, config, logdir, is_remote):
+        seed()
         self.registry = registry
         self.is_remote = is_remote
         if is_remote:
@@ -43,6 +45,7 @@ class PPOEvaluator(PolicyEvaluator):
         self.logdir = logdir
         self.env = ModelCatalog.get_preprocessor_as_wrapper(
             registry, env_creator(config["env_config"]), config["model"])
+        self.env.seed(0)
         if is_remote:
             config_proto = tf.ConfigProto()
         else:
