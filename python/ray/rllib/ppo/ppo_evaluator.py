@@ -89,32 +89,11 @@ class PPOEvaluator(PolicyEvaluator):
             assert self.batch_size % len(devices) == 0
             self.per_device_batch_size = int(self.batch_size / len(devices))
 
-        def build_loss(obs, vtargets, advs, acts, plog, pvf_preds):
-            return ProximalPolicyGraph(
-                self.env.observation_space, self.env.action_space,
-                obs, vtargets, advs, acts, plog, pvf_preds, self.logit_dim,
-                self.kl_coeff, self.distribution_class, self.config,
-                self.sess, self.registry)
-
-        # TEMPORARY
-        main_thread_scope = tf.get_variable_scope()
-        with tf.variable_scope(main_thread_scope, reuse=tf.AUTO_REUSE):
-            inputs = [
-                self.observations, self.value_targets, self.advantages,
-                self.actions, self.prev_logits, self.prev_vf_preds
-            ]
-            self.common_policy = build_loss(*inputs)
-            self.par_opt = LocalSyncParallelOptimizer(
-                tf.train.AdamOptimizer(self.config["sgd_stepsize"]),
-                self.devices,
-                inputs,
-                self.per_device_batch_size,
-                build_loss,
-                self.logdir)
-
-        # Metric ops
-        self.extra_ops = self.init_extra_ops(
-            self.par_opt.get_device_losses())
+        self.inputs = [
+            self.observations, self.value_targets, self.advantages,
+            self.actions, self.prev_logits, self.prev_vf_preds
+        ]
+        self.common_policy = self.build_loss(*self.inputs)
 
         # References to the model weights
         self.variables = ray.experimental.TensorFlowVariables(
@@ -127,7 +106,6 @@ class PPOEvaluator(PolicyEvaluator):
         self.sampler = SyncSampler(
             self.env, self.common_policy, self.obs_filter,
             self.config["horizon"], self.config["horizon"])
-        self.sess.run(tf.global_variables_initializer())
 
     def compute_gradients(self, samples):
         raise NotImplementedError
@@ -135,26 +113,32 @@ class PPOEvaluator(PolicyEvaluator):
     def apply_gradients(self, grads):
         raise NotImplementedError
 
+    def build_loss(self, obs, vtargets, advs, acts, plog, pvf_preds):
+        return ProximalPolicyGraph(
+            self.env.observation_space, self.env.action_space,
+            obs, vtargets, advs, acts, plog, pvf_preds, self.logit_dim,
+            self.kl_coeff, self.distribution_class, self.config,
+            self.sess, self.registry)
+
     def init_extra_ops(self, device_losses):
-        tower_avg_ops = OrderedDict()
+        self.extra_ops = OrderedDict()
         with tf.name_scope("test_outputs"):
             policies = device_losses
-            tower_avg_ops["loss"] = tf.reduce_mean(
+            self.extra_ops["loss"] = tf.reduce_mean(
                 tf.stack(values=[
                     policy.loss for policy in policies]), 0)
-            tower_avg_ops["policy_loss"] = tf.reduce_mean(
+            self.extra_ops["policy_loss"] = tf.reduce_mean(
                 tf.stack(values=[
                     policy.mean_policy_loss for policy in policies]), 0)
-            tower_avg_ops["vf_loss"] = tf.reduce_mean(
+            self.extra_ops["vf_loss"] = tf.reduce_mean(
                 tf.stack(values=[
                     policy.mean_vf_loss for policy in policies]), 0)
-            tower_avg_ops["kl"] = tf.reduce_mean(
+            self.extra_ops["kl"] = tf.reduce_mean(
                 tf.stack(values=[
                     policy.mean_kl for policy in policies]), 0)
-            tower_avg_ops["entropy"] = tf.reduce_mean(
+            self.extra_ops["entropy"] = tf.reduce_mean(
                 tf.stack(values=[
                     policy.mean_entropy for policy in policies]), 0)
-        return tower_avg_ops
 
     def save(self):
         filters = self.get_filters(flush_after=True)

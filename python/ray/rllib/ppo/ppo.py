@@ -16,6 +16,9 @@ from ray.tune.trial import Resources
 from ray.rllib.agent import Agent
 from ray.rllib.utils import FilterManager
 from ray.rllib.ppo.ppo_evaluator import PPOEvaluator
+from ray.rllib.optimizers.multi_gpu_impl import LocalSyncParallelOptimizer
+from ray.rllib.utils.common_policy_evaluator import CommonPolicyEvaluator, \
+    collect_metrics
 from ray.rllib.ppo.rollout import collect_samples
 
 
@@ -109,6 +112,22 @@ class PPOAgent(Agent):
         self.kl_coeff_val = self.config["kl_coeff"]
         self.local_evaluator = PPOEvaluator(
             self.registry, self.env_creator, self.config, self.logdir, False)
+
+        main_thread_scope = tf.get_variable_scope()
+
+        with tf.variable_scope(main_thread_scope, reuse=tf.AUTO_REUSE):
+            self.par_opt = LocalSyncParallelOptimizer(
+                tf.train.AdamOptimizer(self.config["sgd_stepsize"]),
+                self.local_evaluator.devices,
+                self.local_evaluator.inputs,
+                self.local_evaluator.per_device_batch_size,
+                self.local_evaluator.build_loss,
+                self.logdir)
+            self.local_evaluator.init_extra_ops(
+                self.par_opt.get_device_losses())
+
+        self.local_evaluator.sess.run(tf.global_variables_initializer())
+
         RemotePPOEvaluator = ray.remote(
             num_cpus=self.config["num_cpus_per_worker"],
             num_gpus=self.config["num_gpus_per_worker"])(PPOEvaluator)
@@ -156,7 +175,7 @@ class PPOAgent(Agent):
 
         use_gae = self.config["use_gae"]
         dummy = np.zeros_like(samples["advantages"])
-        tuples_per_device = self.local_evaluator.par_opt.load_data(
+        tuples_per_device = self.par_opt.load_data(
             self.local_evaluator.sess,
             [samples["obs"],
              samples["value_targets"] if use_gae else dummy,
@@ -178,7 +197,7 @@ class PPOAgent(Agent):
                     i == 0 and self.iteration == 0 and
                     batch_index == config["full_trace_nth_sgd_batch"])
                 batch_loss, batch_policy_graph, batch_vf_loss, batch_kl, \
-                    batch_entropy = self.local_evaluator.par_opt.optimize(
+                    batch_entropy = self.par_opt.optimize(
                         self.local_evaluator.sess,
                         permutation[batch_index] * model.per_device_batch_size,
                         extra_ops=list(self.local_evaluator.extra_ops.values()),
