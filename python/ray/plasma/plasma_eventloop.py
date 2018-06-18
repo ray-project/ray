@@ -1,10 +1,7 @@
 import asyncio
-import collections
-import ctypes
 import functools
 import selectors
-import socket
-import sys
+import time
 
 import ray
 
@@ -234,64 +231,7 @@ def wait(*coros_or_futures, timeout, num_returns, loop=None,
     return (yield from fut.wait(timeout))
 
 
-class PlasmaEpoll(selectors.BaseSelector):
-    def __init__(self, worker):
-        self.worker = worker
-        self.client = self.worker.plasma_client
-        self.socket = socket.fromfd(self.client.notification_fd,
-                                    socket.AF_UNIX, socket.SOCK_STREAM, 0)
-        self.waiting_dict = collections.defaultdict(list)
-
-    def _read_message(self):
-        size_data = self.socket.recv(ctypes.sizeof(ctypes.c_int64))
-        size = int.from_bytes(size_data, sys.byteorder, signed=True)
-        data = self.socket.recv(size)
-        return data
-
-    def _decode_data(self, data):
-        # `ObjectInfo` is defined in `ray/src/common/format/common.fbs`
-        # TODO: decode data
-        raise NotImplementedError
-
-    def select(self, timeout=None):
-        self.socket.settimeout(timeout)
-
-        try:
-            data = self._read_message()
-        except (BlockingIOError, socket.timeout):
-            return []
-        finally:
-            self.socket.settimeout(None)
-
-        ready_keys = []
-        object_ids = self._decode_data(data)
-        for oid in object_ids:
-            if oid in self.waiting_dict:
-                key = self.waiting_dict[oid]
-                ready_keys.append(key)
-        return ready_keys
-
-    def register(self, plasma_fut, events=None, data=None):
-        if plasma_fut.object_id in self.waiting_dict:
-            raise Exception("ObjectID already been registered.")
-        else:
-            key = selectors.SelectorKey(fileobj=plasma_fut,
-                                        fd=plasma_fut.object_id, events=events,
-                                        data=data)
-            self.waiting_dict[key.fd] = key
-            return key
-
-    def unregister(self, plasma_fut):
-        return self.waiting_dict.pop(plasma_fut.object_id)
-
-    def get_map(self):
-        return self.waiting_dict
-
-    def get_key(self, object_id):
-        return self.waiting_dict[object_id]
-
-
-class PlasmaPoll(selectors.BaseSelector):
+class PlasmaSelector(selectors.BaseSelector):
     def __init__(self, worker):
         self.worker = worker
         self.waiting_dict = {}
@@ -299,14 +239,18 @@ class PlasmaPoll(selectors.BaseSelector):
     def close(self):
         self.waiting_dict.clear()
 
+    def _get_ready_ids(self, timeout):
+        raise NotImplementedError
+
     def select(self, timeout=None):
         if not self.waiting_dict:
             return []
 
-        polling_ids = list(self.waiting_dict.keys())
+        object_ids = self._get_ready_ids(timeout)
+        if not object_ids:
+            return []
+
         ready_keys = []
-        object_ids, _ = ray.wait(polling_ids, num_returns=len(polling_ids),
-                                 timeout=timeout, worker=self.worker)
         for oid in object_ids:
             key = self.waiting_dict[oid]
             ready_keys.append(key)
@@ -316,9 +260,11 @@ class PlasmaPoll(selectors.BaseSelector):
         if plasma_fut.object_id in self.waiting_dict:
             raise Exception("ObjectID already been registered.")
         else:
-            key = selectors.SelectorKey(fileobj=plasma_fut,
-                                        fd=plasma_fut.object_id, events=events,
-                                        data=data)
+            key = selectors.SelectorKey(
+                fileobj=plasma_fut,
+                fd=plasma_fut.object_id, events=events,
+                data=data,
+            )
             self.waiting_dict[key.fd] = key
             return key
 
@@ -330,6 +276,41 @@ class PlasmaPoll(selectors.BaseSelector):
 
     def get_key(self, object_id):
         return self.waiting_dict[object_id]
+
+
+class PlasmaPoll(PlasmaSelector):
+    def _get_ready_ids(self, timeout):
+        polling_ids = list(self.waiting_dict.keys())
+        object_ids, _ = ray.wait(
+            polling_ids, num_returns=len(polling_ids),
+            timeout=timeout, worker=self.worker
+        )
+        return object_ids
+
+
+class PlasmaEpoll(PlasmaSelector):
+    def __init__(self, worker):
+        super().__init__(worker)
+        self.client = self.worker.plasma_client
+        self.client.subscribe()
+
+    def _get_ready_ids(self, timeout):
+        start = time.time()
+        object_ids = []
+
+        if timeout is None:
+            timeout = 0
+        if timeout > 0.1:
+            timeout = 0.1
+
+        while True:
+            plasma_id = self.client.get_next_notification()[0]
+            object_id = ray.local_scheduler.ObjectID(plasma_id.binary())
+            object_ids.append(object_id)
+            if time.time() - start > timeout:
+                break
+
+        return [oid for oid in object_ids if oid in self.waiting_dict]
 
 
 class PlasmaSelectorEventLoop(asyncio.BaseEventLoop):
