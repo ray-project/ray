@@ -48,7 +48,7 @@ def gen_hashflow(seed, width, depth):
         nodes = [
             HashFlowNode(
                 parents=[random.randint(0, width - 1) for _ in range(n)],
-                delay=random.random(), result=None)
+                delay=random.random() * 0.1, result=None)
             for _ in range(width)]
         stages.append(nodes)
 
@@ -100,7 +100,7 @@ def wait_and_solve(inputs, node, use_delay, loop):
 
 
 def async_hashflow_solution_get(inputs, stages, use_delay=False):
-    with PlasmaEventLoopUsePoll() as loop:
+    with PlasmaEventLoopUseEpoll() as loop:
         inputs = list(map(ray.put, inputs))
         for i, stage in enumerate(stages):
             new_inputs = []
@@ -121,7 +121,7 @@ def async_hashflow_solution_wait(inputs, stages, use_delay=False):
         result = yield from coro
         return result[0]
 
-    with PlasmaEventLoopUsePoll() as loop:
+    with PlasmaEventLoopUseEpoll() as loop:
         inputs = list(map(ray.put, inputs))
         for i, stage in enumerate(stages):
             new_inputs = []
@@ -137,7 +137,7 @@ def async_hashflow_solution_wait(inputs, stages, use_delay=False):
     return ray.get(result)
 
 
-class TestAsyncPlasmaBasic(unittest.TestCase):
+class TestAsyncPlasmaPollBasic(unittest.TestCase):
     def setUp(self):
         # Start the Ray processes.
         ray.init(num_cpus=2)
@@ -184,7 +184,54 @@ class TestAsyncPlasmaBasic(unittest.TestCase):
         self.assertEqual(results[0], tasks[0])
 
 
-class TestAsyncPlasmaWait(unittest.TestCase):
+class TestAsyncPlasmaEpollBasic(unittest.TestCase):
+    def setUp(self):
+        # Start the Ray processes.
+        ray.init(num_cpus=2)
+
+    def tearDown(self):
+        ray.worker.cleanup()
+
+    def test_get(self):
+        @ray.remote
+        def f(n):
+            import time
+            time.sleep(n)
+            return n
+
+        with PlasmaEventLoopUseEpoll() as loop:
+            tasks = [f.remote(i) for i in range(5)]
+            results = loop.run_until_complete(loop.get(tasks))
+        self.assertListEqual(results, ray.get(tasks))
+
+    def test_wait(self):
+        @ray.remote
+        def f(n):
+            import time
+            time.sleep(n)
+            return n
+
+        with PlasmaEventLoopUseEpoll() as loop:
+            tasks = [f.remote(i) for i in range(5)]
+            results, _ = loop.run_until_complete(
+                loop.wait(tasks, num_returns=len(tasks)))
+        self.assertEqual(set(results), set(tasks))
+
+    def test_wait_timeout(self):
+        @ray.remote
+        def f(n):
+            import time
+            time.sleep(n * 20)
+            return n
+
+        with PlasmaEventLoopUseEpoll() as loop:
+            tasks = [f.remote(i) for i in range(5)]
+            results, _ = loop.run_until_complete(
+                loop.wait(tasks, timeout=10, num_returns=len(tasks)))
+        self.assertEqual(results[0], tasks[0])
+
+
+class TestAsyncPlasma(unittest.TestCase):
     answer = b'U\x16\xc5c\x0fa\xdcx\x03\x1e\xf7\xd8&{\xece' \
              b'\x85-.O\x12\xed\x11[\xdc\xe6\xcc\xdf\x90\x91\xc7\xf7'
 
