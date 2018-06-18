@@ -8,8 +8,8 @@ import numpy as np
 import pickle
 
 import ray
-from ray.experimental.internal_kv import __internal_kv_initialized, \
-    __internal_kv_get, __internal_kv_put
+from ray.experimental.internal_kv import _internal_kv_initialized, \
+    _internal_kv_get, _internal_kv_put
 
 TRAINABLE_CLASS = "trainable_class"
 ENV_CREATOR = "env_creator"
@@ -78,19 +78,19 @@ class _Registry(object):
             raise TuneError("Unknown category {} not among {}".format(
                 category, KNOWN_CATEGORIES))
         self._to_flush[(category, key)] = pickle.dumps(value)
-        if __internal_kv_initialized():
+        if _internal_kv_initialized():
             self.flush_values()
 
     def contains(self, category, key):
-        if __internal_kv_initialized():
-            value = __internal_kv_get(_make_key(category, key))
+        if _internal_kv_initialized():
+            value = _internal_kv_get(_make_key(category, key))
             return value is not None
         else:
             return (category, key) in self._to_flush
 
     def get(self, category, key):
-        if __internal_kv_initialized():
-            value = __internal_kv_get(_make_key(category, key))
+        if _internal_kv_initialized():
+            value = _internal_kv_get(_make_key(category, key))
             if value is None:
                 raise ValueError(
                     "Registry value for {}/{} doesn't exist.".format(
@@ -101,7 +101,7 @@ class _Registry(object):
 
     def flush_values(self):
         for (category, key), value in self._to_flush.items():
-            __internal_kv_put(_make_key(category, key), value)
+            _internal_kv_put(_make_key(category, key), value)
         self._to_flush.clear()
 
 

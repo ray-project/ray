@@ -5,19 +5,19 @@ from __future__ import print_function
 import ray
 
 
-def __internal_kv_initialized():
+def _internal_kv_initialized():
     worker = ray.worker.get_global_worker()
     return hasattr(worker, "worker_id")
 
 
-def __internal_kv_get(key):
+def _internal_kv_get(key):
     """Fetch the value of a binary key."""
 
     worker = ray.worker.get_global_worker()
     return worker.redis_client.hget(key, "value")
 
 
-def __internal_kv_put(key, value):
+def _internal_kv_put(key, value):
     """Globally associates a value with a given binary key.
 
     This only has an effect if the key does not already have a value.
@@ -26,5 +26,6 @@ def __internal_kv_put(key, value):
         already_exists (bool): whether the value already exists.
     """
 
-    updated = worker.redis_client.hsetnx(actor_hash, name, pickled_state)
+    worker = ray.worker.get_global_worker()
+    updated = worker.redis_client.hsetnx(key, "value", value)
     return updated == 0  # already exists

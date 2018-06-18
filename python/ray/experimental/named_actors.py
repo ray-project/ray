@@ -4,7 +4,7 @@ from __future__ import print_function
 
 import ray
 import ray.cloudpickle as pickle
-from ray.experimental.internal_kv import __internal_kv_get, __internal_kv_put
+from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_put
 
 
 def _calculate_key(name):
@@ -32,7 +32,7 @@ def get_actor(name):
     """
     worker = ray.worker.get_global_worker()
     actor_name = _calculate_key(name)
-    pickled_state = __internal_kv_get(actor_name)
+    pickled_state = _internal_kv_get(actor_name)
     if pickled_state is None:
         raise ValueError("The actor with name={} doesn't exist".format(name))
     handle = pickle.loads(pickled_state)
@@ -55,7 +55,7 @@ def register_actor(name, actor_handle):
     pickled_state = pickle.dumps(actor_handle)
 
     # Add the actor to Redis if it does not already exist.
-    already_exists = __internal_kv_put(actor_name, pickled_state)
+    already_exists = _internal_kv_put(actor_name, pickled_state)
     if already_exists:
         raise ValueError(
             "Error: the actor with name={} already exists".format(name))
