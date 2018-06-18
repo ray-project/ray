@@ -25,13 +25,11 @@ class PPOEvaluator(TFMultiGPUSupport):
     """
 
     def __init__(self, registry, env_creator, config, logdir, is_remote):
-        # seed()
         self.registry = registry
         self.config = config
         self.logdir = logdir
         self.env = ModelCatalog.get_preprocessor_as_wrapper(
             registry, env_creator(config["env_config"]), config["model"])
-        self.env.seed(0)
         if is_remote:
             config_proto = tf.ConfigProto()
         else:
