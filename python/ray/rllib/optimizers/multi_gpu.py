@@ -103,10 +103,11 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
 
         with self.grad_timer:
             all_extra_fetches = []
+            model = self.local_evaluator
+            num_batches = (
+                int(tuples_per_device) // int(self.per_device_batch_size))
             for i in range(self.num_sgd_iter):
                 iter_extra_fetches = []
-                num_batches = (
-                    int(tuples_per_device) // int(self.per_device_batch_size))
                 permutation = np.random.permutation(num_batches)
                 for batch_index in range(num_batches):
                     # TODO(ekl) support ppo's debugging features, e.g.
@@ -114,8 +115,8 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
                     batch_fetches = self.par_opt.optimize(
                         self.sess,
                         permutation[batch_index] * self.per_device_batch_size,
-                        extra_ops=list(self.local_evaluator.extra_ops.values()),
-                        extra_feed_dict=self.local_evaluator.extra_feed_dict())
+                        extra_ops=model.extra_apply_grad_fetches(),
+                        extra_feed_dict=model.extra_apply_grad_feed_dict())
                     iter_extra_fetches += [batch_fetches]
                 all_extra_fetches += [iter_extra_fetches]
 

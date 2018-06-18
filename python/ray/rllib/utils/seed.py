@@ -6,6 +6,7 @@ import numpy as np
 import random
 import tensorflow as tf
 
+
 def seed(np_seed=0, random_seed=0, tf_seed=0):
     np.random.seed(np_seed)
     random.seed(random_seed)

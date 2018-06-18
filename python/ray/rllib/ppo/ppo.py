@@ -3,12 +3,9 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import time
-
 import numpy as np
 import pickle
 import tensorflow as tf
-from tensorflow.python import debug as tf_debug
 
 import ray
 from ray.tune.result import TrainingResult
@@ -17,10 +14,6 @@ from ray.rllib.agent import Agent
 from ray.rllib.utils import FilterManager
 from ray.rllib.ppo.ppo_evaluator import PPOEvaluator
 from ray.rllib.optimizers.multi_gpu import LocalMultiGPUOptimizer
-from ray.rllib.utils.common_policy_evaluator import CommonPolicyEvaluator, \
-    collect_metrics
-from ray.rllib.ppo.rollout import collect_samples
-
 
 DEFAULT_CONFIG = {
     # Discount factor of the MDP
@@ -137,11 +130,13 @@ class PPOAgent(Agent):
             standardized = (value - value.mean()) / max(1e-4, value.std())
             batch.data["advantages"] = standardized
             batch.shuffle()
+            dummy = np.zeros_like(batch["advantages"])
             if not self.config["use_gae"]:
-                batch.data["value_targets"] = np.zeros_like(batch["advantages"])
-                batch.data["vf_preds"] = np.zeros_like(batch["advantages"])
+                batch.data["value_targets"] = dummy
+                batch.data["vf_preds"] = dummy
         extra_fetches = self.optimizer.step(postprocess_fn=postprocess_samples)
-        final_metrics = np.mean(np.array(extra_fetches), axis=1)[-1, :].tolist()
+
+        final_metrics = np.array(extra_fetches).mean(axis=1)[-1, :].tolist()
         total_loss, policy_loss, vf_loss, kl, entropy = final_metrics
         self.local_evaluator.update_kl(kl)
 
