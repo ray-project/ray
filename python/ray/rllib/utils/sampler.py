@@ -7,7 +7,8 @@ import numpy as np
 import six.moves.queue as queue
 import threading
 
-from ray.rllib.optimizers.sample_batch import MultiAgentSampleBatchBuilder
+from ray.rllib.optimizers.sample_batch import MultiAgentSampleBatchBuilder, \
+    MultiAgentBatch
 from ray.rllib.utils.vector_env import VectorEnv, _VectorEnvToAsync
 from ray.rllib.utils.async_vector_env import AsyncVectorEnv
 
@@ -124,8 +125,9 @@ class AsyncSampler(threading.Thread):
         if isinstance(rollout, BaseException):
             raise rollout
 
-        # We can't auto-concat rollouts in vector mode
-        if self.async_vector_env.num_envs > 1:
+        # We can't auto-concat rollouts in these modes
+        if self.async_vector_env.num_envs > 1 or \
+                isinstance(rollout, MultiAgentBatch):
             return rollout
 
         # Auto-concat rollouts; TODO(ekl) is this important for A3C perf?
