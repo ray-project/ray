@@ -78,6 +78,28 @@ class CommonPolicyEvaluator(PolicyEvaluator):
               },
               num_workers=10)
         >>> for _ in range(10): optimizer.step()
+
+        # Creating a multi-agent policy evaluator
+        >>> evaluator = CommonPolicyEvaluator(
+              env_creator=lambda _: MultiAgentTrafficGrid(num_cars=25),
+              policy_graph={
+                  # Use an ensemble of two policies for car agents
+                  "car_policy1":
+                    (PGPolicyGraph, spaces.Box(...), spaces.Discrete(...)),
+                  "car_policy2":
+                    (PGPolicyGraph, spaces.Box(...), spaces.Discrete(...)),
+                  # Use a single shared policy for all traffic lights
+                  "traffic_light_policy":
+                    (PGPolicyGraph, spaces.Box(...), spaces.Discrete(...)),
+              },
+              policy_mapping_fn=lambda agent_name:
+                random.choice(["car_policy1", "car_policy2"])
+                if agent_name.startswith("car_") else "traffic_light_policy")
+        >>> print(evaluator.sample().keys())
+        MultiAgentBatch({
+            "car_policy1": SampleBatch(...),
+            "car_policy2": SampleBatch(...),
+            "traffic_light_policy": SampleBatch(...)})
     """
 
     @classmethod
@@ -108,7 +130,7 @@ class CommonPolicyEvaluator(PolicyEvaluator):
             env_creator (func): Function that returns a gym.Env given an
                 env config dict.
             policy_graph (class|dict): Either a class implementing
-                PolicyGraph, or a dictionary of policy ids strings to
+                PolicyGraph, or a dictionary of policy id strings to
                 (PolicyGraph, obs_space, action_space) tuples. If a dict is
                 specified, then we are in multi-agent mode and a
                 policy_mapping_fn should also be set.
