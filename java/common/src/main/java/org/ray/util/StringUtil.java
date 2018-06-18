@@ -1,34 +1,25 @@
 package org.ray.util;
 
+import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Vector;
 
 public class StringUtil {
 
-  // Holds the start of an element and which brace started it.
-  private static class Start {
+  public static final Charset UTF8 = Charset.forName("UTF-8");
 
-    // The brace number from the braces string in use.
-    final int brace;
-    // The position in the string it was seen.
-    final int pos;
-
-    // Constructor.
-    public Start(int brace, int pos) {
-      this.brace = brace;
-      this.pos = pos;
-    }
-  }
+  private static final char[] HEX_CHARS = "0123456789abcdef".toCharArray();
 
   /**
-   * @param s input string
+   * split.
+   * @param s         input string
    * @param splitters common splitters
-   * @param open open braces
-   * @param close close braces
+   * @param open      open braces
+   * @param close     close braces
    * @return output array list
    */
-  public static Vector<String> Split(String s, String splitters, String open, String close) {
+  public static Vector<String> split(String s, String splitters, String open, String close) {
     // The splits.
     Vector<String> split = new Vector<>();
     // The stack.
@@ -130,5 +121,30 @@ public class StringUtil {
     }
     return objs.length == 0 ? "" : sb.substring(0, sb.length() - concatenator.length());
   }
-}
 
+  public static String toHexHashString(byte[] id) {
+    StringBuilder sb = new StringBuilder(20);
+    assert (id.length == 20);
+    for (int i = 0; i < 20; i++) {
+      int val = id[i] & 0xff;
+      sb.append(HEX_CHARS[val >> 4]);
+      sb.append(HEX_CHARS[val & 0xf]);
+    }
+    return sb.toString();
+  }
+
+  // Holds the start of an element and which brace started it.
+  private static class Start {
+
+    // The brace number from the braces string in use.
+    final int brace;
+    // The position in the string it was seen.
+    final int pos;
+
+    // Constructor.
+    public Start(int brace, int pos) {
+      this.brace = brace;
+      this.pos = pos;
+    }
+  }
+}

@@ -95,10 +95,10 @@ class TestCommonPolicyEvaluator(unittest.TestCase):
     def testMetrics(self):
         ev = CommonPolicyEvaluator(
             env_creator=lambda _: MockEnv(episode_length=10),
-            policy_graph=MockPolicyGraph, truncate_episodes=False)
+            policy_graph=MockPolicyGraph, batch_mode="complete_episodes")
         remote_ev = CommonPolicyEvaluator.as_remote().remote(
             env_creator=lambda _: MockEnv(episode_length=10),
-            policy_graph=MockPolicyGraph, truncate_episodes=False)
+            policy_graph=MockPolicyGraph, batch_mode="complete_episodes")
         ev.sample()
         ray.get(remote_ev.sample.remote())
         result = collect_metrics(ev, [remote_ev])
@@ -121,7 +121,7 @@ class TestCommonPolicyEvaluator(unittest.TestCase):
             policy_graph=MockPolicyGraph,
             sample_async=True,
             batch_steps=10,
-            truncate_episodes=True,
+            batch_mode="truncate_episodes",
             observation_filter="ConcurrentMeanStdFilter")
         time.sleep(2)
         batch = ev.sample()
@@ -131,25 +131,48 @@ class TestCommonPolicyEvaluator(unittest.TestCase):
         ev = CommonPolicyEvaluator(
             env_creator=lambda _: MockEnv(episode_length=20),
             policy_graph=MockPolicyGraph,
-            truncate_episodes=True,
-            batch_steps=10, num_envs=8)
+            batch_mode="truncate_episodes",
+            batch_steps=16, num_envs=8)
         for _ in range(8):
             batch = ev.sample()
-            self.assertEqual(batch.count, 10)
+            self.assertEqual(batch.count, 16)
         result = collect_metrics(ev, [])
         self.assertEqual(result.episodes_total, 0)
         for _ in range(8):
             batch = ev.sample()
-            self.assertEqual(batch.count, 10)
+            self.assertEqual(batch.count, 16)
         result = collect_metrics(ev, [])
         self.assertEqual(result.episodes_total, 8)
+
+    def testBatchDivisibilityCheck(self):
+        self.assertRaises(
+            ValueError,
+            lambda: CommonPolicyEvaluator(
+                env_creator=lambda _: MockEnv(episode_length=8),
+                policy_graph=MockPolicyGraph,
+                batch_mode="truncate_episodes",
+                batch_steps=15, num_envs=4))
+
+    def testBatchesSmallerWhenVectorized(self):
+        ev = CommonPolicyEvaluator(
+            env_creator=lambda _: MockEnv(episode_length=8),
+            policy_graph=MockPolicyGraph,
+            batch_mode="truncate_episodes",
+            batch_steps=16, num_envs=4)
+        batch = ev.sample()
+        self.assertEqual(batch.count, 16)
+        result = collect_metrics(ev, [])
+        self.assertEqual(result.episodes_total, 0)
+        batch = ev.sample()
+        result = collect_metrics(ev, [])
+        self.assertEqual(result.episodes_total, 4)
 
     def testVectorEnvSupport(self):
         ev = CommonPolicyEvaluator(
             env_creator=lambda _: MockVectorEnv(
                 episode_length=20, num_envs=8),
             policy_graph=MockPolicyGraph,
-            truncate_episodes=True,
+            batch_mode="truncate_episodes",
             batch_steps=10)
         for _ in range(8):
             batch = ev.sample()
@@ -167,7 +190,7 @@ class TestCommonPolicyEvaluator(unittest.TestCase):
             env_creator=lambda _: MockEnv(10),
             policy_graph=MockPolicyGraph,
             batch_steps=15,
-            truncate_episodes=True)
+            batch_mode="truncate_episodes")
         batch = ev.sample()
         self.assertEqual(batch.count, 15)
 
@@ -176,7 +199,7 @@ class TestCommonPolicyEvaluator(unittest.TestCase):
             env_creator=lambda _: MockEnv(10),
             policy_graph=MockPolicyGraph,
             batch_steps=5,
-            truncate_episodes=False)
+            batch_mode="complete_episodes")
         batch = ev.sample()
         self.assertEqual(batch.count, 10)
 
@@ -185,7 +208,7 @@ class TestCommonPolicyEvaluator(unittest.TestCase):
             env_creator=lambda _: MockEnv(10),
             policy_graph=MockPolicyGraph,
             batch_steps=15,
-            truncate_episodes=False)
+            batch_mode="complete_episodes")
         batch = ev.sample()
         self.assertEqual(batch.count, 20)
 

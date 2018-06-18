@@ -54,10 +54,6 @@ class AsyncVectorEnv(object):
         """
         raise NotImplementedError
 
-    def send_error(self, error):
-        """Notify that an error has occured."""
-        pass
-
     def try_reset(self, agent_id):
         """Attempt to reset the agent with the given id.
 
@@ -95,14 +91,14 @@ class _VectorEnvToAsync(AsyncVectorEnv):
         self.cur_infos = [None for _ in range(self.num_envs)]
 
     def poll(self):
-        new_obs = {i: o for i, o in enumerate(self.new_obs)}
-        rewards = {i: r for i, r in enumerate(self.cur_rewards)}
-        dones = {i: d for i, d in enumerate(self.cur_dones)}
-        infos = {i: n for i, n in enumerate(self.cur_infos)}
-        self.new_obs = {}
-        self.cur_rewards = {}
-        self.cur_dones = {}
-        self.cur_infos = {}
+        new_obs = dict(enumerate(self.new_obs))
+        rewards = dict(enumerate(self.cur_rewards))
+        dones = dict(enumerate(self.cur_dones))
+        infos = dict(enumerate(self.cur_infos))
+        self.new_obs = []
+        self.cur_rewards = []
+        self.cur_dones = []
+        self.cur_infos = []
         return new_obs, rewards, dones, infos, {}
 
     def send_actions(self, action_dict):

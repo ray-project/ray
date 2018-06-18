@@ -43,10 +43,6 @@ public class ConfigReader {
 
   }
 
-  public String filePath() {
-    return file;
-  }
-
   private void loadConfigFile(String filePath) throws Exception {
 
     this.currentUseConfig.filePath = filePath;
@@ -106,46 +102,16 @@ public class ConfigReader {
     }
   }
 
+  public String filePath() {
+    return file;
+  }
+
   public CurrentUseConfig getCurrentUseConfig() {
     return currentUseConfig;
   }
 
-  private synchronized <T> String getOriValue(String sectionKey, String configKey, T defaultValue,
-      String deptr) {
-    if (null == deptr) {
-      throw new RuntimeException("desc must not be empty of the key:" + configKey);
-    }
-    Profile.Section section = ini.get(sectionKey);
-    String oriValue = null;
-    if (section != null && section.containsKey(configKey)) {
-      oriValue = section.get(configKey);
-    }
-
-    if (!currentUseConfig.sectionMap.containsKey(sectionKey)) {
-      ConfigSection configSection = new ConfigSection();
-      configSection.sectionKey = sectionKey;
-      updateConfigSection(configSection, configKey, defaultValue, deptr, oriValue);
-      currentUseConfig.sectionMap.put(sectionKey, configSection);
-    } else if (!currentUseConfig.sectionMap.get(sectionKey).itemMap.containsKey(configKey)) {
-      ConfigSection configSection = currentUseConfig.sectionMap.get(sectionKey);
-      updateConfigSection(configSection, configKey, defaultValue, deptr, oriValue);
-    }
-    return oriValue;
-  }
-
-  private <T> void updateConfigSection(ConfigSection configSection, String configKey,
-      T defaultValue, String deptr, String oriValue) {
-    ConfigItem<T> configItem = new ConfigItem<>();
-    configItem.defaultValue = defaultValue;
-    configItem.key = configKey;
-    configItem.oriValue = oriValue;
-    configItem.desc = deptr;
-    configSection.itemMap.put(configKey, configItem);
-  }
-
-
   public String getStringValue(String sectionKey, String configKey, String defaultValue,
-      String dsptr) {
+                               String dsptr) {
     String value = getOriValue(sectionKey, configKey, defaultValue, dsptr);
     if (value != null) {
       return value;
@@ -155,7 +121,7 @@ public class ConfigReader {
   }
 
   public boolean getBooleanValue(String sectionKey, String configKey, boolean defaultValue,
-      String dsptr) {
+                                 String dsptr) {
     String value = getOriValue(sectionKey, configKey, defaultValue, dsptr);
     if (value != null) {
       if (value.length() == 0) {
@@ -181,6 +147,39 @@ public class ConfigReader {
     }
   }
 
+  private synchronized <T> String getOriValue(String sectionKey, String configKey, T defaultValue,
+                                              String deptr) {
+    if (null == deptr) {
+      throw new RuntimeException("desc must not be empty of the key:" + configKey);
+    }
+    Profile.Section section = ini.get(sectionKey);
+    String oriValue = null;
+    if (section != null && section.containsKey(configKey)) {
+      oriValue = section.get(configKey);
+    }
+
+    if (!currentUseConfig.sectionMap.containsKey(sectionKey)) {
+      ConfigSection configSection = new ConfigSection();
+      configSection.sectionKey = sectionKey;
+      updateConfigSection(configSection, configKey, defaultValue, deptr, oriValue);
+      currentUseConfig.sectionMap.put(sectionKey, configSection);
+    } else if (!currentUseConfig.sectionMap.get(sectionKey).itemMap.containsKey(configKey)) {
+      ConfigSection configSection = currentUseConfig.sectionMap.get(sectionKey);
+      updateConfigSection(configSection, configKey, defaultValue, deptr, oriValue);
+    }
+    return oriValue;
+  }
+
+  private <T> void updateConfigSection(ConfigSection configSection, String configKey,
+                                       T defaultValue, String deptr, String oriValue) {
+    ConfigItem<T> configItem = new ConfigItem<>();
+    configItem.defaultValue = defaultValue;
+    configItem.key = configKey;
+    configItem.oriValue = oriValue;
+    configItem.desc = deptr;
+    configSection.itemMap.put(configKey, configItem);
+  }
+
   public long getLongValue(String sectionKey, String configKey, long defaultValue, String dsptr) {
     String value = getOriValue(sectionKey, configKey, defaultValue, dsptr);
     if (value != null) {
@@ -195,7 +194,7 @@ public class ConfigReader {
   }
 
   public double getDoubleValue(String sectionKey, String configKey, double defaultValue,
-      String dsptr) {
+                               String dsptr) {
     String value = getOriValue(sectionKey, configKey, defaultValue, dsptr);
     if (value != null) {
       if (value.length() == 0) {
@@ -210,7 +209,7 @@ public class ConfigReader {
 
 
   public int[] getIntegerArray(String sectionKey, String configKey, int[] defaultValue,
-      String dsptr) {
+                               String dsptr) {
     String value = getOriValue(sectionKey, configKey, defaultValue, dsptr);
     int[] array = defaultValue;
     if (value != null) {
@@ -226,24 +225,22 @@ public class ConfigReader {
   /**
    * get a string list from a whole section as keys e.g., [core] data_dirs = local.dirs # or
    * cluster.dirs
-   *
    * [local.dirs] /home/xxx/1 /home/yyy/2
-   *
    * [cluster.dirs] ...
    *
-   * @param sectionKey e.g., core
-   * @param configKey e.g., data_dirs
+   * @param sectionKey          e.g., core
+   * @param configKey           e.g., data_dirs
    * @param indirectSectionName e.g., cluster.dirs
    * @return string list
    */
   public String[] getIndirectStringArray(String sectionKey, String configKey,
-      String indirectSectionName, String dsptr) {
+                                         String indirectSectionName, String dsptr) {
     String s = getStringValue(sectionKey, configKey, indirectSectionName, dsptr);
     Profile.Section section = ini.get(s);
     if (section == null) {
-      return new String[]{};
+      return new String[] {};
     } else {
-      return section.keySet().toArray(new String[]{});
+      return section.keySet().toArray(new String[] {});
     }
   }
 
@@ -326,8 +323,9 @@ public class ConfigReader {
           String sv = getStringValue(section, fld.getName(), defaultFldValue.toString(), comment);
           Object v;
           try {
-            v = fld.getType().getConstructor(new Class<?>[]{String.class}).newInstance(sv);
-          } catch (NoSuchMethodException | SecurityException | InstantiationException | InvocationTargetException e) {
+            v = fld.getType().getConstructor(new Class<?>[] {String.class}).newInstance(sv);
+          } catch (NoSuchMethodException | SecurityException | InstantiationException
+              | InvocationTargetException e) {
             System.err.println(
                 section + "." + fld.getName() + "'s format (" + sv + ") is invalid, default to "
                     + defaultFldValue.toString());
@@ -340,7 +338,7 @@ public class ConfigReader {
           if (null == ss) {
             fld.set(obj, defaultFldValue);
           } else {
-            Vector<String> ls = StringUtil.Split(ss, splitters, "", "");
+            Vector<String> ls = StringUtil.split(ss, splitters, "", "");
             if (ccls.equals(boolean.class)) {
               boolean[] v = ObjectUtil
                   .toBooleanArray(ls.stream().map(Boolean::parseBoolean).toArray());
@@ -357,7 +355,7 @@ public class ConfigReader {
             } else if (ccls.equals(String.class)) {
               String[] v;
               if (StringUtil.isNullOrEmpty(defaultArrayIndirectSectionName)) {
-                v = ls.toArray(new String[]{});
+                v = ls.toArray(new String[] {});
               } else {
                 v = this
                     .getIndirectStringArray(section, fld.getName(),

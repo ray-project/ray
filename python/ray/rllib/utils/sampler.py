@@ -271,12 +271,10 @@ def _env_runner(
 
         # Return computed actions to ready envs. We also send to envs that have
         # taken off-policy actions; those envs are free to ignore the action.
-        async_vector_env.send_actions({
-            ready_eids[i]: a for i, a in enumerate(actions)})
+        async_vector_env.send_actions(dict(zip(ready_eids, actions)))
 
         # Store the computed action info
-        for i in range(len(ready_obs)):
-            eid = ready_eids[i]
+        for i, eid in enumerate(ready_eids):
             episode = episodes[eid]
             if eid in off_policy_actions:
                 episode.last_action = off_policy_actions[eid]
@@ -294,8 +292,8 @@ def _to_column_format(rnn_state_rows):
 
 
 class _Episode(object):
-    def __init__(self, rnn_state, batch_builder_factory):
-        self.rnn_state = rnn_state
+    def __init__(self, init_rnn_state, batch_builder_factory):
+        self.rnn_state = init_rnn_state
         self.batch_builder = batch_builder_factory()
         self.last_action = None
         self.last_observation = None

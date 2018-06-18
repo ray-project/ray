@@ -3,7 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import pandas as pd
+import pandas
 
 from .utils import _inherit_docstrings
 
@@ -14,7 +14,8 @@ def na_op():
     raise NotImplementedError("Not Yet implemented.")
 
 
-@_inherit_docstrings(pd.Series, excluded=[pd.Series, pd.Series.__init__])
+@_inherit_docstrings(pandas.Series, excluded=[pandas.Series,
+                                              pandas.Series.__init__])
 class Series(object):
 
     def __init__(self, series_oids):
@@ -832,7 +833,7 @@ class Series(object):
     def unstack(self, level=-1, fill_value=None):
         raise NotImplementedError("Not Yet implemented.")
 
-    def update(self, other):
+    def upandasate(self, other):
         raise NotImplementedError("Not Yet implemented.")
 
     def valid(self, inplace=False, **kwargs):

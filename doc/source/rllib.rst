@@ -15,7 +15,7 @@ RLlib's policy optimizers serve as the basis for RLlib's reference algorithms, w
 
 - Deep Q Networks (`DQN <https://github.com/ray-project/ray/tree/master/python/ray/rllib/dqn>`__).
 
-- Deep Deterministic Policy Gradients (`DDPG <https://github.com/ray-project/ray/tree/master/python/ray/rllib/ddpg>`__, `DDPG2 <https://github.com/ray-project/ray/tree/master/python/ray/rllib/ddpg2>`__).
+- Deep Deterministic Policy Gradients (`DDPG <https://github.com/ray-project/ray/tree/master/python/ray/rllib/ddpg>`__).
 
 - Ape-X Distributed Prioritized Experience Replay, including both `DQN <https://github.com/ray-project/ray/blob/master/python/ray/rllib/dqn/apex.py>`__ and `DDPG <https://github.com/ray-project/ray/blob/master/python/ray/rllib/ddpg/apex.py>`__ variants.
 
@@ -31,15 +31,27 @@ including custom ones written and registered by the user.
 Installation
 ------------
 
-RLlib has extra dependencies on top of **ray**. You might also want to clone the Ray repo for convenient access to RLlib helper scripts:
+RLlib has extra dependencies on top of **ray**. First, you'll need into install either PyTorch or TensorFlow.
+For usage of PyTorch models, visit the `PyTorch website <http://pytorch.org/>`__
+for instructions on installing PyTorch.
+
+.. code-block:: bash
+
+  pip install tensorflow  # or tensorflow-gpu
+
+Then, install Ray with extra RLlib dependencies:
 
 .. code-block:: bash
 
   pip install 'ray[rllib]'
+
+You might also want to clone the Ray repo for convenient access to RLlib helper scripts:
+
+.. code-block:: bash
+
   git clone https://github.com/ray-project/ray
 
-For usage of PyTorch models, visit the `PyTorch website <http://pytorch.org/>`__
-for instructions on installing PyTorch.
+
 
 Getting Started
 ---------------

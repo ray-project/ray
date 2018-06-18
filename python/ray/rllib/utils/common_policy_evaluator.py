@@ -57,10 +57,8 @@ def collect_metrics(local_evaluator, remote_evaluators):
 class CommonPolicyEvaluator(PolicyEvaluator):
     """Policy evaluator implementation that operates on a rllib.PolicyGraph.
 
-    TODO: vector env
     TODO: multi-agent
-    TODO: consumer buffering for multi-agent
-    TODO: complete episode batch mode
+    TODO: multi-gpu
 
     Examples:
         # Create a policy evaluator and using it to collect experiences.
@@ -92,7 +90,7 @@ class CommonPolicyEvaluator(PolicyEvaluator):
             policy_graph,
             tf_session_creator=None,
             batch_steps=100,
-            truncate_episodes=False,
+            batch_mode="truncate_episodes",
             episode_horizon=None,
             preprocessor_pref="rllib",
             sample_async=False,
@@ -114,8 +112,19 @@ class CommonPolicyEvaluator(PolicyEvaluator):
                 This is optional and only useful with TFPolicyGraph.
             batch_steps (int): The target number of env transitions to include
                 in each sample batch returned from this evaluator.
-            truncate_episodes (bool): Whether to allow episodes to be truncated
-                if the trajectory exceeds the batch size.
+            batch_mode (str): One of the following batch modes:
+                "truncate_episodes": Each call to sample() will return a batch
+                    of exactly `batch_steps` in size. Episodes may be truncated
+                    in order to meet this size requirement. When
+                    `num_envs > 1`, episodes will be truncated to sequences of
+                    `batch_size / num_envs` in length.
+                "complete_episodes": Each call to sample() will return a batch
+                    of at least `batch_steps in size. Episodes will not be
+                    truncated, but multiple episodes may be packed within one
+                    batch to meet the batch size. Note that when
+                    `num_envs > 1`, episode steps will be buffered until the
+                    episode completes, and hence batches may contain
+                    significant amounts of off-policy data.
             episode_horizon (int): Whether to stop episodes at this horizon.
             preprocessor_pref (str): Whether to prefer RLlib preprocessors
                 ("rllib") or deepmind ("deepmind") when applicable.
@@ -143,7 +152,7 @@ class CommonPolicyEvaluator(PolicyEvaluator):
         self.env_creator = env_creator
         self.policy_graph = policy_graph
         self.batch_steps = batch_steps
-        self.truncate_episodes = truncate_episodes
+        self.batch_mode = batch_mode
         self.compress_observations = compress_observations
 
         self.env = env_creator(env_config)
@@ -203,17 +212,29 @@ class CommonPolicyEvaluator(PolicyEvaluator):
         else:
             self.vector_env = self.env
 
-        if not truncate_episodes:
-            batch_steps = float("inf")
+        if self.batch_mode == "truncate_episodes":
+            if batch_steps % num_envs != 0:
+                raise ValueError(
+                    "In 'truncate_episodes' batch mode, `batch_steps` must be "
+                    "evenly divisible by `num_envs`. Got {} and {}.".format(
+                        batch_steps, num_envs))
+            batch_steps = batch_steps // num_envs
+            pack_episodes = True
+        elif self.batch_mode == "complete_episodes":
+            batch_steps = float("inf")  # never cut episodes
+            pack_episodes = False  # sampler will return 1 episode per poll
+        else:
+            raise ValueError(
+                "Unsupported batch mode: {}".format(self.batch_mode))
         if sample_async:
             self.sampler = AsyncSampler(
                 self.vector_env, self.policy_map["default"], self.obs_filter,
-                batch_steps, horizon=episode_horizon, pack=truncate_episodes)
+                batch_steps, horizon=episode_horizon, pack=pack_episodes)
             self.sampler.start()
         else:
             self.sampler = SyncSampler(
                 self.vector_env, self.policy_map["default"], self.obs_filter,
-                batch_steps, horizon=episode_horizon, pack=truncate_episodes)
+                batch_steps, horizon=episode_horizon, pack=pack_episodes)
 
     def sample(self):
         """Evaluate the current policies and return a batch of experiences.

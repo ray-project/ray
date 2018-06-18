@@ -11,27 +11,26 @@ import org.apache.log4j.RollingFileAppender;
 import org.ray.util.SystemUtil;
 
 /**
- * Manager for dynamic loggers
+ * Manager for dynamic loggers.
  */
 public class DynamicLogManager {
 
+  protected static final String DAY_DATE_PATTERN = "'.'yyyy-MM-dd";
+  private static final int LOG_CACHE_SIZE = 32 * 1024;
+  //    private final static String                          HOUR_DATE_PATTERN     = "'
+  // .'yyyy-MM-dd_HH";
+  //    private final static String                          GBK                   = "GBK";
+  private static final String DAILY_APPENDER_NAME = "_DAILY_APPENDER_NAME";
+  //    private final static String                          CONSOLE_APPENDER_NAME =
+  // "_CONSOLE_APPENDER_NAME";
+  private static final String LAYOUT_PATTERN = "%d [%t]%m%n";
+  private static final ConcurrentHashMap<DynamicLog, Logger> loggers = new ConcurrentHashMap<>();
   //whether to print the log on std(ie. console)
   public static boolean printOnStd = false;
   //the root directory of log files
   public static String logsDir;
   public static String logsSuffix;
   public static Level level = Level.DEBUG; //Level.INFO;
-  /**  */
-  private static final int LOG_CACHE_SIZE = 32 * 1024;
-  protected final static String DAY_DATE_PATTERN = "'.'yyyy-MM-dd";
-  //    private final static String                          HOUR_DATE_PATTERN     = "'.'yyyy-MM-dd_HH";
-  //    private final static String                          GBK                   = "GBK";
-  private final static String DAILY_APPENDER_NAME = "_DAILY_APPENDER_NAME";
-  //    private final static String                          CONSOLE_APPENDER_NAME = "_CONSOLE_APPENDER_NAME";
-  private final static String LAYOUT_PATTERN = "%d [%t]%m%n";
-
-  private static final ConcurrentHashMap<DynamicLog, Logger> loggers = new ConcurrentHashMap<>();
-
   private static int MAX_FILE_NUM = 10;
 
   private static String MAX_FILE_SIZE = "500MB";
@@ -98,13 +97,13 @@ public class DynamicLogManager {
         }
       }
     }
-    return new Logger[]{logger};
+    return new Logger[] {logger};
   }
 
   private static Logger initLogger(DynamicLog dynLog) {
     if (printOnStd) {
       Logger reallogger = Logger.getLogger(dynLog.getKey());
-      ConsoleLogger logger = new ConsoleLogger(dynLog.getKey(), reallogger);
+      final ConsoleLogger logger = new ConsoleLogger(dynLog.getKey(), reallogger);
       PatternLayout layout = new PatternLayout(LAYOUT_PATTERN);
       ConsoleAppender appender = new ConsoleAppender(layout, ConsoleAppender.SYSTEM_OUT);
       reallogger.removeAllAppenders();
@@ -122,7 +121,7 @@ public class DynamicLogManager {
   }
 
   protected static Logger makeLogger(String loggerName, String filename) {
-    Logger logger = Logger.getLogger(loggerName);
+    final Logger logger = Logger.getLogger(loggerName);
     PatternLayout layout = new PatternLayout(LAYOUT_PATTERN);
     File dir = new File(logsDir);
     if (!dir.exists()) {

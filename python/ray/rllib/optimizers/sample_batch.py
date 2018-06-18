@@ -7,7 +7,11 @@ import numpy as np
 
 
 class SampleBatchBuilder(object):
-    """Util to build a SampleBatch incrementally."""
+    """Util to build a SampleBatch incrementally.
+
+    For efficiency, SampleBatches hold values in column form (as arrays).
+    However, it is useful to add data one row (dict) at a time.
+    """
 
     def __init__(self):
         self.postprocessed = []
@@ -15,15 +19,25 @@ class SampleBatchBuilder(object):
         self.count = 0
 
     def add_values(self, **values):
+        """Add the given dictionary (row) of values to this batch."""
+
         for k, v in values.items():
             self.buffers[k].append(v)
         self.count += 1
 
     def postprocess_batch_so_far(self, postprocessor):
+        """Apply the given postprocessor to any unprocessed rows."""
+
         batch = postprocessor(self._build_buffers())
         self.postprocessed.append(batch)
 
     def build_and_reset(self, postprocessor):
+        """Returns a sample batch including all previously added values.
+
+        Any unprocessed rows will be first postprocessed with the given
+        postprocessor. The internal state of this builder will be reset.
+        """
+
         self.postprocess_batch_so_far(postprocessor)
         batch = SampleBatch.concat_samples(self.postprocessed)
         self.postprocessed = []
@@ -57,6 +71,7 @@ class SampleBatch(object):
     @staticmethod
     def concat_samples(samples):
         out = {}
+        samples = [s for s in samples if s.count > 0]
         for k in samples[0].keys():
             out[k] = np.concatenate([s[k] for s in samples])
         return SampleBatch(out)

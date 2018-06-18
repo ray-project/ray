@@ -69,7 +69,7 @@ DEFAULT_CONFIG = {
     # number of steps is obtained
     "min_steps_per_task": 200,
     # Number of actors used to collect the rollouts
-    "num_workers": 5,
+    "num_workers": 2,
     # Whether to allocate GPUs for workers (if > 0).
     "num_gpus_per_worker": 0,
     # Whether to allocate CPUs for workers (if > 0).
@@ -299,5 +299,5 @@ class PPOAgent(Agent):
     def compute_action(self, observation):
         observation = self.local_evaluator.obs_filter(
             observation, update=False)
-        return self.local_evaluator.common_policy.compute_single_action(
-            observation, [], False)[0]
+        return self.local_evaluator.common_policy.compute_actions(
+            [observation], [], False)[0][0]

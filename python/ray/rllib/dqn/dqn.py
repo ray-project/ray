@@ -127,7 +127,7 @@ class DQNAgent(Agent):
         self.local_evaluator = CommonPolicyEvaluator(
             self.env_creator, self._policy_graph,
             batch_steps=adjusted_batch_size,
-            truncate_episodes=True, preprocessor_pref="deepmind",
+            batch_mode="truncate_episodes", preprocessor_pref="deepmind",
             compress_observations=True,
             registry=self.registry, env_config=self.config["env_config"],
             model_config=self.config["model"], policy_config=self.config,
@@ -139,7 +139,7 @@ class DQNAgent(Agent):
             remote_cls.remote(
                 self.env_creator, self._policy_graph,
                 batch_steps=adjusted_batch_size,
-                truncate_episodes=True, preprocessor_pref="deepmind",
+                batch_mode="truncate_episodes", preprocessor_pref="deepmind",
                 compress_observations=True,
                 registry=self.registry, env_config=self.config["env_config"],
                 model_config=self.config["model"], policy_config=self.config,
