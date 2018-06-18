@@ -110,3 +110,23 @@ class PolicyOptimizer(object):
 
         self.num_steps_trained = data[0]
         self.num_steps_sampled = data[1]
+
+    def foreach_evaluator(self, func):
+        """Apply the given function to each evaluator instance."""
+
+        local_result = [func(self.local_evaluator)]
+        remote_results = ray.get(
+            [ev.apply.remote(func) for ev in self.remote_evaluators])
+        return local_result + remote_results
+
+    def foreach_evaluator_with_index(self, func):
+        """Apply the given function to each evaluator instance.
+
+        The index will be passed as the second arg to the given function.
+        """
+
+        local_result = [func(self.local_evaluator, 0)]
+        remote_results = ray.get(
+            [ev.apply.remote(func, i + 1)
+             for i, ev in enumerate(self.remote_evaluators)])
+        return local_result + remote_results

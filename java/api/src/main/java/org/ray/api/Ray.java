@@ -104,13 +104,6 @@ public final class Ray extends Rpc {
   }
 
   /**
-   * whether to use remote lambda.
-   */
-  public static boolean isRemoteLambda() {
-    return impl.isRemoteLambda();
-  }
-
-  /**
    * for ray's app's log.
    */
   public static DynamicLog getRappLogger() {

@@ -106,6 +106,8 @@ class RayConfig {
     return object_manager_default_chunk_size_;
   }
 
+  int num_workers_per_process() const { return num_workers_per_process_; }
+
  private:
   RayConfig()
       : ray_protocol_version_(0x0000000000000000),
@@ -142,7 +144,8 @@ class RayConfig {
         object_manager_push_timeout_ms_(10000),
         object_manager_max_sends_(2),
         object_manager_max_receives_(2),
-        object_manager_default_chunk_size_(100000000) {}
+        object_manager_default_chunk_size_(100000000),
+        num_workers_per_process_(1) {}
 
   ~RayConfig() {}
 
@@ -251,6 +254,9 @@ class RayConfig {
   /// In the object manager, no single thread is permitted to transfer more
   /// data than what is specified by the chunk size.
   uint64_t object_manager_default_chunk_size_;
+
+  /// Number of workers per process
+  int num_workers_per_process_;
 };
 
 #endif  // RAY_CONFIG_H

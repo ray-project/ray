@@ -6,6 +6,10 @@ import cv2
 cv2.ocl.setUseOpenCL(False)
 
 
+def is_atari(env):
+    return hasattr(env, "unwrapped") and hasattr(env.unwrapped, "ale")
+
+
 class NoopResetEnv(gym.Wrapper):
     def __init__(self, env, noop_max=30, random_starts=False):
         """Sample initial states by taking random number of no-ops on reset.
