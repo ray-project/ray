@@ -25,8 +25,8 @@ if [[ "${RAY_USE_NEW_GCS}" = "on" ]]; then
   popd
 
   pushd "$TP_DIR/pkg/credis"
-    # 4/10/2018 credis/integrate branch.  With updated redis hacks.
-    git checkout cbe8ade35d2278b1d94684fa5d00010cb015ef82
+    # https://github.com/ray-project/credis/commit/28de4a2be70cc060760ae4731362ff18ecc2077f
+    git checkout 28de4a2be70cc060760ae4731362ff18ecc2077f
 
     # If the above commit points to different submodules' commits than
     # origin's head, this updates the submodules.
@@ -43,11 +43,14 @@ if [[ "${RAY_USE_NEW_GCS}" = "on" ]]; then
     else
         pushd redis && make -j MALLOC=jemalloc && popd
     fi
-    pushd glog && cmake -DWITH_GFLAGS=off . && make -j && popd
+    pushd glog; cmake -DWITH_GFLAGS=off . && make -j; popd
     # NOTE(zongheng): DO NOT USE -j parallel build for leveldb as it's incorrect!
-    pushd leveldb && CXXFLAGS="$CXXFLAGS -fPIC" make && popd
+    pushd leveldb;
+      mkdir -p build && cd build
+      cmake -DCMAKE_BUILD_TYPE=Release .. && cmake --build .
+    popd
 
-    mkdir build
+    mkdir -p build
     pushd build
       cmake ..
       make -j
@@ -55,6 +58,7 @@ if [[ "${RAY_USE_NEW_GCS}" = "on" ]]; then
 
     mkdir -p $ROOT_DIR/build/src/credis/redis/src/
     cp redis/src/redis-server $ROOT_DIR/build/src/credis/redis/src/redis-server
+
     mkdir -p $ROOT_DIR/build/src/credis/build/src/
     cp build/src/libmaster.so $ROOT_DIR/build/src/credis/build/src/libmaster.so
     cp build/src/libmember.so $ROOT_DIR/build/src/credis/build/src/libmember.so
