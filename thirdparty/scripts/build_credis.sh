@@ -25,7 +25,7 @@ if [[ "${RAY_USE_NEW_GCS}" = "on" ]]; then
   popd
 
   pushd "$TP_DIR/pkg/credis"
-    git checkout 57aae67e0614143ad8d25e38906f3cb93fcf6ad2
+    git checkout 273d667e5126c246b45f5dcf030b651a653136c3
 
     # If the above commit points to different submodules' commits than
     # origin's head, this updates the submodules.
@@ -43,10 +43,11 @@ if [[ "${RAY_USE_NEW_GCS}" = "on" ]]; then
         pushd redis && make -j MALLOC=jemalloc && popd
     fi
     pushd glog; cmake -DWITH_GFLAGS=off . && make -j; popd
-    # NOTE(zongheng): DO NOT USE -j parallel build for leveldb as it's incorrect!
     pushd leveldb;
       mkdir -p build && cd build
-      cmake -DCMAKE_BUILD_TYPE=Release .. && cmake --build .
+      # For some reason, on Ubuntu/gcc toolchain linking against static
+      # libleveldb.a doesn't work, so we force building the shared library here.
+      cmake -DBUILD_SHARED_LIBS=on -DCMAKE_BUILD_TYPE=Release .. && cmake --build .
     popd
 
     mkdir -p build
