@@ -181,13 +181,13 @@ class _ServingEnvToAsync(AsyncVectorEnv):
         serving_env.start()
 
     def poll(self):
-        results = self._poll()
-        while len(results[0]) == 0:
-            with self.serving_env._results_avail_condition:
-                self.serving_env._results_avail_condition.wait()
+        with self.serving_env._results_avail_condition:
             results = self._poll()
-            if not self.serving_env.isAlive():
-                raise Exception("Serving thread has stopped.")
+            while len(results[0]) == 0:
+                self.serving_env._results_avail_condition.wait()
+                results = self._poll()
+                if not self.serving_env.isAlive():
+                    raise Exception("Serving thread has stopped.")
         limit = self.serving_env._max_concurrent_episodes
         assert len(results[0]) < limit, \
             ("Too many concurrent episodes, were some leaked? This ServingEnv "
