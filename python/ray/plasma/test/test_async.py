@@ -20,6 +20,7 @@ class PlasmaEventLoopUsePoll(PlasmaSelectorEventLoop):
 
     def __enter__(self):
         self.set_debug(True)
+        return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
@@ -32,6 +33,7 @@ class PlasmaEventLoopUseEpoll(PlasmaSelectorEventLoop):
 
     def __enter__(self):
         self.set_debug(True)
+        return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
