@@ -7,7 +7,7 @@ import threading
 
 
 class ServingEnv(threading.Thread):
-    """Environment that provides policy serving.
+    """An environment that provides policy serving.
 
     Unlike simulator envs, control is inverted. The environment queries the
     policy to obtain actions and logs observations and rewards for training.
