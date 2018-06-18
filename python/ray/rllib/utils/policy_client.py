@@ -29,23 +29,26 @@ class PolicyClient(object):
 
         Arguments:
             episode_id (str): Unique string id for the episode or None for
-                it to be auto-assigned. Auto-assignment only works if there
-                is at most one active episode at a time.
-            training_enabled (bool): Whether to enable training the policy
-                based on experiences from this episode.
-        """
-        self._send({
-            "command": PolicyClient.START_EPISODE,
-            "episode_id": episode_id,
-            "training_enabled": training_enabled,
-        })
+                it to be auto-assigned.
+            training_enabled (bool): Whether to use experiences for this
+                episode to improve the policy.
 
-    def get_action(self, observation, episode_id=None):
+        Returns:
+            episode_id (str): Unique string id for the episode.
+        """
+
+        return self._send({
+            "episode_id": episode_id,
+            "command": PolicyClient.START_EPISODE,
+            "training_enabled": training_enabled,
+        })["episode_id"]
+
+    def get_action(self, episode_id, observation):
         """Record an observation and get the on-policy action.
 
         Arguments:
+            episode_id (str): Episode id returned from start_episode().
             observation (obj): Current environment observation.
-            episode_id (str): Episode id passed to start_episode() or None.
 
         Returns:
             action (obj): Action from the env action space.
@@ -56,13 +59,13 @@ class PolicyClient(object):
             "episode_id": episode_id,
         })["action"]
 
-    def log_action(self, observation, action, episode_id=None):
+    def log_action(self, episode_id, observation, action):
         """Record an observation and (off-policy) action taken.
 
         Arguments:
+            episode_id (str): Episode id returned from start_episode().
             observation (obj): Current environment observation.
             action (obj): Action for the observation.
-            episode_id (str): Episode id passed to start_episode() or None.
         """
         self._send({
             "command": PolicyClient.LOG_ACTION,
@@ -71,7 +74,7 @@ class PolicyClient(object):
             "episode_id": episode_id,
         })
 
-    def log_returns(self, reward, info=None, episode_id=None):
+    def log_returns(self, episode_id, reward, info=None):
         """Record returns from the environment.
 
         The reward will be attributed to the previous action taken by the
@@ -79,7 +82,7 @@ class PolicyClient(object):
         logged before the next action, a reward of 0.0 is assumed.
 
         Arguments:
-            episode_id (str): Episode id passed to start_episode() or None.
+            episode_id (str): Episode id returned from start_episode().
             reward (float): Reward from the environment.
         """
         self._send({
@@ -89,11 +92,11 @@ class PolicyClient(object):
             "episode_id": episode_id,
         })
 
-    def end_episode(self, observation, episode_id=None):
+    def end_episode(self, episode_id, observation):
         """Record the end of an episode.
 
         Arguments:
-            episode_id (str): Episode id passed by start_episode() or None.
+            episode_id (str): Episode id returned from start_episode().
             observation (obj): Current environment observation.
         """
         self._send({

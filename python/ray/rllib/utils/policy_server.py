@@ -41,21 +41,20 @@ def _make_handler(serving_env):
             command = args["command"]
             response = {}
             if command == PolicyClient.START_EPISODE:
-                serving_env.start_episode(
+                response["episode_id"] = serving_env.start_episode(
                     args["episode_id"], args["training_enabled"])
             elif command == PolicyClient.GET_ACTION:
                 response["action"] = serving_env.get_action(
-                    args["observation"], args["episode_id"])
+                    args["episode_id"], args["observation"])
             elif command == PolicyClient.LOG_ACTION:
                 serving_env.log_action(
-                    args["observation"], args["action"],
-                    args["episode_id"])
+                    args["episode_id"], args["observation"], args["action"])
             elif command == PolicyClient.LOG_RETURNS:
                 serving_env.log_returns(
-                    args["reward"], args["info"], args["episode_id"])
+                    args["episode_id"], args["reward"], args["info"])
             elif command == PolicyClient.END_EPISODE:
                 serving_env.end_episode(
-                    args["observation"], args["episode_id"])
+                    args["episode_id"], args["observation"])
             else:
                 raise Exception("Unknown command: {}".format(command))
             return response

@@ -4,6 +4,7 @@ from __future__ import print_function
 
 from six.moves import queue
 import threading
+import uuid
 
 from ray.rllib.utils.async_vector_env import AsyncVectorEnv
 
@@ -49,8 +50,6 @@ class ServingEnv(threading.Thread):
         self.observation_space = observation_space
         self._episodes = {}
         self._finished = set()
-        self._num_episodes = 0
-        self._cur_default_episode_id = None
         self._results_avail_condition = threading.Condition()
         self._max_concurrent_episodes = max_concurrent
 
@@ -73,21 +72,16 @@ class ServingEnv(threading.Thread):
 
         Arguments:
             episode_id (str): Unique string id for the episode or None for
-                it to be auto-assigned. Auto-assignment only works if there
-                is at most one active episode at a time.
+                it to be auto-assigned.
             training_enabled (bool): Whether to use experiences for this
                 episode to improve the policy.
+
+        Returns:
+            episode_id (str): Unique string id for the episode.
         """
 
         if episode_id is None:
-            if self._cur_default_episode_id:
-                raise ValueError(
-                    "An existing episode is still active. You must pass "
-                    "`episode_id` if there are going to be multiple active "
-                    "episodes at once.")
-            episode_id = "default_{}".format(self._num_episodes)
-            self._cur_default_episode_id = episode_id
-            self._num_episodes += 1
+            episode_id = uuid.uuid4().hex
 
         if episode_id in self._finished:
             raise ValueError(
@@ -100,12 +94,14 @@ class ServingEnv(threading.Thread):
         self._episodes[episode_id] = _Episode(
             episode_id, self._results_avail_condition, training_enabled)
 
-    def get_action(self, observation, episode_id=None):
+        return episode_id
+
+    def get_action(self, episode_id, observation):
         """Record an observation and get the on-policy action.
 
         Arguments:
+            episode_id (str): Episode id returned from start_episode().
             observation (obj): Current environment observation.
-            episode_id (str): Episode id passed to start_episode() or None.
 
         Returns:
             action (obj): Action from the env action space.
@@ -114,19 +110,19 @@ class ServingEnv(threading.Thread):
         episode = self._get(episode_id)
         return episode.wait_for_action(observation)
 
-    def log_action(self, observation, action, episode_id=None):
+    def log_action(self, episode_id, observation, action):
         """Record an observation and (off-policy) action taken.
 
         Arguments:
+            episode_id (str): Episode id returned from start_episode().
             observation (obj): Current environment observation.
             action (obj): Action for the observation.
-            episode_id (str): Episode id passed to start_episode() or None.
         """
 
         episode = self._get(episode_id)
         episode.log_action(observation, action)
 
-    def log_returns(self, reward, info=None, episode_id=None):
+    def log_returns(self, episode_id, reward, info=None):
         """Record returns from the environment.
 
         The reward will be attributed to the previous action taken by the
@@ -134,8 +130,9 @@ class ServingEnv(threading.Thread):
         logged before the next action, a reward of 0.0 is assumed.
 
         Arguments:
-            episode_id (str): Episode id passed to start_episode() or None.
+            episode_id (str): Episode id returned from start_episode().
             reward (float): Reward from the environment.
+            info (dict): Optional info dict.
         """
 
         episode = self._get(episode_id)
@@ -143,24 +140,20 @@ class ServingEnv(threading.Thread):
         if info:
             episode.cur_info = info or {}
 
-    def end_episode(self, observation, episode_id=None):
+    def end_episode(self, episode_id, observation):
         """Record the end of an episode.
 
         Arguments:
-            episode_id (str): Episode id passed by start_episode() or None.
+            episode_id (str): Episode id returned from start_episode().
             observation (obj): Current environment observation.
         """
 
         episode = self._get(episode_id)
         self._finished.add(episode.episode_id)
-        self._cur_default_episode_id = None
         episode.done(observation)
 
-    def _get(self, episode_id=None):
+    def _get(self, episode_id):
         """Get a started episode or raise an error."""
-
-        if episode_id is None:
-            episode_id = self._cur_default_episode_id
 
         if episode_id in self._finished:
             raise ValueError(
