@@ -68,8 +68,9 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
                 os.getcwd())
 
         # TODO(rliaw): Find more elegant solution for this
-        self.local_evaluator.init_extra_ops(
-            self.par_opt.get_device_losses())
+        if hasattr(self.local_evaluator, "init_extra_ops"):
+            self.local_evaluator.init_extra_ops(
+                self.par_opt.get_device_losses())
 
         self.sess = self.local_evaluator.sess
         self.sess.run(tf.global_variables_initializer())
@@ -83,9 +84,7 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
 
         with self.sample_timer:
             if self.remote_evaluators:
-                # samples = SampleBatch.concat_samples(
-                #     ray.get(
-                #         [e.sample.remote() for e in self.remote_evaluators]))
+                # TODO(rliaw): remove when refactoring onto CommonPolicyEvaluator
                 from ray.rllib.ppo.rollout import collect_samples
                 samples = collect_samples(self.remote_evaluators,
                                           self.timesteps_per_batch)
