@@ -73,10 +73,17 @@ class DiagGaussian(ActionDistribution):
     second half the gaussian standard deviations.
     """
 
-    def __init__(self, inputs):
+    def __init__(self, inputs, low=None, high=None):
         ActionDistribution.__init__(self, inputs)
         mean, log_std = tf.split(inputs, 2, axis=1)
         self.mean = mean
+        self.low = low
+        self.high = high
+
+        # Squash to range if specified
+        if low is not None:
+            self.mean = low + tf.sigmoid(self.mean) * (high - low)
+
         self.log_std = log_std
         self.std = tf.exp(log_std)
 
@@ -99,7 +106,10 @@ class DiagGaussian(ActionDistribution):
                              reduction_indices=[1])
 
     def sample(self):
-        return self.mean + self.std * tf.random_normal(tf.shape(self.mean))
+        out = self.mean + self.std * tf.random_normal(tf.shape(self.mean))
+        if self.low is not None:
+            out = tf.clip_by_value(out, self.low, self.high)
+        return out
 
 
 class Deterministic(ActionDistribution):
@@ -123,7 +133,7 @@ def squash_to_range(dist_cls, low, high):
 
     class SquashToRangeWrapper(dist_cls):
         def __init__(self, inputs):
-            dist_cls.__init__(self, inputs)
+            dist_cls.__init__(self, inputs, low=low, high=high)
 
         def logp(self, x):
             return dist_cls.logp(self, x)
@@ -135,7 +145,7 @@ def squash_to_range(dist_cls, low, high):
             return dist_cls.entropy(self)
 
         def sample(self):
-            return low + tf.sigmoid(dist_cls.sample(self)) * (high - low)
+            return dist_cls.sample(self)
 
     return SquashToRangeWrapper
 
