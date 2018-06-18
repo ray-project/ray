@@ -5,15 +5,19 @@ from __future__ import print_function
 import unittest
 
 import ray
-from ray.rllib.test.test_common_policy_evaluator import MockEnv
-from ray.rllib.utils.multi_agent_env import MultiAgentEnv, \
-    _MultiAgentEnvToAsync
+from ray.rllib.test.test_common_policy_evaluator import MockEnv, \
+    MockPolicyGraph
+from ray.rllib.utils.common_policy_evaluator import CommonPolicyEvaluator, \
+    collect_metrics
+from ray.rllib.utils.async_vector_env import _MultiAgentEnvToAsync
+from ray.rllib.utils.multi_agent_env import MultiAgentEnv
 
 
 class BasicMultiAgent(MultiAgentEnv):
     def __init__(self, num):
         self.agents = [MockEnv(25) for _ in range(num)]
         self.dones = set()
+        self.observation_space = 
 
     def reset(self):
         self.dones = set()
@@ -142,6 +146,16 @@ class TestMultiAgentEnv(unittest.TestCase):
         env.send_actions({0: {0: 0}, 1: {0: 0}})
         obs, rew, dones, _, _ = env.poll()
         self.assertEqual(obs, {0: {1: 0}, 1: {1: 0}})
+
+    def testMultiAgentSample(self):
+        ev = CommonPolicyEvaluator(
+            env_creator=lambda _: BasicMultiAgent(2),
+            policy_graph=MockPolicyGraph)
+        batch = ev.sample()
+        for key in ["obs", "actions", "rewards", "dones", "advantages"]:
+            self.assertIn(key, batch)
+        self.assertGreater(batch["advantages"][0], 1)
+
 
 if __name__ == '__main__':
     ray.init()

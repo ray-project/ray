@@ -58,7 +58,6 @@ def collect_metrics(local_evaluator, remote_evaluators):
 class CommonPolicyEvaluator(PolicyEvaluator):
     """Policy evaluator implementation that operates on a rllib.PolicyGraph.
 
-    TODO: multi-agent
     TODO: multi-gpu
 
     Examples:
@@ -89,6 +88,7 @@ class CommonPolicyEvaluator(PolicyEvaluator):
             self,
             env_creator,
             policy_graph,
+            policy_mapping_fn=lambda agent_name: "default",
             tf_session_creator=None,
             batch_steps=100,
             batch_mode="truncate_episodes",
@@ -107,8 +107,15 @@ class CommonPolicyEvaluator(PolicyEvaluator):
         Arguments:
             env_creator (func): Function that returns a gym.Env given an
                 env config dict.
-            policy_graph (class): A class implementing rllib.PolicyGraph or
-                rllib.TFPolicyGraph.
+            policy_graph (class|dict): Either a class implementing
+                PolicyGraph, or a dictionary of policy ids strings to
+                (PolicyGraph, obs_space, action_space) tuples. If a dict is
+                specified, then we are in multi-agent mode and a
+                policy_mapping_fn should also be set.
+            policy_mapping_fn (func): A function that maps agent names to
+                policy ids in multi-agent mode. This function will be called
+                each time a new agent appears in an episode, to bind that agent
+                to a policy for the duration of the episode.
             tf_session_creator (func): A function that returns a TF session.
                 This is optional and only useful with TFPolicyGraph.
             batch_steps (int): The target number of env transitions to include
@@ -176,6 +183,8 @@ class CommonPolicyEvaluator(PolicyEvaluator):
 
         def make_env():
             return wrap(env_creator(env_config))
+
+        "traffic_light": (PPOGraph, obs_space, action_space)
 
         if issubclass(policy_graph, TFPolicyGraph):
             with tf.Graph().as_default():
