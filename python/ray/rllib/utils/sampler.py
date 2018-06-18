@@ -225,6 +225,8 @@ def _env_runner(
                     new_obs=filtered_obs,
                     **episode.last_pi_info)
 
+                # Cut the batch if we're not packing multiple episodes into
+                # one, or if we've exceeded the requested batch size.
                 if (done and not pack) or \
                         episode.batch_builder.count >= num_local_steps:
                     yield episode.batch_builder.build_and_reset(
