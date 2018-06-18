@@ -68,7 +68,8 @@ class PolicyGraph(object):
         """Implements algorithm-specific trajectory postprocessing.
 
         Arguments:
-            sample_batch (SampleBatch): batch of experiences for the policy
+            sample_batch (SampleBatch): batch of experiences for the policy,
+                which will contain at most one episode trajectory.
             other_agent_batches (dict): In a multi-agent env, this contains the
                 experience batches seen by other agents.
 

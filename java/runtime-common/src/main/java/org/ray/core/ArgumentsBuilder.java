@@ -4,6 +4,7 @@ import java.io.Serializable;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -83,7 +84,9 @@ public class ArgumentsBuilder {
   @SuppressWarnings({"rawtypes", "unchecked"})
   public static Pair<Object, Object[]> unwrap(TaskSpec task, Method m, ClassLoader classLoader)
       throws TaskExecutionException {
-    FunctionArg[] fargs = task.args;
+    // the last arg is className
+
+    FunctionArg[] fargs = Arrays.copyOf(task.args, task.args.length - 1);
     Object current = null;
     Object[] realArgs;
 
