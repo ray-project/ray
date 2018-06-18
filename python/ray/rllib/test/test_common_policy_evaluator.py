@@ -211,6 +211,9 @@ class TestCommonPolicyEvaluator(unittest.TestCase):
             batch_mode="complete_episodes")
         batch = ev.sample()
         self.assertEqual(batch.count, 20)
+        self.assertEqual(
+            batch["t"].tolist(),
+            [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
 
     def testFilterSync(self):
         ev = CommonPolicyEvaluator(
