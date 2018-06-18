@@ -1,6 +1,7 @@
 import asyncio
 import collections
 import ctypes
+import functools
 import selectors
 import socket
 import sys
@@ -79,6 +80,202 @@ class PlasmaObjectFuture(asyncio.Future):
     def __repr__(self):
         return super().__repr__() + "{object_id=%s, ref_count=%d}" % (
             self.object_id, self.ref_count)
+
+
+class PlasmaFutureGroup(asyncio.Future):
+    def __init__(self, loop, return_exceptions=False):
+        super().__init__(loop=loop)
+        self._children = []
+        self._future_map = {}
+        self.results = {}
+        self.return_exceptions = return_exceptions
+        self.nfinished = 0
+        self._increasing_index = 0
+
+    def append(self, coro_or_future):
+        if not asyncio.futures.isfuture(coro_or_future):
+            fut = asyncio.ensure_future(coro_or_future, loop=self._loop)
+            if self.loop is None:
+                self.loop = fut._loop
+            # The caller cannot control this future, the "destroy pending task"
+            # warning should not be emitted.
+            fut._log_destroy_pending = False
+        else:
+            fut = coro_or_future
+            if fut in self._future_map:
+                return  # duplicated
+            if self.loop is None:
+                self.loop = fut._loop
+            elif fut._loop is not self.loop:
+                raise ValueError(
+                    "futures are tied to different event loops")
+
+        fut.add_done_callback(self._done_callback)
+        self._future_map[fut] = self._increasing_index
+        self._increasing_index += 1
+
+    def pop(self, index=0):
+        fut = self._children.pop(index)
+        fut.remove_done_callback(self._done_callback)
+        inner_idx = self._future_map[fut]
+        if inner_idx in self.results:
+            del self.results[inner_idx]
+        del self._future_map[fut]
+        return fut
+
+    @property
+    def children(self):
+        return self._children
+
+    @property
+    def nchildren(self):
+        return len(self._children)
+
+    def halt_on_all_finished(self):
+        return self.nfinished >= len(self._children)
+
+    def halt_on_any_finished(self):
+        return self.nfinished > 0
+
+    def halt_on_some_finished(self, n):
+        return self.nfinished >= n
+
+    def check_halt(self):
+        """
+        This function can be override to change the halt condition.
+
+        Returns:
+        bool
+        """
+
+        return self.halt_on_all_finished()
+
+    def _collect_results(self):
+        results = list(self.results.items())
+        results.sort(key=lambda x: x[0])
+        return [x[1] for x in results]
+
+    def _done_callback(self, fut):
+        if self.done():
+            if not fut.cancelled():
+                # Mark exception retrieved.
+                fut.exception()
+            return
+
+        if fut.cancelled():
+            res = asyncio.futures.CancelledError()
+            if not self.return_exceptions:
+                self.set_exception(res)
+                return
+        elif fut._exception is not None:
+            res = fut.exception()  # Mark exception retrieved.
+            if not self.return_exceptions:
+                self.set_exception(res)
+                return
+        else:
+            res = fut._result
+
+        index = self._future_map[fut]
+        self.results[index] = res
+        self.nfinished += 1
+
+        if self.check_halt():
+            self.set_result(self._collect_results())
+
+    def cancel(self):
+        if self.done():
+            return False
+        ret = False
+        for child in self._children:
+            if child.cancel():
+                ret = True
+        return ret
+
+    def flush_results(self):
+        done, pending = [], []
+        while self._children:
+            f = self.pop()
+            if f.done():
+                done.append(f)
+            else:
+                pending.append(f)
+
+        return done, pending
+
+    @asyncio.coroutine
+    def wait(self, timeout=None):
+        if not self._children:
+            return [], []
+
+        loop = self._loop
+
+        waiter = loop.create_future()
+        timeout_handle = None
+        if timeout is not None:
+            timeout_handle = loop.call_later(timeout, _release_waiter, waiter)
+
+        def _on_completion(_):
+            if timeout_handle is not None:
+                timeout_handle.cancel()
+            if not waiter.done():
+                waiter.set_result(None)
+
+        self.add_done_callback(_on_completion)
+
+        try:
+            yield from waiter
+        finally:
+            if timeout_handle is not None:
+                timeout_handle.cancel()
+
+        return self.flush_results()
+
+
+def gather(*coros_or_futures, loop=None, return_exceptions=False):
+    """
+    This method resembles `asyncio.gather`
+
+    Args:
+        *coros_or_futures:
+        loop:
+        return_exceptions:
+
+    Returns:
+
+    """
+
+    fut = PlasmaFutureGroup(loop=loop, return_exceptions=return_exceptions)
+    for f in coros_or_futures:
+        fut.append(f)
+    return fut
+
+
+@asyncio.coroutine
+def wait(*coros_or_futures, timeout, num_returns, loop=None,
+         return_exceptions=False):
+    """
+    This method resembles `asyncio.wait`
+
+    Args:
+        *coros_or_futures:
+        timeout:
+        num_returns:
+        loop:
+        return_exceptions:
+
+    Returns:
+
+    """
+
+    fut = PlasmaFutureGroup(loop=loop, return_exceptions=return_exceptions)
+    fut.check_halt = functools.partial(
+        fut.halt_on_some_finished,
+        n=num_returns,
+    )
+    for f in coros_or_futures:
+        fut.append(f)
+
+    return (yield from fut.wait(timeout))
 
 
 class PlasmaEpoll(selectors.BaseSelector):
