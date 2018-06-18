@@ -170,6 +170,19 @@ class TestAsyncPlasmaBasic(unittest.TestCase):
                 loop.wait(tasks, num_returns=len(tasks)))
         self.assertEqual(set(results), set(tasks))
 
+    def test_wait_timeout(self):
+        @ray.remote
+        def f(n):
+            import time
+            time.sleep(n * 20)
+            return n
+
+        with PlasmaEventLoopUsePoll() as loop:
+            tasks = [f.remote(i) for i in range(5)]
+            results, _ = loop.run_until_complete(
+                loop.wait(tasks, timeout=10, num_returns=len(tasks)))
+        self.assertEqual(results[0], tasks[0])
+
 
 class TestAsyncPlasmaWait(unittest.TestCase):
     answer = b'U\x16\xc5c\x0fa\xdcx\x03\x1e\xf7\xd8&{\xece' \

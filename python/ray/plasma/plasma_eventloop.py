@@ -14,51 +14,6 @@ def _release_waiter(waiter, *args):
         waiter.set_result(None)
 
 
-@asyncio.coroutine
-def _wait(fs, timeout, num_returns, loop):
-    """Enhancement of `asyncio.wait`.
-
-    The fs argument must be a collection of Futures.
-    """
-
-    assert fs, "Set of Futures is empty."
-    assert 0 < num_returns <= len(fs)
-
-    waiter = loop.create_future()
-    timeout_handle = None
-    if timeout is not None:
-        timeout_handle = loop.call_later(timeout, _release_waiter, waiter)
-
-    n_finished = 0
-
-    def _on_completion(f):
-        nonlocal n_finished
-        n_finished += 1
-        if n_finished >= num_returns:
-            if timeout_handle is not None:
-                timeout_handle.cancel()
-            if not waiter.done():
-                waiter.set_result(None)
-
-    for f in fs:
-        f.add_done_callback(_on_completion)
-
-    try:
-        yield from waiter
-    finally:
-        if timeout_handle is not None:
-            timeout_handle.cancel()
-
-    done, pending = [], []
-    for f in fs:
-        f.remove_done_callback(_on_completion)
-        if f.done():
-            done.append(f)
-        else:
-            pending.append(f)
-    return done, pending
-
-
 class PlasmaObjectFuture(asyncio.Future):
     def __init__(self, loop, object_id):
         super().__init__(loop=loop)
@@ -102,15 +57,17 @@ class PlasmaFutureGroup(asyncio.Future):
             fut._log_destroy_pending = False
         else:
             fut = coro_or_future
-            if fut in self._future_map:
-                return  # duplicated
-            if self.loop is None:
-                self.loop = fut._loop
-            elif fut._loop is not self.loop:
+
+            if self._loop is None:
+                self._loop = fut._loop
+            elif fut._loop is not self._loop:
                 raise ValueError(
                     "futures are tied to different event loops")
 
+        if fut in self._future_map:
+            return  # duplicated
         fut.add_done_callback(self._done_callback)
+        self._children.append(fut)
         self._future_map[fut] = self._increasing_index
         self._increasing_index += 1
 
@@ -140,7 +97,7 @@ class PlasmaFutureGroup(asyncio.Future):
     def halt_on_some_finished(self, n):
         return self.nfinished >= n
 
-    def check_halt(self):
+    def _halt_on(self):
         """
         This function can be override to change the halt condition.
 
@@ -149,6 +106,9 @@ class PlasmaFutureGroup(asyncio.Future):
         """
 
         return self.halt_on_all_finished()
+
+    def set_halt_condition(self, cond):
+        self._halt_on = cond
 
     def _collect_results(self):
         results = list(self.results.items())
@@ -179,7 +139,7 @@ class PlasmaFutureGroup(asyncio.Future):
         self.results[index] = res
         self.nfinished += 1
 
-        if self.check_halt():
+        if self._halt_on():
             self.set_result(self._collect_results())
 
     def cancel(self):
@@ -268,10 +228,10 @@ def wait(*coros_or_futures, timeout, num_returns, loop=None,
     """
 
     fut = PlasmaFutureGroup(loop=loop, return_exceptions=return_exceptions)
-    fut.check_halt = functools.partial(
+    fut.set_halt_condition(functools.partial(
         fut.halt_on_some_finished,
         n=num_returns,
-    )
+    ))
     for f in coros_or_futures:
         fut.append(f)
 
@@ -475,7 +435,7 @@ class PlasmaSelectorEventLoop(asyncio.BaseEventLoop):
         if not isinstance(object_ids, list):
             ready_ids = yield from self._register_id(object_ids)
         else:
-            ready_ids = yield from asyncio.gather(
+            ready_ids = yield from gather(
                 *[self._register_id(oid) for oid in object_ids], loop=self)
 
         return ray.get(ready_ids, worker=self._worker)
@@ -484,8 +444,10 @@ class PlasmaSelectorEventLoop(asyncio.BaseEventLoop):
     def wait(self, object_ids, num_returns=1, timeout=None,
              return_exact_num=True):
         futures = [self._register_id(oid) for oid in object_ids]
-        _done, _pending = yield from _wait(futures, timeout=timeout,
-                                           num_returns=num_returns, loop=self)
+        _done, _pending = yield from wait(
+            *futures, timeout=timeout,
+            num_returns=num_returns, loop=self,
+        )
 
         self._release(*_pending)
         done = [fut.object_id for fut in _done]
