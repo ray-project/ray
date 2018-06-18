@@ -146,29 +146,27 @@ class PPOAgent(Agent):
         [a.set_weights.remote(weights) for a in agents]
         samples = collect_samples(agents, config, self.local_evaluator)
 
-        def standardized(value):
+        def postprocess_samples(batch):
             # Divide by the maximum of value.std() and 1e-4
             # to guard against the case where all values are equal
-            return (value - value.mean()) / max(1e-4, value.std())
+            value = batch["advantages"]
+            standardized = (value - value.mean()) / max(1e-4, value.std())
+            batch.data["advantages"] = standardized
+            batch.shuffle()
+            if not self.config["use_gae"]:
+                batch.data["value_targets"] = np.zeros_like(batch["advantages"])
+                batch.data["vf_preds"] = np.zeros_like(batch["advantages"])
 
-        samples.data["advantages"] = standardized(samples["advantages"])
+        postprocess_samples(samples)
         print("Computing policy (iterations=" + str(config["num_sgd_iter"]) +
               ", stepsize=" + str(config["sgd_stepsize"]) + "):")
         names = [
             "iter", "total loss", "policy loss", "vf loss", "kl", "entropy"]
         print(("{:>15}" * len(names)).format(*names))
-        samples.shuffle()
 
-        use_gae = self.config["use_gae"]
-        dummy = np.zeros_like(samples["advantages"])
         tuples_per_device = self.optimizer.par_opt.load_data(
             self.local_evaluator.sess,
-            [samples["obs"],
-             samples["value_targets"] if use_gae else dummy,
-             samples["advantages"],
-             samples["actions"],
-             samples["logprobs"],
-             samples["vf_preds"] if use_gae else dummy])
+            samples.columns([key for key, _ in self.local_evaluator.tf_loss_inputs()]))
 
         # tuples_per_device = model.load_data(
         #     samples, self.iteration == 0 and config["full_trace_data_load"])
