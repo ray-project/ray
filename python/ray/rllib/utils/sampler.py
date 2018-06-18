@@ -9,7 +9,6 @@ import threading
 
 from ray.rllib.optimizers.sample_batch import MultiAgentSampleBatchBuilder, \
     MultiAgentBatch
-from ray.rllib.utils.vector_env import VectorEnv, _VectorEnvToAsync
 from ray.rllib.utils.async_vector_env import AsyncVectorEnv
 
 
@@ -18,18 +17,6 @@ RolloutMetrics = namedtuple(
 
 PolicyEvalData = namedtuple(
     "PolicyEvalData", ["env_id", "agent_id", "obs", "rnn_state"])
-
-
-def _to_async_env(env):
-    if not isinstance(env, AsyncVectorEnv):
-        if isinstance(env, MultiAgentEnv):
-            env = _MultiAgentEnvToAsync(
-                make_env=None, existing_envs=[env], num_envs=1)
-        elif not isinstance(env, VectorEnv):
-            env = VectorEnv.wrap(
-                make_env=None, existing_envs=[env], num_envs=1)
-            env = _VectorEnvToAsync(env)
-    return env
 
 
 class SyncSampler(object):
@@ -44,7 +31,7 @@ class SyncSampler(object):
     def __init__(
             self, env, policies, policy_mapping_fn, obs_filters,
             num_local_steps, horizon=None, pack=False):
-        self.async_vector_env = _to_async_env(env)
+        self.async_vector_env = AsyncVectorEnv.wrap_async(env)
         self.num_local_steps = num_local_steps
         self.horizon = horizon
         self.policies = policies
@@ -85,7 +72,7 @@ class AsyncSampler(threading.Thread):
         for _, f in obs_filters.items():
             assert getattr(f, "is_concurrent", False), \
                 "Observation Filter must support concurrent updates."
-        self.async_vector_env = _to_async_env(env)
+        self.async_vector_env = AsyncVectorEnv.wrap_async(env)
         threading.Thread.__init__(self)
         self.queue = queue.Queue(5)
         self.metrics_queue = queue.Queue()

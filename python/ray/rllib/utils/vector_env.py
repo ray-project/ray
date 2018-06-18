@@ -5,8 +5,6 @@ from __future__ import print_function
 import queue
 import threading
 
-from ray.rllib.utils.async_vector_env import AsyncVectorEnv
-
 
 class VectorEnv(object):
     """An environment that supports batch evaluation.
@@ -24,15 +22,37 @@ class VectorEnv(object):
         return _VectorizedGymEnv(make_env, existing_envs or [], num_envs)
 
     def vector_reset(self):
+        """Resets all environments.
+
+        Returns:
+            obs (list): Vector of observations from each environment.
+        """
         raise NotImplementedError
 
     def reset_at(self, index):
+        """Resets a single environment.
+
+        Returns:
+            obs (obj): Observations from the resetted environment.
+        """
         raise NotImplementedError
 
     def vector_step(self, actions):
+        """Vectorized step.
+
+        Arguments:
+            actions (list): Actions for each env.
+
+        Returns:
+            obs (list): New observations for each env.
+            rewards (list): Reward values for each env.
+            dones (list): Done values for each env.
+            infos (list): Info values for each env.
+        """
         raise NotImplementedError
 
     def get_unwrapped(self):
+        """Returns a single instance of the underlying env."""
         raise NotImplementedError
 
 
@@ -117,55 +137,3 @@ class _SimpleResetter(object):
 
     def trade_for_resetted(self, env):
         return env.reset(), env
-
-
-# Fixed agent identifier for the single agent in the env
-_DUMMY_AGENT_ID = "single_agent"
-
-
-class _VectorEnvToAsync(AsyncVectorEnv):
-    """Wraps VectorEnv to implement AsyncVectorEnv.
-
-    We assume the caller will always send the full vector of actions in each
-    call to send_actions(), and that they call reset_at() on all completed
-    environments before calling send_actions().
-    """
-
-    def __init__(self, vector_env):
-        self.vector_env = vector_env
-        self.num_envs = vector_env.num_envs
-        self.new_obs = self.vector_env.vector_reset()
-        self.cur_rewards = [None for _ in range(self.num_envs)]
-        self.cur_dones = [False for _ in range(self.num_envs)]
-        self.cur_infos = [None for _ in range(self.num_envs)]
-
-    def poll(self):
-        new_obs = dict(enumerate(self.new_obs))
-        rewards = dict(enumerate(self.cur_rewards))
-        dones = dict(enumerate(self.cur_dones))
-        infos = dict(enumerate(self.cur_infos))
-        self.new_obs = []
-        self.cur_rewards = []
-        self.cur_dones = []
-        self.cur_infos = []
-        return _with_dummy_agent_id(new_obs), \
-            _with_dummy_agent_id(rewards), \
-            _with_dummy_agent_id(dones, "__all__"), \
-            _with_dummy_agent_id(infos), {}
-
-    def send_actions(self, action_dict):
-        action_vector = [None] * self.num_envs
-        for i in range(self.num_envs):
-            action_vector[i] = action_dict[i][_DUMMY_AGENT_ID]
-        self.new_obs, self.cur_rewards, self.cur_dones, self.cur_infos = \
-            self.vector_env.vector_step(action_vector)
-
-    def try_reset(self, env_id):
-        return {_DUMMY_AGENT_ID: self.vector_env.reset_at(env_id)}
-
-    def get_unwrapped(self):
-        return self.vector_env.get_unwrapped()
-
-
-def _with_dummy_agent_id(env_id_to_values, dummy_id=_DUMMY_AGENT_ID):
-    return {k: {dummy_id: v} for (k, v) in env_id_to_values.items()}

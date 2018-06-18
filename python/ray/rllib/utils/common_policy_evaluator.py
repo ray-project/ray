@@ -8,16 +8,17 @@ import tensorflow as tf
 
 import ray
 from ray.rllib.models import ModelCatalog
-from ray.rllib.optimizers import SampleBatch, MultiAgentBatch
+from ray.rllib.optimizers import MultiAgentBatch
 from ray.rllib.optimizers.policy_evaluator import PolicyEvaluator
 from ray.rllib.utils.async_vector_env import AsyncVectorEnv
 from ray.rllib.utils.atari_wrappers import wrap_deepmind, is_atari
 from ray.rllib.utils.compression import pack
 from ray.rllib.utils.filter import get_filter
+from ray.rllib.utils.multi_agent_env import MultiAgentEnv
 from ray.rllib.utils.sampler import AsyncSampler, SyncSampler
-from ray.rllib.utils.serving_env import ServingEnv, _ServingEnvToAsync
+from ray.rllib.utils.serving_env import ServingEnv
 from ray.rllib.utils.tf_policy_graph import TFPolicyGraph
-from ray.rllib.utils.vector_env import VectorEnv, _VectorEnvToAsync
+from ray.rllib.utils.vector_env import VectorEnv
 from ray.tune.registry import get_registry
 from ray.tune.result import TrainingResult
 
@@ -158,6 +159,7 @@ class CommonPolicyEvaluator(PolicyEvaluator):
         self.env = env_creator(env_config)
         if isinstance(self.env, VectorEnv) or \
                 isinstance(self.env, ServingEnv) or \
+                isinstance(self.env, MultiAgentEnv) or \
                 isinstance(self.env, AsyncVectorEnv):
             def wrap(env):
                 return env  # we can't auto-wrap these env types
@@ -203,16 +205,8 @@ class CommonPolicyEvaluator(PolicyEvaluator):
         }
 
         # Always use vector env for consistency even if num_envs = 1
-        if not isinstance(self.env, AsyncVectorEnv):
-            if isinstance(self.env, ServingEnv):
-                self.vector_env = _ServingEnvToAsync(self.env)
-            else:
-                if not isinstance(self.env, VectorEnv):
-                    self.env = VectorEnv.wrap(
-                        make_env, [self.env], num_envs=num_envs)
-                self.vector_env = _VectorEnvToAsync(self.env)
-        else:
-            self.vector_env = self.env
+        self.async_env = AsyncVectorEnv.wrap_async(
+            self.env, make_env=make_env, num_envs=num_envs)
 
         if self.batch_mode == "truncate_episodes":
             if batch_steps % num_envs != 0:
@@ -230,13 +224,13 @@ class CommonPolicyEvaluator(PolicyEvaluator):
                 "Unsupported batch mode: {}".format(self.batch_mode))
         if sample_async:
             self.sampler = AsyncSampler(
-                self.vector_env, self.policy_map, lambda agent_id: "default",
+                self.async_env, self.policy_map, lambda agent_id: "default",
                 self.filters, batch_steps, horizon=episode_horizon,
                 pack=pack_episodes)
             self.sampler.start()
         else:
             self.sampler = SyncSampler(
-                self.vector_env, self.policy_map, lambda agent_id: "default",
+                self.async_env, self.policy_map, lambda agent_id: "default",
                 self.filters, batch_steps, horizon=episode_horizon,
                 pack=pack_episodes)
 

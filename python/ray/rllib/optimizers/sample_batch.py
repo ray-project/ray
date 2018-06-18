@@ -51,7 +51,7 @@ class MultiAgentSampleBatchBuilder(object):
 
     def __init__(self, policy_map):
         """Initialize a MultiAgentSampleBatchBuilder.
-        
+
         Arguments:
             policy_map (dict): Maps policy ids to policy graph instances.
         """
