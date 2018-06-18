@@ -12,7 +12,9 @@ from ray.tune.trial import Resources
 
 DEFAULT_CONFIG = {
     # Number of workers (excluding master)
-    "num_workers": 4,
+    "num_workers": 0,
+    # Number of environments to evaluate vectorwise per worker.
+    "num_envs": 1,
     # Size of rollout batch
     "batch_size": 512,
     # Discount factor of MDP
@@ -57,6 +59,7 @@ class PGAgent(Agent):
                 "model_config": self.config["model"],
                 "env_config": self.config["env_config"],
                 "policy_config": self.config,
+                "num_envs": self.config["num_envs"],
             },
             num_workers=self.config["num_workers"],
             optimizer_config=self.config["optimizer"])
