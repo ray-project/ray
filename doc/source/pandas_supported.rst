@@ -19,7 +19,7 @@ DataFrame
 
 The following table lists both implemented and not implemented methods. If you
 have need of an operation that is listed as not implemented, feel free to open
-an issue on the `github repo`_. Contributions are also welcome!
+an issue on the `GitHub repository`_. Contributions are also welcome!
 
 +---------------------------+--------------------+----------------------------------------------------+
 | DataFrame method          | Implemented?       | Limitations/Notes for Current implementation       |
@@ -750,7 +750,7 @@ Make sure you tell us your primary use-case so we can make it happen faster!
 * PeriodIndex
 * Categorical
 
-.. _`github repo`: https://github.com/ray-project/ray/issues
+.. _`GitHub repository`: https://github.com/ray-project/ray/issues
 .. _`mailing list`: https://groups.google.com/forum/#!forum/ray-dev
 .. _here: http://ray.readthedocs.io/en/latest/installation.html#trying-the-latest-version-of-ray
 .. _`open an issue`: https://github.com/ray-project/ray/issues
