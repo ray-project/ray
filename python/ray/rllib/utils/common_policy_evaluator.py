@@ -10,14 +10,14 @@ import ray
 from ray.rllib.models import ModelCatalog
 from ray.rllib.optimizers import SampleBatch
 from ray.rllib.optimizers.policy_evaluator import PolicyEvaluator
-from ray.rllib.utils.async_vector_env import AsyncVectorEnv, _VectorEnvToAsync
+from ray.rllib.utils.async_vector_env import AsyncVectorEnv
 from ray.rllib.utils.atari_wrappers import wrap_deepmind, is_atari
 from ray.rllib.utils.compression import pack
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.sampler import AsyncSampler, SyncSampler
 from ray.rllib.utils.serving_env import ServingEnv, _ServingEnvToAsync
 from ray.rllib.utils.tf_policy_graph import TFPolicyGraph
-from ray.rllib.utils.vector_env import VectorEnv
+from ray.rllib.utils.vector_env import VectorEnv, _VectorEnvToAsync
 from ray.tune.registry import get_registry
 from ray.tune.result import TrainingResult
 

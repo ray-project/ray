@@ -5,6 +5,8 @@ from __future__ import print_function
 import queue
 import threading
 
+from ray.rllib.utils.async_vector_env import AsyncVectorEnv
+
 
 class VectorEnv(object):
     """An environment that supports batch evaluation.
@@ -37,7 +39,7 @@ class VectorEnv(object):
 class _VectorizedGymEnv(VectorEnv):
     """Internal wrapper for gym envs to implement VectorEnv.
 
-    Arguents:
+    Arguments:
         make_env (func|None): Factory that produces a new gym env. Must be
             defined if the number of existing envs is less than num_envs.
         existing_envs (list): List of existing gym envs.
@@ -115,3 +117,55 @@ class _SimpleResetter(object):
 
     def trade_for_resetted(self, env):
         return env.reset(), env
+
+
+# Fixed agent identifier for the single agent in the env
+_DUMMY_AGENT_ID = "single_agent"
+
+
+class _VectorEnvToAsync(AsyncVectorEnv):
+    """Wraps VectorEnv to implement AsyncVectorEnv.
+
+    We assume the caller will always send the full vector of actions in each
+    call to send_actions(), and that they call reset_at() on all completed
+    environments before calling send_actions().
+    """
+
+    def __init__(self, vector_env):
+        self.vector_env = vector_env
+        self.num_envs = vector_env.num_envs
+        self.new_obs = self.vector_env.vector_reset()
+        self.cur_rewards = [None for _ in range(self.num_envs)]
+        self.cur_dones = [False for _ in range(self.num_envs)]
+        self.cur_infos = [None for _ in range(self.num_envs)]
+
+    def poll(self):
+        new_obs = dict(enumerate(self.new_obs))
+        rewards = dict(enumerate(self.cur_rewards))
+        dones = dict(enumerate(self.cur_dones))
+        infos = dict(enumerate(self.cur_infos))
+        self.new_obs = []
+        self.cur_rewards = []
+        self.cur_dones = []
+        self.cur_infos = []
+        return _with_dummy_agent_id(new_obs), \
+            _with_dummy_agent_id(rewards), \
+            _with_dummy_agent_id(dones), \
+            _with_dummy_agent_id(infos), {}
+
+    def send_actions(self, action_dict):
+        action_vector = [None] * self.num_envs
+        for i in range(self.num_envs):
+            action_vector[i] = action_dict[i][_DUMMY_AGENT_ID]
+        self.new_obs, self.cur_rewards, self.cur_dones, self.cur_infos = \
+            self.vector_env.vector_step(action_vector)
+
+    def try_reset(self, env_id):
+        return self.vector_env.reset_at(env_id)
+
+    def get_unwrapped(self):
+        return self.vector_env.get_unwrapped()
+
+
+def _with_dummy_agent_id(env_id_to_values):
+    return {k: {_DUMMY_AGENT_ID: v} for (k, v) in env_id_to_values.items()}

@@ -186,6 +186,16 @@ class TestServingEnv(unittest.TestCase):
                 return
         raise Exception("failed to improve reward")
 
+    def testServingEnvHorizonNotSupported(self):
+        ev = CommonPolicyEvaluator(
+            env_creator=lambda _: SimpleServing(MockEnv(25)),
+            policy_graph=MockPolicyGraph,
+            episode_horizon=20,
+            batch_steps=10,
+            batch_mode="complete_episodes")
+        ev.sample()
+        self.assertRaises(Exception, lambda: ev.sample())
+
 
 if __name__ == '__main__':
     ray.init()
