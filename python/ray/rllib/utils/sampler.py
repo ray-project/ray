@@ -12,8 +12,11 @@ from ray.rllib.utils.vector_env import VectorEnv, _VectorEnvToAsync
 from ray.rllib.utils.async_vector_env import AsyncVectorEnv
 
 
-CompletedRollout = namedtuple("CompletedRollout",
-                              ["episode_length", "episode_reward"])
+RolloutMetrics = namedtuple(
+    "RolloutMetrics", ["episode_length", "episode_reward", "agent_rewards"])
+
+PolicyEvalData = namedtuple(
+    "PolicyEvalData", ["env_id", "agent_id", "obs", "rnn_state"])
 
 
 def _to_async_env(env):
@@ -54,7 +57,7 @@ class SyncSampler(object):
     def get_data(self):
         while True:
             item = next(self.rollout_provider)
-            if isinstance(item, CompletedRollout):
+            if isinstance(item, RolloutMetrics):
                 self.metrics_queue.put(item)
             else:
                 return item
@@ -109,7 +112,7 @@ class AsyncSampler(threading.Thread):
             # dies, the other workers won't die with it, unless the timeout is
             # set to some large number. This is an empirical observation.
             item = next(rollout_provider)
-            if isinstance(item, CompletedRollout):
+            if isinstance(item, RolloutMetrics):
                 self.metrics_queue.put(item)
             else:
                 self.queue.put(item, timeout=600.0)
@@ -188,7 +191,7 @@ def _env_runner(
         else:
             return MultiAgentSampleBatchBuilder(policies)
 
-    episodes = defaultdict(
+    active_episodes = defaultdict(
         lambda: _Episode(policies, policy_mapping_fn, get_batch_builder))
 
     while True:
@@ -196,19 +199,24 @@ def _env_runner(
         unfiltered_obs, rewards, dones, infos, off_policy_actions = \
             async_vector_env.poll()
 
-        # Map of policy_id to list of (env_id, agent_id, obs, rnn_state)
-        ready_agents = collections.defaultdict(list)
+        # Map of policy_id to list of PolicyEvalData
+        to_eval = defaultdict(list)
 
         # For each environment
         for env_id, agent_obs in unfiltered_obs.items():
-            episode = episodes[env_id]
-            episode.length += 1
-            episode.add_agent_rewards(rewards[env_id])
+            new_episode = env_id not in active_episodes
+            episode = active_episodes[env_id]
+            if not new_episode:
+                episode.length += 1
+                episode.batch_builder.count += 1
+                episode.add_agent_rewards(rewards[env_id])
 
             # Check episode termination conditions
             if dones[env_id]["__all__"] or episode.length >= horizon:
                 all_done = True
-                yield CompletedRollout(episode.length, episode.total_reward)
+                yield RolloutMetrics(
+                    episode.length, episode.total_reward,
+                    dict(episode.agent_rewards))
             else:
                 all_done = False
 
@@ -216,90 +224,93 @@ def _env_runner(
             for agent_id, raw_obs in agent_obs.items():
                 policy_id = episode.policy_for(agent_id)
                 filtered_obs = obs_filters[policy_id](raw_obs)
-                agent_done = all_done or dones[env_id][agent_id]
+                agent_done = bool(all_done or dones[env_id].get(agent_id))
                 if not agent_done:
-                    # Queue for policy evaluation
-                    ready_agents[policy_id].append(
-                        (env_id, agent_id, filtered_obs,
-                         episode.rnn_state_for(agent_id)))
+                    to_eval[policy_id].append(
+                        PolicyEvalData(
+                            env_id, agent_id, filtered_obs,
+                            episode.rnn_state_for(agent_id)))
 
                 last_observation = episode.last_observation_for(agent_id)
                 episode.set_last_observation(agent_id, filtered_obs)
-                if last_observation is None:
-                    continue  # This is the initial observation for the agent
 
-                # Record transition info
-                episode.batch_builder.add_values(
-                    agent_id,
-                    policy_id,
-                    t=episode.length - 1,
-                    obs=last_observation,
-                    actions=episode.last_action_for(agent_id),
-                    rewards=rewards[env_id][agent_id],
-                    dones=agent_done,
-                    infos=infos[env_id][agent_id],
-                    new_obs=filtered_obs,
-                    **episode.last_pi_info_for(agent_id))
+                # Record transition info if applicable
+                if last_observation is not None:
+                    episode.batch_builder.add_values(
+                        agent_id,
+                        policy_id,
+                        t=episode.length - 1,
+                        obs=last_observation,
+                        actions=episode.last_action_for(agent_id),
+                        rewards=rewards[env_id][agent_id],
+                        dones=agent_done,
+                        infos=infos[env_id][agent_id],
+                        new_obs=filtered_obs,
+                        **episode.last_pi_info_for(agent_id))
 
             # Cut the batch if we're not packing multiple episodes into one,
             # or if we've exceeded the requested batch size.
-            if (all_done and not pack) or episode.length >= num_local_steps:
-                yield episode.batch_builder.build_and_reset(
-                    policy.postprocess_trajectory)
+            if (all_done and not pack) or \
+                    episode.batch_builder.count >= num_local_steps:
+                yield episode.batch_builder.build_and_reset()
             elif all_done:
                 # Make sure postprocessor never goes across episode boundaries
-                episode.batch_builder.postprocess_batch_so_far(
-                    policy.postprocess_trajectory)
+                episode.batch_builder.postprocess_batch_so_far()
 
             if all_done:
                 # Handle episode termination
                 batch_builder_pool.append(episode.batch_builder)
-                del episodes[env_id]
+                del active_episodes[env_id]
                 resetted_obs = async_vector_env.try_reset(env_id)
                 if resetted_obs is None:
                     # Reset not supported, drop this env from the ready list
                     assert horizon == float("inf"), \
                         "Setting episode horizon requires reset() support."
                 else:
-                    # Reset successful, put in the new obs as ready
-                    episode = episodes[eid]
+                    # Creates a new episode
+                    episode = active_episodes[env_id]
                     for agent_id, raw_obs in resetted_obs.items():
                         policy_id = episode.policy_for(agent_id)
                         filtered_obs = obs_filters[policy_id](raw_obs)
                         episode.set_last_observation(agent_id, filtered_obs)
-                        # Queue for policy evaluation
-                        ready_agents[policy_id].append(
-                            (env_id, agent_id, filtered_obs,
-                             episode.rnn_state_for(agent_id)))
+                        to_eval[policy_id].append(
+                            PolicyEvalData(
+                                env_id, agent_id, filtered_obs,
+                                episode.rnn_state_for(agent_id)))
 
-        if not ready_eids:
-            continue  # No actions to take
+        # Map of env_id -> agent_id -> action
+        action_dict = defaultdict(dict)
 
-        # Compute action for ready envs
-        ready_rnn_state_cols = _to_column_format(ready_rnn_states)
-        actions, new_rnn_state_cols, pi_info_cols = policy.compute_actions(
-            ready_obs, ready_rnn_state_cols, is_training=True)
-
-        # Add RNN state info
-        for f_i, column in enumerate(ready_rnn_state_cols):
-            pi_info_cols["state_in_{}".format(f_i)] = column
-        for f_i, column in enumerate(new_rnn_state_cols):
-            pi_info_cols["state_out_{}".format(f_i)] = column
+        # TODO(ekl) fuse all policy evaluation into one TF run
+        for policy_id, eval_data in to_eval.items():
+            rnn_in_cols = _to_column_format([t.rnn_state for t in eval_data])
+            actions, rnn_out_cols, pi_info_cols = \
+                policies[policy_id].compute_actions(
+                    [t.obs for t in eval_data], rnn_in_cols, is_training=True)
+            # Add RNN state info
+            for f_i, column in enumerate(rnn_in_cols):
+                pi_info_cols["state_in_{}".format(f_i)] = column
+            for f_i, column in enumerate(rnn_out_cols):
+                pi_info_cols["state_out_{}".format(f_i)] = column
+            # Save output rows
+            for i, action in enumerate(actions):
+                env_id = eval_data[i].env_id
+                agent_id = eval_data[i].agent_id
+                action_dict[env_id][agent_id] = action
+                episode = active_episodes[env_id]
+                episode.set_rnn_state(agent_id, [c[i] for c in rnn_out_cols])
+                episode.set_last_pi_info(
+                    agent_id, {k: v[i] for k, v in pi_info_cols.items()})
+                if env_id in off_policy_actions and \
+                        agent_id in off_policy_actions[env_id]:
+                    episode.set_last_action(
+                        agent_id, off_policy_actions[env_id][agent_id])
+                else:
+                    episode.set_last_action(agent_id, action)
 
         # Return computed actions to ready envs. We also send to envs that have
         # taken off-policy actions; those envs are free to ignore the action.
-        async_vector_env.send_actions(dict(zip(ready_eids, actions)))
-
-        # Store the computed action info
-        for i, eid in enumerate(ready_eids):
-            episode = episodes[eid]
-            if eid in off_policy_actions:
-                episode.last_action = off_policy_actions[eid]
-            else:
-                episode.last_action = actions[i]
-            episode.rnn_state = [column[i] for column in new_rnn_state_cols]
-            episode.last_pi_info = {
-                k: column[i] for k, column in pi_info_cols.items()}
+        async_vector_env.send_actions(dict(action_dict))
 
 
 def _to_column_format(rnn_state_rows):
@@ -309,17 +320,56 @@ def _to_column_format(rnn_state_rows):
 
 
 class _Episode(object):
-    def __init__(self, init_rnn_state, batch_builder_factory):
-        self.rnn_state = init_rnn_state
+    def __init__(self, policies, policy_mapping_fn, batch_builder_factory):
+        self.policies = policies
+        self.policy_mapping_fn = policy_mapping_fn
         self.batch_builder = batch_builder_factory()
-        self.last_action = None
-        self.last_observation = None
-        self.last_pi_info = None
         self.total_reward = 0.0
         self.length = 0
+        self.agent_rewards = defaultdict(float)
+        self.agent_to_policy = {}
+        self.agent_to_rnn_state = {}
+        self.agent_to_last_obs = {}
+        self.agent_to_last_action = {}
+        self.agent_to_last_pi_info = {}
 
-    def last_action_flat(self):
-        # Concatenate multiagent actions
-        if isinstance(self.last_action, list):
-            return np.concatenate(self.last_action, axis=0).flatten()
-        return self.last_action
+    def add_agent_rewards(self, reward_dict):
+        for agent_id, reward in reward_dict.items():
+            self.agent_rewards[agent_id] += reward
+            self.total_reward += reward
+
+    def policy_for(self, agent_id):
+        if agent_id not in self.agent_to_policy:
+            self.agent_to_policy[agent_id] = self.policy_mapping_fn(agent_id)
+        return self.agent_to_policy[agent_id]
+
+    def rnn_state_for(self, agent_id):
+        if agent_id not in self.agent_to_rnn_state:
+            policy = self.policies[self.policy_for(agent_id)]
+            self.agent_to_rnn_state[agent_id] = policy.get_initial_state()
+        return self.agent_to_rnn_state[agent_id]
+
+    def last_observation_for(self, agent_id):
+        return self.agent_to_last_obs.get(agent_id)
+
+    def last_action_for(self, agent_id):
+        action = self.agent_to_last_action[agent_id]
+        # Concatenate tuple actions
+        if isinstance(action, list):
+            action = np.concatenate(action, axis=0).flatten()
+        return action
+
+    def last_pi_info_for(self, agent_id):
+        return self.agent_to_last_pi_info[agent_id]
+
+    def set_rnn_state(self, agent_id, rnn_state):
+        self.agent_to_rnn_state[agent_id] = rnn_state
+
+    def set_last_observation(self, agent_id, obs):
+        self.agent_to_last_obs[agent_id] = obs
+
+    def set_last_action(self, agent_id, action):
+        self.agent_to_last_action[agent_id] = action
+
+    def set_last_pi_info(self, agent_id, pi_info):
+        self.agent_to_last_pi_info[agent_id] = pi_info

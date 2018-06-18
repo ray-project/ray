@@ -60,16 +60,16 @@ class PartOffPolicyServing(ServingEnv):
 
 
 class SimpleOffPolicyServing(ServingEnv):
-    def __init__(self, env):
+    def __init__(self, env, fixed_action):
         ServingEnv.__init__(self, env.action_space, env.observation_space)
         self.env = env
+        self.fixed_action = fixed_action
 
     def run(self):
         self.start_episode()
         obs = self.env.reset()
         while True:
-            # Take random actions
-            action = self.env.action_space.sample()
+            action = self.fixed_action
             self.log_action(obs, action)
             obs, reward, done, info = self.env.step(action)
             self.log_returns(reward, info=info)
@@ -132,13 +132,15 @@ class TestServingEnv(unittest.TestCase):
 
     def testServingEnvOffPolicy(self):
         ev = CommonPolicyEvaluator(
-            env_creator=lambda _: SimpleOffPolicyServing(MockEnv(25)),
+            env_creator=lambda _: SimpleOffPolicyServing(MockEnv(25), 42),
             policy_graph=MockPolicyGraph,
             batch_steps=40,
             batch_mode="complete_episodes")
         for _ in range(3):
             batch = ev.sample()
             self.assertEqual(batch.count, 50)
+            self.assertEqual(batch["actions"][0], 42)
+            self.assertEqual(batch["actions"][-1], 42)
 
     def testServingEnvBadActions(self):
         ev = CommonPolicyEvaluator(

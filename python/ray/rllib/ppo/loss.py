@@ -88,7 +88,7 @@ class ProximalPolicyGraph(object):
             feed_dict={self.observations: observations})
         return action, [], {"vf_preds": vf, "logprobs": logprobs}
 
-    def postprocess_trajectory(self, batch):
+    def postprocess_trajectory(self, batch, other_agent_batches):
         return batch
 
     def get_initial_state(self):

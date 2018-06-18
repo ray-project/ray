@@ -150,7 +150,7 @@ class _VectorEnvToAsync(AsyncVectorEnv):
         self.cur_infos = []
         return _with_dummy_agent_id(new_obs), \
             _with_dummy_agent_id(rewards), \
-            _with_dummy_agent_id(dones), \
+            _with_dummy_agent_id(dones, "__all__"), \
             _with_dummy_agent_id(infos), {}
 
     def send_actions(self, action_dict):
@@ -161,11 +161,11 @@ class _VectorEnvToAsync(AsyncVectorEnv):
             self.vector_env.vector_step(action_vector)
 
     def try_reset(self, env_id):
-        return self.vector_env.reset_at(env_id)
+        return {_DUMMY_AGENT_ID: self.vector_env.reset_at(env_id)}
 
     def get_unwrapped(self):
         return self.vector_env.get_unwrapped()
 
 
-def _with_dummy_agent_id(env_id_to_values):
-    return {k: {_DUMMY_AGENT_ID: v} for (k, v) in env_id_to_values.items()}
+def _with_dummy_agent_id(env_id_to_values, dummy_id=_DUMMY_AGENT_ID):
+    return {k: {dummy_id: v} for (k, v) in env_id_to_values.items()}

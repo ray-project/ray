@@ -18,6 +18,7 @@ class SharedTorchPolicy(PolicyGraph):
     """A simple, non-recurrent PyTorch policy example."""
 
     def __init__(self, obs_space, action_space, registry, config):
+        PolicyGraph.__init__(self, obs_space, action_space, registry, config)
         self.registry = registry
         self.local_steps = 0
         self.config = config
@@ -103,7 +104,7 @@ class SharedTorchPolicy(PolicyGraph):
         torch.nn.utils.clip_grad_norm_(self._model.parameters(),
                                        self.config["grad_clip"])
 
-    def postprocess_trajectory(self, sample_batch, other_agent_batches=None):
+    def postprocess_trajectory(self, sample_batch, other_agent_batches):
         completed = sample_batch["dones"][-1]
         if completed:
             last_r = 0.0

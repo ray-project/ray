@@ -36,6 +36,7 @@ class SampleBatchBuilder(object):
 
         batch = SampleBatch({k: np.array(v) for k, v in self.buffers.items()})
         self.buffers.clear()
+        self.count = 0
         return batch
 
 
@@ -60,6 +61,7 @@ class MultiAgentSampleBatchBuilder(object):
             k: SampleBatchBuilder() for k in policy_map.keys()}
         self.agent_builders = {}
         self.agent_to_policy = {}
+        self.count = 0  # increment this manually
 
     def add_values(self, agent_id, policy_id, **values):
         """Add the given dictionary (row) of values to this batch.
@@ -76,15 +78,9 @@ class MultiAgentSampleBatchBuilder(object):
         builder = self.agent_builders[agent_id]
         builder.add_values(**values)
 
-    def postprocess_batch_so_far(self, postprocessor):
-        """Apply the given postprocessor to any unprocessed rows.
+    def postprocess_batch_so_far(self):
+        """Apply policy postprocessors to any unprocessed rows."""
 
-        Arguments:
-            postprocessor (func): Function that takes a SampleBatch and a
-                dict mapping agent ids to (PolicyGraph, SampleBatch) tuples,
-                and returns a postprocessed SampleBatch.
-        """
-h
         # Materialize the batches so far
         pre_batches = {}
         for agent_id, builder in self.agent_builders.items():
@@ -94,31 +90,56 @@ h
 
         # Apply postprocessor
         post_batches = {}
-        for agent_id, (_, pre_batch) in self.pre_batches.items():
-            other_batches = self.pre_batches.copy()
+        for agent_id, (_, pre_batch) in pre_batches.items():
+            other_batches = pre_batches.copy()
             del other_batches[agent_id]
-            post_batches[agent_id] = postprocessor(pre_batch, other_batches)
+            policy = self.policy_map[self.agent_to_policy[agent_id]]
+            post_batches[agent_id] = policy.postprocess_trajectory(
+                pre_batch, other_batches)
 
         # Append into policy batches and reset
-        for agent_id, post_batch in self.post_batches.items():
+        for agent_id, post_batch in post_batches.items():
             self.policy_builders[self.agent_to_policy[agent_id]].add_batch(
                 post_batch)
         self.agent_builders.clear()
         self.agent_to_policy.clear()
 
-    def build_and_reset(self, postprocessor):
+    def build_and_reset(self):
         """Returns the accumulated sample batches for each policy.
 
-        Any unprocessed rows will be first postprocessed with the given
+        Any unprocessed rows will be first postprocessed with a policy
         postprocessor. The internal state of this builder will be reset.
         """
 
-        self.postprocess_batch_so_far(postprocessor)
+        self.postprocess_batch_so_far()
         policy_batches = {}
-        for policy_id, policy_batch_builder in policy_builders.items():
+        for policy_id, policy_batch_builder in self.policy_builders.items():
             policy_batches[policy_id] = policy_batch_builder.build_and_reset()
-        self.policy_builders.clear()
-        return policy_batches
+        self.count = 0
+        return MultiAgentBatch.wrap_as_needed(policy_batches)
+
+
+class MultiAgentBatch(object):
+    def __init__(self, policy_batches):
+        self.policy_batches = policy_batches
+
+    @staticmethod
+    def wrap_as_needed(batches):
+        if len(batches) == 1 and "default" in batches:
+            return batches["default"]
+        return MultiAgentBatch(batches)
+
+    @staticmethod
+    def concat_samples(samples):
+        policy_batches = collections.defaultdict(list)
+        for s in samples:
+            assert isinstance(s, MultiAgentBatch)
+            for policy_id, batch in s.policy_batches.items():
+                policy_batches[policy_id].append(batch)
+        out = {}
+        for policy_id, batches in policy_batches.items():
+            out[policy_id] = SampleBatch.concat_samples(batches)
+        return MultiAgentBatch(out)
 
 
 class SampleBatch(object):

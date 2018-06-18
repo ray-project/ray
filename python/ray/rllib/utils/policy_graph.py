@@ -26,7 +26,9 @@ class PolicyGraph(object):
             action_space (gym.Space): Action space of the env.
             config (dict): Policy-specific configuration data.
         """
-        pass
+
+        self.observation_space = observation_space
+        self.action_space = action_space
 
     def compute_actions(self, obs_batch, state_batches, is_training=False):
         """Compute actions for the current policy.
@@ -65,14 +67,15 @@ class PolicyGraph(object):
         return action, [s[0] for s in state_out], \
             {k: v[0] for k, v in info.items()}
 
-    def postprocess_trajectory(self, sample_batch, other_agent_batches=None):
+    def postprocess_trajectory(self, sample_batch, other_agent_batches):
         """Implements algorithm-specific trajectory postprocessing.
 
         Arguments:
             sample_batch (SampleBatch): batch of experiences for the policy,
                 which will contain at most one episode trajectory.
-            other_agent_batches (dict): In a multi-agent env, this contains the
-                experience batches seen by other agents.
+            other_agent_batches (dict): In a multi-agent env, this contains a
+                mapping of agent ids to (policy_graph, agent_batch) tuples
+                containing the policy graph and experiences of the other agent.
 
         Returns:
             SampleBatch: postprocessed sample batch.

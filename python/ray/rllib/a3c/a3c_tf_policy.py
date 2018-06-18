@@ -90,7 +90,7 @@ class A3CTFPolicyGraph(TFPolicyGraph):
         else:
             return {}
 
-    def postprocess_trajectory(self, sample_batch, other_agent_batches=None):
+    def postprocess_trajectory(self, sample_batch, other_agent_batches):
         completed = sample_batch["dones"][-1]
         if completed:
             last_r = 0.0

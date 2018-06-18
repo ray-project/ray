@@ -6,6 +6,7 @@ from six.moves import queue
 import threading
 
 from ray.rllib.utils.async_vector_env import AsyncVectorEnv
+from ray.rllib.utils.vector_env import _with_dummy_agent_id, _DUMMY_AGENT_ID
 
 
 class ServingEnv(threading.Thread):
@@ -207,11 +208,16 @@ class _ServingEnvToAsync(AsyncVectorEnv):
                 all_infos[eid] = data["info"]
                 if "off_policy_action" in data:
                     off_policy_actions[eid] = data["off_policy_action"]
-        return all_obs, all_rewards, all_dones, all_infos, off_policy_actions
+        return _with_dummy_agent_id(all_obs), \
+            _with_dummy_agent_id(all_rewards), \
+            _with_dummy_agent_id(all_dones, "__all__"), \
+            _with_dummy_agent_id(all_infos), \
+            _with_dummy_agent_id(off_policy_actions)
 
     def send_actions(self, action_dict):
         for eid, action in action_dict.items():
-            self.serving_env._episodes[eid].action_queue.put(action)
+            self.serving_env._episodes[eid].action_queue.put(
+                action[_DUMMY_AGENT_ID])
 
 
 class _Episode(object):
