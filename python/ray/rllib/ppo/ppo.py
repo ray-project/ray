@@ -161,7 +161,7 @@ class PPOAgent(Agent):
 
         use_gae = self.config["use_gae"]
         dummy = np.zeros_like(samples["advantages"])
-        tuples_per_device = self.par_opt.load_data(
+        tuples_per_device = self.optimizer.par_opt.load_data(
             self.local_evaluator.sess,
             [samples["obs"],
              samples["value_targets"] if use_gae else dummy,
