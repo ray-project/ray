@@ -67,8 +67,7 @@ class PPOEvaluator(PolicyEvaluator):
         self.advantages = tf.placeholder(tf.float32, shape=(None,))
 
         action_space = self.env.action_space
-        self.actions = ModelCatalog.get_action_placeholder(
-            action_space, config["model"])
+        self.actions = ModelCatalog.get_action_placeholder(action_space)
         self.distribution_class, self.logit_dim = ModelCatalog.get_action_dist(
             action_space, config["model"])
         # Log probabilities from the policy before the policy update.

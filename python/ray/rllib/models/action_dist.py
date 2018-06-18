@@ -80,7 +80,9 @@ class DiagGaussian(ActionDistribution):
         self.low = low
         self.high = high
 
-        # Squash to range if specified
+        # Squash to range if specified.
+        # TODO(ekl) might make sense to use a beta distribution instead:
+        # http://proceedings.mlr.press/v70/chou17a/chou17a.pdf
         if low is not None:
             self.mean = low + tf.sigmoid(self.mean) * (high - low)
 
