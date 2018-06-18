@@ -109,7 +109,6 @@ class PPOAgent(Agent):
 
     def _init(self):
         self.global_step = 0
-        self.kl_coeff_val = self.config["kl_coeff"]
         self.local_evaluator = PPOEvaluator(
             self.registry, self.env_creator, self.config, self.logdir, False)
         RemotePPOEvaluator = ray.remote(
@@ -130,6 +129,17 @@ class PPOAgent(Agent):
         self.saver = tf.train.Saver(max_to_keep=None)
 
     def _train(self):
+        def postprocess_samples(batch):
+            # Divide by the maximum of value.std() and 1e-4
+            # to guard against the case where all values are equal
+            value = batch["advantages"]
+            standardized = (value - value.mean()) / max(1e-4, value.std())
+            batch.data["advantages"] = standardized
+            batch.shuffle()
+            if not self.config["use_gae"]:
+                batch.data["value_targets"] = np.zeros_like(batch["advantages"])
+                batch.data["vf_preds"] = np.zeros_like(batch["advantages"])
+
         agents = self.remote_evaluators
         config = self.config
         model = self.local_evaluator
@@ -144,18 +154,7 @@ class PPOAgent(Agent):
 
         weights = ray.put(model.get_weights())
         [a.set_weights.remote(weights) for a in agents]
-        samples = collect_samples(agents, config, self.local_evaluator)
-
-        def postprocess_samples(batch):
-            # Divide by the maximum of value.std() and 1e-4
-            # to guard against the case where all values are equal
-            value = batch["advantages"]
-            standardized = (value - value.mean()) / max(1e-4, value.std())
-            batch.data["advantages"] = standardized
-            batch.shuffle()
-            if not self.config["use_gae"]:
-                batch.data["value_targets"] = np.zeros_like(batch["advantages"])
-                batch.data["vf_preds"] = np.zeros_like(batch["advantages"])
+        samples = collect_samples(agents, config)
 
         postprocess_samples(samples)
         print("Computing policy (iterations=" + str(config["num_sgd_iter"]) +
@@ -182,7 +181,7 @@ class PPOAgent(Agent):
                         self.local_evaluator.sess,
                         permutation[batch_index] * model.per_device_batch_size,
                         extra_ops=list(self.local_evaluator.extra_ops.values()),
-                        extra_feed_dict={self.local_evaluator.kl_coeff: self.kl_coeff_val})
+                        extra_feed_dict=self.local_evaluator.extra_feed_dict())
                 loss.append(batch_loss)
                 policy_graph.append(batch_policy_graph)
                 vf_loss.append(batch_vf_loss)
@@ -196,14 +195,12 @@ class PPOAgent(Agent):
             print(
                 "{:>15}{:15.5e}{:15.5e}{:15.5e}{:15.5e}{:15.5e}".format(
                     i, loss, policy_graph, vf_loss, kl, entropy))
-        if kl > 2.0 * config["kl_target"]:
-            self.kl_coeff_val *= 1.5
-        elif kl < 0.5 * config["kl_target"]:
-            self.kl_coeff_val *= 0.5
+
+        self.local_evaluator.update_kl(kl)
 
         info = {
             "kl_divergence": kl,
-            "kl_coefficient": self.kl_coeff_val,
+            "kl_coefficient": self.local_evaluator.kl_coeff_val,
         }
 
         FilterManager.synchronize(
@@ -249,7 +246,6 @@ class PPOAgent(Agent):
         extra_data = [
             self.local_evaluator.save(),
             self.global_step,
-            self.kl_coeff_val,
             agent_state]
         pickle.dump(extra_data, open(checkpoint_path + ".extra_data", "wb"))
         return checkpoint_path
@@ -259,10 +255,9 @@ class PPOAgent(Agent):
         extra_data = pickle.load(open(checkpoint_path + ".extra_data", "rb"))
         self.local_evaluator.restore(extra_data[0])
         self.global_step = extra_data[1]
-        self.kl_coeff_val = extra_data[2]
         ray.get([
             a.restore.remote(o)
-                for (a, o) in zip(self.remote_evaluators, extra_data[3])])
+                for (a, o) in zip(self.remote_evaluators, extra_data[2])])
 
     def compute_action(self, observation):
         observation = self.local_evaluator.obs_filter(

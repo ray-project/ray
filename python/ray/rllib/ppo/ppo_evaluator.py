@@ -55,6 +55,8 @@ class PPOEvaluator(TFMultiGPUSupport):
             self.sess = tf_debug.LocalCLIDebugWrapperSession(self.sess)
             self.sess.add_tensor_filter(
                 "has_inf_or_nan", tf_debug.has_inf_or_nan)
+        self.kl_coeff_val = self.config["kl_coeff"]
+        self.kl_target = self.config["kl_target"]
 
         # Defines the training inputs:
         # The coefficient of the KL penalty.
@@ -147,13 +149,29 @@ class PPOEvaluator(TFMultiGPUSupport):
                 tf.stack(values=[
                     policy.mean_entropy for policy in policies]), 0)
 
+    def extra_feed_dict(self):
+        return {self.kl_coeff: self.kl_coeff_val}
+
+    def update_kl(self, sampled_kl):
+        if sampled_kl > 2.0 * self.kl_target:
+            self.kl_coeff_val *= 1.5
+        elif sampled_kl < 0.5 * self.kl_target:
+            self.kl_coeff_val *= 0.5
+
     def save(self):
         filters = self.get_filters(flush_after=True)
-        return pickle.dumps({"filters": filters})
+        return pickle.dumps({
+            "filters": filters,
+            "kl_coeff_val": self.kl_coeff_val,
+            "kl_target": self.kl_target,
+
+        })
 
     def restore(self, objs):
         objs = pickle.loads(objs)
         self.sync_filters(objs["filters"])
+        self.kl_coeff_val = objs["kl_coeff_val"]
+        self.kl_target = objs["kl_target"]
 
     def get_weights(self):
         return self.variables.get_weights()

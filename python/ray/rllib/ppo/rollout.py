@@ -6,7 +6,7 @@ import ray
 from ray.rllib.optimizers import SampleBatch
 
 
-def collect_samples(agents, config, local_evaluator):
+def collect_samples(agents, config):
     num_timesteps_so_far = 0
     trajectories = []
     # This variable maps the object IDs of trajectories that are currently
