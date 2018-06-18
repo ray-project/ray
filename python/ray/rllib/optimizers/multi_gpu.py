@@ -26,11 +26,13 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
     the TFMultiGPUSupport API.
     """
 
-    def _init(self, sgd_batch_size=128, sgd_stepsize=5e-5, num_sgd_iter=10):
+    def _init(self, sgd_batch_size=128, sgd_stepsize=5e-5, num_sgd_iter=10,
+              timesteps_per_batch=1024):
         assert isinstance(self.local_evaluator, TFMultiGPUSupport)
         self.batch_size = sgd_batch_size
         self.sgd_stepsize = sgd_stepsize
         self.num_sgd_iter = num_sgd_iter
+        self.timesteps_per_batch = timesteps_per_batch
         gpu_ids = ray.get_gpu_ids()
         if not gpu_ids:
             # self.devices = ["/cpu:0"]
@@ -80,12 +82,16 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
 
         with self.sample_timer:
             if self.remote_evaluators:
-                samples = SampleBatch.concat_samples(
-                    ray.get(
-                        [e.sample.remote() for e in self.remote_evaluators]))
+                # samples = SampleBatch.concat_samples(
+                #     ray.get(
+                #         [e.sample.remote() for e in self.remote_evaluators]))
+                from ray.rllib.ppo.rollout import collect_samples
+                samples = collect_samples(self.remote_evaluators,
+                                          self.timesteps_per_batch)
             else:
                 samples = self.local_evaluator.sample()
             assert isinstance(samples, SampleBatch)
+
             if postprocess_fn:
                 postprocess_fn(samples)
 
@@ -95,19 +101,26 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
                 samples.columns([key for key, _ in self.loss_inputs]))
 
         with self.grad_timer:
+            all_extra_fetches = []
             for i in range(self.num_sgd_iter):
+                iter_extra_fetches = []
                 num_batches = (
                     int(tuples_per_device) // int(self.per_device_batch_size))
                 permutation = np.random.permutation(num_batches)
                 for batch_index in range(num_batches):
                     # TODO(ekl) support ppo's debugging features, e.g.
                     # printing the current loss and tracing
-                    self.par_opt.optimize(
+                    batch_fetches = self.par_opt.optimize(
                         self.sess,
-                        permutation[batch_index] * self.per_device_batch_size)
+                        permutation[batch_index] * self.per_device_batch_size,
+                        extra_ops=list(self.local_evaluator.extra_ops.values()),
+                        extra_feed_dict=self.local_evaluator.extra_feed_dict())
+                    iter_extra_fetches += [batch_fetches]
+                all_extra_fetches += [iter_extra_fetches]
 
         self.num_steps_sampled += samples.count
         self.num_steps_trained += samples.count
+        return all_extra_fetches
 
     def stats(self):
         return dict(PolicyOptimizer.stats(), **{

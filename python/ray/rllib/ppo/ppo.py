@@ -123,7 +123,8 @@ class PPOAgent(Agent):
         self.optimizer = LocalMultiGPUOptimizer(
             {"sgd_batch_size": self.config["sgd_batchsize"],
              "sgd_stepsize": self.config["sgd_stepsize"],
-             "num_sgd_iter": self.config["num_sgd_iter"]},
+             "num_sgd_iter": self.config["num_sgd_iter"],
+             "timesteps_per_batch": self.config["timesteps_per_batch"]},
             self.local_evaluator, self.remote_evaluators,)
 
         self.saver = tf.train.Saver(max_to_keep=None)
@@ -139,67 +140,17 @@ class PPOAgent(Agent):
             if not self.config["use_gae"]:
                 batch.data["value_targets"] = np.zeros_like(batch["advantages"])
                 batch.data["vf_preds"] = np.zeros_like(batch["advantages"])
-
-        agents = self.remote_evaluators
-        config = self.config
-        model = self.local_evaluator
-
-        if (config["num_workers"] * config["min_steps_per_task"] >
-                config["timesteps_per_batch"]):
-            print(
-                "WARNING: num_workers * min_steps_per_task > "
-                "timesteps_per_batch. This means that the output of some "
-                "tasks will be wasted. Consider decreasing "
-                "min_steps_per_task or increasing timesteps_per_batch.")
-
-        weights = ray.put(model.get_weights())
-        [a.set_weights.remote(weights) for a in agents]
-        samples = collect_samples(agents, config)
-
-        postprocess_samples(samples)
-        print("Computing policy (iterations=" + str(config["num_sgd_iter"]) +
-              ", stepsize=" + str(config["sgd_stepsize"]) + "):")
-        names = [
-            "iter", "total loss", "policy loss", "vf loss", "kl", "entropy"]
-        print(("{:>15}" * len(names)).format(*names))
-
-        tuples_per_device = self.optimizer.par_opt.load_data(
-            self.local_evaluator.sess,
-            samples.columns([key for key, _ in self.local_evaluator.tf_loss_inputs()]))
-
-        # tuples_per_device = model.load_data(
-        #     samples, self.iteration == 0 and config["full_trace_data_load"])
-        for i in range(config["num_sgd_iter"]):
-            num_batches = (
-                int(tuples_per_device) // int(model.per_device_batch_size))
-            loss, policy_graph, vf_loss, kl, entropy = [], [], [], [], []
-            permutation = np.random.permutation(num_batches)
-            # Prepare to drop into the debugger
-            for batch_index in range(num_batches):
-                batch_loss, batch_policy_graph, batch_vf_loss, batch_kl, \
-                    batch_entropy = self.optimizer.par_opt.optimize(
-                        self.local_evaluator.sess,
-                        permutation[batch_index] * model.per_device_batch_size,
-                        extra_ops=list(self.local_evaluator.extra_ops.values()),
-                        extra_feed_dict=self.local_evaluator.extra_feed_dict())
-                loss.append(batch_loss)
-                policy_graph.append(batch_policy_graph)
-                vf_loss.append(batch_vf_loss)
-                kl.append(batch_kl)
-                entropy.append(batch_entropy)
-            loss = np.mean(loss)
-            policy_graph = np.mean(policy_graph)
-            vf_loss = np.mean(vf_loss)
-            kl = np.mean(kl)
-            entropy = np.mean(entropy)
-            print(
-                "{:>15}{:15.5e}{:15.5e}{:15.5e}{:15.5e}{:15.5e}".format(
-                    i, loss, policy_graph, vf_loss, kl, entropy))
-
+        extra_fetches = self.optimizer.step(postprocess_fn=postprocess_samples)
+        final_metrics = np.mean(np.array(extra_fetches), axis=1)[-1, :].tolist()
+        total_loss, policy_loss, vf_loss, kl, entropy = final_metrics
         self.local_evaluator.update_kl(kl)
 
         info = {
+            "total_loss": total_loss,
+            "policy_loss": policy_loss,
+            "vf_loss": vf_loss,
             "kl_divergence": kl,
+            "entropy": entropy,
             "kl_coefficient": self.local_evaluator.kl_coeff_val,
         }
 
