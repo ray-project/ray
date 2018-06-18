@@ -33,11 +33,16 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
         self.num_sgd_iter = num_sgd_iter
         gpu_ids = ray.get_gpu_ids()
         if not gpu_ids:
-            self.devices = ["/cpu:0"]
+            # self.devices = ["/cpu:0"]
+            # TODO(rliaw) reset this later
+            self.devices = self.local_evaluator.devices
         else:
             self.devices = ["/gpu:{}".format(i) for i in range(len(gpu_ids))]
+        self.batch_size = int(
+                sgd_batch_size / len(self.devices)) * len(self.devices)
+        assert self.batch_size % len(self.devices) == 0
         assert self.batch_size > len(self.devices), "batch size too small"
-        self.per_device_batch_size = self.batch_size // len(self.devices)
+        self.per_device_batch_size = int(self.batch_size / len(self.devices))
         self.sample_timer = TimerStat()
         self.load_timer = TimerStat()
         self.grad_timer = TimerStat()
@@ -50,20 +55,23 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
         self.loss_inputs = self.local_evaluator.tf_loss_inputs()
 
         # per-GPU graph copies created below must share vars with the policy
-        tf.get_variable_scope().reuse_variables()
+        main_thread_scope = tf.get_variable_scope()
+        with tf.variable_scope(main_thread_scope, reuse=tf.AUTO_REUSE):
+            self.par_opt = LocalSyncParallelOptimizer(
+                tf.train.AdamOptimizer(self.sgd_stepsize),
+                self.devices,
+                [ph for _, ph in self.loss_inputs],
+                self.per_device_batch_size,
+                lambda *ph: self.local_evaluator.build_tf_loss(ph),
+                os.getcwd())
 
-        self.par_opt = LocalSyncParallelOptimizer(
-            tf.train.AdamOptimizer(self.sgd_stepsize),
-            self.devices,
-            [ph for _, ph in self.loss_inputs],
-            self.per_device_batch_size,
-            lambda *ph: self.local_evaluator.build_tf_loss(ph),
-            os.getcwd())
+        self.local_evaluator.init_extra_ops(
+            self.par_opt.get_device_losses())
 
         self.sess = self.local_evaluator.sess
         self.sess.run(tf.global_variables_initializer())
 
-    def step(self):
+    def step(self, postprocess_fn=None):
         with self.update_weights_timer:
             if self.remote_evaluators:
                 weights = ray.put(self.local_evaluator.get_weights())
@@ -78,6 +86,8 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
             else:
                 samples = self.local_evaluator.sample()
             assert isinstance(samples, SampleBatch)
+            if postprocess_fn:
+                postprocess_fn(samples)
 
         with self.load_timer:
             tuples_per_device = self.par_opt.load_data(
@@ -86,17 +96,15 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
 
         with self.grad_timer:
             for i in range(self.num_sgd_iter):
-                batch_index = 0
                 num_batches = (
                     int(tuples_per_device) // int(self.per_device_batch_size))
                 permutation = np.random.permutation(num_batches)
-                while batch_index < num_batches:
+                for batch_index in range(num_batches):
                     # TODO(ekl) support ppo's debugging features, e.g.
                     # printing the current loss and tracing
                     self.par_opt.optimize(
                         self.sess,
                         permutation[batch_index] * self.per_device_batch_size)
-                    batch_index += 1
 
         self.num_steps_sampled += samples.count
         self.num_steps_trained += samples.count

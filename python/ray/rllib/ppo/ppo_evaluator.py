@@ -12,7 +12,7 @@ from tensorflow.python import debug as tf_debug
 import numpy as np
 
 import ray
-from ray.rllib.optimizers import PolicyEvaluator, SampleBatch
+from ray.rllib.optimizers import PolicyEvaluator, SampleBatch, TFMultiGPUSupport
 from ray.rllib.optimizers.multi_gpu_impl import LocalSyncParallelOptimizer
 from ray.rllib.models import ModelCatalog
 from ray.rllib.utils import seed
@@ -22,8 +22,7 @@ from ray.rllib.utils.process_rollout import compute_advantages
 from ray.rllib.ppo.loss import ProximalPolicyGraph
 
 
-# TODO(rliaw): Move this onto LocalMultiGPUOptimizer
-class PPOEvaluator(PolicyEvaluator):
+class PPOEvaluator(TFMultiGPUSupport):
     """
     Runner class that holds the simulator environment and the policy.
 
@@ -90,10 +89,14 @@ class PPOEvaluator(PolicyEvaluator):
             self.per_device_batch_size = int(self.batch_size / len(devices))
 
         self.inputs = [
-            self.observations, self.value_targets, self.advantages,
-            self.actions, self.prev_logits, self.prev_vf_preds
+            ("obs", self.observations),
+            ("value_targets", self.value_targets),
+            ("advantages", self.advantages),
+            ("actions", self.actions),
+            ("logprobs", self.prev_logits),
+            ("vf_preds", self.prev_vf_preds)
         ]
-        self.common_policy = self.build_loss(*self.inputs)
+        self.common_policy = self.build_tf_loss([ph for _, ph in self.inputs])
 
         # References to the model weights
         self.variables = ray.experimental.TensorFlowVariables(
@@ -113,7 +116,11 @@ class PPOEvaluator(PolicyEvaluator):
     def apply_gradients(self, grads):
         raise NotImplementedError
 
-    def build_loss(self, obs, vtargets, advs, acts, plog, pvf_preds):
+    def tf_loss_inputs(self):
+        return self.inputs
+
+    def build_tf_loss(self, input_placeholders):
+        obs, vtargets, advs, acts, plog, pvf_preds = input_placeholders
         return ProximalPolicyGraph(
             self.env.observation_space, self.env.action_space,
             obs, vtargets, advs, acts, plog, pvf_preds, self.logit_dim,

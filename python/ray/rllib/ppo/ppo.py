@@ -16,7 +16,7 @@ from ray.tune.trial import Resources
 from ray.rllib.agent import Agent
 from ray.rllib.utils import FilterManager
 from ray.rllib.ppo.ppo_evaluator import PPOEvaluator
-from ray.rllib.optimizers.multi_gpu_impl import LocalSyncParallelOptimizer
+from ray.rllib.optimizers.multi_gpu import LocalMultiGPUOptimizer
 from ray.rllib.utils.common_policy_evaluator import CommonPolicyEvaluator, \
     collect_metrics
 from ray.rllib.ppo.rollout import collect_samples
@@ -112,22 +112,6 @@ class PPOAgent(Agent):
         self.kl_coeff_val = self.config["kl_coeff"]
         self.local_evaluator = PPOEvaluator(
             self.registry, self.env_creator, self.config, self.logdir, False)
-
-        main_thread_scope = tf.get_variable_scope()
-
-        with tf.variable_scope(main_thread_scope, reuse=tf.AUTO_REUSE):
-            self.par_opt = LocalSyncParallelOptimizer(
-                tf.train.AdamOptimizer(self.config["sgd_stepsize"]),
-                self.local_evaluator.devices,
-                self.local_evaluator.inputs,
-                self.local_evaluator.per_device_batch_size,
-                self.local_evaluator.build_loss,
-                self.logdir)
-            self.local_evaluator.init_extra_ops(
-                self.par_opt.get_device_losses())
-
-        self.local_evaluator.sess.run(tf.global_variables_initializer())
-
         RemotePPOEvaluator = ray.remote(
             num_cpus=self.config["num_cpus_per_worker"],
             num_gpus=self.config["num_gpus_per_worker"])(PPOEvaluator)
@@ -136,11 +120,13 @@ class PPOAgent(Agent):
                 self.registry, self.env_creator, self.config, self.logdir,
                 True)
             for _ in range(self.config["num_workers"])]
-        if self.config["write_logs"]:
-            self.file_writer = tf.summary.FileWriter(
-                self.logdir, self.local_evaluator.sess.graph)
-        else:
-            self.file_writer = None
+
+        self.optimizer = LocalMultiGPUOptimizer(
+            {"sgd_batch_size": self.config["sgd_batchsize"],
+             "sgd_stepsize": self.config["sgd_stepsize"],
+             "num_sgd_iter": self.config["num_sgd_iter"]},
+            self.local_evaluator, self.remote_evaluators,)
+
         self.saver = tf.train.Saver(max_to_keep=None)
 
     def _train(self):
@@ -193,11 +179,8 @@ class PPOAgent(Agent):
             permutation = np.random.permutation(num_batches)
             # Prepare to drop into the debugger
             for batch_index in range(num_batches):
-                full_trace = (
-                    i == 0 and self.iteration == 0 and
-                    batch_index == config["full_trace_nth_sgd_batch"])
                 batch_loss, batch_policy_graph, batch_vf_loss, batch_kl, \
-                    batch_entropy = self.par_opt.optimize(
+                    batch_entropy = self.optimizer.par_opt.optimize(
                         self.local_evaluator.sess,
                         permutation[batch_index] * model.per_device_batch_size,
                         extra_ops=list(self.local_evaluator.extra_ops.values()),
