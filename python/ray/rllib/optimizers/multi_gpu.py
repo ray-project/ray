@@ -58,6 +58,8 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
 
         # per-GPU graph copies created below must share vars with the policy
         main_thread_scope = tf.get_variable_scope()
+        # reuse is set to AUTO_REUSE because Adam nodes are created after
+        # all of the device copies are created.
         with tf.variable_scope(main_thread_scope, reuse=tf.AUTO_REUSE):
             self.par_opt = LocalSyncParallelOptimizer(
                 tf.train.AdamOptimizer(self.sgd_stepsize),
@@ -67,6 +69,7 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
                 lambda *ph: self.local_evaluator.build_tf_loss(ph),
                 os.getcwd())
 
+        # TODO(rliaw): Find more elegant solution for this
         self.local_evaluator.init_extra_ops(
             self.par_opt.get_device_losses())
 

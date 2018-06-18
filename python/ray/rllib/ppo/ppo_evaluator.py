@@ -32,7 +32,7 @@ class PPOEvaluator(TFMultiGPUSupport):
     """
 
     def __init__(self, registry, env_creator, config, logdir, is_remote):
-        seed()
+        # seed()
         self.registry = registry
         self.is_remote = is_remote
         if is_remote:
