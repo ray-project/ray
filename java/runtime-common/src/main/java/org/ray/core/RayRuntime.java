@@ -19,7 +19,7 @@ import org.ray.api.RayObject;
 import org.ray.api.RayObjects;
 import org.ray.api.UniqueID;
 import org.ray.api.WaitResult;
-import org.ray.api.internal.Callable;
+import org.ray.api.internal.RayFunc;
 import org.ray.core.model.RayParameters;
 import org.ray.spi.LocalSchedulerLink;
 import org.ray.spi.LocalSchedulerProxy;
@@ -261,47 +261,21 @@ public abstract class RayRuntime implements RayApi {
   }
 
   @Override
-  public RayObjects call(UniqueID taskId, Callable funcRun, int returnCount, Object... args) {
-    return worker.rpc(taskId, funcRun, returnCount, args);
-  }
-
-  @Override
-  public RayObjects call(UniqueID taskId, Class<?> funcCls, Serializable lambda, int returnCount,
-                         Object... args) {
-    return worker.rpc(taskId, UniqueID.nil, funcCls, lambda, returnCount, args);
-  }
-
-  @Override
-  public <R, RIDT> RayMap<RIDT, R> callWithReturnLabels(UniqueID taskId, Callable funcRun,
-                                                        Collection<RIDT> returnIds,
-                                                        Object... args) {
-    return worker.rpcWithReturnLabels(taskId, funcRun, returnIds, args);
+  public RayObjects call(UniqueID taskId, Class<?> funcCls, RayFunc lambda, int returnCount,
+      Object... args) {
+    return worker.rpc(taskId, funcCls, lambda, returnCount, args);
   }
 
   @Override
   public <R, RIDT> RayMap<RIDT, R> callWithReturnLabels(UniqueID taskId, Class<?> funcCls,
-                                                        Serializable lambda, Collection<RIDT>
-                                                          returnids,
-                                                        Object... args) {
+      RayFunc lambda, Collection<RIDT> returnids, Object... args) {
     return worker.rpcWithReturnLabels(taskId, funcCls, lambda, returnids, args);
   }
 
   @Override
-  public <R> RayList<R> callWithReturnIndices(UniqueID taskId, Callable funcRun,
-                                              Integer returnCount, Object... args) {
-    return worker.rpcWithReturnIndices(taskId, funcRun, returnCount, args);
-  }
-
-  @Override
   public <R> RayList<R> callWithReturnIndices(UniqueID taskId, Class<?> funcCls,
-                                              Serializable lambda, Integer returnCount, Object...
-                                                  args) {
+      RayFunc lambda, Integer returnCount, Object... args) {
     return worker.rpcWithReturnIndices(taskId, funcCls, lambda, returnCount, args);
-  }
-
-  @Override
-  public boolean isRemoteLambda() {
-    return params.run_mode.isRemoteLambda();
   }
 
   private <T> List<T> doGet(List<UniqueID> objectIds, boolean isMetadata)

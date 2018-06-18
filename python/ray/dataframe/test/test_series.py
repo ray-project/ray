@@ -3,12 +3,12 @@ from __future__ import division
 from __future__ import print_function
 
 import pytest
-import ray.dataframe as rdf
+import ray.dataframe as pd
 
 
 @pytest.fixture
 def create_test_series():
-    return rdf.Series(None)
+    return pd.Series(None)
 
 
 def test_T():

@@ -97,7 +97,7 @@ public class LocalSchedulerProxy {
 
     task.args = ArgumentsBuilder.wrap(invocation);
     task.driverId = current.driverId;
-    task.functionId = new UniqueID(invocation.getId());
+    task.functionId = invocation.getId();
     task.parentCounter = -1; // TODO: this field is not used in core or python logically yet
     task.parentTaskId = current.taskId;
     task.actorHandleId = invocation.getActor().getActorHandleId();

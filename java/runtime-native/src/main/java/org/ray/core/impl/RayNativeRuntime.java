@@ -74,9 +74,8 @@ public class RayNativeRuntime extends RayRuntime {
     }
 
     // initialize remote function manager
-    RemoteFunctionManager funcMgr = params.run_mode.isStaticRewrite()
-        ? new NativeRemoteFunctionManager(kvStore) :
-        new NopRemoteFunctionManager(params.driver_id);
+    RemoteFunctionManager funcMgr = params.run_mode.isDevPathManager()
+        ? new NopRemoteFunctionManager(params.driver_id) : new NativeRemoteFunctionManager(kvStore);
 
     // initialize worker context
     if (params.worker_mode == WorkerMode.DRIVER) {
@@ -101,6 +100,7 @@ public class RayNativeRuntime extends RayRuntime {
       int releaseDelay = RayRuntime.configReader
           .getIntegerValue("ray", "plasma_default_release_delay", 0,
               "how many release requests should be delayed in plasma client");
+
       ObjectStoreLink plink = new PlasmaClient(params.object_store_name, params
           .object_store_manager_name, releaseDelay);
 
@@ -163,7 +163,7 @@ public class RayNativeRuntime extends RayRuntime {
   }
 
   private void registerWorker(boolean isWorker, String nodeIpAddress, String storeName,
-                              String managerName, String schedulerName) {
+      String managerName, String schedulerName) {
     Map<String, String> workerInfo = new HashMap<>();
     String workerId = new String(WorkerContext.currentWorkerId().getBytes());
     if (!isWorker) {
@@ -193,26 +193,16 @@ public class RayNativeRuntime extends RayRuntime {
     UniqueID actorId = UniqueIdHelper.taskComputeReturnId(createTaskId, 0, false);
     RayActor<T> actor = new RayActor<>(actorId);
     UniqueID cursorId;
-    if (params.run_mode.isRemoteLambda()) {
-      RayFunc_2_1<byte[], String, byte[]> createActorLambda = RayNativeRuntime::createActorInActor;
-      cursorId = worker.rpcCreateActor(
-          createTaskId,
-          actorId,
-          UniqueID.nil,
-          RayFunc_2_1.class,
-          createActorLambda,
-          1,
-          new Object[] {actorId.getBytes(), cls.getName()}
-      ).getObjs()[0].getId();
-    } else {
-      cursorId = worker.rpcCreateActor(
-          createTaskId,
-          actorId,
-          () -> RayNativeRuntime.createActorInActor(null, null),
-          1,
-          new Object[] {actorId.getBytes(), cls.getName()}
-      ).getObjs()[0].getId();
-    }
+
+    RayFunc_2_1<byte[], String, byte[]> createActorLambda = RayNativeRuntime::createActorInActor;
+    cursorId = worker.rpcCreateActor(
+        createTaskId,
+        actorId,
+        RayFunc_2_1.class,
+        createActorLambda,
+        1,
+        new Object[]{actorId.getBytes(), cls.getName()}
+    ).getObjs()[0].getId();
     actor.setTaskCursor(cursorId);
     return actor;
   }
