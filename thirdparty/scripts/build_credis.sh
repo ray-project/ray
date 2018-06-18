@@ -25,7 +25,7 @@ if [[ "${RAY_USE_NEW_GCS}" = "on" ]]; then
   popd
 
   pushd "$TP_DIR/pkg/credis"
-    git checkout 24e8dee320fbd57293a82eaaef591a6097aca4f7
+    git checkout 57aae67e0614143ad8d25e38906f3cb93fcf6ad2
 
     # If the above commit points to different submodules' commits than
     # origin's head, this updates the submodules.
