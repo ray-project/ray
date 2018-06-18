@@ -299,7 +299,5 @@ class PPOAgent(Agent):
     def compute_action(self, observation):
         observation = self.local_evaluator.obs_filter(
             observation, update=False)
-        actions = self.local_evaluator.common_policy.compute_actions(
+        return self.local_evaluator.common_policy.compute_actions(
             [observation], [], False)[0][0]
-        print(actions)
-        return actions
