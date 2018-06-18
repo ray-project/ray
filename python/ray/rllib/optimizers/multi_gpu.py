@@ -35,9 +35,7 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
         self.timesteps_per_batch = timesteps_per_batch
         gpu_ids = ray.get_gpu_ids()
         if not gpu_ids:
-            # self.devices = ["/cpu:0"]
-            # TODO(rliaw) reset this later
-            self.devices = self.local_evaluator.devices
+            self.devices = ["/cpu:0"]
         else:
             self.devices = ["/gpu:{}".format(i) for i in range(len(gpu_ids))]
         self.batch_size = int(

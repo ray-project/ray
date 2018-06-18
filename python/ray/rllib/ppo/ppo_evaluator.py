@@ -34,12 +34,6 @@ class PPOEvaluator(TFMultiGPUSupport):
     def __init__(self, registry, env_creator, config, logdir, is_remote):
         # seed()
         self.registry = registry
-        self.is_remote = is_remote
-        if is_remote:
-            os.environ["CUDA_VISIBLE_DEVICES"] = ""
-            devices = ["/cpu:0"]
-        else:
-            devices = config["devices"]
         self.devices = devices
         self.config = config
         self.logdir = logdir
@@ -51,10 +45,6 @@ class PPOEvaluator(TFMultiGPUSupport):
         else:
             config_proto = tf.ConfigProto(**config["tf_session_args"])
         self.sess = tf.Session(config=config_proto)
-        if config["tf_debug_inf_or_nan"] and not is_remote:
-            self.sess = tf_debug.LocalCLIDebugWrapperSession(self.sess)
-            self.sess.add_tensor_filter(
-                "has_inf_or_nan", tf_debug.has_inf_or_nan)
         self.kl_coeff_val = self.config["kl_coeff"]
         self.kl_target = self.config["kl_target"]
 
@@ -81,15 +71,6 @@ class PPOEvaluator(TFMultiGPUSupport):
         # Value function predictions before the policy update.
         self.prev_vf_preds = tf.placeholder(tf.float32, shape=(None,))
 
-        if is_remote:
-            self.batch_size = config["rollout_batchsize"]
-            self.per_device_batch_size = config["rollout_batchsize"]
-        else:
-            self.batch_size = int(
-                config["sgd_batchsize"] / len(devices)) * len(devices)
-            assert self.batch_size % len(devices) == 0
-            self.per_device_batch_size = int(self.batch_size / len(devices))
-
         self.inputs = [
             ("obs", self.observations),
             ("value_targets", self.value_targets),
@@ -111,12 +92,6 @@ class PPOEvaluator(TFMultiGPUSupport):
         self.sampler = SyncSampler(
             self.env, self.common_policy, self.obs_filter,
             self.config["horizon"], self.config["horizon"])
-
-    def compute_gradients(self, samples):
-        raise NotImplementedError
-
-    def apply_gradients(self, grads):
-        raise NotImplementedError
 
     def tf_loss_inputs(self):
         return self.inputs
