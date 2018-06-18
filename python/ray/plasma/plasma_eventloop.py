@@ -38,14 +38,13 @@ class PlasmaObjectFuture(asyncio.Future):
 
 
 class PlasmaFutureGroup(asyncio.Future):
-    def __init__(self, loop, return_exceptions=False):
+    def __init__(self, loop, return_exceptions=False, keep_duplicated=True):
         super().__init__(loop=loop)
         self._children = []
-        self._future_map = {}
-        self.results = {}
+        self._future_set = set()
+        self._keep_duplicated = keep_duplicated
         self.return_exceptions = return_exceptions
         self.nfinished = 0
-        self._increasing_index = 0
 
     def append(self, coro_or_future):
         if not asyncio.futures.isfuture(coro_or_future):
@@ -64,20 +63,16 @@ class PlasmaFutureGroup(asyncio.Future):
                 raise ValueError(
                     "futures are tied to different event loops")
 
-        if fut in self._future_map:
-            return  # duplicated
+        if fut in self._future_set and not self._keep_duplicated:
+            return
         fut.add_done_callback(self._done_callback)
         self._children.append(fut)
-        self._future_map[fut] = self._increasing_index
-        self._increasing_index += 1
+        self._future_set.add(fut)
 
     def pop(self, index=0):
         fut = self._children.pop(index)
         fut.remove_done_callback(self._done_callback)
-        inner_idx = self._future_map[fut]
-        if inner_idx in self.results:
-            del self.results[inner_idx]
-        del self._future_map[fut]
+        self._future_set.remove(fut)
         return fut
 
     @property
@@ -111,9 +106,18 @@ class PlasmaFutureGroup(asyncio.Future):
         self._halt_on = cond
 
     def _collect_results(self):
-        results = list(self.results.items())
-        results.sort(key=lambda x: x[0])
-        return [x[1] for x in results]
+        results = []
+
+        for fut in self._children:
+            if fut.cancelled() and self.return_exceptions:
+                res = asyncio.futures.CancelledError()
+            elif fut._exception is not None and self.return_exceptions:
+                res = fut.exception()  # Mark exception retrieved.
+            else:
+                res = fut._result
+            results.append(res)
+
+        return results
 
     def _done_callback(self, fut):
         if self.done():
@@ -122,21 +126,14 @@ class PlasmaFutureGroup(asyncio.Future):
                 fut.exception()
             return
 
-        if fut.cancelled():
-            res = asyncio.futures.CancelledError()
-            if not self.return_exceptions:
-                self.set_exception(res)
+        if not self.return_exceptions:
+            if fut.cancelled():
+                self.set_exception(asyncio.futures.CancelledError())
                 return
-        elif fut._exception is not None:
-            res = fut.exception()  # Mark exception retrieved.
-            if not self.return_exceptions:
-                self.set_exception(res)
+            elif fut._exception is not None:
+                self.set_exception(fut.exception())
                 return
-        else:
-            res = fut._result
 
-        index = self._future_map[fut]
-        self.results[index] = res
         self.nfinished += 1
 
         if self._halt_on():
@@ -153,13 +150,12 @@ class PlasmaFutureGroup(asyncio.Future):
 
     def flush_results(self):
         done, pending = [], []
-        while self._children:
-            f = self.pop()
+        for f in self._children:
             if f.done():
                 done.append(f)
             else:
                 pending.append(f)
-
+            f.remove_done_callback(self._done_callback)
         return done, pending
 
     @asyncio.coroutine
