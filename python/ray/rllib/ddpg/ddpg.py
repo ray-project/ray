@@ -95,6 +95,8 @@ DEFAULT_CONFIG = {
     # to increase if your environment is particularly slow to sample, or if
     # you"re using the Async or Ape-X optimizers.
     "num_workers": 0,
+    # Number of environments to evaluate vectorwise per worker.
+    "num_envs": 1,
     # Whether to allocate GPUs for workers (if > 0).
     "num_gpus_per_worker": 0,
     # Whether to allocate CPUs for workers (if > 0).
