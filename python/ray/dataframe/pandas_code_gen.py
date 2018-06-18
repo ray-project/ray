@@ -5,17 +5,17 @@ from __future__ import print_function
 import inspect
 
 
-def code_gen(pd_obj, ray_obj, path):
+def code_gen(pandas_obj, ray_obj, path):
     """Generate code skeleton for methods not in Ray
 
     Args:
-        pd_obj: The pandas object to generate code from.
+        pandas_obj: The pandas object to generate code from.
         ray_obj: The ray object to diff against.
         path: Path to output the file to.
     """
 
     with open(path, "w") as outfile:
-        funcs = pandas_ray_diff(pd_obj, ray_obj)
+        funcs = pandas_ray_diff(pandas_obj, ray_obj)
 
         for func in funcs:
             if func[0] == "_" and func[1] != "_":
@@ -24,9 +24,10 @@ def code_gen(pd_obj, ray_obj, path):
                 # let's not mess with these
                 continue
             try:
-                outfile.write("\ndef " + func +
-                              str(inspect.signature(getattr(pd_obj, func))) +
-                              ":\n")
+                outfile.write(
+                    "\ndef " + func +
+                    str(inspect.signature(getattr(pandas_obj, func))) + ":\n")
+
             except TypeError:
                 outfile.write("\n@property")
                 outfile.write("\ndef " + func + "(self):\n")
@@ -73,21 +74,21 @@ def code_gen_test(ray_obj, path, name):
             outfile.write(")\n")
 
 
-def pandas_ray_diff(pd_obj, ray_obj):
+def pandas_ray_diff(pandas_obj, ray_obj):
     """Gets the diff of the methods in the Pandas and Ray objects.
 
     Args:
-        pd_obj: The Pandas object to diff.
+        pandas_obj: The Pandas object to diff.
         ray_obj: The Ray object to diff.
 
     Returns:
         A list of method names that are different between the two.
     """
-    pd_funcs = dir(pd_obj)
+    pandas_funcs = dir(pandas_obj)
     ray_funcs = dir(ray_obj)
 
-    pd_funcs = set(filter(lambda f: f[0] != "_" or f[1] == "_",
-                          pd_funcs))
+    pandas_funcs = set(filter(lambda f: f[0] != "_" or f[1] == "_",
+                              pandas_funcs))
 
-    diff = [x for x in pd_funcs if x not in set(ray_funcs)]
+    diff = [x for x in pandas_funcs if x not in set(ray_funcs)]
     return diff
