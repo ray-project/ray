@@ -268,7 +268,9 @@ class CommonPolicyEvaluator(PolicyEvaluator):
         for name, (cls, obs_space, act_space, conf) in policy_dict.items():
             merged_conf = policy_config.copy()
             merged_conf.update(conf)
-            policy_map[name] = cls(obs_space, act_space, registry, merged_conf)
+            with tf.variable_scope(name):
+                policy_map[name] = cls(
+                    obs_space, act_space, registry, merged_conf)
         return policy_map
 
     def sample(self):
@@ -361,7 +363,7 @@ def _validate_and_canonicalize(policy_graph, env):
         for k, v in policy_graph.items():
             if not isinstance(k, str):
                 raise ValueError(
-                    "policy_graph keys must strings, got {}".format(type(k)))
+                    "policy_graph keys must be strs, got {}".format(type(k)))
             if not isinstance(v, tuple) or len(v) != 4:
                 raise ValueError(
                     "policy_graph values must be tuples of "

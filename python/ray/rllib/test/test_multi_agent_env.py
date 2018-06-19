@@ -7,6 +7,8 @@ import unittest
 
 import ray
 from ray.rllib.pg import PGAgent
+from ray.rllib.pg.pg_policy_graph import PGPolicyGraph
+from ray.rllib.optimizers import LocalSyncOptimizer
 from ray.rllib.test.test_common_policy_evaluator import MockEnv, MockEnv2, \
     MockPolicyGraph
 from ray.rllib.utils.common_policy_evaluator import CommonPolicyEvaluator
@@ -246,11 +248,29 @@ class TestMultiAgentEnv(unittest.TestCase):
             result = pg.train()
             print("Iteration {}, reward {}, timesteps {}".format(
                 i, result.episode_reward_mean, result.timesteps_total))
-            if result.episode_reward_mean >= 100 * n:
+            if result.episode_reward_mean >= 50 * n:
                 return
         raise Exception("failed to improve reward")
 
     def testTrainMultiCartpoleDualPolicies(self):
+        env = gym.make("CartPole-v0")
+        act_space = env.action_space
+        obs_space = env.observation_space
+        conf = {
+            "model": {},
+            "gamma": 0.99,
+        }
+        ev = CommonPolicyEvaluator(
+            env_creator=lambda _: MultiCartpole(10),
+            policy_graph={
+                "p0": (PGPolicyGraph, obs_space, act_space, conf),
+                "p1": (PGPolicyGraph, obs_space, act_space, conf),
+            },
+            policy_mapping_fn=lambda agent_id: "p{}".format(agent_id % 2),
+            batch_steps=50)
+        optimizer = LocalSyncOptimizer({}, ev, [], for_policies=["p0"])
+        for _ in range(100):
+            optimizer.step()
         pass  # TODO
 
     def testTrainMultiCartpoleManyPolicies(self):
