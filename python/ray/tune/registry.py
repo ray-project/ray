@@ -4,11 +4,11 @@ from __future__ import print_function
 
 from types import FunctionType
 
-import cloudpickle
 import numpy as np
 import pickle
 
 import ray
+import ray.cloudpickle as pickle
 from ray.experimental.internal_kv import _internal_kv_initialized, \
     _internal_kv_get, _internal_kv_put
 
@@ -78,7 +78,7 @@ class _Registry(object):
             from ray.tune import TuneError
             raise TuneError("Unknown category {} not among {}".format(
                 category, KNOWN_CATEGORIES))
-        self._to_flush[(category, key)] = cloudpickle.dumps(value)
+        self._to_flush[(category, key)] = pickle.dumps(value)
         if _internal_kv_initialized():
             self.flush_values()
 
