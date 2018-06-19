@@ -393,7 +393,8 @@ void NodeManager::ProcessClientMessage(
         RAY_CHECK(running_tasks.size() != 0);
         RAY_CHECK(it != running_tasks.end());
         JobID job_id = it->GetTaskSpecification().DriverId();
-        std::string type = "worker_died";  // TODO(rkn): Define this constant somewhere else.
+        // TODO(rkn): Define this constant somewhere else.
+        std::string type = "worker_died";
         std::ostringstream error_message;
         error_message << "A worker died while executing task " << task_id.hex() << ".";
         RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
