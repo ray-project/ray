@@ -284,9 +284,6 @@ class WorkerDeath(unittest.TestCase):
         wait_for_errors(ray_constants.WORKER_DIED_PUSH_ERROR, 1)
         self.assertEqual(len(ray.error_info()), 2)
 
-    @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
     def testWorkerDying(self):
         ray.init(num_workers=0, driver_mode=ray.SILENT_MODE)
 
@@ -300,7 +297,7 @@ class WorkerDeath(unittest.TestCase):
         wait_for_errors(ray_constants.WORKER_DIED_PUSH_ERROR, 1)
 
         self.assertEqual(len(ray.error_info()), 1)
-        self.assertIn("died or was killed while executing the task",
+        self.assertIn("died or was killed while executing",
                       ray.error_info()[0]["message"])
 
     @unittest.skipIf(
