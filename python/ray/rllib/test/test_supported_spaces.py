@@ -59,8 +59,7 @@ def check_support(alg, config, stats):
         for o_name, obs_space in OBSERVATION_SPACES_TO_TEST.items():
             print("=== Testing", alg, action_space, obs_space, "===")
             stub_env = make_stub_env(action_space, obs_space)
-            register_env(
-                "stub_env", lambda c: stub_env())
+            register_env("stub_env", lambda c: stub_env())
             stat = "ok"
             a = None
             try:

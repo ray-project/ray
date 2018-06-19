@@ -4,6 +4,7 @@ from __future__ import print_function
 
 from types import FunctionType
 
+import cloudpickle
 import numpy as np
 import pickle
 
@@ -77,7 +78,7 @@ class _Registry(object):
             from ray.tune import TuneError
             raise TuneError("Unknown category {} not among {}".format(
                 category, KNOWN_CATEGORIES))
-        self._to_flush[(category, key)] = pickle.dumps(value)
+        self._to_flush[(category, key)] = cloudpickle.dumps(value)
         if _internal_kv_initialized():
             self.flush_values()
 
