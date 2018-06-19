@@ -1294,9 +1294,8 @@ def get_address_info_from_redis_helper(redis_address,
     if not use_raylet:
         # The client table prefix must be kept in sync with the file
         # "src/common/redis_module/ray_redis_module.cc" where it is defined.
-        REDIS_CLIENT_TABLE_PREFIX = "CL:"
-        client_keys = redis_client.keys(
-            "{}*".format(REDIS_CLIENT_TABLE_PREFIX))
+        client_keys = redis_client.keys("{}*".format(
+            ray.gcs_utils.DB_CLIENT_PREFIX))
         # Filter to live clients on the same node and do some basic checking.
         plasma_managers = []
         local_schedulers = []

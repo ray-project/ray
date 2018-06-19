@@ -40,6 +40,7 @@ __all__ = [
 
 # These prefixes must be kept up-to-date with the definitions in
 # ray_redis_module.cc.
+DB_CLIENT_PREFIX = "CL:"
 TASK_PREFIX = "TT:"
 OBJECT_CHANNEL_PREFIX = "OC:"
 OBJECT_INFO_PREFIX = "OI:"
