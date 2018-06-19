@@ -2,8 +2,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import pickle
 import numpy as np
+import pickle
 import tensorflow as tf
 
 import ray
@@ -85,12 +85,12 @@ class CommonPolicyEvaluator(PolicyEvaluator):
               policy_graph={
                   # Use an ensemble of two policies for car agents
                   "car_policy1":
-                    (PGPolicyGraph, spaces.Box(...), spaces.Discrete(...)),
+                    (PGPolicyGraph, Box(...), Discrete(...), {"gamma": 0.99}),
                   "car_policy2":
-                    (PGPolicyGraph, spaces.Box(...), spaces.Discrete(...)),
+                    (PGPolicyGraph, Box(...), Discrete(...), {"gamma": 0.95}),
                   # Use a single shared policy for all traffic lights
                   "traffic_light_policy":
-                    (PGPolicyGraph, spaces.Box(...), spaces.Discrete(...)),
+                    (PGPolicyGraph, Box(...), Discrete(...), {}),
               },
               policy_mapping_fn=lambda agent_name:
                 random.choice(["car_policy1", "car_policy2"])
@@ -131,8 +131,8 @@ class CommonPolicyEvaluator(PolicyEvaluator):
                 env config dict.
             policy_graph (class|dict): Either a class implementing
                 PolicyGraph, or a dictionary of policy id strings to
-                (PolicyGraph, obs_space, action_space) tuples. If a dict is
-                specified, then we are in multi-agent mode and a
+                (PolicyGraph, obs_space, action_space, config) tuples. If a
+                dict is specified, then we are in multi-agent mode and a
                 policy_mapping_fn should also be set.
             policy_mapping_fn (func): A function that maps agent names to
                 policy ids in multi-agent mode. This function will be called
@@ -172,7 +172,9 @@ class CommonPolicyEvaluator(PolicyEvaluator):
                 trouble resolving things like custom envs.
             env_config (dict): Config to pass to the env creator.
             model_config (dict): Config to use when creating the policy model.
-            policy_config (dict): Config to pass to the policy.
+            policy_config (dict): Config to pass to the policy. In the
+                multi-agent case, this config will be merged with the
+                per-policy configs specified by `policy_graph`.
         """
 
         registry = registry or get_registry()
@@ -206,9 +208,8 @@ class CommonPolicyEvaluator(PolicyEvaluator):
         def make_env():
             return wrap(env_creator(env_config))
 
-        "traffic_light": (PPOGraph, obs_space, action_space)
-
-        if issubclass(policy_graph, TFPolicyGraph):
+        policy_dict = _validate_and_canonicalize(policy_graph, self.env)
+        if _has_tensorflow_graph(policy_dict):
             with tf.Graph().as_default():
                 if tf_session_creator:
                     self.sess = tf_session_creator()
@@ -216,22 +217,15 @@ class CommonPolicyEvaluator(PolicyEvaluator):
                     self.sess = tf.Session(config=tf.ConfigProto(
                         gpu_options=tf.GPUOptions(allow_growth=True)))
                 with self.sess.as_default():
-                    policy = policy_graph(
-                        self.env.observation_space, self.env.action_space,
-                        registry, policy_config)
+                    self.policy_map = self._build_policy_map(
+                        policy_dict, policy_config, registry)
         else:
-            policy = policy_graph(
-                self.env.observation_space, self.env.action_space,
-                registry, policy_config)
-
-        self.policy_map = {
-            "default": policy
-        }
+            self.policy_map = self._build_policy_map(
+                policy_dict, policy_config, registry)
 
         self.filters = {
-            # TODO(ekl) make the obs space dependent on policy
             policy_id: get_filter(
-                observation_filter, self.env.observation_space.shape)
+                observation_filter, policy.observation_space.shape)
             for (policy_id, policy) in self.policy_map.items()
         }
 
@@ -264,6 +258,14 @@ class CommonPolicyEvaluator(PolicyEvaluator):
                 self.async_env, self.policy_map, lambda agent_id: "default",
                 self.filters, batch_steps, horizon=episode_horizon,
                 pack=pack_episodes)
+
+    def _build_policy_map(self, policy_dict, policy_config, registry):
+        policy_map = {}
+        for name, (cls, obs_space, act_space, conf) in policy_dict.items():
+            copy = policy_config.copy()
+            copy.update(conf)
+            policy_map[name] = cls(obs_space, act_space, registry, conf)
+        return policy_map
 
     def sample(self):
         """Evaluate the current policies and return a batch of experiences.
@@ -348,3 +350,45 @@ class CommonPolicyEvaluator(PolicyEvaluator):
         objs = pickle.loads(objs)
         self.sync_filters(objs["filters"])
         self.policy_map["default"].set_state(objs["state"])
+
+
+def _validate_and_canonicalize(policy_graph, env):
+    if isinstance(policy_graph, dict):
+        for k, v in policy_graph.items():
+            if not isinstance(k, str):
+                raise ValueError(
+                    "policy_graph keys must strings, got {}".format(type(k)))
+            if not isinstance(v, tuple) or len(v) != 3:
+                raise ValueError(
+                    "policy_graph values must be tuples of "
+                    "(cls, obs_space, action_space, config), got {}".format(v))
+            if not issubclass(v[0], PolicyGraph):
+                raise ValueError(
+                    "policy_graph tuple value 0 must be a rllib.PolicyGraph "
+                    "class, got {}".format(v[0]))
+            if not isinstance(v[1], gym.Space):
+                raise ValueError(
+                    "policy_graph tuple value 1 (observation_space) must be a "
+                    "gym.Space, got {}".format(type(v[1])))
+            if not isinstance(v[2], gym.Space):
+                raise ValueError(
+                    "policy_graph tuple value 2 (action_space) must be a "
+                    "gym.Space, got {}".format(type(v[2])))
+            if not isinstance(v[3], dict):
+                raise ValueError(
+                    "policy_graph tuple value 3 (config) must be a dict, "
+                    "got {}".format(type(v[3])))
+        return policy_graph
+    elif not issubclass(policy_graph, PolicyGraph):
+        raise ValueError("policy_graph must be a rllib.PolicyGraph class")
+    else:
+        return {
+            "default": (
+                policy_graph, env.observation_space, env.action_space, {})}
+
+
+def _has_tensorflow_graph(policy_dict):
+    for policy, _, _, _ in policy_dict.values():
+        if issubclass(policy, TFPolicyGraph):
+            return True
+    return False
