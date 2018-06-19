@@ -242,6 +242,7 @@ Additionally, checkpointing can be used to provide fault-tolerance for experimen
 The class interface that must be implemented to enable checkpointing is as follows:
 
 .. autoclass:: ray.tune.trainable.Trainable
+    :members: _save, _restore, _train, _setup, _stop
 
 
 Client API
