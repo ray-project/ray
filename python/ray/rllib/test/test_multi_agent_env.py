@@ -6,11 +6,13 @@ import gym
 import unittest
 
 import ray
+from ray.rllib.pg import PGAgent
 from ray.rllib.test.test_common_policy_evaluator import MockEnv, MockEnv2, \
     MockPolicyGraph
 from ray.rllib.utils.common_policy_evaluator import CommonPolicyEvaluator
 from ray.rllib.utils.async_vector_env import _MultiAgentEnvToAsync
 from ray.rllib.utils.multi_agent_env import MultiAgentEnv
+from ray.tune.registry import register_env
 
 
 class BasicMultiAgent(MultiAgentEnv):
@@ -79,6 +81,27 @@ class RoundRobinMultiAgent(MultiAgentEnv):
             rew[self.i] = 0
             self.dones.add(self.i)
         self.i = (self.i + 1) % self.num
+        done["__all__"] = len(self.dones) == len(self.agents)
+        return obs, rew, done, info
+
+
+class MultiCartpole(MultiAgentEnv):
+    def __init__(self, num):
+        self.agents = [gym.make("CartPole-v0") for _ in range(num)]
+        self.dones = set()
+        self.observation_space = self.agents[0].observation_space
+        self.action_space = self.agents[0].action_space
+
+    def reset(self):
+        self.dones = set()
+        return {i: a.reset() for i, a in enumerate(self.agents)}
+
+    def step(self, action_dict):
+        obs, rew, done, info = {}, {}, {}, {}
+        for i, action in action_dict.items():
+            obs[i], rew[i], done[i], info[i] = self.agents[i].step(action)
+            if done[i]:
+                self.dones.add(i)
         done["__all__"] = len(self.dones) == len(self.agents)
         return obs, rew, done, info
 
@@ -214,6 +237,24 @@ class TestMultiAgentEnv(unittest.TestCase):
         self.assertEqual(
             batch.policy_batches["p0"]["t"].tolist()[:10],
             [4, 9, 14, 19, 24, 5, 10, 15, 20, 25])
+
+    def testTrainMultiCartpoleSinglePolicy(self):
+        n = 10
+        register_env("multi_cartpole", lambda _: MultiCartpole(n))
+        pg = PGAgent(env="multi_cartpole", config={"num_workers": 0})
+        for i in range(100):
+            result = pg.train()
+            print("Iteration {}, reward {}, timesteps {}".format(
+                i, result.episode_reward_mean, result.timesteps_total))
+            if result.episode_reward_mean >= 100 * n:
+                return
+        raise Exception("failed to improve reward")
+
+    def testTrainMultiCartpoleDualPolicies(self):
+        pass  # TODO
+
+    def testTrainMultiCartpoleManyPolicies(self):
+        pass  # TODO
 
 
 if __name__ == '__main__':
