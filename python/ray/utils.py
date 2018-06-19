@@ -279,7 +279,8 @@ class _ThreadSafeProxy(object):
     Attributes:
         orig_obj (object): the original object.
         lock (threading.Lock): the lock object.
-        _wrapper_cache (dict): a cache from original object's methods to the proxy methods.
+        _wrapper_cache (dict): a cache from original object's methods to
+            the proxy methods.
     """
 
     def __init__(self, orig_obj, lock):
@@ -309,7 +310,8 @@ class _ThreadSafeProxy(object):
 
 
 def thread_safe_client(client, lock=None):
-    """Create a thread-safe proxy which locks every method call for the given client.
+    """Create a thread-safe proxy which locks every method call
+    for the given client.
 
     Args:
         client: the client object to be guarded.

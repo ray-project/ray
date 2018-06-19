@@ -204,8 +204,8 @@ class Worker(object):
         reconstruction_lock (Lock):
             A lock object used to guard object reconstruction.
             Because the node manager will recycle/return the worker's resources
-            before/after object reconstruction, it's unsafe for multiple threads
-            to call object reconstruction simultaneously.
+            before/after object reconstruction, it's unsafe for multiple
+            threads to call object reconstruction simultaneously.
     """
 
     def __init__(self):
@@ -371,7 +371,7 @@ class Worker(object):
         # Serialize and put the object in the object store.
         try:
             self.store_and_register(object_id, value)
-        except pyarrow.PlasmaObjectExists as e:
+        except pyarrow.PlasmaObjectExists:
             # The object already exists in the object store, so there is no
             # need to add it again. TODO(rkn): We need to compare the hashes
             # and make sure that the objects are in fact the same. We also
@@ -398,7 +398,7 @@ class Worker(object):
                             i + ray._config.worker_get_request_size())],
                         timeout, self.serialization_context)
                 return results
-            except pyarrow.lib.ArrowInvalid as e:
+            except pyarrow.lib.ArrowInvalid:
                 # TODO(ekl): the local scheduler could include relevant
                 # metadata in the task kill case for a better error message
                 invalid_error = RayTaskError(
@@ -406,7 +406,7 @@ class Worker(object):
                     "Invalid return value: likely worker died or was killed "
                     "while executing the task.")
                 return [invalid_error] * len(object_ids)
-            except pyarrow.DeserializationCallbackError as e:
+            except pyarrow.DeserializationCallbackError:
                 # Wait a little bit for the import thread to import the class.
                 # If we currently have the worker lock, we need to release it
                 # so that the import thread can acquire it.
@@ -474,17 +474,18 @@ class Worker(object):
 
         if len(unready_ids) > 0:
             with self.reconstruction_lock:
-                # Try reconstructing any objects we haven't gotten yet. Try to get them
-                # until at least get_timeout_milliseconds milliseconds passes, then
-                # repeat.
+                # Try reconstructing any objects we haven't gotten yet. Try to
+                # get them until at least get_timeout_milliseconds
+                # milliseconds passes, then repeat.
                 while len(unready_ids) > 0:
                     for unready_id in unready_ids:
                         self.local_scheduler_client.reconstruct_objects(
                             [ray.ObjectID(unready_id)], False)
-                    # Do another fetch for objects that aren't available locally yet,
-                    # in case they were evicted since the last fetch. We divide the
-                    # fetch into smaller fetches so as to not block the manager for a
-                    # prolonged period of time in a single call.
+                    # Do another fetch for objects that aren't available
+                    # locally yet, in case they were evicted since the last
+                    # fetch. We divide the fetch into smaller fetches so as
+                    # to not block the manager for a prolonged period of time
+                    # in a single call.
                     object_ids_to_fetch = [
                         plasma.ObjectID(i) for i in unready_ids.keys()
                     ]
@@ -508,8 +509,8 @@ class Worker(object):
                             ray._config.get_timeout_milliseconds(),
                             int(0.01 * len(unready_ids))
                         ]))
-                    # Remove any entries for objects we received during this iteration
-                    # so we don't retrieve the same object twice.
+                    # Remove any entries for objects we received during this
+                    # iteration so we don't retrieve the same object twice.
                     for i, val in enumerate(results):
                         if val is not plasma.ObjectNotAvailable:
                             object_id = object_ids_to_fetch[i].binary()
@@ -517,8 +518,8 @@ class Worker(object):
                             final_results[index] = val
                             unready_ids.pop(object_id)
 
-                # If there were objects that we weren't able to get locally, let the
-                # local scheduler know that we're now unblocked.
+                # If there were objects that we weren't able to get locally,
+                # let the local scheduler know that we're now unblocked.
                 self.local_scheduler_client.notify_unblocked()
 
         assert len(final_results) == len(object_ids)
@@ -1387,7 +1388,7 @@ def get_address_info_from_redis(redis_address,
         try:
             return get_address_info_from_redis_helper(
                 redis_address, node_ip_address, use_raylet=use_raylet)
-        except Exception as e:
+        except Exception:
             if counter == num_retries:
                 raise
             # Some of the information may not be in Redis yet, so wait a little
@@ -2491,7 +2492,7 @@ def register_custom_serializer(cls,
             # worker. However, determinism is not guaranteed, and the result
             # may be different on different workers.
             class_id = _try_to_compute_deterministic_class_id(cls)
-        except Exception as e:
+        except Exception:
             raise serialization.CloudPickleError("Failed to pickle class "
                                                  "'{}'".format(cls))
     else:
