@@ -41,7 +41,7 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
         self.batch_size = int(
                 sgd_batch_size / len(self.devices)) * len(self.devices)
         assert self.batch_size % len(self.devices) == 0
-        assert self.batch_size > len(self.devices), "batch size too small"
+        assert self.batch_size >= len(self.devices), "batch size too small"
         self.per_device_batch_size = int(self.batch_size / len(self.devices))
         self.sample_timer = TimerStat()
         self.load_timer = TimerStat()
