@@ -191,6 +191,9 @@ def _env_runner(
         # Map of policy_id to list of PolicyEvalData
         to_eval = defaultdict(list)
 
+        # Map of env_id -> agent_id -> action replies
+        actions_to_send = defaultdict(dict)
+
         # For each environment
         for env_id, agent_obs in unfiltered_obs.items():
             new_episode = env_id not in active_episodes
@@ -208,11 +211,13 @@ def _env_runner(
                     dict(episode.agent_rewards))
             else:
                 all_done = False
+                # At least send an empty dict if not done
+                actions_to_send[env_id]
 
             # For each agent in the environment
             for agent_id, raw_obs in agent_obs.items():
                 policy_id = episode.policy_for(agent_id)
-                filtered_obs = obs_filters[policy_id](raw_obs)
+                filtered_obs = _get_or_raise(obs_filters, policy_id)(raw_obs)
                 agent_done = bool(all_done or dones[env_id].get(agent_id))
                 if not agent_done:
                     to_eval[policy_id].append(
@@ -260,21 +265,19 @@ def _env_runner(
                     episode = active_episodes[env_id]
                     for agent_id, raw_obs in resetted_obs.items():
                         policy_id = episode.policy_for(agent_id)
-                        filtered_obs = obs_filters[policy_id](raw_obs)
+                        filtered_obs = _get_or_raise(
+                            obs_filters, policy_id)(raw_obs)
                         episode.set_last_observation(agent_id, filtered_obs)
                         to_eval[policy_id].append(
                             PolicyEvalData(
                                 env_id, agent_id, filtered_obs,
                                 episode.rnn_state_for(agent_id)))
 
-        # Map of env_id -> agent_id -> action
-        action_dict = defaultdict(dict)
-
         # TODO(ekl) fuse all policy evaluation into one TF run
         for policy_id, eval_data in to_eval.items():
             rnn_in_cols = _to_column_format([t.rnn_state for t in eval_data])
             actions, rnn_out_cols, pi_info_cols = \
-                policies[policy_id].compute_actions(
+                _get_or_raise(policies, policy_id).compute_actions(
                     [t.obs for t in eval_data], rnn_in_cols, is_training=True)
             # Add RNN state info
             for f_i, column in enumerate(rnn_in_cols):
@@ -285,7 +288,7 @@ def _env_runner(
             for i, action in enumerate(actions):
                 env_id = eval_data[i].env_id
                 agent_id = eval_data[i].agent_id
-                action_dict[env_id][agent_id] = action
+                actions_to_send[env_id][agent_id] = action
                 episode = active_episodes[env_id]
                 episode.set_rnn_state(agent_id, [c[i] for c in rnn_out_cols])
                 episode.set_last_pi_info(
@@ -299,13 +302,21 @@ def _env_runner(
 
         # Return computed actions to ready envs. We also send to envs that have
         # taken off-policy actions; those envs are free to ignore the action.
-        async_vector_env.send_actions(dict(action_dict))
+        async_vector_env.send_actions(dict(actions_to_send))
 
 
 def _to_column_format(rnn_state_rows):
     num_cols = len(rnn_state_rows[0])
     return [
         [row[i] for row in rnn_state_rows] for i in range(num_cols)]
+
+
+def _get_or_raise(mapping, policy_id):
+    if policy_id not in mapping:
+        raise ValueError(
+            "Could not find policy for agent: agent policy id `{}` not "
+            "in policy map keys {}.".format(policy_id, mapping.keys()))
+    return mapping[policy_id]
 
 
 class _Episode(object):
@@ -324,8 +335,9 @@ class _Episode(object):
 
     def add_agent_rewards(self, reward_dict):
         for agent_id, reward in reward_dict.items():
-            self.agent_rewards[agent_id] += reward
-            self.total_reward += reward
+            if reward is not None:
+                self.agent_rewards[agent_id] += reward
+                self.total_reward += reward
 
     def policy_for(self, agent_id):
         if agent_id not in self.agent_to_policy:

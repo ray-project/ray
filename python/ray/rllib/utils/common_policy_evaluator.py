@@ -2,19 +2,22 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import gym
 import numpy as np
 import pickle
 import tensorflow as tf
 
 import ray
 from ray.rllib.models import ModelCatalog
-from ray.rllib.optimizers import MultiAgentBatch
 from ray.rllib.optimizers.policy_evaluator import PolicyEvaluator
+from ray.rllib.optimizers.sample_batch import MultiAgentBatch, \
+    DEFAULT_POLICY_ID
 from ray.rllib.utils.async_vector_env import AsyncVectorEnv
 from ray.rllib.utils.atari_wrappers import wrap_deepmind, is_atari
 from ray.rllib.utils.compression import pack
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.multi_agent_env import MultiAgentEnv
+from ray.rllib.utils.policy_graph import PolicyGraph
 from ray.rllib.utils.sampler import AsyncSampler, SyncSampler
 from ray.rllib.utils.serving_env import ServingEnv
 from ray.rllib.utils.tf_policy_graph import TFPolicyGraph
@@ -65,9 +68,10 @@ class CommonPolicyEvaluator(PolicyEvaluator):
         >>> evaluator = CommonPolicyEvaluator(
               env_creator=lambda _: gym.make("CartPole-v0"),
               policy_graph=PGPolicyGraph)
-        >>> print(evaluator.sample().keys())
-        {"obs": [[...]], "actions": [[...]], "rewards": [[...]],
-         "dones": [[...]], "new_obs": [[...]]}
+        >>> print(evaluator.sample())
+        SampleBatch({
+            "obs": [[...]], "actions": [[...]], "rewards": [[...]],
+            "dones": [[...]], "new_obs": [[...]]})
 
         # Creating policy evaluators using optimizer_cls.make().
         >>> optimizer = LocalSyncOptimizer.make(
@@ -92,9 +96,9 @@ class CommonPolicyEvaluator(PolicyEvaluator):
                   "traffic_light_policy":
                     (PGPolicyGraph, Box(...), Discrete(...), {}),
               },
-              policy_mapping_fn=lambda agent_name:
+              policy_mapping_fn=lambda agent_id:
                 random.choice(["car_policy1", "car_policy2"])
-                if agent_name.startswith("car_") else "traffic_light_policy")
+                if agent_id.startswith("car_") else "traffic_light_policy")
         >>> print(evaluator.sample().keys())
         MultiAgentBatch({
             "car_policy1": SampleBatch(...),
@@ -110,7 +114,7 @@ class CommonPolicyEvaluator(PolicyEvaluator):
             self,
             env_creator,
             policy_graph,
-            policy_mapping_fn=lambda agent_name: "default",
+            policy_mapping_fn=lambda agent_id: DEFAULT_POLICY_ID,
             tf_session_creator=None,
             batch_steps=100,
             batch_mode="truncate_episodes",
@@ -134,7 +138,7 @@ class CommonPolicyEvaluator(PolicyEvaluator):
                 (PolicyGraph, obs_space, action_space, config) tuples. If a
                 dict is specified, then we are in multi-agent mode and a
                 policy_mapping_fn should also be set.
-            policy_mapping_fn (func): A function that maps agent names to
+            policy_mapping_fn (func): A function that maps agent ids to
                 policy ids in multi-agent mode. This function will be called
                 each time a new agent appears in an episode, to bind that agent
                 to a policy for the duration of the episode.
@@ -249,22 +253,22 @@ class CommonPolicyEvaluator(PolicyEvaluator):
                 "Unsupported batch mode: {}".format(self.batch_mode))
         if sample_async:
             self.sampler = AsyncSampler(
-                self.async_env, self.policy_map, lambda agent_id: "default",
+                self.async_env, self.policy_map, policy_mapping_fn,
                 self.filters, batch_steps, horizon=episode_horizon,
                 pack=pack_episodes)
             self.sampler.start()
         else:
             self.sampler = SyncSampler(
-                self.async_env, self.policy_map, lambda agent_id: "default",
+                self.async_env, self.policy_map, policy_mapping_fn,
                 self.filters, batch_steps, horizon=episode_horizon,
                 pack=pack_episodes)
 
     def _build_policy_map(self, policy_dict, policy_config, registry):
         policy_map = {}
         for name, (cls, obs_space, act_space, conf) in policy_dict.items():
-            copy = policy_config.copy()
-            copy.update(conf)
-            policy_map[name] = cls(obs_space, act_space, registry, conf)
+            merged_conf = policy_config.copy()
+            merged_conf.update(conf)
+            policy_map[name] = cls(obs_space, act_space, registry, merged_conf)
         return policy_map
 
     def sample(self):
@@ -296,7 +300,7 @@ class CommonPolicyEvaluator(PolicyEvaluator):
     def for_policy(self, func):
         """Apply the given function to this evaluator's default policy."""
 
-        return func(self.policy_map["default"])
+        return func(self.policy_map[DEFAULT_POLICY_ID])
 
     def sync_filters(self, new_filters):
         """Changes self's filter to given and rebases any accumulated delta.
@@ -325,31 +329,31 @@ class CommonPolicyEvaluator(PolicyEvaluator):
         return return_filters
 
     def get_weights(self):
-        return self.policy_map["default"].get_weights()
+        return self.policy_map[DEFAULT_POLICY_ID].get_weights()
 
     def set_weights(self, weights):
-        return self.policy_map["default"].set_weights(weights)
+        return self.policy_map[DEFAULT_POLICY_ID].set_weights(weights)
 
     def compute_gradients(self, samples):
-        return self.policy_map["default"].compute_gradients(samples)
+        return self.policy_map[DEFAULT_POLICY_ID].compute_gradients(samples)
 
     def apply_gradients(self, grads):
-        return self.policy_map["default"].apply_gradients(grads)
+        return self.policy_map[DEFAULT_POLICY_ID].apply_gradients(grads)
 
     def compute_apply(self, samples):
-        grad_fetch, apply_fetch = self.policy_map["default"].compute_apply(
-            samples)
+        grad_fetch, apply_fetch = (
+            self.policy_map[DEFAULT_POLICY_ID].compute_apply(samples))
         return grad_fetch
 
     def save(self):
         filters = self.get_filters(flush_after=True)
-        state = self.policy_map["default"].get_state()
+        state = self.policy_map[DEFAULT_POLICY_ID].get_state()
         return pickle.dumps({"filters": filters, "state": state})
 
     def restore(self, objs):
         objs = pickle.loads(objs)
         self.sync_filters(objs["filters"])
-        self.policy_map["default"].set_state(objs["state"])
+        self.policy_map[DEFAULT_POLICY_ID].set_state(objs["state"])
 
 
 def _validate_and_canonicalize(policy_graph, env):
@@ -358,7 +362,7 @@ def _validate_and_canonicalize(policy_graph, env):
             if not isinstance(k, str):
                 raise ValueError(
                     "policy_graph keys must strings, got {}".format(type(k)))
-            if not isinstance(v, tuple) or len(v) != 3:
+            if not isinstance(v, tuple) or len(v) != 4:
                 raise ValueError(
                     "policy_graph values must be tuples of "
                     "(cls, obs_space, action_space, config), got {}".format(v))
@@ -383,7 +387,7 @@ def _validate_and_canonicalize(policy_graph, env):
         raise ValueError("policy_graph must be a rllib.PolicyGraph class")
     else:
         return {
-            "default": (
+            DEFAULT_POLICY_ID: (
                 policy_graph, env.observation_space, env.action_space, {})}
 
 

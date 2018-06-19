@@ -29,11 +29,15 @@ class TFPolicyGraph(PolicyGraph):
     """
 
     def __init__(
-            self, sess, obs_input, action_sampler, loss, loss_inputs,
+            self, observation_space, action_space, sess, obs_input,
+            action_sampler, loss, loss_inputs,
             is_training, state_inputs=None, state_outputs=None):
         """Initialize the policy.
 
         Arguments:
+            observation_space (gym.Space): Observation space of the env.
+            action_space (gym.Space): Action space of the env.
+            sess (Session): TensorFlow session to use.
             obs_input (Tensor): input placeholder for observations.
             action_sampler (Tensor): Tensor for sampling an action.
             loss (Tensor): scalar policy loss output tensor.
@@ -46,6 +50,8 @@ class TFPolicyGraph(PolicyGraph):
             state_outputs (list): list of initial state values.
         """
 
+        self.observation_space = observation_space
+        self.action_space = action_space
         self._sess = sess
         self._obs_input = obs_input
         self._sampler = action_sampler

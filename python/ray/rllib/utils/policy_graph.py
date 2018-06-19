@@ -15,6 +15,10 @@ class PolicyGraph(object):
     find TFPolicyGraph simpler to implement. TFPolicyGraph also enables RLlib
     to apply TensorFlow-specific optimizations such as fusing multiple policy
     graphs and multi-GPU support.
+
+    Attributes:
+        observation_space (gym.Space): Observation space of the policy.
+        action_space (gym.Space): Action space of the policy.
     """
 
     def __init__(self, registry, observation_space, action_space, config):

@@ -6,6 +6,10 @@ import collections
 import numpy as np
 
 
+# Defaults config values for single agent environments
+DEFAULT_POLICY_ID = "default"
+
+
 class SampleBatchBuilder(object):
     """Util to build a SampleBatch incrementally.
 
@@ -98,7 +102,7 @@ class MultiAgentSampleBatchBuilder(object):
                 pre_batch, other_batches)
 
         # Append into policy batches and reset
-        for agent_id, post_batch in post_batches.items():
+        for agent_id, post_batch in sorted(post_batches.items()):
             self.policy_builders[self.agent_to_policy[agent_id]].add_batch(
                 post_batch)
         self.agent_builders.clear()
@@ -115,31 +119,43 @@ class MultiAgentSampleBatchBuilder(object):
         policy_batches = {}
         for policy_id, policy_batch_builder in self.policy_builders.items():
             policy_batches[policy_id] = policy_batch_builder.build_and_reset()
+        old_count = self.count
         self.count = 0
-        return MultiAgentBatch.wrap_as_needed(policy_batches)
+        return MultiAgentBatch.wrap_as_needed(policy_batches, old_count)
 
 
 class MultiAgentBatch(object):
-    def __init__(self, policy_batches):
+    def __init__(self, policy_batches, count):
         self.policy_batches = policy_batches
+        self.count = count
 
     @staticmethod
-    def wrap_as_needed(batches):
-        if len(batches) == 1 and "default" in batches:
-            return batches["default"]
-        return MultiAgentBatch(batches)
+    def wrap_as_needed(batches, count):
+        if len(batches) == 1 and DEFAULT_POLICY_ID in batches:
+            return batches[DEFAULT_POLICY_ID]
+        return MultiAgentBatch(batches, count)
 
     @staticmethod
     def concat_samples(samples):
         policy_batches = collections.defaultdict(list)
+        total_count = 0
         for s in samples:
             assert isinstance(s, MultiAgentBatch)
             for policy_id, batch in s.policy_batches.items():
                 policy_batches[policy_id].append(batch)
+            total_count += s.count
         out = {}
         for policy_id, batches in policy_batches.items():
             out[policy_id] = SampleBatch.concat_samples(batches)
-        return MultiAgentBatch(out)
+        return MultiAgentBatch(out, total_count)
+
+    def __str__(self):
+        return "MultiAgentBatch({}, count={})".format(
+            str(self.policy_batches), self.count)
+
+    def __repr__(self):
+        return "MultiAgentBatch({}, count={})".format(
+            str(self.policy_batches), self.count)
 
 
 class SampleBatch(object):

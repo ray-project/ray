@@ -28,7 +28,7 @@ class A3CTFPolicyGraph(TFPolicyGraph):
         self.sess = tf.get_default_session()
 
         TFPolicyGraph.__init__(
-            self, self.sess, obs_input=self.x,
+            self, ob_space, action_space, self.sess, obs_input=self.x,
             action_sampler=self.action_dist.sample(), loss=self.loss,
             loss_inputs=self.loss_in, is_training=self.is_training,
             state_inputs=self.state_in, state_outputs=self.state_out)

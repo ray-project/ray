@@ -2,13 +2,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import gym
 import unittest
 
 import ray
-from ray.rllib.test.test_common_policy_evaluator import MockEnv, \
+from ray.rllib.test.test_common_policy_evaluator import MockEnv, MockEnv2, \
     MockPolicyGraph
-from ray.rllib.utils.common_policy_evaluator import CommonPolicyEvaluator, \
-    collect_metrics
+from ray.rllib.utils.common_policy_evaluator import CommonPolicyEvaluator
 from ray.rllib.utils.async_vector_env import _MultiAgentEnvToAsync
 from ray.rllib.utils.multi_agent_env import MultiAgentEnv
 
@@ -17,7 +17,8 @@ class BasicMultiAgent(MultiAgentEnv):
     def __init__(self, num):
         self.agents = [MockEnv(25) for _ in range(num)]
         self.dones = set()
-        self.observation_space = 
+        self.observation_space = gym.spaces.Discrete(2)
+        self.action_space = gym.spaces.Discrete(2)
 
     def reset(self):
         self.dones = set()
@@ -34,8 +35,11 @@ class BasicMultiAgent(MultiAgentEnv):
 
 
 class RoundRobinMultiAgent(MultiAgentEnv):
-    def __init__(self, num):
-        self.agents = [MockEnv(5) for _ in range(num)]
+    def __init__(self, num, increment_obs=False):
+        if increment_obs:
+            self.agents = [MockEnv2(5) for _ in range(num)]
+        else:
+            self.agents = [MockEnv(5) for _ in range(num)]
         self.dones = set()
         self.last_obs = {}
         self.last_rew = {}
@@ -43,24 +47,38 @@ class RoundRobinMultiAgent(MultiAgentEnv):
         self.last_info = {}
         self.i = 0
         self.num = num
+        self.observation_space = gym.spaces.Discrete(2)
+        self.action_space = gym.spaces.Discrete(2)
 
     def reset(self):
         self.dones = set()
-        return {i: a.reset() for i, a in enumerate(self.agents)}
+        self.last_obs = {}
+        self.last_rew = {}
+        self.last_done = {}
+        self.last_info = {}
+        self.i = 0
+        for i, a in enumerate(self.agents):
+            self.last_obs[i] = a.reset()
+            self.last_rew[i] = None
+            self.last_done[i] = False
+            self.last_info[i] = {}
+        obs_dict = {self.i: self.last_obs[self.i]}
+        self.i = (self.i + 1) % self.num
+        return obs_dict
 
     def step(self, action_dict):
         assert len(self.dones) != len(self.agents)
         for i, action in action_dict.items():
             (self.last_obs[i], self.last_rew[i], self.last_done[i],
              self.last_info[i]) = self.agents[i].step(action)
-            if self.last_done[i]:
-                self.dones.add(i)
-        obs = {self.i: self.last_obs[i]}
-        rew = {self.i: self.last_rew[i]}
-        done = {self.i: self.last_done[i]}
-        info = {self.i: self.last_info[i]}
-        self.i += 1
-        self.i %= self.num
+        obs = {self.i: self.last_obs[self.i]}
+        rew = {self.i: self.last_rew[self.i]}
+        done = {self.i: self.last_done[self.i]}
+        info = {self.i: self.last_info[self.i]}
+        if done[self.i]:
+            rew[self.i] = 0
+            self.dones.add(self.i)
+        self.i = (self.i + 1) % self.num
         done["__all__"] = len(self.dones) == len(self.agents)
         return obs, rew, done, info
 
@@ -84,15 +102,15 @@ class TestMultiAgentEnv(unittest.TestCase):
     def testRoundRobinMock(self):
         env = RoundRobinMultiAgent(2)
         obs = env.reset()
-        self.assertEqual(obs, {0: 0, 1: 0})
-        obs, rew, done, info = env.step({0: 0, 1: 0})
         self.assertEqual(obs, {0: 0})
-        for _ in range(4):
+        for _ in range(5):
             obs, rew, done, info = env.step({0: 0})
             self.assertEqual(obs, {1: 0})
             self.assertEqual(done["__all__"], False)
             obs, rew, done, info = env.step({1: 0})
             self.assertEqual(obs, {0: 0})
+            self.assertEqual(done["__all__"], False)
+        obs, rew, done, info = env.step({0: 0})
         self.assertEqual(done["__all__"], True)
 
     def testVectorizeBasic(self):
@@ -138,23 +156,64 @@ class TestMultiAgentEnv(unittest.TestCase):
     def testVectorizeRoundRobin(self):
         env = _MultiAgentEnvToAsync(lambda: RoundRobinMultiAgent(2), [], 2)
         obs, rew, dones, _, _ = env.poll()
-        self.assertEqual(obs, {0: {0: 0, 1: 0}, 1: {0: 0, 1: 0}})
-        self.assertEqual(rew, {0: {0: None, 1: None}, 1: {0: None, 1: None}})
-        env.send_actions({0: {0: 0}, 1: {0: 0}})
-        obs, rew, dones, _, _ = env.poll()
         self.assertEqual(obs, {0: {0: 0}, 1: {0: 0}})
+        self.assertEqual(rew, {0: {0: None}, 1: {0: None}})
         env.send_actions({0: {0: 0}, 1: {0: 0}})
         obs, rew, dones, _, _ = env.poll()
         self.assertEqual(obs, {0: {1: 0}, 1: {1: 0}})
+        env.send_actions({0: {1: 0}, 1: {1: 0}})
+        obs, rew, dones, _, _ = env.poll()
+        self.assertEqual(obs, {0: {0: 0}, 1: {0: 0}})
 
     def testMultiAgentSample(self):
+        act_space = gym.spaces.Discrete(2)
+        obs_space = gym.spaces.Discrete(2)
         ev = CommonPolicyEvaluator(
-            env_creator=lambda _: BasicMultiAgent(2),
-            policy_graph=MockPolicyGraph)
+            env_creator=lambda _: BasicMultiAgent(5),
+            policy_graph={
+                "p0": (MockPolicyGraph, obs_space, act_space, {}),
+                "p1": (MockPolicyGraph, obs_space, act_space, {}),
+            },
+            policy_mapping_fn=lambda agent_id: "p{}".format(agent_id % 2),
+            batch_steps=50)
         batch = ev.sample()
-        for key in ["obs", "actions", "rewards", "dones", "advantages"]:
-            self.assertIn(key, batch)
-        self.assertGreater(batch["advantages"][0], 1)
+        self.assertEqual(batch.count, 50)
+        self.assertEqual(batch.policy_batches["p0"].count, 150)
+        self.assertEqual(batch.policy_batches["p1"].count, 100)
+        self.assertEqual(
+            batch.policy_batches["p0"]["t"].tolist(),
+            list(range(25)) * 6)
+
+    def testMultiAgentSampleRoundRobin(self):
+        act_space = gym.spaces.Discrete(2)
+        obs_space = gym.spaces.Discrete(2)
+        ev = CommonPolicyEvaluator(
+            env_creator=lambda _: RoundRobinMultiAgent(5, increment_obs=True),
+            policy_graph={
+                "p0": (MockPolicyGraph, obs_space, act_space, {}),
+            },
+            policy_mapping_fn=lambda agent_id: "p0",
+            batch_steps=50)
+        batch = ev.sample()
+        self.assertEqual(batch.count, 50)
+        # since we round robin introduce agents into the env, some of the env
+        # steps don't count as proper transitions
+        self.assertEqual(batch.policy_batches["p0"].count, 42)
+        self.assertEqual(
+            batch.policy_batches["p0"]["obs"].tolist()[:10],
+            [0, 1, 2, 3, 4] * 2)
+        self.assertEqual(
+            batch.policy_batches["p0"]["new_obs"].tolist()[:10],
+            [1, 2, 3, 4, 5] * 2)
+        self.assertEqual(
+            batch.policy_batches["p0"]["rewards"].tolist()[:10],
+            [100, 100, 100, 100, 0] * 2)
+        self.assertEqual(
+            batch.policy_batches["p0"]["dones"].tolist()[:10],
+            [False, False, False, False, True] * 2)
+        self.assertEqual(
+            batch.policy_batches["p0"]["t"].tolist()[:10],
+            [4, 9, 14, 19, 24, 5, 10, 15, 20, 25])
 
 
 if __name__ == '__main__':
