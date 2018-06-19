@@ -387,8 +387,7 @@ void NodeManager::ProcessClientMessage(
         auto const &running_tasks = local_queues_.GetRunningTasks();
         // TODO(rkn): This is too heavyweight just to get the task's driver ID.
         auto const it = std::find_if(
-            running_tasks.begin(), running_tasks.end(),
-            [task_id](const Task &task) {
+            running_tasks.begin(), running_tasks.end(), [task_id](const Task &task) {
               return task.GetTaskSpecification().TaskId() == task_id;
             });
         RAY_CHECK(running_tasks.size() != 0);
@@ -553,8 +552,8 @@ void NodeManager::ProcessClientMessage(
     auto const &error_message = string_from_flatbuf(*message->error_message());
     double timestamp = message->timestamp();
 
-    RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
-        job_id, type, error_message, timestamp));
+    RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(job_id, type, error_message,
+                                                              timestamp));
   } break;
 
   default:

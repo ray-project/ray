@@ -70,7 +70,10 @@ if __name__ == "__main__":
     except Exception as e:
         traceback_str = traceback.format_exc() + error_explanation
         ray.utils.push_error_to_driver(
-            ray.worker.global_worker, "worker_crash", traceback_str, driver_id=None)
+            ray.worker.global_worker,
+            "worker_crash",
+            traceback_str,
+            driver_id=None)
         # TODO(rkn): Note that if the worker was in the middle of executing
         # a task, then any worker or driver that is blocking in a get call
         # and waiting for the output of that task will hang. We need to

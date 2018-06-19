@@ -1839,10 +1839,6 @@ def print_error_messages_raylet(worker):
     # error_message_pubsub_client.subscribe and before the call to
     # error_message_pubsub_client.listen will still be processed in the loop.
 
-    # TODO(rkn): Clean this up.
-    # generic_error_channel = str(state.TablePubsub.ERROR_INFO).encode("ascii") + b":" + 20 * b"\x00"
-    # job_error_channel = str(state.TablePubsub.ERROR_INFO).encode("ascii") + b":" + worker.task_driver_id.id()
-
     # Really we should just subscribe to the errors for this specific job.
     # However, currently all errors seem to be published on the same channel.
     error_pubsub_channel = str(state.TablePubsub.ERROR_INFO).encode("ascii")
@@ -1868,8 +1864,8 @@ def print_error_messages_raylet(worker):
     try:
         for msg in worker.error_message_pubsub_client.listen():
 
-            gcs_entry = state.GcsTableEntry.GetRootAsGcsTableEntry(msg["data"],
-                                                                   0)
+            gcs_entry = state.GcsTableEntry.GetRootAsGcsTableEntry(
+                msg["data"], 0)
             assert gcs_entry.EntriesLength() == 1
             error_data = state.ErrorTableData.GetRootAsErrorTableData(
                 gcs_entry.Entries(0), 0)
@@ -2310,13 +2306,11 @@ def connect(info,
                 driver_task.execution_dependencies_string(), 0,
                 ray.local_scheduler.task_to_string(driver_task))
         else:
-            TablePubsub_RAYLET_TASK = 2
-
             # TODO(rkn): When we shard the GCS in xray, we will need to change
             # this to use _execute_command.
             global_state.redis_client.execute_command(
-                "RAY.TABLE_ADD", state.TablePrefix_RAYLET_TASK,
-                TablePubsub_RAYLET_TASK,
+                "RAY.TABLE_ADD", state.TablePrefix.RAYLET_TASK,
+                state.TablePubsub.RAYLET_TASK,
                 driver_task.task_id().id(),
                 driver_task._serialized_raylet_task())
 
@@ -2347,8 +2341,8 @@ def connect(info,
         if not worker.use_raylet:
             t = threading.Thread(target=print_error_messages, args=(worker, ))
         else:
-            t = threading.Thread(target=print_error_messages_raylet,
-                                 args=(worker, ))
+            t = threading.Thread(
+                target=print_error_messages_raylet, args=(worker, ))
         # Making the thread a daemon causes it to exit when the main thread
         # exits.
         t.daemon = True

@@ -318,8 +318,7 @@ void local_scheduler_push_error(LocalSchedulerConnection *conn,
       fbb.CreateString(error_message), timestamp);
   fbb.Finish(message);
 
-  write_message(
-      conn->conn,
-      static_cast<int64_t>(ray::protocol::MessageType::PushErrorRequest),
-      fbb.GetSize(), fbb.GetBufferPointer());
+  write_message(conn->conn, static_cast<int64_t>(
+                                ray::protocol::MessageType::PushErrorRequest),
+                fbb.GetSize(), fbb.GetBufferPointer());
 }

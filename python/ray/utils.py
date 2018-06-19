@@ -79,6 +79,7 @@ def push_error_to_driver(worker,
         worker.local_scheduler_client.push_error(
             ray.ObjectID(driver_id), error_type, message, time.time())
 
+
 def is_cython(obj):
     """Check if an object is a Cython function or method"""
 
