@@ -9,20 +9,13 @@ import os
 import time
 from collections import Counter, defaultdict
 
-import ray
-import ray.cloudpickle as pickle
-import ray.utils
 import redis
-# Import flatbuffer bindings.
-from ray.core.generated.DriverTableMessage import DriverTableMessage
-from ray.core.generated.GcsTableEntry import GcsTableEntry
-from ray.core.generated.HeartbeatTableData import HeartbeatTableData
-from ray.core.generated.LocalSchedulerInfoMessage import \
-    LocalSchedulerInfoMessage
-from ray.core.generated.SubscribeToDBClientTableReply import \
-    SubscribeToDBClientTableReply
+
+import ray
 from ray.autoscaler.autoscaler import LoadMetrics, StandardAutoscaler
-from ray.core.generated.TaskInfo import TaskInfo
+import ray.cloudpickle as pickle
+import ray.gcs_utils
+import ray.utils
 from ray.services import get_ip_address, get_port
 from ray.utils import binary_to_hex, binary_to_object_id, hex_to_binary
 from ray.worker import NIL_ACTOR_ID
@@ -259,7 +252,7 @@ class Monitor(object):
         the associated state in the state tables should be handled by the
         caller.
         """
-        notification_object = (SubscribeToDBClientTableReply.
+        notification_object = (ray.gcs_utils.SubscribeToDBClientTableReply.
                                GetRootAsSubscribeToDBClientTableReply(data, 0))
         db_client_id = binary_to_hex(notification_object.DbClientId())
         client_type = notification_object.ClientType()
@@ -285,8 +278,8 @@ class Monitor(object):
     def local_scheduler_info_handler(self, unused_channel, data):
         """Handle a local scheduler heartbeat from Redis."""
 
-        message = LocalSchedulerInfoMessage.GetRootAsLocalSchedulerInfoMessage(
-            data, 0)
+        message = (ray.gcs_utils.LocalSchedulerInfoMessage.
+                   GetRootAsLocalSchedulerInfoMessage(data, 0))
         num_resources = message.DynamicResourcesLength()
         static_resources = {}
         dynamic_resources = {}
@@ -308,9 +301,10 @@ class Monitor(object):
     def xray_heartbeat_handler(self, unused_channel, data):
         """Handle an xray heartbeat message from Redis."""
 
-        gcs_entries = GcsTableEntry.GetRootAsGcsTableEntry(data, 0)
+        gcs_entries = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
+            data, 0)
         heartbeat_data = gcs_entries.Entries(0)
-        message = HeartbeatTableData.GetRootAsHeartbeatTableData(
+        message = ray.gcs_utils.HeartbeatTableData.GetRootAsHeartbeatTableData(
             heartbeat_data, 0)
         num_resources = message.ResourcesAvailableLabelLength()
         static_resources = {}
@@ -363,7 +357,8 @@ class Monitor(object):
         # driver.  Use a cursor in order not to block the redis shards.
         for key in redis.scan_iter(match=TASK_TABLE_PREFIX + b"*"):
             entry = redis.hgetall(key)
-            task_info = TaskInfo.GetRootAsTaskInfo(entry[b"TaskSpec"], 0)
+            task_info = ray.gcs_utils.TaskInfo.GetRootAsTaskInfo(
+                entry[b"TaskSpec"], 0)
             if driver_id != task_info.DriverId():
                 # Ignore tasks that aren't from this driver.
                 continue
@@ -475,7 +470,8 @@ class Monitor(object):
         This releases any GPU resources that were reserved for that driver in
         Redis.
         """
-        message = DriverTableMessage.GetRootAsDriverTableMessage(data, 0)
+        message = ray.gcs_utils.DriverTableMessage.GetRootAsDriverTableMessage(
+            data, 0)
         driver_id = message.DriverId()
         log.info("Driver {} has been removed.".format(
             binary_to_hex(driver_id)))

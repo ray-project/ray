@@ -22,6 +22,7 @@ import pyarrow
 import pyarrow.plasma as plasma
 import ray.cloudpickle as pickle
 import ray.experimental.state as state
+import ray.gcs_utils
 import ray.remote_function
 import ray.serialization as serialization
 import ray.services as services
@@ -1841,7 +1842,8 @@ def print_error_messages_raylet(worker):
 
     # Really we should just subscribe to the errors for this specific job.
     # However, currently all errors seem to be published on the same channel.
-    error_pubsub_channel = str(state.TablePubsub.ERROR_INFO).encode("ascii")
+    error_pubsub_channel = str(
+        ray.gcs_utils.TablePubsub.ERROR_INFO).encode("ascii")
     worker.error_message_pubsub_client.subscribe(error_pubsub_channel)
     # worker.error_message_pubsub_client.psubscribe("*")
 
@@ -2310,8 +2312,8 @@ def connect(info,
             # TODO(rkn): When we shard the GCS in xray, we will need to change
             # this to use _execute_command.
             global_state.redis_client.execute_command(
-                "RAY.TABLE_ADD", state.TablePrefix.RAYLET_TASK,
-                state.TablePubsub.RAYLET_TASK,
+                "RAY.TABLE_ADD", ray.gcs_utils.TablePrefix.RAYLET_TASK,
+                ray.gcs_utils.TablePubsub.RAYLET_TASK,
                 driver_task.task_id().id(),
                 driver_task._serialized_raylet_task())
 

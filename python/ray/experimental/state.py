@@ -12,40 +12,9 @@ import sys
 import time
 
 import ray
+import ray.gcs_utils
 from ray.utils import (decode, binary_to_object_id, binary_to_hex,
                        hex_to_binary)
-
-# Import flatbuffer bindings.
-from ray.core.generated.TaskReply import TaskReply
-from ray.core.generated.ResultTableReply import ResultTableReply
-from ray.core.generated.TaskExecutionDependencies import \
-    TaskExecutionDependencies
-
-from ray.core.generated.TablePrefix import TablePrefix
-from ray.core.generated.TablePubsub import TablePubsub  # noqa: F401
-from ray.core.generated.ClientTableData import ClientTableData
-from ray.core.generated.ErrorTableData import ErrorTableData
-from ray.core.generated.GcsTableEntry import GcsTableEntry
-from ray.core.generated.ObjectTableData import ObjectTableData
-
-from ray.core.generated.ray.protocol.Task import Task
-
-# These prefixes must be kept up-to-date with the definitions in
-# ray_redis_module.cc.
-DB_CLIENT_PREFIX = "CL:"
-OBJECT_INFO_PREFIX = "OI:"
-OBJECT_LOCATION_PREFIX = "OL:"
-OBJECT_SUBSCRIBE_PREFIX = "OS:"
-TASK_PREFIX = "TT:"
-FUNCTION_PREFIX = "RemoteFunction:"
-OBJECT_CHANNEL_PREFIX = "OC:"
-
-# These prefixes must be kept up-to-date with the TablePrefix enum in gcs.fbs.
-# TODO(rkn): We should use scoped enums, in which case we should be able to
-# just access the flatbuffer generated values.
-TablePrefix_RAYLET_TASK_string = "RAYLET_TASK"
-TablePrefix_OBJECT_string = "OBJECT"
-TablePrefix_ERROR_INFO_string = "ERROR_INFO"
 
 # This mapping from integer to task state string must be kept up-to-date with
 # the scheduling_state enum in task.h.
@@ -231,8 +200,9 @@ class GlobalState(object):
 
             result_table_response = self._execute_command(
                 object_id, "RAY.RESULT_TABLE_LOOKUP", object_id.id())
-            result_table_message = ResultTableReply.GetRootAsResultTableReply(
-                result_table_response, 0)
+            result_table_message = (
+                ray.gcs_utils.ResultTableReply.GetRootAsResultTableReply(
+                    result_table_response, 0))
 
             result = {
                 "ManagerIDs": manager_ids,
@@ -245,12 +215,14 @@ class GlobalState(object):
         else:
             # Use the raylet code path.
             message = self.redis_client.execute_command(
-                "RAY.TABLE_LOOKUP", TablePrefix.OBJECT, "", object_id.id())
+                "RAY.TABLE_LOOKUP", ray.gcs_utils.TablePrefix.OBJECT, "",
+                object_id.id())
             result = []
-            gcs_entry = GcsTableEntry.GetRootAsGcsTableEntry(message, 0)
+            gcs_entry = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
+                message, 0)
 
             for i in range(gcs_entry.EntriesLength()):
-                entry = ObjectTableData.GetRootAsObjectTableData(
+                entry = ray.gcs_utils.ObjectTableData.GetRootAsObjectTableData(
                     gcs_entry.Entries(i), 0)
                 object_info = {
                     "DataSize": entry.ObjectSize(),
@@ -279,19 +251,22 @@ class GlobalState(object):
         else:
             # Return the entire object table.
             if not self.use_raylet:
-                object_info_keys = self._keys(OBJECT_INFO_PREFIX + "*")
-                object_location_keys = self._keys(OBJECT_LOCATION_PREFIX + "*")
+                object_info_keys = self._keys(
+                    ray.gcs_utils.OBJECT_INFO_PREFIX + "*")
+                object_location_keys = self._keys(
+                    ray.gcs_utils.OBJECT_LOCATION_PREFIX + "*")
                 object_ids_binary = set([
-                    key[len(OBJECT_INFO_PREFIX):] for key in object_info_keys
+                    key[len(ray.gcs_utils.OBJECT_INFO_PREFIX):]
+                    for key in object_info_keys
                 ] + [
-                    key[len(OBJECT_LOCATION_PREFIX):]
+                    key[len(ray.gcs_utils.OBJECT_LOCATION_PREFIX):]
                     for key in object_location_keys
                 ])
             else:
                 object_keys = self.redis_client.keys(
-                    TablePrefix_OBJECT_string + "*")
+                    ray.gcs_utils.TablePrefix_OBJECT_string + "*")
                 object_ids_binary = {
-                    key[len(TablePrefix_OBJECT_string):]
+                    key[len(ray.gcs_utils.TablePrefix_OBJECT_string):]
                     for key in object_keys
                 }
 
@@ -320,7 +295,7 @@ class GlobalState(object):
             if task_table_response is None:
                 raise Exception("There is no entry for task ID {} in the task "
                                 "table.".format(binary_to_hex(task_id.id())))
-            task_table_message = TaskReply.GetRootAsTaskReply(
+            task_table_message = ray.gcs_utils.TaskReply.GetRootAsTaskReply(
                 task_table_response, 0)
             task_spec = task_table_message.TaskSpec()
             task_spec = ray.local_scheduler.task_from_string(task_spec)
@@ -343,7 +318,8 @@ class GlobalState(object):
             }
 
             execution_dependencies_message = (
-                TaskExecutionDependencies.GetRootAsTaskExecutionDependencies(
+                ray.gcs_utils.TaskExecutionDependencies.
+                GetRootAsTaskExecutionDependencies(
                     task_table_message.ExecutionDependencies(), 0))
             execution_dependencies = [
                 ray.ObjectID(
@@ -371,15 +347,17 @@ class GlobalState(object):
         else:
             # Use the raylet code path.
             message = self.redis_client.execute_command(
-                "RAY.TABLE_LOOKUP", TablePrefix.RAYLET_TASK, "", task_id.id())
-            gcs_entries = GcsTableEntry.GetRootAsGcsTableEntry(message, 0)
+                "RAY.TABLE_LOOKUP", ray.gcs_utils.TablePrefix.RAYLET_TASK, "",
+                task_id.id())
+            gcs_entries = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
+                message, 0)
 
             info = []
             for i in range(gcs_entries.EntriesLength()):
-                task_table_message = Task.GetRootAsTask(
+                task_table_message = ray.gcs_utils.Task.GetRootAsTask(
                     gcs_entries.Entries(i), 0)
 
-                task_table_message = Task.GetRootAsTask(
+                task_table_message = ray.gcs_utils.Task.GetRootAsTask(
                     gcs_entries.Entries(0), 0)
                 execution_spec = task_table_message.TaskExecutionSpec()
                 task_spec = task_table_message.TaskSpecification()
@@ -432,15 +410,16 @@ class GlobalState(object):
             return self._task_table(task_id)
         else:
             if not self.use_raylet:
-                task_table_keys = self._keys(TASK_PREFIX + "*")
+                task_table_keys = self._keys(ray.gcs_utils.TASK_PREFIX + "*")
                 task_ids_binary = [
-                    key[len(TASK_PREFIX):] for key in task_table_keys
+                    key[len(ray.gcs_utils.TASK_PREFIX):]
+                    for key in task_table_keys
                 ]
             else:
                 task_table_keys = self.redis_client.keys(
-                    TablePrefix_RAYLET_TASK_string + "*")
+                    ray.gcs_utils.TablePrefix_RAYLET_TASK_string + "*")
                 task_ids_binary = [
-                    key[len(TablePrefix_RAYLET_TASK_string):]
+                    key[len(ray.gcs_utils.TablePrefix_RAYLET_TASK_string):]
                     for key in task_table_keys
                 ]
 
@@ -458,7 +437,8 @@ class GlobalState(object):
                 function.
         """
         self._check_connected()
-        function_table_keys = self.redis_client.keys(FUNCTION_PREFIX + "*")
+        function_table_keys = self.redis_client.keys(
+            ray.gcs_utils.FUNCTION_PREFIX + "*")
         results = {}
         for key in function_table_keys:
             info = self.redis_client.hgetall(key)
@@ -478,7 +458,8 @@ class GlobalState(object):
         """
         self._check_connected()
         if not self.use_raylet:
-            db_client_keys = self.redis_client.keys(DB_CLIENT_PREFIX + "*")
+            db_client_keys = self.redis_client.keys(
+                ray.gcs_utils.DB_CLIENT_PREFIX + "*")
             node_info = {}
             for key in db_client_keys:
                 client_info = self.redis_client.hgetall(key)
@@ -520,13 +501,16 @@ class GlobalState(object):
             # This is the raylet code path.
             NIL_CLIENT_ID = 20 * b"\xff"
             message = self.redis_client.execute_command(
-                "RAY.TABLE_LOOKUP", TablePrefix.CLIENT, "", NIL_CLIENT_ID)
+                "RAY.TABLE_LOOKUP", ray.gcs_utils.TablePrefix.CLIENT, "",
+                NIL_CLIENT_ID)
             node_info = []
-            gcs_entry = GcsTableEntry.GetRootAsGcsTableEntry(message, 0)
+            gcs_entry = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
+                message, 0)
 
             for i in range(gcs_entry.EntriesLength()):
-                client = ClientTableData.GetRootAsClientTableData(
-                    gcs_entry.Entries(i), 0)
+                client = (
+                    ray.gcs_utils.ClientTableData.GetRootAsClientTableData(
+                        gcs_entry.Entries(i), 0))
 
                 resources = {
                     client.ResourcesTotalLabel(i).decode("ascii"):
@@ -1156,18 +1140,19 @@ class GlobalState(object):
         Returns:
             A list of the error messages for this job.
         """
-        message = self.redis_client.execute_command("RAY.TABLE_LOOKUP",
-                                                    TablePrefix.ERROR_INFO, "",
-                                                    job_id.id())
+        message = self.redis_client.execute_command(
+            "RAY.TABLE_LOOKUP", ray.gcs_utils.TablePrefix.ERROR_INFO, "",
+            job_id.id())
 
         # If there are no errors, return early.
         if message is None:
             return []
 
-        gcs_entries = GcsTableEntry.GetRootAsGcsTableEntry(message, 0)
+        gcs_entries = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
+            message, 0)
         error_messages = []
         for i in range(gcs_entries.EntriesLength()):
-            error_data = ErrorTableData.GetRootAsErrorTableData(
+            error_data = ray.gcs_utils.ErrorTableData.GetRootAsErrorTableData(
                 gcs_entries.Entries(i), 0)
             error_message = {
                 "type": error_data.Type().decode("ascii"),
@@ -1196,9 +1181,9 @@ class GlobalState(object):
             return self._error_messages(job_id)
 
         error_table_keys = self.redis_client.keys(
-            TablePrefix_ERROR_INFO_string + "*")
+            ray.gcs_utils.TablePrefix_ERROR_INFO_string + "*")
         job_ids = [
-            key[len(TablePrefix_ERROR_INFO_string):]
+            key[len(ray.gcs_utils.TablePrefix_ERROR_INFO_string):]
             for key in error_table_keys
         ]
 
