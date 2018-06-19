@@ -84,7 +84,7 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
 
         with self.sample_timer:
             if self.remote_evaluators:
-                # TODO(rliaw): remove when refactoring onto CommonPolicyEvaluator
+                # TODO(rliaw): remove when refactoring
                 from ray.rllib.ppo.rollout import collect_samples
                 samples = collect_samples(self.remote_evaluators,
                                           self.timesteps_per_batch)
