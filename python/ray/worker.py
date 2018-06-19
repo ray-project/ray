@@ -201,7 +201,11 @@ class Worker(object):
             that connect has been called already.
         cached_functions_to_run (List): A list of functions to run on all of
             the workers that should be exported as soon as connect is called.
-        reconstruction_lock (Lock): A lock object used to guard object reconstruction.
+        reconstruction_lock (Lock):
+            A lock object used to guard object reconstruction.
+            Because the node manager will recycle/return the worker's resources
+            before/after object reconstruction, it's unsafe for multiple threads
+            to call object reconstruction simultaneously.
     """
 
     def __init__(self):
