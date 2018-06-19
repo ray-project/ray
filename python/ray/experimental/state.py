@@ -1148,7 +1148,13 @@ class GlobalState(object):
         return dict(resources)
 
     def _error_messages(self, job_id):
-        """
+        """Get the error messages for a specific job.
+
+        Args:
+            job_id: The ID of the job to get the errors for.
+
+        Returns:
+            A list of the error messages for this job.
         """
         message = self.redis_client.execute_command("RAY.TABLE_LOOKUP",
                                                     TablePrefix.ERROR_INFO, "",
@@ -1172,7 +1178,15 @@ class GlobalState(object):
         return error_messages
 
     def error_messages(self, job_id=None):
-        """
+        """Get the error messages for all jobs or a specific job.
+
+        Args:
+            job_id: The specific job to get the errors for. If this is None,
+                then this method retrieves the errors for all jobs.
+
+        Returns:
+            A dictionary mapping job ID to a list of the error messages for
+                that job.
         """
         if not self.use_raylet:
             raise Exception("The error_messages method is only supported in "

@@ -2180,8 +2180,9 @@ def connect(info,
             raise e
         elif mode == WORKER_MODE:
             traceback_str = traceback.format_exc()
-            ray.utils.push_error_to_driver(
-                worker,
+            ray.utils.push_error_to_driver_through_redis(
+                worker.redis_client,
+                worker.use_raylet,
                 ray_constants.VERSION_MISMATCH_PUSH_ERROR,
                 traceback_str,
                 driver_id=None)
