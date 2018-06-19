@@ -33,7 +33,6 @@ class PPOTFPolicyGraph(TFPolicyGraph):
         self.sess.run(tf.global_variables_initializer())
 
     def _setup_graph(self, ob_space, ac_space):
-
         self.observations = tf.placeholder(
             tf.float32, shape=(None,) + self.env.observation_space.shape)
 
