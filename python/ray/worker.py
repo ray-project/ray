@@ -32,9 +32,6 @@ import ray.plasma
 import ray.ray_constants as ray_constants
 from ray.utils import random_string, binary_to_hex, is_cython
 
-# Import flatbuffer bindings.
-from ray.core.generated.ClientTableData import ClientTableData
-
 SCRIPT_MODE = 0
 WORKER_MODE = 1
 PYTHON_MODE = 2
@@ -1356,11 +1353,11 @@ def get_address_info_from_redis_helper(redis_address,
     else:
         # In the raylet code path, all client data is stored in a zset at the
         # key for the nil client.
-        client_key = b"CLIENT:" + NIL_CLIENT_ID
+        client_key = b"CLIENT" + NIL_CLIENT_ID
         clients = redis_client.zrange(client_key, 0, -1)
         raylets = []
         for client_message in clients:
-            client = ClientTableData.GetRootAsClientTableData(
+            client = ray.gcs_utils.ClientTableData.GetRootAsClientTableData(
                 client_message, 0)
             client_node_ip_address = client.NodeManagerAddress().decode(
                 "ascii")
