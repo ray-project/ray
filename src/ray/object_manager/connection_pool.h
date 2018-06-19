@@ -34,7 +34,7 @@ class ConnectionPool {
   enum class ConnectionType : int { MESSAGE = 0, TRANSFER };
 
   /// Connection pool for all connections needed by the ObjectManager.
-  ConnectionPool();
+  ConnectionPool(uint32_t max_sender_connection_count);
 
   /// Register a receiver connection.
   ///
@@ -88,6 +88,9 @@ class ConnectionPool {
   /// This object cannot be copied for thread-safety.
   RAY_DISALLOW_COPY_AND_ASSIGN(ConnectionPool);
 
+  /// Is it possible to add a new sender to connection pool.
+  bool CanAddSender(ConnectionType type, const ClientID &client_id);
+
  private:
   /// A container type that maps ClientID to a connection type.
   using SenderMapType =
@@ -130,6 +133,8 @@ class ConnectionPool {
 
   ReceiverMapType message_receive_connections_;
   ReceiverMapType transfer_receive_connections_;
+
+  uint32_t max_sender_connection_count;
 };
 
 }  // namespace ray

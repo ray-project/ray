@@ -46,6 +46,10 @@ struct ObjectManagerConfig {
   /// Negative: waiting infinitely.
   /// 0: giving up retrying immediately.
   int push_timeout_ms;
+  /// The maximum sender connections allowed to a single Client.
+  /// 0: No limit on the sender connection.
+  /// Positive: the maximum number for sender connection.
+  uint32_t max_sender_connection_count;
 };
 
 class ObjectManagerInterface {
@@ -231,6 +235,59 @@ class ObjectManager : public ObjectManagerInterface {
 
   /// A set of active wait requests.
   std::unordered_map<UniqueID, WaitState> active_wait_requests_;
+
+  /// The cached Object transfer task due to maximum connect reached.
+  struct ObjectTransferTask {
+    ObjectID object_id;
+
+    int64_t data_size;
+
+    int64_t metadata_size;
+
+    int64_t chunk_index;
+
+    ObjectTransferTask(ObjectID object_id_, int data_size_, int64_t metadata_size_,
+                       int64_t chunk_index_)
+        : object_id(object_id_),
+          data_size(data_size_),
+          metadata_size(metadata_size_),
+          chunk_index(chunk_index_) {}
+    ObjectTransferTask() {}
+  };
+
+  template <typename T>
+  class SendingTaskPool {
+   private:
+    std::mutex mutex;
+
+    std::unordered_map<ClientID, std::deque<T>> cached_tasks;
+
+   public:
+    void AddTask(const ClientID &client_id, T &task) {
+      std::unique_lock<std::mutex> guard(mutex);
+      cached_tasks[client_id].emplace_back(task);
+    }
+
+    bool PopTask(const ClientID &client_id, T &task) {
+      std::unique_lock<std::mutex> guard(mutex);
+      auto iter = cached_tasks.find(client_id);
+      if (iter != cached_tasks.end()) {
+        RAY_CHECK(iter->second.size() > 0);
+        task = iter->second.front();
+        iter->second.pop_front();
+        if (iter->second.empty()) {
+          cached_tasks.erase(iter);
+        }
+        return true;
+      }
+      return false;
+    }
+  };
+
+  /// List of pending Object Transfering task.
+  SendingTaskPool<ObjectTransferTask> transfer_tasks;
+  /// List of pending Message task.
+  SendingTaskPool<ObjectID> message_tasks;
 
   /// Creates a wait request and adds it to active_wait_requests_.
   ray::Status AddWaitRequest(const UniqueID &wait_id,

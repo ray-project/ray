@@ -125,6 +125,7 @@ class TestObjectManagerBase : public ::testing::Test {
     om_config_1.max_receives = max_receives;
     om_config_1.object_chunk_size = object_chunk_size;
     om_config_1.push_timeout_ms = push_timeout_ms;
+    om_config_1.max_sender_connection_count = 2;
     server1.reset(new MockServer(main_service, om_config_1, gcs_client_1));
 
     // start second server
@@ -136,6 +137,7 @@ class TestObjectManagerBase : public ::testing::Test {
     om_config_2.max_receives = max_receives;
     om_config_2.object_chunk_size = object_chunk_size;
     om_config_2.push_timeout_ms = push_timeout_ms;
+    om_config_2.max_sender_connection_count = 0;
     server2.reset(new MockServer(main_service, om_config_2, gcs_client_2));
 
     // connect to stores.
@@ -261,11 +263,12 @@ class TestObjectManager : public TestObjectManagerBase {
     created_object_id2 = ObjectID::from_random();
     timer->async_wait([this, data_size](const boost::system::error_code &error) {
       WriteDataToClient(client2, data_size, created_object_id2);
+      RAY_CHECK_OK(server1->object_manager_.Pull(created_object_id2));
     });
   }
 
   void NotificationTestCompleteIfSatisfied() {
-    uint num_expected_objects1 = 1;
+    uint num_expected_objects1 = 2;
     uint num_expected_objects2 = 2;
     if (v1.size() == num_expected_objects1 && v2.size() == num_expected_objects2) {
       SubscribeObjectThenWait();

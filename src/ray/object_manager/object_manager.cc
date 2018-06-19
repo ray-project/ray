@@ -20,7 +20,7 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
                    /*release_delay=*/2 * config_.max_sends),
       send_work_(send_service_),
       receive_work_(receive_service_),
-      connection_pool_() {
+      connection_pool_(config_.max_sender_connection_count) {
   RAY_CHECK(config_.max_sends > 0);
   RAY_CHECK(config_.max_receives > 0);
   main_service_ = &main_service;
@@ -43,7 +43,7 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
                    /*release_delay=*/2 * config_.max_sends),
       send_work_(send_service_),
       receive_work_(receive_service_),
-      connection_pool_() {
+      connection_pool_(config_.max_sender_connection_count) {
   RAY_CHECK(config_.max_sends > 0);
   RAY_CHECK(config_.max_receives > 0);
   // TODO(hme) Client ID is never set with this constructor.
@@ -168,22 +168,26 @@ ray::Status ObjectManager::PullEstablishConnection(const ObjectID &object_id,
   // Acquire a message connection and send pull request.
   ray::Status status;
   std::shared_ptr<SenderConnection> conn;
-  // TODO(hme): There is no cap on the number of pull request connections.
-  status = connection_pool_.GetSender(ConnectionPool::ConnectionType::MESSAGE, client_id,
-                                      &conn);
+  const ConnectionPool::ConnectionType connection_type =
+      ConnectionPool::ConnectionType::MESSAGE;
+  status = connection_pool_.GetSender(connection_type, client_id, &conn);
   // Currently, acquiring a connection should not fail.
   // No status from GetSender is returned which can be
   // handled without failing.
   RAY_CHECK_OK(status);
 
-  if (conn == nullptr) {
+  if (conn != nullptr) {
+    // To avoid nested if statements, an extra return statement is used here.
+    return PullSendRequest(object_id, conn);
+  }
+  // Connection is empty. Need to checkout whether we can add a new connection.
+  if (connection_pool_.CanAddSender(connection_type, client_id)) {
     status = object_directory_->GetInformation(
         client_id,
         [this, object_id, client_id](const RemoteConnectionInfo &connection_info) {
-          std::shared_ptr<SenderConnection> async_conn = CreateSenderConnection(
-              ConnectionPool::ConnectionType::MESSAGE, connection_info);
-          connection_pool_.RegisterSender(ConnectionPool::ConnectionType::MESSAGE,
-                                          client_id, async_conn);
+          std::shared_ptr<SenderConnection> async_conn =
+              CreateSenderConnection(connection_type, connection_info);
+          connection_pool_.RegisterSender(connection_type, client_id, async_conn);
           Status pull_send_status = PullSendRequest(object_id, async_conn);
           RAY_CHECK_OK(pull_send_status);
         },
@@ -192,8 +196,11 @@ ray::Status ObjectManager::PullEstablishConnection(const ObjectID &object_id,
           RAY_CHECK_OK(status);
         });
   } else {
-    status = PullSendRequest(object_id, conn);
+    // Cache this task until other tasks return the connection.
+    ObjectID copy_id = object_id;
+    message_tasks.AddTask(client_id, copy_id);
   }
+
   return status;
 }
 
@@ -206,9 +213,17 @@ ray::Status ObjectManager::PullSendRequest(const ObjectID &object_id,
   RAY_CHECK_OK(conn->WriteMessage(
       static_cast<int64_t>(object_manager_protocol::MessageType::PullRequest),
       fbb.GetSize(), fbb.GetBufferPointer()));
-  RAY_CHECK_OK(
-      connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::MESSAGE, conn));
-  return ray::Status::OK();
+  // Check whether there are remaining tasks before returning the sender.
+  ray::Status status = ray::Status::OK();
+  ObjectID get_id;
+  if (message_tasks.PopTask(conn->GetClientID(), get_id)) {
+    // It is not necessary to release the sender until the pool is empty.
+    status = PullSendRequest(get_id, conn);
+  } else {
+    RAY_CHECK_OK(
+        connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::MESSAGE, conn));
+  }
+  return status;
 }
 
 void ObjectManager::HandlePushTaskTimeout(const ObjectID &object_id,
@@ -289,13 +304,20 @@ void ObjectManager::ExecuteSendObject(const ClientID &client_id,
                  << chunk_index;
   ray::Status status;
   std::shared_ptr<SenderConnection> conn;
-  status = connection_pool_.GetSender(ConnectionPool::ConnectionType::TRANSFER, client_id,
-                                      &conn);
+  const ConnectionPool::ConnectionType connection_type =
+      ConnectionPool::ConnectionType::TRANSFER;
+  status = connection_pool_.GetSender(connection_type, client_id, &conn);
+
   if (conn == nullptr) {
-    conn =
-        CreateSenderConnection(ConnectionPool::ConnectionType::TRANSFER, connection_info);
-    connection_pool_.RegisterSender(ConnectionPool::ConnectionType::TRANSFER, client_id,
-                                    conn);
+    if (connection_pool_.CanAddSender(connection_type, client_id)) {
+      conn = CreateSenderConnection(connection_type, connection_info);
+      connection_pool_.RegisterSender(connection_type, client_id, conn);
+    } else {
+      // Cache this task until other connections are available.
+      ObjectTransferTask save_task(object_id, data_size, metadata_size, chunk_index);
+      transfer_tasks.AddTask(client_id, save_task);
+      return;
+    }
   }
   status = SendObjectHeaders(object_id, data_size, metadata_size, chunk_index, conn);
   RAY_CHECK_OK(status);
@@ -343,10 +365,17 @@ ray::Status ObjectManager::SendObjectData(const ObjectID &object_id,
 
   // Do this regardless of whether it failed or succeeded.
   buffer_pool_.ReleaseGetChunk(object_id, chunk_info.chunk_index);
-  RAY_CHECK_OK(
-      connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::TRANSFER, conn));
   RAY_LOG(DEBUG) << "SendCompleted " << client_id_ << " " << object_id << " "
                  << config_.max_sends;
+  // Check whether there are remaining tasks before returning the sender.
+  ObjectTransferTask next_task;
+  if (transfer_tasks.PopTask(conn->GetClientID(), next_task)) {
+    return SendObjectHeaders(next_task.object_id, next_task.data_size,
+                             next_task.metadata_size, next_task.chunk_index, conn);
+  } else {
+    RAY_CHECK_OK(
+        connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::TRANSFER, conn));
+  }
   return status;
 }
 
