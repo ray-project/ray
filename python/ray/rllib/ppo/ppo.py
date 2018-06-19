@@ -101,7 +101,6 @@ class PPOAgent(Agent):
             extra_gpu=cf["num_gpus_per_worker"] * cf["num_workers"])
 
     def _init(self):
-        self.global_step = 0
         self.local_evaluator = PPOEvaluator(
             self.registry, self.env_creator, self.config, self.logdir, False)
         RemotePPOEvaluator = ray.remote(
@@ -191,7 +190,6 @@ class PPOAgent(Agent):
             [a.save.remote() for a in self.remote_evaluators])
         extra_data = [
             self.local_evaluator.save(),
-            self.global_step,
             agent_state]
         pickle.dump(extra_data, open(checkpoint_path + ".extra_data", "wb"))
         return checkpoint_path
@@ -200,7 +198,6 @@ class PPOAgent(Agent):
         self.saver.restore(self.local_evaluator.sess, checkpoint_path)
         extra_data = pickle.load(open(checkpoint_path + ".extra_data", "rb"))
         self.local_evaluator.restore(extra_data[0])
-        self.global_step = extra_data[1]
         ray.get([
             a.restore.remote(o)
                 for (a, o) in zip(self.remote_evaluators, extra_data[2])])

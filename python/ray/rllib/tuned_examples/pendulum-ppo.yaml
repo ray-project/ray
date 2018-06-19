@@ -2,9 +2,11 @@
 pendulum-ppo:
     env: Pendulum-v0
     run: PPO
+    stop:
+        training_iteration: 2
     config:
         timesteps_per_batch: 2048
-        num_workers: 4
+        num_workers: 1
         lambda: 0.1
         gamma: 0.95
         sgd_stepsize: 0.0003
