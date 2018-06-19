@@ -201,11 +201,13 @@ class Worker(object):
             that connect has been called already.
         cached_functions_to_run (List): A list of functions to run on all of
             the workers that should be exported as soon as connect is called.
-        reconstruction_lock (Lock):
-            A lock object used to guard object reconstruction.
-            Because the node manager will recycle/return the worker's resources
-            before/after object reconstruction, it's unsafe for multiple
-            threads to call object reconstruction simultaneously.
+        state_lock (Lock):
+            Used to lock worker's non-thread-safe internal states:
+            1) task_index increment: make sure we generate unique task ids;
+            2) Object reconstruction: because the node manager will
+            recycle/return the worker's resources before/after reconstruction,
+            it's unsafe for multiple threads to call object
+            reconstruction simultaneously.
     """
 
     def __init__(self):
@@ -241,6 +243,7 @@ class Worker(object):
         # When the worker is constructed. Record the original value of the
         # CUDA_VISIBLE_DEVICES environment variable.
         self.original_gpu_ids = ray.utils.get_cuda_visible_devices()
+        self.state_lock = threading.Lock()
         self.reconstruction_lock = threading.Lock()
 
     def check_connected(self):
@@ -473,7 +476,7 @@ class Worker(object):
         }
 
         if len(unready_ids) > 0:
-            with self.reconstruction_lock:
+            with self.state_lock:
                 # Try reconstructing any objects we haven't gotten yet. Try to
                 # get them until at least get_timeout_milliseconds
                 # milliseconds passes, then repeat.
@@ -615,17 +618,19 @@ class Worker(object):
                     raise ValueError(
                         "Resource quantities must all be whole numbers.")
 
+            with self.state_lock:
+                # Increment the worker's task index to track how many tasks
+                # have been submitted by the current task so far.
+                task_index = self.task_index
+                self.task_index += 1
             # Submit the task to local scheduler.
             task = ray.local_scheduler.Task(
                 driver_id, ray.ObjectID(
                     function_id.id()), args_for_local_scheduler,
-                num_return_vals, self.current_task_id, self.task_index,
+                num_return_vals, self.current_task_id, task_index,
                 actor_creation_id, actor_creation_dummy_object_id, actor_id,
                 actor_handle_id, actor_counter, is_actor_checkpoint_method,
                 execution_dependencies, resources, self.use_raylet)
-            # Increment the worker's task index to track how many tasks have
-            # been submitted by the current task so far.
-            self.task_index += 1
             self.local_scheduler_client.submit(task)
 
             return task.returns()
