@@ -48,12 +48,14 @@ def gen_hashflow(seed, width, depth):
         nodes = [
             HashFlowNode(
                 parents=[random.randint(0, width - 1) for _ in range(n)],
-                delay=random.random() * 0.1, result=None)
-            for _ in range(width)]
+                delay=random.random() * 0.1,
+                result=None) for _ in range(width)]
         stages.append(nodes)
 
-    stages.append([HashFlowNode(parents=list(range(width)),
-                                delay=random.random(), result=None)])
+    stages.append([
+        HashFlowNode(
+            parents=list(range(width)), delay=random.random(), result=None)
+    ])
 
     return inputs, stages
 
@@ -127,8 +129,8 @@ def async_hashflow_solution_wait(inputs, stages, use_delay=False):
             new_inputs = []
             for node in stage:
                 node_inputs = [inputs[i] for i in node.parents]
-                async_inputs = loop.wait(node_inputs,
-                                         num_returns=len(node_inputs))
+                async_inputs = loop.wait(
+                    node_inputs, num_returns=len(node_inputs))
                 ready = return_first_item(async_inputs)
                 new_inputs.append(
                     wait_and_solve(ready, node, use_delay, loop=loop))

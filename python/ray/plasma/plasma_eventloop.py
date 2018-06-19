@@ -57,8 +57,7 @@ class PlasmaFutureGroup(asyncio.Future):
             if self._loop is None:
                 self._loop = fut._loop
             elif fut._loop is not self._loop:
-                raise ValueError(
-                    "futures are tied to different event loops")
+                raise ValueError("futures are tied to different event loops")
 
         if fut in self._future_set and not self._keep_duplicated:
             return
@@ -204,7 +203,10 @@ def gather(*coros_or_futures, loop=None, return_exceptions=False):
 
 
 @asyncio.coroutine
-def wait(*coros_or_futures, timeout, num_returns, loop=None,
+def wait(*coros_or_futures,
+         timeout,
+         num_returns,
+         loop=None,
          return_exceptions=False):
     """
     This method resembles `asyncio.wait`
@@ -221,10 +223,11 @@ def wait(*coros_or_futures, timeout, num_returns, loop=None,
     """
 
     fut = PlasmaFutureGroup(loop=loop, return_exceptions=return_exceptions)
-    fut.set_halt_condition(functools.partial(
-        fut.halt_on_some_finished,
-        n=num_returns,
-    ))
+    fut.set_halt_condition(
+        functools.partial(
+            fut.halt_on_some_finished,
+            n=num_returns,
+        ))
     for f in coros_or_futures:
         fut.append(f)
 
@@ -262,7 +265,8 @@ class PlasmaSelector(selectors.BaseSelector):
         else:
             key = selectors.SelectorKey(
                 fileobj=plasma_fut,
-                fd=plasma_fut.object_id, events=events,
+                fd=plasma_fut.object_id,
+                events=events,
                 data=data,
             )
             self.waiting_dict[key.fd] = key
@@ -282,9 +286,10 @@ class PlasmaPoll(PlasmaSelector):
     def _get_ready_ids(self, timeout):
         polling_ids = list(self.waiting_dict.keys())
         object_ids, _ = ray.wait(
-            polling_ids, num_returns=len(polling_ids),
-            timeout=timeout, worker=self.worker
-        )
+            polling_ids,
+            num_returns=len(polling_ids),
+            timeout=timeout,
+            worker=self.worker)
         return object_ids
 
 
@@ -314,7 +319,6 @@ class PlasmaEpoll(PlasmaSelector):
 
 
 class PlasmaSelectorEventLoop(asyncio.BaseEventLoop):
-
     def __init__(self, selector, worker):
         super().__init__()
         assert isinstance(selector, selectors.BaseSelector)
@@ -343,9 +347,8 @@ class PlasmaSelectorEventLoop(asyncio.BaseEventLoop):
 
     def _register_future(self, future):
         future = asyncio.ensure_future(future, loop=self)
-        fut = PlasmaObjectFuture(loop=self,
-                                 object_id=ray.local_scheduler.ObjectID(
-                                     b'\0' * 20))
+        fut = PlasmaObjectFuture(
+            loop=self, object_id=ray.local_scheduler.ObjectID(b'\0' * 20))
         if self.get_debug():
             print("Processing indirect future %s" % future)
 
@@ -375,6 +378,7 @@ class PlasmaSelectorEventLoop(asyncio.BaseEventLoop):
         try:
             key = self._selector.get_key(object_id)
         except KeyError:
+
             def callback(future):
                 # set result and remove it from the selector
                 if future.cancelled():
@@ -418,12 +422,17 @@ class PlasmaSelectorEventLoop(asyncio.BaseEventLoop):
         return ray.get(ready_ids, worker=self._worker)
 
     @asyncio.coroutine
-    def wait(self, object_ids, num_returns=1, timeout=None,
+    def wait(self,
+             object_ids,
+             num_returns=1,
+             timeout=None,
              return_exact_num=True):
         futures = [self._register_id(oid) for oid in object_ids]
         _done, _pending = yield from wait(
-            *futures, timeout=timeout,
-            num_returns=num_returns, loop=self,
+            *futures,
+            timeout=timeout,
+            num_returns=num_returns,
+            loop=self,
         )
 
         self._release(*_pending)
