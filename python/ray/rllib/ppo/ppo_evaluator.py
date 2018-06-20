@@ -24,12 +24,11 @@ class PPOEvaluator(TFMultiGPUSupport):
     network weights. When run as a remote agent, only this graph is used.
     """
 
-    def __init__(self, registry, env_creator, config, logdir, is_remote):
-        self.registry = registry
+    def __init__(self, env_creator, config, logdir, is_remote):
         self.config = config
         self.logdir = logdir
         self.env = ModelCatalog.get_preprocessor_as_wrapper(
-            registry, env_creator(config["env_config"]), config["model"])
+            env_creator(config["env_config"]), config["model"])
         if is_remote:
             config_proto = tf.ConfigProto()
         else:
@@ -92,7 +91,7 @@ class PPOEvaluator(TFMultiGPUSupport):
             self.env.observation_space, self.env.action_space,
             obs, vtargets, advs, acts, plog, pvf_preds, self.logit_dim,
             self.kl_coeff, self.distribution_class, self.config,
-            self.sess, self.registry)
+            self.sess)
 
     def init_extra_ops(self, device_losses):
         self.extra_ops = OrderedDict()

@@ -1741,7 +1741,7 @@ def init(redis_address=None,
         redis_address = services.address_to_ip(redis_address)
 
     info = {"node_ip_address": node_ip_address, "redis_address": redis_address}
-    return _init(
+    ret = _init(
         address_info=info,
         start_ray_local=(redis_address is None),
         num_workers=num_workers,
@@ -1758,6 +1758,13 @@ def init(redis_address=None,
         include_webui=include_webui,
         object_store_memory=object_store_memory,
         use_raylet=use_raylet)
+    for hook in _post_init_hooks:
+        hook()
+    return ret
+
+
+# Functions to run as callback after a successful ray init
+_post_init_hooks = []
 
 
 def cleanup(worker=global_worker):
