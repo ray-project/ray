@@ -11,7 +11,8 @@ from ray.tune.registry import RLLIB_MODEL, RLLIB_PREPROCESSOR, \
     _default_registry
 
 from ray.rllib.models.action_dist import (
-    Categorical, Deterministic, DiagGaussian, MultiActionDistribution)
+    Categorical, Deterministic, DiagGaussian, MultiActionDistribution,
+    squash_to_range)
 from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.models.fcnet import FullyConnectedNetwork
 from ray.rllib.models.visionnet import VisionNetwork
@@ -29,6 +30,7 @@ MODEL_CONFIGS = [
     "fcnet_hiddens",  # Number of hidden layers for fully connected net
     "free_log_std",  # Documented in ray.rllib.models.Model
     "channel_major",  # Pytorch conv requires images to be channel-major
+    "squash_to_range",  # Whether to squash the action output to space range
 
     # === Options for custom models ===
     "custom_preprocessor",  # Name of a custom preprocessor to use
@@ -51,11 +53,12 @@ class ModelCatalog(object):
     """
 
     @staticmethod
-    def get_action_dist(action_space, dist_type=None):
+    def get_action_dist(action_space, config=None, dist_type=None):
         """Returns action distribution class and size for the given action space.
 
         Args:
             action_space (Space): Action space of the target gym env.
+            config (dict): Optional model config.
             dist_type (str): Optional identifier of the action distribution.
 
         Returns:
@@ -66,10 +69,14 @@ class ModelCatalog(object):
         # TODO(ekl) are list spaces valid?
         if isinstance(action_space, list):
             action_space = gym.spaces.Tuple(action_space)
-
+        config = config or {}
         if isinstance(action_space, gym.spaces.Box):
             if dist_type is None:
-                return DiagGaussian, action_space.shape[0] * 2
+                dist = DiagGaussian
+                if config.get("squash_to_range"):
+                    dist = squash_to_range(
+                        dist, action_space.low, action_space.high)
+                return dist, action_space.shape[0] * 2
             elif dist_type == 'deterministic':
                 return Deterministic, action_space.shape[0]
         elif isinstance(action_space, gym.spaces.Discrete):

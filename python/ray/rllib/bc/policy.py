@@ -22,7 +22,8 @@ class BCPolicy(object):
 
     def _setup_graph(self, obs_space, ac_space):
         self.x = tf.placeholder(tf.float32, [None] + list(obs_space.shape))
-        dist_class, self.logit_dim = ModelCatalog.get_action_dist(ac_space)
+        dist_class, self.logit_dim = ModelCatalog.get_action_dist(
+            ac_space, self.config["model"])
         self._model = ModelCatalog.get_model(
             self.registry, self.x, self.logit_dim, self.config["model"])
         self.logits = self._model.outputs
