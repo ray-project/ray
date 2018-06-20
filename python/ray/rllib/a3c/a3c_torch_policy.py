@@ -27,7 +27,8 @@ class SharedTorchPolicy(PolicyGraph):
         self.lock = Lock()
 
     def setup_graph(self, obs_space, action_space):
-        _, self.logit_dim = ModelCatalog.get_action_dist(action_space)
+        _, self.logit_dim = ModelCatalog.get_action_dist(
+            action_space, self.config["model"])
         self._model = ModelCatalog.get_torch_model(
             self.registry, obs_space.shape, self.logit_dim,
             self.config["model"])
