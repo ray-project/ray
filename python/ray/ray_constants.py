@@ -8,7 +8,7 @@ import os
 
 def env_integer(key, default):
     if key in os.environ:
-        return int(os.environ(key))
+        return int(os.environ[key])
     return default
 
 
