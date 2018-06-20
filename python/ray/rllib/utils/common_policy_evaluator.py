@@ -20,12 +20,12 @@ from ray.rllib.utils.multi_agent_env import MultiAgentEnv
 from ray.rllib.utils.policy_graph import PolicyGraph
 from ray.rllib.utils.sampler import AsyncSampler, SyncSampler
 from ray.rllib.utils.serving_env import ServingEnv
-from ray.rllib.utils.tf_policy_graph import TFPolicyGraph
+from ray.rllib.utils.tf_policy_graph import TFPolicyGraph, TFRunBuilder
 from ray.rllib.utils.vector_env import VectorEnv
 from ray.tune.result import TrainingResult
 
 
-def collect_metrics(local_evaluator, remote_evaluators):
+def collect_metrics(local_evaluator, remote_evaluators=[]):
     """Gathers episode metrics from CommonPolicyEvaluator instances."""
 
     episode_rewards = []
@@ -206,20 +206,23 @@ class CommonPolicyEvaluator(PolicyEvaluator):
         def make_env():
             return wrap(env_creator(env_config))
 
+        self.tf_sess = None
         policy_dict = _validate_and_canonicalize(policy_graph, self.env)
         if _has_tensorflow_graph(policy_dict):
             with tf.Graph().as_default():
                 if tf_session_creator:
-                    self.sess = tf_session_creator()
+                    self.tf_sess = tf_session_creator()
                 else:
-                    self.sess = tf.Session(config=tf.ConfigProto(
+                    self.tf_sess = tf.Session(config=tf.ConfigProto(
                         gpu_options=tf.GPUOptions(allow_growth=True)))
-                with self.sess.as_default():
+                with self.tf_sess.as_default():
                     self.policy_map = self._build_policy_map(
                         policy_dict, policy_config)
         else:
             self.policy_map = self._build_policy_map(
                 policy_dict, policy_config)
+
+        self.multiagent = self.policy_map.keys() != set(DEFAULT_POLICY_ID)
 
         self.filters = {
             policy_id: get_filter(
@@ -249,13 +252,13 @@ class CommonPolicyEvaluator(PolicyEvaluator):
             self.sampler = AsyncSampler(
                 self.async_env, self.policy_map, policy_mapping_fn,
                 self.filters, batch_steps, horizon=episode_horizon,
-                pack=pack_episodes)
+                pack=pack_episodes, tf_sess=self.tf_sess)
             self.sampler.start()
         else:
             self.sampler = SyncSampler(
                 self.async_env, self.policy_map, policy_mapping_fn,
                 self.filters, batch_steps, horizon=episode_horizon,
-                pack=pack_episodes)
+                pack=pack_episodes, tf_sess=self.tf_sess)
 
     def _build_policy_map(self, policy_dict, policy_config):
         policy_map = {}
@@ -292,10 +295,15 @@ class CommonPolicyEvaluator(PolicyEvaluator):
 
         return batch
 
-    def for_policy(self, func):
-        """Apply the given function to this evaluator's default policy."""
+    def for_policy(self, func, policy_id=DEFAULT_POLICY_ID):
+        """Apply the given function to the specified policy graph."""
 
-        return func(self.policy_map[DEFAULT_POLICY_ID])
+        return func(self.policy_map[policy_id])
+
+    def for_policy_map(self, func):
+        """Apply the given function to the map of all policies."""
+
+        return func(self.policy_map)
 
     def sync_filters(self, new_filters):
         """Changes self's filter to given and rebases any accumulated delta.
@@ -323,32 +331,89 @@ class CommonPolicyEvaluator(PolicyEvaluator):
                 f.clear_buffer()
         return return_filters
 
-    def get_weights(self):
-        return self.policy_map[DEFAULT_POLICY_ID].get_weights()
+    def get_weights(self, policy_ids=frozenset([DEFAULT_POLICY_ID])):
+        return {pid: self.policy_map[pid] for pid in sorted(policy_ids)}
 
     def set_weights(self, weights):
-        return self.policy_map[DEFAULT_POLICY_ID].set_weights(weights)
+        for pid, w in weights.items():
+            self.policy_map[pid].set_weights(w)
 
     def compute_gradients(self, samples):
-        return self.policy_map[DEFAULT_POLICY_ID].compute_gradients(samples)
+        if isinstance(samples, MultiAgentBatch):
+            if self.tf_sess is not None:
+                builder = TFRunBuilder(self.tf_sess)
+                outputs = {
+                    pid: self.policy_map[pid].build_compute_gradients(
+                        builder, batch)
+                    for pid, batch in samples.policy_batches.items()
+                }
+                return {
+                    k: builder.get(v) for k, v in outputs.items()
+                }
+            else:
+                return {
+                    pid: self.policy_map[pid].compute_gradients(batch)
+                    for pid, batch in samples.policy_batches.items()
+                }
+        else:
+            return self.policy_map[DEFAULT_POLICY_ID].compute_gradients(
+                samples)
 
     def apply_gradients(self, grads):
-        return self.policy_map[DEFAULT_POLICY_ID].apply_gradients(grads)
+        if isinstance(grads, dict):
+            if self.tf_sess is not None:
+                builder = TFRunBuilder(self.tf_sess)
+                outputs = {
+                    pid: self.policy_map[pid].build_apply_gradients(
+                        builder, grad)
+                    for pid, grad in grads.items()
+                }
+                return {
+                    k: builder.get(v) for k, v in outputs.items()
+                }
+            else:
+                return {
+                    pid: self.policy_map[pid].apply_gradients(g)
+                    for pid, g in grads.items()
+                }
+        else:
+            return self.policy_map[DEFAULT_POLICY_ID].apply_gradients(grads)
 
     def compute_apply(self, samples):
-        grad_fetch, apply_fetch = (
-            self.policy_map[DEFAULT_POLICY_ID].compute_apply(samples))
-        return grad_fetch
+        if isinstance(samples, MultiAgentBatch):
+            if self.tf_sess is not None:
+                builder = TFRunBuilder(self.tf_sess)
+                outputs = {
+                    pid: self.policy_map[pid].build_compute_apply(
+                        builder, batch)
+                    for pid, batch in samples.policy_batches.items()
+                }
+                return {
+                    k: builder.get(v) for k, v in outputs.items()
+                }
+            else:
+                return {
+                    pid: self.policy_map[pid].compute_apply(g)[0]
+                    for pid, batch in samples.policy_batches.items()
+                }
+        else:
+            grad_fetch, apply_fetch = (
+                self.policy_map[DEFAULT_POLICY_ID].compute_apply(samples))
+            return grad_fetch
 
     def save(self):
         filters = self.get_filters(flush_after=True)
-        state = self.policy_map[DEFAULT_POLICY_ID].get_state()
+        state = {
+            pid: self.policy_map[pid].get_state()
+            for pid in self.policy_map
+        }
         return pickle.dumps({"filters": filters, "state": state})
 
     def restore(self, objs):
         objs = pickle.loads(objs)
         self.sync_filters(objs["filters"])
-        self.policy_map[DEFAULT_POLICY_ID].set_state(objs["state"])
+        for pid, state in objs["state"].items():
+            self.policy_map[pid].set_state(state)
 
 
 def _validate_and_canonicalize(policy_graph, env):

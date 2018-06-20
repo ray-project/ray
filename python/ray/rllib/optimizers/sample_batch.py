@@ -178,6 +178,8 @@ class SampleBatch(object):
 
     @staticmethod
     def concat_samples(samples):
+        if isinstance(samples[0], MultiAgentBatch):
+            return MultiAgentBatch.concat_samples(samples)
         out = {}
         samples = [s for s in samples if s.count > 0]
         for k in samples[0].keys():

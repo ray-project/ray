@@ -11,7 +11,8 @@ from ray.rllib.pg.pg_policy_graph import PGPolicyGraph
 from ray.rllib.optimizers import LocalSyncOptimizer
 from ray.rllib.test.test_common_policy_evaluator import MockEnv, MockEnv2, \
     MockPolicyGraph
-from ray.rllib.utils.common_policy_evaluator import CommonPolicyEvaluator
+from ray.rllib.utils.common_policy_evaluator import CommonPolicyEvaluator, \
+    collect_metrics
 from ray.rllib.utils.async_vector_env import _MultiAgentEnvToAsync
 from ray.rllib.utils.multi_agent_env import MultiAgentEnv
 from ray.tune.registry import register_env
@@ -268,9 +269,10 @@ class TestMultiAgentEnv(unittest.TestCase):
             },
             policy_mapping_fn=lambda agent_id: "p{}".format(agent_id % 2),
             batch_steps=50)
-        optimizer = LocalSyncOptimizer({}, ev, [], for_policies=["p0"])
+        optimizer = LocalSyncOptimizer({}, ev, [])
         for _ in range(100):
             optimizer.step()
+            print(collect_metrics(ev))
         pass  # TODO
 
     def testTrainMultiCartpoleManyPolicies(self):
