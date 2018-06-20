@@ -3,6 +3,7 @@
 #include "common_protocol.h"
 #include "local_scheduler/format/local_scheduler_generated.h"
 #include "ray/raylet/format/node_manager_generated.h"
+#include "ray/util/util.h"
 
 namespace {
 
@@ -40,14 +41,6 @@ RAY_CHECK_ENUM(protocol::MessageType::GetActorFrontierReply,
                local_scheduler_protocol::MessageType::GetActorFrontierReply);
 RAY_CHECK_ENUM(protocol::MessageType::SetActorFrontier,
                local_scheduler_protocol::MessageType::SetActorFrontier);
-
-// TODO(rkn): This function appears in at least three places. It should be deduplicated.
-int64_t current_time_ms_duplicate() {
-  std::chrono::milliseconds ms_since_epoch =
-      std::chrono::duration_cast<std::chrono::milliseconds>(
-          std::chrono::steady_clock::now().time_since_epoch());
-  return ms_since_epoch.count();
-}
 
 /// A helper function to determine whether a given actor task has already been executed
 /// according to the given actor registry. Returns true if the task is a duplicate.
@@ -399,7 +392,7 @@ void NodeManager::ProcessClientMessage(
         error_message << "A worker died or was killed while executing task " << task_id
                       << ".";
         RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
-            job_id, type, error_message.str(), current_time_ms_duplicate()));
+            job_id, type, error_message.str(), current_time_ms()));
       }
 
       worker_pool_.DisconnectWorker(worker);
