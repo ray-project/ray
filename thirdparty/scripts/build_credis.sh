@@ -52,7 +52,7 @@ if [[ "${RAY_USE_NEW_GCS}" = "on" ]]; then
 
     mkdir -p build
     pushd build
-      cmake ..
+      cmake -DCMAKE_BUILD_TYPE=Release ..
       make -j
     popd
 
