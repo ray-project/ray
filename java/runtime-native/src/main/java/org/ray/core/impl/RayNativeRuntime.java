@@ -66,13 +66,15 @@ public class RayNativeRuntime extends RayRuntime {
       initStateStore(params.redis_address, params.use_raylet);
     } else {
       initStateStore(params.redis_address, params.use_raylet);
-      if (!isWorker && !params.use_raylet) {
+      if (!isWorker) {
         List<AddressInfo> nodes = stateStoreProxy.getAddressInfo(params.node_ip_address, 5);
         params.object_store_name = nodes.get(0).storeName;
-        params.object_store_manager_name = nodes.get(0).managerName;
-        params.local_scheduler_name = nodes.get(0).schedulerName;
-        params.raylet_name = nodes.get(0).rayletName;
-        
+        if (!params.use_raylet) {
+          params.object_store_manager_name = nodes.get(0).managerName;
+          params.local_scheduler_name = nodes.get(0).schedulerName;
+        } else {
+          params.raylet_name = nodes.get(0).rayletName;
+        }
       }
     }
 
@@ -117,13 +119,15 @@ public class RayNativeRuntime extends RayRuntime {
 
       init(slink, plink, funcMgr, pathConfig);
 
-      // register
-      registerWorker(isWorker, params.node_ip_address, params.object_store_name,
-          params.object_store_manager_name, params.local_scheduler_name);
-    } else {
-      // register
-      registerWorker(isWorker, params.node_ip_address, params.object_store_name,
-          params.raylet_name);
+      if (params.use_raylet) {
+        // register
+        registerWorker(isWorker, params.node_ip_address, params.object_store_name,
+            params.object_store_manager_name, params.local_scheduler_name);
+      } else {
+        // register
+        registerWorker(isWorker, params.node_ip_address, params.object_store_name,
+            params.raylet_name);
+      }
     }
 
     RayLog.core.info("RayNativeRuntime start with "
