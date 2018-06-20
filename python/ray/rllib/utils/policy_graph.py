@@ -21,11 +21,10 @@ class PolicyGraph(object):
         action_space (gym.Space): Action space of the policy.
     """
 
-    def __init__(self, registry, observation_space, action_space, config):
+    def __init__(self, observation_space, action_space, config):
         """Initialize the graph.
 
         Args:
-            registry (obj): Object registry for user-defined envs, models, etc.
             observation_space (gym.Space): Observation space of the env.
             action_space (gym.Space): Action space of the env.
             config (dict): Policy-specific configuration data.

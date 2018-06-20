@@ -22,7 +22,6 @@ from ray.rllib.utils.sampler import AsyncSampler, SyncSampler
 from ray.rllib.utils.serving_env import ServingEnv
 from ray.rllib.utils.tf_policy_graph import TFPolicyGraph
 from ray.rllib.utils.vector_env import VectorEnv
-from ray.tune.registry import get_registry
 from ray.tune.result import TrainingResult
 
 
@@ -124,7 +123,6 @@ class CommonPolicyEvaluator(PolicyEvaluator):
             compress_observations=False,
             num_envs=1,
             observation_filter="NoFilter",
-            registry=None,
             env_config=None,
             model_config=None,
             policy_config=None):
@@ -171,9 +169,6 @@ class CommonPolicyEvaluator(PolicyEvaluator):
                 and vectorize the computation of actions. This has no effect if
                 if the env already implements VectorEnv.
             observation_filter (str): Name of observation filter to use.
-            registry (tune.Registry): User-registered objects. Pass in the
-                value from tune.registry.get_registry() if you're having
-                trouble resolving things like custom envs.
             env_config (dict): Config to pass to the env creator.
             model_config (dict): Config to use when creating the policy model.
             policy_config (dict): Config to pass to the policy. In the
@@ -181,7 +176,6 @@ class CommonPolicyEvaluator(PolicyEvaluator):
                 per-policy configs specified by `policy_graph`.
         """
 
-        registry = registry or get_registry()
         env_config = env_config or {}
         policy_config = policy_config or {}
         model_config = model_config or {}
@@ -206,7 +200,7 @@ class CommonPolicyEvaluator(PolicyEvaluator):
         else:
             def wrap(env):
                 return ModelCatalog.get_preprocessor_as_wrapper(
-                    registry, env, model_config)
+                    env, model_config)
         self.env = wrap(self.env)
 
         def make_env():
@@ -222,10 +216,10 @@ class CommonPolicyEvaluator(PolicyEvaluator):
                         gpu_options=tf.GPUOptions(allow_growth=True)))
                 with self.sess.as_default():
                     self.policy_map = self._build_policy_map(
-                        policy_dict, policy_config, registry)
+                        policy_dict, policy_config)
         else:
             self.policy_map = self._build_policy_map(
-                policy_dict, policy_config, registry)
+                policy_dict, policy_config)
 
         self.filters = {
             policy_id: get_filter(
@@ -263,14 +257,13 @@ class CommonPolicyEvaluator(PolicyEvaluator):
                 self.filters, batch_steps, horizon=episode_horizon,
                 pack=pack_episodes)
 
-    def _build_policy_map(self, policy_dict, policy_config, registry):
+    def _build_policy_map(self, policy_dict, policy_config):
         policy_map = {}
         for name, (cls, obs_space, act_space, conf) in policy_dict.items():
             merged_conf = policy_config.copy()
             merged_conf.update(conf)
             with tf.variable_scope(name):
-                policy_map[name] = cls(
-                    obs_space, act_space, registry, merged_conf)
+                policy_map[name] = cls(obs_space, act_space, merged_conf)
         return policy_map
 
     def sample(self):

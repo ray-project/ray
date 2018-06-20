@@ -46,7 +46,7 @@ def adjust_nstep(n_step, gamma, obs, actions, rewards, new_obs, dones):
 
 
 class DQNPolicyGraph(TFPolicyGraph):
-    def __init__(self, observation_space, action_space, registry, config):
+    def __init__(self, observation_space, action_space, config):
         if not isinstance(action_space, Discrete):
             raise UnsupportedSpaceException(
                 "Action space {} is not supported for DQN.".format(
@@ -65,7 +65,7 @@ class DQNPolicyGraph(TFPolicyGraph):
         # Action Q network
         with tf.variable_scope(Q_SCOPE) as scope:
             q_values = _build_q_network(
-                registry, self.cur_observations, num_actions, config)
+                self.cur_observations, num_actions, config)
             self.q_func_vars = _scope_vars(scope.name)
 
         # Action outputs
@@ -89,13 +89,11 @@ class DQNPolicyGraph(TFPolicyGraph):
 
         # q network evaluation
         with tf.variable_scope(Q_SCOPE, reuse=True):
-            q_t = _build_q_network(
-                registry, self.obs_t, num_actions, config)
+            q_t = _build_q_network(self.obs_t, num_actions, config)
 
         # target q network evalution
         with tf.variable_scope(Q_TARGET_SCOPE) as scope:
-            q_tp1 = _build_q_network(
-                registry, self.obs_tp1, num_actions, config)
+            q_tp1 = _build_q_network(self.obs_tp1, num_actions, config)
             self.target_q_func_vars = _scope_vars(scope.name)
 
         # q scores for actions which we know were selected in the given state.
@@ -106,7 +104,7 @@ class DQNPolicyGraph(TFPolicyGraph):
         if config["double_q"]:
             with tf.variable_scope(Q_SCOPE, reuse=True):
                 q_tp1_using_online_net = _build_q_network(
-                    registry, self.obs_tp1, num_actions, config)
+                    self.obs_tp1, num_actions, config)
             q_tp1_best_using_online_net = tf.argmax(q_tp1_using_online_net, 1)
             q_tp1_best = tf.reduce_sum(
                 q_tp1 * tf.one_hot(
@@ -237,10 +235,10 @@ def _postprocess_dqn(policy_graph, sample_batch):
     return batch
 
 
-def _build_q_network(registry, inputs, num_actions, config):
+def _build_q_network(inputs, num_actions, config):
     dueling = config["dueling"]
     hiddens = config["hiddens"]
-    frontend = ModelCatalog.get_model(registry, inputs, 1, config["model"])
+    frontend = ModelCatalog.get_model(inputs, 1, config["model"])
     frontend_out = frontend.last_layer
 
     with tf.variable_scope("action_value"):
