@@ -15,6 +15,8 @@
 #include "ray/raylet/format/node_manager_generated.h"
 
 // TODO(pcm): Remove this
+// TODO: While removing "task.h", remove the dependency gen_common_python_fbs
+//       from src/ray/CMakeLists.txt.
 #include "task.h"
 
 struct redisAsyncContext;
