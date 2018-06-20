@@ -18,10 +18,15 @@ AsyncGcsClient::AsyncGcsClient(const ClientID &client_id, CommandType command_ty
   command_type_ = command_type;
 }
 
+#if RAY_USE_NEW_GCS
 // Use of kChain currently only applies to Table::Add which affects only the
 // task table, and when RAY_USE_NEW_GCS is set at compile time.
 AsyncGcsClient::AsyncGcsClient(const ClientID &client_id)
     : AsyncGcsClient(client_id, CommandType::kChain) {}
+#else
+AsyncGcsClient::AsyncGcsClient(const ClientID &client_id)
+    : AsyncGcsClient(client_id, CommandType::kRegular) {}
+#endif  // RAY_USE_NEW_GCS
 
 AsyncGcsClient::AsyncGcsClient(CommandType command_type)
     : AsyncGcsClient(ClientID::from_random(), command_type) {}

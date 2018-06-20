@@ -79,7 +79,7 @@ class SimpleGcsFlushPolicy(GcsFlushPolicy):
 
 def set_flushing_policy(flushing_policy):
     """Serialize this policy for Monitor to pick up."""
-    if not "RAY_USE_NEW_GCS" in os.environ:
+    if "RAY_USE_NEW_GCS" not in os.environ:
         raise Exception(
             "set_flushing_policy() is only available when environment "
             "variable RAY_USE_NEW_GCS is present at both compile and run time."
