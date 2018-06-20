@@ -90,6 +90,7 @@ class PPOAgent(Agent):
     _agent_name = "PPO"
     _allow_unknown_subkeys = ["model", "tf_session_args", "env_config"]
     _default_config = DEFAULT_CONFIG
+    _default_policy_graph = PPOTFPolicy
 
     @classmethod
     def default_resource_request(cls, config):
@@ -101,15 +102,35 @@ class PPOAgent(Agent):
             extra_gpu=cf["num_gpus_per_worker"] * cf["num_workers"])
 
     def _init(self):
-        self.local_evaluator = PPOEvaluator(
-            self.registry, self.env_creator, self.config, self.logdir, False)
-        RemotePPOEvaluator = ray.remote(
+        def session_creator():
+            return tf.Session(
+                config=tf.ConfigProto(**self.config["tf_session_args"]))
+        self.local_evaluator = CommonPolicyEvaluator(
+            self.env_creator,
+            _default_policy_graph,
+            tf_session_creator=None,  #update this
+            batch_steps=0,
+            observation_filter=self.config,
+            env_config=self.config["env_config"],
+            model_config=elf.config["model"],
+            policy_config=None
+            )
+        # self.local_evaluator = PPOEvaluator(
+        #     self.registry, self.env_creator, self.config, self.logdir, False)
+        RemoteEvaluator = CommonPolicyEvaluator.as_remote(
             num_cpus=self.config["num_cpus_per_worker"],
-            num_gpus=self.config["num_gpus_per_worker"])(PPOEvaluator)
+            num_gpus=self.config["num_gpus_per_worker"])
         self.remote_evaluators = [
-            RemotePPOEvaluator.remote(
-                self.registry, self.env_creator, self.config, self.logdir,
-                True)
+            RemoteEvaluator.remote(
+                self.env_creator,
+                _default_policy_graph,
+                tf_session_creator=session_creator,  #update this
+                batch_steps=0,
+                observation_filter=self.config,
+                env_config=self.config["env_config"],
+                model_config=self.config["model"],
+                policy_config=None
+            )
             for _ in range(self.config["num_workers"])]
 
         self.optimizer = LocalMultiGPUOptimizer(
@@ -150,31 +171,10 @@ class PPOAgent(Agent):
 
         FilterManager.synchronize(
             self.local_evaluator.filters, self.remote_evaluators)
-        res = self._fetch_metrics_from_remote_evaluators()
+        res = collect_metrics(self.local_evaluator, self.remote_evaluators)
         res = res._replace(info=info)
         return res
 
-    def _fetch_metrics_from_remote_evaluators(self):
-        episode_rewards = []
-        episode_lengths = []
-        metric_lists = [a.get_completed_rollout_metrics.remote()
-                        for a in self.remote_evaluators]
-        for metrics in metric_lists:
-            for episode in ray.get(metrics):
-                episode_lengths.append(episode.episode_length)
-                episode_rewards.append(episode.episode_reward)
-        avg_reward = (
-            np.mean(episode_rewards) if episode_rewards else float('nan'))
-        avg_length = (
-            np.mean(episode_lengths) if episode_lengths else float('nan'))
-        timesteps = np.sum(episode_lengths) if episode_lengths else 0
-
-        result = TrainingResult(
-            episode_reward_mean=avg_reward,
-            episode_len_mean=avg_length,
-            timesteps_this_iter=timesteps)
-
-        return result
 
     def _stop(self):
         # workaround for https://github.com/ray-project/ray/issues/1516
