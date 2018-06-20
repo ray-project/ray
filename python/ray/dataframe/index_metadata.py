@@ -5,8 +5,7 @@ import ray
 from .utils import (
     _build_row_lengths,
     _build_col_widths,
-    _build_coord_df,
-    _check_empty)
+    _build_coord_df)
 
 from pandas.core.indexing import convert_to_index_sliceable
 
@@ -49,9 +48,6 @@ class _IndexMetadata(object):
             else:
                 lengths_oid = _build_col_widths.remote(dfs)
             coord_df_oid = _build_coord_df.remote(lengths_oid, index)
-            self._empty = _check_empty.remote(dfs)
-        else:
-            self._empty = True
 
         self._lengths = lengths_oid
         self._coord_df = coord_df_oid
@@ -160,16 +156,6 @@ class _IndexMetadata(object):
     # _index_cache_validator is an extra layer of abstraction to allow the
     # cache to accept ObjectIDs and ray.get them when needed.
     _index_cache = property(_get_index_cache, _set_index_cache)
-
-    def _get_empty(self):
-        if isinstance(self._empty_cache, ray.ObjectID):
-            self._empty_cache = ray.get(self._empty_cache)
-        return self._empty_cache
-
-    def _set_empty(self, empty):
-        self._empty_cache = empty
-
-    _empty = property(_get_empty, _set_empty)
 
     def coords_of(self, key):
         """Returns the coordinates (partition, index_within_partition) of the
