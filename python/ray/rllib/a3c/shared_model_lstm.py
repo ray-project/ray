@@ -11,9 +11,9 @@ from ray.rllib.models.lstm import LSTM
 
 class SharedModelLSTM(A3CTFPolicyGraph):
 
-    def __init__(self, ob_space, ac_space, registry, config, **kwargs):
+    def __init__(self, ob_space, ac_space, config, **kwargs):
         super(SharedModelLSTM, self).__init__(
-            ob_space, ac_space, registry, config, **kwargs)
+            ob_space, ac_space, config, **kwargs)
 
     def _setup_graph(self, ob_space, ac_space):
         self.x = tf.placeholder(tf.float32, [None] + list(ob_space.shape))
