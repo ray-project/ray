@@ -7,9 +7,13 @@ import time
 import unittest
 
 import ray
-from ray.rllib.utils.common_policy_evaluator import CommonPolicyEvaluator
+from ray.rllib.pg import PGAgent
+from ray.rllib.utils.common_policy_evaluator import CommonPolicyEvaluator, \
+    collect_metrics
 from ray.rllib.utils.policy_graph import PolicyGraph
 from ray.rllib.utils.process_rollout import compute_advantages
+from ray.rllib.utils.vector_env import VectorEnv
+from ray.tune.registry import register_env
 
 
 class MockPolicyGraph(PolicyGraph):
@@ -18,6 +22,55 @@ class MockPolicyGraph(PolicyGraph):
 
     def postprocess_trajectory(self, batch):
         return compute_advantages(batch, 100.0, 0.9, use_gae=False)
+
+
+class BadPolicyGraph(PolicyGraph):
+    def compute_actions(self, obs_batch, state_batches, is_training=False):
+        raise Exception("intentional error")
+
+    def postprocess_trajectory(self, batch):
+        return compute_advantages(batch, 100.0, 0.9, use_gae=False)
+
+
+class MockEnv(gym.Env):
+    def __init__(self, episode_length):
+        self.episode_length = episode_length
+        self.i = 0
+        self.observation_space = gym.spaces.Discrete(1)
+        self.action_space = gym.spaces.Discrete(2)
+
+    def reset(self):
+        self.i = 0
+        return self.i
+
+    def step(self, action):
+        self.i += 1
+        return 0, 1, self.i >= self.episode_length, {}
+
+
+class MockVectorEnv(VectorEnv):
+    def __init__(self, episode_length, num_envs):
+        self.envs = [
+            MockEnv(episode_length) for _ in range(num_envs)]
+        self.observation_space = gym.spaces.Discrete(1)
+        self.action_space = gym.spaces.Discrete(2)
+        self.num_envs = num_envs
+
+    def vector_reset(self):
+        return [e.reset() for e in self.envs]
+
+    def reset_at(self, index):
+        return self.envs[index].reset()
+
+    def vector_step(self, actions):
+        obs_batch, rew_batch, done_batch, info_batch = [], [], [], []
+        for i in range(len(self.envs)):
+            obs, rew, done, info = self.envs[i].step(actions[i])
+            obs_batch.append(obs)
+            rew_batch.append(rew)
+            done_batch.append(done)
+            info_batch.append(info)
+        return obs_batch, rew_batch, done_batch, info_batch
 
 
 class TestCommonPolicyEvaluator(unittest.TestCase):
@@ -30,43 +83,134 @@ class TestCommonPolicyEvaluator(unittest.TestCase):
             self.assertIn(key, batch)
         self.assertGreater(batch["advantages"][0], 1)
 
-    def testPackEpisodes(self):
-        for batch_size in [1, 10, 100, 1000]:
-            ev = CommonPolicyEvaluator(
-                env_creator=lambda _: gym.make("CartPole-v0"),
-                policy_graph=MockPolicyGraph,
-                batch_steps=batch_size,
-                batch_mode="pack_episodes")
+    def testQueryEvaluators(self):
+        register_env("test", lambda _: gym.make("CartPole-v0"))
+        pg = PGAgent(env="test", config={"num_workers": 2, "batch_size": 5})
+        results = pg.optimizer.foreach_evaluator(lambda ev: ev.batch_steps)
+        results2 = pg.optimizer.foreach_evaluator_with_index(
+            lambda ev, i: (i, ev.batch_steps))
+        self.assertEqual(results, [5, 5, 5])
+        self.assertEqual(results2, [(0, 5), (1, 5), (2, 5)])
+
+    def testMetrics(self):
+        ev = CommonPolicyEvaluator(
+            env_creator=lambda _: MockEnv(episode_length=10),
+            policy_graph=MockPolicyGraph, batch_mode="complete_episodes")
+        remote_ev = CommonPolicyEvaluator.as_remote().remote(
+            env_creator=lambda _: MockEnv(episode_length=10),
+            policy_graph=MockPolicyGraph, batch_mode="complete_episodes")
+        ev.sample()
+        ray.get(remote_ev.sample.remote())
+        result = collect_metrics(ev, [remote_ev])
+        self.assertEqual(result.episodes_total, 20)
+        self.assertEqual(result.episode_reward_mean, 10)
+
+    def testAsync(self):
+        ev = CommonPolicyEvaluator(
+            env_creator=lambda _: gym.make("CartPole-v0"),
+            sample_async=True,
+            policy_graph=MockPolicyGraph)
+        batch = ev.sample()
+        for key in ["obs", "actions", "rewards", "dones", "advantages"]:
+            self.assertIn(key, batch)
+        self.assertGreater(batch["advantages"][0], 1)
+
+    def testAutoConcat(self):
+        ev = CommonPolicyEvaluator(
+            env_creator=lambda _: MockEnv(episode_length=40),
+            policy_graph=MockPolicyGraph,
+            sample_async=True,
+            batch_steps=10,
+            batch_mode="truncate_episodes",
+            observation_filter="ConcurrentMeanStdFilter")
+        time.sleep(2)
+        batch = ev.sample()
+        self.assertEqual(batch.count, 40)  # auto-concat up to 5 episodes
+
+    def testAutoVectorization(self):
+        ev = CommonPolicyEvaluator(
+            env_creator=lambda _: MockEnv(episode_length=20),
+            policy_graph=MockPolicyGraph,
+            batch_mode="truncate_episodes",
+            batch_steps=16, num_envs=8)
+        for _ in range(8):
             batch = ev.sample()
-            self.assertEqual(batch.count, batch_size)
+            self.assertEqual(batch.count, 16)
+        result = collect_metrics(ev, [])
+        self.assertEqual(result.episodes_total, 0)
+        for _ in range(8):
+            batch = ev.sample()
+            self.assertEqual(batch.count, 16)
+        result = collect_metrics(ev, [])
+        self.assertEqual(result.episodes_total, 8)
+
+    def testBatchDivisibilityCheck(self):
+        self.assertRaises(
+            ValueError,
+            lambda: CommonPolicyEvaluator(
+                env_creator=lambda _: MockEnv(episode_length=8),
+                policy_graph=MockPolicyGraph,
+                batch_mode="truncate_episodes",
+                batch_steps=15, num_envs=4))
+
+    def testBatchesSmallerWhenVectorized(self):
+        ev = CommonPolicyEvaluator(
+            env_creator=lambda _: MockEnv(episode_length=8),
+            policy_graph=MockPolicyGraph,
+            batch_mode="truncate_episodes",
+            batch_steps=16, num_envs=4)
+        batch = ev.sample()
+        self.assertEqual(batch.count, 16)
+        result = collect_metrics(ev, [])
+        self.assertEqual(result.episodes_total, 0)
+        batch = ev.sample()
+        result = collect_metrics(ev, [])
+        self.assertEqual(result.episodes_total, 4)
+
+    def testVectorEnvSupport(self):
+        ev = CommonPolicyEvaluator(
+            env_creator=lambda _: MockVectorEnv(
+                episode_length=20, num_envs=8),
+            policy_graph=MockPolicyGraph,
+            batch_mode="truncate_episodes",
+            batch_steps=10)
+        for _ in range(8):
+            batch = ev.sample()
+            self.assertEqual(batch.count, 10)
+        result = collect_metrics(ev, [])
+        self.assertEqual(result.episodes_total, 0)
+        for _ in range(8):
+            batch = ev.sample()
+            self.assertEqual(batch.count, 10)
+        result = collect_metrics(ev, [])
+        self.assertEqual(result.episodes_total, 8)
 
     def testTruncateEpisodes(self):
         ev = CommonPolicyEvaluator(
-            env_creator=lambda _: gym.make("CartPole-v0"),
+            env_creator=lambda _: MockEnv(10),
             policy_graph=MockPolicyGraph,
-            batch_steps=2,
+            batch_steps=15,
             batch_mode="truncate_episodes")
         batch = ev.sample()
-        self.assertEqual(batch.count, 2)
-        ev = CommonPolicyEvaluator(
-            env_creator=lambda _: gym.make("CartPole-v0"),
-            policy_graph=MockPolicyGraph,
-            batch_steps=1000,
-            batch_mode="truncate_episodes")
-        self.assertLess(batch.count, 200)
+        self.assertEqual(batch.count, 15)
 
     def testCompleteEpisodes(self):
         ev = CommonPolicyEvaluator(
-            env_creator=lambda _: gym.make("CartPole-v0"),
+            env_creator=lambda _: MockEnv(10),
             policy_graph=MockPolicyGraph,
-            batch_steps=2,
+            batch_steps=5,
             batch_mode="complete_episodes")
         batch = ev.sample()
-        self.assertGreater(batch.count, 2)
-        self.assertTrue(batch["dones"][-1])
+        self.assertEqual(batch.count, 10)
+
+    def testCompleteEpisodesPacking(self):
+        ev = CommonPolicyEvaluator(
+            env_creator=lambda _: MockEnv(10),
+            policy_graph=MockPolicyGraph,
+            batch_steps=15,
+            batch_mode="complete_episodes")
         batch = ev.sample()
-        self.assertGreater(batch.count, 2)
-        self.assertTrue(batch["dones"][-1])
+        self.assertEqual(batch.count, 20)
 
     def testFilterSync(self):
         ev = CommonPolicyEvaluator(
@@ -129,5 +273,5 @@ class TestCommonPolicyEvaluator(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    ray.init()
+    ray.init(num_cpus=5)
     unittest.main(verbosity=2)

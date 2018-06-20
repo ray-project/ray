@@ -65,5 +65,5 @@ class VisionNetwork(Model):
             value (PyTorch): value function for each state"""
         res = self.hidden_layers(obs)
         logits = self.logits(res)
-        value = self.value_branch(res)
+        value = self.value_branch(res).squeeze(1)
         return logits, value
