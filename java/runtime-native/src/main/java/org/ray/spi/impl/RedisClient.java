@@ -30,6 +30,8 @@ public class RedisClient implements KeyValueStoreLink {
       //TODO NUM maybe equels to the thread num
       jedisPoolConfig.setMaxTotal(1);
       jedisPool = new JedisPool(jedisPoolConfig, ipPort[0], Integer.parseInt(ipPort[1]), 30000);
+
+      connect(redisAddress);
     }
   }
 
@@ -203,4 +205,13 @@ public class RedisClient implements KeyValueStoreLink {
   public Object getImpl() {
     return jedisPool;
   }
+
+  @Override
+  public byte[] sendCommand(String command, int commandType, byte[] objectId) {
+    return execute_command(command, commandType, objectId);
+  }
+  
+  private static native void connect(String redisAddress);
+  
+  private static native byte[] execute_command(String command, int commandType, byte[] objectId);
 }

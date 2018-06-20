@@ -23,7 +23,7 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
     bb.order(ByteOrder.LITTLE_ENDIAN);
     return bb;
   });
-  private long client = 0;
+  protected long client = 0;
 
   public DefaultLocalSchedulerClient(String schedulerSockName, UniqueID clientId, UniqueID actorId,
                                      boolean isWorker, long numGpus) {
@@ -45,7 +45,7 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
     if (!task.actorId.isNil()) {
       a = task.cursorId.getBytes();
     }
-    _submitTask(client, a, info, info.position(), info.remaining());
+    _submitTask(client, a, info, info.position(), info.remaining(), false);
   }
 
   @Override
@@ -214,8 +214,8 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
   }
 
   // task -> TaskInfo (with FlatBuffer)
-  private static native void _submitTask(long client, byte[] cursorId, /*Direct*/ByteBuffer task,
-                                         int pos, int sz);
+  protected static native void _submitTask(long client, byte[] cursorId, /*Direct*/ByteBuffer task,
+                                         int pos, int sz, boolean useRaylet);
 
   public void destroy() {
     _destroy(client);

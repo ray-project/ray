@@ -123,4 +123,7 @@ public interface KeyValueStoreLink {
   Long publish(byte[] channel, byte[] message);
 
   Object getImpl();
+
+  byte[] sendCommand(String command, int commandType, byte[] objectId);
+
 }

@@ -33,7 +33,8 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1submitTask(JNIEnv *,
                                                                jbyteArray,
                                                                jobject,
                                                                jint,
-                                                               jint);
+                                                               jint,
+                                                               jboolean);
 
 /*
  * Class:     org_ray_spi_impl_DefaultLocalSchedulerClient
