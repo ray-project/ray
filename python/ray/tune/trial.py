@@ -377,8 +377,7 @@ class Trial(object):
         # Logging for trials is handled centrally by TrialRunner, so
         # configure the remote runner to use a noop-logger.
         self.runner = cls.remote(
-            config=self.config,
-            logger_creator=logger_creator)
+            config=self.config, logger_creator=logger_creator)
 
     def _get_trainable_cls(self):
         return ray.tune.registry._global_registry.get(

@@ -64,9 +64,8 @@ def _make_key(category, key):
     Returns:
         The key to use for storing a the value.
     """
-    return (
-        b"TuneRegistry:" + category.encode("ascii") + b"/" +
-        key.encode("ascii"))
+    return (b"TuneRegistry:" + category.encode("ascii") + b"/" +
+            key.encode("ascii"))
 
 
 class _Registry(object):
