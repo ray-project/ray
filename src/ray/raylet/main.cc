@@ -1,4 +1,3 @@
-#include <algorithm>
 #include <iostream>
 
 #include "common/state/ray_config.h"
@@ -58,10 +57,9 @@ int main(int argc, char *argv[]) {
   object_manager_config.push_timeout_ms =
       RayConfig::instance().object_manager_push_timeout_ms();
 
-  // This may be 0 when core detection fails.
-  int num_cores = std::thread::hardware_concurrency();
-  object_manager_config.max_sends = std::max(1, num_cores / 4);
-  object_manager_config.max_receives = std::max(1, num_cores / 4);
+  int num_cpus = static_cast<int>(static_resource_conf["CPU"]);
+  object_manager_config.max_sends = std::max(1, num_cpus / 4);
+  object_manager_config.max_receives = std::max(1, num_cpus / 4);
   object_manager_config.object_chunk_size =
       RayConfig::instance().object_manager_default_chunk_size();
 
