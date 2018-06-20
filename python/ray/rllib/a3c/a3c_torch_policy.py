@@ -17,9 +17,8 @@ from ray.rllib.utils.policy_graph import PolicyGraph
 class SharedTorchPolicy(PolicyGraph):
     """A simple, non-recurrent PyTorch policy example."""
 
-    def __init__(self, obs_space, action_space, registry, config):
-        PolicyGraph.__init__(self, obs_space, action_space, registry, config)
-        self.registry = registry
+    def __init__(self, obs_space, action_space, config):
+        PolicyGraph.__init__(self, obs_space, action_space, config)
         self.local_steps = 0
         self.config = config
         self.summarize = config.get("summarize")
@@ -28,10 +27,10 @@ class SharedTorchPolicy(PolicyGraph):
         self.lock = Lock()
 
     def setup_graph(self, obs_space, action_space):
-        _, self.logit_dim = ModelCatalog.get_action_dist(action_space)
+        _, self.logit_dim = ModelCatalog.get_action_dist(
+            action_space, self.config["model"])
         self._model = ModelCatalog.get_torch_model(
-            self.registry, obs_space.shape, self.logit_dim,
-            self.config["model"])
+            obs_space.shape, self.logit_dim, self.config["model"])
         self.optimizer = torch.optim.Adam(
             self._model.parameters(), lr=self.config["lr"])
 
