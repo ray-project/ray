@@ -21,7 +21,9 @@ def pass_params_to_gym(env_name):
 
     register(
       id=env_name,
-      entry_point='ray.rllib.examples:' + "MultiAgentMountainCarEnv",
+      entry_point=(
+        "ray.rllib.examples.legacy_multiagent.multiagent_mountaincar_env:"
+        "MultiAgentMountainCarEnv"),
       max_episode_steps=200,
       kwargs={}
     )

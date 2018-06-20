@@ -21,7 +21,9 @@ def pass_params_to_gym(env_name):
 
     register(
       id=env_name,
-      entry_point='ray.rllib.examples:' + "MultiAgentPendulumEnv",
+      entry_point=(
+        "ray.rllib.examples.legacy_multiagent.multiagent_pendulum_env:"
+        "MultiAgentPendulumEnv"),
       max_episode_steps=100,
       kwargs={}
     )
