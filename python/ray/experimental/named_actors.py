@@ -30,7 +30,6 @@ def get_actor(name):
     Returns:
         The ActorHandle object corresponding to the name.
     """
-    worker = ray.worker.get_global_worker()
     actor_name = _calculate_key(name)
     pickled_state = _internal_kv_get(actor_name)
     if pickled_state is None:

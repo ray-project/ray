@@ -2,8 +2,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import base64
 from six.moves import queue
+import base64
+import numpy as np
 import threading
 
 import ray

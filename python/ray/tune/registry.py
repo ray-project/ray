@@ -4,9 +4,6 @@ from __future__ import print_function
 
 from types import FunctionType
 
-import numpy as np
-import pickle
-
 import ray
 import ray.cloudpickle as pickle
 from ray.experimental.internal_kv import _internal_kv_initialized, \
