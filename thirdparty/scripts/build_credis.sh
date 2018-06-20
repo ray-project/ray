@@ -18,6 +18,14 @@ set -e
 TP_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)/../
 ROOT_DIR=$TP_DIR/..
 
+# For some reason, on Ubuntu/gcc toolchain linking against static libleveldb.a
+# doesn't work, so we force building the shared library for non-Mac.
+if [ "$(uname)" == "Darwin" ]; then
+    BUILD_LEVELDB_CONFIG=""
+else
+    BUILD_LEVELDB_CONFIG="-DBUILD_SHARED_LIBS=on"
+fi
+
 if [[ "${RAY_USE_NEW_GCS}" = "on" ]]; then
   pushd "$TP_DIR/pkg/"
     rm -rf credis
@@ -45,9 +53,7 @@ if [[ "${RAY_USE_NEW_GCS}" = "on" ]]; then
     pushd glog; cmake -DWITH_GFLAGS=off . && make -j; popd
     pushd leveldb;
       mkdir -p build && cd build
-      # For some reason, on Ubuntu/gcc toolchain linking against static
-      # libleveldb.a doesn't work, so we force building the shared library here.
-      cmake -DBUILD_SHARED_LIBS=on -DCMAKE_BUILD_TYPE=Release .. && cmake --build .
+      cmake ${BUILD_LEVELDB_CONFIG} -DCMAKE_BUILD_TYPE=Release .. && cmake --build .
     popd
 
     mkdir -p build

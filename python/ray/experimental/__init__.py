@@ -17,6 +17,6 @@ __all__ = [
     "flush_task_and_object_metadata_unsafe", "flush_finished_tasks_unsafe",
     "flush_evicted_objects_unsafe", "_flush_finished_tasks_unsafe_shard",
     "_flush_evicted_objects_unsafe_shard", "get_actor", "register_actor",
-    "get", "wait",
-    "set_flushing_policy", "GcsFlushPolicy", "SimpleGcsFlushPolicy"
+    "get", "wait", "set_flushing_policy", "GcsFlushPolicy",
+    "SimpleGcsFlushPolicy"
 ]

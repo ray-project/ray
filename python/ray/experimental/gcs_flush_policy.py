@@ -2,16 +2,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import logging
+import os
 import time
 
 import ray
 import ray.cloudpickle as pickle
-
-# Set up logging.
-logging.basicConfig()
-log = logging.getLogger(__name__)
-log.setLevel(logging.INFO)
 
 
 class GcsFlushPolicy(object):
@@ -30,10 +25,6 @@ class GcsFlushPolicy(object):
 
     def record_flush(self):
         """Must be called after a flush has been performed."""
-        pass
-
-    def serialize(self):
-        """Serialize."""
         pass
 
 
@@ -71,17 +62,9 @@ class SimpleGcsFlushPolicy(GcsFlushPolicy):
         if time.time() - self.last_flush_timestamp < self.flush_period_secs:
             return False
 
-        reply = redis_client.execute_command("INFO MEMORY")
-        reply = reply.split(b"\n")
-        used_memory = -1
-        for line in reply:
-            if line.startswith(b"used_memory:"):
-                used_memory = int(line.split(b":")[-1])
-                break
+        used_memory = redis_client.info("memory")["used_memory"]
         assert used_memory > 0
 
-        log.debug("used_memory {} threshold {}".format(
-            used_memory, self.flush_when_at_least_bytes))
         return used_memory >= self.flush_when_at_least_bytes
 
     def num_entries_to_flush(self):
@@ -96,8 +79,13 @@ class SimpleGcsFlushPolicy(GcsFlushPolicy):
 
 def set_flushing_policy(flushing_policy):
     """Serialize this policy for Monitor to pick up."""
+    if not "RAY_USE_NEW_GCS" in os.environ:
+        raise Exception(
+            "set_flushing_policy() is only available when environment "
+            "variable RAY_USE_NEW_GCS is present at both compile and run time."
+        )
     ray.worker.global_worker.check_connected()
     redis_client = ray.worker.global_worker.redis_client
 
-    serialized = flushing_policy.serialize()
+    serialized = pickle.dumps(flushing_policy)
     redis_client.set("gcs_flushing_policy", serialized)
