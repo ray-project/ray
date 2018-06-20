@@ -14,7 +14,6 @@ import ray
 from ray.rllib.agent import get_agent_class
 from ray.rllib.dqn.common.wrappers import wrap_dqn
 from ray.rllib.models import ModelCatalog
-from ray.tune.registry import get_registry
 
 EXAMPLE_USAGE = """
 example usage:
@@ -74,10 +73,9 @@ if __name__ == "__main__":
 
     if args.run == "DQN":
         env = gym.make(args.env)
-        env = wrap_dqn(get_registry(), env, args.config.get("model", {}))
+        env = wrap_dqn(env, args.config.get("model", {}))
     else:
-        env = ModelCatalog.get_preprocessor_as_wrapper(get_registry(),
-                                                       gym.make(args.env))
+        env = ModelCatalog.get_preprocessor_as_wrapper(gym.make(args.env))
     if args.out is not None:
         rollouts = []
     steps = 0
