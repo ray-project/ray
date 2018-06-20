@@ -188,7 +188,7 @@ def _env_runner(
 
     while True:
         # Get observations from ready envs
-        unfiltered_obs, rewards, dones, _, off_policy_actions = \
+        unfiltered_obs, rewards, dones, infos, off_policy_actions = \
             async_vector_env.poll()
         ready_eids = []
         ready_obs = []
@@ -216,24 +216,25 @@ def _env_runner(
             else:
                 done = False
 
-            episode.batch_builder.add_values(
-                obs=episode.last_observation,
-                actions=episode.last_action_flat(),
-                rewards=rewards[eid],
-                dones=done,
-                new_obs=filtered_obs,
-                **episode.last_pi_info)
+            if infos[eid].get("training_enabled", True):
+                episode.batch_builder.add_values(
+                    obs=episode.last_observation,
+                    actions=episode.last_action_flat(),
+                    rewards=rewards[eid],
+                    dones=done,
+                    new_obs=filtered_obs,
+                    **episode.last_pi_info)
 
-            # Cut the batch if we're not packing multiple episodes into one,
-            # or if we've exceeded the requested batch size.
-            if (done and not pack) or \
-                    episode.batch_builder.count >= num_local_steps:
-                yield episode.batch_builder.build_and_reset(
-                    policy.postprocess_trajectory)
-            elif done:
-                # Make sure postprocessor never goes across episode boundaries
-                episode.batch_builder.postprocess_batch_so_far(
-                    policy.postprocess_trajectory)
+                # Cut the batch if we're not packing multiple episodes into
+                # one, or if we've exceeded the requested batch size.
+                if (done and not pack) or \
+                        episode.batch_builder.count >= num_local_steps:
+                    yield episode.batch_builder.build_and_reset(
+                        policy.postprocess_trajectory)
+                elif done:
+                    # Make sure postprocessor never crosses episode boundaries
+                    episode.batch_builder.postprocess_batch_so_far(
+                        policy.postprocess_trajectory)
 
             if done:
                 # Handle episode termination

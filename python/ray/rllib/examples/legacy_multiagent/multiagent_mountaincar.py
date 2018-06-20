@@ -1,6 +1,6 @@
-""" Run script for multiagent pendulum env. Each agent outputs a
-torque which is summed to form the total torque. This is a
-continuous multiagent example
+""" Multiagent mountain car. Each agent outputs an action which
+is summed to form the total action. This is a discrete
+multiagent example
 """
 
 import gym
@@ -10,7 +10,7 @@ import ray
 import ray.rllib.ppo as ppo
 from ray.tune.registry import register_env
 
-env_name = "MultiAgentPendulumEnv"
+env_name = "MultiAgentMountainCarEnv"
 
 env_version_num = 0
 env_name = env_name + '-v' + str(env_version_num)
@@ -21,8 +21,10 @@ def pass_params_to_gym(env_name):
 
     register(
       id=env_name,
-      entry_point='ray.rllib.examples:' + "MultiAgentPendulumEnv",
-      max_episode_steps=100,
+      entry_point=(
+        "ray.rllib.examples.legacy_multiagent.multiagent_mountaincar_env:"
+        "MultiAgentMountainCarEnv"),
+      max_episode_steps=200,
       kwargs={}
     )
 
@@ -44,11 +46,11 @@ if __name__ == '__main__':
     config["num_sgd_iter"] = 10
     config["gamma"] = 0.999
     config["horizon"] = horizon
-    config["use_gae"] = True
+    config["use_gae"] = False
     config["model"].update({"fcnet_hiddens": [256, 256]})
-    options = {"multiagent_obs_shapes": [3, 3],
+    options = {"multiagent_obs_shapes": [2, 2],
                "multiagent_act_shapes": [1, 1],
-               "multiagent_shared_model": True,
+               "multiagent_shared_model": False,
                "multiagent_fcnet_hiddens": [[32, 32]] * 2}
     config["model"].update({"custom_options": options})
     alg = ppo.PPOAgent(env=env_name, config=config)
