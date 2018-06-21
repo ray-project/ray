@@ -273,7 +273,8 @@ class CommonPolicyEvaluator(PolicyEvaluator):
 
     def _build_policy_map(self, policy_dict, policy_config):
         policy_map = {}
-        for name, (cls, obs_space, act_space, conf) in policy_dict.items():
+        for name, (cls, obs_space, act_space, conf) in sorted(
+                policy_dict.items()):
             merged_conf = policy_config.copy()
             merged_conf.update(conf)
             with tf.variable_scope(name):
