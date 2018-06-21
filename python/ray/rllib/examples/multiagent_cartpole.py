@@ -6,8 +6,8 @@ from __future__ import print_function
 
 Control the number of agents and policies via --num-agents and --num-policies.
 
-This works with thousands of agents and hundreds of policies, but note that
-initializing the TF policy graphs will take some time.
+This works with hundreds of agents and policies, but note that initializing
+many TF policy graphs will take some time.
 """
 
 import argparse
