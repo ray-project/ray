@@ -3,8 +3,8 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
-import numpy
 import json
+import numpy
 import os
 import random
 import types
