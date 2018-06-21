@@ -224,7 +224,8 @@ def _env_runner(
                 episode.set_last_observation(agent_id, filtered_obs)
 
                 # Record transition info if applicable
-                if last_observation is not None:
+                if last_observation is not None and \
+                        infos[env_id][agent_id].get("training_enabled", True):
                     episode.batch_builder.add_values(
                         agent_id,
                         policy_id,

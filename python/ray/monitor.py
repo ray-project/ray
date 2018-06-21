@@ -10,6 +10,7 @@ import time
 from collections import Counter, defaultdict
 
 import ray
+import ray.cloudpickle as pickle
 import ray.utils
 import redis
 # Import flatbuffer bindings.
@@ -112,6 +113,19 @@ class Monitor(object):
                                                  self.load_metrics)
         else:
             self.autoscaler = None
+
+        # Experimental feature: GCS flushing.
+        self.issue_gcs_flushes = "RAY_USE_NEW_GCS" in os.environ
+        self.gcs_flush_policy = None
+        if self.issue_gcs_flushes:
+            # For now, we take the primary redis server to issue flushes,
+            # because task table entries are stored there under this flag.
+            try:
+                self.redis.execute_command("HEAD.FLUSH 0")
+            except redis.exceptions.ResponseError as e:
+                log.info("Turning off flushing due to exception: {}".format(
+                    str(e)))
+                self.issue_gcs_flushes = False
 
     def subscribe(self, channel):
         """Subscribe to the given channel.
@@ -534,6 +548,37 @@ class Monitor(object):
                 or local_scheduler_info["NodeManagerAddress"]).split(":")[0]
             self.local_scheduler_id_to_ip_map[client_id] = ip_address
 
+    def _maybe_flush_gcs(self):
+        """Experimental: issue a flush request to the GCS.
+
+        The purpose of this feature is to control GCS memory usage.
+
+        To activate this feature, Ray must be compiled with the flag
+        RAY_USE_NEW_GCS set, and Ray must be started at run time with the flag
+        as well.
+        """
+        if not self.issue_gcs_flushes:
+            return
+        if self.gcs_flush_policy is None:
+            serialized = self.redis.get("gcs_flushing_policy")
+            if serialized is None:
+                # Client has not set any policy; by default flushing is off.
+                return
+            self.gcs_flush_policy = pickle.loads(serialized)
+
+        if not self.gcs_flush_policy.should_flush(self.redis):
+            return
+
+        max_entries_to_flush = self.gcs_flush_policy.num_entries_to_flush()
+        num_flushed = self.redis.execute_command(
+            "HEAD.FLUSH {}".format(max_entries_to_flush))
+        log.info('num_flushed {}'.format(num_flushed))
+
+        # This flushes event log and log files.
+        ray.experimental.flush_redis_unsafe(self.redis)
+
+        self.gcs_flush_policy.record_flush()
+
     def run(self):
         """Run the monitor.
 
@@ -578,12 +623,16 @@ class Monitor(object):
             if self.autoscaler:
                 self.autoscaler.update()
 
+            self._maybe_flush_gcs()
+
             # Record how many dead local schedulers and plasma managers we had
             # at the beginning of this round.
             num_dead_local_schedulers = len(self.dead_local_schedulers)
             num_dead_plasma_managers = len(self.dead_plasma_managers)
+
             # Process a round of messages.
             self.process_messages()
+
             # If any new local schedulers or plasma managers were marked as
             # dead in this round, clean up the associated state.
             if len(self.dead_local_schedulers) > num_dead_local_schedulers:
