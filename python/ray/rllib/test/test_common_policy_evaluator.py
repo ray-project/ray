@@ -20,7 +20,7 @@ class MockPolicyGraph(PolicyGraph):
     def compute_actions(self, obs_batch, state_batches, is_training=False):
         return [0] * len(obs_batch), [], {}
 
-    def postprocess_trajectory(self, batch, other_agent_batches):
+    def postprocess_trajectory(self, batch, other_agent_batches=None):
         return compute_advantages(batch, 100.0, 0.9, use_gae=False)
 
 
@@ -28,7 +28,7 @@ class BadPolicyGraph(PolicyGraph):
     def compute_actions(self, obs_batch, state_batches, is_training=False):
         raise Exception("intentional error")
 
-    def postprocess_trajectory(self, batch, other_agent_batches):
+    def postprocess_trajectory(self, batch, other_agent_batches=None):
         return compute_advantages(batch, 100.0, 0.9, use_gae=False)
 
 
