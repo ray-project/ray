@@ -235,7 +235,8 @@ def _env_runner(
                 episode.set_last_observation(agent_id, filtered_obs)
 
                 # Record transition info if applicable
-                if last_observation is not None:
+                if last_observation is not None and \
+                        infos[env_id][agent_id].get("training_enabled", True):
                     episode.batch_builder.add_values(
                         agent_id,
                         policy_id,
@@ -250,12 +251,13 @@ def _env_runner(
 
             # Cut the batch if we're not packing multiple episodes into one,
             # or if we've exceeded the requested batch size.
-            if (all_done and not pack) or \
-                    episode.batch_builder.count >= num_local_steps:
-                yield episode.batch_builder.build_and_reset()
-            elif all_done:
-                # Make sure postprocessor never goes across episode boundaries
-                episode.batch_builder.postprocess_batch_so_far()
+            if episode.batch_builder.has_pending_data():
+                if (all_done and not pack) or \
+                        episode.batch_builder.count >= num_local_steps:
+                    yield episode.batch_builder.build_and_reset()
+                elif all_done:
+                    # Make sure postprocessor stays within one episode
+                    episode.batch_builder.postprocess_batch_so_far()
 
             if all_done:
                 # Handle episode termination

@@ -103,7 +103,7 @@ class SharedTorchPolicy(PolicyGraph):
         torch.nn.utils.clip_grad_norm_(self._model.parameters(),
                                        self.config["grad_clip"])
 
-    def postprocess_trajectory(self, sample_batch, other_agent_batches):
+    def postprocess_trajectory(self, sample_batch, other_agent_batches=None):
         completed = sample_batch["dones"][-1]
         if completed:
             last_r = 0.0

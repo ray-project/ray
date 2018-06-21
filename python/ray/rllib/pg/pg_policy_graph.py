@@ -41,6 +41,6 @@ class PGPolicyGraph(TFPolicyGraph):
             loss_inputs=self.loss_in, is_training=self.is_training)
         self.sess.run(tf.global_variables_initializer())
 
-    def postprocess_trajectory(self, sample_batch, other_agent_batches):
+    def postprocess_trajectory(self, sample_batch, other_agent_batches=None):
         return compute_advantages(
             sample_batch, 0.0, self.config["gamma"], use_gae=False)

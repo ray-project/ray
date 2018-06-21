@@ -19,9 +19,6 @@ class ActorAPI(unittest.TestCase):
     def tearDown(self):
         ray.worker.cleanup()
 
-    @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
     def testKeywordArgs(self):
         ray.init(num_workers=0, driver_mode=ray.SILENT_MODE)
 
@@ -78,9 +75,6 @@ class ActorAPI(unittest.TestCase):
         with self.assertRaises(Exception):
             ray.get(actor.get_values.remote())
 
-    @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
     def testVariableNumberOfArgs(self):
         ray.init(num_workers=0)
 
@@ -247,9 +241,6 @@ class ActorAPI(unittest.TestCase):
             def __init__(self):
                 pass
 
-    @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
     def testRandomIDGeneration(self):
         ray.init(num_workers=0)
 
@@ -343,9 +334,6 @@ class ActorMethods(unittest.TestCase):
         with self.assertRaises(Exception):
             t.f(1)
 
-    @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
     def testActorDeletion(self):
         ray.init(num_workers=0)
 
@@ -594,9 +582,6 @@ class ActorNesting(unittest.TestCase):
         actor2 = Actor2.remote(3, 4)
         self.assertEqual(ray.get(actor2.get_values.remote(5)), (3, 4))
 
-    @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
     def testDefineActorWithinRemoteFunction(self):
         # Make sure we can define and actors within remote funtions.
         ray.init(num_cpus=10)

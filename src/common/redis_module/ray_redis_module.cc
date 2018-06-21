@@ -656,6 +656,7 @@ int TableAdd_RedisCommand(RedisModuleCtx *ctx,
 int ChainTableAdd_RedisCommand(RedisModuleCtx *ctx,
                                RedisModuleString **argv,
                                int argc) {
+  RedisModule_AutoMemory(ctx);
   return module.ChainReplicate(ctx, argv, argc, /*node_func=*/TableAdd_DoWrite,
                                /*tail_func=*/TableAdd_DoPublish);
 }

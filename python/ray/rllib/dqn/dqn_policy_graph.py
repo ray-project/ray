@@ -176,7 +176,7 @@ class DQNPolicyGraph(TFPolicyGraph):
             "td_error": self.td_error,
         }
 
-    def postprocess_trajectory(self, sample_batch, other_agent_batches):
+    def postprocess_trajectory(self, sample_batch, other_agent_batches=None):
         return _postprocess_dqn(self, sample_batch)
 
     def compute_td_error(

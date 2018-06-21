@@ -70,7 +70,7 @@ class PolicyGraph(object):
         return action, [s[0] for s in state_out], \
             {k: v[0] for k, v in info.items()}
 
-    def postprocess_trajectory(self, sample_batch, other_agent_batches):
+    def postprocess_trajectory(self, sample_batch, other_agent_batches=None):
         """Implements algorithm-specific trajectory postprocessing.
 
         Arguments:

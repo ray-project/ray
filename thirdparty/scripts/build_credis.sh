@@ -18,6 +18,14 @@ set -e
 TP_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)/../
 ROOT_DIR=$TP_DIR/..
 
+# For some reason, on Ubuntu/gcc toolchain linking against static libleveldb.a
+# doesn't work, so we force building the shared library for non-Mac.
+if [ "$(uname)" == "Darwin" ]; then
+    BUILD_LEVELDB_CONFIG=""
+else
+    BUILD_LEVELDB_CONFIG="-DBUILD_SHARED_LIBS=on"
+fi
+
 if [[ "${RAY_USE_NEW_GCS}" = "on" ]]; then
   pushd "$TP_DIR/pkg/"
     rm -rf credis
@@ -25,8 +33,7 @@ if [[ "${RAY_USE_NEW_GCS}" = "on" ]]; then
   popd
 
   pushd "$TP_DIR/pkg/credis"
-    # 4/10/2018 credis/integrate branch.  With updated redis hacks.
-    git checkout cbe8ade35d2278b1d94684fa5d00010cb015ef82
+    git checkout 273d667e5126c246b45f5dcf030b651a653136c3
 
     # If the above commit points to different submodules' commits than
     # origin's head, this updates the submodules.
@@ -43,18 +50,21 @@ if [[ "${RAY_USE_NEW_GCS}" = "on" ]]; then
     else
         pushd redis && make -j MALLOC=jemalloc && popd
     fi
-    pushd glog && cmake -DWITH_GFLAGS=off . && make -j && popd
-    # NOTE(zongheng): DO NOT USE -j parallel build for leveldb as it's incorrect!
-    pushd leveldb && CXXFLAGS="$CXXFLAGS -fPIC" make && popd
+    pushd glog; cmake -DWITH_GFLAGS=off . && make -j; popd
+    pushd leveldb;
+      mkdir -p build && cd build
+      cmake ${BUILD_LEVELDB_CONFIG} -DCMAKE_BUILD_TYPE=Release .. && cmake --build .
+    popd
 
-    mkdir build
+    mkdir -p build
     pushd build
-      cmake ..
+      cmake -DCMAKE_BUILD_TYPE=Release ..
       make -j
     popd
 
     mkdir -p $ROOT_DIR/build/src/credis/redis/src/
     cp redis/src/redis-server $ROOT_DIR/build/src/credis/redis/src/redis-server
+
     mkdir -p $ROOT_DIR/build/src/credis/build/src/
     cp build/src/libmaster.so $ROOT_DIR/build/src/credis/build/src/libmaster.so
     cp build/src/libmember.so $ROOT_DIR/build/src/credis/build/src/libmember.so
