@@ -88,7 +88,11 @@ class MultiAgentSampleBatchBuilder(object):
         builder.add_values(**values)
 
     def postprocess_batch_so_far(self):
-        """Apply policy postprocessors to any unprocessed rows."""
+        """Apply policy postprocessors to any unprocessed rows.
+
+        This pushes the postprocessed per-agent batches onto the per-policy
+        builders, clearing per-agent state.
+        """
 
         # Materialize the batches so far
         pre_batches = {}

@@ -22,6 +22,8 @@ from ray.tune.registry import register_env
 
 
 class BasicMultiAgent(MultiAgentEnv):
+    """Env of N independent agents, each of which exits after 25 steps."""
+
     def __init__(self, num):
         self.agents = [MockEnv(25) for _ in range(num)]
         self.dones = set()
@@ -43,10 +45,16 @@ class BasicMultiAgent(MultiAgentEnv):
 
 
 class RoundRobinMultiAgent(MultiAgentEnv):
+    """Env of N independent agents, each of which exits after 5 steps.
+
+    On each step() of the env, only one agent takes an action."""
+
     def __init__(self, num, increment_obs=False):
         if increment_obs:
+            # Observations are 0, 1, 2, 3... etc. as time advances
             self.agents = [MockEnv2(5) for _ in range(num)]
         else:
+            # Observations are all zeros
             self.agents = [MockEnv(5) for _ in range(num)]
         self.dones = set()
         self.last_obs = {}
