@@ -240,12 +240,13 @@ def _env_runner(
 
             # Cut the batch if we're not packing multiple episodes into one,
             # or if we've exceeded the requested batch size.
-            if (all_done and not pack) or \
-                    episode.batch_builder.count >= num_local_steps:
-                yield episode.batch_builder.build_and_reset()
-            elif all_done:
-                # Make sure postprocessor never goes across episode boundaries
-                episode.batch_builder.postprocess_batch_so_far()
+            if episode.batch_builder.has_pending_data():
+                if (all_done and not pack) or \
+                        episode.batch_builder.count >= num_local_steps:
+                    yield episode.batch_builder.build_and_reset()
+                elif all_done:
+                    # Make sure postprocessor stays within one episode
+                    episode.batch_builder.postprocess_batch_so_far()
 
             if all_done:
                 # Handle episode termination

@@ -63,6 +63,11 @@ class MultiAgentSampleBatchBuilder(object):
         self.agent_to_policy = {}
         self.count = 0  # increment this manually
 
+    def has_pending_data(self):
+        """Returns whether there is pending unprocessed data."""
+
+        return len(self.agent_builders) > 0
+
     def add_values(self, agent_id, policy_id, **values):
         """Add the given dictionary (row) of values to this batch.
 
