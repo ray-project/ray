@@ -873,10 +873,13 @@ void NodeManager::HandleObjectLocal(const ObjectID &object_id) {
   if (ready_task_ids.size() > 0) {
     std::unordered_set<TaskID> ready_task_id_set(ready_task_ids.begin(),
                                                  ready_task_ids.end());
-    auto ready_tasks = local_queues_.RemoveTasks(ready_task_id_set);
-    local_queues_.QueueReadyTasks(std::vector<Task>(ready_tasks));
-    // Schedule the newly ready tasks.
-    ScheduleTasks();
+//    auto ready_tasks = local_queues_.RemoveTasks(ready_task_id_set);
+//    local_queues_.QueueReadyTasks(std::vector<Task>(ready_tasks));
+//    ScheduleTasks();
+    // Transition tasks from waiting to scheduled.
+    local_queues_.MoveTasks(ready_task_id_set, WAITING, SCHEDULED);
+    // New scheduled tasks appeared in the queue, try to dispatch them.
+    DispatchTasks();
   }
 }
 
