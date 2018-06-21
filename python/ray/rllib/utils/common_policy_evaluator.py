@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import gym
 import numpy as np
 import pickle
@@ -20,7 +21,8 @@ from ray.rllib.utils.multi_agent_env import MultiAgentEnv
 from ray.rllib.utils.policy_graph import PolicyGraph
 from ray.rllib.utils.sampler import AsyncSampler, SyncSampler
 from ray.rllib.utils.serving_env import ServingEnv
-from ray.rllib.utils.tf_policy_graph import TFPolicyGraph, TFRunBuilder
+from ray.rllib.utils.tf_policy_graph import TFPolicyGraph
+from ray.rllib.utils.tf_run_builder import TFRunBuilder
 from ray.rllib.utils.vector_env import VectorEnv
 from ray.tune.result import TrainingResult
 
@@ -30,6 +32,7 @@ def collect_metrics(local_evaluator, remote_evaluators=[]):
 
     episode_rewards = []
     episode_lengths = []
+    policy_rewards = collections.defaultdict(list)
     metric_lists = ray.get(
         [a.apply.remote(lambda ev: ev.sampler.get_metrics())
          for a in remote_evaluators])
@@ -38,6 +41,8 @@ def collect_metrics(local_evaluator, remote_evaluators=[]):
         for episode in metrics:
             episode_lengths.append(episode.episode_length)
             episode_rewards.append(episode.episode_reward)
+            for (_, policy_id), reward in episode.agent_rewards.items():
+                policy_rewards[policy_id].append(reward)
     if episode_rewards:
         min_reward = min(episode_rewards)
         max_reward = max(episode_rewards)
@@ -48,13 +53,17 @@ def collect_metrics(local_evaluator, remote_evaluators=[]):
     avg_length = np.mean(episode_lengths)
     timesteps = np.sum(episode_lengths)
 
+    for policy_id, rewards in policy_rewards.copy().items():
+        policy_rewards[policy_id] = np.mean(rewards)
+
     return TrainingResult(
         episode_reward_max=max_reward,
         episode_reward_min=min_reward,
         episode_reward_mean=avg_reward,
         episode_len_mean=avg_length,
         episodes_total=len(episode_lengths),
-        timesteps_this_iter=timesteps)
+        timesteps_this_iter=timesteps,
+        policy_reward_mean=dict(policy_rewards))
 
 
 class CommonPolicyEvaluator(PolicyEvaluator):
@@ -113,7 +122,7 @@ class CommonPolicyEvaluator(PolicyEvaluator):
             self,
             env_creator,
             policy_graph,
-            policy_mapping_fn=lambda agent_id: DEFAULT_POLICY_ID,
+            policy_mapping_fn=None,
             tf_session_creator=None,
             batch_steps=100,
             batch_mode="truncate_episodes",
@@ -179,6 +188,8 @@ class CommonPolicyEvaluator(PolicyEvaluator):
         env_config = env_config or {}
         policy_config = policy_config or {}
         model_config = model_config or {}
+        policy_mapping_fn = (
+            policy_mapping_fn or (lambda agent_id: DEFAULT_POLICY_ID))
         self.env_creator = env_creator
         self.policy_graph = policy_graph
         self.batch_steps = batch_steps
@@ -300,10 +311,10 @@ class CommonPolicyEvaluator(PolicyEvaluator):
 
         return func(self.policy_map[policy_id])
 
-    def for_policy_map(self, func):
-        """Apply the given function to the map of all policies."""
+    def foreach_policy(self, func):
+        """Apply the given function to each (policy, policy_id) tuple."""
 
-        return func(self.policy_map)
+        return [func(policy, pid) for pid, policy in self.policy_map.items()]
 
     def sync_filters(self, new_filters):
         """Changes self's filter to given and rebases any accumulated delta.
@@ -331,8 +342,10 @@ class CommonPolicyEvaluator(PolicyEvaluator):
                 f.clear_buffer()
         return return_filters
 
-    def get_weights(self, policy_ids=frozenset([DEFAULT_POLICY_ID])):
-        return {pid: self.policy_map[pid] for pid in sorted(policy_ids)}
+    def get_weights(self):
+        return {
+            pid: policy.get_weights()
+            for pid, policy in self.policy_map.items()}
 
     def set_weights(self, weights):
         for pid, w in weights.items():
@@ -340,21 +353,20 @@ class CommonPolicyEvaluator(PolicyEvaluator):
 
     def compute_gradients(self, samples):
         if isinstance(samples, MultiAgentBatch):
+            grad_out, info_out = {}, {}
             if self.tf_sess is not None:
                 builder = TFRunBuilder(self.tf_sess)
-                outputs = {
-                    pid: self.policy_map[pid].build_compute_gradients(
-                        builder, batch)
-                    for pid, batch in samples.policy_batches.items()
-                }
-                return {
-                    k: builder.get(v) for k, v in outputs.items()
-                }
+                for pid, batch in samples.policy_batches.items():
+                    grad_out[pid], info_out[pid] = (
+                        self.policy_map[pid].build_compute_gradients(
+                            builder, batch))
+                grad_out = {k: builder.get(v) for k, v in grad_out.items()}
+                info_out = {k: builder.get(v) for k, v in info_out.items()}
             else:
-                return {
-                    pid: self.policy_map[pid].compute_gradients(batch)
-                    for pid, batch in samples.policy_batches.items()
-                }
+                for pid, batch in samples.policy_batches.items():
+                    grad_out[pid], info_out[pid] = (
+                        self.policy_map[pid].compute_gradients(batch))
+            return grad_out, info_out
         else:
             return self.policy_map[DEFAULT_POLICY_ID].compute_gradients(
                 samples)
@@ -381,21 +393,19 @@ class CommonPolicyEvaluator(PolicyEvaluator):
 
     def compute_apply(self, samples):
         if isinstance(samples, MultiAgentBatch):
+            info_out = {}
             if self.tf_sess is not None:
                 builder = TFRunBuilder(self.tf_sess)
-                outputs = {
-                    pid: self.policy_map[pid].build_compute_apply(
-                        builder, batch)
-                    for pid, batch in samples.policy_batches.items()
-                }
-                return {
-                    k: builder.get(v) for k, v in outputs.items()
-                }
+                for pid, batch in samples.policy_batches.items():
+                    info_out[pid], _ = (
+                        self.policy_map[pid].build_compute_apply(
+                            builder, batch))
+                info_out = {k: builder.get(v) for k, v in info_out.items()}
             else:
-                return {
-                    pid: self.policy_map[pid].compute_apply(g)[0]
-                    for pid, batch in samples.policy_batches.items()
-                }
+                for pid, batch in samples.policy_batches.items():
+                    info_out[pid], _ = (
+                        self.policy_map[pid].compute_apply(batch))
+            return info_out
         else:
             grad_fetch, apply_fetch = (
                 self.policy_map[DEFAULT_POLICY_ID].compute_apply(samples))

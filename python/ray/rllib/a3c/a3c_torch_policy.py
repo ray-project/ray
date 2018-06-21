@@ -8,6 +8,7 @@ from threading import Lock
 import torch
 import torch.nn.functional as F
 
+import ray
 from ray.rllib.models.pytorch.misc import var_to_np, convert_batch
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.utils.process_rollout import compute_advantages
@@ -18,6 +19,7 @@ class SharedTorchPolicy(PolicyGraph):
     """A simple, non-recurrent PyTorch policy example."""
 
     def __init__(self, obs_space, action_space, config):
+        config = dict(ray.rllib.a3c.a3c.DEFAULT_CONFIG, **config)
         PolicyGraph.__init__(self, obs_space, action_space, config)
         self.local_steps = 0
         self.config = config

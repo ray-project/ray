@@ -7,6 +7,7 @@ import numpy as np
 import tensorflow as tf
 import tensorflow.contrib.layers as layers
 
+import ray
 from ray.rllib.models import ModelCatalog
 from ray.rllib.optimizers.sample_batch import SampleBatch
 from ray.rllib.utils.error import UnsupportedSpaceException
@@ -47,6 +48,7 @@ def adjust_nstep(n_step, gamma, obs, actions, rewards, new_obs, dones):
 
 class DQNPolicyGraph(TFPolicyGraph):
     def __init__(self, observation_space, action_space, config):
+        config = dict(ray.rllib.dqn.dqn.DEFAULT_CONFIG, **config)
         if not isinstance(action_space, Discrete):
             raise UnsupportedSpaceException(
                 "Action space {} is not supported for DQN.".format(

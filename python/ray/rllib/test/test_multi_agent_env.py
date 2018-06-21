@@ -3,12 +3,15 @@ from __future__ import division
 from __future__ import print_function
 
 import gym
+import random
 import unittest
 
 import ray
 from ray.rllib.pg import PGAgent
 from ray.rllib.pg.pg_policy_graph import PGPolicyGraph
-from ray.rllib.optimizers import LocalSyncOptimizer
+from ray.rllib.dqn.dqn_policy_graph import DQNPolicyGraph
+from ray.rllib.optimizers import LocalSyncOptimizer, \
+    LocalSyncReplayOptimizer, AsyncOptimizer
 from ray.rllib.test.test_common_policy_evaluator import MockEnv, MockEnv2, \
     MockPolicyGraph
 from ray.rllib.utils.common_policy_evaluator import CommonPolicyEvaluator, \
@@ -253,30 +256,89 @@ class TestMultiAgentEnv(unittest.TestCase):
                 return
         raise Exception("failed to improve reward")
 
-    def testTrainMultiCartpoleDualPolicies(self):
+    def _testWithOptimizer(self, optimizer_cls):
+        n = 3
         env = gym.make("CartPole-v0")
         act_space = env.action_space
         obs_space = env.observation_space
-        conf = {
-            "model": {},
-            "gamma": 0.99,
-        }
+        dqn_config = {"gamma": 0.95, "n_step": 3}
+        if optimizer_cls == LocalSyncReplayOptimizer:
+            # TODO: support replay with non-DQN graphs. Currently this can't
+            # happen since the replay buffer doesn't encode extra fields like
+            # "advantages" that PG uses.
+            policies = {
+                "p1": (DQNPolicyGraph, obs_space, act_space, {}),
+                "p2": (DQNPolicyGraph, obs_space, act_space, dqn_config),
+            }
+        else:
+            policies = {
+                "p1": (PGPolicyGraph, obs_space, act_space, dqn_config),
+                "p2": (DQNPolicyGraph, obs_space, act_space, dqn_config),
+            }
         ev = CommonPolicyEvaluator(
-            env_creator=lambda _: MultiCartpole(10),
-            policy_graph={
-                "p0": (PGPolicyGraph, obs_space, act_space, conf),
-                "p1": (PGPolicyGraph, obs_space, act_space, conf),
-            },
-            policy_mapping_fn=lambda agent_id: "p{}".format(agent_id % 2),
+            env_creator=lambda _: MultiCartpole(n),
+            policy_graph=policies,
+            policy_mapping_fn=lambda agent_id: ["p1", "p2"][agent_id % 2],
             batch_steps=50)
-        optimizer = LocalSyncOptimizer({}, ev, [])
-        for _ in range(100):
+        if optimizer_cls == AsyncOptimizer:
+            remote_evs = [CommonPolicyEvaluator.as_remote().remote(
+                env_creator=lambda _: MultiCartpole(n),
+                policy_graph=policies,
+                policy_mapping_fn=lambda agent_id: ["p1", "p2"][agent_id % 2],
+                batch_steps=50)]
+        else:
+            remote_evs = []
+        optimizer = optimizer_cls({}, ev, remote_evs)
+        ev.foreach_policy(
+            lambda p, _: p.set_epsilon(0.02)
+            if isinstance(p, DQNPolicyGraph) else None)
+        for i in range(200):
             optimizer.step()
-            print(collect_metrics(ev))
-        pass  # TODO
+            result = collect_metrics(ev, remote_evs)
+            if i % 20 == 0:
+                ev.foreach_policy(
+                    lambda p, _: p.update_target()
+                    if isinstance(p, DQNPolicyGraph) else None)
+                print("Iter {}, rew {}".format(i, result.policy_reward_mean))
+                print("Total reward", result.episode_reward_mean)
+            if result.episode_reward_mean >= 25 * n:
+                return
+        print(result)
+        raise Exception("failed to improve reward")
+
+    def testMultiAgentSyncOptimizer(self):
+        self._testWithOptimizer(LocalSyncOptimizer)
+
+    def testMultiAgentAsyncOptimizer(self):
+        self._testWithOptimizer(AsyncOptimizer)
+
+    def testMultiAgentReplayOptimizer(self):
+        self._testWithOptimizer(LocalSyncReplayOptimizer)
 
     def testTrainMultiCartpoleManyPolicies(self):
-        pass  # TODO
+        n = 20
+        env = gym.make("CartPole-v0")
+        act_space = env.action_space
+        obs_space = env.observation_space
+        policies = {}
+        for i in range(20):
+            policies["pg_{}".format(i)] = (
+                PGPolicyGraph, obs_space, act_space, {})
+        policy_ids = list(policies.keys())
+        ev = CommonPolicyEvaluator(
+            env_creator=lambda _: MultiCartpole(n),
+            policy_graph=policies,
+            policy_mapping_fn=lambda agent_id: random.choice(policy_ids),
+            batch_steps=100)
+        optimizer = LocalSyncOptimizer({}, ev, [])
+        for i in range(100):
+            optimizer.step()
+            result = collect_metrics(ev)
+            print("Iteration {}, rew {}".format(i, result.policy_reward_mean))
+            print("Total reward", result.episode_reward_mean)
+            if result.episode_reward_mean >= 25 * n:
+                return
+        raise Exception("failed to improve reward")
 
 
 if __name__ == '__main__':

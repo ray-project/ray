@@ -82,6 +82,7 @@ def _build_q_network(inputs, action_inputs, config):
 
 class DDPGPolicyGraph(TFPolicyGraph):
     def __init__(self, observation_space, action_space, config):
+        config = dict(ray.rllib.ddpg.ddpg.DEFAULT_CONFIG, **config)
         if not isinstance(action_space, Box):
             raise UnsupportedSpaceException(
                 "Action space {} is not supported for DDPG.".format(

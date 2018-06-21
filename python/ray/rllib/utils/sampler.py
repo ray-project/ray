@@ -10,7 +10,7 @@ import threading
 from ray.rllib.optimizers.sample_batch import MultiAgentSampleBatchBuilder, \
     MultiAgentBatch
 from ray.rllib.utils.async_vector_env import AsyncVectorEnv
-from ray.rllib.utils.tf_policy_graph import TFRunBuilder
+from ray.rllib.utils.tf_run_builder import TFRunBuilder
 
 
 RolloutMetrics = namedtuple(
@@ -98,7 +98,7 @@ class AsyncSampler(threading.Thread):
         rollout_provider = _env_runner(
             self.async_vector_env, self.policies, self.policy_mapping_fn,
             self.num_local_steps, self.horizon, self._obs_filters, self.pack,
-            sefl.tf_sess)
+            self.tf_sess)
         while True:
             # The timeout variable exists because apparently, if one worker
             # dies, the other workers won't die with it, unless the timeout is
@@ -362,7 +362,8 @@ class _Episode(object):
     def add_agent_rewards(self, reward_dict):
         for agent_id, reward in reward_dict.items():
             if reward is not None:
-                self.agent_rewards[agent_id] += reward
+                self.agent_rewards[
+                    agent_id, self.policy_for(agent_id)] += reward
                 self.total_reward += reward
 
     def policy_for(self, agent_id):

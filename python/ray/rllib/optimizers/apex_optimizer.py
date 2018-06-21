@@ -217,6 +217,7 @@ class ApexOptimizer(PolicyOptimizer):
 
         with self.timers["sample_processing"]:
             for ev, sample_batch in self.sample_tasks.completed():
+                self._check_not_multiagent(sample_batch)
                 sample_timesteps += self.sample_batch_size
 
                 # Send the data to the replay buffer

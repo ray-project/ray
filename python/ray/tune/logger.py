@@ -171,12 +171,15 @@ class _CustomEncoder(json.JSONEncoder):
         return _iterencode(o, 0)
 
     def default(self, value):
-        if np.isnan(value):
-            return None
-        if np.issubdtype(value, float):
-            return float(value)
-        if np.issubdtype(value, int):
-            return int(value)
+        try:
+            if np.isnan(value):
+                return None
+            if np.issubdtype(value, float):
+                return float(value)
+            if np.issubdtype(value, int):
+                return int(value)
+        except:
+            return str(value)
 
 
 def pretty_print(result):

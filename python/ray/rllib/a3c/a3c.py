@@ -63,13 +63,18 @@ DEFAULT_CONFIG = {
     },
     # Arguments to pass to the env creator
     "env_config": {},
+
+    # === Multiagent ===
+    "multiagent": {
+        "policy_graphs": {},
+        "policy_mapping_fn": None,
+    },
 }
 
 
 class A3CAgent(Agent):
     _agent_name = "A3C"
     _default_config = DEFAULT_CONFIG
-    _allow_unknown_subkeys = ["model", "optimizer", "env_config"]
 
     @classmethod
     def default_resource_request(cls, config):
@@ -98,7 +103,9 @@ class A3CAgent(Agent):
         remote_cls = CommonPolicyEvaluator.as_remote(
             num_gpus=1 if self.config["use_gpu_for_workers"] else 0)
         self.local_evaluator = CommonPolicyEvaluator(
-            self.env_creator, self.policy_cls,
+            self.env_creator,
+            self.config["multiagent"]["policy_graphs"] or self.policy_cls,
+            policy_mapping_fn=self.config["multiagent"]["policy_mapping_fn"],
             batch_steps=self.config["batch_size"],
             batch_mode="truncate_episodes",
             tf_session_creator=session_creator,
@@ -107,7 +114,10 @@ class A3CAgent(Agent):
             num_envs=self.config["num_envs"])
         self.remote_evaluators = [
             remote_cls.remote(
-                self.env_creator, self.policy_cls,
+                self.env_creator,
+                self.config["multiagent"]["policy_graphs"] or self.policy_cls,
+                policy_mapping_fn=(
+                    self.config["multiagent"]["policy_mapping_fn"]),
                 batch_steps=self.config["batch_size"],
                 batch_mode="truncate_episodes", sample_async=True,
                 tf_session_creator=session_creator,

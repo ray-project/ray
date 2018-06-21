@@ -122,14 +122,25 @@ class MultiAgentSampleBatchBuilder(object):
 
         self.postprocess_batch_so_far()
         policy_batches = {}
-        for policy_id, policy_batch_builder in self.policy_builders.items():
-            policy_batches[policy_id] = policy_batch_builder.build_and_reset()
+        for policy_id, builder in self.policy_builders.items():
+            if builder.count > 0:
+                policy_batches[policy_id] = builder.build_and_reset()
         old_count = self.count
         self.count = 0
         return MultiAgentBatch.wrap_as_needed(policy_batches, old_count)
 
 
 class MultiAgentBatch(object):
+    """A batch of experiences from multiple policies in the environment.
+
+    Attributes:
+        policy_batches (dict): Mapping from policy id to a normal SampleBatch
+            of experiences. Note that these batches may be of different length.
+        count (int): The number of timesteps in the environment this batch
+            contains. This will be less than the number of transitions this
+            batch contains across all policies in total.
+    """
+
     def __init__(self, policy_batches, count):
         self.policy_batches = policy_batches
         self.count = count
@@ -153,6 +164,12 @@ class MultiAgentBatch(object):
         for policy_id, batches in policy_batches.items():
             out[policy_id] = SampleBatch.concat_samples(batches)
         return MultiAgentBatch(out, total_count)
+
+    def total(self):
+        ct = 0
+        for batch in self.policy_batches.values():
+            ct += batch.count
+        return ct
 
     def __str__(self):
         return "MultiAgentBatch({}, count={})".format(
@@ -178,6 +195,8 @@ class SampleBatch(object):
         for k, v in self.data.copy().items():
             assert type(k) == str, self
             lengths.append(len(v))
+        if not lengths:
+            raise ValueError("Empty sample batch")
         assert len(set(lengths)) == 1, "data columns must be same length"
         self.count = lengths[0]
 

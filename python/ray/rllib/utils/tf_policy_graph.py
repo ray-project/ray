@@ -6,47 +6,7 @@ import tensorflow as tf
 
 import ray
 from ray.rllib.utils.policy_graph import PolicyGraph
-
-
-class TFRunBuilder(object):
-    """Used to incrementally build up a TensorFlow run.
-
-    This is particularly useful for batching ops from multiple different
-    policies in the multi-agent setting.
-    """
-
-    def __init__(self, session):
-        self.session = session
-        self.feed_dict = {}
-        self.fetches = []
-        self._executed = None
-
-    def add_feed_dict(self, feed_dict):
-        assert not self._executed
-        for k in feed_dict:
-            assert k not in self.feed_dict
-        self.feed_dict.update(feed_dict)
-
-    def add_fetches(self, fetches):
-        assert not self._executed
-        base_index = len(self.fetches)
-        self.fetches.extend(fetches)
-        return list(range(base_index, len(self.fetches)))
-
-    def get(self, to_fetch):
-        if self._executed is None:
-            print("FETCH", self.fetches)
-            self._executed = self.session.run(
-                self.fetches, feed_dict=self.feed_dict)
-        if isinstance(to_fetch, int):
-            return self._executed[to_fetch]
-        elif isinstance(to_fetch, list):
-            return [self.get(x) for x in to_fetch]
-        elif isinstance(to_fetch, tuple):
-            return tuple(self.get(x) for x in to_fetch)
-        else:
-            raise ValueError("Unsupported fetch type: {}".format(to_fetch))
-
+from ray.rllib.utils.tf_run_builder import TFRunBuilder
 
 
 class TFPolicyGraph(PolicyGraph):
@@ -102,7 +62,9 @@ class TFPolicyGraph(PolicyGraph):
         self._state_inputs = state_inputs or []
         self._state_outputs = state_outputs or []
         self._optimizer = self.optimizer()
-        self._grads_and_vars = self.gradients(self._optimizer)
+        self._grads_and_vars = [
+            (g, v) for (g, v) in self.gradients(self._optimizer)
+            if g is not None]
         self._grads = [g for (g, v) in self._grads_and_vars]
         self._apply_op = self._optimizer.apply_gradients(self._grads_and_vars)
         self._variables = ray.experimental.TensorFlowVariables(
