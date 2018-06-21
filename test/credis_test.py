@@ -26,15 +26,23 @@ class CredisTest(unittest.TestCase):
         assert "redis_address" in self.config
         primary = parse_client(self.config['redis_address'])
         assert primary.ping() is True
+        member = primary.lrange('RedisShards', 0, -1)[0]
+        shard = parse_client(member.decode())
+
+        # TODO(zongheng): remove these next four lines of horror, once task
+        # table is correctly placed in the data shard & swapping master and
+        # member modules.
+        member = self.config['redis_address']
+        temp = primary
+        primary = shard
+        shard = temp
 
         # Check that primary has loaded credis' master module.
         chain = primary.execute_command('MASTER.GET_CHAIN')
         assert len(chain) == 1
 
         # Check that the shard has loaded credis' member module.
-        member = primary.lrange('RedisShards', 0, -1)[0]
-        assert chain[0] == member
-        shard = parse_client(member.decode())
+        assert chain[0].decode() == member
         assert shard.execute_command('MEMBER.SN') == -1
 
 

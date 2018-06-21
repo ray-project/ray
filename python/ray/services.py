@@ -470,7 +470,10 @@ def start_redis(node_ip_address,
             # It is important to load the credis module BEFORE the ray module,
             # as the latter contains an extern declaration that the former
             # supplies.
-            modules=[CREDIS_MASTER_MODULE, REDIS_MODULE])
+            # NOTE: once data entries are all put under the redis shard(s)
+            # instead of the primary server when RAY_USE_NEW_GCS is set, we
+            # should load CREDIS_MASTER_MODULE here.
+            modules=[CREDIS_MEMBER_MODULE, REDIS_MODULE])
     if port is not None:
         assert assigned_port == port
     port = assigned_port
@@ -523,7 +526,10 @@ def start_redis(node_ip_address,
                 # It is important to load the credis module BEFORE the ray
                 # module, as the latter contains an extern declaration that the
                 # former supplies.
-                modules=[CREDIS_MEMBER_MODULE, REDIS_MODULE])
+                # NOTE: once data entries are all put under the redis shard(s)
+                # instead of the primary server when RAY_USE_NEW_GCS is set, we
+                # should load CREDIS_MEMBER_MODULE here.
+                modules=[CREDIS_MASTER_MODULE, REDIS_MODULE])
 
         if redis_shard_ports[i] is not None:
             assert redis_shard_port == redis_shard_ports[i]
@@ -533,13 +539,15 @@ def start_redis(node_ip_address,
         primary_redis_client.rpush("RedisShards", shard_address)
 
     if use_credis:
-        # Configure the chain state.
-        primary_redis_client.execute_command("MASTER.ADD", node_ip_address,
-                                             redis_shard_port)
         shard_client = redis.StrictRedis(
             host=node_ip_address, port=redis_shard_port)
-        shard_client.execute_command("MEMBER.CONNECT_TO_MASTER",
-                                     node_ip_address, port)
+        # Configure the chain state.
+        # NOTE: once data entries are all put under the redis shard(s) instead
+        # of the primary server when RAY_USE_NEW_GCS is set, we should swap the
+        # callers here.
+        shard_client.execute_command("MASTER.ADD", node_ip_address, port)
+        primary_redis_client.execute_command("MEMBER.CONNECT_TO_MASTER",
+                                             node_ip_address, redis_shard_port)
 
     return redis_address, redis_shards
 
@@ -615,8 +623,8 @@ def _start_redis_instance(node_ip_address="127.0.0.1",
         port = new_port()
         counter += 1
     if counter == num_retries:
-        raise Exception(
-            "Couldn't start Redis. Check stdout file {}".format(stdout_file))
+        raise Exception("Couldn't start Redis. Check log files: {} {}".format(
+            stdout_file.name, stderr_file.name))
 
     # Create a Redis client just for configuring Redis.
     redis_client = redis.StrictRedis(host="127.0.0.1", port=port)

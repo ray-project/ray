@@ -15,6 +15,7 @@ enum TablePrefix:int {
   FUNCTION,
   TASK_RECONSTRUCTION,
   HEARTBEAT,
+  ERROR_INFO,
   DRIVER,
 }
 
@@ -27,6 +28,7 @@ enum TablePubsub:int {
   OBJECT,
   ACTOR,
   HEARTBEAT,
+  ERROR_INFO,
   DRIVER,
 }
 
@@ -106,6 +108,14 @@ table ActorTableData {
 }
 
 table ErrorTableData {
+  // The ID of the job that the error is for.
+  job_id: string;
+  // The type of the error.
+  type: string;
+  // The error message.
+  error_message: string;
+  // The timestamp of the error message.
+  timestamp: double;
 }
 
 table CustomSerializerData {

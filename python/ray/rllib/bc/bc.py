@@ -63,14 +63,13 @@ class BCAgent(Agent):
 
     def _init(self):
         self.local_evaluator = BCEvaluator(
-            self.registry, self.env_creator, self.config, self.logdir)
+            self.env_creator, self.config, self.logdir)
         if self.config["use_gpu_for_workers"]:
             remote_cls = GPURemoteBCEvaluator
         else:
             remote_cls = RemoteBCEvaluator
         self.remote_evaluators = [
-            remote_cls.remote(
-                self.registry, self.env_creator, self.config, self.logdir)
+            remote_cls.remote(self.env_creator, self.config, self.logdir)
             for _ in range(self.config["num_workers"])]
         self.optimizer = AsyncOptimizer(
             self.config["optimizer"], self.local_evaluator,

@@ -3,12 +3,9 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import time
-
 import numpy as np
 import pickle
 import tensorflow as tf
-from tensorflow.python import debug as tf_debug
 
 import ray
 from ray.tune.result import TrainingResult
@@ -16,8 +13,7 @@ from ray.tune.trial import Resources
 from ray.rllib.agent import Agent
 from ray.rllib.utils import FilterManager
 from ray.rllib.ppo.ppo_evaluator import PPOEvaluator
-from ray.rllib.ppo.rollout import collect_samples
-
+from ray.rllib.optimizers.multi_gpu import LocalMultiGPUOptimizer
 
 DEFAULT_CONFIG = {
     # Discount factor of the MDP
@@ -43,7 +39,7 @@ DEFAULT_CONFIG = {
         "log_device_placement": False,
         "allow_soft_placement": True,
         "intra_op_parallelism_threads": 1,
-        "inter_op_parallelism_threads": 2,
+        "inter_op_parallelism_threads": 1,
     },
     # Batch size for policy evaluations for rollouts
     "rollout_batchsize": 1,
@@ -69,7 +65,7 @@ DEFAULT_CONFIG = {
     # number of steps is obtained
     "min_steps_per_task": 200,
     # Number of actors used to collect the rollouts
-    "num_workers": 5,
+    "num_workers": 2,
     # Whether to allocate GPUs for workers (if > 0).
     "num_gpus_per_worker": 0,
     # Whether to allocate CPUs for workers (if > 0).
@@ -106,136 +102,50 @@ class PPOAgent(Agent):
 
     def _init(self):
         self.global_step = 0
-        self.kl_coeff = self.config["kl_coeff"]
         self.local_evaluator = PPOEvaluator(
-            self.registry, self.env_creator, self.config, self.logdir, False)
+            self.env_creator, self.config, self.logdir, False)
         RemotePPOEvaluator = ray.remote(
             num_cpus=self.config["num_cpus_per_worker"],
             num_gpus=self.config["num_gpus_per_worker"])(PPOEvaluator)
         self.remote_evaluators = [
             RemotePPOEvaluator.remote(
-                self.registry, self.env_creator, self.config, self.logdir,
-                True)
+                self.env_creator, self.config, self.logdir, True)
             for _ in range(self.config["num_workers"])]
-        self.start_time = time.time()
-        if self.config["write_logs"]:
-            self.file_writer = tf.summary.FileWriter(
-                self.logdir, self.local_evaluator.sess.graph)
-        else:
-            self.file_writer = None
+
+        self.optimizer = LocalMultiGPUOptimizer(
+            {"sgd_batch_size": self.config["sgd_batchsize"],
+             "sgd_stepsize": self.config["sgd_stepsize"],
+             "num_sgd_iter": self.config["num_sgd_iter"],
+             "timesteps_per_batch": self.config["timesteps_per_batch"]},
+            self.local_evaluator, self.remote_evaluators,)
+
         self.saver = tf.train.Saver(max_to_keep=None)
 
     def _train(self):
-        agents = self.remote_evaluators
-        config = self.config
-        model = self.local_evaluator
-
-        if (config["num_workers"] * config["min_steps_per_task"] >
-                config["timesteps_per_batch"]):
-            print(
-                "WARNING: num_workers * min_steps_per_task > "
-                "timesteps_per_batch. This means that the output of some "
-                "tasks will be wasted. Consider decreasing "
-                "min_steps_per_task or increasing timesteps_per_batch.")
-
-        print("===> iteration", self.iteration)
-
-        iter_start = time.time()
-        weights = ray.put(model.get_weights())
-        [a.set_weights.remote(weights) for a in agents]
-        samples = collect_samples(agents, config, self.local_evaluator)
-
-        def standardized(value):
+        def postprocess_samples(batch):
             # Divide by the maximum of value.std() and 1e-4
             # to guard against the case where all values are equal
-            return (value - value.mean()) / max(1e-4, value.std())
+            value = batch["advantages"]
+            standardized = (value - value.mean()) / max(1e-4, value.std())
+            batch.data["advantages"] = standardized
+            batch.shuffle()
+            dummy = np.zeros_like(batch["advantages"])
+            if not self.config["use_gae"]:
+                batch.data["value_targets"] = dummy
+                batch.data["vf_preds"] = dummy
+        extra_fetches = self.optimizer.step(postprocess_fn=postprocess_samples)
 
-        samples.data["advantages"] = standardized(samples["advantages"])
-
-        rollouts_end = time.time()
-        print("Computing policy (iterations=" + str(config["num_sgd_iter"]) +
-              ", stepsize=" + str(config["sgd_stepsize"]) + "):")
-        names = [
-            "iter", "total loss", "policy loss", "vf loss", "kl", "entropy"]
-        print(("{:>15}" * len(names)).format(*names))
-        samples.shuffle()
-        shuffle_end = time.time()
-        tuples_per_device = model.load_data(
-            samples, self.iteration == 0 and config["full_trace_data_load"])
-        load_end = time.time()
-        rollouts_time = rollouts_end - iter_start
-        shuffle_time = shuffle_end - rollouts_end
-        load_time = load_end - shuffle_end
-        sgd_time = 0
-        for i in range(config["num_sgd_iter"]):
-            sgd_start = time.time()
-            batch_index = 0
-            num_batches = (
-                int(tuples_per_device) // int(model.per_device_batch_size))
-            loss, policy_graph, vf_loss, kl, entropy = [], [], [], [], []
-            permutation = np.random.permutation(num_batches)
-            # Prepare to drop into the debugger
-            if self.iteration == config["tf_debug_iteration"]:
-                model.sess = tf_debug.LocalCLIDebugWrapperSession(model.sess)
-            while batch_index < num_batches:
-                full_trace = (
-                    i == 0 and self.iteration == 0 and
-                    batch_index == config["full_trace_nth_sgd_batch"])
-                batch_loss, batch_policy_graph, batch_vf_loss, batch_kl, \
-                    batch_entropy = model.run_sgd_minibatch(
-                        permutation[batch_index] * model.per_device_batch_size,
-                        self.kl_coeff, full_trace,
-                        self.file_writer)
-                loss.append(batch_loss)
-                policy_graph.append(batch_policy_graph)
-                vf_loss.append(batch_vf_loss)
-                kl.append(batch_kl)
-                entropy.append(batch_entropy)
-                batch_index += 1
-            loss = np.mean(loss)
-            policy_graph = np.mean(policy_graph)
-            vf_loss = np.mean(vf_loss)
-            kl = np.mean(kl)
-            entropy = np.mean(entropy)
-            sgd_end = time.time()
-            print(
-                "{:>15}{:15.5e}{:15.5e}{:15.5e}{:15.5e}{:15.5e}".format(
-                    i, loss, policy_graph, vf_loss, kl, entropy))
-
-            values = []
-            if i == config["num_sgd_iter"] - 1:
-                metric_prefix = "ppo/sgd/final_iter/"
-                values.append(tf.Summary.Value(
-                    tag=metric_prefix + "kl_coeff",
-                    simple_value=self.kl_coeff))
-                values.extend([
-                    tf.Summary.Value(
-                        tag=metric_prefix + "mean_entropy",
-                        simple_value=entropy),
-                    tf.Summary.Value(
-                        tag=metric_prefix + "mean_loss",
-                        simple_value=loss),
-                    tf.Summary.Value(
-                        tag=metric_prefix + "mean_kl",
-                        simple_value=kl)])
-                if self.file_writer:
-                    sgd_stats = tf.Summary(value=values)
-                    self.file_writer.add_summary(sgd_stats, self.global_step)
-            self.global_step += 1
-            sgd_time += sgd_end - sgd_start
-        if kl > 2.0 * config["kl_target"]:
-            self.kl_coeff *= 1.5
-        elif kl < 0.5 * config["kl_target"]:
-            self.kl_coeff *= 0.5
+        final_metrics = np.array(extra_fetches).mean(axis=1)[-1, :].tolist()
+        total_loss, policy_loss, vf_loss, kl, entropy = final_metrics
+        self.local_evaluator.update_kl(kl)
 
         info = {
+            "total_loss": total_loss,
+            "policy_loss": policy_loss,
+            "vf_loss": vf_loss,
             "kl_divergence": kl,
-            "kl_coefficient": self.kl_coeff,
-            "rollouts_time": rollouts_time,
-            "shuffle_time": shuffle_time,
-            "load_time": load_time,
-            "sgd_time": sgd_time,
-            "sample_throughput": len(samples["obs"]) / sgd_time
+            "entropy": entropy,
+            "kl_coefficient": self.local_evaluator.kl_coeff_val,
         }
 
         FilterManager.synchronize(
@@ -281,7 +191,6 @@ class PPOAgent(Agent):
         extra_data = [
             self.local_evaluator.save(),
             self.global_step,
-            self.kl_coeff,
             agent_state]
         pickle.dump(extra_data, open(checkpoint_path + ".extra_data", "wb"))
         return checkpoint_path
@@ -291,13 +200,12 @@ class PPOAgent(Agent):
         extra_data = pickle.load(open(checkpoint_path + ".extra_data", "rb"))
         self.local_evaluator.restore(extra_data[0])
         self.global_step = extra_data[1]
-        self.kl_coeff = extra_data[2]
         ray.get([
             a.restore.remote(o)
-                for (a, o) in zip(self.remote_evaluators, extra_data[3])])
+                for (a, o) in zip(self.remote_evaluators, extra_data[2])])
 
     def compute_action(self, observation):
         observation = self.local_evaluator.obs_filter(
             observation, update=False)
-        return self.local_evaluator.common_policy.compute_single_action(
-            observation, [], False)[0]
+        return self.local_evaluator.common_policy.compute_actions(
+            [observation], [], False)[0][0]

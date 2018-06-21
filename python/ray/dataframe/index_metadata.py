@@ -1,4 +1,4 @@
-import pandas as pd
+import pandas
 import numpy as np
 import ray
 
@@ -32,12 +32,12 @@ class _IndexMetadata(object):
 
         Args:
             dfs ([ObjectID]): ObjectIDs of dataframe partitions
-            index (pd.Index): Index of the Ray DataFrame.
+            index (pandas.Index): Index of the Ray DataFrame.
             axis: Axis of partition (0=row partitions, 1=column partitions)
 
         Returns:
-            A IndexMetadata backed by the specified pd.Index, partitioned off
-            specified partitions
+            A IndexMetadata backed by the specified pandas.Index, partitioned
+            off specified partitions
         """
         assert (lengths_oid is None) == (coord_df_oid is None), \
             "Must pass both or neither of lengths_oid and coord_df_oid"
@@ -115,7 +115,7 @@ class _IndexMetadata(object):
         This design is more straightforward than caching indexes on setting the
         coord_df to an OID due to the possibility of an OID-to-OID change.
         """
-        new_index = pd.DataFrame(index=new_index).index
+        new_index = pandas.DataFrame(index=new_index).index
         assert len(new_index) == len(self)
 
         self._index_cache = new_index
@@ -138,7 +138,7 @@ class _IndexMetadata(object):
             The Index object in _index_cache.
         """
         if self._index_cache_validator is None:
-            self._index_cache_validator = pd.RangeIndex(len(self))
+            self._index_cache_validator = pandas.RangeIndex(len(self))
         elif isinstance(self._index_cache_validator,
                         ray.ObjectID):
             self._index_cache_validator = ray.get(self._index_cache_validator)
@@ -170,9 +170,9 @@ class _IndexMetadata(object):
 
         Returns:
             Pandas object with the keys specified. If key is a single object
-            it will be a pd.Series with items `partition` and
+            it will be a pandas.Series with items `partition` and
             `index_within_partition`, and if key is a slice or if the key is
-            duplicate it will be a pd.DataFrame with said items as columns.
+            duplicate it will be a pandas.DataFrame with said items as columns.
         """
         return self._coord_df.loc[key]
 
@@ -191,7 +191,7 @@ class _IndexMetadata(object):
                     'index_within_partition']
 
     def __len__(self):
-        return sum(self._lengths)
+        return int(sum(self._lengths))
 
     def reset_partition_coords(self, partitions=None):
         partitions = np.array(partitions)
@@ -200,7 +200,7 @@ class _IndexMetadata(object):
             partition_mask = (self._coord_df['partition'] == partition)
             # Since we are replacing columns with RangeIndex inside the
             # partition, we have to make sure that our reference to it is
-            # updated as well.
+            # upandasated as well.
             try:
                 self._coord_df.loc[partition_mask,
                                    'index_within_partition'] = np.arange(
@@ -263,7 +263,7 @@ class _IndexMetadata(object):
         # TODO: Determine if there's a better way to do a row-index insert in
         # pandas, because this is very annoying/unsure of efficiency
         # Create new coord entry to insert
-        coord_to_insert = pd.DataFrame(
+        coord_to_insert = pandas.DataFrame(
                 {'partition': partition,
                  'index_within_partition': index_within_partition},
                 index=[key])
@@ -329,9 +329,9 @@ class _IndexMetadata(object):
 
         Returns:
             Pandas object with the keys specified. If key is a single object
-            it will be a pd.Series with items `partition` and
+            it will be a pandas.Series with items `partition` and
             `index_within_partition`, and if key is a slice or if the key is
-            duplicate it will be a pd.DataFrame with said items as columns.
+            duplicate it will be a pandas.DataFrame with said items as columns.
         """
         return self.coords_of(key)
 
@@ -355,26 +355,37 @@ class _IndexMetadata(object):
         """
         dropped = self.coords_of(labels)
 
-        # Update first lengths to prevent possible length inconsistencies
-        if isinstance(dropped, pd.DataFrame):
+        # Upandasate first lengths to prevent possible length inconsistencies
+        if isinstance(dropped, pandas.DataFrame):
             try:
                 drop_per_part = dropped.groupby(["partition"]).size()\
-                        .reindex(index=pd.RangeIndex(len(self._lengths)),
+                        .reindex(index=pandas.RangeIndex(len(self._lengths)),
                                  fill_value=0)
             except ValueError:
                 # Copy the arrow sealed dataframe so we can mutate it.
                 dropped = dropped.copy()
                 drop_per_part = dropped.groupby(["partition"]).size()\
-                    .reindex(index=pd.RangeIndex(len(self._lengths)),
+                    .reindex(index=pandas.RangeIndex(len(self._lengths)),
                              fill_value=0)
-        elif isinstance(dropped, pd.Series):
+        elif isinstance(dropped, pandas.Series):
             drop_per_part = np.zeros_like(self._lengths)
             drop_per_part[dropped["partition"]] = 1
         else:
             raise AssertionError("Unrecognized result from `coords_of`")
-        self._lengths = self._lengths - drop_per_part
 
-        self._coord_df = self._coord_df.drop(labels, errors=errors)
+        self._lengths = self._lengths - np.array(drop_per_part)
+
+        new_coord_df = self._coord_df.drop(labels, errors=errors)
+
+        num_dropped = 0
+        for i, length in enumerate(self._lengths):
+            if length == 0:
+                num_dropped += 1
+            if num_dropped > 0:
+                new_coord_df['partition'][new_coord_df['partition'] == i] \
+                    -= num_dropped
+
+        self._coord_df = new_coord_df
         return dropped
 
     def rename_index(self, mapper):

@@ -97,6 +97,9 @@ if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
   add_custom_target(copy_ray ALL
       DEPENDS ${build_ray_file_list})
 
+  # Make sure redis-server is ready before copying.
+  add_dependencies(copy_ray copy_redis)
+
   # Make sure that the Python extensions are built before copying the files.
   if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
     get_local_scheduler_library("python" LOCAL_SCHEDULER_LIBRARY_LANG)

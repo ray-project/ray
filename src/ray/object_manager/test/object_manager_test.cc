@@ -111,9 +111,6 @@ class TestObjectManagerBase : public ::testing::Test {
     store_id_2 = StartStore(UniqueID::from_random().hex());
 
     uint pull_timeout_ms = 1;
-    int max_sends = 2;
-    int max_receives = 2;
-    uint64_t object_chunk_size = static_cast<uint64_t>(std::pow(10, 3));
     push_timeout_ms = 1000;
 
     // start first server
@@ -192,6 +189,10 @@ class TestObjectManagerBase : public ::testing::Test {
   std::string store_id_2;
 
   uint push_timeout_ms;
+
+  int max_sends = 2;
+  int max_receives = 2;
+  uint64_t object_chunk_size = static_cast<uint64_t>(std::pow(10, 3));
 };
 
 class TestObjectManager : public TestObjectManagerBase {
@@ -436,7 +437,16 @@ class TestObjectManager : public TestObjectManagerBase {
         }));
   }
 
-  void TestWaitComplete() { main_service.stop(); }
+  void TestWaitComplete() { TestBufferPool(); }
+
+  void TestBufferPool() {
+    // Ensure the number of chunks generated do not exceed the number of send threads.
+    for (uint64_t i = object_chunk_size / 2; i < 10 * object_chunk_size; ++i) {
+      uint64_t num_chunks = server1->object_manager_.buffer_pool_.GetNumChunks(i);
+      ASSERT_LE(num_chunks, max_sends);
+    }
+    main_service.stop();
+  }
 
   void TestConnections() {
     RAY_LOG(DEBUG) << "\n"

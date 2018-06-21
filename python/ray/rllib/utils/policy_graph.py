@@ -17,11 +17,10 @@ class PolicyGraph(object):
     graphs and multi-GPU support.
     """
 
-    def __init__(self, registry, observation_space, action_space, config):
+    def __init__(self, observation_space, action_space, config):
         """Initialize the graph.
 
         Args:
-            registry (obj): Object registry for user-defined envs, models, etc.
             observation_space (gym.Space): Observation space of the env.
             action_space (gym.Space): Action space of the env.
             config (dict): Policy-specific configuration data.
@@ -69,7 +68,8 @@ class PolicyGraph(object):
         """Implements algorithm-specific trajectory postprocessing.
 
         Arguments:
-            sample_batch (SampleBatch): batch of experiences for the policy
+            sample_batch (SampleBatch): batch of experiences for the policy,
+                which will contain at most one episode trajectory.
             other_agent_batches (dict): In a multi-agent env, this contains the
                 experience batches seen by other agents.
 

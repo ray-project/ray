@@ -15,12 +15,20 @@ AsyncGcsClient::AsyncGcsClient(const ClientID &client_id, CommandType command_ty
   raylet_task_table_.reset(new raylet::TaskTable(context_, this, command_type));
   task_reconstruction_log_.reset(new TaskReconstructionLog(context_, this));
   heartbeat_table_.reset(new HeartbeatTable(context_, this));
+  error_table_.reset(new ErrorTable(context_, this));
   driver_table_.reset(new DriverTable(context_, this));
   command_type_ = command_type;
 }
 
+#if RAY_USE_NEW_GCS
+// Use of kChain currently only applies to Table::Add which affects only the
+// task table, and when RAY_USE_NEW_GCS is set at compile time.
+AsyncGcsClient::AsyncGcsClient(const ClientID &client_id)
+    : AsyncGcsClient(client_id, CommandType::kChain) {}
+#else
 AsyncGcsClient::AsyncGcsClient(const ClientID &client_id)
     : AsyncGcsClient(client_id, CommandType::kRegular) {}
+#endif  // RAY_USE_NEW_GCS
 
 AsyncGcsClient::AsyncGcsClient(CommandType command_type)
     : AsyncGcsClient(ClientID::from_random(), command_type) {}
@@ -68,6 +76,8 @@ FunctionTable &AsyncGcsClient::function_table() { return *function_table_; }
 ClassTable &AsyncGcsClient::class_table() { return *class_table_; }
 
 HeartbeatTable &AsyncGcsClient::heartbeat_table() { return *heartbeat_table_; }
+
+ErrorTable &AsyncGcsClient::error_table() { return *error_table_; }
 
 DriverTable &AsyncGcsClient::driver_table() { return *driver_table_; }
 

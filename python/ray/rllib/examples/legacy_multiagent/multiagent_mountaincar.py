@@ -8,7 +8,7 @@ from gym.envs.registration import register
 
 import ray
 import ray.rllib.ppo as ppo
-from ray.tune.registry import get_registry, register_env
+from ray.tune.registry import register_env
 
 env_name = "MultiAgentMountainCarEnv"
 
@@ -21,7 +21,9 @@ def pass_params_to_gym(env_name):
 
     register(
       id=env_name,
-      entry_point='ray.rllib.examples:' + "MultiAgentMountainCarEnv",
+      entry_point=(
+        "ray.rllib.examples.legacy_multiagent.multiagent_mountaincar_env:"
+        "MultiAgentMountainCarEnv"),
       max_episode_steps=200,
       kwargs={}
     )
@@ -51,6 +53,6 @@ if __name__ == '__main__':
                "multiagent_shared_model": False,
                "multiagent_fcnet_hiddens": [[32, 32]] * 2}
     config["model"].update({"custom_options": options})
-    alg = ppo.PPOAgent(env=env_name, registry=get_registry(), config=config)
+    alg = ppo.PPOAgent(env=env_name, config=config)
     for i in range(1):
         alg.train()

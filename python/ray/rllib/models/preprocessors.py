@@ -125,22 +125,16 @@ def get_preprocessor(space):
 
     legacy_patch_shapes(space)
     obs_shape = space.shape
-    print("Observation shape is {}".format(obs_shape))
 
     if isinstance(space, gym.spaces.Discrete):
-        print("Using one-hot preprocessor for discrete envs.")
         preprocessor = OneHotPreprocessor
     elif obs_shape == ATARI_OBS_SHAPE:
-        print("Assuming Atari pixel env, using AtariPixelPreprocessor.")
         preprocessor = AtariPixelPreprocessor
     elif obs_shape == ATARI_RAM_OBS_SHAPE:
-        print("Assuming Atari ram env, using AtariRamPreprocessor.")
         preprocessor = AtariRamPreprocessor
     elif isinstance(space, gym.spaces.Tuple):
-        print("Using a TupleFlatteningPreprocessor")
         preprocessor = TupleFlatteningPreprocessor
     else:
-        print("Not using any observation preprocessor.")
         preprocessor = NoPreprocessor
 
     return preprocessor

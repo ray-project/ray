@@ -77,6 +77,8 @@ install(
 
 ADD_RAY_LIB(ray
   SOURCES ${RAY_SRCS} ${AE_SRCS} ${HIREDIS_SRCS} ${UTIL_SRCS}
-    DEPENDENCIES gen_gcs_fbs gen_object_manager_fbs gen_node_manager_fbs
+    # TODO: When raylet replaces the old backend, please remove the dependency gen_local_scheduler_fbs.
+    # TODO: When remove the included Task.h from table.h, please remove the dependency gen_common_python_fbs.
+    DEPENDENCIES gen_gcs_fbs gen_object_manager_fbs gen_node_manager_fbs gen_local_scheduler_fbs ${COMMON_FBS_OUTPUT_FILES}
     SHARED_LINK_LIBS ""
     STATIC_LINK_LIBS ${PLASMA_STATIC_LIB} ${ARROW_STATIC_LIB})
