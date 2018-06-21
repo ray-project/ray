@@ -2243,7 +2243,7 @@ class GlobalStateAPI(unittest.TestCase):
             worker_ids = set(ray.get([f.remote() for _ in range(10)]))
 
         worker_info = ray.global_state.workers()
-        self.assertEqual(len(worker_info), num_workers)
+        assert len(worker_info) >= num_workers
         for worker_id, info in worker_info.items():
             self.assertIn("node_ip_address", info)
             self.assertIn("local_scheduler_socket", info)

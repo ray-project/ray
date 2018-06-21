@@ -34,14 +34,24 @@ MOCK_MODULES = ["gym",
                 "tensorflow.python.util",
                 "ray.local_scheduler",
                 "ray.plasma",
+                "ray.core",
+                "ray.core.generated",
+                "ray.core.generated.DriverTableMessage",
+                "ray.core.generated.LocalSchedulerInfoMessage",
+                "ray.core.generated.ResultTableReply",
+                "ray.core.generated.SubscribeToDBClientTableReply",
+                "ray.core.generated.SubscribeToNotificationsReply",
                 "ray.core.generated.TaskInfo",
                 "ray.core.generated.TaskReply",
-                "ray.core.generated.ResultTableReply",
                 "ray.core.generated.TaskExecutionDependencies",
                 "ray.core.generated.ClientTableData",
                 "ray.core.generated.GcsTableEntry",
+                "ray.core.generated.HeartbeatTableData",
+                "ray.core.generated.ErrorTableData",
                 "ray.core.generated.ObjectTableData",
-                "ray.core.generated.ray.protocol.Task"]
+                "ray.core.generated.ray.protocol.Task",
+                "ray.core.generated.TablePrefix",
+                "ray.core.generated.TablePubsub",]
 for mod_name in MOCK_MODULES:
   sys.modules[mod_name] = mock.Mock()
 
