@@ -289,6 +289,27 @@ class HeartbeatTable : public Table<ClientID, HeartbeatTableData> {
   virtual ~HeartbeatTable() {}
 };
 
+class DriverTable : public Log<JobID, DriverTableData> {
+ public:
+  DriverTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client)
+      : Log(context, client) {
+    pubsub_channel_ = TablePubsub::DRIVER;
+    prefix_ = TablePrefix::DRIVER;
+  };
+  virtual ~DriverTable() {}
+
+  Status AppendDriverData(UniqueID driver_id, bool is_dead) {
+    auto data = std::make_shared<DriverTableDataT>();
+    data->driver_id = driver_id.binary();
+    data->is_dead = is_dead;
+    return Append(driver_id, driver_id, data,
+                  [](ray::gcs::AsyncGcsClient *client, const JobID &id,
+                     const DriverTableDataT &data) {
+                    RAY_LOG(DEBUG) << "Driver entry added callback";
+                  });
+  }
+};
+
 class FunctionTable : public Table<ObjectID, FunctionTableData> {
  public:
   FunctionTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client)

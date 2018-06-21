@@ -64,9 +64,9 @@ extern RedisChainModule module;
 // NOTE(swang): The order of prefixes here must match the TablePrefix enum
 // defined in src/ray/gcs/format/gcs.fbs.
 static const char *table_prefixes[] = {
-    NULL,         "TASK:",  "TASK:",     "CLIENT:",
-    "OBJECT:",    "ACTOR:", "FUNCTION:", "TASK_RECONSTRUCTION:",
-    "HEARTBEAT:",
+    NULL,         "TASK:",   "TASK:",     "CLIENT:",
+    "OBJECT:",    "ACTOR:",  "FUNCTION:", "TASK_RECONSTRUCTION:",
+    "HEARTBEAT:", "DRIVER:",
 };
 
 /// Parse a Redis string into a TablePubsub channel.

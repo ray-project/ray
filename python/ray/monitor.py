@@ -16,6 +16,8 @@ import redis
 from ray.core.generated.DriverTableMessage import DriverTableMessage
 from ray.core.generated.GcsTableEntry import GcsTableEntry
 from ray.core.generated.HeartbeatTableData import HeartbeatTableData
+from ray.core.generated.DriverTableData import DriverTableData
+from ray.core.generated.ray.protocol.Task import Task
 from ray.core.generated.LocalSchedulerInfoMessage import \
     LocalSchedulerInfoMessage
 from ray.core.generated.SubscribeToDBClientTableReply import \
@@ -42,12 +44,17 @@ DRIVER_DEATH_CHANNEL = b"driver_deaths"
 # xray heartbeats
 XRAY_HEARTBEAT_CHANNEL = b"6"
 
+# xray driver updates
+XRAY_DRIVER_CHANNEL = b"7"
+
 # common/redis_module/ray_redis_module.cc
 OBJECT_INFO_PREFIX = b"OI:"
 OBJECT_LOCATION_PREFIX = b"OL:"
 TASK_TABLE_PREFIX = b"TT:"
 DB_CLIENT_PREFIX = b"CL:"
 DB_CLIENT_TABLE_NAME = b"db_clients"
+XRAY_TASK_TABLE_PREFIX = b"TASK:"
+XRAY_OBJECT_TABLE_PREFIX = b"OBJECT:"
 
 # local_scheduler/local_scheduler.h
 LOCAL_SCHEDULER_CLIENT_TYPE = b"local_scheduler"
@@ -468,6 +475,77 @@ class Monitor(object):
 
         self._clean_up_entries_for_driver(driver_id)
 
+    def _xray_clean_up_entries_for_driver(self, driver_id):
+        """Remove this driver's object/task entries from redis.
+
+        Removes control-state entries of all tasks and task return
+        objects belonging to the driver.
+        """
+        redis = self.state.redis_client
+
+        task_table_infos = {}  # task id -> TaskInfo
+        for key in redis.scan_iter(match=XRAY_TASK_TABLE_PREFIX + b"*"):
+            entry = redis.get(key)
+            task = Task.GetRootAsTask(entry, 0)
+            task_info = TaskInfo.GetRootAsTaskInfo(task.TaskSpecification(), 0)
+            if driver_id != task_info.DriverId():
+                # Ignore tasks that aren't from this driver.
+                continue
+            task_table_infos[task_info.TaskId()] = task_info
+        driver_task_ids = task_table_infos.keys()
+
+        # Get the list of objects returned by driver tasks.
+        driver_object_ids = []
+        for task_info in task_table_infos.values():
+            driver_object_ids.extend([
+                task_info.Returns(i) for i in range(task_info.ReturnsLength())
+            ])
+
+        # TODO: Remove only objects in GCS that originated from this driver.
+        # In legacy Ray, put objects are added by local_scheduler.cc
+        # whenever a message of type ray::local_scheduler::protocol::PutObject
+        # is received. In XRay, object locations are registered with the GCS
+        # whenever the ObjectManager receives notifications about local objects
+        # from the object store. Enable this for XRay by implementing the PutObject
+        # protocol in NodeManager, and a separate object table for tracking put
+        # information.
+
+        # Clean up entries for non-empty objects.
+        non_empty_objects = []
+        for object_id in driver_object_ids:
+            entry = redis.zrange(XRAY_OBJECT_TABLE_PREFIX + object_id, 0, 0)
+            if entry:
+                non_empty_objects.append(object_id)
+
+        # Form the redis keys to delete.
+        keys = [XRAY_TASK_TABLE_PREFIX + k for k in driver_task_ids]
+        keys.extend([XRAY_OBJECT_TABLE_PREFIX + k for k in non_empty_objects])
+
+        if not keys:
+            return
+
+        # Remove with best effort.
+        num_deleted = redis.delete(*keys)
+        log.info(
+            "Removed {} dead redis entries of the driver from redis.".
+                format(num_deleted))
+        if num_deleted != len(keys):
+            log.warning(
+                "Failed to remove {} relevant "
+                "redis entries.".format(len(keys) - num_deleted))
+
+    def xray_driver_removed_handler(self, unused_channel, data):
+        """Handle a notification that a driver has been removed.
+        """
+        # TODO: Migrate this to raylet monitor.
+        gcs_entries = GcsTableEntry.GetRootAsGcsTableEntry(data, 0)
+        driver_data = gcs_entries.Entries(0)
+        message = DriverTableData.GetRootAsDriverTableData(driver_data, 0)
+        driver_id = message.DriverId()
+        log.info("Driver {} has been removed.".format(
+            binary_to_hex(driver_id)))
+        self._xray_clean_up_entries_for_driver(driver_id)
+
     def process_messages(self, max_messages=10000):
         """Process all messages ready in the subscription channels.
 
@@ -511,8 +589,11 @@ class Monitor(object):
                 log.info("message-handler: driver_removed_handler")
                 message_handler = self.driver_removed_handler
             elif channel == XRAY_HEARTBEAT_CHANNEL:
-                # Similar functionality as local scheduler info channel
+                # Similar functionality as local scheduler info channel.
                 message_handler = self.xray_heartbeat_handler
+            elif channel == XRAY_DRIVER_CHANNEL:
+                # Handles driver death.
+                message_handler = self.xray_driver_removed_handler
             else:
                 raise Exception("This code should be unreachable.")
 
@@ -546,6 +627,7 @@ class Monitor(object):
         self.subscribe(PLASMA_MANAGER_HEARTBEAT_CHANNEL)
         self.subscribe(DRIVER_DEATH_CHANNEL)
         self.subscribe(XRAY_HEARTBEAT_CHANNEL)
+        self.subscribe(XRAY_DRIVER_CHANNEL)
 
         # Scan the database table for dead database clients. NOTE: This must be
         # called before reading any messages from the subscription channel.

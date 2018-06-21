@@ -150,10 +150,31 @@ ray::Status NodeManager::RegisterGcs() {
         RAY_LOG(DEBUG) << "heartbeat table subscription done callback called.";
       }));
 
+  // Subscribe to driver table updates.
+  const auto driver_table_handler = [this](
+      gcs::AsyncGcsClient *client, const ClientID &client_id,
+      const std::vector<DriverTableDataT> &driver_data) {
+    HandleDriverTableUpdate(client_id, driver_data);
+  };
+  RAY_RETURN_NOT_OK(gcs_client_->driver_table().Subscribe(
+      UniqueID::nil(), UniqueID::nil(), driver_table_handler, nullptr));
+
   // Start sending heartbeats to the GCS.
   Heartbeat();
 
   return ray::Status::OK();
+}
+
+void NodeManager::HandleDriverTableUpdate(
+    const ClientID &id, const std::vector<DriverTableDataT> &driver_data) {
+  for (const auto &entry : driver_data) {
+    RAY_LOG(DEBUG) << "HandleDriverTableUpdate " << UniqueID::from_binary(entry.driver_id)
+                   << " " << entry.is_dead;
+    if (entry.is_dead) {
+      // TODO: Implement cleanup on driver death. For reference,
+      // see handle_driver_removed_callback in local_scheduler.cc
+    }
+  }
 }
 
 void NodeManager::Heartbeat() {
@@ -346,6 +367,7 @@ void NodeManager::ProcessClientMessage(
   switch (static_cast<protocol::MessageType>(message_type)) {
   case protocol::MessageType::RegisterClientRequest: {
     auto message = flatbuffers::GetRoot<protocol::RegisterClientRequest>(message_data);
+    client->SetClientID(from_flatbuf(*message->client_id()));
     if (message->is_worker()) {
       // Create a new worker from the registration request.
       auto worker = std::make_shared<Worker>(message->worker_pid(), client);
@@ -394,6 +416,10 @@ void NodeManager::ProcessClientMessage(
 
       // Since some resources may have been released, we can try to dispatch more tasks.
       DispatchTasks();
+    } else {
+      // This is a driver.
+      gcs_client_->driver_table().AppendDriverData(client->GetClientID(),
+                                                   /*is_dead=*/true);
     }
     return;
   } break;

@@ -14,7 +14,7 @@ from ray.test.test_utils import run_and_get_output
 
 
 class MonitorTest(unittest.TestCase):
-    def _testCleanupOnDriverExit(self, num_redis_shards):
+    def _testCleanupOnDriverExit(self, num_redis_shards, test_object_cleanup):
         stdout = run_and_get_output([
             "ray",
             "start",
@@ -44,6 +44,8 @@ class MonitorTest(unittest.TestCase):
             # Two new objects.
             ray.get(ray.put(1111))
             ray.get(ray.put(1111))
+            # Test is flaky without calls to sleep.
+            time.sleep(0.2)
             if (2, 1, summary_start[2]) != StateSummary():
                 success.value = False
 
@@ -53,10 +55,12 @@ class MonitorTest(unittest.TestCase):
                 return 1111  # A returned object as well.
 
             # 1 new function.
+            time.sleep(0.2)
             if (2, 1, summary_start[2] + 1) != StateSummary():
                 success.value = False
 
             ray.get(f.remote())
+            time.sleep(0.2)
             if (4, 2, summary_start[2] + 1) != StateSummary():
                 success.value = False
 
@@ -79,7 +83,11 @@ class MonitorTest(unittest.TestCase):
         ray.init(redis_address=redis_address)
         # The assertion below can fail if the monitor is too slow to clean up
         # the global state.
-        self.assertEqual((0, 1), StateSummary()[:2])
+
+        if test_object_cleanup:
+            self.assertEqual((0, 1), StateSummary()[:2])
+        else:
+            self.assertEqual(1, StateSummary()[1])
 
         ray.worker.cleanup()
         subprocess.Popen(["ray", "stop"]).wait()
@@ -87,15 +95,31 @@ class MonitorTest(unittest.TestCase):
     @unittest.skipIf(
         os.environ.get('RAY_USE_NEW_GCS', False),
         "Failing with the new GCS API.")
-    def testCleanupOnDriverExitSingleRedisShard(self):
-        self._testCleanupOnDriverExit(num_redis_shards=1)
+    def testTaskCleanupOnDriverExitSingleRedisShard(self):
+        self._testCleanupOnDriverExit(num_redis_shards=1, test_object_cleanup=False)
 
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") == "1",
+        "This test does not work with xray yet.")
+    @unittest.skipIf(
+        os.environ.get('RAY_USE_NEW_GCS', False),
+        "Failing with the new GCS API.")
+    def testCleanupOnDriverExitSingleRedisShard(self):
+        # TODO: Enable this test once cleanup for objects put
+        # by dead drivers is supported in xray.
+        # See _xray_clean_up_entries_for_driver
+        # in monitor.py for details.
+        self._testCleanupOnDriverExit(num_redis_shards=1, test_object_cleanup=True)
+
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") == "1",
+        "This test does not work with xray yet.")
     @unittest.skipIf(
         os.environ.get('RAY_USE_NEW_GCS', False),
         "Hanging with the new GCS API.")
     def testCleanupOnDriverExitManyRedisShards(self):
-        self._testCleanupOnDriverExit(num_redis_shards=5)
-        self._testCleanupOnDriverExit(num_redis_shards=31)
+        self._testCleanupOnDriverExit(num_redis_shards=5, test_object_cleanup=True)
+        self._testCleanupOnDriverExit(num_redis_shards=31, test_object_cleanup=True)
 
 
 if __name__ == "__main__":
