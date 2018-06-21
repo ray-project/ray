@@ -1,11 +1,16 @@
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import copy
-import json
 import numpy
+import json
 import os
 import random
 import types
 
 from ray.tune import TuneError
+from ray.tune.logger import _SafeFallbackEncoder
 from ray.tune.trial import Trial
 from ray.tune.config_parser import make_parser, json_to_resources
 
@@ -17,7 +22,7 @@ def to_argv(config):
         if isinstance(v, str):
             argv.append(v)
         else:
-            argv.append(json.dumps(v))
+            argv.append(json.dumps(v, cls=_SafeFallbackEncoder))
     return argv
 
 
