@@ -62,6 +62,25 @@ class DataFrameGroupBy(object):
             else:
                 self._grouped_partitions = [df._row_partitions]
 
+    def __getattr__(self, key):
+        """Afer regular attribute access, looks up the name in the columns
+
+        Args:
+            key (str): Attribute name.
+
+        Returns:
+            The value of the attribute.
+        """
+        try:
+            return object.__getattribute__(self, key)
+        except AttributeError as e:
+            if key in self._columns:
+                raise NotImplementedError(
+                    "SeriesGroupBy is not implemented."
+                    "To contribute to Pandas on Ray, please visit "
+                    "github.com/ray-project/ray.")
+            raise e
+
     @property
     def _iter(self):
         from .dataframe import DataFrame
