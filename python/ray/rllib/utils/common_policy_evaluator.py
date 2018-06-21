@@ -245,7 +245,7 @@ class CommonPolicyEvaluator(PolicyEvaluator):
 
         if self.compress_observations:
             if isinstance(batch, MultiAgentBatch):
-                for _, data in batch.policy_batches.items():
+                for data in batch.policy_batches.values():
                     data["obs"] = [pack(o) for o in data["obs"]]
                     data["new_obs"] = [pack(o) for o in data["new_obs"]]
             else:

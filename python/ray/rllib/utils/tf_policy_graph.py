@@ -24,7 +24,7 @@ class TFPolicyGraph(PolicyGraph):
         >>> print(policy.compute_actions([1, 0, 2]))
         (array([0, 1, 1]), [], {})
 
-        >>> print(policy.postprocess_trajectory(SampleBatch({...}), {}))
+        >>> print(policy.postprocess_trajectory(SampleBatch({...})))
         SampleBatch({"action": ..., "advantages": ..., ...})
     """
 

@@ -6,11 +6,13 @@ import unittest
 
 import ray
 from ray.rllib.test.test_common_policy_evaluator import MockEnv
-from ray.rllib.utils.multi_agent_env import MultiAgentEnv, \
-    _MultiAgentEnvToAsync
+from ray.rllib.utils.async_vector_env import _MultiAgentEnvToAsync
+from ray.rllib.utils.multi_agent_env import MultiAgentEnv
 
 
 class BasicMultiAgent(MultiAgentEnv):
+    """Env of N independent agents, each of which exits after 25 steps."""
+
     def __init__(self, num):
         self.agents = [MockEnv(25) for _ in range(num)]
         self.dones = set()
@@ -30,6 +32,10 @@ class BasicMultiAgent(MultiAgentEnv):
 
 
 class RoundRobinMultiAgent(MultiAgentEnv):
+    """Env of N independent agents, each of which exits after 5 steps.
+
+    On each step() of the env, only one agent takes an action."""
+
     def __init__(self, num):
         self.agents = [MockEnv(5) for _ in range(num)]
         self.dones = set()
@@ -142,6 +148,7 @@ class TestMultiAgentEnv(unittest.TestCase):
         env.send_actions({0: {0: 0}, 1: {0: 0}})
         obs, rew, dones, _, _ = env.poll()
         self.assertEqual(obs, {0: {1: 0}, 1: {1: 0}})
+
 
 if __name__ == '__main__':
     ray.init()
