@@ -138,7 +138,7 @@ matrix:
         # - python test/component_failures_test.py
         - python test/multi_node_test.py
         - python test/recursion_test.py
-        # - python test/monitor_test.py
+        - python test/monitor_test.py
         - python test/cython_test.py
         - python test/credis_test.py
 
