@@ -12,18 +12,14 @@ import ray.ray_constants as ray_constants
 
 
 class TaskTests(unittest.TestCase):
-    @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
     def testSubmittingTasks(self):
         for num_local_schedulers in [1, 4]:
             for num_workers_per_scheduler in [4]:
-                num_workers = num_local_schedulers * num_workers_per_scheduler
                 ray.worker._init(
                     start_ray_local=True,
-                    num_workers=num_workers,
+                    num_workers=num_workers_per_scheduler,
                     num_local_schedulers=num_local_schedulers,
-                    num_cpus=100)
+                    num_cpus=10)
 
                 @ray.remote
                 def f(x):
@@ -50,12 +46,11 @@ class TaskTests(unittest.TestCase):
     def testDependencies(self):
         for num_local_schedulers in [1, 4]:
             for num_workers_per_scheduler in [4]:
-                num_workers = num_local_schedulers * num_workers_per_scheduler
                 ray.worker._init(
                     start_ray_local=True,
-                    num_workers=num_workers,
+                    num_workers=num_workers_per_scheduler,
                     num_local_schedulers=num_local_schedulers,
-                    num_cpus=100)
+                    num_cpus=10)
 
                 @ray.remote
                 def f(x):
