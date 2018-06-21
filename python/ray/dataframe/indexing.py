@@ -370,7 +370,11 @@ class _Loc_Indexer(_Location_Indexer_Base):
         Returns:
              nan_labels: The labels needs to be added
         """
-        locator_as_index = pandas.Index(locator)
+        # base_index_type can be pd.Index or pd.DatetimeIndex
+        # depending on user input and pandas behavior
+        # See issue #2264
+        base_index_type = type(base_index)
+        locator_as_index = base_index_type(locator)
 
         nan_labels = locator_as_index.difference(base_index)
         common_labels = locator_as_index.intersection(base_index)
