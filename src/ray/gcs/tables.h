@@ -298,7 +298,7 @@ class DriverTable : public Log<JobID, DriverTableData> {
   };
   virtual ~DriverTable() {}
 
-  Status AppendDriverData(UniqueID driver_id, bool is_dead) {
+  Status AppendDriverData(JobID driver_id, bool is_dead) {
     auto data = std::make_shared<DriverTableDataT>();
     data->driver_id = driver_id.binary();
     data->is_dead = is_dead;

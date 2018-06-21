@@ -85,8 +85,10 @@ class MonitorTest(unittest.TestCase):
         # the global state.
 
         if test_object_cleanup:
+            # Test GCS object clean up as well as task clean up.
             self.assertEqual((0, 1), StateSummary()[:2])
         else:
+            # Just test GCS task clean up.
             self.assertEqual(1, StateSummary()[1])
 
         ray.worker.cleanup()

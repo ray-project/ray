@@ -486,6 +486,9 @@ class Monitor(object):
 
         Removes control-state entries of all tasks and task return
         objects belonging to the driver.
+
+        Args:
+            driver_id: The driver id.
         """
         redis = self.state.redis_client
 
@@ -497,6 +500,7 @@ class Monitor(object):
         task_table_infos = {}  # task id -> TaskInfo
         for key in redis.scan_iter(match=XRAY_TASK_TABLE_PREFIX + b"*"):
             entry = redis.get(key)
+            # TODO(hme): Deal with automatic GCS flushing interaction.
             task = ray.gcs_utils.Task.GetRootAsTask(entry, 0)
             task_info = ray.gcs_utils.TaskInfo\
                 .GetRootAsTaskInfo(task.TaskSpecification(), 0)
@@ -513,7 +517,7 @@ class Monitor(object):
                 task_info.Returns(i) for i in range(task_info.ReturnsLength())
             ])
 
-        # TODO: Remove only objects in GCS that originated from this driver.
+        # TODO(hme): Remove only objects in GCS that originated from this driver.
         # In legacy Ray, put objects are added by local_scheduler.cc
         # whenever a message of type ray::local_scheduler::protocol::PutObject
         # is received. In XRay, object locations are registered with the GCS
@@ -548,8 +552,11 @@ class Monitor(object):
 
     def xray_driver_removed_handler(self, unused_channel, data):
         """Handle a notification that a driver has been removed.
+
+        Args:
+            unused_channel: The message channel.
+            data: The message data.
         """
-        # TODO: Migrate this to raylet monitor.
         gcs_entries = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(data, 0)
         driver_data = gcs_entries.Entries(0)
         message = ray.gcs_utils.DriverTableData.GetRootAsDriverTableData(driver_data, 0)
