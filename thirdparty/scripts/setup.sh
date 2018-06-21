@@ -27,6 +27,11 @@ echo "Build language is $LANGUAGE."
 unamestr="$(uname)"
 
 ##############################################
+# boost
+##############################################
+bash "$TP_SCRIPT_DIR/build_boost.sh"
+
+##############################################
 # redis
 ##############################################
 bash "$TP_SCRIPT_DIR/build_redis.sh"
@@ -35,11 +40,6 @@ bash "$TP_SCRIPT_DIR/build_redis.sh"
 # credis
 ##############################################
 bash "$TP_SCRIPT_DIR/build_credis.sh"
-
-##############################################
-# boost
-##############################################
-bash "$TP_SCRIPT_DIR/build_boost.sh"
 
 ##############################################
 # flatbuffers if necessary
