@@ -8,9 +8,10 @@ import pickle
 import tensorflow as tf
 
 import ray
-from ray.tune.result import TrainingResult
 from ray.tune.trial import Resources
 from ray.rllib.agent import Agent
+from ray.rllib.utils.common_policy_evaluator import (
+    CommonPolicyEvaluator, collect_metrics)
 from ray.rllib.utils import FilterManager
 from ray.rllib.ppo.ppo_tf_policy import PPOTFPolicyGraph
 from ray.rllib.optimizers.multi_gpu import LocalMultiGPUOptimizer
@@ -90,7 +91,7 @@ class PPOAgent(Agent):
     _agent_name = "PPO"
     _allow_unknown_subkeys = ["model", "tf_session_args", "env_config"]
     _default_config = DEFAULT_CONFIG
-    _default_policy_graph = PPOTFPolicy
+    _default_policy_graph = PPOTFPolicyGraph
 
     @classmethod
     def default_resource_request(cls, config):
@@ -107,13 +108,13 @@ class PPOAgent(Agent):
                 config=tf.ConfigProto(**self.config["tf_session_args"]))
         self.local_evaluator = CommonPolicyEvaluator(
             self.env_creator,
-            _default_policy_graph,
+            self._default_policy_graph,
             tf_session_creator=session_creator,
             batch_steps=0,
-            observation_filter=self.config,
+            observation_filter=self.config["observation_filter"],
             env_config=self.config["env_config"],
-            model_config=elf.config["model"],
-            policy_config=None
+            model_config=self.config["model"],
+            policy_config=self.config
             )
         RemoteEvaluator = CommonPolicyEvaluator.as_remote(
             num_cpus=self.config["num_cpus_per_worker"],
@@ -121,12 +122,12 @@ class PPOAgent(Agent):
         self.remote_evaluators = [
             RemoteEvaluator.remote(
                 self.env_creator,
-                _default_policy_graph,
-                batch_steps=0,
-                observation_filter=self.config,
+                self._default_policy_graph,
+                batch_steps=0,  # todo
+                observation_filter=self.config["observation_filter"],
                 env_config=self.config["env_config"],
                 model_config=self.config["model"],
-                policy_config=None
+                policy_config=self.config
             )
             for _ in range(self.config["num_workers"])]
 
@@ -204,3 +205,14 @@ class PPOAgent(Agent):
             observation, update=False)
         return self.local_evaluator.common_policy.compute_actions(
             [observation], [], False)[0][0]
+
+
+if __name__ == '__main__':
+    import gym
+    from collections import defaultdict
+    # from ray.rllib.ppo import DEFAULT_CONFIG, PPOAgent
+    cfg = DEFAULT_CONFIG.copy()
+    cfg["use_gae"] = False
+    ray.init()
+    # env = gym.make()
+    agent = PPOAgent(cfg, "CartPole-v0", )

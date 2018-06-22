@@ -122,18 +122,3 @@ class PPOTFPolicyGraph(TFPolicyGraph):
         last_r = 0.0
         return compute_advantages(
             sample_batch, last_r, self.config["gamma"], self.config["lambda"])
-
-
-if __name__ == '__main__':
-    import gym
-    from collections import defaultdict
-    from ray.rllib.ppo import DEFAULT_CONFIG
-    cfg = DEFAULT_CONFIG.copy()
-    cfg["use_gae"] = False
-    sess = tf.Session()
-    with sess.as_default():
-        env = gym.make("CartPole-v0")
-        graph = PPOTFPolicyGraph(
-            env.observation_space,
-            env.action_space,
-            cfg)

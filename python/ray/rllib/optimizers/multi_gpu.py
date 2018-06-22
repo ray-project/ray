@@ -28,7 +28,6 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
 
     def _init(self, sgd_batch_size=128, sgd_stepsize=5e-5, num_sgd_iter=10,
               timesteps_per_batch=1024):
-        assert isinstance(self.local_evaluator, TFMultiGPUSupport)
         self.batch_size = sgd_batch_size
         self.sgd_stepsize = sgd_stepsize
         self.num_sgd_iter = num_sgd_iter
