@@ -52,6 +52,11 @@ table ObjectTableData {
   is_eviction: bool;
   // The number of times this object has been evicted from this node so far.
   num_evictions: int;
+  // Whether this object was created by ray.put.
+  is_put: bool;
+  // The task that created this object.
+  task_id: string;
+
 }
 
 table TaskReconstructionData {

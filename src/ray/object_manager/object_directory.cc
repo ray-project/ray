@@ -65,6 +65,10 @@ ray::Status ObjectDirectory::ReportObjectAdded(const ObjectID &object_id,
   data->is_eviction = false;
   data->num_evictions = object_evictions_[object_id];
   data->object_size = object_info.data_size;
+  data->task_id = ComputeTaskId(object_id).binary();
+  // From ComputeObjectIndex: This is positive if the task
+  // returned the object and negative if created by a put.
+  data->is_put = ComputeObjectIndex(object_id) < 0;
   ray::Status status =
       gcs_client_->object_table().Append(job_id, object_id, data, nullptr);
   return status;

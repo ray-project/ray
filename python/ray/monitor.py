@@ -517,14 +517,22 @@ class Monitor(object):
                 task_info.Returns(i) for i in range(task_info.ReturnsLength())
             ])
 
-        # TODO(hme): Remove only objects in GCS that originated from this driver.
-        # In legacy Ray, put objects are added by local_scheduler.cc
-        # whenever a message of type ray::local_scheduler::protocol::PutObject
-        # is received. In XRay, object locations are registered with the GCS
-        # whenever the ObjectManager receives notifications about local objects
-        # from the object store. Enable this for XRay by implementing the PutObject
-        # protocol in NodeManager, and a separate object table for tracking put
-        # information.
+        # Also record all the ray.put()'d objects.
+        all_put_objects = []
+        for key in redis.scan_iter(match=XRAY_OBJECT_TABLE_PREFIX + b"*"):
+            entry = redis.zrange(key, 0, 0)
+            assert len(entry) == 1
+            object_table_data = ray.gcs_utils.ObjectTableData.GetRootAsObjectTableData(entry[0], 0)
+            object_id = key.split(XRAY_OBJECT_TABLE_PREFIX)[1]
+            if not object_table_data.IsPut():
+                continue
+            all_put_objects.append((object_id, object_table_data.TaskId()))
+
+        # Keep put objects from relevant tasks.
+        driver_task_ids_set = set(driver_task_ids)
+        for object_id, task_id in all_put_objects:
+            if task_id in driver_task_ids_set:
+                driver_object_ids.append(object_id)
 
         # Clean up entries for non-empty objects.
         non_empty_objects = []
