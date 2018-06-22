@@ -62,7 +62,8 @@ class TFPolicyGraph(PolicyGraph):
             self._loss, self._sess)
 
         assert len(self._state_inputs) == len(self._state_outputs) == \
-            len(self.get_initial_state())
+            len(self.get_initial_state()), \
+            (self._state_inputs, self._state_outputs, self.get_initial_state())
 
     def compute_actions(
             self, obs_batch, state_batches=None, is_training=False):

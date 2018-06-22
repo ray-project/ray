@@ -9,12 +9,17 @@ from ray.rllib.utils.process_rollout import compute_advantages
 from ray.rllib.utils.tf_policy_graph import TFPolicyGraph
 
 
+class PGLoss(object):
+    def __init__(self, action_dist, actions, advantages):
+        self.loss = -tf.reduce_mean(action_dist.logp(actions) * advantages)
+
+
 class PGPolicyGraph(TFPolicyGraph):
 
     def __init__(self, obs_space, action_space, config):
         self.config = config
 
-        # setup policy
+        # Setup policy
         self.x = tf.placeholder(tf.float32, shape=[None]+list(obs_space.shape))
         dist_class, self.logit_dim = ModelCatalog.get_action_dist(
             action_space, self.config["model"])
@@ -22,12 +27,12 @@ class PGPolicyGraph(TFPolicyGraph):
             self.x, self.logit_dim, options=self.config["model"])
         self.dist = dist_class(self.model.outputs)  # logit for each action
 
-        # setup policy loss
+        # Setup policy loss
         self.ac = ModelCatalog.get_action_placeholder(action_space)
         self.adv = tf.placeholder(tf.float32, [None], name="adv")
-        self.loss = -tf.reduce_mean(self.dist.logp(self.ac) * self.adv)
+        self.loss = PGLoss(self.dist, self.ac, self.adv).loss
 
-        # initialize TFPolicyGraph
+        # Initialize TFPolicyGraph
         self.sess = tf.get_default_session()
         self.loss_in = [
             ("obs", self.x),

@@ -11,7 +11,6 @@ from ray.rllib.optimizers import AsyncOptimizer
 from ray.rllib.utils import FilterManager
 from ray.rllib.utils.common_policy_evaluator import CommonPolicyEvaluator, \
     collect_metrics
-from ray.rllib.a3c.common import get_policy_cls
 from ray.tune.trial import Resources
 
 DEFAULT_CONFIG = {
@@ -21,8 +20,6 @@ DEFAULT_CONFIG = {
     "num_envs": 1,
     # Size of rollout batch
     "batch_size": 10,
-    # Use LSTM model - only applicable for image states
-    "use_lstm": False,
     # Use PyTorch as backend - no LSTM support
     "use_pytorch": False,
     # Which observation filter to apply to the observation
@@ -47,6 +44,8 @@ DEFAULT_CONFIG = {
     "summarize": False,
     # Model and preprocessor options
     "model": {
+        # Use LSTM model - only applicable for image states. Requires TF.
+        "use_lstm": False,
         # (Image statespace) - Converts image to Channels = 1
         "grayscale": True,
         # (Image statespace) - Each pixel
@@ -81,7 +80,12 @@ class A3CAgent(Agent):
             extra_gpu=cf["use_gpu_for_workers"] and cf["num_workers"] or 0)
 
     def _init(self):
-        self.policy_cls = get_policy_cls(self.config)
+        if self.config["use_pytorch"]:
+            from ray.rllib.a3c.a3c_torch_policy import SharedTorchPolicy
+            self.policy_cls = SharedTorchPolicy
+        else:
+            from ray.rllib.a3c.a3c_tf_graph import A3CPolicyGraph
+            self.policy_cls = A3CPolicyGraph
 
         if self.config["use_pytorch"]:
             session_creator = None

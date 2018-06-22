@@ -27,9 +27,15 @@ class Model(object):
         inputs (Tensor): The input placeholder for this model.
         outputs (Tensor): The output vector of this model.
         last_layer (Tensor): The network layer right before the model output.
+        state_init (list): List of initial recurrent state tensors (if any).
+        state_in (list): List of input recurrent state tensors (if any).
+        state_out (list): List of output recurrent state tensors (if any).
     """
 
     def __init__(self, inputs, num_outputs, options):
+        self.state_init = []
+        self.state_in = []
+        self.state_out = []
         self.inputs = inputs
         if options.get("free_log_std", False):
             assert num_outputs % 2 == 0

@@ -16,7 +16,6 @@ class LSTM(Model):
     """Vision LSTM network based here:
     https://github.com/openai/universe-starter-agent"""
 
-    # TODO(rliaw): Add LSTM code for other algorithms
     def _init(self, inputs, num_outputs, options):
         use_tf100_api = (distutils.version.LooseVersion(tf.VERSION) >=
                          distutils.version.LooseVersion("1.0.0"))
