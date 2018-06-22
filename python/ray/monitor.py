@@ -543,12 +543,11 @@ class Monitor(object):
         # Remove with best effort.
         num_deleted = redis.delete(*keys)
         log.info(
-            "Removed {} dead redis entries of the driver from redis.".
-                format(num_deleted))
+            "Removed {} dead redis entries of the driver from redis.".format(
+                num_deleted))
         if num_deleted != len(keys):
-            log.warning(
-                "Failed to remove {} relevant "
-                "redis entries.".format(len(keys) - num_deleted))
+            log.warning("Failed to remove {} relevant "
+                        "redis entries.".format(len(keys) - num_deleted))
 
     def xray_driver_removed_handler(self, unused_channel, data):
         """Handle a notification that a driver has been removed.
@@ -557,9 +556,11 @@ class Monitor(object):
             unused_channel: The message channel.
             data: The message data.
         """
-        gcs_entries = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(data, 0)
+        gcs_entries = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
+            data, 0)
         driver_data = gcs_entries.Entries(0)
-        message = ray.gcs_utils.DriverTableData.GetRootAsDriverTableData(driver_data, 0)
+        message = ray.gcs_utils.DriverTableData.GetRootAsDriverTableData(
+            driver_data, 0)
         driver_id = message.DriverId()
         log.info("XRay Driver {} has been removed.".format(
             binary_to_hex(driver_id)))

@@ -98,7 +98,8 @@ class MonitorTest(unittest.TestCase):
         os.environ.get('RAY_USE_NEW_GCS', False),
         "Failing with the new GCS API.")
     def testTaskCleanupOnDriverExitSingleRedisShard(self):
-        self._testCleanupOnDriverExit(num_redis_shards=1, test_object_cleanup=False)
+        self._testCleanupOnDriverExit(
+            num_redis_shards=1, test_object_cleanup=False)
 
     @unittest.skipIf(
         os.environ.get("RAY_USE_XRAY") == "1",
@@ -111,7 +112,8 @@ class MonitorTest(unittest.TestCase):
         # by dead drivers is supported in xray.
         # See _xray_clean_up_entries_for_driver
         # in monitor.py for details.
-        self._testCleanupOnDriverExit(num_redis_shards=1, test_object_cleanup=True)
+        self._testCleanupOnDriverExit(
+            num_redis_shards=1, test_object_cleanup=True)
 
     @unittest.skipIf(
         os.environ.get("RAY_USE_XRAY") == "1",
@@ -120,8 +122,10 @@ class MonitorTest(unittest.TestCase):
         os.environ.get('RAY_USE_NEW_GCS', False),
         "Hanging with the new GCS API.")
     def testCleanupOnDriverExitManyRedisShards(self):
-        self._testCleanupOnDriverExit(num_redis_shards=5, test_object_cleanup=True)
-        self._testCleanupOnDriverExit(num_redis_shards=31, test_object_cleanup=True)
+        self._testCleanupOnDriverExit(
+            num_redis_shards=5, test_object_cleanup=True)
+        self._testCleanupOnDriverExit(
+            num_redis_shards=31, test_object_cleanup=True)
 
 
 if __name__ == "__main__":
