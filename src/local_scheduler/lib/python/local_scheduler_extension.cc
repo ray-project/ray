@@ -309,6 +309,92 @@ static PyObject *PyLocalSchedulerClient_push_error(PyObject *self,
   Py_RETURN_NONE;
 }
 
+
+int PyBytes_or_PyUnicode_to_string(PyObject *py_string, std::string &out) {
+  // Handle the case where the key is a bytes object and the case where it
+  // is a unicode object.
+  if (PyUnicode_Check(py_string)) {
+    PyObject *ascii_string = PyUnicode_AsASCIIString(py_string);
+    out =
+        std::string(PyBytes_AsString(ascii_string), PyBytes_Size(ascii_string));
+    Py_DECREF(ascii_string);
+  } else if PyBytes_Check(py_string) {
+    out =
+        std::string(PyBytes_AsString(py_string), PyBytes_Size(py_string));
+  } else {
+    return -1;
+  }
+
+  return 0;
+}
+
+static PyObject *PyLocalSchedulerClient_push_profile_events(PyObject *self,
+                                                            PyObject *args) {
+  PyObject *profile_data;
+
+  if (!PyArg_ParseTuple(args, "O", &profile_data)) {
+    return NULL;
+  }
+
+  std::vector<ray::protocol::ProfileTableDataT> profile_events;
+
+  for (int64_t i = 0; i < PyList_Size(profile_data); ++i) {
+    ray::protocol::ProfileTableDataT profile_event;
+    PyObject *py_profile_event = PyList_GetItem(profile_data, i);
+
+    if (!PyDict_CheckExact(py_profile_event)) {
+      return NULL;
+    }
+
+    PyObject *key, *val;
+    Py_ssize_t pos = 0;
+    while (PyDict_Next(py_profile_event, &pos, &key, &val)) {
+      std::string key_string;
+      if (PyBytes_or_PyUnicode_to_string(key, key_string) == -1) {
+        return NULL;
+      }
+
+      // TODO(rkn): If the dictionary is formatted incorrectly, that could lead
+      // to errors. E.g., if any of the strings are empty, that will cause
+      // segfaults in the node manager.
+
+      if (key_string == std::string("event_type")) {
+        if (PyBytes_or_PyUnicode_to_string(val, profile_event.event_type) == -1) {
+          return NULL;
+        }
+        RAY_LOG(INFO) << "event type is " << profile_event.event_type;
+      } else if (key_string == std::string("component_type")) {
+        if (PyBytes_or_PyUnicode_to_string(val, profile_event.component_type) == -1) {
+          return NULL;
+        }
+      } else if (key_string == std::string("component_id")) {
+        if (PyBytes_or_PyUnicode_to_string(val, profile_event.component_id) == -1) {
+          return NULL;
+        }
+      } else if (key_string == std::string("start_time")) {
+        profile_event.start_time = PyFloat_AsDouble(val);
+      } else if (key_string == std::string("end_time")) {
+        profile_event.end_time = PyFloat_AsDouble(val);
+      } else if (key_string == std::string("extra_data")) {
+        if (PyBytes_or_PyUnicode_to_string(val, profile_event.extra_data) == -1) {
+          return NULL;
+        }
+      } else {
+        return NULL;
+      }
+    }
+
+    profile_events.push_back(profile_event);
+  }
+
+  local_scheduler_push_profile_events(
+      reinterpret_cast<PyLocalSchedulerClient *>(self)
+          ->local_scheduler_connection,
+      profile_events);
+
+  Py_RETURN_NONE;
+}
+
 static PyMethodDef PyLocalSchedulerClient_methods[] = {
     {"disconnect", (PyCFunction) PyLocalSchedulerClient_disconnect, METH_NOARGS,
      "Notify the local scheduler that this client is exiting gracefully."},
@@ -338,6 +424,9 @@ static PyMethodDef PyLocalSchedulerClient_methods[] = {
      "Wait for a list of objects to be created."},
     {"push_error", (PyCFunction) PyLocalSchedulerClient_push_error,
      METH_VARARGS, "Push an error message to the relevant driver."},
+    {"push_profile_events",
+     (PyCFunction) PyLocalSchedulerClient_push_profile_events, METH_VARARGS,
+     "Store some profiling events in the GCS."},
     {NULL} /* Sentinel */
 };
 

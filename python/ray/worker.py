@@ -984,9 +984,7 @@ class Worker(object):
         # warning to the user if we are waiting too long to acquire the lock
         # because that may indicate that the system is hanging, and it'd be
         # good to know where the system is hanging.
-        log(event_type="ray:acquire_lock", kind=LOG_SPAN_START, worker=self)
         with self.lock:
-            log(event_type="ray:acquire_lock", kind=LOG_SPAN_END, worker=self)
 
             function_name = (self.function_execution_info[driver_id][
                 function_id.id()]).function_name
@@ -2548,8 +2546,53 @@ class RayLogSpan(object):
                 worker=self.worker)
 
 
+class RayLogSpanRaylet(object):
+    """An object used to enable logging a span of events with a with statement.
+
+    Attributes:
+        event_type (str): The type of the event being logged.
+        contents: Additional information to log.
+    """
+
+    def __init__(self, event_type, worker=global_worker):
+        """Initialize a RayLogSpan object."""
+        self.event_type = event_type
+        self.worker = worker
+
+    def __enter__(self):
+        """Log the beginning of a span event."""
+        self.start_time = time.time()
+
+    def __exit__(self, type, value, tb):
+        """Log the end of a span event. Log any exception that occurred."""
+        if self.worker.mode == WORKER_MODE:
+            component_type = "worker"
+        else:
+            component_type = "driver"
+
+        event = {"event_type": self.event_type,
+                 "component_type": component_type,
+                 "component_id": self.worker.worker_id,
+                 "start_time": self.start_time,
+                 "end_time": time.time(),
+                 "extra_data": " "  # TODO(rkn): This is only present as a non-empty string to prevent segfaults.
+                }
+
+        if type is not None:
+            event["extra_data"] = json.dumps({
+                "type": str(type),
+                "value": value,
+                "traceback": traceback.format_exc()
+            })
+
+        self.worker.events.append(event)
+
+
 def log_span(event_type, contents=None, worker=global_worker):
-    return RayLogSpan(event_type, contents=contents, worker=worker)
+    if not worker.use_raylet:
+        return RayLogSpan(event_type, contents=contents, worker=worker)
+    else:
+        return RayLogSpanRaylet(event_type, worker=worker)
 
 
 def log_event(event_type, contents=None, worker=global_worker):
@@ -2571,6 +2614,9 @@ def log(event_type, kind, contents=None, worker=global_worker):
             time, and it is LOG_SPAN_END if we are finishing logging a span of
             time.
     """
+    if worker.use_raylet:
+        raise Exception(
+            "This method is not supported in the raylet code path.")
     # TODO(rkn): This code currently takes around half a microsecond. Since we
     # call it tens of times per task, this adds up. We will need to redo the
     # logging code, perhaps in C.
@@ -2586,11 +2632,15 @@ def log(event_type, kind, contents=None, worker=global_worker):
 
 def flush_log(worker=global_worker):
     """Send the logged worker events to the global state store."""
-    event_log_key = b"event_log:" + worker.worker_id
-    event_log_value = json.dumps(worker.events)
     if not worker.use_raylet:
+        event_log_key = b"event_log:" + worker.worker_id
+        event_log_value = json.dumps(worker.events)
         worker.local_scheduler_client.log_event(event_log_key, event_log_value,
                                                 time.time())
+    else:
+        print("YYY", worker.events)
+        worker.local_scheduler_client.push_profile_events(worker.events)
+
     worker.events = []
 
 

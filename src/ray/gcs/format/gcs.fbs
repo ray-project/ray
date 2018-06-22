@@ -15,6 +15,7 @@ enum TablePrefix:int {
   TASK_RECONSTRUCTION,
   HEARTBEAT,
   ERROR_INFO,
+  PROFILE,
 }
 
 // The channel that Add operations to the Table should be published on, if any.
@@ -119,6 +120,23 @@ table CustomSerializerData {
 }
 
 table ConfigTableData {
+}
+
+table ProfileTableData {
+  // The type of the event.
+  event_type: string;
+  // The type of the component that generated the event, e.g., worker or
+  // object_manager, or node_manager.
+  component_type: string;
+  // An identifier for the component that generated the event.
+  component_id: string;
+  // The start time of the event.
+  start_time: double;
+  // The end time of the event. If the event is a point event, then this should
+  // be the same as the start time.
+  end_time: double;
+  // Additional data associated with the event.
+  extra_data: string;
 }
 
 table RayResource {

@@ -196,6 +196,33 @@ Status ErrorTable::PushErrorToDriver(const JobID &job_id, const std::string &typ
   });
 }
 
+Status ProfileTable::AddProfileEvent(const std::string &event_type,
+                                     const std::string &component_type,
+                                     const UniqueID &component_id, double start_time,
+                                     double end_time, const std::string &extra_data) {
+  auto data = std::make_shared<ProfileTableDataT>();
+  data->event_type = event_type;
+  data->component_type = component_type;
+  data->component_id = component_id.binary();
+  data->start_time = start_time;
+  data->end_time = end_time;
+  data->extra_data = extra_data;
+  return AddProfileEvent(data);
+  // return Append(JobID::nil(), component_id, data, [](ray::gcs::AsyncGcsClient *client,
+  //                                                    const JobID &id,
+  //                                                    const ProfileTableDataT &data) {
+  //   RAY_LOG(DEBUG) << "Profile message pushed callback";
+  // });
+}
+
+Status ProfileTable::AddProfileEvent(std::shared_ptr<ProfileTableDataT> &profile_data) {
+  return Append(JobID::nil(), JobID::from_binary(profile_data->component_id),
+                profile_data, [](ray::gcs::AsyncGcsClient *client, const JobID &id,
+                                 const ProfileTableDataT &data) {
+    RAY_LOG(DEBUG) << "Profile message pushed callback";
+  });
+}
+
 void ClientTable::RegisterClientAddedCallback(const ClientTableCallback &callback) {
   client_added_callback_ = callback;
   // Call the callback for any added clients that are cached.
@@ -348,6 +375,7 @@ template class Log<TaskID, TaskReconstructionData>;
 template class Table<ClientID, HeartbeatTableData>;
 template class Log<JobID, ErrorTableData>;
 template class Log<UniqueID, ClientTableData>;
+template class Log<UniqueID, ProfileTableData>;
 
 }  // namespace gcs
 

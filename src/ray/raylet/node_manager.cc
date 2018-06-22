@@ -552,6 +552,36 @@ void NodeManager::ProcessClientMessage(
     RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(job_id, type, error_message,
                                                               timestamp));
   } break;
+  case protocol::MessageType::PushProfileEventsRequest: {
+    auto message = flatbuffers::GetRoot<protocol::PushProfileEventsRequest>(message_data);
+
+    for (size_t i = 0; i < message->profile_events()->size(); ++i) {
+      // auto profile_data = std::shared_ptr<ProfileTableDataT>(
+      //     const_cast<ProfileTableDataT *>(reinterpret_cast<const ProfileTableDataT *>(message->profile_events()->Get(i)))); // TODO(rkn): All of this casting has to go away.
+      // RAY_CHECK_OK(gcs_client_->profile_table().AddProfileEvent(profile_data));
+
+      auto profile_data = message->profile_events()->Get(i);
+
+      RAY_LOG(INFO) << "XXX 1: " << (long long)profile_data->event_type()
+                    << " 2: " << (long long)profile_data->component_type()
+                    << " 3: " << (long long)profile_data->component_id()
+                    << " 4: " << profile_data->start_time()
+                    << " 5: " << profile_data->end_time()
+                    << " 6: " << (long long)profile_data->extra_data();
+
+      RAY_CHECK_OK(gcs_client_->profile_table().AddProfileEvent(
+          string_from_flatbuf(*profile_data->event_type()),
+          string_from_flatbuf(*profile_data->component_type()),
+          from_flatbuf(*profile_data->component_id()),
+          profile_data->start_time(),
+          profile_data->end_time(),
+          string_from_flatbuf(*profile_data->extra_data())));
+
+          // const std::string &event_type, const std::string &component_type,
+          //                        const UniqueID &component_id, double start_time,
+          //                        double end_time, const std::string &extra_data
+    }
+  } break;
 
   default:
     RAY_LOG(FATAL) << "Received unexpected message type " << message_type;

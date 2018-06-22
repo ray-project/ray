@@ -1,5 +1,7 @@
 // Local scheduler protocol specification
 
+
+
 // TODO(swang): We put the flatbuffer types in a separate namespace for now to
 // avoid conflicts with legacy Ray types.
 namespace ray.protocol;
@@ -62,6 +64,8 @@ enum MessageType:int {
   // Push an error to the relevant driver. This is sent from a worker to the
   // node manager.
   PushErrorRequest,
+  // Push some profiling events to the GCS.
+  PushProfileEventsRequest,
 }
 
 table TaskExecutionSpecification {
@@ -168,4 +172,31 @@ table PushErrorRequest {
   error_message: string;
   // The timestamp of the error message.
   timestamp: double;
+}
+
+// TODO(rkn): This is copied from gcs.fbs.
+table ProfileTableData {
+  // The type of the event.
+  event_type: string;
+  // The type of the component that generated the event, e.g., worker or
+  // object_manager, or node_manager.
+  component_type: string;
+  // An identifier for the component that generated the event.
+  component_id: string;
+  // The start time of the event.
+  start_time: double;
+  // The end time of the event. If the event is a point event, then this should
+  // be the same as the start time.
+  end_time: double;
+  // Additional data associated with the event.
+  extra_data: string;
+}
+
+// This struct stores a collection of profiling events.
+table PushProfileEventsRequest {
+  // This is a list of serialized profile events.
+  // TODO(rkn): Should this instead have type [ProfileTableData] and just
+  // include gcs.fbs?
+  // profile_events: [string];
+  profile_events: [ProfileTableData];
 }

@@ -225,4 +225,28 @@ void local_scheduler_push_error(LocalSchedulerConnection *conn,
                                 const std::string &error_message,
                                 double timestamp);
 
+/// Store some profile events in the GCS.
+///
+/// \param conn The connection information.
+/// \param event_type The type of the event.
+/// \param component_type The type of the component that the event came from.
+/// \param component_id TODO(rkn): Figure out what this should be.
+/// \param start_time The timestamp of the event start, this should be in
+/// seconds since the Unix epoch.
+/// \param end_time The timestamp of the event end, this should be in seconds
+/// since the Unix epoch. If the event is a point event, this should be equal to
+/// start_time.
+/// \param extra_data Additional data to associate with the event.
+/// \return Void.
+void local_scheduler_push_profile_events(
+    LocalSchedulerConnection *conn,
+    const std::vector<ray::protocol::ProfileTableDataT> &profile_events);
+// void local_scheduler_push_profile_event(LocalSchedulerConnection *conn,
+//                                         const std::string &event_type,
+//                                         const std::string &component_type,
+//                                         const UniqueID &component_id,
+//                                         double start_time,
+//                                         double end_time,
+//                                         const std::string &extra_data);
+
 #endif

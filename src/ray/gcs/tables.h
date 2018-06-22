@@ -95,7 +95,8 @@ class Log : virtual public PubsubInterface<ID> {
   ///
   /// \param job_id The ID of the job (= driver).
   /// \param id The ID of the data that is added to the GCS.
-  /// \param data Data to append to the log.
+  /// \param data Data to append to the log. TODO(rkn): This can be made const,
+  /// right?
   /// \param done Callback that is called once the data has been written to the
   /// GCS.
   /// \return Status
@@ -431,7 +432,8 @@ class ErrorTable : private Log<JobID, ErrorTableData> {
   /// Push an error message for a specific job.
   ///
   /// TODO(rkn): We need to make sure that the errors are unique because
-  /// duplicate messages currently cause failures (the GCS doesn't allow it).
+  /// duplicate messages currently cause failures (the GCS doesn't allow it). A
+  /// natural way to do this is to have finer-grained time stamps.
   ///
   /// \param job_id The ID of the job that generated the error. If the error
   /// should be pushed to all jobs, then this should be nil.
@@ -441,6 +443,35 @@ class ErrorTable : private Log<JobID, ErrorTableData> {
   /// \return Status.
   Status PushErrorToDriver(const JobID &job_id, const std::string &type,
                            const std::string &error_message, double timestamp);
+};
+
+class ProfileTable : private Log<UniqueID, ProfileTableData> {
+ public:
+  ProfileTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client)
+      : Log(context, client) {
+    prefix_ = TablePrefix::PROFILE;
+  };
+
+  /// Push an error message for a specific job.
+  ///
+  /// \param event_type The type of the event.
+  /// \param component_type The type of the component that the event came from.
+  /// \param component_id TODO(rkn): Figure out what this should be.
+  /// \param start_time The timestamp of the event start, this should be in seconds since
+  /// the Unix epoch.
+  /// \param end_time The timestamp of the event end, this should be in seconds since
+  /// the Unix epoch. If the event is a point event, this should be equal to start_time.
+  /// \param extra_data Additional data to associate with the event.
+  /// \return Status.
+  Status AddProfileEvent(const std::string &event_type, const std::string &component_type,
+                         const UniqueID &component_id, double start_time,
+                         double end_time, const std::string &extra_data);
+
+  /// Add an already-serialized profile event.
+  ///
+  /// \param profile_data A serialized profile data object.
+  /// \return Status.
+  Status AddProfileEvent(std::shared_ptr<ProfileTableDataT> &profile_data);
 };
 
 using CustomSerializerTable = Table<ClassID, CustomSerializerData>;
