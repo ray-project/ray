@@ -108,7 +108,7 @@ class PPOAgent(Agent):
         self.local_evaluator = CommonPolicyEvaluator(
             self.env_creator,
             _default_policy_graph,
-            tf_session_creator=None,  #update this
+            tf_session_creator=session_creator,  #update this
             batch_steps=0,
             observation_filter=self.config,
             env_config=self.config["env_config"],
@@ -124,7 +124,6 @@ class PPOAgent(Agent):
             RemoteEvaluator.remote(
                 self.env_creator,
                 _default_policy_graph,
-                tf_session_creator=session_creator,  #update this
                 batch_steps=0,
                 observation_filter=self.config,
                 env_config=self.config["env_config"],

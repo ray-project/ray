@@ -20,13 +20,13 @@ class PPOTFPolicyGraph(TFPolicyGraph):
         assert all(hasattr(self, attr)
                    for attr in ["vf", "logits", "x", "var_list"])
         print("Setting up loss")
-        self.setup_loss(action_space)
+        loss = self.setup_loss(action_space)
         self.is_training = tf.placeholder_with_default(True, ())
         self.sess = tf.get_default_session()
 
         TFPolicyGraph.__init__(
             self, self.sess, obs_input=self.x,
-            action_sampler=self.action_dist.sample(), loss=self.loss,
+            action_sampler=self.action_dist.sample(), loss=loss,
             loss_inputs=self.loss_in, is_training=self.is_training,
             state_inputs=self.state_in, state_outputs=self.state_out)
 
@@ -104,13 +104,13 @@ class PPOTFPolicyGraph(TFPolicyGraph):
             self.vf_loss2 = tf.square(vf_clipped - value_targets)
             self.vf_loss = tf.minimum(self.vf_loss1, self.vf_loss2)
             self.mean_vf_loss = tf.reduce_mean(self.vf_loss)
-            self.loss = tf.reduce_mean(
+            loss = tf.reduce_mean(
                 -self.surr + kl_coeff * self.kl +
                 config["vf_loss_coeff"] * self.vf_loss -
                 config["entropy_coeff"] * self.entropy)
         else:
             self.mean_vf_loss = tf.constant(0.0)
-            self.loss = tf.reduce_mean(
+            loss = tf.reduce_mean(
                 -self.surr +
                 kl_coeff * self.kl -
                 config["entropy_coeff"] * self.entropy)
@@ -124,11 +124,13 @@ class PPOTFPolicyGraph(TFPolicyGraph):
             ("vf_preds", self.prev_vf_preds)
         ]
 
+        return loss
+
     def optimizer(self):
         return tf.train.AdamOptimizer(self.config["lr"])
 
     def gradients(self, optimizer):
-        grads = tf.gradients(self.loss, self.var_list)
+        grads_and_vars = optimizer.compute_gradients(self.loss, self.var_list)
         self.grads, _ = tf.clip_by_global_norm(grads, self.config["grad_clip"])
         clipped_grads = list(zip(self.grads, self.var_list))
         return clipped_grads
@@ -150,3 +152,8 @@ class PPOTFPolicyGraph(TFPolicyGraph):
             last_r = self.value(sample_batch["new_obs"][-1], *next_state)
         return compute_advantages(
             sample_batch, last_r, self.config["gamma"], self.config["lambda"])
+
+
+if __name__ == '__main__':
+
+    PPOTFPolicyGraph()
