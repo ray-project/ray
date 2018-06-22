@@ -3,9 +3,8 @@ from __future__ import division
 from __future__ import print_function
 
 import tensorflow as tf
-import gym
 
-from ray.rllib.utils.error import UnsupportedSpaceException
+from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.utils.process_rollout import compute_advantages
 from ray.rllib.utils.tf_policy_graph import TFPolicyGraph
 
@@ -13,8 +12,7 @@ from ray.rllib.utils.tf_policy_graph import TFPolicyGraph
 class PPOTFPolicyGraph(TFPolicyGraph):
     """The TF policy base class."""
 
-    def __init__(self, ob_space, action_space, registry, config):
-        self.registry = registry
+    def __init__(self, ob_space, action_space, config):
         self.config = config
         self._setup_graph(ob_space, action_space)
         assert all(hasattr(self, attr)
@@ -33,14 +31,14 @@ class PPOTFPolicyGraph(TFPolicyGraph):
         self.sess.run(tf.global_variables_initializer())
 
     def _setup_graph(self, ob_space, ac_space):
-        self.observations = tf.placeholder(
-            tf.float32, shape=(None,) + self.env.observation_space.shape)
+        self.obs = tf.placeholder(
+            tf.float32, shape=(None,) + ob_space.shape)
 
-        self.dist_class, self.logit_dim = ModelCatalog.get_action_dist(ac_space)
+        self.dist_cls, self.logit_dim = ModelCatalog.get_action_dist(ac_space)
         self.curr_logits = ModelCatalog.get_model(
-            registry, observations, logit_dim, self.config["model"]).outputs
+            self.obs, self.logit_dim, self.config["model"]).outputs
         self.logits = self._model.outputs
-        self.action_dist = self.dist_class(self.logits)
+        self.action_dist = self.dist_cls(self.logits)
         self.sampler = self.action_dist.sample()
 
         if self.config["use_gae"]:
@@ -51,9 +49,8 @@ class PPOTFPolicyGraph(TFPolicyGraph):
             vf_config["free_log_std"] = False
             with tf.variable_scope("value_function"):
                 self.value_function = ModelCatalog.get_model(
-                    registry, observations, 1, vf_config).outputs
+                    self.obs, 1, vf_config).outputs
             self.value_function = tf.reshape(self.value_function, [-1])
-
 
         self.var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
                                           tf.get_variable_scope().name)
@@ -76,64 +73,58 @@ class PPOTFPolicyGraph(TFPolicyGraph):
         # Log probabilities from the policy before the policy update.
         self.prev_logits = tf.placeholder(
             tf.float32, shape=(None, self.logit_dim))
-        self.prev_dist = self.dist_class(self.prev_logits)
+        self.prev_dist = self.dist_cls(self.prev_logits)
         # Value function predictions before the policy update.
         self.prev_vf_preds = tf.placeholder(tf.float32, shape=(None,))
 
         # Make loss functions.
-        self.ratio = tf.exp(self.curr_dist.logp(actions) -
-                            self.prev_dist.logp(actions))
+        self.ratio = tf.exp(self.curr_dist.logp(self.actions) -
+                            self.prev_dist.logp(self.actions))
         self.kl = self.prev_dist.kl(self.curr_dist)
         self.mean_kl = tf.reduce_mean(self.kl)
         self.entropy = self.curr_dist.entropy()
         self.mean_entropy = tf.reduce_mean(self.entropy)
-        self.surr1 = self.ratio * advantages
-        self.surr2 = tf.clip_by_value(self.ratio, 1 - config["clip_param"],
-                                      1 + config["clip_param"]) * advantages
+        self.surr1 = self.ratio * self.advantages
+        self.surr2 =  self.advantages * tf.clip_by_value(
+            self.ratio, 1 - self.config["clip_param"],
+            1 + self.config["clip_param"])
         self.surr = tf.minimum(self.surr1, self.surr2)
         self.mean_policy_loss = tf.reduce_mean(-self.surr)
 
-        if config["use_gae"]:
+        if self.config["use_gae"]:
             # We use a huber loss here to be more robust against outliers,
             # which seem to occur when the rollouts get longer (the variance
             # scales superlinearly with the length of the rollout)
-            self.vf_loss1 = tf.square(self.value_function - value_targets)
-            vf_clipped = prev_vf_preds + tf.clip_by_value(
-                self.value_function - prev_vf_preds,
-                -config["clip_param"], config["clip_param"])
-            self.vf_loss2 = tf.square(vf_clipped - value_targets)
+            self.vf_loss1 = tf.square(self.value_function - self.value_targets)
+            vf_clipped = self.prev_vf_preds + tf.clip_by_value(
+                self.value_function - self.prev_vf_preds,
+                -self.config["clip_param"], self.config["clip_param"])
+            self.vf_loss2 = tf.square(vf_clipped - self.value_targets)
             self.vf_loss = tf.minimum(self.vf_loss1, self.vf_loss2)
             self.mean_vf_loss = tf.reduce_mean(self.vf_loss)
             loss = tf.reduce_mean(
-                -self.surr + kl_coeff * self.kl +
-                config["vf_loss_coeff"] * self.vf_loss -
-                config["entropy_coeff"] * self.entropy)
+                -self.surr + self.kl_coeff * self.kl +
+                self.config["vf_loss_coeff"] * self.vf_loss -
+                self.config["entropy_coeff"] * self.entropy)
         else:
             self.mean_vf_loss = tf.constant(0.0)
             loss = tf.reduce_mean(
                 -self.surr +
-                kl_coeff * self.kl -
-                config["entropy_coeff"] * self.entropy)
+                self.kl_coeff * self.kl -
+                self.config["entropy_coeff"] * self.entropy)
 
         self.loss_in = [
-            ("obs", self.observations),
+            ("obs", self.obs),
             ("value_targets", self.value_targets),
             ("advantages", self.advantages),
             ("actions", self.actions),
             ("logprobs", self.prev_logits),
             ("vf_preds", self.prev_vf_preds)
         ]
-
         return loss
 
     def optimizer(self):
         return tf.train.AdamOptimizer(self.config["lr"])
-
-    def gradients(self, optimizer):
-        grads_and_vars = optimizer.compute_gradients(self.loss, self.var_list)
-        self.grads, _ = tf.clip_by_global_norm(grads, self.config["grad_clip"])
-        clipped_grads = list(zip(self.grads, self.var_list))
-        return clipped_grads
 
     def extra_compute_grad_fetches(self):
         if self.summarize:
@@ -155,5 +146,7 @@ class PPOTFPolicyGraph(TFPolicyGraph):
 
 
 if __name__ == '__main__':
-
-    PPOTFPolicyGraph()
+    import gym
+    from collections import defaultdict
+    env = gym.make("CartPole-v0")
+    graph = PPOTFPolicyGraph(env.observation_space, env.action_space, defaultdict(dict))

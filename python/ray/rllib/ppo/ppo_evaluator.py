@@ -31,7 +31,7 @@ class PPOEvaluator(TFMultiGPUSupport):
         self.logdir = logdir
         self.env = ModelCatalog.get_preprocessor_as_wrapper(
             env_creator(config["env_config"]), config["model"])
-        self.env.seed(0)\
+        self.env.seed(0)
         if is_remote:
             config_proto = tf.ConfigProto()
         else:
