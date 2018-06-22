@@ -35,7 +35,7 @@ __all__ = [
     "TaskExecutionDependencies", "TaskReply", "DriverTableMessage",
     "LocalSchedulerInfoMessage", "SubscribeToDBClientTableReply", "TaskInfo",
     "GcsTableEntry", "ClientTableData", "ErrorTableData", "HeartbeatTableData",
-    "ObjectTableData", "Task", "TablePrefix", "TablePubsub", "DriverTableData"
+    "ObjectTableData", "Task", "TablePrefix", "TablePubsub", "DriverTableData",
     "construct_error_message"
 ]
 
