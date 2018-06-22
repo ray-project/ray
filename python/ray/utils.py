@@ -278,7 +278,7 @@ def check_oversized_pickle(pickled, name, obj_type, worker):
         pickled: the pickcled object.
         name: name of the pickcled object.
         obj_type: type of the pickcled object, can be 'function', 'actor',
-        or 'object'.
+            or 'object'.
         worker: the worker used to send warning message.
     """
     length = len(pickled)
