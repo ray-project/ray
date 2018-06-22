@@ -10,7 +10,7 @@ from ray.rllib.utils.tf_policy_graph import TFPolicyGraph
 
 
 class PPOTFPolicyGraph(TFPolicyGraph):
-    """The TF policy base class."""
+    """PPO Graph"""
 
     def __init__(self, ob_space, action_space, config):
         self.config = config
@@ -22,10 +22,8 @@ class PPOTFPolicyGraph(TFPolicyGraph):
 
         TFPolicyGraph.__init__(
             self, self.sess, obs_input=self.obs,
-            action_sampler=self.curr_dist.sample(), loss=loss,
+            action_sampler=self.sampler, loss=loss,
             loss_inputs=self.loss_in, is_training=self.is_training)
-
-        self.sess.run(tf.global_variables_initializer())
 
     def _setup_graph(self, ob_space, ac_space):
         self.obs = tf.placeholder(
@@ -36,7 +34,6 @@ class PPOTFPolicyGraph(TFPolicyGraph):
             self.obs, self.logit_dim, self.config["model"]).outputs
         self.curr_dist = self.dist_cls(self.logits)
         self.sampler = self.curr_dist.sample()
-
         if self.config["use_gae"]:
             vf_config = self.config["model"].copy()
             # Do not split the last layer of the value function into
@@ -47,13 +44,6 @@ class PPOTFPolicyGraph(TFPolicyGraph):
                 self.value_function = ModelCatalog.get_model(
                     self.obs, 1, vf_config).outputs
             self.value_function = tf.reshape(self.value_function, [-1])
-
-        self.var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
-                                          tf.get_variable_scope().name)
-        self.global_step = tf.get_variable(
-            "global_step", [], tf.int32,
-            initializer=tf.constant_initializer(0, dtype=tf.int32),
-            trainable=False)
 
     def setup_loss(self, action_space):
         # Defines the training inputs:
@@ -120,7 +110,7 @@ class PPOTFPolicyGraph(TFPolicyGraph):
         return loss
 
     def optimizer(self):
-        return tf.train.AdamOptimizer()
+        return tf.train.AdamOptimizer(self.config["sgd_stepsize"])
 
     def extra_compute_grad_fetches(self):
         if self.summarize:
@@ -138,5 +128,12 @@ if __name__ == '__main__':
     import gym
     from collections import defaultdict
     from ray.rllib.ppo import DEFAULT_CONFIG
-    env = gym.make("CartPole-v0")
-    graph = PPOTFPolicyGraph(env.observation_space, env.action_space, DEFAULT_CONFIG.copy())
+    cfg = DEFAULT_CONFIG.copy()
+    cfg["use_gae"] = False
+    sess = tf.Session()
+    with sess.as_default():
+        env = gym.make("CartPole-v0")
+        graph = PPOTFPolicyGraph(
+            env.observation_space,
+            env.action_space,
+            cfg)

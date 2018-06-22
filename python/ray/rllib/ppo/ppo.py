@@ -12,7 +12,7 @@ from ray.tune.result import TrainingResult
 from ray.tune.trial import Resources
 from ray.rllib.agent import Agent
 from ray.rllib.utils import FilterManager
-from ray.rllib.ppo.ppo_evaluator import PPOEvaluator
+from ray.rllib.ppo.ppo_tf_policy import PPOTFPolicyGraph
 from ray.rllib.optimizers.multi_gpu import LocalMultiGPUOptimizer
 
 DEFAULT_CONFIG = {
@@ -90,7 +90,7 @@ class PPOAgent(Agent):
     _agent_name = "PPO"
     _allow_unknown_subkeys = ["model", "tf_session_args", "env_config"]
     _default_config = DEFAULT_CONFIG
-    # _default_policy_graph = PPOTFPolicy
+    _default_policy_graph = PPOTFPolicy
 
     @classmethod
     def default_resource_request(cls, config):
@@ -108,15 +108,13 @@ class PPOAgent(Agent):
         self.local_evaluator = CommonPolicyEvaluator(
             self.env_creator,
             _default_policy_graph,
-            tf_session_creator=session_creator,  #update this
+            tf_session_creator=session_creator,
             batch_steps=0,
             observation_filter=self.config,
             env_config=self.config["env_config"],
             model_config=elf.config["model"],
             policy_config=None
             )
-        # self.local_evaluator = PPOEvaluator(
-        #     self.registry, self.env_creator, self.config, self.logdir, False)
         RemoteEvaluator = CommonPolicyEvaluator.as_remote(
             num_cpus=self.config["num_cpus_per_worker"],
             num_gpus=self.config["num_gpus_per_worker"])
