@@ -577,7 +577,7 @@ void NodeManager::ProcessNodeManagerMessage(TcpClientConnection &node_manager_cl
     const Task &task = uncommitted_lineage.GetEntry(task_id)->TaskData();
     RAY_LOG(DEBUG) << "got task " << task.GetTaskSpecification().TaskId()
                    << " spillback=" << task.GetTaskExecutionSpecReadonly().NumForwards();
-    SubmitTask(task, uncommitted_lineage);
+    SubmitTask(task, uncommitted_lineage, /* forwarded = */true);
   } break;
   case protocol::MessageType::DisconnectClient: {
     // TODO(rkn): We need to do some cleanup here.
@@ -611,6 +611,7 @@ void NodeManager::ScheduleTasks() {
     if (client_id == gcs_client_->client_table().GetLocalClientId()) {
       local_task_ids.insert(task_id);
     } else {
+      // TODO(atumanov): need a better interface for task exit on forward.
       auto tasks = local_queues_.RemoveTasks({task_id});
       RAY_CHECK(1 == tasks.size());
       Task &task = tasks.front();
@@ -621,18 +622,24 @@ void NodeManager::ScheduleTasks() {
     // object dependencies.
     // NOTE(swang): For local tasks, the scheduled task's dependencies may get
     // evicted before it can be assigned to a worker.
-    task_dependency_manager_.UnsubscribeDependencies(task_id);
+    // TODO(atumanov): why are we unsubscribing from dependencies here?
+    // task_dependency_manager_.UnsubscribeDependencies(task_id);
   }
 
   // Transition locally scheduled tasks to SCHEDULED and dispatch scheduled tasks.
+  // Transition locally placed tasks to waiting or ready for dispatch.
   if (local_task_ids.size() > 0) {
     std::vector<Task> tasks = local_queues_.RemoveTasks(local_task_ids);
-    local_queues_.QueueScheduledTasks(tasks);
-    DispatchTasks();
+    for (const auto &t : tasks) {
+      QueueTask(t);
+    }
+    //local_queues_.QueueScheduledTasks(tasks);
+    //DispatchTasks();
   }
 }
 
-void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineage) {
+void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineage,
+                             bool forwarded) {
   // Add the task and its uncommitted lineage to the lineage cache.
   lineage_cache_.AddWaitingTask(task, uncommitted_lineage);
   // Mark the task as pending. Once the task has finished execution, or once it
@@ -648,8 +655,9 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
       // We have a known location for the actor.
       auto node_manager_id = actor_entry->second.GetNodeManagerId();
       if (node_manager_id == gcs_client_->client_table().GetLocalClientId()) {
-        // The actor is local. Queue the task for local execution.
-        QueueTask(task);
+        // The actor is local. Queue the task for local execution, bypassing placement.
+        // QueueTask(task);
+        local_queues_.QueueWaitingTasks({task});
       } else {
         // The actor is remote. Forward the task to the node manager that owns
         // the actor.
@@ -680,8 +688,15 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
       local_queues_.QueueUncreatedActorMethods({task});
     }
   } else {
-    // This is a non-actor task. Queue the task for local execution.
-    QueueTask(task);
+    // This is a non-actor task. Queue the task for a placement decision or for dispatch
+    // if the task was forwarded.
+    if (forwarded) {
+      // Check for local dependencies and enqueue as waiting or ready for dispatch.
+      QueueTask(task);
+    } else {
+      local_queues_.QueueReadyTasks({task});
+      ScheduleTasks();
+    }
   }
 }
 
@@ -698,6 +713,8 @@ void NodeManager::HandleRemoteDependencyCanceled(const ObjectID &dependency_id) 
   // TODO(swang): Cancel reconstruction of the object.
 }
 
+// Check the task's dependencies and enqueue to either be ready for dispatch or waiting.
+// Called with tasks for which a placement decision has been made.
 void NodeManager::QueueTask(const Task &task) {
   // Subscribe to the task's dependencies.
   bool ready = task_dependency_manager_.SubscribeDependencies(
@@ -705,9 +722,11 @@ void NodeManager::QueueTask(const Task &task) {
   // Queue the task. If all dependencies are available, then the task is queued
   // in the READY state, else the WAITING.
   if (ready) {
-    local_queues_.QueueReadyTasks({task});
-    // Try to schedule the newly ready task.
-    ScheduleTasks();
+    //local_queues_.QueueReadyTasks({task});
+    local_queues_.QueueScheduledTasks({task});
+    // Try to dispatch the newly ready task.
+    //ScheduleTasks();
+    DispatchTasks();
   } else {
     local_queues_.QueueWaitingTasks({task});
   }

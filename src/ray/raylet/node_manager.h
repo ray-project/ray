@@ -71,8 +71,8 @@ class NodeManager {
   /// Methods for task scheduling.
   // Queue a task for local execution.
   void QueueTask(const Task &task);
-  /// Submit a task to this node.
-  void SubmitTask(const Task &task, const Lineage &uncommitted_lineage);
+  /// Handle specified task's submission to the local node manager.
+  void SubmitTask(const Task &task, const Lineage &uncommitted_lineage, bool forwarded = false);
   /// Assign a task. The task is assumed to not be queued in local_queues_.
   void AssignTask(Task &task);
   /// Handle a worker finishing its assigned task.
