@@ -32,7 +32,7 @@ import ray.plasma
 import ray.ray_constants as ray_constants
 from ray.utils import (
     binary_to_hex,
-    check_oversized_pickcle,
+    check_oversized_pickle,
     is_cython,
     random_string,
 )
@@ -658,8 +658,8 @@ class Worker(object):
             else:
                 del function.__globals__[function.__name__]
 
-        check_oversized_pickcle(pickled_function, function_name, "function",
-                                self)
+        check_oversized_pickle(pickled_function, function_name, "function",
+                               self)
 
         self.redis_client.hmset(
             key, {
@@ -709,8 +709,8 @@ class Worker(object):
                 # we don't need to export it again.
                 return
 
-            check_oversized_pickcle(pickled_function, function.__name__,
-                                    "function", self)
+            check_oversized_pickle(pickled_function, function.__name__,
+                                   "function", self)
 
             # Run the function on all workers.
             self.redis_client.hmset(

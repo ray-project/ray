@@ -15,7 +15,7 @@ import ray.signature as signature
 import ray.worker
 from ray.utils import (
     _random_string,
-    check_oversized_pickcle,
+    check_oversized_pickle,
     is_cython,
     push_error_to_driver,
 )
@@ -398,8 +398,8 @@ def export_actor_class(class_id, Class, actor_method_names,
         "actor_method_names": json.dumps(list(actor_method_names))
     }
 
-    check_oversized_pickcle(actor_class_info["class"],
-                            actor_class_info["class_name"], "actor", worker)
+    check_oversized_pickle(actor_class_info["class"],
+                           actor_class_info["class_name"], "actor", worker)
 
     if worker.mode is None:
         # This means that 'ray.init()' has not been called yet and so we must

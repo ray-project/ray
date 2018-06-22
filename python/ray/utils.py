@@ -270,7 +270,7 @@ def merge_dicts(d1, d2):
     return d
 
 
-def check_oversized_pickcle(pickled, name, obj_type, worker):
+def check_oversized_pickle(pickled, name, obj_type, worker):
     """If the size of the pickcled object is too large, send a warning message
     to the driver.
 
@@ -289,7 +289,7 @@ def check_oversized_pickcle(pickled, name, obj_type, worker):
         "It will be stored in Redis, which could cause memory issues."
         "This may mean that its definition uses a large array or other object."
     ).format(obj_type, name, length)
-    ray.utils.push_error_to_driver(
+    push_error_to_driver(
         worker,
         ray_constants.PICKLING_LARGE_OBJECT_PUSH_ERROR,
         warning_message,
