@@ -1805,6 +1805,14 @@ def custom_excepthook(type, value, tb):
 sys.excepthook = custom_excepthook
 
 
+def _flush_profile_events(worker):
+    """Drivers run this as a thread to flush profile data in the background."""
+    while True:
+        time.sleep(1)
+        worker.local_scheduler_client.push_profile_events(worker.events)
+        worker.events = []
+
+
 def print_error_messages_raylet(worker):
     """Print error messages in the background on the driver.
 
@@ -2061,25 +2069,25 @@ def import_thread(worker, mode):
                     # Handle the driver case first.
                     if mode != WORKER_MODE:
                         if key.startswith(b"FunctionsToRun"):
-                            with log_span(
-                                    "ray:import_function_to_run",
-                                    worker=worker):
-                                fetch_and_execute_function_to_run(
-                                    key, worker=worker)
+                            # with log_span(
+                            #         "ray:fetch_and_execute_function_to_run",
+                                    # worker=worker):
+                            fetch_and_execute_function_to_run(
+                                key, worker=worker)
                         # Continue because FunctionsToRun are the only things
                         # that the driver should import.
                         continue
 
                     if key.startswith(b"RemoteFunction"):
-                        with log_span(
-                                "ray:import_remote_function", worker=worker):
-                            fetch_and_register_remote_function(
-                                key, worker=worker)
+                        # with log_span(
+                        #         "ray:fetch_and_register_remote_function", worker=worker):
+                        fetch_and_register_remote_function(
+                            key, worker=worker)
                     elif key.startswith(b"FunctionsToRun"):
-                        with log_span(
-                                "ray:import_function_to_run", worker=worker):
-                            fetch_and_execute_function_to_run(
-                                key, worker=worker)
+                        # with log_span(
+                        #         "ray:fetch_and_execute_function_to_run", worker=worker):
+                        fetch_and_execute_function_to_run(
+                            key, worker=worker)
                     elif key.startswith(b"ActorClass"):
                         # Keep track of the fact that this actor class has been
                         # exported so that we know it is safe to turn this
@@ -2326,6 +2334,13 @@ def connect(info,
         else:
             t = threading.Thread(
                 target=print_error_messages_raylet, args=(worker, ))
+        # Making the thread a daemon causes it to exit when the main thread
+        # exits.
+        t.daemon = True
+        t.start()
+
+    if mode in [SCRIPT_MODE, SILENT_MODE]:
+        t = threading.Thread(target=_flush_profile_events, args=(worker, ))
         # Making the thread a daemon causes it to exit when the main thread
         # exits.
         t.daemon = True
@@ -2630,6 +2645,8 @@ def log(event_type, kind, contents=None, worker=global_worker):
         worker.events.append((time.time(), event_type, kind, contents))
 
 
+# TODO(rkn): Support calling this function in the middle of a task, and also
+# call this periodically in the background from the driver.
 def flush_log(worker=global_worker):
     """Send the logged worker events to the global state store."""
     if not worker.use_raylet:

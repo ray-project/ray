@@ -357,8 +357,6 @@ class GlobalState(object):
                 task_table_message = ray.gcs_utils.Task.GetRootAsTask(
                     gcs_entries.Entries(i), 0)
 
-                task_table_message = ray.gcs_utils.Task.GetRootAsTask(
-                    gcs_entries.Entries(0), 0)
                 execution_spec = task_table_message.TaskExecutionSpec()
                 task_spec = task_table_message.TaskSpecification()
                 task_spec = ray.local_scheduler.task_from_string(task_spec)
@@ -684,6 +682,127 @@ class GlobalState(object):
             self._add_missing_timestamps(info)
 
         return task_info
+
+    def _profile_table(self, component_id):
+        """Get the profile events for a given component.
+
+        TODO(rkn): This method should support limiting the number of log events
+        and should also support returning a window of events.
+
+        Args:
+            component_id: An identifier for a component.
+
+        Returns:
+            A list of the profile events for the specified process.
+        """
+        message = self.redis_client.execute_command(
+            "RAY.TABLE_LOOKUP", ray.gcs_utils.TablePrefix.PROFILE, "",
+            component_id.id())
+
+        if message is None:
+            return []
+
+        gcs_entries = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
+            message, 0)
+
+        profile_events = []
+        for i in range(gcs_entries.EntriesLength()):
+            profile_table_message = (
+                ray.gcs_utils.ProfileTableData.GetRootAsProfileTableData(
+                    gcs_entries.Entries(i), 0))
+
+            profile_event = {
+                "event_type":
+                profile_table_message.EventType().decode("ascii"),
+                "component_id":
+                binary_to_hex(profile_table_message.ComponentId()),
+                "component_type":
+                profile_table_message.ComponentType().decode("ascii"),
+                "start_time": profile_table_message.StartTime(),
+                "end_time": profile_table_message.EndTime(),
+                "extra_data":
+                profile_table_message.ExtraData().decode("ascii"),
+            }
+
+            profile_events.append(profile_event)
+
+        return profile_events
+
+    def profile_table(self):
+        if not self.use_raylet:
+            raise Exeption("This method is only supported in the raylet "
+                           "code path.")
+
+        profile_table_keys = self.redis_client.keys(
+            ray.gcs_utils.TablePrefix_PROFILE_string + "*")
+        component_identifiers_binary = [
+            key[len(ray.gcs_utils.TablePrefix_PROFILE_string):]
+            for key in profile_table_keys
+        ]
+
+        return {binary_to_hex(component_id):
+                self._profile_table(binary_to_object_id(component_id))
+                for component_id in component_identifiers_binary}
+
+    def chrome_tracing_dump(self):
+        """Return a list of profiling events that can viewed as a timeline.
+
+        To view this information as a timeline, simply dump it as a json file
+        using json.dumps, and then load go to chrome://tracing in the Chrome
+        web browser and load the dumped file. Make sure to enable "Flow events"
+        in the "View Options" menu.
+
+        TODO(rkn): This should support viewing just a window of time or a
+        limited number of events.
+
+        Returns:
+            A list of profiling events. Each profile event is a dictionary.
+        """
+        profile_table = self.profile_table()
+        all_events = []
+
+        default_color_mapping = {
+            "ray:task": "thread_state_runnable",
+            "ray:task:execute": "cq_build_attempt_failed",
+            "ray:task:store_outputs": "rail_animation",
+            "ray:task:get_arguments": "rail_idle",
+            "ray:wait_for_function": "olive",
+            "ray:get": "olive",
+            "ray:put": "olive",
+            "ray:wait": "olive",
+            "ray:submit_task": "olive",
+
+        }
+        default_color = "olive"
+
+        for component_id_hex, component_events in profile_table.items():
+            for event in component_events:
+                event = {
+                    "cat": event["event_type"],  # The category of the event.
+                    "name": event["event_type"],  # The string displayed on the event.
+                    "pid": "TODO",  # The identifier for the group of rows that the event appears in. # TODO(rkn): Support this!!
+                    "tid": event["component_type"] + ":" + event["component_id"],  # The identifier for the row that the event appears in.
+                    "ts": 1000000 * event["start_time"],  # The start time in microseconds. # TODO(rkn): Fix the timing conversions.
+                    "dur": 1000000 * (event["end_time"] - event["start_time"]),  # The duration in microseconds.
+                    "ph": "X",  # This is ???
+                    "cname": default_color_mapping.get(event["event_type"], default_color),  # This is the name of the color to display the box in.
+                }
+                all_events.append(event)
+
+        return all_events
+            # outputs_trace = {
+            #     "cat": "store_outputs",
+            #     "pid": "Node " + worker["node_ip_address"],
+            #     "tid": info["worker_id"],
+            #     "id": task_id,
+            #     "ts": micros_rel(info["store_outputs_start"]),
+            #     "ph": "X",
+            #     "name": info["function_name"] + ":store_outputs",
+            #     "args": total_info,
+            #     "dur": micros(info["store_outputs_end"] -
+            #                   info["store_outputs_start"]),
+            #     "cname": "thread_state_runnable"
+            # }
 
     def dump_catapult_trace(self,
                             path,
