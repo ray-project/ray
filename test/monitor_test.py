@@ -41,13 +41,17 @@ class MonitorTest(unittest.TestCase):
             if (0, 1) != summary_start[:2]:
                 success.value = False
 
+            max_attempts_before_failing = 100
+
             # Two new objects.
             ray.get(ray.put(1111))
             ray.get(ray.put(1111))
-            # Test is flaky without calls to sleep.
-            time.sleep(0.2)
-            if (2, 1, summary_start[2]) != StateSummary():
-                success.value = False
+            attempts = 0
+            while (2, 1, summary_start[2]) != StateSummary():
+                attempts += 1
+                if attempts == max_attempts_before_failing:
+                    success.value = False
+                    break
 
             @ray.remote
             def f():
@@ -55,14 +59,20 @@ class MonitorTest(unittest.TestCase):
                 return 1111  # A returned object as well.
 
             # 1 new function.
-            time.sleep(0.2)
-            if (2, 1, summary_start[2] + 1) != StateSummary():
-                success.value = False
+            attempts = 0
+            while (2, 1, summary_start[2] + 1) != StateSummary():
+                attempts += 1
+                if attempts == max_attempts_before_failing:
+                    success.value = False
+                    break
 
             ray.get(f.remote())
-            time.sleep(0.2)
-            if (4, 2, summary_start[2] + 1) != StateSummary():
-                success.value = False
+            attempts = 0
+            while (4, 2, summary_start[2] + 1) != StateSummary():
+                attempts += 1
+                if attempts == max_attempts_before_failing:
+                    success.value = False
+                    break
 
             ray.worker.cleanup()
 
