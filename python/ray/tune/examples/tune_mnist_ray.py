@@ -229,7 +229,8 @@ if __name__ == '__main__':
         'config': {
             'activation': grid_search(['relu', 'elu', 'tanh']),
             # You can pass any serializable object as well
-            'foo': grid_search([np.array([1, 2]), np.array([2, 3])]),
+            'foo': grid_search([np.array([1, 2]),
+                                np.array([2, 3])]),
         },
     }
 

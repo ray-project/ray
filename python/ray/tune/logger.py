@@ -178,7 +178,7 @@ class _SafeFallbackEncoder(json.JSONEncoder):
                 return float(value)
             if np.issubdtype(value, int):
                 return int(value)
-        except:
+        except Exception:
             return str(value)  # give up, just stringify it (ok for logs)
 
 
