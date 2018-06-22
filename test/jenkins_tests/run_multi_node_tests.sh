@@ -253,7 +253,7 @@ docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     --smoke-test
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
-    python /ray/python/ray/rllib/examples/multiagent_mountaincar.py
+    python /ray/python/ray/rllib/examples/legacy_multiagent/multiagent_mountaincar.py
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
-    python /ray/python/ray/rllib/examples/multiagent_pendulum.py
+    python /ray/python/ray/rllib/examples/legacy_multiagent/multiagent_pendulum.py

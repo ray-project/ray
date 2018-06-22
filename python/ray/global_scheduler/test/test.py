@@ -29,11 +29,6 @@ NIL_WORKER_ID = 20 * b"\xff"
 NIL_OBJECT_ID = 20 * b"\xff"
 NIL_ACTOR_ID = 20 * b"\xff"
 
-# These constants are an implementation detail of ray_redis_module.cc, so this
-# must be kept in sync with that file.
-DB_CLIENT_PREFIX = "CL:"
-TASK_PREFIX = "TT:"
-
 
 def random_driver_id():
     return local_scheduler.ObjectID(np.random.bytes(ID_SIZE))

@@ -24,16 +24,16 @@ class SimpleServing(ServingEnv):
         self.env = env
 
     def run(self):
-        self.start_episode()
+        eid = self.start_episode()
         obs = self.env.reset()
         while True:
-            action = self.get_action(obs)
+            action = self.get_action(eid, obs)
             obs, reward, done, info = self.env.step(action)
-            self.log_returns(reward, info=info)
+            self.log_returns(eid, reward, info=info)
             if done:
-                self.end_episode(obs)
+                self.end_episode(eid, obs)
                 obs = self.env.reset()
-                self.start_episode()
+                eid = self.start_episode()
 
 
 class PartOffPolicyServing(ServingEnv):
@@ -43,20 +43,20 @@ class PartOffPolicyServing(ServingEnv):
         self.off_pol_frac = off_pol_frac
 
     def run(self):
-        self.start_episode()
+        eid = self.start_episode()
         obs = self.env.reset()
         while True:
             if random.random() < self.off_pol_frac:
                 action = self.env.action_space.sample()
-                self.log_action(obs, action)
+                self.log_action(eid, obs, action)
             else:
-                action = self.get_action(obs)
+                action = self.get_action(eid, obs)
             obs, reward, done, info = self.env.step(action)
-            self.log_returns(reward, info=info)
+            self.log_returns(eid, reward, info=info)
             if done:
-                self.end_episode(obs)
+                self.end_episode(eid, obs)
                 obs = self.env.reset()
-                self.start_episode()
+                eid = self.start_episode()
 
 
 class SimpleOffPolicyServing(ServingEnv):
@@ -65,18 +65,18 @@ class SimpleOffPolicyServing(ServingEnv):
         self.env = env
 
     def run(self):
-        self.start_episode()
+        eid = self.start_episode()
         obs = self.env.reset()
         while True:
             # Take random actions
             action = self.env.action_space.sample()
-            self.log_action(obs, action)
+            self.log_action(eid, obs, action)
             obs, reward, done, info = self.env.step(action)
-            self.log_returns(reward, info=info)
+            self.log_returns(eid, reward, info=info)
             if done:
-                self.end_episode(obs)
+                self.end_episode(eid, obs)
                 obs = self.env.reset()
-                self.start_episode()
+                eid = self.start_episode()
 
 
 class MultiServing(ServingEnv):
@@ -98,14 +98,13 @@ class MultiServing(ServingEnv):
                     self.start_episode(episode_id=eids[i])
                     cur_obs[i] = envs[i].reset()
             actions = [
-                self.get_action(
-                    cur_obs[i], episode_id=eids[i]) for i in active]
+                self.get_action(eids[i], cur_obs[i]) for i in active]
             for i, action in zip(active, actions):
                 obs, reward, done, _ = envs[i].step(action)
                 cur_obs[i] = obs
-                self.log_returns(reward, episode_id=eids[i])
+                self.log_returns(eids[i], reward)
                 if done:
-                    self.end_episode(obs, episode_id=eids[i])
+                    self.end_episode(eids[i], obs)
                     del cur_obs[i]
 
 

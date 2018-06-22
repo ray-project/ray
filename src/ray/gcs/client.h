@@ -57,7 +57,7 @@ class RAY_EXPORT AsyncGcsClient {
   TaskReconstructionLog &task_reconstruction_log();
   ClientTable &client_table();
   HeartbeatTable &heartbeat_table();
-  inline ErrorTable &error_table();
+  ErrorTable &error_table();
 
   // We also need something to export generic code to run on workers from the
   // driver (to set the PYTHONPATH)
@@ -78,6 +78,7 @@ class RAY_EXPORT AsyncGcsClient {
   std::unique_ptr<ActorTable> actor_table_;
   std::unique_ptr<TaskReconstructionLog> task_reconstruction_log_;
   std::unique_ptr<HeartbeatTable> heartbeat_table_;
+  std::unique_ptr<ErrorTable> error_table_;
   std::unique_ptr<ClientTable> client_table_;
   std::shared_ptr<RedisContext> context_;
   std::unique_ptr<RedisAsioClient> asio_async_client_;

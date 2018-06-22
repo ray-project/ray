@@ -57,7 +57,7 @@ class Resources(
 
 
 def has_trainable(trainable_name):
-    return ray.tune.registry._default_registry.contains(
+    return ray.tune.registry._global_registry.contains(
         ray.tune.registry.TRAINABLE_CLASS, trainable_name)
 
 
@@ -377,12 +377,10 @@ class Trial(object):
         # Logging for trials is handled centrally by TrialRunner, so
         # configure the remote runner to use a noop-logger.
         self.runner = cls.remote(
-            config=self.config,
-            registry=ray.tune.registry.get_registry(),
-            logger_creator=logger_creator)
+            config=self.config, logger_creator=logger_creator)
 
     def _get_trainable_cls(self):
-        return ray.tune.registry.get_registry().get(
+        return ray.tune.registry._global_registry.get(
             ray.tune.registry.TRAINABLE_CLASS, self.trainable_name)
 
     def set_verbose(self, verbose):

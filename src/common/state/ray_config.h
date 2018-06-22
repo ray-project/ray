@@ -96,12 +96,6 @@ class RayConfig {
     return object_manager_push_timeout_ms_;
   }
 
-  int object_manager_max_sends() const { return object_manager_max_sends_; }
-
-  int object_manager_max_receives() const {
-    return object_manager_max_receives_;
-  }
-
   uint64_t object_manager_default_chunk_size() const {
     return object_manager_default_chunk_size_;
   }
@@ -142,9 +136,7 @@ class RayConfig {
         // transfers.
         object_manager_pull_timeout_ms_(20),
         object_manager_push_timeout_ms_(10000),
-        object_manager_max_sends_(2),
-        object_manager_max_receives_(2),
-        object_manager_default_chunk_size_(100000000),
+        object_manager_default_chunk_size_(1000000),
         num_workers_per_process_(1) {}
 
   ~RayConfig() {}
@@ -244,15 +236,10 @@ class RayConfig {
   /// 0: giving up retrying immediately.
   int object_manager_push_timeout_ms_;
 
-  /// Maximum number of concurrent sends allowed by the object manager.
-  int object_manager_max_sends_;
-
-  /// Maximum number of concurrent receives allowed by the object manager.
-  int object_manager_max_receives_;
-
   /// Default chunk size for multi-chunk transfers to use in the object manager.
   /// In the object manager, no single thread is permitted to transfer more
-  /// data than what is specified by the chunk size.
+  /// data than what is specified by the chunk size unless the number of object
+  /// chunks exceeds the number of available sending threads.
   uint64_t object_manager_default_chunk_size_;
 
   /// Number of workers per process

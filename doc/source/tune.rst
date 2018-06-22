@@ -23,7 +23,7 @@ Quick Start
     ray.init()
     tune.register_trainable("train_func", train_func)
 
-    tune.run_experiments({
+    all_trials = tune.run_experiments({
         "my_experiment": {
             "run": "train_func",
             "stop": {"mean_accuracy": 99},
@@ -55,7 +55,7 @@ For the function you wish to tune, add a two-line modification (note that we use
             accuracy = eval_accuracy(...)
             reporter(timesteps_total=idx, mean_accuracy=accuracy) # report metrics
 
-This PyTorch script runs a small grid search over the ``train_func`` function using Ray Tune, reporting status on the command line until the stopping condition of ``mean_accuracy >= 99`` is reached (for metrics like _loss_ that decrease over time, specify `neg_mean_loss <https://github.com/ray-project/ray/blob/master/python/ray/tune/result.py#L40>`__ as a condition instead):
+This PyTorch script runs a small grid search over the ``train_func`` function using Ray Tune, reporting status on the command line until the stopping condition of ``mean_accuracy >= 99`` is reached (for metrics like `loss` that decrease over time, specify `neg_mean_loss <https://github.com/ray-project/ray/blob/master/python/ray/tune/result.py#L40>`__ as a condition instead):
 
 ::
 
@@ -72,7 +72,9 @@ This PyTorch script runs a small grid search over the ``train_func`` function us
 
 In order to report incremental progress, ``train_func`` periodically calls the ``reporter`` function passed in by Ray Tune to return the current timestep and other metrics as defined in `ray.tune.result.TrainingResult <https://github.com/ray-project/ray/blob/master/python/ray/tune/result.py>`__. Incremental results will be synced to local disk on the head node of the cluster.
 
-Learn more `about specifying experiments <tune-config.html>`__ .
+``tune.run_experiments`` returns a list of Trial objects which you can inspect results of via ``trial.last_result``.
+
+Learn more `about specifying experiments <tune-config.html>`__.
 
 
 Features
@@ -242,6 +244,7 @@ Additionally, checkpointing can be used to provide fault-tolerance for experimen
 The class interface that must be implemented to enable checkpointing is as follows:
 
 .. autoclass:: ray.tune.trainable.Trainable
+    :members: _save, _restore, _train, _setup, _stop
 
 
 Client API

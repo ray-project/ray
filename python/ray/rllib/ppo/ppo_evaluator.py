@@ -24,15 +24,14 @@ class PPOEvaluator(TFMultiGPUSupport):
     network weights. When run as a remote agent, only this graph is used.
     """
 
-    def __init__(self, registry, env_creator, config, logdir, is_remote):
+    def __init__(self, env_creator, config, logdir, is_remote):
         from ray.rllib.utils.seed import seed
         seed()
-        self.registry = registry
         self.config = config
         self.logdir = logdir
         self.env = ModelCatalog.get_preprocessor_as_wrapper(
-            registry, env_creator(config["env_config"]), config["model"])
-        self.env.seed(0)
+            env_creator(config["env_config"]), config["model"])
+        self.env.seed(0)\
         if is_remote:
             config_proto = tf.ConfigProto()
         else:
@@ -57,7 +56,7 @@ class PPOEvaluator(TFMultiGPUSupport):
         action_space = self.env.action_space
         self.actions = ModelCatalog.get_action_placeholder(action_space)
         self.distribution_class, self.logit_dim = ModelCatalog.get_action_dist(
-            action_space)
+            action_space, config["model"])
         # Log probabilities from the policy before the policy update.
         self.prev_logits = tf.placeholder(
             tf.float32, shape=(None, self.logit_dim))
@@ -95,7 +94,7 @@ class PPOEvaluator(TFMultiGPUSupport):
             self.env.observation_space, self.env.action_space,
             obs, vtargets, advs, acts, plog, pvf_preds, self.logit_dim,
             self.kl_coeff, self.distribution_class, self.config,
-            self.sess, self.registry)
+            self.sess)
 
     def init_extra_ops(self, device_losses):
         self.extra_ops = OrderedDict()
