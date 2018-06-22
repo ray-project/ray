@@ -15,18 +15,15 @@ class PPOTFPolicyGraph(TFPolicyGraph):
     def __init__(self, ob_space, action_space, config):
         self.config = config
         self._setup_graph(ob_space, action_space)
-        assert all(hasattr(self, attr)
-                   for attr in ["vf", "logits", "x", "var_list"])
         print("Setting up loss")
         loss = self.setup_loss(action_space)
         self.is_training = tf.placeholder_with_default(True, ())
         self.sess = tf.get_default_session()
 
         TFPolicyGraph.__init__(
-            self, self.sess, obs_input=self.x,
-            action_sampler=self.action_dist.sample(), loss=loss,
-            loss_inputs=self.loss_in, is_training=self.is_training,
-            state_inputs=self.state_in, state_outputs=self.state_out)
+            self, self.sess, obs_input=self.obs,
+            action_sampler=self.curr_dist.sample(), loss=loss,
+            loss_inputs=self.loss_in, is_training=self.is_training)
 
         self.sess.run(tf.global_variables_initializer())
 
@@ -35,11 +32,10 @@ class PPOTFPolicyGraph(TFPolicyGraph):
             tf.float32, shape=(None,) + ob_space.shape)
 
         self.dist_cls, self.logit_dim = ModelCatalog.get_action_dist(ac_space)
-        self.curr_logits = ModelCatalog.get_model(
+        self.logits = ModelCatalog.get_model(
             self.obs, self.logit_dim, self.config["model"]).outputs
-        self.logits = self._model.outputs
-        self.action_dist = self.dist_cls(self.logits)
-        self.sampler = self.action_dist.sample()
+        self.curr_dist = self.dist_cls(self.logits)
+        self.sampler = self.curr_dist.sample()
 
         if self.config["use_gae"]:
             vf_config = self.config["model"].copy()
@@ -124,7 +120,7 @@ class PPOTFPolicyGraph(TFPolicyGraph):
         return loss
 
     def optimizer(self):
-        return tf.train.AdamOptimizer(self.config["lr"])
+        return tf.train.AdamOptimizer()
 
     def extra_compute_grad_fetches(self):
         if self.summarize:
@@ -133,14 +129,7 @@ class PPOTFPolicyGraph(TFPolicyGraph):
             return {}
 
     def postprocess_trajectory(self, sample_batch, other_agent_batches=None):
-        completed = sample_batch["dones"][-1]
-        if completed:
-            last_r = 0.0
-        else:
-            next_state = []
-            for i in range(len(self.state_in)):
-                next_state.append([sample_batch["state_out_{}".format(i)][-1]])
-            last_r = self.value(sample_batch["new_obs"][-1], *next_state)
+        last_r = 0.0
         return compute_advantages(
             sample_batch, last_r, self.config["gamma"], self.config["lambda"])
 
@@ -148,5 +137,6 @@ class PPOTFPolicyGraph(TFPolicyGraph):
 if __name__ == '__main__':
     import gym
     from collections import defaultdict
+    from ray.rllib.ppo import DEFAULT_CONFIG
     env = gym.make("CartPole-v0")
-    graph = PPOTFPolicyGraph(env.observation_space, env.action_space, defaultdict(dict))
+    graph = PPOTFPolicyGraph(env.observation_space, env.action_space, DEFAULT_CONFIG.copy())
