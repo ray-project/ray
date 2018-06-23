@@ -17,7 +17,7 @@ Q_SCOPE = "q_func"
 Q_TARGET_SCOPE = "target_q_func"
 
 
-class QFunction(object):
+class QNetwork(object):
     def __init__(self, model, num_actions, dueling=False, hiddens=[256]):
         with tf.variable_scope("action_value"):
             action_out = model.last_layer
@@ -87,8 +87,8 @@ class DQNPolicyGraph(TFPolicyGraph):
         self.cur_epsilon = 1.0
         num_actions = action_space.n
 
-        def q_func(obs):
-            return QFunction(
+        def _build_q_network(obs):
+            return QNetwork(
                 ModelCatalog.get_model(obs, 1, config["model"]),
                 num_actions, config["dueling"], config["hiddens"]).value
 
@@ -100,7 +100,7 @@ class DQNPolicyGraph(TFPolicyGraph):
 
         # Action Q network
         with tf.variable_scope(Q_SCOPE) as scope:
-            q_values = q_func(self.cur_observations)
+            q_values = _build_q_network(self.cur_observations)
             self.q_func_vars = _scope_vars(scope.name)
 
         # Action outputs
@@ -124,11 +124,11 @@ class DQNPolicyGraph(TFPolicyGraph):
 
         # q network evaluation
         with tf.variable_scope(Q_SCOPE, reuse=True):
-            q_t = q_func(self.obs_t)
+            q_t = _build_q_network(self.obs_t)
 
         # target q network evalution
         with tf.variable_scope(Q_TARGET_SCOPE) as scope:
-            q_tp1 = q_func(self.obs_tp1)
+            q_tp1 = _build_q_network(self.obs_tp1)
             self.target_q_func_vars = _scope_vars(scope.name)
 
         # q scores for actions which we know were selected in the given state.
@@ -138,7 +138,7 @@ class DQNPolicyGraph(TFPolicyGraph):
         # compute estimate of best possible value starting from state at t + 1
         if config["double_q"]:
             with tf.variable_scope(Q_SCOPE, reuse=True):
-                q_tp1_using_online_net = q_func(self.obs_tp1)
+                q_tp1_using_online_net = _build_q_network(self.obs_tp1)
             q_tp1_best_using_online_net = tf.argmax(q_tp1_using_online_net, 1)
             q_tp1_best = tf.reduce_sum(
                 q_tp1 * tf.one_hot(
