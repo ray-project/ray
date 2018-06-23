@@ -42,10 +42,6 @@ class TorchPolicyGraph(PolicyGraph):
             loss_inputs (list): List of SampleBatch columns that will be
                 passed to the loss module's forward() function when computing
                 the loss. For example, ["obs", "action", "advantages"].
-
-        Attributes:
-            observation_space (gym.Space): observation space of the policy.
-            action_space (gym.Space): action space of the policy.
         """
         self.observation_space = observation_space
         self.action_space = action_space
