@@ -63,7 +63,7 @@ class QValuePolicy(object):
 class QLoss(object):
     def __init__(
             self, q_t_selected, q_tp1_best, importance_weights, rewards,
-            done_mask, config, gamma=0.99, n_step=1):
+            done_mask, gamma=0.99, n_step=1):
 
         q_tp1_best_masked = (1.0 - done_mask) * q_tp1_best
 
