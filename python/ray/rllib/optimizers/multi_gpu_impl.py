@@ -106,7 +106,7 @@ class LocalSyncParallelOptimizer(object):
 
         feed_dict = {}
         assert len(self.input_placeholders) == len(inputs)
-        for ph, arr in zip(self.input_placeholders, inputs):
+        for (name, ph), arr in zip(self.input_placeholders, inputs):
             truncated_arr = make_divisible_by(arr, self.batch_size)
             feed_dict[ph] = truncated_arr
             truncated_len = len(truncated_arr)
@@ -137,7 +137,7 @@ class LocalSyncParallelOptimizer(object):
         assert tuples_per_device % self.per_device_batch_size == 0
         return tuples_per_device
 
-    def optimize(self, sess, batch_index, extra_ops=[], extra_feed_dict={},
+    def optimize(self, sess, batch_index, extra_ops=None, extra_feed_dict=None,
                  file_writer=None):
         """Run a single step of SGD.
 
@@ -153,7 +153,7 @@ class LocalSyncParallelOptimizer(object):
             batch_index: Offset into the preloaded data. This value must be
                 between `0` and `tuples_per_device`. The amount of data to
                 process is always fixed to `per_device_batch_size`.
-            extra_ops: Extra ops to run with this step (e.g. for metrics).
+            extra_ops (dict): Extra ops to run with this step (e.g. for metrics).
             extra_feed_dict: Extra args to feed into this session run.
             file_writer: If specified, tf metrics will be written out using
                 this.
@@ -161,7 +161,8 @@ class LocalSyncParallelOptimizer(object):
         Returns:
             The outputs of extra_ops evaluated over the batch.
         """
-
+        extra_ops = extra_ops or {}
+        extra_feed_dict = extra_feed_dict or {}
         if file_writer:
             run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
         else:
@@ -170,8 +171,11 @@ class LocalSyncParallelOptimizer(object):
 
         feed_dict = {self._batch_index: batch_index}
         feed_dict.update(extra_feed_dict)
+        fetches = {"train": self._train_op}
+        fetches.update(extra_ops)
+        import ipdb; ipdb.set_trace(context=9)
         outs = sess.run(
-            [self._train_op] + extra_ops,
+            fetches,
             feed_dict=feed_dict,
             options=run_options,
             run_metadata=run_metadata)
@@ -184,7 +188,7 @@ class LocalSyncParallelOptimizer(object):
             file_writer.add_run_metadata(
                 run_metadata, "sgd_train_{}".format(batch_index))
 
-        return outs[1:]
+        return outs
 
     def get_common_loss(self):
         return self._shared_loss
@@ -198,7 +202,6 @@ class LocalSyncParallelOptimizer(object):
                 device_input_batches = []
                 device_input_slices = []
                 for name, ph in device_input_placeholders:
-                    # TODO(rliaw): Make sure loss_in is the right format
                     current_batch = tf.Variable(
                         ph, trainable=False, validate_shape=False,
                         collections=[])

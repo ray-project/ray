@@ -110,7 +110,7 @@ class PPOAgent(Agent):
             self.env_creator,
             self._default_policy_graph,
             tf_session_creator=session_creator,
-            batch_steps=0,
+            batch_mode="truncate_episodes",
             observation_filter=self.config["observation_filter"],
             env_config=self.config["env_config"],
             model_config=self.config["model"],
@@ -123,7 +123,7 @@ class PPOAgent(Agent):
             RemoteEvaluator.remote(
                 self.env_creator,
                 self._default_policy_graph,
-                batch_steps=0,  # todo
+                batch_mode="truncate_episodes",
                 observation_filter=self.config["observation_filter"],
                 env_config=self.config["env_config"],
                 model_config=self.config["model"],
@@ -155,7 +155,7 @@ class PPOAgent(Agent):
 
         final_metrics = np.array(extra_fetches).mean(axis=1)[-1, :].tolist()
         total_loss, policy_loss, vf_loss, kl, entropy = final_metrics
-        self.local_evaluator.update_kl(kl)
+        newkl = self.local_evaluator.for_policy(lambda pi: pi.update_kl(kl))
 
         info = {
             "total_loss": total_loss,
@@ -163,7 +163,7 @@ class PPOAgent(Agent):
             "vf_loss": vf_loss,
             "kl_divergence": kl,
             "entropy": entropy,
-            "kl_coefficient": self.local_evaluator.kl_coeff_val,
+            "kl_coefficient": newkl,
         }
 
         FilterManager.synchronize(
@@ -204,7 +204,6 @@ class PPOAgent(Agent):
             observation, update=False)
         return self.local_evaluator.common_policy.compute_actions(
             [observation], [], False)[0][0]
-
 
 if __name__ == '__main__':
     import gym
