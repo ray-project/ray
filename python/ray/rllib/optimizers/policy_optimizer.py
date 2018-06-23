@@ -55,8 +55,8 @@ class PolicyOptimizer(object):
         else:
             local_evaluator = evaluator_cls(**evaluator_args)
             remote_evaluators = [
-                remote_cls.remote(**evaluator_args)
-                for _ in range(num_workers)]
+                remote_cls.remote(worker_index=i+1, **evaluator_args)
+                for i in range(num_workers)]
         return cls(optimizer_config, local_evaluator, remote_evaluators)
 
     def __init__(self, config, local_evaluator, remote_evaluators):

@@ -149,8 +149,9 @@ class DQNAgent(Agent):
                 compress_observations=True,
                 env_config=self.config["env_config"],
                 model_config=self.config["model"], policy_config=self.config,
-                num_envs=self.config["num_envs"])
-            for _ in range(self.config["num_workers"])]
+                num_envs=self.config["num_envs"],
+                worker_index=i+1)
+            for i in range(self.config["num_workers"])]
 
         self.exploration0 = self._make_exploration_schedule(0)
         self.explorations = [

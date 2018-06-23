@@ -16,6 +16,7 @@ from ray.rllib.optimizers.sample_batch import MultiAgentBatch, \
 from ray.rllib.utils.async_vector_env import AsyncVectorEnv
 from ray.rllib.utils.atari_wrappers import wrap_deepmind, is_atari
 from ray.rllib.utils.compression import pack
+from ray.rllib.utils.env_context import EnvContext
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.multi_agent_env import MultiAgentEnv
 from ray.rllib.utils.policy_graph import PolicyGraph
@@ -134,12 +135,13 @@ class CommonPolicyEvaluator(PolicyEvaluator):
             observation_filter="NoFilter",
             env_config=None,
             model_config=None,
-            policy_config=None):
+            policy_config=None,
+            worker_index=0):
         """Initialize a policy evaluator.
 
         Arguments:
             env_creator (func): Function that returns a gym.Env given an
-                env config dict.
+                EnvContext wrapped configuration.
             policy_graph (class|dict): Either a class implementing
                 PolicyGraph, or a dictionary of policy id strings to
                 (PolicyGraph, obs_space, action_space, config) tuples. If a
@@ -183,9 +185,12 @@ class CommonPolicyEvaluator(PolicyEvaluator):
             policy_config (dict): Config to pass to the policy. In the
                 multi-agent case, this config will be merged with the
                 per-policy configs specified by `policy_graph`.
+            worker_index (int): For remote evaluators, this should be set to a
+                non-zero and unique value. This index is passed to created envs
+                through EnvContext so that envs can be configured per worker.
         """
 
-        env_config = env_config or {}
+        env_context = EnvContext(env_config or {}, worker_index, 0)
         policy_config = policy_config or {}
         model_config = model_config or {}
         policy_mapping_fn = (
@@ -196,7 +201,7 @@ class CommonPolicyEvaluator(PolicyEvaluator):
         self.batch_mode = batch_mode
         self.compress_observations = compress_observations
 
-        self.env = env_creator(env_config)
+        self.env = env_creator(env_context)
         if isinstance(self.env, VectorEnv) or \
                 isinstance(self.env, ServingEnv) or \
                 isinstance(self.env, MultiAgentEnv) or \
@@ -215,7 +220,7 @@ class CommonPolicyEvaluator(PolicyEvaluator):
         self.env = wrap(self.env)
 
         def make_env():
-            return wrap(env_creator(env_config))
+            return wrap(env_creator(env_context))
 
         self.tf_sess = None
         policy_dict = _validate_and_canonicalize(policy_graph, self.env)
