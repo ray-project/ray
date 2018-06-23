@@ -34,7 +34,6 @@ class A3CLoss(object):
 
 
 class A3CPolicyGraph(TFPolicyGraph):
-
     def __init__(self, observation_space, action_space, config):
         config = dict(ray.rllib.a3c.a3c.DEFAULT_CONFIG, **config)
         self.config = config
