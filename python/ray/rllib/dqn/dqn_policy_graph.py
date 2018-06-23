@@ -87,6 +87,9 @@ class DQNPolicyGraph(TFPolicyGraph):
         self.cur_epsilon = 1.0
         num_actions = action_space.n
 
+        def model(obs):
+            return ModelCatalog.get_model(obs, 1, config["model"])
+
         # Action inputs
         self.stochastic = tf.placeholder(tf.bool, (), name="stochastic")
         self.eps = tf.placeholder(tf.float32, (), name="eps")
@@ -96,10 +99,7 @@ class DQNPolicyGraph(TFPolicyGraph):
         # Action Q network
         with tf.variable_scope(Q_SCOPE) as scope:
             q_values = QFunction(
-                ModelCatalog.get_model(
-                    self.cur_observations, 1, config["model"]),
-                num_actions,
-                config["dueling"],
+                model(self.cur_observations), num_actions, config["dueling"],
                 config["hiddens"]).value
             self.q_func_vars = _scope_vars(scope.name)
 
@@ -125,17 +125,13 @@ class DQNPolicyGraph(TFPolicyGraph):
         # q network evaluation
         with tf.variable_scope(Q_SCOPE, reuse=True):
             q_t = QFunction(
-                ModelCatalog.get_model(self.obs_t, 1, config["model"]),
-                num_actions,
-                config["dueling"],
+                model(self.obs_t), num_actions, config["dueling"],
                 config["hiddens"]).value
 
         # target q network evalution
         with tf.variable_scope(Q_TARGET_SCOPE) as scope:
             q_tp1 = QFunction(
-                ModelCatalog.get_model(self.obs_tp1, 1, config["model"]),
-                num_actions,
-                config["dueling"],
+                model(self.obs_tp1), num_actions, config["dueling"],
                 config["hiddens"]).value
             self.target_q_func_vars = _scope_vars(scope.name)
 
@@ -147,9 +143,7 @@ class DQNPolicyGraph(TFPolicyGraph):
         if config["double_q"]:
             with tf.variable_scope(Q_SCOPE, reuse=True):
                 q_tp1_using_online_net = QFunction(
-                    ModelCatalog.get_model(self.obs_tp1, 1, config["model"]),
-                    num_actions,
-                    config["dueling"],
+                    model(self.obs_tp1), num_actions, config["dueling"],
                     config["hiddens"]).value
             q_tp1_best_using_online_net = tf.argmax(q_tp1_using_online_net, 1)
             q_tp1_best = tf.reduce_sum(
