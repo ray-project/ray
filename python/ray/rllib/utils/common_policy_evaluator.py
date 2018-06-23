@@ -190,7 +190,7 @@ class CommonPolicyEvaluator(PolicyEvaluator):
                 through EnvContext so that envs can be configured per worker.
         """
 
-        env_context = EnvContext(env_config or {}, worker_index, 0)
+        env_context = EnvContext(env_config or {}, worker_index)
         policy_config = policy_config or {}
         model_config = model_config or {}
         policy_mapping_fn = (
