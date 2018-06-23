@@ -30,7 +30,7 @@ class TorchPolicyGraph(PolicyGraph):
         Arguments:
             observation_space (gym.Space): observation space of the policy.
             action_space (gym.Space): action space of the policy.
-            model (rllib.models.pytorch.Model): PyTorch policy model.
+            model (rllib.models.pytorch.Model): PyTorch policy model / module.
             loss (nn.Module): Loss defined as a PyTorch module.
             loss_inputs (list): List of SampleBatch columns that will be
                 passed to the loss module's forward() function when computing
