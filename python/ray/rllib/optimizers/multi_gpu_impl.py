@@ -212,7 +212,6 @@ class LocalSyncParallelOptimizer(object):
                     device_input_slices.append((name, current_slice))
                 graph_obj = self.build_graph(device_input_slices)
                 device_grads = graph_obj.gradients(self.optimizer)
-                import ipdb; ipdb.set_trace(context=9)
             return Tower(
                 tf.group(*[batch.initializer
                            for batch in device_input_batches]),

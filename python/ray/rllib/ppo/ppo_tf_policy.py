@@ -8,6 +8,7 @@ import tensorflow as tf
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.utils.process_rollout import compute_advantages
 from ray.rllib.utils.tf_policy_graph import TFPolicyGraph
+# from ray.rllib.utils.policy_graph import PolicyGraph
 
 class PPOLoss(object):
     def __init__(self, inputs, ac_space, curr_dist, value_fn, entropy_coeff=0,
@@ -16,7 +17,7 @@ class PPOLoss(object):
         # The coefficient of the KL penalty.
         self.kl_coeff = tf.placeholder(
             name="newkl", shape=(), dtype=tf.float32)
-        self.prev_dist = dist_cls(inputs["prev_logits"])
+        self.prev_dist = dist_cls(inputs["logprobs"])
         # Make loss functions.
         self.ratio = tf.exp(curr_dist.logp(inputs["actions"]) -
                             self.prev_dist.logp(inputs["actions"]))
@@ -36,8 +37,8 @@ class PPOLoss(object):
             # which seem to occur when the rollouts get longer (the variance
             # scales superlinearly with the length of the rollout)
             self.vf_loss1 = tf.square(value_fn - inputs["value_targets"])
-            vf_clipped = inputs["prev_vf_preds"] + tf.clip_by_value(
-                value_fn - inputs["prev_vf_preds"],
+            vf_clipped = inputs["vf_preds"] + tf.clip_by_value(
+                value_fn - inputs["vf_preds"],
                 -clip_param, clip_param)
             self.vf_loss2 = tf.square(vf_clipped - inputs["value_targets"])
             self.vf_loss = tf.minimum(self.vf_loss1, self.vf_loss2)
@@ -93,10 +94,10 @@ class PPOTFPolicyGraph(TFPolicyGraph):
         self._inputs["advantages"] = tf.placeholder(tf.float32, shape=(None,))
         self._inputs["actions"] = ModelCatalog.get_action_placeholder(action_space)
         # Log probabilities from the policy before the policy update.
-        self._inputs["prev_logits"] = tf.placeholder(
+        self._inputs["logprobs"] = tf.placeholder(
             tf.float32, shape=(None, logit_dim))
         # Value function predictions before the policy update.
-        self._inputs["prev_vf_preds"] = tf.placeholder(tf.float32, shape=(None,))
+        self._inputs["vf_preds"] = tf.placeholder(tf.float32, shape=(None,))
         self.loss_in = list(self._inputs.items())
 
     def _setup_graph(self, action_space):
@@ -116,19 +117,23 @@ class PPOTFPolicyGraph(TFPolicyGraph):
                     self._inputs["obs"], 1, vf_config).outputs
             self.value_function = tf.reshape(self.value_function, [-1])
         else:
-            self.value_function = None
+            self.value_function = tf.constant("NA")
+
+    def extra_compute_action_fetches(self):
+        return {"vf_preds": self.value_function, "logprobs": self.logits}
 
     def extra_compute_grad_fetches(self):
         return self.loss.extra_fetches()
 
     def postprocess_trajectory(self, sample_batch, other_agent_batches=None):
         last_r = 0.0
-        return compute_advantages(
+        batch = compute_advantages(
             sample_batch, last_r, self.config["gamma"], self.config["lambda"])
+        return batch
 
     def gradients(self, optimizer):
         return optimizer.compute_gradients(
             self._loss, colocate_gradients_with_ops=True)
 
-    def initialize(self):
+    def initialize_gradients(self):
         pass

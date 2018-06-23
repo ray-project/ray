@@ -212,6 +212,8 @@ if __name__ == '__main__':
     # from ray.rllib.ppo import DEFAULT_CONFIG, PPOAgent
     cfg = DEFAULT_CONFIG.copy()
     cfg["use_gae"] = False
+    cfg["num_workers"] = 1
     ray.init()
     # env = gym.make()
     agent = PPOAgent(cfg, "CartPole-v0", )
+    agent.train()
