@@ -8,7 +8,7 @@ import torch
 
 
 def var_to_np(var):
-    return var.detach().numpy()
+    return var.cpu().detach().numpy()
 
 
 def normc_initializer(std=1.0):

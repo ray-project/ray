@@ -6,6 +6,13 @@ import collections
 import numpy as np
 
 
+def to_float_array(v):
+    arr = np.array(v)
+    if arr.dtype == np.float64:
+        return arr.astype(np.float32)  # save some memory
+    return arr
+
+
 class SampleBatchBuilder(object):
     """Util to build a SampleBatch incrementally.
 
@@ -45,7 +52,8 @@ class SampleBatchBuilder(object):
         return batch
 
     def _build_buffers(self):
-        batch = SampleBatch({k: np.array(v) for k, v in self.buffers.items()})
+        batch = SampleBatch(
+            {k: to_float_array(v) for k, v in self.buffers.items()})
         self.buffers.clear()
         return batch
 

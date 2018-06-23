@@ -25,7 +25,10 @@ class TorchPolicyGraph(PolicyGraph):
 
     def __init__(
             self, observation_space, action_space, model, loss, loss_inputs):
-        """Initialize the policy graph.
+        """Build a policy graph from policy and loss torch modules.
+
+        Note that module inputs will be CPU tensors. The model and loss modules
+        are responsible for moving inputs to the right device.
 
         Arguments:
             observation_space (gym.Space): observation space of the policy.
@@ -68,30 +71,28 @@ class TorchPolicyGraph(PolicyGraph):
         if state_batches:
             raise NotImplementedError("Torch RNN support")
         with self.lock:
-            ob = torch.from_numpy(np.array(obs_batch)).float()
-            model_out = self._model(ob)
-            logits = model_out[0]  # assume the first output is the logits
-            actions = F.softmax(logits, dim=1).multinomial(1).squeeze(0)
-            return var_to_np(actions), [], self.extra_action_out(model_out)
+            with torch.no_grad():
+                ob = torch.from_numpy(np.array(obs_batch)).float()
+                model_out = self._model(ob)
+                logits = model_out[0]  # assume the first output is the logits
+                actions = F.softmax(logits, dim=1).multinomial(1).squeeze(0)
+                return var_to_np(actions), [], self.extra_action_out(model_out)
 
     def compute_gradients(self, postprocessed_batch):
         with self.lock:
             loss_in = []
             for key in self._loss_inputs:
                 loss_in.append(torch.from_numpy(postprocessed_batch[key]))
-            loss_in = [
-                t.float() if isinstance(t, torch.DoubleTensor) else t
-                for t in loss_in]
             loss_out = self._loss(*loss_in)
             self._optimizer.zero_grad()
             loss_out.backward()
             # Note that return values are just references;
             # calling zero_grad will modify the values
-            return [p.grad.data.numpy() for p in self._model.parameters()], {}
+            grads = [var_to_np(p.grad.data) for p in self._model.parameters()]
+            return grads, {}
 
     def apply_gradients(self, gradients):
         with self.lock:
-            self._optimizer.zero_grad()
             for g, p in zip(gradients, self._model.parameters()):
                 p.grad = torch.from_numpy(g)
             self._optimizer.step()
