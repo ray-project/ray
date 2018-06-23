@@ -81,10 +81,11 @@ class A3CAgent(Agent):
 
     def _init(self):
         if self.config["use_pytorch"]:
-            from ray.rllib.a3c.a3c_torch_policy import SharedTorchPolicy
-            self.policy_cls = SharedTorchPolicy
+            from ray.rllib.a3c.a3c_torch_policy_graph \
+                import A3CTorchPolicyGraph
+            self.policy_cls = A3CTorchPolicyGraph
         else:
-            from ray.rllib.a3c.a3c_tf_graph import A3CPolicyGraph
+            from ray.rllib.a3c.a3c_tf_policy_graph import A3CPolicyGraph
             self.policy_cls = A3CPolicyGraph
 
         if self.config["use_pytorch"]:
