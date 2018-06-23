@@ -5,7 +5,7 @@ from __future__ import print_function
 import tensorflow as tf
 
 from ray.rllib.models.catalog import ModelCatalog
-from ray.rllib.utils.process_rollout import compute_advantages
+from ray.rllib.utils.postprocessing import compute_advantages
 from ray.rllib.utils.tf_policy_graph import TFPolicyGraph
 
 

@@ -7,7 +7,7 @@ import gym
 
 import ray
 from ray.rllib.utils.error import UnsupportedSpaceException
-from ray.rllib.utils.process_rollout import compute_advantages
+from ray.rllib.utils.postprocessing import compute_advantages
 from ray.rllib.utils.tf_policy_graph import TFPolicyGraph
 from ray.rllib.models.misc import linear, normc_initializer
 from ray.rllib.models.catalog import ModelCatalog

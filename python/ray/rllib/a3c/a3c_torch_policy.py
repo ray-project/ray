@@ -9,7 +9,7 @@ from torch import nn
 import ray
 from ray.rllib.models.pytorch.misc import var_to_np
 from ray.rllib.models.catalog import ModelCatalog
-from ray.rllib.utils.process_rollout import compute_advantages
+from ray.rllib.utils.postprocessing import compute_advantages
 from ray.rllib.utils.torch_policy_graph import TorchPolicyGraph
 
 
