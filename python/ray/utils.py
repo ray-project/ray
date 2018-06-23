@@ -271,13 +271,12 @@ def merge_dicts(d1, d2):
 
 
 def check_oversized_pickle(pickled, name, obj_type, worker):
-    """If the size of the pickcled object is too large, send a warning message
-    to the driver.
+    """Send a warning message if the pickled object is too large.
 
     Args:
-        pickled: the pickcled object.
-        name: name of the pickcled object.
-        obj_type: type of the pickcled object, can be 'function', 'actor',
+        pickled: the pickled object.
+        name: name of the pickled object.
+        obj_type: type of the pickled object, can be 'function', 'actor',
             or 'object'.
         worker: the worker used to send warning message.
     """
