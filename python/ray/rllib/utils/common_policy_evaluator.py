@@ -142,6 +142,7 @@ class CommonPolicyEvaluator(PolicyEvaluator):
 
         env_config = env_config or {}
         policy_config = policy_config or {}
+        self.policy_config = policy_config
         model_config = model_config or {}
         self.env_creator = env_creator
         self.policy_graph = policy_graph

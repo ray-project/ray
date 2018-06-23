@@ -51,28 +51,29 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
         print("LocalMultiGPUOptimizer batch size", self.batch_size)
 
         # List of (feature name, feature placeholder) tuples
-        self.loss_inputs = self.local_evaluator.tf_loss_inputs()
+        self.loss_inputs = self.local_evaluator.for_policy(lambda pi: pi.loss_in)
 
         # per-GPU graph copies created below must share vars with the policy
         main_thread_scope = tf.get_variable_scope()
         # reuse is set to AUTO_REUSE because Adam nodes are created after
         # all of the device copies are created.
-        with tf.variable_scope(main_thread_scope, reuse=tf.AUTO_REUSE):
-            self.par_opt = LocalSyncParallelOptimizer(
-                tf.train.AdamOptimizer(self.sgd_stepsize),
-                self.devices,
-                [ph for _, ph in self.loss_inputs],
-                self.per_device_batch_size,
-                lambda *ph: self.local_evaluator.build_tf_loss(ph),
-                os.getcwd())
+        with self.local_evaluator.sess.graph.as_default():
+            with tf.variable_scope(main_thread_scope, reuse=tf.AUTO_REUSE):
+                def build_loss(inputs):
+                    cfg = self.local_evaluator.policy_config
+                    ac_space = self.local_evaluator.env.get_unwrapped().action_space
+                    return self.local_evaluator.policy_graph(None, ac_space, cfg, inputs)
 
-        # TODO(rliaw): Find more elegant solution for this
-        if hasattr(self.local_evaluator, "init_extra_ops"):
-            self.local_evaluator.init_extra_ops(
-                self.par_opt.get_device_losses())
+                self.par_opt = LocalSyncParallelOptimizer(
+                    tf.train.AdamOptimizer(self.sgd_stepsize),
+                    self.devices,
+                    self.loss_inputs,
+                    self.per_device_batch_size,
+                    build_loss,
+                    os.getcwd())
 
-        self.sess = self.local_evaluator.sess
-        self.sess.run(tf.global_variables_initializer())
+            self.sess = self.local_evaluator.sess
+            self.sess.run(tf.global_variables_initializer())
 
     def step(self, postprocess_fn=None):
         with self.update_weights_timer:
