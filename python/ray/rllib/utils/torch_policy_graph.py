@@ -41,7 +41,7 @@ class TorchPolicyGraph(PolicyGraph):
                 loss_in.append(torch.from_numpy(samples[key]))
             loss_in = [
                 t.float() if isinstance(t, torch.DoubleTensor) else t
-                for t in los_in]
+                for t in loss_in]
             loss_out = self._loss(*loss_in)
             self._optimizer.zero_grad()
             loss_out.backward()
