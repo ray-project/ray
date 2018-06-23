@@ -70,7 +70,7 @@ class SimpleOffPolicyServing(ServingEnv):
         obs = self.env.reset()
         while True:
             action = self.fixed_action
-            self.log_action(obs, action)
+            self.log_action(eid, obs, action)
             obs, reward, done, info = self.env.step(action)
             self.log_returns(eid, reward, info=info)
             if done:
