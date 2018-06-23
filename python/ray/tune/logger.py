@@ -89,12 +89,12 @@ class _JsonLogger(Logger):
     def _init(self):
         config_out = os.path.join(self.logdir, "params.json")
         with open(config_out, "w") as f:
-            json.dump(self.config, f, sort_keys=True, cls=_CustomEncoder)
+            json.dump(self.config, f, sort_keys=True, cls=_SafeFallbackEncoder)
         local_file = os.path.join(self.logdir, "result.json")
         self.local_out = open(local_file, "w")
 
     def on_result(self, result):
-        json.dump(result._asdict(), self, cls=_CustomEncoder)
+        json.dump(result._asdict(), self, cls=_SafeFallbackEncoder)
         self.write("\n")
 
     def write(self, b):
@@ -150,9 +150,9 @@ class _VisKitLogger(Logger):
         self._file.close()
 
 
-class _CustomEncoder(json.JSONEncoder):
+class _SafeFallbackEncoder(json.JSONEncoder):
     def __init__(self, nan_str="null", **kwargs):
-        super(_CustomEncoder, self).__init__(**kwargs)
+        super(_SafeFallbackEncoder, self).__init__(**kwargs)
         self.nan_str = nan_str
 
     def iterencode(self, o, _one_shot=False):
@@ -171,12 +171,15 @@ class _CustomEncoder(json.JSONEncoder):
         return _iterencode(o, 0)
 
     def default(self, value):
-        if np.isnan(value):
-            return None
-        if np.issubdtype(value, float):
-            return float(value)
-        if np.issubdtype(value, int):
-            return int(value)
+        try:
+            if np.isnan(value):
+                return None
+            if np.issubdtype(value, float):
+                return float(value)
+            if np.issubdtype(value, int):
+                return int(value)
+        except Exception:
+            return str(value)  # give up, just stringify it (ok for logs)
 
 
 def pretty_print(result):
@@ -186,5 +189,5 @@ def pretty_print(result):
         if v is not None:
             out[k] = v
 
-    cleaned = json.dumps(out, cls=_CustomEncoder)
+    cleaned = json.dumps(out, cls=_SafeFallbackEncoder)
     return yaml.safe_dump(json.loads(cleaned), default_flow_style=False)
