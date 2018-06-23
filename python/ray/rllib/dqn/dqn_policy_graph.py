@@ -87,8 +87,10 @@ class DQNPolicyGraph(TFPolicyGraph):
         self.cur_epsilon = 1.0
         num_actions = action_space.n
 
-        def model(obs):
-            return ModelCatalog.get_model(obs, 1, config["model"])
+        def q_func(obs):
+            return QFunction(
+                ModelCatalog.get_model(obs, 1, config["model"]),
+                num_actions, config["dueling"], config["hiddens"]).value
 
         # Action inputs
         self.stochastic = tf.placeholder(tf.bool, (), name="stochastic")
@@ -98,9 +100,7 @@ class DQNPolicyGraph(TFPolicyGraph):
 
         # Action Q network
         with tf.variable_scope(Q_SCOPE) as scope:
-            q_values = QFunction(
-                model(self.cur_observations), num_actions, config["dueling"],
-                config["hiddens"]).value
+            q_values = q_func(self.cur_observations)
             self.q_func_vars = _scope_vars(scope.name)
 
         # Action outputs
@@ -124,15 +124,11 @@ class DQNPolicyGraph(TFPolicyGraph):
 
         # q network evaluation
         with tf.variable_scope(Q_SCOPE, reuse=True):
-            q_t = QFunction(
-                model(self.obs_t), num_actions, config["dueling"],
-                config["hiddens"]).value
+            q_t = q_func(self.obs_t)
 
         # target q network evalution
         with tf.variable_scope(Q_TARGET_SCOPE) as scope:
-            q_tp1 = QFunction(
-                model(self.obs_tp1), num_actions, config["dueling"],
-                config["hiddens"]).value
+            q_tp1 = q_func(self.obs_tp1)
             self.target_q_func_vars = _scope_vars(scope.name)
 
         # q scores for actions which we know were selected in the given state.
@@ -142,9 +138,7 @@ class DQNPolicyGraph(TFPolicyGraph):
         # compute estimate of best possible value starting from state at t + 1
         if config["double_q"]:
             with tf.variable_scope(Q_SCOPE, reuse=True):
-                q_tp1_using_online_net = QFunction(
-                    model(self.obs_tp1), num_actions, config["dueling"],
-                    config["hiddens"]).value
+                q_tp1_using_online_net = q_func(self.obs_tp1)
             q_tp1_best_using_online_net = tf.argmax(q_tp1_using_online_net, 1)
             q_tp1_best = tf.reduce_sum(
                 q_tp1 * tf.one_hot(
