@@ -744,7 +744,7 @@ class GlobalState(object):
                 self._profile_table(binary_to_object_id(component_id))
                 for component_id in component_identifiers_binary}
 
-    def chrome_tracing_dump(self):
+    def chrome_tracing_dump(self, filename=None):
         """Return a list of profiling events that can viewed as a timeline.
 
         To view this information as a timeline, simply dump it as a json file
@@ -755,25 +755,30 @@ class GlobalState(object):
         TODO(rkn): This should support viewing just a window of time or a
         limited number of events.
 
+        Args:
+            filename: If a filename is provided, the timeline is dumped to that
+                file.
+
         Returns:
             A list of profiling events. Each profile event is a dictionary.
         """
         profile_table = self.profile_table()
         all_events = []
 
+        # Colors are specified at https://github.com/catapult-project/catapult/blob/master/tracing/tracing/base/color_scheme.html.  # noqa: E501
         default_color_mapping = {
-            "ray:task": "thread_state_runnable",
-            "ray:task:execute": "cq_build_attempt_failed",
-            "ray:task:store_outputs": "rail_animation",
-            "ray:task:get_arguments": "rail_idle",
-            "ray:wait_for_function": "olive",
-            "ray:get": "olive",
-            "ray:put": "olive",
-            "ray:wait": "olive",
-            "ray:submit_task": "olive",
-
+            "ray:get_task": "cq_build_abandoned",
+            "ray:task": "rail_response",
+            "ray:task:get_arguments": "rail_load",
+            "ray:task:execute": "rail_animation",
+            "ray:task:store_outputs": "rail_idle",
+            "ray:wait_for_function": "detailed_memory_dump",
+            "ray:get": "good",
+            "ray:put": "terrible",
+            "ray:wait": "vsync_highlight_color",
+            "ray:submit_task": "background_memory_dump",
         }
-        default_color = "olive"
+        default_color = "generic_work"
 
         for component_id_hex, component_events in profile_table.items():
             for event in component_events:
@@ -789,20 +794,11 @@ class GlobalState(object):
                 }
                 all_events.append(event)
 
+        if filename is not None:
+            with open(filename, "w") as outfile:
+                json.dump(all_events, outfile)
+
         return all_events
-            # outputs_trace = {
-            #     "cat": "store_outputs",
-            #     "pid": "Node " + worker["node_ip_address"],
-            #     "tid": info["worker_id"],
-            #     "id": task_id,
-            #     "ts": micros_rel(info["store_outputs_start"]),
-            #     "ph": "X",
-            #     "name": info["function_name"] + ":store_outputs",
-            #     "args": total_info,
-            #     "dur": micros(info["store_outputs_end"] -
-            #                   info["store_outputs_start"]),
-            #     "cname": "thread_state_runnable"
-            # }
 
     def dump_catapult_trace(self,
                             path,
