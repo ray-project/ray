@@ -198,15 +198,3 @@ class PPOAgent(Agent):
             observation, update=False)
         return self.local_evaluator.common_policy.compute_actions(
             [observation], [], False)[0][0]
-
-if __name__ == '__main__':
-    import gym
-    from collections import defaultdict
-    # from ray.rllib.ppo import DEFAULT_CONFIG, PPOAgent
-    cfg = DEFAULT_CONFIG.copy()
-    cfg["use_gae"] = False
-    cfg["num_workers"] = 1
-    ray.init()
-    # env = gym.make()
-    agent = PPOAgent(cfg, "CartPole-v0", )
-    agent.train()
