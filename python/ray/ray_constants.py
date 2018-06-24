@@ -5,12 +5,17 @@ from __future__ import print_function
 
 import os
 
+import ray
+
 
 def env_integer(key, default):
     if key in os.environ:
         return int(os.environ[key])
     return default
 
+
+ID_SIZE = 20
+NIL_JOB_ID = ray.ObjectID(ID_SIZE * b"\x00")
 
 # If a remote function or actor (or some other export) has serialized size
 # greater than this quantity, print an warning.

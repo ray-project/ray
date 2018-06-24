@@ -61,14 +61,6 @@ extern RedisChainModule module;
     return RedisModule_ReplyWithError(ctx, (MESSAGE)); \
   }
 
-// NOTE(swang): The order of prefixes here must match the TablePrefix enum
-// defined in src/ray/gcs/format/gcs.fbs.
-static const char *table_prefixes[] = {
-    NULL,         "TASK:",  "TASK:",     "CLIENT:",
-    "OBJECT:",    "ACTOR:", "FUNCTION:", "TASK_RECONSTRUCTION:",
-    "HEARTBEAT:",
-};
-
 /// Parse a Redis string into a TablePubsub channel.
 TablePubsub ParseTablePubsub(const RedisModuleString *pubsub_channel_str) {
   long long pubsub_channel_long;
@@ -128,8 +120,8 @@ RedisModuleKey *OpenPrefixedKey(RedisModuleCtx *ctx,
       << "This table has no prefix registered";
   RAY_CHECK(prefix >= TablePrefix::MIN && prefix <= TablePrefix::MAX)
       << "Prefix must be a valid TablePrefix";
-  return OpenPrefixedKey(ctx, table_prefixes[static_cast<long long>(prefix)],
-                         keyname, mode, mutated_key_str);
+  return OpenPrefixedKey(ctx, EnumNameTablePrefix(prefix), keyname, mode,
+                         mutated_key_str);
 }
 
 RedisModuleKey *OpenPrefixedKey(RedisModuleCtx *ctx,

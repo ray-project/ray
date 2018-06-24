@@ -286,6 +286,29 @@ static PyObject *PyLocalSchedulerClient_wait(PyObject *self, PyObject *args) {
   return Py_BuildValue("(OO)", py_found, py_remaining);
 }
 
+static PyObject *PyLocalSchedulerClient_push_error(PyObject *self,
+                                                   PyObject *args) {
+  JobID job_id;
+  const char *type;
+  int type_length;
+  const char *error_message;
+  int error_message_length;
+  double timestamp;
+  if (!PyArg_ParseTuple(args, "O&s#s#d", &PyObjectToUniqueID, &job_id, &type,
+                        &type_length, &error_message, &error_message_length,
+                        &timestamp)) {
+    return NULL;
+  }
+
+  local_scheduler_push_error(reinterpret_cast<PyLocalSchedulerClient *>(self)
+                                 ->local_scheduler_connection,
+                             job_id, std::string(type, type_length),
+                             std::string(error_message, error_message_length),
+                             timestamp);
+
+  Py_RETURN_NONE;
+}
+
 static PyMethodDef PyLocalSchedulerClient_methods[] = {
     {"disconnect", (PyCFunction) PyLocalSchedulerClient_disconnect, METH_NOARGS,
      "Notify the local scheduler that this client is exiting gracefully."},
@@ -313,6 +336,8 @@ static PyMethodDef PyLocalSchedulerClient_methods[] = {
      (PyCFunction) PyLocalSchedulerClient_set_actor_frontier, METH_VARARGS, ""},
     {"wait", (PyCFunction) PyLocalSchedulerClient_wait, METH_VARARGS,
      "Wait for a list of objects to be created."},
+    {"push_error", (PyCFunction) PyLocalSchedulerClient_push_error,
+     METH_VARARGS, "Push an error message to the relevant driver."},
     {NULL} /* Sentinel */
 };
 

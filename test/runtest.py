@@ -1189,6 +1189,16 @@ class PythonModeTest(unittest.TestCase):
         test_array[0] = -1
         assert_equal(test_array, test_actor.get_array.remote())
 
+        # Check that actor handles work in Python mode.
+
+        @ray.remote
+        def use_actor_handle(handle):
+            array = np.ones(10)
+            handle.set_array.remote(array)
+            assert np.alltrue(array == ray.get(handle.get_array.remote()))
+
+        ray.get(use_actor_handle.remote(test_actor))
+
 
 class ResourcesTest(unittest.TestCase):
     def tearDown(self):
@@ -2243,7 +2253,7 @@ class GlobalStateAPI(unittest.TestCase):
             worker_ids = set(ray.get([f.remote() for _ in range(10)]))
 
         worker_info = ray.global_state.workers()
-        self.assertEqual(len(worker_info), num_workers)
+        assert len(worker_info) >= num_workers
         for worker_id, info in worker_info.items():
             self.assertIn("node_ip_address", info)
             self.assertIn("local_scheduler_socket", info)

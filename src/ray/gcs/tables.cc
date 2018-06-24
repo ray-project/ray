@@ -183,6 +183,19 @@ Status Table<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id
       done);
 }
 
+Status ErrorTable::PushErrorToDriver(const JobID &job_id, const std::string &type,
+                                     const std::string &error_message, double timestamp) {
+  auto data = std::make_shared<ErrorTableDataT>();
+  data->job_id = job_id.binary();
+  data->type = type;
+  data->error_message = error_message;
+  data->timestamp = timestamp;
+  return Append(job_id, job_id, data, [](ray::gcs::AsyncGcsClient *client,
+                                         const JobID &id, const ErrorTableDataT &data) {
+    RAY_LOG(DEBUG) << "Error message pushed callback";
+  });
+}
+
 void ClientTable::RegisterClientAddedCallback(const ClientTableCallback &callback) {
   client_added_callback_ = callback;
   // Call the callback for any added clients that are cached.
@@ -333,6 +346,7 @@ template class Table<TaskID, TaskTableData>;
 template class Log<ActorID, ActorTableData>;
 template class Log<TaskID, TaskReconstructionData>;
 template class Table<ClientID, HeartbeatTableData>;
+template class Log<JobID, ErrorTableData>;
 template class Log<UniqueID, ClientTableData>;
 
 }  // namespace gcs

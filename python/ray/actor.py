@@ -164,7 +164,7 @@ def save_and_log_checkpoint(worker, actor):
         traceback_str = ray.utils.format_error_message(traceback.format_exc())
         # Log the error message.
         ray.utils.push_error_to_driver(
-            worker.redis_client,
+            worker,
             ray_constants.CHECKPOINT_PUSH_ERROR,
             traceback_str,
             driver_id=worker.task_driver_id.id(),
@@ -188,7 +188,7 @@ def restore_and_log_checkpoint(worker, actor):
         traceback_str = ray.utils.format_error_message(traceback.format_exc())
         # Log the error message.
         ray.utils.push_error_to_driver(
-            worker.redis_client,
+            worker,
             ray_constants.CHECKPOINT_PUSH_ERROR,
             traceback_str,
             driver_id=worker.task_driver_id.id(),
@@ -330,7 +330,7 @@ def fetch_and_register_actor(actor_class_key, worker):
         traceback_str = ray.utils.format_error_message(traceback.format_exc())
         # Log the error message.
         push_error_to_driver(
-            worker.redis_client,
+            worker,
             ray_constants.REGISTER_ACTOR_PUSH_ERROR,
             traceback_str,
             driver_id,
@@ -402,7 +402,7 @@ def export_actor_class(class_id, Class, actor_method_names,
                            .format(actor_class_info["class_name"],
                                    len(actor_class_info["class"])))
         ray.utils.push_error_to_driver(
-            worker.redis_client,
+            worker,
             ray_constants.PICKLING_LARGE_OBJECT_PUSH_ERROR,
             warning_message,
             driver_id=worker.task_driver_id.id())
@@ -884,13 +884,15 @@ class ActorHandle(object):
             "actor_id": self._ray_actor_id.id(),
             "class_name": self._ray_class_name,
             "actor_forks": self._ray_actor_forks,
-            "actor_cursor": self._ray_actor_cursor.id(),
+            "actor_cursor": self._ray_actor_cursor.id()
+            if self._ray_actor_cursor is not None else None,
             "actor_counter": 0,  # Reset the actor counter.
             "actor_method_names": self._ray_actor_method_names,
             "method_signatures": self._ray_method_signatures,
             "method_num_return_vals": self._ray_method_num_return_vals,
             "actor_creation_dummy_object_id": self.
-            _ray_actor_creation_dummy_object_id.id(),
+            _ray_actor_creation_dummy_object_id.id()
+            if self._ray_actor_creation_dummy_object_id is not None else None,
             "actor_method_cpus": self._ray_actor_method_cpus,
             "actor_driver_id": self._ray_actor_driver_id.id(),
             "previous_actor_handle_id": self._ray_actor_handle_id.id()
@@ -929,12 +931,14 @@ class ActorHandle(object):
         self.__init__(
             ray.ObjectID(state["actor_id"]),
             state["class_name"],
-            ray.ObjectID(state["actor_cursor"]),
+            ray.ObjectID(state["actor_cursor"])
+            if state["actor_cursor"] is not None else None,
             state["actor_counter"],
             state["actor_method_names"],
             state["method_signatures"],
             state["method_num_return_vals"],
-            ray.ObjectID(state["actor_creation_dummy_object_id"]),
+            ray.ObjectID(state["actor_creation_dummy_object_id"])
+            if state["actor_creation_dummy_object_id"] is not None else None,
             state["actor_method_cpus"],
             actor_driver_id,
             actor_handle_id=actor_handle_id,
