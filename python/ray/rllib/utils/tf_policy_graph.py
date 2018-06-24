@@ -54,11 +54,8 @@ class TFPolicyGraph(PolicyGraph):
         self._is_training = is_training
         self._state_inputs = state_inputs or []
         self._state_outputs = state_outputs or []
-        self.initialize_gradients()
         self._variables = ray.experimental.TensorFlowVariables(
             self._loss, self._sess)
-
-    def initialize(self):
         self._optimizer = self.optimizer()
         self._grads_and_vars = self.gradients(self._optimizer)
         self._grads = [g for (g, v) in self._grads_and_vars]

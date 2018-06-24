@@ -56,14 +56,16 @@ class PPOLoss(object):
 
 
 class PPOTFPolicyGraph(TFPolicyGraph):
-    """PPO Graph"""
+    """PPO Graph."""
 
     def __init__(self, ob_space, action_space, config, loss_in=None):
         self.config = config
         self.kl_coeff_val = self.config["kl_coeff_val"]
         self.kl_target = self.config["kl_target"]
         if loss_in:
-            # TODO(rliaw): This is very, very brittle. The proper way probably
+            # TODO(rliaw): This is very, very brittle. 
+            # We need all the copies that the TFMultiGPUOptimizer manages
+            # to use the same new_kl. The proper way probably
             # to redo multigpu data loading using tf.data.Dataset and
             # have a whitelist for broadcast tensors.
             self.kl_coeff = tf.get_default_graph().get_tensor_by_name("newkl:0")
@@ -79,10 +81,11 @@ class PPOTFPolicyGraph(TFPolicyGraph):
             entropy_coeff=self.config["entropy_coeff"],
             clip_param=self.config["clip_param"],
             vf_loss_coeff=self.config["kl_target"],
-            use_gae=config["use_gae"])
+            use_gae=self.config["use_gae"])
         self.is_training = tf.placeholder_with_default(True, ())
         self.sess = tf.get_default_session()
 
+        # This doesn't do much.
         TFPolicyGraph.__init__(
             self, self.sess, obs_input=self._inputs["obs"],
             action_sampler=self.sampler, loss=self.loss_obj.loss,
@@ -157,9 +160,6 @@ class PPOTFPolicyGraph(TFPolicyGraph):
     def gradients(self, optimizer):
         return optimizer.compute_gradients(
             self._loss, colocate_gradients_with_ops=True)
-
-    def initialize_gradients(self):
-        pass
 
     def get_state(self):
         return [TFPolicyGraph.get_state(self), self.kl_target, self.kl_coeff_val]
