@@ -2339,7 +2339,7 @@ def connect(info,
         t.daemon = True
         t.start()
 
-    if mode in [SCRIPT_MODE, SILENT_MODE]:
+    if mode in [SCRIPT_MODE, SILENT_MODE] and worker.use_raylet:
         t = threading.Thread(target=_flush_profile_events, args=(worker, ))
         # Making the thread a daemon causes it to exit when the main thread
         # exits.
