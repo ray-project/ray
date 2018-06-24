@@ -658,8 +658,8 @@ class Worker(object):
             else:
                 del function.__globals__[function.__name__]
 
-        check_oversized_pickle(pickled_function, function_name, "function",
-                               self)
+        check_oversized_pickle(pickled_function, function_name,
+                               "remote function", self)
 
         self.redis_client.hmset(
             key, {
@@ -710,7 +710,7 @@ class Worker(object):
                 return
 
             check_oversized_pickle(pickled_function, function.__name__,
-                                   "function", self)
+                                   "remote function", self)
 
             # Run the function on all workers.
             self.redis_client.hmset(
