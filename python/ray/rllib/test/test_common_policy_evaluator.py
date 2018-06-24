@@ -20,7 +20,7 @@ class MockPolicyGraph(PolicyGraph):
     def compute_actions(self, obs_batch, state_batches, is_training=False):
         return [0] * len(obs_batch), [], {}
 
-    def postprocess_trajectory(self, batch):
+    def postprocess_trajectory(self, batch, other_agent_batches=None):
         return compute_advantages(batch, 100.0, 0.9, use_gae=False)
 
 
@@ -28,7 +28,7 @@ class BadPolicyGraph(PolicyGraph):
     def compute_actions(self, obs_batch, state_batches, is_training=False):
         raise Exception("intentional error")
 
-    def postprocess_trajectory(self, batch):
+    def postprocess_trajectory(self, batch, other_agent_batches=None):
         return compute_advantages(batch, 100.0, 0.9, use_gae=False)
 
 
@@ -211,6 +211,9 @@ class TestCommonPolicyEvaluator(unittest.TestCase):
             batch_mode="complete_episodes")
         batch = ev.sample()
         self.assertEqual(batch.count, 20)
+        self.assertEqual(
+            batch["t"].tolist(),
+            [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
 
     def testFilterSync(self):
         ev = CommonPolicyEvaluator(
@@ -221,7 +224,7 @@ class TestCommonPolicyEvaluator(unittest.TestCase):
         time.sleep(2)
         ev.sample()
         filters = ev.get_filters(flush_after=True)
-        obs_f = filters["obs_filter"]
+        obs_f = filters["default"]
         self.assertNotEqual(obs_f.rs.n, 0)
         self.assertNotEqual(obs_f.buffer.n, 0)
 
@@ -235,8 +238,8 @@ class TestCommonPolicyEvaluator(unittest.TestCase):
         filters = ev.get_filters(flush_after=False)
         time.sleep(2)
         filters2 = ev.get_filters(flush_after=False)
-        obs_f = filters["obs_filter"]
-        obs_f2 = filters2["obs_filter"]
+        obs_f = filters["default"]
+        obs_f2 = filters2["default"]
         self.assertGreaterEqual(obs_f2.rs.n, obs_f.rs.n)
         self.assertGreaterEqual(obs_f2.buffer.n, obs_f.buffer.n)
 
@@ -250,15 +253,15 @@ class TestCommonPolicyEvaluator(unittest.TestCase):
 
         # Current State
         filters = ev.get_filters(flush_after=False)
-        obs_f = filters["obs_filter"]
+        obs_f = filters["default"]
 
         self.assertLessEqual(obs_f.buffer.n, 20)
 
         new_obsf = obs_f.copy()
         new_obsf.rs._n = 100
-        ev.sync_filters({"obs_filter": new_obsf})
+        ev.sync_filters({"default": new_obsf})
         filters = ev.get_filters(flush_after=False)
-        obs_f = filters["obs_filter"]
+        obs_f = filters["default"]
         self.assertGreaterEqual(obs_f.rs.n, 100)
         self.assertLessEqual(obs_f.buffer.n, 20)
 
@@ -266,7 +269,7 @@ class TestCommonPolicyEvaluator(unittest.TestCase):
         time.sleep(2)
         ev.sample()
         filters = ev.get_filters(flush_after=True)
-        obs_f = filters["obs_filter"]
+        obs_f = filters["default"]
         self.assertNotEqual(obs_f.rs.n, 0)
         self.assertNotEqual(obs_f.buffer.n, 0)
         return obs_f
