@@ -8,7 +8,6 @@ import os
 import tensorflow as tf
 
 import ray
-from ray.rllib.optimizers.policy_evaluator import TFMultiGPUSupport
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.optimizers.sample_batch import SampleBatch
 from ray.rllib.optimizers.multi_gpu_impl import LocalSyncParallelOptimizer
@@ -52,7 +51,7 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
         print("LocalMultiGPUOptimizer batch size", self.batch_size)
 
         # List of (feature name, feature placeholder) tuples
-        self.loss_inputs = self.local_evaluator.for_policy(lambda pi: pi.loss_in)
+        self.loss_inputs = self.local_evaluator.for_policy(lambda p: p.loss_in)
 
         # per-GPU graph copies created below must share vars with the policy
         # reuse is set to AUTO_REUSE because Adam nodes are created after
@@ -62,8 +61,10 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
             with tf.variable_scope(main_thread_scope, reuse=tf.AUTO_REUSE):
                 def build_loss(inputs):
                     cfg = self.local_evaluator.policy_config
-                    ac_space = self.local_evaluator.env.get_unwrapped().action_space
-                    return self.local_evaluator.policy_graph(None, ac_space, cfg, inputs)
+                    env = self.local_evaluator.env
+                    ac_space = env.get_unwrapped().action_space
+                    return self.local_evaluator.policy_graph(
+                        None, ac_space, cfg, inputs)
 
                 self.par_opt = LocalSyncParallelOptimizer(
                     tf.train.AdamOptimizer(self.sgd_stepsize),
@@ -77,9 +78,10 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
             self.sess.run(tf.global_variables_initializer())
 
     def step(self, postprocess_fn=None):
+        local_ev = self.local_evaluator
         with self.update_weights_timer:
             if self.remote_evaluators:
-                weights = ray.put(self.local_evaluator.get_weights())
+                weights = ray.put(local_ev.get_weights())
                 for e in self.remote_evaluators:
                     e.set_weights.remote(weights)
 
@@ -90,7 +92,7 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
                 samples = collect_samples(self.remote_evaluators,
                                           self.timesteps_per_batch)
             else:
-                samples = self.local_evaluator.sample()
+                samples = local_ev.sample()
             assert isinstance(samples, SampleBatch)
 
             if postprocess_fn:
@@ -98,12 +100,11 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
 
         with self.load_timer:
             tuples_per_device = self.par_opt.load_data(
-                self.local_evaluator.sess,
+                local_ev.sess,
                 samples.columns([key for key, _ in self.loss_inputs]))
 
         with self.grad_timer:
             all_extra_fetches = defaultdict(list)
-            ev = self.local_evaluator
             num_batches = (
                 int(tuples_per_device) // int(self.per_device_batch_size))
             for i in range(self.num_sgd_iter):
@@ -112,10 +113,12 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
                 for batch_index in range(num_batches):
                     # TODO(ekl) support ppo's debugging features, e.g.
                     # printing the current loss and tracing
+                    extra_feed_dict = local_ev.for_policy(
+                        lambda pi: pi.extra_apply_grad_feed_dict())
                     batch_fetches = self.par_opt.optimize(
                         self.sess,
                         permutation[batch_index] * self.per_device_batch_size,
-                        extra_feed_dict=ev.for_policy(lambda pi: pi.extra_apply_grad_feed_dict()))
+                        extra_feed_dict=extra_feed_dict)
                     for k, v in batch_fetches.items():
                         iter_extra_fetches[k] += [v]
                 for k, v in iter_extra_fetches.items():

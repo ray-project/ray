@@ -8,11 +8,12 @@ import tensorflow as tf
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.utils.process_rollout import compute_advantages
 from ray.rllib.utils.tf_policy_graph import TFPolicyGraph
-# from ray.rllib.utils.policy_graph import PolicyGraph
+
 
 class PPOLoss(object):
-    def __init__(self, inputs, ac_space, curr_dist, value_fn, kl_coeff_tensor,
-        entropy_coeff=0, clip_param=0.1, vf_loss_coeff=0.0, use_gae=True):
+    def __init__(self, inputs, ac_space, curr_dist, value_fn,
+                 kl_coeff_tensor, entropy_coeff=0, clip_param=0.1,
+                 vf_loss_coeff=0.0, use_gae=True):
         dist_cls, _ = ModelCatalog.get_action_dist(ac_space)
         self.kl_coeff = kl_coeff_tensor
         # The coefficient of the KL penalty.
@@ -25,7 +26,7 @@ class PPOLoss(object):
         self.entropy = curr_dist.entropy()
         self.mean_entropy = tf.reduce_mean(self.entropy)
         self.surr1 = self.ratio * inputs["advantages"]
-        self.surr2 =  inputs["advantages"] * tf.clip_by_value(
+        self.surr2 = inputs["advantages"] * tf.clip_by_value(
             self.ratio, 1 - clip_param,
             1 + clip_param)
         self.surr = tf.minimum(self.surr1, self.surr2)
@@ -63,19 +64,19 @@ class PPOTFPolicyGraph(TFPolicyGraph):
         self.kl_coeff_val = self.config["kl_coeff_val"]
         self.kl_target = self.config["kl_target"]
         if loss_in:
-            # TODO(rliaw): This is very, very brittle. 
+            # TODO(rliaw): This is very, very brittle.
             # We need all the copies that the TFMultiGPUOptimizer manages
             # to use the same new_kl. The proper way probably
             # to redo multigpu data loading using tf.data.Dataset and
             # have a whitelist for broadcast tensors.
-            self.kl_coeff = tf.get_default_graph().get_tensor_by_name("newkl:0")
+            default_graph = tf.get_default_graph()
+            self.kl_coeff = default_graph.get_tensor_by_name("newkl:0")
             self._inputs = OrderedDict(loss_in)
             self.loss_in = loss_in
         else:
             self._setup_inputs(ob_space, action_space)
         self._setup_graph(action_space)
-        print("Setting up loss")
-        self.loss_obj  = PPOLoss(
+        self.loss_obj = PPOLoss(
             self._inputs, action_space,
             self.curr_dist, self.value_function, self.kl_coeff,
             entropy_coeff=self.config["entropy_coeff"],
@@ -104,7 +105,8 @@ class PPOTFPolicyGraph(TFPolicyGraph):
         # Advantage values in the policy gradient estimator.
         self._inputs["advantages"] = tf.placeholder(
             tf.float32, name="advantages", shape=(None,))
-        self._inputs["actions"] = ModelCatalog.get_action_placeholder(action_space)
+        self._inputs["actions"] = ModelCatalog.get_action_placeholder(
+            action_space)
         # Log probabilities from the policy before the policy update.
         self._inputs["logprobs"] = tf.placeholder(
             tf.float32, name="logprobs", shape=(None, logit_dim))
@@ -117,7 +119,8 @@ class PPOTFPolicyGraph(TFPolicyGraph):
             name="newkl", shape=(), dtype=tf.float32)
 
     def _setup_graph(self, action_space):
-        self.dist_cls, self.logit_dim = ModelCatalog.get_action_dist(action_space)
+        self.dist_cls, self.logit_dim = ModelCatalog.get_action_dist(
+            action_space)
         self.logits = ModelCatalog.get_model(
             self._inputs["obs"], self.logit_dim, self.config["model"]).outputs
         self.curr_dist = self.dist_cls(self.logits)
@@ -162,7 +165,9 @@ class PPOTFPolicyGraph(TFPolicyGraph):
             self._loss, colocate_gradients_with_ops=True)
 
     def get_state(self):
-        return [TFPolicyGraph.get_state(self), self.kl_target, self.kl_coeff_val]
+        return [TFPolicyGraph.get_state(self),
+                self.kl_target,
+                self.kl_coeff_val]
 
     def set_state(self, state):
         TFPolicyGraph.set_state(self, state[0])

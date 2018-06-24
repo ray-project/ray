@@ -34,9 +34,9 @@ class LocalSyncParallelOptimizer(object):
     Args:
         optimizer: Delegate TensorFlow optimizer object.
         devices: List of the names of TensorFlow devices to parallelize over.
-        input_placeholders: List of (name, input_placeholder) for the loss function.
-            Tensors of these shapes will be passed to build_graph()
-            in order to define the per-device loss ops.
+        input_placeholders: List of (name, input_placeholder)
+            for the loss function. Tensors of these shapes will be passed
+            to build_graph() in order to define the per-device loss ops.
         per_device_batch_size: Number of tuples to optimize over at a time per
             device. In each call to `optimize()`,
             `len(devices) * per_device_batch_size` tuples of data will be
@@ -75,8 +75,8 @@ class LocalSyncParallelOptimizer(object):
 
         self._towers = []
         for device, device_placeholders in zip(self.devices, data_splits):
-            self._towers.append(self._setup_device(device,
-                                                   zip(names, device_placeholders)))
+            self._towers.append(
+                self._setup_device(device, zip(names, device_placeholders)))
 
         avg = average_gradients([t.grads for t in self._towers])
         if grad_norm_clipping:

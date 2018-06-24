@@ -137,7 +137,7 @@ class PPOAgent(Agent):
              "num_sgd_iter": self.config["num_sgd_iter"],
              "timesteps_per_batch": self.config["timesteps_per_batch"]},
             self.local_evaluator, self.remote_evaluators,)
-
+        self.saver = tf.train.Saver()
 
     def _train(self):
         def postprocess_samples(batch):
@@ -166,17 +166,16 @@ class PPOAgent(Agent):
         res = res._replace(info=info)
         return res
 
-
     def _stop(self):
         # workaround for https://github.com/ray-project/ray/issues/1516
         for ev in self.remote_evaluators:
             ev.__ray_terminate__.remote()
 
     def _save(self, checkpoint_dir):
-        # checkpoint_path = self.saver.save(
-        #     self.local_evaluator.sess,
-        #     os.path.join(checkpoint_dir, "checkpoint"),
-        #     global_step=self.iteration)
+        checkpoint_path = self.saver.save(
+            self.local_evaluator.sess,
+            os.path.join(checkpoint_dir, "checkpoint"),
+            global_step=self.iteration)
         agent_state = ray.get(
             [a.save.remote() for a in self.remote_evaluators])
         extra_data = [
@@ -186,7 +185,7 @@ class PPOAgent(Agent):
         return checkpoint_path
 
     def _restore(self, checkpoint_path):
-        # self.saver.restore(self.local_evaluator.sess, checkpoint_path)
+        self.saver.restore(self.local_evaluator.sess, checkpoint_path)
         extra_data = pickle.load(open(checkpoint_path + ".extra_data", "rb"))
         self.local_evaluator.restore(extra_data[0])
         ray.get([
