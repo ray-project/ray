@@ -50,6 +50,8 @@ yet complete. For some methods, you may see the following:
 
   NotImplementedError: To contribute to Pandas on Ray, please visit github.com/ray-project/ray.
 
+We have compiled a list of currently supported methods `here`_.
+
 If you would like to request a particular method be implemented, feel free to
 `open an issue`_. Before you open an issue please make sure that someone else
 has not already requested that functionality.
@@ -66,6 +68,7 @@ You can find an example on our recent `blog post`_ or on the
 `Jupyter Notebook`_ that we used to create the blog post.
 
 .. _`installation page`: http://ray.readthedocs.io/en/latest/installation.html
+.. _`here`: http://ray.readthedocs.io/en/latest/pandas_supported.html
 .. _`open an issue`: http://github.com/ray-project/ray/issues
 .. _`blog post`: http://rise.cs.berkeley.edu/blog/pandas-on-ray
 .. _`Jupyter Notebook`: http://gist.github.com/devin-petersohn/f424d9fb5579a96507c709a36d487f24#file-pandas_on_ray_blog_post_0-ipynb
