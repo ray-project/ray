@@ -154,7 +154,8 @@ class A3CAgent(Agent):
     def compute_action(self, observation, state=None):
         if state is None:
             state = []
-        obs = self.local_evaluator.obs_filter(observation, update=False)
+        obs = self.local_evaluator.filters["default"](
+            observation, update=False)
         return self.local_evaluator.for_policy(
             lambda p: p.compute_single_action(
                 obs, state, is_training=False)[0])

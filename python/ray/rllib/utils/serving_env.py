@@ -6,11 +6,9 @@ from six.moves import queue
 import threading
 import uuid
 
-from ray.rllib.utils.async_vector_env import AsyncVectorEnv
-
 
 class ServingEnv(threading.Thread):
-    """Environment that provides policy serving.
+    """An environment that provides policy serving.
 
     Unlike simulator envs, control is inverted. The environment queries the
     policy to obtain actions and logs observations and rewards for training.
@@ -91,7 +89,7 @@ class ServingEnv(threading.Thread):
             raise ValueError(
                 "Episode {} is already started".format(episode_id))
 
-        self._episodes[episode_id] = _Episode(
+        self._episodes[episode_id] = _ServingEnvEpisode(
             episode_id, self._results_avail_condition, training_enabled)
 
         return episode_id
@@ -165,49 +163,7 @@ class ServingEnv(threading.Thread):
         return self._episodes[episode_id]
 
 
-class _ServingEnvToAsync(AsyncVectorEnv):
-    """Internal adapter of ServingEnv to AsyncVectorEnv."""
-
-    def __init__(self, serving_env):
-        self.serving_env = serving_env
-        serving_env.start()
-
-    def poll(self):
-        with self.serving_env._results_avail_condition:
-            results = self._poll()
-            while len(results[0]) == 0:
-                self.serving_env._results_avail_condition.wait()
-                results = self._poll()
-                if not self.serving_env.isAlive():
-                    raise Exception("Serving thread has stopped.")
-        limit = self.serving_env._max_concurrent_episodes
-        assert len(results[0]) < limit, \
-            ("Too many concurrent episodes, were some leaked? This ServingEnv "
-             "was created with max_concurrent={}".format(limit))
-        return results
-
-    def _poll(self):
-        all_obs, all_rewards, all_dones, all_infos = {}, {}, {}, {}
-        off_policy_actions = {}
-        for eid, episode in self.serving_env._episodes.copy().items():
-            data = episode.get_data()
-            if episode.cur_done:
-                del self.serving_env._episodes[eid]
-            if data:
-                all_obs[eid] = data["obs"]
-                all_rewards[eid] = data["reward"]
-                all_dones[eid] = data["done"]
-                all_infos[eid] = data["info"]
-                if "off_policy_action" in data:
-                    off_policy_actions[eid] = data["off_policy_action"]
-        return all_obs, all_rewards, all_dones, all_infos, off_policy_actions
-
-    def send_actions(self, action_dict):
-        for eid, action in action_dict.items():
-            self.serving_env._episodes[eid].action_queue.put(action)
-
-
-class _Episode(object):
+class _ServingEnvEpisode(object):
     """Tracked state for each active episode."""
 
     def __init__(self, episode_id, results_avail_condition, training_enabled):

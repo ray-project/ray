@@ -18,6 +18,7 @@ class SharedTorchPolicy(PolicyGraph):
     """A simple, non-recurrent PyTorch policy example."""
 
     def __init__(self, obs_space, action_space, config):
+        PolicyGraph.__init__(self, obs_space, action_space, config)
         self.local_steps = 0
         self.config = config
         self.summarize = config.get("summarize")
