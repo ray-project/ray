@@ -20,20 +20,22 @@ class LSTM(Model):
         use_tf100_api = (distutils.version.LooseVersion(tf.VERSION) >=
                          distutils.version.LooseVersion("1.0.0"))
 
-        last_layer = inputs
-        for i in range(4):
-            last_layer = tf.nn.elu(
-                conv2d(last_layer, 32, "l{}".format(i + 1), [3, 3], [2, 2]))
+        last_layer = inputs  # [BATCH_DIM, last_layer_size...]
+        self.seq_lens = tf.placeholder(tf.int32, [None])
+
+        print("Last layer", last_layer)
+#        for i in range(4):
+#            last_layer = tf.nn.elu(
+#                conv2d(last_layer, 32, "l{}".format(i + 1), [3, 3], [2, 2]))
         # Introduce a "fake" batch dimension of 1 after flatten so that we can
         # do LSTM over the time dim.
 #        last_layer = tf.expand_dims(flatten(last_layer), [0])
 
-        cell_size = 256
+        cell_size = options.get("lstm_cell_size", 256)
         if use_tf100_api:
             lstm = rnn.BasicLSTMCell(cell_size, state_is_tuple=True)
         else:
             lstm = rnn.rnn_cell.BasicLSTMCell(cell_size, state_is_tuple=True)
-        seq_lens = tf.shape(last_layer)[:1]
 
         c_init = np.zeros(lstm.state_size.c, np.float32)
         h_init = np.zeros(lstm.state_size.h, np.float32)
@@ -46,10 +48,9 @@ class LSTM(Model):
             state_in = rnn.LSTMStateTuple(c_in, h_in)
         else:
             state_in = rnn.rnn_cell.LSTMStateTuple(c_in, h_in)
-        lstm_out, lstm_state = tf.nn.dynamic_rnn(lstm, last_layer,
-                                                 initial_state=state_in,
-                                                 sequence_length=seq_lens,
-                                                 time_major=False)
+        lstm_out, lstm_state = tf.nn.dynamic_rnn(
+            lstm, last_layer, initial_state=state_in,
+            sequence_length=self.seq_lens, time_major=False)
         lstm_c, lstm_h = lstm_state
         last_layer = tf.reshape(lstm_out, [-1, cell_size])
         logits = linear(

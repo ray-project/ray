@@ -15,7 +15,8 @@ class TFPolicyGraph(PolicyGraph):
     optimizations on the policy graph, e.g., parallelization across gpus or
     fusing multiple graphs together in the multi-agent setting.
 
-    All input and output tensors are of shape [BATCH_DIM, ...].
+    Input tensors are typically shaped like [BATCH_DIM, TIME_DIM, ...].
+    TIME_DIM is always 1 at inference time or for non-recurrent models.
 
     Attributes:
         observation_space (gym.Space): observation space of the policy.
@@ -38,12 +39,15 @@ class TFPolicyGraph(PolicyGraph):
         """Initialize the policy graph.
 
         Arguments:
-            obs_input (Tensor): input placeholder for observations.
-            action_sampler (Tensor): Tensor for sampling an action.
+            obs_input (Tensor): input placeholder for observations, of size
+                [BATCH_DIM, TIME_DIM, obs...].
+            action_sampler (Tensor): Tensor for sampling an action, of size
+                [BATCH_DIM, action...]
             loss (Tensor): scalar policy loss output tensor.
             loss_inputs (list): a (name, placeholder) tuple for each loss
                 input argument. Each placeholder name must correspond to a
-                SampleBatch column key returned by postprocess_trajectory().
+                SampleBatch column key returned by postprocess_trajectory(),
+                and has shape [BATCH_DIM, TIME_DIM, data...].
             is_training (Tensor): input placeholder for whether we are
                 currently training the policy.
             state_inputs (list): list of RNN state output Tensors.

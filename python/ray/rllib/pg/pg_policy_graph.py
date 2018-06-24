@@ -20,7 +20,8 @@ class PGPolicyGraph(TFPolicyGraph):
         self.config = config
 
         # Setup policy
-        self.x = tf.placeholder(tf.float32, shape=[None]+list(obs_space.shape))
+        self.x = tf.placeholder(
+            tf.float32, shape=[None, None] + list(obs_space.shape))
         dist_class, self.logit_dim = ModelCatalog.get_action_dist(
             action_space, self.config["model"])
         self.model = ModelCatalog.get_model(

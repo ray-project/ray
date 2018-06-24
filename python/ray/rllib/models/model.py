@@ -27,6 +27,7 @@ class Model(object):
         state_init (list): List of initial recurrent state tensors (if any).
         state_in (list): List of input recurrent state tensors (if any).
         state_out (list): List of output recurrent state tensors (if any).
+        seq_lens (Tensor): The tensor input for RNN sequence lengths (if any).
 
     If `options["free_log_std"]` is True, the last half of the
     output layer will be free variables that are not dependent on
@@ -38,10 +39,11 @@ class Model(object):
     """
 
     def __init__(self, inputs, num_outputs, options):
+        self.inputs = inputs
         self.state_init = []
         self.state_in = []
         self.state_out = []
-        self.inputs = inputs
+        self.seq_lens = None
         if options.get("free_log_std", False):
             assert num_outputs % 2 == 0
             num_outputs = num_outputs // 2

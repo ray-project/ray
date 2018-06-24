@@ -22,17 +22,23 @@ from ray.rllib.models.multiagentfcnet import MultiAgentFullyConnectedNetwork
 
 MODEL_CONFIGS = [
     # === Built-in options ===
-    "conv_filters",  # Number of filters
+    "conv_filters",  # Filter configuration
+    "conv_activation",  # Nonlinearity for built-in convnet
+
+    "fcnet_activation",  # Nonlinearity for fully connected net (tanh, relu)
+    "fcnet_hiddens",  # Number of hidden layers for fully connected net
+
     "dim",  # Dimension for ATARI
     "grayscale",  # Converts ATARI frame to 1 Channel Grayscale image
     "zero_mean",  # Changes frame to range from [-1, 1] if true
     "extra_frameskip",  # (int) for number of frames to skip
-    "fcnet_activation",  # Nonlinearity for fully connected net (tanh, relu)
-    "fcnet_hiddens",  # Number of hidden layers for fully connected net
+
     "free_log_std",  # Documented in ray.rllib.models.Model
     "channel_major",  # Pytorch conv requires images to be channel-major
     "squash_to_range",  # Whether to squash the action output to space range
-    "use_lstm",  # Whether to use a LSTM model
+
+    "use_lstm",  # Whether to wrap the model with a LSTM
+    "lstm_cell_size",  # Size of the LSTM cell
 
     # === Options for custom models ===
     "custom_preprocessor",  # Name of a custom preprocessor to use
@@ -132,7 +138,7 @@ class ModelCatalog(object):
                                       " not supported".format(action_space))
 
     @staticmethod
-    def get_model(inputs, num_outputs, options={}):
+    def get_model(inputs, num_outputs, options=None):
         """Returns a suitable model conforming to given input and output specs.
 
         Args:
@@ -143,17 +149,24 @@ class ModelCatalog(object):
         Returns:
             model (Model): Neural network model.
         """
+        
+        options = options or {}
+        model = ModelCatalog._get_model(inputs, num_outputs, options)
 
+        if "use_lstm" in options:
+            return LSTM(model.last_layer, num_outputs, options)
+
+        return model
+
+    @staticmethod
+    def _get_model(inputs, num_outputs, options):
         if "custom_model" in options:
             model = options["custom_model"]
             print("Using custom model {}".format(model))
             return _global_registry.get(RLLIB_MODEL, model)(
                 inputs, num_outputs, options)
 
-        if "use_lstm" in options:
-            return LSTM(inputs, num_outputs, options)
-
-        obs_rank = len(inputs.shape) - 1
+        obs_rank = len(inputs.shape) - 2  # [BATCH_DIM, TIME_DIM, obs...]
 
         # num_outputs > 1 used to avoid hitting this with the value function
         if isinstance(options.get("custom_options", {}).get(
@@ -161,7 +174,7 @@ class ModelCatalog(object):
             return MultiAgentFullyConnectedNetwork(inputs,
                                                    num_outputs, options)
 
-        if obs_rank > 1:
+        if obs_rank > 2:
             return VisionNetwork(inputs, num_outputs, options)
 
         return FullyConnectedNetwork(inputs, num_outputs, options)
