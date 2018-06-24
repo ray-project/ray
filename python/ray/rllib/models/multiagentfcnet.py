@@ -12,7 +12,9 @@ from ray.rllib.models.action_dist import Reshaper
 class MultiAgentFullyConnectedNetwork(Model):
     """Multiagent fully connected network."""
 
-    def _init(self, inputs, num_outputs, options):
+    def _build_layers(self, inputs, num_outputs, options):
+        # Drop the RNN time dimension
+        inputs = inputs.squeeze(1)
 
         # Split the input and output tensors
         input_shapes = options["custom_options"]["multiagent_obs_shapes"]

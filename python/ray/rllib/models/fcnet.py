@@ -12,7 +12,10 @@ from ray.rllib.models.misc import normc_initializer
 class FullyConnectedNetwork(Model):
     """Generic fully connected network."""
 
-    def _init(self, inputs, num_outputs, options):
+    def _build_layers(self, inputs, num_outputs, options):
+        # Drop the RNN time dimension
+        inputs = inputs.squeeze(1)
+
         hiddens = options.get("fcnet_hiddens", [256, 256])
 
         fcnet_activation = options.get("fcnet_activation", "tanh")

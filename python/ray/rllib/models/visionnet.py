@@ -11,7 +11,10 @@ from ray.rllib.models.model import Model
 class VisionNetwork(Model):
     """Generic vision network."""
 
-    def _init(self, inputs, num_outputs, options):
+    def _build_layers(self, inputs, num_outputs, options):
+        # Drop the RNN time dimension
+        inputs = inputs.squeeze(1)
+
         filters = options.get("conv_filters", [
             [16, [8, 8], 4],
             [32, [4, 4], 2],
