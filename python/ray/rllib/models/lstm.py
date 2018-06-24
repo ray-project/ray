@@ -16,24 +16,24 @@ class LSTM(Model):
     """Vision LSTM network based here:
     https://github.com/openai/universe-starter-agent"""
 
+    # TODO(rliaw): Add LSTM code for other algorithms
     def _init(self, inputs, num_outputs, options):
         use_tf100_api = (distutils.version.LooseVersion(tf.VERSION) >=
                          distutils.version.LooseVersion("1.0.0"))
 
-        last_layer = inputs
+        self.x = x = inputs
         for i in range(4):
-            last_layer = tf.nn.elu(
-                conv2d(last_layer, 32, "l{}".format(i + 1), [3, 3], [2, 2]))
+            x = tf.nn.elu(conv2d(x, 32, "l{}".format(i + 1), [3, 3], [2, 2]))
         # Introduce a "fake" batch dimension of 1 after flatten so that we can
         # do LSTM over the time dim.
-        last_layer = tf.expand_dims(flatten(last_layer), [0])
+        x = tf.expand_dims(flatten(x), [0])
 
         size = 256
         if use_tf100_api:
             lstm = rnn.BasicLSTMCell(size, state_is_tuple=True)
         else:
             lstm = rnn.rnn_cell.BasicLSTMCell(size, state_is_tuple=True)
-        step_size = tf.shape(last_layer)[:1]
+        step_size = tf.shape(self.x)[:1]
 
         c_init = np.zeros(lstm.state_size.c, np.float32)
         h_init = np.zeros(lstm.state_size.h, np.float32)
@@ -46,13 +46,12 @@ class LSTM(Model):
             state_in = rnn.LSTMStateTuple(c_in, h_in)
         else:
             state_in = rnn.rnn_cell.LSTMStateTuple(c_in, h_in)
-        lstm_out, lstm_state = tf.nn.dynamic_rnn(lstm, last_layer,
+        lstm_out, lstm_state = tf.nn.dynamic_rnn(lstm, x,
                                                  initial_state=state_in,
                                                  sequence_length=step_size,
                                                  time_major=False)
         lstm_c, lstm_h = lstm_state
-        last_layer = tf.reshape(lstm_out, [-1, size])
-        logits = linear(
-            last_layer, num_outputs, "action", normc_initializer(0.01))
+        x = tf.reshape(lstm_out, [-1, size])
+        logits = linear(x, num_outputs, "action", normc_initializer(0.01))
         self.state_out = [lstm_c[:1, :], lstm_h[:1, :]]
-        return logits, last_layer
+        return logits, x
