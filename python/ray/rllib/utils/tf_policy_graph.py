@@ -89,7 +89,7 @@ class TFPolicyGraph(PolicyGraph):
 
     def compute_actions(
             self, obs_batch, state_batches=None, is_training=False):
-        builder = TFRunBuilder(self._sess)
+        builder = TFRunBuilder(self._sess, "compute_actions")
         fetches = self.build_compute_actions(
             builder, obs_batch, state_batches, is_training)
         return builder.get(fetches)
@@ -114,7 +114,7 @@ class TFPolicyGraph(PolicyGraph):
         return fetches[0], fetches[1]
 
     def compute_gradients(self, postprocessed_batch):
-        builder = TFRunBuilder(self._sess)
+        builder = TFRunBuilder(self._sess, "compute_gradients")
         fetches = self.build_compute_gradients(builder, postprocessed_batch)
         return builder.get(fetches)
 
@@ -128,7 +128,7 @@ class TFPolicyGraph(PolicyGraph):
         return fetches[1]
 
     def apply_gradients(self, gradients):
-        builder = TFRunBuilder(self._sess)
+        builder = TFRunBuilder(self._sess, "apply_gradients")
         fetches = self.build_apply_gradients(builder, gradients)
         return builder.get(fetches)
 
@@ -143,7 +143,7 @@ class TFPolicyGraph(PolicyGraph):
         return fetches[1], fetches[2]
 
     def compute_apply(self, postprocessed_batch):
-        builder = TFRunBuilder(self._sess)
+        builder = TFRunBuilder(self._sess, "compute_apply")
         fetches = self.build_compute_apply(builder, postprocessed_batch)
         return builder.get(fetches)
 

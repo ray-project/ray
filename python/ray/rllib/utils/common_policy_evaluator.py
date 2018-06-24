@@ -361,7 +361,7 @@ class CommonPolicyEvaluator(PolicyEvaluator):
         if isinstance(samples, MultiAgentBatch):
             grad_out, info_out = {}, {}
             if self.tf_sess is not None:
-                builder = TFRunBuilder(self.tf_sess)
+                builder = TFRunBuilder(self.tf_sess, "compute_gradients")
                 for pid, batch in samples.policy_batches.items():
                     grad_out[pid], info_out[pid] = (
                         self.policy_map[pid].build_compute_gradients(
@@ -380,7 +380,7 @@ class CommonPolicyEvaluator(PolicyEvaluator):
     def apply_gradients(self, grads):
         if isinstance(grads, dict):
             if self.tf_sess is not None:
-                builder = TFRunBuilder(self.tf_sess)
+                builder = TFRunBuilder(self.tf_sess, "apply_gradients")
                 outputs = {
                     pid: self.policy_map[pid].build_apply_gradients(
                         builder, grad)
@@ -401,7 +401,7 @@ class CommonPolicyEvaluator(PolicyEvaluator):
         if isinstance(samples, MultiAgentBatch):
             info_out = {}
             if self.tf_sess is not None:
-                builder = TFRunBuilder(self.tf_sess)
+                builder = TFRunBuilder(self.tf_sess, "compute_apply")
                 for pid, batch in samples.policy_batches.items():
                     info_out[pid], _ = (
                         self.policy_map[pid].build_compute_apply(

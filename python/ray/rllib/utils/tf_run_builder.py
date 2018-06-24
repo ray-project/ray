@@ -16,8 +16,9 @@ class TFRunBuilder(object):
     policies in the multi-agent setting.
     """
 
-    def __init__(self, session):
+    def __init__(self, session, debug_name):
         self.session = session
+        self.debug_name = debug_name
         self.feed_dict = {}
         self.fetches = []
         self._executed = None
@@ -38,8 +39,8 @@ class TFRunBuilder(object):
         if self._executed is None:
             try:
                 self._executed = run_timeline(
-                    self.session, self.fetches, self.feed_dict,
-                    os.environ.get("TF_TIMELINE_DIR"))
+                    self.session, self.fetches, self.debug_name,
+                    self.feed_dict, os.environ.get("TF_TIMELINE_DIR"))
             except Exception as e:
                 print("Error fetching: {}, feed_dict={}".format(
                     self.fetches, self.feed_dict))
@@ -57,7 +58,7 @@ class TFRunBuilder(object):
 _count = 0
 
 
-def run_timeline(sess, ops, feed_dict={}, timeline_dir=None):
+def run_timeline(sess, ops, debug_name, feed_dict={}, timeline_dir=None):
     if timeline_dir:
         run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
         run_metadata = tf.RunMetadata()
@@ -68,7 +69,8 @@ def run_timeline(sess, ops, feed_dict={}, timeline_dir=None):
         trace = timeline.Timeline(step_stats=run_metadata.step_stats)
         global _count
         outf = os.path.join(
-            timeline_dir, "timeline-{}-{}.json".format(os.getpid(), _count))
+            timeline_dir,
+            "timeline-{}-{}-{}.json".format(debug_name, os.getpid(), _count))
         _count += 1
         trace_file = open(outf, "w")
         print(

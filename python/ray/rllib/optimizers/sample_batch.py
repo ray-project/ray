@@ -6,7 +6,7 @@ import collections
 import numpy as np
 
 
-# Defaults config values for single agent environments
+# Defaults policy id for single agent environments
 DEFAULT_POLICY_ID = "default"
 
 

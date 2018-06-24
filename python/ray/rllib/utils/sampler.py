@@ -284,7 +284,7 @@ def _env_runner(
 
         # Batch eval policy actions if possible
         if tf_sess:
-            builder = TFRunBuilder(tf_sess)
+            builder = TFRunBuilder(tf_sess, "policy_eval")
         else:
             builder = None
         eval_results = {}
