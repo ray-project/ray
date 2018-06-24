@@ -12,12 +12,10 @@ from ray.rllib.utils.tf_policy_graph import TFPolicyGraph
 
 class PPOLoss(object):
     def __init__(self, inputs, ac_space, curr_dist, value_fn, kl_coeff_tensor,
-        entropy_coeff=0, kl_target=0.01,
-        clip_param=0.1, vf_loss_coeff=0.0, use_gae=True):
+        entropy_coeff=0, clip_param=0.1, vf_loss_coeff=0.0, use_gae=True):
         dist_cls, _ = ModelCatalog.get_action_dist(ac_space)
         self.kl_coeff = kl_coeff_tensor
         # The coefficient of the KL penalty.
-        self.kl_target = kl_target
         self.prev_dist = dist_cls(inputs["logprobs"])
         # Make loss functions.
         self.ratio = tf.exp(curr_dist.logp(inputs["actions"]) -
@@ -63,6 +61,7 @@ class PPOTFPolicyGraph(TFPolicyGraph):
     def __init__(self, ob_space, action_space, config, loss_in=None):
         self.config = config
         self.kl_coeff_val = self.config["kl_coeff_val"]
+        self.kl_target = self.config["kl_target"]
         if loss_in:
             # TODO(rliaw): This is very, very brittle. The proper way probably
             # to redo multigpu data loading using tf.data.Dataset and
@@ -78,7 +77,6 @@ class PPOTFPolicyGraph(TFPolicyGraph):
             self._inputs, action_space,
             self.curr_dist, self.value_function, self.kl_coeff,
             entropy_coeff=self.config["entropy_coeff"],
-            kl_target=self.config["kl_target"],
             clip_param=self.config["clip_param"],
             vf_loss_coeff=self.config["kl_target"],
             use_gae=config["use_gae"])

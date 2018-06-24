@@ -2,8 +2,6 @@
 pendulum-ppo:
     env: Pendulum-v0
     run: PPO
-    stop:
-        training_iteration: 2
     config:
         timesteps_per_batch: 2048
         num_workers: 1

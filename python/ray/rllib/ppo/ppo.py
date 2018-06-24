@@ -156,11 +156,7 @@ class PPOAgent(Agent):
         newkl = self.local_evaluator.for_policy(lambda pi: pi.update_kl(kl))
 
         info = {
-            "total_loss": total_loss,
-            "policy_loss": policy_loss,
-            "vf_loss": vf_loss,
             "kl_divergence": kl,
-            "entropy": entropy,
             "kl_coefficient": newkl,
         }
 
