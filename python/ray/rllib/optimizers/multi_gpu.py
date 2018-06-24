@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+from collections import defaultdict
 import os
 import tensorflow as tf
 
@@ -54,10 +55,10 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
         self.loss_inputs = self.local_evaluator.for_policy(lambda pi: pi.loss_in)
 
         # per-GPU graph copies created below must share vars with the policy
-        main_thread_scope = tf.get_variable_scope()
         # reuse is set to AUTO_REUSE because Adam nodes are created after
         # all of the device copies are created.
         with self.local_evaluator.sess.graph.as_default():
+            main_thread_scope = tf.get_variable_scope()
             with tf.variable_scope(main_thread_scope, reuse=tf.AUTO_REUSE):
                 def build_loss(inputs):
                     cfg = self.local_evaluator.policy_config
@@ -101,12 +102,12 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
                 samples.columns([key for key, _ in self.loss_inputs]))
 
         with self.grad_timer:
-            all_extra_fetches = []
+            all_extra_fetches = defaultdict(list)
             ev = self.local_evaluator
             num_batches = (
                 int(tuples_per_device) // int(self.per_device_batch_size))
             for i in range(self.num_sgd_iter):
-                iter_extra_fetches = []
+                iter_extra_fetches = defaultdict(list)
                 permutation = np.random.permutation(num_batches)
                 for batch_index in range(num_batches):
                     # TODO(ekl) support ppo's debugging features, e.g.
@@ -114,10 +115,11 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
                     batch_fetches = self.par_opt.optimize(
                         self.sess,
                         permutation[batch_index] * self.per_device_batch_size,
-                        extra_ops=ev.for_policy(lambda pi: pi.extra_apply_grad_fetches()),
                         extra_feed_dict=ev.for_policy(lambda pi: pi.extra_apply_grad_feed_dict()))
-                    iter_extra_fetches += [batch_fetches]
-                all_extra_fetches += [iter_extra_fetches]
+                    for k, v in batch_fetches.items():
+                        iter_extra_fetches[k] += [v]
+                for k, v in iter_extra_fetches.items():
+                    all_extra_fetches[k] += [v]
 
         self.num_steps_sampled += samples.count
         self.num_steps_trained += samples.count

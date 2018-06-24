@@ -137,7 +137,7 @@ class LocalSyncParallelOptimizer(object):
         assert tuples_per_device % self.per_device_batch_size == 0
         return tuples_per_device
 
-    def optimize(self, sess, batch_index, extra_ops=None, extra_feed_dict=None,
+    def optimize(self, sess, batch_index, extra_feed_dict=None,
                  file_writer=None):
         """Run a single step of SGD.
 
@@ -153,7 +153,6 @@ class LocalSyncParallelOptimizer(object):
             batch_index: Offset into the preloaded data. This value must be
                 between `0` and `tuples_per_device`. The amount of data to
                 process is always fixed to `per_device_batch_size`.
-            extra_ops (dict): Extra ops to run with this step (e.g. for metrics).
             extra_feed_dict: Extra args to feed into this session run.
             file_writer: If specified, tf metrics will be written out using
                 this.
@@ -161,7 +160,6 @@ class LocalSyncParallelOptimizer(object):
         Returns:
             The outputs of extra_ops evaluated over the batch.
         """
-        extra_ops = extra_ops or {}
         extra_feed_dict = extra_feed_dict or {}
         if file_writer:
             run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
@@ -170,10 +168,17 @@ class LocalSyncParallelOptimizer(object):
         run_metadata = tf.RunMetadata()
 
         feed_dict = {self._batch_index: batch_index}
+        # We only get the feed_dict from the local_evaluator policy graph
+        # because users don't have access to the tower policy graphs, and
+        # and therefore don't feed in new values
         feed_dict.update(extra_feed_dict)
+
         fetches = {"train": self._train_op}
-        fetches.update(extra_ops)
-        import ipdb; ipdb.set_trace(context=9)
+        # We get the fetches from one of the towers rather than
+        # the local_evaluator because the _train_op is dependent
+        # on the split data placeholders, not the local_evaluator placeholders.
+        fetches.update(self._towers[0].loss_graph.extra_apply_grad_fetches())
+
         outs = sess.run(
             fetches,
             feed_dict=feed_dict,
@@ -194,7 +199,7 @@ class LocalSyncParallelOptimizer(object):
         return self._shared_loss
 
     def get_device_losses(self):
-        return [t.loss_object for t in self._towers]
+        return [t.loss_graph for t in self._towers]
 
     def _setup_device(self, device, device_input_placeholders):
         with tf.device(device):
@@ -223,7 +228,7 @@ class LocalSyncParallelOptimizer(object):
 
 
 # Each tower is a copy of the loss graph pinned to a specific device.
-Tower = namedtuple("Tower", ["init_op", "grads", "loss_object"])
+Tower = namedtuple("Tower", ["init_op", "grads", "loss_graph"])
 
 
 def make_divisible_by(array, n):

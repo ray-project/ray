@@ -11,16 +11,13 @@ from ray.rllib.utils.tf_policy_graph import TFPolicyGraph
 # from ray.rllib.utils.policy_graph import PolicyGraph
 
 class PPOLoss(object):
-    def __init__(self, inputs, ac_space, curr_dist, value_fn,
-        entropy_coeff=0, kl_coeff=0.2, kl_target=0.01,
+    def __init__(self, inputs, ac_space, curr_dist, value_fn, kl_coeff_tensor,
+        entropy_coeff=0, kl_target=0.01,
         clip_param=0.1, vf_loss_coeff=0.0, use_gae=True):
         dist_cls, _ = ModelCatalog.get_action_dist(ac_space)
+        self.kl_coeff = kl_coeff_tensor
         # The coefficient of the KL penalty.
-        self.kl_coeff_val = kl_coeff
         self.kl_target = kl_target
-
-        self.kl_coeff = tf.placeholder(
-            name="newkl", shape=(), dtype=tf.float32)
         self.prev_dist = dist_cls(inputs["logprobs"])
         # Make loss functions.
         self.ratio = tf.exp(curr_dist.logp(inputs["actions"]) -
@@ -59,34 +56,18 @@ class PPOLoss(object):
                 entropy_coeff * self.entropy)
         self.loss = loss
 
-    def extra_fetches(self):
-        return {"kl": self.mean_kl}
-
-    def extra_feed_dict(self):
-        return {self.kl_coeff: self.kl_coeff_val}
-
-    def update_kl(self, sampled_kl):
-        if sampled_kl > 2.0 * self.kl_target:
-            self.kl_coeff_val *= 1.5
-        elif sampled_kl < 0.5 * self.kl_target:
-            self.kl_coeff_val *= 0.5
-        return self.kl_coeff_val
-
-    def get_state(self):
-        return [self.kl_target, self.kl_coeff_val]
-
-    def set_state(self, state):
-        self.kl_target = state[0]
-        self.kl_coeff_val = state[1]
-
-
 
 class PPOTFPolicyGraph(TFPolicyGraph):
     """PPO Graph"""
 
     def __init__(self, ob_space, action_space, config, loss_in=None):
         self.config = config
+        self.kl_coeff_val = self.config["kl_coeff_val"]
         if loss_in:
+            # TODO(rliaw): This is very, very brittle. The proper way probably
+            # to redo multigpu data loading using tf.data.Dataset and
+            # have a whitelist for broadcast tensors.
+            self.kl_coeff = tf.get_default_graph().get_tensor_by_name("newkl:0")
             self._inputs = OrderedDict(loss_in)
             self.loss_in = loss_in
         else:
@@ -95,9 +76,8 @@ class PPOTFPolicyGraph(TFPolicyGraph):
         print("Setting up loss")
         self.loss_obj  = PPOLoss(
             self._inputs, action_space,
-            self.curr_dist, self.value_function,
+            self.curr_dist, self.value_function, self.kl_coeff,
             entropy_coeff=self.config["entropy_coeff"],
-            kl_coeff=self.config["kl_coeff"],
             kl_target=self.config["kl_target"],
             clip_param=self.config["clip_param"],
             vf_loss_coeff=self.config["kl_target"],
@@ -130,7 +110,10 @@ class PPOTFPolicyGraph(TFPolicyGraph):
         # Value function predictions before the policy update.
         self._inputs["vf_preds"] = tf.placeholder(
             tf.float32, name="vf_preds", shape=(None,))
+        # KL Coefficient
         self.loss_in = list(self._inputs.items())
+        self.kl_coeff = tf.placeholder(
+            name="newkl", shape=(), dtype=tf.float32)
 
     def _setup_graph(self, action_space):
         self.dist_cls, self.logit_dim = ModelCatalog.get_action_dist(action_space)
@@ -155,13 +138,17 @@ class PPOTFPolicyGraph(TFPolicyGraph):
         return {"vf_preds": self.value_function, "logprobs": self.logits}
 
     def extra_apply_grad_fetches(self):
-        return self.loss_obj.extra_fetches()
+        return {"kl": self.loss_obj.mean_kl}
 
     def extra_apply_grad_feed_dict(self):
-        return self.loss_obj.extra_feed_dict()
+        return {self.kl_coeff: self.kl_coeff_val}
 
-    def update_kl(self, newkl):
-        return self.loss_obj.update_kl(newkl)
+    def update_kl(self, sampled_kl):
+        if sampled_kl > 2.0 * self.kl_target:
+            self.kl_coeff_val *= 1.5
+        elif sampled_kl < 0.5 * self.kl_target:
+            self.kl_coeff_val *= 0.5
+        return self.kl_coeff_val
 
     def postprocess_trajectory(self, sample_batch, other_agent_batches=None):
         last_r = 0.0
@@ -177,8 +164,9 @@ class PPOTFPolicyGraph(TFPolicyGraph):
         pass
 
     def get_state(self):
-        return [TFPolicyGraph.get_state(self), self.loss_obj.get_state()]
+        return [TFPolicyGraph.get_state(self), self.kl_target, self.kl_coeff_val]
 
     def set_state(self, state):
         TFPolicyGraph.set_state(self, state[0])
-        self.loss_obj.set_state(state[1])
+        self.kl_target = state[1]
+        self.kl_coeff_val = state[2]

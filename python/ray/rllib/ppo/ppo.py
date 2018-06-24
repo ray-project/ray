@@ -27,7 +27,7 @@ DEFAULT_CONFIG = {
     # GAE(lambda) parameter
     "lambda": 1.0,
     # Initial coefficient for KL divergence
-    "kl_coeff": 0.2,
+    "kl_coeff_val": 0.2,
     # Number of SGD iterations in each outer loop
     "num_sgd_iter": 30,
     # Stepsize of SGD
@@ -152,9 +152,7 @@ class PPOAgent(Agent):
                 batch.data["value_targets"] = dummy
                 batch.data["vf_preds"] = dummy
         extra_fetches = self.optimizer.step(postprocess_fn=postprocess_samples)
-
-        final_metrics = np.array(extra_fetches).mean(axis=1)[-1, :].tolist()
-        total_loss, policy_loss, vf_loss, kl, entropy = final_metrics
+        kl = np.array(extra_fetches["kl"]).mean(axis=1)[-1]
         newkl = self.local_evaluator.for_policy(lambda pi: pi.update_kl(kl))
 
         info = {
