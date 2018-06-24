@@ -58,7 +58,10 @@ enum MessageType:int {
   WaitRequest,
   // The response message to WaitRequest; replies with the objects found and objects
   // remaining.
-  WaitReply
+  WaitReply,
+  // Push an error to the relevant driver. This is sent from a worker to the
+  // node manager.
+  PushErrorRequest,
 }
 
 table TaskExecutionSpecification {
@@ -153,4 +156,16 @@ table WaitReply {
   found: [string];
   // List of object ids not found.
   remaining: [string];
+}
+
+// This struct is the same as ErrorTableData.
+table PushErrorRequest {
+  // The ID of the job that the error is for.
+  job_id: string;
+  // The type of the error.
+  type: string;
+  // The error message.
+  error_message: string;
+  // The timestamp of the error message.
+  timestamp: double;
 }
