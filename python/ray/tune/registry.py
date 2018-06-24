@@ -61,8 +61,9 @@ def _make_key(category, key):
     Returns:
         The key to use for storing a the value.
     """
-    return (b"TuneRegistry:" + category.encode("ascii") + b"/" +
-            key.encode("ascii"))
+    driver = ray.worker.global_worker.task_driver_id.hex().encode("ascii")
+    return (b"TuneRegistry:" + driver + b":" + category.encode("ascii") +
+            b"/" + key.encode("ascii"))
 
 
 class _Registry(object):
