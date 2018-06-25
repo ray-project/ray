@@ -8,7 +8,8 @@ import math
 import unittest
 import random
 import ray
-from ..plasma_eventloop import PlasmaPoll, PlasmaEpoll, PlasmaSelectorEventLoop
+from ray.plasma.plasma_eventloop import PlasmaPoll, PlasmaEpoll, \
+    PlasmaSelectorEventLoop
 
 HashFlowNode = namedtuple('HashFlowNode', ['parents', 'delay', 'result'])
 
@@ -49,7 +50,8 @@ def gen_hashflow(seed, width, depth):
             HashFlowNode(
                 parents=[random.randint(0, width - 1) for _ in range(n)],
                 delay=random.random() * 0.1,
-                result=None) for _ in range(width)]
+                result=None) for _ in range(width)
+        ]
         stages.append(nodes)
 
     stages.append([
