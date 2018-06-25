@@ -135,7 +135,8 @@ RedisContext::~RedisContext() {
   }
 }
 
-void GetRedisShards(redisContext *context, std::vector<std::string> *addresses, std::vector<int> *ports) {
+void GetRedisShards(redisContext *context, std::vector<std::string> *addresses,
+                    std::vector<int> *ports) {
   // Get the total number of Redis shards in the system.
   int num_attempts = 0;
   redisReply *reply = NULL;
@@ -155,9 +156,8 @@ void GetRedisShards(redisContext *context, std::vector<std::string> *addresses, 
   }
   RAY_CHECK(num_attempts < RayConfig::instance().redis_db_connect_retries())
       << "No entry found for NumRedisShards";
-  RAY_CHECK(reply->type == REDIS_REPLY_STRING)
-      << "Expected string, found Redis type " << reply->type
-      << " for NumRedisShards";
+  RAY_CHECK(reply->type == REDIS_REPLY_STRING) << "Expected string, found Redis type "
+                                               << reply->type << " for NumRedisShards";
   int num_redis_shards = atoi(reply->str);
   RAY_CHECK(num_redis_shards >= 1) << "Expected at least one Redis shard, "
                                    << "found " << num_redis_shards;
@@ -168,7 +168,8 @@ void GetRedisShards(redisContext *context, std::vector<std::string> *addresses, 
   while (num_attempts < RayConfig::instance().redis_db_connect_retries()) {
     // Try to read the Redis shard locations from the primary shard. If we find
     // that all of them are present, exit.
-    reply = reinterpret_cast<redisReply *>(redisCommand(context, "LRANGE RedisShards 0 -1"));
+    reply =
+        reinterpret_cast<redisReply *>(redisCommand(context, "LRANGE RedisShards 0 -1"));
     if (static_cast<int>(reply->elements) == num_redis_shards) {
       break;
     }
