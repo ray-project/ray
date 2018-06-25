@@ -17,17 +17,16 @@ class Model(object):
 
     Attributes:
         inputs (Tensor): The input placeholder for this model, of shape
-            [batch_size, max_seq_len, ...]. For non-RNN models, max_seq_len
-            will always be 1 and can be squeezed out. For RNN models,
-            max_seq_len will be 1 at inference time, and >1 at training time.
+            [BATCH_SIZE, ...].
         outputs (Tensor): The output vector of this model, of shape
-            [batch_size, num_outputs].
+            [BATCH_SIZE, num_outputs].
         last_layer (Tensor): The network layer right before the model output,
-            of shape [batch_size, N].
+            of shape [BATCH_SIZE, N].
         state_init (list): List of initial recurrent state tensors (if any).
         state_in (list): List of input recurrent state tensors (if any).
         state_out (list): List of output recurrent state tensors (if any).
-        seq_lens (Tensor): The tensor input for RNN sequence lengths (if any).
+        seq_lens (Tensor): The tensor input for RNN sequence lengths. This
+            defaults to a Tensor of [1] * len(batch) in the non-RNN case.
 
     If `options["free_log_std"]` is True, the last half of the
     output layer will be free variables that are not dependent on
@@ -40,10 +39,15 @@ class Model(object):
 
     def __init__(self, inputs, num_outputs, options):
         self.inputs = inputs
+
+        # Default attribute values for the non-RNN case
         self.state_init = []
         self.state_in = []
         self.state_out = []
-        self.seq_lens = None
+        self.seq_lens = tf.placeholder_with_default(
+            tf.ones(tf.shape(inputs)[0], dtype=tf.int32), [None],
+            name="seq_lens")
+
         if options.get("free_log_std", False):
             assert num_outputs % 2 == 0
             num_outputs = num_outputs // 2

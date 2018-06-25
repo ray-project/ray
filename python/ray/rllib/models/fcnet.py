@@ -13,9 +13,6 @@ class FullyConnectedNetwork(Model):
     """Generic fully connected network."""
 
     def _build_layers(self, inputs, num_outputs, options):
-        # Drop the RNN time dimension
-        inputs = tf.squeeze(inputs, 1)
-
         hiddens = options.get("fcnet_hiddens", [256, 256])
 
         activation = get_activation_fn(options.get("fcnet_activation", "tanh"))

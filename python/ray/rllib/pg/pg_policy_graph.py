@@ -21,7 +21,7 @@ class PGPolicyGraph(TFPolicyGraph):
 
         # Setup policy
         self.x = tf.placeholder(
-            tf.float32, shape=[None, None] + list(obs_space.shape))
+            tf.float32, shape=[None] + list(obs_space.shape))
         dist_class, self.logit_dim = ModelCatalog.get_action_dist(
             action_space, self.config["model"])
         self.model = ModelCatalog.get_model(
@@ -44,9 +44,14 @@ class PGPolicyGraph(TFPolicyGraph):
         TFPolicyGraph.__init__(
             self, self.sess, obs_input=self.x,
             action_sampler=self.dist.sample(), loss=self.loss,
-            loss_inputs=self.loss_in, is_training=self.is_training)
+            loss_inputs=self.loss_in, is_training=self.is_training,
+            state_inputs=self.model.state_in,
+            state_outputs=self.model.state_out)
         self.sess.run(tf.global_variables_initializer())
 
     def postprocess_trajectory(self, sample_batch, other_agent_batches=None):
         return compute_advantages(
             sample_batch, 0.0, self.config["gamma"], use_gae=False)
+
+    def get_initial_state(self):
+        return self.model.state_init

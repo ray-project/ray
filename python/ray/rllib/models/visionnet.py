@@ -13,9 +13,6 @@ class VisionNetwork(Model):
     """Generic vision network."""
 
     def _build_layers(self, inputs, num_outputs, options):
-        # Drop the RNN time dimension
-        inputs = tf.squeeze(inputs, 1)
-
         filters = options.get("conv_filters", [
             [16, [8, 8], 4],
             [32, [4, 4], 2],

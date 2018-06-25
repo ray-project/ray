@@ -278,8 +278,7 @@ def _env_runner(
             rnn_in_cols = _to_column_format([t.rnn_state for t in eval_data])
             actions, rnn_out_cols, pi_info_cols = \
                 policies[policy_id].compute_actions(
-                    np.expand_dims([t.obs for t in eval_data], 1),
-                    rnn_in_cols, is_training=True)
+                    [t.obs for t in eval_data], rnn_in_cols, is_training=True)
             # Add RNN state info
             for f_i, column in enumerate(rnn_in_cols):
                 pi_info_cols["state_in_{}".format(f_i)] = column

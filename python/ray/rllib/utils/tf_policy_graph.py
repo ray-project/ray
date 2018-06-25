@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
 import tensorflow as tf
 
 import ray
@@ -15,8 +16,7 @@ class TFPolicyGraph(PolicyGraph):
     optimizations on the policy graph, e.g., parallelization across gpus or
     fusing multiple graphs together in the multi-agent setting.
 
-    Input tensors are typically shaped like [BATCH_DIM, TIME_DIM, ...].
-    TIME_DIM is always 1 at inference time or for non-recurrent models.
+    Input tensors are typically shaped like [BATCH_SIZE, ...].
 
     Attributes:
         observation_space (gym.Space): observation space of the policy.
@@ -39,15 +39,15 @@ class TFPolicyGraph(PolicyGraph):
         """Initialize the policy graph.
 
         Arguments:
-            obs_input (Tensor): input placeholder for observations, of size
-                [BATCH_DIM, TIME_DIM, obs...].
-            action_sampler (Tensor): Tensor for sampling an action, of size
-                [BATCH_DIM, action...]
+            obs_input (Tensor): input placeholder for observations, of shape
+                [BATCH_SIZE, obs...].
+            action_sampler (Tensor): Tensor for sampling an action, of shape
+                [BATCH_SIZE, action...]
             loss (Tensor): scalar policy loss output tensor.
             loss_inputs (list): a (name, placeholder) tuple for each loss
                 input argument. Each placeholder name must correspond to a
                 SampleBatch column key returned by postprocess_trajectory(),
-                and has shape [BATCH_DIM, TIME_DIM, data...].
+                and has shape [BATCH_SIZE, data...].
             is_training (Tensor): input placeholder for whether we are
                 currently training the policy.
             state_inputs (list): list of RNN state output Tensors.
@@ -63,7 +63,9 @@ class TFPolicyGraph(PolicyGraph):
         self._state_inputs = state_inputs or []
         self._state_outputs = state_outputs or []
         self._optimizer = self.optimizer()
-        self._grads_and_vars = self.gradients(self._optimizer)
+        self._grads_and_vars = [
+            (g, v) for (g, v) in self.gradients(self._optimizer)
+            if g is not None]
         self._grads = [g for (g, v) in self._grads_and_vars]
         self._apply_op = self._optimizer.apply_gradients(self._grads_and_vars)
         self._variables = ray.experimental.TensorFlowVariables(
@@ -88,7 +90,7 @@ class TFPolicyGraph(PolicyGraph):
              [self.extra_compute_action_fetches()]), feed_dict=feed_dict)
         return fetches[0], fetches[1:-1], fetches[-1]
 
-    def _get_loss_inputs_dict(self, postprocessed_batch):
+    def _chop_into_sequences(self, postprocessed_batch):
         feed_dict = {}
         for key, ph in self._loss_inputs:
             # TODO(ekl) fix up handling of RNN inputs so that we can batch
@@ -102,7 +104,7 @@ class TFPolicyGraph(PolicyGraph):
     def compute_gradients(self, postprocessed_batch):
         feed_dict = self.extra_compute_grad_feed_dict()
         feed_dict[self._is_training] = True
-        feed_dict.update(self._get_loss_inputs_dict(postprocessed_batch))
+        feed_dict.update(self._chop_into_sequences(postprocessed_batch))
         fetches = self._sess.run(
             [self._grads, self.extra_compute_grad_fetches()],
             feed_dict=feed_dict)
@@ -122,7 +124,7 @@ class TFPolicyGraph(PolicyGraph):
     def compute_apply(self, postprocessed_batch):
         feed_dict = self.extra_compute_grad_feed_dict()
         feed_dict.update(self.extra_apply_grad_feed_dict())
-        feed_dict.update(self._get_loss_inputs_dict(postprocessed_batch))
+        feed_dict.update(self._chop_into_sequences(postprocessed_batch))
         feed_dict[self._is_training] = True
         fetches = self._sess.run(
             [self._apply_op, self.extra_compute_grad_fetches(),

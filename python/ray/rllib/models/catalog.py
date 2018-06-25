@@ -119,9 +119,9 @@ class ModelCatalog(object):
 
         if isinstance(action_space, gym.spaces.Box):
             return tf.placeholder(
-                tf.float32, shape=(None, action_space.shape[0]))
+                tf.float32, shape=(None, action_space.shape[0]), name="action")
         elif isinstance(action_space, gym.spaces.Discrete):
-            return tf.placeholder(tf.int64, shape=(None,))
+            return tf.placeholder(tf.int64, shape=(None,), name="action")
         elif isinstance(action_space, gym.spaces.Tuple):
             size = 0
             all_discrete = True
@@ -132,7 +132,8 @@ class ModelCatalog(object):
                     all_discrete = False
                     size += np.product(action_space.spaces[i].shape)
             return tf.placeholder(
-                tf.int64 if all_discrete else tf.float32, shape=(None, size))
+                tf.int64 if all_discrete else tf.float32, shape=(None, size),
+                name="action")
         else:
             raise NotImplementedError("action space {}"
                                       " not supported".format(action_space))

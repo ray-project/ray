@@ -13,9 +13,6 @@ class MultiAgentFullyConnectedNetwork(Model):
     """Multiagent fully connected network."""
 
     def _build_layers(self, inputs, num_outputs, options):
-        # Drop the RNN time dimension
-        inputs = tf.squeeze(inputs, 1)
-
         # Split the input and output tensors
         input_shapes = options["custom_options"]["multiagent_obs_shapes"]
         output_shapes = options["custom_options"]["multiagent_act_shapes"]
