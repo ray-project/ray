@@ -25,8 +25,10 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
   RAY_CHECK(config_.max_sends > 0);
   RAY_CHECK(config_.max_receives > 0);
   main_service_ = &main_service;
-  store_notification_.SubscribeObjAdded(
-      [this](const ObjectInfoT &object_info) { NotifyDirectoryObjectAdd(object_info); });
+  store_notification_.SubscribeObjAdded([this](const ObjectInfoT &object_info) {
+    NotifyDirectoryObjectAdd(object_info);
+    HandleUnfulfilledPushRequests(object_info);
+  });
   store_notification_.SubscribeObjDeleted(
       [this](const ObjectID &oid) { NotifyDirectoryObjectDeleted(oid); });
   StartIOService();
