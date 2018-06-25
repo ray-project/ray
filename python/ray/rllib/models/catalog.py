@@ -38,6 +38,7 @@ MODEL_CONFIGS = [
     "squash_to_range",  # Whether to squash the action output to space range
 
     "use_lstm",  # Whether to wrap the model with a LSTM
+    "max_seq_len",  # Max seq len for training the LSTM, defaults to 20
     "lstm_cell_size",  # Size of the LSTM cell
 
     # === Options for custom models ===
@@ -154,8 +155,8 @@ class ModelCatalog(object):
         options = options or {}
         model = ModelCatalog._get_model(inputs, num_outputs, options)
 
-        if "use_lstm" in options:
-            return LSTM(model.last_layer, num_outputs, options)
+        if options.get("use_lstm"):
+            model = LSTM(model.last_layer, num_outputs, options)
 
         return model
 

@@ -95,10 +95,7 @@ class TFPolicyGraph(PolicyGraph):
         for key, ph in self._loss_inputs:
             # TODO(ekl) fix up handling of RNN inputs so that we can batch
             # across multiple rollouts
-            if key.startswith("state_in_"):
-                feed_dict[ph] = postprocessed_batch[key][:1]  # in state only
-            else:
-                feed_dict[ph] = postprocessed_batch[key]
+            feed_dict[ph] = postprocessed_batch[key]
         return feed_dict
 
     def compute_gradients(self, postprocessed_batch):

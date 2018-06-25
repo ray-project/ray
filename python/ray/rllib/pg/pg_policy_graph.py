@@ -40,6 +40,8 @@ class PGPolicyGraph(TFPolicyGraph):
             ("actions", self.ac),
             ("advantages", self.adv),
         ]
+        for i, ph in enumerate(self.model.state_in):
+            self.loss_in.append(("state_in_{}".format(i), ph))
         self.is_training = tf.placeholder_with_default(True, ())
         TFPolicyGraph.__init__(
             self, self.sess, obs_input=self.x,
