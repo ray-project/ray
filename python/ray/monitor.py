@@ -522,8 +522,8 @@ class Monitor(object):
         for key in redis.scan_iter(match=XRAY_OBJECT_TABLE_PREFIX + b"*"):
             entry = redis.zrange(key, 0, 0)
             assert len(entry) == 1
-            object_table_data = ray.gcs_utils.ObjectTableData.GetRootAsObjectTableData(
-                entry[0], 0)
+            object_table_data = ray.gcs_utils.ObjectTableData\
+                .GetRootAsObjectTableData(entry[0], 0)
             object_id = key.split(XRAY_OBJECT_TABLE_PREFIX)[1]
             if not object_table_data.IsPut():
                 continue
