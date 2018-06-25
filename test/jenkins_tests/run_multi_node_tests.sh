@@ -11,51 +11,6 @@ ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 DOCKER_SHA=$($ROOT_DIR/../../build-docker.sh --output-sha --no-cache)
 echo "Using Docker image" $DOCKER_SHA
 
-python $ROOT_DIR/multi_node_docker_test.py \
-    --docker-image=$DOCKER_SHA \
-    --num-nodes=5 \
-    --num-redis-shards=10 \
-    --test-script=/ray/test/jenkins_tests/multi_node_tests/test_0.py
-
-python $ROOT_DIR/multi_node_docker_test.py \
-    --docker-image=$DOCKER_SHA \
-    --num-nodes=5 \
-    --num-redis-shards=5 \
-    --num-gpus=0,1,2,3,4 \
-    --num-drivers=7 \
-    --driver-locations=0,1,0,1,2,3,4 \
-    --test-script=/ray/test/jenkins_tests/multi_node_tests/remove_driver_test.py
-
-python $ROOT_DIR/multi_node_docker_test.py \
-    --docker-image=$DOCKER_SHA \
-    --num-nodes=5 \
-    --num-redis-shards=2 \
-    --num-gpus=0,0,5,6,50 \
-    --num-drivers=100 \
-    --test-script=/ray/test/jenkins_tests/multi_node_tests/many_drivers_test.py
-
-python $ROOT_DIR/multi_node_docker_test.py \
-    --docker-image=$DOCKER_SHA \
-    --num-nodes=1 \
-    --mem-size=60G \
-    --shm-size=60G \
-    --test-script=/ray/test/jenkins_tests/multi_node_tests/large_memory_test.py
-
-# Test that the example applications run.
-
-# docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
-#     python /ray/examples/lbfgs/driver.py
-
-# docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
-#     python /ray/examples/rl_pong/driver.py \
-#     --iterations=3
-
-# docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
-#     python /ray/examples/hyperopt/hyperopt_simple.py
-
-# docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
-#     python /ray/examples/hyperopt/hyperopt_adaptive.py
-
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/train.py \
     --env PongDeterministic-v0 \
@@ -256,3 +211,33 @@ docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/examples/legacy_multiagent/multiagent_pendulum.py
+
+python $ROOT_DIR/multi_node_docker_test.py \
+    --docker-image=$DOCKER_SHA \
+    --num-nodes=5 \
+    --num-redis-shards=10 \
+    --test-script=/ray/test/jenkins_tests/multi_node_tests/test_0.py
+
+python $ROOT_DIR/multi_node_docker_test.py \
+    --docker-image=$DOCKER_SHA \
+    --num-nodes=5 \
+    --num-redis-shards=5 \
+    --num-gpus=0,1,2,3,4 \
+    --num-drivers=7 \
+    --driver-locations=0,1,0,1,2,3,4 \
+    --test-script=/ray/test/jenkins_tests/multi_node_tests/remove_driver_test.py
+
+python $ROOT_DIR/multi_node_docker_test.py \
+    --docker-image=$DOCKER_SHA \
+    --num-nodes=5 \
+    --num-redis-shards=2 \
+    --num-gpus=0,0,5,6,50 \
+    --num-drivers=100 \
+    --test-script=/ray/test/jenkins_tests/multi_node_tests/many_drivers_test.py
+
+python $ROOT_DIR/multi_node_docker_test.py \
+    --docker-image=$DOCKER_SHA \
+    --num-nodes=1 \
+    --mem-size=60G \
+    --shm-size=60G \
+    --test-script=/ray/test/jenkins_tests/multi_node_tests/large_memory_test.py
