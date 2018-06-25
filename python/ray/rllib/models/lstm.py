@@ -87,7 +87,8 @@ def chop_into_sequences(
         seq_lens.append(seq_len)
     assert sum(seq_lens) == len(time_column)
 
-    max_seq_len = max(seq_lens)  # Dynamically shrink max len as needed
+    # Dynamically shrink max len as needed to optimize memory usage
+    max_seq_len = max(seq_lens)
 
     feature_sequences = []
     for f in feature_columns:
