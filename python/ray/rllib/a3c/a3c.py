@@ -24,8 +24,6 @@ DEFAULT_CONFIG = {
     "use_pytorch": False,
     # Which observation filter to apply to the observation
     "observation_filter": "NoFilter",
-    # Which reward filter to apply to the reward
-    "reward_filter": "NoFilter",
     # Discount factor of MDP
     "gamma": 0.99,
     # GAE(gamma) parameter
@@ -44,7 +42,7 @@ DEFAULT_CONFIG = {
     "summarize": False,
     # Model and preprocessor options
     "model": {
-        # Use LSTM model - only applicable for image states. Requires TF.
+        # Use LSTM model. Requires TF.
         "use_lstm": False,
         # (Image statespace) - Converts image to Channels = 1
         "grayscale": True,

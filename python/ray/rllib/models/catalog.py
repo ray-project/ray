@@ -168,7 +168,7 @@ class ModelCatalog(object):
             return _global_registry.get(RLLIB_MODEL, model)(
                 inputs, num_outputs, options)
 
-        obs_rank = len(inputs.shape) - 2  # [BATCH_DIM, TIME_DIM, obs...]
+        obs_rank = len(inputs.shape) - 1
 
         # num_outputs > 1 used to avoid hitting this with the value function
         if isinstance(options.get("custom_options", {}).get(
@@ -176,7 +176,7 @@ class ModelCatalog(object):
             return MultiAgentFullyConnectedNetwork(inputs,
                                                    num_outputs, options)
 
-        if obs_rank > 2:
+        if obs_rank > 1:
             return VisionNetwork(inputs, num_outputs, options)
 
         return FullyConnectedNetwork(inputs, num_outputs, options)

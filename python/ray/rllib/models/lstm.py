@@ -52,6 +52,7 @@ class LSTM(Model):
         use_tf100_api = (distutils.version.LooseVersion(tf.VERSION) >=
                          distutils.version.LooseVersion("1.0.0"))
         last_layer = add_time_dimension(inputs, self.seq_lens)
+        print("LAST LAYER SIZE", inputs, last_layer)
 
         # Setup the LSTM cell
         if use_tf100_api:
