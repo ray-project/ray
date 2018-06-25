@@ -228,7 +228,8 @@ Status RedisContext::Connect(const std::string &address, int port) {
   std::vector<std::string> addresses;
   std::vector<int> ports;
   GetRedisShards(context_, &addresses, &ports);
-  RAY_CHECK(addresses.size() == ports.size() == 1);
+  RAY_CHECK(addresses.size() == 1);
+  RAY_CHECK(ports.size() == 1);
 
   // Connect to async context
   async_context_ = redisAsyncConnect(addresses[0].c_str(), ports[0]);
