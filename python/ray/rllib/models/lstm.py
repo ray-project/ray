@@ -2,6 +2,19 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+"""LSTM support for RLlib.
+
+The main trick here is that we add the time dimension at the last moment.
+The non-LSTM layers of the model see their inputs as one flat batch. Before
+the LSTM cell, we reshape the input to add the expected time dimension. During
+postprocessing, we dynamically pad the experience batches so that this
+reshaping is possible.
+
+See the add_time_dimension() and chop_into_sequences() functions below for
+more info.
+"""
+
+
 import numpy as np
 import tensorflow as tf
 import tensorflow.contrib.rnn as rnn
