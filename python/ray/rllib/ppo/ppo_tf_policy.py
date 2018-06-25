@@ -10,10 +10,10 @@ from ray.rllib.utils.tf_policy_graph import TFPolicyGraph
 
 
 class PPOLoss(object):
-    def __init__(self, action_space, value_targets, actions,
-                 advantages, logprobs, vf_preds, curr_action_dist, value_fn,
-                 cur_kl_coeff, entropy_coeff=0, clip_param=0.1,
-                 vf_loss_coeff=0.0, use_gae=True):
+    def __init__(
+            self, action_space, value_targets, advantages, actions, logprobs,
+            vf_preds, curr_action_dist, value_fn, cur_kl_coeff,
+            entropy_coeff=0, clip_param=0.1, vf_loss_coeff=0.0, use_gae=True):
         """Loss constructor for the Proximal Policy Objective.
 
         Arguments:
@@ -56,7 +56,8 @@ class PPOLoss(object):
             vf_loss = tf.minimum(vf_loss1, vf_loss2)
             self.mean_vf_loss = tf.reduce_mean(vf_loss)
             loss = tf.reduce_mean(
-                -surrogate_loss + cur_kl_coeff * action_kl +
+                -surrogate_loss +
+                cur_kl_coeff * action_kl +
                 vf_loss_coeff * vf_loss -
                 entropy_coeff * curr_entropy)
         else:
@@ -79,6 +80,8 @@ class PPOTFPolicyGraph(TFPolicyGraph):
             existing_inputs (list): Optional list of tuples that specify the
                 placeholders upon which the graph should be built upon.
         """
+        self.sess = tf.get_default_session()
+        self.action_space = action_space
         self.config = config
         self.kl_coeff_val = self.config["kl_coeff"]
         self.kl_target = self.config["kl_target"]
@@ -86,9 +89,9 @@ class PPOTFPolicyGraph(TFPolicyGraph):
             action_space)
 
         if existing_inputs:
-            self.inputs = existing_inputs
+            self.loss_in = existing_inputs
             obs_ph, value_targets_ph, adv_ph, \
-                act_ph, logprobs_ph, vf_preds_ph = zip(*existing_inputs)[1]
+                act_ph, logprobs_ph, vf_preds_ph = [ph for _, ph in existing_inputs]
         else:
             obs_ph = tf.placeholder(
                 tf.float32, name="obs", shape=(None,)+observation_space.shape)
@@ -98,14 +101,14 @@ class PPOTFPolicyGraph(TFPolicyGraph):
             # Advantage values in the policy gradient estimator.
             adv_ph = tf.placeholder(
                 tf.float32, name="advantages", shape=(None,))
-            act_ph += ModelCatalog.get_action_placeholder(action_space)
+            act_ph = ModelCatalog.get_action_placeholder(action_space)
             # Log probabilities from the policy before the policy update.
             logprobs_ph = tf.placeholder(
                 tf.float32, name="logprobs", shape=(None, logit_dim))
             # Value function predictions before the policy update.
             vf_preds_ph = tf.placeholder(
                 tf.float32, name="vf_preds", shape=(None,))
-            self.inputs = [
+            self.loss_in = [
                 ("obs", obs_ph),
                 ("value_targets", value_targets_ph),
                 ("advantages", adv_ph),
@@ -115,8 +118,9 @@ class PPOTFPolicyGraph(TFPolicyGraph):
             ]
 
         # KL Coefficient
-        self.kl_coeff = tf.Variable(
-            name="newkl", shape=(), dtype=tf.float32)
+        self.kl_coeff = tf.get_variable(
+            name="kl_coeff", shape=(), trainable=False,
+            initializer=tf.constant_initializer(self.kl_coeff_val), dtype=tf.float32)
 
         self.logits = ModelCatalog.get_model(
             obs_ph, logit_dim, self.config["model"]).outputs
@@ -144,12 +148,11 @@ class PPOTFPolicyGraph(TFPolicyGraph):
             vf_loss_coeff=self.config["kl_target"],
             use_gae=self.config["use_gae"])
         self.is_training = tf.placeholder_with_default(True, ())
-        self.sess = tf.get_default_session()
 
         TFPolicyGraph.__init__(
             self, self.sess, obs_input=obs_ph,
             action_sampler=self.sampler, loss=self.loss_obj.loss,
-            loss_inputs=self.existing_inputs,
+            loss_inputs=self.loss_in,
             is_training=self.is_training)
 
     def copy(self, existing_inputs):
@@ -162,21 +165,19 @@ class PPOTFPolicyGraph(TFPolicyGraph):
 
     def extra_apply_grad_fetches(self):
         return {
-            "loss": self.loss_obj.loss,
-            "mean_policy_loss": self.loss_obj.mean_policy_loss,
-            "mean_vf_loss": self.loss_obj.mean_vf_loss,
-            "mean_kl": self.loss_obj.mean_kl,
-            "mean_entropy": self.loss_obj.mean_entropy
+            "total_loss": self.loss_obj.loss,
+            "policy_loss": self.loss_obj.mean_policy_loss,
+            "vf_loss": self.loss_obj.mean_vf_loss,
+            "kl": self.loss_obj.mean_kl,
+            "entropy": self.loss_obj.mean_entropy
         }
-
-    def extra_apply_grad_feed_dict(self):
-        return {self.kl_coeff: self.kl_coeff_val}
 
     def update_kl(self, sampled_kl):
         if sampled_kl > 2.0 * self.kl_target:
             self.kl_coeff_val *= 1.5
         elif sampled_kl < 0.5 * self.kl_target:
             self.kl_coeff_val *= 0.5
+        self.kl_coeff.load(self.kl_coeff_val, session=self.sess)
         return self.kl_coeff_val
 
     def postprocess_trajectory(self, sample_batch, other_agent_batches=None):

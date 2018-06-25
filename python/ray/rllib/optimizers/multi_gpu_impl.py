@@ -56,7 +56,7 @@ class LocalSyncParallelOptimizer(object):
         self.devices = devices
         self.batch_size = per_device_batch_size * len(devices)
         self.per_device_batch_size = per_device_batch_size
-        self.input_placeholders = input_placeholders
+        self.loss_inputs = input_placeholders
         self.build_graph = build_graph
         self.logdir = logdir
 
@@ -105,8 +105,8 @@ class LocalSyncParallelOptimizer(object):
         """
 
         feed_dict = {}
-        assert len(self.input_placeholders) == len(inputs)
-        for (name, ph), arr in zip(self.input_placeholders, inputs):
+        assert len(self.loss_inputs) == len(inputs)
+        for (name, ph), arr in zip(self.loss_inputs, inputs):
             truncated_arr = make_divisible_by(arr, self.batch_size)
             feed_dict[ph] = truncated_arr
             truncated_len = len(truncated_arr)
@@ -137,8 +137,7 @@ class LocalSyncParallelOptimizer(object):
         assert tuples_per_device % self.per_device_batch_size == 0
         return tuples_per_device
 
-    def optimize(self, sess, batch_index, extra_feed_dict=None,
-                 file_writer=None):
+    def optimize(self, sess, batch_index, file_writer=None):
         """Run a single step of SGD.
 
         Runs a SGD step over a slice of the preloaded batch with size given by
@@ -153,14 +152,12 @@ class LocalSyncParallelOptimizer(object):
             batch_index: Offset into the preloaded data. This value must be
                 between `0` and `tuples_per_device`. The amount of data to
                 process is always fixed to `per_device_batch_size`.
-            extra_feed_dict: Extra args to feed into this session run.
             file_writer: If specified, tf metrics will be written out using
                 this.
 
         Returns:
             The outputs of extra_ops evaluated over the batch.
         """
-        extra_feed_dict = extra_feed_dict or {}
         if file_writer:
             run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
         else:
@@ -168,16 +165,14 @@ class LocalSyncParallelOptimizer(object):
         run_metadata = tf.RunMetadata()
 
         feed_dict = {self._batch_index: batch_index}
-        # We only get the feed_dict from the local_evaluator policy graph
-        # because users don't have access to the tower policy graphs, and
-        # and therefore don't feed in new values
-        feed_dict.update(extra_feed_dict)
+        for tower in self._towers:
+            feed_dict.update(tower.loss_graph.extra_compute_grad_feed_dict())
+            feed_dict.update(tower.loss_graph.extra_apply_grad_feed_dict())
 
         fetches = {"train": self._train_op}
-        # We get the fetches from one of the towers rather than
-        # the local_evaluator because the _train_op is dependent
-        # on the split data placeholders, not the local_evaluator placeholders.
-        fetches.update(self._towers[0].loss_graph.extra_apply_grad_fetches())
+        for tower in self._towers:
+            fetches.update(tower.loss_graph.extra_compute_grad_fetches())
+            fetches.update(tower.loss_graph.extra_apply_grad_fetches())
 
         outs = sess.run(
             fetches,

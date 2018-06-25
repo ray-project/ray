@@ -8,10 +8,10 @@ import os
 import tensorflow as tf
 
 import ray
-from ray.rllib.utils.policy_graph import TFPolicyGraph
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.optimizers.sample_batch import SampleBatch
 from ray.rllib.optimizers.multi_gpu_impl import LocalSyncParallelOptimizer
+from ray.rllib.utils.tf_policy_graph import TFPolicyGraph
 from ray.rllib.utils.timer import TimerStat
 
 
@@ -51,9 +51,8 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
         print("LocalMultiGPUOptimizer devices", self.devices)
         print("LocalMultiGPUOptimizer batch size", self.batch_size)
 
-        assert isinstance(self.local_evaluator, "CommonPolicyEvaluator")
-        assert set(self.local_evaluator.policy_map.keys()) == set("default"), \
-            "Multi-agent is not supported"
+        assert set(self.local_evaluator.policy_map.keys()) == set(
+            ["default"]), "Multi-agent is not supported"
         self.policy = self.local_evaluator.policy_map["default"]
         assert isinstance(self.policy, TFPolicyGraph), \
             "Only TF policies are supported"
@@ -61,21 +60,15 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
         # per-GPU graph copies created below must share vars with the policy
         # reuse is set to AUTO_REUSE because Adam nodes are created after
         # all of the device copies are created.
-        with self.local_evaluator.sess.graph.as_default():
+        with self.local_evaluator.sess.graph.as_default(), self.local_evaluator.sess.as_default():
             main_thread_scope = tf.get_variable_scope()
             with tf.variable_scope(main_thread_scope, reuse=tf.AUTO_REUSE):
-                def build_loss(inputs):
-                    # TODO(rliaw): TFPolicyGraph.copy(new_inputs)
-                    return self.local_evaluator.policy_graph(
-                        None, self.local_evaluator.env.get_unwrapped().action_space,
-                        self.local_evaluator.policy_config, inputs)
-
                 self.par_opt = LocalSyncParallelOptimizer(
                     tf.train.AdamOptimizer(self.sgd_stepsize),
                     self.devices,
-                    self.loss_inputs,
+                    self.policy.loss_inputs(),
                     self.per_device_batch_size,
-                    build_loss,
+                    self.policy.copy,
                     os.getcwd())
 
             self.sess = self.local_evaluator.sess
@@ -104,7 +97,7 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
         with self.load_timer:
             tuples_per_device = self.par_opt.load_data(
                 self.local_evaluator.sess,
-                samples.columns([key for key, _ in self.loss_inputs]))
+                samples.columns([key for key, _ in self.policy.loss_inputs()]))
 
         with self.grad_timer:
             all_extra_fetches = defaultdict(list)
@@ -116,13 +109,9 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
                 for batch_index in range(num_batches):
                     # TODO(ekl) support ppo's debugging features, e.g.
                     # printing the current loss and tracing
-                    extra_feed_dict = self.policy.extra_apply_grad_feed_dict()
-                    extra_feed_dict.update(
-                        self.policy.extra_compute_grad_feed_dict())
                     batch_fetches = self.par_opt.optimize(
                         self.sess,
-                        permutation[batch_index] * self.per_device_batch_size,
-                        extra_feed_dict=extra_feed_dict)
+                        permutation[batch_index] * self.per_device_batch_size)
                     for k, v in batch_fetches.items():
                         iter_extra_fetches[k] += [v]
                 for k, v in iter_extra_fetches.items():

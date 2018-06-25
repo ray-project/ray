@@ -136,8 +136,10 @@ class PPOAgent(Agent):
              "sgd_stepsize": self.config["sgd_stepsize"],
              "num_sgd_iter": self.config["num_sgd_iter"],
              "timesteps_per_batch": self.config["timesteps_per_batch"]},
-            self.local_evaluator, self.remote_evaluators,)
-        self.saver = tf.train.Saver()
+            self.local_evaluator, self.remote_evaluators)
+
+        with self.local_evaluator.sess.graph.as_default():
+            self.saver = tf.train.Saver()
 
     def _train(self):
         def postprocess_samples(batch):

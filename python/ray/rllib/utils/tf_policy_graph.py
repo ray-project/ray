@@ -150,3 +150,6 @@ class TFPolicyGraph(PolicyGraph):
 
     def gradients(self, optimizer):
         return optimizer.compute_gradients(self._loss)
+
+    def loss_inputs(self):
+        return self._loss_inputs
