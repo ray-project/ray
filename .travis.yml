@@ -187,6 +187,7 @@ script:
   - python python/ray/common/test/test.py
   - python python/ray/common/redis_module/runtest.py
   - python python/ray/plasma/test/test.py
+  - python python/ray/plasma/test/test_async.py
   - python python/ray/local_scheduler/test/test.py
   - python python/ray/global_scheduler/test/test.py
 
