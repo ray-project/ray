@@ -500,7 +500,8 @@ class Monitor(object):
         task_table_infos = {}  # task id -> TaskInfo
         for key in redis.scan_iter(match=XRAY_TASK_TABLE_PREFIX + b"*"):
             entry = redis.get(key)
-            # TODO(hme): Deal with automatic GCS flushing interaction.
+            if entry is None:
+                continue
             task = ray.gcs_utils.Task.GetRootAsTask(entry, 0)
             task_info = ray.gcs_utils.TaskInfo\
                 .GetRootAsTaskInfo(task.TaskSpecification(), 0)
@@ -521,6 +522,8 @@ class Monitor(object):
         all_put_objects = []
         for key in redis.scan_iter(match=XRAY_OBJECT_TABLE_PREFIX + b"*"):
             entry = redis.zrange(key, 0, 0)
+            if entry is None:
+                continue
             assert len(entry) == 1
             object_table_data = ray.gcs_utils.ObjectTableData\
                 .GetRootAsObjectTableData(entry[0], 0)
