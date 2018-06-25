@@ -41,9 +41,8 @@ class LocalSyncParallelOptimizer(object):
             device. In each call to `optimize()`,
             `len(devices) * per_device_batch_size` tuples of data will be
             processed.
-        build_graph: Function that takes the specified inputs and returns an
-            object with a 'loss' property that is a scalar Tensor. For example,
-            ray.rllib.ppo.ProximalPolicyGraph.
+        build_graph: Function that takes the specified inputs and returns a
+            TF Policy Graph instance.
         logdir: Directory to place debugging output in.
         grad_norm_clipping: None or int stdev to clip grad norms by
     """

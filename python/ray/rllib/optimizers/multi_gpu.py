@@ -23,8 +23,8 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
     A number of SGD passes are then taken over the in-memory data. For more
     details, see `multi_gpu_impl.LocalSyncParallelOptimizer`.
 
-    This optimizer is Tensorflow-specific and require evaluators to implement
-    the TFMultiGPUSupport API.
+    This optimizer is Tensorflow-specific and require the underlying
+    PolicyGraph to be a TFPolicyGraph instance that support `.copy()`.
     """
 
     def _init(self, sgd_batch_size=128, sgd_stepsize=5e-5, num_sgd_iter=10,
@@ -60,19 +60,20 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
         # per-GPU graph copies created below must share vars with the policy
         # reuse is set to AUTO_REUSE because Adam nodes are created after
         # all of the device copies are created.
-        with self.local_evaluator.sess.graph.as_default(), self.local_evaluator.sess.as_default():
-            main_thread_scope = tf.get_variable_scope()
-            with tf.variable_scope(main_thread_scope, reuse=tf.AUTO_REUSE):
-                self.par_opt = LocalSyncParallelOptimizer(
-                    tf.train.AdamOptimizer(self.sgd_stepsize),
-                    self.devices,
-                    self.policy.loss_inputs(),
-                    self.per_device_batch_size,
-                    self.policy.copy,
-                    os.getcwd())
+        with self.local_evaluator.sess.graph.as_default():
+            with self.local_evaluator.sess.as_default():
+                main_scope = tf.get_variable_scope()
+                with tf.variable_scope(main_scope, reuse=tf.AUTO_REUSE):
+                    self.par_opt = LocalSyncParallelOptimizer(
+                        tf.train.AdamOptimizer(self.sgd_stepsize),
+                        self.devices,
+                        self.policy.loss_inputs(),
+                        self.per_device_batch_size,
+                        self.policy.copy,
+                        os.getcwd())
 
-            self.sess = self.local_evaluator.sess
-            self.sess.run(tf.global_variables_initializer())
+                self.sess = self.local_evaluator.sess
+                self.sess.run(tf.global_variables_initializer())
 
     def step(self, postprocess_fn=None):
         with self.update_weights_timer:

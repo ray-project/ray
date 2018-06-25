@@ -13,29 +13,36 @@ class PPOLoss(object):
     def __init__(
             self, action_space, value_targets, advantages, actions, logprobs,
             vf_preds, curr_action_dist, value_fn, cur_kl_coeff,
-            entropy_coeff=0, clip_param=0.1, vf_loss_coeff=0.0, use_gae=True):
-        """Loss constructor for the Proximal Policy Objective.
+            entropy_coeff=0, clip_param=0.1, vf_loss_coeff=1.0, use_gae=True):
+        """Constructs the loss for Proximal Policy Objective.
 
         Arguments:
-            action_space:
-            value_targets (Placeholder):
-            actions (Placeholder):
-            advantages (Placeholder):
-            logprobs (Placeholder):
-            vf_preds (Placeholder):
-            curr_action_dist (Tensor):
-            value_fn: (Tensor)
-            cur_kl_coeff (Variable):
-            entropy_coeff (float):
-            clip_param (float):
-            vf_loss_coeff (float):
-            use_gae (bool):
+            action_space: Environment observation space specification.
+            value_targets (Placeholder): Placeholder for target values; used
+                for GAE.
+            actions (Placeholder): Placeholder for actions taken
+                from previous model evaluation.
+            advantages (Placeholder): Placeholder for calculated advantages
+                from previous model evaluation.
+            logprobs (Placeholder): Placeholder for logits output from
+                previous model evaluation.
+            vf_preds (Placeholder): Placeholder for value function output
+                from previous model evaluation.
+            curr_action_dist (ActionDistribution): ActionDistribution
+                of the current model.
+            value_fn (Tensor): Current value function output Tensor.
+            cur_kl_coeff (Variable): Variable holding the current PPO KL
+                coefficient.
+            entropy_coeff (float): Coefficient of the entropy regularizer.
+            clip_param (float): Clip parameter
+            vf_loss_coeff (float): Coefficient of the value function loss
+            use_gae (bool): If true, use the Generalized Advantage Estimator.
         """
         dist_cls, _ = ModelCatalog.get_action_dist(action_space)
         prev_dist = dist_cls(logprobs)
         # Make loss functions.
-        logp_ratio = tf.exp(curr_action_dist.logp(actions) -
-                            prev_dist.logp(actions))
+        logp_ratio = tf.exp(
+            curr_action_dist.logp(actions) - prev_dist.logp(actions))
         action_kl = prev_dist.kl(curr_action_dist)
         self.mean_kl = tf.reduce_mean(action_kl)
 
@@ -56,16 +63,13 @@ class PPOLoss(object):
             vf_loss = tf.minimum(vf_loss1, vf_loss2)
             self.mean_vf_loss = tf.reduce_mean(vf_loss)
             loss = tf.reduce_mean(
-                -surrogate_loss +
-                cur_kl_coeff * action_kl +
-                vf_loss_coeff * vf_loss -
-                entropy_coeff * curr_entropy)
+                -surrogate_loss + cur_kl_coeff*action_kl +
+                vf_loss_coeff*vf_loss - entropy_coeff*curr_entropy)
         else:
             self.mean_vf_loss = tf.constant(0.0)
             loss = tf.reduce_mean(
-                -surrogate_loss +
-                cur_kl_coeff * action_kl -
-                entropy_coeff * curr_entropy)
+                -surrogate_loss + cur_kl_coeff*action_kl -
+                entropy_coeff*curr_entropy)
         self.loss = loss
 
 
@@ -74,9 +78,9 @@ class PPOTFPolicyGraph(TFPolicyGraph):
                  config, existing_inputs=None):
         """
         Arguments:
-            observation_space: environment observation space specification.
-            action_space: environment action space specification.
-            config (dict): Policy Graph configuration.
+            observation_space: Environment observation space specification.
+            action_space: Environment action space specification.
+            config (dict): Configuration values for PPO graph.
             existing_inputs (list): Optional list of tuples that specify the
                 placeholders upon which the graph should be built upon.
         """
@@ -90,8 +94,8 @@ class PPOTFPolicyGraph(TFPolicyGraph):
 
         if existing_inputs:
             self.loss_in = existing_inputs
-            obs_ph, value_targets_ph, adv_ph, \
-                act_ph, logprobs_ph, vf_preds_ph = [ph for _, ph in existing_inputs]
+            obs_ph, value_targets_ph, adv_ph, act_ph, \
+                logprobs_ph, vf_preds_ph = [ph for _, ph in existing_inputs]
         else:
             obs_ph = tf.placeholder(
                 tf.float32, name="obs", shape=(None,)+observation_space.shape)
@@ -119,8 +123,8 @@ class PPOTFPolicyGraph(TFPolicyGraph):
 
         # KL Coefficient
         self.kl_coeff = tf.get_variable(
-            name="kl_coeff", shape=(), trainable=False,
-            initializer=tf.constant_initializer(self.kl_coeff_val), dtype=tf.float32)
+            initializer=tf.constant_initializer(self.kl_coeff_val),
+            name="kl_coeff", shape=(), trainable=False, dtype=tf.float32)
 
         self.logits = ModelCatalog.get_model(
             obs_ph, logit_dim, self.config["model"]).outputs
@@ -157,8 +161,9 @@ class PPOTFPolicyGraph(TFPolicyGraph):
 
     def copy(self, existing_inputs):
         """Creates a copy of self using existing input placeholders."""
-        return PPOTFPolicyGraph(None, self.action_space, self.config,
-                                existing_inputs=existing_inputs)
+        return PPOTFPolicyGraph(
+            None, self.action_space, self.config,
+            existing_inputs=existing_inputs)
 
     def extra_compute_action_fetches(self):
         return {"vf_preds": self.value_function, "logprobs": self.logits}

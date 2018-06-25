@@ -54,12 +54,12 @@ class TFPolicyGraph(PolicyGraph):
         self._is_training = is_training
         self._state_inputs = state_inputs or []
         self._state_outputs = state_outputs or []
-        self._variables = ray.experimental.TensorFlowVariables(
-            self._loss, self._sess)
         self._optimizer = self.optimizer()
         self._grads_and_vars = self.gradients(self._optimizer)
         self._grads = [g for (g, v) in self._grads_and_vars]
         self._apply_op = self._optimizer.apply_gradients(self._grads_and_vars)
+        self._variables = ray.experimental.TensorFlowVariables(
+            self._loss, self._sess)
 
         assert len(self._state_inputs) == len(self._state_outputs) == \
             len(self.get_initial_state())
