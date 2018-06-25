@@ -136,7 +136,7 @@ RedisContext::~RedisContext() {
 }
 
 static void GetRedisShards(redisContext *context, std::vector<std::string> *addresses,
-                    std::vector<int> *ports) {
+                           std::vector<int> *ports) {
   // Get the total number of Redis shards in the system.
   int num_attempts = 0;
   redisReply *reply = NULL;
@@ -208,8 +208,8 @@ Status RedisContext::Connect(const std::string &address, int port, bool sharding
         RAY_LOG(FATAL) << "Could not allocate redis context.";
       }
       if (context_->err) {
-        RAY_LOG(FATAL) << "Could not establish connection to redis " << address << ":"
-                       << port;
+        RAY_LOG(FATAL) << "Could not establish connection to redis "
+                       << address << ":" << port;
       }
       break;
     }
