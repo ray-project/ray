@@ -631,7 +631,7 @@ void NodeManager::ScheduleTasks() {
   if (local_task_ids.size() > 0) {
     std::vector<Task> tasks = local_queues_.RemoveTasks(local_task_ids);
     for (const auto &t : tasks) {
-      QueueTask(t);
+      MovePlaceableTask(t);
     }
     //local_queues_.QueueScheduledTasks(tasks);
     //DispatchTasks();
@@ -656,7 +656,7 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
       auto node_manager_id = actor_entry->second.GetNodeManagerId();
       if (node_manager_id == gcs_client_->client_table().GetLocalClientId()) {
         // The actor is local. Queue the task for local execution, bypassing placement.
-        // QueueTask(task);
+        // MovePlaceableTask(task);
         local_queues_.QueueWaitingTasks({task});
       } else {
         // The actor is remote. Forward the task to the node manager that owns
@@ -692,9 +692,9 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
     // if the task was forwarded.
     if (forwarded) {
       // Check for local dependencies and enqueue as waiting or ready for dispatch.
-      QueueTask(task);
+      MovePlaceableTask(task);
     } else {
-      local_queues_.QueueReadyTasks({task});
+      local_queues_.QueuePlaceableTasks({task});
       ScheduleTasks();
     }
   }
@@ -715,14 +715,14 @@ void NodeManager::HandleRemoteDependencyCanceled(const ObjectID &dependency_id) 
 
 // Check the task's dependencies and enqueue to either be ready for dispatch or waiting.
 // Called with tasks for which a placement decision has been made.
-void NodeManager::QueueTask(const Task &task) {
+void NodeManager::MovePlaceableTask(const Task &task) {
   // Subscribe to the task's dependencies.
-  bool ready = task_dependency_manager_.SubscribeDependencies(
+  bool args_ready = task_dependency_manager_.SubscribeDependencies(
       task.GetTaskSpecification().TaskId(), task.GetDependencies());
   // Queue the task. If all dependencies are available, then the task is queued
-  // in the READY state, else the WAITING.
-  if (ready) {
-    //local_queues_.QueueReadyTasks({task});
+  // in the PLACEABLE state, else the WAITING.
+  if (args_ready) {
+    //local_queues_.QueuePlaceableTasks({task});
     local_queues_.QueueScheduledTasks({task});
     // Try to dispatch the newly ready task.
     //ScheduleTasks();
@@ -893,7 +893,7 @@ void NodeManager::HandleObjectLocal(const ObjectID &object_id) {
     std::unordered_set<TaskID> ready_task_id_set(ready_task_ids.begin(),
                                                  ready_task_ids.end());
 //    auto ready_tasks = local_queues_.RemoveTasks(ready_task_id_set);
-//    local_queues_.QueueReadyTasks(std::vector<Task>(ready_tasks));
+//    local_queues_.QueuePlaceableTasks(std::vector<Task>(ready_tasks));
 //    ScheduleTasks();
     // Transition tasks from waiting to scheduled.
     local_queues_.MoveTasks(ready_task_id_set, WAITING, SCHEDULED);
