@@ -28,6 +28,12 @@ static inline void flushall_redis(void) {
 class TestGcs : public ::testing::Test {
  public:
   TestGcs(CommandType command_type) : num_callbacks_(0), command_type_(command_type) {
+    // Put sharding information into redis
+    redisContext *context = redisConnect("127.0.0.1", 6379);
+    freeReplyObject(redisCommand(context, "SET NumRedisShards 1"));
+    freeReplyObject(redisCommand(context, "RPUSH RedisShards \"127.0.0.1:6379\""));
+    redisFree(context);
+
     client_ = std::make_shared<gcs::AsyncGcsClient>(command_type_);
     RAY_CHECK_OK(client_->Connect("127.0.0.1", 6379));
 
