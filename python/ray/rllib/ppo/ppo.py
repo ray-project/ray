@@ -27,7 +27,7 @@ DEFAULT_CONFIG = {
     # GAE(lambda) parameter
     "lambda": 1.0,
     # Initial coefficient for KL divergence
-    "kl_coeff_val": 0.2,
+    "kl_coeff": 0.2,
     # Number of SGD iterations in each outer loop
     "num_sgd_iter": 30,
     # Stepsize of SGD
@@ -110,7 +110,7 @@ class PPOAgent(Agent):
             self.env_creator,
             self._default_policy_graph,
             tf_session_creator=session_creator,
-            batch_mode="truncate_episodes",
+            batch_mode="complete_episodes",
             observation_filter=self.config["observation_filter"],
             env_config=self.config["env_config"],
             model_config=self.config["model"],
@@ -123,7 +123,7 @@ class PPOAgent(Agent):
             RemoteEvaluator.remote(
                 self.env_creator,
                 self._default_policy_graph,
-                batch_mode="truncate_episodes",
+                batch_mode="complete_episodes",
                 observation_filter=self.config["observation_filter"],
                 env_config=self.config["env_config"],
                 model_config=self.config["model"],
@@ -153,11 +153,20 @@ class PPOAgent(Agent):
                 batch.data["vf_preds"] = dummy
         extra_fetches = self.optimizer.step(postprocess_fn=postprocess_samples)
         kl = np.array(extra_fetches["kl"]).mean(axis=1)[-1]
+        total_loss = np.array(extra_fetches["total_loss"]).mean(axis=1)[-1]
+        policy_loss = np.array(extra_fetches["policy_loss"]).mean(axis=1)[-1]
+        vf_loss = np.array(extra_fetches["vf_loss"]).mean(axis=1)[-1]
+        entropy = np.array(extra_fetches["entropy"]).mean(axis=1)[-1]
+
         newkl = self.local_evaluator.for_policy(lambda pi: pi.update_kl(kl))
 
         info = {
             "kl_divergence": kl,
             "kl_coefficient": newkl,
+            "total_loss": total_loss,
+            "policy_loss": policy_loss,
+            "vf_loss": vf_loss,
+            "entropy": entropy,
         }
 
         FilterManager.synchronize(
