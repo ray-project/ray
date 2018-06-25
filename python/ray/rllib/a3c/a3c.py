@@ -44,6 +44,8 @@ DEFAULT_CONFIG = {
     "model": {
         # Use LSTM model. Requires TF.
         "use_lstm": False,
+        # Max seq length for LSTM training.
+        "max_seq_len": 20,
         # (Image statespace) - Converts image to Channels = 1
         "grayscale": True,
         # (Image statespace) - Each pixel

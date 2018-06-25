@@ -151,7 +151,7 @@ class ModelCatalog(object):
         Returns:
             model (Model): Neural network model.
         """
-        
+
         options = options or {}
         model = ModelCatalog._get_model(inputs, num_outputs, options)
 

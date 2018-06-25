@@ -51,7 +51,9 @@ class PGPolicyGraph(TFPolicyGraph):
             action_sampler=self.dist.sample(), loss=self.loss,
             loss_inputs=self.loss_in, is_training=self.is_training,
             state_inputs=self.model.state_in,
-            state_outputs=self.model.state_out)
+            state_outputs=self.model.state_out,
+            seq_lens=self.model.seq_lens,
+            max_seq_len=config["model"]["max_seq_len"])
         self.sess.run(tf.global_variables_initializer())
 
     def postprocess_trajectory(self, sample_batch, other_agent_batches=None):

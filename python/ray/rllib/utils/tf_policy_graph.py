@@ -2,11 +2,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
 import tensorflow as tf
 
 import ray
 from ray.rllib.utils.policy_graph import PolicyGraph
+from ray.rllib.models.lstm import chop_into_sequences
 
 
 class TFPolicyGraph(PolicyGraph):
@@ -35,7 +35,8 @@ class TFPolicyGraph(PolicyGraph):
 
     def __init__(
             self, sess, obs_input, action_sampler, loss, loss_inputs,
-            is_training, state_inputs=None, state_outputs=None):
+            is_training, state_inputs=None, state_outputs=None, seq_lens=None,
+            max_seq_len=20):
         """Initialize the policy graph.
 
         Arguments:
@@ -52,6 +53,8 @@ class TFPolicyGraph(PolicyGraph):
                 currently training the policy.
             state_inputs (list): list of RNN state output Tensors.
             state_outputs (list): list of initial state values.
+            seq_lens (Tensor): placeholder for RNN sequence lengths.
+            max_seq_len (int): max sequence length for LSTM training.
         """
 
         self._sess = sess
@@ -59,9 +62,12 @@ class TFPolicyGraph(PolicyGraph):
         self._sampler = action_sampler
         self._loss = loss
         self._loss_inputs = loss_inputs
+        self._loss_input_dict = dict(self._loss_inputs)
         self._is_training = is_training
         self._state_inputs = state_inputs or []
         self._state_outputs = state_outputs or []
+        self._seq_lens = seq_lens
+        self._max_seq_len = max_seq_len
         self._optimizer = self.optimizer()
         self._grads_and_vars = [
             (g, v) for (g, v) in self.gradients(self._optimizer)
@@ -74,6 +80,8 @@ class TFPolicyGraph(PolicyGraph):
         assert len(self._state_inputs) == len(self._state_outputs) == \
             len(self.get_initial_state()), \
             (self._state_inputs, self._state_outputs, self.get_initial_state())
+        if self._state_inputs:
+            assert self._seq_lens is not None
 
     def compute_actions(
             self, obs_batch, state_batches=None, is_training=False):
@@ -90,18 +98,36 @@ class TFPolicyGraph(PolicyGraph):
              [self.extra_compute_action_fetches()]), feed_dict=feed_dict)
         return fetches[0], fetches[1:-1], fetches[-1]
 
-    def _chop_into_sequences(self, postprocessed_batch):
+    def _get_loss_inputs(self, batch):
         feed_dict = {}
-        for key, ph in self._loss_inputs:
-            # TODO(ekl) fix up handling of RNN inputs so that we can batch
-            # across multiple rollouts
-            feed_dict[ph] = postprocessed_batch[key]
+
+        # Simple case
+        if not self._state_inputs:
+            for k, ph in self._loss_inputs:
+                feed_dict[ph] = batch[k]
+            return feed_dict
+
+        # RNN case
+        feature_keys = [
+            k for k, v in self._loss_inputs if not k.startswith("state_in_")]
+        state_keys = [
+            k for k, v in self._loss_inputs if k.startswith("state_in_")]
+        feature_sequences, initial_states, seq_lens = chop_into_sequences(
+            batch["t"],
+            [batch[k] for k in feature_keys],
+            [batch[k] for k in state_keys],
+            self._max_seq_len)
+        for k, v in zip(feature_keys, feature_sequences):
+            feed_dict[self._loss_input_dict[k]] = v
+        for k, v in zip(state_keys, initial_states):
+            feed_dict[self._loss_input_dict[k]] = v
+        feed_dict[self._seq_lens] = seq_lens
         return feed_dict
 
     def compute_gradients(self, postprocessed_batch):
         feed_dict = self.extra_compute_grad_feed_dict()
         feed_dict[self._is_training] = True
-        feed_dict.update(self._chop_into_sequences(postprocessed_batch))
+        feed_dict.update(self._get_loss_inputs(postprocessed_batch))
         fetches = self._sess.run(
             [self._grads, self.extra_compute_grad_fetches()],
             feed_dict=feed_dict)
@@ -121,7 +147,7 @@ class TFPolicyGraph(PolicyGraph):
     def compute_apply(self, postprocessed_batch):
         feed_dict = self.extra_compute_grad_feed_dict()
         feed_dict.update(self.extra_apply_grad_feed_dict())
-        feed_dict.update(self._chop_into_sequences(postprocessed_batch))
+        feed_dict.update(self._get_loss_inputs(postprocessed_batch))
         feed_dict[self._is_training] = True
         fetches = self._sess.run(
             [self._apply_op, self.extra_compute_grad_fetches(),

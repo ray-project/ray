@@ -86,7 +86,9 @@ class A3CPolicyGraph(TFPolicyGraph):
             obs_input=self.observations, action_sampler=action_dist.sample(),
             loss=self.loss.total_loss, loss_inputs=loss_in,
             is_training=is_training, state_inputs=self.state_in,
-            state_outputs=self.state_out)
+            state_outputs=self.state_out,
+            seq_lens=self.model.seq_lens,
+            max_seq_len=self.config["model"]["max_seq_len"])
 
         if self.config.get("summarize"):
             bs = tf.to_float(tf.shape(self.observations)[0])

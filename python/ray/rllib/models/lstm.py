@@ -7,8 +7,7 @@ import tensorflow as tf
 import tensorflow.contrib.rnn as rnn
 import distutils.version
 
-from ray.rllib.models.misc import (conv2d, linear, flatten,
-                                   normc_initializer)
+from ray.rllib.models.misc import linear, normc_initializer
 from ray.rllib.models.model import Model
 
 
@@ -28,7 +27,7 @@ def add_time_dimension(padded_inputs, seq_lens):
 
     # Sequence lengths have to be specified for LSTM batch inputs. The
     # input batch must be padded to the max seq length given here. That is,
-    # batch_size == len(seq_lens) * max(seq_lens).
+    # batch_size == len(seq_lens) * max(seq_lens)
     max_seq_len = tf.reduce_max(seq_lens)
     padded_batch_size = tf.shape(padded_inputs)[0]
 
@@ -40,9 +39,86 @@ def add_time_dimension(padded_inputs, seq_lens):
     return tf.reshape(padded_inputs, new_shape)
 
 
+def chop_into_sequences(
+        time_column, feature_columns, state_columns, max_seq_len):
+    """Truncate and pad experiences into fixed-length sequences.
+
+    Arguments:
+        time_column (list): Timesteps per feature / state. This contains
+            sequences of monotonically increasing step values, e.g.,
+            [0, 1, 2, 0, 1, 2, 3, 4, 5, 0, 1, 2].
+        feature_columns (list): List of arrays containing features.
+        state_columns (list): List of arrays containing LSTM state values.
+        max_seq_len (int): Max length of sequences before truncation.
+
+    Returns:
+        f_pad (list): Padded feature columns. These will be of shape
+            [NUM_SEQUENCES * MAX_SEQ_LEN, ...].
+        s_init (list): Initial states for each sequence, of shape
+            [NUM_SEQUENCES, ...].
+        seq_lens (list): List of sequence lengths, of shape [NUM_SEQUENCES].
+
+    Examples:
+        >>> f_pad, s_init, seq_lens = chop_into_sequences(
+                time_column=[0, 1, 0, 1, 2, 3],
+                feature_columns=[[4, 4, 8, 8, 8, 8],
+                                 [1, 1, 0, 1, 1, 0]],
+                state_columns=[[4, 5, 4, 5, 5, 5]],
+                max_seq_len=3)
+        >>> print(f_pad)
+        [[4, 4, 0, 8, 8, 8, 8, 0, 0],
+         [1, 1, 0, 0, 1, 1, 0, 0, 0]]
+        >>> print(s_init)
+        [[4, 4, 5]]
+        >>> print(seq_lens)
+        [2, 3, 1]
+    """
+
+    prev_t = -1
+    seq_lens = []
+    seq_len = 0
+    for t in time_column:
+        if t <= prev_t or seq_len >= max_seq_len:
+            seq_lens.append(seq_len)
+            seq_len = 0
+        seq_len += 1
+        prev_t = t
+    if seq_len:
+        seq_lens.append(seq_len)
+    assert sum(seq_lens) == len(time_column)
+
+    max_seq_len = max(seq_lens)  # Dynamically shrink max len as needed
+
+    feature_sequences = []
+    for f in feature_columns:
+        f = np.array(f)
+        f_pad = np.zeros((len(seq_lens) * max_seq_len,) + np.shape(f)[1:])
+        seq_base = 0
+        i = 0
+        for l in seq_lens:
+            for seq_offset in range(l):
+                f_pad[seq_base + seq_offset] = f[i]
+                i += 1
+            seq_base += max_seq_len
+        assert i == len(time_column), f
+        feature_sequences.append(f_pad)
+
+    initial_states = []
+    for s in state_columns:
+        s = np.array(s)
+        s_init = []
+        i = 0
+        for l in seq_lens:
+            s_init.append(s[i])
+            i += l
+        initial_states.append(np.array(s_init))
+
+    return feature_sequences, initial_states, np.array(seq_lens)
+
+
 class LSTM(Model):
     """Adds a LSTM cell on top of some other model output.
-    
+
     Important: we assume inputs is a padded batch of sequences denoted by
         self.seq_lens. See add_time_dimension() for more information.
     """
@@ -52,7 +128,6 @@ class LSTM(Model):
         use_tf100_api = (distutils.version.LooseVersion(tf.VERSION) >=
                          distutils.version.LooseVersion("1.0.0"))
         last_layer = add_time_dimension(inputs, self.seq_lens)
-        print("LAST LAYER SIZE", inputs, last_layer)
 
         # Setup the LSTM cell
         if use_tf100_api:
