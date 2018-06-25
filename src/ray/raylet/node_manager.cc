@@ -648,7 +648,6 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
       if (node_manager_id == gcs_client_->client_table().GetLocalClientId()) {
         // The actor is local. Queue the task for local execution, bypassing placement.
         TransitionPlaceableTask(task);
-        //local_queues_.QueueWaitingTasks({task});
       } else {
         // The actor is remote. Forward the task to the node manager that owns
         // the actor.
