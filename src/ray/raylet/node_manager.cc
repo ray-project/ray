@@ -320,7 +320,7 @@ void NodeManager::ProcessNewClient(LocalClientConnection &client) {
 
 void NodeManager::DispatchTasks() {
   // Work with a copy of scheduled tasks.
-  auto scheduled_tasks = local_queues_.GetScheduledTasks();
+  auto scheduled_tasks = local_queues_.GetReadyTasks();
   // Return if there are no tasks to schedule.
   if (scheduled_tasks.empty()) {
     return;
@@ -591,7 +591,7 @@ void NodeManager::ProcessNodeManagerMessage(TcpClientConnection &node_manager_cl
 }
 
 void NodeManager::ScheduleTasks() {
-  // This method performs the transition of tasks from PENDING to SCHEDULED.
+  // This method performs the transition of tasks from PENDING to READY.
   auto policy_decision = scheduling_policy_.Schedule(
       cluster_resource_map_, gcs_client_->client_table().GetLocalClientId(),
       remote_clients_);
@@ -626,14 +626,14 @@ void NodeManager::ScheduleTasks() {
     // task_dependency_manager_.UnsubscribeDependencies(task_id);
   }
 
-  // Transition locally scheduled tasks to SCHEDULED and dispatch scheduled tasks.
+  // Transition locally scheduled tasks to READY and dispatch scheduled tasks.
   // Transition locally placed tasks to waiting or ready for dispatch.
   if (local_task_ids.size() > 0) {
     std::vector<Task> tasks = local_queues_.RemoveTasks(local_task_ids);
     for (const auto &t : tasks) {
       MovePlaceableTask(t);
     }
-    //local_queues_.QueueScheduledTasks(tasks);
+    //local_queues_.QueueReadyTasks(tasks);
     //DispatchTasks();
   }
 }
@@ -723,7 +723,7 @@ void NodeManager::MovePlaceableTask(const Task &task) {
   // in the PLACEABLE state, else the WAITING.
   if (args_ready) {
     //local_queues_.QueuePlaceableTasks({task});
-    local_queues_.QueueScheduledTasks({task});
+    local_queues_.QueueReadyTasks({task});
     // Try to dispatch the newly ready task.
     //ScheduleTasks();
     DispatchTasks();
@@ -754,7 +754,7 @@ void NodeManager::AssignTask(Task &task) {
     }
     // Queue this task for future assignment. The task will be assigned to a
     // worker once one becomes available.
-    local_queues_.QueueScheduledTasks(std::vector<Task>({task}));
+    local_queues_.QueueReadyTasks(std::vector<Task>({task}));
     return;
   }
 
@@ -822,7 +822,7 @@ void NodeManager::AssignTask(Task &task) {
                          nullptr);
     // Queue this task for future assignment. The task will be assigned to a
     // worker once one becomes available.
-    local_queues_.QueueScheduledTasks(std::vector<Task>({task}));
+    local_queues_.QueueReadyTasks(std::vector<Task>({task}));
   }
 }
 
@@ -896,7 +896,7 @@ void NodeManager::HandleObjectLocal(const ObjectID &object_id) {
 //    local_queues_.QueuePlaceableTasks(std::vector<Task>(ready_tasks));
 //    ScheduleTasks();
     // Transition tasks from waiting to scheduled.
-    local_queues_.MoveTasks(ready_task_id_set, WAITING, SCHEDULED);
+    local_queues_.MoveTasks(ready_task_id_set, WAITING, READY);
     // New scheduled tasks appeared in the queue, try to dispatch them.
     DispatchTasks();
   }

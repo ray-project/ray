@@ -12,14 +12,14 @@ namespace ray {
 
 namespace raylet {
 
-enum TaskState { INIT, PLACEABLE, WAITING, SCHEDULED, RUNNING};
+enum TaskState { INIT, PLACEABLE, WAITING, READY, RUNNING};
 /// \class SchedulingQueue
 ///
 /// Encapsulates task queues. Each queue represents a scheduling state for a
 /// task. The scheduling state is one of
 /// (1) placeable: the task is ready for a placement decision,
 /// (2) waiting: waiting for object dependencies to become locally available,
-/// (3) scheduled: the task is ready for local dispatch, with all arguments locally ready,
+/// (3) ready: the task is ready for local dispatch, with all arguments locally ready,
 /// (4) running: the task has been dispatched and is running on a worker.
 class SchedulingQueue {
  public:
@@ -54,11 +54,11 @@ class SchedulingQueue {
   /// dependencies local and that are waiting to be scheduled.
   const std::list<Task> &GetPlaceableMethods() const;
 
-  /// Get the queue of tasks in the scheduled state.
+  /// Get the queue of tasks in the ready state.
   ///
-  /// \return A const reference to the queue of tasks that have been scheduled
+  /// \return A const reference to the queue of tasks ready
   /// to execute but that are waiting for a worker.
-  const std::list<Task> &GetScheduledTasks() const;
+  const std::list<Task> &GetReadyTasks() const;
 
   /// Get the queue of tasks in the running state.
   ///
@@ -86,7 +86,7 @@ class SchedulingQueue {
   void QueueUncreatedActorMethods(const std::vector<Task> &tasks);
 
   /// Queue tasks in the waiting state. These are tasks that cannot yet be
-  /// scheduled since they are blocked on a missing data dependency.
+  /// dispatched since they are blocked on a missing data dependency.
   ///
   /// \param tasks The tasks to queue.
   void QueueWaitingTasks(const std::vector<Task> &tasks);
@@ -96,10 +96,10 @@ class SchedulingQueue {
   /// \param tasks The tasks to queue.
   void QueuePlaceableTasks(const std::vector<Task> &tasks);
 
-  /// Queue tasks in the scheduled state.
+  /// Queue tasks in the ready state.
   ///
   /// \param tasks The tasks to queue.
-  void QueueScheduledTasks(const std::vector<Task> &tasks);
+  void QueueReadyTasks(const std::vector<Task> &tasks);
 
   /// Queue tasks in the running state.
   ///
@@ -129,8 +129,8 @@ class SchedulingQueue {
   /// Tasks whose object dependencies are locally available, but that are
   /// waiting to be scheduled.
   std::list<Task> placeable_tasks_;
-  /// Tasks that have been scheduled to run, but that are waiting for a worker.
-  std::list<Task> scheduled_tasks_;
+  /// Tasks ready for dispatch, but that are waiting for a worker.
+  std::list<Task> ready_tasks_;
   /// Tasks that are running on a worker.
   std::list<Task> running_tasks_;
   /// Tasks that were dispatched to a worker but are blocked on a data

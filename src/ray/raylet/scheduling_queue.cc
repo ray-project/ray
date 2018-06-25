@@ -18,8 +18,8 @@ const std::list<Task> &SchedulingQueue::GetPlaceableTasks() const {
   return this->placeable_tasks_;
 }
 
-const std::list<Task> &SchedulingQueue::GetScheduledTasks() const {
-  return this->scheduled_tasks_;
+const std::list<Task> &SchedulingQueue::GetReadyTasks() const {
+  return this->ready_tasks_;
 }
 
 const std::list<Task> &SchedulingQueue::GetRunningTasks() const {
@@ -63,7 +63,7 @@ std::vector<Task> SchedulingQueue::RemoveTasks(std::unordered_set<TaskID> task_i
   removeTasksFromQueue(uncreated_actor_methods_, task_ids, removed_tasks);
   removeTasksFromQueue(waiting_tasks_, task_ids, removed_tasks);
   removeTasksFromQueue(placeable_tasks_, task_ids, removed_tasks);
-  removeTasksFromQueue(scheduled_tasks_, task_ids, removed_tasks);
+  removeTasksFromQueue(ready_tasks_, task_ids, removed_tasks);
   removeTasksFromQueue(running_tasks_, task_ids, removed_tasks);
   removeTasksFromQueue(blocked_tasks_, task_ids, removed_tasks);
   // TODO(swang): Remove from running methods.
@@ -84,8 +84,8 @@ void SchedulingQueue::MoveTasks(std::unordered_set<TaskID> task_ids, TaskState s
     case WAITING:
       removeTasksFromQueue(waiting_tasks_, task_ids, removed_tasks);
       break;
-    case SCHEDULED:
-      removeTasksFromQueue(scheduled_tasks_, task_ids, removed_tasks);
+    case READY:
+      removeTasksFromQueue(ready_tasks_, task_ids, removed_tasks);
       break;
     case RUNNING:
       removeTasksFromQueue(running_tasks_, task_ids, removed_tasks);
@@ -99,8 +99,8 @@ void SchedulingQueue::MoveTasks(std::unordered_set<TaskID> task_ids, TaskState s
       queueTasks(placeable_tasks_, removed_tasks); break;
     case WAITING:
       queueTasks(waiting_tasks_, removed_tasks); break;
-    case SCHEDULED:
-      queueTasks(scheduled_tasks_, removed_tasks); break;
+    case READY:
+      queueTasks(ready_tasks_, removed_tasks); break;
     case RUNNING:
       queueTasks(running_tasks_, removed_tasks); break;
     default:
@@ -120,8 +120,8 @@ void SchedulingQueue::QueuePlaceableTasks(const std::vector<Task> &tasks) {
   queueTasks(placeable_tasks_, tasks);
 }
 
-void SchedulingQueue::QueueScheduledTasks(const std::vector<Task> &tasks) {
-  queueTasks(scheduled_tasks_, tasks);
+void SchedulingQueue::QueueReadyTasks(const std::vector<Task> &tasks) {
+  queueTasks(ready_tasks_, tasks);
 }
 
 void SchedulingQueue::QueueRunningTasks(const std::vector<Task> &tasks) {
