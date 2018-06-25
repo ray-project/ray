@@ -208,8 +208,8 @@ Status RedisContext::Connect(const std::string &address, int port, bool sharding
         RAY_LOG(FATAL) << "Could not allocate redis context.";
       }
       if (context_->err) {
-        RAY_LOG(FATAL) << "Could not establish connection to redis "
-                       << address << ":" << port;
+        RAY_LOG(FATAL) << "Could not establish connection to redis " << address << ":"
+                       << port;
       }
       break;
     }
@@ -249,8 +249,8 @@ Status RedisContext::Connect(const std::string &address, int port, bool sharding
   // Connect to subscribe context
   subscribe_context_ = redisAsyncConnect(redis_address.c_str(), redis_port);
   if (subscribe_context_ == nullptr || subscribe_context_->err) {
-    RAY_LOG(FATAL) << "Could not establish subscribe connection to redis " << redis_address
-                   << ":" << redis_port;
+    RAY_LOG(FATAL) << "Could not establish subscribe connection to redis "
+                   << redis_address << ":" << redis_port;
   }
   return Status::OK();
 }
