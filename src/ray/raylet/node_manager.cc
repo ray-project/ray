@@ -620,15 +620,12 @@ void NodeManager::ScheduleTasks() {
     }
   }
 
-  // Transition locally scheduled tasks to READY and dispatch scheduled tasks.
   // Transition locally placed tasks to waiting or ready for dispatch.
   if (local_task_ids.size() > 0) {
     std::vector<Task> tasks = local_queues_.RemoveTasks(local_task_ids);
     for (const auto &t : tasks) {
       TransitionPlaceableTask(t);
     }
-    //local_queues_.QueueReadyTasks(tasks);
-    //DispatchTasks();
   }
 }
 
@@ -650,8 +647,8 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
       auto node_manager_id = actor_entry->second.GetNodeManagerId();
       if (node_manager_id == gcs_client_->client_table().GetLocalClientId()) {
         // The actor is local. Queue the task for local execution, bypassing placement.
-        // TransitionPlaceableTask(task);
-        local_queues_.QueueWaitingTasks({task});
+        TransitionPlaceableTask(task);
+        //local_queues_.QueueWaitingTasks({task});
       } else {
         // The actor is remote. Forward the task to the node manager that owns
         // the actor.

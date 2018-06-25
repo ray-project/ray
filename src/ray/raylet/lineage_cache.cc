@@ -199,7 +199,7 @@ void LineageCache::AddWaitingTask(const Task &task, const Lineage &uncommitted_l
 void LineageCache::AddReadyTask(const Task &task) {
   const TaskID task_id = task.GetTaskSpecification().TaskId();
 
-  // Tasks can only become PLACEABLE if they were in WAITING.
+  // Tasks can only become READY if they were in WAITING.
   auto entry = lineage_.GetEntry(task_id);
   RAY_CHECK(entry);
   RAY_CHECK(entry->GetStatus() == GcsStatus::UNCOMMITTED_WAITING);
