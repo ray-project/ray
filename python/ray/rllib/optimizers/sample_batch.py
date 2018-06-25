@@ -135,6 +135,7 @@ class MultiAgentSampleBatchBuilder(object):
         self.count = 0
         return MultiAgentBatch.wrap_as_needed(policy_batches)
 
+
 class MultiAgentBatch(object):
     def __init__(self, policy_batches):
         self.policy_batches = policy_batches

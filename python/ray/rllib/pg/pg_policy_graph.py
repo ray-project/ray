@@ -15,36 +15,35 @@ class PGLoss(object):
 
 
 class PGPolicyGraph(TFPolicyGraph):
-
     def __init__(self, obs_space, action_space, config):
         self.config = config
 
         # Setup policy
-        self.x = tf.placeholder(tf.float32, shape=[None]+list(obs_space.shape))
+        obs = tf.placeholder(tf.float32, shape=[None]+list(obs_space.shape))
         dist_class, self.logit_dim = ModelCatalog.get_action_dist(
             action_space, self.config["model"])
-        self.model = ModelCatalog.get_model(
-            self.x, self.logit_dim, options=self.config["model"])
-        self.dist = dist_class(self.model.outputs)  # logit for each action
+        model = ModelCatalog.get_model(
+            obs, self.logit_dim, options=self.config["model"])
+        action_dist = dist_class(model.outputs)  # logit for each action
 
         # Setup policy loss
-        self.ac = ModelCatalog.get_action_placeholder(action_space)
-        self.adv = tf.placeholder(tf.float32, [None], name="adv")
-        self.loss = PGLoss(self.dist, self.ac, self.adv).loss
+        actions = ModelCatalog.get_action_placeholder(action_space)
+        advantages = tf.placeholder(tf.float32, [None], name="adv")
+        loss = PGLoss(action_dist, actions, advantages).loss
 
         # Initialize TFPolicyGraph
-        self.sess = tf.get_default_session()
-        self.loss_in = [
-            ("obs", self.x),
-            ("actions", self.ac),
-            ("advantages", self.adv),
+        sess = tf.get_default_session()
+        loss_in = [
+            ("obs", obs),
+            ("actions", actions),
+            ("advantages", advantages),
         ]
         self.is_training = tf.placeholder_with_default(True, ())
         TFPolicyGraph.__init__(
-            self, self.sess, obs_input=self.x,
-            action_sampler=self.dist.sample(), loss=self.loss,
-            loss_inputs=self.loss_in, is_training=self.is_training)
-        self.sess.run(tf.global_variables_initializer())
+            self, sess, obs_input=obs,
+            action_sampler=action_dist.sample(), loss=loss,
+            loss_inputs=loss_in, is_training=self.is_training)
+        sess.run(tf.global_variables_initializer())
 
     def postprocess_trajectory(self, sample_batch, other_agent_batches=None):
         return compute_advantages(

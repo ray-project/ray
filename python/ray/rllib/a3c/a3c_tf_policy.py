@@ -19,10 +19,7 @@ class A3CLoss(object):
             vf_loss_coeff=0.5, entropy_coeff=-0.01):
         log_prob = action_dist.logp(actions)
 
-        # The "policy gradients" loss: its derivative is precisely the policy
-        # gradient. Notice that self.ac is a placeholder that is provided
-        # externally. adv will contain the advantages, as calculated in
-        # compute_advantages.
+        # The "policy gradients" loss
         self.pi_loss = - tf.reduce_sum(log_prob * advantages)
 
         delta = vf - v_target
