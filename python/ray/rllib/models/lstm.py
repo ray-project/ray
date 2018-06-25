@@ -35,7 +35,7 @@ def add_time_dimension(padded_inputs, seq_lens):
             suitable for passing to tf.nn.dynamic_rnn().
 
     Returns:
-        Reshaped tensor of shape [BATCH_SIZE, MAX_SEQ_LEN, ...].
+        Reshaped tensor of shape [NUM_SEQUENCES, MAX_SEQ_LEN, ...].
     """
 
     # Sequence lengths have to be specified for LSTM batch inputs. The
