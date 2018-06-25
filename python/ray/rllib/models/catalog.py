@@ -150,7 +150,7 @@ class ModelCatalog(object):
             return _global_registry.get(RLLIB_MODEL, model)(
                 inputs, num_outputs, options)
 
-        if "use_lstm" in options:
+        if options.get("use_lstm"):
             return LSTM(inputs, num_outputs, options)
 
         obs_rank = len(inputs.shape) - 1
