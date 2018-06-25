@@ -16,14 +16,14 @@ class ProximalPolicyGraph(object):
             self, observation_space, action_space,
             observations, value_targets, advantages, actions,
             prev_logits, prev_vf_preds, logit_dim,
-            kl_coeff, distribution_class, config, sess, registry):
+            kl_coeff, distribution_class, config, sess):
         self.prev_dist = distribution_class(prev_logits)
 
         # Saved so that we can compute actions given different observations
         self.observations = observations
 
         self.curr_logits = ModelCatalog.get_model(
-            registry, observations, logit_dim, config["model"]).outputs
+            observations, logit_dim, config["model"]).outputs
         self.curr_dist = distribution_class(self.curr_logits)
         self.sampler = self.curr_dist.sample()
 
@@ -35,7 +35,7 @@ class ProximalPolicyGraph(object):
             vf_config["free_log_std"] = False
             with tf.variable_scope("value_function"):
                 self.value_function = ModelCatalog.get_model(
-                    registry, observations, 1, vf_config).outputs
+                    observations, 1, vf_config).outputs
             self.value_function = tf.reshape(self.value_function, [-1])
 
         # Make loss functions.
@@ -82,11 +82,14 @@ class ProximalPolicyGraph(object):
             self.policy_results = [
                 self.sampler, self.curr_logits, tf.constant("NA")]
 
-    def compute_single_action(self, observation, features, is_training=False):
+    def compute_actions(self, observations, features, is_training=False):
         action, logprobs, vf = self.sess.run(
             self.policy_results,
-            feed_dict={self.observations: [observation]})
-        return action[0], [], {"vf_preds": vf[0], "logprobs": logprobs[0]}
+            feed_dict={self.observations: observations})
+        return action, [], {"vf_preds": vf, "logprobs": logprobs}
+
+    def postprocess_trajectory(self, batch, other_agent_batches=None):
+        return batch
 
     def get_initial_state(self):
         return []

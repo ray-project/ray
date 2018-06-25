@@ -22,12 +22,12 @@ Q_SCOPE = "q_func"
 Q_TARGET_SCOPE = "target_q_func"
 
 
-def _build_p_network(registry, inputs, dim_actions, config):
+def _build_p_network(inputs, dim_actions, config):
     """
     map an observation (i.e., state) to an action where
     each entry takes value from (0, 1) due to the sigmoid function
     """
-    frontend = ModelCatalog.get_model(registry, inputs, 1, config["model"])
+    frontend = ModelCatalog.get_model(inputs, 1, config["model"])
 
     hiddens = config["actor_hiddens"]
     action_out = frontend.last_layer
@@ -66,8 +66,8 @@ def _build_action_network(p_values, low_action, high_action, stochastic, eps,
                    lambda: deterministic_actions)
 
 
-def _build_q_network(registry, inputs, action_inputs, config):
-    frontend = ModelCatalog.get_model(registry, inputs, 1, config["model"])
+def _build_q_network(inputs, action_inputs, config):
+    frontend = ModelCatalog.get_model(inputs, 1, config["model"])
 
     hiddens = config["critic_hiddens"]
 
@@ -81,7 +81,7 @@ def _build_q_network(registry, inputs, action_inputs, config):
 
 
 class DDPGPolicyGraph(TFPolicyGraph):
-    def __init__(self, observation_space, action_space, registry, config):
+    def __init__(self, observation_space, action_space, config):
         if not isinstance(action_space, Box):
             raise UnsupportedSpaceException(
                 "Action space {} is not supported for DDPG.".format(
@@ -105,7 +105,7 @@ class DDPGPolicyGraph(TFPolicyGraph):
 
         # Actor: P (policy) network
         with tf.variable_scope(P_SCOPE) as scope:
-            p_values = _build_p_network(registry, self.cur_observations,
+            p_values = _build_p_network(self.cur_observations,
                                         dim_actions, config)
             self.p_func_vars = _scope_vars(scope.name)
 
@@ -136,13 +136,11 @@ class DDPGPolicyGraph(TFPolicyGraph):
 
         # p network evaluation
         with tf.variable_scope(P_SCOPE, reuse=True) as scope:
-            self.p_t = _build_p_network(
-                registry, self.obs_t, dim_actions, config)
+            self.p_t = _build_p_network(self.obs_t, dim_actions, config)
 
         # target p network evaluation
         with tf.variable_scope(P_TARGET_SCOPE) as scope:
-            p_tp1 = _build_p_network(
-                registry, self.obs_tp1, dim_actions, config)
+            p_tp1 = _build_p_network(self.obs_tp1, dim_actions, config)
             target_p_func_vars = _scope_vars(scope.name)
 
         # Action outputs
@@ -161,17 +159,15 @@ class DDPGPolicyGraph(TFPolicyGraph):
 
         # q network evaluation
         with tf.variable_scope(Q_SCOPE) as scope:
-            q_t = _build_q_network(
-                registry, self.obs_t, self.act_t, config)
+            q_t = _build_q_network(self.obs_t, self.act_t, config)
             self.q_func_vars = _scope_vars(scope.name)
         with tf.variable_scope(Q_SCOPE, reuse=True):
-            q_tp0 = _build_q_network(
-                registry, self.obs_t, output_actions, config)
+            q_tp0 = _build_q_network(self.obs_t, output_actions, config)
 
         # target q network evalution
         with tf.variable_scope(Q_TARGET_SCOPE) as scope:
             q_tp1 = _build_q_network(
-                registry, self.obs_tp1, output_actions_estimated, config)
+                self.obs_tp1, output_actions_estimated, config)
             target_q_func_vars = _scope_vars(scope.name)
 
         q_t_selected = tf.squeeze(q_t, axis=len(q_t.shape) - 1)

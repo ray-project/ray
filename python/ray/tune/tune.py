@@ -54,6 +54,9 @@ def run_experiments(experiments,
             not currently have enough resources to launch one. This should
             be set to True when running on an autoscaling cluster to enable
             automatic scale-up.
+
+    Returns:
+        List of Trial objects, holding data for each executed trial.
     """
 
     if scheduler is None:

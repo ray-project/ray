@@ -500,7 +500,7 @@ class DataFrame(object):
             True if the DataFrame is empty.
             False otherwise.
         """
-        return self._row_metadata._empty
+        return len(self.columns) == 0 or len(self.index) == 0
 
     @property
     def values(self):

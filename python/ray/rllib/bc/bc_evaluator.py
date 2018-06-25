@@ -13,12 +13,11 @@ from ray.rllib.optimizers import PolicyEvaluator
 
 
 class BCEvaluator(PolicyEvaluator):
-    def __init__(self, registry, env_creator, config, logdir):
-        env = ModelCatalog.get_preprocessor_as_wrapper(registry, env_creator(
+    def __init__(self, env_creator, config, logdir):
+        env = ModelCatalog.get_preprocessor_as_wrapper(env_creator(
             config["env_config"]), config["model"])
         self.dataset = ExperienceDataset(config["dataset_path"])
-        self.policy = BCPolicy(registry, env.observation_space,
-                               env.action_space, config)
+        self.policy = BCPolicy(env.observation_space, env.action_space, config)
         self.config = config
         self.logdir = logdir
         self.metrics_queue = queue.Queue()

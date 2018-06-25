@@ -17,6 +17,8 @@ from ray.tune.trial import Resources
 DEFAULT_CONFIG = {
     # Number of workers (excluding master)
     "num_workers": 2,
+    # Number of environments to evaluate vectorwise per worker.
+    "num_envs": 1,
     # Size of rollout batch
     "batch_size": 10,
     # Use LSTM model - only applicable for image states
@@ -100,16 +102,18 @@ class A3CAgent(Agent):
             batch_steps=self.config["batch_size"],
             batch_mode="truncate_episodes",
             tf_session_creator=session_creator,
-            registry=self.registry, env_config=self.config["env_config"],
-            model_config=self.config["model"], policy_config=self.config)
+            env_config=self.config["env_config"],
+            model_config=self.config["model"], policy_config=self.config,
+            num_envs=self.config["num_envs"])
         self.remote_evaluators = [
             remote_cls.remote(
                 self.env_creator, self.policy_cls,
                 batch_steps=self.config["batch_size"],
                 batch_mode="truncate_episodes", sample_async=True,
                 tf_session_creator=session_creator,
-                registry=self.registry, env_config=self.config["env_config"],
-                model_config=self.config["model"], policy_config=self.config)
+                env_config=self.config["env_config"],
+                model_config=self.config["model"], policy_config=self.config,
+                num_envs=self.config["num_envs"])
             for i in range(self.config["num_workers"])]
 
         self.optimizer = AsyncOptimizer(
@@ -150,7 +154,8 @@ class A3CAgent(Agent):
     def compute_action(self, observation, state=None):
         if state is None:
             state = []
-        obs = self.local_evaluator.obs_filter(observation, update=False)
+        obs = self.local_evaluator.filters["default"](
+            observation, update=False)
         return self.local_evaluator.for_policy(
             lambda p: p.compute_single_action(
                 obs, state, is_training=False)[0])
