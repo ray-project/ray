@@ -34,8 +34,8 @@ AsyncGcsClient::AsyncGcsClient(CommandType command_type)
 
 AsyncGcsClient::AsyncGcsClient() : AsyncGcsClient(ClientID::from_random()) {}
 
-Status AsyncGcsClient::Connect(const std::string &address, int port) {
-  RAY_RETURN_NOT_OK(context_->Connect(address, port));
+Status AsyncGcsClient::Connect(const std::string &address, int port, bool sharding) {
+  RAY_RETURN_NOT_OK(context_->Connect(address, port, sharding));
   // TODO(swang): Call the client table's Connect() method here. To do this,
   // we need to make sure that we are attached to an event loop first. This
   // currently isn't possible because the aeEventLoop, which we use for

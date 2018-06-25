@@ -37,7 +37,7 @@ class RAY_EXPORT AsyncGcsClient {
   /// \param address The GCS IP address.
   /// \param port The GCS port.
   /// \return Status.
-  Status Connect(const std::string &address, int port);
+  Status Connect(const std::string &address, int port, bool sharding);
   /// Attach this client to a plasma event loop. Note that only
   /// one event loop should be attached at a time.
   Status Attach(plasma::EventLoop &event_loop);

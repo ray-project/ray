@@ -135,7 +135,7 @@ RedisContext::~RedisContext() {
   }
 }
 
-void GetRedisShards(redisContext *context, std::vector<std::string> *addresses,
+static void GetRedisShards(redisContext *context, std::vector<std::string> *addresses,
                     std::vector<int> *ports) {
   // Get the total number of Redis shards in the system.
   int num_attempts = 0;
@@ -179,7 +179,6 @@ void GetRedisShards(redisContext *context, std::vector<std::string> *addresses,
     freeReplyObject(reply);
     usleep(RayConfig::instance().redis_db_connect_wait_milliseconds() * 1000);
     num_attempts++;
-    continue;
   }
   RAY_CHECK(num_attempts < RayConfig::instance().redis_db_connect_retries())
       << "Expected " << num_redis_shards << " Redis shard addresses, found "
@@ -200,7 +199,7 @@ void GetRedisShards(redisContext *context, std::vector<std::string> *addresses,
   freeReplyObject(reply);
 }
 
-Status RedisContext::Connect(const std::string &address, int port) {
+Status RedisContext::Connect(const std::string &address, int port, bool sharding) {
   int connection_attempts = 0;
   context_ = redisConnect(address.c_str(), port);
   while (context_ == nullptr || context_->err) {
@@ -225,24 +224,33 @@ Status RedisContext::Connect(const std::string &address, int port) {
   REDIS_CHECK_ERROR(context_, reply);
   freeReplyObject(reply);
 
-  // Get the redis data shard
-  std::vector<std::string> addresses;
-  std::vector<int> ports;
-  GetRedisShards(context_, &addresses, &ports);
-  RAY_CHECK(addresses.size() == 1);
-  RAY_CHECK(ports.size() == 1);
+  std::string redis_address;
+  int redis_port;
+  if (sharding) {
+    // Get the redis data shard
+    std::vector<std::string> addresses;
+    std::vector<int> ports;
+    GetRedisShards(context_, &addresses, &ports);
+    RAY_CHECK(addresses.size() == 1);
+    RAY_CHECK(ports.size() == 1);
+    redis_address = addresses[0];
+    redis_port = ports[0];
+  } else {
+    redis_address = address;
+    redis_port = port;
+  }
 
   // Connect to async context
-  async_context_ = redisAsyncConnect(addresses[0].c_str(), ports[0]);
+  async_context_ = redisAsyncConnect(redis_address.c_str(), redis_port);
   if (async_context_ == nullptr || async_context_->err) {
-    RAY_LOG(FATAL) << "Could not establish connection to redis " << addresses[0] << ":"
-                   << ports[0];
+    RAY_LOG(FATAL) << "Could not establish connection to redis " << redis_address << ":"
+                   << redis_port;
   }
   // Connect to subscribe context
-  subscribe_context_ = redisAsyncConnect(addresses[0].c_str(), ports[0]);
+  subscribe_context_ = redisAsyncConnect(redis_address.c_str(), redis_port);
   if (subscribe_context_ == nullptr || subscribe_context_->err) {
-    RAY_LOG(FATAL) << "Could not establish subscribe connection to redis " << addresses[0]
-                   << ":" << ports[0];
+    RAY_LOG(FATAL) << "Could not establish subscribe connection to redis " << redis_address
+                   << ":" << redis_port;
   }
   return Status::OK();
 }
