@@ -12,6 +12,22 @@ def _release_waiter(waiter, *args):
 
 
 class PlasmaObjectFuture(asyncio.Future):
+    """This class manages the lifecycle of a Future contains an object_id.
+
+    Note:
+        This Future should be removed from a listening selector
+        when the object_id is done or the ref_count goes to zero.
+
+        Each time we add a task depending on this Future,
+        we increase its refcount. When the task is cancelled or timeout,
+        the refcount should be decreased.
+
+    Attributes:
+        ref_count(int): The reference count.
+        object_id: The object_id this Future contains.
+
+    """
+
     def __init__(self, loop, object_id):
         super().__init__(loop=loop)
         self.ref_count = 0
@@ -35,7 +51,21 @@ class PlasmaObjectFuture(asyncio.Future):
 
 
 class PlasmaFutureGroup(asyncio.Future):
+    """This class groups futures for better management and advanced operation.
+
+    """
+
     def __init__(self, loop, return_exceptions=False, keep_duplicated=True):
+        """Initialize this class.
+
+        Args:
+            loop (PlasmaSelectorEventLoop): An eventloop.
+            return_exceptions(bool): If true, return exceptions as results
+                instead of raising them.
+            keep_duplicated(bool): If true,
+                an future can be added multiple times.
+        """
+
         super().__init__(loop=loop)
         self._children = []
         self._future_set = set()
@@ -44,6 +74,12 @@ class PlasmaFutureGroup(asyncio.Future):
         self.nfinished = 0
 
     def append(self, coro_or_future):
+        """This method append a coroutine or a future into the group
+
+        Args:
+            coro_or_future: A coroutine or a future object.
+        """
+
         if not asyncio.futures.isfuture(coro_or_future):
             fut = asyncio.ensure_future(coro_or_future, loop=self._loop)
             if self.loop is None:
@@ -89,16 +125,21 @@ class PlasmaFutureGroup(asyncio.Future):
         return self.nfinished >= n
 
     def _halt_on(self):
-        """
-        This function can be override to change the halt condition.
+        """This function can be override to change the halt condition.
 
         Returns:
-        bool
+            bool: True if we meet the halt condition.
         """
 
         return self.halt_on_all_finished()
 
     def set_halt_condition(self, cond):
+        """This function sets the halting condition.
+
+        Args:
+            cond (callable): Halting condition.
+        """
+
         self._halt_on = cond
 
     def _collect_results(self):
@@ -184,16 +225,17 @@ class PlasmaFutureGroup(asyncio.Future):
 
 
 def gather(*coros_or_futures, loop=None, return_exceptions=False):
-    """
-    This method resembles `asyncio.gather`
+    """This method resembles `asyncio.gather`.
 
     Args:
-        *coros_or_futures:
-        loop:
-        return_exceptions:
+        *coros_or_futures: A list of coroutines or futures.
+        loop (PlasmaSelectorEventLoop): An eventloop.
+        return_exceptions (bool): If true, return exceptions as results
+            without raising them.
 
     Returns:
-
+        PlasmaFutureGroup: A PlasmaFutureGroup object that
+        collects the results as a list.
     """
 
     fut = PlasmaFutureGroup(loop=loop, return_exceptions=return_exceptions)
@@ -208,18 +250,18 @@ def wait(*coros_or_futures,
          num_returns,
          loop=None,
          return_exceptions=False):
-    """
-    This method resembles `asyncio.wait`
+    """This method resembles `asyncio.wait`.
 
     Args:
-        *coros_or_futures:
-        timeout:
-        num_returns:
-        loop:
-        return_exceptions:
+        *coros_or_futures:  A list of coroutines or futures.
+        timeout (float): The timeout in seconds.
+        num_returns (int): The minimal number of ready object returns.
+        loop (PlasmaSelectorEventLoop): An eventloop.
+        return_exceptions: If true, return exceptions as results
+            without raising them.
 
     Returns:
-
+        Tuple[List, List]: Ready futures & unready ones.
     """
 
     fut = PlasmaFutureGroup(loop=loop, return_exceptions=return_exceptions)
@@ -235,6 +277,8 @@ def wait(*coros_or_futures,
 
 
 class PlasmaSelector(selectors.BaseSelector):
+    """This class provides an abstract selector for Ray's object_ids."""
+
     def __init__(self, worker):
         self.worker = worker
         self.waiting_dict = {}
@@ -283,6 +327,13 @@ class PlasmaSelector(selectors.BaseSelector):
 
 
 class PlasmaPoll(PlasmaSelector):
+    """This class implements a selector for Ray's object_ids.
+
+    Notes:
+        It works by making use of `ray.wait`,
+        which makes it something like Linux's `poll` because it is stateless.
+    """
+
     def _get_ready_ids(self, timeout):
         polling_ids = list(self.waiting_dict.keys())
         object_ids, _ = ray.wait(
@@ -294,6 +345,13 @@ class PlasmaPoll(PlasmaSelector):
 
 
 class PlasmaEpoll(PlasmaSelector):
+    """This class implements a selector for Ray's object_ids.
+
+    Notes:
+        It works by making use of subscribe interface of plasma_client,
+        which makes it something like Linux's `epoll`.
+    """
+
     def __init__(self, worker):
         super().__init__(worker)
         self.client = self.worker.plasma_client
@@ -319,6 +377,8 @@ class PlasmaEpoll(PlasmaSelector):
 
 
 class PlasmaSelectorEventLoop(asyncio.BaseEventLoop):
+    """This class is an eventloop for Plasma which makes it async."""
+
     def __init__(self, selector, worker):
         super().__init__()
         assert isinstance(selector, selectors.BaseSelector)
@@ -346,6 +406,15 @@ class PlasmaSelectorEventLoop(asyncio.BaseEventLoop):
             self._selector = None
 
     def _register_future(self, future):
+        """Turn an object_id into a Future object.
+
+        Args:
+            future: A future or coroutine which returns an object_id.
+
+        Returns:
+            PlasmaObjectFuture: A future object that waits the object_id.
+        """
+
         future = asyncio.ensure_future(future, loop=self)
         fut = PlasmaObjectFuture(
             loop=self, object_id=ray.local_scheduler.ObjectID(b'\0' * 20))
@@ -370,6 +439,16 @@ class PlasmaSelectorEventLoop(asyncio.BaseEventLoop):
         return fut
 
     def _register_id(self, object_id):
+        """Turn an object_id into a Future object.
+
+        Args:
+            object_id: A Ray's object_id or a future or coroutione
+                which returns an object_id.
+
+        Returns:
+            PlasmaObjectFuture: A future object that waits the object_id/
+        """
+
         self._check_closed()
 
         if not isinstance(object_id, ray.local_scheduler.ObjectID):
