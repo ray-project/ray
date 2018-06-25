@@ -70,7 +70,7 @@ class NodeManager {
 
   /// Methods for task scheduling.
   /// Transition a placeable task to wait on object dependencies or ready for dispatch.
-  void MovePlaceableTask(const Task &task);
+  void TransitionPlaceableTask(const Task &task);
   /// Handle specified task's submission to the local node manager.
   void SubmitTask(const Task &task, const Lineage &uncommitted_lineage, bool forwarded = false);
   /// Assign a task. The task is assumed to not be queued in local_queues_.
