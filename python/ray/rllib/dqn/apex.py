@@ -9,7 +9,7 @@ from ray.utils import merge_dicts
 APEX_DEFAULT_CONFIG = merge_dicts(
     DQN_CONFIG,
     {
-        "optimizer_class": "ApexOptimizer",
+        "optimizer_class": "AsyncSamplesOptimizer",
         "optimizer_config":
             merge_dicts(
                 DQN_CONFIG["optimizer_config"], {

@@ -96,7 +96,7 @@ DEFAULT_CONFIG = {
     # Whether to allocate CPUs for workers (if > 0).
     "num_cpus_per_worker": 1,
     # Optimizer class to use.
-    "optimizer_class": "LocalSyncReplayOptimizer",
+    "optimizer_class": "SyncReplayOptimizer",
     # Config to pass to the optimizer.
     "optimizer_config": {},
     # Whether to use a distribution of epsilons across workers for exploration.

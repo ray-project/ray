@@ -70,7 +70,7 @@ class CommonPolicyEvaluator(PolicyEvaluator):
          "dones": [[...]], "new_obs": [[...]]}
 
         # Creating policy evaluators using optimizer_cls.make().
-        >>> optimizer = LocalSyncOptimizer.make(
+        >>> optimizer = SyncSamplesOptimizer.make(
               evaluator_cls=CommonPolicyEvaluator,
               evaluator_args={
                 "env_creator": lambda _: gym.make("CartPole-v0"),
