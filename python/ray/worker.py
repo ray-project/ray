@@ -2306,7 +2306,8 @@ def connect(info,
                 ray.local_scheduler.task_to_string(driver_task))
         else:
             global_state._execute_command(
-                "RAY.TABLE_ADD", ray.gcs_utils.TablePrefix.RAYLET_TASK,
+                driver_task.task_id(), "RAY.TABLE_ADD",
+                ray.gcs_utils.TablePrefix.RAYLET_TASK,
                 ray.gcs_utils.TablePubsub.RAYLET_TASK,
                 driver_task.task_id().id(),
                 driver_task._serialized_raylet_task())
