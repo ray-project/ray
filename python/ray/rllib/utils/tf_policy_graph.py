@@ -18,6 +18,10 @@ class TFPolicyGraph(PolicyGraph):
 
     All input and output tensors are of shape [BATCH_DIM, ...].
 
+    Attributes:
+        observation_space (gym.Space): observation space of the policy.
+        action_space (gym.Space): action space of the policy.
+
     Examples:
         >>> policy = TFPolicyGraphSubclass(
             sess, obs_input, action_sampler, loss, loss_inputs, is_training)
@@ -33,7 +37,7 @@ class TFPolicyGraph(PolicyGraph):
             self, observation_space, action_space, sess, obs_input,
             action_sampler, loss, loss_inputs,
             is_training, state_inputs=None, state_outputs=None):
-        """Initialize the policy.
+        """Initialize the policy graph.
 
         Arguments:
             observation_space (gym.Space): Observation space of the env.
@@ -71,7 +75,8 @@ class TFPolicyGraph(PolicyGraph):
             self._loss, self._sess)
 
         assert len(self._state_inputs) == len(self._state_outputs) == \
-            len(self.get_initial_state())
+            len(self.get_initial_state()), \
+            (self._state_inputs, self._state_outputs, self.get_initial_state())
 
     def build_compute_actions(
             self, builder, obs_batch, state_batches=None, is_training=False):
