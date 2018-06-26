@@ -28,10 +28,14 @@ import ray.serialization as serialization
 import ray.services as services
 import ray.signature
 import ray.local_scheduler
-from ray.plasma import plasma_eventloop
 import ray.plasma
 import ray.ray_constants as ray_constants
 from ray.utils import random_string, binary_to_hex, is_cython
+
+try:
+    from ray.plasma import plasma_eventloop
+except:
+    print("Async functions only support python version > 3.2")
 
 SCRIPT_MODE = 0
 WORKER_MODE = 1
