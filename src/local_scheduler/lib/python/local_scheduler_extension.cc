@@ -362,13 +362,22 @@ static PyObject *PyLocalSchedulerClient_push_profile_events(PyObject *self,
         if (PyBytes_or_PyUnicode_to_string(val, profile_event.event_type) == -1) {
           return NULL;
         }
+        if (profile_event.event_type.size() == 0) {
+          return NULL;
+        }
         RAY_LOG(INFO) << "event type is " << profile_event.event_type;
       } else if (key_string == std::string("component_type")) {
         if (PyBytes_or_PyUnicode_to_string(val, profile_event.component_type) == -1) {
           return NULL;
         }
+        if (profile_event.component_type.size() == 0) {
+          return NULL;
+        }
       } else if (key_string == std::string("component_id")) {
         if (PyBytes_or_PyUnicode_to_string(val, profile_event.component_id) == -1) {
+          return NULL;
+        }
+        if (profile_event.component_id.size() == 0) {
           return NULL;
         }
       } else if (key_string == std::string("start_time")) {
@@ -377,6 +386,9 @@ static PyObject *PyLocalSchedulerClient_push_profile_events(PyObject *self,
         profile_event.end_time = PyFloat_AsDouble(val);
       } else if (key_string == std::string("extra_data")) {
         if (PyBytes_or_PyUnicode_to_string(val, profile_event.extra_data) == -1) {
+          return NULL;
+        }
+        if (profile_event.extra_data.size() == 0) {
           return NULL;
         }
       } else {

@@ -641,31 +641,27 @@ class GlobalState(object):
                 heap_size += 1
 
                 for event in event_dict:
-                    if event[1] == "ray:get_task" and event[2] == 1:
+                    if event[1] == "get_task" and event[2] == 1:
                         task_info[task_id]["get_task_start"] = event[0]
-                    if event[1] == "ray:get_task" and event[2] == 2:
+                    if event[1] == "get_task" and event[2] == 2:
                         task_info[task_id]["get_task_end"] = event[0]
-                    if (event[1] == "ray:import_remote_function"
+                    if (event[1] == "register_remote_function"
                             and event[2] == 1):
                         task_info[task_id]["import_remote_start"] = event[0]
-                    if (event[1] == "ray:import_remote_function"
+                    if (event[1] == "register_remote_function"
                             and event[2] == 2):
                         task_info[task_id]["import_remote_end"] = event[0]
-                    if event[1] == "ray:acquire_lock" and event[2] == 1:
-                        task_info[task_id]["acquire_lock_start"] = event[0]
-                    if event[1] == "ray:acquire_lock" and event[2] == 2:
-                        task_info[task_id]["acquire_lock_end"] = event[0]
-                    if event[1] == "ray:task:get_arguments" and event[2] == 1:
+                    if event[1] == "task:deserialize_arguments" and event[2] == 1:
                         task_info[task_id]["get_arguments_start"] = event[0]
-                    if event[1] == "ray:task:get_arguments" and event[2] == 2:
+                    if event[1] == "task:deserialize_arguments" and event[2] == 2:
                         task_info[task_id]["get_arguments_end"] = event[0]
-                    if event[1] == "ray:task:execute" and event[2] == 1:
+                    if event[1] == "task:execute" and event[2] == 1:
                         task_info[task_id]["execute_start"] = event[0]
-                    if event[1] == "ray:task:execute" and event[2] == 2:
+                    if event[1] == "task:execute" and event[2] == 2:
                         task_info[task_id]["execute_end"] = event[0]
-                    if event[1] == "ray:task:store_outputs" and event[2] == 1:
+                    if event[1] == "task:store_outputs" and event[2] == 1:
                         task_info[task_id]["store_outputs_start"] = event[0]
-                    if event[1] == "ray:task:store_outputs" and event[2] == 2:
+                    if event[1] == "task:store_outputs" and event[2] == 2:
                         task_info[task_id]["store_outputs_end"] = event[0]
                     if "worker_id" in event[3]:
                         task_info[task_id]["worker_id"] = event[3]["worker_id"]
@@ -721,7 +717,7 @@ class GlobalState(object):
                 "start_time": profile_table_message.StartTime(),
                 "end_time": profile_table_message.EndTime(),
                 "extra_data":
-                profile_table_message.ExtraData().decode("ascii"),
+                json.loads(profile_table_message.ExtraData().decode("ascii")),
             }
 
             profile_events.append(profile_event)
@@ -744,7 +740,8 @@ class GlobalState(object):
                 self._profile_table(binary_to_object_id(component_id))
                 for component_id in component_identifiers_binary}
 
-    def chrome_tracing_dump(self, filename=None):
+    def chrome_tracing_dump(self, include_task_data=False, filename=None,
+                            open_browser=False):
         """Return a list of profiling events that can viewed as a timeline.
 
         To view this information as a timeline, simply dump it as a json file
@@ -752,37 +749,52 @@ class GlobalState(object):
         web browser and load the dumped file. Make sure to enable "Flow events"
         in the "View Options" menu.
 
+        TODO(rkn): Support including the task specification data in the
+        timeline.
+
         TODO(rkn): This should support viewing just a window of time or a
         limited number of events.
 
         Args:
+            include_task_data: If true, we will include more task metadata such
+                as the task specifications in the json.
             filename: If a filename is provided, the timeline is dumped to that
                 file.
+            open_browser: If true, we will attempt to automatically open the
+                timeline visualization in Chrome.
 
         Returns:
             A list of profiling events. Each profile event is a dictionary.
         """
+        if include_task_data:
+            raise NotImplementedError("This flag has not been implented yet.")
+
+        if open_browser:
+            raise NotImplementedError("This flag has not been implented yet.")
+
         profile_table = self.profile_table()
         all_events = []
 
-        # Colors are specified at https://github.com/catapult-project/catapult/blob/master/tracing/tracing/base/color_scheme.html.  # noqa: E501
-        default_color_mapping = {
-            "ray:get_task": "cq_build_abandoned",
-            "ray:task": "rail_response",
-            "ray:task:get_arguments": "rail_load",
-            "ray:task:execute": "rail_animation",
-            "ray:task:store_outputs": "rail_idle",
-            "ray:wait_for_function": "detailed_memory_dump",
-            "ray:get": "good",
-            "ray:put": "terrible",
-            "ray:wait": "vsync_highlight_color",
-            "ray:submit_task": "background_memory_dump",
-        }
-        default_color = "generic_work"
+        # Colors are specified at
+        # https://github.com/catapult-project/catapult/blob/master/tracing/tracing/base/color_scheme.html.  # noqa: E501
+        default_color_mapping = defaultdict(lambda: "generic_work", {
+            "get_task": "cq_build_abandoned",
+            "task": "rail_response",
+            "task:deserialize_arguments": "rail_load",
+            "task:execute": "rail_animation",
+            "task:store_outputs": "rail_idle",
+            "wait_for_function": "detailed_memory_dump",
+            "ray.get": "good",
+            "ray.put": "terrible",
+            "ray.wait": "vsync_highlight_color",
+            "submit_task": "background_memory_dump",
+            "fetch_and_run_function": "detailed_memory_dump",
+            "register_remote_function": "detailed_memory_dump",
+        })
 
         for component_id_hex, component_events in profile_table.items():
             for event in component_events:
-                event = {
+                new_event = {
                     "cat": event["event_type"],  # The category of the event.
                     "name": event["event_type"],  # The string displayed on the event.
                     "pid": "TODO",  # The identifier for the group of rows that the event appears in. # TODO(rkn): Support this!!
@@ -790,9 +802,18 @@ class GlobalState(object):
                     "ts": 1000000 * event["start_time"],  # The start time in microseconds. # TODO(rkn): Fix the timing conversions.
                     "dur": 1000000 * (event["end_time"] - event["start_time"]),  # The duration in microseconds.
                     "ph": "X",  # This is ???
-                    "cname": default_color_mapping.get(event["event_type"], default_color),  # This is the name of the color to display the box in.
+                    "cname": default_color_mapping[event["event_type"]],  # This is the name of the color to display the box in.
+                    "args": event["extra_data"],  # The extra user-defined data.
                 }
-                all_events.append(event)
+
+                # Modify the json with the additional user-defined extra data.
+                # This can be used to add fields or override existing fields.
+                if "cname" in event["extra_data"]:
+                    new_event["cname"] = event["extra_data"]["cname"]
+                if "name" in event["extra_data"]:
+                    new_event["name"] = event["extra_data"]["name"]
+
+                all_events.append(new_event)
 
         if filename is not None:
             with open(filename, "w") as outfile:

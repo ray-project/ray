@@ -974,7 +974,7 @@ class APITest(unittest.TestCase):
 
     @unittest.skipIf(
         os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
+        "This test does not work with xray (nor is it intended to).")
     def testLoggingAPI(self):
         self.init_ray(driver_mode=ray.SILENT_MODE)
 
@@ -997,16 +997,10 @@ class APITest(unittest.TestCase):
             print("Timing out of wait.")
 
         @ray.remote
-        def test_log_event():
-            ray.log_event("event_type1", contents={"key": "val"})
-
-        @ray.remote
         def test_log_span():
             with ray.log_span("event_type2", contents={"key": "val"}):
                 pass
 
-        # Make sure that we can call ray.log_event in a remote function.
-        ray.get(test_log_event.remote())
         # Wait for the event to appear in the event log.
         wait_for_num_events(1)
         self.assertEqual(len(events()), 1)
@@ -1028,6 +1022,53 @@ class APITest(unittest.TestCase):
         # Wait for the events to appear in the event log.
         wait_for_num_events(3)
         self.assertEqual(len(events()), 3)
+
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") != "1",
+        "This test only works with xray.")
+    def testProfilingAPI(self):
+        self.init_ray(num_cpus=2)
+
+        @ray.remote
+        def f():
+            with ray.profile("custom_event",
+                             extra_data={"name": "custom name"}) as ray_prof:
+                ray_prof.set_attribute("key", "value")
+
+        ray.put(1)
+        object_id = f.remote()
+        ray.wait([object_id])
+        ray.get(object_id)
+
+        # Wait until all of the profiling information appears in the profile
+        # table.
+        timeout_seconds = 20
+        start_time = time.time()
+        while True:
+            if time.time() - start_time > timeout_seconds:
+                raise Exception("Timed out while waiting for information in "
+                                "profile table.")
+            profile_data = ray.global_state.chrome_tracing_dump()
+            event_types = set([event["cat"] for event in profile_data])
+            expected_types = [
+                "get_task",
+                "task",
+                "task:deserialize_arguments",
+                "task:execute",
+                "task:store_outputs",
+                "wait_for_function",
+                "ray.get",
+                "ray.put",
+                "ray.wait",
+                "submit_task",
+                "fetch_and_run_function",
+                "register_remote_function",
+                "custom_event",  # This is the custom one from ray.profile.
+            ]
+
+            if all([expected_type in event_types
+                    for expected_type in expected_types]):
+                break
 
     def testIdenticalFunctionNames(self):
         # Define a bunch of remote functions and make sure that we don't

@@ -562,7 +562,7 @@ class Worker(object):
         Returns:
             The return object IDs for this task.
         """
-        with log_span("ray:submit_task", worker=self):
+        with profile("submit_task", worker=self):
             check_main_thread()
             if actor_id is None:
                 assert actor_handle_id is None
@@ -867,7 +867,7 @@ class Worker(object):
 
         # Get task arguments from the object store.
         try:
-            with log_span("ray:task:get_arguments", worker=self):
+            with profile("task:deserialize_arguments", worker=self):
                 arguments = self._get_arguments_for_execution(
                     function_name, args)
         except (RayGetError, RayGetArgumentError) as e:
@@ -882,7 +882,7 @@ class Worker(object):
 
         # Execute the task.
         try:
-            with log_span("ray:task:execute", worker=self):
+            with profile("task:execute", worker=self):
                 if task.actor_id().id() == NIL_ACTOR_ID:
                     outputs = function_executor(*arguments)
                 else:
@@ -901,7 +901,7 @@ class Worker(object):
 
         # Store the outputs in the local object store.
         try:
-            with log_span("ray:task:store_outputs", worker=self):
+            with profile("task:store_outputs", worker=self):
                 # If this is an actor task, then the last object ID returned by
                 # the task is a dummy output, not returned by the function
                 # itself. Decrement to get the correct number of return values.
@@ -976,7 +976,7 @@ class Worker(object):
         # Wait until the function to be executed has actually been registered
         # on this worker. We will push warnings to the user if we spend too
         # long in this loop.
-        with log_span("ray:wait_for_function", worker=self):
+        with profile("wait_for_function", worker=self):
             self._wait_for_function(function_id, driver_id)
 
         # Execute the task.
@@ -988,16 +988,22 @@ class Worker(object):
 
             function_name = (self.function_execution_info[driver_id][
                 function_id.id()]).function_name
-            contents = {
-                "function_name": function_name,
-                "task_id": task.task_id().hex(),
-                "worker_id": binary_to_hex(self.worker_id)
-            }
-            with log_span("ray:task", contents=contents, worker=self):
+            if not self.use_raylet:
+                extra_data = {
+                    "function_name": function_name,
+                    "task_id": task.task_id().hex(),
+                    "worker_id": binary_to_hex(self.worker_id)
+                }
+            else:
+                extra_data = {
+                    "name": function_name,
+                    "task_id": task.task_id().hex()
+                }
+            with profile("task", extra_data=extra_data, worker=self):
                 self._process_task(task)
 
         # Push all of the log events to the global state store.
-        flush_log()
+        flush_profile_data()
 
         # Increase the task execution counter.
         self.num_task_executions[driver_id][function_id.id()] += 1
@@ -1015,7 +1021,7 @@ class Worker(object):
         Returns:
             A task from the local scheduler.
         """
-        with log_span("ray:get_task", worker=self):
+        with profile("get_task", worker=self):
             task = self.local_scheduler_client.get_task()
 
         # Automatically restrict the GPUs available to this task.
@@ -1807,10 +1813,14 @@ sys.excepthook = custom_excepthook
 
 def _flush_profile_events(worker):
     """Drivers run this as a thread to flush profile data in the background."""
-    while True:
-        time.sleep(1)
-        worker.local_scheduler_client.push_profile_events(worker.events)
-        worker.events = []
+    try:
+        while True:
+            time.sleep(1)
+            worker.local_scheduler_client.push_profile_events(worker.events)
+            worker.events = []
+    except AttributeError:
+        # This is to suppress errors that occur at shutdown.
+        pass
 
 
 def print_error_messages_raylet(worker):
@@ -2037,15 +2047,18 @@ def import_thread(worker, mode):
             # Handle the driver case first.
             if mode != WORKER_MODE:
                 if key.startswith(b"FunctionsToRun"):
-                    fetch_and_execute_function_to_run(key, worker=worker)
+                    with profile("fetch_and_run_function", worker=worker):
+                        fetch_and_execute_function_to_run(key, worker=worker)
                 # Continue because FunctionsToRun are the only things that the
                 # driver should import.
                 continue
 
             if key.startswith(b"RemoteFunction"):
-                fetch_and_register_remote_function(key, worker=worker)
+                with profile("register_remote_function", worker=worker):
+                    fetch_and_register_remote_function(key, worker=worker)
             elif key.startswith(b"FunctionsToRun"):
-                fetch_and_execute_function_to_run(key, worker=worker)
+                with profile("fetch_and_run_function", worker=worker):
+                    fetch_and_execute_function_to_run(key, worker=worker)
             elif key.startswith(b"ActorClass"):
                 # Keep track of the fact that this actor class has been
                 # exported so that we know it is safe to turn this worker into
@@ -2069,25 +2082,23 @@ def import_thread(worker, mode):
                     # Handle the driver case first.
                     if mode != WORKER_MODE:
                         if key.startswith(b"FunctionsToRun"):
-                            # with log_span(
-                            #         "ray:fetch_and_execute_function_to_run",
-                                    # worker=worker):
-                            fetch_and_execute_function_to_run(
-                                key, worker=worker)
+                            with profile("fetch_and_run_function",
+                                         worker=worker):
+                                fetch_and_execute_function_to_run(
+                                    key, worker=worker)
                         # Continue because FunctionsToRun are the only things
                         # that the driver should import.
                         continue
 
                     if key.startswith(b"RemoteFunction"):
-                        # with log_span(
-                        #         "ray:fetch_and_register_remote_function", worker=worker):
-                        fetch_and_register_remote_function(
-                            key, worker=worker)
+                        with profile(
+                                "register_remote_function", worker=worker):
+                            fetch_and_register_remote_function(
+                                key, worker=worker)
                     elif key.startswith(b"FunctionsToRun"):
-                        # with log_span(
-                        #         "ray:fetch_and_execute_function_to_run", worker=worker):
-                        fetch_and_execute_function_to_run(
-                            key, worker=worker)
+                        with profile("fetch_and_run_function", worker=worker):
+                            fetch_and_execute_function_to_run(
+                                key, worker=worker)
                     elif key.startswith(b"ActorClass"):
                         # Keep track of the fact that this actor class has been
                         # exported so that we know it is safe to turn this
@@ -2539,26 +2550,26 @@ class RayLogSpan(object):
 
     def __enter__(self):
         """Log the beginning of a span event."""
-        log(event_type=self.event_type,
-            contents=self.contents,
-            kind=LOG_SPAN_START,
-            worker=self.worker)
+        _log(event_type=self.event_type,
+             contents=self.contents,
+             kind=LOG_SPAN_START,
+             worker=self.worker)
 
     def __exit__(self, type, value, tb):
         """Log the end of a span event. Log any exception that occurred."""
         if type is None:
-            log(event_type=self.event_type,
-                kind=LOG_SPAN_END,
-                worker=self.worker)
+            _log(event_type=self.event_type,
+                 kind=LOG_SPAN_END,
+                 worker=self.worker)
         else:
-            log(event_type=self.event_type,
-                contents={
-                    "type": str(type),
-                    "value": value,
-                    "traceback": traceback.format_exc()
-                },
-                kind=LOG_SPAN_END,
-                worker=self.worker)
+            _log(event_type=self.event_type,
+                 contents={
+                     "type": str(type),
+                     "value": value,
+                     "traceback": traceback.format_exc()
+                 },
+                 kind=LOG_SPAN_END,
+                 worker=self.worker)
 
 
 class RayLogSpanRaylet(object):
@@ -2569,14 +2580,37 @@ class RayLogSpanRaylet(object):
         contents: Additional information to log.
     """
 
-    def __init__(self, event_type, worker=global_worker):
+    def __init__(self, event_type, extra_data=None, worker=global_worker):
         """Initialize a RayLogSpan object."""
         self.event_type = event_type
+        self.extra_data = extra_data if extra_data is not None else {}
         self.worker = worker
 
+    def set_attribute(self, key, value):
+        """Add a key-value pair to the extra_data dict.
+
+        This can be used to add attributes that are not available when
+        ray.profile was called.
+
+        Args:
+            key: The attribute name.
+            value: The attribute value.
+        """
+        if not isinstance(key, str) or not isinstance(value, str):
+            raise ValueError("The extra_data argument must be a "
+                             "dictionary mapping strings to strings.")
+        self.extra_data[key] = value
+
     def __enter__(self):
-        """Log the beginning of a span event."""
+        """Log the beginning of a span event.
+
+        Returns:
+            The object itself is returned so that if the block is opened using
+                "with ray.profile(...) as prof:", we can call
+                "prof.set_attribute" inside the block.
+        """
         self.start_time = time.time()
+        return self
 
     def __exit__(self, type, value, tb):
         """Log the end of a span event. Log any exception that occurred."""
@@ -2585,12 +2619,17 @@ class RayLogSpanRaylet(object):
         else:
             component_type = "driver"
 
+        for key, value in self.extra_data.items():
+            if not isinstance(key, str) or not isinstance(value, str):
+                raise ValueError("The extra_data argument must be a "
+                                 "dictionary mapping strings to strings.")
+
         event = {"event_type": self.event_type,
                  "component_type": component_type,
                  "component_id": self.worker.worker_id,
                  "start_time": self.start_time,
                  "end_time": time.time(),
-                 "extra_data": " "  # TODO(rkn): This is only present as a non-empty string to prevent segfaults.
+                 "extra_data": json.dumps(self.extra_data),
                 }
 
         if type is not None:
@@ -2603,22 +2642,45 @@ class RayLogSpanRaylet(object):
         self.worker.events.append(event)
 
 
-def log_span(event_type, contents=None, worker=global_worker):
+def profile(event_type, extra_data=None, worker=global_worker):
+    """Profile a span of time so that it appears in the timeline visualization.
+
+    This function can be used as follows (both on the driver or within a task).
+
+        with ray.profile("custom event", extra_data={'key': 'value'}):
+            # Do some computation here.
+
+    Optionally, a dictionary can be passed as the "extra_data" argument, and
+    it can have keys "name" and "cname" if you want to override the default
+    timeline display text and box color. Other values will appear at the bottom
+    of the chrome tracing GUI when you click on the box corresponding to this
+    profile span.
+
+    Args:
+        event_type: A string describing the type of the event.
+        extra_data: This must be a dictionary mapping strings to strings. This
+            data will be added to the json objects that are used to populate
+            the timeline, so if you want to set a particular color, you can
+            simply set the "cname" attribute to an appropriate color.
+            Similarly, if you set the "name" attribute, then that will set the
+            text displayed on the box in the timeline.
+
+    Returns:
+        An object that can profile a span of time via a "with" statement.
+    """
     if not worker.use_raylet:
-        return RayLogSpan(event_type, contents=contents, worker=worker)
+        return RayLogSpan(event_type, contents=extra_data, worker=worker)
     else:
-        return RayLogSpanRaylet(event_type, worker=worker)
+        return RayLogSpanRaylet(event_type, extra_data=extra_data,
+                                worker=worker)
 
 
-def log_event(event_type, contents=None, worker=global_worker):
-    log(event_type, kind=LOG_POINT, contents=contents, worker=worker)
-
-
-def log(event_type, kind, contents=None, worker=global_worker):
+def _log(event_type, kind, contents=None, worker=global_worker):
     """Log an event to the global state store.
 
     This adds the event to a buffer of events locally. The buffer can be
-    flushed and written to the global state store by calling flush_log().
+    flushed and written to the global state store by calling
+    flush_profile_data().
 
     Args:
         event_type (str): The type of the event.
@@ -2647,15 +2709,21 @@ def log(event_type, kind, contents=None, worker=global_worker):
 
 # TODO(rkn): Support calling this function in the middle of a task, and also
 # call this periodically in the background from the driver.
-def flush_log(worker=global_worker):
-    """Send the logged worker events to the global state store."""
+def flush_profile_data(worker=global_worker):
+    """Push the logged profiling data to the global control store.
+
+    By default, profiling information for a given task won't appear in the
+    timeline until after the task has completed. For very long-running tasks,
+    we may want profiling information to appear more quickly. In such cases,
+    this function can be called. Note that as an alternative, we could start
+    a thread in the background on workers that calls this automatically.
+    """
     if not worker.use_raylet:
         event_log_key = b"event_log:" + worker.worker_id
         event_log_value = json.dumps(worker.events)
         worker.local_scheduler_client.log_event(event_log_key, event_log_value,
                                                 time.time())
     else:
-        print("YYY", worker.events)
         worker.local_scheduler_client.push_profile_events(worker.events)
 
     worker.events = []
@@ -2678,7 +2746,7 @@ def get(object_ids, worker=global_worker):
         A Python object or a list of Python objects.
     """
     worker.check_connected()
-    with log_span("ray:get", worker=worker):
+    with profile("ray.get", worker=worker):
         check_main_thread()
 
         if worker.mode == PYTHON_MODE:
@@ -2711,7 +2779,7 @@ def put(value, worker=global_worker):
         The object ID assigned to this value.
     """
     worker.check_connected()
-    with log_span("ray:put", worker=worker):
+    with profile("ray.put", worker=worker):
         check_main_thread()
 
         if worker.mode == PYTHON_MODE:
@@ -2769,7 +2837,7 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
                                     type(object_id)))
 
     worker.check_connected()
-    with log_span("ray:wait", worker=worker):
+    with profile("ray.wait", worker=worker):
         check_main_thread()
 
         # When Ray is run in PYTHON_MODE, all functions are run immediately,

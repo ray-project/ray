@@ -135,7 +135,8 @@ table ProfileTableData {
   // The end time of the event. If the event is a point event, then this should
   // be the same as the start time.
   end_time: double;
-  // Additional data associated with the event.
+  // Additional data associated with the event. This data must be serialized
+  // using JSON.
   extra_data: string;
 }
 
