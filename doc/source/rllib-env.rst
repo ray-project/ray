@@ -111,6 +111,8 @@ RLlib will create three distinct policies and route agent decisions to its bound
 For more advanced usage, e.g., different classes of policies per agent, or more control over the training process, you can use the lower-level RLlib APIs directly.
 TODO: link to example
 
+To scale to hundreds of agents, MultiAgentEnv batches policy evaluations across multiple agents internally. It can also be vectorized by setting ``num_envs > 1``.
+
 Serving
 -------
 

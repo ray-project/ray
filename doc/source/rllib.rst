@@ -33,7 +33,7 @@ Environments
 * `Multi-Agent <rllib-env.html#multi-agent>`__
 * `Serving (Agent-oriented) <rllib-env.html#serving>`__
 * `Offline Data Ingest <rllib-env.html#offline-data>`__ 
-* `Batch Asynchronous <rllib-env.html#fully-asynchronous>`__
+* `Batch Asynchronous <rllib-env.html#batch-asynchronous>`__
 
 Algorithms
 ----------
