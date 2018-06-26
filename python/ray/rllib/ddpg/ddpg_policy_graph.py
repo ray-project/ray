@@ -108,6 +108,7 @@ class ActorCriticLoss(object):
 
 class DDPGPolicyGraph(TFPolicyGraph):
     def __init__(self, observation_space, action_space, config):
+        config = dict(ray.rllib.ddpg.ddpg.DEFAULT_CONFIG, **config)
         if not isinstance(action_space, Box):
             raise UnsupportedSpaceException(
                 "Action space {} is not supported for DDPG.".format(
@@ -256,7 +257,8 @@ class DDPGPolicyGraph(TFPolicyGraph):
         ]
         self.is_training = tf.placeholder_with_default(True, ())
         TFPolicyGraph.__init__(
-            self, self.sess, obs_input=self.cur_observations,
+            self, observation_space, action_space, self.sess,
+            obs_input=self.cur_observations,
             action_sampler=self.output_actions, loss=self.loss.total_loss,
             loss_inputs=self.loss_inputs, is_training=self.is_training)
         self.sess.run(tf.global_variables_initializer())

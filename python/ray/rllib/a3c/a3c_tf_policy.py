@@ -79,7 +79,7 @@ class A3CPolicyGraph(TFPolicyGraph):
         self.state_in = self.model.state_in
         self.state_out = self.model.state_out
         TFPolicyGraph.__init__(
-            self, self.sess,
+            self, observation_space, action_space, self.sess,
             obs_input=self.observations, action_sampler=action_dist.sample(),
             loss=self.loss.total_loss, loss_inputs=loss_in,
             is_training=is_training, state_inputs=self.state_in,
