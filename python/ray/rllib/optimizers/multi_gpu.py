@@ -24,6 +24,10 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
 
     This optimizer is Tensorflow-specific and require the underlying
     PolicyGraph to be a TFPolicyGraph instance that support `.copy()`.
+
+    Note that all replicas of the TFPolicyGraph will merge their
+    extra_compute_grad and apply_grad feed_dicts and fetches. This
+    may result in unexpected behavior.
     """
 
     def _init(self, sgd_batch_size=128, sgd_stepsize=5e-5, num_sgd_iter=10,
