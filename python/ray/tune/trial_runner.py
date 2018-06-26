@@ -374,8 +374,8 @@ class TrialRunner(object):
             num_gpus = sum(cl['Resources'].get('GPU', 0) for cl in clients)
         else:
             local_schedulers = [
-                entry for client in clients.values() for entry in client if
-                (entry['ClientType'] == 'local_scheduler'
+                entry for client in clients.values() for entry in client
+                if (entry['ClientType'] == 'local_scheduler'
                     and not entry['Deleted'])
             ]
             num_cpus = sum(ls['CPU'] for ls in local_schedulers)
