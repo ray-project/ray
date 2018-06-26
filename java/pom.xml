@@ -117,8 +117,64 @@
                 <artifactId>commons-collections</artifactId>
                 <version>3.2.2</version>
             </dependency>
-        </dependencies>
 
+            <!-- https://mvnrepository.com/artifact/com.github.davidmoten/flatbuffers-java -->
+            <dependency>
+                <groupId>com.github.davidmoten</groupId>
+                <artifactId>flatbuffers-java</artifactId>
+                <version>1.7.0.1</version>
+            </dependency>
+
+            <!-- https://mvnrepository.com/artifact/com.beust/jcommander -->
+            <dependency>
+                <groupId>com.beust</groupId>
+                <artifactId>jcommander</artifactId>
+                <version>1.72</version>
+            </dependency>
+
+            <dependency>
+                <groupId>net.java.dev.jna</groupId>
+                <artifactId>jna</artifactId>
+                <version>4.1.0</version>
+            </dependency>
+
+            <dependency>
+                <groupId>mysql</groupId>
+                <artifactId>mysql-connector-java</artifactId>
+                <version>5.1.30</version>
+            </dependency>
+
+            <dependency>
+                <groupId>org.apache.hadoop</groupId>
+                <artifactId>hadoop-common</artifactId>
+                <version>3.0.0</version>
+            </dependency>
+
+            <dependency>
+                <groupId>org.apache.hadoop</groupId>
+                <artifactId>hadoop-client</artifactId>
+                <version>3.0.0</version>
+            </dependency>
+
+            <dependency>
+                <groupId>org.apache.hadoop</groupId>
+                <artifactId>hadoop-hdfs</artifactId>
+                <version>3.0.0</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.esotericsoftware</groupId>
+                <artifactId>kryo</artifactId>
+                <version>4.0.0</version>
+            </dependency>
+
+            <dependency>
+                <groupId>org.mockito</groupId>
+                <artifactId>mockito-all</artifactId>
+                <version>1.10.19</version>
+            </dependency>
+
+        </dependencies>
 
     </dependencyManagement>
 
