@@ -48,6 +48,22 @@ class MockEnv(gym.Env):
         return 0, 1, self.i >= self.episode_length, {}
 
 
+class MockEnv2(gym.Env):
+    def __init__(self, episode_length):
+        self.episode_length = episode_length
+        self.i = 0
+        self.observation_space = gym.spaces.Discrete(100)
+        self.action_space = gym.spaces.Discrete(2)
+
+    def reset(self):
+        self.i = 0
+        return self.i
+
+    def step(self, action):
+        self.i += 1
+        return self.i, 100, self.i >= self.episode_length, {}
+
+
 class MockVectorEnv(VectorEnv):
     def __init__(self, episode_length, num_envs):
         self.envs = [

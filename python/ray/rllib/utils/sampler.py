@@ -10,6 +10,7 @@ import threading
 from ray.rllib.optimizers.sample_batch import MultiAgentSampleBatchBuilder, \
     MultiAgentBatch
 from ray.rllib.utils.async_vector_env import AsyncVectorEnv
+from ray.rllib.utils.tf_run_builder import TFRunBuilder
 
 
 RolloutMetrics = namedtuple(
@@ -30,7 +31,7 @@ class SyncSampler(object):
 
     def __init__(
             self, env, policies, policy_mapping_fn, obs_filters,
-            num_local_steps, horizon=None, pack=False):
+            num_local_steps, horizon=None, pack=False, tf_sess=None):
         self.async_vector_env = AsyncVectorEnv.wrap_async(env)
         self.num_local_steps = num_local_steps
         self.horizon = horizon
@@ -39,7 +40,8 @@ class SyncSampler(object):
         self._obs_filters = obs_filters
         self.rollout_provider = _env_runner(
             self.async_vector_env, self.policies, self.policy_mapping_fn,
-            self.num_local_steps, self.horizon, self._obs_filters, pack)
+            self.num_local_steps, self.horizon, self._obs_filters, pack,
+            tf_sess)
         self.metrics_queue = queue.Queue()
 
     def get_data(self):
@@ -68,7 +70,7 @@ class AsyncSampler(threading.Thread):
 
     def __init__(
             self, env, policies, policy_mapping_fn, obs_filters,
-            num_local_steps, horizon=None, pack=False):
+            num_local_steps, horizon=None, pack=False, tf_sess=None):
         for _, f in obs_filters.items():
             assert getattr(f, "is_concurrent", False), \
                 "Observation Filter must support concurrent updates."
@@ -83,6 +85,7 @@ class AsyncSampler(threading.Thread):
         self._obs_filters = obs_filters
         self.daemon = True
         self.pack = pack
+        self.tf_sess = tf_sess
 
     def run(self):
         try:
@@ -94,7 +97,8 @@ class AsyncSampler(threading.Thread):
     def _run(self):
         rollout_provider = _env_runner(
             self.async_vector_env, self.policies, self.policy_mapping_fn,
-            self.num_local_steps, self.horizon, self._obs_filters, self.pack)
+            self.num_local_steps, self.horizon, self._obs_filters, self.pack,
+            self.tf_sess)
         while True:
             # The timeout variable exists because apparently, if one worker
             # dies, the other workers won't die with it, unless the timeout is
@@ -140,7 +144,7 @@ class AsyncSampler(threading.Thread):
 
 def _env_runner(
         async_vector_env, policies, policy_mapping_fn, num_local_steps,
-        horizon, obs_filters, pack):
+        horizon, obs_filters, pack, tf_sess=None):
     """This implements the common experience collection logic.
 
     Args:
@@ -156,6 +160,8 @@ def _env_runner(
             observations for the policy.
         pack (bool): Whether to pack multiple episodes into each batch. This
             guarantees batches will be exactly `num_local_steps` in size.
+        tf_sess (Session|None): Optional tensorflow session to use for batching
+            TF policy evaluations.
 
     Yields:
         rollout (SampleBatch): Object containing state, action, reward,
@@ -192,6 +198,9 @@ def _env_runner(
         # Map of policy_id to list of PolicyEvalData
         to_eval = defaultdict(list)
 
+        # Map of env_id -> agent_id -> action replies
+        actions_to_send = defaultdict(dict)
+
         # For each environment
         for env_id, agent_obs in unfiltered_obs.items():
             new_episode = env_id not in active_episodes
@@ -209,11 +218,13 @@ def _env_runner(
                     dict(episode.agent_rewards))
             else:
                 all_done = False
+                # At least send an empty dict if not done
+                actions_to_send[env_id]
 
             # For each agent in the environment
             for agent_id, raw_obs in agent_obs.items():
                 policy_id = episode.policy_for(agent_id)
-                filtered_obs = obs_filters[policy_id](raw_obs)
+                filtered_obs = _get_or_raise(obs_filters, policy_id)(raw_obs)
                 agent_done = bool(all_done or dones[env_id].get(agent_id))
                 if not agent_done:
                     to_eval[policy_id].append(
@@ -263,24 +274,40 @@ def _env_runner(
                     episode = active_episodes[env_id]
                     for agent_id, raw_obs in resetted_obs.items():
                         policy_id = episode.policy_for(agent_id)
-                        filtered_obs = obs_filters[policy_id](raw_obs)
+                        filtered_obs = _get_or_raise(
+                            obs_filters, policy_id)(raw_obs)
                         episode.set_last_observation(agent_id, filtered_obs)
                         to_eval[policy_id].append(
                             PolicyEvalData(
                                 env_id, agent_id, filtered_obs,
                                 episode.rnn_state_for(agent_id)))
 
-        # Map of env_id -> agent_id -> action
-        action_dict = defaultdict(dict)
-
-        # TODO(ekl) fuse all policy evaluation into one TF run
+        # Batch eval policy actions if possible
+        if tf_sess:
+            builder = TFRunBuilder(tf_sess, "policy_eval")
+        else:
+            builder = None
+        eval_results = {}
+        rnn_in_cols = {}
         for policy_id, eval_data in to_eval.items():
-            rnn_in_cols = _to_column_format([t.rnn_state for t in eval_data])
-            actions, rnn_out_cols, pi_info_cols = \
-                policies[policy_id].compute_actions(
-                    [t.obs for t in eval_data], rnn_in_cols, is_training=True)
+            rnn_in = _to_column_format([t.rnn_state for t in eval_data])
+            rnn_in_cols[policy_id] = rnn_in
+            policy = _get_or_raise(policies, policy_id)
+            if builder:
+                eval_results[policy_id] = policy.build_compute_actions(
+                    builder, [t.obs for t in eval_data], rnn_in,
+                    is_training=True)
+            else:
+                eval_results[policy_id] = policy.compute_actions(
+                    [t.obs for t in eval_data], rnn_in, is_training=True)
+        if builder:
+            eval_results = {k: builder.get(v) for k, v in eval_results.items()}
+
+        # Record the policy eval results
+        for policy_id, eval_data in to_eval.items():
+            actions, rnn_out_cols, pi_info_cols = eval_results[policy_id]
             # Add RNN state info
-            for f_i, column in enumerate(rnn_in_cols):
+            for f_i, column in enumerate(rnn_in_cols[policy_id]):
                 pi_info_cols["state_in_{}".format(f_i)] = column
             for f_i, column in enumerate(rnn_out_cols):
                 pi_info_cols["state_out_{}".format(f_i)] = column
@@ -288,7 +315,7 @@ def _env_runner(
             for i, action in enumerate(actions):
                 env_id = eval_data[i].env_id
                 agent_id = eval_data[i].agent_id
-                action_dict[env_id][agent_id] = action
+                actions_to_send[env_id][agent_id] = action
                 episode = active_episodes[env_id]
                 episode.set_rnn_state(agent_id, [c[i] for c in rnn_out_cols])
                 episode.set_last_pi_info(
@@ -302,13 +329,21 @@ def _env_runner(
 
         # Return computed actions to ready envs. We also send to envs that have
         # taken off-policy actions; those envs are free to ignore the action.
-        async_vector_env.send_actions(dict(action_dict))
+        async_vector_env.send_actions(dict(actions_to_send))
 
 
 def _to_column_format(rnn_state_rows):
     num_cols = len(rnn_state_rows[0])
     return [
         [row[i] for row in rnn_state_rows] for i in range(num_cols)]
+
+
+def _get_or_raise(mapping, policy_id):
+    if policy_id not in mapping:
+        raise ValueError(
+            "Could not find policy for agent: agent policy id `{}` not "
+            "in policy map keys {}.".format(policy_id, mapping.keys()))
+    return mapping[policy_id]
 
 
 class _MultiAgentEpisode(object):
@@ -327,8 +362,10 @@ class _MultiAgentEpisode(object):
 
     def add_agent_rewards(self, reward_dict):
         for agent_id, reward in reward_dict.items():
-            self.agent_rewards[agent_id] += reward
-            self.total_reward += reward
+            if reward is not None:
+                self.agent_rewards[
+                    agent_id, self.policy_for(agent_id)] += reward
+                self.total_reward += reward
 
     def policy_for(self, agent_id):
         if agent_id not in self._agent_to_policy:

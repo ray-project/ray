@@ -5,6 +5,7 @@ from __future__ import print_function
 import tensorflow as tf
 import gym
 
+import ray
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.process_rollout import compute_advantages
 from ray.rllib.utils.tf_policy_graph import TFPolicyGraph
@@ -14,6 +15,7 @@ class A3CTFPolicyGraph(TFPolicyGraph):
     """The TF policy base class."""
 
     def __init__(self, ob_space, action_space, config):
+        config = dict(ray.rllib.a3c.a3c.DEFAULT_CONFIG, **config)
         self.local_steps = 0
         self.config = config
         self.summarize = config.get("summarize")
@@ -27,7 +29,7 @@ class A3CTFPolicyGraph(TFPolicyGraph):
         self.sess = tf.get_default_session()
 
         TFPolicyGraph.__init__(
-            self, self.sess, obs_input=self.x,
+            self, ob_space, action_space, self.sess, obs_input=self.x,
             action_sampler=self.action_dist.sample(), loss=self.loss,
             loss_inputs=self.loss_in, is_training=self.is_training,
             state_inputs=self.state_in, state_outputs=self.state_out)

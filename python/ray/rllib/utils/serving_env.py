@@ -35,6 +35,8 @@ class ServingEnv(threading.Thread):
     def __init__(self, action_space, observation_space, max_concurrent=100):
         """Initialize a serving env.
 
+        ServingEnv subclasses must call this during their __init__.
+
         Arguments:
             action_space (gym.Space): Action space of the env.
             observation_space (gym.Space): Observation space of the env.

@@ -9,7 +9,6 @@ import tensorflow as tf
 import ray
 from ray.rllib.optimizers.policy_evaluator import TFMultiGPUSupport
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
-from ray.rllib.optimizers.sample_batch import SampleBatch
 from ray.rllib.optimizers.multi_gpu_impl import LocalSyncParallelOptimizer
 from ray.rllib.utils.timer import TimerStat
 
@@ -90,7 +89,7 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
                                           self.timesteps_per_batch)
             else:
                 samples = self.local_evaluator.sample()
-            assert isinstance(samples, SampleBatch)
+            self._check_not_multiagent(samples)
 
             if postprocess_fn:
                 postprocess_fn(samples)
