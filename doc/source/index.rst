@@ -81,6 +81,7 @@ Ray comes with libraries that accelerate deep learning and reinforcement learnin
    rllib.rst
    rllib-training.rst
    rllib-env.rst
+   rllib-models.rst
    rllib-package-ref.rst
 
 .. toctree::

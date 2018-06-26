@@ -47,9 +47,9 @@ Algorithms
 
 Models and Preprocessors
 -------------------------------
-* Built-in Models and Preprocessors
-* Custom Models
-* Custom Preprocessors
+* `Built-in Models and Preprocessors <rllib-models.html#built-in-models-and-preprocessors>`__
+* `Custom Models <rllib-models.html#custom-models>`__
+* `Custom Preprocessors <rllib-models.html#custom-preprocessors>`__
 
 RL Building Blocks
 ------------------
