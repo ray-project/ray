@@ -20,7 +20,7 @@ class PlasmaEventLoopUsePoll(PlasmaSelectorEventLoop):
         super().__init__(self.selector, worker=ray.worker.global_worker)
 
     def __enter__(self):
-        self.set_debug(True)
+        self.set_debug(False)
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -33,7 +33,7 @@ class PlasmaEventLoopUseEpoll(PlasmaSelectorEventLoop):
         super().__init__(self.selector, worker=ray.worker.global_worker)
 
     def __enter__(self):
-        self.set_debug(True)
+        self.set_debug(False)
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -90,8 +90,7 @@ def default_hashflow_solution(inputs, stages, use_delay=False):
             node_inputs = [inputs[i] for i in node.parents]
             delay = node.delay if use_delay else None
             new_inputs.append(
-                calc_hashflow_remote.remote(node_inputs, delay=delay)
-            )
+                calc_hashflow_remote.remote(node_inputs, delay=delay))
         inputs = new_inputs
 
     return ray.get(inputs[0])
