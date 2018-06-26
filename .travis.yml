@@ -188,7 +188,7 @@ script:
   - python python/ray/common/redis_module/runtest.py
   - python python/ray/plasma/test/test.py
 
-  - (python -V | grep -q '2\.\d\.\d') || python python/ray/plasma/test/test_async.py  # python3 only
+  - python -c 'import sys;exit(sys.version_info>(3,2))' || python python/ray/plasma/test/test_async.py  # python3 only
   - python python/ray/local_scheduler/test/test.py
   - python python/ray/global_scheduler/test/test.py
 
