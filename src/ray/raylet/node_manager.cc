@@ -556,22 +556,13 @@ void NodeManager::ProcessClientMessage(
     auto message = flatbuffers::GetRoot<protocol::PushProfileEventsRequest>(message_data);
 
     for (size_t i = 0; i < message->profile_events()->size(); ++i) {
-      // auto profile_data = std::shared_ptr<ProfileTableDataT>(
-      //     const_cast<ProfileTableDataT *>(reinterpret_cast<const ProfileTableDataT *>(message->profile_events()->Get(i)))); // TODO(rkn): All of this casting has to go away.
-      // RAY_CHECK_OK(gcs_client_->profile_table().AddProfileEvent(profile_data));
-
+      // Parse the profile event.
       auto profile_data = message->profile_events()->Get(i);
       RAY_CHECK_OK(gcs_client_->profile_table().AddProfileEvent(
           string_from_flatbuf(*profile_data->event_type()),
           string_from_flatbuf(*profile_data->component_type()),
-          from_flatbuf(*profile_data->component_id()),
-          profile_data->start_time(),
-          profile_data->end_time(),
-          string_from_flatbuf(*profile_data->extra_data())));
-
-          // const std::string &event_type, const std::string &component_type,
-          //                        const UniqueID &component_id, double start_time,
-          //                        double end_time, const std::string &extra_data
+          from_flatbuf(*profile_data->component_id()), profile_data->start_time(),
+          profile_data->end_time(), string_from_flatbuf(*profile_data->extra_data())));
     }
   } break;
 

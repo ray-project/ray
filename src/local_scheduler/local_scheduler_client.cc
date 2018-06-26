@@ -323,18 +323,13 @@ void local_scheduler_push_error(LocalSchedulerConnection *conn,
                 fbb.GetSize(), fbb.GetBufferPointer());
 }
 
-void local_scheduler_push_profile_events(LocalSchedulerConnection *conn,
-                                         const std::vector<ray::protocol::ProfileTableDataT> &profile_events
-                                        // const std::string &event_type,
-                                        // const std::string &component_type,
-                                        // const UniqueID &component_id,
-                                        // double start_time,
-                                        // double end_time,
-                                        // const std::string &extra_data
-                                      ) {
+void local_scheduler_push_profile_events(
+    LocalSchedulerConnection *conn,
+    const std::vector<ray::protocol::ProfileTableDataT> &profile_events) {
   flatbuffers::FlatBufferBuilder fbb;
 
-  std::vector<flatbuffers::Offset<ray::protocol::ProfileTableData>> profile_data;
+  std::vector<flatbuffers::Offset<ray::protocol::ProfileTableData>>
+      profile_data;
   for (size_t i = 0; i < profile_events.size(); ++i) {
     // profile_data.push_back(
     const ray::protocol::ProfileTableDataT asdf = profile_events.at(i);

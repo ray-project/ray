@@ -464,14 +464,8 @@ class ProfileTable : private Log<UniqueID, ProfileTableData> {
   /// \param extra_data Additional data to associate with the event.
   /// \return Status.
   Status AddProfileEvent(const std::string &event_type, const std::string &component_type,
-                         const UniqueID &component_id, double start_time,
-                         double end_time, const std::string &extra_data);
-
-  /// Add an already-serialized profile event.
-  ///
-  /// \param profile_data A serialized profile data object.
-  /// \return Status.
-  Status AddProfileEvent(std::shared_ptr<ProfileTableDataT> &profile_data);
+                         const UniqueID &component_id, double start_time, double end_time,
+                         const std::string &extra_data);
 };
 
 using CustomSerializerTable = Table<ClassID, CustomSerializerData>;

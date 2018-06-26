@@ -1031,8 +1031,9 @@ class APITest(unittest.TestCase):
 
         @ray.remote
         def f():
-            with ray.profile("custom_event",
-                             extra_data={"name": "custom name"}) as ray_prof:
+            with ray.profile(
+                    "custom_event",
+                    extra_data={"name": "custom name"}) as ray_prof:
                 ray_prof.set_attribute("key", "value")
 
         ray.put(1)
@@ -1049,7 +1050,7 @@ class APITest(unittest.TestCase):
                 raise Exception("Timed out while waiting for information in "
                                 "profile table.")
             profile_data = ray.global_state.chrome_tracing_dump()
-            event_types = set([event["cat"] for event in profile_data])
+            event_types = {event["cat"] for event in profile_data}
             expected_types = [
                 "get_task",
                 "task",
@@ -1066,8 +1067,8 @@ class APITest(unittest.TestCase):
                 "custom_event",  # This is the custom one from ray.profile.
             ]
 
-            if all([expected_type in event_types
-                    for expected_type in expected_types]):
+            if all(expected_type in event_types
+                   for expected_type in expected_types):
                 break
 
     def testIdenticalFunctionNames(self):
@@ -2244,7 +2245,7 @@ class GlobalStateAPI(unittest.TestCase):
 
     @unittest.skipIf(
         os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
+        "This test does not work with xray (nor is it intended to).")
     def testTaskProfileAPI(self):
         ray.init(redirect_output=True)
 

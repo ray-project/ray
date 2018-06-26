@@ -309,7 +309,6 @@ static PyObject *PyLocalSchedulerClient_push_error(PyObject *self,
   Py_RETURN_NONE;
 }
 
-
 int PyBytes_or_PyUnicode_to_string(PyObject *py_string, std::string &out) {
   // Handle the case where the key is a bytes object and the case where it
   // is a unicode object.
@@ -318,9 +317,8 @@ int PyBytes_or_PyUnicode_to_string(PyObject *py_string, std::string &out) {
     out =
         std::string(PyBytes_AsString(ascii_string), PyBytes_Size(ascii_string));
     Py_DECREF(ascii_string);
-  } else if PyBytes_Check(py_string) {
-    out =
-        std::string(PyBytes_AsString(py_string), PyBytes_Size(py_string));
+  } else if (PyBytes_Check(py_string)) {
+    out = std::string(PyBytes_AsString(py_string), PyBytes_Size(py_string));
   } else {
     return -1;
   }
@@ -359,21 +357,24 @@ static PyObject *PyLocalSchedulerClient_push_profile_events(PyObject *self,
       // segfaults in the node manager.
 
       if (key_string == std::string("event_type")) {
-        if (PyBytes_or_PyUnicode_to_string(val, profile_event.event_type) == -1) {
+        if (PyBytes_or_PyUnicode_to_string(val, profile_event.event_type) ==
+            -1) {
           return NULL;
         }
         if (profile_event.event_type.size() == 0) {
           return NULL;
         }
       } else if (key_string == std::string("component_type")) {
-        if (PyBytes_or_PyUnicode_to_string(val, profile_event.component_type) == -1) {
+        if (PyBytes_or_PyUnicode_to_string(val, profile_event.component_type) ==
+            -1) {
           return NULL;
         }
         if (profile_event.component_type.size() == 0) {
           return NULL;
         }
       } else if (key_string == std::string("component_id")) {
-        if (PyBytes_or_PyUnicode_to_string(val, profile_event.component_id) == -1) {
+        if (PyBytes_or_PyUnicode_to_string(val, profile_event.component_id) ==
+            -1) {
           return NULL;
         }
         if (profile_event.component_id.size() == 0) {
@@ -384,7 +385,8 @@ static PyObject *PyLocalSchedulerClient_push_profile_events(PyObject *self,
       } else if (key_string == std::string("end_time")) {
         profile_event.end_time = PyFloat_AsDouble(val);
       } else if (key_string == std::string("extra_data")) {
-        if (PyBytes_or_PyUnicode_to_string(val, profile_event.extra_data) == -1) {
+        if (PyBytes_or_PyUnicode_to_string(val, profile_event.extra_data) ==
+            -1) {
           return NULL;
         }
         if (profile_event.extra_data.size() == 0) {

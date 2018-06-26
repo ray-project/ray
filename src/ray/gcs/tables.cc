@@ -207,18 +207,9 @@ Status ProfileTable::AddProfileEvent(const std::string &event_type,
   data->start_time = start_time;
   data->end_time = end_time;
   data->extra_data = extra_data;
-  return AddProfileEvent(data);
-  // return Append(JobID::nil(), component_id, data, [](ray::gcs::AsyncGcsClient *client,
-  //                                                    const JobID &id,
-  //                                                    const ProfileTableDataT &data) {
-  //   RAY_LOG(DEBUG) << "Profile message pushed callback";
-  // });
-}
-
-Status ProfileTable::AddProfileEvent(std::shared_ptr<ProfileTableDataT> &profile_data) {
-  return Append(JobID::nil(), JobID::from_binary(profile_data->component_id),
-                profile_data, [](ray::gcs::AsyncGcsClient *client, const JobID &id,
-                                 const ProfileTableDataT &data) {
+  return Append(JobID::nil(), component_id, data, [](ray::gcs::AsyncGcsClient *client,
+                                                     const JobID &id,
+                                                     const ProfileTableDataT &data) {
     RAY_LOG(DEBUG) << "Profile message pushed callback";
   });
 }
