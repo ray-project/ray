@@ -651,9 +651,11 @@ class GlobalState(object):
                     if (event[1] == "register_remote_function"
                             and event[2] == 2):
                         task_info[task_id]["import_remote_end"] = event[0]
-                    if event[1] == "task:deserialize_arguments" and event[2] == 1:
+                    if (event[1] == "task:deserialize_arguments"
+                            and event[2] == 1):
                         task_info[task_id]["get_arguments_start"] = event[0]
-                    if event[1] == "task:deserialize_arguments" and event[2] == 2:
+                    if (event[1] == "task:deserialize_arguments"
+                            and event[2] == 2):
                         task_info[task_id]["get_arguments_end"] = event[0]
                     if event[1] == "task:execute" and event[2] == 1:
                         task_info[task_id]["execute_start"] = event[0]
@@ -708,16 +710,16 @@ class GlobalState(object):
                     gcs_entries.Entries(i), 0))
 
             profile_event = {
-                "event_type":
-                profile_table_message.EventType().decode("ascii"),
-                "component_id":
-                binary_to_hex(profile_table_message.ComponentId()),
-                "component_type":
-                profile_table_message.ComponentType().decode("ascii"),
+                "event_type": profile_table_message.EventType().decode(
+                    "ascii"),
+                "component_id": binary_to_hex(
+                    profile_table_message.ComponentId()),
+                "component_type": profile_table_message.ComponentType().decode(
+                    "ascii"),
                 "start_time": profile_table_message.StartTime(),
                 "end_time": profile_table_message.EndTime(),
-                "extra_data":
-                json.loads(profile_table_message.ExtraData().decode("ascii")),
+                "extra_data": json.loads(
+                    profile_table_message.ExtraData().decode("ascii")),
             }
 
             profile_events.append(profile_event)
@@ -726,8 +728,8 @@ class GlobalState(object):
 
     def profile_table(self):
         if not self.use_raylet:
-            raise Exeption("This method is only supported in the raylet "
-                           "code path.")
+            raise Exception("This method is only supported in the raylet "
+                            "code path.")
 
         profile_table_keys = self.redis_client.keys(
             ray.gcs_utils.TablePrefix_PROFILE_string + "*")
@@ -736,11 +738,15 @@ class GlobalState(object):
             for key in profile_table_keys
         ]
 
-        return {binary_to_hex(component_id):
-                self._profile_table(binary_to_object_id(component_id))
-                for component_id in component_identifiers_binary}
+        return {
+            binary_to_hex(component_id): self._profile_table(
+                binary_to_object_id(component_id))
+            for component_id in component_identifiers_binary
+        }
 
-    def chrome_tracing_dump(self, include_task_data=False, filename=None,
+    def chrome_tracing_dump(self,
+                            include_task_data=False,
+                            filename=None,
                             open_browser=False):
         """Return a list of profiling events that can viewed as a timeline.
 
@@ -777,33 +783,49 @@ class GlobalState(object):
 
         # Colors are specified at
         # https://github.com/catapult-project/catapult/blob/master/tracing/tracing/base/color_scheme.html.  # noqa: E501
-        default_color_mapping = defaultdict(lambda: "generic_work", {
-            "get_task": "cq_build_abandoned",
-            "task": "rail_response",
-            "task:deserialize_arguments": "rail_load",
-            "task:execute": "rail_animation",
-            "task:store_outputs": "rail_idle",
-            "wait_for_function": "detailed_memory_dump",
-            "ray.get": "good",
-            "ray.put": "terrible",
-            "ray.wait": "vsync_highlight_color",
-            "submit_task": "background_memory_dump",
-            "fetch_and_run_function": "detailed_memory_dump",
-            "register_remote_function": "detailed_memory_dump",
-        })
+        default_color_mapping = defaultdict(
+            lambda: "generic_work", {
+                "get_task": "cq_build_abandoned",
+                "task": "rail_response",
+                "task:deserialize_arguments": "rail_load",
+                "task:execute": "rail_animation",
+                "task:store_outputs": "rail_idle",
+                "wait_for_function": "detailed_memory_dump",
+                "ray.get": "good",
+                "ray.put": "terrible",
+                "ray.wait": "vsync_highlight_color",
+                "submit_task": "background_memory_dump",
+                "fetch_and_run_function": "detailed_memory_dump",
+                "register_remote_function": "detailed_memory_dump",
+            })
+
+        def seconds_to_microseconds(time_in_seconds):
+            time_in_microseconds = 10**6 * time_in_seconds
+            return time_in_microseconds
 
         for component_id_hex, component_events in profile_table.items():
             for event in component_events:
                 new_event = {
-                    "cat": event["event_type"],  # The category of the event.
-                    "name": event["event_type"],  # The string displayed on the event.
-                    "pid": "TODO",  # The identifier for the group of rows that the event appears in. # TODO(rkn): Support this!!
-                    "tid": event["component_type"] + ":" + event["component_id"],  # The identifier for the row that the event appears in.
-                    "ts": 1000000 * event["start_time"],  # The start time in microseconds. # TODO(rkn): Fix the timing conversions.
-                    "dur": 1000000 * (event["end_time"] - event["start_time"]),  # The duration in microseconds.
-                    "ph": "X",  # This is ???
-                    "cname": default_color_mapping[event["event_type"]],  # This is the name of the color to display the box in.
-                    "args": event["extra_data"],  # The extra user-defined data.
+                    # The category of the event.
+                    "cat": event["event_type"],
+                    # The string displayed on the event.
+                    "name": event["event_type"],
+                    # The identifier for the group of rows that the event appears in. # TODO(rkn): Support this!!
+                    "pid": "TODO",
+                    # The identifier for the row that the event appears in.
+                    "tid": event["component_type"] + ":" +
+                    event["component_id"],
+                    # The start time in microseconds.
+                    "ts": seconds_to_microseconds(event["start_time"]),
+                    # The duration in microseconds.
+                    "dur": seconds_to_microseconds(event["end_time"] -
+                                                   event["start_time"]),
+                    # What is this?
+                    "ph": "X",
+                    # This is the name of the color to display the box in.
+                    "cname": default_color_mapping[event["event_type"]],
+                    # The extra user-defined data.
+                    "args": event["extra_data"],
                 }
 
                 # Modify the json with the additional user-defined extra data.

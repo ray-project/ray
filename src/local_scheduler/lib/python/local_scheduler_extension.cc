@@ -365,7 +365,6 @@ static PyObject *PyLocalSchedulerClient_push_profile_events(PyObject *self,
         if (profile_event.event_type.size() == 0) {
           return NULL;
         }
-        RAY_LOG(INFO) << "event type is " << profile_event.event_type;
       } else if (key_string == std::string("component_type")) {
         if (PyBytes_or_PyUnicode_to_string(val, profile_event.component_type) == -1) {
           return NULL;

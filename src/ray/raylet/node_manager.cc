@@ -561,14 +561,6 @@ void NodeManager::ProcessClientMessage(
       // RAY_CHECK_OK(gcs_client_->profile_table().AddProfileEvent(profile_data));
 
       auto profile_data = message->profile_events()->Get(i);
-
-      RAY_LOG(INFO) << "XXX 1: " << (long long)profile_data->event_type()
-                    << " 2: " << (long long)profile_data->component_type()
-                    << " 3: " << (long long)profile_data->component_id()
-                    << " 4: " << profile_data->start_time()
-                    << " 5: " << profile_data->end_time()
-                    << " 6: " << (long long)profile_data->extra_data();
-
       RAY_CHECK_OK(gcs_client_->profile_table().AddProfileEvent(
           string_from_flatbuf(*profile_data->event_type()),
           string_from_flatbuf(*profile_data->component_type()),

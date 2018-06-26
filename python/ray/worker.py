@@ -2082,8 +2082,8 @@ def import_thread(worker, mode):
                     # Handle the driver case first.
                     if mode != WORKER_MODE:
                         if key.startswith(b"FunctionsToRun"):
-                            with profile("fetch_and_run_function",
-                                         worker=worker):
+                            with profile(
+                                    "fetch_and_run_function", worker=worker):
                                 fetch_and_execute_function_to_run(
                                     key, worker=worker)
                         # Continue because FunctionsToRun are the only things
@@ -2550,26 +2550,29 @@ class RayLogSpan(object):
 
     def __enter__(self):
         """Log the beginning of a span event."""
-        _log(event_type=self.event_type,
-             contents=self.contents,
-             kind=LOG_SPAN_START,
-             worker=self.worker)
+        _log(
+            event_type=self.event_type,
+            contents=self.contents,
+            kind=LOG_SPAN_START,
+            worker=self.worker)
 
     def __exit__(self, type, value, tb):
         """Log the end of a span event. Log any exception that occurred."""
         if type is None:
-            _log(event_type=self.event_type,
-                 kind=LOG_SPAN_END,
-                 worker=self.worker)
+            _log(
+                event_type=self.event_type,
+                kind=LOG_SPAN_END,
+                worker=self.worker)
         else:
-            _log(event_type=self.event_type,
-                 contents={
-                     "type": str(type),
-                     "value": value,
-                     "traceback": traceback.format_exc()
-                 },
-                 kind=LOG_SPAN_END,
-                 worker=self.worker)
+            _log(
+                event_type=self.event_type,
+                contents={
+                    "type": str(type),
+                    "value": value,
+                    "traceback": traceback.format_exc()
+                },
+                kind=LOG_SPAN_END,
+                worker=self.worker)
 
 
 class RayLogSpanRaylet(object):
@@ -2624,13 +2627,14 @@ class RayLogSpanRaylet(object):
                 raise ValueError("The extra_data argument must be a "
                                  "dictionary mapping strings to strings.")
 
-        event = {"event_type": self.event_type,
-                 "component_type": component_type,
-                 "component_id": self.worker.worker_id,
-                 "start_time": self.start_time,
-                 "end_time": time.time(),
-                 "extra_data": json.dumps(self.extra_data),
-                }
+        event = {
+            "event_type": self.event_type,
+            "component_type": component_type,
+            "component_id": self.worker.worker_id,
+            "start_time": self.start_time,
+            "end_time": time.time(),
+            "extra_data": json.dumps(self.extra_data),
+        }
 
         if type is not None:
             event["extra_data"] = json.dumps({
@@ -2671,8 +2675,8 @@ def profile(event_type, extra_data=None, worker=global_worker):
     if not worker.use_raylet:
         return RayLogSpan(event_type, contents=extra_data, worker=worker)
     else:
-        return RayLogSpanRaylet(event_type, extra_data=extra_data,
-                                worker=worker)
+        return RayLogSpanRaylet(
+            event_type, extra_data=extra_data, worker=worker)
 
 
 def _log(event_type, kind, contents=None, worker=global_worker):
