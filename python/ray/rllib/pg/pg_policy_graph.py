@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import tensorflow as tf
 
+import ray
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.utils.postprocessing import compute_advantages
 from ray.rllib.utils.tf_policy_graph import TFPolicyGraph
@@ -16,6 +17,7 @@ class PGLoss(object):
 
 class PGPolicyGraph(TFPolicyGraph):
     def __init__(self, obs_space, action_space, config):
+        config = dict(ray.rllib.pg.pg.DEFAULT_CONFIG, **config)
         self.config = config
 
         # Setup policy
@@ -40,7 +42,7 @@ class PGPolicyGraph(TFPolicyGraph):
         ]
         self.is_training = tf.placeholder_with_default(True, ())
         TFPolicyGraph.__init__(
-            self, sess, obs_input=obs,
+            self, obs_space, action_space, sess, obs_input=obs,
             action_sampler=action_dist.sample(), loss=loss,
             loss_inputs=loss_in, is_training=self.is_training)
         sess.run(tf.global_variables_initializer())

@@ -284,14 +284,12 @@ class _MultiAgentEnvState(object):
         self.reset()
 
     def poll(self):
-        if self.last_obs is None:
-            raise ValueError("Need to send action after polling")
         obs, rew, dones, info = (
             self.last_obs, self.last_rewards, self.last_dones, self.last_infos)
-        self.last_obs = None
-        self.last_rewards = None
-        self.last_dones = None
-        self.last_infos = None
+        self.last_obs = {}
+        self.last_rewards = {}
+        self.last_dones = {"__all__": False}
+        self.last_infos = {}
         return obs, rew, dones, info
 
     def observe(self, obs, rewards, dones, infos):
