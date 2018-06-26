@@ -38,7 +38,7 @@ namespace gcs {
 // asynchronous redis call. It dispatches the appropriate callback
 // that was registered with the RedisCallbackManager.
 void GlobalRedisCallback(void *c, void *r, void *privdata) {
-  if (r == NULL) {
+  if (r == nullptr) {
     return;
   }
   int64_t callback_index = reinterpret_cast<int64_t>(privdata);
@@ -69,7 +69,7 @@ void GlobalRedisCallback(void *c, void *r, void *privdata) {
 }
 
 void SubscribeRedisCallback(void *c, void *r, void *privdata) {
-  if (r == NULL) {
+  if (r == nullptr) {
     return;
   }
   int64_t callback_index = reinterpret_cast<int64_t>(privdata);
@@ -139,7 +139,7 @@ static void GetRedisShards(redisContext *context, std::vector<std::string> *addr
                            std::vector<int> *ports) {
   // Get the total number of Redis shards in the system.
   int num_attempts = 0;
-  redisReply *reply = NULL;
+  redisReply *reply = nullptr;
   while (num_attempts < RayConfig::instance().redis_db_connect_retries()) {
     // Try to read the number of Redis shards from the primary shard. If the
     // entry is present, exit.
@@ -231,8 +231,6 @@ Status RedisContext::Connect(const std::string &address, int port, bool sharding
     std::vector<std::string> addresses;
     std::vector<int> ports;
     GetRedisShards(context_, &addresses, &ports);
-    RAY_CHECK(addresses.size() == 1);
-    RAY_CHECK(ports.size() == 1);
     redis_address = addresses[0];
     redis_port = ports[0];
   } else {
