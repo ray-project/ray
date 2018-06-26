@@ -137,7 +137,6 @@ class Worker(object):
 class ESAgent(agent.Agent):
     _agent_name = "ES"
     _default_config = DEFAULT_CONFIG
-    _allow_unknown_subkeys = ["env_config"]
 
     @classmethod
     def default_resource_request(cls, config):
