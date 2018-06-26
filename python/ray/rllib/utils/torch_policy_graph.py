@@ -21,6 +21,7 @@ class TorchPolicyGraph(PolicyGraph):
         observation_space (gym.Space): observation space of the policy.
         action_space (gym.Space): action space of the policy.
         lock (Lock): Lock that must be held around PyTorch ops on this graph.
+            This is necessary when using the async sampler.
     """
 
     def __init__(
