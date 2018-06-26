@@ -28,6 +28,7 @@ import ray.serialization as serialization
 import ray.services as services
 import ray.signature
 import ray.local_scheduler
+from ray.plasma import plasma_eventloop
 import ray.plasma
 import ray.ray_constants as ray_constants
 from ray.utils import random_string, binary_to_hex, is_cython
@@ -196,6 +197,8 @@ class Worker(object):
             that connect has been called already.
         cached_functions_to_run (List): A list of functions to run on all of
             the workers that should be exported as soon as connect is called.
+        eventloop (plasma.PlasmaSelectorEventLoop): A eventloop for async
+            operations.
     """
 
     def __init__(self):
@@ -231,6 +234,8 @@ class Worker(object):
         # When the worker is constructed. Record the original value of the
         # CUDA_VISIBLE_DEVICES environment variable.
         self.original_gpu_ids = ray.utils.get_cuda_visible_devices()
+
+        self.eventloop = None
 
     def check_connected(self):
         """Check if the worker is connected.
@@ -2609,7 +2614,15 @@ def flush_log(worker=global_worker):
     worker.events = []
 
 
-def get(object_ids, worker=global_worker):
+def _init_eventloop(worker=global_worker):
+    selector = plasma_eventloop.PlasmaEpoll(ray.worker.global_worker)
+    worker.eventloop = plasma_eventloop.PlasmaSelectorEventLoop(
+        selector,
+        worker=worker,
+    )
+
+
+def get(object_ids, worker=global_worker, blocking=True):
     """Get a remote object or a list of remote objects from the object store.
 
     This method blocks until the object corresponding to the object ID is
@@ -2633,6 +2646,17 @@ def get(object_ids, worker=global_worker):
             # In PYTHON_MODE, ray.get is the identity operation (the input will
             # actually be a value not an objectid).
             return object_ids
+
+        if not blocking:
+            import asyncio
+            if worker.eventloop is None:
+                _init_eventloop(worker)
+            future = asyncio.ensure_future(
+                worker.eventloop.get(object_ids),
+                loop=worker.eventloop,
+            )
+            return future
+
         if isinstance(object_ids, list):
             values = worker.get_object(object_ids)
             for i, value in enumerate(values):
@@ -2672,7 +2696,11 @@ def put(value, worker=global_worker):
         return object_id
 
 
-def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
+def wait(object_ids,
+         num_returns=1,
+         timeout=None,
+         blocking=True,
+         worker=global_worker):
     """Return a list of IDs that are ready and a list of IDs that are not.
 
     If timeout is set, the function returns either when the requested number of
@@ -2739,7 +2767,19 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
         if num_returns > len(object_ids):
             raise Exception("num_returns cannot be greater than the number "
                             "of objects provided to ray.wait.")
-        timeout = timeout if timeout is not None else 2**30
+        timeout = timeout if timeout is not None else 2 ** 30
+
+        if not blocking:
+            import asyncio
+            if worker.eventloop is None:
+                _init_eventloop(worker)
+            future = asyncio.ensure_future(
+                worker.eventloop.wait(
+                    object_ids, num_returns=num_returns, timeout=timeout),
+                loop=worker.eventloop,
+            )
+            return future
+
         if worker.use_raylet:
             ready_ids, remaining_ids = worker.local_scheduler_client.wait(
                 object_ids, num_returns, timeout, False)
