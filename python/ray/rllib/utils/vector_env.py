@@ -14,7 +14,7 @@ class VectorEnv(object):
     Attributes:
         action_space (gym.Space): Action space of individual envs.
         observation_space (gym.Space): Observation space of individual envs.
-        num_envs (int): Number of envs to batch over.
+        num_envs (int): Number of envs in this vector env.
     """
 
     @staticmethod

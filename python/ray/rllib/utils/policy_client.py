@@ -13,7 +13,7 @@ except ImportError:
 
 
 class PolicyClient(object):
-    """Client to interact with a RLlib policy server."""
+    """REST client to interact with a RLlib policy server."""
 
     START_EPISODE = "START_EPISODE"
     GET_ACTION = "GET_ACTION"
