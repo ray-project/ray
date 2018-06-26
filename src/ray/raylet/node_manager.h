@@ -69,15 +69,15 @@ class NodeManager {
                       const HeartbeatTableDataT &data);
 
   /// Methods for task scheduling.
-  /// Transition a placeable task to wait on object dependencies or ready for dispatch.
-  void TransitionPlaceableTask(const Task &task);
+  /// Enqueue a placeable task to wait on object dependencies or be ready for dispatch.
+  void EnqueuePlaceableTask(const Task &task);
   /// Handle specified task's submission to the local node manager.
   void SubmitTask(const Task &task, const Lineage &uncommitted_lineage, bool forwarded = false);
   /// Assign a task. The task is assumed to not be queued in local_queues_.
   void AssignTask(Task &task);
   /// Handle a worker finishing its assigned task.
   void FinishAssignedTask(Worker &worker);
-  /// Schedule tasks.
+  /// Perform a placement decision on placeable tasks.
   void ScheduleTasks();
   /// Resubmit a task whose return value needs to be reconstructed.
   void ResubmitTask(const TaskID &task_id);
@@ -118,7 +118,6 @@ class NodeManager {
   const SchedulingResources local_resources_;
   /// The resources (and specific resource IDs) that are currently available.
   ResourceIdSet local_available_resources_;
-  // TODO(atumanov): Add resource information from other nodes.
   std::unordered_map<ClientID, SchedulingResources> cluster_resource_map_;
   /// A pool of workers.
   WorkerPool worker_pool_;

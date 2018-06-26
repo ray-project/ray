@@ -30,10 +30,6 @@ const std::list<Task> &SchedulingQueue::GetBlockedTasks() const {
   return this->blocked_tasks_;
 }
 
-const std::list<Task> &SchedulingQueue::GetPlaceableMethods() const {
-  throw std::runtime_error("Method not implemented");
-}
-
 // Helper function to remove tasks in the given set of task_ids from a
 // queue, and append them to the given vector removed_tasks.
 void removeTasksFromQueue(std::list<Task> &queue, std::unordered_set<TaskID> &task_ids,
@@ -104,7 +100,7 @@ void SchedulingQueue::MoveTasks(std::unordered_set<TaskID> task_ids, TaskState s
     case RUNNING:
       queueTasks(running_tasks_, removed_tasks); break;
     default:
-      RAY_LOG(ERROR) << "Attempting to move tasks to the recognized state " << dst_state;
+      RAY_LOG(ERROR) << "Attempting to move tasks to unrecognized state " << dst_state;
   }
 }
 

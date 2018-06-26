@@ -48,12 +48,6 @@ class SchedulingQueue {
   /// dependencies local and that are waiting to be scheduled.
   const std::list<Task> &GetPlaceableTasks() const;
 
-  /// Get the queue of actor methods in the placeable state.
-  ///
-  /// \return A const reference to the queue of actor methods that have all
-  /// dependencies local and that are waiting to be scheduled.
-  const std::list<Task> &GetPlaceableMethods() const;
-
   /// Get the queue of tasks in the ready state.
   ///
   /// \return A const reference to the queue of tasks ready
