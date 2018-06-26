@@ -2639,8 +2639,8 @@ class RayLogSpanRaylet(object):
         if type is not None:
             event["extra_data"] = json.dumps({
                 "type": str(type),
-                "value": value,
-                "traceback": traceback.format_exc()
+                "value": str(value),
+                "traceback": str(traceback.format_exc()),
             })
 
         self.worker.events.append(event)
