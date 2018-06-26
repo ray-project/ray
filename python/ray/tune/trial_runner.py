@@ -368,11 +368,17 @@ class TrialRunner(object):
 
     def _update_avail_resources(self):
         clients = ray.global_state.client_table()
-        local_schedulers = [
-            entry for client in clients.values() for entry in client if
-            (entry['ClientType'] == 'local_scheduler' and not entry['Deleted'])
-        ]
-        num_cpus = sum(ls['CPU'] for ls in local_schedulers)
-        num_gpus = sum(ls.get('GPU', 0) for ls in local_schedulers)
+        if ray.worker.global_worker.use_raylet:
+            # TODO(rliaw): Remove once raylet flag is swapped
+            num_cpus = sum(cl['Resources']['CPU'] for cl in clients)
+            num_gpus = sum(cl['Resources'].get('GPU', 0) for cl in clients)
+        else:
+            local_schedulers = [
+                entry for client in clients.values() for entry in client if
+                (entry['ClientType'] == 'local_scheduler'
+                    and not entry['Deleted'])
+            ]
+            num_cpus = sum(ls['CPU'] for ls in local_schedulers)
+            num_gpus = sum(ls.get('GPU', 0) for ls in local_schedulers)
         self._avail_resources = Resources(int(num_cpus), int(num_gpus))
         self._resources_initialized = True
