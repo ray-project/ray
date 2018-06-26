@@ -2771,7 +2771,7 @@ def wait(object_ids,
         if num_returns > len(object_ids):
             raise Exception("num_returns cannot be greater than the number "
                             "of objects provided to ray.wait.")
-        timeout = timeout if timeout is not None else 2 ** 30
+        timeout = timeout if timeout is not None else 2**30
 
         if not blocking:
             import asyncio
