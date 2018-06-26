@@ -79,8 +79,9 @@ class PPOEvaluator(TFMultiGPUSupport):
         self.filters = {"obs_filter": self.obs_filter,
                         "rew_filter": self.rew_filter}
         self.sampler = SyncSampler(
-            self.env, self.common_policy, self.obs_filter,
-            self.config["horizon"], self.config["horizon"])
+            self.env, {"default": self.common_policy}, lambda _: "default",
+            {"default": self.obs_filter}, self.config["horizon"],
+            self.config["horizon"])
 
     def tf_loss_inputs(self):
         return self.inputs
