@@ -1,31 +1,60 @@
-Algorithms
-==========
+RLlib Algorithms
+================
 
 Ape-X Distributed Prioritized Experience Replay
 -----------------------------------------------
-- Ape-X Distributed Prioritized Experience Replay, including both `DQN <https://github.com/ray-project/ray/blob/master/python/ray/rllib/dqn/apex.py>`__ and `DDPG <https://github.com/ray-project/ray/blob/master/python/ray/rllib/ddpg/apex.py>`__ variants.
+[paper] [implementation]
+Ape-X variations of DQN and DDPG (APEX_DQN, APEX_DDPG in RLlib) use a single GPU learner and many CPU workers for experience collection. Experience collection can scale to hundreds of CPU workers due to the distributed prioritization of experience prior to storage in replay buffers.
+
+Tuned examples: PongNoFrameskip-v4
+
+Ape-X can significantly outperform DQN and A3C:
+{APEX figure}
 
 Asynchronous Advantage Actor-Critic
 -----------------------------------
-- Asynchronous Advantage Actor-Critic (`A3C <https://github.com/ray-project/ray/tree/master/python/ray/rllib/a3c>`__).
+[paper] [implementation]
+RLlib's A3C uses the AsyncGradientsOptimizer to apply gradients computed remotely on policy evaluation actors. It scales to up to 16-32 worker processes, depending on the environment. Both a TensorFlow (LSTM), and PyTorch version are available.
+
+Tuned examples: PongDeterministic-v4
 
 Deep Deterministic Policy Gradients
 -----------------------------------
-- Deep Deterministic Policy Gradients (`DDPG <https://github.com/ray-project/ray/tree/master/python/ray/rllib/ddpg>`__).
+[paper] [implementation]
+DDPG is implemented similarly to DQN (below). The algorithm can be scaled by increasing the number of workers, switching to AsyncGradientsOptimizer, or using Ape-X.
+
+Tuned examples:
 
 Deep Q Networks
 ---------------
-- Deep Q Networks (`DQN <https://github.com/ray-project/ray/tree/master/python/ray/rllib/dqn>`__).
+[paper] [implementation]
+RLlib DQN is implemented using the SyncReplayOptimizer. The algorithm can be scaled by increasing the number of workers, using the AsyncGradientsOptimizer for async DQN, or using Ape-X. Memory usage is reduced by compressing samples in the replay buffer with LZ4.
+
+Tuned examples:
 
 Evolution Strategies
 --------------------
-- Evolution Strategies (`ES <https://github.com/ray-project/ray/tree/master/python/ray/rllib/es>`__), as described in `this paper <https://arxiv.org/abs/1703.03864>`__.
+[paper] [implementation]
+Code here is adapted from https://github.com/openai/evolution-strategies-starter to execute in the distributed setting with Ray.
+
+Tuned examples: Humanoid-v0
+
+RLlib's ES implementation scales further and is faster than a reference Redis implementation:
+<benchmark>
 
 Policy Gradients
 ----------------
-- Policy Gradients (`PG <https://github.com/ray-project/ray/tree/master/python/ray/rllib/pg>`__).
+[paper] [implementation]
+We include a vanilla policy gradients implementation as an example algorithm. This is usually outperformed by PPO.
+
+Tuned examples:
 
 Proximal Policy Optimization
 ----------------------------
 
-- Proximal Policy Optimization (`PPO <https://github.com/ray-project/ray/tree/master/python/ray/rllib/ppo>`__) which is a proximal variant of `TRPO <https://arxiv.org/abs/1502.05477>`__.
+PPO's clipped objective supports multiple SGD passes over the same batch of experiences. RLlib's multi-GPU optimizer pins that data in GPU memory to avoid unnecessary transfers from host memory, substantially improving performance over a naive implementation. RLlib's PPO scales out using multiple workers for experience collection, and also with multiple GPUs for SGD.
+
+Tuned examples:
+
+RLlib's PPO is more cost effective and faster than a reference PPO implementation:
+<benchmark>

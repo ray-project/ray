@@ -37,13 +37,13 @@ Environments
 
 Algorithms
 ----------
-* Ape-X Distributed Prioritized Experience Replay
-* Asynchronous Advantage Actor-Critic
-* Deep Deterministic Policy Gradients
-* Deep Q Networks
-* Evolution Strategies
-* Policy Gradients
-* Proximal Policy Optimization
+* `Ape-X Distributed Prioritized Experience Replay <rllib-algorithms.html#ape-x-distributed-prioritized-experience-replay>`__
+* `Asynchronous Advantage Actor-Critic <rllib-algorithms.html#asynchronous-advantage-actor-critic>`__
+* `Deep Deterministic Policy Gradients <rllib-algorithms.html#deep-deterministic-policy-gradients>`__
+* `Deep Q Networks <rllib-algorithms.html#deep-q-networks>`__
+* `Evolution Strategies <rllib-algorithms.html#evolution-strategies>`__
+* `Policy Gradients <rllib-algorithms.html#policy-gradients>`__
+* `Proximal Policy Optimization <rllib-algorithms.html#proximal-policy-optimization>`__
 
 Models and Preprocessors
 -------------------------------

@@ -1,7 +1,7 @@
-Environments
-============
+RLlib Environments
+==================
 
-RLlib works with several different types of environments, including `OpenAI Gym <https://gym.openai.com/>`__, user-defined environments, multi-agent, and also batched simulators such as `ELF <https://github.com/facebookresearch/ELF>`__.
+RLlib works with several different types of environments, including `OpenAI Gym <https://gym.openai.com/>`__, user-defined, multi-agent, and also batched environments.
 
 In the high-level agent APIs, environments are identified with string names. By default, the string will be interpreted as a gym `environment name <https://gym.openai.com/envs>`__, however you can also register custom environments by name:
 
@@ -33,11 +33,11 @@ RLlib uses Gym as its environment interface for single-agent training. For more 
 
 There are two ways to scale experience collection with Gym environments:
 
-    1. **Vectorization within a single process:** Though many envs can very achieve high frame rates per core, their throughput is limited in practice by policy evaluation between steps. For example, even small TensorFlow models incur a couple milliseconds of latency to evaluate. This can be worked around by creating multiple envs per process, and batching policy evaluations across these envs.
+    1. **Vectorization within a single process:** Though many envs can very achieve high frame rates per core, their throughput is limited in practice by policy evaluation between steps. For example, even small TensorFlow models incur a couple milliseconds of latency to evaluate. This can be worked around by creating multiple envs per process and batching policy evaluations across these envs.
 
-      You can configure ``{"num_envs": M}`` to have RLlib create ``M`` simultaneously run environments per worker. RLlib auto-vectorizes Gym environments via `VectorEnv.wrap() <https://github.com/ray-project/ray/blob/master/python/ray/rllib/utils/vector_env.py>`__.
+      You can configure ``{"num_envs": M}`` to have RLlib create ``M`` concurrent environments per worker. RLlib auto-vectorizes Gym environments via `VectorEnv.wrap() <https://github.com/ray-project/ray/blob/master/python/ray/rllib/utils/vector_env.py>`__.
 
-    2. **Distribute across multiple processes:** You can also have RLlib create multiple processes (Ray actors) for experience collection. In most algorithms this can be controlled by setting the ``{"num_workers": N}`` config var.
+    2. **Distribute across multiple processes:** You can also have RLlib create multiple processes (Ray actors) for experience collection. In most algorithms this can be controlled by setting the ``{"num_workers": N}`` config.
 
 .. image:: throughput.png
 

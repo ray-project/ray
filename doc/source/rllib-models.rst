@@ -1,5 +1,5 @@
-Custom Models and Preprocessors
-===============================
+RLlib Models and Preprocessors
+==============================
 
 The following diagram provides a conceptual overview of data flow between different components in RLlib. We start with an ``Environment``, which given an action produces an observation. The observation is preprocessed by a ``Preprocessor`` and ``Filter`` (e.g. for running mean normalization) before being sent to a neural network ``Model``. The model output is in turn interpreted by an ``ActionDistribution`` to determine the next action.
 

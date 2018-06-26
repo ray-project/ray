@@ -1,5 +1,5 @@
-Training APIs
-=============
+RLlib Training APIs
+===================
 
 Getting Started
 ---------------
