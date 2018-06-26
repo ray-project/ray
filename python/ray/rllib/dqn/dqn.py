@@ -102,14 +102,18 @@ DEFAULT_CONFIG = {
     # Whether to use a distribution of epsilons across workers for exploration.
     "per_worker_exploration": False,
     # Whether to compute priorities on workers.
-    "worker_side_prioritization": False
+    "worker_side_prioritization": False,
+
+    # === Multiagent ===
+    "multiagent": {
+        "policy_graphs": {},
+        "policy_mapping_fn": None,
+    },
 }
 
 
 class DQNAgent(Agent):
     _agent_name = "DQN"
-    _allow_unknown_subkeys = [
-        "model", "optimizer", "tf_session_args", "env_config"]
     _default_config = DEFAULT_CONFIG
     _policy_graph = DQNPolicyGraph
 
@@ -125,7 +129,9 @@ class DQNAgent(Agent):
         adjusted_batch_size = (
             self.config["sample_batch_size"] + self.config["n_step"] - 1)
         self.local_evaluator = CommonPolicyEvaluator(
-            self.env_creator, self._policy_graph,
+            self.env_creator,
+            self.config["multiagent"]["policy_graphs"] or self._policy_graph,
+            policy_mapping_fn=self.config["multiagent"]["policy_mapping_fn"],
             batch_steps=adjusted_batch_size,
             batch_mode="truncate_episodes", preprocessor_pref="deepmind",
             compress_observations=True,
@@ -143,8 +149,9 @@ class DQNAgent(Agent):
                 compress_observations=True,
                 env_config=self.config["env_config"],
                 model_config=self.config["model"], policy_config=self.config,
-                num_envs=self.config["num_envs"])
-            for _ in range(self.config["num_workers"])]
+                num_envs=self.config["num_envs"],
+                worker_index=i+1)
+            for i in range(self.config["num_workers"])]
 
         self.exploration0 = self._make_exploration_schedule(0)
         self.explorations = [
@@ -185,7 +192,7 @@ class DQNAgent(Agent):
     def update_target_if_needed(self):
         if self.global_timestep - self.last_target_update_ts > \
                 self.config["target_network_update_freq"]:
-            self.local_evaluator.for_policy(lambda p: p.update_target())
+            self.local_evaluator.foreach_policy(lambda p, _: p.update_target())
             self.last_target_update_ts = self.global_timestep
             self.num_target_updates += 1
 
@@ -198,11 +205,11 @@ class DQNAgent(Agent):
             self.update_target_if_needed()
 
         exp_vals = [self.exploration0.value(self.global_timestep)]
-        self.local_evaluator.for_policy(
-            lambda p: p.set_epsilon(exp_vals[0]))
+        self.local_evaluator.foreach_policy(
+            lambda p, _: p.set_epsilon(exp_vals[0]))
         for i, e in enumerate(self.remote_evaluators):
             exp_val = self.explorations[i].value(self.global_timestep)
-            e.for_policy.remote(lambda p: p.set_epsilon(exp_val))
+            e.foreach_policy.remote(lambda p, _: p.set_epsilon(exp_val))
             exp_vals.append(exp_val)
 
         result = collect_metrics(

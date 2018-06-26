@@ -108,14 +108,18 @@ DEFAULT_CONFIG = {
     # Whether to use a distribution of epsilons across workers for exploration.
     "per_worker_exploration": False,
     # Whether to compute priorities on workers.
-    "worker_side_prioritization": False
+    "worker_side_prioritization": False,
+
+    # === Multiagent ===
+    "multiagent": {
+        "policy_graphs": {},
+        "policy_mapping_fn": None,
+    },
 }
 
 
 class DDPGAgent(DQNAgent):
     _agent_name = "DDPG"
-    _allow_unknown_subkeys = [
-        "model", "optimizer", "tf_session_args", "env_config"]
     _default_config = DEFAULT_CONFIG
     _policy_graph = DDPGPolicyGraph
 
