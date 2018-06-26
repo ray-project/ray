@@ -8,7 +8,7 @@ namespace gcs {
 
 AsyncGcsClient::AsyncGcsClient(const ClientID &client_id, CommandType command_type) {
   context_ = std::make_shared<RedisContext>();
-  client_table_.reset(new ClientTable(context_, this, client_id));
+  client_table_.reset(new ClientTable(auxiliary_context_, this, client_id));
   object_table_.reset(new ObjectTable(context_, this));
   actor_table_.reset(new ActorTable(context_, this));
   task_table_.reset(new TaskTable(context_, this, command_type));
@@ -36,6 +36,7 @@ AsyncGcsClient::AsyncGcsClient() : AsyncGcsClient(ClientID::from_random()) {}
 
 Status AsyncGcsClient::Connect(const std::string &address, int port, bool sharding) {
   RAY_RETURN_NOT_OK(context_->Connect(address, port, sharding));
+  RAY_RETURN_NOT_OK(auxiliary_context_->Connect(address, port, false));
   // TODO(swang): Call the client table's Connect() method here. To do this,
   // we need to make sure that we are attached to an event loop first. This
   // currently isn't possible because the aeEventLoop, which we use for
