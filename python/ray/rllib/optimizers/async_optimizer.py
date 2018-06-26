@@ -20,6 +20,9 @@ class AsyncOptimizer(PolicyOptimizer):
         self.dispatch_timer = TimerStat()
         self.grads_per_step = grads_per_step
         self.batch_size = batch_size
+        if not self.remote_evaluators:
+            raise ValueError(
+                "Async optimizer requires at least 1 remote evaluator")
 
     def step(self):
         weights = ray.put(self.local_evaluator.get_weights())
