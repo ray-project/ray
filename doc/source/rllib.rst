@@ -6,12 +6,12 @@ RLlib is an open-source library for reinforcement learning that offers both a co
 Installation
 ------------
 
-RLlib has extra dependencies on top of **ray**. First, you'll need to install either `PyTorch <http://pytorch.org/>`__ or `TensorFlow <https://www.tensorflow.org/TensorFlow>`__. Then, install the Ray RLlib module:
+RLlib has extra dependencies on top of ``ray``. First, you'll need to install either `PyTorch <http://pytorch.org/>`__ or `TensorFlow <https://www.tensorflow.org>`__. Then, install the Ray RLlib module:
 
 .. code-block:: bash
 
   pip install tensorflow  # or tensorflow-gpu
-  pip install 'ray[rllib]'
+  pip install ray[rllib]
 
 You might also want to clone the Ray repo for convenient access to RLlib helper scripts:
 
@@ -37,13 +37,13 @@ Environments
 
 Algorithms
 ----------
-* Ape-X Distributed Prioritized Experience Replay (APEX_DQN, APEX_DDPG)
-* Asynchronous Advantage Actor-Critic (A3C)
-* Deep Deterministic Policy Gradients (DDPG)
-* Deep Q Networks (DQN)
-* Evolution Strategies (ES)
-* Policy Gradients (PG)
-* Proximal Policy Optimization (PPO)
+* Ape-X Distributed Prioritized Experience Replay
+* Asynchronous Advantage Actor-Critic
+* Deep Deterministic Policy Gradients
+* Deep Q Networks
+* Evolution Strategies
+* Policy Gradients
+* Proximal Policy Optimization
 
 Models and Preprocessors
 -------------------------------

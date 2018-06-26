@@ -5,7 +5,7 @@ The following diagram provides a conceptual overview of data flow between differ
 
 .. image:: rllib-components.svg
 
-The components highlighted in green can be replaced with custom user-defined implementations, as described in the next sections. The purple components are *RLlib internal*, which means they can only be modified by changing the algorithm source code.
+The components highlighted in green can be replaced with custom user-defined implementations, as described in the next sections. The purple components are RLlib internal, which means they can only be modified by changing the algorithm source code.
 
 
 Built-in Models and Preprocessors
