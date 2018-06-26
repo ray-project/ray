@@ -1191,3 +1191,19 @@ class GlobalState(object):
             binary_to_hex(job_id): self._error_messages(ray.ObjectID(job_id))
             for job_id in job_ids
         }
+
+    def dump_task_timeline(self, file_name, num_tasks, start=None, end=None, fwd=True):
+        """Fetch a number of task profiles and dump them to a file
+
+        Args:
+            path: The filepath to dump the profiling information to.
+            num_tasks: A limit on the number of tasks that task_profiles will return.
+            start: The start point of the time window that is queried for tasks.
+            end: The end point in time of the time window that is queried for tasks.
+            fwd: If True, means that zrange will be used. If False, zrevrange.
+                This argument is only meaningful in conjunction with the
+                num_tasks argument. This controls whether the tasks returned
+                are the most recent or the least recent.
+        """
+        task_info = self.task_profiles(num_tasks, start, end, fwd)
+        self.dump_catapult_trace(file_name, task_info)

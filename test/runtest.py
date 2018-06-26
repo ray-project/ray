@@ -2295,9 +2295,7 @@ class GlobalStateAPI(unittest.TestCase):
         ray.get([actor.method.remote() for actor in actors])
 
         path = os.path.join("/tmp/ray_test_trace")
-        task_info = ray.global_state.task_profiles(
-            100, start=0, end=time.time())
-        ray.global_state.dump_catapult_trace(path, task_info)
+        ray.global_state.dump_task_timeline(path, 100, start=0, end=time.time())
 
         # TODO(rkn): This test is not perfect because it does not verify that
         # the visualization actually renders (e.g., the context of the dumped
