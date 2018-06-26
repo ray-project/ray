@@ -62,7 +62,6 @@ def gen_hashflow(seed, width, depth):
     return inputs, stages
 
 
-@ray.remote
 def calc_hashflow(inputs, delay=None):
     import time
     import hashlib
@@ -81,24 +80,33 @@ def calc_hashflow(inputs, delay=None):
 
 
 def default_hashflow_solution(inputs, stages, use_delay=False):
+    # forced to re-register the function
+    # because Ray may be re-init in another test
+    calc_hashflow_remote = ray.remote(calc_hashflow)
     inputs = list(map(ray.put, inputs))
     for i, stage in enumerate(stages):
         new_inputs = []
         for node in stage:
             node_inputs = [inputs[i] for i in node.parents]
             delay = node.delay if use_delay else None
-            new_inputs.append(calc_hashflow.remote(node_inputs, delay=delay))
+            new_inputs.append(
+                calc_hashflow_remote.remote(node_inputs, delay=delay)
+            )
         inputs = new_inputs
 
     return ray.get(inputs[0])
 
 
 def wait_and_solve(inputs, node, use_delay, loop):
+    # forced to re-register the function
+    # because Ray may be re-init in another test
+    calc_hashflow_remote = ray.remote(calc_hashflow)
+
     @asyncio.coroutine
     def _wait_and_solve(a_inputs):
         r_inputs = yield from a_inputs
         delay = node.delay if use_delay else None
-        return calc_hashflow.remote(r_inputs, delay=delay)
+        return calc_hashflow_remote.remote(r_inputs, delay=delay)
 
     return asyncio.ensure_future(_wait_and_solve(inputs), loop=loop)
 
