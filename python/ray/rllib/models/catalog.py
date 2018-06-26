@@ -16,6 +16,7 @@ from ray.rllib.models.action_dist import (
 from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.models.fcnet import FullyConnectedNetwork
 from ray.rllib.models.visionnet import VisionNetwork
+from ray.rllib.models.lstm import LSTM
 from ray.rllib.models.multiagentfcnet import MultiAgentFullyConnectedNetwork
 
 
@@ -31,6 +32,7 @@ MODEL_CONFIGS = [
     "free_log_std",  # Documented in ray.rllib.models.Model
     "channel_major",  # Pytorch conv requires images to be channel-major
     "squash_to_range",  # Whether to squash the action output to space range
+    "use_lstm",  # Whether to use a LSTM model
 
     # === Options for custom models ===
     "custom_preprocessor",  # Name of a custom preprocessor to use
@@ -147,6 +149,9 @@ class ModelCatalog(object):
             print("Using custom model {}".format(model))
             return _global_registry.get(RLLIB_MODEL, model)(
                 inputs, num_outputs, options)
+
+        if options.get("use_lstm"):
+            return LSTM(inputs, num_outputs, options)
 
         obs_rank = len(inputs.shape) - 1
 

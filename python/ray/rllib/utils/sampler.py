@@ -219,7 +219,7 @@ def _env_runner(
             else:
                 all_done = False
                 # At least send an empty dict if not done
-                actions_to_send[env_id]
+                actions_to_send[env_id] = {}
 
             # For each agent in the environment
             for agent_id, raw_obs in agent_obs.items():

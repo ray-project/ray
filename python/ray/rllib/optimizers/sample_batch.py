@@ -5,9 +5,15 @@ from __future__ import print_function
 import collections
 import numpy as np
 
-
 # Defaults policy id for single agent environments
 DEFAULT_POLICY_ID = "default"
+
+
+def to_float_array(v):
+    arr = np.array(v)
+    if arr.dtype == np.float64:
+        return arr.astype(np.float32)  # save some memory
+    return arr
 
 
 class SampleBatchBuilder(object):
@@ -38,7 +44,8 @@ class SampleBatchBuilder(object):
     def build_and_reset(self):
         """Returns a sample batch including all previously added values."""
 
-        batch = SampleBatch({k: np.array(v) for k, v in self.buffers.items()})
+        batch = SampleBatch(
+            {k: to_float_array(v) for k, v in self.buffers.items()})
         self.buffers.clear()
         self.count = 0
         return batch
