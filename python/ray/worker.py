@@ -2629,6 +2629,12 @@ def _init_eventloop(worker=global_worker):
     )
 
 
+def run_until_complete(future, worker=global_worker):
+    if worker.eventloop is None:
+        _init_eventloop(worker)
+    return worker.eventloop.run_until_complete(future)
+
+
 def get(object_ids, worker=global_worker, blocking=True):
     """Get a remote object or a list of remote objects from the object store.
 
