@@ -7,7 +7,7 @@ import os
 
 import ray
 from ray.rllib.agent import Agent
-from ray.rllib.optimizers import AsyncOptimizer
+from ray.rllib.optimizers import AsyncGradientsOptimizer
 from ray.rllib.utils import FilterManager
 from ray.rllib.utils.common_policy_evaluator import CommonPolicyEvaluator, \
     collect_metrics
