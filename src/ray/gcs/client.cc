@@ -58,7 +58,7 @@ Status AsyncGcsClient::Attach(boost::asio::io_service &io_service) {
   asio_async_auxiliary_client_.reset(
       new RedisAsioClient(io_service, auxiliary_context_->async_context()));
   asio_subscribe_auxiliary_client_.reset(
-          new RedisAsioClient(io_service, auxiliary_context_->subscribe_context()));
+      new RedisAsioClient(io_service, auxiliary_context_->subscribe_context()));
   return Status::OK();
 }
 
