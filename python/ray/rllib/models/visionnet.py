@@ -13,11 +13,7 @@ class VisionNetwork(Model):
     """Generic vision network."""
 
     def _build_layers(self, inputs, num_outputs, options):
-        filters = options.get("conv_filters", [
-            [16, [8, 8], 4],
-            [32, [4, 4], 2],
-            [512, [10, 10], 1],
-        ])
+        filters = options.get("conv_filters", get_filter_config(options))
 
         activation = get_activation_fn(options.get("conv_activation", "relu"))
 
@@ -33,3 +29,25 @@ class VisionNetwork(Model):
             fc2 = slim.conv2d(fc1, num_outputs, [1, 1], activation_fn=None,
                               normalizer_fn=None, scope="fc2")
             return tf.squeeze(fc2, [1, 2]), tf.squeeze(fc1, [1, 2])
+
+
+def get_filter_config(options):
+    filters_80x80 = [
+        [16, [8, 8], 4],
+        [32, [4, 4], 2],
+        [512, [10, 10], 1],
+    ]
+    filters_42x42 = [
+        [16, [4, 4], 2],
+        [32, [4, 4], 2],
+        [512, [11, 11], 1],
+    ]
+    dim = options.get("dim", 80)
+    if dim == 80:
+        return filters_80x80
+    elif dim == 42:
+        return filters_42x42
+    else:
+        raise ValueError(
+            "No default configuration for image size={}".format(dim) +
+            ", you must specify `conv_filters` manually as a model option.")
