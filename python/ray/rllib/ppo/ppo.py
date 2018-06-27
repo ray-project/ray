@@ -201,10 +201,13 @@ class PPOAgent(Agent):
         self.local_evaluator.restore(extra_data[0])
         ray.get([
             a.restore.remote(o)
-                for (a, o) in zip(self.remote_evaluators, extra_data[2])])
+                for (a, o) in zip(self.remote_evaluators, extra_data[1])])
 
-    def compute_action(self, observation):
-        observation = self.local_evaluator.obs_filter(
+    def compute_action(self, observation, state=None):
+        if state is None:
+            state = []
+        obs = self.local_evaluator.filters["default"](
             observation, update=False)
-        return self.local_evaluator.common_policy.compute_actions(
-            [observation], [], False)[0][0]
+        return self.local_evaluator.for_policy(
+            lambda p: p.compute_single_action(
+                obs, state, is_training=False)[0])
