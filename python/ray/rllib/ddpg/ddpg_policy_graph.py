@@ -26,7 +26,7 @@ class PNetwork(object):
     """Maps an observations (i.e., state) to an action where each entry takes
     value from (0, 1) due to the sigmoid function."""
 
-    def __init__(self, model, dim_actions, hiddens=[64, 64], activation='relu'):
+    def __init__(self, model, dim_actions, hiddens=[64, 64], activation="relu"):
         action_out = model.last_layer
         activation = tf.nn.__dict__[activation]
         for hidden in hiddens:
