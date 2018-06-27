@@ -358,7 +358,7 @@ LocalSchedulerState *LocalSchedulerState_init(
     db_attach(state->db, loop, false);
 
     RAY_CHECK_OK(state->gcs_client.Connect(std::string(redis_primary_addr),
-                                           redis_primary_port, true));
+                                           redis_primary_port, false));
     RAY_CHECK_OK(state->gcs_client.context()->AttachToEventLoop(loop));
   } else {
     state->db = NULL;
