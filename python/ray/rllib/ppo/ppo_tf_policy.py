@@ -5,7 +5,7 @@ from __future__ import print_function
 import tensorflow as tf
 
 from ray.rllib.models.catalog import ModelCatalog
-from ray.rllib.utils.process_rollout import compute_advantages
+from ray.rllib.utils.postprocessing import compute_advantages
 from ray.rllib.utils.tf_policy_graph import TFPolicyGraph
 
 
@@ -154,7 +154,8 @@ class PPOTFPolicyGraph(TFPolicyGraph):
         self.is_training = tf.placeholder_with_default(True, ())
 
         TFPolicyGraph.__init__(
-            self, self.sess, obs_input=obs_ph,
+            self, observation_space, action_space,
+            self.sess, obs_input=obs_ph,
             action_sampler=self.sampler, loss=self.loss_obj.loss,
             loss_inputs=self.loss_in,
             is_training=self.is_training)
@@ -188,7 +189,8 @@ class PPOTFPolicyGraph(TFPolicyGraph):
     def postprocess_trajectory(self, sample_batch, other_agent_batches=None):
         last_r = 0.0
         batch = compute_advantages(
-            sample_batch, last_r, self.config["gamma"], self.config["lambda"])
+            sample_batch, last_r, self.config["gamma"],
+            self.config["lambda"], use_gae=self.config["use_gae"])
         return batch
 
     def gradients(self, optimizer):
