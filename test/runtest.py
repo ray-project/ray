@@ -998,30 +998,26 @@ class APITest(unittest.TestCase):
 
         @ray.remote
         def test_log_span():
-            with ray.log_span("event_type2", contents={"key": "val"}):
+            with ray.profile("event_type2", extra_data={"key": "val"}):
                 pass
-
-        # Wait for the event to appear in the event log.
-        wait_for_num_events(1)
-        self.assertEqual(len(events()), 1)
 
         # Make sure that we can call ray.log_span in a remote function.
         ray.get(test_log_span.remote())
 
         # Wait for the events to appear in the event log.
-        wait_for_num_events(2)
-        self.assertEqual(len(events()), 2)
+        wait_for_num_events(1)
+        self.assertEqual(len(events()), 1)
 
         @ray.remote
         def test_log_span_exception():
-            with ray.log_span("event_type2", contents={"key": "val"}):
+            with ray.log_span("event_type2", extra_data={"key": "val"}):
                 raise Exception("This failed.")
 
         # Make sure that logging a span works if an exception is thrown.
         test_log_span_exception.remote()
         # Wait for the events to appear in the event log.
-        wait_for_num_events(3)
-        self.assertEqual(len(events()), 3)
+        wait_for_num_events(2)
+        self.assertEqual(len(events()), 2)
 
     @unittest.skipIf(
         os.environ.get("RAY_USE_XRAY") != "1",

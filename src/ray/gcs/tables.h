@@ -466,7 +466,8 @@ class ProfileTable : private Log<UniqueID, ProfileTableData> {
   /// \return Status.
   Status AddProfileEvent(const std::string &event_type, const std::string &component_type,
                          const UniqueID &component_id, const std::string &node_ip_address,
-                         double start_time, double end_time, const std::string &extra_data);
+                         double start_time, double end_time,
+                         const std::string &extra_data);
 };
 
 using CustomSerializerTable = Table<ClassID, CustomSerializerData>;

@@ -381,9 +381,8 @@ static PyObject *PyLocalSchedulerClient_push_profile_events(PyObject *self,
           return NULL;
         }
       } else if (key_string == std::string("node_ip_address")) {
-        if (PyBytes_or_PyUnicode_to_string(val,
-                                           profile_event.node_ip_address) ==
-            -1) {
+        if (PyBytes_or_PyUnicode_to_string(
+                val, profile_event.node_ip_address) == -1) {
           return NULL;
         }
         if (profile_event.node_ip_address.size() == 0) {
