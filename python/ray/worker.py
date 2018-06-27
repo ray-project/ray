@@ -1862,10 +1862,10 @@ def print_error_messages_raylet(worker):
     try:
         for msg in worker.error_message_pubsub_client.listen():
 
-            gcs_entry = state.GcsTableEntry.GetRootAsGcsTableEntry(
+            gcs_entry = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
                 msg["data"], 0)
             assert gcs_entry.EntriesLength() == 1
-            error_data = state.ErrorTableData.GetRootAsErrorTableData(
+            error_data = ray.gcs_utils.ErrorTableData.GetRootAsErrorTableData(
                 gcs_entry.Entries(0), 0)
             NIL_JOB_ID = 20 * b"\x00"
             job_id = error_data.JobId()

@@ -5,89 +5,125 @@ from __future__ import print_function
 import tensorflow as tf
 import gym
 
+import ray
 from ray.rllib.utils.error import UnsupportedSpaceException
-from ray.rllib.utils.process_rollout import compute_advantages
+from ray.rllib.utils.postprocessing import compute_advantages
 from ray.rllib.utils.tf_policy_graph import TFPolicyGraph
+from ray.rllib.models.misc import linear, normc_initializer
+from ray.rllib.models.catalog import ModelCatalog
 
 
-class A3CTFPolicyGraph(TFPolicyGraph):
-    """The TF policy base class."""
+class A3CLoss(object):
+    def __init__(
+            self, action_dist, actions, advantages, v_target, vf,
+            vf_loss_coeff=0.5, entropy_coeff=-0.01):
+        log_prob = action_dist.logp(actions)
 
-    def __init__(self, ob_space, action_space, config):
-        self.local_steps = 0
+        # The "policy gradients" loss
+        self.pi_loss = - tf.reduce_sum(log_prob * advantages)
+
+        delta = vf - v_target
+        self.vf_loss = 0.5 * tf.reduce_sum(tf.square(delta))
+        self.entropy = tf.reduce_sum(action_dist.entropy())
+        self.total_loss = (self.pi_loss +
+                           self.vf_loss * vf_loss_coeff +
+                           self.entropy * entropy_coeff)
+
+
+class A3CPolicyGraph(TFPolicyGraph):
+    def __init__(self, observation_space, action_space, config):
+        config = dict(ray.rllib.a3c.a3c.DEFAULT_CONFIG, **config)
         self.config = config
-        self.summarize = config.get("summarize")
-
-        self._setup_graph(ob_space, action_space)
-        assert all(hasattr(self, attr)
-                   for attr in ["vf", "logits", "x", "var_list"])
-        print("Setting up loss")
-        self.setup_loss(action_space)
-        self.is_training = tf.placeholder_with_default(True, ())
         self.sess = tf.get_default_session()
 
-        TFPolicyGraph.__init__(
-            self, self.sess, obs_input=self.x,
-            action_sampler=self.action_dist.sample(), loss=self.loss,
-            loss_inputs=self.loss_in, is_training=self.is_training,
-            state_inputs=self.state_in, state_outputs=self.state_out)
+        # Setup the policy
+        self.observations = tf.placeholder(
+            tf.float32, [None] + list(observation_space.shape))
+        dist_class, logit_dim = ModelCatalog.get_action_dist(
+            action_space, self.config["model"])
+        self.model = ModelCatalog.get_model(
+            self.observations, logit_dim, self.config["model"])
+        action_dist = dist_class(self.model.outputs)
+        self.vf = tf.reshape(
+            linear(self.model.last_layer, 1, "value", normc_initializer(1.0)),
+            [-1])
+        self.var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
+                                          tf.get_variable_scope().name)
+        is_training = tf.placeholder_with_default(True, ())
 
-        self.sess.run(tf.global_variables_initializer())
-
-        if self.summarize:
-            bs = tf.to_float(tf.shape(self.x)[0])
-            tf.summary.scalar("model/policy_graph", self.pi_loss / bs)
-            tf.summary.scalar("model/value_loss", self.vf_loss / bs)
-            tf.summary.scalar("model/entropy", self.entropy / bs)
-            tf.summary.scalar("model/grad_gnorm", tf.global_norm(self._grads))
-            tf.summary.scalar("model/var_gnorm", tf.global_norm(self.var_list))
-            self.summary_op = tf.summary.merge_all()
-
-    def _setup_graph(self, ob_space, ac_space):
-        raise NotImplementedError
-
-    def setup_loss(self, action_space):
+        # Setup the policy loss
         if isinstance(action_space, gym.spaces.Box):
             ac_size = action_space.shape[0]
-            self.ac = tf.placeholder(tf.float32, [None, ac_size], name="ac")
+            actions = tf.placeholder(tf.float32, [None, ac_size], name="ac")
         elif isinstance(action_space, gym.spaces.Discrete):
-            self.ac = tf.placeholder(tf.int64, [None], name="ac")
+            actions = tf.placeholder(tf.int64, [None], name="ac")
         else:
             raise UnsupportedSpaceException(
                 "Action space {} is not supported for A3C.".format(
                     action_space))
-        self.adv = tf.placeholder(tf.float32, [None], name="adv")
-        self.r = tf.placeholder(tf.float32, [None], name="r")
+        advantages = tf.placeholder(tf.float32, [None], name="advantages")
+        v_target = tf.placeholder(tf.float32, [None], name="v_target")
+        self.loss = A3CLoss(
+            action_dist, actions, advantages, v_target, self.vf,
+            self.config["vf_loss_coeff"], self.config["entropy_coeff"])
 
-        log_prob = self.action_dist.logp(self.ac)
+        # Initialize TFPolicyGraph
+        loss_in = [
+            ("obs", self.observations),
+            ("actions", actions),
+            ("advantages", advantages),
+            ("value_targets", v_target),
+        ]
+        for i, ph in enumerate(self.model.state_in):
+            loss_in.append(("state_in_{}".format(i), ph))
+        self.state_in = self.model.state_in
+        self.state_out = self.model.state_out
+        TFPolicyGraph.__init__(
+            self, observation_space, action_space, self.sess,
+            obs_input=self.observations, action_sampler=action_dist.sample(),
+            loss=self.loss.total_loss, loss_inputs=loss_in,
+            is_training=is_training, state_inputs=self.state_in,
+            state_outputs=self.state_out)
 
-        # The "policy gradients" loss: its derivative is precisely the policy
-        # gradient. Notice that self.ac is a placeholder that is provided
-        # externally. adv will contain the advantages, as calculated in
-        # compute_advantages.
-        self.pi_loss = - tf.reduce_sum(log_prob * self.adv)
+        if self.config.get("summarize"):
+            bs = tf.to_float(tf.shape(self.observations)[0])
+            tf.summary.scalar("model/policy_graph", self.loss.pi_loss / bs)
+            tf.summary.scalar("model/value_loss", self.loss.vf_loss / bs)
+            tf.summary.scalar("model/entropy", self.loss.entropy / bs)
+            tf.summary.scalar("model/grad_gnorm", tf.global_norm(self._grads))
+            tf.summary.scalar("model/var_gnorm", tf.global_norm(self.var_list))
+            self.summary_op = tf.summary.merge_all()
 
-        delta = self.vf - self.r
-        self.vf_loss = 0.5 * tf.reduce_sum(tf.square(delta))
-        self.entropy = tf.reduce_sum(self.action_dist.entropy())
-        self.loss = (self.pi_loss +
-                     self.vf_loss * self.config["vf_loss_coeff"] +
-                     self.entropy * self.config["entropy_coeff"])
+        self.sess.run(tf.global_variables_initializer())
+
+    def extra_compute_action_fetches(self):
+        return {"vf_preds": self.vf}
+
+    def value(self, ob, *args):
+        feed_dict = {self.observations: [ob]}
+        assert len(args) == len(self.state_in), (args, self.state_in)
+        for k, v in zip(self.state_in, args):
+            feed_dict[k] = v
+        vf = self.sess.run(self.vf, feed_dict)
+        return vf[0]
 
     def optimizer(self):
         return tf.train.AdamOptimizer(self.config["lr"])
 
     def gradients(self, optimizer):
-        grads = tf.gradients(self.loss, self.var_list)
+        grads = tf.gradients(self.loss.total_loss, self.var_list)
         self.grads, _ = tf.clip_by_global_norm(grads, self.config["grad_clip"])
         clipped_grads = list(zip(self.grads, self.var_list))
         return clipped_grads
 
     def extra_compute_grad_fetches(self):
-        if self.summarize:
+        if self.config.get("summarize"):
             return {"summary": self.summary_op}
         else:
             return {}
+
+    def get_initial_state(self):
+        return self.model.state_init
 
     def postprocess_trajectory(self, sample_batch, other_agent_batches=None):
         completed = sample_batch["dones"][-1]

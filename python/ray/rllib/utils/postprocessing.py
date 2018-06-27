@@ -23,7 +23,8 @@ def compute_advantages(rollout, last_r, gamma, lambda_=1.0, use_gae=True):
 
     Returns:
         SampleBatch (SampleBatch): Object with experience from rollout and
-            processed rewards."""
+            processed rewards.
+    """
 
     traj = {}
     trajsize = len(rollout["actions"])
@@ -37,13 +38,14 @@ def compute_advantages(rollout, last_r, gamma, lambda_=1.0, use_gae=True):
         # This formula for the advantage comes
         # "Generalized Advantage Estimation": https://arxiv.org/abs/1506.02438
         traj["advantages"] = discount(delta_t, gamma * lambda_)
-        traj["value_targets"] = traj["advantages"] + traj["vf_preds"]
+        traj["value_targets"] = (
+            traj["advantages"] + traj["vf_preds"]).copy().astype(np.float32)
     else:
         rewards_plus_v = np.concatenate(
             [rollout["rewards"], np.array([last_r])])
         traj["advantages"] = discount(rewards_plus_v, gamma)[:-1]
 
-    traj["advantages"] = traj["advantages"].copy()
+    traj["advantages"] = traj["advantages"].copy().astype(np.float32)
 
     assert all(val.shape[0] == trajsize for val in traj.values()), \
         "Rollout stacked incorrectly!"

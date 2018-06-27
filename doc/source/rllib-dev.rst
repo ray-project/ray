@@ -68,7 +68,6 @@ Algorithms share neural network models which inherit from the following class:
 Currently we support fully connected and convolutional TensorFlow policies on all algorithms:
 
 .. autoclass:: ray.rllib.models.FullyConnectedNetwork
-.. autoclass:: ray.rllib.models.ConvolutionalNetwork
 
 A3C also supports a TensorFlow LSTM policy.
 

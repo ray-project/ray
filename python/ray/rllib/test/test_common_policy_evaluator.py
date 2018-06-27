@@ -11,7 +11,7 @@ from ray.rllib.pg import PGAgent
 from ray.rllib.utils.common_policy_evaluator import CommonPolicyEvaluator, \
     collect_metrics
 from ray.rllib.utils.policy_graph import PolicyGraph
-from ray.rllib.utils.process_rollout import compute_advantages
+from ray.rllib.utils.postprocessing import compute_advantages
 from ray.rllib.utils.vector_env import VectorEnv
 from ray.tune.registry import register_env
 
@@ -46,6 +46,22 @@ class MockEnv(gym.Env):
     def step(self, action):
         self.i += 1
         return 0, 1, self.i >= self.episode_length, {}
+
+
+class MockEnv2(gym.Env):
+    def __init__(self, episode_length):
+        self.episode_length = episode_length
+        self.i = 0
+        self.observation_space = gym.spaces.Discrete(100)
+        self.action_space = gym.spaces.Discrete(2)
+
+    def reset(self):
+        self.i = 0
+        return self.i
+
+    def step(self, action):
+        self.i += 1
+        return self.i, 100, self.i >= self.episode_length, {}
 
 
 class MockVectorEnv(VectorEnv):
