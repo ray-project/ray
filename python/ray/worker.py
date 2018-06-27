@@ -34,8 +34,8 @@ from ray.utils import random_string, binary_to_hex, is_cython
 
 try:
     from ray.plasma import plasma_eventloop
-except:
-    print("Async functions only support python version > 3.2")
+except Exception:
+    pass
 
 SCRIPT_MODE = 0
 WORKER_MODE = 1
@@ -2619,6 +2619,9 @@ def flush_log(worker=global_worker):
 
 
 def _init_eventloop(worker=global_worker):
+    assert 'plasma_eventloop' in globals(), \
+        "Async functions only support python version > 3.2"
+
     selector = plasma_eventloop.PlasmaEpoll(ray.worker.global_worker)
     worker.eventloop = plasma_eventloop.PlasmaSelectorEventLoop(
         selector,
