@@ -139,7 +139,10 @@ class A3CAgent(Agent):
         self.optimizer.step()
         FilterManager.synchronize(
             self.local_evaluator.filters, self.remote_evaluators)
-        return collect_metrics(self.local_evaluator, self.remote_evaluators)
+        result = collect_metrics(self.local_evaluator, self.remote_evaluators)
+        result = result._replace(
+            info=self.optimizer.stats())
+        return result
 
     def _stop(self):
         # workaround for https://github.com/ray-project/ray/issues/1516
