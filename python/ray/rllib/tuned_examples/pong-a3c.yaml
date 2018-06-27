@@ -1,3 +1,5 @@
+# This gets to ~19 reward in ~30 minutes / 4m steps on a m4.10xl instance
+# TODO(rliaw): this has regressed from previously taking ~12 minutes
 pong-a3c:
     env: PongDeterministic-v4
     run: A3C
@@ -18,6 +20,12 @@ pong-a3c:
             dim: 42
             grayscale: true
             zero_mean: false
-            channel_major: false
+            # Reduced channel depth and kernel size from default
+            conv_filters: [
+                [32, [3, 3], 2],
+                [32, [3, 3], 2],
+                [32, [3, 3], 2],
+                [32, [3, 3], 2],
+            ]
         optimizer:
             grads_per_step: 1000

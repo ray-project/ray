@@ -6,7 +6,7 @@ import tensorflow as tf
 import tensorflow.contrib.slim as slim
 
 from ray.rllib.models.model import Model
-from ray.rllib.models.misc import get_activation_fn
+from ray.rllib.models.misc import get_activation_fn, flatten
 
 
 class VisionNetwork(Model):
@@ -28,7 +28,7 @@ class VisionNetwork(Model):
                 activation_fn=activation, padding="VALID", scope="fc1")
             fc2 = slim.conv2d(fc1, num_outputs, [1, 1], activation_fn=None,
                               normalizer_fn=None, scope="fc2")
-            return tf.squeeze(fc2, [1, 2]), tf.squeeze(fc1, [1, 2])
+            return flatten(fc2), flatten(fc1)
 
 
 def get_filter_config(options):
