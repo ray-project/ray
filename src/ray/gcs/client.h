@@ -36,6 +36,7 @@ class RAY_EXPORT AsyncGcsClient {
   ///
   /// \param address The GCS IP address.
   /// \param port The GCS port.
+  /// \param sharding If true, use sharded redis for the GCS.
   /// \return Status.
   Status Connect(const std::string &address, int port, bool sharding);
   /// Attach this client to a plasma event loop. Note that only
