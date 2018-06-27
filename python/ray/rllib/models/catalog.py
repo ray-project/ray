@@ -23,7 +23,7 @@ from ray.rllib.models.multiagentfcnet import MultiAgentFullyConnectedNetwork
 MODEL_CONFIGS = [
     # === Built-in options ===
     "conv_filters",  # Number of filters
-    "conv_activation", # Nonlinearity for CNN (relu, elu)
+    "conv_activation",  # Nonlinearity for CNN (relu, elu)
     "dim",  # Dimension for ATARI
     "grayscale",  # Converts ATARI frame to 1 Channel Grayscale image
     "zero_mean",  # Changes frame to range from [-1, 1] if true
