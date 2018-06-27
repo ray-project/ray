@@ -14,7 +14,7 @@ from ray.rllib.utils.common_policy_evaluator import (
     CommonPolicyEvaluator, collect_metrics)
 from ray.rllib.utils import FilterManager
 from ray.rllib.ppo.ppo_tf_policy import PPOTFPolicyGraph
-from ray.rllib.optimizers.multi_gpu import LocalMultiGPUOptimizer
+from ray.rllib.optimizers.multi_gpu_optimizer import LocalMultiGPUOptimizer
 
 DEFAULT_CONFIG = {
     # Discount factor of the MDP
@@ -89,7 +89,6 @@ DEFAULT_CONFIG = {
 
 class PPOAgent(Agent):
     _agent_name = "PPO"
-    _allow_unknown_subkeys = ["model", "tf_session_args", "env_config"]
     _default_config = DEFAULT_CONFIG
     _default_policy_graph = PPOTFPolicyGraph
 

@@ -7,7 +7,7 @@ from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.utils.timer import TimerStat
 
 
-class AsyncOptimizer(PolicyOptimizer):
+class AsyncGradientsOptimizer(PolicyOptimizer):
     """An asynchronous RL optimizer, e.g. for implementing A3C.
 
     This optimizer asynchronously pulls and applies gradients from remote
@@ -20,6 +20,9 @@ class AsyncOptimizer(PolicyOptimizer):
         self.dispatch_timer = TimerStat()
         self.grads_per_step = grads_per_step
         self.batch_size = batch_size
+        if not self.remote_evaluators:
+            raise ValueError(
+                "Async optimizer requires at least 1 remote evaluator")
 
     def step(self):
         weights = ray.put(self.local_evaluator.get_weights())

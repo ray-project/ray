@@ -22,22 +22,44 @@ class VectorEnv(object):
         return _VectorizedGymEnv(make_env, existing_envs or [], num_envs)
 
     def vector_reset(self):
+        """Resets all environments.
+
+        Returns:
+            obs (list): Vector of observations from each environment.
+        """
         raise NotImplementedError
 
     def reset_at(self, index):
+        """Resets a single environment.
+
+        Returns:
+            obs (obj): Observations from the resetted environment.
+        """
         raise NotImplementedError
 
     def vector_step(self, actions):
+        """Vectorized step.
+
+        Arguments:
+            actions (list): Actions for each env.
+
+        Returns:
+            obs (list): New observations for each env.
+            rewards (list): Reward values for each env.
+            dones (list): Done values for each env.
+            infos (list): Info values for each env.
+        """
         raise NotImplementedError
 
     def get_unwrapped(self):
+        """Returns a single instance of the underlying env."""
         raise NotImplementedError
 
 
 class _VectorizedGymEnv(VectorEnv):
     """Internal wrapper for gym envs to implement VectorEnv.
 
-    Arguents:
+    Arguments:
         make_env (func|None): Factory that produces a new gym env. Must be
             defined if the number of existing envs is less than num_envs.
         existing_envs (list): List of existing gym envs.

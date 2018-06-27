@@ -2,9 +2,8 @@ pong-a3c:
     env: PongDeterministic-v4
     run: A3C
     config:
-        num_workers: 16
+        num_workers: 1
         batch_size: 20
-        use_lstm: true
         use_pytorch: false
         vf_loss_coeff: 0.5
         entropy_coeff: -0.01
@@ -15,6 +14,7 @@ pong-a3c:
         observation_filter: NoFilter
         reward_filter: NoFilter
         model:
+            use_lstm: true
             channel_major: false
             dim: 42
             grayscale: true
