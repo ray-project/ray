@@ -12,7 +12,7 @@ import ray
 from ray.rllib.dqn import DQNAgent
 from ray.rllib.pg import PGAgent
 from ray.rllib.utils.common_policy_evaluator import CommonPolicyEvaluator
-from ray.rllib.utils.serving_env import ServingEnv
+from ray.rllib.envs.serving_env import ServingEnv
 from ray.rllib.test.test_common_policy_evaluator import BadPolicyGraph, \
     MockPolicyGraph, MockEnv
 from ray.tune.registry import register_env

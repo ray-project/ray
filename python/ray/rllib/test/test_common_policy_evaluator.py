@@ -12,7 +12,7 @@ from ray.rllib.utils.common_policy_evaluator import CommonPolicyEvaluator, \
     collect_metrics
 from ray.rllib.utils.policy_graph import PolicyGraph
 from ray.rllib.utils.postprocessing import compute_advantages
-from ray.rllib.utils.vector_env import VectorEnv
+from ray.rllib.envs.vector_env import VectorEnv
 from ray.tune.registry import register_env
 
 

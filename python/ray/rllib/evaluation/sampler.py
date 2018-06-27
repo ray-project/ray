@@ -7,9 +7,9 @@ import numpy as np
 import six.moves.queue as queue
 import threading
 
-from ray.rllib.optimizers.sample_batch import MultiAgentSampleBatchBuilder, \
+from ray.rllib.evaluation.sample_batch import MultiAgentSampleBatchBuilder, \
     MultiAgentBatch
-from ray.rllib.utils.async_vector_env import AsyncVectorEnv
+from ray.rllib.envs.async_vector_env import AsyncVectorEnv
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 
 

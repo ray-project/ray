@@ -3,7 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import ray
-from ray.rllib.optimizers.sample_batch import MultiAgentBatch
+from ray.rllib.evaluation.sample_batch import MultiAgentBatch
 
 
 class PolicyOptimizer(object):

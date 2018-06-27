@@ -10,67 +10,33 @@ import tensorflow as tf
 
 import ray
 from ray.rllib.models import ModelCatalog
-from ray.rllib.optimizers.policy_evaluator import PolicyEvaluator
-from ray.rllib.optimizers.sample_batch import MultiAgentBatch, \
+from ray.rllib.envs.async_vector_env import AsyncVectorEnv
+from ray.rllib.envs.atari_wrappers import wrap_deepmind, is_atari
+from ray.rllib.envs.env_context import EnvContext
+from ray.rllib.envs.serving_env import ServingEnv
+from ray.rllib.envs.vector_env import VectorEnv
+from ray.rllib.envs.multi_agent_env import MultiAgentEnv
+from ray.rllib.evaluation.interface import PolicyEvaluator
+from ray.rllib.evaluation.sample_batch import MultiAgentBatch, \
     DEFAULT_POLICY_ID
-from ray.rllib.utils.async_vector_env import AsyncVectorEnv
-from ray.rllib.utils.atari_wrappers import wrap_deepmind, is_atari
+from ray.rllib.evaluation.sampler import AsyncSampler, SyncSampler
 from ray.rllib.utils.compression import pack
-from ray.rllib.utils.env_context import EnvContext
 from ray.rllib.utils.filter import get_filter
-from ray.rllib.utils.multi_agent_env import MultiAgentEnv
 from ray.rllib.utils.policy_graph import PolicyGraph
-from ray.rllib.utils.sampler import AsyncSampler, SyncSampler
-from ray.rllib.utils.serving_env import ServingEnv
 from ray.rllib.utils.tf_policy_graph import TFPolicyGraph
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
-from ray.rllib.utils.vector_env import VectorEnv
 from ray.tune.result import TrainingResult
 
 
-def collect_metrics(local_evaluator, remote_evaluators=[]):
-    """Gathers episode metrics from CommonPolicyEvaluator instances."""
-
-    episode_rewards = []
-    episode_lengths = []
-    policy_rewards = collections.defaultdict(list)
-    metric_lists = ray.get(
-        [a.apply.remote(lambda ev: ev.sampler.get_metrics())
-         for a in remote_evaluators])
-    metric_lists.append(local_evaluator.sampler.get_metrics())
-    for metrics in metric_lists:
-        for episode in metrics:
-            episode_lengths.append(episode.episode_length)
-            episode_rewards.append(episode.episode_reward)
-            for (_, policy_id), reward in episode.agent_rewards.items():
-                policy_rewards[policy_id].append(reward)
-    if episode_rewards:
-        min_reward = min(episode_rewards)
-        max_reward = max(episode_rewards)
-    else:
-        min_reward = float('nan')
-        max_reward = float('nan')
-    avg_reward = np.mean(episode_rewards)
-    avg_length = np.mean(episode_lengths)
-    timesteps = np.sum(episode_lengths)
-
-    for policy_id, rewards in policy_rewards.copy().items():
-        policy_rewards[policy_id] = np.mean(rewards)
-
-    return TrainingResult(
-        episode_reward_max=max_reward,
-        episode_reward_min=min_reward,
-        episode_reward_mean=avg_reward,
-        episode_len_mean=avg_length,
-        episodes_total=len(episode_lengths),
-        timesteps_this_iter=timesteps,
-        policy_reward_mean=dict(policy_rewards))
-
-
 class CommonPolicyEvaluator(PolicyEvaluator):
-    """Policy evaluator implementation that operates on a rllib.PolicyGraph.
+    """Common policy evaluation class that wraps a rllib.PolicyGraph + Env.
 
-    TODO: multi-gpu
+    This class wraps a policy graph instance and an environment class to
+    collect experiences from the environment. You can create many replicas of
+    this class as Ray actors to scale RL training.
+
+    This class supports vectorized and multi-agent policy evaluation.
+    (VectorEnv, MultiAgentEnv, etc.)
 
     Examples:
         # Create a policy evaluator and using it to collect experiences.

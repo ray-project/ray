@@ -8,11 +8,11 @@ from ray.tune.registry import register_trainable
 
 from ray.rllib.utils.policy_graph import PolicyGraph
 from ray.rllib.utils.tf_policy_graph import TFPolicyGraph
-from ray.rllib.utils.common_policy_evaluator import CommonPolicyEvaluator
-from ray.rllib.utils.async_vector_env import AsyncVectorEnv
-from ray.rllib.utils.vector_env import VectorEnv
-from ray.rllib.utils.serving_env import ServingEnv
-from ray.rllib.optimizers.sample_batch import SampleBatch
+from ray.rllib.envs.async_vector_env import AsyncVectorEnv
+from ray.rllib.envs.vector_env import VectorEnv
+from ray.rllib.envs.serving_env import ServingEnv
+from ray.rllib.evaluation.common_policy_evaluator import CommonPolicyEvaluator
+from ray.rllib.evalutaion.sample_batch import SampleBatch
 
 
 def _register_all():

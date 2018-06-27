@@ -228,31 +228,31 @@ def get_agent_class(alg):
     """Returns the class of a known agent given its name."""
 
     if alg == "DDPG":
-        from ray.rllib import ddpg
+        from ray.rllib.agents import ddpg
         return ddpg.DDPGAgent
     elif alg == "APEX_DDPG":
-        from ray.rllib import ddpg
+        from ray.rllib.agents import ddpg
         return ddpg.ApexDDPGAgent
     elif alg == "PPO":
-        from ray.rllib import ppo
+        from ray.rllib.agents import ppo
         return ppo.PPOAgent
     elif alg == "ES":
-        from ray.rllib import es
+        from ray.rllib.agents import es
         return es.ESAgent
     elif alg == "DQN":
-        from ray.rllib import dqn
+        from ray.rllib.agents import dqn
         return dqn.DQNAgent
     elif alg == "APEX":
-        from ray.rllib import dqn
+        from ray.rllib.agents import dqn
         return dqn.ApexAgent
     elif alg == "A3C":
-        from ray.rllib import a3c
+        from ray.rllib.agents import a3c
         return a3c.A3CAgent
     elif alg == "BC":
-        from ray.rllib import bc
+        from ray.rllib.agents import bc
         return bc.BCAgent
     elif alg == "PG":
-        from ray.rllib import pg
+        from ray.rllib.agents import pg
         return pg.PGAgent
     elif alg == "script":
         from ray.tune import script_runner
