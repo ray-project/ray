@@ -346,9 +346,9 @@ class GlobalState(object):
 
         else:
             # Use the raylet code path.
-            message = self.redis_client.execute_command(
-                "RAY.TABLE_LOOKUP", ray.gcs_utils.TablePrefix.RAYLET_TASK, "",
-                task_id.id())
+            message = self._execute_command(
+                task_id, "RAY.TABLE_LOOKUP",
+                ray.gcs_utils.TablePrefix.RAYLET_TASK, "", task_id.id())
             gcs_entries = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
                 message, 0)
 
