@@ -72,7 +72,8 @@ class NodeManager {
   /// Enqueue a placeable task to wait on object dependencies or be ready for dispatch.
   void EnqueuePlaceableTask(const Task &task);
   /// Handle specified task's submission to the local node manager.
-  void SubmitTask(const Task &task, const Lineage &uncommitted_lineage, bool forwarded = false);
+  void SubmitTask(const Task &task, const Lineage &uncommitted_lineage,
+                  bool forwarded = false);
   /// Assign a task. The task is assumed to not be queued in local_queues_.
   void AssignTask(Task &task);
   /// Handle a worker finishing its assigned task.

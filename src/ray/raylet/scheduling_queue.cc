@@ -73,34 +73,38 @@ void SchedulingQueue::MoveTasks(std::unordered_set<TaskID> task_ids, TaskState s
   // TODO(atumanov): check the states first to ensure the move is transactional.
   std::vector<Task> removed_tasks;
   // Remove the tasks from the specified source queue.
-  switch(src_state) {
-    case PLACEABLE:
-      removeTasksFromQueue(placeable_tasks_, task_ids, removed_tasks);
-      break;
-    case WAITING:
-      removeTasksFromQueue(waiting_tasks_, task_ids, removed_tasks);
-      break;
-    case READY:
-      removeTasksFromQueue(ready_tasks_, task_ids, removed_tasks);
-      break;
-    case RUNNING:
-      removeTasksFromQueue(running_tasks_, task_ids, removed_tasks);
-      break;
-    default:
-      RAY_LOG(ERROR) << "Attempting to move tasks from unrecognized state " << src_state;
+  switch (src_state) {
+  case PLACEABLE:
+    removeTasksFromQueue(placeable_tasks_, task_ids, removed_tasks);
+    break;
+  case WAITING:
+    removeTasksFromQueue(waiting_tasks_, task_ids, removed_tasks);
+    break;
+  case READY:
+    removeTasksFromQueue(ready_tasks_, task_ids, removed_tasks);
+    break;
+  case RUNNING:
+    removeTasksFromQueue(running_tasks_, task_ids, removed_tasks);
+    break;
+  default:
+    RAY_LOG(ERROR) << "Attempting to move tasks from unrecognized state " << src_state;
   }
   // Add the tasks to the specified destination queue.
-  switch(dst_state) {
-    case PLACEABLE:
-      queueTasks(placeable_tasks_, removed_tasks); break;
-    case WAITING:
-      queueTasks(waiting_tasks_, removed_tasks); break;
-    case READY:
-      queueTasks(ready_tasks_, removed_tasks); break;
-    case RUNNING:
-      queueTasks(running_tasks_, removed_tasks); break;
-    default:
-      RAY_LOG(ERROR) << "Attempting to move tasks to unrecognized state " << dst_state;
+  switch (dst_state) {
+  case PLACEABLE:
+    queueTasks(placeable_tasks_, removed_tasks);
+    break;
+  case WAITING:
+    queueTasks(waiting_tasks_, removed_tasks);
+    break;
+  case READY:
+    queueTasks(ready_tasks_, removed_tasks);
+    break;
+  case RUNNING:
+    queueTasks(running_tasks_, removed_tasks);
+    break;
+  default:
+    RAY_LOG(ERROR) << "Attempting to move tasks to unrecognized state " << dst_state;
   }
 }
 

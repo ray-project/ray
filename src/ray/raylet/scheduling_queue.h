@@ -12,7 +12,7 @@ namespace ray {
 
 namespace raylet {
 
-enum TaskState { INIT, PLACEABLE, WAITING, READY, RUNNING};
+enum TaskState { INIT, PLACEABLE, WAITING, READY, RUNNING };
 /// \class SchedulingQueue
 ///
 /// Encapsulates task queues. Each queue represents a scheduling state for a
@@ -111,9 +111,10 @@ class SchedulingQueue {
   ///
   /// \param tasks The set of task IDs to move.
   /// \param src_state Source state, which corresponds to one of the internal task queues.
-  /// \param dst_state Destination state, corresponding to one of the internal task queues.
-  void MoveTasks(std::unordered_set<TaskID> tasks, TaskState src_state, TaskState dst_state);
-
+  /// \param dst_state Destination state, corresponding to one of the internal task
+  /// queues.
+  void MoveTasks(std::unordered_set<TaskID> tasks, TaskState src_state,
+                 TaskState dst_state);
 
  private:
   /// Tasks that are destined for actors that have not yet been created.
