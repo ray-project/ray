@@ -13,7 +13,9 @@ class VisionNetwork(Model):
     """Generic vision network."""
 
     def _build_layers(self, inputs, num_outputs, options):
-        filters = options.get("conv_filters", get_filter_config(options))
+        filters = options.get("conv_filters")
+        if not filters:
+            filters = get_filter_config(options)
 
         activation = get_activation_fn(options.get("conv_activation", "relu"))
 
