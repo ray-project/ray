@@ -242,6 +242,52 @@ class TestAsyncPlasmaEpollBasic(unittest.TestCase):
         self.assertEqual(results[0], tasks[0])
 
 
+class TestAsyncPlasmaAPI(unittest.TestCase):
+    def setUp(self):
+        # Start the Ray processes.
+        ray.init(num_cpus=2)
+
+    def tearDown(self):
+        ray.worker.cleanup()
+
+    def test_get(self):
+        @ray.remote
+        def f(n):
+            import time
+            time.sleep(n)
+            return n
+
+        tasks = [f.remote(i) for i in range(5)]
+        fut = ray.get(tasks, blocking=False)
+        results = ray.worker.run_until_complete(fut)
+        self.assertListEqual(results, ray.get(tasks))
+
+    def test_wait(self):
+        @ray.remote
+        def f(n):
+            import time
+            time.sleep(n)
+            return n
+
+        tasks = [f.remote(i) for i in range(5)]
+        fut = ray.wait(tasks, num_returns=len(tasks), blocking=False)
+        results, _ = ray.worker.run_until_complete(fut)
+        self.assertEqual(set(results), set(tasks))
+
+    def test_wait_timeout(self):
+        @ray.remote
+        def f(n):
+            import time
+            time.sleep(n * 20)
+            return n
+
+        tasks = [f.remote(i) for i in range(5)]
+        fut = ray.wait(
+            tasks, timeout=10, num_returns=len(tasks), blocking=False)
+        results, _ = ray.worker.run_until_complete(fut)
+        self.assertEqual(results[0], tasks[0])
+
+
 class TestAsyncPlasma(unittest.TestCase):
     answer = b'U\x16\xc5c\x0fa\xdcx\x03\x1e\xf7\xd8&{\xece' \
              b'\x85-.O\x12\xed\x11[\xdc\xe6\xcc\xdf\x90\x91\xc7\xf7'
