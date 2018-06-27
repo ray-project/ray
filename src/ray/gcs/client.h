@@ -80,12 +80,14 @@ class RAY_EXPORT AsyncGcsClient {
   std::unique_ptr<HeartbeatTable> heartbeat_table_;
   std::unique_ptr<ErrorTable> error_table_;
   std::unique_ptr<ClientTable> client_table_;
+  // The following contexts write to the data shard
   std::shared_ptr<RedisContext> context_;
-  // The following context writes everything to the primary shard
-  std::shared_ptr<RedisContext> auxiliary_context_;
   std::unique_ptr<RedisAsioClient> asio_async_client_;
   std::unique_ptr<RedisAsioClient> asio_subscribe_client_;
-
+  // The following context writes everything to the primary shard
+  std::shared_ptr<RedisContext> auxiliary_context_;
+  std::unique_ptr<RedisAsioClient> asio_async_auxiliary_client_;
+  std::unique_ptr<RedisAsioClient> asio_subscribe_auxiliary_client_;
   CommandType command_type_;
 };
 

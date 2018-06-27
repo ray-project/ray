@@ -8,6 +8,7 @@ namespace gcs {
 
 AsyncGcsClient::AsyncGcsClient(const ClientID &client_id, CommandType command_type) {
   context_ = std::make_shared<RedisContext>();
+  auxiliary_context_ = std::make_shared<RedisContext>();
   client_table_.reset(new ClientTable(auxiliary_context_, this, client_id));
   object_table_.reset(new ObjectTable(context_, this));
   actor_table_.reset(new ActorTable(context_, this));
@@ -54,6 +55,10 @@ Status AsyncGcsClient::Attach(boost::asio::io_service &io_service) {
   asio_async_client_.reset(new RedisAsioClient(io_service, context_->async_context()));
   asio_subscribe_client_.reset(
       new RedisAsioClient(io_service, context_->subscribe_context()));
+  asio_async_auxiliary_client_.reset(
+      new RedisAsioClient(io_service, auxiliary_context_->async_context()));
+  asio_subscribe_auxiliary_client_.reset(
+          new RedisAsioClient(io_service, auxiliary_context_->subscribe_context()));
   return Status::OK();
 }
 
