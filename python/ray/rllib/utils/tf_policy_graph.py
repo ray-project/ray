@@ -35,16 +35,16 @@ class TFPolicyGraph(PolicyGraph):
     """
 
     def __init__(
-            self, sess, observation_space, action_space, obs_input,
+            self, observation_space, action_space, sess, obs_input,
             action_sampler, loss, loss_inputs, is_training,
             state_inputs=None, state_outputs=None, seq_lens=None,
             max_seq_len=20):
         """Initialize the policy graph.
 
         Arguments:
-            sess (Session): TensorFlow session to use.
             observation_space (gym.Space): Observation space of the env.
             action_space (gym.Space): Action space of the env.
+            sess (Session): TensorFlow session to use.
             obs_input (Tensor): input placeholder for observations, of shape
                 [BATCH_SIZE, obs...].
             action_sampler (Tensor): Tensor for sampling an action, of shape
@@ -58,7 +58,9 @@ class TFPolicyGraph(PolicyGraph):
                 currently training the policy.
             state_inputs (list): list of RNN state output Tensors.
             state_outputs (list): list of initial state values.
-            seq_lens (Tensor): placeholder for RNN sequence lengths.
+            seq_lens (Tensor): placeholder for RNN sequence lengths, of shape
+                [NUM_SEQUENCES]. Note that NUM_SEQUENCES << BATCH_SIZE. See
+                models/lstm.py for more information.
             max_seq_len (int): max sequence length for LSTM training.
         """
 

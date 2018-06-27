@@ -133,6 +133,8 @@ def chop_into_sequences(
 class LSTM(Model):
     """Adds a LSTM cell on top of some other model output.
 
+    Uses a linear layer at the end for output.
+
     Important: we assume inputs is a padded batch of sequences denoted by
         self.seq_lens. See add_time_dimension() for more information.
     """

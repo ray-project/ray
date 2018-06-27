@@ -275,12 +275,12 @@ class TestMultiAgentEnv(unittest.TestCase):
             # happen since the replay buffer doesn't encode extra fields like
             # "advantages" that PG uses.
             policies = {
-                "p1": (DQNPolicyGraph, obs_space, act_space, {}),
+                "p1": (DQNPolicyGraph, obs_space, act_space, dqn_config),
                 "p2": (DQNPolicyGraph, obs_space, act_space, dqn_config),
             }
         else:
             policies = {
-                "p1": (PGPolicyGraph, obs_space, act_space, dqn_config),
+                "p1": (PGPolicyGraph, obs_space, act_space, {}),
                 "p2": (DQNPolicyGraph, obs_space, act_space, dqn_config),
             }
         ev = CommonPolicyEvaluator(
@@ -297,10 +297,10 @@ class TestMultiAgentEnv(unittest.TestCase):
         else:
             remote_evs = []
         optimizer = optimizer_cls({}, ev, remote_evs)
-        ev.foreach_policy(
-            lambda p, _: p.set_epsilon(0.02)
-            if isinstance(p, DQNPolicyGraph) else None)
         for i in range(200):
+            ev.foreach_policy(
+                lambda p, _: p.set_epsilon(max(0.02, 1 - i * .02))
+                if isinstance(p, DQNPolicyGraph) else None)
             optimizer.step()
             result = collect_metrics(ev, remote_evs)
             if i % 20 == 0:
