@@ -10,8 +10,8 @@ import ray
 from ray.rllib.pg import PGAgent
 from ray.rllib.pg.pg_policy_graph import PGPolicyGraph
 from ray.rllib.dqn.dqn_policy_graph import DQNPolicyGraph
-from ray.rllib.optimizers import LocalSyncOptimizer, \
-    LocalSyncReplayOptimizer, AsyncOptimizer
+from ray.rllib.optimizers import SyncSamplesOptimizer, \
+    SyncReplayOptimizer, AsyncGradientsOptimizer
 from ray.rllib.test.test_common_policy_evaluator import MockEnv, MockEnv2, \
     MockPolicyGraph
 from ray.rllib.utils.common_policy_evaluator import CommonPolicyEvaluator, \
@@ -270,7 +270,7 @@ class TestMultiAgentEnv(unittest.TestCase):
         act_space = env.action_space
         obs_space = env.observation_space
         dqn_config = {"gamma": 0.95, "n_step": 3}
-        if optimizer_cls == LocalSyncReplayOptimizer:
+        if optimizer_cls == SyncReplayOptimizer:
             # TODO: support replay with non-DQN graphs. Currently this can't
             # happen since the replay buffer doesn't encode extra fields like
             # "advantages" that PG uses.
@@ -288,7 +288,7 @@ class TestMultiAgentEnv(unittest.TestCase):
             policy_graph=policies,
             policy_mapping_fn=lambda agent_id: ["p1", "p2"][agent_id % 2],
             batch_steps=50)
-        if optimizer_cls == AsyncOptimizer:
+        if optimizer_cls == AsyncGradientsOptimizer:
             remote_evs = [CommonPolicyEvaluator.as_remote().remote(
                 env_creator=lambda _: MultiCartpole(n),
                 policy_graph=policies,
@@ -315,13 +315,13 @@ class TestMultiAgentEnv(unittest.TestCase):
         raise Exception("failed to improve reward")
 
     def testMultiAgentSyncOptimizer(self):
-        self._testWithOptimizer(LocalSyncOptimizer)
+        self._testWithOptimizer(SyncSamplesOptimizer)
 
-    def testMultiAgentAsyncOptimizer(self):
-        self._testWithOptimizer(AsyncOptimizer)
+    def testMultiAgentAsyncGradientsOptimizer(self):
+        self._testWithOptimizer(AsyncGradientsOptimizer)
 
     def testMultiAgentReplayOptimizer(self):
-        self._testWithOptimizer(LocalSyncReplayOptimizer)
+        self._testWithOptimizer(SyncReplayOptimizer)
 
     def testTrainMultiCartpoleManyPolicies(self):
         n = 20
@@ -338,7 +338,7 @@ class TestMultiAgentEnv(unittest.TestCase):
             policy_graph=policies,
             policy_mapping_fn=lambda agent_id: random.choice(policy_ids),
             batch_steps=100)
-        optimizer = LocalSyncOptimizer({}, ev, [])
+        optimizer = SyncSamplesOptimizer({}, ev, [])
         for i in range(100):
             optimizer.step()
             result = collect_metrics(ev)
