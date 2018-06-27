@@ -2631,6 +2631,7 @@ class RayLogSpanRaylet(object):
             "event_type": self.event_type,
             "component_type": component_type,
             "component_id": self.worker.worker_id,
+            "node_ip_address": self.worker.node_ip_address,
             "start_time": self.start_time,
             "end_time": time.time(),
             "extra_data": json.dumps(self.extra_data),

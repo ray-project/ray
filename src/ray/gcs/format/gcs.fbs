@@ -130,6 +130,8 @@ table ProfileTableData {
   component_type: string;
   // An identifier for the component that generated the event.
   component_id: string;
+  // An identifier for the node that generated the event.
+  node_ip_address: string;
   // The start time of the event.
   start_time: double;
   // The end time of the event. If the event is a point event, then this should

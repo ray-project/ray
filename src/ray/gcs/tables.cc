@@ -198,20 +198,23 @@ Status ErrorTable::PushErrorToDriver(const JobID &job_id, const std::string &typ
 
 Status ProfileTable::AddProfileEvent(const std::string &event_type,
                                      const std::string &component_type,
-                                     const UniqueID &component_id, double start_time,
-                                     double end_time, const std::string &extra_data) {
+                                     const UniqueID &component_id,
+                                     const std::string &node_ip_address,
+                                     double start_time, double end_time,
+                                     const std::string &extra_data) {
   auto data = std::make_shared<ProfileTableDataT>();
   data->event_type = event_type;
   data->component_type = component_type;
   data->component_id = component_id.binary();
+  data->node_ip_address = node_ip_address;
   data->start_time = start_time;
   data->end_time = end_time;
   data->extra_data = extra_data;
-  return Append(JobID::nil(), component_id, data, [](ray::gcs::AsyncGcsClient *client,
-                                                     const JobID &id,
-                                                     const ProfileTableDataT &data) {
-    RAY_LOG(DEBUG) << "Profile message pushed callback";
-  });
+  return Append(JobID::nil(), component_id, data,
+                [](ray::gcs::AsyncGcsClient *client, const JobID &id,
+                   const ProfileTableDataT &data) {
+                  RAY_LOG(DEBUG) << "Profile message pushed callback";
+                });
 }
 
 void ClientTable::RegisterClientAddedCallback(const ClientTableCallback &callback) {

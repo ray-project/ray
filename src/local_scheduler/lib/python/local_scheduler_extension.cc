@@ -380,6 +380,15 @@ static PyObject *PyLocalSchedulerClient_push_profile_events(PyObject *self,
         if (profile_event.component_id.size() == 0) {
           return NULL;
         }
+      } else if (key_string == std::string("node_ip_address")) {
+        if (PyBytes_or_PyUnicode_to_string(val,
+                                           profile_event.node_ip_address) ==
+            -1) {
+          return NULL;
+        }
+        if (profile_event.node_ip_address.size() == 0) {
+          return NULL;
+        }
       } else if (key_string == std::string("start_time")) {
         profile_event.start_time = PyFloat_AsDouble(val);
       } else if (key_string == std::string("end_time")) {

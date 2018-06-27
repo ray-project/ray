@@ -714,6 +714,8 @@ class GlobalState(object):
                     "ascii"),
                 "component_id": binary_to_hex(
                     profile_table_message.ComponentId()),
+                "node_ip_address": profile_table_message.NodeIpAddress()
+                .decode("ascii"),
                 "component_type": profile_table_message.ComponentType().decode(
                     "ascii"),
                 "start_time": profile_table_message.StartTime(),
@@ -810,8 +812,9 @@ class GlobalState(object):
                     "cat": event["event_type"],
                     # The string displayed on the event.
                     "name": event["event_type"],
-                    # The identifier for the group of rows that the event appears in. # TODO(rkn): Support this!!
-                    "pid": "TODO",
+                    # The identifier for the group of rows that the event
+                    # appears in.
+                    "pid": event["node_ip_address"],
                     # The identifier for the row that the event appears in.
                     "tid": event["component_type"] + ":" +
                     event["component_id"],

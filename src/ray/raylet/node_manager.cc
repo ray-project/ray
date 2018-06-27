@@ -561,8 +561,10 @@ void NodeManager::ProcessClientMessage(
       RAY_CHECK_OK(gcs_client_->profile_table().AddProfileEvent(
           string_from_flatbuf(*profile_data->event_type()),
           string_from_flatbuf(*profile_data->component_type()),
-          from_flatbuf(*profile_data->component_id()), profile_data->start_time(),
-          profile_data->end_time(), string_from_flatbuf(*profile_data->extra_data())));
+          from_flatbuf(*profile_data->component_id()),
+          string_from_flatbuf(*profile_data->node_ip_address()),
+          profile_data->start_time(), profile_data->end_time(),
+          string_from_flatbuf(*profile_data->extra_data())));
     }
   } break;
 

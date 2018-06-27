@@ -331,9 +331,8 @@ void local_scheduler_push_profile_events(
   std::vector<flatbuffers::Offset<ray::protocol::ProfileTableData>>
       profile_data;
   for (size_t i = 0; i < profile_events.size(); ++i) {
-    // profile_data.push_back(
-    const ray::protocol::ProfileTableDataT asdf = profile_events.at(i);
-    profile_data.push_back(ray::protocol::CreateProfileTableData(fbb, &asdf));
+    const ray::protocol::ProfileTableDataT data = profile_events.at(i);
+    profile_data.push_back(ray::protocol::CreateProfileTableData(fbb, &data));
   }
 
   auto message = ray::protocol::CreatePushProfileEventsRequest(
