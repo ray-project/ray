@@ -123,7 +123,7 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
         return all_extra_fetches
 
     def stats(self):
-        return dict(PolicyOptimizer.stats(), **{
+        return dict(PolicyOptimizer.stats(self), **{
             "sample_time_ms": round(1000 * self.sample_timer.mean, 3),
             "load_time_ms": round(1000 * self.load_timer.mean, 3),
             "grad_time_ms": round(1000 * self.grad_timer.mean, 3),
