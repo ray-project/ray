@@ -8,7 +8,7 @@ from ray.utils import merge_dicts
 APEX_DDPG_DEFAULT_CONFIG = merge_dicts(
     DDPG_CONFIG,
     {
-        "optimizer_class": "ApexOptimizer",
+        "optimizer_class": "AsyncSamplesOptimizer",
         "optimizer_config":
             merge_dicts(
                 DDPG_CONFIG["optimizer_config"], {

@@ -9,7 +9,7 @@ from ray.rllib.utils.filter import RunningStat
 from ray.rllib.utils.timer import TimerStat
 
 
-class LocalSyncOptimizer(PolicyOptimizer):
+class SyncSamplesOptimizer(PolicyOptimizer):
     """A simple synchronous RL optimizer.
 
     In each step, this optimizer pulls samples from a number of remote

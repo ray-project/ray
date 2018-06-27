@@ -135,8 +135,8 @@ class LearnerThread(threading.Thread):
         self.weights_updated = True
 
 
-class ApexOptimizer(PolicyOptimizer):
-    """Main event loop of the Ape-X optimizer.
+class AsyncSamplesOptimizer(PolicyOptimizer):
+    """Main event loop of the Ape-X optimizer (async sampling with replay).
 
     This class coordinates the data transfers between the learner thread,
     remote evaluators (Ape-X actors), and replay buffer actors.
