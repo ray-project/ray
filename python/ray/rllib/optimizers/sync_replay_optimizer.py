@@ -16,7 +16,7 @@ from ray.rllib.utils.filter import RunningStat
 from ray.rllib.utils.timer import TimerStat
 
 
-class LocalSyncReplayOptimizer(PolicyOptimizer):
+class SyncReplayOptimizer(PolicyOptimizer):
     """Variant of the local sync optimizer that supports replay (for DQN).
 
     This optimizer requires that policy evaluators return an additional

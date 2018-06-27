@@ -7,7 +7,7 @@ import os
 
 import ray
 from ray.rllib.agent import Agent
-from ray.rllib.optimizers import AsyncOptimizer
+from ray.rllib.optimizers import AsyncGradientsOptimizer
 from ray.rllib.utils import FilterManager
 from ray.rllib.utils.common_policy_evaluator import CommonPolicyEvaluator, \
     collect_metrics
@@ -131,7 +131,7 @@ class A3CAgent(Agent):
                 worker_index=i+1)
             for i in range(self.config["num_workers"])]
 
-        self.optimizer = AsyncOptimizer(
+        self.optimizer = AsyncGradientsOptimizer(
             self.config["optimizer"], self.local_evaluator,
             self.remote_evaluators)
 

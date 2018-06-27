@@ -3,7 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 from ray.rllib.agent import Agent
-from ray.rllib.optimizers import LocalSyncOptimizer
+from ray.rllib.optimizers import SyncSamplesOptimizer
 from ray.rllib.pg.pg_policy_graph import PGPolicyGraph
 from ray.rllib.utils.common_policy_evaluator import CommonPolicyEvaluator, \
     collect_metrics
@@ -54,7 +54,7 @@ class PGAgent(Agent):
         return Resources(cpu=1, gpu=0, extra_cpu=cf["num_workers"])
 
     def _init(self):
-        self.optimizer = LocalSyncOptimizer.make(
+        self.optimizer = SyncSamplesOptimizer.make(
             evaluator_cls=CommonPolicyEvaluator,
             evaluator_args={
                 "env_creator": self.env_creator,
