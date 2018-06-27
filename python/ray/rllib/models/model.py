@@ -45,8 +45,9 @@ class Model(object):
         self.state_in = []
         self.state_out = []
         self.seq_lens = tf.placeholder_with_default(
-            tf.ones(tf.shape(inputs)[0], dtype=tf.int32), [None],
-            name="seq_lens")
+            tf.ones(  # reshape needed for older tf versions
+                tf.reshape(tf.shape(inputs)[0], [1]) dtype=tf.int32),
+            [None], name="seq_lens")
 
         if options.get("free_log_std", False):
             assert num_outputs % 2 == 0
