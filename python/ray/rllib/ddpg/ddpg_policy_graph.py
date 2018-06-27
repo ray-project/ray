@@ -26,7 +26,8 @@ class PNetwork(object):
     """Maps an observations (i.e., state) to an action where each entry takes
     value from (0, 1) due to the sigmoid function."""
 
-    def __init__(self, model, dim_actions, hiddens=[64, 64], activation="relu"):
+    def __init__(
+            self, model, dim_actions, hiddens=[64, 64], activation="relu"):
         action_out = model.last_layer
         activation = tf.nn.__dict__[activation]
         for hidden in hiddens:
@@ -72,7 +73,7 @@ class ActionNetwork(object):
 class QNetwork(object):
     def __init__(
             self, model, action_inputs,
-            hiddens=[64, 64], activation='relu'):
+            hiddens=[64, 64], activation="relu"):
         q_out = tf.concat([model.last_layer, action_inputs], axis=1)
         activation = tf.nn.__dict__[activation]
         for hidden in hiddens:
