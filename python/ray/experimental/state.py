@@ -214,9 +214,9 @@ class GlobalState(object):
 
         else:
             # Use the raylet code path.
-            message = self.redis_client.execute_command(
-                "RAY.TABLE_LOOKUP", ray.gcs_utils.TablePrefix.OBJECT, "",
-                object_id.id())
+            message = self._execute_command(
+                object_id, "RAY.TABLE_LOOKUP",
+                ray.gcs_utils.TablePrefix.OBJECT, "", object_id.id())
             result = []
             gcs_entry = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
                 message, 0)
@@ -263,7 +263,7 @@ class GlobalState(object):
                     for key in object_location_keys
                 ])
             else:
-                object_keys = self.redis_client.keys(
+                object_keys = self._keys(
                     ray.gcs_utils.TablePrefix_OBJECT_string + "*")
                 object_ids_binary = {
                     key[len(ray.gcs_utils.TablePrefix_OBJECT_string):]
@@ -416,7 +416,7 @@ class GlobalState(object):
                     for key in task_table_keys
                 ]
             else:
-                task_table_keys = self.redis_client.keys(
+                task_table_keys = self._keys(
                     ray.gcs_utils.TablePrefix_RAYLET_TASK_string + "*")
                 task_ids_binary = [
                     key[len(ray.gcs_utils.TablePrefix_RAYLET_TASK_string):]
