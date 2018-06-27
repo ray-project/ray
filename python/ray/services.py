@@ -200,7 +200,8 @@ def all_processes_alive(exclude=[]):
         # alive.
         processes_alive = [p.poll() is None for p in processes]
         if (not all(processes_alive) and process_type not in exclude):
-            logger.warning("A process of type {} has died.".format(process_type))
+            logger.warning(
+                "A process of type {} has died.".format(process_type))
             return False
     return True
 
@@ -310,8 +311,9 @@ def wait_for_redis_to_start(redis_ip_address, redis_port, num_retries=5):
     while counter < num_retries:
         try:
             # Run some random command and see if it worked.
-            logger.info("Waiting for redis server at {}:{} to respond...".format(
-                redis_ip_address, redis_port))
+            logger.info(
+                "Waiting for redis server at {}:{} to respond...".format(
+                    redis_ip_address, redis_port))
             redis_client.client_list()
         except redis.ConnectionError as e:
             # Wait a little bit.
@@ -802,7 +804,7 @@ def start_ui(redis_address, stdout_file=None, stderr_file=None, cleanup=True):
             stderr=stderr_file)
     except Exception:
         logger.warning("Failed to start the UI, you may need to run "
-              "'pip install jupyter'.")
+                       "'pip install jupyter'.")
     else:
         if cleanup:
             all_processes[PROCESS_TYPE_WEB_UI].append(ui_process)
@@ -861,8 +863,8 @@ def check_and_update_resources(resources, use_raylet):
 
         if (use_raylet and
                 resource_quantity > ray.ray_constants.MAX_RESOURCE_QUANTITY):
-            raise ValueError("Resource quantities must be at most {}."
-                             .format(ray.ray_constants.MAX_RESOURCE_QUANTITY))
+            raise ValueError("Resource quantities must be at most {}.".format(
+                ray.ray_constants.MAX_RESOURCE_QUANTITY))
 
     return resources
 
@@ -908,7 +910,7 @@ def start_local_scheduler(redis_address,
     resources = check_and_update_resources(resources, False)
 
     logger.info("Starting local scheduler with the following resources: {}."
-          .format(resources))
+                .format(resources))
     local_scheduler_name, p = ray.local_scheduler.start_local_scheduler(
         plasma_store_name,
         plasma_manager_name,
@@ -1064,12 +1066,13 @@ def start_objstore(node_ip_address,
                 # blocks.
                 shm_avail = shm_fs_stats.f_bsize * shm_fs_stats.f_bavail
                 if objstore_memory > shm_avail:
-                    logger.warning("Warning: Reducing object store memory because "
-                          "/dev/shm has only {} bytes available. You may be "
-                          "able to free up space by deleting files in "
-                          "/dev/shm. If you are inside a Docker container, "
-                          "you may need to pass an argument with the flag "
-                          "'--shm-size' to 'docker run'.".format(shm_avail))
+                    logger.warning(
+                        "Warning: Reducing object store memory because "
+                        "/dev/shm has only {} bytes available. You may be "
+                        "able to free up space by deleting files in "
+                        "/dev/shm. If you are inside a Docker container, "
+                        "you may need to pass an argument with the flag "
+                        "'--shm-size' to 'docker run'.".format(shm_avail))
                     objstore_memory = int(shm_avail * 0.8)
             finally:
                 os.close(shm_fd)
@@ -1310,7 +1313,8 @@ def start_ray_processes(address_info=None,
         A dictionary of the address information for the processes that were
             started.
     """
-    logger.info("Process STDOUT and STDERR is being redirected to /tmp/raylogs/.")
+    logger.info(
+        "Process STDOUT and STDERR is being redirected to /tmp/raylogs/.")
 
     if resources is None:
         resources = {}
@@ -1727,8 +1731,9 @@ def try_to_create_directory(directory_path):
         except OSError as e:
             if e.errno != os.errno.EEXIST:
                 raise e
-            logger.warning("Attempted to create '{}', but the directory already "
-                  "exists.".format(directory_path))
+            logger.warning(
+                "Attempted to create '{}', but the directory already "
+                "exists.".format(directory_path))
         # Change the log directory permissions so others can use it. This is
         # important when multiple people are using the same machine.
         os.chmod(directory_path, 0o0777)
