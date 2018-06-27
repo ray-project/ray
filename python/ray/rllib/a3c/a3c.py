@@ -127,7 +127,7 @@ class A3CAgent(Agent):
                 worker_index=i+1)
             for i in range(self.config["num_workers"])]
 
-        self.optimizer = AsyncOptimizer(
+        self.optimizer = AsyncGradientsOptimizer(
             self.config["optimizer"], self.local_evaluator,
             self.remote_evaluators)
 
