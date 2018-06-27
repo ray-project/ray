@@ -1,4 +1,4 @@
-# This gets to 19-20 reward in ~30 minutes / 4m steps on a m4.10xl instance
+# This gets to ~19-20 reward in ~30 minutes / 4m steps on a m4.10xl instance
 # TODO(rliaw): this has regressed in performance
 pong-a3c:
     env: PongDeterministic-v4
