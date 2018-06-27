@@ -17,10 +17,14 @@ class VisionNetwork(Model):
             [32, [4, 4], 2],
             [512, [10, 10], 1],
         ])
+        conv_activation = options.get("conv_activation", "relu")
+        activation = tf.nn.__dict__[conv_activation]
+
         with tf.name_scope("vision_net"):
             for i, (out_size, kernel, stride) in enumerate(filters[:-1], 1):
                 inputs = slim.conv2d(
                     inputs, out_size, kernel, stride,
+                    activation_fn=activation,
                     scope="conv{}".format(i))
             out_size, kernel, stride = filters[-1]
             fc1 = slim.conv2d(

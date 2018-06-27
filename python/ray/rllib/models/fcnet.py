@@ -14,12 +14,8 @@ class FullyConnectedNetwork(Model):
 
     def _init(self, inputs, num_outputs, options):
         hiddens = options.get("fcnet_hiddens", [256, 256])
-
         fcnet_activation = options.get("fcnet_activation", "tanh")
-        if fcnet_activation == "tanh":
-            activation = tf.nn.tanh
-        elif fcnet_activation == "relu":
-            activation = tf.nn.relu
+        activation = tf.nn.__dict__[fcnet_activation]
 
         with tf.name_scope("fc_net"):
             i = 1
