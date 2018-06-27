@@ -16,7 +16,7 @@ AsyncGcsClient::AsyncGcsClient(const ClientID &client_id, CommandType command_ty
   raylet_task_table_.reset(new raylet::TaskTable(context_, this, command_type));
   task_reconstruction_log_.reset(new TaskReconstructionLog(context_, this));
   heartbeat_table_.reset(new HeartbeatTable(context_, this));
-  error_table_.reset(new ErrorTable(context_, this));
+  error_table_.reset(new ErrorTable(auxiliary_context_, this));
   command_type_ = command_type;
 }
 
