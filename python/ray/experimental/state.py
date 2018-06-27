@@ -214,9 +214,9 @@ class GlobalState(object):
 
         else:
             # Use the raylet code path.
-            message = self._execute_command(
-                object_id, "RAY.TABLE_LOOKUP",
-                ray.gcs_utils.TablePrefix.OBJECT, "", object_id.id())
+            message = self._execute_command(object_id, "RAY.TABLE_LOOKUP",
+                                            ray.gcs_utils.TablePrefix.OBJECT,
+                                            "", object_id.id())
             result = []
             gcs_entry = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
                 message, 0)
