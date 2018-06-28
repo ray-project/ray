@@ -22,18 +22,22 @@ from ray.rllib.models.multiagentfcnet import MultiAgentFullyConnectedNetwork
 
 MODEL_CONFIGS = [
     # === Built-in options ===
-    "conv_filters",  # Number of filters
-    "conv_activation",  # Nonlinearity for CNN (relu, elu)
+    "conv_filters",  # Filter configuration
+    "conv_activation",  # Nonlinearity for built-in convnet
+    "fcnet_activation",  # Nonlinearity for fully connected net (tanh, relu)
+    "fcnet_hiddens",  # Number of hidden layers for fully connected net
     "dim",  # Dimension for ATARI
     "grayscale",  # Converts ATARI frame to 1 Channel Grayscale image
     "zero_mean",  # Changes frame to range from [-1, 1] if true
     "extra_frameskip",  # (int) for number of frames to skip
-    "fcnet_activation",  # Nonlinearity for fully connected net (tanh, relu)
-    "fcnet_hiddens",  # Number of hidden layers for fully connected net
+
     "free_log_std",  # Documented in ray.rllib.models.Model
     "channel_major",  # Pytorch conv requires images to be channel-major
     "squash_to_range",  # Whether to squash the action output to space range
-    "use_lstm",  # Whether to use a LSTM model
+
+    "use_lstm",  # Whether to wrap the model with a LSTM
+    "max_seq_len",  # Max seq len for training the LSTM, defaults to 20
+    "lstm_cell_size",  # Size of the LSTM cell
 
     # === Options for custom models ===
     "custom_preprocessor",  # Name of a custom preprocessor to use
@@ -114,9 +118,9 @@ class ModelCatalog(object):
 
         if isinstance(action_space, gym.spaces.Box):
             return tf.placeholder(
-                tf.float32, shape=(None, action_space.shape[0]))
+                tf.float32, shape=(None, action_space.shape[0]), name="action")
         elif isinstance(action_space, gym.spaces.Discrete):
-            return tf.placeholder(tf.int64, shape=(None,))
+            return tf.placeholder(tf.int64, shape=(None,), name="action")
         elif isinstance(action_space, gym.spaces.Tuple):
             size = 0
             all_discrete = True
@@ -127,13 +131,14 @@ class ModelCatalog(object):
                     all_discrete = False
                     size += np.product(action_space.spaces[i].shape)
             return tf.placeholder(
-                tf.int64 if all_discrete else tf.float32, shape=(None, size))
+                tf.int64 if all_discrete else tf.float32, shape=(None, size),
+                name="action")
         else:
             raise NotImplementedError("action space {}"
                                       " not supported".format(action_space))
 
     @staticmethod
-    def get_model(inputs, num_outputs, options={}):
+    def get_model(inputs, num_outputs, options=None):
         """Returns a suitable model conforming to given input and output specs.
 
         Args:
@@ -145,14 +150,21 @@ class ModelCatalog(object):
             model (Model): Neural network model.
         """
 
+        options = options or {}
+        model = ModelCatalog._get_model(inputs, num_outputs, options)
+
+        if options.get("use_lstm"):
+            model = LSTM(model.last_layer, num_outputs, options)
+
+        return model
+
+    @staticmethod
+    def _get_model(inputs, num_outputs, options):
         if "custom_model" in options:
             model = options["custom_model"]
             print("Using custom model {}".format(model))
             return _global_registry.get(RLLIB_MODEL, model)(
                 inputs, num_outputs, options)
-
-        if options.get("use_lstm"):
-            return LSTM(inputs, num_outputs, options)
 
         obs_rank = len(inputs.shape) - 1
 
