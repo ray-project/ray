@@ -6,7 +6,8 @@ from __future__ import print_function
 class MultiAgentEnv(object):
     """An environment that hosts multiple independent agents.
 
-    Agents are identified by (string) agent ids.
+    Agents are identified by (string) agent ids. Note that these "agents" here
+    are not to be confused with RLlib agents.
 
     Examples:
         >>> env = MyMultiAgentEnv()

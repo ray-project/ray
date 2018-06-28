@@ -8,7 +8,7 @@ import pickle
 import tensorflow as tf
 
 import ray
-from ray.rllib.agent import Agent
+from ray.rllib.agents.agent import Agent
 from ray.rllib.agents.ppo.ppo_evaluator import PPOEvaluator
 from ray.rllib.optimizers.multi_gpu_optimizer import LocalMultiGPUOptimizer
 from ray.rllib.utils import FilterManager
@@ -87,6 +87,8 @@ DEFAULT_CONFIG = {
 
 
 class PPOAgent(Agent):
+    """Multi-GPU optimized implementation of PPO in TensorFlow."""
+
     _agent_name = "PPO"
     _default_config = DEFAULT_CONFIG
 

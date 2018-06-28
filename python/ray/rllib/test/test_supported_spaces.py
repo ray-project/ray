@@ -7,7 +7,7 @@ from gym.envs.registration import EnvSpec
 import numpy as np
 
 import ray
-from ray.rllib.agent import get_agent_class
+from ray.rllib.agents.agent import get_agent_class
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.tune.registry import register_env
 

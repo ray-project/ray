@@ -26,51 +26,51 @@ from ray.rllib.utils.tf_run_builder import TFRunBuilder
 
 
 class CommonPolicyEvaluator(PolicyEvaluator):
-    """Common policy evaluation class that wraps a rllib.PolicyGraph + Env.
+    """Common ``PolicyEvaluator`` implementation that wraps a ``PolicyGraph``.
 
     This class wraps a policy graph instance and an environment class to
     collect experiences from the environment. You can create many replicas of
     this class as Ray actors to scale RL training.
 
-    This class supports vectorized and multi-agent policy evaluation.
-    (VectorEnv, MultiAgentEnv, etc.)
+    This class supports vectorized and multi-agent policy evaluation (e.g.,
+    VectorEnv, MultiAgentEnv, etc.)
 
     Examples:
-        # Create a policy evaluator and using it to collect experiences.
+        >>> # Create a policy evaluator and using it to collect experiences.
         >>> evaluator = CommonPolicyEvaluator(
-              env_creator=lambda _: gym.make("CartPole-v0"),
-              policy_graph=PGPolicyGraph)
+        ...   env_creator=lambda _: gym.make("CartPole-v0"),
+        ...   policy_graph=PGPolicyGraph)
         >>> print(evaluator.sample())
         SampleBatch({
             "obs": [[...]], "actions": [[...]], "rewards": [[...]],
             "dones": [[...]], "new_obs": [[...]]})
 
-        # Creating policy evaluators using optimizer_cls.make().
+        >>> # Creating policy evaluators using optimizer_cls.make().
         >>> optimizer = SyncSamplesOptimizer.make(
-              evaluator_cls=CommonPolicyEvaluator,
-              evaluator_args={
-                "env_creator": lambda _: gym.make("CartPole-v0"),
-                "policy_graph": PGPolicyGraph,
-              },
-              num_workers=10)
+        ...   evaluator_cls=CommonPolicyEvaluator,
+        ...   evaluator_args={
+        ...     "env_creator": lambda _: gym.make("CartPole-v0"),
+        ...     "policy_graph": PGPolicyGraph,
+        ...   },
+        ...   num_workers=10)
         >>> for _ in range(10): optimizer.step()
 
-        # Creating a multi-agent policy evaluator
+        >>> # Creating a multi-agent policy evaluator
         >>> evaluator = CommonPolicyEvaluator(
-              env_creator=lambda _: MultiAgentTrafficGrid(num_cars=25),
-              policy_graph={
-                  # Use an ensemble of two policies for car agents
-                  "car_policy1":
-                    (PGPolicyGraph, Box(...), Discrete(...), {"gamma": 0.99}),
-                  "car_policy2":
-                    (PGPolicyGraph, Box(...), Discrete(...), {"gamma": 0.95}),
-                  # Use a single shared policy for all traffic lights
-                  "traffic_light_policy":
-                    (PGPolicyGraph, Box(...), Discrete(...), {}),
-              },
-              policy_mapping_fn=lambda agent_id:
-                random.choice(["car_policy1", "car_policy2"])
-                if agent_id.startswith("car_") else "traffic_light_policy")
+        ...   env_creator=lambda _: MultiAgentTrafficGrid(num_cars=25),
+        ...   policy_graph={
+        ...       # Use an ensemble of two policies for car agents
+        ...       "car_policy1":
+        ...         (PGPolicyGraph, Box(...), Discrete(...), {"gamma": 0.99}),
+        ...       "car_policy2":
+        ...         (PGPolicyGraph, Box(...), Discrete(...), {"gamma": 0.95}),
+        ...       # Use a single shared policy for all traffic lights
+        ...       "traffic_light_policy":
+        ...         (PGPolicyGraph, Box(...), Discrete(...), {}),
+        ...   },
+        ...   policy_mapping_fn=lambda agent_id:
+        ...     random.choice(["car_policy1", "car_policy2"])
+        ...     if agent_id.startswith("car_") else "traffic_light_policy")
         >>> print(evaluator.sample().keys())
         MultiAgentBatch({
             "car_policy1": SampleBatch(...),

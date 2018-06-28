@@ -7,7 +7,7 @@ import os
 
 import ray
 from ray.rllib import optimizers
-from ray.rllib.agent import Agent
+from ray.rllib.agents.agent import Agent
 from ray.rllib.agents.dqn.dqn_policy_graph import DQNPolicyGraph
 from ray.rllib.evaluation.common_policy_evaluator import CommonPolicyEvaluator
 from ray.rllib.evaluation.metrics import collect_metrics
@@ -113,6 +113,8 @@ DEFAULT_CONFIG = {
 
 
 class DQNAgent(Agent):
+    """DQN implementation in TensorFlow."""
+
     _agent_name = "DQN"
     _default_config = DEFAULT_CONFIG
     _policy_graph = DQNPolicyGraph

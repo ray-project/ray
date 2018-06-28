@@ -59,6 +59,7 @@ RL Building Blocks
 
 Package Reference
 -----------------
+* `ray.rllib.agents <rllib-package-ref.html#module-ray.rllib.agents>`__
 * `ray.rllib.env <rllib-package-ref.html#module-ray.rllib.env>`__
 * `ray.rllib.evaluation <rllib-package-ref.html#module-ray.rllib.evaluation>`__
 * `ray.rllib.models <rllib-package-ref.html#module-ray.rllib.models>`__

@@ -18,7 +18,7 @@ class PolicyEvaluator(object):
 
         Returns:
             SampleBatch|MultiAgentBatch: A columnar batch of experiences
-                (e.g., tensors), or a multi-agent batch.
+            (e.g., tensors), or a multi-agent batch.
 
         Examples:
             >>> print(ev.sample())
@@ -34,9 +34,9 @@ class PolicyEvaluator(object):
 
         Returns:
             (grads, info): A list of gradients that can be applied on a
-                compatible evaluator. In the multi-agent case, returns a dict
-                of gradients keyed by policy graph ids. An info dictionary of
-                extra metadata is also returned.
+            compatible evaluator. In the multi-agent case, returns a dict
+            of gradients keyed by policy graph ids. An info dictionary of
+            extra metadata is also returned.
 
         Examples:
             >>> batch = ev.sample()

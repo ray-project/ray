@@ -12,7 +12,7 @@ import pickle
 import time
 
 import ray
-from ray.rllib import agent
+from ray.rllib.agents import Agent
 from ray.tune.trial import Resources
 
 from ray.rllib.agents.es import optimizers
@@ -134,7 +134,9 @@ class Worker(object):
             eval_lengths=eval_lengths)
 
 
-class ESAgent(agent.Agent):
+class ESAgent(Agent):
+    """Large-scale implementation of Evolution Strategies in Ray."""
+
     _agent_name = "ES"
     _default_config = DEFAULT_CONFIG
 

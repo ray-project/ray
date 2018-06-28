@@ -119,6 +119,7 @@ DEFAULT_CONFIG = {
 
 
 class DDPGAgent(DQNAgent):
+    """DDPG implementation in TensorFlow."""
     _agent_name = "DDPG"
     _default_config = DEFAULT_CONFIG
     _policy_graph = DDPGPolicyGraph

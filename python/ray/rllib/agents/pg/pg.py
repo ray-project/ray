@@ -2,7 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from ray.rllib.agent import Agent
+from ray.rllib.agents.agent import Agent
 from ray.rllib.agents.pg.pg_policy_graph import PGPolicyGraph
 from ray.rllib.evaluation.common_policy_evaluator import CommonPolicyEvaluator
 from ray.rllib.evaluation.metrics import collect_metrics

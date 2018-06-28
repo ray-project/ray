@@ -6,7 +6,7 @@ import pickle
 import os
 
 import ray
-from ray.rllib.agent import Agent
+from ray.rllib.agents.agent import Agent
 from ray.rllib.optimizers import AsyncGradientsOptimizer
 from ray.rllib.utils import FilterManager
 from ray.rllib.evaluation.common_policy_evaluator import CommonPolicyEvaluator
@@ -72,6 +72,8 @@ DEFAULT_CONFIG = {
 
 
 class A3CAgent(Agent):
+    """A3C implementations in TensorFlow and PyTorch."""
+
     _agent_name = "A3C"
     _default_config = DEFAULT_CONFIG
 

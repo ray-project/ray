@@ -11,7 +11,7 @@ import pickle
 
 import gym
 import ray
-from ray.rllib.agent import get_agent_class
+from ray.rllib.agents.agent import get_agent_class
 from ray.rllib.agents.dqn.common.wrappers import wrap_dqn
 from ray.rllib.models import ModelCatalog
 

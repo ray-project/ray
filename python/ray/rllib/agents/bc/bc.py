@@ -3,7 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import ray
-from ray.rllib.agent import Agent
+from ray.rllib.agents.agent import Agent
 from ray.rllib.agents.bc.bc_evaluator import BCEvaluator, \
     GPURemoteBCEvaluator, RemoteBCEvaluator
 from ray.rllib.optimizers import AsyncGradientsOptimizer
