@@ -5,6 +5,8 @@ RLlib is an open-source library for reinforcement learning that offers both a co
 
 .. image:: rllib-stack.svg
 
+Learn more about the design of RLlib by reading the `ICML paper <https://arxiv.org/abs/1712.09381>`__.
+
 Installation
 ------------
 
