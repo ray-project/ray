@@ -8,12 +8,12 @@ import tensorflow as tf
 
 import ray
 from ray.rllib.models import ModelCatalog
-from ray.rllib.envs.async_vector_env import AsyncVectorEnv
-from ray.rllib.envs.atari_wrappers import wrap_deepmind, is_atari
-from ray.rllib.envs.env_context import EnvContext
-from ray.rllib.envs.serving_env import ServingEnv
-from ray.rllib.envs.vector_env import VectorEnv
-from ray.rllib.envs.multi_agent_env import MultiAgentEnv
+from ray.rllib.env.async_vector_env import AsyncVectorEnv
+from ray.rllib.env.atari_wrappers import wrap_deepmind, is_atari
+from ray.rllib.env.env_context import EnvContext
+from ray.rllib.env.serving_env import ServingEnv
+from ray.rllib.env.vector_env import VectorEnv
+from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.evaluation.interface import PolicyEvaluator
 from ray.rllib.evaluation.sample_batch import MultiAgentBatch, \
     DEFAULT_POLICY_ID

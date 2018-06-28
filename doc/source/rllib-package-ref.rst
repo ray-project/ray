@@ -1,8 +1,20 @@
 RLlib Package Reference
 =======================
 
-ray.rllib.models
+ray.rllib.env
+-------------
+
+.. automodule:: ray.rllib.env
+    :members:
+
+ray.rllib.evaluation
 --------------------
+
+.. automodule:: ray.rllib.evaluation
+    :members:
+
+ray.rllib.models
+----------------
 
 .. automodule:: ray.rllib.models
     :members:

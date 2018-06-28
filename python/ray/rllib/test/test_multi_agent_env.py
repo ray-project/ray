@@ -16,8 +16,8 @@ from ray.rllib.test.test_common_policy_evaluator import MockEnv, MockEnv2, \
     MockPolicyGraph
 from ray.rllib.evaluation.common_policy_evaluator import CommonPolicyEvaluator
 from ray.rllib.evaluation.metrics import collect_metrics
-from ray.rllib.envs.async_vector_env import _MultiAgentEnvToAsync
-from ray.rllib.envs.multi_agent_env import MultiAgentEnv
+from ray.rllib.env.async_vector_env import _MultiAgentEnvToAsync
+from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.tune.registry import register_env
 
 

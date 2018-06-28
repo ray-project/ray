@@ -8,9 +8,9 @@ from ray.tune.registry import register_trainable
 
 from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
-from ray.rllib.envs.async_vector_env import AsyncVectorEnv
-from ray.rllib.envs.vector_env import VectorEnv
-from ray.rllib.envs.serving_env import ServingEnv
+from ray.rllib.env.async_vector_env import AsyncVectorEnv
+from ray.rllib.env.vector_env import VectorEnv
+from ray.rllib.env.serving_env import ServingEnv
 from ray.rllib.evaluation.common_policy_evaluator import CommonPolicyEvaluator
 from ray.rllib.evaluation.sample_batch import SampleBatch
 

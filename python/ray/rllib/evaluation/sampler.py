@@ -9,7 +9,7 @@ import threading
 
 from ray.rllib.evaluation.sample_batch import MultiAgentSampleBatchBuilder, \
     MultiAgentBatch
-from ray.rllib.envs.async_vector_env import AsyncVectorEnv
+from ray.rllib.env.async_vector_env import AsyncVectorEnv
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 
 
