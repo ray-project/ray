@@ -244,12 +244,11 @@ class TestAsyncPlasmaEpollBasic(unittest.TestCase):
 
 class TestAsyncPlasmaAPI(unittest.TestCase):
 
-    @classmethod
-    def setUpClass(cls):
+    def setUp(self):
+        # Start the Ray processes.
         ray.init()
 
-    @classmethod
-    def tearDownClass(cls):
+    def tearDown(self):
         ray.worker.cleanup()
 
     def test_get(self):
