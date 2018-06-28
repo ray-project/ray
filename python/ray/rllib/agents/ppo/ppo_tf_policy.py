@@ -120,6 +120,7 @@ class PPOTFPolicyGraph(TFPolicyGraph):
                 ("logprobs", logprobs_ph),
                 ("vf_preds", vf_preds_ph)
             ]
+        # TODO(ekl) feed RNN states in here
 
         # KL Coefficient
         self.kl_coeff = tf.get_variable(
