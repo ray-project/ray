@@ -11,7 +11,7 @@ from ray.rllib.optimizers import SampleBatch, TFMultiGPUSupport
 from ray.rllib.models import ModelCatalog
 from ray.rllib.utils.sampler import SyncSampler
 from ray.rllib.utils.filter import get_filter, MeanStdFilter
-from ray.rllib.utils.process_rollout import compute_advantages
+from ray.rllib.utils.postprocessing import compute_advantages
 from ray.rllib.ppo.loss import ProximalPolicyGraph
 
 

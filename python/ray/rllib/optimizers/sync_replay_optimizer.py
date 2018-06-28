@@ -2,19 +2,21 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import numpy as np
 
 import ray
 from ray.rllib.optimizers.replay_buffer import ReplayBuffer, \
     PrioritizedReplayBuffer
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
-from ray.rllib.optimizers.sample_batch import SampleBatch
+from ray.rllib.optimizers.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
+    MultiAgentBatch
 from ray.rllib.utils.compression import pack_if_needed
 from ray.rllib.utils.filter import RunningStat
 from ray.rllib.utils.timer import TimerStat
 
 
-class LocalSyncReplayOptimizer(PolicyOptimizer):
+class SyncReplayOptimizer(PolicyOptimizer):
     """Variant of the local sync optimizer that supports replay (for DQN).
 
     This optimizer requires that policy evaluators return an additional
@@ -41,11 +43,15 @@ class LocalSyncReplayOptimizer(PolicyOptimizer):
 
         # Set up replay buffer
         if prioritized_replay:
-            self.replay_buffer = PrioritizedReplayBuffer(
-                buffer_size, alpha=prioritized_replay_alpha,
-                clip_rewards=clip_rewards)
+            def new_buffer():
+                return PrioritizedReplayBuffer(
+                    buffer_size, alpha=prioritized_replay_alpha,
+                    clip_rewards=clip_rewards)
         else:
-            self.replay_buffer = ReplayBuffer(buffer_size, clip_rewards)
+            def new_buffer():
+                return ReplayBuffer(buffer_size, clip_rewards)
+
+        self.replay_buffers = collections.defaultdict(new_buffer)
 
         assert buffer_size >= self.replay_starts
 
@@ -63,46 +69,63 @@ class LocalSyncReplayOptimizer(PolicyOptimizer):
                         [e.sample.remote() for e in self.remote_evaluators]))
             else:
                 batch = self.local_evaluator.sample()
-            for row in batch.rows():
-                self.replay_buffer.add(
-                    pack_if_needed(row["obs"]), row["actions"], row["rewards"],
-                    pack_if_needed(row["new_obs"]),
-                    row["dones"], row["weights"])
 
-        if len(self.replay_buffer) >= self.replay_starts:
+            # Handle everything as if multiagent
+            if isinstance(batch, SampleBatch):
+                batch = MultiAgentBatch(
+                    {DEFAULT_POLICY_ID: batch}, batch.count)
+
+            for policy_id, s in batch.policy_batches.items():
+                for row in s.rows():
+                    if "weights" not in row:
+                        row["weights"] = np.ones_like(row["rewards"])
+                    self.replay_buffers[policy_id].add(
+                        pack_if_needed(row["obs"]), row["actions"],
+                        row["rewards"], pack_if_needed(row["new_obs"]),
+                        row["dones"], row["weights"])
+
+        if self.num_steps_sampled >= self.replay_starts:
             self._optimize()
 
         self.num_steps_sampled += batch.count
 
     def _optimize(self):
-        with self.replay_timer:
-            if isinstance(self.replay_buffer, PrioritizedReplayBuffer):
-                (obses_t, actions, rewards, obses_tp1,
-                    dones, weights, batch_indexes) = self.replay_buffer.sample(
-                        self.train_batch_size,
-                        beta=self.prioritized_replay_beta)
-            else:
-                (obses_t, actions, rewards, obses_tp1,
-                    dones) = self.replay_buffer.sample(
-                        self.train_batch_size)
-                weights = np.ones_like(rewards)
-                batch_indexes = - np.ones_like(rewards)
-            samples = SampleBatch({
-                "obs": obses_t, "actions": actions, "rewards": rewards,
-                "new_obs": obses_tp1, "dones": dones, "weights": weights,
-                "batch_indexes": batch_indexes})
+        samples = self._replay()
 
         with self.grad_timer:
-            info = self.local_evaluator.compute_apply(samples)
-            if isinstance(self.replay_buffer, PrioritizedReplayBuffer):
-                td_error = info["td_error"]
-                new_priorities = (
-                    np.abs(td_error) + self.prioritized_replay_eps)
-                self.replay_buffer.update_priorities(
-                    samples["batch_indexes"], new_priorities)
+            info_dict = self.local_evaluator.compute_apply(samples)
+            for policy_id, info in info_dict.items():
+                replay_buffer = self.replay_buffers[policy_id]
+                if isinstance(replay_buffer, PrioritizedReplayBuffer):
+                    td_error = info["td_error"]
+                    new_priorities = (
+                        np.abs(td_error) + self.prioritized_replay_eps)
+                    replay_buffer.update_priorities(
+                        samples.policy_batches[policy_id]["batch_indexes"],
+                        new_priorities)
             self.grad_timer.push_units_processed(samples.count)
 
         self.num_steps_trained += samples.count
+
+    def _replay(self):
+        samples = {}
+        with self.replay_timer:
+            for policy_id, replay_buffer in self.replay_buffers.items():
+                if isinstance(replay_buffer, PrioritizedReplayBuffer):
+                    (obses_t, actions, rewards, obses_tp1,
+                        dones, weights, batch_indexes) = replay_buffer.sample(
+                            self.train_batch_size,
+                            beta=self.prioritized_replay_beta)
+                else:
+                    (obses_t, actions, rewards, obses_tp1,
+                        dones) = replay_buffer.sample(self.train_batch_size)
+                    weights = np.ones_like(rewards)
+                    batch_indexes = - np.ones_like(rewards)
+            samples[policy_id] = SampleBatch({
+                "obs": obses_t, "actions": actions, "rewards": rewards,
+                "new_obs": obses_tp1, "dones": dones, "weights": weights,
+                "batch_indexes": batch_indexes})
+        return MultiAgentBatch(samples, self.train_batch_size)
 
     def stats(self):
         return dict(PolicyOptimizer.stats(self), **{

@@ -43,6 +43,9 @@ TrainingResult = namedtuple(
         # (Optional) The number of episodes total.
         "episodes_total",
 
+        # (Optional) Per-policy reward information in multi-agent RL.
+        "policy_reward_mean",
+
         # (Optional) The current training accuracy if applicable.
         "mean_accuracy",
 

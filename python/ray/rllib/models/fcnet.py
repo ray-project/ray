@@ -6,20 +6,16 @@ import tensorflow as tf
 import tensorflow.contrib.slim as slim
 
 from ray.rllib.models.model import Model
-from ray.rllib.models.misc import normc_initializer
+from ray.rllib.models.misc import normc_initializer, get_activation_fn
 
 
 class FullyConnectedNetwork(Model):
     """Generic fully connected network."""
 
-    def _init(self, inputs, num_outputs, options):
+    def _build_layers(self, inputs, num_outputs, options):
         hiddens = options.get("fcnet_hiddens", [256, 256])
 
-        fcnet_activation = options.get("fcnet_activation", "tanh")
-        if fcnet_activation == "tanh":
-            activation = tf.nn.tanh
-        elif fcnet_activation == "relu":
-            activation = tf.nn.relu
+        activation = get_activation_fn(options.get("fcnet_activation", "tanh"))
 
         with tf.name_scope("fc_net"):
             i = 1

@@ -13,7 +13,7 @@ from ray.tune.trial import Resources
 from ray.rllib.agent import Agent
 from ray.rllib.utils import FilterManager
 from ray.rllib.ppo.ppo_evaluator import PPOEvaluator
-from ray.rllib.optimizers.multi_gpu import LocalMultiGPUOptimizer
+from ray.rllib.optimizers.multi_gpu_optimizer import LocalMultiGPUOptimizer
 
 DEFAULT_CONFIG = {
     # Discount factor of the MDP
@@ -88,7 +88,6 @@ DEFAULT_CONFIG = {
 
 class PPOAgent(Agent):
     _agent_name = "PPO"
-    _allow_unknown_subkeys = ["model", "tf_session_args", "env_config"]
     _default_config = DEFAULT_CONFIG
 
     @classmethod

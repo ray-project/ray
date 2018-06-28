@@ -3,7 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 from ray.rllib.agent import Agent
-from ray.rllib.optimizers import LocalSyncOptimizer
+from ray.rllib.optimizers import SyncSamplesOptimizer
 from ray.rllib.pg.pg_policy_graph import PGPolicyGraph
 from ray.rllib.utils.common_policy_evaluator import CommonPolicyEvaluator, \
     collect_metrics
@@ -26,9 +26,15 @@ DEFAULT_CONFIG = {
     # Arguments to pass to the rllib optimizer
     "optimizer": {},
     # Model parameters
-    "model": {"fcnet_hiddens": [128, 128]},
+    "model": {"fcnet_hiddens": [128, 128], "max_seq_len": 20},
     # Arguments to pass to the env creator
     "env_config": {},
+
+    # === Multiagent ===
+    "multiagent": {
+        "policy_graphs": {},
+        "policy_mapping_fn": None,
+    },
 }
 
 
@@ -48,11 +54,15 @@ class PGAgent(Agent):
         return Resources(cpu=1, gpu=0, extra_cpu=cf["num_workers"])
 
     def _init(self):
-        self.optimizer = LocalSyncOptimizer.make(
+        self.optimizer = SyncSamplesOptimizer.make(
             evaluator_cls=CommonPolicyEvaluator,
             evaluator_args={
                 "env_creator": self.env_creator,
-                "policy_graph": PGPolicyGraph,
+                "policy_graph": (
+                    self.config["multiagent"]["policy_graphs"] or
+                    PGPolicyGraph),
+                "policy_mapping_fn":
+                    self.config["multiagent"]["policy_mapping_fn"],
                 "batch_steps": self.config["batch_size"],
                 "batch_mode": "truncate_episodes",
                 "model_config": self.config["model"],

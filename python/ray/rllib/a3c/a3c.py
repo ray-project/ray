@@ -7,11 +7,10 @@ import os
 
 import ray
 from ray.rllib.agent import Agent
-from ray.rllib.optimizers import AsyncOptimizer
+from ray.rllib.optimizers import AsyncGradientsOptimizer
 from ray.rllib.utils import FilterManager
 from ray.rllib.utils.common_policy_evaluator import CommonPolicyEvaluator, \
     collect_metrics
-from ray.rllib.a3c.common import get_policy_cls
 from ray.tune.trial import Resources
 
 DEFAULT_CONFIG = {
@@ -21,14 +20,10 @@ DEFAULT_CONFIG = {
     "num_envs": 1,
     # Size of rollout batch
     "batch_size": 10,
-    # Use LSTM model - only applicable for image states
-    "use_lstm": False,
     # Use PyTorch as backend - no LSTM support
     "use_pytorch": False,
     # Which observation filter to apply to the observation
     "observation_filter": "NoFilter",
-    # Which reward filter to apply to the reward
-    "reward_filter": "NoFilter",
     # Discount factor of MDP
     "gamma": 0.99,
     # GAE(gamma) parameter
@@ -47,6 +42,10 @@ DEFAULT_CONFIG = {
     "summarize": False,
     # Model and preprocessor options
     "model": {
+        # Use LSTM model. Requires TF.
+        "use_lstm": False,
+        # Max seq length for LSTM training.
+        "max_seq_len": 20,
         # (Image statespace) - Converts image to Channels = 1
         "grayscale": True,
         # (Image statespace) - Each pixel
@@ -63,13 +62,18 @@ DEFAULT_CONFIG = {
     },
     # Arguments to pass to the env creator
     "env_config": {},
+
+    # === Multiagent ===
+    "multiagent": {
+        "policy_graphs": {},
+        "policy_mapping_fn": None,
+    },
 }
 
 
 class A3CAgent(Agent):
     _agent_name = "A3C"
     _default_config = DEFAULT_CONFIG
-    _allow_unknown_subkeys = ["model", "optimizer", "env_config"]
 
     @classmethod
     def default_resource_request(cls, config):
@@ -81,7 +85,12 @@ class A3CAgent(Agent):
             extra_gpu=cf["use_gpu_for_workers"] and cf["num_workers"] or 0)
 
     def _init(self):
-        self.policy_cls = get_policy_cls(self.config)
+        if self.config["use_pytorch"]:
+            from ray.rllib.a3c.a3c_torch_policy import A3CTorchPolicyGraph
+            self.policy_cls = A3CTorchPolicyGraph
+        else:
+            from ray.rllib.a3c.a3c_tf_policy import A3CPolicyGraph
+            self.policy_cls = A3CPolicyGraph
 
         if self.config["use_pytorch"]:
             session_creator = None
@@ -98,7 +107,9 @@ class A3CAgent(Agent):
         remote_cls = CommonPolicyEvaluator.as_remote(
             num_gpus=1 if self.config["use_gpu_for_workers"] else 0)
         self.local_evaluator = CommonPolicyEvaluator(
-            self.env_creator, self.policy_cls,
+            self.env_creator,
+            self.config["multiagent"]["policy_graphs"] or self.policy_cls,
+            policy_mapping_fn=self.config["multiagent"]["policy_mapping_fn"],
             batch_steps=self.config["batch_size"],
             batch_mode="truncate_episodes",
             tf_session_creator=session_creator,
@@ -107,16 +118,20 @@ class A3CAgent(Agent):
             num_envs=self.config["num_envs"])
         self.remote_evaluators = [
             remote_cls.remote(
-                self.env_creator, self.policy_cls,
+                self.env_creator,
+                self.config["multiagent"]["policy_graphs"] or self.policy_cls,
+                policy_mapping_fn=(
+                    self.config["multiagent"]["policy_mapping_fn"]),
                 batch_steps=self.config["batch_size"],
                 batch_mode="truncate_episodes", sample_async=True,
                 tf_session_creator=session_creator,
                 env_config=self.config["env_config"],
                 model_config=self.config["model"], policy_config=self.config,
-                num_envs=self.config["num_envs"])
+                num_envs=self.config["num_envs"],
+                worker_index=i+1)
             for i in range(self.config["num_workers"])]
 
-        self.optimizer = AsyncOptimizer(
+        self.optimizer = AsyncGradientsOptimizer(
             self.config["optimizer"], self.local_evaluator,
             self.remote_evaluators)
 
@@ -124,7 +139,10 @@ class A3CAgent(Agent):
         self.optimizer.step()
         FilterManager.synchronize(
             self.local_evaluator.filters, self.remote_evaluators)
-        return collect_metrics(self.local_evaluator, self.remote_evaluators)
+        result = collect_metrics(self.local_evaluator, self.remote_evaluators)
+        result = result._replace(
+            info=self.optimizer.stats())
+        return result
 
     def _stop(self):
         # workaround for https://github.com/ray-project/ray/issues/1516

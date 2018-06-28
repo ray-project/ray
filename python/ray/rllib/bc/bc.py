@@ -6,7 +6,7 @@ import ray
 from ray.rllib.agent import Agent
 from ray.rllib.bc.bc_evaluator import BCEvaluator, GPURemoteBCEvaluator, \
     RemoteBCEvaluator
-from ray.rllib.optimizers import AsyncOptimizer
+from ray.rllib.optimizers import AsyncGradientsOptimizer
 from ray.tune.result import TrainingResult
 from ray.tune.trial import Resources
 
@@ -71,7 +71,7 @@ class BCAgent(Agent):
         self.remote_evaluators = [
             remote_cls.remote(self.env_creator, self.config, self.logdir)
             for _ in range(self.config["num_workers"])]
-        self.optimizer = AsyncOptimizer(
+        self.optimizer = AsyncGradientsOptimizer(
             self.config["optimizer"], self.local_evaluator,
             self.remote_evaluators)
 

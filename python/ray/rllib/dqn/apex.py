@@ -9,7 +9,7 @@ from ray.utils import merge_dicts
 APEX_DEFAULT_CONFIG = merge_dicts(
     DQN_CONFIG,
     {
-        "optimizer_class": "ApexOptimizer",
+        "optimizer_class": "AsyncSamplesOptimizer",
         "optimizer_config":
             merge_dicts(
                 DQN_CONFIG["optimizer_config"], {
@@ -56,6 +56,6 @@ class ApexAgent(DQNAgent):
         # Ape-X updates based on num steps trained, not sampled
         if self.optimizer.num_steps_trained - self.last_target_update_ts > \
                 self.config["target_network_update_freq"]:
-            self.local_evaluator.update_target()
+            self.local_evaluator.for_policy(lambda p: p.update_target())
             self.last_target_update_ts = self.optimizer.num_steps_trained
             self.num_target_updates += 1
