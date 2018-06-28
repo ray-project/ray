@@ -710,7 +710,7 @@ class Worker(object):
                 return
 
             check_oversized_pickle(pickled_function, function.__name__,
-                                   "remote function", self)
+                                   "function", self)
 
             # Run the function on all workers.
             self.redis_client.hmset(
