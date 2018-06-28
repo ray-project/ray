@@ -54,8 +54,8 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
         print("LocalMultiGPUOptimizer devices", self.devices)
         print("LocalMultiGPUOptimizer batch size", self.batch_size)
 
-        assert set(self.local_evaluator.policy_map.keys()) == set(
-            ["default"]), "Multi-agent is not supported"
+        assert set(self.local_evaluator.policy_map.keys()) == {"default"}, \
+            "Multi-agent is not supported"
         self.policy = self.local_evaluator.policy_map["default"]
         assert isinstance(self.policy, TFPolicyGraph), \
             "Only TF policies are supported"
