@@ -9,8 +9,8 @@ import ray
 from ray.rllib.agent import Agent
 from ray.rllib.optimizers import AsyncGradientsOptimizer
 from ray.rllib.utils import FilterManager
-from ray.rllib.utils.common_policy_evaluator import CommonPolicyEvaluator, \
-    collect_metrics
+from ray.rllib.evaluation.common_policy_evaluator import CommonPolicyEvaluator
+from ray.rllib.evaluation.metrics import collect_metrics
 from ray.tune.trial import Resources
 
 DEFAULT_CONFIG = {
@@ -86,10 +86,11 @@ class A3CAgent(Agent):
 
     def _init(self):
         if self.config["use_pytorch"]:
-            from ray.rllib.a3c.a3c_torch_policy import A3CTorchPolicyGraph
+            from ray.rllib.agents.a3c.a3c_torch_policy import \
+                A3CTorchPolicyGraph
             self.policy_cls = A3CTorchPolicyGraph
         else:
-            from ray.rllib.a3c.a3c_tf_policy import A3CPolicyGraph
+            from ray.rllib.agents.a3c.a3c_tf_policy import A3CPolicyGraph
             self.policy_cls = A3CPolicyGraph
 
         if self.config["use_pytorch"]:

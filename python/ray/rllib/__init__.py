@@ -12,7 +12,7 @@ from ray.rllib.envs.async_vector_env import AsyncVectorEnv
 from ray.rllib.envs.vector_env import VectorEnv
 from ray.rllib.envs.serving_env import ServingEnv
 from ray.rllib.evaluation.common_policy_evaluator import CommonPolicyEvaluator
-from ray.rllib.evalutaion.sample_batch import SampleBatch
+from ray.rllib.evaluation.sample_batch import SampleBatch
 
 
 def _register_all():

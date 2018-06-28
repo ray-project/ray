@@ -4,8 +4,8 @@ from __future__ import print_function
 
 import ray
 from ray.rllib.agent import Agent
-from ray.rllib.bc.bc_evaluator import BCEvaluator, GPURemoteBCEvaluator, \
-    RemoteBCEvaluator
+from ray.rllib.agents.bc.bc_evaluator import BCEvaluator, \
+    GPURemoteBCEvaluator, RemoteBCEvaluator
 from ray.rllib.optimizers import AsyncGradientsOptimizer
 from ray.tune.result import TrainingResult
 from ray.tune.trial import Resources

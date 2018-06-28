@@ -7,7 +7,7 @@ import gym
 
 import ray
 from ray.rllib.utils.error import UnsupportedSpaceException
-from ray.rllib.utils.postprocessing import compute_advantages
+from ray.rllib.evaluation.postprocessing import compute_advantages
 from ray.rllib.utils.tf_policy_graph import TFPolicyGraph
 from ray.rllib.models.misc import linear, normc_initializer
 from ray.rllib.models.catalog import ModelCatalog
@@ -32,7 +32,7 @@ class A3CLoss(object):
 
 class A3CPolicyGraph(TFPolicyGraph):
     def __init__(self, observation_space, action_space, config):
-        config = dict(ray.rllib.a3c.a3c.DEFAULT_CONFIG, **config)
+        config = dict(ray.rllib.agents.a3c.a3c.DEFAULT_CONFIG, **config)
         self.config = config
         self.sess = tf.get_default_session()
 

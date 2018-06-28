@@ -8,8 +8,8 @@ import tensorflow as tf
 import tensorflow.contrib.layers as layers
 
 import ray
-from ray.rllib.dqn.dqn_policy_graph import _huber_loss, _minimize_and_clip, \
-    _scope_vars, _postprocess_dqn
+from ray.rllib.agents.dqn.dqn_policy_graph import _huber_loss, \
+    _minimize_and_clip, _scope_vars, _postprocess_dqn
 from ray.rllib.models import ModelCatalog
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.tf_policy_graph import TFPolicyGraph
@@ -108,7 +108,7 @@ class ActorCriticLoss(object):
 
 class DDPGPolicyGraph(TFPolicyGraph):
     def __init__(self, observation_space, action_space, config):
-        config = dict(ray.rllib.ddpg.ddpg.DEFAULT_CONFIG, **config)
+        config = dict(ray.rllib.agents.ddpg.ddpg.DEFAULT_CONFIG, **config)
         if not isinstance(action_space, Box):
             raise UnsupportedSpaceException(
                 "Action space {} is not supported for DDPG.".format(

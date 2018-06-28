@@ -3,7 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import ray
-from ray.rllib.optimizers import SampleBatch
+from ray.rllib.evaluation.sample_batch import SampleBatch
 
 
 def collect_samples(agents, timesteps_per_batch):

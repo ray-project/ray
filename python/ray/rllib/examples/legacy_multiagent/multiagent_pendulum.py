@@ -7,7 +7,7 @@ import gym
 from gym.envs.registration import register
 
 import ray
-import ray.rllib.ppo as ppo
+import ray.rllib.agents.ppo as ppo
 from ray.tune.registry import register_env
 
 env_name = "MultiAgentPendulumEnv"

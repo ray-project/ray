@@ -19,7 +19,7 @@ elif sys.version_info[0] == 3:
 
 class PolicyServer(ThreadingMixIn, HTTPServer):
     """REST server than can be launched from a ServingEnv.
-    
+
     This launches a multi-threaded server that listens on the specified host
     and port to serve policy requests and forward experiences to RLlib.
 

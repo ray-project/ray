@@ -2,9 +2,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from ray.rllib.dqn.common.schedules import ConstantSchedule, LinearSchedule
-from ray.rllib.dqn.dqn import DQNAgent
-from ray.rllib.ddpg.ddpg_policy_graph import DDPGPolicyGraph
+from ray.rllib.agents.dqn.dqn import DQNAgent
+from ray.rllib.agents.ddpg.ddpg_policy_graph import DDPGPolicyGraph
+from ray.rllib.utils.schedules import ConstantSchedule, LinearSchedule
 
 OPTIMIZER_SHARED_CONFIGS = [
     "buffer_size", "prioritized_replay", "prioritized_replay_alpha",

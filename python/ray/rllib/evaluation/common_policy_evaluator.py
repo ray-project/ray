@@ -2,9 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 import gym
-import numpy as np
 import pickle
 import tensorflow as tf
 
@@ -25,7 +23,6 @@ from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.policy_graph import PolicyGraph
 from ray.rllib.utils.tf_policy_graph import TFPolicyGraph
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
-from ray.tune.result import TrainingResult
 
 
 class CommonPolicyEvaluator(PolicyEvaluator):

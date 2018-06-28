@@ -15,10 +15,10 @@ import ray
 from ray.rllib import agent
 from ray.tune.trial import Resources
 
-from ray.rllib.es import optimizers
-from ray.rllib.es import policies
-from ray.rllib.es import tabular_logger as tlogger
-from ray.rllib.es import utils
+from ray.rllib.agents.es import optimizers
+from ray.rllib.agents.es import policies
+from ray.rllib.agents.es import tabular_logger as tlogger
+from ray.rllib.agents.es import utils
 
 
 Result = namedtuple("Result", [

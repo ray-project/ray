@@ -2,7 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from ray.rllib.ddpg.ddpg import DDPGAgent, DEFAULT_CONFIG as DDPG_CONFIG
+from ray.rllib.agents.ddpg.ddpg import DDPGAgent, DEFAULT_CONFIG as DDPG_CONFIG
 from ray.utils import merge_dicts
 
 APEX_DDPG_DEFAULT_CONFIG = merge_dicts(

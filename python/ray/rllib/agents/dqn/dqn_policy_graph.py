@@ -79,7 +79,7 @@ class QLoss(object):
 
 class DQNPolicyGraph(TFPolicyGraph):
     def __init__(self, observation_space, action_space, config):
-        config = dict(ray.rllib.dqn.dqn.DEFAULT_CONFIG, **config)
+        config = dict(ray.rllib.agents.dqn.dqn.DEFAULT_CONFIG, **config)
         if not isinstance(action_space, Discrete):
             raise UnsupportedSpaceException(
                 "Action space {} is not supported for DQN.".format(

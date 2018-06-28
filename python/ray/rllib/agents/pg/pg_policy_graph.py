@@ -6,7 +6,7 @@ import tensorflow as tf
 
 import ray
 from ray.rllib.models.catalog import ModelCatalog
-from ray.rllib.utils.postprocessing import compute_advantages
+from ray.rllib.evaluation.postprocessing import compute_advantages
 from ray.rllib.utils.tf_policy_graph import TFPolicyGraph
 
 
@@ -17,7 +17,7 @@ class PGLoss(object):
 
 class PGPolicyGraph(TFPolicyGraph):
     def __init__(self, obs_space, action_space, config):
-        config = dict(ray.rllib.pg.pg.DEFAULT_CONFIG, **config)
+        config = dict(ray.rllib.agents.pg.pg.DEFAULT_CONFIG, **config)
         self.config = config
 
         # Setup policy

@@ -13,7 +13,7 @@ import os
 from gym import spaces
 
 import ray
-from ray.rllib.dqn import DQNAgent
+from ray.rllib.agents.dqn import DQNAgent
 from ray.rllib.envs.serving_env import ServingEnv
 from ray.rllib.utils.policy_server import PolicyServer
 from ray.tune.logger import pretty_print

@@ -6,10 +6,10 @@ import pickle
 from six.moves import queue
 
 import ray
-from ray.rllib.bc.experience_dataset import ExperienceDataset
-from ray.rllib.bc.policy import BCPolicy
+from ray.rllib.agents.bc.experience_dataset import ExperienceDataset
+from ray.rllib.agents.bc.policy import BCPolicy
+from ray.rllib.evaluation.interface import PolicyEvaluator
 from ray.rllib.models import ModelCatalog
-from ray.rllib.optimizers import PolicyEvaluator
 
 
 class BCEvaluator(PolicyEvaluator):

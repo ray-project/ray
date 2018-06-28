@@ -7,12 +7,13 @@ import tensorflow as tf
 from collections import OrderedDict
 
 import ray
-from ray.rllib.optimizers import SampleBatch, TFMultiGPUSupport
+from ray.rllib.evaluation.sample_batch import SampleBatch
+from ray.rllib.evaluation.interface import TFMultiGPUSupport
 from ray.rllib.models import ModelCatalog
-from ray.rllib.utils.sampler import SyncSampler
+from ray.rllib.evaluation.sampler import SyncSampler
 from ray.rllib.utils.filter import get_filter, MeanStdFilter
-from ray.rllib.utils.postprocessing import compute_advantages
-from ray.rllib.ppo.loss import ProximalPolicyGraph
+from ray.rllib.evaluation.postprocessing import compute_advantages
+from ray.rllib.agents.ppo.loss import ProximalPolicyGraph
 
 
 class PPOEvaluator(TFMultiGPUSupport):

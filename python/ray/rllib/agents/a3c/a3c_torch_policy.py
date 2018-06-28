@@ -9,7 +9,7 @@ from torch import nn
 import ray
 from ray.rllib.models.pytorch.misc import var_to_np
 from ray.rllib.models.catalog import ModelCatalog
-from ray.rllib.utils.postprocessing import compute_advantages
+from ray.rllib.evaluation.postprocessing import compute_advantages
 from ray.rllib.utils.torch_policy_graph import TorchPolicyGraph
 
 
@@ -40,7 +40,7 @@ class A3CTorchPolicyGraph(TorchPolicyGraph):
     """A simple, non-recurrent PyTorch policy example."""
 
     def __init__(self, obs_space, action_space, config):
-        config = dict(ray.rllib.a3c.a3c.DEFAULT_CONFIG, **config)
+        config = dict(ray.rllib.agents.a3c.a3c.DEFAULT_CONFIG, **config)
         self.config = config
         _, self.logit_dim = ModelCatalog.get_action_dist(
             action_space, self.config["model"])

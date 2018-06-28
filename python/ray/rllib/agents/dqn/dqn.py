@@ -7,11 +7,11 @@ import os
 
 import ray
 from ray.rllib import optimizers
-from ray.rllib.dqn.common.schedules import ConstantSchedule, LinearSchedule
-from ray.rllib.dqn.dqn_policy_graph import DQNPolicyGraph
-from ray.rllib.utils.common_policy_evaluator import CommonPolicyEvaluator, \
-    collect_metrics
 from ray.rllib.agent import Agent
+from ray.rllib.agents.dqn.dqn_policy_graph import DQNPolicyGraph
+from ray.rllib.evaluation.common_policy_evaluator import CommonPolicyEvaluator
+from ray.rllib.evaluation.metrics import collect_metrics
+from ray.rllib.utils.schedules import ConstantSchedule, LinearSchedule
 from ray.tune.trial import Resources
 
 
