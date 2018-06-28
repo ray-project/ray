@@ -192,6 +192,7 @@ class CommonPolicyEvaluator(PolicyEvaluator):
 
         env_context = EnvContext(env_config or {}, worker_index)
         policy_config = policy_config or {}
+        self.policy_config = policy_config
         model_config = model_config or {}
         policy_mapping_fn = (
             policy_mapping_fn or (lambda agent_id: DEFAULT_POLICY_ID))
