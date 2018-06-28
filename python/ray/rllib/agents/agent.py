@@ -9,6 +9,7 @@ import os
 import pickle
 
 import tensorflow as tf
+from ray.rllib.evaluation.common_policy_evaluator import CommonPolicyEvaluator
 from ray.tune.registry import ENV_CREATOR, _global_registry
 from ray.tune.result import TrainingResult
 from ray.tune.trainable import Trainable
@@ -22,6 +23,36 @@ COMMON_CONFIG = {
     "gamma": 0.99,
     # Number of steps after which the rollout gets cut
     "horizon": 9999,
+    # Number of environments to evaluate vectorwise per worker.
+    "num_envs": 1,
+    # Number of actors used for parallelism
+    "num_workers": 1,
+    # Default sample batch size
+    "sample_batch_size": 200,
+    # Whether to rollout "complete_episodes" or "truncate_episodes"
+    "batch_mode": "truncate_episodes",
+    # Whether to use a background thread for sampling (slightly off-policy)
+    "sample_async": False,
+    # Which observation filter to apply to the observation
+    "observation_filter": "NoFilter",
+    # Whether to use rllib or deepmind preprocessors
+    "preprocessor_pref": "rllib",
+    # Arguments to pass to the env creator
+    "env_config": {},
+    # Arguments to pass to model
+    "model": {},
+    # Arguments to pass to the rllib optimizer
+    "optimizer": {},
+    # Override default TF session args if non-empty
+    "tf_session_args": {},
+    # Whether to LZ4 compress observations
+    "compress_observations": False,
+
+    # === Multiagent ===
+    "multiagent": {
+        "policy_graphs": {},
+        "policy_mapping_fn": None,
+    },
 }
 
 
@@ -69,6 +100,47 @@ class Agent(Trainable):
     _allow_unknown_configs = False
     _allow_unknown_subkeys = [
         "tf_session_args", "env_config", "model", "optimizer", "multiagent"]
+
+    def make_local_evaluator(self, env_creator, policy_graph):
+        """Convenience method to return configured local evaluator."""
+
+        return self._make_evaluator(
+            CommonPolicyEvaluator, env_creator, policy_graph, 0)
+
+    def make_remote_evaluators(
+            self, env_creator, policy_graph, count, remote_args):
+        """Convenience method to return a number of remote evaluators."""
+
+        cls = CommonPolicyEvaluator.as_remote(**remote_args).remote
+        return [
+            self._make_evaluator(cls, env_creator, policy_graph, i+1)
+            for i in range(count)]
+    
+    def _make_evaluator(self, cls, env_creator, policy_graph, worker_index):
+        config = self.config
+
+        def session_creator():
+            return tf.Session(
+                config=tf.ConfigProto(**config["tf_session_args"]))
+
+        return cls(
+            env_creator,
+            self.config["multiagent"]["policy_graphs"] or policy_graph,
+            policy_mapping_fn=self.config["multiagent"]["policy_mapping_fn"],
+            tf_session_creator=
+                session_creator if config["tf_session_args"] else None,
+            batch_steps=config["sample_batch_size"],
+            batch_mode=config["batch_mode"],
+            episode_horizon=config["horizon"],
+            preprocessor_pref=config["preprocessor_pref"],
+            sample_async=config["sample_async"],
+            compress_observations=config["compress_observations"],
+            num_envs=config["num_envs"],
+            observation_filter=config["observation_filter"],
+            env_config=config["env_config"],
+            model_config=config["model"],
+            policy_config=config,
+            worker_index=worker_index)
 
     @classmethod
     def resource_help(cls, config):

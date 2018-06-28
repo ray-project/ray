@@ -6,26 +6,17 @@ import pickle
 import os
 
 import ray
-from ray.rllib.agents.agent import Agent
+from ray.rllib.agents.agent import Agent, COMMON_CONFIG
 from ray.rllib.optimizers import AsyncGradientsOptimizer
 from ray.rllib.utils import FilterManager
-from ray.rllib.evaluation.common_policy_evaluator import CommonPolicyEvaluator
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.tune.trial import Resources
 
-DEFAULT_CONFIG = {
-    # Number of workers (excluding master)
-    "num_workers": 2,
-    # Number of environments to evaluate vectorwise per worker.
-    "num_envs": 1,
+DEFAULT_CONFIG = dict(COMMON_CONFIG, **{
     # Size of rollout batch
-    "batch_size": 10,
+    "sample_batch_size": 10,
     # Use PyTorch as backend - no LSTM support
     "use_pytorch": False,
-    # Which observation filter to apply to the observation
-    "observation_filter": "NoFilter",
-    # Discount factor of MDP
-    "gamma": 0.99,
     # GAE(gamma) parameter
     "lambda": 1.0,
     # Max global norm for each gradient calculated by worker
@@ -40,6 +31,8 @@ DEFAULT_CONFIG = {
     "use_gpu_for_workers": False,
     # Whether to emit extra summary stats
     "summarize": False,
+    # Workers sample async
+    "sample_async": True,
     # Model and preprocessor options
     "model": {
         # Use LSTM model. Requires TF.
@@ -55,20 +48,20 @@ DEFAULT_CONFIG = {
         # (Image statespace) - Converts image shape to (C, dim, dim)
         "channel_major": False,
     },
+    # Configure TF for single-process operation
+    "tf_session_args": {
+        "intra_op_parallelism_threads": 1,
+        "inter_op_parallelism_threads": 1,
+        "gpu_options": {
+            "allow_growth": True,
+        },
+    },
     # Arguments to pass to the rllib optimizer
     "optimizer": {
         # Number of gradients applied for each `train` step
         "grads_per_step": 100,
     },
-    # Arguments to pass to the env creator
-    "env_config": {},
-
-    # === Multiagent ===
-    "multiagent": {
-        "policy_graphs": {},
-        "policy_mapping_fn": None,
-    },
-}
+})
 
 
 class A3CAgent(Agent):
@@ -90,50 +83,16 @@ class A3CAgent(Agent):
         if self.config["use_pytorch"]:
             from ray.rllib.agents.a3c.a3c_torch_policy import \
                 A3CTorchPolicyGraph
-            self.policy_cls = A3CTorchPolicyGraph
+            policy_cls = A3CTorchPolicyGraph
         else:
             from ray.rllib.agents.a3c.a3c_tf_policy import A3CPolicyGraph
-            self.policy_cls = A3CPolicyGraph
+            policy_cls = A3CPolicyGraph
 
-        if self.config["use_pytorch"]:
-            session_creator = None
-        else:
-            import tensorflow as tf
-
-            def session_creator():
-                return tf.Session(
-                    config=tf.ConfigProto(
-                        intra_op_parallelism_threads=1,
-                        inter_op_parallelism_threads=1,
-                        gpu_options=tf.GPUOptions(allow_growth=True)))
-
-        remote_cls = CommonPolicyEvaluator.as_remote(
-            num_gpus=1 if self.config["use_gpu_for_workers"] else 0)
-        self.local_evaluator = CommonPolicyEvaluator(
-            self.env_creator,
-            self.config["multiagent"]["policy_graphs"] or self.policy_cls,
-            policy_mapping_fn=self.config["multiagent"]["policy_mapping_fn"],
-            batch_steps=self.config["batch_size"],
-            batch_mode="truncate_episodes",
-            tf_session_creator=session_creator,
-            env_config=self.config["env_config"],
-            model_config=self.config["model"], policy_config=self.config,
-            num_envs=self.config["num_envs"])
-        self.remote_evaluators = [
-            remote_cls.remote(
-                self.env_creator,
-                self.config["multiagent"]["policy_graphs"] or self.policy_cls,
-                policy_mapping_fn=(
-                    self.config["multiagent"]["policy_mapping_fn"]),
-                batch_steps=self.config["batch_size"],
-                batch_mode="truncate_episodes", sample_async=True,
-                tf_session_creator=session_creator,
-                env_config=self.config["env_config"],
-                model_config=self.config["model"], policy_config=self.config,
-                num_envs=self.config["num_envs"],
-                worker_index=i+1)
-            for i in range(self.config["num_workers"])]
-
+        self.local_evaluator = self.make_local_evaluator(
+            self.env_creator, policy_cls)
+        self.remote_evaluators = self.make_remote_evaluators(
+            self.env_creator, policy_cls, self.config["num_workers"],
+            {"num_gpus": 1 if self.config["use_gpu_for_workers"] else 0})
         self.optimizer = AsyncGradientsOptimizer(
             self.config["optimizer"], self.local_evaluator,
             self.remote_evaluators)

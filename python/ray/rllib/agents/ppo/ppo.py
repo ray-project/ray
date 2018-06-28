@@ -10,7 +10,6 @@ import tensorflow as tf
 import ray
 from ray.rllib.agents import Agent, COMMON_CONFIG
 from ray.rllib.agents.ppo.ppo_tf_policy import PPOTFPolicyGraph
-from ray.rllib.evaluation.common_policy_evaluator import CommonPolicyEvaluator
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.utils import FilterManager
 from ray.rllib.optimizers.multi_gpu_optimizer import LocalMultiGPUOptimizer
@@ -24,22 +23,12 @@ DEFAULT_CONFIG = dict(COMMON_CONFIG, **{
     "lambda": 1.0,
     # Initial coefficient for KL divergence
     "kl_coeff": 0.2,
+    # Number of timesteps collected for each SGD round
+    "timesteps_per_batch": 4000,
     # Number of SGD iterations in each outer loop
     "num_sgd_iter": 30,
     # Stepsize of SGD
     "sgd_stepsize": 5e-5,
-    # TODO(pcm): Expose the choice between gpus and cpus
-    # as a command line argument.
-    "devices": ["/cpu:%d" % i for i in range(4)],
-    "tf_session_args": {
-        "device_count": {"CPU": 4},
-        "log_device_placement": False,
-        "allow_soft_placement": True,
-        "intra_op_parallelism_threads": 1,
-        "inter_op_parallelism_threads": 1,
-    },
-    # Batch size for policy evaluations for rollouts
-    "rollout_batchsize": 1,
     # Total SGD batch size across all devices for SGD
     "sgd_batchsize": 128,
     # Coefficient of the value function loss
@@ -50,36 +39,16 @@ DEFAULT_CONFIG = dict(COMMON_CONFIG, **{
     "clip_param": 0.3,
     # Target value for KL divergence
     "kl_target": 0.01,
-    # Config params to pass to the model
-    "model": {"free_log_std": False},
-    # Which observation filter to apply to the observation
-    "observation_filter": "MeanStdFilter",
-    # If >1, adds frameskip
-    "extra_frameskip": 1,
-    # Number of timesteps collected in each outer loop
-    "timesteps_per_batch": 4000,
-    # Each tasks performs rollouts until at least this
-    # number of steps is obtained
-    "min_steps_per_task": 200,
-    # Number of actors used to collect the rollouts
-    "num_workers": 2,
+    # Number of GPUs to use for SGD
+    "num_gpus": 0,
     # Whether to allocate GPUs for workers (if > 0).
     "num_gpus_per_worker": 0,
     # Whether to allocate CPUs for workers (if > 0).
     "num_cpus_per_worker": 1,
-    # Dump TensorFlow timeline after this many SGD minibatches
-    "full_trace_nth_sgd_batch": -1,
-    # Whether to profile data loading
-    "full_trace_data_load": False,
-    # Outer loop iteration index when we drop into the TensorFlow debugger
-    "tf_debug_iteration": -1,
-    # If this is True, the TensorFlow debugger is invoked if an Inf or NaN
-    # is detected
-    "tf_debug_inf_or_nan": False,
-    # If True, we write tensorflow logs and checkpoints
-    "write_logs": True,
-    # Arguments to pass to the env creator
-    "env_config": {},
+    # Whether to rollout "complete_episodes" or "truncate_episodes"
+    "batch_mode": "complete_episodes",
+    # Which observation filter to apply to the observation
+    "observation_filter": "MeanStdFilter",
 })
 
 
@@ -88,46 +57,23 @@ class PPOAgent(Agent):
 
     _agent_name = "PPO"
     _default_config = DEFAULT_CONFIG
-    _default_policy_graph = PPOTFPolicyGraph
 
     @classmethod
     def default_resource_request(cls, config):
         cf = dict(cls._default_config, **config)
         return Resources(
             cpu=1,
-            gpu=len([d for d in cf["devices"] if "gpu" in d.lower()]),
+            gpu=cf["num_gpus"],
             extra_cpu=cf["num_cpus_per_worker"] * cf["num_workers"],
             extra_gpu=cf["num_gpus_per_worker"] * cf["num_workers"])
 
     def _init(self):
-        def session_creator():
-            return tf.Session(
-                config=tf.ConfigProto(**self.config["tf_session_args"]))
-        self.local_evaluator = CommonPolicyEvaluator(
-            self.env_creator,
-            self._default_policy_graph,
-            tf_session_creator=session_creator,
-            batch_mode="complete_episodes",
-            observation_filter=self.config["observation_filter"],
-            env_config=self.config["env_config"],
-            model_config=self.config["model"],
-            policy_config=self.config
-            )
-        RemoteEvaluator = CommonPolicyEvaluator.as_remote(
-            num_cpus=self.config["num_cpus_per_worker"],
-            num_gpus=self.config["num_gpus_per_worker"])
-        self.remote_evaluators = [
-            RemoteEvaluator.remote(
-                self.env_creator,
-                self._default_policy_graph,
-                batch_mode="complete_episodes",
-                observation_filter=self.config["observation_filter"],
-                env_config=self.config["env_config"],
-                model_config=self.config["model"],
-                policy_config=self.config
-            )
-            for _ in range(self.config["num_workers"])]
-
+        self.local_evaluator = self.make_local_evaluator(
+            self.env_creator, PPOTFPolicyGraph)
+        self.remote_evaluators = self.make_remote_evaluators(
+            self.env_creator, PPOTFPolicyGraph, self.config["num_workers"],
+            {"num_cpus": self.config["num_cpus_per_worker"],
+             "num_gpus": self.config["num_gpus_per_worker"]})
         self.optimizer = LocalMultiGPUOptimizer(
             {"sgd_batch_size": self.config["sgd_batchsize"],
              "sgd_stepsize": self.config["sgd_stepsize"],

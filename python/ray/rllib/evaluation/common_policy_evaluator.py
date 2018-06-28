@@ -58,7 +58,7 @@ class CommonPolicyEvaluator(PolicyEvaluator):
         >>> # Creating a multi-agent policy evaluator
         >>> evaluator = CommonPolicyEvaluator(
         ...   env_creator=lambda _: MultiAgentTrafficGrid(num_cars=25),
-        ...   policy_graph={
+        ...   policy_graphs={
         ...       # Use an ensemble of two policies for car agents
         ...       "car_policy1":
         ...         (PGPolicyGraph, Box(...), Discrete(...), {"gamma": 0.99}),

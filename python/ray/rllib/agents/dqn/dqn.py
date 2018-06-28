@@ -7,9 +7,8 @@ import os
 
 import ray
 from ray.rllib import optimizers
-from ray.rllib.agents.agent import Agent
+from ray.rllib.agents.agent import Agent, COMMON_CONFIG
 from ray.rllib.agents.dqn.dqn_policy_graph import DQNPolicyGraph
-from ray.rllib.evaluation.common_policy_evaluator import CommonPolicyEvaluator
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.utils.schedules import ConstantSchedule, LinearSchedule
 from ray.tune.trial import Resources
@@ -20,7 +19,7 @@ OPTIMIZER_SHARED_CONFIGS = [
     "prioritized_replay_beta", "prioritized_replay_eps", "sample_batch_size",
     "train_batch_size", "learning_starts", "clip_rewards"]
 
-DEFAULT_CONFIG = {
+DEFAULT_CONFIG = dict(COMMON_CONFIG, **{
     # === Model ===
     # Whether to use dueling dqn
     "dueling": True,
@@ -30,12 +29,8 @@ DEFAULT_CONFIG = {
     "hiddens": [256],
     # N-step Q learning
     "n_step": 1,
-    # Config options to pass to the model constructor
-    "model": {},
-    # Discount factor for the MDP
-    "gamma": 0.99,
-    # Arguments to pass to the env creator
-    "env_config": {},
+    # Whether to use rllib or deepmind preprocessors
+    "preprocessor_pref": "deepmind",
 
     # === Exploration ===
     # Max num timesteps for annealing schedules. Exploration is annealed from
@@ -66,6 +61,8 @@ DEFAULT_CONFIG = {
     "prioritized_replay_eps": 1e-6,
     # Whether to clip rewards to [-1, 1] prior to adding to the replay buffer.
     "clip_rewards": True,
+    # Whether to LZ4 compress observations
+    "compress_observations": True,
 
     # === Optimization ===
     # Learning rate for adam optimizer
@@ -89,8 +86,6 @@ DEFAULT_CONFIG = {
     # to increase if your environment is particularly slow to sample, or if
     # you"re using the Async or Ape-X optimizers.
     "num_workers": 0,
-    # Number of environments to evaluate vectorwise per worker.
-    "num_envs": 1,
     # Whether to allocate GPUs for workers (if > 0).
     "num_gpus_per_worker": 0,
     # Whether to allocate CPUs for workers (if > 0).
@@ -103,13 +98,7 @@ DEFAULT_CONFIG = {
     "per_worker_exploration": False,
     # Whether to compute priorities on workers.
     "worker_side_prioritization": False,
-
-    # === Multiagent ===
-    "multiagent": {
-        "policy_graphs": {},
-        "policy_mapping_fn": None,
-    },
-}
+})
 
 
 class DQNAgent(Agent):
@@ -128,32 +117,10 @@ class DQNAgent(Agent):
             extra_gpu=cf["num_gpus_per_worker"] * cf["num_workers"])
 
     def _init(self):
+        # Update effective batch size to include n-step
         adjusted_batch_size = (
             self.config["sample_batch_size"] + self.config["n_step"] - 1)
-        self.local_evaluator = CommonPolicyEvaluator(
-            self.env_creator,
-            self.config["multiagent"]["policy_graphs"] or self._policy_graph,
-            policy_mapping_fn=self.config["multiagent"]["policy_mapping_fn"],
-            batch_steps=adjusted_batch_size,
-            batch_mode="truncate_episodes", preprocessor_pref="deepmind",
-            compress_observations=True,
-            env_config=self.config["env_config"],
-            model_config=self.config["model"], policy_config=self.config,
-            num_envs=self.config["num_envs"])
-        remote_cls = CommonPolicyEvaluator.as_remote(
-            num_cpus=self.config["num_cpus_per_worker"],
-            num_gpus=self.config["num_gpus_per_worker"])
-        self.remote_evaluators = [
-            remote_cls.remote(
-                self.env_creator, self._policy_graph,
-                batch_steps=adjusted_batch_size,
-                batch_mode="truncate_episodes", preprocessor_pref="deepmind",
-                compress_observations=True,
-                env_config=self.config["env_config"],
-                model_config=self.config["model"], policy_config=self.config,
-                num_envs=self.config["num_envs"],
-                worker_index=i+1)
-            for i in range(self.config["num_workers"])]
+        self.config["sample_batch_size"] = adjusted_batch_size
 
         self.exploration0 = self._make_exploration_schedule(0)
         self.explorations = [
@@ -164,6 +131,12 @@ class DQNAgent(Agent):
             if k not in self.config["optimizer_config"]:
                 self.config["optimizer_config"][k] = self.config[k]
 
+        self.local_evaluator = self.make_local_evaluator(
+            self.env_creator, self._policy_graph)
+        self.remote_evaluators = self.make_remote_evaluators(
+            self.env_creator, self._policy_graph, self.config["num_workers"],
+            {"num_cpus": self.config["num_cpus_per_worker"],
+             "num_gpus": self.config["num_gpus_per_worker"]})
         self.optimizer = getattr(optimizers, self.config["optimizer_class"])(
             self.config["optimizer_config"], self.local_evaluator,
             self.remote_evaluators)

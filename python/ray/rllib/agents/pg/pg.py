@@ -2,40 +2,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from ray.rllib.agents.agent import Agent
+from ray.rllib.agents.agent import Agent, COMMON_CONFIG
 from ray.rllib.agents.pg.pg_policy_graph import PGPolicyGraph
-from ray.rllib.evaluation.common_policy_evaluator import CommonPolicyEvaluator
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.optimizers import SyncSamplesOptimizer
 from ray.tune.trial import Resources
 
 
-DEFAULT_CONFIG = {
-    # Number of workers (excluding master)
-    "num_workers": 0,
-    # Number of environments to evaluate vectorwise per worker.
-    "num_envs": 1,
-    # Size of rollout batch
-    "batch_size": 512,
-    # Discount factor of MDP
-    "gamma": 0.99,
-    # Number of steps after which the rollout gets cut
-    "horizon": 500,
+DEFAULT_CONFIG = dict(COMMON_CONFIG, **{
     # Learning rate
     "lr": 0.0004,
-    # Arguments to pass to the rllib optimizer
-    "optimizer": {},
-    # Model parameters
-    "model": {"fcnet_hiddens": [128, 128], "max_seq_len": 20},
-    # Arguments to pass to the env creator
-    "env_config": {},
-
-    # === Multiagent ===
-    "multiagent": {
-        "policy_graphs": {},
-        "policy_mapping_fn": None,
-    },
-}
+})
 
 
 class PGAgent(Agent):
@@ -54,24 +31,13 @@ class PGAgent(Agent):
         return Resources(cpu=1, gpu=0, extra_cpu=cf["num_workers"])
 
     def _init(self):
-        self.optimizer = SyncSamplesOptimizer.make(
-            evaluator_cls=CommonPolicyEvaluator,
-            evaluator_args={
-                "env_creator": self.env_creator,
-                "policy_graph": (
-                    self.config["multiagent"]["policy_graphs"] or
-                    PGPolicyGraph),
-                "policy_mapping_fn":
-                    self.config["multiagent"]["policy_mapping_fn"],
-                "batch_steps": self.config["batch_size"],
-                "batch_mode": "truncate_episodes",
-                "model_config": self.config["model"],
-                "env_config": self.config["env_config"],
-                "policy_config": self.config,
-                "num_envs": self.config["num_envs"],
-            },
-            num_workers=self.config["num_workers"],
-            optimizer_config=self.config["optimizer"])
+        self.local_evaluator = self.make_local_evaluator(
+            self.env_creator, PGPolicyGraph)
+        self.remote_evaluators = self.make_remote_evaluators(
+            self.env_creator, PGPolicyGraph, self.config["num_workers"], {})
+        self.optimizer = SyncSamplesOptimizer(
+            self.config["optimizer"], self.local_evaluator,
+            self.remote_evaluators)
 
     def _train(self):
         self.optimizer.step()
