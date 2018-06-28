@@ -30,6 +30,8 @@ OpenAI Gym
 
 RLlib uses Gym as its environment interface for single-agent training. For more information on how to implement a custom Gym environment, see the `gym.Env class definition <https://github.com/openai/gym/blob/master/gym/core.py>`__. You may also find the `SimpleCorridor <https://github.com/ray-project/ray/blob/master/examples/custom_env/custom_env.py>`__ and `Carla simulator <https://github.com/ray-project/ray/blob/master/examples/carla/env.py>`__ example env implementations useful as a reference.
 
+Performance
+~~~~~~~~~~~
 
 There are two ways to scale experience collection with Gym environments:
 
@@ -128,7 +130,7 @@ ServingEnv also provides a ``self.log_action()`` call to support off-policy acti
 
 The ``log_action`` API of ServingEnv can be used to ingest data from offline logs. The pattern would be as follows: First, some policy is followed to produce experience data which is stored in some offline storage system. Then, RLlib creates a number of workers that use a ServingEnv to read the logs in parallel and ingest the experiences. After a round of training completes, the new policy can be deployed to collect more experiences.
 
-Note that envs can read from different partitions of the logs based on the ``worker_index`` attribute of the env config object passed into the environment constructor.
+Note that envs can read from different partitions of the logs based on the ``worker_index`` attribute of the `env context <https://github.com/ray-project/ray/blob/master/python/ray/rllib/env/env_context.py>`__ passed into the environment constructor.
 
 Batch Asynchronous
 ------------------
