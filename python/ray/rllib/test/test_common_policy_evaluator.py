@@ -10,7 +10,7 @@ import ray
 from ray.rllib.agents.pg import PGAgent
 from ray.rllib.evaluation.common_policy_evaluator import CommonPolicyEvaluator
 from ray.rllib.evaluation.metrics import collect_metrics
-from ray.rllib.utils.policy_graph import PolicyGraph
+from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.evaluation.postprocessing import compute_advantages
 from ray.rllib.envs.vector_env import VectorEnv
 from ray.tune.registry import register_env

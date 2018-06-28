@@ -6,12 +6,9 @@ import os
 
 
 class PolicyEvaluator(object):
-    """Algorithms implement this interface to leverage policy optimizers.
+    """This is the interface between policy optimizers and policy evaluation.
 
-    Policy evaluators are the "data plane" of an algorithm.
-
-    Any algorithm that implements Evaluator can plug in any PolicyOptimizer,
-    e.g. async SGD, Ape-X, local multi-GPU SGD, etc.
+    See also: CommonPolicyEvaluator
     """
 
     def sample(self):

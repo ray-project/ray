@@ -11,7 +11,7 @@ import ray
 from ray.rllib.models import ModelCatalog
 from ray.rllib.evaluation.sample_batch import SampleBatch
 from ray.rllib.utils.error import UnsupportedSpaceException
-from ray.rllib.utils.tf_policy_graph import TFPolicyGraph
+from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 
 
 Q_SCOPE = "q_func"

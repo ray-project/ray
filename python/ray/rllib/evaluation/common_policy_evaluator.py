@@ -20,8 +20,8 @@ from ray.rllib.evaluation.sample_batch import MultiAgentBatch, \
 from ray.rllib.evaluation.sampler import AsyncSampler, SyncSampler
 from ray.rllib.utils.compression import pack
 from ray.rllib.utils.filter import get_filter
-from ray.rllib.utils.policy_graph import PolicyGraph
-from ray.rllib.utils.tf_policy_graph import TFPolicyGraph
+from ray.rllib.evaluation.policy_graph import PolicyGraph
+from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 
 

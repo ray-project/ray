@@ -7,7 +7,7 @@ import tensorflow as tf
 import ray
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.evaluation.postprocessing import compute_advantages
-from ray.rllib.utils.tf_policy_graph import TFPolicyGraph
+from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 
 
 class PGLoss(object):

@@ -10,7 +10,7 @@ import ray
 from ray.rllib.models.pytorch.misc import var_to_np
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.evaluation.postprocessing import compute_advantages
-from ray.rllib.utils.torch_policy_graph import TorchPolicyGraph
+from ray.rllib.evaluation.torch_policy_graph import TorchPolicyGraph
 
 
 class A3CLoss(nn.Module):

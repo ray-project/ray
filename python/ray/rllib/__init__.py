@@ -6,8 +6,8 @@ from __future__ import print_function
 # This file is imported from the tune module in order to register RLlib agents.
 from ray.tune.registry import register_trainable
 
-from ray.rllib.utils.policy_graph import PolicyGraph
-from ray.rllib.utils.tf_policy_graph import TFPolicyGraph
+from ray.rllib.evaluation.policy_graph import PolicyGraph
+from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 from ray.rllib.envs.async_vector_env import AsyncVectorEnv
 from ray.rllib.envs.vector_env import VectorEnv
 from ray.rllib.envs.serving_env import ServingEnv

@@ -12,7 +12,7 @@ from ray.rllib.agents.dqn.dqn_policy_graph import _huber_loss, \
     _minimize_and_clip, _scope_vars, _postprocess_dqn
 from ray.rllib.models import ModelCatalog
 from ray.rllib.utils.error import UnsupportedSpaceException
-from ray.rllib.utils.tf_policy_graph import TFPolicyGraph
+from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 
 
 A_SCOPE = "a_func"
