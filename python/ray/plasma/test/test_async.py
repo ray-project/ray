@@ -151,7 +151,7 @@ def async_hashflow_solution_wait(inputs, stages, use_delay=False):
 class TestAsyncPlasmaPollBasic(unittest.TestCase):
     def setUp(self):
         # Start the Ray processes.
-        ray.init(num_cpus=2)
+        ray.init()
 
     def tearDown(self):
         ray.worker.cleanup()
@@ -198,7 +198,7 @@ class TestAsyncPlasmaPollBasic(unittest.TestCase):
 class TestAsyncPlasmaEpollBasic(unittest.TestCase):
     def setUp(self):
         # Start the Ray processes.
-        ray.init(num_cpus=2)
+        ray.init()
 
     def tearDown(self):
         ray.worker.cleanup()
@@ -243,11 +243,13 @@ class TestAsyncPlasmaEpollBasic(unittest.TestCase):
 
 
 class TestAsyncPlasmaAPI(unittest.TestCase):
-    def setUp(self):
-        # Start the Ray processes.
-        ray.init(num_cpus=2)
 
-    def tearDown(self):
+    @classmethod
+    def setUpClass(cls):
+        ray.init()
+
+    @classmethod
+    def tearDownClass(cls):
         ray.worker.cleanup()
 
     def test_get(self):
