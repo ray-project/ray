@@ -259,6 +259,7 @@ class TestAsyncPlasmaAPI(unittest.TestCase):
 
         tasks = [f.remote(i) for i in range(5)]
         fut = ray.get(tasks, blocking=False)
+        ray.worker.global_worker.eventloop.set_debug(True)
         results = ray.worker.run_until_complete(fut)
         self.assertListEqual(results, ray.get(tasks))
 
@@ -271,6 +272,7 @@ class TestAsyncPlasmaAPI(unittest.TestCase):
 
         tasks = [f.remote(i) for i in range(5)]
         fut = ray.wait(tasks, num_returns=len(tasks), blocking=False)
+        ray.worker.global_worker.eventloop.set_debug(True)
         results, _ = ray.worker.run_until_complete(fut)
         self.assertEqual(set(results), set(tasks))
 
@@ -284,6 +286,7 @@ class TestAsyncPlasmaAPI(unittest.TestCase):
         tasks = [f.remote(i) for i in range(5)]
         fut = ray.wait(
             tasks, timeout=10, num_returns=len(tasks), blocking=False)
+        ray.worker.global_worker.eventloop.set_debug(True)
         results, _ = ray.worker.run_until_complete(fut)
         self.assertEqual(results[0], tasks[0])
 
