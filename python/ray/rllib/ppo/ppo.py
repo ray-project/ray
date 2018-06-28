@@ -8,11 +8,12 @@ import pickle
 import tensorflow as tf
 
 import ray
-from ray.tune.result import TrainingResult
 from ray.tune.trial import Resources
 from ray.rllib.agent import Agent
+from ray.rllib.utils.common_policy_evaluator import (
+    CommonPolicyEvaluator, collect_metrics)
 from ray.rllib.utils import FilterManager
-from ray.rllib.ppo.ppo_evaluator import PPOEvaluator
+from ray.rllib.ppo.ppo_tf_policy import PPOTFPolicyGraph
 from ray.rllib.optimizers.multi_gpu_optimizer import LocalMultiGPUOptimizer
 
 DEFAULT_CONFIG = {
@@ -89,6 +90,7 @@ DEFAULT_CONFIG = {
 class PPOAgent(Agent):
     _agent_name = "PPO"
     _default_config = DEFAULT_CONFIG
+    _default_policy_graph = PPOTFPolicyGraph
 
     @classmethod
     def default_resource_request(cls, config):
@@ -100,15 +102,32 @@ class PPOAgent(Agent):
             extra_gpu=cf["num_gpus_per_worker"] * cf["num_workers"])
 
     def _init(self):
-        self.global_step = 0
-        self.local_evaluator = PPOEvaluator(
-            self.env_creator, self.config, self.logdir, False)
-        RemotePPOEvaluator = ray.remote(
+        def session_creator():
+            return tf.Session(
+                config=tf.ConfigProto(**self.config["tf_session_args"]))
+        self.local_evaluator = CommonPolicyEvaluator(
+            self.env_creator,
+            self._default_policy_graph,
+            tf_session_creator=session_creator,
+            batch_mode="complete_episodes",
+            observation_filter=self.config["observation_filter"],
+            env_config=self.config["env_config"],
+            model_config=self.config["model"],
+            policy_config=self.config
+            )
+        RemoteEvaluator = CommonPolicyEvaluator.as_remote(
             num_cpus=self.config["num_cpus_per_worker"],
-            num_gpus=self.config["num_gpus_per_worker"])(PPOEvaluator)
+            num_gpus=self.config["num_gpus_per_worker"])
         self.remote_evaluators = [
-            RemotePPOEvaluator.remote(
-                self.env_creator, self.config, self.logdir, True)
+            RemoteEvaluator.remote(
+                self.env_creator,
+                self._default_policy_graph,
+                batch_mode="complete_episodes",
+                observation_filter=self.config["observation_filter"],
+                env_config=self.config["env_config"],
+                model_config=self.config["model"],
+                policy_config=self.config
+            )
             for _ in range(self.config["num_workers"])]
 
         self.optimizer = LocalMultiGPUOptimizer(
@@ -116,9 +135,11 @@ class PPOAgent(Agent):
              "sgd_stepsize": self.config["sgd_stepsize"],
              "num_sgd_iter": self.config["num_sgd_iter"],
              "timesteps_per_batch": self.config["timesteps_per_batch"]},
-            self.local_evaluator, self.remote_evaluators,)
+            self.local_evaluator, self.remote_evaluators)
 
-        self.saver = tf.train.Saver(max_to_keep=None)
+        # TODO(rliaw): Push into Policy Graph
+        with self.local_evaluator.tf_sess.graph.as_default():
+            self.saver = tf.train.Saver()
 
     def _train(self):
         def postprocess_samples(batch):
@@ -133,47 +154,28 @@ class PPOAgent(Agent):
                 batch.data["value_targets"] = dummy
                 batch.data["vf_preds"] = dummy
         extra_fetches = self.optimizer.step(postprocess_fn=postprocess_samples)
+        kl = np.array(extra_fetches["kl"]).mean(axis=1)[-1]
+        total_loss = np.array(extra_fetches["total_loss"]).mean(axis=1)[-1]
+        policy_loss = np.array(extra_fetches["policy_loss"]).mean(axis=1)[-1]
+        vf_loss = np.array(extra_fetches["vf_loss"]).mean(axis=1)[-1]
+        entropy = np.array(extra_fetches["entropy"]).mean(axis=1)[-1]
 
-        final_metrics = np.array(extra_fetches).mean(axis=1)[-1, :].tolist()
-        total_loss, policy_loss, vf_loss, kl, entropy = final_metrics
-        self.local_evaluator.update_kl(kl)
+        newkl = self.local_evaluator.for_policy(lambda pi: pi.update_kl(kl))
 
         info = {
+            "kl_divergence": kl,
+            "kl_coefficient": newkl,
             "total_loss": total_loss,
             "policy_loss": policy_loss,
             "vf_loss": vf_loss,
-            "kl_divergence": kl,
             "entropy": entropy,
-            "kl_coefficient": self.local_evaluator.kl_coeff_val,
         }
 
         FilterManager.synchronize(
             self.local_evaluator.filters, self.remote_evaluators)
-        res = self._fetch_metrics_from_remote_evaluators()
+        res = collect_metrics(self.local_evaluator, self.remote_evaluators)
         res = res._replace(info=info)
         return res
-
-    def _fetch_metrics_from_remote_evaluators(self):
-        episode_rewards = []
-        episode_lengths = []
-        metric_lists = [a.get_completed_rollout_metrics.remote()
-                        for a in self.remote_evaluators]
-        for metrics in metric_lists:
-            for episode in ray.get(metrics):
-                episode_lengths.append(episode.episode_length)
-                episode_rewards.append(episode.episode_reward)
-        avg_reward = (
-            np.mean(episode_rewards) if episode_rewards else float('nan'))
-        avg_length = (
-            np.mean(episode_lengths) if episode_lengths else float('nan'))
-        timesteps = np.sum(episode_lengths) if episode_lengths else 0
-
-        result = TrainingResult(
-            episode_reward_mean=avg_reward,
-            episode_len_mean=avg_length,
-            timesteps_this_iter=timesteps)
-
-        return result
 
     def _stop(self):
         # workaround for https://github.com/ray-project/ray/issues/1516
@@ -182,29 +184,30 @@ class PPOAgent(Agent):
 
     def _save(self, checkpoint_dir):
         checkpoint_path = self.saver.save(
-            self.local_evaluator.sess,
+            self.local_evaluator.tf_sess,
             os.path.join(checkpoint_dir, "checkpoint"),
             global_step=self.iteration)
         agent_state = ray.get(
             [a.save.remote() for a in self.remote_evaluators])
         extra_data = [
             self.local_evaluator.save(),
-            self.global_step,
             agent_state]
         pickle.dump(extra_data, open(checkpoint_path + ".extra_data", "wb"))
         return checkpoint_path
 
     def _restore(self, checkpoint_path):
-        self.saver.restore(self.local_evaluator.sess, checkpoint_path)
+        self.saver.restore(self.local_evaluator.tf_sess, checkpoint_path)
         extra_data = pickle.load(open(checkpoint_path + ".extra_data", "rb"))
         self.local_evaluator.restore(extra_data[0])
-        self.global_step = extra_data[1]
         ray.get([
             a.restore.remote(o)
-                for (a, o) in zip(self.remote_evaluators, extra_data[2])])
+                for (a, o) in zip(self.remote_evaluators, extra_data[1])])
 
-    def compute_action(self, observation):
-        observation = self.local_evaluator.obs_filter(
+    def compute_action(self, observation, state=None):
+        if state is None:
+            state = []
+        obs = self.local_evaluator.filters["default"](
             observation, update=False)
-        return self.local_evaluator.common_policy.compute_actions(
-            [observation], [], False)[0][0]
+        return self.local_evaluator.for_policy(
+            lambda p: p.compute_single_action(
+                obs, state, is_training=False)[0])
