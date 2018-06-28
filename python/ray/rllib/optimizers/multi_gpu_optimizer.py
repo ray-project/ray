@@ -65,8 +65,7 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
         # all of the device copies are created.
         with self.local_evaluator.tf_sess.graph.as_default():
             with self.local_evaluator.tf_sess.as_default():
-                main_scope = tf.get_variable_scope()
-                with tf.variable_scope(main_scope, reuse=tf.AUTO_REUSE):
+                with tf.variable_scope("default", reuse=tf.AUTO_REUSE):
                     self.par_opt = LocalSyncParallelOptimizer(
                         tf.train.AdamOptimizer(self.sgd_stepsize),
                         self.devices,
