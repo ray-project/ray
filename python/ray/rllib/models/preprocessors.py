@@ -134,9 +134,6 @@ def get_preprocessor(space):
         preprocessor = AtariRamPreprocessor
     elif isinstance(space, gym.spaces.Tuple):
         preprocessor = TupleFlatteningPreprocessor
-    elif len(obs_shape) == len(ATARI_OBS_SHAPE):
-        print("Warning: unknown image shape, using AtariPixelPreprocessor")
-        preprocessor = AtariPixelPreprocessor
     else:
         preprocessor = NoPreprocessor
 
