@@ -34,47 +34,48 @@ class LocalSyncParallelOptimizer(object):
     Args:
         optimizer: Delegate TensorFlow optimizer object.
         devices: List of the names of TensorFlow devices to parallelize over.
-        input_placeholders: List of inputs for the loss function. Tensors of
-            these shapes will be passed to build_loss() in order to define the
-            per-device loss ops.
+        input_placeholders: List of (name, input_placeholder)
+            for the loss function. Tensors of these shapes will be passed
+            to build_graph() in order to define the per-device loss ops.
         per_device_batch_size: Number of tuples to optimize over at a time per
             device. In each call to `optimize()`,
             `len(devices) * per_device_batch_size` tuples of data will be
             processed.
-        build_loss: Function that takes the specified inputs and returns an
-            object with a 'loss' property that is a scalar Tensor. For example,
-            ray.rllib.agents.ppo.ProximalPolicyGraph.
+        build_graph: Function that takes the specified inputs and returns a
+            TF Policy Graph instance.
         logdir: Directory to place debugging output in.
         grad_norm_clipping: None or int stdev to clip grad norms by
     """
 
     def __init__(self, optimizer, devices, input_placeholders,
-                 per_device_batch_size, build_loss, logdir,
+                 per_device_batch_size, build_graph, logdir,
                  grad_norm_clipping=None):
+        # TODO(rliaw): remove logdir
         self.optimizer = optimizer
         self.devices = devices
         self.batch_size = per_device_batch_size * len(devices)
         self.per_device_batch_size = per_device_batch_size
-        self.input_placeholders = input_placeholders
-        self.build_loss = build_loss
+        self.loss_inputs = input_placeholders
+        self.build_graph = build_graph
         self.logdir = logdir
 
         # First initialize the shared loss network
         with tf.name_scope(TOWER_SCOPE_NAME):
-            self._shared_loss = build_loss(*input_placeholders)
+            self._shared_loss = build_graph(input_placeholders)
 
         # Then setup the per-device loss graphs that use the shared weights
         self._batch_index = tf.placeholder(tf.int32)
 
         # Split on the CPU in case the data doesn't fit in GPU memory.
         with tf.device("/cpu:0"):
+            names, placeholders = zip(*input_placeholders)
             data_splits = zip(
-                *[tf.split(ph, len(devices)) for ph in input_placeholders])
+                *[tf.split(ph, len(devices)) for ph in placeholders])
 
         self._towers = []
         for device, device_placeholders in zip(self.devices, data_splits):
-            self._towers.append(self._setup_device(device,
-                                                   device_placeholders))
+            self._towers.append(
+                self._setup_device(device, zip(names, device_placeholders)))
 
         avg = average_gradients([t.grads for t in self._towers])
         if grad_norm_clipping:
@@ -103,8 +104,8 @@ class LocalSyncParallelOptimizer(object):
         """
 
         feed_dict = {}
-        assert len(self.input_placeholders) == len(inputs)
-        for ph, arr in zip(self.input_placeholders, inputs):
+        assert len(self.loss_inputs) == len(inputs)
+        for (name, ph), arr in zip(self.loss_inputs, inputs):
             truncated_arr = make_divisible_by(arr, self.batch_size)
             feed_dict[ph] = truncated_arr
             truncated_len = len(truncated_arr)
@@ -135,8 +136,7 @@ class LocalSyncParallelOptimizer(object):
         assert tuples_per_device % self.per_device_batch_size == 0
         return tuples_per_device
 
-    def optimize(self, sess, batch_index, extra_ops=[], extra_feed_dict={},
-                 file_writer=None):
+    def optimize(self, sess, batch_index, file_writer=None):
         """Run a single step of SGD.
 
         Runs a SGD step over a slice of the preloaded batch with size given by
@@ -151,15 +151,12 @@ class LocalSyncParallelOptimizer(object):
             batch_index: Offset into the preloaded data. This value must be
                 between `0` and `tuples_per_device`. The amount of data to
                 process is always fixed to `per_device_batch_size`.
-            extra_ops: Extra ops to run with this step (e.g. for metrics).
-            extra_feed_dict: Extra args to feed into this session run.
             file_writer: If specified, tf metrics will be written out using
                 this.
 
         Returns:
             The outputs of extra_ops evaluated over the batch.
         """
-
         if file_writer:
             run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
         else:
@@ -167,9 +164,17 @@ class LocalSyncParallelOptimizer(object):
         run_metadata = tf.RunMetadata()
 
         feed_dict = {self._batch_index: batch_index}
-        feed_dict.update(extra_feed_dict)
+        for tower in self._towers:
+            feed_dict.update(tower.loss_graph.extra_compute_grad_feed_dict())
+            feed_dict.update(tower.loss_graph.extra_apply_grad_feed_dict())
+
+        fetches = {"train": self._train_op}
+        for tower in self._towers:
+            fetches.update(tower.loss_graph.extra_compute_grad_fetches())
+            fetches.update(tower.loss_graph.extra_apply_grad_fetches())
+
         outs = sess.run(
-            [self._train_op] + extra_ops,
+            fetches,
             feed_dict=feed_dict,
             options=run_options,
             run_metadata=run_metadata)
@@ -182,20 +187,20 @@ class LocalSyncParallelOptimizer(object):
             file_writer.add_run_metadata(
                 run_metadata, "sgd_train_{}".format(batch_index))
 
-        return outs[1:]
+        return outs
 
     def get_common_loss(self):
         return self._shared_loss
 
     def get_device_losses(self):
-        return [t.loss_object for t in self._towers]
+        return [t.loss_graph for t in self._towers]
 
     def _setup_device(self, device, device_input_placeholders):
         with tf.device(device):
             with tf.name_scope(TOWER_SCOPE_NAME):
                 device_input_batches = []
                 device_input_slices = []
-                for ph in device_input_placeholders:
+                for name, ph in device_input_placeholders:
                     current_batch = tf.Variable(
                         ph, trainable=False, validate_shape=False,
                         collections=[])
@@ -206,19 +211,18 @@ class LocalSyncParallelOptimizer(object):
                         ([self.per_device_batch_size] + [-1] *
                          len(ph.shape[1:])))
                     current_slice.set_shape(ph.shape)
-                    device_input_slices.append(current_slice)
-                device_loss_obj = self.build_loss(*device_input_slices)
-                device_grads = self.optimizer.compute_gradients(
-                    device_loss_obj.loss, colocate_gradients_with_ops=True)
+                    device_input_slices.append((name, current_slice))
+                graph_obj = self.build_graph(device_input_slices)
+                device_grads = graph_obj.gradients(self.optimizer)
             return Tower(
                 tf.group(*[batch.initializer
                            for batch in device_input_batches]),
                 device_grads,
-                device_loss_obj)
+                graph_obj)
 
 
 # Each tower is a copy of the loss graph pinned to a specific device.
-Tower = namedtuple("Tower", ["init_op", "grads", "loss_object"])
+Tower = namedtuple("Tower", ["init_op", "grads", "loss_graph"])
 
 
 def make_divisible_by(array, n):
