@@ -489,6 +489,7 @@ PlasmaManagerState *PlasmaManagerState_init(const char *store_socket_name,
     RAY_CHECK_OK(state->gcs_client.Connect(std::string(redis_primary_addr),
                                            redis_primary_port, false));
     RAY_CHECK_OK(state->gcs_client.context()->AttachToEventLoop(state->loop));
+    RAY_CHECK_OK(state->gcs_client.auxiliary_context()->AttachToEventLoop(state->loop));
   } else {
     state->db = NULL;
     RAY_LOG(DEBUG) << "No db connection specified";

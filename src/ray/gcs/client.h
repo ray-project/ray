@@ -69,6 +69,7 @@ class RAY_EXPORT AsyncGcsClient {
                    const GetExportCallback &done_callback);
 
   std::shared_ptr<RedisContext> context() { return context_; }
+  std::shared_ptr<RedisContext> auxiliary_context() { return auxiliary_context_; }
 
  private:
   std::unique_ptr<FunctionTable> function_table_;
