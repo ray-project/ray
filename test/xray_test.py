@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import pytest
 import ray
 
@@ -61,6 +62,8 @@ def test_put_api(ray_start):
         assert ray.get(ray.put(obj)) == obj
 
 
+@pytest.mark.skipif(os.environ.get("RAY_USE_NEW_GCS") == "on",
+                    reason="credis doesn't support XRay")
 def test_actor_api(ray_start):
     @ray.remote
     class Foo(object):
