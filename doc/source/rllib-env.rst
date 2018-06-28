@@ -35,7 +35,7 @@ There are two ways to scale experience collection with Gym environments:
 
     1. **Vectorization within a single process:** Though many envs can very achieve high frame rates per core, their throughput is limited in practice by policy evaluation between steps. For example, even small TensorFlow models incur a couple milliseconds of latency to evaluate. This can be worked around by creating multiple envs per process and batching policy evaluations across these envs.
 
-      You can configure ``{"num_envs": M}`` to have RLlib create ``M`` concurrent environments per worker. RLlib auto-vectorizes Gym environments via `VectorEnv.wrap() <https://github.com/ray-project/ray/blob/master/python/ray/rllib/utils/vector_env.py>`__.
+      You can configure ``{"num_envs": M}`` to have RLlib create ``M`` concurrent environments per worker. RLlib auto-vectorizes Gym environments via `VectorEnv.wrap() <https://github.com/ray-project/ray/blob/master/python/ray/rllib/env/vector_env.py>`__.
 
     2. **Distribute across multiple processes:** You can also have RLlib create multiple processes (Ray actors) for experience collection. In most algorithms this can be controlled by setting the ``{"num_workers": N}`` config.
 
@@ -47,7 +47,7 @@ You can also combine vectorization and distributed execution, as shown in the ab
 Vectorized
 ----------
 
-RLlib will auto-vectorize Gym envs for batch evaluation if the ``num_envs`` config is set, or you can define a custom environment class that subclasses `VectorEnv <https://github.com/ray-project/ray/blob/master/python/ray/rllib/utils/vector_env.py>`__ to implement ``vector_step()`` and ``vector_reset()``.
+RLlib will auto-vectorize Gym envs for batch evaluation if the ``num_envs`` config is set, or you can define a custom environment class that subclasses `VectorEnv <https://github.com/ray-project/ray/blob/master/python/ray/rllib/env/vector_env.py>`__ to implement ``vector_step()`` and ``vector_reset()``.
 
 Multi-Agent
 -----------
@@ -56,7 +56,7 @@ The model for multi-agent in RLlib as follows: (1) as a user you define the numb
 
 .. image:: multi-agent.svg
 
-The environment itself must subclass the `MultiAgentEnv <https://github.com/ray-project/ray/blob/master/python/ray/rllib/utils/multi_agent_env.py>`__ interface, which can returns observations and rewards from multiple ready agents per step:
+The environment itself must subclass the `MultiAgentEnv <https://github.com/ray-project/ray/blob/master/python/ray/rllib/env/multi_agent_env.py>`__ interface, which can returns observations and rewards from multiple ready agents per step:
 
 .. code-block:: python
 
@@ -117,7 +117,7 @@ Serving
 
 In many situations, it does not make sense for an environment to be "stepped" by RLlib. For example, if a policy is to be used in a web serving system, then it is more natural to instead *query* a service that serves policy decisions, and for that service to learn from experience over time.
 
-RLlib provides the `ServingEnv <https://github.com/ray-project/ray/blob/master/python/ray/rllib/utils/serving_env.py>`__ class for this purpose. Unlike other envs, ServingEnv runs as its own thread of control. At any point, that thread can query the current policy for decisions via ``self.get_action()`` and reports rewards via ``self.log_returns()``. This can be done for multiple concurrent episodes as well.
+RLlib provides the `ServingEnv <https://github.com/ray-project/ray/blob/master/python/ray/rllib/env/serving_env.py>`__ class for this purpose. Unlike other envs, ServingEnv runs as its own thread of control. At any point, that thread can query the current policy for decisions via ``self.get_action()`` and reports rewards via ``self.log_returns()``. This can be done for multiple concurrent episodes as well.
 
 For example, ServingEnv can be used to implement a simple REST policy `server <https://github.com/ray-project/ray/tree/master/python/ray/rllib/examples/serving>`__ that learns over time using RLlib. In this example RLlib runs with ``num_workers=0`` to avoid port allocation issues, but in principle this could be scaled by increasing ``num_workers``.
 
@@ -133,6 +133,6 @@ Note that envs can read from different partitions of the logs based on the ``wor
 Batch Asynchronous
 ------------------
 
-The lowest-level "catch-all" environment supported by RLlib is `AsyncVectorEnv <https://github.com/ray-project/ray/blob/master/python/ray/rllib/utils/async_vector_env.py>`__. AsyncVectorEnv models multiple agents executing asynchronously in multiple environments. A call to ``poll()`` returns observations from ready agents keyed by their environment and agent ids, and actions for those agents can be sent back via ``send_actions()``. This interface can be subclassed directly to support batched simulators such as `ELF <https://github.com/facebookresearch/ELF>`__.
+The lowest-level "catch-all" environment supported by RLlib is `AsyncVectorEnv <https://github.com/ray-project/ray/blob/master/python/ray/rllib/env/async_vector_env.py>`__. AsyncVectorEnv models multiple agents executing asynchronously in multiple environments. A call to ``poll()`` returns observations from ready agents keyed by their environment and agent ids, and actions for those agents can be sent back via ``send_actions()``. This interface can be subclassed directly to support batched simulators such as `ELF <https://github.com/facebookresearch/ELF>`__.
 
 Under the hood, all other envs are converted to AsyncVectorEnv by RLlib so that there is a common internal path for policy evaluation.

@@ -15,7 +15,7 @@ RLlib picks default models based on a simple heuristic: a `vision network <https
 
 In addition, if you set ``"model": {"use_lstm": true}``, then the model output will be further processed by a `LSTM cell <https://github.com/ray-project/ray/blob/master/python/ray/rllib/models/lstm.py>`__. More generally, RLlib supports the use of recurrent models for its policy gradient algorithms (e.g., A3C, PPO, PG), and RNN support is built into its policy evaluation utilities.
 
-For preprocessors, RLlib tries to pick one of its built-in preprocessor based on the environment's observation space. Discrete observations are one-hot encoded, Atari observations downscaled, and Tuple observations flattened (there isn't native tuple support yet, but you can reshape the flattened observation in a custom model). Note that for Atari, DQN defaults to using the `DeepMind preprocessors <https://github.com/ray-project/ray/blob/master/python/ray/rllib/utils/atari_wrappers.py>`__, which are also used by the OpenAI baselines library.
+For preprocessors, RLlib tries to pick one of its built-in preprocessor based on the environment's observation space. Discrete observations are one-hot encoded, Atari observations downscaled, and Tuple observations flattened (there isn't native tuple support yet, but you can reshape the flattened observation in a custom model). Note that for Atari, DQN defaults to using the `DeepMind preprocessors <https://github.com/ray-project/ray/blob/master/python/ray/rllib/env/atari_wrappers.py>`__, which are also used by the OpenAI baselines library.
 
 
 Custom Models
@@ -26,6 +26,7 @@ Custom models should subclass the common RLlib `model class <https://github.com/
 .. code-block:: python
 
     import ray
+    import ray.rllib.agents.ppo as ppo
     from ray.rllib.models import ModelCatalog, Model
 
     class MyModelClass(Model):
@@ -55,6 +56,7 @@ Similarly, custom preprocessors should subclass the RLlib `preprocessor class <h
 .. code-block:: python
 
     import ray
+    import ray.rllib.agents.ppo as ppo
     from ray.rllib.models.preprocessors import Preprocessor
 
     class MyPreprocessorClass(Preprocessor):

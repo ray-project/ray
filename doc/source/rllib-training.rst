@@ -69,7 +69,6 @@ An example of evaluating a previously trained DQN agent is as follows:
           ~/ray_results/default/DQN_CartPole-v0_0upjmdgr0/checkpoint-1 \
           --run DQN --env CartPole-v0
 
-
 The ``rollout.py`` helper script reconstructs a DQN agent from the checkpoint
 located at ``~/ray_results/default/DQN_CartPole-v0_0upjmdgr0/checkpoint-1``
 and renders its behavior in the environment specified by ``--env``.
@@ -92,7 +91,7 @@ Here is an example of the basic usage:
 .. code-block:: python
 
     import ray
-    import ray.rllib.ppo as ppo
+    import ray.rllib.agents.ppo as ppo
 
     ray.init()
     config = ppo.DEFAULT_CONFIG.copy()
