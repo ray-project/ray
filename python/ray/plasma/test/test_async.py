@@ -243,7 +243,6 @@ class TestAsyncPlasmaEpollBasic(unittest.TestCase):
 
 
 class TestAsyncPlasmaAPI(unittest.TestCase):
-
     def setUp(self):
         # Start the Ray processes.
         ray.init()
