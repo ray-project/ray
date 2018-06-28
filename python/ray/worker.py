@@ -2394,6 +2394,7 @@ def connect(info,
                 assert False, "This code should be unreachable."
     worker.cached_functions_to_run = None
     worker.cached_remote_functions_and_actors = None
+    worker.eventloop = None
 
 
 def disconnect(worker=global_worker):
