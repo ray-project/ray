@@ -3,6 +3,8 @@ RLlib Environments
 
 RLlib works with several different types of environments, including `OpenAI Gym <https://gym.openai.com/>`__, user-defined, multi-agent, and also batched environments.
 
+.. image:: rllib-envs.svg
+
 In the high-level agent APIs, environments are identified with string names. By default, the string will be interpreted as a gym `environment name <https://gym.openai.com/envs>`__, however you can also register custom environments by name:
 
 .. code-block:: python
