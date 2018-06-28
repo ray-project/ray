@@ -10,9 +10,9 @@ APEX_DEFAULT_CONFIG = merge_dicts(
     DQN_CONFIG,
     {
         "optimizer_class": "AsyncSamplesOptimizer",
-        "optimizer_config":
+        "optimizer":
             merge_dicts(
-                DQN_CONFIG["optimizer_config"], {
+                DQN_CONFIG["optimizer"], {
                     "max_weight_sync_delay": 400,
                     "num_replay_buffer_shards": 4,
                     "debug": False
@@ -47,7 +47,7 @@ class ApexAgent(DQNAgent):
     def default_resource_request(cls, config):
         cf = dict(cls._default_config, **config)
         return Resources(
-            cpu=1 + cf["optimizer_config"]["num_replay_buffer_shards"],
+            cpu=1 + cf["optimizer"]["num_replay_buffer_shards"],
             gpu=cf["gpu"] and 1 or 0,
             extra_cpu=cf["num_cpus_per_worker"] * cf["num_workers"],
             extra_gpu=cf["num_gpus_per_worker"] * cf["num_workers"])

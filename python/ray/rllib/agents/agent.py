@@ -26,7 +26,7 @@ COMMON_CONFIG = {
     # Number of environments to evaluate vectorwise per worker.
     "num_envs": 1,
     # Number of actors used for parallelism
-    "num_workers": 1,
+    "num_workers": 2,
     # Default sample batch size
     "sample_batch_size": 200,
     # Whether to rollout "complete_episodes" or "truncate_episodes"
@@ -115,7 +115,7 @@ class Agent(Trainable):
         return [
             self._make_evaluator(cls, env_creator, policy_graph, i+1)
             for i in range(count)]
-    
+
     def _make_evaluator(self, cls, env_creator, policy_graph, worker_index):
         config = self.config
 
@@ -127,8 +127,8 @@ class Agent(Trainable):
             env_creator,
             self.config["multiagent"]["policy_graphs"] or policy_graph,
             policy_mapping_fn=self.config["multiagent"]["policy_mapping_fn"],
-            tf_session_creator=
-                session_creator if config["tf_session_args"] else None,
+            tf_session_creator=(
+                session_creator if config["tf_session_args"] else None),
             batch_steps=config["sample_batch_size"],
             batch_mode=config["batch_mode"],
             episode_horizon=config["horizon"],

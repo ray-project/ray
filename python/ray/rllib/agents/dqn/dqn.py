@@ -92,8 +92,6 @@ DEFAULT_CONFIG = dict(COMMON_CONFIG, **{
     "num_cpus_per_worker": 1,
     # Optimizer class to use.
     "optimizer_class": "SyncReplayOptimizer",
-    # Config to pass to the optimizer.
-    "optimizer_config": {},
     # Whether to use a distribution of epsilons across workers for exploration.
     "per_worker_exploration": False,
     # Whether to compute priorities on workers.
@@ -128,8 +126,8 @@ class DQNAgent(Agent):
             for i in range(self.config["num_workers"])]
 
         for k in OPTIMIZER_SHARED_CONFIGS:
-            if k not in self.config["optimizer_config"]:
-                self.config["optimizer_config"][k] = self.config[k]
+            if k not in self.config["optimizer"]:
+                self.config["optimizer"][k] = self.config[k]
 
         self.local_evaluator = self.make_local_evaluator(
             self.env_creator, self._policy_graph)
@@ -138,7 +136,7 @@ class DQNAgent(Agent):
             {"num_cpus": self.config["num_cpus_per_worker"],
              "num_gpus": self.config["num_gpus_per_worker"]})
         self.optimizer = getattr(optimizers, self.config["optimizer_class"])(
-            self.config["optimizer_config"], self.local_evaluator,
+            self.config["optimizer"], self.local_evaluator,
             self.remote_evaluators)
 
         self.last_target_update_ts = 0

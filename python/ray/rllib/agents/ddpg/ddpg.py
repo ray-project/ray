@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from ray.rllib.agents.agent import COMMON_CONFIG
 from ray.rllib.agents.dqn.dqn import DQNAgent
 from ray.rllib.agents.ddpg.ddpg_policy_graph import DDPGPolicyGraph
 from ray.rllib.utils.schedules import ConstantSchedule, LinearSchedule
@@ -12,7 +13,7 @@ OPTIMIZER_SHARED_CONFIGS = [
     "train_batch_size", "learning_starts", "clip_rewards"
 ]
 
-DEFAULT_CONFIG = {
+DEFAULT_CONFIG = dict(COMMON_CONFIG, **{
     # === Model ===
     # Hidden layer sizes of the policy networks
     "actor_hiddens": [64, 64],
@@ -20,12 +21,6 @@ DEFAULT_CONFIG = {
     "critic_hiddens": [64, 64],
     # N-step Q learning
     "n_step": 1,
-    # Config options to pass to the model constructor
-    "model": {},
-    # Discount factor for the MDP
-    "gamma": 0.99,
-    # Arguments to pass to the env creator
-    "env_config": {},
 
     # === Exploration ===
     # Max num timesteps for annealing schedules. Exploration is annealed from
@@ -95,27 +90,17 @@ DEFAULT_CONFIG = {
     # to increase if your environment is particularly slow to sample, or if
     # you"re using the Async or Ape-X optimizers.
     "num_workers": 0,
-    # Number of environments to evaluate vectorwise per worker.
-    "num_envs": 1,
     # Whether to allocate GPUs for workers (if > 0).
     "num_gpus_per_worker": 0,
     # Whether to allocate CPUs for workers (if > 0).
     "num_cpus_per_worker": 1,
     # Optimizer class to use.
     "optimizer_class": "SyncReplayOptimizer",
-    # Config to pass to the optimizer.
-    "optimizer_config": {},
     # Whether to use a distribution of epsilons across workers for exploration.
     "per_worker_exploration": False,
     # Whether to compute priorities on workers.
     "worker_side_prioritization": False,
-
-    # === Multiagent ===
-    "multiagent": {
-        "policy_graphs": {},
-        "policy_mapping_fn": None,
-    },
-}
+})
 
 
 class DDPGAgent(DQNAgent):
