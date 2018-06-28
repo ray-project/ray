@@ -81,10 +81,6 @@ class PPOAgent(Agent):
              "timesteps_per_batch": self.config["timesteps_per_batch"]},
             self.local_evaluator, self.remote_evaluators)
 
-        # TODO(rliaw): Push into Policy Graph
-        with self.local_evaluator.tf_sess.graph.as_default():
-            self.saver = tf.train.Saver()
-
     def _train(self):
         def postprocess_samples(batch):
             # Divide by the maximum of value.std() and 1e-4
@@ -127,10 +123,8 @@ class PPOAgent(Agent):
             ev.__ray_terminate__.remote()
 
     def _save(self, checkpoint_dir):
-        checkpoint_path = self.saver.save(
-            self.local_evaluator.tf_sess,
-            os.path.join(checkpoint_dir, "checkpoint"),
-            global_step=self.iteration)
+        checkpoint_path = os.path.join(checkpoint_dir,
+                                       "checkpoint-{}".format(self.iteration))
         agent_state = ray.get(
             [a.save.remote() for a in self.remote_evaluators])
         extra_data = [
@@ -140,7 +134,6 @@ class PPOAgent(Agent):
         return checkpoint_path
 
     def _restore(self, checkpoint_path):
-        self.saver.restore(self.local_evaluator.tf_sess, checkpoint_path)
         extra_data = pickle.load(open(checkpoint_path + ".extra_data", "rb"))
         self.local_evaluator.restore(extra_data[0])
         ray.get([
