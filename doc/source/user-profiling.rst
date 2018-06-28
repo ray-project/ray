@@ -18,6 +18,7 @@ As a stand-in for a computationally intensive and possibly slower function,
 let's define our remote function to just sleep for 0.5 seconds:
 
 .. code-block:: python
+
   import ray
   import time
 
@@ -36,6 +37,7 @@ then calls ``ray.get`` in an attempt to store the current result into the
 list, as follows:
 
 .. code-block:: python
+
   # This loop is suboptimal in Ray, and should only be used for the sake of this example
   def ex1():  
     list1 = []
@@ -48,6 +50,7 @@ is used after the loop has finished in preparation for processing ``func()``'s
 results:
 
 .. code-block:: python
+
   # This loop is more proper in Ray
   def ex2():
     list2 = []
@@ -60,6 +63,7 @@ third version where the driver calls a second time-consuming remote function
 in between each call to ``func()``:
 
 .. code-block:: python
+
   # Some other time-consuming remote function
   @ray.remote
     def other_func():
@@ -87,6 +91,7 @@ function wrapper to call ``time()`` right before and right after each loop
 function to print out how long each loop takes overall:
 
 .. code-block:: python
+
   # This is a generic wrapper for any driver function you want to time
   def time_this(f):
     def timed_wrapper(*args, **kw):
@@ -106,6 +111,7 @@ a function decorator. This can similarly be done to functions ``ex2()``
 and ``ex3()``:
 
 .. code-block:: python
+
   @time_this  # Added decorator
   def ex1():
     list1 = []
@@ -126,6 +132,7 @@ we can forgo the decorator and make explicit calls using ``time_this``
 as follows:
 
 .. code-block:: python
+
   def ex1():  # Removed decorator
     list1 = []
     for i in range(5):
@@ -144,6 +151,7 @@ as follows:
 Finally, running the three timed loops should yield output similar to this:
 
 .. code-block:: bash
+
   | func:'ex1' args:[(), {}] took: 2.5083 seconds |
   | func:'ex2' args:[(), {}] took: 1.0032 seconds |
   | func:'ex3' args:[(), {}] took: 1.1045 seconds |
@@ -156,6 +164,7 @@ remote function before adding it to the list, while ``ex2()`` waits to fetch
 the entire list with ``ray.get`` at once.
 
 .. code-block:: python
+
   @ray.remote
   def func(): # A single call takes 0.5 seconds
     time.sleep(0.5)
@@ -215,6 +224,7 @@ documentation) you could use is `Pyflame`_, which can generate profiling graphs.
 First install ``line_profiler`` with pip:
 
 .. code-block:: bash
+
   pip install line_profiler
 
 ``line_profiler`` requires each section of driver code to profile as its own 
@@ -223,6 +233,7 @@ loop version in its own function. To tell ``line_profiler`` which functions
 to profile, just add the ``@profile`` decorator:
 
 .. code-block:: python
+
   @profile  # Added decorator
   def ex1():
     list1 = []
@@ -242,6 +253,7 @@ Then, when running our Python script from the command line, we use the following
 shell command to run the script with ``line_profiler`` enabled:
 
 .. code-block:: bash
+
   kernprof -l your_script_here.py 
 
 This command runs your script and prints your script's output as usual. ``Line_profiler``
@@ -251,11 +263,13 @@ instead outputs its profiling results to a corresponding binary file called
 To read ``line_profiler``'s results to terminal, use this shell command:
 
 .. code-block:: bash
+
   python -m line_profiler your_script_here.py.lprof
 
 In our loop example, this command outputs results for ``ex1()`` as follows:
 
 .. code-block:: bash
+
   Timer unit: 1e-06 s
 
   Total time: 2.50883 s
@@ -278,6 +292,7 @@ and the majority of the time is spent on waiting for ``ray.get()`` at the end:
 
 
 .. code-block:: bash
+
   Total time: 1.00357 s
   File: your_script_here.py
   Function: ex2 at line 35
@@ -295,6 +310,7 @@ and the majority of the time is spent on waiting for ``ray.get()`` at the end:
 And finally, ``line_profiler``'s output for ``ex3()``:
 
 .. code-block:: bash
+
   Total time: 1.10395 s
   File: your_script_here.py
   Function: ex3 at line 43
