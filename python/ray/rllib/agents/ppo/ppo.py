@@ -9,10 +9,10 @@ import tensorflow as tf
 
 import ray
 from ray.rllib.agent import Agent
+from ray.rllib.agents.ppo.ppo_tf_policy import PPOTFPolicyGraph
 from ray.rllib.evaluation.common_policy_evaluator import CommonPolicyEvaluator
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.utils import FilterManager
-from ray.rllib.ppo.ppo_tf_policy import PPOTFPolicyGraph
 from ray.rllib.optimizers.multi_gpu_optimizer import LocalMultiGPUOptimizer
 from ray.tune.trial import Resources
 
