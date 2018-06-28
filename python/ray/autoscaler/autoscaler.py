@@ -359,6 +359,7 @@ class StandardAutoscaler(object):
         print(self.debug_string(nodes))
         self.load_metrics.prune_active_ips(
             [self.provider.internal_ip(node_id) for node_id in nodes])
+        target_workers = self.target_num_workers()
 
         # Terminate any idle or out of date nodes
         last_used = self.load_metrics.last_used_time_by_ip
@@ -367,7 +368,7 @@ class StandardAutoscaler(object):
         for node_id in nodes:
             node_ip = self.provider.internal_ip(node_id)
             if node_ip in last_used and last_used[node_ip] < horizon and \
-                    len(nodes) - num_terminated > self.config["min_workers"]:
+                    len(nodes) - num_terminated > target_workers:
                 num_terminated += 1
                 print("StandardAutoscaler: Terminating idle node: "
                       "{}".format(node_id))
@@ -394,12 +395,12 @@ class StandardAutoscaler(object):
             print(self.debug_string(nodes))
 
         # Launch new nodes if needed
-        target_num = self.target_num_workers()
-        num_nodes = len(nodes) + num_pending
-        if num_nodes < target_num:
+        num_workers = len(nodes) + num_pending
+        if num_workers < target_workers:
             max_allowed = min(self.max_launch_batch,
                               self.max_concurrent_launches - num_pending)
-            self.launch_new_node(min(max_allowed, target_num - num_nodes))
+            num_launches = min(max_allowed, target_workers - num_workers)
+            self.launch_new_node(num_launches)
             print(self.debug_string())
 
         # Process any completed updates
@@ -453,7 +454,8 @@ class StandardAutoscaler(object):
     def target_num_workers(self):
         target_frac = self.config["target_utilization_fraction"]
         cur_used = self.load_metrics.approx_workers_used()
-        ideal_num_workers = int(np.ceil(cur_used / float(target_frac)))
+        ideal_num_nodes = int(np.ceil(cur_used / float(target_frac)))
+        ideal_num_workers = ideal_num_nodes - 1  # subtract 1 for head node
         return min(self.config["max_workers"],
                    max(self.config["min_workers"], ideal_num_workers))
 
