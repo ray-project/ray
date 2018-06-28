@@ -152,7 +152,6 @@ static void GetRedisShards(redisContext *context, std::vector<std::string> *addr
     freeReplyObject(reply);
     usleep(RayConfig::instance().redis_db_connect_wait_milliseconds() * 1000);
     num_attempts++;
-    continue;
   }
   RAY_CHECK(num_attempts < RayConfig::instance().redis_db_connect_retries())
       << "No entry found for NumRedisShards";
