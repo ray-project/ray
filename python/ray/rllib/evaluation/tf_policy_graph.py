@@ -5,8 +5,8 @@ from __future__ import print_function
 import tensorflow as tf
 
 import ray
-from ray.rllib.models.lstm import chop_into_sequences
 from ray.rllib.evaluation.policy_graph import PolicyGraph
+from ray.rllib.models.lstm import chop_into_sequences
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 
 
