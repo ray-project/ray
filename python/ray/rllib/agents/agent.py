@@ -16,6 +16,14 @@ from ray.tune.trainable import Trainable
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
+# Common configurations for all agents
+COMMON_CONFIG = {
+    # Discount factor of the MDP
+    "gamma": 0.99,
+    # Number of steps after which the rollout gets cut
+    "horizon": 9999,
+}
+
 
 def _deep_update(original, new_dict, new_keys_allowed, whitelist):
     """Updates original dict with values from new_dict recursively.
@@ -116,11 +124,6 @@ class Agent(Trainable):
 
         raise NotImplementedError
 
-    def compute_action(self, observation):
-        """Computes an action using the current trained policy."""
-
-        raise NotImplementedError
-
     @property
     def iteration(self):
         """Current training iter, auto-incremented with each train() call."""
@@ -138,6 +141,17 @@ class Agent(Trainable):
         """Subclasses should override this to declare their default config."""
 
         raise NotImplementedError
+
+    def compute_action(self, observation, state=None):
+        """Computes an action using the current trained policy."""
+
+        if state is None:
+            state = []
+        obs = self.local_evaluator.filters["default"](
+            observation, update=False)
+        return self.local_evaluator.for_policy(
+            lambda p: p.compute_single_action(
+                obs, state, is_training=False)[0])
 
 
 class _MockAgent(Agent):

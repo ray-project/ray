@@ -77,10 +77,3 @@ class PGAgent(Agent):
         self.optimizer.step()
         return collect_metrics(
             self.optimizer.local_evaluator, self.optimizer.remote_evaluators)
-
-    def compute_action(self, observation, state=None):
-        if state is None:
-            state = []
-        return self.local_evaluator.for_policy(
-            lambda p: p.compute_single_action(
-                observation, state, is_training=False)[0])

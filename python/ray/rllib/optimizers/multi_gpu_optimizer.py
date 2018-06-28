@@ -8,9 +8,9 @@ import os
 import tensorflow as tf
 
 import ray
+from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.optimizers.multi_gpu_impl import LocalSyncParallelOptimizer
-from ray.rllib.utils.tf_policy_graph import TFPolicyGraph
 from ray.rllib.utils.timer import TimerStat
 
 

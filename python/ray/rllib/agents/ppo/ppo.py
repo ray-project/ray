@@ -8,7 +8,7 @@ import pickle
 import tensorflow as tf
 
 import ray
-from ray.rllib.agent import Agent
+from ray.rllib.agents import Agent, COMMON_CONFIG
 from ray.rllib.agents.ppo.ppo_tf_policy import PPOTFPolicyGraph
 from ray.rllib.evaluation.common_policy_evaluator import CommonPolicyEvaluator
 from ray.rllib.evaluation.metrics import collect_metrics
@@ -16,11 +16,7 @@ from ray.rllib.utils import FilterManager
 from ray.rllib.optimizers.multi_gpu_optimizer import LocalMultiGPUOptimizer
 from ray.tune.trial import Resources
 
-DEFAULT_CONFIG = {
-    # Discount factor of the MDP
-    "gamma": 0.995,
-    # Number of steps after which the rollout gets cut
-    "horizon": 2000,
+DEFAULT_CONFIG = dict(COMMON_CONFIG, **{
     # If true, use the Generalized Advantage Estimator (GAE)
     # with a value function, see https://arxiv.org/pdf/1506.02438.pdf.
     "use_gae": True,
@@ -84,7 +80,7 @@ DEFAULT_CONFIG = {
     "write_logs": True,
     # Arguments to pass to the env creator
     "env_config": {},
-}
+})
 
 
 class PPOAgent(Agent):
@@ -204,12 +200,3 @@ class PPOAgent(Agent):
         ray.get([
             a.restore.remote(o)
                 for (a, o) in zip(self.remote_evaluators, extra_data[1])])
-
-    def compute_action(self, observation, state=None):
-        if state is None:
-            state = []
-        obs = self.local_evaluator.filters["default"](
-            observation, update=False)
-        return self.local_evaluator.for_policy(
-            lambda p: p.compute_single_action(
-                obs, state, is_training=False)[0])

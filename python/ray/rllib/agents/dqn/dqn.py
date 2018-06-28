@@ -249,10 +249,3 @@ class DQNAgent(Agent):
         self.optimizer.restore(extra_data[2])
         self.num_target_updates = extra_data[3]
         self.last_target_update_ts = extra_data[4]
-
-    def compute_action(self, observation, state=None):
-        if state is None:
-            state = []
-        return self.local_evaluator.for_policy(
-            lambda p: p.compute_single_action(
-                observation, state, is_training=False)[0])

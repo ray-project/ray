@@ -1,3 +1,3 @@
-from ray.rllib.agents.agent import Agent
+from ray.rllib.agents.agent import Agent, COMMON_CONFIG
 
-__all__ = ["Agent"]
+__all__ = ["Agent", "COMMON_CONFIG"]
