@@ -13,7 +13,6 @@ import ray.local_scheduler
 import ray.ray_constants as ray_constants
 import ray.signature as signature
 import ray.worker
-from ray.services import logger
 from ray.utils import (
     _random_string,
     check_oversized_pickle,
