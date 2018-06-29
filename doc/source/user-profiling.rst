@@ -1,15 +1,15 @@
 Profiling for Ray Users
 =======================
 
-This document is intended for users of Ray who want to know how to time 
+This document is intended for users of Ray who want to know how to evaluate 
 the performance of their code while running on Ray. Profiling the 
-performance of your code can be very helpful to determine where your 
-code may not be parallelizing properly. If you are interested in 
-pinpointing why your code running on Ray may not be achieving speedups 
-as expected, then do read on!
+performance of your code can be very helpful to determine performance 
+bottlenecks or where your code may not be parallelizing properly. If you 
+are interested in pinpointing why your code running on Ray may not be 
+achieving speedups as expected, then do read on!
 
-A Basic Profiling Example
--------------------------
+A Basic Example to Profile
+--------------------------
 
 Let's start on a simple example, and compare how different looping 
 structures of the same remote function affects performance.
@@ -79,7 +79,7 @@ in between each call to ``func()``:
 
 Timing Performance Using Python's Timestamps
 --------------------------------------------
-One quick way to sanity-check the performance of the three loops is simply to
+One way to sanity-check the performance of the three loops is simply to
 time how long it takes to complete each loop version. We can do this using 
 python's built-in ``time`` `module`_.
 
@@ -141,7 +141,7 @@ as follows:
   def main():
     ray.init()
     ex1()  # This call outputs nothing
-    time_this(ex1)()
+    time_this(ex1)()  # This call outputs total execution time of ex1
     time_this(ex2)()
     time_this(ex3)()
 
@@ -186,7 +186,7 @@ the time it would take to wait for our remote function five times in a row.
 By calling ``ray.get`` after each call to the remote function, ``ex1()`` 
 removes all ability to parallelize work, by forcing the driver to wait for 
 each ``func()``'s result in succession. We are completely sabotaging any 
-speedup via Ray parallelization! 
+possibility of speedup via Ray parallelization! 
 
 Meanwhile, ``ex2()`` takes about 1 second, much faster than it would normally 
 take to call ``func()`` five times iteratively. Ray is running each call to 
@@ -200,23 +200,20 @@ suboptimal behavior can be noticed just using this simple timing test.
 
 Additionally, to drive home Ray's speedup benefits of running remote function 
 calls in parallel, ``ex3()`` takes only 1.1 seconds, despite making five calls
-to a remote function that takes 0.2 seconds each call, and making five calls to
-our first remote function that takes 0.5 seconds each call. If we weren't using
+to a remote function that takes 0.2 seconds per call, and making five calls to
+our first remote function that takes 0.5 seconds per call. If we weren't using
 Ray and multiple CPUs, this loop would take at least 3.5 seconds to finish.
-
-
-Profiling Using Python's CProfile
----------------------------------
-TO-DO
 
 
 Profiling Using An External Profiler (Line_Profiler)
 ----------------------------------------------------
-A second way to profile the performance of our code using Ray is to use a third-
-party profiler such as `Line_profiler`_. Line_profiler is a useful line-by-line
+A way to profile the performance of our code using Ray is to use a third-party
+profiler such as `Line_profiler`_. Line_profiler is a useful line-by-line
 profiler for pure Python applications that formats its output side-by-side with
-the profiled code itself. An alternative third-party profiler (not covered in this 
-documentation) you could use is `Pyflame`_, which can generate profiling graphs.
+the profiled code itself. 
+
+Alternatively, another third-party profiler (not covered in this documentation)
+that you could use is `Pyflame`_, which can generate profiling graphs.
 
 .. _`Line_profiler`: https://github.com/rkern/line_profiler
 .. _`Pyflame`: https://github.com/uber/pyflame
@@ -266,7 +263,8 @@ To read ``line_profiler``'s results to terminal, use this shell command:
 
   python -m line_profiler your_script_here.py.lprof
 
-In our loop example, this command outputs results for ``ex1()`` as follows:
+In our loop example, this command outputs results for ``ex1()`` as follows.
+Note that execution time is given in units of 1e-06 seconds:
 
 .. code-block:: bash
 
@@ -324,6 +322,74 @@ And finally, ``line_profiler``'s output for ``ex3()``:
       48         5        673.0    134.6      0.1     func2.remote()
       49         5        639.0    127.8      0.1     list3.append(func.remote())
       50         1    1102625.0 1102625.0     99.9    ray.get(list3)
+
+
+Profiling Using Python's CProfile
+---------------------------------
+A second way to profile the performance of your Ray application is to 
+use Python's native cProfile `profiling module`_. Rather than tracking 
+line-by-line of your application code, CProfile can give the total runtime
+of each loop function, as well as list the number of calls made/
+execution time of all function calls made within the profiled code. Unlike 
+Line_Profiler above, this detailed list of function calls **includes** 
+internal function calls and function calls made within Ray! 
+
+.. _`profiling module`: https://docs.python.org/3/library/profile.html#module-cProfile
+
+Similar to Line_Profiler, cProfile can be enabled with minimal changes to
+your application code, given that each section of the code to profile is 
+defined as its own function. To use cProfile, add an import statement, then
+replace calls to the loop functions as follows:
+
+.. code-block:: python
+
+  import cProfile  # Added import statement
+
+  def ex1():
+    list1 = []
+    for i in range(5):
+      list1.append(ray.get(func.remote()))
+
+  def main():
+    ray.init()
+    cProfile.run('ex1()')  # Modified call to ex1
+    cProfile.run('ex2()')
+    cProfile.run('ex3()')
+
+  if __name__ == "__main__":
+    main()
+
+Now, when executing your Python script, a cProfile list of profiled function 
+calls will be outputted to terminal for each call made to ``cProfile.run()``.
+At the very top of cProfile's output gives the total execution time for 
+``'ex1()'``:
+
+.. code-block:: bash
+
+  601 function calls (595 primitive calls) in 2.509 seconds
+
+Following is a snippet of profiled function calls for ``'ex1()'``:
+
+.. code-block:: bash
+
+  ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+  ...
+      1    0.000    0.000    2.509    2.509 your_script_here.py:31(ex1)
+      5    0.000    0.000    0.001    0.000 remote_function.py:103(remote)
+      5    0.000    0.000    0.001    0.000 remote_function.py:107(_submit)
+  ...  
+     10    0.000    0.000    0.000    0.000 worker.py:2459(__init__)
+      5    0.000    0.000    2.508    0.502 worker.py:2535(get)
+      5    0.000    0.000    0.000    0.000 worker.py:2695(get_global_worker)
+     10    0.000    0.000    2.507    0.251 worker.py:374(retrieve_and_deserialize)
+      5    0.000    0.000    2.508    0.502 worker.py:424(get_object)
+      5    0.000    0.000    0.000    0.000 worker.py:514(submit_task)
+  ...
+
+The 5 separate calls to Ray's ``get``, taking the full 0.502 seconds each call, 
+can be noticed at ``worker.py:2535(get)``. Meanwhile, the act of calling the remote 
+function itself at ``remote_function.py:103(remote)`` only takes 0.001 seconds over
+5 calls, and is not the source of the slow performance of ``ex1()``.
 
 
 Visualizing Tasks in the Ray Timeline
