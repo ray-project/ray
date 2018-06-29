@@ -480,7 +480,7 @@ the fifth call to the remote function in ``ex2()`` must wait until
 the first batch of ``func()`` calls is finished.
 
 **For more on Ray's Web UI,** such as how to access the UI on a remote
-node over ssh, or for troubleshooting installation, **please see our 
-`Web UI documentation section`_.**
+node over ssh, or for troubleshooting installation, **please see our** 
+`Web UI documentation section`_.
 
 .. _`Web UI documentation section`: http://ray.readthedocs.io/en/latest/webui.html
