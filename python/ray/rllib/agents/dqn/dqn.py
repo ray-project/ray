@@ -7,7 +7,7 @@ import os
 
 import ray
 from ray.rllib import optimizers
-from ray.rllib.agents.agent import Agent, COMMON_CONFIG
+from ray.rllib.agents.agent import Agent, with_common_config
 from ray.rllib.agents.dqn.dqn_policy_graph import DQNPolicyGraph
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.utils.schedules import ConstantSchedule, LinearSchedule
@@ -19,7 +19,7 @@ OPTIMIZER_SHARED_CONFIGS = [
     "prioritized_replay_beta", "prioritized_replay_eps", "sample_batch_size",
     "train_batch_size", "learning_starts", "clip_rewards"]
 
-DEFAULT_CONFIG = dict(COMMON_CONFIG, **{
+DEFAULT_CONFIG = with_common_config({
     # === Model ===
     # Whether to use dueling dqn
     "dueling": True,

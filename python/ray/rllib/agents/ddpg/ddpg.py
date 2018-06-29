@@ -2,7 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from ray.rllib.agents.agent import COMMON_CONFIG
+from ray.rllib.agents.agent import with_common_config
 from ray.rllib.agents.dqn.dqn import DQNAgent
 from ray.rllib.agents.ddpg.ddpg_policy_graph import DDPGPolicyGraph
 from ray.rllib.utils.schedules import ConstantSchedule, LinearSchedule
@@ -13,7 +13,7 @@ OPTIMIZER_SHARED_CONFIGS = [
     "train_batch_size", "learning_starts", "clip_rewards"
 ]
 
-DEFAULT_CONFIG = dict(COMMON_CONFIG, **{
+DEFAULT_CONFIG = with_common_config({
     # === Model ===
     # Hidden layer sizes of the policy network
     "actor_hiddens": [64, 64],

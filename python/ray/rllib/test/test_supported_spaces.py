@@ -95,7 +95,6 @@ class ModelSupportedSpaces(unittest.TestCase):
         check_support(
             "PPO",
             {"num_workers": 1, "num_sgd_iter": 1, "timesteps_per_batch": 1,
-             "devices": ["/cpu:0"], "min_steps_per_task": 1,
              "sgd_batchsize": 1},
             stats)
         check_support(

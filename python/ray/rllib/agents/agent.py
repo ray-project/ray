@@ -2,9 +2,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import logging
-import numpy as np
+import copy
 import json
+import numpy as np
 import os
 import pickle
 
@@ -14,10 +14,6 @@ from ray.tune.registry import ENV_CREATOR, _global_registry
 from ray.tune.result import TrainingResult
 from ray.tune.trainable import Trainable
 
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
-
-# Common configurations for all agents
 COMMON_CONFIG = {
     # Discount factor of the MDP
     "gamma": 0.99,
@@ -54,6 +50,14 @@ COMMON_CONFIG = {
         "policy_mapping_fn": None,
     },
 }
+
+
+def with_common_config(extra_config):
+    """Returns the given config dict merged with common agent confs."""
+
+    config = copy.deepcopy(COMMON_CONFIG)
+    config.update(extra_config)
+    return config
 
 
 def _deep_update(original, new_dict, new_keys_allowed, whitelist):

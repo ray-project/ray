@@ -2,14 +2,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from ray.rllib.agents.agent import Agent, COMMON_CONFIG
+from ray.rllib.agents.agent import Agent, with_common_config
 from ray.rllib.agents.pg.pg_policy_graph import PGPolicyGraph
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.optimizers import SyncSamplesOptimizer
 from ray.tune.trial import Resources
 
 
-DEFAULT_CONFIG = dict(COMMON_CONFIG, **{
+DEFAULT_CONFIG = with_common_config({
     # No remote workers by default
     "num_workers": 0,
     # Learning rate

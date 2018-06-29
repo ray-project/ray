@@ -7,14 +7,14 @@ import numpy as np
 import pickle
 
 import ray
-from ray.rllib.agents import Agent, COMMON_CONFIG
+from ray.rllib.agents import Agent, with_common_config
 from ray.rllib.agents.ppo.ppo_tf_policy import PPOTFPolicyGraph
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.utils import FilterManager
 from ray.rllib.optimizers.multi_gpu_optimizer import LocalMultiGPUOptimizer
 from ray.tune.trial import Resources
 
-DEFAULT_CONFIG = dict(COMMON_CONFIG, **{
+DEFAULT_CONFIG = with_common_config({
     # If true, use the Generalized Advantage Estimator (GAE)
     # with a value function, see https://arxiv.org/pdf/1506.02438.pdf.
     "use_gae": True,
