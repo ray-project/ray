@@ -625,7 +625,7 @@ class GlobalState(object):
                         event_log_set, **params)
 
             for (event, score) in event_list:
-                event_dict = json.loads(event.decode())
+                event_dict = json.loads(decode(event))
                 task_id = ""
                 for event in event_dict:
                     if "task_id" in event[3]:
