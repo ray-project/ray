@@ -8,10 +8,10 @@ from threading import Lock
 try:
     import torch
     import torch.nn.functional as F
+    from ray.rllib.models.pytorch.misc import var_to_np
 except ImportError:
     pass  # soft dep
 
-from ray.rllib.models.pytorch.misc import var_to_np
 from ray.rllib.evaluation.policy_graph import PolicyGraph
 
 
