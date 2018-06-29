@@ -22,6 +22,7 @@ asv machine --machine jenkins
 mkdir $RLLIB_RESULTS_DIR || true
 aws s3 cp s3://$BUCKET_NAME/RLLIB_RESULTS/benchmarks.json $RLLIB_RESULTS_DIR/benchmarks.json || true
 
+./tuned_examples/generate_regression_tests.py
 asv run --show-stderr --python=same --force-record-commit=$COMMIT
 
 aws s3 cp $RLLIB_RESULTS_DIR/benchmarks.json s3://$BUCKET_NAME/RLLIB_RESULTS/benchmarks_$COMMIT.json
