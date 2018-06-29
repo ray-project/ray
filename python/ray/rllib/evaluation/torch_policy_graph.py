@@ -5,8 +5,11 @@ from __future__ import print_function
 import numpy as np
 from threading import Lock
 
-import torch
-import torch.nn.functional as F
+try:
+    import torch
+    import torch.nn.functional as F
+except:
+    pass  # soft dep
 
 from ray.rllib.models.pytorch.misc import var_to_np
 from ray.rllib.evaluation.policy_graph import PolicyGraph

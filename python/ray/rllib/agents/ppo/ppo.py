@@ -5,7 +5,6 @@ from __future__ import print_function
 import os
 import numpy as np
 import pickle
-import tensorflow as tf
 
 import ray
 from ray.rllib.agents import Agent, COMMON_CONFIG
