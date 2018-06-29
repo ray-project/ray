@@ -50,7 +50,8 @@ class MultiAgentEnv(object):
         The returns are dicts mapping from agent_id strings to values. The
         number of agents in the env can vary over time.
 
-        Returns:
+        Returns
+        -------
             obs (dict): New observations for each ready agent.
             rewards (dict): Reward values for each ready agent. If the
                 episode is just started, the value will be None.

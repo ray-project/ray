@@ -84,7 +84,8 @@ class AsyncVectorEnv(object):
         The returns are two-level dicts mapping from env_id to a dict of
         agent_id to values. The number of agents and envs can vary over time.
 
-        Returns:
+        Returns
+        -------
             obs (dict): New observations for each ready agent.
             rewards (dict): Reward values for each ready agent. If the
                 episode is just started, the value will be None.
@@ -95,6 +96,7 @@ class AsyncVectorEnv(object):
                 that happens, there will be an entry in this dict that contains
                 the taken action. There is no need to send_actions() for agents
                 that have already chosen off-policy actions.
+
         """
         raise NotImplementedError
 
