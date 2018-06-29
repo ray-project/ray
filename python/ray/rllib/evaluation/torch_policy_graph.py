@@ -8,7 +8,7 @@ from threading import Lock
 try:
     import torch
     import torch.nn.functional as F
-except:
+except ImportError:
     pass  # soft dep
 
 from ray.rllib.models.pytorch.misc import var_to_np
