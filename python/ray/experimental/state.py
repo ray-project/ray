@@ -485,11 +485,10 @@ class GlobalState(object):
                             decode(value))
                     elif client_info[b"client_type"] == b"local_scheduler":
                         # The remaining fields are resource types.
-                        client_info_parsed[field.decode("ascii")] = float(
+                        client_info_parsed[decode(field)] = float(
                             decode(value))
                     else:
-                        client_info_parsed[field.decode("ascii")] = decode(
-                            value)
+                        client_info_parsed[decode(field)] = decode(value)
 
                 node_info[node_ip_address].append(client_info_parsed)
 
@@ -511,21 +510,19 @@ class GlobalState(object):
                         gcs_entry.Entries(i), 0))
 
                 resources = {
-                    client.ResourcesTotalLabel(i).decode("ascii"):
+                    decode(client.ResourcesTotalLabel(i)):
                     client.ResourcesTotalCapacity(i)
                     for i in range(client.ResourcesTotalLabelLength())
                 }
                 node_info.append({
                     "ClientID": ray.utils.binary_to_hex(client.ClientId()),
                     "IsInsertion": client.IsInsertion(),
-                    "NodeManagerAddress": client.NodeManagerAddress().decode(
-                        "ascii"),
+                    "NodeManagerAddress": decode(client.NodeManagerAddress()),
                     "NodeManagerPort": client.NodeManagerPort(),
                     "ObjectManagerPort": client.ObjectManagerPort(),
-                    "ObjectStoreSocketName": client.ObjectStoreSocketName()
-                    .decode("ascii"),
-                    "RayletSocketName": client.RayletSocketName().decode(
-                        "ascii"),
+                    "ObjectStoreSocketName": decode(
+                        client.ObjectStoreSocketName()),
+                    "RayletSocketName": decode(client.RayletSocketName()),
                     "Resources": resources
                 })
             return node_info
@@ -541,14 +538,14 @@ class GlobalState(object):
         ip_filename_file = {}
 
         for filename in relevant_files:
-            filename = filename.decode("ascii")
+            filename = decode(filename)
             filename_components = filename.split(":")
             ip_addr = filename_components[1]
 
             file = self.redis_client.lrange(filename, 0, -1)
             file_str = []
             for x in file:
-                y = x.decode("ascii")
+                y = decode(x)
                 file_str.append(y)
 
             if ip_addr not in ip_filename_file:
@@ -710,18 +707,17 @@ class GlobalState(object):
                     gcs_entries.Entries(i), 0))
 
             profile_event = {
-                "event_type": profile_table_message.EventType().decode(
-                    "ascii"),
+                "event_type": decode(profile_table_message.EventType()),
                 "component_id": binary_to_hex(
                     profile_table_message.ComponentId()),
-                "node_ip_address": profile_table_message.NodeIpAddress()
-                .decode("ascii"),
-                "component_type": profile_table_message.ComponentType().decode(
-                    "ascii"),
+                "node_ip_address": decode(
+                    profile_table_message.NodeIpAddress()),
+                "component_type": decode(
+                    profile_table_message.ComponentType()),
                 "start_time": profile_table_message.StartTime(),
                 "end_time": profile_table_message.EndTime(),
                 "extra_data": json.loads(
-                    profile_table_message.ExtraData().decode("ascii")),
+                    decode(profile_table_message.ExtraData())),
             }
 
             profile_events.append(profile_event)
@@ -1208,21 +1204,20 @@ class GlobalState(object):
             worker_id = binary_to_hex(worker_key[len("Workers:"):])
 
             workers_data[worker_id] = {
-                "local_scheduler_socket": (
-                    worker_info[b"local_scheduler_socket"].decode("ascii")),
-                "node_ip_address": (worker_info[b"node_ip_address"]
-                                    .decode("ascii")),
-                "plasma_manager_socket": (worker_info[b"plasma_manager_socket"]
-                                          .decode("ascii")),
-                "plasma_store_socket": (worker_info[b"plasma_store_socket"]
-                                        .decode("ascii"))
+                "local_scheduler_socket": (decode(
+                    worker_info[b"local_scheduler_socket"])),
+                "node_ip_address": decode(worker_info[b"node_ip_address"]),
+                "plasma_manager_socket": decode(
+                    worker_info[b"plasma_manager_socket"]),
+                "plasma_store_socket": decode(
+                    worker_info[b"plasma_store_socket"])
             }
             if b"stderr_file" in worker_info:
-                workers_data[worker_id]["stderr_file"] = (
-                    worker_info[b"stderr_file"].decode("ascii"))
+                workers_data[worker_id]["stderr_file"] = decode(
+                    worker_info[b"stderr_file"])
             if b"stdout_file" in worker_info:
-                workers_data[worker_id]["stdout_file"] = (
-                    worker_info[b"stdout_file"].decode("ascii"))
+                workers_data[worker_id]["stdout_file"] = decode(
+                    worker_info[b"stdout_file"])
         return workers_data
 
     def actors(self):
@@ -1316,8 +1311,8 @@ class GlobalState(object):
             error_data = ray.gcs_utils.ErrorTableData.GetRootAsErrorTableData(
                 gcs_entries.Entries(i), 0)
             error_message = {
-                "type": error_data.Type().decode("ascii"),
-                "message": error_data.ErrorMessage().decode("ascii"),
+                "type": decode(error_data.Type()),
+                "message": decode(error_data.ErrorMessage()),
                 "timestamp": error_data.Timestamp(),
             }
             error_messages.append(error_message)

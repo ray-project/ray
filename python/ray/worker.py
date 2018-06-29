@@ -1107,7 +1107,7 @@ def _webui_url_helper(client):
         The URL of the web UI as a string.
     """
     result = client.hmget("webui", "url")[0]
-    return result.decode("ascii") if result is not None else result
+    return ray.utils.decode(result) if result is not None else result
 
 
 def get_webui_url():
@@ -1198,9 +1198,9 @@ def error_info(worker=global_worker):
         if error_applies_to_driver(error_key, worker=worker):
             error_contents = worker.redis_client.hgetall(error_key)
             error_contents = {
-                "type": error_contents[b"type"].decode("ascii"),
-                "message": error_contents[b"message"].decode("ascii"),
-                "data": error_contents[b"data"].decode("ascii")
+                "type": ray.utils.decode(error_contents[b"type"]),
+                "message": ray.utils.decode(error_contents[b"message"]),
+                "data": ray.utils.decode(error_contents[b"data"])
             }
             errors.append(error_contents)
 
@@ -1300,13 +1300,14 @@ def get_address_info_from_redis_helper(redis_address,
             assert b"ray_client_id" in info
             assert b"node_ip_address" in info
             assert b"client_type" in info
-            client_node_ip_address = info[b"node_ip_address"].decode("ascii")
+            client_node_ip_address = ray.utils.decode(info[b"node_ip_address"])
             if (client_node_ip_address == node_ip_address or
                 (client_node_ip_address == "127.0.0.1"
                  and redis_ip_address == ray.services.get_node_ip_address())):
-                if info[b"client_type"].decode("ascii") == "plasma_manager":
+                if ray.utils.decode(info[b"client_type"]) == "plasma_manager":
                     plasma_managers.append(info)
-                elif info[b"client_type"].decode("ascii") == "local_scheduler":
+                elif (ray.utils.decode(
+                        info[b"client_type"]) == "local_scheduler"):
                     local_schedulers.append(info)
         # Make sure that we got at least one plasma manager and local
         # scheduler.
@@ -1315,16 +1316,16 @@ def get_address_info_from_redis_helper(redis_address,
         # Build the address information.
         object_store_addresses = []
         for manager in plasma_managers:
-            address = manager[b"manager_address"].decode("ascii")
+            address = ray.utils.decode(manager[b"manager_address"])
             port = services.get_port(address)
             object_store_addresses.append(
                 services.ObjectStoreAddress(
-                    name=manager[b"store_socket_name"].decode("ascii"),
-                    manager_name=manager[b"manager_socket_name"].decode(
-                        "ascii"),
+                    name=ray.utils.decode(manager[b"store_socket_name"]),
+                    manager_name=ray.utils.decode(
+                        manager[b"manager_socket_name"]),
                     manager_port=port))
         scheduler_names = [
-            scheduler[b"local_scheduler_socket_name"].decode("ascii")
+            ray.utils.decode(scheduler[b"local_scheduler_socket_name"])
             for scheduler in local_schedulers
         ]
         client_info = {
@@ -1347,8 +1348,8 @@ def get_address_info_from_redis_helper(redis_address,
         for client_message in clients:
             client = ray.gcs_utils.ClientTableData.GetRootAsClientTableData(
                 client_message, 0)
-            client_node_ip_address = client.NodeManagerAddress().decode(
-                "ascii")
+            client_node_ip_address = ray.utils.decode(
+                client.NodeManagerAddress())
             if (client_node_ip_address == node_ip_address or
                 (client_node_ip_address == "127.0.0.1"
                  and redis_ip_address == ray.services.get_node_ip_address())):
@@ -1356,12 +1357,12 @@ def get_address_info_from_redis_helper(redis_address,
 
         object_store_addresses = [
             services.ObjectStoreAddress(
-                name=raylet.ObjectStoreSocketName().decode("ascii"),
+                name=ray.utils.decode(raylet.ObjectStoreSocketName()),
                 manager_name=None,
                 manager_port=None) for raylet in raylets
         ]
         raylet_socket_names = [
-            raylet.RayletSocketName().decode("ascii") for raylet in raylets
+            ray.utils.decode(raylet.RayletSocketName()) for raylet in raylets
         ]
         return {
             "node_ip_address": node_ip_address,
@@ -1874,7 +1875,7 @@ def print_error_messages_raylet(worker):
             if job_id not in [worker.task_driver_id.id(), NIL_JOB_ID]:
                 continue
 
-            error_message = error_data.ErrorMessage().decode("ascii")
+            error_message = ray.utils.decode(error_data.ErrorMessage())
 
             if error_message not in old_error_messages:
                 logger.error(error_message)
@@ -1916,8 +1917,8 @@ def print_error_messages(worker):
         error_keys = worker.redis_client.lrange("ErrorKeys", 0, -1)
         for error_key in error_keys:
             if error_applies_to_driver(error_key, worker=worker):
-                error_message = worker.redis_client.hget(
-                    error_key, "message").decode("ascii")
+                error_message = ray.utils.decode(
+                    worker.redis_client.hget(error_key, "message"))
                 if error_message not in old_error_messages:
                     logger.error(error_message)
                     old_error_messages.add(error_message)
@@ -1931,8 +1932,8 @@ def print_error_messages(worker):
                 for error_key in worker.redis_client.lrange(
                         "ErrorKeys", num_errors_received, -1):
                     if error_applies_to_driver(error_key, worker=worker):
-                        error_message = worker.redis_client.hget(
-                            error_key, "message").decode("ascii")
+                        error_message = ray.utils.decode(
+                            worker.redis_client.hget(error_key, "message"))
                         if error_message not in old_error_messages:
                             logger.error(error_message)
                             old_error_messages.add(error_message)
@@ -1955,9 +1956,9 @@ def fetch_and_register_remote_function(key, worker=global_worker):
          "module", "resources", "max_calls"
      ])
     function_id = ray.ObjectID(function_id_str)
-    function_name = function_name.decode("ascii")
+    function_name = ray.utils.decode(function_name)
     max_calls = int(max_calls)
-    module = module.decode("ascii")
+    module = ray.utils.decode(module)
 
     # This is a placeholder in case the function can't be unpickled. This will
     # be overwritten if the function is successfully registered.
