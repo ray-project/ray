@@ -26,11 +26,13 @@ class PNetwork(object):
     """Maps an observations (i.e., state) to an action where each entry takes
     value from (0, 1) due to the sigmoid function."""
 
-    def __init__(self, model, dim_actions, hiddens=[64, 64]):
+    def __init__(
+            self, model, dim_actions, hiddens=[64, 64], activation="relu"):
         action_out = model.last_layer
+        activation = tf.nn.__dict__[activation]
         for hidden in hiddens:
             action_out = layers.fully_connected(
-                action_out, num_outputs=hidden, activation_fn=tf.nn.relu)
+                action_out, num_outputs=hidden, activation_fn=activation)
         # Use sigmoid layer to bound values within (0, 1)
         # shape of action_scores is [batch_size, dim_actions]
         self.action_scores = layers.fully_connected(
@@ -69,11 +71,14 @@ class ActionNetwork(object):
 
 
 class QNetwork(object):
-    def __init__(self, model, action_inputs, hiddens=[64, 64]):
+    def __init__(
+            self, model, action_inputs,
+            hiddens=[64, 64], activation="relu"):
         q_out = tf.concat([model.last_layer, action_inputs], axis=1)
+        activation = tf.nn.__dict__[activation]
         for hidden in hiddens:
             q_out = layers.fully_connected(
-                q_out, num_outputs=hidden, activation_fn=tf.nn.relu)
+                q_out, num_outputs=hidden, activation_fn=activation)
         self.value = layers.fully_connected(
             q_out, num_outputs=1, activation_fn=None)
 
@@ -128,13 +133,15 @@ class DDPGPolicyGraph(TFPolicyGraph):
             return QNetwork(
                 ModelCatalog.get_model(obs, 1, config["model"]),
                 actions,
-                config["critic_hiddens"]).value
+                config["critic_hiddens"],
+                config["critic_hidden_activation"]).value
 
         def _build_p_network(obs):
             return PNetwork(
                 ModelCatalog.get_model(obs, 1, config["model"]),
                 dim_actions,
-                config["actor_hiddens"]).action_scores
+                config["actor_hiddens"],
+                config["actor_hidden_activation"]).action_scores
 
         def _build_action_network(p_values, stochastic, eps):
             return ActionNetwork(
