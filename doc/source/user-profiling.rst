@@ -5,8 +5,9 @@ This document is intended for users of Ray who want to know how to evaluate
 the performance of their code while running on Ray. Profiling the 
 performance of your code can be very helpful to determine performance 
 bottlenecks or where your code may not be parallelizing properly. If you 
-are interested in pinpointing why your code running on Ray may not be 
+are interested in pinpointing why your Ray application may not be 
 achieving speedups as expected, then do read on!
+
 
 A Basic Example to Profile
 --------------------------
@@ -45,9 +46,9 @@ list, as follows:
       list1.append(ray.get(func.remote()))
 
 For the second version, each iteration of the loop calls the remote function, 
-and stores it into the list **without** calling ``ray.get`` each time. ``ray.get`` 
-is used after the loop has finished in preparation for processing ``func()``'s 
-results:
+and stores it into the list **without** calling ``ray.get`` each time. 
+``ray.get`` is used after the loop has finished in preparation for processing 
+``func()``'s results:
 
 .. code-block:: python
 
@@ -79,6 +80,7 @@ in between each call to ``func()``:
 
 Timing Performance Using Python's Timestamps
 --------------------------------------------
+
 One way to sanity-check the performance of the three loops is simply to
 time how long it takes to complete each loop version. We can do this using 
 python's built-in ``time`` `module`_.
@@ -207,6 +209,7 @@ Ray and multiple CPUs, this loop would take at least 3.5 seconds to finish.
 
 Profiling Using An External Profiler (Line_Profiler)
 ----------------------------------------------------
+
 A way to profile the performance of our code using Ray is to use a third-party
 profiler such as `Line_profiler`_. Line_profiler is a useful line-by-line
 profiler for pure Python applications that formats its output side-by-side with
@@ -246,8 +249,10 @@ to profile, just add the ``@profile`` decorator:
   if __name__ == "__main__":
     main()
 
-Then, when running our Python script from the command line, we use the following
-shell command to run the script with ``line_profiler`` enabled:
+You do not need to import ``line_profiler`` into your Ray application. 
+Instead, when we want to execute our Python script from the command line, we 
+use the following shell command to run the script with ``line_profiler`` 
+enabled:
 
 .. code-block:: bash
 
@@ -326,6 +331,7 @@ And finally, ``line_profiler``'s output for ``ex3()``:
 
 Profiling Using Python's CProfile
 ---------------------------------
+
 A second way to profile the performance of your Ray application is to 
 use Python's native cProfile `profiling module`_. Rather than tracking 
 line-by-line of your application code, CProfile can give the total runtime
@@ -387,12 +393,86 @@ Following is a snippet of profiled function calls for ``'ex1()'``:
   ...
 
 The 5 separate calls to Ray's ``get``, taking the full 0.502 seconds each call, 
-can be noticed at ``worker.py:2535(get)``. Meanwhile, the act of calling the remote 
-function itself at ``remote_function.py:103(remote)`` only takes 0.001 seconds over
-5 calls, and is not the source of the slow performance of ``ex1()``.
+can be noticed at ``worker.py:2535(get)``. Meanwhile, the act of calling the 
+remote function itself at ``remote_function.py:103(remote)`` only takes 0.001 
+seconds over 5 calls, and is not the source of the slow performance of ``ex1()``.
 
 
 Visualizing Tasks in the Ray Timeline
 -------------------------------------
-TO-DO
+Profiling the performance of your Ray application doesn't need to be 
+an eye-straining endeavor of interpreting numbers among hundreds of 
+lines of text. Ray comes with its own visual web UI to visualize the 
+parallelization (or lack thereof) of user tasks submitted to Ray!
 
+Currently, whenever initializing Ray, a URL is automatically generated on 
+where to view Ray's web UI as a Jupyter notebook:
+
+.. code-block:: bash
+
+  ~$: python your_script_here.py
+
+  Process STDOUT and STDERR is being redirected to /tmp/raylogs/.
+  Waiting for redis server at 127.0.0.1:61150 to respond...
+  Waiting for redis server at 127.0.0.1:21607 to respond...
+  Starting local scheduler with the following resources: {'CPU': 4, 'GPU': 0}.
+
+  ======================================================================
+  View the web UI at http://localhost:8897/notebooks/ray_ui84907.ipynb?token=025e8ab295270a57fac209204b37349fdf34e037671a13ff
+  ======================================================================
+
+Ray's web UI attempts to run on localhost at port 8888, and if it fails 
+it tries successive ports until it finds an open port. In this above 
+example, it has opened on port 8897.
+
+Because this web UI is only available as long as your Ray application 
+is currently running, you may need to add a user prompt to stall 
+your Ray application from exiting once it has finished executing,  
+such as below. You can then browse the web UI for as long as you like:
+
+.. code-block:: python
+
+  def main():
+    ray.init()
+    ex1()
+    ex2()
+    ex3()
+
+    # Require user input confirmation before exiting
+    hang = int(input('Examples finished executing. Enter any integer to exit:'))
+
+  if __name__ == "__main__":
+    main()
+
+Now, when executing your python script, you can access the Ray timeline
+by copying the web UI URL into your web browser on the Ray machine. To 
+load the web UI in the jupyter notebook, select **Kernel -> Restart and 
+Run All** in the jupyter menu.
+
+The Ray timeline can be viewed in te fourth cell of the UI notebook by 
+using the task filter options, then clicking on the **View task timeline** 
+button:
+
+.. image:: user-profiling-view-timeline.png
+
+For example, here are the results of executing ``ex1()``, ``ex2()``, and 
+``ex3()`` visualized in the Ray timeline. Each red block is a call to our 
+remote function ``func()``, which sleeps for 0.5 seconds:
+
+.. image:: user-profiling-timeline.png
+
+(highlighted color boxes for ``ex1()``, ``ex2()``, and ``ex3()`` added for 
+the sake of this example)
+
+Note how ``ex1()`` executes all five calls to ``func()`` in serial, 
+while ``ex2()`` and ``ex3()`` are able to parallelize their remote
+function calls. Because we have 4 CPUs available on our machine, we 
+can only able to execute up to 4 remote functions in parallel. So,
+the fifth call to the remote function in ``ex2()`` must wait until 
+the first batch of ``func()`` calls is finished.
+
+For more on Ray's Web UI, such as how to access the UI on a remote node
+over ssh, or for troubleshooting installation, please see our 
+`Web UI documentation section`_.
+
+.. _`Web UI documentation section`: http://ray.readthedocs.io/en/latest/webui.html
