@@ -22,7 +22,7 @@ COMMON_CONFIG = {
     # Discount factor of the MDP
     "gamma": 0.99,
     # Number of steps after which the rollout gets cut
-    "horizon": 9999,
+    "horizon": None,
     # Number of environments to evaluate vectorwise per worker.
     "num_envs": 1,
     # Number of actors used for parallelism
