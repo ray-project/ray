@@ -979,6 +979,16 @@ ray::Status NodeManager::ForwardTask(const Task &task, const ClientID &node_id) 
   return status;
 }
 
+TokenBucket::TokenBucket()
+  : bucket_capacity_(token_bucket_max_capacity_) {
+    last_time_token_received_ = last_time_hb_sent_ = current_time_ms();
+    // TODO: sent a heartbeat right away
+  };
+TokenBucket::~TokenBucket() {};
+void TokenBucket::UpdateTokenBucket() {};
+void TokenBucket::ResourceAvailabilityChangeCallback() {};
+void TokenBucket::TimeoutCallback() {};
+
 }  // namespace raylet
 
 }  // namespace ray

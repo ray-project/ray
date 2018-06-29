@@ -137,7 +137,11 @@ class RayConfig {
         object_manager_pull_timeout_ms_(20),
         object_manager_push_timeout_ms_(10000),
         object_manager_default_chunk_size_(1000000),
-        num_workers_per_process_(1) {}
+        num_workers_per_process_(1),
+        token_bucket_max_capacity_(10),
+        token_bucket_min_rate_hz_(10),
+        token_bucket_max_rate_hz_(100),
+        token_bucket_avg_rate_hz_(12) {}
 
   ~RayConfig() {}
 
@@ -244,6 +248,16 @@ class RayConfig {
 
   /// Number of workers per process
   int num_workers_per_process_;
+
+  /// token bucket parameters to control hb frequency
+  /// token bucket max bucket_capacity
+  double token_bucket_max_capacity_;
+  /// maximum rate at which you sent heartbeats (1/sec)
+  double token_bucket_max_rate_hz_;
+  /// minimum rate at which you can send heartbets (1/sec)
+  double token_bucket_min_rate_hz_;
+  /// average rate at which you receive tokens (1/sec)
+  double token_bucket_avg_rate_hz_;
 };
 
 #endif  // RAY_CONFIG_H

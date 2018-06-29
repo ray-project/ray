@@ -137,6 +137,19 @@ class NodeManager {
   std::unordered_map<ActorID, ActorRegistration> actor_registry_;
 };
 
+class TokenBucket {
+private:
+  int64 last_time_token_received_;
+  int64 last_time_hb_sent_;
+  double bucket_capacity_;
+  void UpdateTokenBucket();
+public:
+  TokenBucket();
+  ~TokenBucket();
+  void ResourceAvailabilityChangeCallback();
+  void TimeoutCallback();
+};
+
 }  // namespace raylet
 
 }  // end namespace ray
