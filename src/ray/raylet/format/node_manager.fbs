@@ -175,32 +175,8 @@ table PushErrorRequest {
   timestamp: double;
 }
 
-// TODO(rkn): This is copied from gcs.fbs.
-table ProfileTableData {
-  // The type of the event.
-  event_type: string;
-  // The type of the component that generated the event, e.g., worker or
-  // object_manager, or node_manager.
-  component_type: string;
-  // An identifier for the component that generated the event.
-  component_id: string;
-  // An identifier for the node that generated the event.
-  node_ip_address: string;
-  // The start time of the event.
-  start_time: double;
-  // The end time of the event. If the event is a point event, then this should
-  // be the same as the start time.
-  end_time: double;
-  // Additional data associated with the event. This data must be serialized
-  // using JSON.
-  extra_data: string;
-}
-
 // This struct stores a collection of profiling events.
 table PushProfileEventsRequest {
   // This is a list of serialized profile events.
-  // TODO(rkn): Should this instead have type [ProfileTableData] and just
-  // include gcs.fbs?
-  // profile_events: [string];
   profile_events: [ProfileTableData];
 }
