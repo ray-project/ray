@@ -47,7 +47,7 @@ into the list, as follows:
 
 For the second version **ex2**, each iteration of the loop calls the remote 
 function, and stores it into the list **without** calling ``ray.get`` each time. 
-``ray.get`` is used after the loop has finished in preparation for processing 
+``ray.get`` is used after the loop has finished, in preparation for processing 
 ``func()``'s results:
 
 .. code-block:: python
@@ -142,7 +142,7 @@ as follows:
 
   def main():
     ray.init()
-    ex1()  # This call outputs nothing
+    ex1()             # This call outputs nothing
     time_this(ex1)()  # This call outputs total execution time of ex1
     time_this(ex2)()
     time_this(ex3)()
@@ -210,7 +210,7 @@ Ray and multiple CPUs, this loop would take at least 3.5 seconds to finish.
 Profiling Using An External Profiler (Line_Profiler)
 ----------------------------------------------------
 
-A way to profile the performance of our code using Ray is to use a third-party
+One way to profile the performance of our code using Ray is to use a third-party
 profiler such as `Line_profiler`_. Line_profiler is a useful line-by-line
 profiler for pure Python applications that formats its output side-by-side with
 the profiled code itself. 
@@ -227,10 +227,12 @@ First install ``line_profiler`` with pip:
 
   pip install line_profiler
 
-``line_profiler`` requires each section of driver code you want to profile as 
+``line_profiler`` requires each section of driver code that you want to profile as 
 its own independent function. Conveniently, we have already done so by defining 
-each loop version in its own function. To tell ``line_profiler`` which functions
-to profile, just add the ``@profile`` decorator:
+each loop version as its own function. To tell ``line_profiler`` which functions
+to profile, just add the ``@profile`` decorator to ``ex1()``, ``ex2()`` and 
+``ex3()``. Note that you do not need to import ``line_profiler`` into your Ray 
+application:
 
 .. code-block:: python
 
@@ -249,10 +251,9 @@ to profile, just add the ``@profile`` decorator:
   if __name__ == "__main__":
     main()
 
-You do not need to import ``line_profiler`` into your Ray application. 
-Instead, when we want to execute our Python script from the command line, we 
-use the following shell command to run the script with ``line_profiler`` 
-enabled:
+Then, when we want to execute our Python script from the command line, instead 
+of ``python your_script_here.py``, we use the following shell command to run the 
+script with ``line_profiler`` enabled:
 
 .. code-block:: bash
 
@@ -288,10 +289,11 @@ Note that execution time is given in units of 1e-06 seconds:
       33         5    2508805.0 501761.0    100.0     list1.append(ray.get(func.remote()))
 
 
-Notice that each hit to line 33, ``list1.append(ray.get(func.remote()))``, 
+Notice that each hit to ``list1.append(ray.get(func.remote()))`` at line 33 
 takes the full 0.5 seconds waiting for ``func()`` to finish. Meanwhile, in 
 ``ex2()`` below, each call of ``func.remote()`` at line 40 only takes 0.127 ms, 
-and the majority of the time is spent on waiting for ``ray.get()`` at the end:
+and the majority of the time (about 1 second) is spent on waiting for ``ray.get()`` 
+at the end:
 
 
 .. code-block:: bash
@@ -336,15 +338,16 @@ A second way to profile the performance of your Ray application is to
 use Python's native cProfile `profiling module`_. Rather than tracking 
 line-by-line of your application code, cProfile can give the total runtime
 of each loop function, as well as list the number of calls made and
-execution time of all function calls made within the profiled code. Unlike 
-Line_Profiler above, this detailed list of function calls **includes** 
-internal function calls and function calls made within Ray! 
+execution time of all function calls made within the profiled code. 
 
 .. _`profiling module`: https://docs.python.org/3/library/profile.html#module-cProfile
 
-However, similar to Line_Profiler, cProfile can be enabled with minimal 
-changes to your application code, given that each section of the code you want 
-to profile is defined as its own function. To use cProfile, add an import 
+Unlike ``line_profiler`` above, this detailed list of profiled function calls 
+**includes** internal function calls and function calls made within Ray! 
+
+However, similar to ``line_profiler``, cProfile can be enabled with minimal 
+changes to your application code (given that each section of the code you want 
+to profile is defined as its own function). To use cProfile, add an import 
 statement, then replace calls to the loop functions as follows:
 
 .. code-block:: python
@@ -397,7 +400,8 @@ interest are the ones with non-zero execution times:
 The 5 separate calls to Ray's ``get``, taking the full 0.502 seconds each call, 
 can be noticed at ``worker.py:2535(get)``. Meanwhile, the act of calling the 
 remote function itself at ``remote_function.py:103(remote)`` only takes 0.001 
-seconds over 5 calls, and is not the source of the slow performance of ``ex1()``.
+seconds over 5 calls, and thus is not the source of the slow performance of 
+``ex1()``.
 
 
 Visualizing Tasks in the Ray Timeline
@@ -475,8 +479,8 @@ can only able to execute up to 4 remote functions in parallel. So,
 the fifth call to the remote function in ``ex2()`` must wait until 
 the first batch of ``func()`` calls is finished.
 
-For more on Ray's Web UI, such as how to access the UI on a remote node
-over ssh, or for troubleshooting installation, please see our 
-`Web UI documentation section`_.
+**For more on Ray's Web UI,** such as how to access the UI on a remote
+node over ssh, or for troubleshooting installation, **please see our 
+`Web UI documentation section`_.**
 
 .. _`Web UI documentation section`: http://ray.readthedocs.io/en/latest/webui.html
