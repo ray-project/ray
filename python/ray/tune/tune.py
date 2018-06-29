@@ -95,10 +95,13 @@ def run_experiments(experiments,
 
     print(runner.debug_string(max_debug=99999))
 
+    errored_trials = []
     for trial in runner.get_trials():
-        # TODO(rliaw): What about errored?
         if trial.status != Trial.TERMINATED:
-            raise TuneError("Trial did not complete", trial)
+            errored_trials += [trial]
+
+    if errored_trials:
+        raise TuneError("Trials did not complete", errored_trials)
 
     wait_for_log_sync()
     return runner.get_trials()
