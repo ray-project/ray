@@ -88,9 +88,8 @@ class LogMonitor(object):
                             "Warning: Ignoring {} because there are too "
                             "many open files.".format(log_filename))
                     elif e.errno == os.errno.ENOENT:
-                        logger.warning(
-                            "Warning: The file {} was not "
-                            "found.".format(log_filename))
+                        logger.warning("Warning: The file {} was not "
+                                       "found.".format(log_filename))
                     else:
                         raise e
 

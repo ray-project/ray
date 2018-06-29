@@ -372,8 +372,9 @@ class Worker(object):
             # and make sure that the objects are in fact the same. We also
             # should return an error code to the caller instead of printing a
             # message.
-            logger.info("The object with ID {} already exists in the object store."
-                  .format(object_id))
+            logger.info(
+                "The object with ID {} already exists in the object store."
+                .format(object_id))
 
     def retrieve_and_deserialize(self, object_ids, timeout, error_timeout=10):
         start_time = time.time()
@@ -1920,7 +1921,8 @@ def print_error_messages(worker):
                             logger.error(error_message)
                             old_error_messages.add(error_message)
                         else:
-                            logger.error("Suppressing duplicate error message.")
+                            logger.error(
+                                "Suppressing duplicate error message.")
                     num_errors_received += 1
     except redis.ConnectionError:
         # When Redis terminates the listen call will throw a ConnectionError,
