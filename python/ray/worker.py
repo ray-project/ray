@@ -30,7 +30,12 @@ import ray.signature
 import ray.local_scheduler
 import ray.plasma
 import ray.ray_constants as ray_constants
-from ray.utils import random_string, binary_to_hex, is_cython
+from ray.utils import (
+    binary_to_hex,
+    check_oversized_pickle,
+    is_cython,
+    random_string,
+)
 
 try:
     from ray.plasma import plasma_eventloop
@@ -662,18 +667,8 @@ class Worker(object):
             else:
                 del function.__globals__[function.__name__]
 
-        if len(pickled_function) > ray_constants.PICKLE_OBJECT_WARNING_SIZE:
-            warning_message = ("Warning: The remote function {} has size {} "
-                               "when pickled. It will be stored in Redis, "
-                               "which could cause memory issues. This may "
-                               "mean that the function definition uses a "
-                               "large array or other object.".format(
-                                   function_name, len(pickled_function)))
-            ray.utils.push_error_to_driver(
-                self,
-                ray_constants.PICKLING_LARGE_OBJECT_PUSH_ERROR,
-                warning_message,
-                driver_id=self.task_driver_id.id())
+        check_oversized_pickle(pickled_function, function_name,
+                               "remote function", self)
 
         self.redis_client.hmset(
             key, {
@@ -723,20 +718,8 @@ class Worker(object):
                 # we don't need to export it again.
                 return
 
-            if (len(pickled_function) >
-                    ray_constants.PICKLE_OBJECT_WARNING_SIZE):
-                warning_message = ("Warning: The function {} has size {} when "
-                                   "pickled. It will be stored in Redis, "
-                                   "which could cause memory issues. This may "
-                                   "mean that the remote function definition "
-                                   "uses a large array or other object."
-                                   .format(function.__name__,
-                                           len(pickled_function)))
-                ray.utils.push_error_to_driver(
-                    self,
-                    ray_constants.PICKLING_LARGE_OBJECT_PUSH_ERROR,
-                    warning_message,
-                    driver_id=self.task_driver_id.id())
+            check_oversized_pickle(pickled_function, function.__name__,
+                                   "function", self)
 
             # Run the function on all workers.
             self.redis_client.hmset(

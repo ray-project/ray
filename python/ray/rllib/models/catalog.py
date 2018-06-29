@@ -24,10 +24,8 @@ MODEL_CONFIGS = [
     # === Built-in options ===
     "conv_filters",  # Filter configuration
     "conv_activation",  # Nonlinearity for built-in convnet
-
     "fcnet_activation",  # Nonlinearity for fully connected net (tanh, relu)
     "fcnet_hiddens",  # Number of hidden layers for fully connected net
-
     "dim",  # Dimension for ATARI
     "grayscale",  # Converts ATARI frame to 1 Channel Grayscale image
     "zero_mean",  # Changes frame to range from [-1, 1] if true
