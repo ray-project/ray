@@ -12,8 +12,8 @@ achieving speedups as expected, then do read on!
 A Basic Example to Profile
 --------------------------
 
-Let's start on a simple example, and compare how different looping 
-structures of the same remote function affects performance.
+Let's try to profile a simple example, and compare how different looping 
+call structures of the same remote function affects performance.
 
 As a stand-in for a computationally intensive and possibly slower function,
 let's define our remote function to just sleep for 0.5 seconds:
@@ -31,11 +31,11 @@ let's define our remote function to just sleep for 0.5 seconds:
 In our example setup, we wish to call our remote function ``func()`` five 
 times, and store the result of each call into a list. To compare the 
 performance of different ways of looping our calls to our remote function, 
-we can define each loop version as a separate function on the driver.
+we can define each loop version as a separate function on the driver script.
 
-For the first version, each iteration of the loop calls the remote function, 
-then calls ``ray.get`` in an attempt to store the current result into the 
-list, as follows:
+For the first version **ex1**, each iteration of the loop calls the remote 
+function, then calls ``ray.get`` in an attempt to store the current result 
+into the list, as follows:
 
 .. code-block:: python
 
@@ -45,8 +45,8 @@ list, as follows:
     for i in range(5):
       list1.append(ray.get(func.remote()))
 
-For the second version, each iteration of the loop calls the remote function, 
-and stores it into the list **without** calling ``ray.get`` each time. 
+For the second version **ex2**, each iteration of the loop calls the remote 
+function, and stores it into the list **without** calling ``ray.get`` each time. 
 ``ray.get`` is used after the loop has finished in preparation for processing 
 ``func()``'s results:
 
@@ -60,8 +60,8 @@ and stores it into the list **without** calling ``ray.get`` each time.
     ray.get(list2)
 
 Finally, as a demonstration of Ray's parallelism abilities, let's create a 
-third version where the driver calls a second time-consuming remote function 
-in between each call to ``func()``:
+third version **ex3** where the driver calls a second time-consuming remote 
+function in between each call to ``func()``:
 
 .. code-block:: python
 
@@ -227,9 +227,9 @@ First install ``line_profiler`` with pip:
 
   pip install line_profiler
 
-``line_profiler`` requires each section of driver code to profile as its own 
-independent function. Conveniently, we have already done so by defining each
-loop version in its own function. To tell ``line_profiler`` which functions
+``line_profiler`` requires each section of driver code you want to profile as 
+its own independent function. Conveniently, we have already done so by defining 
+each loop version in its own function. To tell ``line_profiler`` which functions
 to profile, just add the ``@profile`` decorator:
 
 .. code-block:: python
@@ -258,9 +258,9 @@ enabled:
 
   kernprof -l your_script_here.py 
 
-This command runs your script and prints your script's output as usual. ``Line_profiler``
-instead outputs its profiling results to a corresponding binary file called 
-``your_script_here.py.lprof``.
+This command runs your script and prints only your script's output as usual. 
+``Line_profiler`` instead outputs its profiling results to a corresponding 
+binary file called ``your_script_here.py.lprof``.
 
 To read ``line_profiler``'s results to terminal, use this shell command:
 
@@ -290,7 +290,7 @@ Note that execution time is given in units of 1e-06 seconds:
 
 Notice that each hit to line 33, ``list1.append(ray.get(func.remote()))``, 
 takes the full 0.5 seconds waiting for ``func()`` to finish. Meanwhile, in 
-``ex2()``, each call of ``func.remote()`` at line 40 only takes 0.127 ms, 
+``ex2()`` below, each call of ``func.remote()`` at line 40 only takes 0.127 ms, 
 and the majority of the time is spent on waiting for ``ray.get()`` at the end:
 
 
@@ -334,18 +334,18 @@ Profiling Using Python's CProfile
 
 A second way to profile the performance of your Ray application is to 
 use Python's native cProfile `profiling module`_. Rather than tracking 
-line-by-line of your application code, CProfile can give the total runtime
-of each loop function, as well as list the number of calls made/
+line-by-line of your application code, cProfile can give the total runtime
+of each loop function, as well as list the number of calls made and
 execution time of all function calls made within the profiled code. Unlike 
 Line_Profiler above, this detailed list of function calls **includes** 
 internal function calls and function calls made within Ray! 
 
 .. _`profiling module`: https://docs.python.org/3/library/profile.html#module-cProfile
 
-Similar to Line_Profiler, cProfile can be enabled with minimal changes to
-your application code, given that each section of the code to profile is 
-defined as its own function. To use cProfile, add an import statement, then
-replace calls to the loop functions as follows:
+However, similar to Line_Profiler, cProfile can be enabled with minimal 
+changes to your application code, given that each section of the code you want 
+to profile is defined as its own function. To use cProfile, add an import 
+statement, then replace calls to the loop functions as follows:
 
 .. code-block:: python
 
@@ -374,7 +374,9 @@ At the very top of cProfile's output gives the total execution time for
 
   601 function calls (595 primitive calls) in 2.509 seconds
 
-Following is a snippet of profiled function calls for ``'ex1()'``:
+Following is a snippet of profiled function calls for ``'ex1()'``. Most of 
+these calls are quick and take around 0.000 seconds, so the functions of 
+interest are the ones with non-zero execution times:
 
 .. code-block:: bash
 
@@ -405,8 +407,8 @@ an eye-straining endeavor of interpreting numbers among hundreds of
 lines of text. Ray comes with its own visual web UI to visualize the 
 parallelization (or lack thereof) of user tasks submitted to Ray!
 
-Currently, whenever initializing Ray, a URL is automatically generated on 
-where to view Ray's web UI as a Jupyter notebook:
+Currently, whenever initializing Ray, a URL is automatically generated and
+printed to terminal on where to view Ray's web UI as a Jupyter notebook:
 
 .. code-block:: bash
 
@@ -449,15 +451,17 @@ by copying the web UI URL into your web browser on the Ray machine. To
 load the web UI in the jupyter notebook, select **Kernel -> Restart and 
 Run All** in the jupyter menu.
 
-The Ray timeline can be viewed in te fourth cell of the UI notebook by 
+The Ray timeline can be viewed in the fourth cell of the UI notebook by 
 using the task filter options, then clicking on the **View task timeline** 
 button:
 
 .. image:: user-profiling-view-timeline.png
 
 For example, here are the results of executing ``ex1()``, ``ex2()``, and 
-``ex3()`` visualized in the Ray timeline. Each red block is a call to our 
-remote function ``func()``, which sleeps for 0.5 seconds:
+``ex3()`` visualized in the Ray timeline. Each red block is a call to one 
+of our user-defined remote functions. The longer blocks are calls to ``func()``, 
+which sleeps for 0.5 seconds, and the interwoven shorter blocks in ``ex3()``
+are calls to ``other_func()``, which sleeps for 0.2 seconds:
 
 .. image:: user-profiling-timeline.png
 
