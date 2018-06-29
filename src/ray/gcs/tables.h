@@ -12,6 +12,7 @@
 
 #include "ray/gcs/format/gcs_generated.h"
 #include "ray/gcs/redis_context.h"
+// TODO(rkn): Remove this include.
 #include "ray/raylet/format/node_manager_generated.h"
 
 // TODO(pcm): Remove this

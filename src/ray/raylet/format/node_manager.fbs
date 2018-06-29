@@ -1,5 +1,6 @@
 // Local scheduler protocol specification
 
+include "gcs.fbs";
 
 
 // TODO(swang): We put the flatbuffer types in a separate namespace for now to
