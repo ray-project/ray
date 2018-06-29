@@ -57,7 +57,7 @@ class AsyncGradientsOptimizer(PolicyOptimizer):
         self.num_steps_trained += self.grads_per_step * self.batch_size
 
     def stats(self):
-        return dict(PolicyOptimizer.stats(), **{
+        return dict(PolicyOptimizer.stats(self), **{
             "wait_time_ms": round(1000 * self.wait_timer.mean, 3),
             "apply_time_ms": round(1000 * self.apply_timer.mean, 3),
             "dispatch_time_ms": round(1000 * self.dispatch_timer.mean, 3),

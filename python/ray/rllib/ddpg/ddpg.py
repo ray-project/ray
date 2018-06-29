@@ -14,10 +14,14 @@ OPTIMIZER_SHARED_CONFIGS = [
 
 DEFAULT_CONFIG = {
     # === Model ===
-    # Hidden layer sizes of the policy networks
+    # Hidden layer sizes of the policy network
     "actor_hiddens": [64, 64],
-    # Hidden layer sizes of the policy networks
+    # Hidden layers activation of the policy network
+    "actor_hidden_activation": "relu",
+    # Hidden layer sizes of the critic network
     "critic_hiddens": [64, 64],
+    # Hidden layers activation of the critic network
+    "critic_hidden_activation": "relu",
     # N-step Q learning
     "n_step": 1,
     # Config options to pass to the model constructor

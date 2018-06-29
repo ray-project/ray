@@ -3,13 +3,14 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+from collections import defaultdict
 import os
 import tensorflow as tf
 
 import ray
-from ray.rllib.optimizers.policy_evaluator import TFMultiGPUSupport
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.optimizers.multi_gpu_impl import LocalSyncParallelOptimizer
+from ray.rllib.utils.tf_policy_graph import TFPolicyGraph
 from ray.rllib.utils.timer import TimerStat
 
 
@@ -21,13 +22,16 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
     A number of SGD passes are then taken over the in-memory data. For more
     details, see `multi_gpu_impl.LocalSyncParallelOptimizer`.
 
-    This optimizer is Tensorflow-specific and require evaluators to implement
-    the TFMultiGPUSupport API.
+    This optimizer is Tensorflow-specific and require the underlying
+    PolicyGraph to be a TFPolicyGraph instance that support `.copy()`.
+
+    Note that all replicas of the TFPolicyGraph will merge their
+    extra_compute_grad and apply_grad feed_dicts and fetches. This
+    may result in unexpected behavior.
     """
 
     def _init(self, sgd_batch_size=128, sgd_stepsize=5e-5, num_sgd_iter=10,
               timesteps_per_batch=1024):
-        assert isinstance(self.local_evaluator, TFMultiGPUSupport)
         self.batch_size = sgd_batch_size
         self.sgd_stepsize = sgd_stepsize
         self.num_sgd_iter = num_sgd_iter
@@ -50,29 +54,28 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
         print("LocalMultiGPUOptimizer devices", self.devices)
         print("LocalMultiGPUOptimizer batch size", self.batch_size)
 
-        # List of (feature name, feature placeholder) tuples
-        self.loss_inputs = self.local_evaluator.tf_loss_inputs()
+        assert set(self.local_evaluator.policy_map.keys()) == {"default"}, \
+            "Multi-agent is not supported"
+        self.policy = self.local_evaluator.policy_map["default"]
+        assert isinstance(self.policy, TFPolicyGraph), \
+            "Only TF policies are supported"
 
         # per-GPU graph copies created below must share vars with the policy
-        main_thread_scope = tf.get_variable_scope()
         # reuse is set to AUTO_REUSE because Adam nodes are created after
         # all of the device copies are created.
-        with tf.variable_scope(main_thread_scope, reuse=tf.AUTO_REUSE):
-            self.par_opt = LocalSyncParallelOptimizer(
-                tf.train.AdamOptimizer(self.sgd_stepsize),
-                self.devices,
-                [ph for _, ph in self.loss_inputs],
-                self.per_device_batch_size,
-                lambda *ph: self.local_evaluator.build_tf_loss(ph),
-                os.getcwd())
+        with self.local_evaluator.tf_sess.graph.as_default():
+            with self.local_evaluator.tf_sess.as_default():
+                with tf.variable_scope("default", reuse=tf.AUTO_REUSE):
+                    self.par_opt = LocalSyncParallelOptimizer(
+                        tf.train.AdamOptimizer(self.sgd_stepsize),
+                        self.devices,
+                        self.policy.loss_inputs(),
+                        self.per_device_batch_size,
+                        self.policy.copy,
+                        os.getcwd())
 
-        # TODO(rliaw): Find more elegant solution for this
-        if hasattr(self.local_evaluator, "init_extra_ops"):
-            self.local_evaluator.init_extra_ops(
-                self.par_opt.get_device_losses())
-
-        self.sess = self.local_evaluator.sess
-        self.sess.run(tf.global_variables_initializer())
+                self.sess = self.local_evaluator.tf_sess
+                self.sess.run(tf.global_variables_initializer())
 
     def step(self, postprocess_fn=None):
         with self.update_weights_timer:
@@ -96,34 +99,33 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
 
         with self.load_timer:
             tuples_per_device = self.par_opt.load_data(
-                self.local_evaluator.sess,
-                samples.columns([key for key, _ in self.loss_inputs]))
+                self.sess,
+                samples.columns([key for key, _ in self.policy.loss_inputs()]))
 
         with self.grad_timer:
-            all_extra_fetches = []
-            model = self.local_evaluator
+            all_extra_fetches = defaultdict(list)
             num_batches = (
                 int(tuples_per_device) // int(self.per_device_batch_size))
             for i in range(self.num_sgd_iter):
-                iter_extra_fetches = []
+                iter_extra_fetches = defaultdict(list)
                 permutation = np.random.permutation(num_batches)
                 for batch_index in range(num_batches):
                     # TODO(ekl) support ppo's debugging features, e.g.
                     # printing the current loss and tracing
                     batch_fetches = self.par_opt.optimize(
                         self.sess,
-                        permutation[batch_index] * self.per_device_batch_size,
-                        extra_ops=model.extra_apply_grad_fetches(),
-                        extra_feed_dict=model.extra_apply_grad_feed_dict())
-                    iter_extra_fetches += [batch_fetches]
-                all_extra_fetches += [iter_extra_fetches]
+                        permutation[batch_index] * self.per_device_batch_size)
+                    for k, v in batch_fetches.items():
+                        iter_extra_fetches[k] += [v]
+                for k, v in iter_extra_fetches.items():
+                    all_extra_fetches[k] += [v]
 
         self.num_steps_sampled += samples.count
         self.num_steps_trained += samples.count
         return all_extra_fetches
 
     def stats(self):
-        return dict(PolicyOptimizer.stats(), **{
+        return dict(PolicyOptimizer.stats(self), **{
             "sample_time_ms": round(1000 * self.sample_timer.mean, 3),
             "load_time_ms": round(1000 * self.load_timer.mean, 3),
             "grad_time_ms": round(1000 * self.grad_timer.mean, 3),

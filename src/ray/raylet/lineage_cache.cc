@@ -326,7 +326,7 @@ bool LineageCache::FlushTask(const TaskID &task_id) {
 }
 
 void LineageCache::Flush() {
-  // Iterate through all tasks that are READY.
+  // Iterate through all tasks that are PLACEABLE.
   for (auto it = uncommitted_ready_tasks_.begin();
        it != uncommitted_ready_tasks_.end();) {
     bool flushed = FlushTask(*it);

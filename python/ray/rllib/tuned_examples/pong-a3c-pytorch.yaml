@@ -12,7 +12,6 @@ pong-a3c-pytorch-cnn:
         lambda: 1.0
         lr: 0.0001
         observation_filter: NoFilter
-        reward_filter: NoFilter
         model:
             use_lstm: false
             channel_major: true

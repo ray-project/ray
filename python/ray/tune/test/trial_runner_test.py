@@ -61,6 +61,26 @@ class TrainableFunctionApiTest(unittest.TestCase):
         register_env("foo", lambda: None)
         self.assertRaises(TypeError, lambda: register_env("foo", 2))
 
+    def testRegisterEnvOverwrite(self):
+        def train(config, reporter):
+            reporter(timesteps_total=100, done=True)
+
+        def train2(config, reporter):
+            reporter(timesteps_total=200, done=True)
+
+        register_trainable("f1", train)
+        register_trainable("f1", train2)
+        [trial] = run_experiments({
+            "foo": {
+                "run": "f1",
+                "config": {
+                    "script_min_iter_time_s": 0,
+                },
+            }
+        })
+        self.assertEqual(trial.status, Trial.TERMINATED)
+        self.assertEqual(trial.last_result.timesteps_total, 200)
+
     def testRegisterTrainable(self):
         def train(config, reporter):
             pass

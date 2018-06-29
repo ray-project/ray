@@ -98,7 +98,7 @@ class _Registry(object):
 
     def flush_values(self):
         for (category, key), value in self._to_flush.items():
-            _internal_kv_put(_make_key(category, key), value)
+            _internal_kv_put(_make_key(category, key), value, overwrite=True)
         self._to_flush.clear()
 
 
