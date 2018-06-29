@@ -101,7 +101,8 @@ class TestCommonPolicyEvaluator(unittest.TestCase):
 
     def testQueryEvaluators(self):
         register_env("test", lambda _: gym.make("CartPole-v0"))
-        pg = PGAgent(env="test", config={"num_workers": 2, "batch_size": 5})
+        pg = PGAgent(
+            env="test", config={"num_workers": 2, "sample_batch_size": 5})
         results = pg.optimizer.foreach_evaluator(lambda ev: ev.batch_steps)
         results2 = pg.optimizer.foreach_evaluator_with_index(
             lambda ev, i: (i, ev.batch_steps))
