@@ -28,7 +28,7 @@ import ray.global_scheduler as global_scheduler
 import ray.local_scheduler
 import ray.plasma
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("ray")
 logger.setLevel(logging.INFO)
 ch = logging.StreamHandler(sys.stderr)
 ch.setLevel(logging.INFO)
@@ -185,7 +185,7 @@ def cleanup():
         # Reset the list of processes of this type.
         all_processes[process_type] = []
     if not successfully_shut_down:
-        logger.error("Ray did not shut down properly.")
+        logger.warning("Ray did not shut down properly.")
 
 
 def all_processes_alive(exclude=[]):
@@ -402,7 +402,7 @@ def check_version_info(redis_client):
         if version_info[:2] != true_version_info[:2]:
             raise Exception(error_message)
         else:
-            logger.error(error_message)
+            logger.warning(error_message)
 
 
 def start_redis(node_ip_address,

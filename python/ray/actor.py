@@ -13,6 +13,7 @@ import ray.local_scheduler
 import ray.ray_constants as ray_constants
 import ray.signature as signature
 import ray.worker
+from ray.services import logger
 from ray.utils import _random_string, is_cython, push_error_to_driver
 
 DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS = 1
