@@ -523,7 +523,7 @@ def start_redis(node_ip_address,
                 # It is important to load the credis module BEFORE the ray
                 # module, as the latter contains an extern declaration that the
                 # former supplies.
-            modules=[CREDIS_MEMBER_MODULE, REDIS_MODULE])
+                modules=[CREDIS_MEMBER_MODULE, REDIS_MODULE])
 
         if redis_shard_ports[i] is not None:
             assert redis_shard_port == redis_shard_ports[i]
