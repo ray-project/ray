@@ -361,7 +361,7 @@ LocalSchedulerState *LocalSchedulerState_init(
                                            redis_primary_port, true));
     RAY_CHECK_OK(state->gcs_client.context()->AttachToEventLoop(loop));
     RAY_CHECK_OK(
-        state->gcs_client.auxiliary_context()->AttachToEventLoop(loop));
+        state->gcs_client.primary_context()->AttachToEventLoop(loop));
   } else {
     state->db = NULL;
   }
