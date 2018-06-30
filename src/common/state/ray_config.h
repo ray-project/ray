@@ -102,6 +102,22 @@ class RayConfig {
 
   int num_workers_per_process() const { return num_workers_per_process_; }
 
+  double token_bucket_max_capacity() const {
+    return token_bucket_max_capacity_;
+  }
+
+  double token_bucket_max_rate_hz() const {
+    return token_bucket_max_rate_hz_;
+  }
+
+  double token_bucket_min_rate_hz() const {
+    return token_bucket_min_rate_hz_;
+  }
+
+  double token_bucket_avg_rate_hz() const {
+    return token_bucket_avg_rate_hz_;
+  }
+
  private:
   RayConfig()
       : ray_protocol_version_(0x0000000000000000),
@@ -139,8 +155,8 @@ class RayConfig {
         object_manager_default_chunk_size_(1000000),
         num_workers_per_process_(1),
         token_bucket_max_capacity_(10),
-        token_bucket_min_rate_hz_(10),
         token_bucket_max_rate_hz_(100),
+        token_bucket_min_rate_hz_(10),
         token_bucket_avg_rate_hz_(12) {}
 
   ~RayConfig() {}

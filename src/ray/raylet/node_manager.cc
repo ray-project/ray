@@ -979,15 +979,67 @@ ray::Status NodeManager::ForwardTask(const Task &task, const ClientID &node_id) 
   return status;
 }
 
-TokenBucket::TokenBucket()
-  : bucket_capacity_(token_bucket_max_capacity_) {
+TokenBucket::TokenBucket() {
+    token_bucket_capacity_ = RayConfig::instance().token_bucket_max_capacity();
     last_time_token_received_ = last_time_hb_sent_ = current_time_ms();
+    // copy these constants so we don't waste time to read them
+    token_bucket_max_capacity_ = RayConfig::instance().token_bucket_max_capacity();
+    token_bucket_avg_rate_hz_ = RayConfig::instance().token_bucket_avg_rate_hz();
+    token_bucket_min_rate_hz_ = RayConfig::instance().token_bucket_min_rate_hz();
+    token_bucket_max_rate_hz_ = RayConfig::instance().token_bucket_max_rate_hz();
     // TODO: sent a heartbeat right away
   };
+
 TokenBucket::~TokenBucket() {};
-void TokenBucket::UpdateTokenBucket() {};
-void TokenBucket::ResourceAvailabilityChangeCallback() {};
-void TokenBucket::TimeoutCallback() {};
+int64_t TokenBucket::UpdateTokenBucket() {
+  int64_t crt_time = current_time_ms();
+  token_bucket_capacity_ +=
+      (crt_time - last_time_token_received_) * token_bucket_avg_rate_hz_;
+  token_bucket_capacity_ =
+      MIN(token_bucket_max_capacity_, token_bucket_capacity_);
+  last_time_token_received_ = crt_time;
+  return crt_time;
+};
+
+void TokenBucket::ResourceAvailabilityChangeCallback() {
+  int64_t crt_time = UpdateTokenBucket();
+  int64_t elapsed_ms = crt_time - last_time_hb_sent_;
+  int64_t timeout_ms;
+  if (elapsed_ms >= 1./token_bucket_max_rate_hz_) {
+    if (token_bucket_capacity_ >= 1) {
+      token_bucket_capacity_ -= 1;
+      last_time_hb_sent_ = crt_time;
+      // TODO: send(hb)
+      timeout_ms = 1./token_bucket_min_rate_hz_;
+      // set_timeout(timeout_ms);
+    } else {
+      // wait to accumulate at least 1 token
+      timeout_ms =
+          1000*(1. - token_bucket_capacity_)/token_bucket_avg_rate_hz_;
+      // TODO: set_timeout(timeout_ms_);
+    }
+  } else {
+    timeout_ms = MAX(elapsed_ms - 1000./token_bucket_max_rate_hz_,
+        1000*(1. - token_bucket_capacity_)/token_bucket_avg_rate_hz_);
+    // TODO: set_timeout(timeout_ms));
+  }
+};
+
+void TokenBucket::TimeoutCallback() {
+  int64_t crt_time = UpdateTokenBucket();
+  int64_t timeout_ms;
+  if (token_bucket_capacity_ >= 1) {
+    token_bucket_capacity_ -= 1.;
+    last_time_hb_sent_ = crt_time;
+    // TODO: send(hb)
+    timeout_ms = 1000./token_bucket_min_rate_hz_;
+    // TODO: set_timeout(1./token_bucket_min_rate_hz_)
+  } else {
+    timeout_ms =
+        1000*(1. - token_bucket_capacity_)/token_bucket_avg_rate_hz_;
+    // TODO: set_timeout(timeout_ms);
+  }
+};
 
 }  // namespace raylet
 
