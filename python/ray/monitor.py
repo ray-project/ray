@@ -111,10 +111,14 @@ class Monitor(object):
         self.issue_gcs_flushes = "RAY_USE_NEW_GCS" in os.environ
         self.gcs_flush_policy = None
         if self.issue_gcs_flushes:
-            # For now, we take the primary redis server to issue flushes,
-            # because task table entries are stored there under this flag.
+            # Data is stored under the first data shard, so we issue flushes to
+            # that redis server.
+            addr_port = self.redis.lrange("RedisShards", 0, -1)[0]
+            addr_port = addr_port.split(b":")
+            self.redis_shard = redis.StrictRedis(
+                host=addr_port[0], port=addr_port[1])
             try:
-                self.redis.execute_command("HEAD.FLUSH 0")
+                self.redis_shard.execute_command("HEAD.FLUSH 0")
             except redis.exceptions.ResponseError as e:
                 log.info("Turning off flushing due to exception: {}".format(
                     str(e)))
@@ -562,11 +566,11 @@ class Monitor(object):
                 return
             self.gcs_flush_policy = pickle.loads(serialized)
 
-        if not self.gcs_flush_policy.should_flush(self.redis):
+        if not self.gcs_flush_policy.should_flush(self.redis_shard):
             return
 
         max_entries_to_flush = self.gcs_flush_policy.num_entries_to_flush()
-        num_flushed = self.redis.execute_command(
+        num_flushed = self.redis_shard.execute_command(
             "HEAD.FLUSH {}".format(max_entries_to_flush))
         log.info('num_flushed {}'.format(num_flushed))
 
