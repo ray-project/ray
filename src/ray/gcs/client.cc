@@ -98,10 +98,9 @@ Status AsyncGcsClient::Connect(const std::string &address, int port, bool shardi
 
   // If not sharding, only creating one context, connect with same address & port
   // as the primary one.
-  if (!sharding) {
-    shard_contexts_.push_back(std::make_shared<RedisContext>());
-    RAY_RETURN_NOT_OK(shard_contexts_[0]->Connect(address, port));
-  } else {
+  shard_contexts_.push_back(std::make_shared<RedisContext>());
+  RAY_RETURN_NOT_OK(shard_contexts_[0]->Connect(address, port));
+  if (sharding) {
     // Else, connect the rest of contexts
     std::vector<std::string> addresses;
     std::vector<int> ports;
@@ -109,7 +108,7 @@ Status AsyncGcsClient::Connect(const std::string &address, int port, bool shardi
 
     for (unsigned int i = 0; i < addresses.size(); ++i) {
       shard_contexts_.push_back(std::make_shared<RedisContext>());
-      RAY_RETURN_NOT_OK(shard_contexts_[i]->Connect(addresses[i], ports[i]));
+      RAY_RETURN_NOT_OK(shard_contexts_.back()->Connect(addresses[i], ports[i]));
     }
   }
   object_table_.reset(new ObjectTable(shard_contexts_, this));
