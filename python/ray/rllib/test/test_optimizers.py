@@ -8,7 +8,8 @@ import numpy as np
 
 import ray
 from ray.rllib.test.mock_evaluator import _MockEvaluator
-from ray.rllib.optimizers import AsyncGradientsOptimizer, SampleBatch
+from ray.rllib.optimizers import AsyncGradientsOptimizer
+from ray.rllib.evaluation import SampleBatch
 
 
 class AsyncOptimizerTest(unittest.TestCase):

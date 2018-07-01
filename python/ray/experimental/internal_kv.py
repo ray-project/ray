@@ -22,7 +22,7 @@ def _internal_kv_put(key, value, overwrite=False):
 
     This only has an effect if the key does not already have a value.
 
-    Returns
+    Returns:
         already_exists (bool): whether the value already exists.
     """
 

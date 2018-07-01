@@ -18,8 +18,8 @@ import gym
 import random
 
 import ray
-from ray.rllib.pg.pg import PGAgent
-from ray.rllib.pg.pg_policy_graph import PGPolicyGraph
+from ray.rllib.agents.pg.pg import PGAgent
+from ray.rllib.agents.pg.pg_policy_graph import PGPolicyGraph
 from ray.rllib.test.test_multi_agent_env import MultiCartpole
 from ray.tune.logger import pretty_print
 from ray.tune.registry import register_env
