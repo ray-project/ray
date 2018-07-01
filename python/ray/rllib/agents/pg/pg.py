@@ -45,8 +45,8 @@ class PGAgent(Agent):
         self.remote_evaluators = self.make_remote_evaluators(
             self.env_creator, PGPolicyGraph, self.config["num_workers"], {})
         self.optimizer = SyncSamplesOptimizer(
-            self.config["optimizer"], self.local_evaluator,
-            self.remote_evaluators)
+            self.local_evaluator, self.remote_evaluators,
+            self.config["optimizer"])
 
     def _train(self):
         self.optimizer.step()
