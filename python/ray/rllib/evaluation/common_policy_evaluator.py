@@ -362,24 +362,28 @@ class CommonPolicyEvaluator(PolicyEvaluator):
             return self.policy_map[DEFAULT_POLICY_ID].apply_gradients(grads)
 
     def compute_apply(self, samples):
+        grad_fetch, apply_fetch = {}, {}
         if isinstance(samples, MultiAgentBatch):
             info_out = {}
             if self.tf_sess is not None:
                 builder = TFRunBuilder(self.tf_sess, "compute_apply")
                 for pid, batch in samples.policy_batches.items():
-                    info_out[pid], _ = (
+                    info_out[pid] = (
                         self.policy_map[pid].build_compute_apply(
                             builder, batch))
-                info_out = {k: builder.get(v) for k, v in info_out.items()}
+                for k, fetches in info_out.items():
+                    grad_out, apply_out = builder.get(fetches)
+                    grad_fetch[k] = grad_out
+                    apply_fetch[k] = apply_out
             else:
                 for pid, batch in samples.policy_batches.items():
-                    info_out[pid], _ = (
+                    grad_fetch[pid], apply_fetch[pid] = (
                         self.policy_map[pid].compute_apply(batch))
-            return info_out
+            return grad_fetch, apply_fetch
         else:
             grad_fetch, apply_fetch = (
                 self.policy_map[DEFAULT_POLICY_ID].compute_apply(samples))
-            return grad_fetch
+            return grad_fetch, apply_fetch
 
     def save(self):
         filters = self.get_filters(flush_after=True)

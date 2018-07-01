@@ -89,16 +89,15 @@ class PolicyEvaluator(object):
         """Fused compute gradients and apply gradients call.
 
         Returns:
-            info: dictionary of extra metadata from compute_gradients().
+            grad_info: dictionary of extra metadata from compute_gradients().
+            apply_info: dictionary of extra metadata from apply_gradients().
 
         Examples:
             >>> batch = ev.sample()
             >>> ev.compute_apply(samples)
         """
 
-        grads, info = self.compute_gradients(samples)
-        self.apply_gradients(grads)
-        return info
+        raise NotImplementedError
 
     def get_host(self):
         """Returns the hostname of the process running this evaluator."""
