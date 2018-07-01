@@ -16,6 +16,9 @@ class ComponentFailureTest(unittest.TestCase):
 
     # This test checks that when a worker dies in the middle of a get, the
     # plasma store and manager will not die.
+    @unittest.skipIf(
+        os.environ.get('RAY_USE_NEW_GCS', False),
+        "Not working with new GCS API.")
     def testDyingWorkerGet(self):
         obj_id = 20 * b"a"
 
@@ -53,6 +56,9 @@ class ComponentFailureTest(unittest.TestCase):
 
     # This test checks that when a worker dies in the middle of a wait, the
     # plasma store and manager will not die.
+    @unittest.skipIf(
+        os.environ.get('RAY_USE_NEW_GCS', False),
+        "Not working with new GCS API.")
     def testDyingWorkerWait(self):
         obj_id = 20 * b"a"
 
@@ -232,6 +238,9 @@ class ComponentFailureTest(unittest.TestCase):
         self.check_components_alive(ray.services.PROCESS_TYPE_LOCAL_SCHEDULER,
                                     False)
 
+    @unittest.skipIf(
+        os.environ.get('RAY_USE_NEW_GCS', False),
+        "Not working with new GCS API.")
     def testDriverLivesSequential(self):
         ray.worker.init(redirect_output=True)
         all_processes = ray.services.all_processes
@@ -251,6 +260,9 @@ class ComponentFailureTest(unittest.TestCase):
 
         # If the driver can reach the tearDown method, then it is still alive.
 
+    @unittest.skipIf(
+        os.environ.get('RAY_USE_NEW_GCS', False),
+        "Not working with new GCS API.")
     def testDriverLivesParallel(self):
         ray.worker.init(redirect_output=True)
         all_processes = ray.services.all_processes

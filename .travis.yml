@@ -107,6 +107,7 @@ matrix:
       env:
         - PYTHON=3.5
         - RAY_USE_NEW_GCS=on
+        - RAY_USE_XRAY=1
 
     - os: linux
       dist: trusty

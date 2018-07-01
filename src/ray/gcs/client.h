@@ -36,8 +36,9 @@ class RAY_EXPORT AsyncGcsClient {
   ///
   /// \param address The GCS IP address.
   /// \param port The GCS port.
+  /// \param sharding If true, use sharded redis for the GCS.
   /// \return Status.
-  Status Connect(const std::string &address, int port);
+  Status Connect(const std::string &address, int port, bool sharding);
   /// Attach this client to a plasma event loop. Note that only
   /// one event loop should be attached at a time.
   Status Attach(plasma::EventLoop &event_loop);
@@ -68,6 +69,7 @@ class RAY_EXPORT AsyncGcsClient {
                    const GetExportCallback &done_callback);
 
   std::shared_ptr<RedisContext> context() { return context_; }
+  std::shared_ptr<RedisContext> primary_context() { return primary_context_; }
 
  private:
   std::unique_ptr<FunctionTable> function_table_;
@@ -80,10 +82,14 @@ class RAY_EXPORT AsyncGcsClient {
   std::unique_ptr<HeartbeatTable> heartbeat_table_;
   std::unique_ptr<ErrorTable> error_table_;
   std::unique_ptr<ClientTable> client_table_;
+  // The following contexts write to the data shard
   std::shared_ptr<RedisContext> context_;
   std::unique_ptr<RedisAsioClient> asio_async_client_;
   std::unique_ptr<RedisAsioClient> asio_subscribe_client_;
-
+  // The following context writes everything to the primary shard
+  std::shared_ptr<RedisContext> primary_context_;
+  std::unique_ptr<RedisAsioClient> asio_async_auxiliary_client_;
+  std::unique_ptr<RedisAsioClient> asio_subscribe_auxiliary_client_;
   CommandType command_type_;
 };
 
