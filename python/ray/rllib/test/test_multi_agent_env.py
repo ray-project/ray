@@ -7,17 +7,17 @@ import random
 import unittest
 
 import ray
-from ray.rllib.pg import PGAgent
-from ray.rllib.pg.pg_policy_graph import PGPolicyGraph
-from ray.rllib.dqn.dqn_policy_graph import DQNPolicyGraph
+from ray.rllib.agents.pg import PGAgent
+from ray.rllib.agents.pg.pg_policy_graph import PGPolicyGraph
+from ray.rllib.agents.dqn.dqn_policy_graph import DQNPolicyGraph
 from ray.rllib.optimizers import SyncSamplesOptimizer, \
     SyncReplayOptimizer, AsyncGradientsOptimizer
 from ray.rllib.test.test_common_policy_evaluator import MockEnv, MockEnv2, \
     MockPolicyGraph
-from ray.rllib.utils.common_policy_evaluator import CommonPolicyEvaluator, \
-    collect_metrics
-from ray.rllib.utils.async_vector_env import _MultiAgentEnvToAsync
-from ray.rllib.utils.multi_agent_env import MultiAgentEnv
+from ray.rllib.evaluation.common_policy_evaluator import CommonPolicyEvaluator
+from ray.rllib.evaluation.metrics import collect_metrics
+from ray.rllib.env.async_vector_env import _MultiAgentEnvToAsync
+from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.tune.registry import register_env
 
 

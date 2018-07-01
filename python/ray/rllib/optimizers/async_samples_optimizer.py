@@ -17,7 +17,7 @@ from six.moves import queue
 import ray
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.optimizers.replay_buffer import PrioritizedReplayBuffer
-from ray.rllib.optimizers.sample_batch import SampleBatch
+from ray.rllib.evaluation.sample_batch import SampleBatch
 from ray.rllib.utils.actors import TaskPool, create_colocated
 from ray.rllib.utils.timer import TimerStat
 from ray.rllib.utils.window_stat import WindowStat
