@@ -60,7 +60,10 @@ class TestGcsWithAe : public TestGcs {
  public:
   TestGcsWithAe(CommandType command_type) : TestGcs(command_type) {
     loop_ = aeCreateEventLoop(1024);
-    RAY_CHECK_OK(client_->context()->AttachToEventLoop(loop_));
+    // Tests when sharding = false.
+    // TODO(heyucongtom): We shall figure out some way to test sharding=true.
+    RAY_CHECK_OK(client_->primary_context()->AttachToEventLoop(loop_));
+    RAY_CHECK_OK(client_->shard_contexts()[0]->AttachToEventLoop(loop_));
   }
 
   TestGcsWithAe() : TestGcsWithAe(CommandType::kRegular) {}
