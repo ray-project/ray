@@ -44,7 +44,7 @@ class PolicyOptimizer(object):
         self.local_evaluator = local_evaluator
         self.remote_evaluators = remote_evaluators or []
         self.config = config or {}
-        self._init(**config)
+        self._init(**self.config)
 
         # Counters that should be updated by sub-classes
         self.num_steps_trained = 0
