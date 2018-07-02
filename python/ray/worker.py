@@ -1728,7 +1728,7 @@ def init(redis_address=None,
     if redis_address is not None:
         redis_address = services.address_to_ip(redis_address)
 
-    # If object_store_memory is a float value, Plasma's starting process will fail.
+    # If object_store_memory is a float, Plasma's starting process will fail.
     if object_store_memory is not None:
         object_store_memory = int(object_store_memory)
 
