@@ -91,15 +91,7 @@ class Log : virtual public PubsubInterface<ID> {
         pubsub_channel_(TablePubsub::NO_PUBLISH),
         prefix_(TablePrefix::UNUSED),
         subscribe_callback_index_(-1){};
-
-  // Constructor for primary shard. (client & error table).
-  Log(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client)
-      : primary_context_(context),
-        client_(client),
-        pubsub_channel_(TablePubsub::NO_PUBLISH),
-        prefix_(TablePrefix::UNUSED),
-        subscribe_callback_index_(-1){};
-
+        
   /// Append a log entry to a key.
   ///
   /// \param job_id The ID of the job (= driver).
@@ -439,8 +431,8 @@ Status TaskTableTestAndUpdate(AsyncGcsClient *gcs_client, const TaskID &task_id,
 
 class ErrorTable : private Log<JobID, ErrorTableData> {
  public:
-  ErrorTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client)
-      : Log(context, client) {
+  ErrorTable(const std::vector<std::shared_ptr<RedisContext>> &contexts, AsyncGcsClient *client)
+      : Log(contexts, client) {
     pubsub_channel_ = TablePubsub::ERROR_INFO;
     prefix_ = TablePrefix::ERROR_INFO;
   };
@@ -477,9 +469,9 @@ class ClientTable : private Log<UniqueID, ClientTableData> {
  public:
   using ClientTableCallback = std::function<void(
       AsyncGcsClient *client, const ClientID &id, const ClientTableDataT &data)>;
-  ClientTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client,
+  ClientTable(const std::vector<std::shared_ptr<RedisContext>> &contexts, AsyncGcsClient *client,
               const ClientID &client_id)
-      : Log(context, client),
+      : Log(contexts, client),
         // We set the client log's key equal to nil so that all instances of
         // ClientTable have the same key.
         client_log_key_(UniqueID::nil()),

@@ -91,6 +91,7 @@ class RAY_EXPORT AsyncGcsClient {
   std::unique_ptr<RedisAsioClient> asio_async_auxiliary_client_;
   std::unique_ptr<RedisAsioClient> asio_subscribe_auxiliary_client_;
   CommandType command_type_;
+  ClientID client_id_;
 };
 
 class SyncGcsClient {

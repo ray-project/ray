@@ -71,8 +71,7 @@ void GetRedisShards(redisContext *context, std::vector<std::string> &addresses,
 
 AsyncGcsClient::AsyncGcsClient(const ClientID &client_id, CommandType command_type) {
   primary_context_ = std::make_shared<RedisContext>();
-  client_table_.reset(new ClientTable(primary_context_, this, client_id));
-  error_table_.reset(new ErrorTable(primary_context_, this));
+  client_id_ = client_id;
   command_type_ = command_type;
 }
 
@@ -97,9 +96,12 @@ Status AsyncGcsClient::Connect(const std::string &address, int port, bool shardi
   RAY_RETURN_NOT_OK(primary_context_->Connect(address, port));
 
   // If not sharding, only creating one context, connect with same address & port
-  // as the primary one.
+  // as the primary one. This in effect works as the primary.
   shard_contexts_.push_back(std::make_shared<RedisContext>());
   RAY_RETURN_NOT_OK(shard_contexts_[0]->Connect(address, port));
+  client_table_.reset(new ClientTable(shard_contexts_, this, client_id_));
+  error_table_.reset(new ErrorTable(shard_contexts_, this));
+
   if (sharding) {
     // Else, connect the rest of contexts
     std::vector<std::string> addresses;
@@ -111,6 +113,7 @@ Status AsyncGcsClient::Connect(const std::string &address, int port, bool shardi
       RAY_RETURN_NOT_OK(shard_contexts_.back()->Connect(addresses[i], ports[i]));
     }
   }
+
   object_table_.reset(new ObjectTable(shard_contexts_, this));
   actor_table_.reset(new ActorTable(shard_contexts_, this));
   task_table_.reset(new TaskTable(shard_contexts_, this, command_type_));
