@@ -50,6 +50,8 @@ class RedisChainModule {
 
   // Runs "node_func" on every node in the chain; after the tail node has run it
   // too, finalizes the mutation by running "tail_func".
+  //
+  // The tail function is allowed to be nullptr.
   // TODO(zongheng): currently only supports 1-node chain.
   int ChainReplicate(RedisModuleCtx *ctx,
                      RedisModuleString **argv,

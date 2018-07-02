@@ -971,27 +971,10 @@ int TableTestAndUpdate_RedisCommand(RedisModuleCtx *ctx,
   return result;
 }
 
-/**
- * Add a new entry to the object table or update an existing one.
- *
- * This is called from a client with the command:
- *
- *     RAY.OBJECT_TABLE_ADD <object id> <data size> <hash string> <manager id>
- *
- * @param object_id A string representing the object ID.
- * @param data_size An integer which is the object size in bytes.
- * @param hash_string A string which is a hash of the object.
- * @param manager A string which represents the manager ID of the plasma manager
- *        that has the object.
- * @return OK if the operation was successful. If the same object_id is already
- *         present with a different hash value, the entry is still added, but
- *         an error with string "hash mismatch" is returned.
- */
-int ObjectTableAdd_RedisCommand(RedisModuleCtx *ctx,
-                                RedisModuleString **argv,
-                                int argc) {
-  RedisModule_AutoMemory(ctx);
-
+int ObjectTableAdd_WriteObjectInfo(RedisModuleCtx *ctx,
+                                   RedisModuleString **argv,
+                                   int argc,
+                                   RedisModuleString **mutated_key_str) {
   if (argc != 5) {
     return RedisModule_WrongArity(ctx);
   }
@@ -999,7 +982,6 @@ int ObjectTableAdd_RedisCommand(RedisModuleCtx *ctx,
   RedisModuleString *object_id = argv[1];
   RedisModuleString *data_size = argv[2];
   RedisModuleString *new_hash = argv[3];
-  RedisModuleString *manager = argv[4];
 
   long long data_size_value;
   if (RedisModule_StringToLongLong(data_size, &data_size_value) !=
@@ -1008,36 +990,39 @@ int ObjectTableAdd_RedisCommand(RedisModuleCtx *ctx,
   }
 
   /* Set the fields in the object info table. */
-  RedisModuleKey *key;
-  key = OpenPrefixedKey(ctx, OBJECT_INFO_PREFIX, object_id,
-                        REDISMODULE_READ | REDISMODULE_WRITE);
-
-  /* Check if this object was already registered and if the hashes agree. */
-  bool hash_mismatch = false;
-  if (RedisModule_KeyType(key) != REDISMODULE_KEYTYPE_EMPTY) {
-    RedisModuleString *existing_hash;
-    RedisModule_HashGet(key, REDISMODULE_HASH_CFIELDS, "hash", &existing_hash,
-                        NULL);
-    /* The existing hash may be NULL even if the key is present because a call
-     * to RAY.RESULT_TABLE_ADD may have already created the key. */
-    if (existing_hash != NULL) {
-      /* Check whether the new hash value matches the old one. If not, we will
-       * later return the "hash mismatch" error. */
-      hash_mismatch = (RedisModule_StringCompare(existing_hash, new_hash) != 0);
-    }
-  }
+  RedisModuleKey *key =
+      OpenPrefixedKey(ctx, OBJECT_INFO_PREFIX, object_id,
+                      REDISMODULE_READ | REDISMODULE_WRITE, mutated_key_str);
 
   RedisModule_HashSet(key, REDISMODULE_HASH_CFIELDS, "hash", new_hash, NULL);
-  RedisModule_HashSet(key, REDISMODULE_HASH_CFIELDS, "data_size", data_size,
-                      NULL);
+  return RedisModule_HashSet(key, REDISMODULE_HASH_CFIELDS, "data_size",
+                             data_size, NULL);
+}
+
+int ObjectTableAdd_WriteObjectLocation(RedisModuleCtx *ctx,
+                                       RedisModuleString **argv,
+                                       int /*argc*/,
+                                       RedisModuleString **mutated_key_str) {
+  RedisModuleString *object_id = argv[1];
+  RedisModuleString *manager = argv[4];
 
   /* Add the location in the object location table. */
-  RedisModuleKey *table_key;
-  table_key = OpenPrefixedKey(ctx, OBJECT_LOCATION_PREFIX, object_id,
-                              REDISMODULE_READ | REDISMODULE_WRITE);
-
+  RedisModuleKey *table_key =
+      OpenPrefixedKey(ctx, OBJECT_LOCATION_PREFIX, object_id,
+                      REDISMODULE_READ | REDISMODULE_WRITE, mutated_key_str);
   /* Sets are not implemented yet, so we use ZSETs instead. */
-  RedisModule_ZsetAdd(table_key, 0.0, manager, NULL);
+  return RedisModule_ZsetAdd(table_key, 0.0, manager, NULL);
+}
+
+int ObjectTableAdd_DoPublish(RedisModuleCtx *ctx,
+                             RedisModuleString **argv,
+                             int /*argc*/) {
+  RedisModuleString *object_id = argv[1];
+  RedisModuleString *data_size = argv[2];
+  RedisModuleString *new_hash = argv[3];
+  RedisModuleKey *table_key =
+      OpenPrefixedKey(ctx, OBJECT_LOCATION_PREFIX, object_id,
+                      REDISMODULE_READ | REDISMODULE_WRITE);
 
   RedisModuleString *bcast_client_str =
       RedisModule_CreateString(ctx, OBJECT_BCAST, strlen(OBJECT_BCAST));
@@ -1083,13 +1068,77 @@ int ObjectTableAdd_RedisCommand(RedisModuleCtx *ctx,
                 "Unable to delete zset key.");
   }
 
+  /* Check if this object was already registered and if the hashes agree. */
+  RedisModuleKey *key = OpenPrefixedKey(ctx, OBJECT_INFO_PREFIX, object_id,
+                                        REDISMODULE_READ | REDISMODULE_WRITE);
+  bool hash_mismatch = false;
+  if (RedisModule_KeyType(key) != REDISMODULE_KEYTYPE_EMPTY) {
+    RedisModuleString *existing_hash;
+    RedisModule_HashGet(key, REDISMODULE_HASH_CFIELDS, "hash", &existing_hash,
+                        NULL);
+    /* The existing hash may be NULL even if the key is present because a call
+     * to RAY.RESULT_TABLE_ADD may have already created the key. */
+    if (existing_hash != NULL) {
+      /* Check whether the new hash value matches the old one. If not, we will
+       * later return the "hash mismatch" error. */
+      hash_mismatch = (RedisModule_StringCompare(existing_hash, new_hash) != 0);
+    }
+  }
   if (hash_mismatch) {
     return RedisModule_ReplyWithError(ctx, "hash mismatch");
   } else {
-    RedisModule_ReplyWithSimpleString(ctx, "OK");
-    return REDISMODULE_OK;
+    return RedisModule_ReplyWithSimpleString(ctx, "OK");
   }
 }
+
+/**
+ * Add a new entry to the object table or update an existing one.
+ *
+ * This is called from a client with the command:
+ *
+ *     RAY.OBJECT_TABLE_ADD <object id> <data size> <hash string> <manager id>
+ *
+ * @param object_id A string representing the object ID.
+ * @param data_size An integer which is the object size in bytes.
+ * @param hash_string A string which is a hash of the object.
+ * @param manager A string which represents the manager ID of the plasma manager
+ *        that has the object.
+ * @return OK if the operation was successful. If the same object_id is already
+ *         present with a different hash value, the entry is still added, but
+ *         an error with string "hash mismatch" is returned.
+ */
+int ObjectTableAdd_RedisCommand(RedisModuleCtx *ctx,
+                                RedisModuleString **argv,
+                                int argc) {
+  RedisModule_AutoMemory(ctx);
+  const int status =
+      ObjectTableAdd_WriteObjectInfo(ctx, argv, argc,
+                                     /*mutated_key_str=*/nullptr);
+  if (!status) {
+    return status;  // RM_Reply called.
+  }
+  ObjectTableAdd_WriteObjectLocation(ctx, argv, argc,
+                                     /*mutated_key_str=*/nullptr);
+  return ObjectTableAdd_DoPublish(ctx, argv, argc);
+}
+
+#if RAY_USE_NEW_GCS
+int ChainObjectTableAdd_RedisCommand(RedisModuleCtx *ctx,
+                                     RedisModuleString **argv,
+                                     int argc) {
+  RedisModule_AutoMemory(ctx);
+  const int status =
+      module.ChainReplicate(ctx, argv, argc,
+                            /*node_func=*/ObjectTableAdd_WriteObjectInfo,
+                            /*tail_func=*/nullptr);
+  if (!status) {
+    return status;
+  }
+  return module.ChainReplicate(ctx, argv, argc,
+                               /*node_func=*/ObjectTableAdd_WriteObjectLocation,
+                               /*tail_func=*/nullptr);
+}
+#endif
 
 /**
  * Remove a manager from a location entry in the object table.
@@ -1219,25 +1268,10 @@ int ObjectInfoSubscribe_RedisCommand(RedisModuleCtx *ctx,
   return REDISMODULE_OK;
 }
 
-/**
- * Add a new entry to the result table or update an existing one.
- *
- * This is called from a client with the command:
- *
- *     RAY.RESULT_TABLE_ADD <object id> <task id> <is_put>
- *
- * @param object_id A string representing the object ID.
- * @param task_id A string representing the task ID of the task that produced
- *        the object.
- * @param is_put An integer that is 1 if the object was created through ray.put
- *        and 0 if created by return value.
- * @return OK if the operation was successful.
- */
-int ResultTableAdd_RedisCommand(RedisModuleCtx *ctx,
-                                RedisModuleString **argv,
-                                int argc) {
-  RedisModule_AutoMemory(ctx);
-
+int ResultTableAdd_DoWrite(RedisModuleCtx *ctx,
+                           RedisModuleString **argv,
+                           int argc,
+                           RedisModuleString **mutated_key_str) {
   if (argc != 4) {
     return RedisModule_WrongArity(ctx);
   }
@@ -1257,14 +1291,56 @@ int ResultTableAdd_RedisCommand(RedisModuleCtx *ctx,
   }
 
   RedisModuleKey *key;
-  key = OpenPrefixedKey(ctx, OBJECT_INFO_PREFIX, object_id, REDISMODULE_WRITE);
-  RedisModule_HashSet(key, REDISMODULE_HASH_CFIELDS, "task", task_id, "is_put",
-                      is_put, NULL);
-
-  RedisModule_ReplyWithSimpleString(ctx, "OK");
-
-  return REDISMODULE_OK;
+  key = OpenPrefixedKey(ctx, OBJECT_INFO_PREFIX, object_id, REDISMODULE_WRITE,
+                        mutated_key_str);
+  return RedisModule_HashSet(key, REDISMODULE_HASH_CFIELDS, "task", task_id,
+                             "is_put", is_put, NULL);
 }
+
+int ResultTableAdd_DoFinalize(RedisModuleCtx *ctx,
+                              RedisModuleString **argv,
+                              int argc) {
+  REDISMODULE_NOT_USED(argv);
+  REDISMODULE_NOT_USED(argc);
+  return RedisModule_ReplyWithSimpleString(ctx, "OK");
+}
+
+/**
+ * Add a new entry to the result table or update an existing one.
+ *
+ * This is called from a client with the command:
+ *
+ *     RAY.RESULT_TABLE_ADD <object id> <task id> <is_put>
+ *
+ * @param object_id A string representing the object ID.
+ * @param task_id A string representing the task ID of the task that produced
+ *        the object.
+ * @param is_put An integer that is 1 if the object was created through ray.put
+ *        and 0 if created by return value.
+ * @return OK if the operation was successful.
+ */
+int ResultTableAdd_RedisCommand(RedisModuleCtx *ctx,
+                                RedisModuleString **argv,
+                                int argc) {
+  RedisModule_AutoMemory(ctx);
+  const int status =
+      ResultTableAdd_DoWrite(ctx, argv, argc, /*mutated_key_str=*/nullptr);
+  if (!status) {
+    return status;  // RM_Reply called.
+  }
+  return ResultTableAdd_DoFinalize(ctx, argv, argc);
+}
+
+#if RAY_USE_NEW_GCS
+int ChainResultTableAdd_RedisCommand(RedisModuleCtx *ctx,
+                                     RedisModuleString **argv,
+                                     int argc) {
+  RedisModule_AutoMemory(ctx);
+  return module.ChainReplicate(ctx, argv, argc,
+                               /*node_func=*/ResultTableAdd_DoWrite,
+                               /*tail_func=*/ResultTableAdd_DoFinalize);
+}
+#endif
 
 /**
  * Reply with information about a task ID. This is used by
@@ -1831,6 +1907,16 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx,
   if (RedisModule_CreateCommand(ctx, "ray.chain.table_add",
                                 ChainTableAdd_RedisCommand, "write pubsub", 0,
                                 0, 0) == REDISMODULE_ERR) {
+    return REDISMODULE_ERR;
+  }
+  if (RedisModule_CreateCommand(ctx, "ray.chain.object_table_add",
+                                ChainObjectTableAdd_RedisCommand, "write", 0, 0,
+                                0) == REDISMODULE_ERR) {
+    return REDISMODULE_ERR;
+  }
+  if (RedisModule_CreateCommand(ctx, "ray.chain.result_table_add",
+                                ChainResultTableAdd_RedisCommand, "write", 0, 0,
+                                0) == REDISMODULE_ERR) {
     return REDISMODULE_ERR;
   }
 #endif
