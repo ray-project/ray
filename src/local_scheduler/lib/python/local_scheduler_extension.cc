@@ -328,16 +328,23 @@ int PyBytes_or_PyUnicode_to_string(PyObject *py_string, std::string &out) {
 
 static PyObject *PyLocalSchedulerClient_push_profile_events(PyObject *self,
                                                             PyObject *args) {
+  UniqueID component_id;
   PyObject *profile_data;
 
-  if (!PyArg_ParseTuple(args, "O", &profile_data)) {
+  if (!PyArg_ParseTuple(args, "O&O", &PyObjectToUniqueID, &component_id, &profile_data)) {
     return NULL;
   }
 
-  std::vector<ray::protocol::ProfileTableDataT> profile_events;
+  ProfileTableDataT profile_info;
+  profile_info.component_id = component_id.binary();
+
+  if (PyList_Size(profile_data) == 0) {
+    // Short circuit if there are no profile events.
+    Py_RETURN_NONE;
+  }
 
   for (int64_t i = 0; i < PyList_Size(profile_data); ++i) {
-    ray::protocol::ProfileTableDataT profile_event;
+    ProfileEventT profile_event;
     PyObject *py_profile_event = PyList_GetItem(profile_data, i);
 
     if (!PyDict_CheckExact(py_profile_event)) {
@@ -403,15 +410,18 @@ static PyObject *PyLocalSchedulerClient_push_profile_events(PyObject *self,
       } else {
         return NULL;
       }
+
     }
 
-    profile_events.push_back(profile_event);
+    // Note that profile_info.profile_events is a vector of unique pointers, so
+    // profile_event will be deallocated when profile_info goes out of scope.
+    profile_info.profile_events.emplace_back(new ProfileEventT(profile_event));
   }
 
   local_scheduler_push_profile_events(
       reinterpret_cast<PyLocalSchedulerClient *>(self)
           ->local_scheduler_connection,
-      profile_events);
+      profile_info);
 
   Py_RETURN_NONE;
 }

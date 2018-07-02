@@ -3,30 +3,29 @@ include(${CMAKE_CURRENT_LIST_DIR}/../../common/cmake/Common.cmake)
 set(NODE_MANAGER_FBS_SRC "${CMAKE_CURRENT_LIST_DIR}/format/node_manager.fbs")
 set(OUTPUT_DIR ${CMAKE_CURRENT_LIST_DIR}/format/)
 
-set(GCS_FBS_OUTPUT_DIRECTORY
-        "${CMAKE_CURRENT_LIST_DIR}/../gcs/format")
-
-add_custom_target(gen_node_manager_fbs_cpp)
+set(NODE_MANAGER_FBS_OUTPUT_FILES
+        "${OUTPUT_DIR}/node_manager_generated.h")
 
 add_custom_command(
-        TARGET gen_node_manager_fbs_cpp
+        OUTPUT ${NODE_MANAGER_FBS_OUTPUT_FILES}
         # The --gen-object-api flag generates a C++ class MessageT for each
         # flatbuffers message Message, which can be used to store deserialized
         # messages in data structures. This is currently used for ObjectInfo for
         # example.
         COMMAND ${FLATBUFFERS_COMPILER} -c -o ${OUTPUT_DIR} -I ${GCS_FBS_OUTPUT_DIRECTORY} ${NODE_MANAGER_FBS_SRC} --cpp --gen-object-api --gen-mutable --scoped-enums
-        DEPENDS ${FBS_DEPENDS} gen_gcs_fbs_cpp
+        DEPENDS ${FBS_DEPENDS}
         COMMENT "Running flatc compiler on ${NODE_MANAGER_FBS_SRC}"
         VERBATIM)
 
-add_custom_target(gen_node_manager_fbs)
+#add_custom_target(gen_node_manager_fbs)
+add_custom_target(gen_node_manager_fbs DEPENDS ${NODE_MANAGER_FBS_OUTPUT_FILES})
 
 # Generate Python bindings for the flatbuffers objects.
 set(PYTHON_OUTPUT_DIR ${CMAKE_CURRENT_LIST_DIR}/../../../python/ray/core/generated/)
 add_custom_command(
     TARGET gen_node_manager_fbs
     COMMAND ${FLATBUFFERS_COMPILER} -p -o ${PYTHON_OUTPUT_DIR} -I ${GCS_FBS_OUTPUT_DIRECTORY} ${NODE_MANAGER_FBS_SRC}
-    DEPENDS ${FBS_DEPENDS} gen_node_manager_fbs_cpp
+    DEPENDS ${FBS_DEPENDS}
     COMMENT "Running flatc compiler on ${NODE_MANAGER_FBS_SRC}"
     VERBATIM)
 

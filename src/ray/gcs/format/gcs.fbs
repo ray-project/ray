@@ -122,7 +122,7 @@ table CustomSerializerData {
 table ConfigTableData {
 }
 
-table ProfileTableData {
+table ProfileEvent {
   // The type of the event.
   event_type: string;
   // The type of the component that generated the event, e.g., worker or
@@ -140,6 +140,16 @@ table ProfileTableData {
   // Additional data associated with the event. This data must be serialized
   // using JSON.
   extra_data: string;
+}
+
+table ProfileTableData {
+  // The ID of the component that generated the events. TODO(rkn): We may want
+  // to remove component_id from ProfileEvent.
+  component_id: string;
+  // This is a batch of profiling events. We batch these together for
+  // performance reasons because a single task may generate many events, and
+  // we don't want each event to require a GCS command.
+  profile_events: [ProfileEvent];
 }
 
 table RayResource {

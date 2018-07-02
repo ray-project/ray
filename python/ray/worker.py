@@ -1817,8 +1817,7 @@ def _flush_profile_events(worker):
     try:
         while True:
             time.sleep(1)
-            worker.local_scheduler_client.push_profile_events(worker.events)
-            worker.events = []
+            flush_profile_data(worker=worker)
     except AttributeError:
         # This is to suppress errors that occur at shutdown.
         pass
@@ -2730,7 +2729,8 @@ def flush_profile_data(worker=global_worker):
         worker.local_scheduler_client.log_event(event_log_key, event_log_value,
                                                 time.time())
     else:
-        worker.local_scheduler_client.push_profile_events(worker.events)
+        worker.local_scheduler_client.push_profile_events(
+            ray.ObjectID(worker.worker_id), worker.events)
 
     worker.events = []
 

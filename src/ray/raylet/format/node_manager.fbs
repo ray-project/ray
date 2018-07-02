@@ -65,7 +65,8 @@ enum MessageType:int {
   // Push an error to the relevant driver. This is sent from a worker to the
   // node manager.
   PushErrorRequest,
-  // Push some profiling events to the GCS.
+  // Push some profiling events to the GCS. When sending this message to the
+  // node manager, the message itself is serialized as a ProfileTableData object.
   PushProfileEventsRequest,
 }
 
@@ -173,10 +174,4 @@ table PushErrorRequest {
   error_message: string;
   // The timestamp of the error message.
   timestamp: double;
-}
-
-// This struct stores a collection of profiling events.
-table PushProfileEventsRequest {
-  // This is a list of serialized profile events.
-  profile_events: [ProfileTableData];
 }

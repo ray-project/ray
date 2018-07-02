@@ -240,6 +240,7 @@ void local_scheduler_push_error(LocalSchedulerConnection *conn,
 /// \return Void.
 void local_scheduler_push_profile_events(
     LocalSchedulerConnection *conn,
-    const std::vector<ray::protocol::ProfileTableDataT> &profile_events);
+    const ProfileTableDataT &profile_events
+  );
 
 #endif

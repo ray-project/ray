@@ -553,19 +553,10 @@ void NodeManager::ProcessClientMessage(
                                                               timestamp));
   } break;
   case protocol::MessageType::PushProfileEventsRequest: {
-    auto message = flatbuffers::GetRoot<protocol::PushProfileEventsRequest>(message_data);
+    auto message = flatbuffers::GetRoot<ProfileTableData>(message_data);
 
-    for (size_t i = 0; i < message->profile_events()->size(); ++i) {
-      // Parse the profile event.
-      auto profile_data = message->profile_events()->Get(i);
-      RAY_CHECK_OK(gcs_client_->profile_table().AddProfileEvent(
-          string_from_flatbuf(*profile_data->event_type()),
-          string_from_flatbuf(*profile_data->component_type()),
-          from_flatbuf(*profile_data->component_id()),
-          string_from_flatbuf(*profile_data->node_ip_address()),
-          profile_data->start_time(), profile_data->end_time(),
-          string_from_flatbuf(*profile_data->extra_data())));
-    }
+    RAY_CHECK_OK(gcs_client_->profile_table().AddProfileEventBatch(
+        from_flatbuf(*message->component_id()), *message));
   } break;
 
   default:

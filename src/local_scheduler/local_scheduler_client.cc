@@ -325,18 +325,10 @@ void local_scheduler_push_error(LocalSchedulerConnection *conn,
 
 void local_scheduler_push_profile_events(
     LocalSchedulerConnection *conn,
-    const std::vector<ray::protocol::ProfileTableDataT> &profile_events) {
+    const ProfileTableDataT &profile_events) {
   flatbuffers::FlatBufferBuilder fbb;
 
-  std::vector<flatbuffers::Offset<ray::protocol::ProfileTableData>>
-      profile_data;
-  for (size_t i = 0; i < profile_events.size(); ++i) {
-    const ray::protocol::ProfileTableDataT data = profile_events.at(i);
-    profile_data.push_back(ray::protocol::CreateProfileTableData(fbb, &data));
-  }
-
-  auto message = ray::protocol::CreatePushProfileEventsRequest(
-      fbb, fbb.CreateVector(profile_data));
+  auto message = CreateProfileTableData(fbb, &profile_events);
   fbb.Finish(message);
 
   write_message(conn->conn,

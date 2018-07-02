@@ -453,7 +453,7 @@ class ProfileTable : private Log<UniqueID, ProfileTableData> {
     prefix_ = TablePrefix::PROFILE;
   };
 
-  /// Push an error message for a specific job.
+  /// Add a single profile event to the profile table.
   ///
   /// \param event_type The type of the event.
   /// \param component_type The type of the component that the event came from.
@@ -469,6 +469,14 @@ class ProfileTable : private Log<UniqueID, ProfileTableData> {
                          const UniqueID &component_id, const std::string &node_ip_address,
                          double start_time, double end_time,
                          const std::string &extra_data);
+
+  /// Add a batch of profiling events to the profile table.
+  ///
+  /// \param component_id An identifier for the component that generated the event.
+  /// \param profile_events The profile events to record.
+  /// \return Status.
+  Status AddProfileEventBatch(const UniqueID &component_id,
+                              const ProfileTableData &profile_events);
 };
 
 using CustomSerializerTable = Table<ClassID, CustomSerializerData>;
