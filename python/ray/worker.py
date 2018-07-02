@@ -240,7 +240,9 @@ class Worker(object):
     def get_serialization_context(self):
         """Get the SerializationContext of the driver that this worker is processing
         """
-        if self.task_driver_id not in self.serialization_context_map:
+        if self.task_driver_id == None:
+            return None
+        if not self.serialization_context_map.has_key(self.task_driver_id):
             _initialize_serialization()
         return self.serialization_context_map[self.task_driver_id]
 
@@ -317,6 +319,7 @@ class Worker(object):
                                        "of their fields. This behavior may "
                                        "be incorrect in some cases.".format(
                                            type(e.example_object)))
+
                     print(warning_message)
                 except (serialization.RayNotDictionarySerializable,
                         serialization.CloudPickleError,
@@ -689,7 +692,7 @@ class Worker(object):
             })
         self.redis_client.rpush("Exports", key)
 
-    def run_function_on_all_workers(self, function):
+    def run_function_on_all_workers(self, function, per_driver = False):
         """Run arbitrary code on all of the workers.
 
         This function will first be run on the driver, and then it will be
@@ -703,6 +706,7 @@ class Worker(object):
                 return values will not be used.
         """
         check_main_thread()
+
         # If ray.init has not been called yet, then cache the function and
         # export it when connect is called. Otherwise, run the function on all
         # workers.
@@ -716,6 +720,12 @@ class Worker(object):
 
             function_to_run_id = hashlib.sha1(pickled_function).digest()
             key = b"FunctionsToRun:" + function_to_run_id
+            # Here we provide an option to suppot different keys among differnt drivers.
+            # One case that we need this is serialization/deserialization callback register.
+            # Since we keep one context for one driver, we need to let the register function 
+            # execute for other drivers even if the function already exists in redis.
+            if per_driver:
+                key = key + self.task_driver_id.id()
             # First run the function on the driver.
             # We always run the task locally.
             function({"worker": self})
@@ -2046,7 +2056,6 @@ def import_thread(worker, mode):
     worker.import_pubsub_client.subscribe("__keyspace@0__:Exports")
     # Keep track of the number of imports that we've imported.
     num_imported = 0
-
     # Get the exports that occurred before the call to subscribe.
     with worker.lock:
         export_keys = worker.redis_client.lrange("Exports", 0, -1)
@@ -2329,10 +2338,6 @@ def connect(info,
         # driver task.
         worker.current_task_id = driver_task.task_id()
 
-    # Initialize the serialization library. This registers some classes, and so
-    # it must be run before we export all of the cached remote functions.
-    _initialize_serialization()
-
     # Start a thread to import exports from the driver or from other workers.
     # Note that the driver also has an import thread, which is used only to
     # import custom class definitions from calls to register_custom_serializer
@@ -2522,15 +2527,19 @@ def register_custom_serializer(cls,
         # we may want to use the last user-defined serializers and ignore
         # subsequent calls to register_custom_serializer that were made by the
         # system.
-        worker_info["worker"].get_serialization_context().register_type(
-            cls,
-            class_id,
-            pickle=use_pickle,
-            custom_serializer=serializer,
-            custom_deserializer=deserializer)
+        serialization_context = worker_info["worker"].get_serialization_context()
+        # Don't register if serialization_context is None (task_driver_id is None).
+        # This happens when a worker started but haven't retrieved a task to execute.
+        if serialization_context:
+            worker_info["worker"].get_serialization_context().register_type(
+                cls,
+                class_id,
+                pickle=use_pickle,
+                custom_serializer=serializer,
+                custom_deserializer=deserializer)
 
     if not local:
-        worker.run_function_on_all_workers(register_class_for_serialization)
+        worker.run_function_on_all_workers(register_class_for_serialization, per_driver=True)
     else:
         # Since we are pickling objects of this class, we don't actually need
         # to ship the class definition.
