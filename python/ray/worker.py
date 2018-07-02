@@ -1730,7 +1730,7 @@ def init(redis_address=None,
 
     # If object_store_memory is a float value, Plasma's starting process will fail.
     if object_store_memory is not None:
-       object_store_memory = int(object_store_memory)
+        object_store_memory = int(object_store_memory)
 
     info = {"node_ip_address": node_ip_address, "redis_address": redis_address}
     ret = _init(
