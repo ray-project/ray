@@ -2,7 +2,6 @@
 # This script generates all the regression tests for RLlib.
 
 import glob
-import yaml
 import re
 import os
 import os.path as osp
@@ -11,8 +10,7 @@ import os.path as osp
 CONFIG_DIR = osp.join(osp.dirname(osp.abspath(__file__)), "regression_tests")
 
 
-TEMPLATE = \
-"""
+TEMPLATE = """
 class Test{name}(Regression):
     _file = "{filename}"
 
