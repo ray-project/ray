@@ -490,7 +490,7 @@ class Monitor(object):
         Args:
             driver_id: The driver id.
         """
-        redis = self.state.redis_client
+        redis = self.state.redis_clients[0]
 
         XRAY_TASK_TABLE_PREFIX = ray.gcs_utils.TablePrefix_RAYLET_TASK_string\
             .encode("utf-8")
