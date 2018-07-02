@@ -995,8 +995,9 @@ int ObjectTableAdd_WriteObjectInfo(RedisModuleCtx *ctx,
                       REDISMODULE_READ | REDISMODULE_WRITE, mutated_key_str);
 
   RedisModule_HashSet(key, REDISMODULE_HASH_CFIELDS, "hash", new_hash, NULL);
-  return RedisModule_HashSet(key, REDISMODULE_HASH_CFIELDS, "data_size",
-                             data_size, NULL);
+  RedisModule_HashSet(key, REDISMODULE_HASH_CFIELDS, "data_size", data_size,
+                      NULL);
+  return REDISMODULE_OK;
 }
 
 int ObjectTableAdd_WriteObjectLocation(RedisModuleCtx *ctx,
@@ -1114,7 +1115,7 @@ int ObjectTableAdd_RedisCommand(RedisModuleCtx *ctx,
   const int status =
       ObjectTableAdd_WriteObjectInfo(ctx, argv, argc,
                                      /*mutated_key_str=*/nullptr);
-  if (!status) {
+  if (status) {
     return status;  // RM_Reply called.
   }
   ObjectTableAdd_WriteObjectLocation(ctx, argv, argc,
@@ -1131,7 +1132,7 @@ int ChainObjectTableAdd_RedisCommand(RedisModuleCtx *ctx,
       module.ChainReplicate(ctx, argv, argc,
                             /*node_func=*/ObjectTableAdd_WriteObjectInfo,
                             /*tail_func=*/nullptr);
-  if (!status) {
+  if (status) {
     return status;
   }
   return module.ChainReplicate(ctx, argv, argc,
@@ -1293,8 +1294,9 @@ int ResultTableAdd_DoWrite(RedisModuleCtx *ctx,
   RedisModuleKey *key;
   key = OpenPrefixedKey(ctx, OBJECT_INFO_PREFIX, object_id, REDISMODULE_WRITE,
                         mutated_key_str);
-  return RedisModule_HashSet(key, REDISMODULE_HASH_CFIELDS, "task", task_id,
-                             "is_put", is_put, NULL);
+  RedisModule_HashSet(key, REDISMODULE_HASH_CFIELDS, "task", task_id, "is_put",
+                      is_put, NULL);
+  return REDISMODULE_OK;
 }
 
 int ResultTableAdd_DoFinalize(RedisModuleCtx *ctx,
@@ -1325,7 +1327,7 @@ int ResultTableAdd_RedisCommand(RedisModuleCtx *ctx,
   RedisModule_AutoMemory(ctx);
   const int status =
       ResultTableAdd_DoWrite(ctx, argv, argc, /*mutated_key_str=*/nullptr);
-  if (!status) {
+  if (status) {
     return status;  // RM_Reply called.
   }
   return ResultTableAdd_DoFinalize(ctx, argv, argc);
