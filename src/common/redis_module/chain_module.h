@@ -52,8 +52,8 @@ class RedisChainModule {
   // too, finalizes the mutation by running "tail_func".
   //
   // If node_func() returns non-zero, it is treated as an error and the entire
-  // update will terminate. without running subsequent node_func() and the final
-  // tail_func().
+  // update will terminate early, without running subsequent node_func() and the
+  // final tail_func().
   //
   // TODO(zongheng): currently only supports 1-node chain.
   int ChainReplicate(RedisModuleCtx *ctx,
