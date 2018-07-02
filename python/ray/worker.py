@@ -26,6 +26,7 @@ import ray.gcs_utils
 import ray.remote_function
 import ray.serialization as serialization
 import ray.services as services
+from ray.services import logger
 import ray.signature
 import ray.local_scheduler
 import ray.plasma
@@ -310,7 +311,7 @@ class Worker(object):
                                        "of their fields. This behavior may "
                                        "be incorrect in some cases.".format(
                                            type(e.example_object)))
-                    print(warning_message)
+                    logger.warning(warning_message)
                 except (serialization.RayNotDictionarySerializable,
                         serialization.CloudPickleError,
                         pickle.pickle.PicklingError, Exception):
@@ -324,7 +325,7 @@ class Worker(object):
                                            "using pickle. This may be "
                                            "inefficient.".format(
                                                type(e.example_object)))
-                        print(warning_message)
+                        logger.warning(warning_message)
                     except serialization.CloudPickleError:
                         register_custom_serializer(
                             type(e.example_object),
@@ -335,7 +336,7 @@ class Worker(object):
                                            "and only registering the class "
                                            "locally.".format(
                                                type(e.example_object)))
-                        print(warning_message)
+                        logger.warning(warning_message)
 
     def put_object(self, object_id, value):
         """Put value in the local object store with object id objectid.
@@ -371,8 +372,9 @@ class Worker(object):
             # and make sure that the objects are in fact the same. We also
             # should return an error code to the caller instead of printing a
             # message.
-            print("The object with ID {} already exists in the object store."
-                  .format(object_id))
+            logger.info(
+                "The object with ID {} already exists in the object store."
+                .format(object_id))
 
     def retrieve_and_deserialize(self, object_ids, timeout, error_timeout=10):
         start_time = time.time()
@@ -1153,7 +1155,7 @@ def print_failed_task(task_status):
         task_status (Dict): A dictionary containing the name, operationid, and
             error message for a failed task.
     """
-    print("""
+    logger.error("""
       Error: Task failed
         Function Name: {}
         Task ID: {}
@@ -1381,9 +1383,10 @@ def get_address_info_from_redis(redis_address,
                 raise
             # Some of the information may not be in Redis yet, so wait a little
             # bit.
-            print("Some processes that the driver needs to connect to have "
-                  "not registered with Redis, so retrying. Have you run "
-                  "'ray start' on this node?")
+            logger.warning(
+                "Some processes that the driver needs to connect to have "
+                "not registered with Redis, so retrying. Have you run "
+                "'ray start' on this node?")
             time.sleep(1)
         counter += 1
 
@@ -1516,7 +1519,7 @@ def _init(address_info=None,
 
     if use_raylet is None and os.environ.get("RAY_USE_XRAY") == "1":
         # This environment variable is used in our testing setup.
-        print("Detected environment variable 'RAY_USE_XRAY'.")
+        logger.info("Detected environment variable 'RAY_USE_XRAY'.")
         use_raylet = True
 
     # Get addresses of existing services.
@@ -1716,7 +1719,7 @@ def init(redis_address=None,
     """
     if use_raylet is None and os.environ.get("RAY_USE_XRAY") == "1":
         # This environment variable is used in our testing setup.
-        print("Detected environment variable 'RAY_USE_XRAY'.")
+        logger.info("Detected environment variable 'RAY_USE_XRAY'.")
         use_raylet = True
 
     # Convert hostnames to numerical IP address.
@@ -1837,10 +1840,10 @@ def print_error_messages_raylet(worker):
         error_messages = global_state.error_messages(worker.task_driver_id)
         for error_message in error_messages:
             if error_message not in old_error_messages:
-                print(error_message)
+                logger.error(error_message)
                 old_error_messages.add(error_message)
             else:
-                print("Suppressing duplicate error message.")
+                logger.error("Suppressing duplicate error message.")
 
     try:
         for msg in worker.error_message_pubsub_client.listen():
@@ -1858,10 +1861,10 @@ def print_error_messages_raylet(worker):
             error_message = error_data.ErrorMessage().decode("ascii")
 
             if error_message not in old_error_messages:
-                print(error_message)
+                logger.error(error_message)
                 old_error_messages.add(error_message)
             else:
-                print("Suppressing duplicate error message.")
+                logger.error("Suppressing duplicate error message.")
 
     except redis.ConnectionError:
         # When Redis terminates the listen call will throw a ConnectionError,
@@ -1900,10 +1903,10 @@ def print_error_messages(worker):
                 error_message = worker.redis_client.hget(
                     error_key, "message").decode("ascii")
                 if error_message not in old_error_messages:
-                    print(error_message)
+                    logger.error(error_message)
                     old_error_messages.add(error_message)
                 else:
-                    print("Suppressing duplicate error message.")
+                    logger.error("Suppressing duplicate error message.")
             num_errors_received += 1
 
     try:
@@ -1915,10 +1918,11 @@ def print_error_messages(worker):
                         error_message = worker.redis_client.hget(
                             error_key, "message").decode("ascii")
                         if error_message not in old_error_messages:
-                            print(error_message)
+                            logger.error(error_message)
                             old_error_messages.add(error_message)
                         else:
-                            print("Suppressing duplicate error message.")
+                            logger.error(
+                                "Suppressing duplicate error message.")
                     num_errors_received += 1
     except redis.ConnectionError:
         # When Redis terminates the listen call will throw a ConnectionError,
@@ -2414,10 +2418,9 @@ def _try_to_compute_deterministic_class_id(cls, depth=5):
     # We have not reached a fixed point, so we may end up with a different
     # class ID for this custom class on each worker, which could lead to the
     # same class definition being exported many many times.
-    print(
+    logger.warning(
         "WARNING: Could not produce a deterministic class ID for class "
-        "{}".format(cls),
-        file=sys.stderr)
+        "{}".format(cls))
     return hashlib.sha1(new_class_id).digest()
 
 
