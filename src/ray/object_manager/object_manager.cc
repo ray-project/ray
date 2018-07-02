@@ -10,7 +10,7 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
                              const ObjectManagerConfig &config,
                              std::shared_ptr<gcs::AsyncGcsClient> gcs_client)
     // TODO(hme): Eliminate knowledge of GCS.
-    : client_id_(gcs_client->client_table().GetLocalClientId()),
+    : client_id_(gcs_client->get_client_id()),
       config_(config),
       object_directory_(new ObjectDirectory(gcs_client)),
       store_notification_(main_service, config_.store_socket_name),
