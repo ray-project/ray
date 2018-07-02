@@ -8,15 +8,18 @@ namespace gcs {
 
 AsyncGcsClient::AsyncGcsClient(const ClientID &client_id, CommandType command_type) {
   context_ = std::make_shared<RedisContext>();
-  client_table_.reset(new ClientTable(context_, this, client_id));
+  primary_context_ = std::make_shared<RedisContext>();
+  client_table_.reset(new ClientTable(primary_context_, this, client_id));
   object_table_.reset(new ObjectTable(context_, this));
   actor_table_.reset(new ActorTable(context_, this));
   task_table_.reset(new TaskTable(context_, this, command_type));
   raylet_task_table_.reset(new raylet::TaskTable(context_, this, command_type));
   task_reconstruction_log_.reset(new TaskReconstructionLog(context_, this));
-  heartbeat_table_.reset(new HeartbeatTable(context_, this));
-  error_table_.reset(new ErrorTable(context_, this));
-  driver_table_.reset(new DriverTable(context_, this));
+  // TODO(hme): Eventually move HeartbeatTable to _context to avoid
+  // overloading the primary shard.
+  heartbeat_table_.reset(new HeartbeatTable(primary_context_, this));
+  driver_table_.reset(new DriverTable(primary_context_, this));
+  error_table_.reset(new ErrorTable(primary_context_, this));
   command_type_ = command_type;
 }
 
@@ -35,8 +38,9 @@ AsyncGcsClient::AsyncGcsClient(CommandType command_type)
 
 AsyncGcsClient::AsyncGcsClient() : AsyncGcsClient(ClientID::from_random()) {}
 
-Status AsyncGcsClient::Connect(const std::string &address, int port) {
-  RAY_RETURN_NOT_OK(context_->Connect(address, port));
+Status AsyncGcsClient::Connect(const std::string &address, int port, bool sharding) {
+  RAY_RETURN_NOT_OK(context_->Connect(address, port, sharding));
+  RAY_RETURN_NOT_OK(primary_context_->Connect(address, port, /*sharding=*/false));
   // TODO(swang): Call the client table's Connect() method here. To do this,
   // we need to make sure that we are attached to an event loop first. This
   // currently isn't possible because the aeEventLoop, which we use for
@@ -54,6 +58,10 @@ Status AsyncGcsClient::Attach(boost::asio::io_service &io_service) {
   asio_async_client_.reset(new RedisAsioClient(io_service, context_->async_context()));
   asio_subscribe_client_.reset(
       new RedisAsioClient(io_service, context_->subscribe_context()));
+  asio_async_auxiliary_client_.reset(
+      new RedisAsioClient(io_service, primary_context_->async_context()));
+  asio_subscribe_auxiliary_client_.reset(
+      new RedisAsioClient(io_service, primary_context_->subscribe_context()));
   return Status::OK();
 }
 

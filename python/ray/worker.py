@@ -30,7 +30,12 @@ import ray.signature
 import ray.local_scheduler
 import ray.plasma
 import ray.ray_constants as ray_constants
-from ray.utils import random_string, binary_to_hex, is_cython
+from ray.utils import (
+    binary_to_hex,
+    check_oversized_pickle,
+    is_cython,
+    random_string,
+)
 
 SCRIPT_MODE = 0
 WORKER_MODE = 1
@@ -653,18 +658,8 @@ class Worker(object):
             else:
                 del function.__globals__[function.__name__]
 
-        if len(pickled_function) > ray_constants.PICKLE_OBJECT_WARNING_SIZE:
-            warning_message = ("Warning: The remote function {} has size {} "
-                               "when pickled. It will be stored in Redis, "
-                               "which could cause memory issues. This may "
-                               "mean that the function definition uses a "
-                               "large array or other object.".format(
-                                   function_name, len(pickled_function)))
-            ray.utils.push_error_to_driver(
-                self,
-                ray_constants.PICKLING_LARGE_OBJECT_PUSH_ERROR,
-                warning_message,
-                driver_id=self.task_driver_id.id())
+        check_oversized_pickle(pickled_function, function_name,
+                               "remote function", self)
 
         self.redis_client.hmset(
             key, {
@@ -714,20 +709,8 @@ class Worker(object):
                 # we don't need to export it again.
                 return
 
-            if (len(pickled_function) >
-                    ray_constants.PICKLE_OBJECT_WARNING_SIZE):
-                warning_message = ("Warning: The function {} has size {} when "
-                                   "pickled. It will be stored in Redis, "
-                                   "which could cause memory issues. This may "
-                                   "mean that the remote function definition "
-                                   "uses a large array or other object."
-                                   .format(function.__name__,
-                                           len(pickled_function)))
-                ray.utils.push_error_to_driver(
-                    self,
-                    ray_constants.PICKLING_LARGE_OBJECT_PUSH_ERROR,
-                    warning_message,
-                    driver_id=self.task_driver_id.id())
+            check_oversized_pickle(pickled_function, function.__name__,
+                                   "function", self)
 
             # Run the function on all workers.
             self.redis_client.hmset(
@@ -1862,10 +1845,10 @@ def print_error_messages_raylet(worker):
     try:
         for msg in worker.error_message_pubsub_client.listen():
 
-            gcs_entry = state.GcsTableEntry.GetRootAsGcsTableEntry(
+            gcs_entry = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
                 msg["data"], 0)
             assert gcs_entry.EntriesLength() == 1
-            error_data = state.ErrorTableData.GetRootAsErrorTableData(
+            error_data = ray.gcs_utils.ErrorTableData.GetRootAsErrorTableData(
                 gcs_entry.Entries(0), 0)
             NIL_JOB_ID = 20 * b"\x00"
             job_id = error_data.JobId()
@@ -2305,10 +2288,9 @@ def connect(info,
                 driver_task.execution_dependencies_string(), 0,
                 ray.local_scheduler.task_to_string(driver_task))
         else:
-            # TODO(rkn): When we shard the GCS in xray, we will need to change
-            # this to use _execute_command.
-            global_state.redis_client.execute_command(
-                "RAY.TABLE_ADD", ray.gcs_utils.TablePrefix.RAYLET_TASK,
+            global_state._execute_command(
+                driver_task.task_id(), "RAY.TABLE_ADD",
+                ray.gcs_utils.TablePrefix.RAYLET_TASK,
                 ray.gcs_utils.TablePubsub.RAYLET_TASK,
                 driver_task.task_id().id(),
                 driver_task._serialized_raylet_task())

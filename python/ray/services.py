@@ -470,10 +470,7 @@ def start_redis(node_ip_address,
             # It is important to load the credis module BEFORE the ray module,
             # as the latter contains an extern declaration that the former
             # supplies.
-            # NOTE: once data entries are all put under the redis shard(s)
-            # instead of the primary server when RAY_USE_NEW_GCS is set, we
-            # should load CREDIS_MASTER_MODULE here.
-            modules=[CREDIS_MEMBER_MODULE, REDIS_MODULE])
+            modules=[CREDIS_MASTER_MODULE, REDIS_MODULE])
     if port is not None:
         assert assigned_port == port
     port = assigned_port
@@ -526,10 +523,7 @@ def start_redis(node_ip_address,
                 # It is important to load the credis module BEFORE the ray
                 # module, as the latter contains an extern declaration that the
                 # former supplies.
-                # NOTE: once data entries are all put under the redis shard(s)
-                # instead of the primary server when RAY_USE_NEW_GCS is set, we
-                # should load CREDIS_MEMBER_MODULE here.
-                modules=[CREDIS_MASTER_MODULE, REDIS_MODULE])
+                modules=[CREDIS_MEMBER_MODULE, REDIS_MODULE])
 
         if redis_shard_ports[i] is not None:
             assert redis_shard_port == redis_shard_ports[i]
@@ -542,12 +536,10 @@ def start_redis(node_ip_address,
         shard_client = redis.StrictRedis(
             host=node_ip_address, port=redis_shard_port)
         # Configure the chain state.
-        # NOTE: once data entries are all put under the redis shard(s) instead
-        # of the primary server when RAY_USE_NEW_GCS is set, we should swap the
-        # callers here.
-        shard_client.execute_command("MASTER.ADD", node_ip_address, port)
-        primary_redis_client.execute_command("MEMBER.CONNECT_TO_MASTER",
-                                             node_ip_address, redis_shard_port)
+        primary_redis_client.execute_command("MASTER.ADD", node_ip_address,
+                                             redis_shard_port)
+        shard_client.execute_command("MEMBER.CONNECT_TO_MASTER",
+                                     node_ip_address, port)
 
     return redis_address, redis_shards
 

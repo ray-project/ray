@@ -14,4 +14,4 @@ pong-deterministic-ppo:
         gamma: 0.99
         num_workers: 4
         num_sgd_iter: 20
-        devices: ["/gpu:0"]
+        num_gpus: 1

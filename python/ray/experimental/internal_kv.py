@@ -17,15 +17,18 @@ def _internal_kv_get(key):
     return worker.redis_client.hget(key, "value")
 
 
-def _internal_kv_put(key, value):
+def _internal_kv_put(key, value, overwrite=False):
     """Globally associates a value with a given binary key.
 
     This only has an effect if the key does not already have a value.
 
-    Returns
+    Returns:
         already_exists (bool): whether the value already exists.
     """
 
     worker = ray.worker.get_global_worker()
-    updated = worker.redis_client.hsetnx(key, "value", value)
+    if overwrite:
+        updated = worker.redis_client.hset(key, "value", value)
+    else:
+        updated = worker.redis_client.hsetnx(key, "value", value)
     return updated == 0  # already exists

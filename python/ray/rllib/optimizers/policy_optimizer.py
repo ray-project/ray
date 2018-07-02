@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import ray
+from ray.rllib.evaluation.sample_batch import MultiAgentBatch
 
 
 class PolicyOptimizer(object):
@@ -29,34 +30,6 @@ class PolicyOptimizer(object):
         evaluator_resources (dict): Optional resource requests to set for
             evaluators created by this optimizer.
     """
-
-    @classmethod
-    def make(
-            cls, evaluator_cls, evaluator_args, num_workers, optimizer_config,
-            evaluator_resources={"num_cpus": None}):
-        """Create evaluators and an optimizer instance using those evaluators.
-
-        Args:
-            evaluator_cls (class): Python class of the evaluators to create.
-            evaluator_args (list|dict): Constructor args for the evaluators.
-            num_workers (int): Number of remote evaluators to create in
-                addition to a local evaluator. This can be zero or greater.
-            optimizer_config (dict): Keyword arguments to pass to the
-                optimizer class constructor.
-        """
-
-        remote_cls = ray.remote(**evaluator_resources)(evaluator_cls)
-        if isinstance(evaluator_args, list):
-            local_evaluator = evaluator_cls(*evaluator_args)
-            remote_evaluators = [
-                remote_cls.remote(*evaluator_args)
-                for _ in range(num_workers)]
-        else:
-            local_evaluator = evaluator_cls(**evaluator_args)
-            remote_evaluators = [
-                remote_cls.remote(**evaluator_args)
-                for _ in range(num_workers)]
-        return cls(optimizer_config, local_evaluator, remote_evaluators)
 
     def __init__(self, config, local_evaluator, remote_evaluators):
         """Create an optimizer instance.
@@ -130,3 +103,8 @@ class PolicyOptimizer(object):
             [ev.apply.remote(func, i + 1)
              for i, ev in enumerate(self.remote_evaluators)])
         return local_result + remote_results
+
+    def _check_not_multiagent(self, sample_batch):
+        if isinstance(sample_batch, MultiAgentBatch):
+            raise NotImplementedError(
+                "This optimizer does not support multi-agent yet.")
