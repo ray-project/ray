@@ -142,18 +142,14 @@ private:
   int64_t last_time_token_received_;
   int64_t last_time_hb_sent_;
   double token_bucket_capacity_;
-  // values to be initialized with constants in ray_config.h
-  double token_bucket_max_capacity_;
-  double token_bucket_avg_rate_hz_;
-  double token_bucket_min_rate_hz_;
-  double token_bucket_max_rate_hz_;
 
   int64_t UpdateTokenBucket();
 public:
   TokenBucket();
   ~TokenBucket();
-  void ResourceAvailabilityChangeCallback();
-  void TimeoutCallback();
+  void HeartbeatSent();
+  int64_t TimeoutResourceAvailable();
+  int64_t Timeout();
 };
 
 }  // namespace raylet
