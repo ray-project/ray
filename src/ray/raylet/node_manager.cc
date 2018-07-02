@@ -438,8 +438,8 @@ void NodeManager::ProcessClientMessage(
       DispatchTasks();
     } else {
       // This is a driver.
-      gcs_client_->driver_table().AppendDriverData(client->GetClientID(),
-                                                   /*is_dead=*/true);
+      RAY_CHECK_OK(gcs_client_->driver_table().AppendDriverData(client->GetClientID(),
+                                                                /*is_dead=*/true));
     }
     return;
   } break;
