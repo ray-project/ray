@@ -6,6 +6,7 @@ from collections import namedtuple
 import funcsigs
 from funcsigs import Parameter
 
+from ray.services import logger
 from ray.utils import is_cython
 
 FunctionSignature = namedtuple("FunctionSignature", [
@@ -99,7 +100,7 @@ def check_signature_supported(func, warn=False):
         message = ("The function {} has a **kwargs argument, which is "
                    "currently not supported.".format(function_name))
         if warn:
-            print(message)
+            logger.warning(message)
         else:
             raise Exception(message)
 
@@ -108,7 +109,7 @@ def check_signature_supported(func, warn=False):
                    "(defined after * or *args), which is currently "
                    "not supported.".format(function_name))
         if warn:
-            print(message)
+            logger.warning(message)
         else:
             raise Exception(message)
 

@@ -1528,6 +1528,10 @@ void handle_actor_worker_disconnect(LocalSchedulerState *state,
 
   /* Attempt to dispatch some tasks because some resources may have freed up. */
   dispatch_all_tasks(state, algorithm_state);
+
+  /* Start a worker to replace the removed actor's worker and replenish the
+   * worker pool. */
+  start_worker(state);
 }
 
 /* NOTE(swang): For tasks that saved a checkpoint, we should consider
