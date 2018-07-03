@@ -331,7 +331,8 @@ static PyObject *PyLocalSchedulerClient_push_profile_events(PyObject *self,
   UniqueID component_id;
   PyObject *profile_data;
 
-  if (!PyArg_ParseTuple(args, "O&O", &PyObjectToUniqueID, &component_id, &profile_data)) {
+  if (!PyArg_ParseTuple(args, "O&O", &PyObjectToUniqueID, &component_id,
+                        &profile_data)) {
     return NULL;
   }
 
@@ -410,7 +411,6 @@ static PyObject *PyLocalSchedulerClient_push_profile_events(PyObject *self,
       } else {
         return NULL;
       }
-
     }
 
     // Note that profile_info.profile_events is a vector of unique pointers, so

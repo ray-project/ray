@@ -690,9 +690,9 @@ class GlobalState(object):
         Returns:
             A list of the profile events for the specified process.
         """
-        message = self._execute_command(
-            component_id, "RAY.TABLE_LOOKUP",
-            ray.gcs_utils.TablePrefix.PROFILE, "", component_id.id())
+        message = self._execute_command(component_id, "RAY.TABLE_LOOKUP",
+                                        ray.gcs_utils.TablePrefix.PROFILE,
+                                        "", component_id.id())
 
         if message is None:
             return []
