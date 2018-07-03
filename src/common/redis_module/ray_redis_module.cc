@@ -120,8 +120,6 @@ RedisModuleKey *OpenPrefixedKey(RedisModuleCtx *ctx,
       << "This table has no prefix registered";
   RAY_CHECK(prefix >= TablePrefix::MIN && prefix <= TablePrefix::MAX)
       << "Prefix must be a valid TablePrefix";
-  // Note(hme): The use of EnumNameTablePrefix directly breaks the redis key
-  // naming convention.
   return OpenPrefixedKey(ctx, EnumNameTablePrefix(prefix), keyname, mode,
                          mutated_key_str);
 }

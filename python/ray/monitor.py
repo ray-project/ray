@@ -34,10 +34,11 @@ PLASMA_MANAGER_HEARTBEAT_CHANNEL = b"plasma_managers"
 DRIVER_DEATH_CHANNEL = b"driver_deaths"
 
 # xray heartbeats
-XRAY_HEARTBEAT_CHANNEL = b"6"
+XRAY_HEARTBEAT_CHANNEL = str(
+    ray.gcs_utils.TablePubsub.HEARTBEAT).encode("ascii")
 
 # xray driver updates
-XRAY_DRIVER_CHANNEL = b"8"
+XRAY_DRIVER_CHANNEL = str(ray.gcs_utils.TablePubsub.DRIVER).encode("ascii")
 
 # common/redis_module/ray_redis_module.cc
 OBJECT_INFO_PREFIX = b"OI:"
@@ -492,19 +493,19 @@ class Monitor(object):
         """
         redis = self.state.redis_clients[0]
 
-        XRAY_TASK_TABLE_PREFIX = ray.gcs_utils.TablePrefix_RAYLET_TASK_string\
-            .encode("utf-8")
-        XRAY_OBJECT_TABLE_PREFIX = ray.gcs_utils.TablePrefix_OBJECT_string\
-            .encode("utf-8")
+        xray_task_table_prefix = ray.gcs_utils.TablePrefix_RAYLET_TASK_string.encode(
+            "ascii")
+        xray_object_table_prefix = ray.gcs_utils.TablePrefix_OBJECT_string.encode(
+            "ascii")
 
         task_table_infos = {}  # task id -> TaskInfo
-        for key in redis.scan_iter(match=XRAY_TASK_TABLE_PREFIX + b"*"):
+        for key in redis.scan_iter(match=xray_task_table_prefix + b"*"):
             entry = redis.get(key)
             if entry is None:
                 continue
             task = ray.gcs_utils.Task.GetRootAsTask(entry, 0)
-            task_info = ray.gcs_utils.TaskInfo\
-                .GetRootAsTaskInfo(task.TaskSpecification(), 0)
+            task_info = ray.gcs_utils.TaskInfo.GetRootAsTaskInfo(
+                task.TaskSpecification(), 0)
             if driver_id != task_info.DriverId():
                 # Ignore tasks that aren't from this driver.
                 continue
@@ -520,14 +521,14 @@ class Monitor(object):
 
         # Also record all the ray.put()'d objects.
         all_put_objects = []
-        for key in redis.scan_iter(match=XRAY_OBJECT_TABLE_PREFIX + b"*"):
+        for key in redis.scan_iter(match=xray_object_table_prefix + b"*"):
             entry = redis.zrange(key, 0, 0)
             if entry is None:
                 continue
             assert len(entry) == 1
-            object_table_data = ray.gcs_utils.ObjectTableData\
-                .GetRootAsObjectTableData(entry[0], 0)
-            object_id = key.split(XRAY_OBJECT_TABLE_PREFIX)[1]
+            object_table_data = ray.gcs_utils.ObjectTableData.GetRootAsObjectTableData(
+                entry[0], 0)
+            object_id = key.split(xray_object_table_prefix)[1]
             if not object_table_data.IsPut():
                 continue
             all_put_objects.append((object_id, object_table_data.TaskId()))
@@ -541,13 +542,13 @@ class Monitor(object):
         # Clean up entries for non-empty objects.
         non_empty_objects = []
         for object_id in driver_object_ids:
-            entry = redis.zrange(XRAY_OBJECT_TABLE_PREFIX + object_id, 0, 0)
+            entry = redis.zrange(xray_object_table_prefix + object_id, 0, 0)
             if entry:
                 non_empty_objects.append(object_id)
 
         # Form the redis keys to delete.
-        keys = [XRAY_TASK_TABLE_PREFIX + k for k in driver_task_ids]
-        keys.extend([XRAY_OBJECT_TABLE_PREFIX + k for k in non_empty_objects])
+        keys = [xray_task_table_prefix + k for k in driver_task_ids]
+        keys.extend([xray_object_table_prefix + k for k in non_empty_objects])
 
         if not keys:
             return
