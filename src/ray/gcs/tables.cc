@@ -4,8 +4,12 @@
 #include "ray/gcs/client.h"
 
 namespace {
+
 static const std::string kTableAppendCommand = "RAY.TABLE_APPEND";
 static const std::string kChainTableAppendCommand = "RAY.CHAIN.TABLE_APPEND";
+
+static const std::string kTableAddCommand = "RAY.TABLE_ADD";
+static const std::string kChainTableAddCommand = "RAY.CHAIN.TABLE_ADD";
 
 std::string GetLogAppendCommand(const ray::gcs::CommandType command_type) {
   if (command_type == ray::gcs::CommandType::kRegular) {
@@ -13,6 +17,15 @@ std::string GetLogAppendCommand(const ray::gcs::CommandType command_type) {
   } else {
     RAY_CHECK(command_type == ray::gcs::CommandType::kChain);
     return kChainTableAppendCommand;
+  }
+}
+
+std::string GetTableAddCommand(const ray::gcs::CommandType command_type) {
+  if (command_type == ray::gcs::CommandType::kRegular) {
+    return kTableAddCommand;
+  } else {
+    RAY_CHECK(command_type == ray::gcs::CommandType::kChain);
+    return kChainTableAddCommand;
   }
 }
 
@@ -157,15 +170,8 @@ Status Table<ID, Data>::Add(const JobID &job_id, const ID &id,
   flatbuffers::FlatBufferBuilder fbb;
   fbb.ForceDefaults(true);
   fbb.Finish(Data::Pack(fbb, dataT.get()));
-  if (command_type_ == CommandType::kRegular) {
-    return context_->RunAsync("RAY.TABLE_ADD", id, fbb.GetBufferPointer(), fbb.GetSize(),
-                              prefix_, pubsub_channel_, std::move(callback));
-  } else {
-    RAY_CHECK(command_type_ == CommandType::kChain);
-    return context_->RunAsync("RAY.CHAIN.TABLE_ADD", id, fbb.GetBufferPointer(),
-                              fbb.GetSize(), prefix_, pubsub_channel_,
-                              std::move(callback));
-  }
+  return context_->RunAsync(GetTableAddCommand(command_type_), id, fbb.GetBufferPointer(),
+                            fbb.GetSize(), prefix_, pubsub_channel_, std::move(callback));
 }
 
 template <typename ID, typename Data>
