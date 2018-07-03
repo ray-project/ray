@@ -696,7 +696,7 @@ int TableAppend_DoWrite(RedisModuleCtx *ctx,
     // necessary since we implement the log with a sorted set, so all entries
     // must be unique, or else we will have gaps in the log.
     RAY_CHECK(flags == REDISMODULE_ZADD_ADDED) << "Appended a duplicate entry";
-
+    return REDISMODULE_OK;
   } else {
     // The requested index did not match the current length of the log. Return
     // an error message as a string.
@@ -704,7 +704,6 @@ int TableAppend_DoWrite(RedisModuleCtx *ctx,
     RedisModule_ReplyWithStringBuffer(ctx, reply, strlen(reply));
     return REDISMODULE_ERR;
   }
-  return REDISMODULE_OK;
 }
 
 int TableAppend_DoPublish(RedisModuleCtx *ctx,

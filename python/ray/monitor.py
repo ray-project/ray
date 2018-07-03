@@ -113,16 +113,21 @@ class Monitor(object):
         if self.issue_gcs_flushes:
             # Data is stored under the first data shard, so we issue flushes to
             # that redis server.
-            addr_port = self.redis.lrange("RedisShards", 0, -1)[0]
-            addr_port = addr_port.split(b":")
-            self.redis_shard = redis.StrictRedis(
-                host=addr_port[0], port=addr_port[1])
-            try:
-                self.redis_shard.execute_command("HEAD.FLUSH 0")
-            except redis.exceptions.ResponseError as e:
-                log.info("Turning off flushing due to exception: {}".format(
-                    str(e)))
+            addr_port = self.redis.lrange("RedisShards", 0, -1)
+            if len(addr_port) > 1:
+                log.warning("TODO: if launching > 1 redis shard, flushing "
+                            "needs to touch shards in parallel.")
                 self.issue_gcs_flushes = False
+            else:
+                addr_port = addr_port[0].split(b":")
+                self.redis_shard = redis.StrictRedis(
+                    host=addr_port[0], port=addr_port[1])
+                try:
+                    self.redis_shard.execute_command("HEAD.FLUSH 0")
+                except redis.exceptions.ResponseError as e:
+                    log.info("Turning off flushing due to exception: {}".format(
+                        str(e)))
+                    self.issue_gcs_flushes = False
 
     def subscribe(self, channel):
         """Subscribe to the given channel.

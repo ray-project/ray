@@ -6,6 +6,16 @@
 namespace {
 static const std::string kTableAppendCommand = "RAY.TABLE_APPEND";
 static const std::string kChainTableAppendCommand = "RAY.CHAIN.TABLE_APPEND";
+
+std::string GetLogAppendCommand(const ray::gcs::CommandType command_type) {
+  if (command_type == ray::gcs::CommandType::kRegular) {
+    return kTableAppendCommand;
+  } else {
+    RAY_CHECK(command_type == ray::gcs::CommandType::kChain);
+    return kChainTableAppendCommand;
+  }
+}
+
 }  // namespace
 
 namespace ray {
@@ -24,15 +34,8 @@ Status Log<ID, Data>::Append(const JobID &job_id, const ID &id,
   flatbuffers::FlatBufferBuilder fbb;
   fbb.ForceDefaults(true);
   fbb.Finish(Data::Pack(fbb, dataT.get()));
-
-  std::string command;
-  if (command_type_ == CommandType::kRegular) {
-    command = kTableAppendCommand;
-  } else {
-    RAY_CHECK(command_type_ == CommandType::kChain);
-    command = kChainTableAppendCommand;
-  }
-  return context_->RunAsync(command, id, fbb.GetBufferPointer(), fbb.GetSize(), prefix_,
+  return context_->RunAsync(GetLogAppendCommand(command_type_), id,
+                            fbb.GetBufferPointer(), fbb.GetSize(), prefix_,
                             pubsub_channel_, std::move(callback));
 }
 
@@ -55,15 +58,8 @@ Status Log<ID, Data>::AppendAt(const JobID &job_id, const ID &id,
   flatbuffers::FlatBufferBuilder fbb;
   fbb.ForceDefaults(true);
   fbb.Finish(Data::Pack(fbb, dataT.get()));
-
-  std::string command;
-  if (command_type_ == CommandType::kRegular) {
-    command = kTableAppendCommand;
-  } else {
-    RAY_CHECK(command_type_ == CommandType::kChain);
-    command = kChainTableAppendCommand;
-  }
-  return context_->RunAsync(command, id, fbb.GetBufferPointer(), fbb.GetSize(), prefix_,
+  return context_->RunAsync(GetLogAppendCommand(command_type_), id,
+                            fbb.GetBufferPointer(), fbb.GetSize(), prefix_,
                             pubsub_channel_, std::move(callback), log_length);
 }
 
