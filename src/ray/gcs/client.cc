@@ -142,10 +142,10 @@ Status Attach(plasma::EventLoop &event_loop) {
 
 Status AsyncGcsClient::Attach(boost::asio::io_service &io_service) {
 
-  asio_async_auxiliary_client_.reset(
-      new RedisAsioClient(io_service, primary_context_->async_context()));
-  asio_subscribe_auxiliary_client_.reset(
-      new RedisAsioClient(io_service, primary_context_->subscribe_context()));
+  // asio_async_auxiliary_client_.reset(
+  //     new RedisAsioClient(io_service, primary_context_->async_context()));
+  // asio_subscribe_auxiliary_client_.reset(
+  //     new RedisAsioClient(io_service, primary_context_->subscribe_context()));
 
   // Take care of sharding contexts.
   for (auto& context : shard_contexts_) {
