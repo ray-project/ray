@@ -152,7 +152,9 @@ class CommonPolicyEvaluator(PolicyEvaluator):
                 non-zero and unique value. This index is passed to created envs
                 through EnvContext so that envs can be configured per worker.
         """
-
+        # NOTE: This line needs to appear first
+        self.args = locals()
+        ## It is also quite brittle
         env_context = EnvContext(env_config or {}, worker_index)
         policy_config = policy_config or {}
         self.policy_config = policy_config
@@ -249,6 +251,26 @@ class CommonPolicyEvaluator(PolicyEvaluator):
             with tf.variable_scope(name):
                 policy_map[name] = cls(obs_space, act_space, merged_conf)
         return policy_map
+
+    def make_remote_copies(self, num_copies, num_cpus=None, num_gpus=None):
+        remote_cls = CommonPolicyEvaluator.as_remote(num_cpus, num_gpus)
+        return [remote_cls.remote(
+            self.args["env_creator"],
+            self.args["policy_graph"],
+            self.args["policy_mapping_fn"],
+            self.args["tf_session_creator"],
+            self.args["batch_steps"],
+            self.args["batch_mode"],
+            self.args["episode_horizon"],
+            self.args["preprocessor_pref"],
+            self.args["sample_async"],
+            self.args["compress_observations"],
+            self.args["num_envs"],
+            self.args["observation_filter"],
+            self.args["env_config"],
+            self.args["model_config"],
+            self.args["policy_config"],
+            self.args["worker_index"]) for i in range(num_copies)]
 
     def sample(self):
         """Evaluate the current policies and return a batch of experiences.
