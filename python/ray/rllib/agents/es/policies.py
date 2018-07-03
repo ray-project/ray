@@ -78,3 +78,4 @@ class GenericPolicy(object):
 
     def get_weights(self):
         return self.variables.get_flat()
+

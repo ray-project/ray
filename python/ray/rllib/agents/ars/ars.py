@@ -20,6 +20,8 @@ from ray.rllib.agents.ars import optimizers
 from ray.rllib.agents.ars import policies
 from ray.rllib.agents.ars import tabular_logger as tlogger
 from ray.rllib.agents.ars import utils
+from ray.rllib.models import ModelCatalog
+from ray.rllib.models.linear import LinearNetwork
 
 
 Result = namedtuple("Result", [
@@ -38,7 +40,9 @@ DEFAULT_CONFIG = {
     'noise_size': 250000000,
     'eval_prob': 0.03, # FIXME(ev) get rid of this
     'env_config': {},
-    'shift': 0
+    'shift': 0,
+    'policy_type': "Linear", # FIXME(ev) policy is not linear yet
+    "fcnet_hiddens": [32, 32]
 }
 
 
@@ -61,6 +65,9 @@ class SharedNoiseTable(object):
     def sample_index(self, dim):
         return np.random.randint(0, len(self.noise) - dim + 1)
 
+    def get_delta(self, dim):
+        idx = self.sample_index(dim)
+        return idx, self.get(idx, dim)
 
 @ray.remote
 class Worker(object):
@@ -76,9 +83,16 @@ class Worker(object):
         self.preprocessor = models.ModelCatalog.get_preprocessor(self.env)
 
         self.sess = utils.make_session(single_threaded=True)
-        self.policy = policies.LinearPolicy(
-            self.sess, self.env.action_space, self.preprocessor,
-            config["observation_filter"], **policy_params)
+        if config["policy_type"] == "Linear":
+            self.policy = policies.LinearPolicy(
+                self.sess, self.env.action_space, self.preprocessor,
+                config["observation_filter"], **policy_params)
+        else:
+            self.policy = policies.MLPPolicy(
+                self.sess, self.env.action_space, self.preprocessor,
+                config["observation_filter"],
+                config["fcnet_hiddens"], **policy_params)
+
 
     def rollout(self, timestep_limit, add_noise=True):
         rollout_rewards, rollout_length = policies.rollout(
@@ -155,9 +169,16 @@ class ARSAgent(Agent):
         preprocessor = models.ModelCatalog.get_preprocessor(env)
 
         self.sess = utils.make_session(single_threaded=False)
-        self.policy = policies.LinearPolicy(
-            self.sess, env.action_space, preprocessor,
-            self.config["observation_filter"], **policy_params)
+        if self.config["policy_type"] == "Linear":
+            ModelCatalog.register_custom_model("LinearNetwork", LinearNetwork)
+            self.policy = policies.LinearPolicy(
+                self.sess, env.action_space, preprocessor,
+                self.config["observation_filter"], **policy_params)
+        else:
+            self.policy = policies.MLPPolicy(
+                self.sess, env.action_space, preprocessor,
+                self.config["observation_filter"],
+                self.config["fcnet_hiddens"], **policy_params)
         self.optimizer = optimizers.Adam(self.policy, self.config["stepsize"])
 
         self.deltas_used = self.config["deltas_used"]
@@ -263,12 +284,11 @@ class ARSAgent(Agent):
             noisy_returns[:, 0] - noisy_returns[:, 1],
             (self.noise.get(index, self.policy.num_params)
              for index in noise_idx),
-            batch_size=np.min(500, noisy_returns[:, 0].size))
-        g /= noisy_returns.size
+            batch_size=min(500, noisy_returns[:, 0].size))
         assert (
             g.shape == (self.policy.num_params,) and
-            g.dtype == np.float32 and
-            count == len(noise_indices))
+            g.dtype == np.float32)
+        print('the number of policy params is, ', self.policy.num_params)
         # Compute the new weights theta.
         theta, update_ratio = self.optimizer.update(-g)
         # Set the new weights in the local copy of the policy.
