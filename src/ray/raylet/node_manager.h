@@ -147,9 +147,8 @@ private:
 public:
   TokenBucket();
   ~TokenBucket();
-  void HeartbeatSent();
-  int64_t TimeoutResourceAvailable();
-  int64_t Timeout();
+  int64_t TimeoutResourceAvailable(bool *send_heartbeat);
+  int64_t Timeout(bool *send_heartbeat);
 };
 
 }  // namespace raylet
