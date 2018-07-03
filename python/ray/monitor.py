@@ -125,8 +125,9 @@ class Monitor(object):
                 try:
                     self.redis_shard.execute_command("HEAD.FLUSH 0")
                 except redis.exceptions.ResponseError as e:
-                    log.info("Turning off flushing due to exception: {}".format(
-                        str(e)))
+                    log.info(
+                        "Turning off flushing due to exception: {}".format(
+                            str(e)))
                     self.issue_gcs_flushes = False
 
     def subscribe(self, channel):
