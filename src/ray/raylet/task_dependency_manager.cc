@@ -6,11 +6,12 @@ namespace raylet {
 
 TaskDependencyManager::TaskDependencyManager(
     ObjectManagerInterface &object_manager, boost::asio::io_service &io_service,
-    const ClientID &client_id,
+    const ClientID &client_id, int64_t initial_lease_period_ms,
     gcs::TableInterface<TaskID, TaskLeaseData> &task_lease_table)
     : object_manager_(object_manager),
       io_service_(io_service),
       client_id_(client_id),
+      initial_lease_period_ms_(initial_lease_period_ms),
       task_lease_table_(task_lease_table) {}
 
 bool TaskDependencyManager::CheckObjectLocal(const ObjectID &object_id) const {
@@ -202,7 +203,8 @@ void TaskDependencyManager::TaskPending(const Task &task) {
   TaskID task_id = task.GetTaskSpecification().TaskId();
 
   // Record that the task is pending execution.
-  auto inserted = pending_tasks_.emplace(task_id, PendingTask(io_service_));
+  auto inserted =
+      pending_tasks_.emplace(task_id, PendingTask(initial_lease_period_ms_, io_service_));
   RAY_CHECK(inserted.second);
 
   // Find any subscribed tasks that are dependent on objects created by the
@@ -218,12 +220,35 @@ void TaskDependencyManager::TaskPending(const Task &task) {
   }
 
   // Acquire the lease for the task's execution in the global lease table.
-  auto it = inserted.first;
+  AcquireTaskLease(task_id);
+}
+
+void TaskDependencyManager::AcquireTaskLease(const TaskID &task_id) {
+  auto it = pending_tasks_.find(task_id);
+  RAY_CHECK(it != pending_tasks_.end());
+  if (it->second.expires_at > 0) {
+    RAY_CHECK(current_time_ms() < it->second.expires_at);
+  }
+
+  int64_t expires_at = current_time_ms() + it->second.lease_period;
+
   auto task_lease_data = std::make_shared<TaskLeaseDataT>();
   task_lease_data->node_manager_id = client_id_.hex();
   task_lease_data->acquired_at = current_time_ms();
-  task_lease_data->expires_at = it->second.expires_at;
+  task_lease_data->expires_at = expires_at;
   task_lease_table_.Add(DriverID::nil(), task_id, task_lease_data, nullptr);
+
+  auto period = boost::posix_time::milliseconds(it->second.lease_period / 2);
+  it->second.lease_timer->expires_from_now(period);
+  it->second.lease_timer->async_wait(
+      [this, task_id](const boost::system::error_code &error) {
+        if (!error) {
+          AcquireTaskLease(task_id);
+        }
+      });
+
+  it->second.expires_at = expires_at;
+  it->second.lease_period *= 2;
 }
 
 void TaskDependencyManager::TaskCanceled(const TaskID &task_id) {

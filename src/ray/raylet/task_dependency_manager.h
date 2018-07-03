@@ -29,6 +29,7 @@ class TaskDependencyManager {
   /// Create a task dependency manager.
   TaskDependencyManager(ObjectManagerInterface &object_manager,
                         boost::asio::io_service &io_service, const ClientID &client_id,
+                        int64_t initial_lease_period_ms,
                         gcs::TableInterface<TaskID, TaskLeaseData> &task_lease_table);
 
   /// Check whether an object is locally available.
@@ -110,16 +111,16 @@ class TaskDependencyManager {
   };
 
   struct PendingTask {
-    PendingTask(boost::asio::io_service &io_service)
-        : lease_period(RayConfig::instance().initial_task_lease_milliseconds()),
-          expires_at(current_time_ms() + lease_period),
-          lease_timer_(new boost::asio::deadline_timer(io_service)) {}
+    PendingTask(int64_t initial_lease_period_ms, boost::asio::io_service &io_service)
+        : lease_period(initial_lease_period_ms),
+          expires_at(0),
+          lease_timer(new boost::asio::deadline_timer(io_service)) {}
 
     /// The timeout before the lease should be renewed.
-    uint64_t lease_period;
+    int64_t lease_period;
     /// The time at which the current lease will expire.
-    uint64_t expires_at;
-    std::unique_ptr<boost::asio::deadline_timer> lease_timer_;
+    int64_t expires_at;
+    std::unique_ptr<boost::asio::deadline_timer> lease_timer;
   };
 
   /// Check whether the given object needs to be made available through object
@@ -134,10 +135,12 @@ class TaskDependencyManager {
   /// operations to make the object available through object transfer or
   /// reconstruction.
   void HandleRemoteDependencyCanceled(const ObjectID &object_id);
+  void AcquireTaskLease(const TaskID &task_id);
 
   ObjectManagerInterface &object_manager_;
   boost::asio::io_service &io_service_;
-  const ClientID &client_id_;
+  const ClientID client_id_;
+  const int64_t initial_lease_period_ms_;
   gcs::TableInterface<TaskID, TaskLeaseData> &task_lease_table_;
   /// A mapping from task ID of each subscribed task to its list of object
   /// dependencies.

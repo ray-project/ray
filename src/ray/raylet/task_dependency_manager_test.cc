@@ -35,6 +35,7 @@ class TaskDependencyManagerTest : public ::testing::Test {
         io_service_(),
         gcs_mock_(),
         task_dependency_manager_(object_manager_mock_, io_service_, ClientID::nil(),
+                                 RayConfig::instance().initial_task_lease_milliseconds(),
                                  gcs_mock_) {}
 
  protected:
