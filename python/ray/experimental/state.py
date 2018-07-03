@@ -772,7 +772,8 @@ class GlobalState(object):
                 timeline visualization in Chrome.
 
         Returns:
-            A list of profiling events. Each profile event is a dictionary.
+            If filename is not provided, this returns a list of profiling
+                events. Each profile event is a dictionary.
         """
         if include_task_data:
             raise NotImplementedError("This flag has not been implented yet.")
@@ -843,8 +844,8 @@ class GlobalState(object):
         if filename is not None:
             with open(filename, "w") as outfile:
                 json.dump(all_events, outfile)
-
-        return all_events
+        else:
+            return all_events
 
     def dump_catapult_trace(self,
                             path,
