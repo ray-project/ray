@@ -5,8 +5,10 @@ from ray.rllib.models.model import Model
 from ray.rllib.models.preprocessors import Preprocessor
 from ray.rllib.models.fcnet import FullyConnectedNetwork
 from ray.rllib.models.lstm import LSTM
+from ray.rllib.models.linear import LinearNetwork
 
 
 __all__ = ["ActionDistribution", "ActionDistribution", "Categorical",
            "DiagGaussian", "Deterministic", "ModelCatalog", "Model",
-           "Preprocessor", "FullyConnectedNetwork", "LSTM"]
+           "Preprocessor", "FullyConnectedNetwork", "LSTM",
+           "LinearNetwork"]

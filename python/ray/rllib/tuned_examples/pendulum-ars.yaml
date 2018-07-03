@@ -1,0 +1,11 @@
+# can expect improvement to -140 reward in ~300-500k timesteps
+pendulum-ars:
+    env: Pendulum-v0
+    run: ARS
+    config:
+        noise_stdev: 0.02
+        num_deltas: 4
+        deltas_used: 4
+        num_workers: 2
+        stepsize: 0.01
+        noise_size: 250000000
