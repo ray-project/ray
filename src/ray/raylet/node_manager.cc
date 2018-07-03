@@ -914,19 +914,6 @@ void NodeManager::HandleWorkerUnblocked(std::shared_ptr<Worker> worker) {
   worker->MarkUnblocked();
 }
 
-void NodeManager::HandleRemoteDependencyRequired(const ObjectID &dependency_id) {
-  // Try to fetch the object from the object manager.
-  RAY_CHECK_OK(object_manager_.Pull(dependency_id));
-  // TODO(swang): Request reconstruction of the object, possibly after a
-  // timeout.
-}
-
-void NodeManager::HandleRemoteDependencyCanceled(const ObjectID &dependency_id) {
-  // Cancel the fetch request from the object manager.
-  RAY_CHECK_OK(object_manager_.Cancel(dependency_id));
-  // TODO(swang): Cancel reconstruction of the object.
-}
-
 void NodeManager::EnqueuePlaceableTask(const Task &task) {
   // TODO(atumanov): add task lookup hashmap and change EnqueuePlaceableTask to take
   // a vector of TaskIDs. Trigger MoveTask internally.
