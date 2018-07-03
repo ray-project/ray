@@ -4,8 +4,14 @@ namespace ray {
 
 namespace raylet {
 
-TaskDependencyManager::TaskDependencyManager(ObjectManagerInterface &object_manager)
-    : object_manager_(object_manager) {}
+TaskDependencyManager::TaskDependencyManager(
+    ObjectManagerInterface &object_manager, boost::asio::io_service &io_service,
+    const ClientID &client_id,
+    gcs::TableInterface<TaskID, TaskLeaseData> &task_lease_table)
+    : object_manager_(object_manager),
+      io_service_(io_service),
+      client_id_(client_id),
+      task_lease_table_(task_lease_table) {}
 
 bool TaskDependencyManager::CheckObjectLocal(const ObjectID &object_id) const {
   return local_objects_.count(object_id) == 1;
@@ -196,7 +202,9 @@ void TaskDependencyManager::TaskPending(const Task &task) {
   TaskID task_id = task.GetTaskSpecification().TaskId();
 
   // Record that the task is pending execution.
-  pending_tasks_.insert(task_id);
+  auto inserted = pending_tasks_.emplace(task_id, PendingTask(io_service_));
+  RAY_CHECK(inserted.second);
+
   // Find any subscribed tasks that are dependent on objects created by the
   // pending task.
   auto remote_task_entry = required_tasks_.find(task_id);
@@ -208,6 +216,14 @@ void TaskDependencyManager::TaskPending(const Task &task) {
       HandleRemoteDependencyCanceled(object_entry.first);
     }
   }
+
+  // Acquire the lease for the task's execution in the global lease table.
+  auto it = inserted.first;
+  auto task_lease_data = std::make_shared<TaskLeaseDataT>();
+  task_lease_data->node_manager_id = client_id_.hex();
+  task_lease_data->acquired_at = current_time_ms();
+  task_lease_data->expires_at = it->second.expires_at;
+  task_lease_table_.Add(DriverID::nil(), task_id, task_lease_data, nullptr);
 }
 
 void TaskDependencyManager::TaskCanceled(const TaskID &task_id) {

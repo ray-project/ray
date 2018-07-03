@@ -27,7 +27,9 @@ class ReconstructionPolicy;
 class TaskDependencyManager {
  public:
   /// Create a task dependency manager.
-  TaskDependencyManager(ObjectManagerInterface &object_manager);
+  TaskDependencyManager(ObjectManagerInterface &object_manager,
+                        boost::asio::io_service &io_service, const ClientID &client_id,
+                        gcs::TableInterface<TaskID, TaskLeaseData> &task_lease_table);
 
   /// Check whether an object is locally available.
   ///
@@ -107,6 +109,19 @@ class TaskDependencyManager {
     int64_t num_missing_dependencies;
   };
 
+  struct PendingTask {
+    PendingTask(boost::asio::io_service &io_service)
+        : lease_period(RayConfig::instance().initial_task_lease_milliseconds()),
+          expires_at(current_time_ms() + lease_period),
+          lease_timer_(new boost::asio::deadline_timer(io_service)) {}
+
+    /// The timeout before the lease should be renewed.
+    uint64_t lease_period;
+    /// The time at which the current lease will expire.
+    uint64_t expires_at;
+    std::unique_ptr<boost::asio::deadline_timer> lease_timer_;
+  };
+
   /// Check whether the given object needs to be made available through object
   /// transfer or reconstruction. These are objects for which: (1) there is a
   /// subscribed task dependent on it, (2) the object is not local, and (3) the
@@ -121,6 +136,9 @@ class TaskDependencyManager {
   void HandleRemoteDependencyCanceled(const ObjectID &object_id);
 
   ObjectManagerInterface &object_manager_;
+  boost::asio::io_service &io_service_;
+  const ClientID &client_id_;
+  gcs::TableInterface<TaskID, TaskLeaseData> &task_lease_table_;
   /// A mapping from task ID of each subscribed task to its list of object
   /// dependencies.
   std::unordered_map<ray::TaskID, TaskDependencies> task_dependencies_;
@@ -137,7 +155,7 @@ class TaskDependencyManager {
   std::unordered_set<ray::ObjectID> local_objects_;
   /// The set of tasks that are pending execution. Any objects created by these
   /// tasks that are not already local are pending creation.
-  std::unordered_set<ray::TaskID> pending_tasks_;
+  std::unordered_map<ray::TaskID, PendingTask> pending_tasks_;
 };
 
 }  // namespace raylet

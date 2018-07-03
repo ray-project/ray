@@ -19,13 +19,28 @@ class MockObjectManager : public ObjectManagerInterface {
   MOCK_METHOD1(Cancel, ray::Status(const ObjectID &object_id));
 };
 
+class MockGcs : public gcs::TableInterface<TaskID, TaskLeaseData> {
+ public:
+  MOCK_METHOD4(
+      Add,
+      ray::Status(const JobID &job_id, const TaskID &task_id,
+                  std::shared_ptr<TaskLeaseDataT> &task_data,
+                  const gcs::TableInterface<TaskID, TaskLeaseData>::WriteCallback &done));
+};
+
 class TaskDependencyManagerTest : public ::testing::Test {
  public:
   TaskDependencyManagerTest()
-      : object_manager_mock_(), task_dependency_manager_(object_manager_mock_) {}
+      : object_manager_mock_(),
+        io_service_(),
+        gcs_mock_(),
+        task_dependency_manager_(object_manager_mock_, io_service_, ClientID::nil(),
+                                 gcs_mock_) {}
 
  protected:
   MockObjectManager object_manager_mock_;
+  boost::asio::io_service io_service_;
+  MockGcs gcs_mock_;
   TaskDependencyManager task_dependency_manager_;
 };
 
@@ -183,7 +198,9 @@ TEST_F(TaskDependencyManagerTest, TestTaskChain) {
       ASSERT_FALSE(ready);
     }
 
-    // Mark each task as pending.
+    // Mark each task as pending. A lease entry should be added to the GCS for
+    // each task.
+    EXPECT_CALL(gcs_mock_, Add(_, task.GetTaskSpecification().TaskId(), _, _));
     task_dependency_manager_.TaskPending(task);
 
     i++;
@@ -232,6 +249,7 @@ TEST_F(TaskDependencyManagerTest, TestDependentPut) {
   // The put object should be considered local as soon as the task that creates
   // it is pending execution.
   EXPECT_CALL(object_manager_mock_, Cancel(put_id));
+  EXPECT_CALL(gcs_mock_, Add(_, task1.GetTaskSpecification().TaskId(), _, _));
   task_dependency_manager_.TaskPending(task1);
 }
 
@@ -244,6 +262,7 @@ TEST_F(TaskDependencyManagerTest, TestTaskForwarding) {
     auto arguments = task.GetDependencies();
     static_cast<void>(task_dependency_manager_.SubscribeDependencies(
         task.GetTaskSpecification().TaskId(), arguments));
+    EXPECT_CALL(gcs_mock_, Add(_, task.GetTaskSpecification().TaskId(), _, _));
     task_dependency_manager_.TaskPending(task);
   }
 
