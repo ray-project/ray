@@ -690,9 +690,9 @@ class GlobalState(object):
         Returns:
             A list of the profile events for the specified process.
         """
-        message = self.redis_client.execute_command(
-            "RAY.TABLE_LOOKUP", ray.gcs_utils.TablePrefix.PROFILE, "",
-            component_id.id())
+        message = self._execute_command(
+            component_id, "RAY.TABLE_LOOKUP",
+            ray.gcs_utils.TablePrefix.PROFILE, "", component_id.id())
 
         if message is None:
             return []
@@ -733,7 +733,7 @@ class GlobalState(object):
             raise Exception("This method is only supported in the raylet "
                             "code path.")
 
-        profile_table_keys = self.redis_client.keys(
+        profile_table_keys = self._keys(
             ray.gcs_utils.TablePrefix_PROFILE_string + "*")
         component_identifiers_binary = [
             key[len(ray.gcs_utils.TablePrefix_PROFILE_string):]
