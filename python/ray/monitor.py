@@ -493,10 +493,10 @@ class Monitor(object):
         """
         redis = self.state.redis_clients[0]
 
-        xray_task_table_prefix = ray.gcs_utils.TablePrefix_RAYLET_TASK_string.encode(
-            "ascii")
-        xray_object_table_prefix = ray.gcs_utils.TablePrefix_OBJECT_string.encode(
-            "ascii")
+        xray_task_table_prefix = (
+            ray.gcs_utils.TablePrefix_RAYLET_TASK_string.encode("ascii"))
+        xray_object_table_prefix = (
+            ray.gcs_utils.TablePrefix_OBJECT_string.encode("ascii"))
 
         task_table_infos = {}  # task id -> TaskInfo
         for key in redis.scan_iter(match=xray_task_table_prefix + b"*"):
@@ -526,8 +526,9 @@ class Monitor(object):
             if entry is None:
                 continue
             assert len(entry) == 1
-            object_table_data = ray.gcs_utils.ObjectTableData.GetRootAsObjectTableData(
-                entry[0], 0)
+            object_table_data = (
+                ray.gcs_utils.ObjectTableData.GetRootAsObjectTableData(
+                    entry[0], 0))
             object_id = key.split(xray_object_table_prefix)[1]
             if not object_table_data.IsPut():
                 continue
