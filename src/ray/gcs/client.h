@@ -68,7 +68,7 @@ class RAY_EXPORT AsyncGcsClient {
   Status GetExport(const std::string &driver_id, int64_t export_index,
                    const GetExportCallback &done_callback);
 
-  std::shared_ptr<RedisContext> primary_context() { return primary_context_; }
+  // std::shared_ptr<RedisContext> primary_context() { return primary_context_; }
   std::vector<std::shared_ptr<RedisContext>> shard_contexts() { return shard_contexts_; }
 
  private:

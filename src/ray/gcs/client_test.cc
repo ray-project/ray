@@ -62,7 +62,7 @@ class TestGcsWithAe : public TestGcs {
     loop_ = aeCreateEventLoop(1024);
     // Tests when sharding = false.
     // TODO(heyucongtom): We shall figure out some way to test sharding=true.
-    RAY_CHECK_OK(client_->primary_context()->AttachToEventLoop(loop_));
+    // RAY_CHECK_OK(client_->primary_context()->AttachToEventLoop(loop_));
     RAY_CHECK_OK(client_->shard_contexts()[0]->AttachToEventLoop(loop_));
   }
 
