@@ -70,7 +70,6 @@ class RAY_EXPORT AsyncGcsClient {
 
   std::shared_ptr<RedisContext> primary_context() { return primary_context_; }
   std::vector<std::shared_ptr<RedisContext>> shard_contexts() { return shard_contexts_; }
-  ClientID get_client_id() { return client_id_; } 
 
  private:
   std::unique_ptr<FunctionTable> function_table_;
@@ -92,7 +91,6 @@ class RAY_EXPORT AsyncGcsClient {
   std::unique_ptr<RedisAsioClient> asio_async_auxiliary_client_;
   std::unique_ptr<RedisAsioClient> asio_subscribe_auxiliary_client_;
   CommandType command_type_;
-  ClientID client_id_;
 };
 
 class SyncGcsClient {

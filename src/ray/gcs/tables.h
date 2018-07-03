@@ -91,7 +91,7 @@ class Log : virtual public PubsubInterface<ID> {
         pubsub_channel_(TablePubsub::NO_PUBLISH),
         prefix_(TablePrefix::UNUSED),
         subscribe_callback_index_(-1){};
-        
+
   /// Append a log entry to a key.
   ///
   /// \param job_id The ID of the job (= driver).
@@ -174,6 +174,13 @@ class Log : virtual public PubsubInterface<ID> {
   Status CancelNotifications(const JobID &job_id, const ID &id,
                              const ClientID &client_id);
 
+  /// Add shards into available redis shard vectors
+  void AddShards(std::vector<std::shared_ptr<RedisContext>>& contexts) {
+    for (auto& context : contexts) {
+      shard_contexts_.push_back(context);
+    }
+  }
+
  protected:
   std::shared_ptr<RedisContext> GetRedisContext(const ID &id) {
     static std::hash<ray::UniqueID> index;
@@ -241,6 +248,7 @@ class Table : private Log<ID, Data>,
 
   using Log<ID, Data>::RequestNotifications;
   using Log<ID, Data>::CancelNotifications;
+  using Log<ID, Data>::AddShards;
 
   /// Add an entry to the table. This overwrites any existing data at the key.
   ///
