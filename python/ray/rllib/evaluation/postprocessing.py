@@ -50,3 +50,11 @@ def compute_advantages(rollout, last_r, gamma, lambda_=1.0, use_gae=True):
     assert all(val.shape[0] == trajsize for val in traj.values()), \
         "Rollout stacked incorrectly!"
     return SampleBatch(traj)
+
+
+def compute_targets(traj, action_space, gamma):
+    traj["adv_target"] = np.zeros((traj.count, action_space.n))
+    traj["adv_target"][np.arange(traj.count), traj["actions"]] = traj["advantages"]
+    traj["v_target"] = traj["rewards"].copy()
+    traj["v_target"][:-1] += gamma * traj["vf_preds"][1:]
+    return traj
