@@ -16,6 +16,7 @@ enum TablePrefix:int {
   HEARTBEAT,
   ERROR_INFO,
   PROFILE,
+  TASK_LEASE,
 }
 
 // The channel that Add operations to the Table should be published on, if any.
@@ -28,6 +29,7 @@ enum TablePubsub:int {
   ACTOR,
   HEARTBEAT,
   ERROR_INFO,
+  TASK_LEASE,
 }
 
 table GcsTableEntry {
@@ -187,4 +189,14 @@ table HeartbeatTableData {
   // Total resource capacity configured for this node manager.
   resources_total_label: [string];
   resources_total_capacity: [double];
+}
+
+// Data for a lease on task execution.
+table TaskLeaseData {
+  // Node manager client id.
+  node_manager_id: string;
+  // The time that the lease was last acquired at.
+  acquired_at: long;
+  // The time that the lease will expire at.
+  expires_at: long;
 }

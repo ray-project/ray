@@ -346,6 +346,15 @@ class TaskReconstructionLog : public Log<TaskID, TaskReconstructionData> {
   }
 };
 
+class TaskLeaseTable : public Table<TaskID, TaskLeaseData> {
+ public:
+  TaskLeaseTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client)
+      : Table(context, client) {
+    pubsub_channel_ = TablePubsub::TASK_LEASE;
+    prefix_ = TablePrefix::TASK_LEASE;
+  }
+};
+
 namespace raylet {
 
 class TaskTable : public Table<TaskID, ray::protocol::Task> {
