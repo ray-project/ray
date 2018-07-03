@@ -137,18 +137,40 @@ class NodeManager {
   std::unordered_map<ActorID, ActorRegistration> actor_registry_;
 };
 
+
+/// Control the rate at which a node manager sends heartbeats. Balance between
+/// traffic overhead and latency to advertize available resources. Each
+/// heartbeat contains all load and resource availability information of this node.
+///
+/// This token bucket ensures the following properties:
+/// - Timely detect a node manager failure. A node sends heartbeats at a
+///   rate no lower than RayConfig::instance().token_bucket_min_rate_hz().
+/// - Bound communication overhead. The rate of heartbeats is asymptotically bounded
+///   by RayConfig::instance().token_bucket_avg_rate_hz()
+/// - Quickly advertize resource availability. If resources become available (e.g.,
+///   as task finish), heartbeat rate increases
+///   to RayConfig::instance().token_bucket_avg_rate_hz() as long as
+///   there are tokens in the bucket.
 class TokenBucket {
 private:
   int64_t last_time_token_received_;
   int64_t last_time_hb_sent_;
   double token_bucket_capacity_;
 
+  /// Add tokens to the bucket at rate RayConfig::instance().token_bucket_avg_rate_hz()
   int64_t UpdateTokenBucket();
 public:
   TokenBucket();
   ~TokenBucket();
-  int64_t TimeoutResourceAvailable(bool *send_heartbeat);
+  ///  Compute the time to the next heatbeat.
+  ///  Invoked after a heartbeat has been sent.
   int64_t Timeout(bool *send_heartbeat);
+  ///  Recompute the time to the next heartbeat.
+  ///  Invoked when resources are becoming available (e.g., as a result
+  ///  of a task or actor finishing). If there are tokens
+  ///  in the bucket, this call typically shortens the timeout, thus
+  ///  advertising the resource availability information earlier.
+  int64_t TimeoutResourceAvailable(bool *send_heartbeat);
 };
 
 }  // namespace raylet

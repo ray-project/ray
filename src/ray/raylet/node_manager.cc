@@ -995,6 +995,30 @@ int64_t TokenBucket::UpdateTokenBucket() {
   return crt_time;
 };
 
+int64_t TokenBucket::Timeout(bool *send_heartbeat) {
+  int64_t crt_time = UpdateTokenBucket();
+  int64_t elapsed_ms = crt_time - last_time_hb_sent_;
+  *send_heartbeat = false;
+
+  if (elapsed_ms >= 1000./RayConfig::instance().token_bucket_min_rate_hz()) {
+    if (token_bucket_capacity_ >= 1) {
+      *send_heartbeat = true;
+      token_bucket_capacity_ -= 1.;
+      last_time_hb_sent_ = crt_time;
+      return 1000./RayConfig::instance().token_bucket_min_rate_hz();
+    } else {
+      // wait to accumulate a token
+      uint64_t timeout_ms =
+          1000 * (1. - token_bucket_capacity_)/RayConfig::instance().token_bucket_avg_rate_hz();
+      // don't return a timeout of zero
+      return MAX(timeout_ms, 1);
+    }
+  } else {
+    return (MAX(1000./RayConfig::instance().token_bucket_min_rate_hz() - elapsed_ms,
+         1000*(1. - token_bucket_capacity_)/RayConfig::instance().token_bucket_avg_rate_hz()));
+  }
+};
+
 int64_t TokenBucket::TimeoutResourceAvailable(bool *send_heartbeat) {
   int64_t crt_time = UpdateTokenBucket();
   int64_t elapsed_ms = crt_time - last_time_hb_sent_;
@@ -1009,47 +1033,20 @@ int64_t TokenBucket::TimeoutResourceAvailable(bool *send_heartbeat) {
     } else {
       // wait to accumulate at least 1 token
       uint64_t timeout_ms =
-          (1000 * (1. - token_bucket_capacity_)/RayConfig::instance().token_bucket_avg_rate_hz());
-      // don't return a timeout of zero
+          1000 * (1. - token_bucket_capacity_)/RayConfig::instance().token_bucket_avg_rate_hz();
+      //  Don't return a timeout of zero.
+      //  This can happen if token_bucket_capacity_ = 1 - \epsilon; Note it's
+      //  possible for this situation to continue for a while as a timeout of 0
+      //  won't update crt_time. This means that neither elapsed_ms nor
+      //  token_bucket_capacity_ will change.
       return MAX(timeout_ms, 1);
     }
   } else {
-    uint64_t timeout_ms =
-        (MAX(1000./RayConfig::instance().token_bucket_max_rate_hz() - elapsed_ms,
+    return (MAX(1000./RayConfig::instance().token_bucket_max_rate_hz() - elapsed_ms,
          1000*(1. - token_bucket_capacity_)/RayConfig::instance().token_bucket_avg_rate_hz()));
-      // don't return a timeout of zero
-      return MAX(timeout_ms, 1);
   }
 };
 
-int64_t TokenBucket::Timeout(bool *send_heartbeat) {
-  int64_t crt_time = UpdateTokenBucket();
-  int64_t elapsed_ms = crt_time - last_time_hb_sent_;
-  *send_heartbeat = false;
-
-  //std::cout << "elapsed_ms = " << elapsed_ms << ", crt_time = " << crt_time << ", last_time_hb_sent_ = " << last_time_hb_sent_ << std::endl;
-
-  if (elapsed_ms >= 1000./RayConfig::instance().token_bucket_min_rate_hz()) {
-    if (token_bucket_capacity_ >= 1) {
-      *send_heartbeat = true;
-      token_bucket_capacity_ -= 1.;
-      last_time_hb_sent_ = crt_time;
-      return 1000./RayConfig::instance().token_bucket_min_rate_hz();
-    } else {
-      // wait to accumulate a token
-      uint64_t timeout_ms =
-          (1000 * (1. - token_bucket_capacity_)/RayConfig::instance().token_bucket_avg_rate_hz());
-      // don't return a timeout of zero
-      return MAX(timeout_ms, 1);
-    }
-  } else {
-    uint64_t timeout_ms =
-        (MAX(1000./RayConfig::instance().token_bucket_min_rate_hz() - elapsed_ms,
-         1000*(1. - token_bucket_capacity_)/RayConfig::instance().token_bucket_avg_rate_hz()));
-    // don't return a timeout of zero
-    return MAX(timeout_ms, 1);
-  }
-};
 
 }  // namespace raylet
 
