@@ -8,7 +8,7 @@ import os
 class EvaluatorInterface(object):
     """This is the interface between policy optimizers and policy evaluation.
 
-    See also: CommonPolicyEvaluator
+    See also: PolicyEvaluator
     """
 
     def sample(self):
