@@ -5,10 +5,13 @@ namespace ray {
 namespace raylet {
 
 TaskDependencyManager::TaskDependencyManager(
-    ObjectManagerInterface &object_manager, boost::asio::io_service &io_service,
-    const ClientID &client_id, int64_t initial_lease_period_ms,
+    ObjectManagerInterface &object_manager,
+    ReconstructionPolicyInterface &reconstruction_policy,
+    boost::asio::io_service &io_service, const ClientID &client_id,
+    int64_t initial_lease_period_ms,
     gcs::TableInterface<TaskID, TaskLeaseData> &task_lease_table)
     : object_manager_(object_manager),
+      reconstruction_policy_(reconstruction_policy),
       io_service_(io_service),
       client_id_(client_id),
       initial_lease_period_ms_(initial_lease_period_ms),
@@ -51,6 +54,7 @@ void TaskDependencyManager::HandleRemoteDependencyRequired(const ObjectID &objec
       // If we haven't already, request the object manager to pull it from a
       // remote node.
       RAY_CHECK_OK(object_manager_.Pull(object_id));
+      reconstruction_policy_.Listen(object_id);
     }
   }
 }
@@ -62,6 +66,7 @@ void TaskDependencyManager::HandleRemoteDependencyCanceled(const ObjectID &objec
     auto it = required_objects_.find(object_id);
     if (it != required_objects_.end()) {
       RAY_CHECK_OK(object_manager_.Cancel(object_id));
+      reconstruction_policy_.Cancel(object_id);
       required_objects_.erase(it);
     }
   }

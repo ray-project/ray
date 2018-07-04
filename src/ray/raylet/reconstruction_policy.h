@@ -9,9 +9,14 @@ namespace ray {
 
 namespace raylet {
 
-// TODO(swang): Use std::function instead of boost.
+class ReconstructionPolicyInterface {
+ public:
+  virtual void Listen(const ObjectID &object_id) = 0;
+  virtual void Cancel(const ObjectID &object_id) = 0;
+  virtual ~ReconstructionPolicyInterface(){};
+};
 
-class ReconstructionPolicy {
+class ReconstructionPolicy : public ReconstructionPolicyInterface {
  public:
   /// Create the reconstruction policy.
   ///
@@ -26,7 +31,9 @@ class ReconstructionPolicy {
   /// for each task that needs to be re-executed.
   ///
   /// \param object_id The object to check for reconstruction.
-  void CheckObjectReconstruction(const ObjectID &object_id);
+  void Listen(const ObjectID &object_id);
+
+  void Cancel(const ObjectID &object_id);
 
  private:
 };

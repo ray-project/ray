@@ -4,9 +4,9 @@ namespace ray {
 
 namespace raylet {
 
-void ReconstructionPolicy::CheckObjectReconstruction(const ObjectID &object) {
-  throw std::runtime_error("Method not implemented");
-}
+void ReconstructionPolicy::Listen(const ObjectID &object) {}
+
+void ReconstructionPolicy::Cancel(const ObjectID &object) {}
 
 }  // namespace raylet
 

@@ -28,6 +28,7 @@ class TaskDependencyManager {
  public:
   /// Create a task dependency manager.
   TaskDependencyManager(ObjectManagerInterface &object_manager,
+                        ReconstructionPolicyInterface &reconstruction_policy,
                         boost::asio::io_service &io_service, const ClientID &client_id,
                         int64_t initial_lease_period_ms,
                         gcs::TableInterface<TaskID, TaskLeaseData> &task_lease_table);
@@ -138,6 +139,7 @@ class TaskDependencyManager {
   void AcquireTaskLease(const TaskID &task_id);
 
   ObjectManagerInterface &object_manager_;
+  ReconstructionPolicyInterface &reconstruction_policy_;
   boost::asio::io_service &io_service_;
   const ClientID client_id_;
   const int64_t initial_lease_period_ms_;
