@@ -61,7 +61,7 @@ def start_plasma_store(plasma_store_memory=DEFAULT_PLASMA_STORE_MEMORY,
                         "plasma_directory argument must be provided.")
 
     if not isinstance(plasma_store_memory, int):
-        raise Exception("plasma_store_memory should be an interger.")
+        raise Exception("plasma_store_memory should be an integer.")
 
     plasma_store_executable = os.path.join(
         os.path.abspath(os.path.dirname(__file__)),
