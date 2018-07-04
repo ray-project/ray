@@ -176,7 +176,7 @@ class Log : virtual public PubsubInterface<ID> {
 
   /// Add shards into available redis shard vectors
   void AddShards(std::vector<std::shared_ptr<RedisContext>>& contexts) {
-    for (auto& context : contexts) {
+    for (auto context : contexts) {
       shard_contexts_.push_back(context);
     }
   }
@@ -294,7 +294,7 @@ class ObjectTable : public Log<ObjectID, ObjectTableData> {
 
   ObjectTable(const std::vector<std::shared_ptr<RedisContext>> &contexts, AsyncGcsClient *client,
               gcs::CommandType command_type)
-      : ObjectTable(context, client) {
+      : ObjectTable(contexts, client) {
     command_type_ = command_type;
   };
 

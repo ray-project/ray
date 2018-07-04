@@ -47,7 +47,7 @@ Status Log<ID, Data>::Append(const JobID &job_id, const ID &id,
   flatbuffers::FlatBufferBuilder fbb;
   fbb.ForceDefaults(true);
   fbb.Finish(Data::Pack(fbb, dataT.get()));
-  return context_->RunAsync(GetLogAppendCommand(command_type_), id,
+  return GetRedisContext(id)->RunAsync(GetLogAppendCommand(command_type_), id,
                             fbb.GetBufferPointer(), fbb.GetSize(), prefix_,
                             pubsub_channel_, std::move(callback));
 }
@@ -71,7 +71,7 @@ Status Log<ID, Data>::AppendAt(const JobID &job_id, const ID &id,
   flatbuffers::FlatBufferBuilder fbb;
   fbb.ForceDefaults(true);
   fbb.Finish(Data::Pack(fbb, dataT.get()));
-  return context_->RunAsync(GetLogAppendCommand(command_type_), id,
+  return GetRedisContext(id)->RunAsync(GetLogAppendCommand(command_type_), id,
                             fbb.GetBufferPointer(), fbb.GetSize(), prefix_,
                             pubsub_channel_, std::move(callback), log_length);
 }
@@ -173,7 +173,7 @@ Status Table<ID, Data>::Add(const JobID &job_id, const ID &id,
   flatbuffers::FlatBufferBuilder fbb;
   fbb.ForceDefaults(true);
   fbb.Finish(Data::Pack(fbb, dataT.get()));
-  return context_->RunAsync(GetTableAddCommand(command_type_), id, fbb.GetBufferPointer(),
+  return GetRedisContext(id)->RunAsync(GetTableAddCommand(command_type_), id, fbb.GetBufferPointer(),
                             fbb.GetSize(), prefix_, pubsub_channel_, std::move(callback));
 }
 
