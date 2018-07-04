@@ -681,15 +681,14 @@ class GlobalState(object):
     def _profile_table(self, component_id):
         """Get the profile events for a given component.
 
-        TODO(rkn): This method should support limiting the number of log events
-        and should also support returning a window of events.
-
         Args:
             component_id: An identifier for a component.
 
         Returns:
             A list of the profile events for the specified process.
         """
+        # TODO(rkn): This method should support limiting the number of log
+        # events and should also support returning a window of events.
         message = self._execute_command(component_id, "RAY.TABLE_LOOKUP",
                                         ray.gcs_utils.TablePrefix.PROFILE, "",
                                         component_id.id())
@@ -757,12 +756,6 @@ class GlobalState(object):
         web browser and load the dumped file. Make sure to enable "Flow events"
         in the "View Options" menu.
 
-        TODO(rkn): Support including the task specification data in the
-        timeline.
-
-        TODO(rkn): This should support viewing just a window of time or a
-        limited number of events.
-
         Args:
             include_task_data: If true, we will include more task metadata such
                 as the task specifications in the json.
@@ -775,6 +768,11 @@ class GlobalState(object):
             If filename is not provided, this returns a list of profiling
                 events. Each profile event is a dictionary.
         """
+        # TODO(rkn): Support including the task specification data in the
+        # timeline.
+        # TODO(rkn): This should support viewing just a window of time or a
+        # limited number of events.
+
         if include_task_data:
             raise NotImplementedError("This flag has not been implented yet.")
 
