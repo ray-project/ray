@@ -766,6 +766,13 @@ void TableEntryToFlatbuf(RedisModuleKey *table_key,
                                        fbb.CreateVector(data));
     fbb.Finish(message);
   } break;
+  case REDISMODULE_KEYTYPE_EMPTY: {
+    auto message = CreateGcsTableEntry(
+        fbb, RedisStringToFlatbuf(fbb, entry_id),
+        fbb.CreateVector(
+            std::vector<flatbuffers::Offset<flatbuffers::String>>()));
+    fbb.Finish(message);
+  } break;
   default:
     RAY_LOG(FATAL) << "Invalid Redis type during lookup: " << key_type;
   }
@@ -855,15 +862,14 @@ int TableRequestNotifications_RedisCommand(RedisModuleCtx *ctx,
   // Lookup the current value at the key.
   RedisModuleKey *table_key =
       OpenPrefixedKey(ctx, prefix_str, id, REDISMODULE_READ);
-  if (table_key != nullptr) {
-    // Publish the current value at the key to the client that is requesting
-    // notifications.
-    flatbuffers::FlatBufferBuilder fbb;
-    TableEntryToFlatbuf(table_key, id, fbb);
-    RedisModule_Call(ctx, "PUBLISH", "sb", client_channel,
-                     reinterpret_cast<const char *>(fbb.GetBufferPointer()),
-                     fbb.GetSize());
-  }
+  // Publish the current value at the key to the client that is requesting
+  // notifications. An empty notification will be published if the key is
+  // empty.
+  flatbuffers::FlatBufferBuilder fbb;
+  TableEntryToFlatbuf(table_key, id, fbb);
+  RedisModule_Call(ctx, "PUBLISH", "sb", client_channel,
+                   reinterpret_cast<const char *>(fbb.GetBufferPointer()),
+                   fbb.GetSize());
 
   return RedisModule_ReplyWithNull(ctx);
 }
