@@ -489,9 +489,12 @@ PlasmaManagerState *PlasmaManagerState_init(const char *store_socket_name,
     RAY_CHECK_OK(state->gcs_client.Connect(std::string(redis_primary_addr),
                                            redis_primary_port,
                                            /*sharding=*/true));
-    RAY_CHECK_OK(state->gcs_client.context()->AttachToEventLoop(state->loop));
     RAY_CHECK_OK(
-        state->gcs_client.primary_context()->AttachToEventLoop(state->loop));
+      state->gcs_client.primary_context()->AttachToEventLoop(state->loop));
+    for (auto context : state->gcs_client.shard_contexts()) {
+      RAY_CHECK_OK(context->AttachToEventLoop(state->loop));
+    }
+
   } else {
     state->db = NULL;
     RAY_LOG(DEBUG) << "No db connection specified";
