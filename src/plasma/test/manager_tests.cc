@@ -112,7 +112,7 @@ void destroy_plasma_mock(plasma_mock *mock) {
  * - Buffer a transfer request for the remote manager.
  * - Start and stop the event loop to make sure that we send the buffered
  *   request.
- * - Expect to see a MessageType_PlasmaDataRequest message on the remote manager
+ * - Expect to see a MessageType::PlasmaDataRequest message on the remote manager
  *   with the correct object ID.
  */
 TEST request_transfer_test(void) {
@@ -128,7 +128,7 @@ TEST request_transfer_test(void) {
   event_loop_run(local_mock->loop);
   int read_fd = get_client_sock(remote_mock->read_conn);
   std::vector<uint8_t> request_data;
-  ARROW_CHECK_OK(plasma::PlasmaReceive(read_fd, MessageType_PlasmaDataRequest,
+  ARROW_CHECK_OK(plasma::PlasmaReceive(read_fd, MessageType::PlasmaDataRequest,
                                        &request_data));
   plasma::ObjectID object_id2;
   char *address;
@@ -152,7 +152,7 @@ TEST request_transfer_test(void) {
  * - Buffer a transfer request for the remote managers.
  * - Start and stop the event loop after a timeout to make sure that we
  *   trigger the timeout on the first manager.
- * - Expect to see a MessageType_PlasmaDataRequest message on the second remote
+ * - Expect to see a MessageType::PlasmaDataRequest message on the second remote
  *   manager with the correct object ID.
  */
 TEST request_transfer_retry_test(void) {
@@ -180,7 +180,7 @@ TEST request_transfer_retry_test(void) {
 
   int read_fd = get_client_sock(remote_mock2->read_conn);
   std::vector<uint8_t> request_data;
-  ARROW_CHECK_OK(plasma::PlasmaReceive(read_fd, MessageType_PlasmaDataRequest,
+  ARROW_CHECK_OK(plasma::PlasmaReceive(read_fd, MessageType::PlasmaDataRequest,
                                        &request_data));
   plasma::ObjectID object_id2;
   char *address;
@@ -211,7 +211,7 @@ TEST read_write_object_chunk_test(void) {
   const int data_size = strlen(data) + 1;
   const int metadata_size = 0;
   PlasmaRequestBuffer remote_buf;
-  remote_buf.type = MessageType_PlasmaDataReply;
+  remote_buf.type = MessageType::PlasmaDataReply;
   remote_buf.object_id = object_id;
   remote_buf.data = (uint8_t *) data;
   remote_buf.data_size = data_size;

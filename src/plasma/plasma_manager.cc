@@ -608,13 +608,13 @@ void send_queued_request(event_loop *loop,
   PlasmaRequestBuffer *buf = conn->transfer_queue.front();
   int err = 0;
   switch (buf->type) {
-  case MessageType_PlasmaDataRequest:
+  case MessageType::PlasmaDataRequest:
     err = handle_sigpipe(
         plasma::SendDataRequest(conn->fd, buf->object_id.to_plasma_id(),
                                 state->addr, state->port),
         conn->fd);
     break;
-  case MessageType_PlasmaDataReply:
+  case MessageType::PlasmaDataReply:
     RAY_LOG(DEBUG) << "Transferring object to manager";
     if (ClientConnection_request_finished(conn)) {
       /* If the cursor is not set, we haven't sent any requests for this object
@@ -635,7 +635,7 @@ void send_queued_request(event_loop *loop,
 
   /* If the other side hung up, stop sending to this manager. */
   if (err != 0) {
-    if (buf->type == MessageType_PlasmaDataReply) {
+    if (buf->type == MessageType::PlasmaDataReply) {
       /* We errored while sending the object, so release it before removing the
        * connection. The corresponding call to plasma_get occurred in
        * process_transfer_request. */
@@ -646,7 +646,7 @@ void send_queued_request(event_loop *loop,
     ClientConnection_free(conn);
   } else if (ClientConnection_request_finished(conn)) {
     /* If we are done with this request, remove it from the transfer queue. */
-    if (buf->type == MessageType_PlasmaDataReply) {
+    if (buf->type == MessageType::PlasmaDataReply) {
       /* We are done sending the object, so release it. The corresponding call
        * to plasma_get occurred in process_transfer_request. */
       ARROW_CHECK_OK(conn->manager_state->plasma_conn->Release(
@@ -827,7 +827,7 @@ void process_transfer_request(event_loop *loop,
   RAY_CHECK(object_buffer.metadata->data() ==
             object_buffer.data->data() + object_buffer.data->size());
   PlasmaRequestBuffer *buf = new PlasmaRequestBuffer();
-  buf->type = MessageType_PlasmaDataReply;
+  buf->type = MessageType::PlasmaDataReply;
   buf->object_id = obj_id;
   /* We treat buf->data as a pointer to the concatenated data and metadata, so
    * we don't actually use buf->metadata. */
@@ -938,7 +938,7 @@ void request_transfer_from(PlasmaManagerState *manager_state,
     }
 
     PlasmaRequestBuffer *transfer_request = new PlasmaRequestBuffer();
-    transfer_request->type = MessageType_PlasmaDataRequest;
+    transfer_request->type = MessageType::PlasmaDataRequest;
     transfer_request->object_id = fetch_req->object_id;
 
     if (manager_conn->transfer_queue.size() == 0) {
@@ -1474,7 +1474,7 @@ void process_message(event_loop *loop,
   read_message(client_sock, &type, &length, &data);
 
   switch (type) {
-  case MessageType_PlasmaDataRequest: {
+  case MessageType::PlasmaDataRequest: {
     RAY_LOG(DEBUG) << "Processing data request";
     plasma::ObjectID object_id;
     char *address;
@@ -1484,7 +1484,7 @@ void process_message(event_loop *loop,
     process_transfer_request(loop, object_id, address, port, conn);
     free(address);
   } break;
-  case MessageType_PlasmaDataReply: {
+  case MessageType::PlasmaDataReply: {
     RAY_LOG(DEBUG) << "Processing data reply";
     plasma::ObjectID object_id;
     int64_t object_size;
@@ -1494,7 +1494,7 @@ void process_message(event_loop *loop,
     process_data_request(loop, client_sock, object_id, object_size,
                          metadata_size, conn);
   } break;
-  case MessageType_PlasmaFetchRequest: {
+  case MessageType::PlasmaFetchRequest: {
     RAY_LOG(DEBUG) << "Processing fetch remote";
     std::vector<plasma::ObjectID> object_ids_to_fetch;
     /* TODO(pcm): process_fetch_requests allocates an array of num_objects
@@ -1503,7 +1503,7 @@ void process_message(event_loop *loop,
     process_fetch_requests(conn, object_ids_to_fetch.size(),
                            object_ids_to_fetch.data());
   } break;
-  case MessageType_PlasmaWaitRequest: {
+  case MessageType::PlasmaWaitRequest: {
     RAY_LOG(DEBUG) << "Processing wait";
     plasma::ObjectRequestMap object_requests;
     int64_t timeout_ms;
@@ -1513,7 +1513,7 @@ void process_message(event_loop *loop,
     process_wait_request(conn, std::move(object_requests), timeout_ms,
                          num_ready_objects);
   } break;
-  case MessageType_PlasmaStatusRequest: {
+  case MessageType::PlasmaStatusRequest: {
     RAY_LOG(DEBUG) << "Processing status";
     plasma::ObjectID object_id;
     ARROW_CHECK_OK(plasma::ReadStatusRequest(data, length, &object_id, 1));
