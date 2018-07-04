@@ -335,18 +335,19 @@ static PyObject *PyLocalSchedulerClient_push_profile_events(PyObject *self,
   const char *node_ip_address;
   int node_ip_address_length;
 
-  if (!PyArg_ParseTuple(args, "s#O&s#O", &component_type, &component_type_length,
-                        &PyObjectToUniqueID, &component_id, &node_ip_address,
+  if (!PyArg_ParseTuple(args, "s#O&s#O", &component_type,
+                        &component_type_length, &PyObjectToUniqueID,
+                        &component_id, &node_ip_address,
                         &node_ip_address_length, &profile_data)) {
     return NULL;
   }
 
   ProfileTableDataT profile_info;
-  profile_info.component_type = std::string(component_type,
-                                            component_type_length);
+  profile_info.component_type =
+      std::string(component_type, component_type_length);
   profile_info.component_id = component_id.binary();
-  profile_info.node_ip_address = std::string(node_ip_address,
-                                             node_ip_address_length);
+  profile_info.node_ip_address =
+      std::string(node_ip_address, node_ip_address_length);
 
   if (PyList_Size(profile_data) == 0) {
     // Short circuit if there are no profile events.
