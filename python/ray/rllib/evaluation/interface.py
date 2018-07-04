@@ -5,7 +5,7 @@ from __future__ import print_function
 import os
 
 
-class PolicyEvaluator(object):
+class EvaluatorInterface(object):
     """This is the interface between policy optimizers and policy evaluation.
 
     See also: CommonPolicyEvaluator
