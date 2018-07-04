@@ -34,14 +34,26 @@ class TaskDependencyManagerTest : public ::testing::Test {
       : object_manager_mock_(),
         io_service_(),
         gcs_mock_(),
+        initial_lease_period_ms_(100),
         task_dependency_manager_(object_manager_mock_, io_service_, ClientID::nil(),
-                                 RayConfig::instance().initial_task_lease_milliseconds(),
-                                 gcs_mock_) {}
+                                 initial_lease_period_ms_, gcs_mock_) {}
+
+  void Run(uint64_t timeout_ms) {
+    auto timer_period = boost::posix_time::milliseconds(timeout_ms);
+    auto timer = std::make_shared<boost::asio::deadline_timer>(io_service_, timer_period);
+    timer->async_wait([this](const boost::system::error_code &error) {
+      ASSERT_FALSE(error);
+      io_service_.stop();
+    });
+    io_service_.run();
+    io_service_.reset();
+  }
 
  protected:
   MockObjectManager object_manager_mock_;
   boost::asio::io_service io_service_;
   MockGcs gcs_mock_;
+  int64_t initial_lease_period_ms_;
   TaskDependencyManager task_dependency_manager_;
 };
 
@@ -355,6 +367,26 @@ TEST_F(TaskDependencyManagerTest, TestEviction) {
       ASSERT_TRUE(ready_tasks.empty());
     }
   }
+}
+
+TEST_F(TaskDependencyManagerTest, TestTaskLeaseRenewal) {
+  // Mark a task as pending.
+  auto task = ExampleTask({}, 0);
+  // We expect an initial call to acquire the lease.
+  EXPECT_CALL(gcs_mock_, Add(_, task.GetTaskSpecification().TaskId(), _, _));
+  task_dependency_manager_.TaskPending(task);
+
+  // Check that while the task is still pending, there is one call to renew the
+  // lease for each lease period that passes. The lease period doubles with
+  // each renewal.
+  int num_expected_calls = 4;
+  int64_t sleep_time = 0;
+  for (int i = 1; i <= num_expected_calls; i++) {
+    sleep_time += i * initial_lease_period_ms_;
+  }
+  EXPECT_CALL(gcs_mock_, Add(_, task.GetTaskSpecification().TaskId(), _, _))
+      .Times(num_expected_calls);
+  Run(sleep_time);
 }
 
 }  // namespace raylet
