@@ -472,11 +472,9 @@ class ProfileTable : private Log<UniqueID, ProfileTableData> {
 
   /// Add a batch of profiling events to the profile table.
   ///
-  /// \param component_id An identifier for the component that generated the event.
   /// \param profile_events The profile events to record.
   /// \return Status.
-  Status AddProfileEventBatch(const UniqueID &component_id,
-                              const ProfileTableData &profile_events);
+  Status AddProfileEventBatch(const ProfileTableData &profile_events);
 };
 
 using CustomSerializerTable = Table<ClassID, CustomSerializerData>;

@@ -555,8 +555,7 @@ void NodeManager::ProcessClientMessage(
   case protocol::MessageType::PushProfileEventsRequest: {
     auto message = flatbuffers::GetRoot<ProfileTableData>(message_data);
 
-    RAY_CHECK_OK(gcs_client_->profile_table().AddProfileEventBatch(
-        from_flatbuf(*message->component_id()), *message));
+    RAY_CHECK_OK(gcs_client_->profile_table().AddProfileEventBatch(*message));
   } break;
 
   default:

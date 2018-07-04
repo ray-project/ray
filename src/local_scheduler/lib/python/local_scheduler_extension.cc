@@ -328,16 +328,25 @@ int PyBytes_or_PyUnicode_to_string(PyObject *py_string, std::string &out) {
 
 static PyObject *PyLocalSchedulerClient_push_profile_events(PyObject *self,
                                                             PyObject *args) {
+  const char *component_type;
+  int component_type_length;
   UniqueID component_id;
   PyObject *profile_data;
+  const char *node_ip_address;
+  int node_ip_address_length;
 
-  if (!PyArg_ParseTuple(args, "O&O", &PyObjectToUniqueID, &component_id,
-                        &profile_data)) {
+  if (!PyArg_ParseTuple(args, "s#O&s#O", &component_type, &component_type_length,
+                        &PyObjectToUniqueID, &component_id, &node_ip_address,
+                        &node_ip_address_length, &profile_data)) {
     return NULL;
   }
 
   ProfileTableDataT profile_info;
+  profile_info.component_type = std::string(component_type,
+                                            component_type_length);
   profile_info.component_id = component_id.binary();
+  profile_info.node_ip_address = std::string(node_ip_address,
+                                             node_ip_address_length);
 
   if (PyList_Size(profile_data) == 0) {
     // Short circuit if there are no profile events.
@@ -370,30 +379,6 @@ static PyObject *PyLocalSchedulerClient_push_profile_events(PyObject *self,
           return NULL;
         }
         if (profile_event.event_type.size() == 0) {
-          return NULL;
-        }
-      } else if (key_string == std::string("component_type")) {
-        if (PyBytes_or_PyUnicode_to_string(val, profile_event.component_type) ==
-            -1) {
-          return NULL;
-        }
-        if (profile_event.component_type.size() == 0) {
-          return NULL;
-        }
-      } else if (key_string == std::string("component_id")) {
-        if (PyBytes_or_PyUnicode_to_string(val, profile_event.component_id) ==
-            -1) {
-          return NULL;
-        }
-        if (profile_event.component_id.size() == 0) {
-          return NULL;
-        }
-      } else if (key_string == std::string("node_ip_address")) {
-        if (PyBytes_or_PyUnicode_to_string(
-                val, profile_event.node_ip_address) == -1) {
-          return NULL;
-        }
-        if (profile_event.node_ip_address.size() == 0) {
           return NULL;
         }
       } else if (key_string == std::string("start_time")) {

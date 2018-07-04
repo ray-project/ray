@@ -2617,11 +2617,6 @@ class RayLogSpanRaylet(object):
 
     def __exit__(self, type, value, tb):
         """Log the end of a span event. Log any exception that occurred."""
-        if self.worker.mode == WORKER_MODE:
-            component_type = "worker"
-        else:
-            component_type = "driver"
-
         for key, value in self.extra_data.items():
             if not isinstance(key, str) or not isinstance(value, str):
                 raise ValueError("The extra_data argument must be a "
@@ -2629,9 +2624,6 @@ class RayLogSpanRaylet(object):
 
         event = {
             "event_type": self.event_type,
-            "component_type": component_type,
-            "component_id": self.worker.worker_id,
-            "node_ip_address": self.worker.node_ip_address,
             "start_time": self.start_time,
             "end_time": time.time(),
             "extra_data": json.dumps(self.extra_data),
@@ -2729,8 +2721,14 @@ def flush_profile_data(worker=global_worker):
         worker.local_scheduler_client.log_event(event_log_key, event_log_value,
                                                 time.time())
     else:
+        if worker.mode == WORKER_MODE:
+            component_type = "worker"
+        else:
+            component_type = "driver"
+
         worker.local_scheduler_client.push_profile_events(
-            ray.ObjectID(worker.worker_id), worker.events)
+            component_type, ray.ObjectID(worker.worker_id),
+            worker.node_ip_address, worker.events)
 
     worker.events = []
 

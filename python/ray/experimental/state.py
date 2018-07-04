@@ -706,7 +706,9 @@ class GlobalState(object):
                 ray.gcs_utils.ProfileTableData.GetRootAsProfileTableData(
                     gcs_entries.Entries(i), 0))
 
+            component_type = decode(profile_table_message.ComponentType())
             component_id = binary_to_hex(profile_table_message.ComponentId())
+            node_ip_address = decode(profile_table_message.NodeIpAddress())
 
             for j in range(profile_table_message.ProfileEventsLength()):
                 profile_event_message = profile_table_message.ProfileEvents(j)
@@ -714,10 +716,8 @@ class GlobalState(object):
                 profile_event = {
                     "event_type": decode(profile_event_message.EventType()),
                     "component_id": component_id,
-                    "node_ip_address": decode(
-                        profile_event_message.NodeIpAddress()),
-                    "component_type": decode(
-                        profile_event_message.ComponentType()),
+                    "node_ip_address": node_ip_address,
+                    "component_type": component_type,
                     "start_time": profile_event_message.StartTime(),
                     "end_time": profile_event_message.EndTime(),
                     "extra_data": json.loads(
