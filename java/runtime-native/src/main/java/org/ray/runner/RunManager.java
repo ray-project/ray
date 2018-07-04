@@ -175,7 +175,8 @@ public class RunManager {
         + section + "redis_address=" + redisAddr + ";"
         + section + "working_directory=" + workDir + ";"
         + section + "logging_directory=" + params.logging_directory + ";"
-        + section + "working_directory=" + workDir;
+        + section + "working_directory=" + workDir + ";"
+        + section + "run_mode=" + params.run_mode;
 
     if (additionalConfigs.length() > 0) {
       cmd += ";" + additionalConfigs;
