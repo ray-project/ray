@@ -1,5 +1,4 @@
-from ray.rllib.evaluation.policy_evaluator import (
-    PolicyEvaluator, PolicyEvaluator)
+from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
 from ray.rllib.evaluation.interface import EvaluatorInterface
 from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
