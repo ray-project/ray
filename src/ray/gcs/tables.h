@@ -291,6 +291,13 @@ class ObjectTable : public Log<ObjectID, ObjectTableData> {
     pubsub_channel_ = TablePubsub::OBJECT;
     prefix_ = TablePrefix::OBJECT;
   };
+
+  ObjectTable(const std::vector<std::shared_ptr<RedisContext>> &contexts, AsyncGcsClient *client,
+              gcs::CommandType command_type)
+      : ObjectTable(context, client) {
+    command_type_ = command_type;
+  };
+
   virtual ~ObjectTable(){};
 };
 

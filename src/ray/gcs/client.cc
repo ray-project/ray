@@ -77,7 +77,7 @@ AsyncGcsClient::AsyncGcsClient(const ClientID &client_id, CommandType command_ty
   // This is in accord with some use of tables before Connect.
   client_table_.reset(new ClientTable(shard_contexts_, this, client_id));
   error_table_.reset(new ErrorTable(shard_contexts_, this));
-  object_table_.reset(new ObjectTable(shard_contexts_, this));
+  object_table_.reset(new ObjectTable(shard_contexts_, this, command_type));
   actor_table_.reset(new ActorTable(shard_contexts_, this));
   task_table_.reset(new TaskTable(shard_contexts_, this, command_type_));
   raylet_task_table_.reset(new raylet::TaskTable(shard_contexts_, this, command_type_));
@@ -112,7 +112,7 @@ Status AsyncGcsClient::Connect(const std::string &address, int port, bool shardi
   client_table_->AddShards(shard_contexts_);
   error_table_->AddShards(shard_contexts_);
 
-  // If sharding, add all shard contexts, distributes them to the tables
+  // If sharding, add all shard contexts, distributes them.
   if (sharding) {
     // Else, connect the rest of contexts
     std::vector<std::string> addresses;

@@ -1324,26 +1324,9 @@ void log_object_hash_mismatch_error_result_callback(ObjectID object_id,
                                                     void *user_context) {
   RAY_CHECK(!task_id.is_nil());
   PlasmaManagerState *state = (PlasmaManagerState *) user_context;
-/* Get the specification for the nondeterministic task. */
-#if !RAY_USE_NEW_GCS
+  /* Get the specification for the nondeterministic task. */
   task_table_get_task(state->db, task_id, NULL,
                       log_object_hash_mismatch_error_task_callback, state);
-#else
-  RAY_CHECK_OK(state->gcs_client.task_table().Lookup(
-      ray::JobID::nil(), task_id,
-      [user_context](gcs::AsyncGcsClient *, const TaskID &,
-                     const TaskTableDataT &t) {
-        Task *task = Task_alloc(t.task_info.data(), t.task_info.size(),
-                                static_cast<TaskStatus>(t.scheduling_state),
-                                DBClientID::from_binary(t.scheduler_id),
-                                std::vector<ObjectID>());
-        log_object_hash_mismatch_error_task_callback(task, user_context);
-        Task_free(task);
-      },
-      [](gcs::AsyncGcsClient *, const TaskID &) {
-        // TODO(pcmoritz): Handle failure.
-      }));
-#endif
 }
 
 void log_object_hash_mismatch_error_object_callback(ObjectID object_id,
