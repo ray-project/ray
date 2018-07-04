@@ -215,7 +215,7 @@ Status ReadStatusRequest(uint8_t *data,
 
 Status SendStatusReply(int sock,
                        ObjectID object_ids[],
-                       int object_status[],
+                       ObjectStatus object_status[],
                        int64_t num_objects) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message =
