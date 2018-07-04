@@ -143,7 +143,7 @@ setup(
         "six >= 1.0.0",
         "flatbuffers"
     ],
-    setup_requires=["cython == 0.27.3"],
+    setup_requires=["cython >= 0.27, < 0.28"],
     extras_require=extras,
     entry_points={"console_scripts": ["ray=ray.scripts.scripts:main"]},
     include_package_data=True,
