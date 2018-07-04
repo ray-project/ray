@@ -10,7 +10,7 @@ AsyncGcsClient::AsyncGcsClient(const ClientID &client_id, CommandType command_ty
   context_ = std::make_shared<RedisContext>();
   primary_context_ = std::make_shared<RedisContext>();
   client_table_.reset(new ClientTable(primary_context_, this, client_id));
-  object_table_.reset(new ObjectTable(context_, this));
+  object_table_.reset(new ObjectTable(context_, this, command_type));
   actor_table_.reset(new ActorTable(context_, this));
   task_table_.reset(new TaskTable(context_, this, command_type));
   raylet_task_table_.reset(new raylet::TaskTable(context_, this, command_type));
