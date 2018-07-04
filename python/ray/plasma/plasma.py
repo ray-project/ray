@@ -60,7 +60,7 @@ def start_plasma_store(plasma_store_memory=DEFAULT_PLASMA_STORE_MEMORY,
         raise Exception("If huge_pages is True, then the "
                         "plasma_directory argument must be provided.")
 
-    if isinstance(plasma_store_memory, float):
+    if not isinstance(plasma_store_memory, int):
         raise Exception("plasma_store_memory should be an interger.")
 
     plasma_store_executable = os.path.join(
