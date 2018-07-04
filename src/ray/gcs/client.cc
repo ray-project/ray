@@ -72,11 +72,11 @@ void GetRedisShards(redisContext *context, std::vector<std::string> &addresses,
 AsyncGcsClient::AsyncGcsClient(const ClientID &client_id, CommandType command_type) {
   primary_context_ = std::make_shared<RedisContext>();
   command_type_ = command_type;
-  shard_contexts_.push_back(primary_context_);
+
+  // Create tables with empty contexts first.
+  // This is in accord with some use of tables before Connect.
   client_table_.reset(new ClientTable(shard_contexts_, this, client_id));
   error_table_.reset(new ErrorTable(shard_contexts_, this));
-
-  // Create tables if not sharding.
   object_table_.reset(new ObjectTable(shard_contexts_, this));
   actor_table_.reset(new ActorTable(shard_contexts_, this));
   task_table_.reset(new TaskTable(shard_contexts_, this, command_type_));
@@ -102,9 +102,17 @@ AsyncGcsClient::AsyncGcsClient() : AsyncGcsClient(ClientID::from_random()) {}
 
 Status AsyncGcsClient::Connect(const std::string &address, int port, bool sharding) {
 
-  // If not sharding, use the primary.
+  // Primary context is responsible for client and error tables.
   RAY_RETURN_NOT_OK(primary_context_->Connect(address, port));
 
+  // If not sharding, only creating one context, connect with same address & port
+  // as the primary one. This in effect works as the primary.
+  shard_contexts_.push_back(std::make_shared<RedisContext>());
+  RAY_RETURN_NOT_OK(shard_contexts_[0]->Connect(address, port));
+  client_table_->AddShards(shard_contexts_);
+  error_table_->AddShards(shard_contexts_);
+
+  // If sharding, add all shard contexts, distributes them to the tables
   if (sharding) {
     // Else, connect the rest of contexts
     std::vector<std::string> addresses;
@@ -115,17 +123,13 @@ Status AsyncGcsClient::Connect(const std::string &address, int port, bool shardi
       shard_contexts_.push_back(std::make_shared<RedisContext>());
       RAY_RETURN_NOT_OK(shard_contexts_.back()->Connect(addresses[i], ports[i]));
     }
-    std::vector<std::shared_ptr<RedisContext>> tmp(
-      shard_contexts_.begin() + 1,
-      shard_contexts_.end()
-    );
-    object_table_->AddShards(tmp);
-    actor_table_->AddShards(tmp);
-    task_table_->AddShards(tmp);
-    raylet_task_table_->AddShards(tmp);
-    task_reconstruction_log_->AddShards(tmp);
-    heartbeat_table_->AddShards(tmp);
   }
+  object_table_->AddShards(shard_contexts_);
+  actor_table_->AddShards(shard_contexts_);
+  task_table_->AddShards(shard_contexts_);
+  raylet_task_table_->AddShards(shard_contexts_);
+  task_reconstruction_log_->AddShards(shard_contexts_);
+  heartbeat_table_->AddShards(shard_contexts_);
 
   // TODO(swang): Call the client table's Connect() method here. To do this,
   // we need to make sure that we are attached to an event loop first. This
@@ -142,10 +146,10 @@ Status Attach(plasma::EventLoop &event_loop) {
 
 Status AsyncGcsClient::Attach(boost::asio::io_service &io_service) {
 
-  // asio_async_auxiliary_client_.reset(
-  //     new RedisAsioClient(io_service, primary_context_->async_context()));
-  // asio_subscribe_auxiliary_client_.reset(
-  //     new RedisAsioClient(io_service, primary_context_->subscribe_context()));
+  asio_async_auxiliary_client_.reset(
+      new RedisAsioClient(io_service, primary_context_->async_context()));
+  asio_subscribe_auxiliary_client_.reset(
+      new RedisAsioClient(io_service, primary_context_->subscribe_context()));
 
   // Take care of sharding contexts.
   for (auto& context : shard_contexts_) {

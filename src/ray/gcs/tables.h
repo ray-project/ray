@@ -188,7 +188,6 @@ class Log : virtual public PubsubInterface<ID> {
   }
   /// The connection to the GCS.
   std::vector<std::shared_ptr<RedisContext>> shard_contexts_;
-  std::shared_ptr<RedisContext> primary_context_;
 
   /// The GCS client.
   AsyncGcsClient *client_;
@@ -439,6 +438,7 @@ Status TaskTableTestAndUpdate(AsyncGcsClient *gcs_client, const TaskID &task_id,
 
 class ErrorTable : private Log<JobID, ErrorTableData> {
  public:
+  using Log<JobID, ErrorTableData>::AddShards;
   ErrorTable(const std::vector<std::shared_ptr<RedisContext>> &contexts, AsyncGcsClient *client)
       : Log(contexts, client) {
     pubsub_channel_ = TablePubsub::ERROR_INFO;
@@ -475,6 +475,7 @@ using ConfigTable = Table<ConfigID, ConfigTableData>;
 /// to reconnect, it must connect with a different ClientID.
 class ClientTable : private Log<UniqueID, ClientTableData> {
  public:
+  using Log<UniqueID, ClientTableData>::AddShards;
   using ClientTableCallback = std::function<void(
       AsyncGcsClient *client, const ClientID &id, const ClientTableDataT &data)>;
   ClientTable(const std::vector<std::shared_ptr<RedisContext>> &contexts, AsyncGcsClient *client,
