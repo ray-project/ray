@@ -176,7 +176,10 @@ class Log : virtual public PubsubInterface<ID> {
 
   /// Add shards into available redis shard vectors
   void AddShards(std::vector<std::shared_ptr<RedisContext>>& contexts) {
-    for (auto context : contexts) {
+    if (shard_contexts_.size() > 0) {
+      return;  // Only add shards if at the first time.
+    }
+    for (std::shared_ptr<RedisContext> context : contexts) {
       shard_contexts_.push_back(context);
     }
   }

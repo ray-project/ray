@@ -111,6 +111,7 @@ Status AsyncGcsClient::Connect(const std::string &address, int port, bool shardi
   RAY_RETURN_NOT_OK(shard_contexts_[0]->Connect(address, port));
   client_table_->AddShards(shard_contexts_);
   error_table_->AddShards(shard_contexts_);
+  task_table_->AddShards(shard_contexts_);  // Until find a valid sharding.
 
   // If sharding, add all shard contexts, distributes them.
   if (sharding) {
@@ -124,9 +125,9 @@ Status AsyncGcsClient::Connect(const std::string &address, int port, bool shardi
       RAY_RETURN_NOT_OK(shard_contexts_.back()->Connect(addresses[i], ports[i]));
     }
   }
+
   object_table_->AddShards(shard_contexts_);
   actor_table_->AddShards(shard_contexts_);
-  task_table_->AddShards(shard_contexts_);
   raylet_task_table_->AddShards(shard_contexts_);
   task_reconstruction_log_->AddShards(shard_contexts_);
   heartbeat_table_->AddShards(shard_contexts_);
@@ -152,7 +153,7 @@ Status AsyncGcsClient::Attach(boost::asio::io_service &io_service) {
       new RedisAsioClient(io_service, primary_context_->subscribe_context()));
 
   // Take care of sharding contexts.
-  for (auto& context : shard_contexts_) {
+  for (std::shared_ptr<RedisContext> context : shard_contexts_) {
     shard_asio_async_clients_.emplace_back(
       new RedisAsioClient(io_service, context->async_context())
     );

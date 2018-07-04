@@ -137,7 +137,7 @@ Status Log<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
     return false;
   };
   subscribe_callback_index_ = 1;
-  for (const auto& context : shard_contexts_) {
+  for (std::shared_ptr<RedisContext> context : shard_contexts_) {
     RAY_RETURN_NOT_OK(context->SubscribeAsync(client_id, pubsub_channel_, std::move(callback)));
   }
   return ray::Status::OK();

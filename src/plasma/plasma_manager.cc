@@ -491,7 +491,7 @@ PlasmaManagerState *PlasmaManagerState_init(const char *store_socket_name,
                                            /*sharding=*/true));
     RAY_CHECK_OK(
       state->gcs_client.primary_context()->AttachToEventLoop(state->loop));
-    for (auto& context : state->gcs_client.shard_contexts()) {
+    for (auto context : state->gcs_client.shard_contexts()) {
       RAY_CHECK_OK(context->AttachToEventLoop(state->loop));
     }
 
