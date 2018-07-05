@@ -99,6 +99,12 @@ class PlasmaFutureGroup(asyncio.Future):
         self._children.append(fut)
         self._future_set.add(fut)
 
+    def extend(self, iterable):
+        """This method behaves like `list.extend`"""
+
+        for item in iterable:
+            self.append(item)
+
     def pop(self, index=0):
         fut = self._children.pop(index)
         fut.remove_done_callback(self._done_callback)
@@ -236,8 +242,7 @@ def gather(*coroutines_or_futures, loop=None, return_exceptions=False):
     """
 
     fut = PlasmaFutureGroup(loop=loop, return_exceptions=return_exceptions)
-    for f in coroutines_or_futures:
-        fut.append(f)
+    fut.extend(coroutines_or_futures)
     return fut
 
 
@@ -266,9 +271,7 @@ async def wait(*coroutines_or_futures,
             fut.halt_on_some_finished,
             n=num_returns,
         ))
-    for f in coroutines_or_futures:
-        fut.append(f)
-
+    fut.extend(coroutines_or_futures)
     return await fut.wait(timeout)
 
 

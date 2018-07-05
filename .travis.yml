@@ -188,7 +188,8 @@ script:
   - python python/ray/common/redis_module/runtest.py
   - python python/ray/plasma/test/test.py
 
-  - python -c 'import sys;exit(sys.version_info>(3,2))' || python python/ray/plasma/test/test_async.py  # python3 only
+  # Python3.5+ only. Otherwise we will get `SyntaxError` regardless of how we set the tester.
+  - python -c 'import sys;exit(sys.version_info>=(3,5))' || python -m pytest python/ray/experimental/test/async_test.py
   - python python/ray/local_scheduler/test/test.py
   - python python/ray/global_scheduler/test/test.py
 
