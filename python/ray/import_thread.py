@@ -2,13 +2,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import pickle
-import ray
 import redis
 import threading
 import traceback
 
+import ray
 from ray import ray_constants
+import ray.cloudpickle as pickle
 from ray.utils import (
     decode,
     format_error_message,
