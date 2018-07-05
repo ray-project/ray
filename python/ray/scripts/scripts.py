@@ -10,6 +10,7 @@ import subprocess
 import ray.services as services
 from ray.autoscaler.commands import (create_or_update_cluster,
                                      teardown_cluster, get_head_node_ip)
+import ray.utils
 
 
 def check_no_existing_redis_clients(node_ip_address, redis_client):
@@ -31,7 +32,7 @@ def check_no_existing_redis_clients(node_ip_address, redis_client):
         if deleted:
             continue
 
-        if info[b"node_ip_address"].decode("ascii") == node_ip_address:
+        if ray.utils.decode(info[b"node_ip_address"]) == node_ip_address:
             raise Exception("This Redis instance is already connected to "
                             "clients with this IP address.")
 
