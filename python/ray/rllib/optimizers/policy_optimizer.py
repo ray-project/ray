@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import ray
+from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.evaluation.sample_batch import MultiAgentBatch
 
 
@@ -72,6 +73,18 @@ class PolicyOptimizer(object):
             "num_steps_trained": self.num_steps_trained,
             "num_steps_sampled": self.num_steps_sampled,
         }
+
+    def collect_metrics(self):
+        """Returns evaluator and optimizer stats.
+
+        Returns:
+            res (TrainingResult): TrainingResult from evaluator metrics with
+                `info` replaced with stats from self.
+        """
+        res = collect_metrics(self.local_evaluator, self.remote_evaluators)
+        res = res._replace(info=self.stats())
+        return res
+
 
     def save(self):
         """Returns a serializable object representing the optimizer state."""
