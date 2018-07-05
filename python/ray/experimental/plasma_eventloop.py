@@ -51,9 +51,7 @@ class PlasmaObjectFuture(asyncio.Future):
 
 
 class PlasmaFutureGroup(asyncio.Future):
-    """This class groups futures for better management and advanced operation.
-
-    """
+    """This class groups futures for better management and advanced operation."""
 
     def __init__(self, loop, return_exceptions=False, keep_duplicated=True):
         """Initialize this class.
@@ -73,22 +71,22 @@ class PlasmaFutureGroup(asyncio.Future):
         self.return_exceptions = return_exceptions
         self.nfinished = 0
 
-    def append(self, coro_or_future):
+    def append(self, coroutine_or_future):
         """This method append a coroutine or a future into the group
 
         Args:
-            coro_or_future: A coroutine or a future object.
+            coroutine_or_future: A coroutine or a future object.
         """
 
-        if not asyncio.futures.isfuture(coro_or_future):
-            fut = asyncio.ensure_future(coro_or_future, loop=self._loop)
+        if not asyncio.futures.isfuture(coroutine_or_future):
+            fut = asyncio.ensure_future(coroutine_or_future, loop=self._loop)
             if self.loop is None:
                 self.loop = fut._loop
             # The caller cannot control this future, the "destroy pending task"
             # warning should not be emitted.
             fut._log_destroy_pending = False
         else:
-            fut = coro_or_future
+            fut = coroutine_or_future
 
             if self._loop is None:
                 self._loop = fut._loop
@@ -223,11 +221,11 @@ class PlasmaFutureGroup(asyncio.Future):
         return self.flush_results()
 
 
-def gather(*coros_or_futures, loop=None, return_exceptions=False):
+def gather(*coroutines_or_futures, loop=None, return_exceptions=False):
     """This method resembles `asyncio.gather`.
 
     Args:
-        *coros_or_futures: A list of coroutines or futures.
+        *coroutines_or_futures: A list of coroutines or futures.
         loop (PlasmaSelectorEventLoop): An eventloop.
         return_exceptions (bool): If true, return exceptions as results
             without raising them.
@@ -238,12 +236,12 @@ def gather(*coros_or_futures, loop=None, return_exceptions=False):
     """
 
     fut = PlasmaFutureGroup(loop=loop, return_exceptions=return_exceptions)
-    for f in coros_or_futures:
+    for f in coroutines_or_futures:
         fut.append(f)
     return fut
 
 
-async def wait(*coros_or_futures,
+async def wait(*coroutines_or_futures,
                timeout,
                num_returns,
                loop=None,
@@ -251,7 +249,7 @@ async def wait(*coros_or_futures,
     """This method resembles `asyncio.wait`.
 
     Args:
-        *coros_or_futures:  A list of coroutines or futures.
+        *coroutines_or_futures:  A list of coroutines or futures.
         timeout (float): The timeout in seconds.
         num_returns (int): The minimal number of ready object returns.
         loop (PlasmaSelectorEventLoop): An eventloop.
@@ -268,7 +266,7 @@ async def wait(*coros_or_futures,
             fut.halt_on_some_finished,
             n=num_returns,
         ))
-    for f in coros_or_futures:
+    for f in coroutines_or_futures:
         fut.append(f)
 
     return await fut.wait(timeout)
@@ -366,7 +364,7 @@ class PlasmaEpoll(PlasmaSelector):
 
         while True:
             plasma_id = self.client.get_next_notification()[0]
-            object_id = ray.local_scheduler.ObjectID(plasma_id.binary())
+            object_id = ray.ObjectID(plasma_id.binary())
             object_ids.append(object_id)
             if time.time() - start > timeout:
                 break
@@ -386,8 +384,8 @@ class PlasmaSelectorEventLoop(asyncio.BaseEventLoop):
     def _process_events(self, event_list):
         for key in event_list:
             handle = key.data
-            assert isinstance(handle, asyncio.events.Handle), \
-                "A Handle is required here"
+            assert (isinstance(handle, asyncio.events.Handle),
+                    "A Handle is required here")
             if handle._cancelled:
                 return
             assert not isinstance(handle, asyncio.events.TimerHandle)
@@ -415,13 +413,13 @@ class PlasmaSelectorEventLoop(asyncio.BaseEventLoop):
 
         future = asyncio.ensure_future(future, loop=self)
         fut = PlasmaObjectFuture(
-            loop=self, object_id=ray.local_scheduler.ObjectID(b'\0' * 20))
+            loop=self, object_id=ray.ObjectID(b'\0' * 20))
         if self.get_debug():
             print("Processing indirect future %s" % future)
 
         def callback(_future):
             object_id = _future.result()
-            assert isinstance(object_id, ray.local_scheduler.ObjectID)
+            assert isinstance(object_id, ray.ObjectID)
             if self.get_debug():
                 print("Registering indirect future...")
             reg_future = self._register_id(object_id)
@@ -449,7 +447,7 @@ class PlasmaSelectorEventLoop(asyncio.BaseEventLoop):
 
         self._check_closed()
 
-        if not isinstance(object_id, ray.local_scheduler.ObjectID):
+        if not isinstance(object_id, ray.ObjectID):
             return self._register_future(object_id)
 
         try:
