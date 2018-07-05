@@ -15,6 +15,12 @@ class KerasPolicyGraph(PolicyGraph):
         self.models = models or []
         self.targets = targets or []
 
+    def compute_actions(self, obs, *args, **kwargs):
+        state = np.array(obs)
+        policy = self.models[0].predict(state)
+        value = self.models[1].predict(state)
+        return sample(policy), [], {"vf_preds": value.flatten()}
+
     def compute_apply(self, batch, *args):
         for model, target in zip(self.models, self.targets):
             model.fit(batch["obs"], batch[target], epochs=1, verbose=0)

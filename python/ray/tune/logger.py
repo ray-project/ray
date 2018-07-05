@@ -113,7 +113,7 @@ def to_tf_values(result, path):
     values = []
     for attr, value in result.items():
         if value is not None:
-            if type(value) in [int, float]:
+            if type(value) in [int, float, np.float32, np.float64, np.int32]:
                 values.append(
                     tf.Summary.Value(
                         tag="/".join(path + [attr]), simple_value=value))
