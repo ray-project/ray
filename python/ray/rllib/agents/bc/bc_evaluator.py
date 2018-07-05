@@ -8,11 +8,11 @@ from six.moves import queue
 import ray
 from ray.rllib.agents.bc.experience_dataset import ExperienceDataset
 from ray.rllib.agents.bc.policy import BCPolicy
-from ray.rllib.evaluation.interface import PolicyEvaluator
+from ray.rllib.evaluation.interface import EvaluatorInterface
 from ray.rllib.models import ModelCatalog
 
 
-class BCEvaluator(PolicyEvaluator):
+class BCEvaluator(EvaluatorInterface):
     def __init__(self, env_creator, config, logdir):
         env = ModelCatalog.get_preprocessor_as_wrapper(env_creator(
             config["env_config"]), config["model"])

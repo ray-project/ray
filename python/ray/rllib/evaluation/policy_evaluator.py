@@ -14,7 +14,7 @@ from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.serving_env import ServingEnv
 from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
-from ray.rllib.evaluation.interface import PolicyEvaluator
+from ray.rllib.evaluation.interface import EvaluatorInterface
 from ray.rllib.evaluation.sample_batch import MultiAgentBatch, \
     DEFAULT_POLICY_ID
 from ray.rllib.evaluation.sampler import AsyncSampler, SyncSampler
@@ -25,7 +25,7 @@ from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 
 
-class CommonPolicyEvaluator(PolicyEvaluator):
+class PolicyEvaluator(EvaluatorInterface):
     """Common ``PolicyEvaluator`` implementation that wraps a ``PolicyGraph``.
 
     This class wraps a policy graph instance and an environment class to
@@ -37,7 +37,7 @@ class CommonPolicyEvaluator(PolicyEvaluator):
 
     Examples:
         >>> # Create a policy evaluator and using it to collect experiences.
-        >>> evaluator = CommonPolicyEvaluator(
+        >>> evaluator = PolicyEvaluator(
         ...   env_creator=lambda _: gym.make("CartPole-v0"),
         ...   policy_graph=PGPolicyGraph)
         >>> print(evaluator.sample())
@@ -47,7 +47,7 @@ class CommonPolicyEvaluator(PolicyEvaluator):
 
         >>> # Creating policy evaluators using optimizer_cls.make().
         >>> optimizer = SyncSamplesOptimizer.make(
-        ...   evaluator_cls=CommonPolicyEvaluator,
+        ...   evaluator_cls=PolicyEvaluator,
         ...   evaluator_args={
         ...     "env_creator": lambda _: gym.make("CartPole-v0"),
         ...     "policy_graph": PGPolicyGraph,
@@ -56,7 +56,7 @@ class CommonPolicyEvaluator(PolicyEvaluator):
         >>> for _ in range(10): optimizer.step()
 
         >>> # Creating a multi-agent policy evaluator
-        >>> evaluator = CommonPolicyEvaluator(
+        >>> evaluator = PolicyEvaluator(
         ...   env_creator=lambda _: MultiAgentTrafficGrid(num_cars=25),
         ...   policy_graphs={
         ...       # Use an ensemble of two policies for car agents

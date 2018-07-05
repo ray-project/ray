@@ -9,7 +9,7 @@ import os
 import pickle
 
 import tensorflow as tf
-from ray.rllib.evaluation.common_policy_evaluator import CommonPolicyEvaluator
+from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
 from ray.tune.registry import ENV_CREATOR, _global_registry
 from ray.tune.result import TrainingResult
 from ray.tune.trainable import Trainable
@@ -109,13 +109,13 @@ class Agent(Trainable):
         """Convenience method to return configured local evaluator."""
 
         return self._make_evaluator(
-            CommonPolicyEvaluator, env_creator, policy_graph, 0)
+            PolicyEvaluator, env_creator, policy_graph, 0)
 
     def make_remote_evaluators(
             self, env_creator, policy_graph, count, remote_args):
         """Convenience method to return a number of remote evaluators."""
 
-        cls = CommonPolicyEvaluator.as_remote(**remote_args).remote
+        cls = PolicyEvaluator.as_remote(**remote_args).remote
         return [
             self._make_evaluator(cls, env_creator, policy_graph, i+1)
             for i in range(count)]
