@@ -1,7 +1,7 @@
 Redis Memory Management (EXPERIMENTAL)
-==============================================
+======================================
 
-Ray stores metadata associated to tasks and objects in one or more Redis
+Ray stores metadata associated with tasks and objects in one or more Redis
 servers, as described in :doc:`internals-overview`.  Applications that are
 long-running or have high task/object generation rate could risk high memory
 pressure, potentially leading to out-of-memory (OOM) errors.
@@ -10,47 +10,41 @@ Here, we describe an experimental feature that transparently flushes metadata
 entries out of Redis memory.
 
 Requirements
--------------
+------------
 
 As of early July 2018, the automatic memory management feature requires building
 Ray from source.  We are planning on eliminating this step in the near future by
 releasing official wheels.
 
 Building Ray
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~
 
 First, follow `instructions to build Ray from source
 <installation.html#building-ray-from-source>`__ to install prerequisites.  After
 the prerequisites are installed, instead of doing the regular ``pip install`` as
-referenced in that document,
+referenced in that document, pass an additional special flag,
+``RAY_USE_NEW_GCS=on``:
 
 .. code-block:: bash
 
   git clone https://github.com/ray-project/ray.git
   cd ray/python
-  pip install -e . --verbose  # Add --user if you see a permission denied error.
-
-Pass these special flags instead:
-
-.. code-block:: bash
-
-  env RAY_USE_NEW_GCS=on RAY_USE_XRAY=1 pip install -e . --verbose
+  RAY_USE_NEW_GCS=on pip install -e . --verbose # Add --user if you see a permission denied error.
 
 Running Ray applications
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~
 
 At run time the environment variables ``RAY_USE_NEW_GCS=on`` and
-``RAY_USE_XRAY=1`` are also required.
+``RAY_USE_XRAY=1`` are required.
 
 .. code-block:: bash
 
-  # Export once instead of using "env" on every command.
   export RAY_USE_NEW_GCS=on
   export RAY_USE_XRAY=1
   python my_ray_script.py  # Or launch python/ipython.
 
-Flush Policy
------------------
+Activate memory flushing
+------------------------
 
 After building Ray using the method above, simply add these two lines after
 ``ray.init()`` to activate automatic memory flushing:
@@ -65,10 +59,10 @@ After building Ray using the method above, simply add these two lines after
    # My awesome Ray application logic follows.
 
 Paramaters of the flushing policy
---------------------------------------
+---------------------------------
 
 There are three `user-configurable parameters
-<https://github.com/ray-project/ray/blob/master/python/ray/experimental/gcs_flush_policy.py#L31>`_
+<https://github.com/ray-project/ray/blob/8190ff1fd0c4b82f73e2c1c0f21de6bda494718c/python/ray/experimental/gcs_flush_policy.py#L31>`_
 of the ``SimpleGcsFlushPolicy``:
 
 * ``flush_when_at_least_bytes``: Wait until this many bytes of memory usage
