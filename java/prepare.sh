@@ -1,15 +1,8 @@
 #!/bin/bash
-realpath() {
-    [[ $1 = /* ]] && echo "$1" || echo "$PWD/${1#./}"
-}
-scripts_path=`realpath $0`
-ray_dir=`dirname $scripts_path`
-ray_dir=`dirname $ray_dir`
-
-# echo "ray_dir = $ray_dir"
 
 function usage() {
     echo " -t|--target-dir <dir> local target directory for prepare a Ray cluster deployment package"
+    echo " [-s|--source-dir] <dir> local source directory to prepare a Ray cluster deployment package"
 }
 
 while [ $# -gt 0 ];do
@@ -18,6 +11,10 @@ while [ $# -gt 0 ];do
         -h|--help)
             usage
             exit 0
+            ;;
+        -s|--source-dir)
+            ray_dir=$2
+            shift 2
             ;;
         -t|--target-dir)
             t_dir=$2
@@ -31,6 +28,18 @@ while [ $# -gt 0 ];do
             ;;
     esac
 done
+
+realpath() {
+    [[ $1 = /* ]] && echo "$1" || echo "$PWD/${1#./}"
+}
+
+if [ -z $ray_dir ];then
+    scripts_path=`realpath $0`
+    ray_dir=`dirname $scripts_path`
+    ray_dir=`dirname $ray_dir`
+fi
+
+# echo "ray_dir = $ray_dir"
 
 declare -a nativeBinaries=(
     "./src/common/thirdparty/redis/src/redis-server"
@@ -77,10 +86,9 @@ function prepare_source()
 
     # prepare java components under /ray/java/lib
     mkdir -p $t_dir"/ray/java/lib/"
-    unzip -q cli/target/ray-cli-ear.zip
-    cp ray-cli/lib/* $t_dir/ray/java/lib/
-    rm -rf ray-cli
-    #cp -rf $ray_dir/java/ray-cli/lib/* $t_dir/ray/java/lib/
+    unzip -q $ray_dir/java/cli/target/ray-cli-ear.zip -d $ray_dir/java
+    cp $ray_dir/java/ray-cli/lib/* $t_dir/ray/java/lib/
+    rm -rf $ray_dir/java/ray-cli
 
     cp -rf $ray_dir/java/ray.config.ini $t_dir/ray/
 

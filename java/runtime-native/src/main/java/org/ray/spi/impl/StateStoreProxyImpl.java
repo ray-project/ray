@@ -80,7 +80,8 @@ public class StateStoreProxyImpl implements StateStoreProxy {
         return getAddressInfoHelper(nodeIpAddress);
       } catch (Exception e) {
         try {
-          RayLog.core.warn("StateStoreProxyImpl getAddressInfo", e);
+          RayLog.core.warn("Error occurred in StateStoreProxyImpl getAddressInfo, " 
+              + (numRetries - count) + " retries remaining", e);
           TimeUnit.MILLISECONDS.sleep(1000);
         } catch (InterruptedException ie) {
           RayLog.core.error("error at StateStoreProxyImpl getAddressInfo", e);

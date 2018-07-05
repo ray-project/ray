@@ -110,10 +110,14 @@ public class RunManager {
 
   public Process startDriver(String mainClass, String redisAddress, UniqueID driverId,
                              String workDir, String ip,
-                             String driverClass, String additonalClassPaths, String
-                                 additionalConfigs) {
+                             String driverClass, String driverArgs, String additonalClassPaths, 
+                             String additionalConfigs) {
     String driverConfigs =
         "ray.java.start.driver_id=" + driverId + ";ray.java.start.driver_class=" + driverClass;
+    if (driverArgs != null) {
+      driverConfigs += ";ray.java.start.driver_args=" + driverArgs;
+    }
+
     if (null != additionalConfigs) {
       additionalConfigs += ";" + driverConfigs;
     } else {

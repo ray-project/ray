@@ -45,7 +45,7 @@ public class RayCli {
     } catch (Exception e) {
       e.printStackTrace();
       RayLog.core.error("error at RayCli startRayHead", e);
-      throw new RuntimeException("Ray head node start failed, err = " + e.getMessage());
+      throw new RuntimeException("Ray head node start failed", e);
     }
 
     RayLog.core.info("Started Ray head node. Redis address: " + manager.info().redisAddress);
@@ -72,19 +72,12 @@ public class RayCli {
     PathConfig paths = new PathConfig(config);
     RayParameters params = new RayParameters(config);
 
-    // Get the node IP address if one is not provided.
-    //if (params.node_ip_address.length() == 0) {
-    //    params.node_ip_address = NetworkUtil.getIpAddress(null);
-    //}
     RayLog.core.info("Using IP address " + params.node_ip_address + " for this node.");
     RunManager manager;
     if (cmdStart.head) {
       manager = startRayHead(params, paths, config);
-    } else if (cmdStart.work) {
-      manager = startRayNode(params, paths, config);
     } else {
-      throw new RuntimeException(
-          "Ray must be started with at least a role. Seeing --help for more details.");
+      manager = startRayNode(params, paths, config);
     }
     return manager;
   }
@@ -249,6 +242,7 @@ public class RayCli {
       appDir,
       params.node_ip_address,
       cmdSubmit.className,
+      cmdSubmit.classArgs,
       additionalClassPath,
       null);
 
