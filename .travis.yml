@@ -135,7 +135,7 @@ matrix:
         - python test/tensorflow_test.py
         - python test/failure_test.py
         - python test/microbenchmarks.py
-        - python test/stress_tests.py
+        - python -m pytest test/stress_tests.py
         # - python test/component_failures_test.py
         - python test/multi_node_test.py
         - python test/recursion_test.py
@@ -200,7 +200,7 @@ script:
   - python test/tensorflow_test.py
   - python test/failure_test.py
   - python test/microbenchmarks.py
-  - python test/stress_tests.py
+  - python -m pytest test/stress_tests.py
   - python test/component_failures_test.py
   - python test/multi_node_test.py
   - python test/recursion_test.py
