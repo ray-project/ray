@@ -126,7 +126,7 @@ ray::Status NodeManager::RegisterGcs() {
   };
   RAY_RETURN_NOT_OK(gcs_client_->raylet_task_table().Subscribe(
       JobID::nil(), gcs_client_->client_table().GetLocalClientId(),
-      task_committed_callback, nullptr));
+      task_committed_callback, nullptr, nullptr));
 
   // Register a callback for actor creation notifications.
   auto actor_creation_callback = [this](
@@ -149,7 +149,8 @@ ray::Status NodeManager::RegisterGcs() {
     HeartbeatAdded(client, id, heartbeat_data);
   };
   RAY_RETURN_NOT_OK(gcs_client_->heartbeat_table().Subscribe(
-      UniqueID::nil(), UniqueID::nil(), heartbeat_added, [](gcs::AsyncGcsClient *client) {
+      UniqueID::nil(), UniqueID::nil(), heartbeat_added, nullptr,
+      [](gcs::AsyncGcsClient *client) {
         RAY_LOG(DEBUG) << "heartbeat table subscription done callback called.";
       }));
 

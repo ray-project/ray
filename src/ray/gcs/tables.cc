@@ -173,12 +173,20 @@ Status Table<ID, Data>::Lookup(const JobID &job_id, const ID &id, const Callback
 template <typename ID, typename Data>
 Status Table<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
                                   const Callback &subscribe,
+                                  const FailureCallback &failure,
                                   const SubscriptionCallback &done) {
   return Log<ID, Data>::Subscribe(
       job_id, client_id,
-      [subscribe](AsyncGcsClient *client, const ID &id, const std::vector<DataT> &data) {
-        RAY_CHECK(data.size() == 1);
-        subscribe(client, id, data[0]);
+      [subscribe, failure](AsyncGcsClient *client, const ID &id,
+                           const std::vector<DataT> &data) {
+        RAY_CHECK(data.empty() || data.size() == 1);
+        if (data.size() == 1) {
+          subscribe(client, id, data[0]);
+        } else {
+          if (failure != nullptr) {
+            failure(client, id);
+          }
+        }
       },
       done);
 }

@@ -258,8 +258,26 @@ class Table : private Log<ID, Data>,
   Status Lookup(const JobID &job_id, const ID &id, const Callback &lookup,
                 const FailureCallback &failure);
 
+  /// Subscribe to any Add operations to this table. The caller may choose to
+  /// subscribe to all Adds, or to subscribe only to keys that it requests
+  /// notifications for. This may only be called once per Table instance.
+  ///
+  /// \param job_id The ID of the job (= driver).
+  /// \param client_id The type of update to listen to. If this is nil, then a
+  /// message for each Add to the table will be received. Else, only
+  /// messages for the given client will be received. In the latter
+  /// case, the client may request notifications on specific keys in the
+  /// table via `RequestNotifications`.
+  /// \param subscribe Callback that is called on each received message. If the
+  /// callback is called with an empty vector, then there was no data at the key.
+  /// \param failure Callback that is called if the key is empty at the time
+  /// that notifications are requested.
+  /// \param done Callback that is called when subscription is complete and we
+  /// are ready to receive messages.
+  /// \return Status
   Status Subscribe(const JobID &job_id, const ClientID &client_id,
-                   const Callback &subscribe, const SubscriptionCallback &done);
+                   const Callback &subscribe, const FailureCallback &failure,
+                   const SubscriptionCallback &done);
 
  protected:
   using Log<ID, Data>::context_;
