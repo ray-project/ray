@@ -252,8 +252,8 @@ class PolicyEvaluator(EvaluatorInterface):
                 policy_map[name] = cls(obs_space, act_space, merged_conf)
         return policy_map
 
-    def make_remote_copies(self, num_copies, num_cpus=None, num_gpus=None):
-        remote_cls = CommonPolicyEvaluator.as_remote(num_cpus, num_gpus)
+    def replicate_remote(self, num_copies, num_cpus=None, num_gpus=None):
+        remote_cls = self.as_remote(num_cpus, num_gpus)
         return [remote_cls.remote(
             self.args["env_creator"],
             self.args["policy_graph"],
