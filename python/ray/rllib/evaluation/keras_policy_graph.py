@@ -3,27 +3,33 @@ from __future__ import division
 from __future__ import print_function
 
 import tensorflow as tf
+import numpy as np
 
 import ray
 from ray.rllib.evaluation.policy_graph import PolicyGraph
 
 
+sample = lambda probs: [np.random.choice(len(pr), p=pr) for pr in probs]
+
+
 class KerasPolicyGraph(PolicyGraph):
     def __init__(self, observation_space, action_space, config,
-            models=None, targets=None):
+            actor=None, critic=None, targets=None):
         PolicyGraph.__init__(self, observation_space, action_space, config)
-        self.models = models or []
+        self.actor = actor
+        self.critic = critic
+        self.models = [self.actor, self.critic]
         self.targets = targets or []
 
     def compute_actions(self, obs, *args, **kwargs):
         state = np.array(obs)
-        policy = self.models[0].predict(state)
-        value = self.models[1].predict(state)
+        policy = self.actor.predict(state)
+        value = self.critic.predict(state)
         return sample(policy), [], {"vf_preds": value.flatten()}
 
     def compute_apply(self, batch, *args):
-        for model, target in zip(self.models, self.targets):
-            model.fit(batch["obs"], batch[target], epochs=1, verbose=0)
+        self.actor.fit(batch["obs"], batch["adv_targets"], epochs=1, verbose=0)
+        self.critic.fit(batch["obs"], batch["value_targets"], epochs=1, verbose=0)
         return {}, {}
 
     def get_weights(self):
