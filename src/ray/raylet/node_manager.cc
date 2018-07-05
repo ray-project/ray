@@ -809,6 +809,9 @@ void NodeManager::AssignTask(Task &task) {
     lineage_cache_.AddReadyTask(task);
     // Mark the task as running.
     local_queues_.QueueRunningTasks(std::vector<Task>({task}));
+    // Notify the task dependency manager that we no longer need this task's
+    // object dependencies.
+    task_dependency_manager_.UnsubscribeDependencies(task_id);
   } else {
     RAY_LOG(WARNING) << "Failed to send task to worker, disconnecting client";
     // We failed to send the task to the worker, so disconnect the worker.
