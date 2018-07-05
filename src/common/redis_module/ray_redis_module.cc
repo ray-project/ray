@@ -695,6 +695,8 @@ int TableAppend_DoWrite(RedisModuleCtx *ctx,
     // Check that we actually add a new entry during the append. This is only
     // necessary since we implement the log with a sorted set, so all entries
     // must be unique, or else we will have gaps in the log.
+    // TODO(rkn): We need to get rid of this uniqueness requirement. We can
+    // easily have multiple log events with the same message.
     RAY_CHECK(flags == REDISMODULE_ZADD_ADDED) << "Appended a duplicate entry";
     return REDISMODULE_OK;
   } else {

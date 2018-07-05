@@ -24,7 +24,8 @@ def run_string_as_driver(driver_script):
     with tempfile.NamedTemporaryFile() as f:
         f.write(driver_script.encode("ascii"))
         f.flush()
-        out = subprocess.check_output([sys.executable, f.name]).decode("ascii")
+        out = ray.utils.decode(
+            subprocess.check_output([sys.executable, f.name]))
     return out
 
 

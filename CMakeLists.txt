@@ -55,6 +55,17 @@ enable_testing()
 
 include(ThirdpartyToolchain)
 
+
+# TODO(rkn): Fix all of this. This include is needed for the following
+# reason. The local scheduler depends on tables.cc which depends on
+# node_manager_generated.h which depends on gcs_generated.h. However,
+# the include statement for gcs_generated.h doesn't include the file
+# path, so we include the relevant directory here.
+set(GCS_FBS_OUTPUT_DIRECTORY
+        "${CMAKE_CURRENT_LIST_DIR}/src/ray/gcs/format")
+include_directories(${GCS_FBS_OUTPUT_DIRECTORY})
+
+
 include_directories(SYSTEM ${ARROW_INCLUDE_DIR})
 include_directories(SYSTEM ${PLASMA_INCLUDE_DIR})
 include_directories("${CMAKE_CURRENT_LIST_DIR}/src/")

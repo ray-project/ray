@@ -552,6 +552,11 @@ void NodeManager::ProcessClientMessage(
     RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(job_id, type, error_message,
                                                               timestamp));
   } break;
+  case protocol::MessageType::PushProfileEventsRequest: {
+    auto message = flatbuffers::GetRoot<ProfileTableData>(message_data);
+
+    RAY_CHECK_OK(gcs_client_->profile_table().AddProfileEventBatch(*message));
+  } break;
 
   default:
     RAY_LOG(FATAL) << "Received unexpected message type " << message_type;

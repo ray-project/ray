@@ -14,6 +14,7 @@ import ray.ray_constants as ray_constants
 import ray.signature as signature
 import ray.worker
 from ray.utils import (
+    decode,
     _random_string,
     check_oversized_pickle,
     is_cython,
@@ -292,10 +293,10 @@ def fetch_and_register_actor(actor_class_key, worker):
              "checkpoint_interval", "actor_method_names"
          ])
 
-    class_name = class_name.decode("ascii")
-    module = module.decode("ascii")
+    class_name = decode(class_name)
+    module = decode(module)
     checkpoint_interval = int(checkpoint_interval)
-    actor_method_names = json.loads(actor_method_names.decode("ascii"))
+    actor_method_names = json.loads(decode(actor_method_names))
 
     # Create a temporary actor with some temporary methods so that if the actor
     # fails to be unpickled, the temporary actor can be used (just to produce
