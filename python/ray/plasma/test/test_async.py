@@ -8,6 +8,7 @@ import math
 import unittest
 import random
 import ray
+import ray.experimental.async_api as async_api
 from ray.experimental.plasma_eventloop import PlasmaPoll, PlasmaEpoll, \
     PlasmaSelectorEventLoop
 
@@ -101,9 +102,8 @@ def wait_and_solve(inputs, node, use_delay, loop):
     # because Ray may be re-init in another test
     calc_hashflow_remote = ray.remote(calc_hashflow)
 
-    @asyncio.coroutine
-    def _wait_and_solve(a_inputs):
-        r_inputs = yield from a_inputs
+    async def _wait_and_solve(a_inputs):
+        r_inputs = await a_inputs
         delay = node.delay if use_delay else None
         return calc_hashflow_remote.remote(r_inputs, delay=delay)
 
@@ -127,9 +127,8 @@ def async_hashflow_solution_get(inputs, stages, use_delay=False):
 
 
 def async_hashflow_solution_wait(inputs, stages, use_delay=False):
-    @asyncio.coroutine
-    def return_first_item(coro):
-        result = yield from coro
+    async def return_first_item(coro):
+        result = await coro
         return result[0]
 
     with PlasmaEventLoopUseEpoll() as loop:
@@ -258,9 +257,9 @@ class TestAsyncPlasmaAPI(unittest.TestCase):
             return n
 
         tasks = [f.remote(i) for i in range(5)]
-        fut = ray.get(tasks, blocking=False)
+        fut = async_api.get(tasks)
         ray.worker.global_worker.eventloop.set_debug(True)
-        results = ray.worker.run_until_complete(fut)
+        results = async_api.run_until_complete(fut)
         self.assertListEqual(results, ray.get(tasks))
 
     def test_wait(self):
@@ -271,9 +270,9 @@ class TestAsyncPlasmaAPI(unittest.TestCase):
             return n
 
         tasks = [f.remote(i) for i in range(5)]
-        fut = ray.wait(tasks, num_returns=len(tasks), blocking=False)
+        fut = async_api.wait(tasks, num_returns=len(tasks))
         ray.worker.global_worker.eventloop.set_debug(True)
-        results, _ = ray.worker.run_until_complete(fut)
+        results, _ = async_api.run_until_complete(fut)
         self.assertEqual(set(results), set(tasks))
 
     def test_wait_timeout(self):
@@ -284,10 +283,9 @@ class TestAsyncPlasmaAPI(unittest.TestCase):
             return n
 
         tasks = [f.remote(i) for i in range(5)]
-        fut = ray.wait(
-            tasks, timeout=10, num_returns=len(tasks), blocking=False)
+        fut = async_api.wait(tasks, timeout=10, num_returns=len(tasks))
         ray.worker.global_worker.eventloop.set_debug(True)
-        results, _ = ray.worker.run_until_complete(fut)
+        results, _ = async_api.run_until_complete(fut)
         self.assertEqual(results[0], tasks[0])
 
 
@@ -319,7 +317,4 @@ class TestAsyncPlasma(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import sys
-
-    assert sys.version_info > (3, 2)
     unittest.main(verbosity=2)

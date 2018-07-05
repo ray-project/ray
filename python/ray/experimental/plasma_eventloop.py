@@ -195,8 +195,7 @@ class PlasmaFutureGroup(asyncio.Future):
             f.remove_done_callback(self._done_callback)
         return done, pending
 
-    @asyncio.coroutine
-    def wait(self, timeout=None):
+    async def wait(self, timeout=None):
         if not self._children:
             return [], []
 
@@ -216,7 +215,7 @@ class PlasmaFutureGroup(asyncio.Future):
         self.add_done_callback(_on_completion)
 
         try:
-            yield from waiter
+            await waiter
         finally:
             if timeout_handle is not None:
                 timeout_handle.cancel()
@@ -244,12 +243,11 @@ def gather(*coros_or_futures, loop=None, return_exceptions=False):
     return fut
 
 
-@asyncio.coroutine
-def wait(*coros_or_futures,
-         timeout,
-         num_returns,
-         loop=None,
-         return_exceptions=False):
+async def wait(*coros_or_futures,
+               timeout,
+               num_returns,
+               loop=None,
+               return_exceptions=False):
     """This method resembles `asyncio.wait`.
 
     Args:
@@ -273,7 +271,7 @@ def wait(*coros_or_futures,
     for f in coros_or_futures:
         fut.append(f)
 
-    return (yield from fut.wait(timeout))
+    return await fut.wait(timeout)
 
 
 class PlasmaSelector(selectors.BaseSelector):
@@ -490,29 +488,25 @@ class PlasmaSelectorEventLoop(asyncio.BaseEventLoop):
             if f.cancelled():
                 self._selector.unregister(f)
 
-    @asyncio.coroutine
-    def get(self, object_ids):
+    async def get(self, object_ids):
         if not isinstance(object_ids, list):
-            ready_ids = yield from self._register_id(object_ids)
+            ready_ids = await self._register_id(object_ids)
         else:
-            ready_ids = yield from gather(
+            ready_ids = await gather(
                 *[self._register_id(oid) for oid in object_ids], loop=self)
 
         return ray.get(ready_ids, worker=self._worker)
 
-    @asyncio.coroutine
-    def wait(self,
-             object_ids,
-             num_returns=1,
-             timeout=None,
-             return_exact_num=True):
+    async def wait(self,
+                   object_ids,
+                   num_returns=1,
+                   timeout=None,
+                   return_exact_num=True):
         futures = [self._register_id(oid) for oid in object_ids]
-        _done, _pending = yield from wait(
-            *futures,
-            timeout=timeout,
-            num_returns=num_returns,
-            loop=self,
-        )
+        _done, _pending = await wait(*futures,
+                                     timeout=timeout,
+                                     num_returns=num_returns,
+                                     loop=self)
 
         self._release(*_pending)
         done = [fut.object_id for fut in _done]
