@@ -63,7 +63,7 @@ def compute_targets(rollout, action_space, gamma=0.9):
         action_space (gym.Space): Dimensions of the advantage targets.
         gamma (float): Discount factor.
     """
-    rollout = compute_advantages(rollout, gamma=self.gamma, lambda_=0.0)
+    rollout = compute_advantages(rollout, gamma=gamma, lambda_=1.0)
     rollout["adv_targets"] = np.zeros((rollout.count, action_space.n))
     rollout["adv_targets"][np.arange(rollout.count), rollout["actions"]] = rollout["advantages"]
     rollout["value_targets"] = rollout["rewards"].copy()
