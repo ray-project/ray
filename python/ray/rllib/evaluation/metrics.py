@@ -31,9 +31,9 @@ def collect_metrics(local_evaluator, remote_evaluators=[]):
     else:
         min_reward = float('nan')
         max_reward = float('nan')
-    avg_reward = np.mean(episode_rewards)
-    avg_length = np.mean(episode_lengths)
-    timesteps = np.sum(episode_lengths)
+    avg_reward = float(np.mean(episode_rewards))
+    avg_length = float(np.mean(episode_lengths))
+    timesteps = int(np.sum(episode_lengths))
 
     for policy_id, rewards in policy_rewards.copy().items():
         policy_rewards[policy_id] = np.mean(rewards)
