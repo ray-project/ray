@@ -23,7 +23,7 @@
         <dependency>
             <groupId>org.ray</groupId>
             <artifactId>ray-common</artifactId>
-            <version>1.0</version>
+            <version>${project.version}</version>
         </dependency>
 
         <!-- https://mvnrepository.com/artifact/commons-cli/commons-cli -->
