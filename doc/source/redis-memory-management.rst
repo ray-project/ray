@@ -29,7 +29,7 @@ referenced in that document, pass an additional special flag,
 
   git clone https://github.com/ray-project/ray.git
   cd ray/python
-  RAY_USE_NEW_GCS=on pip install -e . --verbose # Add --user if you see a permission denied error.
+  RAY_USE_NEW_GCS=on pip install -e . --verbose  # Add --user if you see a permission denied error.
 
 Running Ray applications
 ~~~~~~~~~~~~~~~~~~~~~~~~
