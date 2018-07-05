@@ -7,7 +7,35 @@ from ray.rllib.optimizers.sync_replay_optimizer import SyncReplayOptimizer
 from ray.rllib.optimizers.multi_gpu_optimizer import LocalMultiGPUOptimizer
 
 
+def run_optimizer(optimizer, num_steps, tag=""):
+    from ray.tune.logger import UnifiedLogger
+    import os
+    import shutil
+    path = os.path.join("/tmp/demo/", tag)
+    try:
+        shutil.rmtree(path)
+    except OSError:
+        print("could not remove path")
+    try:
+        os.makedirs(path)
+    except OSError:
+        print("could not make path")
+    logger = UnifiedLogger({}, path, verbose=False)
+    timesteps_total = 0
+    for itr in range(num_steps):
+        optimizer.step()
+        result = optimizer.collect_metrics()
+        timesteps_total += result.timesteps_this_iter
+        result = result._replace(
+            training_iteration=itr,
+            timesteps_total=timesteps_total)
+        logger.on_result(result)
+    logger.close()
+        # print(result)
+
+
 __all__ = [
     "PolicyOptimizer", "AsyncSamplesOptimizer", "AsyncGradientsOptimizer",
-    "SyncSamplesOptimizer", "SyncReplayOptimizer", "LocalMultiGPUOptimizer"
+    "SyncSamplesOptimizer", "SyncReplayOptimizer", "LocalMultiGPUOptimizer",
+    "run_optimizer"
 ]
