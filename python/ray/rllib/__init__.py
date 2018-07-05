@@ -9,8 +9,7 @@ from ray.tune.registry import register_trainable
 from ray.rllib.env import (
     AsyncVectorEnv, MultiAgentEnv, ServingEnv, VectorEnv, EnvContext)
 from ray.rllib.evaluation import (
-    EvaluatorInterface, CommonPolicyEvaluator, PolicyEvaluator,
-    PolicyGraph, TFPolicyGraph,
+    PolicyEvaluator, CommonPolicyEvaluator, PolicyGraph, TFPolicyGraph,
     TorchPolicyGraph, SampleBatch, MultiAgentBatch, SampleBatchBuilder,
     MultiAgentSampleBatchBuilder, SyncSampler, AsyncSampler,
     compute_advantages, collect_metrics)
@@ -40,8 +39,7 @@ __all__ = [
     "AsyncVectorEnv", "MultiAgentEnv", "ServingEnv", "VectorEnv", "EnvContext",
 
     # rllib.evaluation
-    "EvaluatorInterface", "CommonPolicyEvaluator", "PolicyEvaluator",
-    "PolicyGraph", "TFPolicyGraph",
+    "PolicyEvaluator", "CommonPolicyEvaluator", "PolicyGraph", "TFPolicyGraph",
     "TorchPolicyGraph", "SampleBatch", "MultiAgentBatch", "SampleBatchBuilder",
     "MultiAgentSampleBatchBuilder", "SyncSampler", "AsyncSampler",
     "compute_advantages", "collect_metrics",

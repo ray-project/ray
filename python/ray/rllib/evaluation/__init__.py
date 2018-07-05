@@ -1,6 +1,5 @@
-from ray.rllib.evaluation.common_policy_evaluator import (
-    CommonPolicyEvaluator, PolicyEvaluator)
-from ray.rllib.evaluation.interface import EvaluatorInterface
+from ray.rllib.evaluation.common_policy_evaluator import CommonPolicyEvaluator
+from ray.rllib.evaluation.interface import PolicyEvaluator
 from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 from ray.rllib.evaluation.torch_policy_graph import TorchPolicyGraph
@@ -11,8 +10,7 @@ from ray.rllib.evaluation.postprocessing import compute_advantages
 from ray.rllib.evaluation.metrics import collect_metrics
 
 __all__ = [
-    "EvaluatorInterface", "CommonPolicyEvaluator", "PolicyEvaluator",
-    "PolicyGraph", "TFPolicyGraph",
+    "PolicyEvaluator", "CommonPolicyEvaluator", "PolicyGraph", "TFPolicyGraph",
     "TorchPolicyGraph", "SampleBatch", "MultiAgentBatch", "SampleBatchBuilder",
     "MultiAgentSampleBatchBuilder", "SyncSampler", "AsyncSampler",
     "compute_advantages", "collect_metrics"
