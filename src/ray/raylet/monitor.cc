@@ -31,8 +31,8 @@ void Monitor::Start() {
                                          const HeartbeatTableDataT &heartbeat_data) {
     HandleHeartbeat(id);
   };
-  RAY_CHECK_OK(gcs_client_.heartbeat_table().Subscribe(UniqueID::nil(), UniqueID::nil(),
-                                                       heartbeat_callback, nullptr));
+  RAY_CHECK_OK(gcs_client_.heartbeat_table().Subscribe(
+      UniqueID::nil(), UniqueID::nil(), heartbeat_callback, nullptr, nullptr));
   Tick();
 }
 
