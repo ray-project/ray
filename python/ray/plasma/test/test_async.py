@@ -8,7 +8,7 @@ import math
 import unittest
 import random
 import ray
-from ray.plasma.plasma_eventloop import PlasmaPoll, PlasmaEpoll, \
+from ray.experimental.plasma_eventloop import PlasmaPoll, PlasmaEpoll, \
     PlasmaSelectorEventLoop
 
 HashFlowNode = namedtuple('HashFlowNode', ['parents', 'delay', 'result'])
