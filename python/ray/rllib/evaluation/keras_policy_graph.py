@@ -14,12 +14,11 @@ sample = lambda probs: [np.random.choice(len(pr), p=pr) for pr in probs]
 
 class KerasPolicyGraph(PolicyGraph):
     def __init__(self, observation_space, action_space, config,
-            actor=None, critic=None, targets=None):
+            actor=None, critic=None):
         PolicyGraph.__init__(self, observation_space, action_space, config)
         self.actor = actor
         self.critic = critic
         self.models = [self.actor, self.critic]
-        self.targets = targets or []
 
     def compute_actions(self, obs, *args, **kwargs):
         state = np.array(obs)
