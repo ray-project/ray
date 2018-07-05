@@ -31,7 +31,7 @@ import ray.signature
 import ray.local_scheduler
 import ray.plasma
 import ray.ray_constants as ray_constants
-from ray.import_thread import ImportThread
+from ray import import_thread
 from ray.utils import (
     binary_to_hex,
     check_oversized_pickle,
@@ -2161,7 +2161,7 @@ def connect(info,
     _initialize_serialization()
 
     # Start the import thread
-    ImportThread(worker, mode).start()
+    import_thread.ImportThread(worker, mode).start()
 
     # If this is a driver running in SCRIPT_MODE, start a thread to print error
     # messages asynchronously in the background. Ideally the scheduler would

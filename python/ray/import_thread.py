@@ -2,18 +2,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import redis
 import threading
 import traceback
 
+import redis
+
 import ray
 from ray import ray_constants
-import ray.cloudpickle as pickle
-from ray.utils import (
-    decode,
-    format_error_message,
-    push_error_to_driver,
-)
+from ray import cloudpickle as pickle
+from ray import utils
 
 
 class ImportThread(object):
@@ -138,9 +135,9 @@ class ImportThread(object):
              "module", "resources", "max_calls"
          ])
         function_id = ray.ObjectID(function_id_str)
-        function_name = decode(function_name)
+        function_name = utils.decode(function_name)
         max_calls = int(max_calls)
-        module = decode(module)
+        module = utils.decode(module)
 
         # This is a placeholder in case the function can't be unpickled. This
         # will be overwritten if the function is successfully registered.
@@ -157,9 +154,9 @@ class ImportThread(object):
         except Exception:
             # If an exception was thrown when the remote function was imported,
             # we record the traceback and notify the scheduler of the failure.
-            traceback_str = format_error_message(traceback.format_exc())
+            traceback_str = utils.format_error_message(traceback.format_exc())
             # Log the error message.
-            push_error_to_driver(
+            utils.push_error_to_driver(
                 self.worker,
                 ray_constants.REGISTER_REMOTE_FUNCTION_PUSH_ERROR,
                 traceback_str,
@@ -204,7 +201,7 @@ class ImportThread(object):
             # Log the error message.
             name = function.__name__ if ("function" in locals() and hasattr(
                 function, "__name__")) else ""
-            push_error_to_driver(
+            utils.push_error_to_driver(
                 self.worker,
                 ray_constants.FUNCTION_TO_RUN_PUSH_ERROR,
                 traceback_str,
