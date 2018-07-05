@@ -25,10 +25,11 @@ class Logger(object):
     multiple formats (TensorBoard, rllab/viskit, plain json) at once.
     """
 
-    def __init__(self, config, logdir, upload_uri=None):
+    def __init__(self, config, logdir, upload_uri=None, verbose=True):
         self.config = config
         self.logdir = logdir
         self.uri = upload_uri
+        self.verbose = verbose
         self._init()
 
     def _init(self):
@@ -62,7 +63,8 @@ class UnifiedLogger(Logger):
                 print("TF not installed - cannot log with {}...".format(cls))
                 continue
             self._loggers.append(cls(self.config, self.logdir, self.uri))
-        self._log_syncer = get_syncer(self.logdir, self.uri)
+        self._log_syncer = get_syncer(
+            self.logdir, self.uri, verbose=self.verbose)
 
     def on_result(self, result):
         for logger in self._loggers:

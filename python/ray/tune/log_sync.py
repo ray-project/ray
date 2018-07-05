@@ -25,7 +25,7 @@ GCS_PREFIX = "gs://"
 ALLOWED_REMOTE_PREFIXES = (S3_PREFIX, GCS_PREFIX)
 
 
-def get_syncer(local_dir, remote_dir=None):
+def get_syncer(local_dir, remote_dir=None, verbose=True):
     if remote_dir:
         if not any(
                 remote_dir.startswith(prefix)
@@ -50,7 +50,7 @@ def get_syncer(local_dir, remote_dir=None):
 
     key = (local_dir, remote_dir)
     if key not in _syncers:
-        _syncers[key] = _LogSyncer(local_dir, remote_dir)
+        _syncers[key] = _LogSyncer(local_dir, remote_dir, verbose)
 
     return _syncers[key]
 
@@ -66,14 +66,17 @@ class _LogSyncer(object):
     This syncs files from workers to the local node, and optionally also from
     the local node to a remote directory (e.g. S3)."""
 
-    def __init__(self, local_dir, remote_dir=None):
+    def __init__(self, local_dir, remote_dir=None, verbose=True):
         self.local_dir = local_dir
         self.remote_dir = remote_dir
         self.last_sync_time = 0
         self.sync_process = None
         self.local_ip = ray.services.get_node_ip_address()
         self.worker_ip = None
-        print("Created LogSyncer for {} -> {}".format(local_dir, remote_dir))
+        self.verbose = verbose
+        if self.verbose:
+            print("Created LogSyncer for {} -> {}".format(
+                local_dir, remote_dir))
 
     def set_worker_ip(self, worker_ip):
         """Set the worker ip to sync logs from."""
@@ -87,8 +90,9 @@ class _LogSyncer(object):
     def sync_now(self, force=False):
         self.last_sync_time = time.time()
         if not self.worker_ip:
-            print("Worker ip unknown, skipping log sync for {}".format(
-                self.local_dir))
+            if self.verbose:
+                print("Worker ip unknown, skipping log sync for {}".format(
+                    self.local_dir))
             return
 
         if self.worker_ip == self.local_ip:
@@ -136,7 +140,8 @@ class _LogSyncer(object):
                 if final_cmd:
                     final_cmd += " && "
                 final_cmd += local_to_remote_sync_cmd
-            print("Running log sync: {}".format(final_cmd))
+            if self.verbose:
+                print("Running log sync: {}".format(final_cmd))
             self.sync_process = subprocess.Popen(final_cmd, shell=True)
 
     def wait(self):
