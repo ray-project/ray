@@ -6,22 +6,14 @@ from __future__ import print_function
 # This file is imported from the tune module in order to register RLlib agents.
 from ray.tune.registry import register_trainable
 
-from ray.rllib.env import (
-    AsyncVectorEnv, MultiAgentEnv, ServingEnv, VectorEnv, EnvContext)
-from ray.rllib.evaluation import (
-    EvaluatorInterface, PolicyEvaluator, PolicyGraph, TFPolicyGraph,
-    TorchPolicyGraph, SampleBatch, MultiAgentBatch, SampleBatchBuilder,
-    MultiAgentSampleBatchBuilder, SyncSampler, AsyncSampler,
-    compute_advantages, collect_metrics)
-from ray.rllib.models import (
-    ActionDistribution, Categorical,
-    DiagGaussian, Deterministic, ModelCatalog, Model,
-    Preprocessor, FullyConnectedNetwork, LSTM)
-from ray.rllib.optimizers import (
-    PolicyOptimizer, AsyncSamplesOptimizer, AsyncGradientsOptimizer,
-    SyncSamplesOptimizer, SyncReplayOptimizer, LocalMultiGPUOptimizer)
-from ray.rllib.utils import (
-    Filter, FilterManager, PolicyClient, PolicyServer)
+from ray.rllib.evaluation.policy_graph import PolicyGraph
+from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
+from ray.rllib.env.async_vector_env import AsyncVectorEnv
+from ray.rllib.env.multi_agent_env import MultiAgentEnv
+from ray.rllib.env.vector_env import VectorEnv
+from ray.rllib.env.serving_env import ServingEnv
+from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
+from ray.rllib.evaluation.sample_batch import SampleBatch
 
 
 def _register_all():
@@ -35,24 +27,6 @@ def _register_all():
 _register_all()
 
 __all__ = [
-    # rllib.env
-    "AsyncVectorEnv", "MultiAgentEnv", "ServingEnv", "VectorEnv", "EnvContext",
-
-    # rllib.evaluation
-    "EvaluatorInterface", "PolicyEvaluator", "PolicyGraph", "TFPolicyGraph",
-    "TorchPolicyGraph", "SampleBatch", "MultiAgentBatch", "SampleBatchBuilder",
-    "MultiAgentSampleBatchBuilder", "SyncSampler", "AsyncSampler",
-    "compute_advantages", "collect_metrics",
-
-    # rllib.models
-    "ActionDistribution", "ActionDistribution", "Categorical",
-    "DiagGaussian", "Deterministic", "ModelCatalog", "Model",
-    "Preprocessor", "FullyConnectedNetwork", "LSTM",
-
-    # rllib.optimizers
-    "PolicyOptimizer", "AsyncSamplesOptimizer", "AsyncGradientsOptimizer",
-    "SyncSamplesOptimizer", "SyncReplayOptimizer", "LocalMultiGPUOptimizer",
-
-    # rllib.utils
-    "Filter", "FilterManager", "PolicyClient", "PolicyServer"
+    "PolicyGraph", "TFPolicyGraph", "PolicyEvaluator", "SampleBatch",
+    "AsyncVectorEnv", "MultiAgentEnv", "VectorEnv", "ServingEnv",
 ]
