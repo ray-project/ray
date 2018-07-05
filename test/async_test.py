@@ -290,6 +290,11 @@ class TestAsyncPlasmaAPI(unittest.TestCase):
 
 
 class TestAsyncPlasma(unittest.TestCase):
+    """This test creates a complex pseudo-random network to compute sha1sums.
+    Any violence of concurrency in the async processing will change the result.
+    """
+
+    # It is the correct result of this test (in the form of sha1sum).
     answer = b'U\x16\xc5c\x0fa\xdcx\x03\x1e\xf7\xd8&{\xece' \
              b'\x85-.O\x12\xed\x11[\xdc\xe6\xcc\xdf\x90\x91\xc7\xf7'
 

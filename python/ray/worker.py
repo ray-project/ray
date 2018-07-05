@@ -201,8 +201,6 @@ class Worker(object):
             that connect has been called already.
         cached_functions_to_run (List): A list of functions to run on all of
             the workers that should be exported as soon as connect is called.
-        eventloop (plasma.PlasmaSelectorEventLoop): A eventloop for async
-            operations.
     """
 
     def __init__(self):
