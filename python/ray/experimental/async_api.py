@@ -8,8 +8,15 @@ from ray.experimental.plasma_eventloop import (PlasmaEpoll, PlasmaPoll,
 
 global_worker = ray.worker.global_worker
 
-selector = PlasmaEpoll(global_worker)  # You could use `PlasmaPoll` instead.
-eventloop = PlasmaSelectorEventLoop(selector, worker=global_worker)
+eventloop = None
+
+
+def _init_eventloop():
+    global eventloop
+    if eventloop is None:
+        selector = PlasmaEpoll(
+            global_worker)  # You could use `PlasmaPoll` instead.
+        eventloop = PlasmaSelectorEventLoop(selector, worker=global_worker)
 
 
 def run_until_complete(future):
@@ -34,6 +41,8 @@ async def get(object_ids, worker=global_worker):
     """
 
     worker.check_connected()
+    if eventloop is None:
+        _init_eventloop()
     return await eventloop.get(object_ids)
 
 
@@ -78,6 +87,8 @@ async def wait(object_ids,
             type(object_ids)))
 
     worker.check_connected()
+    if eventloop is None:
+        _init_eventloop()
 
     # TODO(rkn): This is a temporary workaround for
     # https://github.com/ray-project/ray/issues/997. However, it should be

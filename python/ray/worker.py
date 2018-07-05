@@ -1781,9 +1781,6 @@ def shutdown(worker=global_worker):
             else:
                 assert len(processes) == 0
 
-    if worker.eventloop is not None:
-        worker.eventloop.close()
-        worker.eventloop = None
     worker.set_mode(None)
 
 
