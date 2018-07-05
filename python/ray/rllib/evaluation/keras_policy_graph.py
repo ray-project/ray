@@ -19,3 +19,9 @@ class KerasPolicyGraph(PolicyGraph):
         for model, target in zip(self.models, self.targets):
             model.fit(batch["obs"], batch[target], epochs=1, verbose=0)
         return {}, {}
+
+    def get_weights(self):
+        return [model.get_weights() for model in self.models]
+
+    def set_weights(self, weights):
+        return [model.set_weights(w) for model, w in zip(self.models, weights)]
