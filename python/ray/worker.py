@@ -1814,6 +1814,10 @@ sys.excepthook = custom_excepthook
 
 def _flush_profile_events(worker):
     """Drivers run this as a thread to flush profile data in the background."""
+    # Note(rkn): This is run on a background thread in the driver. It uses the
+    # local scheduler client. This should be ok because it doesn't read from
+    # the local scheduler client and we have the GIL here. However, if either
+    # of those things changes, then we could run into issues.
     try:
         while True:
             time.sleep(1)

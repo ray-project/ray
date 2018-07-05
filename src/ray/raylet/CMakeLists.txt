@@ -17,7 +17,6 @@ add_custom_command(
         COMMENT "Running flatc compiler on ${NODE_MANAGER_FBS_SRC}"
         VERBATIM)
 
-#add_custom_target(gen_node_manager_fbs)
 add_custom_target(gen_node_manager_fbs DEPENDS ${NODE_MANAGER_FBS_OUTPUT_FILES})
 
 # Generate Python bindings for the flatbuffers objects.
