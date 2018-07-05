@@ -2,10 +2,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import pickle
 import ray
 import redis
 import threading
-import pickle
 import traceback
 
 from ray import ray_constants
