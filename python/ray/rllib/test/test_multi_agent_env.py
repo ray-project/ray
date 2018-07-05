@@ -12,9 +12,9 @@ from ray.rllib.agents.pg.pg_policy_graph import PGPolicyGraph
 from ray.rllib.agents.dqn.dqn_policy_graph import DQNPolicyGraph
 from ray.rllib.optimizers import SyncSamplesOptimizer, \
     SyncReplayOptimizer, AsyncGradientsOptimizer
-from ray.rllib.test.test_policy_evaluator import MockEnv, MockEnv2, \
+from ray.rllib.test.test_common_policy_evaluator import MockEnv, MockEnv2, \
     MockPolicyGraph
-from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
+from ray.rllib.evaluation.common_policy_evaluator import CommonPolicyEvaluator
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.env.async_vector_env import _MultiAgentEnvToAsync
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
@@ -205,7 +205,7 @@ class TestMultiAgentEnv(unittest.TestCase):
     def testMultiAgentSample(self):
         act_space = gym.spaces.Discrete(2)
         obs_space = gym.spaces.Discrete(2)
-        ev = PolicyEvaluator(
+        ev = CommonPolicyEvaluator(
             env_creator=lambda _: BasicMultiAgent(5),
             policy_graph={
                 "p0": (MockPolicyGraph, obs_space, act_space, {}),
@@ -224,7 +224,7 @@ class TestMultiAgentEnv(unittest.TestCase):
     def testMultiAgentSampleRoundRobin(self):
         act_space = gym.spaces.Discrete(2)
         obs_space = gym.spaces.Discrete(2)
-        ev = PolicyEvaluator(
+        ev = CommonPolicyEvaluator(
             env_creator=lambda _: RoundRobinMultiAgent(5, increment_obs=True),
             policy_graph={
                 "p0": (MockPolicyGraph, obs_space, act_space, {}),
@@ -283,13 +283,13 @@ class TestMultiAgentEnv(unittest.TestCase):
                 "p1": (PGPolicyGraph, obs_space, act_space, {}),
                 "p2": (DQNPolicyGraph, obs_space, act_space, dqn_config),
             }
-        ev = PolicyEvaluator(
+        ev = CommonPolicyEvaluator(
             env_creator=lambda _: MultiCartpole(n),
             policy_graph=policies,
             policy_mapping_fn=lambda agent_id: ["p1", "p2"][agent_id % 2],
             batch_steps=50)
         if optimizer_cls == AsyncGradientsOptimizer:
-            remote_evs = [PolicyEvaluator.as_remote().remote(
+            remote_evs = [CommonPolicyEvaluator.as_remote().remote(
                 env_creator=lambda _: MultiCartpole(n),
                 policy_graph=policies,
                 policy_mapping_fn=lambda agent_id: ["p1", "p2"][agent_id % 2],
@@ -333,7 +333,7 @@ class TestMultiAgentEnv(unittest.TestCase):
             policies["pg_{}".format(i)] = (
                 PGPolicyGraph, obs_space, act_space, {})
         policy_ids = list(policies.keys())
-        ev = PolicyEvaluator(
+        ev = CommonPolicyEvaluator(
             env_creator=lambda _: MultiCartpole(n),
             policy_graph=policies,
             policy_mapping_fn=lambda agent_id: random.choice(policy_ids),

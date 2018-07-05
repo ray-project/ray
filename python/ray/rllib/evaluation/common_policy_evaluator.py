@@ -25,7 +25,7 @@ from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 
 
-class PolicyEvaluator(EvaluatorInterface):
+class CommonPolicyEvaluator(EvaluatorInterface):
     """Common ``PolicyEvaluator`` implementation that wraps a ``PolicyGraph``.
 
     This class wraps a policy graph instance and an environment class to
@@ -37,7 +37,7 @@ class PolicyEvaluator(EvaluatorInterface):
 
     Examples:
         >>> # Create a policy evaluator and using it to collect experiences.
-        >>> evaluator = PolicyEvaluator(
+        >>> evaluator = CommonPolicyEvaluator(
         ...   env_creator=lambda _: gym.make("CartPole-v0"),
         ...   policy_graph=PGPolicyGraph)
         >>> print(evaluator.sample())
@@ -47,7 +47,7 @@ class PolicyEvaluator(EvaluatorInterface):
 
         >>> # Creating policy evaluators using optimizer_cls.make().
         >>> optimizer = SyncSamplesOptimizer.make(
-        ...   evaluator_cls=PolicyEvaluator,
+        ...   evaluator_cls=CommonPolicyEvaluator,
         ...   evaluator_args={
         ...     "env_creator": lambda _: gym.make("CartPole-v0"),
         ...     "policy_graph": PGPolicyGraph,
@@ -56,7 +56,7 @@ class PolicyEvaluator(EvaluatorInterface):
         >>> for _ in range(10): optimizer.step()
 
         >>> # Creating a multi-agent policy evaluator
-        >>> evaluator = PolicyEvaluator(
+        >>> evaluator = CommonPolicyEvaluator(
         ...   env_creator=lambda _: MultiAgentTrafficGrid(num_cars=25),
         ...   policy_graphs={
         ...       # Use an ensemble of two policies for car agents
@@ -436,3 +436,6 @@ def _has_tensorflow_graph(policy_dict):
         if issubclass(policy, TFPolicyGraph):
             return True
     return False
+
+
+PolicyEvaluator = CommonPolicyEvaluator

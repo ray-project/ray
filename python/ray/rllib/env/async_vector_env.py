@@ -16,7 +16,7 @@ class AsyncVectorEnv(object):
     can be sent back via send_actions().
 
     All other env types can be adapted to AsyncVectorEnv. RLlib handles these
-    conversions internally in PolicyEvaluator, for example:
+    conversions internally in CommonPolicyEvaluator, for example:
 
         gym.Env => rllib.VectorEnv => rllib.AsyncVectorEnv
         rllib.MultiAgentEnv => rllib.AsyncVectorEnv
