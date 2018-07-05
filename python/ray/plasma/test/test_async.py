@@ -9,8 +9,8 @@ import unittest
 import random
 import ray
 import ray.experimental.async_api as async_api
-from ray.experimental.plasma_eventloop import PlasmaPoll, PlasmaEpoll, \
-    PlasmaSelectorEventLoop
+from ray.experimental.plasma_eventloop import (PlasmaPoll, PlasmaEpoll,
+                                               PlasmaSelectorEventLoop)
 
 HashFlowNode = namedtuple('HashFlowNode', ['parents', 'delay', 'result'])
 
