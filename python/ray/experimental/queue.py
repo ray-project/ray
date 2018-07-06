@@ -19,28 +19,34 @@ class Full(Exception):
 class Queue(object):
     """Queue implementation on Ray.
 
-    Todo:
-        - not_empty
-        - not_full
-        - join
-        - mutex
-        - task_done
-        - unfinished_taskss
+    Args:
+        maxsize (int): maximum size of the queue. If zero, size is unboundend.
     """
     def __init__(self, maxsize=0):
         self.maxsize = maxsize
         self.actor = _QueueActor.remote(maxsize)
 
     def qsize(self):
+        """The size of the queue.
+        """
         return ray.get(self.actor.qsize.remote())
 
     def empty(self):
+        """Whether the queue is empty.
+        """
         return ray.get(self.actor.qsize.remote())
 
     def full(self):
+        """Whether the queue is full.
+        """
         return ray.get(self.actor.full.remote())
 
     def put(self, item, block=True, timeout=None):
+        """Adds an item to the queue.
+
+        Uses polling if block=True, so there is no guarantee of order if
+        multiple producers put to the same full queue.
+        """
         if self.maxsize <= 0:
             self.actor.put.remote(item)
         elif not block:
@@ -48,7 +54,7 @@ class Queue(object):
                 raise Full
         elif timeout is None:
             # Polling
-            # TODO: implement with not_full condition variable
+            # Use a not_full condition variable or promise?
             while not ray.get(self.actor.put.remote(item)):
                 # Consider adding time.sleep here
                 pass
@@ -57,7 +63,7 @@ class Queue(object):
         else:
             endtime = time.time() + timeout
             # Polling
-            # TODO: implement with not_full condition variable
+            # Use a condition variable or switch to promise?
             success = False
             while not success and time.time() < endtime:
                 success = ray.get(self.actor.put.remote(item))
@@ -65,13 +71,18 @@ class Queue(object):
                 raise Full
 
     def get(self, block=True, timeout=None):
+        """Gets an item from the queue.
+
+        Uses polling if block=True, so there is no guarantee of order if
+        multiple consumers get from the same empty queue.
+        """
         if not block:
             success, item = ray.get(self.actor.get.remote())
             if not success:
                 raise Empty
         elif timeout is None:
             # Polling
-            # TODO: implement with not_empty condition variable
+            # Use a not_empty condition variable or return a promise?
             success, item = ray.get(self.actor.get.remote())
             while not success:
                 # Consider adding time.sleep here
@@ -81,7 +92,7 @@ class Queue(object):
         else:
             endtime = time.time() + timeout
             # Polling
-            # TODO: implement with not_full condition variable
+            # Use a not_full condition variable or return a promise?
             success = False
             while not success and time.time() < endtime:
                 success, item = ray.get(self.actor.get.remote())
@@ -90,9 +101,19 @@ class Queue(object):
         return item
 
     def put_nowait(self, item):
+        """Equivalent to put(item, block=False).
+
+        Raises:
+            Full if the queue is full.
+        """
         return self.put(block=False)
 
     def get_nowait(self):
+        """Equivalent to get(item, block=False).
+
+        Raises:
+            Empty if the queue is empty.
+        """
         return self.get(block=False)
 
 
