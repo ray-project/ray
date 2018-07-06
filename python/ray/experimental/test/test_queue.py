@@ -26,7 +26,7 @@ class TestQueue(unittest.TestCase):
     def test_simple_use(self):
         q = Queue()
 
-        items = list(range(10)) 
+        items = list(range(10))
 
         for item in items:
             q.put(item)
@@ -34,12 +34,12 @@ class TestQueue(unittest.TestCase):
         for item in items:
             self.assertEqual(item, q.get())
 
-
     def test_async(self):
         q = Queue()
 
         items = set(range(10))
-        producers = [put_async.remote(q, i, True, None, 0.5) for i in items]
+        producers = [put_async.remote(q, item, True, None, 0.5)     # noqa
+                     for item in items]
         consumers = [get_async.remote(q, True, None, 0) for _ in items]
 
         result = set(ray.get(consumers))
