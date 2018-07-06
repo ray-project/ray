@@ -11,15 +11,34 @@ global_worker = ray.worker.global_worker
 eventloop = None
 
 
-def _init_eventloop():
+def cleanup():
+    global eventloop
+    if eventloop is not None:
+        eventloop.close()
+        eventloop = None
+
+
+def _init_eventloop(selector_name='poll'):
     global eventloop
     if eventloop is None:
-        selector = PlasmaEpoll(
-            global_worker)  # You could use `PlasmaPoll` instead.
+        if selector_name == 'poll':
+            selector = PlasmaPoll(global_worker)
+        elif selector_name == 'epoll':
+            selector = PlasmaEpoll(global_worker)
+        else:
+            raise Exception("Unknown selector name '%s'" % selector_name)
         eventloop = PlasmaSelectorEventLoop(selector, worker=global_worker)
 
 
+def set_debug(enabled):
+    if eventloop is None:
+        _init_eventloop()
+    eventloop.set_debug(enabled)
+
+
 def run_until_complete(future):
+    if eventloop is None:
+        _init_eventloop()
     return eventloop.run_until_complete(future)
 
 
