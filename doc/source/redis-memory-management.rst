@@ -2,9 +2,10 @@ Redis Memory Management (EXPERIMENTAL)
 ======================================
 
 Ray stores metadata associated with tasks and objects in one or more Redis
-servers, as described in :doc:`internals-overview`.  Applications that are
-long-running or have high task/object generation rate could risk high memory
-pressure, potentially leading to out-of-memory (OOM) errors.
+servers, as described in `An Overview of the Internals
+<internals-overview.html>`_.  Applications that are long-running or have high
+task/object generation rate could risk high memory pressure, potentially leading
+to out-of-memory (OOM) errors.
 
 Here, we describe an experimental feature that transparently flushes metadata
 entries out of Redis memory.
