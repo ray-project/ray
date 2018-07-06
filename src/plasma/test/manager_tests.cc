@@ -112,8 +112,8 @@ void destroy_plasma_mock(plasma_mock *mock) {
  * - Buffer a transfer request for the remote manager.
  * - Start and stop the event loop to make sure that we send the buffered
  *   request.
- * - Expect to see a MessageType::PlasmaDataRequest message on the remote manager
- *   with the correct object ID.
+ * - Expect to see a MessageType::PlasmaDataRequest message on the remote
+ *   manager with the correct object ID.
  */
 TEST request_transfer_test(void) {
   plasma_mock *local_mock = init_plasma_mock(NULL);

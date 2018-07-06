@@ -316,8 +316,9 @@ bool ClientConnection_request_finished(ClientConnection *client_conn) {
   return client_conn->cursor == -1;
 }
 
-std::unordered_map<ObjectID, std::vector<WaitRequest *>> &
-object_wait_requests_from_type(PlasmaManagerState *manager_state, plasma::ObjectRequestType type) {
+std::unordered_map<ObjectID, std::vector<WaitRequest *>>
+    &object_wait_requests_from_type(PlasmaManagerState *manager_state,
+                                    plasma::ObjectRequestType type) {
   /* We use different types of hash tables for different requests. */
   RAY_CHECK(type == plasma::ObjectRequestType::PLASMA_QUERY_LOCAL ||
             type == plasma::ObjectRequestType::PLASMA_QUERY_ANYWHERE);
@@ -1179,7 +1180,8 @@ void process_wait_request(ClientConnection *client_conn,
     if (object_request.type == plasma::ObjectRequestType::PLASMA_QUERY_LOCAL) {
       /* TODO(rkn): If desired, we could issue a fetch command here to retrieve
        * the object. */
-    } else if (object_request.type == plasma::ObjectRequestType::PLASMA_QUERY_ANYWHERE) {
+    } else if (object_request.type ==
+               plasma::ObjectRequestType::PLASMA_QUERY_ANYWHERE) {
       /* Add this object ID to the list of object IDs to request notifications
        * for from the object table. */
       object_ids_to_request[num_object_ids_to_request] = obj_id;
@@ -1228,7 +1230,8 @@ void request_status_done(ObjectID object_id,
                          const std::vector<DBClientID> &manager_vector,
                          void *context) {
   ClientConnection *client_conn = (ClientConnection *) context;
-  int status = static_cast<int>(request_status(object_id, manager_vector, context));
+  int status =
+      static_cast<int>(request_status(object_id, manager_vector, context));
   plasma::ObjectID object_id_copy = object_id.to_plasma_id();
   handle_sigpipe(
       plasma::SendStatusReply(client_conn->fd, &object_id_copy, &status, 1),
@@ -1369,9 +1372,11 @@ void process_add_object_notification(PlasmaManagerState *state,
   }
 
   /* Update the in-progress local and remote wait requests. */
-  update_object_wait_requests(state, object_id, plasma::ObjectRequestType::PLASMA_QUERY_LOCAL,
+  update_object_wait_requests(state, object_id,
+                              plasma::ObjectRequestType::PLASMA_QUERY_LOCAL,
                               ObjectStatus::Local);
-  update_object_wait_requests(state, object_id, plasma::ObjectRequestType::PLASMA_QUERY_ANYWHERE,
+  update_object_wait_requests(state, object_id,
+                              plasma::ObjectRequestType::PLASMA_QUERY_ANYWHERE,
                               ObjectStatus::Local);
 }
 
