@@ -2,6 +2,45 @@
 
 #include "ray/status.h"
 
+namespace {
+
+// Helper function to remove tasks in the given set of task_ids from a
+// queue, and append them to the given vector removed_tasks.
+void RemoveTasksFromQueue(std::list<ray::raylet::Task> &queue,
+                          std::unordered_set<ray::TaskID> &task_ids,
+                          std::vector<ray::raylet::Task> &removed_tasks) {
+  for (auto it = queue.begin(); it != queue.end();) {
+    auto task_id = task_ids.find(it->GetTaskSpecification().TaskId());
+    if (task_id != task_ids.end()) {
+      task_ids.erase(task_id);
+      removed_tasks.push_back(std::move(*it));
+      it = queue.erase(it);
+    } else {
+      it++;
+    }
+  }
+}
+
+// Helper function to queue the given tasks to the given queue.
+inline void QueueTasks(std::list<ray::raylet::Task> &queue,
+                       const std::vector<ray::raylet::Task> &tasks) {
+  queue.insert(queue.end(), tasks.begin(), tasks.end());
+}
+
+// Helper function to filter out tasks of a given state.
+inline void FilterStateFromQueue(const std::list<ray::raylet::Task> &queue,
+                                 std::unordered_set<ray::TaskID> &task_ids,
+                                 ray::raylet::TaskState filter_state) {
+  for (auto it = queue.begin(); it != queue.end(); it++) {
+    auto task_id = task_ids.find(it->GetTaskSpecification().TaskId());
+    if (task_id != task_ids.end()) {
+      task_ids.erase(task_id);
+    }
+  }
+}
+
+}  // namespace
+
 namespace ray {
 
 namespace raylet {
@@ -30,55 +69,27 @@ const std::list<Task> &SchedulingQueue::GetBlockedTasks() const {
   return this->blocked_tasks_;
 }
 
-// Helper function to remove tasks in the given set of task_ids from a
-// queue, and append them to the given vector removed_tasks.
-void removeTasksFromQueue(std::list<Task> &queue, std::unordered_set<TaskID> &task_ids,
-                          std::vector<Task> &removed_tasks) {
-  for (auto it = queue.begin(); it != queue.end();) {
-    auto task_id = task_ids.find(it->GetTaskSpecification().TaskId());
-    if (task_id != task_ids.end()) {
-      task_ids.erase(task_id);
-      removed_tasks.push_back(std::move(*it));
-      it = queue.erase(it);
-    } else {
-      it++;
-    }
-  }
-}
-
-// Helper function to queue the given tasks to the given queue.
-inline void queueTasks(std::list<Task> &queue, const std::vector<Task> &tasks) {
-  queue.insert(queue.end(), tasks.begin(), tasks.end());
-}
-
 void SchedulingQueue::FilterState(std::unordered_set<TaskID> &task_ids,
-                                  TaskState filter_state) {
-  std::list<Task> &queue = placeable_tasks_;
+                                  TaskState filter_state) const {
   switch (filter_state) {
-  case PLACEABLE:
-    queue = placeable_tasks_;
+  case TaskState::PLACEABLE:
+    FilterStateFromQueue(placeable_tasks_, task_ids, filter_state);
     break;
-  case WAITING:
-    queue = waiting_tasks_;
+  case TaskState::WAITING:
+    FilterStateFromQueue(waiting_tasks_, task_ids, filter_state);
     break;
-  case READY:
-    queue = ready_tasks_;
+  case TaskState::READY:
+    FilterStateFromQueue(ready_tasks_, task_ids, filter_state);
     break;
-  case RUNNING:
-    queue = running_tasks_;
+  case TaskState::RUNNING:
+    FilterStateFromQueue(running_tasks_, task_ids, filter_state);
     break;
-  case BLOCKED:
-    queue = blocked_tasks_;
+  case TaskState::BLOCKED:
+    FilterStateFromQueue(blocked_tasks_, task_ids, filter_state);
     break;
   default:
-    RAY_LOG(ERROR) << "Attempting to filter tasks on unrecognized state " << filter_state;
-  }
-
-  for (auto it = queue.begin(); it != queue.end(); it++) {
-    auto task_id = task_ids.find(it->GetTaskSpecification().TaskId());
-    if (task_id != task_ids.end()) {
-      task_ids.erase(task_id);
-    }
+    RAY_LOG(ERROR) << "Attempting to filter tasks on unrecognized state "
+                   << static_cast<std::underlying_type<TaskState>::type>(filter_state);
   }
 }
 
@@ -87,12 +98,12 @@ std::vector<Task> SchedulingQueue::RemoveTasks(std::unordered_set<TaskID> &task_
   std::vector<Task> removed_tasks;
 
   // Try to find the tasks to remove from the queues.
-  removeTasksFromQueue(uncreated_actor_methods_, task_ids, removed_tasks);
-  removeTasksFromQueue(waiting_tasks_, task_ids, removed_tasks);
-  removeTasksFromQueue(placeable_tasks_, task_ids, removed_tasks);
-  removeTasksFromQueue(ready_tasks_, task_ids, removed_tasks);
-  removeTasksFromQueue(running_tasks_, task_ids, removed_tasks);
-  removeTasksFromQueue(blocked_tasks_, task_ids, removed_tasks);
+  RemoveTasksFromQueue(uncreated_actor_methods_, task_ids, removed_tasks);
+  RemoveTasksFromQueue(waiting_tasks_, task_ids, removed_tasks);
+  RemoveTasksFromQueue(placeable_tasks_, task_ids, removed_tasks);
+  RemoveTasksFromQueue(ready_tasks_, task_ids, removed_tasks);
+  RemoveTasksFromQueue(running_tasks_, task_ids, removed_tasks);
+  RemoveTasksFromQueue(blocked_tasks_, task_ids, removed_tasks);
 
   RAY_CHECK(task_ids.size() == 0);
   return removed_tasks;
@@ -111,68 +122,70 @@ void SchedulingQueue::MoveTasks(std::unordered_set<TaskID> &task_ids, TaskState 
   std::vector<Task> removed_tasks;
   // Remove the tasks from the specified source queue.
   switch (src_state) {
-  case PLACEABLE:
-    removeTasksFromQueue(placeable_tasks_, task_ids, removed_tasks);
+  case TaskState::PLACEABLE:
+    RemoveTasksFromQueue(placeable_tasks_, task_ids, removed_tasks);
     break;
-  case WAITING:
-    removeTasksFromQueue(waiting_tasks_, task_ids, removed_tasks);
+  case TaskState::WAITING:
+    RemoveTasksFromQueue(waiting_tasks_, task_ids, removed_tasks);
     break;
-  case READY:
-    removeTasksFromQueue(ready_tasks_, task_ids, removed_tasks);
+  case TaskState::READY:
+    RemoveTasksFromQueue(ready_tasks_, task_ids, removed_tasks);
     break;
-  case RUNNING:
-    removeTasksFromQueue(running_tasks_, task_ids, removed_tasks);
+  case TaskState::RUNNING:
+    RemoveTasksFromQueue(running_tasks_, task_ids, removed_tasks);
     break;
-  case BLOCKED:
-    removeTasksFromQueue(blocked_tasks_, task_ids, removed_tasks);
+  case TaskState::BLOCKED:
+    RemoveTasksFromQueue(blocked_tasks_, task_ids, removed_tasks);
     break;
   default:
-    RAY_LOG(ERROR) << "Attempting to move tasks from unrecognized state " << src_state;
+    RAY_LOG(ERROR) << "Attempting to move tasks from unrecognized state "
+                   << static_cast<std::underlying_type<TaskState>::type>(src_state);
   }
   // Add the tasks to the specified destination queue.
   switch (dst_state) {
-  case PLACEABLE:
-    queueTasks(placeable_tasks_, removed_tasks);
+  case TaskState::PLACEABLE:
+    QueueTasks(placeable_tasks_, removed_tasks);
     break;
-  case WAITING:
-    queueTasks(waiting_tasks_, removed_tasks);
+  case TaskState::WAITING:
+    QueueTasks(waiting_tasks_, removed_tasks);
     break;
-  case READY:
-    queueTasks(ready_tasks_, removed_tasks);
+  case TaskState::READY:
+    QueueTasks(ready_tasks_, removed_tasks);
     break;
-  case RUNNING:
-    queueTasks(running_tasks_, removed_tasks);
+  case TaskState::RUNNING:
+    QueueTasks(running_tasks_, removed_tasks);
     break;
-  case BLOCKED:
-    queueTasks(blocked_tasks_, removed_tasks);
+  case TaskState::BLOCKED:
+    QueueTasks(blocked_tasks_, removed_tasks);
     break;
   default:
-    RAY_LOG(ERROR) << "Attempting to move tasks to unrecognized state " << dst_state;
+    RAY_LOG(ERROR) << "Attempting to move tasks to unrecognized state "
+                   << static_cast<std::underlying_type<TaskState>::type>(dst_state);
   }
 }
 
 void SchedulingQueue::QueueUncreatedActorMethods(const std::vector<Task> &tasks) {
-  queueTasks(uncreated_actor_methods_, tasks);
+  QueueTasks(uncreated_actor_methods_, tasks);
 }
 
 void SchedulingQueue::QueueWaitingTasks(const std::vector<Task> &tasks) {
-  queueTasks(waiting_tasks_, tasks);
+  QueueTasks(waiting_tasks_, tasks);
 }
 
 void SchedulingQueue::QueuePlaceableTasks(const std::vector<Task> &tasks) {
-  queueTasks(placeable_tasks_, tasks);
+  QueueTasks(placeable_tasks_, tasks);
 }
 
 void SchedulingQueue::QueueReadyTasks(const std::vector<Task> &tasks) {
-  queueTasks(ready_tasks_, tasks);
+  QueueTasks(ready_tasks_, tasks);
 }
 
 void SchedulingQueue::QueueRunningTasks(const std::vector<Task> &tasks) {
-  queueTasks(running_tasks_, tasks);
+  QueueTasks(running_tasks_, tasks);
 }
 
 void SchedulingQueue::QueueBlockedTasks(const std::vector<Task> &tasks) {
-  queueTasks(blocked_tasks_, tasks);
+  QueueTasks(blocked_tasks_, tasks);
 }
 
 }  // namespace raylet

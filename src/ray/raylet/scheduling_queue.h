@@ -12,7 +12,8 @@ namespace ray {
 
 namespace raylet {
 
-enum TaskState { INIT, PLACEABLE, WAITING, READY, RUNNING, BLOCKED };
+enum class TaskState { INIT, PLACEABLE, WAITING, READY, RUNNING, BLOCKED };
+
 /// \class SchedulingQueue
 ///
 /// Encapsulates task queues. Each queue represents a scheduling state for a
@@ -127,7 +128,7 @@ class SchedulingQueue {
   /// \param task_ids The set of task IDs to filter. All tasks that have the
   /// given filter_state will be removed from this set.
   /// \param filter_state The task state to filter out.
-  void FilterState(std::unordered_set<TaskID> &task_ids, TaskState filter_state);
+  void FilterState(std::unordered_set<TaskID> &task_ids, TaskState filter_state) const;
 
  private:
   /// Tasks that are destined for actors that have not yet been created.

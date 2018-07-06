@@ -919,13 +919,13 @@ void NodeManager::HandleObjectLocal(const ObjectID &object_id) {
     std::unordered_set<TaskID> ready_task_id_set(ready_task_ids.begin(),
                                                  ready_task_ids.end());
     // Transition tasks from waiting to scheduled.
-    local_queues_.MoveTasks(ready_task_id_set, WAITING, READY);
+    local_queues_.MoveTasks(ready_task_id_set, TaskState::WAITING, TaskState::READY);
     // New scheduled tasks appeared in the queue, try to dispatch them.
     DispatchTasks();
 
     // Check that remaining tasks that could not be transitioned are blocked
     // workers or drivers.
-    local_queues_.FilterState(ready_task_id_set, BLOCKED);
+    local_queues_.FilterState(ready_task_id_set, TaskState::BLOCKED);
     if (!ready_task_id_set.empty()) {
       RAY_CHECK(ready_task_id_set.size() == 1);
       RAY_CHECK(ready_task_id_set.begin()->is_nil());
@@ -943,11 +943,11 @@ void NodeManager::HandleObjectMissing(const ObjectID &object_id) {
     // runnable once the deleted object becomes available again.
     std::unordered_set<TaskID> waiting_task_id_set(waiting_task_ids.begin(),
                                                    waiting_task_ids.end());
-    local_queues_.MoveTasks(waiting_task_id_set, READY, WAITING);
+    local_queues_.MoveTasks(waiting_task_id_set, TaskState::READY, TaskState::WAITING);
 
     // Check that remaining tasks that could not be transitioned are running
     // workers or drivers, now blocked in a get.
-    local_queues_.FilterState(waiting_task_id_set, RUNNING);
+    local_queues_.FilterState(waiting_task_id_set, TaskState::RUNNING);
     if (!waiting_task_id_set.empty()) {
       RAY_CHECK(waiting_task_id_set.size() == 1);
       RAY_CHECK(waiting_task_id_set.begin()->is_nil());
