@@ -115,7 +115,7 @@ class Queue(object):
         Raises:
             Full if the queue is full.
         """
-        return self.put(block=False)
+        return self.put(item, block=False)
 
     def get_nowait(self):
         """Equivalent to get(item, block=False).
