@@ -53,15 +53,17 @@ if [[ ! -d $TP_DIR/../python/ray/pyarrow_files/pyarrow || \
     fi
 
     if [[ ! -d $TP_DIR/build/arrow ]]; then
-      git clone https://github.com/alendit/arrow.git "$TP_DIR/build/arrow"
+      git clone https://github.com/apache/arrow.git "$TP_DIR/build/arrow"
     fi
+
+    patch < $TP_DIR/scripts/arrow-zero-fill.patch
 
     pushd $TP_DIR/build/arrow
     git fetch origin master
-    # The PR for this commit is https://github.com/apache/arrow/pull/XXXX. We
+    # The PR for this commit is https://github.com/apache/arrow/pull/2201. We
     # include the link here to make it easier to find the right commit because
     # Arrow often rewrites git history and invalidates certain commits.
-    git checkout 98f681012bd4039f0bc6995d2229553e37e9f11d
+    git checkout d5d39f770047d671e4879369dd680c69afc370c3
 
     cd cpp
     if [ ! -d "build" ]; then
@@ -88,8 +90,7 @@ if [[ ! -d $TP_DIR/../python/ray/pyarrow_files/pyarrow || \
         -DARROW_PYTHON=on \
         -DARROW_PLASMA=on \
         -DPLASMA_PYTHON=on \
-        -DARROW_JEMALLOC=on \
-        -DARROW_JEMALLOC_BUILD_FLAGS:STRING=--enable-fill \
+        -DARROW_JEMALLOC=off \
         -DARROW_WITH_BROTLI=off \
         -DARROW_WITH_LZ4=off \
         -DARROW_WITH_ZLIB=off \
