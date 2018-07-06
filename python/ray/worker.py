@@ -2396,7 +2396,6 @@ def connect(info,
                 assert False, "This code should be unreachable."
     worker.cached_functions_to_run = None
     worker.cached_remote_functions_and_actors = None
-    worker.eventloop = None
 
 
 def disconnect(worker=global_worker):
@@ -2762,7 +2761,6 @@ def get(object_ids, worker=global_worker):
             # In PYTHON_MODE, ray.get is the identity operation (the input will
             # actually be a value not an objectid).
             return object_ids
-
         if isinstance(object_ids, list):
             values = worker.get_object(object_ids)
             for i, value in enumerate(values):
@@ -2802,10 +2800,7 @@ def put(value, worker=global_worker):
         return object_id
 
 
-def wait(object_ids,
-         num_returns=1,
-         timeout=None,
-         worker=global_worker):
+def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
     """Return a list of IDs that are ready and a list of IDs that are not.
 
     If timeout is set, the function returns either when the requested number of
@@ -2873,7 +2868,6 @@ def wait(object_ids,
             raise Exception("num_returns cannot be greater than the number "
                             "of objects provided to ray.wait.")
         timeout = timeout if timeout is not None else 2**30
-
         if worker.use_raylet:
             ready_ids, remaining_ids = worker.local_scheduler_client.wait(
                 object_ids, num_returns, timeout, False)
