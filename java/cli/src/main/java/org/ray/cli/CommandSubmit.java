@@ -9,24 +9,19 @@ import com.beust.jcommander.Parameters;
 @Parameters(separators = "= ", commandDescription = "submit a job to ray cluster")
 public class CommandSubmit {
 
-  // required
-  @Parameter(names = "--package", description = "java jar package zip file")
+  @Parameter(names = "--package", description = "java jar package zip file", required = true)
   public String packageZip ;
 
-  // required
-  @Parameter(names = "--class", description = "java class name")
+  @Parameter(names = "--class", description = "java class name", required = true)
   public String className;
 
-  // optional
   @Parameter(names = "--args", description = "arguments for the java class")
   public String classArgs;
 
-  // optional
   @Parameter(names = "--config", description = "the config file of ray")
   public String config;
 
-  // required
-  @Parameter(names = "--redis-address", description = "ip & port for redis service")
+  @Parameter(names = "--redis-address", description = "ip & port for redis service", required = true)
   public String redis_address;
 
 }

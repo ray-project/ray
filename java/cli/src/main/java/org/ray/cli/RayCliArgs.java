@@ -3,7 +3,7 @@ package org.ray.cli;
 import com.beust.jcommander.Parameter;
 
 /**
- * Arguments for Ray adm cli
+ * Arguments for Ray cli
  */
 public class RayCliArgs {
 

@@ -173,17 +173,9 @@ public class RayCli {
     KeyValueStoreLink kvStore = new RedisClient();
     kvStore.setAddr(cmdSubmit.redis_address);
     StateStoreProxy stateStoreProxy = new StateStoreProxyImpl(kvStore);
-    //stateStoreProxy.setStore(kvStore);
     stateStoreProxy.initializeGlobalState();
 
     RemoteFunctionManager functionManager = new NativeRemoteFunctionManager(kvStore);
-
-    // Init ray runtime with --redis_address and --run_mode=CLUSTER set.
-    // RayRuntime.init(buildRayRuntimeArgs(cmdSubmit));
-
-    // RayParameters params = new RayParameters(config);
-    // params.redis_address = cmdSubmit.redis_address;
-    // params.run_mode = RunMode.CLUSTER;
 
     // Register app to Redis. 
     byte[] zip = FileUtil.fileToBytes(cmdSubmit.packageZip);
@@ -257,7 +249,7 @@ public class RayCli {
     .info("Create app " + appDir + " for package " + packageName + " succeeded");
   }
 
-  private static String getConfigPath(String config) throws Exception {
+  private static String getConfigPath(String config) {
     String configPath;
 
     if (config != null && !config.equals("")) {
@@ -268,7 +260,7 @@ public class RayCli {
         configPath = System.getProperty("ray.config");
       }
       if (configPath == null) {
-        throw new Exception("Please set config file path in env RAY_CONFIG or property ray.config");
+        throw new RuntimeException("Please set config file path in env RAY_CONFIG or property ray.config");
       }
     }
     return configPath;

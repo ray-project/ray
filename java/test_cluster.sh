@@ -21,7 +21,6 @@ if [ ! -d "app1/" ];then
 fi
 cp -rf target/ray-example-1.0.jar app1/
 zip -r app1.zip app1
-#zip target/ray-example-1.0.jar.zip target/ray-example-1.0.jar
 popd
 
 # run with cluster mode
@@ -29,5 +28,4 @@ pushd local_deploy
 export RAY_CONFIG=ray/ray.config.ini
 ARGS=" --package ../example/app1.zip --class org.ray.example.HelloWorld --args=test1,test2  --redis-address=$local_ip:34222"
 ../local_deploy/run.sh submit $ARGS
-#java -Djava.library.path=../../build/src/plasma:../../build/src/local_scheduler -cp .:target/ray-example-1.0.jar:lib/* org.ray.example.HelloWorld  --overwrite="ray.java.start.redis_address=$local_ip:34222;ray.java.start.run_mode=CLUSTER" --package=app1.zip --class=org.ray.example.HelloWorld
 popd
