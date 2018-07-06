@@ -46,6 +46,9 @@ class Queue(object):
 
         Uses polling if block=True, so there is no guarantee of order if
         multiple producers put to the same full queue.
+
+        Raises:
+            Full if the queue is full and blocking is False.
         """
         if self.maxsize <= 0:
             self.actor.put.remote(item)
@@ -75,6 +78,12 @@ class Queue(object):
 
         Uses polling if block=True, so there is no guarantee of order if
         multiple consumers get from the same empty queue.
+
+        Returns:
+            The next item in the queue.
+
+        Raises:
+            Empty if the queue is empty and blocking is False.
         """
         if not block:
             success, item = ray.get(self.actor.get.remote())
