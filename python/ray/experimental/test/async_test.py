@@ -57,6 +57,29 @@ def run_api():
     results, _ = async_api.run_until_complete(fut)
     assert results[0] == tasks[0]
 
+    # get from coroutine/future
+    async def get_obj():
+        return ray.put("foobar")
+
+    result = async_api.run_until_complete(async_api.get(get_obj()))
+    assert result == "foobar"
+
+    # get from coroutine/future chains
+    obj_id = "qwerty"
+    for _ in range(7):
+        obj_id = ray.put([obj_id])
+
+    async def recurrent_get(obj_id):
+        if isinstance(obj_id, str):
+            return obj_id
+        obj_id = await async_api.get(obj_id)
+        if isinstance(obj_id, list):
+            return await (recurrent_get(obj_id[0]))
+        return obj_id
+
+    results = async_api.run_until_complete(recurrent_get(obj_id))
+    assert results == "qwerty"
+
 
 def test_api_poll(init):
     async_api.set_debug(True)
@@ -192,8 +215,6 @@ def async_hashflow_solution_wait(inputs, stages, use_delay=False):
         return result[0]
 
     with PlasmaEventLoopUseEpoll() as loop:
-        loop.set_debug(True)
-
         inputs = list(map(ray.put, inputs))
         for i, stage in enumerate(stages):
             new_inputs = []
