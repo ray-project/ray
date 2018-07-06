@@ -3,6 +3,9 @@ import functools
 import selectors
 import time
 
+import pyarrow
+import pyarrow.plasma as plasma
+
 import ray
 
 
@@ -111,6 +114,10 @@ class PlasmaFutureGroup(asyncio.Future):
         self._future_set.remove(fut)
         return fut
 
+    def clear(self):
+        while self._children:
+            self.pop()
+
     @property
     def children(self):
         return self._children
@@ -196,12 +203,15 @@ class PlasmaFutureGroup(asyncio.Future):
                 done.append(f)
             else:
                 pending.append(f)
-            f.remove_done_callback(self._done_callback)
         return done, pending
 
     async def wait(self, timeout=None):
         if not self._children:
             return [], []
+
+        assert timeout is None or timeout >= 0
+        if timeout == 0:
+            return self.flush_results()
 
         loop = self._loop
 
@@ -272,7 +282,9 @@ async def wait(*coroutines_or_futures,
             n=num_returns,
         ))
     fut.extend(coroutines_or_futures)
-    return await fut.wait(timeout)
+    results = await fut.wait(timeout)
+    fut.return_exceptions = True  # Ignore `CancelledError`.
+    return results
 
 
 class PlasmaSelector(selectors.BaseSelector):
@@ -366,7 +378,19 @@ class PlasmaEpoll(PlasmaSelector):
             timeout = 0.1
 
         while True:
-            plasma_id = self.client.get_next_notification()[0]
+            try:
+                plasma_id = self.client.get_next_notification()[0]
+            except pyarrow.lib.ArrowIOError:
+                try:
+                    self.client.subscribe()
+                except pyarrow.lib.ArrowIOError:
+                    # Broken sockets. Re-connecting.
+                    manager_socket_name = self.client.manager_socket_name
+                    store_socket_name = self.client.store_socket_name
+                    self.client.disconnect()
+                    self.worker.plasma_client = plasma.connect(
+                        store_socket_name, manager_socket_name, 64)
+                continue
             object_id = ray.ObjectID(plasma_id.binary())
             object_ids.append(object_id)
             if time.time() - start > timeout:
@@ -387,8 +411,8 @@ class PlasmaSelectorEventLoop(asyncio.BaseEventLoop):
     def _process_events(self, event_list):
         for key in event_list:
             handle = key.data
-            assert (isinstance(handle, asyncio.events.Handle),
-                    "A Handle is required here")
+            assert isinstance(handle, asyncio.events.Handle), (
+                "A Handle is required here")
             if handle._cancelled:
                 return
             assert not isinstance(handle, asyncio.events.TimerHandle)
