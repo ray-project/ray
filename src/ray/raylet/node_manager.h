@@ -88,7 +88,9 @@ class NodeManager {
   /// Dispatch locally scheduled tasks. This attempts the transition from "scheduled" to
   /// "running" task state.
   void DispatchTasks();
+  /// Handle a worker becoming blocked in a `ray.get`.
   void HandleWorkerBlocked(std::shared_ptr<Worker> worker);
+  /// Handle a worker exiting a `ray.get`.
   void HandleWorkerUnblocked(std::shared_ptr<Worker> worker);
 
   /// Methods for actor scheduling.
