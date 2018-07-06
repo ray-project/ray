@@ -9,7 +9,6 @@ import ray
 from ray.rllib.agents.agent import Agent, with_common_config
 from ray.rllib.optimizers import AsyncGradientsOptimizer
 from ray.rllib.utils import FilterManager
-from ray.rllib.evaluation.metrics import collect_metrics
 from ray.tune.trial import Resources
 
 DEFAULT_CONFIG = with_common_config({
@@ -98,12 +97,13 @@ class A3CAgent(Agent):
             self.remote_evaluators)
 
     def _train(self):
+        prev_steps = self.optimizer.num_steps_sampled
         self.optimizer.step()
         FilterManager.synchronize(
             self.local_evaluator.filters, self.remote_evaluators)
-        result = collect_metrics(self.local_evaluator, self.remote_evaluators)
+        result = self.optimizer.collect_metrics()
         result = result._replace(
-            info=self.optimizer.stats())
+            timesteps_this_iter=self.optimizer.num_steps_sampled - prev_steps)
         return result
 
     def _stop(self):

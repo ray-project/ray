@@ -4,7 +4,6 @@ from __future__ import print_function
 
 from ray.rllib.agents.agent import Agent, with_common_config
 from ray.rllib.agents.pg.pg_policy_graph import PGPolicyGraph
-from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.optimizers import SyncSamplesOptimizer
 from ray.tune.trial import Resources
 
@@ -49,6 +48,7 @@ class PGAgent(Agent):
             self.remote_evaluators)
 
     def _train(self):
+        prev_steps = self.optimizer.num_steps_sampled
         self.optimizer.step()
-        return collect_metrics(
-            self.optimizer.local_evaluator, self.optimizer.remote_evaluators)
+        return self.optimizer.collect_metrics()._replace(
+            timesteps_this_iter=self.optimizer.num_steps_sampled - prev_steps)

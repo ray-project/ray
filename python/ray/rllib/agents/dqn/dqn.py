@@ -9,7 +9,6 @@ import ray
 from ray.rllib import optimizers
 from ray.rllib.agents.agent import Agent, with_common_config
 from ray.rllib.agents.dqn.dqn_policy_graph import DQNPolicyGraph
-from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.utils.schedules import ConstantSchedule, LinearSchedule
 from ray.tune.trial import Resources
 
@@ -185,14 +184,14 @@ class DQNAgent(Agent):
             e.foreach_policy.remote(lambda p, _: p.set_epsilon(exp_val))
             exp_vals.append(exp_val)
 
-        result = collect_metrics(
-            self.local_evaluator, self.remote_evaluators)
+        result = self.optimizer.collect_metrics()
         return result._replace(
+            timesteps_this_iter=self.global_timestep - start_timestep,
             info=dict({
                 "min_exploration": min(exp_vals),
                 "max_exploration": max(exp_vals),
                 "num_target_updates": self.num_target_updates,
-            }, **self.optimizer.stats()))
+            }, **result.info))
 
     def _stop(self):
         # workaround for https://github.com/ray-project/ray/issues/1516
