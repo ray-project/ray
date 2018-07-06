@@ -56,14 +56,14 @@ if [[ ! -d $TP_DIR/../python/ray/pyarrow_files/pyarrow || \
       git clone https://github.com/apache/arrow.git "$TP_DIR/build/arrow"
     fi
 
-    patch < $TP_DIR/scripts/arrow-zero-fill.patch
-
     pushd $TP_DIR/build/arrow
     git fetch origin master
     # The PR for this commit is https://github.com/apache/arrow/pull/2201. We
     # include the link here to make it easier to find the right commit because
     # Arrow often rewrites git history and invalidates certain commits.
     git checkout d5d39f770047d671e4879369dd680c69afc370c3
+
+    git apply $TP_DIR/scripts/arrow-zero-fill.patch
 
     cd cpp
     if [ ! -d "build" ]; then
