@@ -1,6 +1,7 @@
 pendulum-ddpg:
     env: Pendulum-v0
     run: DDPG
+    repeat: 3
     stop:
         episode_reward_mean: -160
         time_total_s: 900

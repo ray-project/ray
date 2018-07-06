@@ -9,6 +9,8 @@ import time
 
 from ray.services import get_ip_address
 from ray.services import get_port
+from ray.services import logger
+import ray.utils
 
 
 class LogMonitor(object):
@@ -43,7 +45,7 @@ class LogMonitor(object):
             "LOG_FILENAMES:{}".format(self.node_ip_address),
             num_current_log_files, -1)
         for log_filename in new_log_filenames:
-            print("Beginning to track file {}".format(log_filename))
+            logger.info("Beginning to track file {}".format(log_filename))
             assert log_filename not in self.log_files
             self.log_files[log_filename] = []
 
@@ -69,7 +71,7 @@ class LogMonitor(object):
                 if len(new_lines) > 0:
                     self.log_files[log_filename] += new_lines
                     redis_key = "LOGFILE:{}:{}".format(
-                        self.node_ip_address, log_filename.decode("ascii"))
+                        self.node_ip_address, ray.utils.decode(log_filename))
                     self.redis_client.rpush(redis_key, *new_lines)
 
             # Pass if we already failed to open the log file.
@@ -83,11 +85,12 @@ class LogMonitor(object):
                         log_filename, "r")
                 except IOError as e:
                     if e.errno == os.errno.EMFILE:
-                        print("Warning: Ignoring {} because there are too "
-                              "many open files.".format(log_filename))
+                        logger.warning(
+                            "Warning: Ignoring {} because there are too "
+                            "many open files.".format(log_filename))
                     elif e.errno == os.errno.ENOENT:
-                        print("Warning: The file {} was not "
-                              "found.".format(log_filename))
+                        logger.warning("Warning: The file {} was not "
+                                       "found.".format(log_filename))
                     else:
                         raise e
 

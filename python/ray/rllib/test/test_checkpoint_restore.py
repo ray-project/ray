@@ -7,7 +7,7 @@ from __future__ import print_function
 import numpy as np
 import ray
 
-from ray.rllib.agent import get_agent_class
+from ray.rllib.agents.agent import get_agent_class
 
 
 def get_mean_action(alg, obs):

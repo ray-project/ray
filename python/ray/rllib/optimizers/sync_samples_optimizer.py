@@ -4,7 +4,7 @@ from __future__ import print_function
 
 import ray
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
-from ray.rllib.optimizers.sample_batch import SampleBatch
+from ray.rllib.evaluation.sample_batch import SampleBatch
 from ray.rllib.utils.filter import RunningStat
 from ray.rllib.utils.timer import TimerStat
 

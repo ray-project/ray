@@ -56,7 +56,7 @@ if [[ "$platform" == "linux" ]]; then
 
   # Check that the other wheels are present.
   NUMBER_OF_WHEELS=$(ls -1q $ROOT_DIR/../.whl/*.whl | wc -l)
-  if [[ "$NUMBER_OF_WHEELS" != "5" ]]; then
+  if [[ "$NUMBER_OF_WHEELS" != "4" ]]; then
     echo "Wrong number of wheels found."
     ls -l $ROOT_DIR/../.whl/
     exit 1

@@ -18,6 +18,34 @@ elif sys.version_info[0] == 3:
 
 
 class PolicyServer(ThreadingMixIn, HTTPServer):
+    """REST server than can be launched from a ServingEnv.
+
+    This launches a multi-threaded server that listens on the specified host
+    and port to serve policy requests and forward experiences to RLlib.
+
+    Examples:
+        >>> class CartpoleServing(ServingEnv):
+               def __init__(self):
+                   ServingEnv.__init__(
+                       self, spaces.Discrete(2),
+                       spaces.Box(low=-10, high=10, shape=(4,)))
+               def run(self):
+                   server = PolicyServer(self, "localhost", 8900)
+                   server.serve_forever()
+        >>> register_env("srv", lambda _: CartpoleServing())
+        >>> pg = PGAgent(env="srv", config={"num_workers": 0})
+        >>> while True:
+                pg.train()
+
+        >>> client = PolicyClient("localhost:8900")
+        >>> eps_id = client.start_episode()
+        >>> action = client.get_action(eps_id, obs)
+        >>> ...
+        >>> client.log_returns(eps_id, reward)
+        >>> ...
+        >>> client.log_returns(eps_id, reward)
+    """
+
     def __init__(self, serving_env, address, port):
         handler = _make_handler(serving_env)
         HTTPServer.__init__(self, (address, port), handler)

@@ -107,6 +107,7 @@ matrix:
       env:
         - PYTHON=3.5
         - RAY_USE_NEW_GCS=on
+        - RAY_USE_XRAY=1
 
     - os: linux
       dist: trusty
@@ -141,12 +142,6 @@ matrix:
         # - python test/monitor_test.py
         - python test/cython_test.py
         - python test/credis_test.py
-
-        # ray dataframe tests
-        # - python -m pytest python/ray/dataframe/test/test_dataframe.py
-        - python -m pytest python/ray/dataframe/test/test_concat.py
-        - python -m pytest python/ray/dataframe/test/test_io.py
-        # - python -m pytest python/ray/dataframe/test/test_groupby.py
 
         # ray tune tests
         - python python/ray/tune/test/dependency_test.py
@@ -209,12 +204,6 @@ script:
   - python test/monitor_test.py
   - python test/cython_test.py
   - python test/credis_test.py
-
-  # ray dataframe tests
-  - python -m pytest python/ray/dataframe/test/test_dataframe.py
-  - python -m pytest python/ray/dataframe/test/test_concat.py
-  - python -m pytest python/ray/dataframe/test/test_io.py
-  - python -m pytest python/ray/dataframe/test/test_groupby.py
 
   # ray tune tests
   - python python/ray/tune/test/dependency_test.py

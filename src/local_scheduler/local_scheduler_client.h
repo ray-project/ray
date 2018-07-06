@@ -225,4 +225,13 @@ void local_scheduler_push_error(LocalSchedulerConnection *conn,
                                 const std::string &error_message,
                                 double timestamp);
 
+/// Store some profile events in the GCS.
+///
+/// \param conn The connection information.
+/// \param profile_events A batch of profiling event information.
+/// \return Void.
+void local_scheduler_push_profile_events(
+    LocalSchedulerConnection *conn,
+    const ProfileTableDataT &profile_events);
+
 #endif

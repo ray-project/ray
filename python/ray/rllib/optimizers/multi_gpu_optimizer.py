@@ -8,9 +8,9 @@ import os
 import tensorflow as tf
 
 import ray
+from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.optimizers.multi_gpu_impl import LocalSyncParallelOptimizer
-from ray.rllib.utils.tf_policy_graph import TFPolicyGraph
 from ray.rllib.utils.timer import TimerStat
 
 
@@ -87,7 +87,7 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
         with self.sample_timer:
             if self.remote_evaluators:
                 # TODO(rliaw): remove when refactoring
-                from ray.rllib.ppo.rollout import collect_samples
+                from ray.rllib.agents.ppo.rollout import collect_samples
                 samples = collect_samples(self.remote_evaluators,
                                           self.timesteps_per_batch)
             else:

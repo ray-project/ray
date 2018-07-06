@@ -322,3 +322,17 @@ void local_scheduler_push_error(LocalSchedulerConnection *conn,
                                 ray::protocol::MessageType::PushErrorRequest),
                 fbb.GetSize(), fbb.GetBufferPointer());
 }
+
+void local_scheduler_push_profile_events(
+    LocalSchedulerConnection *conn,
+    const ProfileTableDataT &profile_events) {
+  flatbuffers::FlatBufferBuilder fbb;
+
+  auto message = CreateProfileTableData(fbb, &profile_events);
+  fbb.Finish(message);
+
+  write_message(conn->conn,
+                static_cast<int64_t>(
+                    ray::protocol::MessageType::PushProfileEventsRequest),
+                fbb.GetSize(), fbb.GetBufferPointer());
+}

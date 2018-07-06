@@ -56,6 +56,16 @@ if [[ ! -d $TP_DIR/../python/ray/pyarrow_files/pyarrow || \
       git clone https://github.com/apache/arrow.git "$TP_DIR/build/arrow"
     fi
 
+    if ! [ -x "$(command -v bison)" ]; then
+      echo 'Error: bison is not installed.' >&2
+      exit 1
+    fi
+
+    if ! [ -x "$(command -v flex)" ]; then
+      echo 'Error: flex is not installed.' >&2
+      exit 1
+    fi
+
     pushd $TP_DIR/build/arrow
     git fetch origin master
     # The PR for this commit is https://github.com/apache/arrow/pull/2065. We

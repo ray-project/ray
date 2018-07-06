@@ -7,12 +7,12 @@ import time
 import unittest
 
 import ray
-from ray.rllib.pg import PGAgent
-from ray.rllib.utils.common_policy_evaluator import CommonPolicyEvaluator, \
-    collect_metrics
-from ray.rllib.utils.policy_graph import PolicyGraph
-from ray.rllib.utils.postprocessing import compute_advantages
-from ray.rllib.utils.vector_env import VectorEnv
+from ray.rllib.agents.pg import PGAgent
+from ray.rllib.evaluation.common_policy_evaluator import CommonPolicyEvaluator
+from ray.rllib.evaluation.metrics import collect_metrics
+from ray.rllib.evaluation.policy_graph import PolicyGraph
+from ray.rllib.evaluation.postprocessing import compute_advantages
+from ray.rllib.env.vector_env import VectorEnv
 from ray.tune.registry import register_env
 
 
@@ -101,7 +101,8 @@ class TestCommonPolicyEvaluator(unittest.TestCase):
 
     def testQueryEvaluators(self):
         register_env("test", lambda _: gym.make("CartPole-v0"))
-        pg = PGAgent(env="test", config={"num_workers": 2, "batch_size": 5})
+        pg = PGAgent(
+            env="test", config={"num_workers": 2, "sample_batch_size": 5})
         results = pg.optimizer.foreach_evaluator(lambda ev: ev.batch_steps)
         results2 = pg.optimizer.foreach_evaluator_with_index(
             lambda ev, i: (i, ev.batch_steps))
