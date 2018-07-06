@@ -206,7 +206,7 @@ def ray_start_reconstruction(request):
     # or submitted.
     state = ray.experimental.state.GlobalState()
     state._initialize_global_state(redis_ip_address, redis_port)
-    if os.environ.get('RAY_USE_NEW_GCS', False):
+    if os.environ.get("RAY_USE_NEW_GCS") == "on":
         tasks = state.task_table()
         local_scheduler_ids = {
             task["LocalSchedulerID"]
@@ -220,7 +220,7 @@ def ray_start_reconstruction(request):
     # NIL_LOCAL_SCHEDULER_ID. This is the local scheduler ID associated
     # with the driver task, since it is not scheduled by a particular local
     # scheduler.
-    if os.environ.get('RAY_USE_NEW_GCS', False):
+    if os.environ.get("RAY_USE_NEW_GCS") == "on":
         assert len(local_scheduler_ids) == num_local_schedulers + 1
 
     # Clean up the Ray cluster.
@@ -231,7 +231,7 @@ def ray_start_reconstruction(request):
     os.environ.get("RAY_USE_XRAY") == "1",
     reason="This test does not work with xray yet.")
 @pytest.mark.skipif(
-    os.environ.get('RAY_USE_NEW_GCS', False),
+    os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Failing with new GCS API on Linux.")
 def test_simple(ray_start_reconstruction):
     _, _, plasma_store_memory, num_local_schedulers = ray_start_reconstruction
@@ -275,7 +275,7 @@ def test_simple(ray_start_reconstruction):
     os.environ.get("RAY_USE_XRAY") == "1",
     reason="This test does not work with xray yet.")
 @pytest.mark.skipif(
-    os.environ.get('RAY_USE_NEW_GCS', False),
+    os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Failing with new GCS API on Linux.")
 def test_recursive(ray_start_reconstruction):
     _, _, plasma_store_memory, num_local_schedulers = ray_start_reconstruction
@@ -334,7 +334,7 @@ def test_recursive(ray_start_reconstruction):
     os.environ.get("RAY_USE_XRAY") == "1",
     reason="This test does not work with xray yet.")
 @pytest.mark.skipif(
-    os.environ.get('RAY_USE_NEW_GCS', False),
+    os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Failing with new GCS API on Linux.")
 def test_multiple_recursive(ray_start_reconstruction):
     _, _, plasma_store_memory, _ = ray_start_reconstruction
@@ -407,7 +407,7 @@ def wait_for_errors(error_check):
     os.environ.get("RAY_USE_XRAY") == "1",
     reason="This test does not work with xray yet.")
 @pytest.mark.skipif(
-    os.environ.get('RAY_USE_NEW_GCS', False),
+    os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Failing with new GCS API on Linux.")
 def test_nondeterministic_task(ray_start_reconstruction):
     _, _, plasma_store_memory, num_local_schedulers = ray_start_reconstruction
@@ -476,7 +476,7 @@ def test_nondeterministic_task(ray_start_reconstruction):
     os.environ.get("RAY_USE_XRAY") == "1",
     reason="This test does not work with xray yet.")
 @pytest.mark.skipif(
-    os.environ.get('RAY_USE_NEW_GCS', False),
+    os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Failing with new GCS API on Linux.")
 def test_driver_put_errors(ray_start_reconstruction):
     _, _, plasma_store_memory, _ = ray_start_reconstruction
