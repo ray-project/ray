@@ -472,13 +472,8 @@ class Worker(object):
         # until at least get_timeout_milliseconds milliseconds passes, then
         # repeat.
         while len(unready_ids) > 0:
-            for unready_id in unready_ids:
-                self.local_scheduler_client.reconstruct_objects(
-                    [ray.ObjectID(unready_id)], False)
-            # Do another fetch for objects that aren't available locally yet,
-            # in case they were evicted since the last fetch. We divide the
-            # fetch into smaller fetches so as to not block the manager for a
-            # prolonged period of time in a single call.
+            # We divide the fetch into smaller fetches so as to not block the
+            # manager for a prolonged period of time in a single call.
             object_ids_to_fetch = list(
                 map(plasma.ObjectID, unready_ids.keys()))
             ray_object_ids_to_fetch = list(
@@ -486,13 +481,22 @@ class Worker(object):
             for i in range(0, len(object_ids_to_fetch),
                            ray._config.worker_fetch_request_size()):
                 if not self.use_raylet:
+                    self.local_scheduler_client.reconstruct_objects(
+                        ray_object_ids_to_fetch[i:(
+                            i + ray._config.worker_fetch_request_size())],
+                        False)
+                    # Do another fetch for objects that aren't available
+                    # locally yet, in case they were evicted since the last
+                    # fetch. This is only necessary for legacy ray since
+                    # reconstruction and fetch are implemented by different
+                    # processes.
                     self.plasma_client.fetch(object_ids_to_fetch[i:(
                         i + ray._config.worker_fetch_request_size())])
                 else:
                     self.local_scheduler_client.reconstruct_objects(
                         ray_object_ids_to_fetch[i:(
                             i + ray._config.worker_fetch_request_size())],
-                        True)
+                        False)
             results = self.retrieve_and_deserialize(
                 object_ids_to_fetch,
                 max([
