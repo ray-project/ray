@@ -336,9 +336,8 @@ void NodeManager::DispatchTasks() {
     }
     // We have enough resources for this task. Assign task.
     // TODO(atumanov): perform the task state/queue transition inside AssignTask.
-    auto dispatched_task =
-        local_queues_.RemoveTasks({task.GetTaskSpecification().TaskId()});
-    AssignTask(dispatched_task.front());
+    auto dispatched_task = local_queues_.RemoveTask(task.GetTaskSpecification().TaskId());
+    AssignTask(dispatched_task);
   }
 }
 
@@ -619,9 +618,7 @@ void NodeManager::ScheduleTasks() {
       local_task_ids.insert(task_id);
     } else {
       // TODO(atumanov): need a better interface for task exit on forward.
-      auto tasks = local_queues_.RemoveTasks({task_id});
-      RAY_CHECK(1 == tasks.size());
-      Task &task = tasks.front();
+      const auto task = local_queues_.RemoveTask(task_id);
       // TODO(swang): Handle forward task failure.
       RAY_CHECK_OK(ForwardTask(task, client_id));
     }
@@ -827,8 +824,7 @@ void NodeManager::AssignTask(Task &task) {
 void NodeManager::FinishAssignedTask(Worker &worker) {
   TaskID task_id = worker.GetAssignedTaskId();
   RAY_LOG(DEBUG) << "Finished task " << task_id;
-  auto tasks = local_queues_.RemoveTasks({task_id});
-  auto task = *tasks.begin();
+  const auto task = local_queues_.RemoveTask(task_id);
 
   if (task.GetTaskSpecification().IsActorCreationTask()) {
     // If this was an actor creation task, then convert the worker to an actor.

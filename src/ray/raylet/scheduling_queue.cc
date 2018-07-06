@@ -51,24 +51,61 @@ inline void queueTasks(std::list<Task> &queue, const std::vector<Task> &tasks) {
   queue.insert(queue.end(), tasks.begin(), tasks.end());
 }
 
-std::vector<Task> SchedulingQueue::RemoveTasks(std::unordered_set<TaskID> task_ids) {
+void SchedulingQueue::FilterState(std::unordered_set<TaskID> &task_ids,
+                                  TaskState filter_state) {
+  std::list<Task> &queue = placeable_tasks_;
+  switch (filter_state) {
+  case PLACEABLE:
+    queue = placeable_tasks_;
+    break;
+  case WAITING:
+    queue = waiting_tasks_;
+    break;
+  case READY:
+    queue = ready_tasks_;
+    break;
+  case RUNNING:
+    queue = running_tasks_;
+    break;
+  case BLOCKED:
+    queue = blocked_tasks_;
+    break;
+  default:
+    RAY_LOG(ERROR) << "Attempting to filter tasks on unrecognized state " << filter_state;
+  }
+
+  for (auto it = queue.begin(); it != queue.end(); it++) {
+    auto task_id = task_ids.find(it->GetTaskSpecification().TaskId());
+    if (task_id != task_ids.end()) {
+      task_ids.erase(task_id);
+    }
+  }
+}
+
+std::vector<Task> SchedulingQueue::RemoveTasks(std::unordered_set<TaskID> &task_ids) {
   // List of removed tasks to be returned.
   std::vector<Task> removed_tasks;
 
-  // Try to find the tasks to remove from the waiting tasks.
+  // Try to find the tasks to remove from the queues.
   removeTasksFromQueue(uncreated_actor_methods_, task_ids, removed_tasks);
   removeTasksFromQueue(waiting_tasks_, task_ids, removed_tasks);
   removeTasksFromQueue(placeable_tasks_, task_ids, removed_tasks);
   removeTasksFromQueue(ready_tasks_, task_ids, removed_tasks);
   removeTasksFromQueue(running_tasks_, task_ids, removed_tasks);
   removeTasksFromQueue(blocked_tasks_, task_ids, removed_tasks);
-  // TODO(swang): Remove from running methods.
 
   RAY_CHECK(task_ids.size() == 0);
   return removed_tasks;
 }
 
-void SchedulingQueue::MoveTasks(std::unordered_set<TaskID> task_ids, TaskState src_state,
+Task SchedulingQueue::RemoveTask(const TaskID &task_id) {
+  std::unordered_set<TaskID> task_id_set = {task_id};
+  auto task = RemoveTasks(task_id_set).front();
+  RAY_CHECK(task.GetTaskSpecification().TaskId() == task_id);
+  return task;
+}
+
+void SchedulingQueue::MoveTasks(std::unordered_set<TaskID> &task_ids, TaskState src_state,
                                 TaskState dst_state) {
   // TODO(atumanov): check the states first to ensure the move is transactional.
   std::vector<Task> removed_tasks;
@@ -86,6 +123,9 @@ void SchedulingQueue::MoveTasks(std::unordered_set<TaskID> task_ids, TaskState s
   case RUNNING:
     removeTasksFromQueue(running_tasks_, task_ids, removed_tasks);
     break;
+  case BLOCKED:
+    removeTasksFromQueue(blocked_tasks_, task_ids, removed_tasks);
+    break;
   default:
     RAY_LOG(ERROR) << "Attempting to move tasks from unrecognized state " << src_state;
   }
@@ -102,6 +142,9 @@ void SchedulingQueue::MoveTasks(std::unordered_set<TaskID> task_ids, TaskState s
     break;
   case RUNNING:
     queueTasks(running_tasks_, removed_tasks);
+    break;
+  case BLOCKED:
+    queueTasks(blocked_tasks_, removed_tasks);
     break;
   default:
     RAY_LOG(ERROR) << "Attempting to move tasks to unrecognized state " << dst_state;
