@@ -88,6 +88,8 @@ class NodeManager {
   /// Dispatch locally scheduled tasks. This attempts the transition from "scheduled" to
   /// "running" task state.
   void DispatchTasks();
+  void HandleWorkerBlocked(std::shared_ptr<Worker> worker);
+  void HandleWorkerUnblocked(std::shared_ptr<Worker> worker);
 
   /// Methods for actor scheduling.
   /// Handler for the creation of an actor, possibly on a remote node.
