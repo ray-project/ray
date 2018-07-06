@@ -22,10 +22,14 @@ def run_optimizer(optimizer, num_steps, tag=""):
         print("could not make path")
     logger = UnifiedLogger({}, path, verbose=False)
     timesteps_total = 0
-    for itr in range(num_steps):
+    for itr in range(num_steps + 1):
         optimizer.step()
-        result = optimizer.collect_metrics()
-        timesteps_total += result.timesteps_this_iter
+        if itr:  #warm start
+            result = optimizer.collect_metrics()
+            timesteps_total += result.timesteps_this_iter
+        else:
+            from ray.tune.result import TrainingResult
+            result = TrainingResult()
         result = result._replace(
             training_iteration=itr,
             timesteps_total=timesteps_total)
