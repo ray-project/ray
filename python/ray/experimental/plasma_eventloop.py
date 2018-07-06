@@ -7,6 +7,7 @@ import pyarrow
 import pyarrow.plasma as plasma
 
 import ray
+from ray.services import logger
 
 
 def _release_waiter(waiter, *args):
@@ -442,13 +443,13 @@ class PlasmaSelectorEventLoop(asyncio.BaseEventLoop):
         fut = PlasmaObjectFuture(
             loop=self, object_id=ray.ObjectID(b'\0' * 20))
         if self.get_debug():
-            print("Processing indirect future %s" % future)
+            logger.info("Processing indirect future %s", future)
 
         def callback(_future):
             object_id = _future.result()
             assert isinstance(object_id, ray.ObjectID)
             if self.get_debug():
-                print("Registering indirect future...")
+                logger.info("Registering indirect future...")
             reg_future = self._register_id(object_id)
             fut.object_id = object_id  # here we get the waiting id
 
@@ -489,19 +490,19 @@ class PlasmaSelectorEventLoop(asyncio.BaseEventLoop):
                 # done object_ids should all be unregistered
                 self._selector.unregister(future)
                 if self.get_debug():
-                    print("%s removed from the selector." % future)
+                    logger.info("%s removed from the selector.", future)
 
             fut = PlasmaObjectFuture(loop=self, object_id=object_id)
             handle = asyncio.events.Handle(callback, args=[fut], loop=self)
             self._selector.register(fut, events=None, data=handle)
             if self.get_debug():
-                print("%s added to the selector." % fut)
+                logger.info("%s added to the selector.", fut)
         else:
             # Keep a unique Future object for an object_id.
             # Increase ref_count instead.
             fut = key.fileobj
             if self.get_debug():
-                print("%s exists." % fut)
+                logger.info("%s exists.", fut)
 
         fut.inc_refcount()
 
