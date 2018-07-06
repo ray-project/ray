@@ -117,4 +117,12 @@ class ModelSupportedSpaces(unittest.TestCase):
 
 
 if __name__ == "__main__":
+    if sys.argc > 1 and sys.argv[1] == "--smoke":
+        ACTION_SPACES_TO_TEST = {
+            "discrete": Discrete(5),
+        }
+        OBSERVATION_SPACES_TO_TEST = {
+            "vector": Box(0.0, 1.0, (5,), dtype=np.float32),
+            "atari": Box(0.0, 1.0, (210, 160, 3), dtype=np.float32),
+        }
     unittest.main(verbosity=2)
