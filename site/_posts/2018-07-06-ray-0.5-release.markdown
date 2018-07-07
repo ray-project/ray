@@ -69,7 +69,7 @@ Ray now supports Java thanks to contributions from [Ant Financial][4]:
 
 ## Other Features
 
-- A "named actors" prototype [[2129]](https://github.com/ray-project/ray/pull/2129).
+- A named actors prototype [[2129]](https://github.com/ray-project/ray/pull/2129).
 - Usage of airspeed velocity for regression testing [[2113]](https://github.com/ray-project/ray/pull/2113).
 - More efficient serialization of numpy arrays [[1889]](https://github.com/ray-project/ray/pull/1889).
 
