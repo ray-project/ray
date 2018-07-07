@@ -41,6 +41,7 @@ A number of improvements have been made to [RLlib][2]:
 - Multi-agent support [[2286]](https://github.com/ray-project/ray/commit/a9a26b756098dcbd108966c52e3e7e9c9bfaf7ee).
 - Modular policy graphs [[2294]](https://github.com/ray-project/ray/commit/1251abf0d1878340e3628343e2ba4a09c95e3a91).
 - RNN support [[2299]](https://github.com/ray-project/ray/commit/b197c0c4044f66628c6672fe78581768a54d0e59).
+- Vectorized environments [[2170]](https://github.com/ray-project/ray/commit/7dee2c673579cf2d078b0567168b46845b24c06b).
 - Many bug fixes.
 
 ## Tune
