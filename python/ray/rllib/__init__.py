@@ -9,10 +9,8 @@ from ray.tune.registry import register_trainable
 from ray.rllib.env import (
     AsyncVectorEnv, MultiAgentEnv, ServingEnv, VectorEnv, EnvContext)
 from ray.rllib.evaluation import (
-    EvaluatorInterface, PolicyEvaluator, PolicyGraph, TFPolicyGraph,
-    TorchPolicyGraph, SampleBatch, MultiAgentBatch, SampleBatchBuilder,
-    MultiAgentSampleBatchBuilder, SyncSampler, AsyncSampler,
-    compute_advantages, collect_metrics)
+    PolicyEvaluator, PolicyGraph, TFPolicyGraph,
+    TorchPolicyGraph, compute_advantages, collect_metrics)
 from ray.rllib.models import (
     ActionDistribution, Categorical,
     DiagGaussian, Deterministic, ModelCatalog, Model,
@@ -20,8 +18,7 @@ from ray.rllib.models import (
 from ray.rllib.optimizers import (
     PolicyOptimizer, AsyncSamplesOptimizer, AsyncGradientsOptimizer,
     SyncSamplesOptimizer, SyncReplayOptimizer, LocalMultiGPUOptimizer)
-from ray.rllib.utils import (
-    Filter, FilterManager, PolicyClient, PolicyServer)
+from ray.rllib.utils import PolicyClient, PolicyServer
 
 
 def _register_all():
@@ -39,10 +36,8 @@ __all__ = [
     "AsyncVectorEnv", "MultiAgentEnv", "ServingEnv", "VectorEnv", "EnvContext",
 
     # rllib.evaluation
-    "EvaluatorInterface", "PolicyEvaluator", "PolicyGraph", "TFPolicyGraph",
-    "TorchPolicyGraph", "SampleBatch", "MultiAgentBatch", "SampleBatchBuilder",
-    "MultiAgentSampleBatchBuilder", "SyncSampler", "AsyncSampler",
-    "compute_advantages", "collect_metrics",
+    "PolicyEvaluator", "PolicyGraph", "TFPolicyGraph",
+    "TorchPolicyGraph", "compute_advantages", "collect_metrics",
 
     # rllib.models
     "ActionDistribution", "ActionDistribution", "Categorical",
@@ -54,5 +49,5 @@ __all__ = [
     "SyncSamplesOptimizer", "SyncReplayOptimizer", "LocalMultiGPUOptimizer",
 
     # rllib.utils
-    "Filter", "FilterManager", "PolicyClient", "PolicyServer"
+    "PolicyClient", "PolicyServer"
 ]
