@@ -57,7 +57,8 @@ developed there.
 
 ## Autoscaler
 
-The autoscaler has grown more mature and now supports Google Cloud Platform:
+The [autoscaler][6] has grown more mature and now supports Google Cloud
+Platform:
 - Support for GCP [[2061]](https://github.com/ray-project/ray/pull/2061).
 - Many bug fixes and additional features.
 
@@ -78,3 +79,4 @@ Ray now supports Java thanks to contributions from [Ant Financial][4]:
 [3]: http://ray.readthedocs.io/en/latest/tune.html
 [4]: https://www.antfin.com/
 [5]: https://github.com/modin-project/modin
+[6]: http://ray.readthedocs.io/en/latest/autoscaling.html
