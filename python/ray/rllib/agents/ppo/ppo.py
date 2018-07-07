@@ -9,7 +9,6 @@ import pickle
 import ray
 from ray.rllib.agents import Agent, with_common_config
 from ray.rllib.agents.ppo.ppo_tf_policy import PPOTFPolicyGraph
-from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.utils import FilterManager
 from ray.rllib.optimizers import SyncSamplesOptimizer, LocalMultiGPUOptimizer
 from ray.tune.trial import Resources
@@ -77,38 +76,28 @@ class PPOAgent(Agent):
              "num_gpus": self.config["num_gpus_per_worker"]})
         if self.config["debug_use_simple_optimizer"]:
             self.optimizer = SyncSamplesOptimizer(
-                self.config["optimizer"],
-                self.local_evaluator, self.remote_evaluators)
+                self.local_evaluator, self.remote_evaluators,
+                self.config["optimizer"])
         else:
             self.optimizer = LocalMultiGPUOptimizer(
+                self.local_evaluator, self.remote_evaluators,
                 {"sgd_batch_size": self.config["sgd_batchsize"],
                  "sgd_stepsize": self.config["sgd_stepsize"],
                  "num_sgd_iter": self.config["num_sgd_iter"],
                  "timesteps_per_batch": self.config["timesteps_per_batch"],
-                 "standardize_fields": ["advantages"]},
-                self.local_evaluator, self.remote_evaluators)
+                 "standardize_fields": ["advantages"]})
 
     def _train(self):
-        def postprocess_samples(batch):
-            # Divide by the maximum of value.std() and 1e-4
-            # to guard against the case where all values are equal
-            value = batch["advantages"]
-            standardized = (value - value.mean()) / max(1e-4, value.std())
-            batch.data["advantages"] = standardized
-            batch.shuffle()
-            dummy = np.zeros_like(batch["advantages"])
-            if not self.config["use_gae"]:
-                batch.data["value_targets"] = dummy
-                batch.data["vf_preds"] = dummy
-
+        prev_steps = self.optimizer.num_steps_sampled
         fetches = self.optimizer.step()
         newkl = self.local_evaluator.for_policy(
             lambda pi: pi.update_kl(fetches["kl"]))
         FilterManager.synchronize(
             self.local_evaluator.filters, self.remote_evaluators)
-
-        res = collect_metrics(self.local_evaluator, self.remote_evaluators)
-        res = res._replace(info=fetches)
+        res = self.optimizer.collect_metrics()
+        res = res._replace(
+            timesteps_this_iter=self.optimizer.num_steps_sampled - prev_steps,
+            info=dict(fetches, **res.info))
         return res
 
     def _stop(self):

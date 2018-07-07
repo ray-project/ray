@@ -53,7 +53,6 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
         self.standardize_fields = standardize_fields
 
         print("LocalMultiGPUOptimizer devices", self.devices)
-        print("LocalMultiGPUOptimizer batch size", self.batch_size)
 
         assert set(self.local_evaluator.policy_map.keys()) == {"default"}, \
             "Multi-agent is not supported"
