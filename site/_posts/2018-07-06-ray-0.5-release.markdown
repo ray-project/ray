@@ -49,6 +49,11 @@ A number of improvements have been made to [Tune][3]:
 - HyperOpt integration [[1763]](https://github.com/ray-project/ray/commit/888e70f1bee44e6988054631382143cb5939b377).
 - Many bug fixes and improvements.
 
+## Pandas on Ray
+
+Pandas on Ray has moved to the [Modin][5] project and will continue to be
+developed there.
+
 ## Autoscaler
 
 The autoscaler has grown more mature and now supports Google Cloud Platform:
@@ -71,3 +76,4 @@ Ray now supports Java thanks to contributions from [Ant Financial][4]:
 [2]: http://ray.readthedocs.io/en/latest/rllib.html
 [3]: http://ray.readthedocs.io/en/latest/tune.html
 [4]: https://www.antfin.com/
+[5]: https://github.com/modin-project/modin
