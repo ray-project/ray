@@ -500,6 +500,12 @@ class GlobalState(object):
             message = self.redis_client.execute_command(
                 "RAY.TABLE_LOOKUP", ray.gcs_utils.TablePrefix.CLIENT, "",
                 NIL_CLIENT_ID)
+
+            # Handle the case where no clients are returned. This should only
+            # occur potentially immediately after the cluster is started.
+            if message is None:
+                return []
+
             node_info = []
             gcs_entry = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
                 message, 0)
