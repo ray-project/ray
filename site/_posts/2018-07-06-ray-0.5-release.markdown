@@ -1,0 +1,71 @@
+---
+layout: post
+title: "Ray: 0.5 Release"
+excerpt: "This post announces the release of Ray 0.5."
+date: 2018-07-06 14:00:00
+---
+
+We are pleased to announce the 0.5 release of [Ray][1]. To upgrade to the latest
+version, run
+
+```
+pip install -U ray
+```
+
+## Refactoring
+
+One primary development is a substantial refactoring of the backend, which is
+currently off by default, but can be turned on by starting Ray with the
+environment variable `RAY_USE_XRAY=1`. This will be turned on soon after more
+testing and development and will be on by default in the next release. Some
+highlights of the refactor include the following:
+- Merging the "local scheduler" and the "plasma manager" into a single "raylet"
+  process (consisting of a "node manager" and an "object manager").
+- Faster object transfers by using multiple threads to send objects in chunks.
+- The introduction of a "lineage cache" to improve latency by removing the
+  global control store from the scheduling critical path.
+- The removal of the global scheduler (which is replaced by direct node-manager
+  to node-manager communication)
+- Providing a standardized table-based interface to the Redis-backed global
+  control store.
+- A preliminary approach for automatically flushing global control store
+  metadata to avoid out-of-memory errors for long-running jobs.
+
+## RLlib Improvements
+
+A number of improvements have been made to [RLlib][2]:
+- Added DDPG [[1877]](https://github.com/ray-project/ray/commit/c9a7744e5269a035eafceba35c7df3f52607b825).
+- Added a policy server example [[2232]](https://github.com/ray-project/ray/commit/e5724a9cfefd5c11467ff7975397ddfb5d2fe0e7).
+- Multi-agent support [[2286]](https://github.com/ray-project/ray/commit/a9a26b756098dcbd108966c52e3e7e9c9bfaf7ee).
+- Modular policy graphs [[2294]](https://github.com/ray-project/ray/commit/1251abf0d1878340e3628343e2ba4a09c95e3a91).
+- RNN support [[2299]](https://github.com/ray-project/ray/commit/b197c0c4044f66628c6672fe78581768a54d0e59).
+- Many bug fixes.
+
+## Tune
+
+A number of improvements have been made to [Tune][3]:
+- HyperOpt integration [[1763]](https://github.com/ray-project/ray/commit/888e70f1bee44e6988054631382143cb5939b377).
+- Many bug fixes and improvements.
+
+## Autoscaler
+
+The autoscaler has grown more mature and now supports Google Cloud Platform:
+- Support for GCP [[2061]](https://github.com/ray-project/ray/commit/74dc14d1fc4da4773d317f8570402cbe69d84f51).
+- Many bug fixes and additional features.
+
+## Java
+
+Ray now supports Java thanks to contributions from [Ant Financial][4]:
+- Support for Java (e.g., [[2092]](https://github.com/ray-project/ray/commit/5918776dd49b4bba0e75e71a99a74e17c873a0c3) [[2094]](https://github.com/ray-project/ray/commit/a8d3c057c14510dc82411972bedf8367072603d2) [[2151]](https://github.com/ray-project/ray/commit/ac1e5a7d155aa38d10a0c4b036edf45467c8d876) [[2171]](https://github.com/ray-project/ray/commit/4dd46985645ad89609991a55fbcf7d79b38b7012) [[2225]](https://github.com/ray-project/ray/commit/3b5e700fd7337970537aa9746cccb6bbbfdaf216) [[2245]](https://github.com/ray-project/ray/commit/fa0ade2bc59a50ab84e4a611611c334a0d808910)).
+
+## Other Features
+
+- A "named actors" prototype [[2129]](https://github.com/ray-project/ray/commit/3509a33cf37132a4bca5c7e3bdabb091ea1b8ece).
+- Usage of airspeed velocity for regression testing [[2113]](https://github.com/ray-project/ray/commit/01f69689ed9f87c460ba0e9afc0b670f148f1f95).
+- More efficient serialization of numpy arrays [[1889]](https://github.com/ray-project/ray/commit/24c944e4991b171515287bd4bb9e25478d9f8fb2).
+
+
+[1]: https://github.com/ray-project/ray
+[2]: http://ray.readthedocs.io/en/latest/rllib.html
+[3]: http://ray.readthedocs.io/en/latest/tune.html
+[4]: https://www.antfin.com/
