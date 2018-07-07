@@ -94,7 +94,7 @@ class PPOTFPolicyGraph(TFPolicyGraph):
         if existing_inputs:
             self.loss_in = existing_inputs
             obs_ph, value_targets_ph, adv_ph, act_ph, \
-                logits_ph, vf_preds_ph = [ph for _, ph in existing_inputs]
+                logits_ph, vf_preds_ph, *h = [ph for _, ph in existing_inputs]
         else:
             obs_ph = tf.placeholder(
                 tf.float32, name="obs", shape=(None,)+observation_space.shape)
@@ -116,15 +116,21 @@ class PPOTFPolicyGraph(TFPolicyGraph):
                 ("logits", logits_ph),
                 ("vf_preds", vf_preds_ph),
             ]
-        # TODO(ekl) feed RNN states in here
+
+        self.model = ModelCatalog.get_model(
+            obs_ph, logit_dim, self.config["model"])
+
+        # LSTM support
+        if not existing_inputs:
+            for i, ph in enumerate(self.model.state_in):
+                self.loss_in.append(("state_in_{}".format(i), ph))
 
         # KL Coefficient
         self.kl_coeff = tf.get_variable(
             initializer=tf.constant_initializer(self.kl_coeff_val),
             name="kl_coeff", shape=(), trainable=False, dtype=tf.float32)
 
-        self.logits = ModelCatalog.get_model(
-            obs_ph, logit_dim, self.config["model"]).outputs
+        self.logits = self.model.outputs
         curr_action_dist = dist_cls(self.logits)
         self.sampler = curr_action_dist.sample()
         if self.config["use_gae"]:
@@ -133,6 +139,7 @@ class PPOTFPolicyGraph(TFPolicyGraph):
             # mean parameters and standard deviation parameters and
             # do not make the standard deviations free variables.
             vf_config["free_log_std"] = False
+            vf_config["use_lstm"] = False
             with tf.variable_scope("value_function"):
                 self.value_function = ModelCatalog.get_model(
                     obs_ph, 1, vf_config).outputs
@@ -154,8 +161,9 @@ class PPOTFPolicyGraph(TFPolicyGraph):
             self, observation_space, action_space,
             self.sess, obs_input=obs_ph,
             action_sampler=self.sampler, loss=self.loss_obj.loss,
-            loss_inputs=self.loss_in,
-            is_training=self.is_training)
+            loss_inputs=self.loss_in, is_training=self.is_training,
+            state_inputs=self.model.state_in,
+            state_outputs=self.model.state_out, seq_lens=self.model.seq_lens)
 
         self.sess.run(tf.global_variables_initializer())
 
@@ -192,6 +200,12 @@ class PPOTFPolicyGraph(TFPolicyGraph):
             self.config["lambda"], use_gae=self.config["use_gae"])
         return batch
 
+    def optimizer(self):
+        return tf.train.AdamOptimizer(self.config["sgd_stepsize"])
+
     def gradients(self, optimizer):
         return optimizer.compute_gradients(
             self._loss, colocate_gradients_with_ops=True)
+
+    def get_initial_state(self):
+        return self.model.state_init

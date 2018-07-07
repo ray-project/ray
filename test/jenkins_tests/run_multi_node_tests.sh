@@ -30,7 +30,7 @@ docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     --env CartPole-v1 \
     --run PPO \
     --stop '{"training_iteration": 2}' \
-    --config '{"debug_use_simple_optimizer": true}'
+    --config '{"simple_optimizer": true, "model": {"use_lstm": true}}'
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/train.py \

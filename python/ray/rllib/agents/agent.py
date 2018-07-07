@@ -46,10 +46,6 @@ COMMON_CONFIG = {
         "gpu_options": {
             "allow_growth": True,
         },
-#        "log_device_placement": True,
-#        "device_count": {
-#            "CPU": 2,  # for debugging multi-gpu
-#        },
     },
     # Whether to LZ4 compress observations
     "compress_observations": False,

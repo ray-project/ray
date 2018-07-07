@@ -3,7 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import numpy as np
 import pickle
 
 import ray
@@ -27,7 +26,7 @@ DEFAULT_CONFIG = with_common_config({
     "num_sgd_iter": 30,
     # Stepsize of SGD
     "sgd_stepsize": 5e-5,
-    # Total SGD batch size across all devices for SGD
+    # Total SGD batch size across all devices for SGD (multi-gpu only)
     "sgd_batchsize": 128,
     # Coefficient of the value function loss
     "vf_loss_coeff": 1.0,
@@ -47,8 +46,8 @@ DEFAULT_CONFIG = with_common_config({
     "batch_mode": "complete_episodes",
     # Which observation filter to apply to the observation
     "observation_filter": "MeanStdFilter",
-    # Debug only: use the sync samples optimizer instead of the multi-gpu one
-    "debug_use_simple_optimizer": False,
+    # Use the sync samples optimizer instead of the multi-gpu one
+    "simple_optimizer": False,
 })
 
 
@@ -74,10 +73,10 @@ class PPOAgent(Agent):
             self.env_creator, PPOTFPolicyGraph, self.config["num_workers"],
             {"num_cpus": self.config["num_cpus_per_worker"],
              "num_gpus": self.config["num_gpus_per_worker"]})
-        if self.config["debug_use_simple_optimizer"]:
+        if self.config["simple_optimizer"]:
             self.optimizer = SyncSamplesOptimizer(
                 self.local_evaluator, self.remote_evaluators,
-                self.config["optimizer"])
+                {"num_sgd_iter": self.config["num_sgd_iter"]})
         else:
             self.optimizer = LocalMultiGPUOptimizer(
                 self.local_evaluator, self.remote_evaluators,
@@ -90,8 +89,7 @@ class PPOAgent(Agent):
     def _train(self):
         prev_steps = self.optimizer.num_steps_sampled
         fetches = self.optimizer.step()
-        newkl = self.local_evaluator.for_policy(
-            lambda pi: pi.update_kl(fetches["kl"]))
+        self.local_evaluator.for_policy(lambda pi: pi.update_kl(fetches["kl"]))
         FilterManager.synchronize(
             self.local_evaluator.filters, self.remote_evaluators)
         res = self.optimizer.collect_metrics()

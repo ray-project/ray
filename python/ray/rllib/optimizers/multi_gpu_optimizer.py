@@ -59,6 +59,8 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
         self.policy = self.local_evaluator.policy_map["default"]
         assert isinstance(self.policy, TFPolicyGraph), \
             "Only TF policies are supported"
+        assert len(self.policy.get_initial_state()) == 0, \
+            "No RNN support yet for multi-gpu. Try the simple optimizer."
 
         # per-GPU graph copies created below must share vars with the policy
         # reuse is set to AUTO_REUSE because Adam nodes are created after
