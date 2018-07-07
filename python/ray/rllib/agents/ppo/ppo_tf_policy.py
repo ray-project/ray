@@ -89,8 +89,7 @@ class PPOTFPolicyGraph(TFPolicyGraph):
         self.config = config
         self.kl_coeff_val = self.config["kl_coeff"]
         self.kl_target = self.config["kl_target"]
-        dist_cls, logit_dim = ModelCatalog.get_action_dist(
-            action_space)
+        dist_cls, logit_dim = ModelCatalog.get_action_dist(action_space)
 
         if existing_inputs:
             self.loss_in = existing_inputs
@@ -99,17 +98,13 @@ class PPOTFPolicyGraph(TFPolicyGraph):
         else:
             obs_ph = tf.placeholder(
                 tf.float32, name="obs", shape=(None,)+observation_space.shape)
-            # Advantage values in the policy gradient estimator.
             adv_ph = tf.placeholder(
                 tf.float32, name="advantages", shape=(None,))
             act_ph = ModelCatalog.get_action_placeholder(action_space)
-            # Log probabilities from the policy before the policy update.
             logits_ph = tf.placeholder(
                 tf.float32, name="logits", shape=(None, logit_dim))
-            # Value function predictions before the policy update.
             vf_preds_ph = tf.placeholder(
                 tf.float32, name="vf_preds", shape=(None,))
-            # Targets of the value function
             value_targets_ph = tf.placeholder(
                 tf.float32, name="value_targets", shape=(None,))
 
@@ -143,7 +138,7 @@ class PPOTFPolicyGraph(TFPolicyGraph):
                     obs_ph, 1, vf_config).outputs
             self.value_function = tf.reshape(self.value_function, [-1])
         else:
-            self.value_function = tf.constant("NA")
+            self.value_function = tf.zeros(shape=tf.shape(obs_ph)[:1])
 
         self.loss_obj = PPOLoss(
             action_space, value_targets_ph, adv_ph, act_ph,
