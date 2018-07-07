@@ -22,6 +22,8 @@ CONFIG_DIR = os.path.dirname(os.path.abspath(__file__))
 def _evaulate_config(filename):
     with open(os.path.join(CONFIG_DIR, filename)) as f:
         experiments = yaml.load(f)
+        for _, config in experiments.items():
+            config["repeat"] = 3
     ray.init()
     trials = tune.run_experiments(experiments)
     results = defaultdict(list)
