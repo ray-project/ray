@@ -29,7 +29,7 @@ def run_optimizer(optimizer, num_steps, tag=""):
             timesteps_total += result.timesteps_this_iter
         else:
             from ray.tune.result import TrainingResult
-            result = TrainingResult()
+            result = TrainingResult(episode_reward_mean=0)
         result = result._replace(
             training_iteration=itr,
             timesteps_total=timesteps_total)
