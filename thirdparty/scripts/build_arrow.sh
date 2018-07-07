@@ -53,7 +53,7 @@ if [[ ! -d $TP_DIR/../python/ray/pyarrow_files/pyarrow || \
     fi
 
     if [[ ! -d $TP_DIR/build/arrow ]]; then
-      git clone https://github.com/apache/arrow.git "$TP_DIR/build/arrow"
+      git clone https://github.com/alendit/arrow.git "$TP_DIR/build/arrow"
     fi
 
     if ! [ -x "$(command -v bison)" ]; then
@@ -68,12 +68,10 @@ if [[ ! -d $TP_DIR/../python/ray/pyarrow_files/pyarrow || \
 
     pushd $TP_DIR/build/arrow
     git fetch origin master
-    # The PR for this commit is https://github.com/apache/arrow/pull/2224. We
+    # The PR for this commit is https://github.com/apache/arrow/pull/2216. We
     # include the link here to make it easier to find the right commit because
     # Arrow often rewrites git history and invalidates certain commits.
-    git checkout 010c87402071d715e6fd0c3d22a0b13820b9aed5
-
-    git apply $TP_DIR/scripts/arrow-zero-fill.patch
+    git checkout 3697fcf597a7434344bfb3475d2fa0bc6e3bf0a1
 
     cd cpp
     if [ ! -d "build" ]; then
