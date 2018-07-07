@@ -55,7 +55,8 @@ class PlasmaObjectFuture(asyncio.Future):
 
 
 class PlasmaFutureGroup(asyncio.Future):
-    """This class groups futures for better management and advanced operation."""
+    """This class groups futures for better management and advanced operation.
+    """
 
     def __init__(self, loop, return_exceptions=False, keep_duplicated=True):
         """Initialize this class.
@@ -412,8 +413,8 @@ class PlasmaSelectorEventLoop(asyncio.BaseEventLoop):
     def _process_events(self, event_list):
         for key in event_list:
             handle = key.data
-            assert isinstance(handle, asyncio.events.Handle), (
-                "A Handle is required here")
+            assert isinstance(
+                handle, asyncio.events.Handle), "A Handle is required here"
             if handle._cancelled:
                 return
             assert not isinstance(handle, asyncio.events.TimerHandle)
@@ -440,8 +441,7 @@ class PlasmaSelectorEventLoop(asyncio.BaseEventLoop):
         """
 
         future = asyncio.ensure_future(future, loop=self)
-        fut = PlasmaObjectFuture(
-            loop=self, object_id=ray.ObjectID(b'\0' * 20))
+        fut = PlasmaObjectFuture(loop=self, object_id=ray.ObjectID(b'\0' * 20))
         if self.get_debug():
             logger.info("Processing indirect future %s", future)
 
@@ -529,10 +529,8 @@ class PlasmaSelectorEventLoop(asyncio.BaseEventLoop):
                    timeout=None,
                    return_exact_num=True):
         futures = [self._register_id(oid) for oid in object_ids]
-        _done, _pending = await wait(*futures,
-                                     timeout=timeout,
-                                     num_returns=num_returns,
-                                     loop=self)
+        _done, _pending = await wait(
+            *futures, timeout=timeout, num_returns=num_returns, loop=self)
 
         self._release(*_pending)
         done = [fut.object_id for fut in _done]

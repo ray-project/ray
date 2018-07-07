@@ -43,7 +43,7 @@ def run_api():
     tasks = gen_tasks()
     fut = async_api.get(tasks)
     results = async_api.run_until_complete(fut)
-    assert all([a == b for a, b in zip(results, ray.get(tasks))])
+    assert all(a == b for a, b in zip(results, ray.get(tasks)))
 
     # wait
     tasks = gen_tasks()
