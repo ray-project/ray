@@ -72,8 +72,8 @@ class BCAgent(Agent):
             remote_cls.remote(self.env_creator, self.config, self.logdir)
             for _ in range(self.config["num_workers"])]
         self.optimizer = AsyncGradientsOptimizer(
-            self.config["optimizer"], self.local_evaluator,
-            self.remote_evaluators)
+            self.local_evaluator, self.remote_evaluators,
+            self.config["optimizer"])
 
     def _train(self):
         self.optimizer.step()
