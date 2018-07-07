@@ -296,7 +296,7 @@ class TestMultiAgentEnv(unittest.TestCase):
                 batch_steps=50)]
         else:
             remote_evs = []
-        optimizer = optimizer_cls({}, ev, remote_evs)
+        optimizer = optimizer_cls(ev, remote_evs, {})
         for i in range(200):
             ev.foreach_policy(
                 lambda p, _: p.set_epsilon(max(0.02, 1 - i * .02))
