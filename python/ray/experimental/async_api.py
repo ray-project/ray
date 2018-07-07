@@ -65,10 +65,7 @@ async def get(object_ids, worker=global_worker):
     return await eventloop.get(object_ids)
 
 
-async def wait(object_ids,
-               num_returns=1,
-               timeout=None,
-               worker=global_worker):
+async def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
     """Return a list of IDs that are ready and a list of IDs that are not.
 
     If timeout is set, the function returns either when the requested number of
@@ -123,7 +120,7 @@ async def wait(object_ids,
     if num_returns > len(object_ids):
         raise Exception("num_returns cannot be greater than the number "
                         "of objects provided to ray.wait.")
-    timeout = timeout if timeout is not None else 2 ** 30
+    timeout = timeout if timeout is not None else 2**30
 
-    return await eventloop.wait(object_ids, num_returns=num_returns,
-                                timeout=timeout)
+    return await eventloop.wait(
+        object_ids, num_returns=num_returns, timeout=timeout)
