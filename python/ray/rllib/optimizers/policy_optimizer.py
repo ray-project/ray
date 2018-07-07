@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import ray
+from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.evaluation.sample_batch import MultiAgentBatch
 
@@ -121,3 +122,13 @@ class PolicyOptimizer(object):
         if isinstance(sample_batch, MultiAgentBatch):
             raise NotImplementedError(
                 "This optimizer does not support multi-agent yet.")
+
+    @classmethod
+    def make(cls, *args, num_workers=0, optimizer_config=None,
+             num_cpus=None, num_gpus=None, **kwargs):
+        evaluator = PolicyEvaluator(*args, **kwargs)
+        remote_cls = PolicyEvaluator.as_remote(num_cpus, num_gpus)
+        remote_evaluators = [
+            remote_cls.remote(*args, **kwargs) for i in range(num_workers)]
+
+        return cls(evaluator, remote_evaluators, optimizer_config)

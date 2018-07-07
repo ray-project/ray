@@ -152,9 +152,6 @@ class PolicyEvaluator(EvaluatorInterface):
                 non-zero and unique value. This index is passed to created envs
                 through EnvContext so that envs can be configured per worker.
         """
-        # NOTE: This line needs to appear first
-        self.args = locals()
-        ## It is also quite brittle
         env_context = EnvContext(env_config or {}, worker_index)
         policy_config = policy_config or {}
         self.policy_config = policy_config
@@ -251,10 +248,6 @@ class PolicyEvaluator(EvaluatorInterface):
             with tf.variable_scope(name):
                 policy_map[name] = cls(obs_space, act_space, merged_conf)
         return policy_map
-
-    def remote(self, *args, **kwargs):
-        remote_cls = self.as_remote()
-        return remote_cls.remote(*args, **kwargs)
 
     def sample(self):
         """Evaluate the current policies and return a batch of experiences.
