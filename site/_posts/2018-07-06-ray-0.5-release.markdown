@@ -36,18 +36,18 @@ support fault tolerance.
 ## RLlib Improvements
 
 A number of improvements have been made to [RLlib][2]:
-- Added DDPG [[1877]](https://github.com/ray-project/ray/commit/c9a7744e5269a035eafceba35c7df3f52607b825).
-- Added a policy server example [[2232]](https://github.com/ray-project/ray/commit/e5724a9cfefd5c11467ff7975397ddfb5d2fe0e7).
-- Multi-agent support [[2286]](https://github.com/ray-project/ray/commit/a9a26b756098dcbd108966c52e3e7e9c9bfaf7ee).
-- Modular policy graphs [[2294]](https://github.com/ray-project/ray/commit/1251abf0d1878340e3628343e2ba4a09c95e3a91).
-- RNN support [[2299]](https://github.com/ray-project/ray/commit/b197c0c4044f66628c6672fe78581768a54d0e59).
-- Vectorized environments [[2170]](https://github.com/ray-project/ray/commit/7dee2c673579cf2d078b0567168b46845b24c06b).
+- Added DDPG [[1877]](https://github.com/ray-project/ray/pull/1877).
+- Added a policy server example [[2232]](https://github.com/ray-project/ray/pull/2232).
+- Multi-agent support [[2286]](https://github.com/ray-project/ray/pull/2286).
+- Modular policy graphs [[2294]](https://github.com/ray-project/ray/pull/2294).
+- RNN support [[2299]](https://github.com/ray-project/ray/pull/2299).
+- Vectorized environments [[2170]](https://github.com/ray-project/ray/pull/2170).
 - Many bug fixes.
 
 ## Tune
 
 A number of improvements have been made to [Tune][3]:
-- HyperOpt integration [[1763]](https://github.com/ray-project/ray/commit/888e70f1bee44e6988054631382143cb5939b377).
+- HyperOpt integration [[1763]](https://github.com/ray-project/ray/pull/1763).
 - Many bug fixes and improvements.
 
 ## Pandas on Ray
@@ -58,19 +58,19 @@ developed there.
 ## Autoscaler
 
 The autoscaler has grown more mature and now supports Google Cloud Platform:
-- Support for GCP [[2061]](https://github.com/ray-project/ray/commit/74dc14d1fc4da4773d317f8570402cbe69d84f51).
+- Support for GCP [[2061]](https://github.com/ray-project/ray/pull/2061).
 - Many bug fixes and additional features.
 
 ## Java
 
 Ray now supports Java thanks to contributions from [Ant Financial][4]:
-- Support for Java (e.g., [[2092]](https://github.com/ray-project/ray/commit/5918776dd49b4bba0e75e71a99a74e17c873a0c3) [[2094]](https://github.com/ray-project/ray/commit/a8d3c057c14510dc82411972bedf8367072603d2) [[2151]](https://github.com/ray-project/ray/commit/ac1e5a7d155aa38d10a0c4b036edf45467c8d876) [[2171]](https://github.com/ray-project/ray/commit/4dd46985645ad89609991a55fbcf7d79b38b7012) [[2225]](https://github.com/ray-project/ray/commit/3b5e700fd7337970537aa9746cccb6bbbfdaf216) [[2245]](https://github.com/ray-project/ray/commit/fa0ade2bc59a50ab84e4a611611c334a0d808910)).
+- Support for Java (e.g., [[2092]](https://github.com/ray-project/ray/pull/2092) [[2094]](https://github.com/ray-project/ray/pull/2094) [[2151]](https://github.com/ray-project/ray/pull/2151) [[2171]](https://github.com/ray-project/ray/pull/2171) [[2225]](https://github.com/ray-project/ray/pull/2225) [[2245]](https://github.com/ray-project/ray/pull/2245)).
 
 ## Other Features
 
-- A "named actors" prototype [[2129]](https://github.com/ray-project/ray/commit/3509a33cf37132a4bca5c7e3bdabb091ea1b8ece).
-- Usage of airspeed velocity for regression testing [[2113]](https://github.com/ray-project/ray/commit/01f69689ed9f87c460ba0e9afc0b670f148f1f95).
-- More efficient serialization of numpy arrays [[1889]](https://github.com/ray-project/ray/commit/24c944e4991b171515287bd4bb9e25478d9f8fb2).
+- A "named actors" prototype [[2129]](https://github.com/ray-project/ray/pull/2129).
+- Usage of airspeed velocity for regression testing [[2113]](https://github.com/ray-project/ray/pull/2113).
+- More efficient serialization of numpy arrays [[1889]](https://github.com/ray-project/ray/pull/1889).
 
 
 [1]: https://github.com/ray-project/ray
