@@ -23,7 +23,7 @@ class CustomPreprocessor2(Preprocessor):
 
 
 class CustomModel(Model):
-    def _init(self, *args):
+    def _build_layers(self, *args):
         return None, None
 
 
@@ -78,7 +78,8 @@ class ModelCatalogTest(unittest.TestCase):
     def testCustomModel(self):
         ray.init()
         ModelCatalog.register_custom_model("foo", CustomModel)
-        p1 = ModelCatalog.get_model(1, 5, {"custom_model": "foo"})
+        p1 = ModelCatalog.get_model(
+            tf.constant([1, 2, 3]), 5, {"custom_model": "foo"})
         self.assertEqual(str(type(p1)), str(CustomModel))
 
 

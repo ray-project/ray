@@ -7,7 +7,7 @@ import gym
 from gym.envs.registration import register
 
 import ray
-import ray.rllib.ppo as ppo
+import ray.rllib.agents.ppo as ppo
 from ray.tune.registry import register_env
 
 env_name = "MultiAgentPendulumEnv"
@@ -43,6 +43,7 @@ if __name__ == '__main__':
     ray.init(num_cpus=num_cpus, redirect_output=True)
     config["num_workers"] = num_cpus
     config["timesteps_per_batch"] = 10
+    config["sgd_batchsize"] = 10
     config["num_sgd_iter"] = 10
     config["gamma"] = 0.999
     config["horizon"] = horizon

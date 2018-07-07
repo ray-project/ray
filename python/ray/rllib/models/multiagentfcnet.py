@@ -12,8 +12,7 @@ from ray.rllib.models.action_dist import Reshaper
 class MultiAgentFullyConnectedNetwork(Model):
     """Multiagent fully connected network."""
 
-    def _init(self, inputs, num_outputs, options):
-
+    def _build_layers(self, inputs, num_outputs, options):
         # Split the input and output tensors
         input_shapes = options["custom_options"]["multiagent_obs_shapes"]
         output_shapes = options["custom_options"]["multiagent_act_shapes"]

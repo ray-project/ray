@@ -2,5 +2,16 @@ humanoid-ppo:
     env: Humanoid-v1
     run: PPO
     stop:
-       episode_reward_mean: 6000
-    config: {"kl_coeff": 1.0, "num_sgd_iter": 20, "sgd_stepsize": .0001, "sgd_batchsize": 32768, "devices": ["/gpu:0", "/gpu:1", "/gpu:2", "/gpu:3"], "tf_session_args": {"device_count": {"GPU": 4}, "log_device_placement": false, "allow_soft_placement": true}, "timesteps_per_batch": 320000, "num_workers": 64, "model": {"free_log_std": true}, "use_gae": false}
+        episode_reward_mean: 6000
+    config:
+        gamma: 0.995
+        kl_coeff: 1.0
+        num_sgd_iter: 20
+        sgd_stepsize: .0001
+        sgd_batchsize: 32768
+        timesteps_per_batch: 320000
+        model:
+            free_log_std: true
+        use_gae: false
+        num_workers: 64
+        num_gpus: 4

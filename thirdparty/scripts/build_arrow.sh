@@ -56,12 +56,24 @@ if [[ ! -d $TP_DIR/../python/ray/pyarrow_files/pyarrow || \
       git clone https://github.com/apache/arrow.git "$TP_DIR/build/arrow"
     fi
 
+    if ! [ -x "$(command -v bison)" ]; then
+      echo 'Error: bison is not installed.' >&2
+      exit 1
+    fi
+
+    if ! [ -x "$(command -v flex)" ]; then
+      echo 'Error: flex is not installed.' >&2
+      exit 1
+    fi
+
     pushd $TP_DIR/build/arrow
     git fetch origin master
-    # The PR for this commit is https://github.com/apache/arrow/pull/2065. We
+    # The PR for this commit is https://github.com/apache/arrow/pull/2224. We
     # include the link here to make it easier to find the right commit because
     # Arrow often rewrites git history and invalidates certain commits.
-    git checkout ce23c06469de9cf0c3e38e35cdb8d135f341b964
+    git checkout 010c87402071d715e6fd0c3d22a0b13820b9aed5
+
+    git apply $TP_DIR/scripts/arrow-zero-fill.patch
 
     cd cpp
     if [ ! -d "build" ]; then

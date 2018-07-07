@@ -9,10 +9,10 @@ import unittest
 import uuid
 
 import ray
-from ray.rllib.dqn import DQNAgent
-from ray.rllib.pg import PGAgent
-from ray.rllib.utils.common_policy_evaluator import CommonPolicyEvaluator
-from ray.rllib.utils.serving_env import ServingEnv
+from ray.rllib.agents.dqn import DQNAgent
+from ray.rllib.agents.pg import PGAgent
+from ray.rllib.evaluation.common_policy_evaluator import CommonPolicyEvaluator
+from ray.rllib.env.serving_env import ServingEnv
 from ray.rllib.test.test_common_policy_evaluator import BadPolicyGraph, \
     MockPolicyGraph, MockEnv
 from ray.tune.registry import register_env
@@ -60,16 +60,16 @@ class PartOffPolicyServing(ServingEnv):
 
 
 class SimpleOffPolicyServing(ServingEnv):
-    def __init__(self, env):
+    def __init__(self, env, fixed_action):
         ServingEnv.__init__(self, env.action_space, env.observation_space)
         self.env = env
+        self.fixed_action = fixed_action
 
     def run(self):
         eid = self.start_episode()
         obs = self.env.reset()
         while True:
-            # Take random actions
-            action = self.env.action_space.sample()
+            action = self.fixed_action
             self.log_action(eid, obs, action)
             obs, reward, done, info = self.env.step(action)
             self.log_returns(eid, reward, info=info)
@@ -131,13 +131,15 @@ class TestServingEnv(unittest.TestCase):
 
     def testServingEnvOffPolicy(self):
         ev = CommonPolicyEvaluator(
-            env_creator=lambda _: SimpleOffPolicyServing(MockEnv(25)),
+            env_creator=lambda _: SimpleOffPolicyServing(MockEnv(25), 42),
             policy_graph=MockPolicyGraph,
             batch_steps=40,
             batch_mode="complete_episodes")
         for _ in range(3):
             batch = ev.sample()
             self.assertEqual(batch.count, 50)
+            self.assertEqual(batch["actions"][0], 42)
+            self.assertEqual(batch["actions"][-1], 42)
 
     def testServingEnvBadActions(self):
         ev = CommonPolicyEvaluator(
@@ -184,6 +186,16 @@ class TestServingEnv(unittest.TestCase):
             if result.episode_reward_mean >= 100:
                 return
         raise Exception("failed to improve reward")
+
+    def testServingEnvHorizonNotSupported(self):
+        ev = CommonPolicyEvaluator(
+            env_creator=lambda _: SimpleServing(MockEnv(25)),
+            policy_graph=MockPolicyGraph,
+            episode_horizon=20,
+            batch_steps=10,
+            batch_mode="complete_episodes")
+        ev.sample()
+        self.assertRaises(Exception, lambda: ev.sample())
 
 
 if __name__ == '__main__':

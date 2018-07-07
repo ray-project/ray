@@ -170,6 +170,8 @@ def random_string():
 
 def decode(byte_str):
     """Make this unicode in Python 3, otherwise leave it as bytes."""
+    if not isinstance(byte_str, bytes):
+        raise ValueError("The argument must be a bytes object.")
     if sys.version_info >= (3, 0):
         return byte_str.decode("ascii")
     else:
@@ -268,3 +270,28 @@ def merge_dicts(d1, d2):
     d = d1.copy()
     d.update(d2)
     return d
+
+
+def check_oversized_pickle(pickled, name, obj_type, worker):
+    """Send a warning message if the pickled object is too large.
+
+    Args:
+        pickled: the pickled object.
+        name: name of the pickled object.
+        obj_type: type of the pickled object, can be 'function',
+            'remote function', 'actor', or 'object'.
+        worker: the worker used to send warning message.
+    """
+    length = len(pickled)
+    if length <= ray_constants.PICKLE_OBJECT_WARNING_SIZE:
+        return
+    warning_message = (
+        "Warning: The {} {} has size {} when pickled. "
+        "It will be stored in Redis, which could cause memory issues. "
+        "This may mean that its definition uses a large array or other object."
+    ).format(obj_type, name, length)
+    push_error_to_driver(
+        worker,
+        ray_constants.PICKLING_LARGE_OBJECT_PUSH_ERROR,
+        warning_message,
+        driver_id=worker.task_driver_id.id())

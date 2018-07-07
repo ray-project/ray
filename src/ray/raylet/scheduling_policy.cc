@@ -25,7 +25,7 @@ std::unordered_map<TaskID, ClientID> SchedulingPolicy::Schedule(
   }
 
   // Iterate over running tasks, get their resource demand and try to schedule.
-  for (const auto &t : scheduling_queue_.GetReadyTasks()) {
+  for (const auto &t : scheduling_queue_.GetPlaceableTasks()) {
     // Get task's resource demand
     const auto &resource_demand = t.GetTaskSpecification().GetRequiredResources();
     const TaskID &task_id = t.GetTaskSpecification().TaskId();

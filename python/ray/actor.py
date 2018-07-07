@@ -13,7 +13,13 @@ import ray.local_scheduler
 import ray.ray_constants as ray_constants
 import ray.signature as signature
 import ray.worker
-from ray.utils import _random_string, is_cython, push_error_to_driver
+from ray.utils import (
+    decode,
+    _random_string,
+    check_oversized_pickle,
+    is_cython,
+    push_error_to_driver,
+)
 
 DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS = 1
 
@@ -287,10 +293,10 @@ def fetch_and_register_actor(actor_class_key, worker):
              "checkpoint_interval", "actor_method_names"
          ])
 
-    class_name = class_name.decode("ascii")
-    module = module.decode("ascii")
+    class_name = decode(class_name)
+    module = decode(module)
     checkpoint_interval = int(checkpoint_interval)
-    actor_method_names = json.loads(actor_method_names.decode("ascii"))
+    actor_method_names = json.loads(decode(actor_method_names))
 
     # Create a temporary actor with some temporary methods so that if the actor
     # fails to be unpickled, the temporary actor can be used (just to produce
@@ -393,19 +399,8 @@ def export_actor_class(class_id, Class, actor_method_names,
         "actor_method_names": json.dumps(list(actor_method_names))
     }
 
-    if (len(actor_class_info["class"]) >
-            ray_constants.PICKLE_OBJECT_WARNING_SIZE):
-        warning_message = ("Warning: The actor {} has size {} when pickled. "
-                           "It will be stored in Redis, which could cause "
-                           "memory issues. This may mean that the actor "
-                           "definition uses a large array or other object."
-                           .format(actor_class_info["class_name"],
-                                   len(actor_class_info["class"])))
-        ray.utils.push_error_to_driver(
-            worker,
-            ray_constants.PICKLING_LARGE_OBJECT_PUSH_ERROR,
-            warning_message,
-            driver_id=worker.task_driver_id.id())
+    check_oversized_pickle(actor_class_info["class"],
+                           actor_class_info["class_name"], "actor", worker)
 
     if worker.mode is None:
         # This means that 'ray.init()' has not been called yet and so we must

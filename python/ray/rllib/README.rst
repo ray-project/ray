@@ -1,22 +1,25 @@
-Ray RLlib: Scalable Reinforcement Learning
-==========================================
+RLlib: Scalable Reinforcement Learning
+======================================
 
-Ray RLlib is an RL execution toolkit built on the Ray distributed execution framework. See the `user documentation <http://ray.readthedocs.io/en/latest/rllib.html>`__ and `paper <https://arxiv.org/abs/1712.09381>`__.
+RLlib is an open-source library for reinforcement learning that offers both a collection of reference algorithms and scalable primitives for composing new ones.
 
-RLlib includes the following reference algorithms:
+For an overview of RLlib, see the `documentation <http://ray.readthedocs.io/en/latest/rllib.html>`__.
 
-- Proximal Policy Optimization (`PPO <https://github.com/ray-project/ray/tree/master/python/ray/rllib/ppo>`__) which is a proximal variant of `TRPO <https://arxiv.org/abs/1502.05477>`__.
+If you've found RLlib useful for your research, you can cite the `paper <https://arxiv.org/abs/1712.09381>`__ as follows:
 
-- Policy Gradients (`PG <https://github.com/ray-project/ray/tree/master/python/ray/rllib/pg>`__).
-
-- Asynchronous Advantage Actor-Critic (`A3C <https://github.com/ray-project/ray/tree/master/python/ray/rllib/a3c>`__).
-
-- Deep Q Networks (`DQN <https://github.com/ray-project/ray/tree/master/python/ray/rllib/dqn>`__).
-
-- Deep Deterministic Policy Gradients (`DDPG <https://github.com/ray-project/ray/tree/master/python/ray/rllib/ddpg>`__).
-
-- Ape-X Distributed Prioritized Experience Replay, including both `DQN <https://github.com/ray-project/ray/blob/master/python/ray/rllib/dqn/apex.py>`__ and `DDPG <https://github.com/ray-project/ray/blob/master/python/ray/rllib/ddpg/apex.py>`__ variants.
-
-- Evolution Strategies (`ES <https://github.com/ray-project/ray/tree/master/python/ray/rllib/es>`__), as described in `this paper <https://arxiv.org/abs/1703.03864>`__.
-
-These algorithms can be run on any OpenAI Gym MDP, including custom ones written and registered by the user.
+```
+@inproceedings{liang2018rllib,
+    Author = {Eric Liang and
+              Richard Liaw and
+              Robert Nishihara and
+              Philipp Moritz and
+              Roy Fox and
+              Ken Goldberg and
+              Joseph E. Gonzalez and
+              Michael I. Jordan and
+              Ion Stoica},
+    Title = {{RLlib}: Abstractions for Distributed Reinforcement Learning},
+    Booktitle = {International Conference on Machine Learning ({ICML})},
+    Year = {2018}
+}
+```
