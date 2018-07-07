@@ -136,8 +136,8 @@ class DQNAgent(Agent):
             {"num_cpus": self.config["num_cpus_per_worker"],
              "num_gpus": self.config["num_gpus_per_worker"]})
         self.optimizer = getattr(optimizers, self.config["optimizer_class"])(
-            self.config["optimizer"], self.local_evaluator,
-            self.remote_evaluators)
+            self.local_evaluator, self.remote_evaluators,
+            self.config["optimizer"])
 
         self.last_target_update_ts = 0
         self.num_target_updates = 0
