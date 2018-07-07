@@ -40,12 +40,13 @@ class SyncSamplesOptimizer(PolicyOptimizer):
                 samples = self.local_evaluator.sample()
 
         with self.grad_timer:
-            grad, _ = self.local_evaluator.compute_gradients(samples)
+            grad, fetches = self.local_evaluator.compute_gradients(samples)
             self.local_evaluator.apply_gradients(grad)
             self.grad_timer.push_units_processed(samples.count)
 
         self.num_steps_sampled += samples.count
         self.num_steps_trained += samples.count
+        return fetches
 
     def stats(self):
         return dict(PolicyOptimizer.stats(self), **{

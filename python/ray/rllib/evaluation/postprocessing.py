@@ -44,6 +44,7 @@ def compute_advantages(rollout, last_r, gamma, lambda_=1.0, use_gae=True):
         rewards_plus_v = np.concatenate(
             [rollout["rewards"], np.array([last_r])])
         traj["advantages"] = discount(rewards_plus_v, gamma)[:-1]
+        traj["value_targets"] = np.zeros_like(traj["advantages"])
 
     traj["advantages"] = traj["advantages"].copy().astype(np.float32)
 

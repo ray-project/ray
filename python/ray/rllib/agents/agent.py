@@ -39,8 +39,18 @@ COMMON_CONFIG = {
     "model": {},
     # Arguments to pass to the rllib optimizer
     "optimizer": {},
-    # Override default TF session args if non-empty
-    "tf_session_args": {},
+    # Configure TF for single-process operation by default
+    "tf_session_args": {
+        "intra_op_parallelism_threads": 1,
+        "inter_op_parallelism_threads": 1,
+        "gpu_options": {
+            "allow_growth": True,
+        },
+#        "log_device_placement": True,
+#        "device_count": {
+#            "CPU": 2,  # for debugging multi-gpu
+#        },
+    },
     # Whether to LZ4 compress observations
     "compress_observations": False,
 

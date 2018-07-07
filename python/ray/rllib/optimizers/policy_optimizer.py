@@ -61,6 +61,9 @@ class PolicyOptimizer(object):
         This should run for long enough to minimize call overheads (i.e., at
         least a couple seconds), but short enough to return control
         periodically to callers (i.e., at most a few tens of seconds).
+
+        Returns:
+            fetches (dict|None): Optional fetches from compute grads calls.
         """
 
         raise NotImplementedError

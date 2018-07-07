@@ -31,7 +31,7 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
     """
 
     def _init(self, sgd_batch_size=128, sgd_stepsize=5e-5, num_sgd_iter=10,
-              timesteps_per_batch=1024):
+              timesteps_per_batch=1024, standardize_fields=[]):
         self.batch_size = sgd_batch_size
         self.sgd_stepsize = sgd_stepsize
         self.num_sgd_iter = num_sgd_iter
@@ -50,6 +50,7 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
         self.load_timer = TimerStat()
         self.grad_timer = TimerStat()
         self.update_weights_timer = TimerStat()
+        self.standardize_fields = standardize_fields
 
         print("LocalMultiGPUOptimizer devices", self.devices)
         print("LocalMultiGPUOptimizer batch size", self.batch_size)
@@ -77,7 +78,7 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
                 self.sess = self.local_evaluator.tf_sess
                 self.sess.run(tf.global_variables_initializer())
 
-    def step(self, postprocess_fn=None):
+    def step(self):
         with self.update_weights_timer:
             if self.remote_evaluators:
                 weights = ray.put(self.local_evaluator.get_weights())
@@ -94,8 +95,11 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
                 samples = self.local_evaluator.sample()
             self._check_not_multiagent(samples)
 
-            if postprocess_fn:
-                postprocess_fn(samples)
+        for field in self.standardize_fields:
+            value = samples[field]
+            standardized = (value - value.mean()) / max(1e-4, value.std())
+            samples[field] = standardized
+        samples.shuffle()
 
         with self.load_timer:
             tuples_per_device = self.par_opt.load_data(
@@ -103,9 +107,9 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
                 samples.columns([key for key, _ in self.policy.loss_inputs()]))
 
         with self.grad_timer:
-            all_extra_fetches = defaultdict(list)
             num_batches = (
                 int(tuples_per_device) // int(self.per_device_batch_size))
+            print("== sgd epochs ==")
             for i in range(self.num_sgd_iter):
                 iter_extra_fetches = defaultdict(list)
                 permutation = np.random.permutation(num_batches)
@@ -116,13 +120,12 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
                         self.sess,
                         permutation[batch_index] * self.per_device_batch_size)
                     for k, v in batch_fetches.items():
-                        iter_extra_fetches[k] += [v]
-                for k, v in iter_extra_fetches.items():
-                    all_extra_fetches[k] += [v]
+                        iter_extra_fetches[k].append(v)
+                print(i, _averaged(iter_extra_fetches))
 
         self.num_steps_sampled += samples.count
         self.num_steps_trained += samples.count
-        return all_extra_fetches
+        return _averaged(iter_extra_fetches)
 
     def stats(self):
         return dict(PolicyOptimizer.stats(self), **{
@@ -131,3 +134,11 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
             "grad_time_ms": round(1000 * self.grad_timer.mean, 3),
             "update_time_ms": round(1000 * self.update_weights_timer.mean, 3),
         })
+
+
+def _averaged(kv):
+    out = {}
+    for k, v in kv.items():
+        if v[0] is not None:
+            out[k] = np.mean(v)
+    return out

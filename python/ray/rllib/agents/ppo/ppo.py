@@ -11,7 +11,7 @@ from ray.rllib.agents import Agent, with_common_config
 from ray.rllib.agents.ppo.ppo_tf_policy import PPOTFPolicyGraph
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.utils import FilterManager
-from ray.rllib.optimizers.multi_gpu_optimizer import LocalMultiGPUOptimizer
+from ray.rllib.optimizers import SyncSamplesOptimizer, LocalMultiGPUOptimizer
 from ray.tune.trial import Resources
 
 DEFAULT_CONFIG = with_common_config({
@@ -48,6 +48,8 @@ DEFAULT_CONFIG = with_common_config({
     "batch_mode": "complete_episodes",
     # Which observation filter to apply to the observation
     "observation_filter": "MeanStdFilter",
+    # Debug only: use the sync samples optimizer instead of the multi-gpu one
+    "debug_use_simple_optimizer": False,
 })
 
 
@@ -73,12 +75,18 @@ class PPOAgent(Agent):
             self.env_creator, PPOTFPolicyGraph, self.config["num_workers"],
             {"num_cpus": self.config["num_cpus_per_worker"],
              "num_gpus": self.config["num_gpus_per_worker"]})
-        self.optimizer = LocalMultiGPUOptimizer(
-            {"sgd_batch_size": self.config["sgd_batchsize"],
-             "sgd_stepsize": self.config["sgd_stepsize"],
-             "num_sgd_iter": self.config["num_sgd_iter"],
-             "timesteps_per_batch": self.config["timesteps_per_batch"]},
-            self.local_evaluator, self.remote_evaluators)
+        if self.config["debug_use_simple_optimizer"]:
+            self.optimizer = SyncSamplesOptimizer(
+                self.config["optimizer"],
+                self.local_evaluator, self.remote_evaluators)
+        else:
+            self.optimizer = LocalMultiGPUOptimizer(
+                {"sgd_batch_size": self.config["sgd_batchsize"],
+                 "sgd_stepsize": self.config["sgd_stepsize"],
+                 "num_sgd_iter": self.config["num_sgd_iter"],
+                 "timesteps_per_batch": self.config["timesteps_per_batch"],
+                 "standardize_fields": ["advantages"]},
+                self.local_evaluator, self.remote_evaluators)
 
     def _train(self):
         def postprocess_samples(batch):
@@ -92,28 +100,15 @@ class PPOAgent(Agent):
             if not self.config["use_gae"]:
                 batch.data["value_targets"] = dummy
                 batch.data["vf_preds"] = dummy
-        extra_fetches = self.optimizer.step(postprocess_fn=postprocess_samples)
-        kl = np.array(extra_fetches["kl"]).mean(axis=1)[-1]
-        total_loss = np.array(extra_fetches["total_loss"]).mean(axis=1)[-1]
-        policy_loss = np.array(extra_fetches["policy_loss"]).mean(axis=1)[-1]
-        vf_loss = np.array(extra_fetches["vf_loss"]).mean(axis=1)[-1]
-        entropy = np.array(extra_fetches["entropy"]).mean(axis=1)[-1]
 
-        newkl = self.local_evaluator.for_policy(lambda pi: pi.update_kl(kl))
-
-        info = {
-            "kl_divergence": kl,
-            "kl_coefficient": newkl,
-            "total_loss": total_loss,
-            "policy_loss": policy_loss,
-            "vf_loss": vf_loss,
-            "entropy": entropy,
-        }
-
+        fetches = self.optimizer.step()
+        newkl = self.local_evaluator.for_policy(
+            lambda pi: pi.update_kl(fetches["kl"]))
         FilterManager.synchronize(
             self.local_evaluator.filters, self.remote_evaluators)
+
         res = collect_metrics(self.local_evaluator, self.remote_evaluators)
-        res = res._replace(info=info)
+        res = res._replace(info=fetches)
         return res
 
     def _stop(self):
