@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import ray
+from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.evaluation.sample_batch import MultiAgentBatch
 
 
@@ -103,6 +104,10 @@ class PolicyOptimizer(object):
             [ev.apply.remote(func, i + 1)
              for i, ev in enumerate(self.remote_evaluators)])
         return local_result + remote_results
+
+    def collect_metrics(self):
+        res = collect_metrics(self.local_evaluator, self.remote_evaluators)
+        return res._replace(info=self.stats())
 
     def _check_not_multiagent(self, sample_batch):
         if isinstance(sample_batch, MultiAgentBatch):

@@ -185,9 +185,17 @@ class DQNAgent(Agent):
             e.foreach_policy.remote(lambda p, _: p.set_epsilon(exp_val))
             exp_vals.append(exp_val)
 
-        result = collect_metrics(
-            self.local_evaluator, self.remote_evaluators)
+        if self.config["per_worker_exploration"]:
+            # Only collect metrics from the third of workers with lowest eps
+            result = collect_metrics(
+                self.local_evaluator,
+                self.remote_evaluators[-len(self.remote_evaluators) // 3:])
+        else:
+            result = collect_metrics(
+                self.local_evaluator, self.remote_evaluators)
+
         return result._replace(
+            timesteps_this_iter=self.global_timestep - start_timestep,
             info=dict({
                 "min_exploration": min(exp_vals),
                 "max_exploration": max(exp_vals),
