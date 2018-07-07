@@ -94,8 +94,8 @@ class A3CAgent(Agent):
             self.env_creator, policy_cls, self.config["num_workers"],
             {"num_gpus": 1 if self.config["use_gpu_for_workers"] else 0})
         self.optimizer = AsyncGradientsOptimizer(
-            self.config["optimizer"], self.local_evaluator,
-            self.remote_evaluators)
+            self.local_evaluator, self.remote_evaluators,
+            self.config["optimizer"])
 
     def _train(self):
         self.optimizer.step()

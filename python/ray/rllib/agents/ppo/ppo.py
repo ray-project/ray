@@ -74,11 +74,11 @@ class PPOAgent(Agent):
             {"num_cpus": self.config["num_cpus_per_worker"],
              "num_gpus": self.config["num_gpus_per_worker"]})
         self.optimizer = LocalMultiGPUOptimizer(
+            self.local_evaluator, self.remote_evaluators,
             {"sgd_batch_size": self.config["sgd_batchsize"],
              "sgd_stepsize": self.config["sgd_stepsize"],
              "num_sgd_iter": self.config["num_sgd_iter"],
-             "timesteps_per_batch": self.config["timesteps_per_batch"]},
-            self.local_evaluator, self.remote_evaluators)
+             "timesteps_per_batch": self.config["timesteps_per_batch"]})
 
     def _train(self):
         def postprocess_samples(batch):
