@@ -187,11 +187,12 @@ class DQNAgent(Agent):
 
         if self.config["per_worker_exploration"]:
             # Only collect metrics from the third of workers with lowest eps
-            res = collect_metrics(
+            result = collect_metrics(
                 self.local_evaluator,
-                self.remote_evaluators[:-len(self.remote_evaluators) // 3])
+                self.remote_evaluators[-len(self.remote_evaluators) // 3:])
         else:
-            res = collect_metrics(self.local_evaluator, self.remote_evaluators)
+            result = collect_metrics(
+                self.local_evaluator, self.remote_evaluators)
 
         return result._replace(
             timesteps_this_iter=self.global_timestep - start_timestep,
