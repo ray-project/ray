@@ -68,10 +68,10 @@ if [[ ! -d $TP_DIR/../python/ray/pyarrow_files/pyarrow || \
 
     pushd $TP_DIR/build/arrow
     git fetch origin master
-    # The PR for this commit is https://github.com/apache/arrow/pull/2201. We
+    # The PR for this commit is https://github.com/apache/arrow/pull/2224. We
     # include the link here to make it easier to find the right commit because
     # Arrow often rewrites git history and invalidates certain commits.
-    git checkout d5d39f770047d671e4879369dd680c69afc370c3
+    git checkout 010c87402071d715e6fd0c3d22a0b13820b9aed5
 
     git apply $TP_DIR/scripts/arrow-zero-fill.patch
 
