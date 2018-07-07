@@ -151,4 +151,4 @@ build
 *.iml
 java/**/target
 java/run
-java/test/lib
+java/**/lib
