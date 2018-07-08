@@ -48,6 +48,13 @@ DEFAULT_CONFIG = with_common_config({
     "observation_filter": "MeanStdFilter",
     # Use the sync samples optimizer instead of the multi-gpu one
     "simple_optimizer": False,
+    # Override model config
+    "model": {
+        # Use LSTM model (note: requires simple optimizer for now).
+        "use_lstm": False,
+        # Max seq length for LSTM training.
+        "max_seq_len": 20,
+    },
 })
 
 

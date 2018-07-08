@@ -94,7 +94,7 @@ class PPOTFPolicyGraph(TFPolicyGraph):
         if existing_inputs:
             self.loss_in = existing_inputs
             obs_ph, value_targets_ph, adv_ph, act_ph, \
-                logits_ph, vf_preds_ph, *h = [ph for _, ph in existing_inputs]
+                logits_ph, vf_preds_ph = [ph for _, ph in existing_inputs]
         else:
             obs_ph = tf.placeholder(
                 tf.float32, name="obs", shape=(None,)+observation_space.shape)

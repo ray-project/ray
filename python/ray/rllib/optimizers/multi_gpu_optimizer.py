@@ -115,8 +115,6 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
                 iter_extra_fetches = defaultdict(list)
                 permutation = np.random.permutation(num_batches)
                 for batch_index in range(num_batches):
-                    # TODO(ekl) support ppo's debugging features, e.g.
-                    # printing the current loss and tracing
                     batch_fetches = self.par_opt.optimize(
                         self.sess,
                         permutation[batch_index] * self.per_device_batch_size)
