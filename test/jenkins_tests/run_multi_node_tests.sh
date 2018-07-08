@@ -177,7 +177,7 @@ docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/test/test_checkpoint_restore.py
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
-    python /ray/python/ray/rllib/test/test_common_policy_evaluator.py
+    python /ray/python/ray/rllib/test/test_policy_evaluator.py
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/test/test_serving_env.py
