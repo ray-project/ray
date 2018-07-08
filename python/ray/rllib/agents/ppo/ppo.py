@@ -7,7 +7,7 @@ import pickle
 
 import ray
 from ray.rllib.agents import Agent, with_common_config
-from ray.rllib.agents.ppo.ppo_tf_policy import PPOTFPolicyGraph
+from ray.rllib.agents.ppo.ppo_policy_graph import PPOPolicyGraph
 from ray.rllib.utils import FilterManager
 from ray.rllib.optimizers import SyncSamplesOptimizer, LocalMultiGPUOptimizer
 from ray.tune.trial import Resources
@@ -75,9 +75,9 @@ class PPOAgent(Agent):
 
     def _init(self):
         self.local_evaluator = self.make_local_evaluator(
-            self.env_creator, PPOTFPolicyGraph)
+            self.env_creator, PPOPolicyGraph)
         self.remote_evaluators = self.make_remote_evaluators(
-            self.env_creator, PPOTFPolicyGraph, self.config["num_workers"],
+            self.env_creator, PPOPolicyGraph, self.config["num_workers"],
             {"num_cpus": self.config["num_cpus_per_worker"],
              "num_gpus": self.config["num_gpus_per_worker"]})
         if self.config["simple_optimizer"]:
