@@ -1783,6 +1783,12 @@ def init(redis_address=None,
 _post_init_hooks = []
 
 
+def cleanup(worker=global_worker):
+    raise DeprecationWarning(
+        "The function ray.worker.cleanup() has been deprecated. Instead, "
+        "please call ray.shutdown().")
+
+
 def shutdown(worker=global_worker):
     """Disconnect the worker, and terminate processes started by ray.init().
 
