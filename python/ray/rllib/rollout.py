@@ -57,7 +57,7 @@ def create_parser(parser_creator=None):
     return parser
 
 
-def run(args):
+def run(args, parser):
     if not args.config:
         # Load configuration from file
         config_dir = os.path.dirname(args.checkpoint)
@@ -111,4 +111,4 @@ def run(args):
 if __name__ == "__main__":
     parser = create_parser()
     args = parser.parse_args()
-    run(args)
+    run(args, parser)

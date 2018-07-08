@@ -62,7 +62,7 @@ def create_parser(parser_creator=None):
     return parser
 
 
-def run(args):
+def run(args, parser):
     if args.config_file:
         with open(args.config_file) as f:
             experiments = yaml.load(f)
@@ -100,5 +100,5 @@ def run(args):
 
 if __name__ == "__main__":
     parser = create_parser()
-    args = parser.parse_args(sys.argv[1:])
-    run(args)
+    args = parser.parse_args()
+    run(args, parser)
