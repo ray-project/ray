@@ -729,7 +729,7 @@ class ActorHandle(object):
                            method_name,
                            args=None,
                            kwargs=None,
-                           num_return_vals=None,
+                           num_return_vals=1,
                            dependency=None):
         """Method execution stub for an actor handle.
 
