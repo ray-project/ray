@@ -841,10 +841,8 @@ class ActorHandle(object):
         return object.__getattribute__(self, attr)
 
     def __repr__(self):
-        return "Actor({})".format(self._ray_actor_id.hex())
-
-    def __str__(self):
-        return "RayActor({})".format(self._ray_class_name)
+        return "Actor({}, {})".format(
+            self._ray_class_name, self._ray_actor_id.hex())
 
     def __del__(self):
         """Kill the worker that is running this actor."""
