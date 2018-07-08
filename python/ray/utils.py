@@ -170,6 +170,8 @@ def random_string():
 
 def decode(byte_str):
     """Make this unicode in Python 3, otherwise leave it as bytes."""
+    if not isinstance(byte_str, bytes):
+        raise ValueError("The argument must be a bytes object.")
     if sys.version_info >= (3, 0):
         return byte_str.decode("ascii")
     else:

@@ -106,6 +106,22 @@ class PolicyGraph(object):
         """
         raise NotImplementedError
 
+    def compute_apply(self, samples):
+        """Fused compute gradients and apply gradients call.
+
+        Returns:
+            grad_info: dictionary of extra metadata from compute_gradients().
+            apply_info: dictionary of extra metadata from apply_gradients().
+
+        Examples:
+            >>> batch = ev.sample()
+            >>> ev.compute_apply(samples)
+        """
+
+        grads, grad_info = self.compute_gradients(samples)
+        apply_info = self.apply_gradients(grads)
+        return grad_info, apply_info
+
     def get_weights(self):
         """Returns model weights.
 
