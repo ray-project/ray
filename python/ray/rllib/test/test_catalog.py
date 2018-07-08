@@ -29,7 +29,7 @@ class CustomModel(Model):
 
 class ModelCatalogTest(unittest.TestCase):
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
 
     def testGymPreprocessors(self):
         p1 = ModelCatalog.get_preprocessor(gym.make("CartPole-v0"))

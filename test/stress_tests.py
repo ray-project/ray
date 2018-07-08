@@ -17,7 +17,7 @@ def ray_start_regular():
     ray.init(num_cpus=10)
     yield None
     # The code after the yield will run as teardown code.
-    ray.worker.cleanup()
+    ray.shutdown()
 
 
 @pytest.fixture(params=[(1, 4), (4, 4)])
@@ -32,7 +32,7 @@ def ray_start_combination(request):
         num_cpus=10)
     yield num_local_schedulers, num_workers_per_scheduler
     # The code after the yield will run as teardown code.
-    ray.worker.cleanup()
+    ray.shutdown()
 
 
 def test_submitting_tasks(ray_start_combination):
@@ -224,7 +224,7 @@ def ray_start_reconstruction(request):
         assert len(local_scheduler_ids) == num_local_schedulers + 1
 
     # Clean up the Ray cluster.
-    ray.worker.cleanup()
+    ray.shutdown()
 
 
 @pytest.mark.skipif(
@@ -529,7 +529,7 @@ def test_driver_put_errors(ray_start_reconstruction):
 # class WorkerPoolTests(unittest.TestCase):
 #
 #   def tearDown(self):
-#     ray.worker.cleanup()
+#     ray.shutdown()
 #
 #   def testBlockingTasks(self):
 #     @ray.remote
@@ -545,4 +545,4 @@ def test_driver_put_errors(ray_start_reconstruction):
 #
 #     ray.init(num_workers=1)
 #     ray.get([g.remote(i) for i in range(1000)])
-#     ray.worker.cleanup()
+#     ray.shutdown()
