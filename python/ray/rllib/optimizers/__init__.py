@@ -9,4 +9,5 @@ from ray.rllib.optimizers.multi_gpu_optimizer import LocalMultiGPUOptimizer
 
 __all__ = [
     "PolicyOptimizer", "AsyncSamplesOptimizer", "AsyncGradientsOptimizer",
-    "SyncSamplesOptimizer", "SyncReplayOptimizer", "LocalMultiGPUOptimizer"]
+    "SyncSamplesOptimizer", "SyncReplayOptimizer", "LocalMultiGPUOptimizer"
+]
