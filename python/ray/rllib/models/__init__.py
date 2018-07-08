@@ -7,6 +7,6 @@ from ray.rllib.models.fcnet import FullyConnectedNetwork
 from ray.rllib.models.lstm import LSTM
 
 
-__all__ = ["ActionDistribution", "ActionDistribution", "Categorical",
+__all__ = ["ActionDistribution", "Categorical",
            "DiagGaussian", "Deterministic", "ModelCatalog", "Model",
            "Preprocessor", "FullyConnectedNetwork", "LSTM"]

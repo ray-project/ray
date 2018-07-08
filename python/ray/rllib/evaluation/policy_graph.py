@@ -25,7 +25,7 @@ class PolicyGraph(object):
         """Initialize the graph.
 
         This is the standard constructor for policy graphs. The policy graph
-        class you pass into CommonPolicyEvaluator will be constructed with
+        class you pass into PolicyEvaluator will be constructed with
         these arguments.
 
         Args:
