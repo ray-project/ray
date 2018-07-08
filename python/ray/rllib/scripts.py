@@ -5,8 +5,6 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
-import sys
-import yaml
 
 from ray.rllib import train
 from ray.rllib import rollout

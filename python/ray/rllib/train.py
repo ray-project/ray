@@ -5,7 +5,6 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
-import sys
 import yaml
 
 import ray
@@ -40,10 +39,12 @@ def create_parser(parser_creator=None):
         help="The Redis address of the cluster.")
     parser.add_argument(
         "--ray-num-cpus", default=None, type=int,
-        help="--num-cpus to pass to Ray. This only has an affect in local mode.")
+        help="--num-cpus to pass to Ray."
+             " This only has an affect in local mode.")
     parser.add_argument(
         "--ray-num-gpus", default=None, type=int,
-        help="--num-gpus to pass to Ray. This only has an affect in local mode.")
+        help="--num-gpus to pass to Ray."
+             " This only has an affect in local mode.")
     parser.add_argument(
         "--experiment-name", default="default", type=str,
         help="Name of the subdirectory under `local_dir` to put results in.")
