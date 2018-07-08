@@ -18,10 +18,11 @@ from ray.rllib.models import ModelCatalog
 EXAMPLE_USAGE = """
 Example Usage via RLlib CLI:
     rllib rollout /tmp/ray/checkpoint_dir/checkpoint-0 --run DQN
+    --env CartPole-v0 --steps 1000000 --out rollouts.pkl
 
 Example Usage via executable:
-    ./rollout.py /tmp/ray/checkpoint_dir/checkpoint-0 --run DQN """
-"""--env CartPole-v0 --steps 1000000 --out rollouts.pkl
+    ./rollout.py /tmp/ray/checkpoint_dir/checkpoint-0 --run DQN
+    --env CartPole-v0 --steps 1000000 --out rollouts.pkl
 """
 
 def create_parser(parser_creator=None):

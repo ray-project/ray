@@ -31,8 +31,10 @@ def cli():
 
     # see _SubParsersAction.add_parser in
     # https://github.com/python/cpython/blob/master/Lib/argparse.py
-    train.create_parser(lambda **kwargs: cmd_sp.add_parser("train", **kwargs))
-    rollout.create_parser(lambda **kwargs: cmd_sp.add_parser("rollout", **kwargs))
+    train.create_parser(
+        lambda **kwargs: cmd_sp.add_parser("train", **kwargs))
+    rollout.create_parser(
+        lambda **kwargs: cmd_sp.add_parser("rollout", **kwargs))
     options = parser.parse_args()
 
     if options.command == "train":
