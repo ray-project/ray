@@ -30,6 +30,7 @@ highlights of the refactor include the following:
   control store.
 - A preliminary approach for automatically flushing global control store
   metadata to avoid out-of-memory errors for long-running jobs.
+
 Note that the refactoring is currently under development and does not yet
 support fault tolerance.
 
