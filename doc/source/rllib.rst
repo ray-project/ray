@@ -34,7 +34,7 @@ Environments
 ------------
 * `RLlib Environments Overview <rllib-env.html>`__
 * `OpenAI Gym <rllib-env.html#openai-gym>`__
-* `Vectorized (Batch) <rllib-env.html#vectorized>`__
+* `Vectorized <rllib-env.html#vectorized>`__
 * `Multi-Agent <rllib-env.html#multi-agent>`__
 * `Serving (Agent-oriented) <rllib-env.html#serving>`__
 * `Offline Data Ingest <rllib-env.html#offline-data>`__ 
