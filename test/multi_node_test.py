@@ -245,11 +245,11 @@ class StartRayScriptTest(unittest.TestCase):
 
             # Test starting Ray with all arguments specified.
             run_and_get_output([
-                "ray", "start", "--head", "--num-workers", "2",
-                "--redis-port", "6379", "--redis-shard-ports",
-                "6380,6381,6382", "--object-manager-port", "12345",
-                "--num-cpus", "2", "--num-gpus", "0", "--redis-max-clients",
-                "100", "--resources", "{\"Custom\": 1}"
+                "ray", "start", "--head", "--num-workers", "2", "--redis-port",
+                "6379", "--redis-shard-ports", "6380,6381,6382",
+                "--object-manager-port", "12345", "--num-cpus", "2",
+                "--num-gpus", "0", "--redis-max-clients", "100", "--resources",
+                "{\"Custom\": 1}"
             ])
             subprocess.Popen(["ray", "stop"]).wait()
 
