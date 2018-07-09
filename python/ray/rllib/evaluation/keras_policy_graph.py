@@ -3,7 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-
 from ray.rllib.evaluation.policy_graph import PolicyGraph
 
 
@@ -12,17 +11,17 @@ def _sample(probs):
 
 
 class KerasPolicyGraph(PolicyGraph):
-        """Initialize the Keras Policy Graph.
+    """Initialize the Keras Policy Graph.
 
-        This is a Policy Graph used for models with actor and critics.
+    This is a Policy Graph used for models with actor and critics.
 
-        Args:
-            observation_space (gym.Space): Observation space of the policy.
-            action_space (gym.Space): Action space of the policy.
-            config (dict): Policy-specific configuration data.
-            actor (Model): A model that holds the policy.
-            critic (Model): A model that holds the value function.
-        """
+    Args:
+        observation_space (gym.Space): Observation space of the policy.
+        action_space (gym.Space): Action space of the policy.
+        config (dict): Policy-specific configuration data.
+        actor (Model): A model that holds the policy.
+        critic (Model): A model that holds the value function.
+    """
     def __init__(self, observation_space, action_space, config,
                  actor=None, critic=None):
         PolicyGraph.__init__(self, observation_space, action_space, config)
