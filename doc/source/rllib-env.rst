@@ -19,7 +19,7 @@ In the high-level agent APIs, environments are identified with string names. By 
 
     register_env("my_env", env_creator)
     ray.init()
-    trainer = ppo.PPOAgent(env="my-env", config={
+    trainer = ppo.PPOAgent(env="my_env", config={
         "env_config": {},  # config to pass to env creator
     })
 
