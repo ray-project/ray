@@ -15,6 +15,7 @@
         <module>runtime-common</module>
         <module>runtime-native</module>
         <module>runtime-dev</module>
+        <module>cli</module>
         <module>test</module>
         <module>example</module>
     </modules>
@@ -22,7 +23,7 @@
     <properties>
         <java.version>1.8</java.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <projetct.version>1.0</projetct.version>
+        <project.version>1.0</project.version>
     </properties>
 
 
@@ -67,6 +68,13 @@
                 <groupId>com.github.davidmoten</groupId>
                 <artifactId>flatbuffers-java</artifactId>
                 <version>1.7.0.1</version>
+            </dependency>
+
+            <!-- https://mvnrepository.com/artifact/com.beust/jcommander -->
+            <dependency>
+              <groupId>com.beust</groupId>
+              <artifactId>jcommander</artifactId>
+              <version>1.72</version>
             </dependency>
 
             <!-- https://mvnrepository.com/artifact/redis.clients/jedis -->
