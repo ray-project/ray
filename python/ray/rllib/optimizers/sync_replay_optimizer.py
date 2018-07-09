@@ -93,8 +93,8 @@ class SyncReplayOptimizer(PolicyOptimizer):
         samples = self._replay()
 
         with self.grad_timer:
-            grad_info, apply_info = self.local_evaluator.compute_apply(samples)
-            for policy_id, info in grad_info.items():
+            info_dict = self.local_evaluator.compute_apply(samples)
+            for policy_id, info in info_dict.items():
                 replay_buffer = self.replay_buffers[policy_id]
                 if isinstance(replay_buffer, PrioritizedReplayBuffer):
                     td_error = info["td_error"]

@@ -89,8 +89,7 @@ class EvaluatorInterface(object):
         """Fused compute gradients and apply gradients call.
 
         Returns:
-            grad_info: dictionary of extra metadata from compute_gradients().
-            apply_info: dictionary of extra metadata from apply_gradients().
+            info: dictionary of extra metadata from compute_gradients().
 
         Examples:
             >>> batch = ev.sample()
