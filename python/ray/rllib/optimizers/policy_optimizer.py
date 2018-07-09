@@ -124,8 +124,11 @@ class PolicyOptimizer(object):
                 "This optimizer does not support multi-agent yet.")
 
     @classmethod
-    def make(cls, *args, num_workers=0, optimizer_config=None,
-             num_cpus=None, num_gpus=None, **kwargs):
+    def make(cls, *args, num_workers=0, num_envs_per_worker=None,
+             optimizer_config=None, num_cpus=None, num_gpus=None, **kwargs):
+        if num_envs_per_worker:
+            assert num_envs_per_worker > 0, "Improper num_envs_per_worker!"
+            kwargs["num_envs"] = int(num_envs_per_worker)
         evaluator = PolicyEvaluator(*args, **kwargs)
         remote_cls = PolicyEvaluator.as_remote(num_cpus, num_gpus)
         remote_evaluators = [
