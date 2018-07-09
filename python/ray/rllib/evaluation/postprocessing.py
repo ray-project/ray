@@ -52,18 +52,19 @@ def compute_advantages(rollout, last_r, gamma=0.9, lambda_=1.0, use_gae=True):
     return SampleBatch(traj)
 
 
-def compute_targets(rollout, action_space, gamma=0.9):
+def compute_targets(rollout, action_space, gamma=0.9, lambda_=1.0):
     """Given a rollout, compute targets.
 
     Used for categorical crossentropy loss on the policy. Also assumes
-    there is a value function.
+    there is a value function. Uses GAE to calculate advantages.
 
     Args:
         rollout (SampleBatch): SampleBatch of a single trajectory
         action_space (gym.Space): Dimensions of the advantage targets.
         gamma (float): Discount factor.
     """
-    rollout = compute_advantages(rollout, gamma=gamma, lambda_=1.0)
+
+    rollout = compute_advantages(rollout, gamma=gamma, lambda_=lambda_)
     rollout["adv_targets"] = np.zeros((rollout.count, action_space.n))
     rollout["adv_targets"][np.arange(rollout.count), rollout["actions"]] = \
         rollout["advantages"]
