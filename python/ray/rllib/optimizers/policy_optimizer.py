@@ -123,12 +123,18 @@ class PolicyOptimizer(object):
                 "This optimizer does not support multi-agent yet.")
 
     @classmethod
-    def make(cls, num_workers=0, num_envs_per_worker=None,
-             optimizer_config=None, remote_num_cpus=None,
-             remote_num_gpus=None, *eval_args, **eval_kwargs):
+    def make(cls, env_creator, policy_graph,
+             num_workers=0, num_envs_per_worker=None, optimizer_config=None,
+             remote_num_cpus=None, remote_num_gpus=None, **eval_kwargs):
         """Creates an Optimizer with local and remote evaluators.
 
         Args:
+            env_creator(func): Function that returns a gym.Env given an
+                EnvContext wrapped configuration.
+            policy_graph (class|dict): Either a class implementing
+                PolicyGraph, or a dictionary of policy id strings to
+                (PolicyGraph, obs_space, action_space, config) tuples.
+                See PolicyEvaluator documentation.
             num_workers (int): Number of remote evaluators
             num_envs_per_worker (int): (Optional) Sets the number
                 environments per evaluator for vectorization.
@@ -137,7 +143,6 @@ class PolicyOptimizer(object):
             optimizer_config (dict): Config passed to the optimizer.
             remote_num_cpus (int): CPU specification for remote evaluator.
             remote_num_gpus (int): GPU specification for remote evaluator.
-            *eval_args: PolicyEvaluator Class positional args.
             **eval_kwargs: PolicyEvaluator Class non-positional args.
 
         Returns:
@@ -147,11 +152,11 @@ class PolicyOptimizer(object):
         if num_envs_per_worker:
             assert num_envs_per_worker > 0, "Improper num_envs_per_worker!"
             eval_kwargs["num_envs"] = int(num_envs_per_worker)
-        evaluator = PolicyEvaluator(*eval_args, **eval_kwargs)
+        evaluator = PolicyEvaluator(env_creator, policy_graph, **eval_kwargs)
         remote_cls = PolicyEvaluator.as_remote(
             remote_num_cpus, remote_num_gpus)
         remote_evaluators = [
-            remote_cls.remote(
-                *eval_args, **eval_kwargs) for i in range(num_workers)]
+            remote_cls.remote(env_creator, policy_graph, **eval_kwargs)
+            for i in range(num_workers)]
 
         return cls(evaluator, remote_evaluators, optimizer_config)
