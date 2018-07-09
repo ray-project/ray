@@ -22,6 +22,7 @@ class Queue(object):
     Args:
         maxsize (int): maximum size of the queue. If zero, size is unboundend.
     """
+
     def __init__(self, maxsize=0):
         self.maxsize = maxsize
         self.actor = _QueueActor.remote(maxsize)
