@@ -4,7 +4,7 @@ import com.beust.jcommander.Parameter;
 import com.beust.jcommander.Parameters;
 
 /**
- * Arguments for command start
+ * Arguments for command start.
  */
 @Parameters(separators = "= ", commandDescription = "start ray daemons")
 public class CommandStart {

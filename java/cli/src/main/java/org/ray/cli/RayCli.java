@@ -3,17 +3,16 @@ package org.ray.cli;
 import com.beust.jcommander.JCommander;
 import java.io.File;
 import java.io.IOException;
-import java.util.HashSet;
-import java.util.List;
 import java.util.ArrayList;
+import java.util.List;
 import net.lingala.zip4j.core.ZipFile;
 import net.lingala.zip4j.exception.ZipException;
 import org.ray.api.UniqueID;
 import org.ray.cli.CommandStart;
 import org.ray.cli.CommandStop;
 import org.ray.core.RayRuntime;
-import org.ray.core.model.RunMode;
 import org.ray.core.model.RayParameters;
+import org.ray.core.model.RunMode;
 import org.ray.runner.RunInfo;
 import org.ray.runner.RunManager;
 import org.ray.runner.worker.DefaultDriver;
@@ -24,13 +23,13 @@ import org.ray.spi.StateStoreProxy;
 import org.ray.spi.impl.NativeRemoteFunctionManager;
 import org.ray.spi.impl.RedisClient;
 import org.ray.spi.impl.StateStoreProxyImpl;
-import org.ray.util.NetworkUtil;
+import org.ray.util.FileUtil;
 import org.ray.util.config.ConfigReader;
 import org.ray.util.logger.RayLog;
-import org.ray.util.FileUtil;
+
 
 /**
- * Ray command line interface
+ * Ray command line interface.
  */
 public class RayCli {
 
@@ -83,32 +82,7 @@ public class RayCli {
   }
 
   private static void start(CommandStart cmdStart, ConfigReader reader) {
-    RayParameters params = new RayParameters(reader);
-
-    RunManager manager = null;
-
-    manager = startProcess(cmdStart, reader);
-
-    // monitoring all processes, throwing an exception when any process fails
-    while (true) {
-      try {
-        Thread.sleep(5000);
-      } catch (InterruptedException e) {
-      }
-
-      HashSet<RunInfo.ProcessType> excludeTypes = new HashSet<>();
-      if (!manager.checkAlive(excludeTypes)) {
-
-        //ray components fail-over
-        RayLog.core.error("Something error in Ray processes.");
-
-        if (!manager.tryRecoverDeadProcess()) {
-          RayLog.core.error("Restart all the processes in this node.");
-          manager.cleanup(true);
-          manager = startProcess(cmdStart, reader);
-        }
-      }
-    }
+    startProcess(cmdStart, reader);
   }
 
   private static void stop(CommandStop cmdStop) {
@@ -118,26 +92,29 @@ public class RayCli {
     try {
       Runtime.getRuntime().exec(cmd);
     } catch (IOException e) {
+      RayLog.core.warn("exception in killing ray processes");
     }
 
-    cmd[2] = "kill $(ps aux | grep redis-server | grep -v grep | " +
-        "awk \'{ print $2 }\') 2> /dev/null";
+    cmd[2] = "kill $(ps aux | grep redis-server | grep -v grep | "
+        + "awk \'{ print $2 }\') 2> /dev/null";
     try {
       Runtime.getRuntime().exec(cmd);
     } catch (IOException e) {
+      RayLog.core.warn("exception in killing ray processes");
     }
 
-    cmd[2] = "kill -9 $(ps aux | grep DefaultWorker | grep -v grep | " +
-        "awk \'{ print $2 }\') 2> /dev/null";
+    cmd[2] = "kill -9 $(ps aux | grep DefaultWorker | grep -v grep | "
+        + "awk \'{ print $2 }\') 2> /dev/null";
     try {
       Runtime.getRuntime().exec(cmd);
     } catch (IOException e) {
+      RayLog.core.warn("exception in killing ray processes");
     }
   }
 
   private static String[] buildRayRuntimeArgs(CommandSubmit cmdSubmit) {
 
-    if (cmdSubmit.redis_address == null) {
+    if (cmdSubmit.redisAddress == null) {
       throw new RuntimeException(
           "--redis-address must be specified to submit a job");      
     }
@@ -145,8 +122,8 @@ public class RayCli {
     List<String> argList = new ArrayList<String>();
     String section = "ray.java.start.";
     String overwrite = "--overwrite="
-      + section + "redis_address=" + cmdSubmit.redis_address + ";"
-      + section + "run_mode=" + "CLUSTER";
+        + section + "redis_address=" + cmdSubmit.redisAddress + ";"
+        + section + "run_mode=" + "CLUSTER";
 
     argList.add(overwrite);
 
@@ -155,7 +132,7 @@ public class RayCli {
       argList.add(config);
     }
 
-    String args[] = new String[argList.size()];
+    String[] args = new String[argList.size()];
     argList.toArray(args);
 
     return args;
@@ -166,12 +143,12 @@ public class RayCli {
     PathConfig paths = new PathConfig(config);
     RayParameters params = new RayParameters(config);
 
-    params.redis_address = cmdSubmit.redis_address;
+    params.redis_address = cmdSubmit.redisAddress;
     params.run_mode = RunMode.CLUSTER;
 
 
     KeyValueStoreLink kvStore = new RedisClient();
-    kvStore.setAddr(cmdSubmit.redis_address);
+    kvStore.setAddr(cmdSubmit.redisAddress);
     StateStoreProxy stateStoreProxy = new StateStoreProxyImpl(kvStore);
     stateStoreProxy.initializeGlobalState();
 
@@ -181,8 +158,8 @@ public class RayCli {
     byte[] zip = FileUtil.fileToBytes(cmdSubmit.packageZip);
 
     String packageName = cmdSubmit.packageZip.substring(
-      cmdSubmit.packageZip.lastIndexOf('/') + 1,
-      cmdSubmit.packageZip.lastIndexOf('.'));
+        cmdSubmit.packageZip.lastIndexOf('/') + 1,
+        cmdSubmit.packageZip.lastIndexOf('.'));
 
     //final RemoteFunctionManager functionManager = RayRuntime
     //    .getInstance().getRemoteFunctionManager();
@@ -214,7 +191,7 @@ public class RayCli {
         topDir = file.getName();
       }
     }
-    RayLog.rapp.debug("topDir of app classes: "+ topDir);
+    RayLog.rapp.debug("topDir of app classes: " + topDir);
     if (topDir == null) {
       RayLog.rapp.error("Can't find topDir of app classes, the app directory " + appDir);
       return;
@@ -228,20 +205,20 @@ public class RayCli {
     //  RayRuntime.configReader);
     RunManager runManager = new RunManager(params, paths, config);
     Process proc = runManager.startDriver(
-      DefaultDriver.class.getName(),
-      cmdSubmit.redis_address,
-      appId,
-      appDir,
-      params.node_ip_address,
-      cmdSubmit.className,
-      cmdSubmit.classArgs,
-      additionalClassPath,
-      null);
+        DefaultDriver.class.getName(),
+        cmdSubmit.redisAddress,
+        appId,
+        appDir,
+        params.node_ip_address,
+        cmdSubmit.className,
+        cmdSubmit.classArgs,
+        additionalClassPath,
+        null);
 
     if (null == proc) { 
       RayLog.rapp.error(
-        "Create process for app " + packageName + " in local directory " + appDir
-            + " failed");
+          "Create process for app " + packageName + " in local directory " + appDir
+          + " failed");
       return;
     }
 
@@ -260,7 +237,8 @@ public class RayCli {
         configPath = System.getProperty("ray.config");
       }
       if (configPath == null) {
-        throw new RuntimeException("Please set config file path in env RAY_CONFIG or property ray.config");
+        throw new RuntimeException(
+            "Please set config file path in env RAY_CONFIG or property ray.config");
       }
     }
     return configPath;

@@ -4,13 +4,13 @@ import com.beust.jcommander.Parameter;
 import com.beust.jcommander.Parameters;
 
 /**
- * Arguments for command submit
+ * Arguments for command submit.
  */
 @Parameters(separators = "= ", commandDescription = "submit a job to ray cluster")
 public class CommandSubmit {
 
   @Parameter(names = "--package", description = "java jar package zip file", required = true)
-  public String packageZip ;
+  public String packageZip;
 
   @Parameter(names = "--class", description = "java class name", required = true)
   public String className;
@@ -21,7 +21,7 @@ public class CommandSubmit {
   @Parameter(names = "--config", description = "the config file of ray")
   public String config;
 
-  @Parameter(names = "--redis-address", description = "ip & port for redis service", required = true)
-  public String redis_address;
+  @Parameter(names = "--redis-address", description = "ip:port for redis service", required = true)
+  public String redisAddress;
 
 }
