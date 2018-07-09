@@ -38,8 +38,10 @@ class TestQueue(unittest.TestCase):
         q = Queue()
 
         items = set(range(10))
-        producers = [put_async.remote(q, item, True, None, 0.5)     # noqa
-                     for item in items]
+        producers = [   # noqa
+                put_async.remote(q, item, True, None, 0.5)
+                for item in items
+        ]
         consumers = [get_async.remote(q, True, None, 0) for _ in items]
 
         result = set(ray.get(consumers))
