@@ -26,12 +26,13 @@ def run_optimizer(optimizer, num_steps, tag=""):
         optimizer.step()
         if itr:  #warm start
             result = optimizer.collect_metrics()
+            timesteps_total = optimizer.num_steps_sampled
         else:
             from ray.tune.result import TrainingResult
             result = TrainingResult(episode_reward_mean=0)
         result = result._replace(
             training_iteration=itr,
-            timesteps_total=optimizer.num_steps_sampled)
+            timesteps_total=timesteps_total)
         logger.on_result(result)
     logger.close()
 
