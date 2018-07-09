@@ -41,7 +41,6 @@ class ImportThread(object):
         t.start()
 
     def _run(self):
-        from ray.worker import profile, WORKER_MODE
         import_pubsub_client = self.redis_client.pubsub()
         # Exports that are published after the call to
         # import_pubsub_client.subscribe and before the call to
@@ -55,32 +54,7 @@ class ImportThread(object):
             export_keys = self.redis_client.lrange("Exports", 0, -1)
             for key in export_keys:
                 num_imported += 1
-
-                # Handle the driver case first.
-                if self.mode != WORKER_MODE:
-                    if key.startswith(b"FunctionsToRun"):
-                        with profile(
-                                "fetch_and_run_function", worker=self.worker):
-                            self.fetch_and_execute_function_to_run(key)
-                    # Continue because FunctionsToRun are the only things that
-                    # the driver should import.
-                    continue
-
-                if key.startswith(b"RemoteFunction"):
-                    with profile(
-                            "register_remote_function", worker=self.worker):
-                        self.fetch_and_register_remote_function(key)
-                elif key.startswith(b"FunctionsToRun"):
-                    with profile("fetch_and_run_function", worker=self.worker):
-                        self.fetch_and_execute_function_to_run(key)
-                elif key.startswith(b"ActorClass"):
-                    # Keep track of the fact that this actor class has been
-                    # exported so that we know it is safe to turn this worker
-                    # into an actor of that class.
-                    self.worker.imported_actor_classes.add(key)
-                else:
-                    raise Exception("This code should be unreachable.")
-
+                self._process_key(key)
         try:
             for msg in import_pubsub_client.listen():
                 with self.worker.lock:
@@ -92,42 +66,39 @@ class ImportThread(object):
                     for i in range(num_imported, num_imports):
                         num_imported += 1
                         key = self.redis_client.lindex("Exports", i)
-
-                        # Handle the driver case first.
-                        if self.mode != WORKER_MODE:
-                            if key.startswith(b"FunctionsToRun"):
-                                with profile(
-                                        "fetch_and_run_function",
-                                        worker=self.worker):
-                                    self.fetch_and_execute_function_to_run(key)
-                            # Continue because FunctionsToRun are the only
-                            # things that the driver should import.
-                            continue
-
-                        if key.startswith(b"RemoteFunction"):
-                            with profile(
-                                    "register_remote_function",
-                                    worker=self.worker):
-                                self.fetch_and_register_remote_function(key)
-                        elif key.startswith(b"FunctionsToRun"):
-                            with profile(
-                                    "fetch_and_run_function",
-                                    worker=self.worker):
-                                self.fetch_and_execute_function_to_run(key)
-                        elif key.startswith(b"ActorClass"):
-                            # Keep track of the fact that this actor class has
-                            # been exported so that we know it is safe to turn
-                            # this worker into an actor of that class.
-                            self.worker.imported_actor_classes.add(key)
-
-                        # TODO(rkn): We may need to bring back the case of
-                        # fetching actor classes here.
-                        else:
-                            raise Exception("This code should be unreachable.")
+                        self._process_key(key)
         except redis.ConnectionError:
             # When Redis terminates the listen call will throw a
             # ConnectionError, which we catch here.
             pass
+
+    def _process_key(self, key):
+        """Process the given export key from redis."""
+        from ray.worker import profile, WORKER_MODE
+        # Handle the driver case first.
+        if self.mode != WORKER_MODE:
+            if key.startswith(b"FunctionsToRun"):
+                with profile("fetch_and_run_function", worker=self.worker):
+                    self.fetch_and_execute_function_to_run(key)
+            # Return because FunctionsToRun are the only things that
+            # the driver should import.
+            return
+
+        if key.startswith(b"RemoteFunction"):
+            with profile("register_remote_function", worker=self.worker):
+                self.fetch_and_register_remote_function(key)
+        elif key.startswith(b"FunctionsToRun"):
+            with profile("fetch_and_run_function", worker=self.worker):
+                self.fetch_and_execute_function_to_run(key)
+        elif key.startswith(b"ActorClass"):
+            # Keep track of the fact that this actor class has been
+            # exported so that we know it is safe to turn this worker
+            # into an actor of that class.
+            self.worker.imported_actor_classes.add(key)
+        # TODO(rkn): We may need to bring back the case of
+        # fetching actor classes here.
+        else:
+            raise Exception("This code should be unreachable.")
 
     def fetch_and_register_remote_function(self, key):
         """Import a remote function."""
