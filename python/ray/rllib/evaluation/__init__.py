@@ -12,8 +12,8 @@ from ray.rllib.evaluation.metrics import collect_metrics
 
 __all__ = [
     "EvaluatorInterface", "PolicyEvaluator", "PolicyGraph", "TFPolicyGraph",
-    "TorchPolicyGraph", "KerasPolicyGraph",
-    "SampleBatch", "MultiAgentBatch", "SampleBatchBuilder",
+    "TorchPolicyGraph", "KerasPolicyGraph", "SampleBatch", "MultiAgentBatch",
+    "SampleBatchBuilder",
     "MultiAgentSampleBatchBuilder", "SyncSampler", "AsyncSampler",
-    "compute_advantages", "compute_targets", "collect_metrics"
+    "compute_advantages", "collect_metrics"
 ]

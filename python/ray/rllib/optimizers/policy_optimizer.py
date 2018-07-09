@@ -118,6 +118,10 @@ class PolicyOptimizer(object):
              for i, ev in enumerate(self.remote_evaluators)])
         return local_result + remote_results
 
+    def collect_metrics(self):
+        res = collect_metrics(self.local_evaluator, self.remote_evaluators)
+        return res._replace(info=self.stats())
+
     def _check_not_multiagent(self, sample_batch):
         if isinstance(sample_batch, MultiAgentBatch):
             raise NotImplementedError(

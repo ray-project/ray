@@ -51,7 +51,7 @@ For a full example of a custom model in code, see the `Carla RLlib model <https:
 Custom Preprocessors
 --------------------
 
-Similarly, custom preprocessors should subclass the RLlib `preprocessor class <https://github.com/ray-project/ray/blob/master/python/ray/rllib/models/preprocessors.py>`__ and registered in the model catalog:
+Similarly, custom preprocessors should subclass the RLlib `preprocessor class <https://github.com/ray-project/ray/blob/master/python/ray/rllib/models/preprocessors.py>`__ and be registered in the model catalog:
 
 .. code-block:: python
 

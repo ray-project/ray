@@ -8,6 +8,10 @@ from ray.rllib.optimizers.multi_gpu_optimizer import LocalMultiGPUOptimizer
 
 
 def run_optimizer(optimizer, num_steps, tag=""):
+    """Quick-start optimizer training.
+
+    Soft dependencies here.
+    """
     from ray.tune.logger import UnifiedLogger
     import os
     import shutil
