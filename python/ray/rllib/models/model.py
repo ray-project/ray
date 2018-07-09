@@ -37,17 +37,19 @@ class Model(object):
     a scale parameter (like a standard deviation).
     """
 
-    def __init__(self, inputs, num_outputs, options):
+    def __init__(
+            self, inputs, num_outputs, options, state_in=None, seq_lens=None):
         self.inputs = inputs
 
         # Default attribute values for the non-RNN case
         self.state_init = []
-        self.state_in = []
+        self.state_in = state_in or []
         self.state_out = []
-        self.seq_lens = tf.placeholder_with_default(
-            tf.ones(  # reshape needed for older tf versions
-                tf.reshape(tf.shape(inputs)[0], [1]), dtype=tf.int32),
-            [None], name="seq_lens")
+        if seq_lens is not None:
+            self.seq_lens = seq_lens
+        else:
+            self.seq_lens = tf.placeholder(
+                dtype=tf.int32, shape=[None], name="seq_lens")
 
         if options.get("free_log_std", False):
             assert num_outputs % 2 == 0

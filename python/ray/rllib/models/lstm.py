@@ -155,9 +155,14 @@ class LSTM(Model):
             np.zeros(lstm.state_size.h, np.float32)]
 
         # Setup LSTM inputs
-        c_in = tf.placeholder(tf.float32, [None, lstm.state_size.c], name="c")
-        h_in = tf.placeholder(tf.float32, [None, lstm.state_size.h], name="h")
-        self.state_in = [c_in, h_in]
+        if self.state_in:
+            c_in, h_in = self.state_in
+        else:
+            c_in = tf.placeholder(
+                tf.float32, [None, lstm.state_size.c], name="c")
+            h_in = tf.placeholder(
+                tf.float32, [None, lstm.state_size.h], name="h")
+            self.state_in = [c_in, h_in]
 
         # Setup LSTM outputs
         if use_tf100_api:

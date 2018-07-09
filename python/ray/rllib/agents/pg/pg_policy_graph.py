@@ -41,10 +41,6 @@ class PGPolicyGraph(TFPolicyGraph):
             ("advantages", advantages),
         ]
 
-        # LSTM support
-        for i, ph in enumerate(self.model.state_in):
-            loss_in.append(("state_in_{}".format(i), ph))
-
         is_training = tf.placeholder_with_default(True, ())
         TFPolicyGraph.__init__(
             self, obs_space, action_space, sess, obs_input=obs,

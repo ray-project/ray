@@ -138,41 +138,47 @@ class ModelCatalog(object):
                                       " not supported".format(action_space))
 
     @staticmethod
-    def get_model(inputs, num_outputs, options=None):
+    def get_model(
+            inputs, num_outputs, options=None, state_in=None, seq_lens=None):
         """Returns a suitable model conforming to given input and output specs.
 
         Args:
             inputs (Tensor): The input tensor to the model.
             num_outputs (int): The size of the output vector of the model.
             options (dict): Optional args to pass to the model constructor.
+            state_in (list): Optional RNN state in tensors.
+            seq_in (Tensor): Optional RNN sequence length tensor.
 
         Returns:
             model (Model): Neural network model.
         """
 
         options = options or {}
-        model = ModelCatalog._get_model(inputs, num_outputs, options)
+        model = ModelCatalog._get_model(
+            inputs, num_outputs, options, state_in, seq_lens)
 
         if options.get("use_lstm"):
-            model = LSTM(model.last_layer, num_outputs, options)
+            model = LSTM(
+                model.last_layer, num_outputs, options, state_in, seq_lens)
 
         return model
 
     @staticmethod
-    def _get_model(inputs, num_outputs, options):
+    def _get_model(inputs, num_outputs, options, state_in, seq_lens):
         if "custom_model" in options:
             model = options["custom_model"]
             print("Using custom model {}".format(model))
             return _global_registry.get(RLLIB_MODEL, model)(
-                inputs, num_outputs, options)
+                inputs, num_outputs, options,
+                state_in=state_in, seq_lens=seq_lens)
 
         obs_rank = len(inputs.shape) - 1
 
         # num_outputs > 1 used to avoid hitting this with the value function
         if isinstance(options.get("custom_options", {}).get(
           "multiagent_fcnet_hiddens", 1), list) and num_outputs > 1:
-            return MultiAgentFullyConnectedNetwork(inputs,
-                                                   num_outputs, options)
+            return MultiAgentFullyConnectedNetwork(
+                inputs, num_outputs, options)
 
         if obs_rank > 1:
             return VisionNetwork(inputs, num_outputs, options)

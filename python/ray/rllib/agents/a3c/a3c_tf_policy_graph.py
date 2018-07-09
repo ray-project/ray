@@ -74,8 +74,6 @@ class A3CPolicyGraph(TFPolicyGraph):
             ("advantages", advantages),
             ("value_targets", v_target),
         ]
-        for i, ph in enumerate(self.model.state_in):
-            loss_in.append(("state_in_{}".format(i), ph))
         self.state_in = self.model.state_in
         self.state_out = self.model.state_out
         TFPolicyGraph.__init__(

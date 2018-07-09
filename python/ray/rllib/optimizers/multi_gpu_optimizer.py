@@ -59,8 +59,6 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
         self.policy = self.local_evaluator.policy_map["default"]
         assert isinstance(self.policy, TFPolicyGraph), \
             "Only TF policies are supported"
-        assert len(self.policy.get_initial_state()) == 0, \
-            "No RNN support yet for multi-gpu. Try the simple optimizer."
 
         # per-GPU graph copies created below must share vars with the policy
         # reuse is set to AUTO_REUSE because Adam nodes are created after
@@ -71,7 +69,8 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
                     self.par_opt = LocalSyncParallelOptimizer(
                         tf.train.AdamOptimizer(self.sgd_stepsize),
                         self.devices,
-                        self.policy.loss_inputs(),
+                        ([v for k, v in self.policy.loss_inputs()] +
+                         self.policy._state_inputs + [self.policy._seq_lens]),
                         self.per_device_batch_size,
                         self.policy.copy,
                         os.getcwd())
@@ -103,9 +102,13 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
         samples.shuffle()
 
         with self.load_timer:
+            tuples = self.policy._get_loss_inputs_dict(samples)
+            keys = (
+                [ph for _, ph in self.policy.loss_inputs()] +
+                self.policy._state_inputs +
+                [self.policy._seq_lens])
             tuples_per_device = self.par_opt.load_data(
-                self.sess,
-                samples.columns([key for key, _ in self.policy.loss_inputs()]))
+                self.sess, [tuples[k] for k in keys])
 
         with self.grad_timer:
             num_batches = (

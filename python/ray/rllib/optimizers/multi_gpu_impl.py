@@ -34,9 +34,9 @@ class LocalSyncParallelOptimizer(object):
     Args:
         optimizer: Delegate TensorFlow optimizer object.
         devices: List of the names of TensorFlow devices to parallelize over.
-        input_placeholders: List of (name, input_placeholder)
-            for the loss function. Tensors of these shapes will be passed
-            to build_graph() in order to define the per-device loss ops.
+        input_placeholders: List of input_placeholders for the loss function.
+            Tensors of these shapes will be passed to build_graph() in order
+            to define the per-device loss ops.
         per_device_batch_size: Number of tuples to optimize over at a time per
             device. In each call to `optimize()`,
             `len(devices) * per_device_batch_size` tuples of data will be
@@ -68,14 +68,13 @@ class LocalSyncParallelOptimizer(object):
 
         # Split on the CPU in case the data doesn't fit in GPU memory.
         with tf.device("/cpu:0"):
-            names, placeholders = zip(*input_placeholders)
             data_splits = zip(
-                *[tf.split(ph, len(devices)) for ph in placeholders])
+                *[tf.split(ph, len(devices)) for ph in input_placeholders])
 
         self._towers = []
         for device, device_placeholders in zip(self.devices, data_splits):
             self._towers.append(
-                self._setup_device(device, zip(names, device_placeholders)))
+                self._setup_device(device, device_placeholders))
 
         avg = average_gradients([t.grads for t in self._towers])
         if grad_norm_clipping:
@@ -105,10 +104,11 @@ class LocalSyncParallelOptimizer(object):
 
         feed_dict = {}
         assert len(self.loss_inputs) == len(inputs)
-        for (name, ph), arr in zip(self.loss_inputs, inputs):
+        for ph, arr in zip(self.loss_inputs, inputs):
             truncated_arr = make_divisible_by(arr, self.batch_size)
             feed_dict[ph] = truncated_arr
             truncated_len = len(truncated_arr)
+            print("FEED", ph, len(arr), len(truncated_arr))
 
         if full_trace:
             run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
@@ -200,7 +200,7 @@ class LocalSyncParallelOptimizer(object):
             with tf.name_scope(TOWER_SCOPE_NAME):
                 device_input_batches = []
                 device_input_slices = []
-                for name, ph in device_input_placeholders:
+                for ph in device_input_placeholders:
                     current_batch = tf.Variable(
                         ph, trainable=False, validate_shape=False,
                         collections=[])
@@ -211,7 +211,7 @@ class LocalSyncParallelOptimizer(object):
                         ([self.per_device_batch_size] + [-1] *
                          len(ph.shape[1:])))
                     current_slice.set_shape(ph.shape)
-                    device_input_slices.append((name, current_slice))
+                    device_input_slices.append(current_slice)
                 graph_obj = self.build_graph(device_input_slices)
                 device_grads = graph_obj.gradients(self.optimizer)
             return Tower(

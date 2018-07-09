@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import tensorflow as tf
+import numpy as np
 
 import ray
 from ray.rllib.evaluation.policy_graph import PolicyGraph
@@ -56,8 +57,8 @@ class TFPolicyGraph(PolicyGraph):
                 and has shape [BATCH_SIZE, data...].
             is_training (Tensor): input placeholder for whether we are
                 currently training the policy.
-            state_inputs (list): list of RNN state output Tensors.
-            state_outputs (list): list of initial state values.
+            state_inputs (list): list of RNN state input Tensors.
+            state_outputs (list): list of RNN state output Tensors.
             seq_lens (Tensor): placeholder for RNN sequence lengths, of shape
                 [NUM_SEQUENCES]. Note that NUM_SEQUENCES << BATCH_SIZE. See
                 models/lstm.py for more information.
@@ -75,6 +76,8 @@ class TFPolicyGraph(PolicyGraph):
         self._is_training = is_training
         self._state_inputs = state_inputs or []
         self._state_outputs = state_outputs or []
+        for i, ph in enumerate(self._state_inputs):
+            self._loss_input_dict["state_in_{}".format(i)] = ph
         self._seq_lens = seq_lens
         self._max_seq_len = max_seq_len
         self._optimizer = self.optimizer()
@@ -99,6 +102,8 @@ class TFPolicyGraph(PolicyGraph):
             (self._state_inputs, state_batches)
         builder.add_feed_dict(self.extra_compute_action_feed_dict())
         builder.add_feed_dict({self._obs_input: obs_batch})
+        if state_batches:
+            builder.add_feed_dict({self._seq_lens: np.ones(len(obs_batch))})
         builder.add_feed_dict({self._is_training: is_training})
         builder.add_feed_dict(dict(zip(self._state_inputs, state_batches)))
         fetches = builder.add_fetches(
@@ -123,10 +128,9 @@ class TFPolicyGraph(PolicyGraph):
             return feed_dict
 
         # RNN case
-        feature_keys = [
-            k for k, v in self._loss_inputs if not k.startswith("state_in_")]
+        feature_keys = [k for k, v in self._loss_inputs]
         state_keys = [
-            k for k, v in self._loss_inputs if k.startswith("state_in_")]
+            "state_in_{}".format(i) for i in range(len(self._state_inputs))]
         feature_sequences, initial_states, seq_lens = chop_into_sequences(
             batch["t"],
             [batch[k] for k in feature_keys],
