@@ -89,7 +89,7 @@ class PolicyEvaluator(EvaluatorInterface):
             policy_mapping_fn=None,
             tf_session_creator=None,
             batch_steps=100,
-            batch_mode="complete_episodes",
+            batch_mode="truncate_episodes",
             episode_horizon=None,
             preprocessor_pref="rllib",
             sample_async=False,

@@ -141,8 +141,8 @@ class PolicyOptimizer(object):
             **eval_kwargs: PolicyEvaluator Class non-positional args.
 
         Returns:
-            (Optimizer) Instance of `cls` with evaluators c
-                onfigured accordingly.
+            (Optimizer) Instance of `cls` with evaluators configured
+                accordingly.
         """
         if num_envs_per_worker:
             assert num_envs_per_worker > 0, "Improper num_envs_per_worker!"
