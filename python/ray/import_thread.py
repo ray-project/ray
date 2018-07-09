@@ -60,15 +60,20 @@ class ImportThread(object):
                 # Handle the driver case first.
                 if self.mode != WORKER_MODE:
                     if key.startswith(b"FunctionsToRun"):
-                        self.fetch_and_execute_function_to_run(key)
+                        with profile(
+                                "fetch_and_run_function", worker=self.worker):
+                            self.fetch_and_execute_function_to_run(key)
                     # Continue because FunctionsToRun are the only things that
                     # the driver should import.
                     continue
 
                 if key.startswith(b"RemoteFunction"):
-                    self.fetch_and_register_remote_function(key)
+                    with profile(
+                            "register_remote_function", worker=self.worker):
+                        self.fetch_and_register_remote_function(key)
                 elif key.startswith(b"FunctionsToRun"):
-                    self.fetch_and_execute_function_to_run(key)
+                    with profile("fetch_and_run_function", worker=self.worker):
+                        self.fetch_and_execute_function_to_run(key)
                 elif key.startswith(b"ActorClass"):
                     # Keep track of the fact that this actor class has been
                     # exported so that we know it is safe to turn this worker
@@ -93,7 +98,7 @@ class ImportThread(object):
                         if self.mode != WORKER_MODE:
                             if key.startswith(b"FunctionsToRun"):
                                 with profile(
-                                        "ray:import_function_to_run",
+                                        "fetch_and_run_function",
                                         worker=self.worker):
                                     self.fetch_and_execute_function_to_run(key)
                             # Continue because FunctionsToRun are the only
@@ -102,12 +107,12 @@ class ImportThread(object):
 
                         if key.startswith(b"RemoteFunction"):
                             with profile(
-                                    "ray:import_remote_function",
+                                    "register_remote_function",
                                     worker=self.worker):
                                 self.fetch_and_register_remote_function(key)
                         elif key.startswith(b"FunctionsToRun"):
                             with profile(
-                                    "ray:import_function_to_run",
+                                    "fetch_and_run_function",
                                     worker=self.worker):
                                 self.fetch_and_execute_function_to_run(key)
                         elif key.startswith(b"ActorClass"):
