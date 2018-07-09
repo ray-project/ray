@@ -96,7 +96,9 @@ class EvaluatorInterface(object):
             >>> ev.compute_apply(samples)
         """
 
-        raise NotImplementedError
+        grads, info = self.compute_gradients(samples)
+        self.apply_gradients(grads)
+        return info
 
     def get_host(self):
         """Returns the hostname of the process running this evaluator."""
