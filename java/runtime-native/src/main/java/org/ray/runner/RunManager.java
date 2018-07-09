@@ -397,7 +397,7 @@ public class RunManager {
       for (int j = 0; j < runInfo.allProcesses.get(i).size(); ) {
         p = runInfo.allProcesses.get(i).get(j);
         if (!p.process.isAlive()) {
-          RayLog.core.error("Process " + p.hashCode() + " is not alive!" + " Process Type "
+          RayLog.core.error("Process " + p.process.hashCode() + " is not alive!" + " Process Type "
               + types[i].name());
           runInfo.deadProcess.add(p);
           runInfo.allProcesses.get(i).remove(j);
@@ -454,7 +454,7 @@ public class RunManager {
       if (killAll) {
         runInfo.allProcesses.get(i).forEach(p -> {
           if (killProcess(p.process)) {
-            RayLog.core.info("Kill process " + p.hashCode() + " forcely");
+            RayLog.core.info("Kill process " + p.process.hashCode() + " forcely");
           }
         });
       } else {

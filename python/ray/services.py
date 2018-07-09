@@ -386,7 +386,7 @@ def check_version_info(redis_client):
     if redis_reply is None:
         return
 
-    true_version_info = tuple(json.loads(redis_reply.decode("ascii")))
+    true_version_info = tuple(json.loads(ray.utils.decode(redis_reply)))
     version_info = _compute_version_info()
     if version_info != true_version_info:
         node_ip_address = ray.services.get_node_ip_address()
@@ -776,7 +776,7 @@ def start_ui(redis_address, stdout_file=None, stderr_file=None, cleanup=True):
     new_env["REDIS_ADDRESS"] = redis_address
     # We generate the token used for authentication ourselves to avoid
     # querying the jupyter server.
-    token = binascii.hexlify(os.urandom(24)).decode("ascii")
+    token = ray.utils.decode(binascii.hexlify(os.urandom(24)))
     command = [
         "jupyter", "notebook", "--no-browser", "--port={}".format(port),
         "--NotebookApp.iopub_data_rate_limit=10000000000",
@@ -1373,7 +1373,7 @@ def start_ray_processes(address_info=None,
         redis_client = redis.StrictRedis(
             host=redis_ip_address, port=redis_port)
         redis_shards = redis_client.lrange("RedisShards", start=0, end=-1)
-        redis_shards = [shard.decode("ascii") for shard in redis_shards]
+        redis_shards = [ray.utils.decode(shard) for shard in redis_shards]
         address_info["redis_shards"] = redis_shards
 
     # Start the log monitor, if necessary.

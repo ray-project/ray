@@ -165,7 +165,11 @@ static PyObject *PyObjectID_id(PyObject *self) {
 static PyObject *PyObjectID_hex(PyObject *self) {
   PyObjectID *s = (PyObjectID *) self;
   std::string hex_id = s->object_id.hex();
-  PyObject *result = PyUnicode_FromString(hex_id.c_str());
+#if PY_MAJOR_VERSION >= 3
+  PyObject *result = PyUnicode_FromStringAndSize(hex_id.data(), hex_id.size());
+#else
+  PyObject *result = PyBytes_FromStringAndSize(hex_id.data(), hex_id.size());
+#endif
   return result;
 }
 
