@@ -123,13 +123,12 @@ class PolicyOptimizer(object):
                 "This optimizer does not support multi-agent yet.")
 
     @classmethod
-    def make(cls, *eval_args, num_workers=0, num_envs_per_worker=None,
+    def make(cls, num_workers=0, num_envs_per_worker=None,
              optimizer_config=None, remote_num_cpus=None,
-             remote_num_gpus=None, **eval_kwargs):
+             remote_num_gpus=None, *eval_args, **eval_kwargs):
         """Creates an Optimizer with local and remote evaluators.
 
         Args:
-            *args: PolicyEvaluator Class positional args.
             num_workers (int): Number of remote evaluators
             num_envs_per_worker (int): (Optional) Sets the number
                 environments per evaluator for vectorization.
@@ -138,6 +137,7 @@ class PolicyOptimizer(object):
             optimizer_config (dict): Config passed to the optimizer.
             remote_num_cpus (int): CPU specification for remote evaluator.
             remote_num_gpus (int): GPU specification for remote evaluator.
+            *eval_args: PolicyEvaluator Class positional args.
             **eval_kwargs: PolicyEvaluator Class non-positional args.
 
         Returns:
