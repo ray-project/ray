@@ -88,7 +88,7 @@ class PolicyEvaluator(EvaluatorInterface):
             policy_graph,
             policy_mapping_fn=None,
             tf_session_creator=None,
-            batch_steps=2000,
+            batch_steps=100,
             batch_mode="complete_episodes",
             episode_horizon=None,
             preprocessor_pref="rllib",
@@ -152,6 +152,7 @@ class PolicyEvaluator(EvaluatorInterface):
                 non-zero and unique value. This index is passed to created envs
                 through EnvContext so that envs can be configured per worker.
         """
+
         env_context = EnvContext(env_config or {}, worker_index)
         policy_config = policy_config or {}
         self.policy_config = policy_config
