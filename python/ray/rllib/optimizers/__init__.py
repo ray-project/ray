@@ -28,7 +28,7 @@ def run_optimizer(optimizer, num_steps, tag=""):
     timesteps_total = 0
     for itr in range(num_steps + 1):
         optimizer.step()
-        if itr:  #warm start
+        if itr:
             result = optimizer.collect_metrics()
             timesteps_total += result.timesteps_this_iter
         else:
@@ -39,7 +39,6 @@ def run_optimizer(optimizer, num_steps, tag=""):
             timesteps_total=timesteps_total)
         logger.on_result(result)
     logger.close()
-        # print(result)
 
 
 __all__ = [

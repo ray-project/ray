@@ -11,7 +11,7 @@ def discount(x, gamma):
     return scipy.signal.lfilter([1], [1, -gamma], x[::-1], axis=0)[::-1]
 
 
-def compute_advantages(rollout, last_r=0.0, gamma=0.9, lambda_=1.0, use_gae=True):
+def compute_advantages(rollout, last_r, gamma=0.9, lambda_=1.0, use_gae=True):
     """Given a rollout, compute its value targets and the advantage.
 
     Args:
@@ -65,7 +65,8 @@ def compute_targets(rollout, action_space, gamma=0.9):
     """
     rollout = compute_advantages(rollout, gamma=gamma, lambda_=1.0)
     rollout["adv_targets"] = np.zeros((rollout.count, action_space.n))
-    rollout["adv_targets"][np.arange(rollout.count), rollout["actions"]] = rollout["advantages"]
+    rollout["adv_targets"][np.arange(rollout.count), rollout["actions"]] = \
+        rollout["advantages"]
     rollout["value_targets"] = rollout["rewards"].copy()
     rollout["value_targets"][:-1] += gamma * rollout["vf_preds"][1:]
     return rollout
