@@ -153,5 +153,4 @@ setup(
     },
     include_package_data=True,
     zip_safe=False,
-    license="Apache 2.0"
-)
+    license="Apache 2.0")
