@@ -2,12 +2,32 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import random
+
 import boto3
 from botocore.config import Config
 
 from ray.autoscaler.node_provider import NodeProvider
-from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME
+from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME
 from ray.ray_constants import BOTO_MAX_RETRIES
+
+
+def to_aws_format(tags):
+    """Convert the Ray node name tag to the AWS-specific 'Name' tag."""
+
+    if TAG_RAY_NODE_NAME in tags:
+        tags["Name"] = tags[TAG_RAY_NODE_NAME]
+        del tags[TAG_RAY_NODE_NAME]
+    return tags
+
+
+def from_aws_format(tags):
+    """Convert the AWS-specific 'Name' tag to the Ray node name tag."""
+
+    if "Name" in tags:
+        tags[TAG_RAY_NODE_NAME] = tags["Name"]
+        del tags["Name"]
+    return tags
 
 
 class AWSNodeProvider(NodeProvider):
@@ -16,6 +36,9 @@ class AWSNodeProvider(NodeProvider):
         config = Config(retries={'max_attempts': BOTO_MAX_RETRIES})
         self.ec2 = boto3.resource(
             "ec2", region_name=provider_config["region"], config=config)
+
+        # Try availability zones round-robin, starting from random offset
+        self.subnet_idx = random.randint(0, 100)
 
         # Cache of node objects from the last nodes() call. This avoids
         # excessive DescribeInstances requests.
@@ -26,6 +49,7 @@ class AWSNodeProvider(NodeProvider):
         self.external_ip_cache = {}
 
     def nodes(self, tag_filters):
+        tag_filters = to_aws_format(tag_filters)
         filters = [
             {
                 "Name": "instance-state-name",
@@ -59,7 +83,7 @@ class AWSNodeProvider(NodeProvider):
         tags = {}
         for tag in node.tags:
             tags[tag["Key"]] = tag["Value"]
-        return tags
+        return from_aws_format(tags)
 
     def external_ip(self, node_id):
         if node_id in self.external_ip_cache:
@@ -80,6 +104,7 @@ class AWSNodeProvider(NodeProvider):
         return ip
 
     def set_node_tags(self, node_id, tags):
+        tags = to_aws_format(tags)
         node = self._node(node_id)
         tag_pairs = []
         for k, v in tags.items():
@@ -90,6 +115,7 @@ class AWSNodeProvider(NodeProvider):
         node.create_tags(Tags=tag_pairs)
 
     def create_node(self, node_config, tags, count):
+        tags = to_aws_format(tags)
         conf = node_config.copy()
         tag_pairs = [{
             "Key": TAG_RAY_CLUSTER_NAME,
@@ -100,9 +126,15 @@ class AWSNodeProvider(NodeProvider):
                 "Key": k,
                 "Value": v,
             })
+        # SubnetIds is not a real config key: we must resolve to a
+        # single SubnetId before invoking the AWS API.
+        subnet_ids = conf.pop("SubnetIds")
+        subnet_id = subnet_ids[self.subnet_idx % len(subnet_ids)]
+        self.subnet_idx += 1
         conf.update({
             "MinCount": 1,
             "MaxCount": count,
+            "SubnetId": subnet_id,
             "TagSpecifications": conf.get("TagSpecifications", []) + [{
                 "ResourceType": "instance",
                 "Tags": tag_pairs,

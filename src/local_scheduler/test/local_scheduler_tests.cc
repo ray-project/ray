@@ -95,7 +95,7 @@ LocalSchedulerMock *LocalSchedulerMock_init(int num_workers,
 
   /* Construct worker command */
   std::stringstream worker_command_ss;
-  worker_command_ss << "python ../../../python/ray/workers/default_worker.py"
+  worker_command_ss << "python ../python/ray/workers/default_worker.py"
                     << " --node-ip-address=" << node_ip_address
                     << " --object-store-name=" << plasma_store_socket_name
                     << " --object-store-manager-name="
@@ -125,7 +125,7 @@ LocalSchedulerMock *LocalSchedulerMock_init(int num_workers,
 
   for (int i = 0; i < num_mock_workers; ++i) {
     mock->conns[i] = LocalSchedulerConnection_init(
-        local_scheduler_socket_name.c_str(), WorkerID::nil(), true);
+        local_scheduler_socket_name.c_str(), WorkerID::nil(), true, false);
   }
 
   background_thread.join();
@@ -228,23 +228,18 @@ TEST object_reconstruction_test(void) {
     event_loop_add_timer(local_scheduler->loop, 500,
                          (event_loop_timer_handler) timeout_handler, NULL);
     event_loop_run(local_scheduler->loop);
-    /* Set the task's status to TASK_STATUS_DONE to prevent the race condition
+    /* Set the task's status to TaskStatus::DONE to prevent the race condition
      * that would suppress object reconstruction. */
     Task *task = Task_alloc(
-        execution_spec, TASK_STATUS_DONE,
+        execution_spec, TaskStatus::DONE,
         get_db_client_id(local_scheduler->local_scheduler_state->db));
-#if !RAY_USE_NEW_GCS
     task_table_add_task(local_scheduler->local_scheduler_state->db, task, NULL,
                         NULL, NULL);
-#else
-    RAY_CHECK_OK(TaskTableAdd(
-        &local_scheduler->local_scheduler_state->gcs_client, task));
-    Task_free(task);
-#endif
 
     /* Trigger reconstruction, and run the event loop again. */
     ObjectID return_id = TaskSpec_return(spec, 0);
-    local_scheduler_reconstruct_object(worker, return_id);
+    local_scheduler_reconstruct_objects(worker,
+                                        std::vector<ObjectID>({return_id}));
     event_loop_add_timer(local_scheduler->loop, 500,
                          (event_loop_timer_handler) timeout_handler, NULL);
     event_loop_run(local_scheduler->loop);
@@ -349,19 +344,13 @@ TEST object_reconstruction_recursive_test(void) {
     event_loop_add_timer(local_scheduler->loop, 500,
                          (event_loop_timer_handler) timeout_handler, NULL);
     event_loop_run(local_scheduler->loop);
-    /* Set the final task's status to TASK_STATUS_DONE to prevent the race
+    /* Set the final task's status to TaskStatus::DONE to prevent the race
      * condition that would suppress object reconstruction. */
     Task *last_task = Task_alloc(
-        specs[NUM_TASKS - 1], TASK_STATUS_DONE,
+        specs[NUM_TASKS - 1], TaskStatus::DONE,
         get_db_client_id(local_scheduler->local_scheduler_state->db));
-#if !RAY_USE_NEW_GCS
     task_table_add_task(local_scheduler->local_scheduler_state->db, last_task,
                         NULL, NULL, NULL);
-#else
-    RAY_CHECK_OK(TaskTableAdd(
-        &local_scheduler->local_scheduler_state->gcs_client, last_task));
-    Task_free(last_task);
-#endif
     /* Simulate eviction of the objects, so that reconstruction is required. */
     for (int i = 0; i < NUM_TASKS; ++i) {
       ObjectID return_id = TaskSpec_return(specs[i].Spec(), 0);
@@ -369,7 +358,8 @@ TEST object_reconstruction_recursive_test(void) {
     }
     /* Trigger reconstruction for the last object. */
     ObjectID return_id = TaskSpec_return(specs[NUM_TASKS - 1].Spec(), 0);
-    local_scheduler_reconstruct_object(worker, return_id);
+    local_scheduler_reconstruct_objects(worker,
+                                        std::vector<ObjectID>({return_id}));
     /* Run the event loop again. All tasks should be resubmitted. */
     event_loop_add_timer(local_scheduler->loop, 500,
                          (event_loop_timer_handler) timeout_handler, NULL);
@@ -437,7 +427,8 @@ TEST object_reconstruction_suppression_test(void) {
         0);
     /* Trigger a reconstruction. We will check that no tasks get queued as a
      * result of this line in the event loop process. */
-    local_scheduler_reconstruct_object(worker, return_id);
+    local_scheduler_reconstruct_objects(worker,
+                                        std::vector<ObjectID>({return_id}));
     /* Clean up. */
     free(task_assigned);
     LocalSchedulerMock_free(local_scheduler);

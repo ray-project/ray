@@ -35,6 +35,8 @@ int main(int argc, char *argv[]) {
   RAY_LOG(INFO) << "Starting raylet with static resource configuration: "
                 << node_manager_config.resource_config.ToString();
   node_manager_config.num_initial_workers = num_initial_workers;
+  node_manager_config.num_workers_per_process =
+      RayConfig::instance().num_workers_per_process();
   // Use a default worker that can execute empty tasks with dependencies.
 
   std::stringstream worker_command_stream(worker_command);
@@ -45,19 +47,29 @@ int main(int argc, char *argv[]) {
 
   node_manager_config.heartbeat_period_ms =
       RayConfig::instance().heartbeat_timeout_milliseconds();
+  node_manager_config.max_lineage_size = RayConfig::instance().max_lineage_size();
 
   // Configuration for the object manager.
   ray::ObjectManagerConfig object_manager_config;
   object_manager_config.store_socket_name = store_socket_name;
   object_manager_config.pull_timeout_ms =
       RayConfig::instance().object_manager_pull_timeout_ms();
-  object_manager_config.max_sends = RayConfig::instance().object_manager_max_sends();
-  object_manager_config.max_receives =
-      RayConfig::instance().object_manager_max_receives();
-  object_manager_config.max_push_retries =
-      RayConfig::instance().object_manager_max_push_retries();
+  object_manager_config.push_timeout_ms =
+      RayConfig::instance().object_manager_push_timeout_ms();
+
+  int num_cpus = static_cast<int>(static_resource_conf["CPU"]);
+  object_manager_config.max_sends = std::max(1, num_cpus / 4);
+  object_manager_config.max_receives = std::max(1, num_cpus / 4);
   object_manager_config.object_chunk_size =
       RayConfig::instance().object_manager_default_chunk_size();
+
+  RAY_LOG(INFO) << "Starting object manager with configuration: \n"
+                   "max_sends = "
+                << object_manager_config.max_sends << "\n"
+                                                      "max_receives = "
+                << object_manager_config.max_receives << "\n"
+                                                         "object_chunk_size = "
+                << object_manager_config.object_chunk_size;
 
   //  initialize mock gcs & object directory
   auto gcs_client = std::make_shared<ray::gcs::AsyncGcsClient>();

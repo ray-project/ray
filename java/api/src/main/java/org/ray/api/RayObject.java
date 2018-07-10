@@ -24,7 +24,7 @@ public class RayObject<T> implements Serializable {
     return Ray.get(id);
   }
 
-  public <TM> TM getMeta() throws TaskExecutionException {
+  public <TMT> TMT getMeta() throws TaskExecutionException {
     return Ray.getMeta(id);
   }
 

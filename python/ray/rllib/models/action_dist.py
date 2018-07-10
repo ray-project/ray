@@ -63,7 +63,7 @@ class Categorical(ActionDistribution):
                              reduction_indices=[1])
 
     def sample(self):
-        return tf.multinomial(self.inputs, 1)[0]
+        return tf.squeeze(tf.multinomial(self.inputs, 1), axis=1)
 
 
 class DiagGaussian(ActionDistribution):
@@ -73,10 +73,19 @@ class DiagGaussian(ActionDistribution):
     second half the gaussian standard deviations.
     """
 
-    def __init__(self, inputs):
+    def __init__(self, inputs, low=None, high=None):
         ActionDistribution.__init__(self, inputs)
         mean, log_std = tf.split(inputs, 2, axis=1)
         self.mean = mean
+        self.low = low
+        self.high = high
+
+        # Squash to range if specified.
+        # TODO(ekl) might make sense to use a beta distribution instead:
+        # http://proceedings.mlr.press/v70/chou17a/chou17a.pdf
+        if low is not None:
+            self.mean = low + tf.sigmoid(self.mean) * (high - low)
+
         self.log_std = log_std
         self.std = tf.exp(log_std)
 
@@ -99,7 +108,10 @@ class DiagGaussian(ActionDistribution):
                              reduction_indices=[1])
 
     def sample(self):
-        return self.mean + self.std * tf.random_normal(tf.shape(self.mean))
+        out = self.mean + self.std * tf.random_normal(tf.shape(self.mean))
+        if self.low is not None:
+            out = tf.clip_by_value(out, self.low, self.high)
+        return out
 
 
 class Deterministic(ActionDistribution):
@@ -110,6 +122,34 @@ class Deterministic(ActionDistribution):
 
     def sample(self):
         return self.inputs
+
+
+def squash_to_range(dist_cls, low, high):
+    """Squashes an action distribution to a range in (low, high).
+
+    Arguments:
+        dist_cls (class): ActionDistribution class to wrap.
+        low (float|array): Scalar value or array of values.
+        high (float|array): Scalar value or array of values.
+    """
+
+    class SquashToRangeWrapper(dist_cls):
+        def __init__(self, inputs):
+            dist_cls.__init__(self, inputs, low=low, high=high)
+
+        def logp(self, x):
+            return dist_cls.logp(self, x)
+
+        def kl(self, other):
+            return dist_cls.kl(self, other)
+
+        def entropy(self):
+            return dist_cls.entropy(self)
+
+        def sample(self):
+            return dist_cls.sample(self)
+
+    return SquashToRangeWrapper
 
 
 class MultiActionDistribution(ActionDistribution):

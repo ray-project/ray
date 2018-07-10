@@ -13,24 +13,24 @@ import java.lang.annotation.Target;
 public @interface AConfig {
 
   /**
-   * comments for this configuration field
+   * comments for this configuration field.
    */
   String comment();
 
   /**
    * when the config is an array list, a splitter set is specified, e.g., " \t" to use ' ' and '\t'
-   * as possible splits
+   * as possible splits.
    */
   String splitters() default ", \t";
 
   /**
-   * indirect with value as the new section name, the field name remains the same
+   * indirect with value as the new section name, the field name remains the same.
    */
   String defaultIndirectSectionName() default "";
 
   /**
    * see ConfigReader.getIndirectStringArray this config tells which is the default
-   * indirectSectionName in that function
+   * indirectSectionName in that function.
    */
   String defaultArrayIndirectSectionName() default "";
 }

@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import binascii
+import logging
 import json
 import os
 import random
@@ -22,9 +23,16 @@ import redis
 
 import pyarrow
 # Ray modules
+import ray.ray_constants
 import ray.global_scheduler as global_scheduler
 import ray.local_scheduler
 import ray.plasma
+
+logger = logging.getLogger("ray")
+logger.setLevel(logging.INFO)
+ch = logging.StreamHandler(sys.stderr)
+ch.setLevel(logging.INFO)
+logger.addHandler(ch)
 
 PROCESS_TYPE_MONITOR = "monitor"
 PROCESS_TYPE_LOG_MONITOR = "log_monitor"
@@ -177,7 +185,7 @@ def cleanup():
         # Reset the list of processes of this type.
         all_processes[process_type] = []
     if not successfully_shut_down:
-        print("Ray did not shut down properly.")
+        logger.warning("Ray did not shut down properly.")
 
 
 def all_processes_alive(exclude=[]):
@@ -192,7 +200,8 @@ def all_processes_alive(exclude=[]):
         # alive.
         processes_alive = [p.poll() is None for p in processes]
         if (not all(processes_alive) and process_type not in exclude):
-            print("A process of type {} has died.".format(process_type))
+            logger.warning(
+                "A process of type {} has died.".format(process_type))
             return False
     return True
 
@@ -302,13 +311,14 @@ def wait_for_redis_to_start(redis_ip_address, redis_port, num_retries=5):
     while counter < num_retries:
         try:
             # Run some random command and see if it worked.
-            print("Waiting for redis server at {}:{} to respond...".format(
-                redis_ip_address, redis_port))
+            logger.info(
+                "Waiting for redis server at {}:{} to respond...".format(
+                    redis_ip_address, redis_port))
             redis_client.client_list()
         except redis.ConnectionError as e:
             # Wait a little bit.
             time.sleep(1)
-            print("Failed to connect to the redis server, retrying.")
+            logger.info("Failed to connect to the redis server, retrying.")
             counter += 1
         else:
             break
@@ -376,7 +386,7 @@ def check_version_info(redis_client):
     if redis_reply is None:
         return
 
-    true_version_info = tuple(json.loads(redis_reply.decode("ascii")))
+    true_version_info = tuple(json.loads(ray.utils.decode(redis_reply)))
     version_info = _compute_version_info()
     if version_info != true_version_info:
         node_ip_address = ray.services.get_node_ip_address()
@@ -392,7 +402,7 @@ def check_version_info(redis_client):
         if version_info[:2] != true_version_info[:2]:
             raise Exception(error_message)
         else:
-            print(error_message)
+            logger.warning(error_message)
 
 
 def start_redis(node_ip_address,
@@ -532,11 +542,11 @@ def start_redis(node_ip_address,
         primary_redis_client.rpush("RedisShards", shard_address)
 
     if use_credis:
+        shard_client = redis.StrictRedis(
+            host=node_ip_address, port=redis_shard_port)
         # Configure the chain state.
         primary_redis_client.execute_command("MASTER.ADD", node_ip_address,
                                              redis_shard_port)
-        shard_client = redis.StrictRedis(
-            host=node_ip_address, port=redis_shard_port)
         shard_client.execute_command("MEMBER.CONNECT_TO_MASTER",
                                      node_ip_address, port)
 
@@ -600,7 +610,7 @@ def _start_redis_instance(node_ip_address="127.0.0.1",
 
     while counter < num_retries:
         if counter > 0:
-            print("Redis failed to start, retrying now.")
+            logger.warning("Redis failed to start, retrying now.")
         command = [executable, "--port",
                    str(port), "--loglevel", "warning"] + load_module_args
         p = subprocess.Popen(command, stdout=stdout_file, stderr=stderr_file)
@@ -614,8 +624,8 @@ def _start_redis_instance(node_ip_address="127.0.0.1",
         port = new_port()
         counter += 1
     if counter == num_retries:
-        raise Exception(
-            "Couldn't start Redis. Check stdout file {}".format(stdout_file))
+        raise Exception("Couldn't start Redis. Check log files: {} {}".format(
+            stdout_file.name, stderr_file.name))
 
     # Create a Redis client just for configuring Redis.
     redis_client = redis.StrictRedis(host="127.0.0.1", port=port)
@@ -766,7 +776,7 @@ def start_ui(redis_address, stdout_file=None, stderr_file=None, cleanup=True):
     new_env["REDIS_ADDRESS"] = redis_address
     # We generate the token used for authentication ourselves to avoid
     # querying the jupyter server.
-    token = binascii.hexlify(os.urandom(24)).decode("ascii")
+    token = ray.utils.decode(binascii.hexlify(os.urandom(24)))
     command = [
         "jupyter", "notebook", "--no-browser", "--port={}".format(port),
         "--NotebookApp.iopub_data_rate_limit=10000000000",
@@ -785,24 +795,26 @@ def start_ui(redis_address, stdout_file=None, stderr_file=None, cleanup=True):
             stdout=stdout_file,
             stderr=stderr_file)
     except Exception:
-        print("Failed to start the UI, you may need to run "
-              "'pip install jupyter'.")
+        logger.warning("Failed to start the UI, you may need to run "
+                       "'pip install jupyter'.")
     else:
         if cleanup:
             all_processes[PROCESS_TYPE_WEB_UI].append(ui_process)
         webui_url = ("http://localhost:{}/notebooks/ray_ui{}.ipynb?token={}"
                      .format(port, random_ui_id, token))
-        print("\n" + "=" * 70)
-        print("View the web UI at {}".format(webui_url))
-        print("=" * 70 + "\n")
+        logger.info("\n" + "=" * 70)
+        logger.info("View the web UI at {}".format(webui_url))
+        logger.info("=" * 70 + "\n")
         return webui_url
 
 
-def check_and_update_resources(resources):
+def check_and_update_resources(resources, use_raylet):
     """Sanity check a resource dictionary and add sensible defaults.
 
     Args:
         resources: A dictionary mapping resource names to resource quantities.
+        use_raylet: True if we are using the raylet code path and false
+            otherwise.
 
     Returns:
         A new resource dictionary.
@@ -837,6 +849,14 @@ def check_and_update_resources(resources):
     for _, resource_quantity in resources.items():
         assert (isinstance(resource_quantity, int)
                 or isinstance(resource_quantity, float))
+        if (isinstance(resource_quantity, float)
+                and not resource_quantity.is_integer()):
+            raise ValueError("Resource quantities must all be whole numbers.")
+
+        if (use_raylet and
+                resource_quantity > ray.ray_constants.MAX_RESOURCE_QUANTITY):
+            raise ValueError("Resource quantities must be at most {}.".format(
+                ray.ray_constants.MAX_RESOURCE_QUANTITY))
 
     return resources
 
@@ -879,10 +899,10 @@ def start_local_scheduler(redis_address,
     Return:
         The name of the local scheduler socket.
     """
-    resources = check_and_update_resources(resources)
+    resources = check_and_update_resources(resources, False)
 
-    print("Starting local scheduler with the following resources: {}."
-          .format(resources))
+    logger.info("Starting local scheduler with the following resources: {}."
+                .format(resources))
     local_scheduler_name, p = ray.local_scheduler.start_local_scheduler(
         plasma_store_name,
         plasma_manager_name,
@@ -932,7 +952,7 @@ def start_raylet(redis_address,
     Returns:
         The raylet socket name.
     """
-    static_resources = check_and_update_resources(resources)
+    static_resources = check_and_update_resources(resources, True)
 
     # Format the resource argument in a form like 'CPU,1.0,GPU,0,Custom,3'.
     resource_argument = ",".join([
@@ -1038,12 +1058,13 @@ def start_objstore(node_ip_address,
                 # blocks.
                 shm_avail = shm_fs_stats.f_bsize * shm_fs_stats.f_bavail
                 if objstore_memory > shm_avail:
-                    print("Warning: Reducing object store memory because "
-                          "/dev/shm has only {} bytes available. You may be "
-                          "able to free up space by deleting files in "
-                          "/dev/shm. If you are inside a Docker container, "
-                          "you may need to pass an argument with the flag "
-                          "'--shm-size' to 'docker run'.".format(shm_avail))
+                    logger.warning(
+                        "Warning: Reducing object store memory because "
+                        "/dev/shm has only {} bytes available. You may be "
+                        "able to free up space by deleting files in "
+                        "/dev/shm. If you are inside a Docker container, "
+                        "you may need to pass an argument with the flag "
+                        "'--shm-size' to 'docker run'.".format(shm_avail))
                     objstore_memory = int(shm_avail * 0.8)
             finally:
                 os.close(shm_fd)
@@ -1284,7 +1305,8 @@ def start_ray_processes(address_info=None,
         A dictionary of the address information for the processes that were
             started.
     """
-    print("Process STDOUT and STDERR is being redirected to /tmp/raylogs/.")
+    logger.info(
+        "Process STDOUT and STDERR is being redirected to /tmp/raylogs/.")
 
     if resources is None:
         resources = {}
@@ -1351,7 +1373,7 @@ def start_ray_processes(address_info=None,
         redis_client = redis.StrictRedis(
             host=redis_ip_address, port=redis_port)
         redis_shards = redis_client.lrange("RedisShards", start=0, end=-1)
-        redis_shards = [shard.decode("ascii") for shard in redis_shards]
+        redis_shards = [ray.utils.decode(shard) for shard in redis_shards]
         address_info["redis_shards"] = redis_shards
 
     # Start the log monitor, if necessary.
@@ -1464,7 +1486,7 @@ def start_ray_processes(address_info=None,
         # Start any raylets that do not exist yet.
         for i in range(len(raylet_socket_names), num_local_schedulers):
             raylet_stdout_file, raylet_stderr_file = new_log_files(
-                "raylet_{}".format(i), redirect_output=redirect_output)
+                "raylet_{}".format(i), redirect_output=redirect_worker_output)
             address_info["raylet_socket_names"].append(
                 start_raylet(
                     redis_address,
@@ -1701,8 +1723,9 @@ def try_to_create_directory(directory_path):
         except OSError as e:
             if e.errno != os.errno.EEXIST:
                 raise e
-            print("Attempted to create '{}', but the directory already "
-                  "exists.".format(directory_path))
+            logger.warning(
+                "Attempted to create '{}', but the directory already "
+                "exists.".format(directory_path))
         # Change the log directory permissions so others can use it. This is
         # important when multiple people are using the same machine.
         os.chmod(directory_path, 0o0777)

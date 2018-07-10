@@ -6,7 +6,7 @@ import org.ray.util.config.AConfig;
 import org.ray.util.config.ConfigReader;
 
 /**
- * Runtime parameters of Ray process
+ * Runtime parameters of Ray process.
  */
 public class RayParameters {
 
@@ -115,7 +115,8 @@ public class RayParameters {
   @AConfig(comment = "whether to disable process failover")
   public boolean disable_process_failover = false;
 
-  @AConfig(comment = "the max size of each file of java worker log, could be set as 10KB, 10MB, 1GB or something similar")
+  @AConfig(comment = "the max size of each file of java worker log, could be set as 10KB, 10MB, "
+      + "1GB or something similar")
   public String max_java_log_file_size = "500MB";
 
   @AConfig(comment = "delay seconds under onebox before app logic for debugging")
@@ -124,7 +125,8 @@ public class RayParameters {
   public RayParameters(ConfigReader config) {
     if (null != config) {
       String networkInterface = config.getStringValue("ray.java", "network_interface", null,
-          "Network interface to be specified for host ip address(e.g., en0, eth0), may use ifconfig to get options");
+          "Network interface to be specified for host ip address(e.g., en0, eth0), may use "
+              + "ifconfig to get options");
       node_ip_address = NetworkUtil.getIpAddress(networkInterface);
       config.readObject("ray.java.start", this, this);
     }

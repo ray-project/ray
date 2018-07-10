@@ -46,11 +46,9 @@ class Trainable(object):
     Attributes:
         config (obj): The hyperparam configuration for this trial.
         logdir (str): Directory in which training outputs should be placed.
-        registry (obj): Tune object registry which holds user-registered
-            classes and objects by name.
     """
 
-    def __init__(self, config=None, registry=None, logger_creator=None):
+    def __init__(self, config=None, logger_creator=None):
         """Initialize an Trainable.
 
         Subclasses should prefer defining ``_setup()`` instead of overriding
@@ -58,20 +56,13 @@ class Trainable(object):
 
         Args:
             config (dict): Trainable-specific configuration data.
-            registry (obj): Object registry for user-defined envs, models, etc.
-                If unspecified, the default registry will be used.
             logger_creator (func): Function that creates a ray.tune.Logger
                 object. If unspecified, a default logger is created.
         """
 
-        if registry is None:
-            from ray.tune.registry import get_registry
-            registry = get_registry()
-
         self._initialize_ok = False
         self._experiment_id = uuid.uuid4().hex
         self.config = config or {}
-        self.registry = registry
 
         if logger_creator:
             self._result_logger = logger_creator(self.config)

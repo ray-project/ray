@@ -25,8 +25,9 @@ TEST ipc_socket_test(void) {
     socket_fd = connect_ipc_sock(socket_pathname);
     ASSERT(socket_fd >= 0);
     write_log_message(socket_fd, test_string);
-    write_message(socket_fd, LOG_MESSAGE, strlen(test_bytes),
-                  (uint8_t *) test_bytes);
+    write_message(socket_fd,
+                  static_cast<int64_t>(CommonMessageType::LOG_MESSAGE),
+                  strlen(test_bytes), (uint8_t *) test_bytes);
     close(socket_fd);
     exit(0);
   } else {
@@ -40,7 +41,8 @@ TEST ipc_socket_test(void) {
     int64_t len;
     uint8_t *bytes;
     read_message(client_fd, &type, &len, &bytes);
-    ASSERT(type == LOG_MESSAGE);
+    ASSERT(static_cast<CommonMessageType>(type) ==
+           CommonMessageType::LOG_MESSAGE);
     ASSERT(memcmp(test_bytes, bytes, len) == 0);
     free(bytes);
     close(client_fd);
@@ -69,8 +71,9 @@ TEST long_ipc_socket_test(void) {
     socket_fd = connect_ipc_sock(socket_pathname);
     ASSERT(socket_fd >= 0);
     write_log_message(socket_fd, test_string.c_str());
-    write_message(socket_fd, LOG_MESSAGE, strlen(test_bytes),
-                  (uint8_t *) test_bytes);
+    write_message(socket_fd,
+                  static_cast<int64_t>(CommonMessageType::LOG_MESSAGE),
+                  strlen(test_bytes), (uint8_t *) test_bytes);
     close(socket_fd);
     exit(0);
   } else {
@@ -84,7 +87,8 @@ TEST long_ipc_socket_test(void) {
     int64_t len;
     uint8_t *bytes;
     read_message(client_fd, &type, &len, &bytes);
-    ASSERT(type == LOG_MESSAGE);
+    ASSERT(static_cast<CommonMessageType>(type) ==
+           CommonMessageType::LOG_MESSAGE);
     ASSERT(memcmp(test_bytes, bytes, len) == 0);
     free(bytes);
     close(client_fd);

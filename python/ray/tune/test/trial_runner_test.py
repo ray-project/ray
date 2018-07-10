@@ -11,7 +11,7 @@ from ray.rllib import _register_all
 
 from ray.tune import Trainable, TuneError
 from ray.tune import register_env, register_trainable, run_experiments
-from ray.tune.registry import _default_registry, TRAINABLE_CLASS
+from ray.tune.registry import _global_registry, TRAINABLE_CLASS
 from ray.tune.result import DEFAULT_RESULTS_DIR, TrainingResult
 from ray.tune.util import pin_in_object_store, get_pinned_object
 from ray.tune.experiment import Experiment
@@ -60,6 +60,26 @@ class TrainableFunctionApiTest(unittest.TestCase):
     def testRegisterEnv(self):
         register_env("foo", lambda: None)
         self.assertRaises(TypeError, lambda: register_env("foo", 2))
+
+    def testRegisterEnvOverwrite(self):
+        def train(config, reporter):
+            reporter(timesteps_total=100, done=True)
+
+        def train2(config, reporter):
+            reporter(timesteps_total=200, done=True)
+
+        register_trainable("f1", train)
+        register_trainable("f1", train2)
+        [trial] = run_experiments({
+            "foo": {
+                "run": "f1",
+                "config": {
+                    "script_min_iter_time_s": 0,
+                },
+            }
+        })
+        self.assertEqual(trial.status, Trial.TERMINATED)
+        self.assertEqual(trial.last_result.timesteps_total, 200)
 
     def testRegisterTrainable(self):
         def train(config, reporter):
@@ -595,7 +615,7 @@ class TrialRunnerTest(unittest.TestCase):
 
     def testTrialErrorOnStart(self):
         ray.init()
-        _default_registry.register(TRAINABLE_CLASS, "asdf", None)
+        _global_registry.register(TRAINABLE_CLASS, "asdf", None)
         trial = Trial("asdf", resources=Resources(1, 0))
         try:
             trial.start()
@@ -690,7 +710,7 @@ class TrialRunnerTest(unittest.TestCase):
             },
             "resources": Resources(cpu=1, gpu=1),
         }
-        _default_registry.register(TRAINABLE_CLASS, "asdf", None)
+        _global_registry.register(TRAINABLE_CLASS, "asdf", None)
         trials = [Trial("asdf", **kwargs), Trial("__fake", **kwargs)]
         for t in trials:
             runner.add_trial(t)

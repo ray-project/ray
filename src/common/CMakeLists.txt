@@ -24,7 +24,7 @@ add_custom_command(
   # flatbuffers message Message, which can be used to store deserialized
   # messages in data structures. This is currently used for ObjectInfo for
   # example.
-  COMMAND ${FLATBUFFERS_COMPILER} -c -o ${OUTPUT_DIR} ${COMMON_FBS_SRC} --gen-object-api
+  COMMAND ${FLATBUFFERS_COMPILER} -c -o ${OUTPUT_DIR} ${COMMON_FBS_SRC} --gen-object-api --scoped-enums
   DEPENDS ${FBS_DEPENDS}
   COMMENT "Running flatc compiler on ${COMMON_FBS_SRC}"
   VERBATIM)
@@ -33,7 +33,7 @@ if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
   add_custom_target(gen_common_python_fbs DEPENDS ${COMMON_FBS_OUTPUT_FILES})
 
   # Generate Python bindings for the flatbuffers objects.
-  set(PYTHON_OUTPUT_DIR ${CMAKE_BINARY_DIR}/generated/)
+  set(PYTHON_OUTPUT_DIR ${CMAKE_CURRENT_LIST_DIR}/../../python/ray/core/generated/)
   add_custom_command(
     TARGET gen_common_python_fbs
     COMMAND ${FLATBUFFERS_COMPILER} -p -o ${PYTHON_OUTPUT_DIR} ${COMMON_FBS_SRC}

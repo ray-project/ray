@@ -2,12 +2,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from six.moves import queue
 import base64
-import queue
+import numpy as np
 import threading
 
 import ray
-from ray.tune.registry import _to_pinnable, _from_pinnable
 
 _pinned_objects = []
 _fetch_requests = queue.Queue()
@@ -61,6 +61,22 @@ def _serve_get_pin_requests():
             placeholder.put(get_pinned_object(pinned_id))
     except queue.Empty:
         pass
+
+
+def _to_pinnable(obj):
+    """Converts obj to a form that can be pinned in object store memory.
+
+    Currently only numpy arrays are pinned in memory, if you have a strong
+    reference to the array value.
+    """
+
+    return (obj, np.zeros(1))
+
+
+def _from_pinnable(obj):
+    """Retrieve from _to_pinnable format."""
+
+    return obj[0]
 
 
 if __name__ == '__main__':

@@ -11,7 +11,7 @@
 
     // The URL or local path of the source code repository for the
     // project being benchmarked
-    "repo": ".",
+    "repo": "../",
 
     // List of branches to benchmark. If not provided, defaults to "master"
     // (for git) or "default" (for mercurial).
@@ -101,7 +101,7 @@
 
     // The directory (relative to the current directory) that raw benchmark
     // results are stored in.  If not provided, defaults to "results".
-    // "results_dir": "results",
+    "results_dir": "ASV_RESULTS",
 
     // The directory (relative to the current directory) that the html tree
     // should be written to.  If not provided, defaults to "html".

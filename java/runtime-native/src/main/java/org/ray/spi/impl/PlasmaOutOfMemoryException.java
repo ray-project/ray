@@ -6,9 +6,6 @@ package org.ray.spi.impl;
  */
 public class PlasmaOutOfMemoryException extends Exception {
 
-  /**
-   *
-   */
   private static final long serialVersionUID = -2786069077559520659L;
 
   public PlasmaOutOfMemoryException() {
@@ -16,7 +13,7 @@ public class PlasmaOutOfMemoryException extends Exception {
   }
 
   public PlasmaOutOfMemoryException(String message, Throwable cause, boolean enableSuppression,
-      boolean writableStackTrace) {
+                                    boolean writableStackTrace) {
     super(message, cause, enableSuppression, writableStackTrace);
   }
 

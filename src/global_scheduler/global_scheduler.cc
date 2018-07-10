@@ -31,7 +31,7 @@ void assign_task_to_local_scheduler_retry(UniqueID id,
                                           void *user_data) {
   GlobalSchedulerState *state = (GlobalSchedulerState *) user_context;
   Task *task = (Task *) user_data;
-  RAY_CHECK(Task_state(task) == TASK_STATUS_SCHEDULED);
+  RAY_CHECK(Task_state(task) == TaskStatus::SCHEDULED);
 
   // If the local scheduler has died since we requested the task assignment, do
   // not retry again.
@@ -41,7 +41,6 @@ void assign_task_to_local_scheduler_retry(UniqueID id,
     return;
   }
 
-#if !RAY_USE_NEW_GCS
   // The local scheduler is still alive. The failure is most likely due to the
   // task assignment getting published before the local scheduler subscribed to
   // the channel. Retry the assignment.
@@ -51,9 +50,6 @@ void assign_task_to_local_scheduler_retry(UniqueID id,
       .fail_callback = assign_task_to_local_scheduler_retry,
   };
   task_table_update(state->db, Task_copy(task), &retryInfo, NULL, user_context);
-#else
-  RAY_CHECK_OK(TaskTableAdd(&state->gcs_client, task));
-#endif
 }
 
 /**
@@ -71,21 +67,17 @@ void assign_task_to_local_scheduler(GlobalSchedulerState *state,
   TaskSpec *spec = Task_task_execution_spec(task)->Spec();
   RAY_LOG(DEBUG) << "assigning task to local_scheduler_id = "
                  << local_scheduler_id;
-  Task_set_state(task, TASK_STATUS_SCHEDULED);
+  Task_set_state(task, TaskStatus::SCHEDULED);
   Task_set_local_scheduler(task, local_scheduler_id);
   RAY_LOG(DEBUG) << "Issuing a task table update for task = "
                  << Task_task_id(task);
 
-#if !RAY_USE_NEW_GCS
   auto retryInfo = RetryInfo{
       .num_retries = 0,  // This value is unused.
       .timeout = 0,      // This value is unused.
       .fail_callback = assign_task_to_local_scheduler_retry,
   };
   task_table_update(state->db, Task_copy(task), &retryInfo, NULL, state);
-#else
-  RAY_CHECK_OK(TaskTableAdd(&state->gcs_client, task));
-#endif
 
   /* Update the object table info to reflect the fact that the results of this
    * task will be created on the machine that the task was assigned to. This can
@@ -141,9 +133,10 @@ GlobalSchedulerState *GlobalSchedulerState_init(event_loop *loop,
                          std::vector<std::string>());
   db_attach(state->db, loop, false);
 
-  RAY_CHECK_OK(state->gcs_client.Connect(std::string(redis_primary_addr),
-                                         redis_primary_port));
+  RAY_CHECK_OK(state->gcs_client.Connect(
+      std::string(redis_primary_addr), redis_primary_port, /*sharding=*/true));
   RAY_CHECK_OK(state->gcs_client.context()->AttachToEventLoop(loop));
+  RAY_CHECK_OK(state->gcs_client.primary_context()->AttachToEventLoop(loop));
   state->policy_state = GlobalSchedulerPolicyState_init();
   return state;
 }
@@ -438,7 +431,7 @@ void start_server(const char *node_ip_address,
    * submits tasks to the global scheduler before the global scheduler
    * successfully subscribes, then the local scheduler that submitted the tasks
    * will retry. */
-  task_table_subscribe(g_state->db, UniqueID::nil(), TASK_STATUS_WAITING,
+  task_table_subscribe(g_state->db, UniqueID::nil(), TaskStatus::WAITING,
                        process_task_waiting, (void *) g_state, NULL, NULL,
                        NULL);
 

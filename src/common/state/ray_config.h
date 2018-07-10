@@ -20,6 +20,8 @@ class RayConfig {
 
   int64_t get_timeout_milliseconds() const { return get_timeout_milliseconds_; }
 
+  uint64_t max_lineage_size() const { return max_lineage_size_; }
+
   int64_t worker_get_request_size() const { return worker_get_request_size_; }
 
   int64_t worker_fetch_request_size() const {
@@ -90,19 +92,15 @@ class RayConfig {
     return object_manager_pull_timeout_ms_;
   }
 
-  int object_manager_max_sends() const { return object_manager_max_sends_; }
-
-  int object_manager_max_receives() const {
-    return object_manager_max_receives_;
-  }
-
-  int object_manager_max_push_retries() const {
-    return object_manager_max_push_retries_;
+  int object_manager_push_timeout_ms() const {
+    return object_manager_push_timeout_ms_;
   }
 
   uint64_t object_manager_default_chunk_size() const {
     return object_manager_default_chunk_size_;
   }
+
+  int num_workers_per_process() const { return num_workers_per_process_; }
 
  private:
   RayConfig()
@@ -112,6 +110,7 @@ class RayConfig {
         get_timeout_milliseconds_(1000),
         worker_get_request_size_(10000),
         worker_fetch_request_size_(10000),
+        max_lineage_size_(100),
         actor_max_dummy_objects_(1000),
         num_connect_attempts_(50),
         connect_timeout_milliseconds_(100),
@@ -136,10 +135,9 @@ class RayConfig {
         // be addressed. This timeout is often on the critical path for object
         // transfers.
         object_manager_pull_timeout_ms_(20),
-        object_manager_max_sends_(2),
-        object_manager_max_receives_(2),
-        object_manager_max_push_retries_(1000),
-        object_manager_default_chunk_size_(100000000) {}
+        object_manager_push_timeout_ms_(10000),
+        object_manager_default_chunk_size_(1000000),
+        num_workers_per_process_(1) {}
 
   ~RayConfig() {}
 
@@ -159,6 +157,11 @@ class RayConfig {
   int64_t get_timeout_milliseconds_;
   int64_t worker_get_request_size_;
   int64_t worker_fetch_request_size_;
+
+  /// This is used to bound the size of the Raylet's lineage cache. This is
+  /// the maximum uncommitted lineage size that any remote task in the cache
+  /// can have before eviction will be attempted.
+  uint64_t max_lineage_size_;
 
   /// This is a temporary constant used by actors to determine how many dummy
   /// objects to store.
@@ -227,19 +230,20 @@ class RayConfig {
   /// ObjectManager.
   int object_manager_pull_timeout_ms_;
 
-  /// Maximum number of concurrent sends allowed by the object manager.
-  int object_manager_max_sends_;
-
-  /// Maximum number of concurrent receives allowed by the object manager.
-  int object_manager_max_receives_;
-
-  /// Maximum push retries allowed by the object manager.
-  int object_manager_max_push_retries_;
+  /// Timeout, in milliseconds, to wait until the Push request fails.
+  /// Special value:
+  /// Negative: waiting infinitely.
+  /// 0: giving up retrying immediately.
+  int object_manager_push_timeout_ms_;
 
   /// Default chunk size for multi-chunk transfers to use in the object manager.
   /// In the object manager, no single thread is permitted to transfer more
-  /// data than what is specified by the chunk size.
+  /// data than what is specified by the chunk size unless the number of object
+  /// chunks exceeds the number of available sending threads.
   uint64_t object_manager_default_chunk_size_;
+
+  /// Number of workers per process
+  int num_workers_per_process_;
 };
 
 #endif  // RAY_CONFIG_H

@@ -6,33 +6,28 @@ import org.ray.spi.model.TaskSpec;
 
 public class WorkerContext {
 
-  /**
-   * id of worker
-   */
-  public static UniqueID workerID = UniqueID.randomID();
-
-  /**
-   * current doing task
-   */
-  private TaskSpec currentTask;
-
-  /**
-   * current app classloader
-   */
-  private ClassLoader currentClassLoader;
-
-  /**
-   * how many puts done by current task
-   */
-  private int currentTaskPutCount;
-
-  /**
-   * how many calls done by current task
-   */
-  private int currentTaskCallCount;
-
   private static final ThreadLocal<WorkerContext> currentWorkerCtx =
       ThreadLocal.withInitial(() -> init(RayRuntime.getParams()));
+  /**
+   * id of worker.
+   */
+  public static UniqueID workerID = UniqueID.randomId();
+  /**
+   * current doing task.
+   */
+  private TaskSpec currentTask;
+  /**
+   * current app classloader.
+   */
+  private ClassLoader currentClassLoader;
+  /**
+   * how many puts done by current task.
+   */
+  private int currentTaskPutCount;
+  /**
+   * how many calls done by current task.
+   */
+  private int currentTaskCallCount;
 
   public static WorkerContext init(RayParameters params) {
     WorkerContext ctx = new WorkerContext();
@@ -48,16 +43,16 @@ public class WorkerContext {
     return ctx;
   }
 
-  public static WorkerContext get() {
-    return currentWorkerCtx.get();
-  }
-
   public static void prepare(TaskSpec task, ClassLoader classLoader) {
     WorkerContext wc = get();
     wc.currentTask = task;
     wc.currentTaskPutCount = 0;
     wc.currentTaskCallCount = 0;
     wc.currentClassLoader = classLoader;
+  }
+
+  public static WorkerContext get() {
+    return currentWorkerCtx.get();
   }
 
   public static TaskSpec currentTask() {
@@ -72,7 +67,7 @@ public class WorkerContext {
     return ++get().currentTaskCallCount;
   }
 
-  public static UniqueID currentWorkerID() {
+  public static UniqueID currentWorkerId() {
     return WorkerContext.workerID;
   }
 

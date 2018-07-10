@@ -14,6 +14,8 @@ enum TablePrefix:int {
   FUNCTION,
   TASK_RECONSTRUCTION,
   HEARTBEAT,
+  ERROR_INFO,
+  PROFILE,
 }
 
 // The channel that Add operations to the Table should be published on, if any.
@@ -24,7 +26,8 @@ enum TablePubsub:int {
   CLIENT,
   OBJECT,
   ACTOR,
-  HEARTBEAT
+  HEARTBEAT,
+  ERROR_INFO,
 }
 
 table GcsTableEntry {
@@ -82,7 +85,7 @@ table TaskTableData {
 
 table TaskTableTestAndUpdate {
   test_scheduler_id: string;
-  test_state_bitmask: int;
+  test_state_bitmask: SchedulingState;
   update_state: SchedulingState;
 }
 
@@ -103,12 +106,47 @@ table ActorTableData {
 }
 
 table ErrorTableData {
+  // The ID of the job that the error is for.
+  job_id: string;
+  // The type of the error.
+  type: string;
+  // The error message.
+  error_message: string;
+  // The timestamp of the error message.
+  timestamp: double;
 }
 
 table CustomSerializerData {
 }
 
 table ConfigTableData {
+}
+
+table ProfileEvent {
+  // The type of the event.
+  event_type: string;
+  // The start time of the event.
+  start_time: double;
+  // The end time of the event. If the event is a point event, then this should
+  // be the same as the start time.
+  end_time: double;
+  // Additional data associated with the event. This data must be serialized
+  // using JSON.
+  extra_data: string;
+}
+
+table ProfileTableData {
+  // The type of the component that generated the event, e.g., worker or
+  // object_manager, or node_manager.
+  component_type: string;
+  // An identifier for the component that generated the event.
+  component_id: string;
+  // An identifier for the node that generated the event.
+  node_ip_address: string;
+  // This is a batch of profiling events. We batch these together for
+  // performance reasons because a single task may generate many events, and
+  // we don't want each event to require a GCS command.
+  profile_events: [ProfileEvent];
 }
 
 table RayResource {

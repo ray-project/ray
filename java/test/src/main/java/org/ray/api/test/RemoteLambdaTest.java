@@ -9,20 +9,19 @@ import org.ray.util.RemoteFunction;
 @RunWith(MyRunner.class)
 public class RemoteLambdaTest {
 
-  public static <T> String RemoteToString(T o) {
+  public static <T> String remoteToString(T o) {
     return o.toString();
   }
 
   @Test
   public void test() {
 
-    RemoteFunction<String, String> f0 = RemoteLambdaTest::RemoteToString;
+    RemoteFunction<String, String> f0 = RemoteLambdaTest::remoteToString;
     byte[] bytes = SerializationUtils.serialize(f0);
     //System.out.println(new String(bytes));
     //Object m = SerializationUtils.deserialize(bytes);
 
-    RemoteFunction<Integer, Integer> f = x ->
-    {
+    RemoteFunction<Integer, Integer> f = x -> {
       System.out.println("remote function " + x);
       return x + 1;
     };
@@ -31,8 +30,7 @@ public class RemoteLambdaTest {
     Assert.assertEquals(101, (int) f2.apply(100));
 
     Integer y = 100;
-    RemoteFunction<Integer, Integer> f3 = x ->
-    {
+    RemoteFunction<Integer, Integer> f3 = x -> {
       System.out.println("remote function " + x);
       return x + y + 1;
     };

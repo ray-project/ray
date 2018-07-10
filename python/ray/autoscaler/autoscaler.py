@@ -2,10 +2,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import binascii
+import copy
 import json
 import hashlib
+import math
 import os
+from six.moves import queue
 import subprocess
+import threading
 import time
 import traceback
 
@@ -16,14 +21,15 @@ import numpy as np
 import yaml
 
 from ray.ray_constants import AUTOSCALER_MAX_NUM_FAILURES, \
-    AUTOSCALER_MAX_CONCURRENT_LAUNCHES, AUTOSCALER_UPDATE_INTERVAL_S, \
-    AUTOSCALER_HEARTBEAT_TIMEOUT_S
+    AUTOSCALER_MAX_LAUNCH_BATCH, AUTOSCALER_MAX_CONCURRENT_LAUNCHES,\
+    AUTOSCALER_UPDATE_INTERVAL_S, AUTOSCALER_HEARTBEAT_TIMEOUT_S
 from ray.autoscaler.node_provider import get_node_provider, \
     get_default_config
 from ray.autoscaler.updater import NodeUpdaterProcess
 from ray.autoscaler.docker import dockerize_if_needed
-from ray.autoscaler.tags import TAG_RAY_LAUNCH_CONFIG, \
-    TAG_RAY_RUNTIME_CONFIG, TAG_RAY_NODE_STATUS, TAG_RAY_NODE_TYPE, TAG_NAME
+from ray.autoscaler.tags import (TAG_RAY_LAUNCH_CONFIG, TAG_RAY_RUNTIME_CONFIG,
+                                 TAG_RAY_NODE_STATUS, TAG_RAY_NODE_TYPE,
+                                 TAG_RAY_NODE_NAME)
 import ray.services as services
 
 REQUIRED, OPTIONAL = True, False
@@ -58,6 +64,7 @@ CLUSTER_CONFIG_SCHEMA = {
             "availability_zone": (str, OPTIONAL),  # e.g. us-east-1a
             "module": (str,
                        OPTIONAL),  # module, if using external node provider
+            "project_id": (None, OPTIONAL),  # gcp project id, if using gcp
         },
         REQUIRED),
 
@@ -197,6 +204,64 @@ class LoadMetrics(object):
         }
 
 
+class NodeLauncher(threading.Thread):
+    def __init__(self, queue, pending, *args, **kwargs):
+        self.queue = queue
+        self.pending = pending
+        self.provider = None
+        super(NodeLauncher, self).__init__(*args, **kwargs)
+
+    def _launch_node(self, config, count):
+        if self.provider is None:
+            self.provider = get_node_provider(config["provider"],
+                                              config["cluster_name"])
+
+        tag_filters = {TAG_RAY_NODE_TYPE: "worker"}
+        before = self.provider.nodes(tag_filters=tag_filters)
+        launch_hash = hash_launch_conf(config["worker_nodes"], config["auth"])
+        self.provider.create_node(
+            config["worker_nodes"], {
+                TAG_RAY_NODE_NAME: "ray-{}-worker".format(
+                    config["cluster_name"]),
+                TAG_RAY_NODE_TYPE: "worker",
+                TAG_RAY_NODE_STATUS: "uninitialized",
+                TAG_RAY_LAUNCH_CONFIG: launch_hash,
+            }, count)
+        after = self.provider.nodes(tag_filters=tag_filters)
+        if set(after).issubset(before):
+            print("Warning: No new nodes reported after node creation")
+
+    def run(self):
+        while True:
+            config, count = self.queue.get()
+            try:
+                self._launch_node(config, count)
+            finally:
+                self.pending.dec(count)
+
+
+class ConcurrentCounter():
+    def __init__(self):
+        self._value = 0
+        self._lock = threading.Lock()
+
+    def inc(self, count):
+        with self._lock:
+            self._value += count
+            return self._value
+
+    def dec(self, count):
+        with self._lock:
+            assert self._value >= count, "counter cannot go negative"
+            self._value -= count
+            return self._value
+
+    @property
+    def value(self):
+        with self._lock:
+            return self._value
+
+
 class StandardAutoscaler(object):
     """The autoscaling control loop for a Ray cluster.
 
@@ -218,6 +283,7 @@ class StandardAutoscaler(object):
     def __init__(self,
                  config_path,
                  load_metrics,
+                 max_launch_batch=AUTOSCALER_MAX_LAUNCH_BATCH,
                  max_concurrent_launches=AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
                  max_failures=AUTOSCALER_MAX_NUM_FAILURES,
                  process_runner=subprocess,
@@ -231,6 +297,7 @@ class StandardAutoscaler(object):
                                           self.config["cluster_name"])
 
         self.max_failures = max_failures
+        self.max_launch_batch = max_launch_batch
         self.max_concurrent_launches = max_concurrent_launches
         self.verbose_updates = verbose_updates
         self.process_runner = process_runner
@@ -244,6 +311,25 @@ class StandardAutoscaler(object):
         self.last_update_time = 0.0
         self.update_interval_s = update_interval_s
 
+        # Node launchers
+        self.launch_queue = queue.Queue()
+        self.num_launches_pending = ConcurrentCounter()
+        max_batches = math.ceil(
+            max_concurrent_launches / float(max_launch_batch))
+        for i in range(int(max_batches)):
+            node_launcher = NodeLauncher(
+                queue=self.launch_queue, pending=self.num_launches_pending)
+            node_launcher.daemon = True
+            node_launcher.start()
+
+        # Expand local file_mounts to allow ~ in the paths. This can't be done
+        # earlier when the config is written since we might be on different
+        # platform and the expansion would result in wrong path.
+        self.config["file_mounts"] = {
+            remote: os.path.expanduser(local)
+            for remote, local in self.config["file_mounts"].items()
+        }
+
         for local_path in self.config["file_mounts"].values():
             assert os.path.exists(local_path)
 
@@ -254,8 +340,8 @@ class StandardAutoscaler(object):
             self.reload_config(errors_fatal=False)
             self._update()
         except Exception as e:
-            print("StandardAutoscaler: Error during autoscaling: {}",
-                  traceback.format_exc())
+            print("StandardAutoscaler: Error during autoscaling: {}"
+                  "".format(traceback.format_exc()))
             self.num_failures += 1
             if self.num_failures > self.max_failures:
                 print("*** StandardAutoscaler: Too many errors, abort. ***")
@@ -268,10 +354,12 @@ class StandardAutoscaler(object):
             return
 
         self.last_update_time = time.time()
+        num_pending = self.num_launches_pending.value
         nodes = self.workers()
         print(self.debug_string(nodes))
         self.load_metrics.prune_active_ips(
             [self.provider.internal_ip(node_id) for node_id in nodes])
+        target_workers = self.target_num_workers()
 
         # Terminate any idle or out of date nodes
         last_used = self.load_metrics.last_used_time_by_ip
@@ -280,7 +368,7 @@ class StandardAutoscaler(object):
         for node_id in nodes:
             node_ip = self.provider.internal_ip(node_id)
             if node_ip in last_used and last_used[node_ip] < horizon and \
-                    len(nodes) - num_terminated > self.config["min_workers"]:
+                    len(nodes) - num_terminated > target_workers:
                 num_terminated += 1
                 print("StandardAutoscaler: Terminating idle node: "
                       "{}".format(node_id))
@@ -307,10 +395,12 @@ class StandardAutoscaler(object):
             print(self.debug_string(nodes))
 
         # Launch new nodes if needed
-        target_num = self.target_num_workers()
-        if len(nodes) < target_num:
-            self.launch_new_node(
-                min(self.max_concurrent_launches, target_num - len(nodes)))
+        num_workers = len(nodes) + num_pending
+        if num_workers < target_workers:
+            max_allowed = min(self.max_launch_batch,
+                              self.max_concurrent_launches - num_pending)
+            num_launches = min(max_allowed, target_workers - num_workers)
+            self.launch_new_node(num_launches)
             print(self.debug_string())
 
         # Process any completed updates
@@ -364,7 +454,8 @@ class StandardAutoscaler(object):
     def target_num_workers(self):
         target_frac = self.config["target_utilization_fraction"]
         cur_used = self.load_metrics.approx_workers_used()
-        ideal_num_workers = int(np.ceil(cur_used / float(target_frac)))
+        ideal_num_nodes = int(np.ceil(cur_used / float(target_frac)))
+        ideal_num_workers = ideal_num_nodes - 1  # subtract 1 for head node
         return min(self.config["max_workers"],
                    max(self.config["min_workers"], ideal_num_workers))
 
@@ -400,7 +491,8 @@ class StandardAutoscaler(object):
             with_head_node_ip(self.config["worker_start_ray_commands"]),
             self.runtime_hash,
             redirect_output=not self.verbose_updates,
-            process_runner=self.process_runner)
+            process_runner=self.process_runner,
+            use_internal_ip=True)
         updater.start()
         self.updaters[node_id] = updater
 
@@ -426,7 +518,8 @@ class StandardAutoscaler(object):
             with_head_node_ip(init_commands),
             self.runtime_hash,
             redirect_output=not self.verbose_updates,
-            process_runner=self.process_runner)
+            process_runner=self.process_runner,
+            use_internal_ip=True)
         updater.start()
         self.updaters[node_id] = updater
 
@@ -443,26 +536,19 @@ class StandardAutoscaler(object):
 
     def launch_new_node(self, count):
         print("StandardAutoscaler: Launching {} new nodes".format(count))
-        num_before = len(self.workers())
-        self.provider.create_node(
-            self.config["worker_nodes"], {
-                TAG_NAME: "ray-{}-worker".format(self.config["cluster_name"]),
-                TAG_RAY_NODE_TYPE: "Worker",
-                TAG_RAY_NODE_STATUS: "Uninitialized",
-                TAG_RAY_LAUNCH_CONFIG: self.launch_hash,
-            }, count)
-        if len(self.workers()) <= num_before:
-            print("Warning: Num nodes failed to increase after node creation")
+        self.num_launches_pending.inc(count)
+        config = copy.deepcopy(self.config)
+        self.launch_queue.put((config, count))
 
     def workers(self):
-        return self.provider.nodes(tag_filters={
-            TAG_RAY_NODE_TYPE: "Worker",
-        })
+        return self.provider.nodes(tag_filters={TAG_RAY_NODE_TYPE: "worker"})
 
     def debug_string(self, nodes=None):
         if nodes is None:
             nodes = self.workers()
         suffix = ""
+        if self.num_launches_pending:
+            suffix += " ({} pending)".format(self.num_launches_pending.value)
         if self.updaters:
             suffix += " ({} updating)".format(len(self.updaters))
         if self.num_failed_updates:
@@ -563,10 +649,10 @@ def hash_runtime_conf(file_mounts, extra_objs):
                 for name in filenames:
                     hasher.update(name.encode("utf-8"))
                     with open(os.path.join(dirpath, name), "rb") as f:
-                        hasher.update(f.read())
+                        hasher.update(binascii.hexlify(f.read()))
         else:
-            with open(path, 'r') as f:
-                hasher.update(f.read().encode("utf-8"))
+            with open(os.path.expanduser(path), "rb") as f:
+                hasher.update(binascii.hexlify(f.read()))
 
     hasher.update(json.dumps(sorted(file_mounts.items())).encode("utf-8"))
     hasher.update(json.dumps(extra_objs, sort_keys=True).encode("utf-8"))

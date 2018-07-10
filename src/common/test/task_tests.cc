@@ -181,13 +181,15 @@ TEST send_task(void) {
   TaskSpec *spec = TaskSpec_finish_construct(builder, &size);
   int fd[2];
   socketpair(AF_UNIX, SOCK_STREAM, 0, fd);
-  write_message(fd[0], SUBMIT_TASK, size, (uint8_t *) spec);
+  write_message(fd[0], static_cast<int64_t>(CommonMessageType::SUBMIT_TASK),
+                size, (uint8_t *) spec);
   int64_t type;
   int64_t length;
   uint8_t *message;
   read_message(fd[1], &type, &length, &message);
   TaskSpec *result = (TaskSpec *) message;
-  ASSERT(type == SUBMIT_TASK);
+  ASSERT(static_cast<CommonMessageType>(type) ==
+         CommonMessageType::SUBMIT_TASK);
   ASSERT(memcmp(spec, result, size) == 0);
   TaskSpec_free(spec);
   free(result);

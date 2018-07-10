@@ -41,19 +41,39 @@ else
 fi
 
 # Download and compile arrow if it isn't already present.
-if [[ ! -d $TP_DIR/../python/ray/pyarrow_files/pyarrow ]]; then
+if [[ ! -d $TP_DIR/../python/ray/pyarrow_files/pyarrow || \
+  "$LANGUAGE" == "java" && ! -f $TP_DIR/../build/src/plasma/libplasma_java.dylib ]]; then
     echo "building arrow"
+
+    # Make sure arrow will be built again when building ray for java later than python
+    if [[ "$LANGUAGE" == "java" ]]; then
+      rm -rf $TP_DIR/build/arrow
+      rm -rf $TP_DIR/build/parquet-cpp
+      rm -rf $TP_DIR/pkg/arrow
+    fi
 
     if [[ ! -d $TP_DIR/build/arrow ]]; then
       git clone https://github.com/apache/arrow.git "$TP_DIR/build/arrow"
     fi
 
+    if ! [ -x "$(command -v bison)" ]; then
+      echo 'Error: bison is not installed.' >&2
+      exit 1
+    fi
+
+    if ! [ -x "$(command -v flex)" ]; then
+      echo 'Error: flex is not installed.' >&2
+      exit 1
+    fi
+
     pushd $TP_DIR/build/arrow
     git fetch origin master
-    # The PR for this commit is https://github.com/apache/arrow/pull/2065. We
+    # The PR for this commit is https://github.com/apache/arrow/pull/2224. We
     # include the link here to make it easier to find the right commit because
     # Arrow often rewrites git history and invalidates certain commits.
-    git checkout ce23c06469de9cf0c3e38e35cdb8d135f341b964
+    git checkout 010c87402071d715e6fd0c3d22a0b13820b9aed5
+
+    git apply $TP_DIR/scripts/arrow-zero-fill.patch
 
     cd cpp
     if [ ! -d "build" ]; then

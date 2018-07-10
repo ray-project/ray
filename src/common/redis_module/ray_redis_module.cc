@@ -61,14 +61,6 @@ extern RedisChainModule module;
     return RedisModule_ReplyWithError(ctx, (MESSAGE)); \
   }
 
-// NOTE(swang): The order of prefixes here must match the TablePrefix enum
-// defined in src/ray/gcs/format/gcs.fbs.
-static const char *table_prefixes[] = {
-    NULL,         "TASK:",  "TASK:",     "CLIENT:",
-    "OBJECT:",    "ACTOR:", "FUNCTION:", "TASK_RECONSTRUCTION:",
-    "HEARTBEAT:",
-};
-
 /// Parse a Redis string into a TablePubsub channel.
 TablePubsub ParseTablePubsub(const RedisModuleString *pubsub_channel_str) {
   long long pubsub_channel_long;
@@ -76,8 +68,8 @@ TablePubsub ParseTablePubsub(const RedisModuleString *pubsub_channel_str) {
                 pubsub_channel_str, &pubsub_channel_long) == REDISMODULE_OK)
       << "Pubsub channel must be a valid TablePubsub";
   auto pubsub_channel = static_cast<TablePubsub>(pubsub_channel_long);
-  RAY_CHECK(pubsub_channel >= TablePubsub_MIN &&
-            pubsub_channel <= TablePubsub_MAX)
+  RAY_CHECK(pubsub_channel >= TablePubsub::MIN &&
+            pubsub_channel <= TablePubsub::MAX)
       << "Pubsub channel must be a valid TablePubsub";
   return pubsub_channel;
 }
@@ -90,8 +82,9 @@ RedisModuleString *FormatPubsubChannel(
     const RedisModuleString *id) {
   // Format the pubsub channel enum to a string. TablePubsub_MAX should be more
   // than enough digits, but add 1 just in case for the null terminator.
-  char pubsub_channel[TablePubsub_MAX + 1];
-  sprintf(pubsub_channel, "%d", ParseTablePubsub(pubsub_channel_str));
+  char pubsub_channel[static_cast<int>(TablePubsub::MAX) + 1];
+  sprintf(pubsub_channel, "%d",
+          static_cast<int>(ParseTablePubsub(pubsub_channel_str)));
   return RedisString_Format(ctx, "%s:%S", pubsub_channel, id);
 }
 
@@ -123,11 +116,11 @@ RedisModuleKey *OpenPrefixedKey(RedisModuleCtx *ctx,
             REDISMODULE_OK)
       << "Prefix must be a valid TablePrefix";
   auto prefix = static_cast<TablePrefix>(prefix_long);
-  RAY_CHECK(prefix != TablePrefix_UNUSED)
+  RAY_CHECK(prefix != TablePrefix::UNUSED)
       << "This table has no prefix registered";
-  RAY_CHECK(prefix >= TablePrefix_MIN && prefix <= TablePrefix_MAX)
+  RAY_CHECK(prefix >= TablePrefix::MIN && prefix <= TablePrefix::MAX)
       << "Prefix must be a valid TablePrefix";
-  return OpenPrefixedKey(ctx, table_prefixes[prefix], keyname, mode,
+  return OpenPrefixedKey(ctx, EnumNameTablePrefix(prefix), keyname, mode,
                          mutated_key_str);
 }
 
@@ -486,14 +479,15 @@ int PublishTaskTableAdd(RedisModuleCtx *ctx,
   auto message = flatbuffers::GetRoot<TaskTableData>(buf);
   RAY_CHECK(message != nullptr);
 
-  if (message->scheduling_state() == SchedulingState_WAITING ||
-      message->scheduling_state() == SchedulingState_SCHEDULED) {
+  if (message->scheduling_state() == SchedulingState::WAITING ||
+      message->scheduling_state() == SchedulingState::SCHEDULED) {
     /* Build the PUBLISH topic and message for task table subscribers. The
      * topic
      * is a string in the format "TASK_PREFIX:<local scheduler ID>:<state>".
      * The
      * message is a serialized SubscribeToTasksReply flatbuffer object. */
-    std::string state = std::to_string(message->scheduling_state());
+    std::string state =
+        std::to_string(static_cast<int>(message->scheduling_state()));
     RedisModuleString *publish_topic = RedisString_Format(
         ctx, "%s%b:%s", TASK_PREFIX, message->scheduler_id()->str().data(),
         sizeof(DBClientID), state.c_str());
@@ -501,12 +495,13 @@ int PublishTaskTableAdd(RedisModuleCtx *ctx,
     /* Construct the flatbuffers object for the payload. */
     flatbuffers::FlatBufferBuilder fbb;
     /* Create the flatbuffers message. */
-    auto msg = CreateTaskReply(
-        fbb, RedisStringToFlatbuf(fbb, id), message->scheduling_state(),
-        fbb.CreateString(message->scheduler_id()),
-        fbb.CreateString(message->execution_dependencies()),
-        fbb.CreateString(message->task_info()), message->spillback_count(),
-        true /* not used */);
+    auto msg =
+        CreateTaskReply(fbb, RedisStringToFlatbuf(fbb, id),
+                        static_cast<long long>(message->scheduling_state()),
+                        fbb.CreateString(message->scheduler_id()),
+                        fbb.CreateString(message->execution_dependencies()),
+                        fbb.CreateString(message->task_info()),
+                        message->spillback_count(), true /* not used */);
     fbb.Finish(msg);
 
     RedisModuleString *publish_message = RedisModule_CreateString(
@@ -613,12 +608,12 @@ int TableAdd_DoPublish(RedisModuleCtx *ctx,
 
   TablePubsub pubsub_channel = ParseTablePubsub(pubsub_channel_str);
 
-  if (pubsub_channel == TablePubsub_TASK) {
+  if (pubsub_channel == TablePubsub::TASK) {
     // Publish the task to its subscribers.
     // TODO(swang): This is only necessary for legacy Ray and should be removed
     // once we switch to using the new GCS API for the task table.
     return PublishTaskTableAdd(ctx, id, data);
-  } else if (pubsub_channel != TablePubsub_NO_PUBLISH) {
+  } else if (pubsub_channel != TablePubsub::NO_PUBLISH) {
     // All other pubsub channels write the data back directly onto the channel.
     return PublishTableAdd(ctx, pubsub_channel_str, id, data);
   } else {
@@ -653,10 +648,82 @@ int TableAdd_RedisCommand(RedisModuleCtx *ctx,
 int ChainTableAdd_RedisCommand(RedisModuleCtx *ctx,
                                RedisModuleString **argv,
                                int argc) {
+  RedisModule_AutoMemory(ctx);
   return module.ChainReplicate(ctx, argv, argc, /*node_func=*/TableAdd_DoWrite,
                                /*tail_func=*/TableAdd_DoPublish);
 }
 #endif
+
+int TableAppend_DoWrite(RedisModuleCtx *ctx,
+                        RedisModuleString **argv,
+                        int argc,
+                        RedisModuleString **mutated_key_str) {
+  if (argc < 5 || argc > 6) {
+    return RedisModule_WrongArity(ctx);
+  }
+
+  RedisModuleString *prefix_str = argv[1];
+  RedisModuleString *id = argv[3];
+  RedisModuleString *data = argv[4];
+  RedisModuleString *index_str = nullptr;
+  if (argc == 6) {
+    index_str = argv[5];
+  }
+
+  // Set the keys in the table.
+  RedisModuleKey *key =
+      OpenPrefixedKey(ctx, prefix_str, id, REDISMODULE_READ | REDISMODULE_WRITE,
+                      mutated_key_str);
+  // Determine the index at which the data should be appended. If no index is
+  // requested, then is the current length of the log.
+  size_t index = RedisModule_ValueLength(key);
+  if (index_str != nullptr) {
+    // Parse the requested index.
+    long long requested_index;
+    RAY_CHECK(RedisModule_StringToLongLong(index_str, &requested_index) ==
+              REDISMODULE_OK);
+    RAY_CHECK(requested_index >= 0);
+    index = static_cast<size_t>(requested_index);
+  }
+  // Only perform the append if the requested index matches the current length
+  // of the log, or if no index was requested.
+  if (index == RedisModule_ValueLength(key)) {
+    // The requested index matches the current length of the log or no index
+    // was requested. Perform the append.
+    int flags = REDISMODULE_ZADD_NX;
+    RedisModule_ZsetAdd(key, index, data, &flags);
+    // Check that we actually add a new entry during the append. This is only
+    // necessary since we implement the log with a sorted set, so all entries
+    // must be unique, or else we will have gaps in the log.
+    // TODO(rkn): We need to get rid of this uniqueness requirement. We can
+    // easily have multiple log events with the same message.
+    RAY_CHECK(flags == REDISMODULE_ZADD_ADDED) << "Appended a duplicate entry";
+    return REDISMODULE_OK;
+  } else {
+    // The requested index did not match the current length of the log. Return
+    // an error message as a string.
+    static const char *reply = "ERR entry exists";
+    RedisModule_ReplyWithStringBuffer(ctx, reply, strlen(reply));
+    return REDISMODULE_ERR;
+  }
+}
+
+int TableAppend_DoPublish(RedisModuleCtx *ctx,
+                          RedisModuleString **argv,
+                          int /*argc*/) {
+  RedisModuleString *pubsub_channel_str = argv[2];
+  RedisModuleString *id = argv[3];
+  RedisModuleString *data = argv[4];
+  // Publish a message on the requested pubsub channel if necessary.
+  TablePubsub pubsub_channel = ParseTablePubsub(pubsub_channel_str);
+  if (pubsub_channel != TablePubsub::NO_PUBLISH) {
+    // All other pubsub channels write the data back directly onto the
+    // channel.
+    return PublishTableAdd(ctx, pubsub_channel_str, id, data);
+  } else {
+    return RedisModule_ReplyWithSimpleString(ctx, "OK");
+  }
+}
 
 /// Append an entry to the log stored at a key. Publishes a notification about
 /// the update to all subscribers, if a pubsub channel is provided.
@@ -682,61 +749,24 @@ int TableAppend_RedisCommand(RedisModuleCtx *ctx,
                              RedisModuleString **argv,
                              int argc) {
   RedisModule_AutoMemory(ctx);
-
-  if (argc < 5 || argc > 6) {
-    return RedisModule_WrongArity(ctx);
+  const int status = TableAppend_DoWrite(ctx, argv, argc,
+                                         /*mutated_key_str=*/nullptr);
+  if (status) {
+    return status;
   }
-
-  RedisModuleString *prefix_str = argv[1];
-  RedisModuleString *pubsub_channel_str = argv[2];
-  RedisModuleString *id = argv[3];
-  RedisModuleString *data = argv[4];
-  RedisModuleString *index_str = nullptr;
-  if (argc == 6) {
-    index_str = argv[5];
-  }
-
-  // Set the keys in the table.
-  RedisModuleKey *key = OpenPrefixedKey(ctx, prefix_str, id,
-                                        REDISMODULE_READ | REDISMODULE_WRITE);
-  // Determine the index at which the data should be appended. If no index is
-  // requested, then is the current length of the log.
-  size_t index = RedisModule_ValueLength(key);
-  if (index_str != nullptr) {
-    // Parse the requested index.
-    long long requested_index;
-    RAY_CHECK(RedisModule_StringToLongLong(index_str, &requested_index) ==
-              REDISMODULE_OK);
-    RAY_CHECK(requested_index >= 0);
-    index = static_cast<size_t>(requested_index);
-  }
-  // Only perform the append if the requested index matches the current length
-  // of the log, or if no index was requested.
-  if (index == RedisModule_ValueLength(key)) {
-    // The requested index matches the current length of the log or no index
-    // was requested. Perform the append.
-    int flags = REDISMODULE_ZADD_NX;
-    RedisModule_ZsetAdd(key, index, data, &flags);
-    // Check that we actually add a new entry during the append. This is only
-    // necessary since we implement the log with a sorted set, so all entries
-    // must be unique, or else we will have gaps in the log.
-    RAY_CHECK(flags == REDISMODULE_ZADD_ADDED) << "Appended a duplicate entry";
-    // Publish a message on the requested pubsub channel if necessary.
-    TablePubsub pubsub_channel = ParseTablePubsub(pubsub_channel_str);
-    if (pubsub_channel != TablePubsub_NO_PUBLISH) {
-      // All other pubsub channels write the data back directly onto the
-      // channel.
-      return PublishTableAdd(ctx, pubsub_channel_str, id, data);
-    } else {
-      return RedisModule_ReplyWithSimpleString(ctx, "OK");
-    }
-  } else {
-    // The requested index did not match the current length of the log. Return
-    // an error message as a string.
-    const char *reply = "ERR entry exists";
-    return RedisModule_ReplyWithStringBuffer(ctx, reply, strlen(reply));
-  }
+  return TableAppend_DoPublish(ctx, argv, argc);
 }
+
+#if RAY_USE_NEW_GCS
+int ChainTableAppend_RedisCommand(RedisModuleCtx *ctx,
+                                  RedisModuleString **argv,
+                                  int argc) {
+  RedisModule_AutoMemory(ctx);
+  return module.ChainReplicate(ctx, argv, argc,
+                               /*node_func=*/TableAppend_DoWrite,
+                               /*tail_func=*/TableAppend_DoPublish);
+}
+#endif
 
 /// A helper function to create and finish a GcsTableEntry, based on the
 /// current value or values at the given key.
@@ -768,6 +798,13 @@ void TableEntryToFlatbuf(RedisModuleKey *table_key,
     }
     auto message = CreateGcsTableEntry(fbb, RedisStringToFlatbuf(fbb, entry_id),
                                        fbb.CreateVector(data));
+    fbb.Finish(message);
+  } break;
+  case REDISMODULE_KEYTYPE_EMPTY: {
+    auto message = CreateGcsTableEntry(
+        fbb, RedisStringToFlatbuf(fbb, entry_id),
+        fbb.CreateVector(
+            std::vector<flatbuffers::Offset<flatbuffers::String>>()));
     fbb.Finish(message);
   } break;
   default:
@@ -859,15 +896,14 @@ int TableRequestNotifications_RedisCommand(RedisModuleCtx *ctx,
   // Lookup the current value at the key.
   RedisModuleKey *table_key =
       OpenPrefixedKey(ctx, prefix_str, id, REDISMODULE_READ);
-  if (table_key != nullptr) {
-    // Publish the current value at the key to the client that is requesting
-    // notifications.
-    flatbuffers::FlatBufferBuilder fbb;
-    TableEntryToFlatbuf(table_key, id, fbb);
-    RedisModule_Call(ctx, "PUBLISH", "sb", client_channel,
-                     reinterpret_cast<const char *>(fbb.GetBufferPointer()),
-                     fbb.GetSize());
-  }
+  // Publish the current value at the key to the client that is requesting
+  // notifications. An empty notification will be published if the key is
+  // empty.
+  flatbuffers::FlatBufferBuilder fbb;
+  TableEntryToFlatbuf(table_key, id, fbb);
+  RedisModule_Call(ctx, "PUBLISH", "sb", client_channel,
+                   reinterpret_cast<const char *>(fbb.GetBufferPointer()),
+                   fbb.GetSize());
 
   return RedisModule_ReplyWithNull(ctx);
 }
@@ -956,7 +992,8 @@ int TableTestAndUpdate_RedisCommand(RedisModuleCtx *ctx,
 
   auto update = flatbuffers::GetRoot<TaskTableTestAndUpdate>(update_buf);
 
-  bool do_update = data->scheduling_state() & update->test_state_bitmask();
+  bool do_update = static_cast<int>(data->scheduling_state()) &
+                   static_cast<int>(update->test_state_bitmask());
 
   if (!is_nil(update->test_scheduler_id()->str())) {
     do_update =
@@ -1460,8 +1497,8 @@ int TaskTableWrite(RedisModuleCtx *ctx,
         "TaskSpec", task_spec, "spillback_count", spillback_count, NULL);
   }
 
-  if (state_value == TASK_STATUS_WAITING ||
-      state_value == TASK_STATUS_SCHEDULED) {
+  if (static_cast<TaskStatus>(state_value) == TaskStatus::WAITING ||
+      static_cast<TaskStatus>(state_value) == TaskStatus::SCHEDULED) {
     /* Build the PUBLISH topic and message for task table subscribers. The
      * topic is a string in the format
      * "TASK_PREFIX:<local scheduler ID>:<state>". The message is a serialized
@@ -1834,6 +1871,11 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx,
   if (RedisModule_CreateCommand(ctx, "ray.chain.table_add",
                                 ChainTableAdd_RedisCommand, "write pubsub", 0,
                                 0, 0) == REDISMODULE_ERR) {
+    return REDISMODULE_ERR;
+  }
+  if (RedisModule_CreateCommand(ctx, "ray.chain.table_append",
+                                ChainTableAppend_RedisCommand, "write pubsub",
+                                0, 0, 0) == REDISMODULE_ERR) {
     return REDISMODULE_ERR;
   }
 #endif

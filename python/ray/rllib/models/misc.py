@@ -14,6 +14,10 @@ def normc_initializer(std=1.0):
     return _initializer
 
 
+def get_activation_fn(name):
+    return getattr(tf.nn, name)
+
+
 def conv2d(x, num_filters, name, filter_size=(3, 3), stride=(1, 1), pad="SAME",
            dtype=tf.float32, collections=None):
     with tf.variable_scope(name):

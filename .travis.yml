@@ -54,7 +54,7 @@ matrix:
         - cd ..
         # Run Python linting.
         - flake8 --exclude=python/ray/core/src/common/flatbuffers_ep-prefix/,python/ray/core/generated/,src/common/format/,doc/source/conf.py,python/ray/cloudpickle/
-        - .travis/yapf.sh
+        - .travis/yapf.sh --all
 
     - os: linux
       dist: trusty
@@ -68,12 +68,12 @@ matrix:
         - ./.travis/install-ray.sh
 
       script:
-        - cd python/ray/core
-        - bash ../../../src/common/test/run_valgrind.sh
-        - bash ../../../src/plasma/test/run_valgrind.sh
-        - bash ../../../src/local_scheduler/test/run_valgrind.sh
-        - bash ../../../src/ray/test/run_object_manager_valgrind.sh
-        - cd ../../..
+        - cd build
+        - bash ../src/common/test/run_valgrind.sh
+        - bash ../src/plasma/test/run_valgrind.sh
+        - bash ../src/local_scheduler/test/run_valgrind.sh
+        - bash ../src/ray/test/run_object_manager_valgrind.sh
+        - cd ..
 
         - python ./python/ray/plasma/test/test.py valgrind
         - python ./python/ray/local_scheduler/test/test.py valgrind
@@ -107,6 +107,7 @@ matrix:
       env:
         - PYTHON=3.5
         - RAY_USE_NEW_GCS=on
+        - RAY_USE_XRAY=1
 
     - os: linux
       dist: trusty
@@ -134,7 +135,7 @@ matrix:
         - python test/tensorflow_test.py
         - python test/failure_test.py
         - python test/microbenchmarks.py
-        - python test/stress_tests.py
+        - python -m pytest test/stress_tests.py
         # - python test/component_failures_test.py
         - python test/multi_node_test.py
         - python test/recursion_test.py
@@ -142,17 +143,11 @@ matrix:
         - python test/cython_test.py
         - python test/credis_test.py
 
-        # ray dataframe tests
-        # - python -m pytest python/ray/dataframe/test/test_dataframe.py
-        - python -m pytest python/ray/dataframe/test/test_concat.py
-        - python -m pytest python/ray/dataframe/test/test_io.py
-        # - python -m pytest python/ray/dataframe/test/test_groupby.py
-
         # ray tune tests
-        # - python python/ray/tune/test/dependency_test.py
-        # - python -m pytest python/ray/tune/test/trial_runner_test.py
+        - python python/ray/tune/test/dependency_test.py
+        - python -m pytest python/ray/tune/test/trial_runner_test.py
         - python -m pytest python/ray/tune/test/trial_scheduler_test.py
-        # - python -m pytest python/ray/tune/test/tune_server_test.py
+        - python -m pytest python/ray/tune/test/tune_server_test.py
 
         # ray rllib tests
         - python -m pytest python/ray/rllib/test/test_catalog.py
@@ -167,19 +162,19 @@ install:
   - ./.travis/install-ray.sh
   - ./.travis/install-cython-examples.sh
 
-  - cd python/ray/core
-  - bash ../../../src/ray/test/run_gcs_tests.sh
+  - cd build
+  - bash ../src/ray/test/run_gcs_tests.sh
   # Raylet tests.
-  - bash ../../../src/ray/test/run_object_manager_tests.sh
+  - bash ../src/ray/test/run_object_manager_tests.sh
   - ./src/ray/raylet/task_test
   - ./src/ray/raylet/worker_pool_test
   - ./src/ray/raylet/lineage_cache_test
   - ./src/ray/raylet/task_dependency_manager_test
 
-  - bash ../../../src/common/test/run_tests.sh
-  - bash ../../../src/plasma/test/run_tests.sh
-  - bash ../../../src/local_scheduler/test/run_tests.sh
-  - cd ../../..
+  - bash ../src/common/test/run_tests.sh
+  - bash ../src/plasma/test/run_tests.sh
+  - bash ../src/local_scheduler/test/run_tests.sh
+  - cd ..
 
 script:
   - export PATH="$HOME/miniconda/bin:$PATH"
@@ -199,19 +194,13 @@ script:
   - python test/tensorflow_test.py
   - python test/failure_test.py
   - python test/microbenchmarks.py
-  - python test/stress_tests.py
+  - python -m pytest test/stress_tests.py
   - python test/component_failures_test.py
   - python test/multi_node_test.py
   - python test/recursion_test.py
   - python test/monitor_test.py
   - python test/cython_test.py
   - python test/credis_test.py
-
-  # ray dataframe tests
-  - python -m pytest python/ray/dataframe/test/test_dataframe.py
-  - python -m pytest python/ray/dataframe/test/test_concat.py
-  - python -m pytest python/ray/dataframe/test/test_io.py
-  - python -m pytest python/ray/dataframe/test/test_groupby.py
 
   # ray tune tests
   - python python/ray/tune/test/dependency_test.py
@@ -229,7 +218,7 @@ deploy:
   - provider: s3
     access_key_id: AKIAJ2L7XDUSZVTXI5QA
     secret_access_key:
-      secure: MZbzbQvfn9QI2H19Ai0EZju5BERhCMA8/piHU29syvtmoDqd/QdMW0DTHhLAqlaCrGeMGCx0y6sB9DjX46ZKndQ/cgSQDesfNC300NTZZlWyYr7K86yhj+hgIpYXs+G28g1hmQOUzCWL8kAgfeMle9GvKkZ7DkhdRszg8bPyIXdKtjQGO5RRrrjQBgIzjvOiWFOD9lDzula5j8uV4tsiXT8nQjuiOIwmAxB2r7zXHc/Vsr9wBAeQ9Fq6aomEGuuVscoMhZqWc0SHOOz0dIDdlJFF+W4Effw6l9u0Fe262g0WfsnS3PqF7a6eBC0qkf3yH8joAlvquVxWp+dr7dBzy0gGZysD/pqF/NBiB3GZ9TMreK39DJ9zC83p2r0awP1hduhkCJI2QOsNX7fna6e2edVt7rxOEe19So83eDNBbJ6bfV7YbkEMqUJxNHWC6MIDCrCbFf8QlT3fnPsb0IHMa9aJRe/TvgI+aR+nKjRhvVymXddCBAy5hYb/I66omx4BGbl7+9HPo/w/c3m+vCJIu6IQZFVAmsoP6pft9aYVXgkz20C4I/4tF0YlDuH617PT3DeCjf+MG4Mgh9JiXJ2Jt8U6NH1tlXiS/F6OjPGFB7UrFw1o2e0KhX+l/qJEslf5Xc35vmbELf1Fy7QNVttZ2H5OXYrWhsV8EOmpN+KcVQI=
+      secure: OS9V8c/fQ9SIOP+Lg2MIz+PtCSKNQVB3mubscDRHKJcCmOp3cB6AKsC/yepbNZvvjDD/ncW2v6KJVsUEneAeDKrZQWSIpNb34yGAvWb7g4xleLxiadNtx6XEzjWaOcg+Y6409e68XeoHq/5ItopWNQ9p9NHXgsoHbZaOurPyHNskNgwBVaObCy+cCak7ifkITDk6cil0OJYnTbOe3NhcU82Fh5BZzS2+G2qNq8tGNcbfINhq0rruWIBuV5WRB/14CmBR+mou74qFSiiodH/MKbOcplx9+BxoOsTnkl7SeyybcK6DX6jxJCuhSBIjct9uT8Qdovv6mzOMkXvLkLKFkHfkTJSGBRIIZEvkPvzhlEriqTcr4tX/MV8HKs/Acz1NnlD0tNEygOr3VaiSLB0dvpz4iCeI9berqSu/jV1VI1X5iVNfChYbOMQ+OYafJMs5WdO60AMWIHy60U511FjAlbS7IubXBjfhoCItIB1xlVNI7FfKaRbNRwP5qvPenB8FUgZpv3UBg5OZDkeBXSNoLydr0w505p6s8Jqnz750TpVYI11fih5D0N3Ea57OwQr9r/rk+Z8aGeTpWj6hIgQiNkrIf2VZnWTApd+utJPw3X3txUEcnOtcdDnMsPuEIeMvIDrrFMRwzClqMNXq9MewU43wp7cCl67YmDBDKubl7Vs=
     bucket: ray-wheels
     acl: public_read
     region: us-west-2
@@ -244,7 +233,7 @@ deploy:
   - provider: s3
     access_key_id: AKIAJ2L7XDUSZVTXI5QA
     secret_access_key:
-      secure: MZbzbQvfn9QI2H19Ai0EZju5BERhCMA8/piHU29syvtmoDqd/QdMW0DTHhLAqlaCrGeMGCx0y6sB9DjX46ZKndQ/cgSQDesfNC300NTZZlWyYr7K86yhj+hgIpYXs+G28g1hmQOUzCWL8kAgfeMle9GvKkZ7DkhdRszg8bPyIXdKtjQGO5RRrrjQBgIzjvOiWFOD9lDzula5j8uV4tsiXT8nQjuiOIwmAxB2r7zXHc/Vsr9wBAeQ9Fq6aomEGuuVscoMhZqWc0SHOOz0dIDdlJFF+W4Effw6l9u0Fe262g0WfsnS3PqF7a6eBC0qkf3yH8joAlvquVxWp+dr7dBzy0gGZysD/pqF/NBiB3GZ9TMreK39DJ9zC83p2r0awP1hduhkCJI2QOsNX7fna6e2edVt7rxOEe19So83eDNBbJ6bfV7YbkEMqUJxNHWC6MIDCrCbFf8QlT3fnPsb0IHMa9aJRe/TvgI+aR+nKjRhvVymXddCBAy5hYb/I66omx4BGbl7+9HPo/w/c3m+vCJIu6IQZFVAmsoP6pft9aYVXgkz20C4I/4tF0YlDuH617PT3DeCjf+MG4Mgh9JiXJ2Jt8U6NH1tlXiS/F6OjPGFB7UrFw1o2e0KhX+l/qJEslf5Xc35vmbELf1Fy7QNVttZ2H5OXYrWhsV8EOmpN+KcVQI=
+      secure: OS9V8c/fQ9SIOP+Lg2MIz+PtCSKNQVB3mubscDRHKJcCmOp3cB6AKsC/yepbNZvvjDD/ncW2v6KJVsUEneAeDKrZQWSIpNb34yGAvWb7g4xleLxiadNtx6XEzjWaOcg+Y6409e68XeoHq/5ItopWNQ9p9NHXgsoHbZaOurPyHNskNgwBVaObCy+cCak7ifkITDk6cil0OJYnTbOe3NhcU82Fh5BZzS2+G2qNq8tGNcbfINhq0rruWIBuV5WRB/14CmBR+mou74qFSiiodH/MKbOcplx9+BxoOsTnkl7SeyybcK6DX6jxJCuhSBIjct9uT8Qdovv6mzOMkXvLkLKFkHfkTJSGBRIIZEvkPvzhlEriqTcr4tX/MV8HKs/Acz1NnlD0tNEygOr3VaiSLB0dvpz4iCeI9berqSu/jV1VI1X5iVNfChYbOMQ+OYafJMs5WdO60AMWIHy60U511FjAlbS7IubXBjfhoCItIB1xlVNI7FfKaRbNRwP5qvPenB8FUgZpv3UBg5OZDkeBXSNoLydr0w505p6s8Jqnz750TpVYI11fih5D0N3Ea57OwQr9r/rk+Z8aGeTpWj6hIgQiNkrIf2VZnWTApd+utJPw3X3txUEcnOtcdDnMsPuEIeMvIDrrFMRwzClqMNXq9MewU43wp7cCl67YmDBDKubl7Vs=
     bucket: ray-wheels
     acl: public_read
     region: us-west-2

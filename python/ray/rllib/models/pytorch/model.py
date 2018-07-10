@@ -8,9 +8,9 @@ import torch.nn as nn
 class Model(nn.Module):
     def __init__(self, obs_space, ac_space, options):
         super(Model, self).__init__()
-        self._init(obs_space, ac_space, options)
+        self._build_layers(obs_space, ac_space, options)
 
-    def _init(self, inputs, num_outputs, options):
+    def _build_layers(self, inputs, num_outputs, options):
         raise NotImplementedError
 
     def forward(self, obs):
@@ -29,9 +29,15 @@ class Model(nn.Module):
 class SlimConv2d(nn.Module):
     """Simple mock of tf.slim Conv2d"""
 
-    def __init__(self, in_channels, out_channels, kernel, stride, padding,
-                 initializer=nn.init.xavier_uniform,
-                 activation_fn=nn.ReLU, bias_init=0):
+    def __init__(self,
+                 in_channels,
+                 out_channels,
+                 kernel,
+                 stride,
+                 padding,
+                 initializer=nn.init.xavier_uniform_,
+                 activation_fn=nn.ReLU,
+                 bias_init=0):
         super(SlimConv2d, self).__init__()
         layers = []
         if padding:
@@ -39,7 +45,7 @@ class SlimConv2d(nn.Module):
         conv = nn.Conv2d(in_channels, out_channels, kernel, stride)
         if initializer:
             initializer(conv.weight)
-        nn.init.constant(conv.bias, bias_init)
+        nn.init.constant_(conv.bias, bias_init)
 
         layers.append(conv)
         if activation_fn:
@@ -53,14 +59,18 @@ class SlimConv2d(nn.Module):
 class SlimFC(nn.Module):
     """Simple PyTorch of `linear` function"""
 
-    def __init__(self, in_size, size, initializer=None,
-                 activation_fn=None, bias_init=0):
+    def __init__(self,
+                 in_size,
+                 out_size,
+                 initializer=None,
+                 activation_fn=None,
+                 bias_init=0):
         super(SlimFC, self).__init__()
         layers = []
-        linear = nn.Linear(in_size, size)
+        linear = nn.Linear(in_size, out_size)
         if initializer:
             initializer(linear.weight)
-        nn.init.constant(linear.bias, bias_init)
+        nn.init.constant_(linear.bias, bias_init)
         layers.append(linear)
         if activation_fn:
             layers.append(activation_fn())

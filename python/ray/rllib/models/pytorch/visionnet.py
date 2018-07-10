@@ -11,7 +11,7 @@ from ray.rllib.models.pytorch.misc import normc_initializer, valid_padding
 class VisionNetwork(Model):
     """Generic vision network"""
 
-    def _init(self, inputs, num_outputs, options):
+    def _build_layers(self, inputs, num_outputs, options):
         """TF visionnet in PyTorch.
 
         Params:
@@ -21,32 +21,31 @@ class VisionNetwork(Model):
         filters = options.get("conv_filters", [
             [16, [8, 8], 4],
             [32, [4, 4], 2],
-            [512, [10, 10], 1]
+            [512, [10, 10], 1],
         ])
         layers = []
         in_channels, in_size = inputs[0], inputs[1:]
 
         for out_channels, kernel, stride in filters[:-1]:
-            padding, out_size = valid_padding(
-                in_size, kernel, [stride, stride])
-            layers.append(SlimConv2d(
-                in_channels, out_channels, kernel, stride, padding))
+            padding, out_size = valid_padding(in_size, kernel,
+                                              [stride, stride])
+            layers.append(
+                SlimConv2d(in_channels, out_channels, kernel, stride, padding))
             in_channels = out_channels
             in_size = out_size
 
         out_channels, kernel, stride = filters[-1]
-        layers.append(SlimConv2d(
-                in_channels, out_channels, kernel, stride, None))
+        layers.append(
+            SlimConv2d(in_channels, out_channels, kernel, stride, None))
         self._convs = nn.Sequential(*layers)
 
         self.logits = SlimFC(
-            out_channels, num_outputs, initializer=nn.init.xavier_uniform)
-        self.probs = nn.Softmax()
+            out_channels, num_outputs, initializer=nn.init.xavier_uniform_)
         self.value_branch = SlimFC(
             out_channels, 1, initializer=normc_initializer())
 
     def hidden_layers(self, obs):
-        """ Internal method - pass in Variables, not numpy arrays
+        """ Internal method - pass in torch tensors, not numpy arrays
 
         args:
             obs: observations and features"""
@@ -66,5 +65,5 @@ class VisionNetwork(Model):
             value (PyTorch): value function for each state"""
         res = self.hidden_layers(obs)
         logits = self.logits(res)
-        value = self.value_branch(res)
+        value = self.value_branch(res).squeeze(1)
         return logits, value

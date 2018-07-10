@@ -9,7 +9,8 @@ import torch.nn as nn
 
 class FullyConnectedNetwork(Model):
     """TODO(rliaw): Logits, Value should both be contained here"""
-    def _init(self, inputs, num_outputs, options):
+
+    def _build_layers(self, inputs, num_outputs, options):
         assert type(inputs) is int
         hiddens = options.get("fcnet_hiddens", [256, 256])
         fcnet_activation = options.get("fcnet_activation", "tanh")
@@ -23,26 +24,29 @@ class FullyConnectedNetwork(Model):
         layers = []
         last_layer_size = inputs
         for size in hiddens:
-            layers.append(SlimFC(
-                last_layer_size, size,
-                initializer=normc_initializer(1.0),
-                activation_fn=activation))
+            layers.append(
+                SlimFC(
+                    in_size=last_layer_size,
+                    out_size=size,
+                    initializer=normc_initializer(1.0),
+                    activation_fn=activation))
             last_layer_size = size
 
         self.hidden_layers = nn.Sequential(*layers)
 
         self.logits = SlimFC(
-            last_layer_size, num_outputs,
+            in_size=last_layer_size,
+            out_size=num_outputs,
             initializer=normc_initializer(0.01),
             activation_fn=None)
-        self.probs = nn.Softmax()
         self.value_branch = SlimFC(
-            last_layer_size, 1,
+            in_size=last_layer_size,
+            out_size=1,
             initializer=normc_initializer(1.0),
             activation_fn=None)
 
     def forward(self, obs):
-        """ Internal method - pass in Variables, not numpy arrays
+        """ Internal method - pass in torch tensors, not numpy arrays
 
         Args:
             obs: observations and features
@@ -52,5 +56,5 @@ class FullyConnectedNetwork(Model):
             value: value function for each state"""
         res = self.hidden_layers(obs)
         logits = self.logits(res)
-        value = self.value_branch(res)
+        value = self.value_branch(res).squeeze(1)
         return logits, value

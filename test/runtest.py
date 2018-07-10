@@ -698,9 +698,6 @@ class APITest(unittest.TestCase):
         self.assertEqual(ray.get(k2.remote(1)), 2)
         self.assertEqual(ray.get(m.remote(1)), 2)
 
-    @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
     def testSubmitAPI(self):
         self.init_ray(num_gpus=1, resources={"Custom": 1}, num_workers=1)
 
@@ -758,9 +755,27 @@ class APITest(unittest.TestCase):
         results = ray.get([object_ids[i] for i in indices])
         self.assertEqual(results, indices)
 
-    @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
+    def testGetMultipleExperimental(self):
+        self.init_ray()
+        object_ids = [ray.put(i) for i in range(10)]
+
+        object_ids_tuple = tuple(object_ids)
+        self.assertEqual(
+            ray.experimental.get(object_ids_tuple), list(range(10)))
+
+        object_ids_nparray = np.array(object_ids)
+        self.assertEqual(
+            ray.experimental.get(object_ids_nparray), list(range(10)))
+
+    def testGetDict(self):
+        self.init_ray()
+        d = {str(i): ray.put(i) for i in range(5)}
+        for i in range(5, 10):
+            d[str(i)] = i
+        result = ray.experimental.get(d)
+        expected = {str(i): i for i in range(10)}
+        self.assertEqual(result, expected)
+
     def testWait(self):
         self.init_ray(num_cpus=1)
 
@@ -817,6 +832,12 @@ class APITest(unittest.TestCase):
         self.assertEqual(ready_ids, [])
         self.assertEqual(remaining_ids, [])
 
+        # Test semantics of num_returns with no timeout.
+        oids = [ray.put(i) for i in range(10)]
+        (found, rest) = ray.wait(oids, num_returns=2)
+        self.assertEqual(len(found), 2)
+        self.assertEqual(len(rest), 8)
+
         # Verify that incorrect usage raises a TypeError.
         x = ray.put(1)
         with self.assertRaises(TypeError):
@@ -826,9 +847,29 @@ class APITest(unittest.TestCase):
         with self.assertRaises(TypeError):
             ray.wait([1])
 
-    @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
+    def testWaitIterables(self):
+        self.init_ray(num_cpus=1)
+
+        @ray.remote
+        def f(delay):
+            time.sleep(delay)
+            return 1
+
+        objectids = (f.remote(1.0), f.remote(0.5), f.remote(0.5),
+                     f.remote(0.5))
+        ready_ids, remaining_ids = ray.experimental.wait(objectids)
+        self.assertEqual(len(ready_ids), 1)
+        self.assertEqual(len(remaining_ids), 3)
+
+        objectids = np.array(
+            [f.remote(1.0),
+             f.remote(0.5),
+             f.remote(0.5),
+             f.remote(0.5)])
+        ready_ids, remaining_ids = ray.experimental.wait(objectids)
+        self.assertEqual(len(ready_ids), 1)
+        self.assertEqual(len(remaining_ids), 3)
+
     def testMultipleWaitsAndGets(self):
         # It is important to use three workers here, so that the three tasks
         # launched in this experiment can run at the same time.
@@ -933,7 +974,7 @@ class APITest(unittest.TestCase):
 
     @unittest.skipIf(
         os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
+        "This test does not work with xray (nor is it intended to).")
     def testLoggingAPI(self):
         self.init_ray(driver_mode=ray.SILENT_MODE)
 
@@ -956,37 +997,75 @@ class APITest(unittest.TestCase):
             print("Timing out of wait.")
 
         @ray.remote
-        def test_log_event():
-            ray.log_event("event_type1", contents={"key": "val"})
-
-        @ray.remote
         def test_log_span():
-            with ray.log_span("event_type2", contents={"key": "val"}):
+            with ray.profile("event_type2", extra_data={"key": "val"}):
                 pass
-
-        # Make sure that we can call ray.log_event in a remote function.
-        ray.get(test_log_event.remote())
-        # Wait for the event to appear in the event log.
-        wait_for_num_events(1)
-        self.assertEqual(len(events()), 1)
 
         # Make sure that we can call ray.log_span in a remote function.
         ray.get(test_log_span.remote())
 
         # Wait for the events to appear in the event log.
-        wait_for_num_events(2)
-        self.assertEqual(len(events()), 2)
+        wait_for_num_events(1)
+        self.assertEqual(len(events()), 1)
 
         @ray.remote
         def test_log_span_exception():
-            with ray.log_span("event_type2", contents={"key": "val"}):
+            with ray.log_span("event_type2", extra_data={"key": "val"}):
                 raise Exception("This failed.")
 
         # Make sure that logging a span works if an exception is thrown.
         test_log_span_exception.remote()
         # Wait for the events to appear in the event log.
-        wait_for_num_events(3)
-        self.assertEqual(len(events()), 3)
+        wait_for_num_events(2)
+        self.assertEqual(len(events()), 2)
+
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") != "1",
+        "This test only works with xray.")
+    def testProfilingAPI(self):
+        self.init_ray(num_cpus=2)
+
+        @ray.remote
+        def f():
+            with ray.profile(
+                    "custom_event",
+                    extra_data={"name": "custom name"}) as ray_prof:
+                ray_prof.set_attribute("key", "value")
+
+        ray.put(1)
+        object_id = f.remote()
+        ray.wait([object_id])
+        ray.get(object_id)
+
+        # Wait until all of the profiling information appears in the profile
+        # table.
+        timeout_seconds = 20
+        start_time = time.time()
+        while True:
+            if time.time() - start_time > timeout_seconds:
+                raise Exception("Timed out while waiting for information in "
+                                "profile table.")
+            profile_data = ray.global_state.chrome_tracing_dump()
+            event_types = {event["cat"] for event in profile_data}
+            expected_types = [
+                "get_task",
+                "task",
+                "task:deserialize_arguments",
+                "task:execute",
+                "task:store_outputs",
+                "wait_for_function",
+                "ray.get",
+                "ray.put",
+                "ray.wait",
+                "submit_task",
+                "fetch_and_run_function",
+                "register_remote_function",
+                "custom_event",  # This is the custom one from ray.profile.
+            ]
+
+            if all(expected_type in event_types
+                   for expected_type in expected_types):
+                break
 
     def testIdenticalFunctionNames(self):
         # Define a bunch of remote functions and make sure that we don't
@@ -1075,7 +1154,11 @@ class APITestSharded(APITest):
         if kwargs is None:
             kwargs = {}
         kwargs["start_ray_local"] = True
-        kwargs["num_redis_shards"] = 20
+        if os.environ.get("RAY_USE_XRAY") == "1":
+            print("XRAY currently supports only a single Redis shard.")
+            kwargs["num_redis_shards"] = 1
+        else:
+            kwargs["num_redis_shards"] = 20
         kwargs["redirect_output"] = True
         ray.worker._init(**kwargs)
 
@@ -1084,9 +1167,6 @@ class PythonModeTest(unittest.TestCase):
     def tearDown(self):
         ray.worker.cleanup()
 
-    @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
     def testPythonMode(self):
         reload(test_functions)
         ray.init(driver_mode=ray.PYTHON_MODE)
@@ -1150,6 +1230,16 @@ class PythonModeTest(unittest.TestCase):
         # Remote actor functions should keep state
         test_array[0] = -1
         assert_equal(test_array, test_actor.get_array.remote())
+
+        # Check that actor handles work in Python mode.
+
+        @ray.remote
+        def use_actor_handle(handle):
+            array = np.ones(10)
+            handle.set_array.remote(array)
+            assert np.alltrue(array == ray.get(handle.get_array.remote()))
+
+        ray.get(use_actor_handle.remote(test_actor))
 
 
 class ResourcesTest(unittest.TestCase):
@@ -1283,9 +1373,6 @@ class ResourcesTest(unittest.TestCase):
         self.assertLess(duration, 1 + time_buffer)
         self.assertGreater(duration, 1)
 
-    @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
     def testGPUIDs(self):
         num_gpus = 10
         ray.init(num_cpus=10, num_gpus=num_gpus)
@@ -1438,6 +1525,9 @@ class ResourcesTest(unittest.TestCase):
         a1 = Actor1.remote()
         ray.get(a1.test.remote())
 
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") == "1",
+        "This test does not work with xray yet.")
     def testZeroCPUs(self):
         ray.worker._init(
             start_ray_local=True, num_local_schedulers=2, num_cpus=[0, 2])
@@ -1457,6 +1547,59 @@ class ResourcesTest(unittest.TestCase):
         self.assertNotEqual(ray.get(f.remote()), local_plasma)
         a = Foo.remote()
         self.assertNotEqual(ray.get(a.method.remote()), local_plasma)
+
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") != "1",
+        "This test only works with xray.")
+    def testFractionalResources(self):
+        ray.init(num_cpus=6, num_gpus=3, resources={"Custom": 1})
+
+        @ray.remote(num_gpus=0.5)
+        class Foo1(object):
+            def method(self):
+                gpu_ids = ray.get_gpu_ids()
+                assert len(gpu_ids) == 1
+                return gpu_ids[0]
+
+        foos = [Foo1.remote() for _ in range(6)]
+        gpu_ids = ray.get([f.method.remote() for f in foos])
+        for i in range(3):
+            assert gpu_ids.count(i) == 2
+        del foos
+
+        @ray.remote
+        class Foo2(object):
+            def method(self):
+                pass
+
+        # Create an actor that requires 0.7 of the custom resource.
+        f1 = Foo2._submit([], {}, resources={"Custom": 0.7})
+        ray.get(f1.method.remote())
+        # Make sure that we cannot create an actor that requires 0.7 of the
+        # custom resource. TODO(rkn): Re-enable this once ray.wait is
+        # implemented.
+        f2 = Foo2._submit([], {}, resources={"Custom": 0.7})
+        ready, _ = ray.wait([f2.method.remote()], timeout=500)
+        assert len(ready) == 0
+        # Make sure we can start an actor that requries only 0.3 of the custom
+        # resource.
+        f3 = Foo2._submit([], {}, resources={"Custom": 0.3})
+        ray.get(f3.method.remote())
+
+        del f1, f3
+
+        # Make sure that we get exceptions if we submit tasks that require a
+        # fractional number of resources greater than 1.
+
+        @ray.remote(num_cpus=1.5)
+        def test():
+            pass
+
+        with self.assertRaises(ValueError):
+            test.remote()
+
+        with self.assertRaises(ValueError):
+            Foo2._submit([], {}, resources={"Custom": 1.5})
 
     def testMultipleLocalSchedulers(self):
         # This test will define a bunch of tasks that can only be assigned to
@@ -1716,9 +1859,6 @@ class CudaVisibleDevicesTest(unittest.TestCase):
         else:
             del os.environ["CUDA_VISIBLE_DEVICES"]
 
-    @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
     def testSpecificGPUs(self):
         allowed_gpu_ids = [4, 5, 6]
         os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(
@@ -1759,9 +1899,6 @@ class WorkerPoolTests(unittest.TestCase):
 
         ray.get([f.remote() for _ in range(100)])
 
-    @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
     def testBlockingTasks(self):
         ray.init(num_cpus=1)
 
@@ -1791,9 +1928,6 @@ class WorkerPoolTests(unittest.TestCase):
 
         ray.get(sleep.remote())
 
-    @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
     def testMaxCallTasks(self):
         ray.init(num_cpus=1)
 
@@ -2111,7 +2245,7 @@ class GlobalStateAPI(unittest.TestCase):
 
     @unittest.skipIf(
         os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
+        "This test does not work with xray (nor is it intended to).")
     def testTaskProfileAPI(self):
         ray.init(redirect_output=True)
 
@@ -2161,7 +2295,7 @@ class GlobalStateAPI(unittest.TestCase):
             worker_ids = set(ray.get([f.remote() for _ in range(10)]))
 
         worker_info = ray.global_state.workers()
-        self.assertEqual(len(worker_info), num_workers)
+        assert len(worker_info) >= num_workers
         for worker_id, info in worker_info.items():
             self.assertIn("node_ip_address", info)
             self.assertIn("local_scheduler_socket", info)

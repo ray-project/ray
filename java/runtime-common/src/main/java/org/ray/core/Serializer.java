@@ -14,11 +14,6 @@ public class Serializer {
     return conf.get().asByteArray(obj);
   }
 
-  @SuppressWarnings("unchecked")
-  public static <T> T decode(byte[] bs) {
-    return (T) conf.get().asObject(bs);
-  }
-
   public static byte[] encode(Object obj, ClassLoader classLoader) {
     byte[] result;
     FSTConfiguration current = conf.get();
@@ -32,6 +27,11 @@ public class Serializer {
     }
 
     return result;
+  }
+
+  @SuppressWarnings("unchecked")
+  public static <T> T decode(byte[] bs) {
+    return (T) conf.get().asObject(bs);
   }
 
   @SuppressWarnings("unchecked")
