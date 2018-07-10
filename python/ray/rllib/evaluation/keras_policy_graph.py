@@ -37,7 +37,7 @@ class KerasPolicyGraph(PolicyGraph):
         return _sample(policy), [], {"vf_preds": value.flatten()}
 
     def compute_apply(self, batch, *args):
-        batch_size = max(32, int(np.ceil(batch.count / self.num_steps)))
+        batch_size = max(int(batch.count / self.num_steps), 1)
         self.actor.fit(
             batch["obs"], batch["adv_targets"], epochs=1,
             batch_size=batch_size, verbose=0)

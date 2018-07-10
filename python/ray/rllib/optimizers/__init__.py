@@ -35,6 +35,8 @@ def run_optimizer(optimizer, num_steps, tag=""):
             timesteps_total=timesteps_total)
         logger.on_result(result)
     logger.close()
+    termination = [r.__ray_terminate__.remote() for r in optimizer.remote_evaluators]
+    return termination
 
 
 __all__ = [
