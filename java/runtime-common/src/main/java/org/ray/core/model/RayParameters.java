@@ -49,9 +49,6 @@ public class RayParameters {
   @AConfig(comment = "working directory")
   public String working_directory = "./run";
 
-  @AConfig(comment = "directory for saving logs")
-  public String logging_directory = "./run/logs";
-
   @AConfig(comment = "primary redis port")
   public int redis_port = 34222;
 
@@ -109,15 +106,8 @@ public class RayParameters {
   @AConfig(comment = "whether to use supreme failover strategy")
   public boolean supremeFO = false;
 
-  @AConfig(comment = "the max num of java log of each java worker")
-  public int max_java_log_file_num = 10;
-
   @AConfig(comment = "whether to disable process failover")
   public boolean disable_process_failover = false;
-
-  @AConfig(comment = "the max size of each file of java worker log, could be set as 10KB, 10MB, "
-      + "1GB or something similar")
-  public String max_java_log_file_size = "500MB";
 
   @AConfig(comment = "delay seconds under onebox before app logic for debugging")
   public int onebox_delay_seconds_before_run_app_logic = 0;
