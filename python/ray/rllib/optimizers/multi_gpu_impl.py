@@ -83,7 +83,7 @@ class LocalSyncParallelOptimizer(object):
                     avg[i] = (tf.clip_by_norm(grad, grad_norm_clipping), var)
         self._train_op = self.optimizer.apply_gradients(avg)
 
-    def load_data(self, sess, inputs, full_trace=False):
+    def load_data(self, sess, inputs, state_inputs):
         """Bulk loads the specified inputs into device memory.
 
         The shape of the inputs must conform to the shapes of the input
@@ -94,38 +94,44 @@ class LocalSyncParallelOptimizer(object):
 
         Args:
             sess: TensorFlow session.
-            inputs: List of Tensors matching the input placeholders specified
-                at construction time of this optimizer.
-            full_trace: Whether to profile data loading.
+            inputs: List of arrays matching the input placeholders, of shape
+                [BATCH_SIZE, ...].
+            state_inputs: List of RNN input arrays. These arrays have size
+                [BATCH_SIZE / MAX_SEQ_LEN, ...].
 
         Returns:
             The number of tuples loaded per device.
         """
 
         feed_dict = {}
-        assert len(self.loss_inputs) == len(inputs)
-        for ph, arr in zip(self.loss_inputs, inputs):
+        assert len(self.loss_inputs) == len(inputs + state_inputs), \
+            (self.loss_inputs, inputs, state_inputs)
+
+        # The RNN truncation case is more complicated
+        if len(state_inputs) > 0:
+            seq_len = len(inputs[0]) // len(state_inputs[0])
+            assert len(state_inputs[0]) * seq_len == len(inputs[0])
+            # Make sure the shorter state inputs arrays are evenly divisible
+            state_inputs = [
+                make_divisible_by(arr, self.batch_size)
+                for arr in state_inputs
+            ]
+            # Then truncate the data inputs to match
+            inputs = [
+                arr[:len(state_inputs[0]) * seq_len]
+                for arr in inputs
+            ]
+            assert len(state_inputs[0]) * seq_len == len(inputs[0])
+            assert len(state_inputs[0]) % self.batch_size == 0
+            assert len(inputs[0]) % self.batch_size == 0
+
+        for ph, arr in zip(self.loss_inputs, inputs + state_inputs):
             truncated_arr = make_divisible_by(arr, self.batch_size)
             feed_dict[ph] = truncated_arr
             truncated_len = len(truncated_arr)
-            print("FEED", ph, len(arr), len(truncated_arr))
-
-        if full_trace:
-            run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
-        else:
-            run_options = tf.RunOptions(trace_level=tf.RunOptions.NO_TRACE)
-        run_metadata = tf.RunMetadata()
 
         sess.run(
-            [t.init_op for t in self._towers],
-            feed_dict=feed_dict,
-            options=run_options,
-            run_metadata=run_metadata)
-        if full_trace:
-            trace = timeline.Timeline(step_stats=run_metadata.step_stats)
-            trace_file = open(os.path.join(self.logdir, "timeline-load.json"),
-                              "w")
-            trace_file.write(trace.generate_chrome_trace_format())
+            [t.init_op for t in self._towers], feed_dict=feed_dict)
 
         tuples_per_device = truncated_len / len(self.devices)
         assert tuples_per_device > 0, \
