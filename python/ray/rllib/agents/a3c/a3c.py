@@ -9,7 +9,6 @@ import ray
 from ray.rllib.agents.agent import Agent, with_common_config
 from ray.rllib.optimizers import AsyncGradientsOptimizer
 from ray.rllib.utils import FilterManager
-from ray.rllib.evaluation.metrics import collect_metrics
 from ray.tune.trial import Resources
 
 DEFAULT_CONFIG = with_common_config({
@@ -94,16 +93,17 @@ class A3CAgent(Agent):
             self.env_creator, policy_cls, self.config["num_workers"],
             {"num_gpus": 1 if self.config["use_gpu_for_workers"] else 0})
         self.optimizer = AsyncGradientsOptimizer(
-            self.config["optimizer"], self.local_evaluator,
-            self.remote_evaluators)
+            self.local_evaluator, self.remote_evaluators,
+            self.config["optimizer"])
 
     def _train(self):
+        prev_steps = self.optimizer.num_steps_sampled
         self.optimizer.step()
         FilterManager.synchronize(
             self.local_evaluator.filters, self.remote_evaluators)
-        result = collect_metrics(self.local_evaluator, self.remote_evaluators)
+        result = self.optimizer.collect_metrics()
         result = result._replace(
-            info=self.optimizer.stats())
+            timesteps_this_iter=self.optimizer.num_steps_sampled - prev_steps)
         return result
 
     def _stop(self):

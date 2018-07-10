@@ -9,7 +9,6 @@ import pickle
 import ray
 from ray.rllib.agents import Agent, with_common_config
 from ray.rllib.agents.ppo.ppo_tf_policy import PPOTFPolicyGraph
-from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.utils import FilterManager
 from ray.rllib.optimizers.multi_gpu_optimizer import LocalMultiGPUOptimizer
 from ray.tune.trial import Resources
@@ -74,13 +73,15 @@ class PPOAgent(Agent):
             {"num_cpus": self.config["num_cpus_per_worker"],
              "num_gpus": self.config["num_gpus_per_worker"]})
         self.optimizer = LocalMultiGPUOptimizer(
+            self.local_evaluator, self.remote_evaluators,
             {"sgd_batch_size": self.config["sgd_batchsize"],
              "sgd_stepsize": self.config["sgd_stepsize"],
              "num_sgd_iter": self.config["num_sgd_iter"],
-             "timesteps_per_batch": self.config["timesteps_per_batch"]},
-            self.local_evaluator, self.remote_evaluators)
+             "timesteps_per_batch": self.config["timesteps_per_batch"]})
 
     def _train(self):
+        prev_steps = self.optimizer.num_steps_sampled
+
         def postprocess_samples(batch):
             # Divide by the maximum of value.std() and 1e-4
             # to guard against the case where all values are equal
@@ -92,6 +93,7 @@ class PPOAgent(Agent):
             if not self.config["use_gae"]:
                 batch.data["value_targets"] = dummy
                 batch.data["vf_preds"] = dummy
+
         extra_fetches = self.optimizer.step(postprocess_fn=postprocess_samples)
         kl = np.array(extra_fetches["kl"]).mean(axis=1)[-1]
         total_loss = np.array(extra_fetches["total_loss"]).mean(axis=1)[-1]
@@ -112,8 +114,10 @@ class PPOAgent(Agent):
 
         FilterManager.synchronize(
             self.local_evaluator.filters, self.remote_evaluators)
-        res = collect_metrics(self.local_evaluator, self.remote_evaluators)
-        res = res._replace(info=info)
+        res = self.optimizer.collect_metrics()
+        res = res._replace(
+            timesteps_this_iter=self.optimizer.num_steps_sampled - prev_steps,
+            info=dict(info, **res.info))
         return res
 
     def _stop(self):

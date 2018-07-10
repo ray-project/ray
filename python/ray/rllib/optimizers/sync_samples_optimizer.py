@@ -17,12 +17,11 @@ class SyncSamplesOptimizer(PolicyOptimizer):
     model weights are then broadcast to all remote evaluators.
     """
 
-    def _init(self, batch_size=32):
+    def _init(self):
         self.update_weights_timer = TimerStat()
         self.sample_timer = TimerStat()
         self.grad_timer = TimerStat()
         self.throughput = RunningStat()
-        self.batch_size = batch_size
 
     def step(self):
         with self.update_weights_timer:
@@ -40,8 +39,7 @@ class SyncSamplesOptimizer(PolicyOptimizer):
                 samples = self.local_evaluator.sample()
 
         with self.grad_timer:
-            grad, _ = self.local_evaluator.compute_gradients(samples)
-            self.local_evaluator.apply_gradients(grad)
+            self.local_evaluator.compute_apply(samples)
             self.grad_timer.push_units_processed(samples.count)
 
         self.num_steps_sampled += samples.count

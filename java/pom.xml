@@ -15,6 +15,7 @@
         <module>runtime-common</module>
         <module>runtime-native</module>
         <module>runtime-dev</module>
+        <module>cli</module>
         <module>test</module>
         <module>example</module>
     </modules>
@@ -23,6 +24,7 @@
         <java.version>1.8</java.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <projetct.version>1.0</projetct.version>
+        <slf4j.version>1.7.25</slf4j.version>
     </properties>
 
 
@@ -40,11 +42,6 @@
                 <version>2.47</version>
             </dependency>
 
-            <dependency>
-                <groupId>log4j</groupId>
-                <artifactId>log4j</artifactId>
-                <version>1.2.17</version>
-            </dependency>
             <dependency>
                 <groupId>quartz</groupId>
                 <artifactId>quartz</artifactId>
@@ -67,6 +64,13 @@
                 <groupId>com.github.davidmoten</groupId>
                 <artifactId>flatbuffers-java</artifactId>
                 <version>1.7.0.1</version>
+            </dependency>
+
+            <!-- https://mvnrepository.com/artifact/com.beust/jcommander -->
+            <dependency>
+              <groupId>com.beust</groupId>
+              <artifactId>jcommander</artifactId>
+              <version>1.72</version>
             </dependency>
 
             <!-- https://mvnrepository.com/artifact/redis.clients/jedis -->
@@ -117,6 +121,13 @@
                 <groupId>commons-collections</groupId>
                 <artifactId>commons-collections</artifactId>
                 <version>3.2.2</version>
+            </dependency>
+
+            <!--log-->
+            <dependency>
+                <groupId>org.slf4j</groupId>
+                <artifactId>slf4j-log4j12</artifactId>
+                <version>${slf4j.version}</version>
             </dependency>
 
             <!-- https://mvnrepository.com/artifact/com.github.davidmoten/flatbuffers-java -->

@@ -29,6 +29,7 @@
 
 # Python byte code files
 *.pyc
+python/.eggs
 
 # Backup files
 *.bak
@@ -151,4 +152,4 @@ build
 *.iml
 java/**/target
 java/run
-java/test/lib
+java/**/lib

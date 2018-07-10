@@ -52,7 +52,6 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
         self.update_weights_timer = TimerStat()
 
         print("LocalMultiGPUOptimizer devices", self.devices)
-        print("LocalMultiGPUOptimizer batch size", self.batch_size)
 
         assert set(self.local_evaluator.policy_map.keys()) == {"default"}, \
             "Multi-agent is not supported"
