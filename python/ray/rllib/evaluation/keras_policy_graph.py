@@ -27,6 +27,7 @@ class KerasPolicyGraph(PolicyGraph):
         PolicyGraph.__init__(self, observation_space, action_space, config)
         self.actor = actor
         self.critic = critic
+        self.num_steps = config.get("sgd_steps", 16)
         self.models = [self.actor, self.critic]
 
     def compute_actions(self, obs, *args, **kwargs):
@@ -36,10 +37,13 @@ class KerasPolicyGraph(PolicyGraph):
         return _sample(policy), [], {"vf_preds": value.flatten()}
 
     def compute_apply(self, batch, *args):
+        batch_size = max(32, int(np.ceil(batch.count / self.num_steps)))
         self.actor.fit(
-            batch["obs"], batch["adv_targets"], epochs=1, verbose=0)
+            batch["obs"], batch["adv_targets"], epochs=1,
+            batch_size=batch_size, verbose=0)
         self.critic.fit(
-            batch["obs"], batch["value_targets"], epochs=1, verbose=0)
+            batch["obs"], batch["value_targets"], epochs=1,
+            batch_size=batch_size, verbose=0)
         return {}, {}
 
     def get_weights(self):
