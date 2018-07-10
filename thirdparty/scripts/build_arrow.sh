@@ -53,7 +53,7 @@ if [[ ! -d $TP_DIR/../python/ray/pyarrow_files/pyarrow || \
     fi
 
     if [[ ! -d $TP_DIR/build/arrow ]]; then
-      git clone https://github.com/alendit/arrow.git "$TP_DIR/build/arrow"
+      git clone https://github.com/arrow/arrow.git "$TP_DIR/build/arrow"
     fi
 
     if ! [ -x "$(command -v bison)" ]; then
