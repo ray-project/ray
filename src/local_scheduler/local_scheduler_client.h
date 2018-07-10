@@ -1,6 +1,8 @@
 #ifndef LOCAL_SCHEDULER_CLIENT_H
 #define LOCAL_SCHEDULER_CLIENT_H
 
+#include <mutex>
+
 #include "common/task.h"
 #include "local_scheduler_shared.h"
 #include "ray/raylet/task_spec.h"
@@ -21,6 +23,8 @@ struct LocalSchedulerConnection {
       resource_ids_;
   /// A mutex to protect stateful operations of the local scheduler client.
   std::mutex mutex;
+  /// A mutext to protect write operations of the local scheduler client.
+  std::mutex write_mutex;
 };
 
 /**
