@@ -19,6 +19,8 @@ struct LocalSchedulerConnection {
   /// of that resource allocated for this worker.
   std::unordered_map<std::string, std::vector<std::pair<int64_t, double>>>
       resource_ids_;
+  /// A mutex to protect stateful operations of the local scheduler client.
+  std::mutex mutex;
 };
 
 /**
