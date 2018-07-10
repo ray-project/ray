@@ -11,9 +11,9 @@ import uuid
 import ray
 from ray.rllib.agents.dqn import DQNAgent
 from ray.rllib.agents.pg import PGAgent
-from ray.rllib.evaluation.common_policy_evaluator import CommonPolicyEvaluator
+from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
 from ray.rllib.env.serving_env import ServingEnv
-from ray.rllib.test.test_common_policy_evaluator import BadPolicyGraph, \
+from ray.rllib.test.test_policy_evaluator import BadPolicyGraph, \
     MockPolicyGraph, MockEnv
 from ray.tune.registry import register_env
 
@@ -110,7 +110,7 @@ class MultiServing(ServingEnv):
 
 class TestServingEnv(unittest.TestCase):
     def testServingEnvCompleteEpisodes(self):
-        ev = CommonPolicyEvaluator(
+        ev = PolicyEvaluator(
             env_creator=lambda _: SimpleServing(MockEnv(25)),
             policy_graph=MockPolicyGraph,
             batch_steps=40,
@@ -120,7 +120,7 @@ class TestServingEnv(unittest.TestCase):
             self.assertEqual(batch.count, 50)
 
     def testServingEnvTruncateEpisodes(self):
-        ev = CommonPolicyEvaluator(
+        ev = PolicyEvaluator(
             env_creator=lambda _: SimpleServing(MockEnv(25)),
             policy_graph=MockPolicyGraph,
             batch_steps=40,
@@ -130,7 +130,7 @@ class TestServingEnv(unittest.TestCase):
             self.assertEqual(batch.count, 40)
 
     def testServingEnvOffPolicy(self):
-        ev = CommonPolicyEvaluator(
+        ev = PolicyEvaluator(
             env_creator=lambda _: SimpleOffPolicyServing(MockEnv(25), 42),
             policy_graph=MockPolicyGraph,
             batch_steps=40,
@@ -142,7 +142,7 @@ class TestServingEnv(unittest.TestCase):
             self.assertEqual(batch["actions"][-1], 42)
 
     def testServingEnvBadActions(self):
-        ev = CommonPolicyEvaluator(
+        ev = PolicyEvaluator(
             env_creator=lambda _: SimpleServing(MockEnv(25)),
             policy_graph=BadPolicyGraph,
             sample_async=True,
@@ -188,7 +188,7 @@ class TestServingEnv(unittest.TestCase):
         raise Exception("failed to improve reward")
 
     def testServingEnvHorizonNotSupported(self):
-        ev = CommonPolicyEvaluator(
+        ev = PolicyEvaluator(
             env_creator=lambda _: SimpleServing(MockEnv(25)),
             policy_graph=MockPolicyGraph,
             episode_horizon=20,
