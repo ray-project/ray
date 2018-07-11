@@ -741,7 +741,8 @@ public class RunManager {
     }
 
     String jvmArgs = "";
-    jvmArgs += " -DlogOutput=" + params.logging_directory + "/workers/*pid_suffix*";
+    jvmArgs += " -Dlogging.path=" + params.working_directory + "/logs/workers";
+    jvmArgs += " -Dlogging.file.name=core-*pid_suffix*";
 
     return buildJavaProcessCommand(
         RunInfo.ProcessType.PT_WORKER,
