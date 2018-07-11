@@ -4,18 +4,18 @@ Profiling for Ray Users
 This document is intended for users of Ray who want to know how to evaluate 
 the performance of their code while running on Ray. Profiling the 
 performance of your code can be very helpful to determine performance 
-bottlenecks or where your code may not be parallelizing properly. If you 
-are interested in pinpointing why your Ray application may not be 
-achieving speedups as expected, then do read on!
+bottlenecks or to find out where your code may not be parallelized properly. 
+If you are interested in pinpointing why your Ray application may not be 
+achieving the expected speedup, read on!
 
 
 A Basic Example to Profile
 --------------------------
 
-Let's try to profile a simple example, and compare how different looping 
-call structures of the same remote function affects performance.
+Let's try to profile a simple example, and compare how different ways to
+write a simple loop can affect performance.
 
-As a stand-in for a computationally intensive and possibly slower function,
+As a proxy for a computationally intensive and possibly slower function,
 let's define our remote function to just sleep for 0.5 seconds:
 
 .. code-block:: python
@@ -85,7 +85,7 @@ One way to sanity-check the performance of the three loops is simply to
 time how long it takes to complete each loop version. We can do this using 
 python's built-in ``time`` `module`_.
 
-.. _`module`: https://docs.python.org/2/library/time.html
+.. _`module`: https://docs.python.org/3/library/time.html
 
 The ``time`` module contains a useful ``time()`` function that returns the 
 current timestamp in unix time whenever it's called. We can create a generic 
@@ -107,7 +107,7 @@ function to print out how long each loop takes overall:
       return result
     return timed_wrapper
 
-To **always** print out how long the loop takes to run each time the loop 
+To always print out how long the loop takes to run each time the loop 
 function ``ex1()`` is called, we can evoke our ``time_this`` wrapper with 
 a function decorator. This can similarly be done to functions ``ex2()``
 and ``ex3()``:
@@ -129,28 +129,8 @@ and ``ex3()``:
   if __name__ == "__main__":
     main()
 
-Alternatively, to print out the timer on **selective** calls to ``ex1()``,
-we can forgo the decorator and make explicit calls using ``time_this``
-as follows:
 
-.. code-block:: python
-
-  def ex1():  # Removed decorator
-    list1 = []
-    for i in range(5):
-      list1.append(ray.get(func.remote()))
-
-  def main():
-    ray.init()
-    ex1()             # This call outputs nothing
-    time_this(ex1)()  # This call outputs total execution time of ex1
-    time_this(ex2)()
-    time_this(ex3)()
-
-  if __name__ == "__main__":
-    main()
-
-Finally, running the three timed loops should yield output similar to this:
+Then, running the three timed loops should yield output similar to this:
 
 .. code-block:: bash
 
@@ -160,10 +140,10 @@ Finally, running the three timed loops should yield output similar to this:
 
 Let's interpret these results. 
 
-Most pertinently, ``ex1()`` took substantially more time than ``ex2()``, 
-despite their only difference being that ``ex1()`` calls ``ray.get`` on the 
-remote function before adding it to the list, while ``ex2()`` waits to fetch 
-the entire list with ``ray.get`` at once.
+Here, ``ex1()`` took substantially more time than ``ex2()``, where 
+their only difference is that ``ex1()`` calls ``ray.get`` on the remote
+function before adding it to the list, while ``ex2()`` waits to fetch the
+entire list with ``ray.get`` at once.
 
 .. code-block:: python
 
@@ -187,8 +167,8 @@ the time it would take to wait for our remote function five times in a row.
 
 By calling ``ray.get`` after each call to the remote function, ``ex1()`` 
 removes all ability to parallelize work, by forcing the driver to wait for 
-each ``func()``'s result in succession. We are completely sabotaging any 
-possibility of speedup via Ray parallelization! 
+each ``func()``'s result in succession. We are not taking advantage of Ray 
+parallelization here! 
 
 Meanwhile, ``ex2()`` takes about 1 second, much faster than it would normally 
 take to call ``func()`` five times iteratively. Ray is running each call to 
@@ -207,8 +187,8 @@ our first remote function that takes 0.5 seconds per call. If we weren't using
 Ray and multiple CPUs, this loop would take at least 3.5 seconds to finish.
 
 
-Profiling Using An External Profiler (Line_Profiler)
-----------------------------------------------------
+Profiling Using An External Profiler
+------------------------------------
 
 One way to profile the performance of our code using Ray is to use a third-party
 profiler such as `Line_profiler`_. Line_profiler is a useful line-by-line
@@ -411,8 +391,16 @@ an eye-straining endeavor of interpreting numbers among hundreds of
 lines of text. Ray comes with its own visual web UI to visualize the 
 parallelization (or lack thereof) of user tasks submitted to Ray!
 
-Currently, whenever initializing Ray, a URL is automatically generated and
-printed to terminal on where to view Ray's web UI as a Jupyter notebook:
+This method does have its own limitations, however. The Ray Timeline 
+can only show timing info about Ray tasks, and not timing for normal
+Python functions. This can be an issue especially for debugging slow
+Python code running on the driver, and not running as a task on one of 
+the workers. The other profiling techniques above are options that do
+cover profiling normal Python functions.
+
+Currently, whenever initializing Ray, a URL is generated and printed
+in the terminal. This URL can be used to view Ray's web UI as a Jupyter 
+notebook:
 
 .. code-block:: bash
 
@@ -432,7 +420,7 @@ it tries successive ports until it finds an open port. In this above
 example, it has opened on port 8897.
 
 Because this web UI is only available as long as your Ray application 
-is currently running, you may need to add a user prompt to stall 
+is currently running, you may need to add a user prompt to prevent 
 your Ray application from exiting once it has finished executing,  
 such as below. You can then browse the web UI for as long as you like:
 
@@ -445,7 +433,7 @@ such as below. You can then browse the web UI for as long as you like:
     ex3()
 
     # Require user input confirmation before exiting
-    hang = int(input('Examples finished executing. Enter any integer to exit:'))
+    hang = input('Examples finished executing. Press enter to exit:')
 
   if __name__ == "__main__":
     main()
@@ -480,7 +468,7 @@ the fifth call to the remote function in ``ex2()`` must wait until
 the first batch of ``func()`` calls is finished.
 
 **For more on Ray's Web UI,** such as how to access the UI on a remote
-node over ssh, or for troubleshooting installation, **please see our** 
+node over ssh, or for troubleshooting installation, please see our 
 `Web UI documentation section`_.
 
 .. _`Web UI documentation section`: http://ray.readthedocs.io/en/latest/webui.html
