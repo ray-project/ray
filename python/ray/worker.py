@@ -1563,8 +1563,8 @@ def _init(address_info=None,
             num_cpus, num_gpus, resources, num_local_schedulers)
 
         # Start the scheduler, object store, and some workers. These will be
-        # killed by the call to shutdown(), which happens when the Python script
-        # exits.
+        # killed by the call to shutdown(), which happens when the Python
+        # script exits.
         address_info = services.start_ray_head(
             address_info=address_info,
             node_ip_address=node_ip_address,
@@ -3013,8 +3013,8 @@ def remote(*args, **kwargs):
 
     It can also be used with specific keyword arguments:
 
-    * **num_return_vals:** This is only for *remote functions*. It specifies the
-      number of object IDs returned by the remote function invocation.
+    * **num_return_vals:** This is only for *remote functions*. It specifies
+      the number of object IDs returned by the remote function invocation.
     * **num_cpus:** The quantity of CPU cores to reserve for this task or for
       the lifetime of the actor.
     * **num_gpus:** The quantity of GPUs to reserve for this task or for the
