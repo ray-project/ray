@@ -59,21 +59,20 @@ function, and stores it into the list **without** calling ``ray.get`` each time.
       list2.append(func.remote())
     ray.get(list2)
 
-Finally, as a demonstration of Ray's parallelism abilities, let's create a 
-third version **ex3** where the driver calls a second time-consuming remote 
-function in between each call to ``func()``:
+Finally, for an example that's not so parallelizable, let's create a 
+third version **ex3** where the driver has to call a local 
+function in between each call to the remote function ``func()``:
 
 .. code-block:: python
 
-  # Some other time-consuming remote function
-  @ray.remote
+  # A local function executed on the driver, not on Ray
     def other_func():
-      time.sleep(0.2)
+      time.sleep(0.3)
 
   def ex3():
     list3 = []
     for i in range(5):
-      other_func.remote()
+      other_func()
       list2.append(func.remote())
     ray.get(list3)
 
@@ -136,7 +135,7 @@ Then, running the three timed loops should yield output similar to this:
 
   | func:'ex1' args:[(), {}] took: 2.5083 seconds |
   | func:'ex2' args:[(), {}] took: 1.0032 seconds |
-  | func:'ex3' args:[(), {}] took: 1.1045 seconds |
+  | func:'ex3' args:[(), {}] took: 2.0039 seconds |
 
 Let's interpret these results. 
 
@@ -180,11 +179,45 @@ the driver should send out all parallelizable calls to the remote function
 to Ray before waiting to receive their results with ``ray.get``. ``ex1()``'s
 suboptimal behavior can be noticed just using this simple timing test.
 
-Additionally, to drive home Ray's speedup benefits of running remote function 
-calls in parallel, ``ex3()`` takes only 1.1 seconds, despite making five calls
-to a remote function that takes 0.2 seconds per call, and making five calls to
-our first remote function that takes 0.5 seconds per call. If we weren't using
-Ray and multiple CPUs, this loop would take at least 3.5 seconds to finish.
+Realistically, however, many applications are not as highly parallelizable 
+as ``ex2()``, and the application includes sections where the code must run in 
+serial. ``ex3()`` is such an example, where the local function ``other_func()``
+must run first before each call to ``func()`` can be submitted to Ray. 
+
+.. code-block:: python
+
+  # A local function that must run in serial
+    def other_func():
+      time.sleep(0.3)
+
+  def ex3():  # Took Ray 2 seconds, vs. ex1 taking 2.5 seconds
+    list3 = []
+    for i in range(5):
+      other_func()
+      list2.append(func.remote())
+    ray.get(list3)
+
+What results is that while ``ex3()`` still gained 0.5 seconds of speedup 
+compared to the completely serialized ``ex1()`` version, this speedup is
+still nowhere near the ideal speedup of ``ex2()``. 
+
+Th dramatic speedup of ``ex2()`` is possible because ``ex2()`` is 
+theoretically completely serializable: if we were given 5 CPUs, all 5 calls 
+to ``func()`` can be run in parallel. What is happening with ``ex3()``, 
+however, is that each parallelized call to ``func()`` is staggered by a wait 
+of 0.3 seconds for the local ``other_func()`` to finish.
+
+``ex3()`` is thus a manifestation of `Amdahls Law`_: the fastest theoretically 
+possible execution time from parallelizing an application is limited to be 
+no better than the time it takes to run all serial parts in serial. 
+
+.. _`Amdahls Law`: https://en.wikipedia.org/wiki/Amdahl%27s_law
+
+While one can yearn for Ray to guarantee a factor or two of speedup to one's 
+application code, due to Amdahl's Law, ``ex3()`` must take at least 1.5 
+seconds-- the time it takes for 5 serial calls to ``other_func()`` to finish! 
+Given this limitation, an execution time of 2 seconds is within the realm of 
+reasonable expectation.
 
 
 Profiling Using An External Profiler
@@ -292,23 +325,29 @@ at the end:
       41         1    1002919.0 1002919.0     99.9    ray.get(list2)
 
 
-And finally, ``line_profiler``'s output for ``ex3()``:
+And finally, ``line_profiler``'s output for ``ex3()``. Each call to 
+``func.remote()`` at line 50 still take magnitudes faster than 0.5 seconds, 
+showing that Ray is successfully parallelizing the remote calls. However, each 
+call to the local function ``other_func()`` takes the full 0.3 seconds, 
+totalling up to the guaranteed minimum application execution time of 1.5 
+seconds:
 
 .. code-block:: bash
 
-  Total time: 1.10395 s
-  File: your_script_here.py
-  Function: ex3 at line 43
+  Total time: 2.00446 s
+  File: basic_kernprof.py
+  Function: ex3 at line 44
 
   Line #      Hits         Time  Per Hit   % Time  Line Contents
   ==============================================================
       44                                           @profile
-      45                                           def ex3():
-      46         1          1.0      1.0      0.0   list3 = []
-      47         6         13.0      2.2      0.0   for i in range(5):
-      48         5        673.0    134.6      0.1     func2.remote()
-      49         5        639.0    127.8      0.1     list3.append(func.remote())
-      50         1    1102625.0 1102625.0     99.9    ray.get(list3)
+      45                                           #@time_this
+      46                                           def ex3():
+      47         1          2.0      2.0      0.0   list3 = []
+      48         6         13.0      2.2      0.0   for i in range(5):
+      49         5    1501934.0 300386.8     74.9     other_func()
+      50         5        917.0    183.4      0.0     list3.append(func.remote())
+      51         1     501589.0 501589.0     25.0   ray.get(list3)
 
 
 Profiling Using Python's CProfile
@@ -445,27 +484,35 @@ Run All** in the jupyter menu.
 
 The Ray timeline can be viewed in the fourth cell of the UI notebook by 
 using the task filter options, then clicking on the **View task timeline** 
-button:
-
-.. image:: user-profiling-view-timeline.png
+button.
 
 For example, here are the results of executing ``ex1()``, ``ex2()``, and 
 ``ex3()`` visualized in the Ray timeline. Each red block is a call to one 
-of our user-defined remote functions. The longer blocks are calls to ``func()``, 
-which sleeps for 0.5 seconds, and the interwoven shorter blocks in ``ex3()``
-are calls to ``other_func()``, which sleeps for 0.2 seconds:
+of our user-defined remote functions, namely ``func()``, which sleeps for 
+0.5 seconds:
 
-.. image:: user-profiling-timeline.png
+.. image:: user-profiling-timeline.gif
 
 (highlighted color boxes for ``ex1()``, ``ex2()``, and ``ex3()`` added for 
 the sake of this example)
 
 Note how ``ex1()`` executes all five calls to ``func()`` in serial, 
 while ``ex2()`` and ``ex3()`` are able to parallelize their remote
-function calls. Because we have 4 CPUs available on our machine, we 
-can only able to execute up to 4 remote functions in parallel. So,
-the fifth call to the remote function in ``ex2()`` must wait until 
-the first batch of ``func()`` calls is finished.
+function calls. 
+
+Because we have 4 CPUs available on our machine, we can only able to 
+execute up to 4 remote functions in parallel. So, the fifth call to the 
+remote function in ``ex2()`` must wait until the first batch of ``func()`` 
+calls is finished.
+
+In ``ex3()``, because of the serial dependency on ``other_func()``, we 
+aren't even able to use all 4 of our cores to parallelize calls to ``func()``.
+The time gaps between the ``func()`` blocks are a result of the staggered
+calls to ``func()`` in between waiting 0.3 seconds for ``other_func()``. 
+
+Also, notice that due to the aforementioned limitation of the Ray timeline, 
+``other_func()``, as a driver function and not a Ray task, is never 
+visualized on the Ray timeline.
 
 **For more on Ray's Web UI,** such as how to access the UI on a remote
 node over ssh, or for troubleshooting installation, please see our 
