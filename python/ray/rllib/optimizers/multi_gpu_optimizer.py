@@ -69,14 +69,15 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
             with self.local_evaluator.tf_sess.as_default():
                 with tf.variable_scope("default", reuse=tf.AUTO_REUSE):
                     if self.policy._state_inputs:
-                        rnn_in = self.policy._state_inputs + [
+                        rnn_inputs = self.policy._state_inputs + [
                             self.policy._seq_lens]
                     else:
-                        rnn_in = []
+                        rnn_inputs = []
                     self.par_opt = LocalSyncParallelOptimizer(
                         tf.train.AdamOptimizer(self.sgd_stepsize),
                         self.devices,
-                        [v for _, v in self.policy.loss_inputs()] + rnn_in,
+                        [v for _, v in self.policy.loss_inputs()],
+                        rnn_inputs,
                         self.per_device_batch_size,
                         self.policy.copy,
                         os.getcwd())

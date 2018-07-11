@@ -49,6 +49,7 @@ def add_time_dimension(padded_inputs, seq_lens):
     new_shape = (
         [new_batch_size, max_seq_len] +
         padded_inputs.get_shape().as_list()[1:])
+#    padded_inputs = tf.Print(padded_inputs, [new_batch_size, max_seq_len])
     return tf.reshape(padded_inputs, new_shape)
 
 

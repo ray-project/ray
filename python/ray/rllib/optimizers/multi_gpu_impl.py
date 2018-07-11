@@ -37,6 +37,8 @@ class LocalSyncParallelOptimizer(object):
         input_placeholders: List of input_placeholders for the loss function.
             Tensors of these shapes will be passed to build_graph() in order
             to define the per-device loss ops.
+        rnn_inputs: Extra input placeholders for RNN inputs. These will have
+            shape [BATCH_SIZE // MAX_SEQ_LEN, ...].
         per_device_batch_size: Number of tuples to optimize over at a time per
             device. In each call to `optimize()`,
             `len(devices) * per_device_batch_size` tuples of data will be
@@ -47,7 +49,7 @@ class LocalSyncParallelOptimizer(object):
         grad_norm_clipping: None or int stdev to clip grad norms by
     """
 
-    def __init__(self, optimizer, devices, input_placeholders,
+    def __init__(self, optimizer, devices, input_placeholders, rnn_inputs,
                  per_device_batch_size, build_graph, logdir,
                  grad_norm_clipping=None):
         # TODO(rliaw): remove logdir
@@ -55,26 +57,31 @@ class LocalSyncParallelOptimizer(object):
         self.devices = devices
         self.batch_size = per_device_batch_size * len(devices)
         self.per_device_batch_size = per_device_batch_size
-        self.loss_inputs = input_placeholders
+        self.loss_inputs = input_placeholders + rnn_inputs
         self.build_graph = build_graph
         self.logdir = logdir
 
         # First initialize the shared loss network
         with tf.name_scope(TOWER_SCOPE_NAME):
-            self._shared_loss = build_graph(input_placeholders)
+            self._shared_loss = build_graph(self.loss_inputs)
 
         # Then setup the per-device loss graphs that use the shared weights
-        self._batch_index = tf.placeholder(tf.int32)
+        self._batch_index = tf.placeholder(tf.int32, name="batch_index")
+
+        # When loading RNN input, we dynamically determine the max seq len
+        self._max_seq_len = tf.placeholder(tf.int32, name="max_seq_len")
+        self._loaded_max_seq_len = 1
 
         # Split on the CPU in case the data doesn't fit in GPU memory.
         with tf.device("/cpu:0"):
             data_splits = zip(
-                *[tf.split(ph, len(devices)) for ph in input_placeholders])
+                *[tf.split(ph, len(devices)) for ph in self.loss_inputs])
 
         self._towers = []
         for device, device_placeholders in zip(self.devices, data_splits):
             self._towers.append(
-                self._setup_device(device, device_placeholders))
+                self._setup_device(
+                    device, device_placeholders, len(input_placeholders)))
 
         avg = average_gradients([t.grads for t in self._towers])
         if grad_norm_clipping:
@@ -110,6 +117,7 @@ class LocalSyncParallelOptimizer(object):
         # The RNN truncation case is more complicated
         if len(state_inputs) > 0:
             seq_len = len(inputs[0]) // len(state_inputs[0])
+            self._loaded_max_seq_len = seq_len
             assert len(state_inputs[0]) * seq_len == len(inputs[0])
             # Make sure the shorter state inputs arrays are evenly divisible
             state_inputs = [
@@ -121,6 +129,8 @@ class LocalSyncParallelOptimizer(object):
                 arr[:len(state_inputs[0]) * seq_len]
                 for arr in inputs
             ]
+            print("Truncated lens", [len(x) for x in state_inputs])
+            print("Truncated lens", [len(x) for x in inputs])
             assert len(state_inputs[0]) * seq_len == len(inputs[0])
             assert len(state_inputs[0]) % self.batch_size == 0
             assert len(inputs[0]) % self.batch_size == 0
@@ -169,7 +179,10 @@ class LocalSyncParallelOptimizer(object):
             run_options = tf.RunOptions(trace_level=tf.RunOptions.NO_TRACE)
         run_metadata = tf.RunMetadata()
 
-        feed_dict = {self._batch_index: batch_index}
+        feed_dict = {
+            self._batch_index: batch_index,
+            self._max_seq_len: self._loaded_max_seq_len,
+        }
         for tower in self._towers:
             feed_dict.update(tower.loss_graph.extra_compute_grad_feed_dict())
             feed_dict.update(tower.loss_graph.extra_apply_grad_feed_dict())
@@ -201,20 +214,33 @@ class LocalSyncParallelOptimizer(object):
     def get_device_losses(self):
         return [t.loss_graph for t in self._towers]
 
-    def _setup_device(self, device, device_input_placeholders):
+    def _setup_device(self, device, device_input_placeholders, num_data_in):
+        assert num_data_in <= len(device_input_placeholders)
         with tf.device(device):
             with tf.name_scope(TOWER_SCOPE_NAME):
                 device_input_batches = []
                 device_input_slices = []
-                for ph in device_input_placeholders:
+                for i, ph in enumerate(device_input_placeholders):
                     current_batch = tf.Variable(
                         ph, trainable=False, validate_shape=False,
                         collections=[])
                     device_input_batches.append(current_batch)
+                    if i < num_data_in:
+                        scale = self._max_seq_len
+                        granularity = self._max_seq_len
+                    else:
+                        scale = self._max_seq_len
+                        granularity = 1
+
+
+                    # TODO(ekl) make sure per device batch size is divisible
+                    # by max seq len
+
+
                     current_slice = tf.slice(
                         current_batch,
-                        [self._batch_index] + [0] * len(ph.shape[1:]),
-                        ([self.per_device_batch_size] + [-1] *
+                        [self._batch_index // scale * granularity] + [0] * len(ph.shape[1:]),
+                        ([self.per_device_batch_size // scale * granularity] + [-1] *
                          len(ph.shape[1:])))
                     current_slice.set_shape(ph.shape)
                     device_input_slices.append(current_slice)
