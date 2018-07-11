@@ -23,8 +23,8 @@ def run_optimizer(optimizer, num_steps, tag=""):
         print("could not make path")
     optimizer.collect_metrics() # hack to warmup
     logger = UnifiedLogger({}, path, verbose=False)
-    result = TrainingResult(episode_reward_mean=0)
-    result = result._replace(
+    result = TrainingResult(
+        episode_reward_mean=0,
         training_iteration=0,
         timesteps_total=0)
     logger.on_result(result)
