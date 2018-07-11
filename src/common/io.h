@@ -127,8 +127,11 @@ int accept_client(int socket_fd);
  * @return int Whether there was an error while writing. 0 corresponds to
  *         success and -1 corresponds to an error (errno will be set).
  */
-int write_message(int fd, int64_t type, int64_t length, uint8_t *bytes,
-    std::mutex *mutex=NULL);
+int write_message(int fd,
+                  int64_t type,
+                  int64_t length,
+                  uint8_t *bytes,
+                  std::mutex *mutex = NULL);
 
 /**
  * Read a sequence of bytes written by write_message from a file descriptor.

@@ -273,13 +273,15 @@ int _write_message(int fd, int64_t type, int64_t length, uint8_t *bytes) {
   return 0;
 }
 
-int write_message(int fd, int64_t type, int64_t length, uint8_t *bytes,
-    std::mutex *mutex) {
+int write_message(int fd,
+                  int64_t type,
+                  int64_t length,
+                  uint8_t *bytes,
+                  std::mutex *mutex) {
   if (mutex != NULL) {
     std::unique_lock<std::mutex> guard(*mutex);
     return _write_message(fd, type, length, bytes);
-  }
-  else{
+  } else {
     return _write_message(fd, type, length, bytes);
   }
 }
@@ -400,7 +402,7 @@ disconnected:
 void write_log_message(int fd, const char *message) {
   /* Account for the \0 at the end of the string. */
   _write_message(fd, static_cast<int64_t>(CommonMessageType::LOG_MESSAGE),
-                strlen(message) + 1, (uint8_t *) message);
+                 strlen(message) + 1, (uint8_t *) message);
 }
 
 char *read_log_message(int fd) {
