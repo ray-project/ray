@@ -17,8 +17,9 @@ class SyncSamplesOptimizer(PolicyOptimizer):
     model weights are then broadcast to all remote evaluators.
     """
 
-    def _init(self, batch_size=None):
+    def _init(self, batch_size=None, standardize=True):
         self.update_weights_timer = TimerStat()
+        self.standardize = standardize
         if batch_size:
             assert batch_size > 1, "Batch size not set correctly!"
         self.batch_size = batch_size
@@ -53,10 +54,10 @@ class SyncSamplesOptimizer(PolicyOptimizer):
                     samples = SampleBatch.concat_samples(all_samples)
                 else:
                     samples = self.local_evaluator.sample()
-
-        # value = samples["advantages"]
-        # standardized = (value - value.mean()) / max(1e-4, value.std())
-        # samples.data["advantages"] = standardized
+            if self.standardize:
+                value = samples["advantages"]
+                standardized = (value - value.mean()) / max(1e-4, value.std())
+                samples.data["advantages"] = standardized
 
         with self.grad_timer:
             self.local_evaluator.compute_apply(samples)
