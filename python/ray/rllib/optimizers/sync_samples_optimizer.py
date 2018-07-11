@@ -54,6 +54,10 @@ class SyncSamplesOptimizer(PolicyOptimizer):
                 else:
                     samples = self.local_evaluator.sample()
 
+        # value = samples["advantages"]
+        # standardized = (value - value.mean()) / max(1e-4, value.std())
+        # samples.data["advantages"] = standardized
+
         with self.grad_timer:
             self.local_evaluator.compute_apply(samples)
             self.grad_timer.push_units_processed(samples.count)

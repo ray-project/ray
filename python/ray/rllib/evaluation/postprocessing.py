@@ -65,9 +65,6 @@ def compute_targets(rollout, action_space, last_r=0.0, gamma=0.9, lambda_=1.0):
     """
 
     rollout = compute_advantages(rollout, last_r, gamma=gamma, lambda_=lambda_)
-    value = rollout["advantages"]
-    standardized = (value - value.mean()) / max(1e-4, value.std())
-    rollout.data["advantages"] = standardized
     rollout["adv_targets"] = np.zeros((rollout.count, action_space.n))
     rollout["adv_targets"][np.arange(rollout.count), rollout["actions"]] = \
         rollout["advantages"]
