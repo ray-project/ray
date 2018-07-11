@@ -2,6 +2,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import tesnorflow as tf
+from keras import backend as K
 import numpy as np
 from ray.rllib.evaluation.policy_graph import PolicyGraph
 
@@ -24,6 +26,12 @@ class KerasPolicyGraph(PolicyGraph):
     """
     def __init__(self, observation_space, action_space, config,
                  actor=None, critic=None):
+
+        config = tf.ConfigProto(intra_op_parallelism_threads=1, \
+                                inter_op_parallelism_threads=1, \
+                                allow_soft_placement=True)
+        session = tf.Session(config=config)
+        K.set_session(session)
         PolicyGraph.__init__(self, observation_space, action_space, config)
         self.actor = actor
         self.critic = critic
