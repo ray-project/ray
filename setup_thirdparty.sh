@@ -21,7 +21,7 @@ fi
 $TP_DIR/thirdparty/scripts/setup.sh $PYTHON_EXECUTABLE $LANGUAGE
 
 if [[ "$LANGUAGE" == "java" ]]; then
-    pushd thirdparty/build/arrow/java
+    pushd $TP_DIR/thirdparty/build/arrow/java
     mvn clean install -pl plasma -am -Dmaven.test.skip
     popd
 fi
