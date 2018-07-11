@@ -155,7 +155,7 @@ class PolicyOptimizer(object):
             eval_kwargs["num_envs"] = int(num_envs_per_worker)
         if optimizer_batch_size:
             assert optimizer_batch_size > 0
-            optimizer_config["batch_size"] = optimizer_batch_size
+            eval_kwargs["batch_steps"] = optimizer_batch_size / num_workers if num_workers else optimizer_batch_size
         evaluator = PolicyEvaluator(env_creator, policy_graph, **eval_kwargs)
         remote_cls = PolicyEvaluator.as_remote(
             remote_num_cpus, remote_num_gpus)

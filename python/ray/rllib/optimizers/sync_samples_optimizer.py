@@ -17,12 +17,9 @@ class SyncSamplesOptimizer(PolicyOptimizer):
     model weights are then broadcast to all remote evaluators.
     """
 
-    def _init(self, batch_size=None, standardize=True):
+    def _init(self, standardize=True):
         self.update_weights_timer = TimerStat()
         self.standardize = standardize
-        if batch_size:
-            assert batch_size > 1, "Batch size not set correctly!"
-        self.batch_size = batch_size
         self.sample_timer = TimerStat()
         self.grad_timer = TimerStat()
         self.throughput = RunningStat()
@@ -36,24 +33,11 @@ class SyncSamplesOptimizer(PolicyOptimizer):
 
         with self.sample_timer:
             if self.remote_evaluators:
-                if self.batch_size:
-                    from ray.rllib.agents.ppo.rollout import collect_samples
-                    samples = collect_samples(self.remote_evaluators, self.batch_size)
-                else:
-                    samples = SampleBatch.concat_samples(
-                        ray.get(
-                            [e.sample.remote() for e in self.remote_evaluators]))
+                samples = SampleBatch.concat_samples(
+                    ray.get(
+                        [e.sample.remote() for e in self.remote_evaluators]))
             else:
-                if self.batch_size:
-                    num_samples = 0
-                    all_samples = []
-                    while num_samples < self.batch_size:
-                        sample = self.local_evaluator.sample()
-                        num_samples += sample.count
-                        all_samples += [sample]
-                    samples = SampleBatch.concat_samples(all_samples)
-                else:
-                    samples = self.local_evaluator.sample()
+                samples = self.local_evaluator.sample()
             if self.standardize:
                 value = samples["advantages"]
                 standardized = (value - value.mean()) / max(1e-4, value.std())
