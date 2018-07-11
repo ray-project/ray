@@ -17,8 +17,11 @@ class SyncSamplesOptimizer(PolicyOptimizer):
     model weights are then broadcast to all remote evaluators.
     """
 
-    def _init(self):
+    def _init(self, batch_size=None):
         self.update_weights_timer = TimerStat()
+        if batch_size:
+            assert batch_size > 1, "Batch size not set correctly!"
+        self.batch_size = batch_size
         self.sample_timer = TimerStat()
         self.grad_timer = TimerStat()
         self.throughput = RunningStat()
@@ -32,11 +35,24 @@ class SyncSamplesOptimizer(PolicyOptimizer):
 
         with self.sample_timer:
             if self.remote_evaluators:
-                samples = SampleBatch.concat_samples(
-                    ray.get(
-                        [e.sample.remote() for e in self.remote_evaluators]))
+                if self.batch_size:
+                    from ray.rllib.agents.ppo.rollout import collect_samples
+                    samples = collect_samples(self.remote_evaluators, self.batch_size)
+                else:
+                    samples = SampleBatch.concat_samples(
+                        ray.get(
+                            [e.sample.remote() for e in self.remote_evaluators]))
             else:
-                samples = self.local_evaluator.sample()
+                if self.batch_size:
+                    num_samples = 0
+                    all_samples = []
+                    while num_samples < self.batch_size:
+                        sample = self.local_evaluator.sample()
+                        num_samples += sample.count
+                        all_samples += [sample]
+                    samples = SampleBatch.concat_samples(all_samples)
+                else:
+                    samples = self.local_evaluator.sample()
 
         with self.grad_timer:
             self.local_evaluator.compute_apply(samples)

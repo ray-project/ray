@@ -36,13 +36,12 @@ class KerasPolicyGraph(PolicyGraph):
         return _sample(policy), [], {"vf_preds": value.flatten()}
 
     def compute_apply(self, batch, *args):
-        size = max(int(np.sqrt(batch.count)), 32)
         self.actor.fit(
             batch["obs"], batch["adv_targets"],
-            epochs=1, verbose=0, batch_size=size)
+            epochs=1, verbose=0, steps_per_epoch=20)
         self.critic.fit(
             batch["obs"], batch["value_targets"],
-            epochs=1, verbose=0, batch_size=size)
+            epochs=1, verbose=0, steps_per_epoch=20)
         return {}, {}
 
     def get_weights(self):
