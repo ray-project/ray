@@ -27,8 +27,8 @@ class KerasPolicyGraph(PolicyGraph):
     def __init__(self, observation_space, action_space, config,
                  actor=None, critic=None):
 
-        config = tf.ConfigProto(intra_op_parallelism_threads=1, \
-                                inter_op_parallelism_threads=1, \
+        config = tf.ConfigProto(intra_op_parallelism_threads=1,
+                                inter_op_parallelism_threads=1,
                                 allow_soft_placement=True)
         session = tf.Session(config=config)
         K.set_session(session)
