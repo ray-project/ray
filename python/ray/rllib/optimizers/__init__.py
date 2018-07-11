@@ -21,6 +21,19 @@ def run_optimizer(optimizer, num_steps, tag=""):
         os.makedirs(path)
     except OSError:
         print("could not make path")
+
+    def set_keras_threads(ev, idx):
+        if idx:
+            import tensorflow as tf
+            from keras import backend as K
+
+            config = tf.ConfigProto(intra_op_parallelism_threads=1,
+                                    inter_op_parallelism_threads=1,
+                                    allow_soft_placement=True)
+            session = tf.Session(config=config)
+            K.set_session(session)
+        return idx
+    optimizer.foreach_evaluator_with_index(set_keras_threads)
     optimizer.collect_metrics() # hack to warmup
     logger = UnifiedLogger({}, path, verbose=False)
     result = TrainingResult(
