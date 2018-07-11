@@ -406,7 +406,7 @@ class PlasmaSelectorEventLoop(asyncio.BaseEventLoop):
 
     def __init__(self, selector, worker):
         super().__init__()
-        assert isinstance(selector, selectors.BaseSelector)
+        assert isinstance(selector, PlasmaSelector)
         self._selector = selector
         self._worker = worker
 
@@ -510,9 +510,10 @@ class PlasmaSelectorEventLoop(asyncio.BaseEventLoop):
 
     def _release(self, *fut):
         for f in fut:
-            f.dec_refcount()
-            if f.cancelled():
-                self._selector.unregister(f)
+            if isinstance(f, PlasmaObjectFuture):
+                f.dec_refcount()
+                if f.cancelled():
+                    self._selector.unregister(f)
 
     async def get(self, object_ids):
         if not isinstance(object_ids, list):
@@ -534,7 +535,9 @@ class PlasmaSelectorEventLoop(asyncio.BaseEventLoop):
 
         self._release(*_pending)
         done = [fut.object_id for fut in _done]
-        pending = [fut.object_id for fut in _pending]
+        pending = [
+            fut.object_id if isinstance(fut, PlasmaObjectFuture) else None for
+            fut in _pending]
 
         if return_exact_num and len(done) > num_returns:
             done, pending = done[:num_returns], done[num_returns:] + pending
