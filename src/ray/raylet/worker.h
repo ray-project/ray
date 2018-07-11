@@ -17,7 +17,7 @@ namespace raylet {
 class Worker {
  public:
   /// A constructor that initializes a worker object.
-  Worker(pid_t pid, std::shared_ptr<LocalClientConnection> connection);
+  Worker(pid_t pid, std::shared_ptr<LocalClientConnection> connection, bool isJavaWorker);
   /// A destructor responsible for freeing all worker state.
   ~Worker() {}
   void MarkBlocked();
@@ -41,6 +41,7 @@ class Worker {
   void ResetTaskResourceIds();
   ResourceIdSet ReleaseTaskCpuResources();
   void AcquireTaskCpuResources(const ResourceIdSet &cpu_resources);
+  bool IsJavaWorker() {return isJavaWorker_;}
 
  private:
   /// The worker's PID.
@@ -60,6 +61,8 @@ class Worker {
   /// The specific resource IDs that this worker currently owns for the duration
   // of a task.
   ResourceIdSet task_resource_ids_;
+  /// Whether the worker is a java worker or not.
+  bool isJavaWorker_;
 };
 
 }  // namespace raylet

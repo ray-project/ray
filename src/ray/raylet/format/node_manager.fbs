@@ -101,6 +101,11 @@ table GetTaskReply {
   fractional_resource_ids: [ResourceIdSetInfo];
 }
 
+enum WorkerType:int {
+  Python,
+  Java
+}
+
 // This struct is used to register a new worker with the local scheduler.
 // It is shipped as part of local_scheduler_connect.
 table RegisterClientRequest {
@@ -110,6 +115,8 @@ table RegisterClientRequest {
   client_id: string;
   // The process ID of this worker.
   worker_pid: long;
+  // Worker type
+  worker_type: WorkerType;
 }
 
 table RegisterClientReply {

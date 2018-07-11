@@ -1,6 +1,6 @@
 package org.ray.runner;
 
-import java.io.File;
+import java.io.File;   
 import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -39,8 +39,6 @@ public class RunManager {
   private String procStderrFileName = "";
 
   private RunInfo runInfo = new RunInfo();
-
-  private Boolean useRaylet = false;
   
   public RunManager(RayParameters params, PathConfig paths, ConfigReader configReader) {
     this.params = params;
@@ -306,7 +304,7 @@ public class RunManager {
     redisClient.close();
 
     // start global scheduler
-    if (params.include_global_scheduler && !useRaylet) {
+    if (params.include_global_scheduler && !params.use_raylet) {
       startGlobalScheduler(params.working_directory + "/globalScheduler",
           params.redis_address, params.node_ip_address, params.redirect, params.cleanup);
     }
@@ -382,13 +380,20 @@ public class RunManager {
 
     // start local workers
     for (int i = 0; i < params.num_local_schedulers; i++) {
-      runInfo.localStores.get(i).workerCount = localNumWorkers[i];
+      AddressInfo localStores = runInfo.localStores.get(i);
+      localStores.workerCount = localNumWorkers[i];
       for (int j = 0; j < localNumWorkers[i]; j++) {
-        startWorker(runInfo.localStores.get(i).storeName,
-            runInfo.localStores.get(i).managerName, runInfo.localStores.get(i).schedulerName,
-            params.working_directory + "/worker" + i + "." + j, params.redis_address,
-            params.node_ip_address, UniqueID.nil, "",
-            params.redirect, params.cleanup);
+        if (!params.use_raylet) {
+          startWorker(localStores.storeName, localStores.managerName, localStores.schedulerName,
+              params.working_directory + "/worker" + i + "." + j, params.redis_address,
+              params.node_ip_address, UniqueID.nil, "",
+              params.redirect, params.cleanup);
+        } else {
+          startWorker(localStores.storeName, localStores.rayletName,
+              params.working_directory + "/worker" + i + "." + j, params.redis_address,
+              params.node_ip_address, UniqueID.nil, "",
+              params.redirect, params.cleanup);
+        }
       }
     }
 
@@ -678,7 +683,7 @@ public class RunManager {
       String redisAddress, String ip, boolean redirect,
       boolean cleanup) {
 
-    int rpcPort = params.local_scheduler_rpc_port + index;
+    int rpcPort = params.raylet_port + index;
     String rayletName = "/tmp/raylet" + rpcPort;
 
     String filePath = paths.raylet;
@@ -692,14 +697,14 @@ public class RunManager {
     String gcsIp = redisAddress.substring(0, sep);
     String gcsPort = redisAddress.substring(sep + 1);
     
-    String resourceArgument = "GPU," + numGpus + "CPU," + numCpus;
+    String resourceArgument = "GPU," + numGpus + ",CPU," + numCpus;
 
     String[] cmds = new String[]{filePath, rayletName, storeName, ip, gcsIp, 
                                  gcsPort, "" + numWorkers, workerCmd, resourceArgument};
 
     Map<String, String> env = null;
     Process p = startProcess(cmds, env, RunInfo.ProcessType.PT_RAYLET,
-        workDir, redisAddress, ip, redirect, cleanup);
+        workDir + rpcPort, redisAddress, ip, redirect, cleanup);
 
     if (p != null && p.isAlive()) {
       try {
@@ -710,12 +715,12 @@ public class RunManager {
     }
 
     if (p == null || !p.isAlive()) {
-      info.schedulerName = "";
-      info.schedulerRpcAddr = "";
-      throw new RuntimeException("Start local scheduler failed ...");
+      info.rayletName = "";
+      info.rayletRpcAddr = "";
+      throw new RuntimeException("Start raylet failed ...");
     } else {
-      info.schedulerName = rayletName;
-      info.schedulerRpcAddr = ip + ":" + rpcPort;
+      info.rayletName = rayletName;
+      info.rayletRpcAddr = ip + ":" + rpcPort;
     }
   }
 

@@ -173,6 +173,13 @@ public class RedisClient implements KeyValueStoreLink {
   }
 
   @Override
+  public Set<String> zrange(String key, long start, long end) {
+    try (Jedis jedis = jedisPool.getResource()) {
+      return jedis.zrange(key, start, end);
+    }
+  }
+
+  @Override
   public Long rpush(String key, String... strings) {
     try (Jedis jedis = jedisPool.getResource()) {
       return jedis.rpush(key, strings);
@@ -218,5 +225,6 @@ public class RedisClient implements KeyValueStoreLink {
 
   private static native void disconnect(int handle);
   
-  private static native byte[] execute_command(int handle, String command, int commandType, byte[] objectId);
+  private static native byte[] execute_command(int handle, 
+      String command, int commandType, byte[] objectId);
 }

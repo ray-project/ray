@@ -103,6 +103,8 @@ public interface KeyValueStoreLink {
    */
   List<String> lrange(final String key, final long start, final long end);
 
+  Set<String> zrange(String key, long start, long end);
+
   /**
    * Rpush.
    * @return Integer reply, specifically, the number of elements inside the list after the push

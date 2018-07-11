@@ -44,14 +44,16 @@ public class StateStoreProxyImpl implements StateStoreProxy {
       throw new Exception(es);
     }
     List<String> ipAddressPorts = rayKvStore.lrange("RedisShards", 0, -1);
-    if (ipAddressPorts.size() != numRedisShards) {
-      es = String.format("Expected %d Redis shard addresses, found %d.", numRedisShards,
-          ipAddressPorts.size());
+    Set<String> distinctIpAddress = new HashSet<String>();
+    distinctIpAddress.addAll(ipAddressPorts);
+    if (distinctIpAddress.size() != numRedisShards) {
+      es = String.format("Expected %d Redis shard addresses, found2 %d.", numRedisShards,
+        distinctIpAddress.size());
       throw new Exception(es);
     }
 
     shardStoreList.clear();
-    for (String ipPort : ipAddressPorts) {
+    for (String ipPort : distinctIpAddress) {
       shardStoreList.add(new RedisClient(ipPort));
     }
 
@@ -73,11 +75,13 @@ public class StateStoreProxyImpl implements StateStoreProxy {
 
   }
 
-  public List<AddressInfo> getAddressInfo(final String nodeIpAddress, int numRetries) {
+  public List<AddressInfo> getAddressInfo(final String nodeIpAddress,
+                                          final String redisAddress, 
+                                          int numRetries) {
     int count = 0;
     while (count < numRetries) {
       try {
-        return getAddressInfoHelper(nodeIpAddress);
+        return getAddressInfoHelper(nodeIpAddress, redisAddress);
       } catch (Exception e) {
         try {
           TimeUnit.MILLISECONDS.sleep(1000);
@@ -106,7 +110,8 @@ public class StateStoreProxyImpl implements StateStoreProxy {
    *        "manager_socket_name"(op)
    *        "local_scheduler_socket_name"(op)
    */
-  public List<AddressInfo> getAddressInfoHelper(final String nodeIpAddress) throws Exception {
+  public List<AddressInfo> getAddressInfoHelper(final String nodeIpAddress, 
+      final String redisAddress) throws Exception {
     if (this.rayKvStore == null) {
       throw new Exception("no redis client when use getAddressInfoHelper");
     }

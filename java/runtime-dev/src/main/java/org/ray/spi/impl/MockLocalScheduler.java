@@ -1,5 +1,6 @@
 package org.ray.spi.impl;
 
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import org.ray.api.UniqueID;
@@ -81,5 +82,10 @@ public class MockLocalScheduler implements LocalSchedulerLink {
   @Override
   public void notifyUnblocked() {
 
+  }
+
+  @Override
+  public List<byte[]> wait(byte[][] objectIds, int timeoutMs, int numReturns) {
+    return null;
   }
 }

@@ -17,6 +17,7 @@ import org.ray.format.gcs.TablePrefix;
 import org.ray.spi.KeyValueStoreLink;
 import org.ray.spi.StateStoreProxy;
 import org.ray.spi.model.AddressInfo;
+import org.ray.util.NetworkUtil;
 import org.ray.util.logger.RayLog;
 
 /**
@@ -62,28 +63,31 @@ public class RayletStateStoreProxyImpl extends StateStoreProxyImpl {
    * @param: node ip address, usually local ip address
    * @return: a list of SchedulerInfo which contains rayletName and rayletPort
    */
-  public List<AddressInfo> getAddressInfoHelper(final String nodeIpAddress) throws Exception {
+  @Override
+  public List<AddressInfo> getAddressInfoHelper(final String nodeIpAddress,
+      final String redisAddress) throws Exception {
     if (this.rayKvStore == null) {
       throw new Exception("no redis client when use getAddressInfoHelper");
     }
     List<AddressInfo> schedulerInfo = new ArrayList<>();
 
-    byte[] message = rayKvStore.sendCommand("RAY.TABLE_LOOKUP", 
-          TablePrefix.CLIENT, UniqueID.genNil().getBytes());
-    ByteBuffer byteBuffer = ByteBuffer.wrap(message);
+    String clientKey = "CLIENT:" + UniqueID.genNil();
+    Set<String> clients = rayKvStore.zrange(clientKey, 0, -1);
 
-    GcsTableEntry gcsEntry = GcsTableEntry.getRootAsGcsTableEntry(byteBuffer);
-    int i = 0;
-    while (i < gcsEntry.entriesLength()) {
-      ByteBuffer byteBuffer2 = ByteBuffer.wrap(gcsEntry.entries(i).getBytes());
-      ClientTableData client = ClientTableData.getRootAsClientTableData(byteBuffer2);
-
-      AddressInfo si = new AddressInfo();
-      si.storeName = client.objectStoreSocketName();
-      si.rayletName = client.rayletSocketName();
-      si.managerRpcAddr = client.nodeManagerAddress();
-      si.managerPort = client.nodeManagerPort();
-      schedulerInfo.add(si);
+    for (String clientMessage : clients) {
+      ByteBuffer bb = ByteBuffer.wrap(clientMessage.getBytes());
+      ClientTableData client = ClientTableData.getRootAsClientTableData(bb);
+      String clientNodeIpAddress = client.nodeManagerAddress();
+      if (clientNodeIpAddress == nodeIpAddress 
+          || clientNodeIpAddress == "127.0.0.1"
+          && redisAddress == NetworkUtil.getIpAddress(null)) {
+        AddressInfo si = new AddressInfo();
+        si.storeName = client.objectStoreSocketName();
+        si.rayletName = client.rayletSocketName();
+        si.managerRpcAddr = client.nodeManagerAddress();
+        si.managerPort = client.nodeManagerPort();
+        schedulerInfo.add(si);
+      }
     }
     return schedulerInfo;
   }

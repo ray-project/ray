@@ -67,9 +67,10 @@ public class RayNativeRuntime extends RayRuntime {
     } else {
       initStateStore(params.redis_address, params.use_raylet);
       if (!isWorker) {
-        List<AddressInfo> nodes = stateStoreProxy.getAddressInfo(params.node_ip_address, 5);
+        List<AddressInfo> nodes = stateStoreProxy.getAddressInfo(
+                            params.node_ip_address, params.redis_address, 5);
         params.object_store_name = nodes.get(0).storeName;
-        if (!params.use_raylet) {
+        if (!params.use_raylet) {
           params.object_store_manager_name = nodes.get(0).managerName;
           params.local_scheduler_name = nodes.get(0).schedulerName;
         } else {
@@ -106,24 +107,41 @@ public class RayNativeRuntime extends RayRuntime {
           .getIntegerValue("ray", "plasma_default_release_delay", 0,
               "how many release requests should be delayed in plasma client");
 
-      ObjectStoreLink plink = new PlasmaClient(params.object_store_name, params
-          .object_store_manager_name, releaseDelay);
+      
 
-      LocalSchedulerLink slink = new DefaultLocalSchedulerClient(
-          params.local_scheduler_name,
-          WorkerContext.currentWorkerId(),
-          UniqueID.nil,
-          isWorker,
-          0
-      );
+      if (!params.use_raylet) {
+        ObjectStoreLink plink = new PlasmaClient(params.object_store_name, 
+            params.object_store_manager_name, releaseDelay);
 
-      init(slink, plink, funcMgr, pathConfig);
+        LocalSchedulerLink slink = new DefaultLocalSchedulerClient(
+            params.local_scheduler_name,
+            WorkerContext.currentWorkerId(),
+            UniqueID.nil,
+            isWorker,
+            0,
+            false
+        );
 
-      if (params.use_raylet) {
+        init(slink, plink, funcMgr, pathConfig);
+
         // register
         registerWorker(isWorker, params.node_ip_address, params.object_store_name,
             params.object_store_manager_name, params.local_scheduler_name);
       } else {
+
+        ObjectStoreLink plink = new PlasmaClient(params.object_store_name, "", releaseDelay);
+
+        LocalSchedulerLink slink = new DefaultLocalSchedulerClient(
+            params.raylet_name,
+            WorkerContext.currentWorkerId(),
+            UniqueID.nil,
+            isWorker,
+            0,
+            true
+        );
+
+        init(slink, plink, funcMgr, pathConfig);
+
         // register
         registerWorker(isWorker, params.node_ip_address, params.object_store_name,
             params.raylet_name);
@@ -162,6 +180,7 @@ public class RayNativeRuntime extends RayRuntime {
     params.object_store_name = manager.info().localStores.get(0).storeName;
     params.object_store_manager_name = manager.info().localStores.get(0).managerName;
     params.local_scheduler_name = manager.info().localStores.get(0).schedulerName;
+    params.raylet_name = manager.info().localStores.get(0).rayletName;
     //params.node_ip_address = NetworkUtil.getIpAddress();
   }
 

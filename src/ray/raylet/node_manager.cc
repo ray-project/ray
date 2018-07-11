@@ -347,8 +347,9 @@ void NodeManager::ProcessClientMessage(
   case protocol::MessageType::RegisterClientRequest: {
     auto message = flatbuffers::GetRoot<protocol::RegisterClientRequest>(message_data);
     if (message->is_worker()) {
-      // Create a new worker from the registration request.
-      auto worker = std::make_shared<Worker>(message->worker_pid(), client);
+      // Create a new worker from the registration request. 
+      auto worker = std::make_shared<Worker>(message->worker_pid(), 
+          client, message->worker_type() == protocol::WorkerType::Java);
       // Register the new worker.
       worker_pool_.RegisterWorker(std::move(worker));
     }
@@ -404,7 +405,7 @@ void NodeManager::ProcessClientMessage(
         from_flatbuf(*message->execution_dependencies()));
     TaskSpecification task_spec(*message->task_spec());
     Task task(task_execution_spec, task_spec);
-    // Submit the task to the local scheduler. Since the task was submitted
+   // Submit the task to the local scheduler. Since the task was submitted
     // locally, there is no uncommitted lineage.
     SubmitTask(task, Lineage());
   } break;
