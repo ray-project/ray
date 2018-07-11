@@ -3,7 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-from ray.rllib.optimizers import SampleBatch
+from ray.rllib.evaluation import SampleBatch
 
 from ray.rllib.utils.filter import MeanStdFilter
 

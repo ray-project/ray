@@ -1,6 +1,5 @@
 package org.ray.core;
 
-import java.io.Serializable;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
@@ -29,8 +28,6 @@ import org.ray.spi.PathConfig;
 import org.ray.spi.RemoteFunctionManager;
 import org.ray.util.config.ConfigReader;
 import org.ray.util.exception.TaskExecutionException;
-import org.ray.util.logger.DynamicLog;
-import org.ray.util.logger.DynamicLogManager;
 import org.ray.util.logger.RayLog;
 
 /**
@@ -80,12 +77,11 @@ public abstract class RayRuntime implements RayApi {
         }
       }
       configReader = new ConfigReader(configPath, updateConfigStr);
-
-      String loglevel = configReader.getStringValue("ray.java", "log_level", "debug",
-          "set the log output level(debug, info, warn, error)");
-      DynamicLog.setLogLevel(loglevel);
       RayRuntime.params = new RayParameters(configReader);
-      DynamicLogManager.init(params.max_java_log_file_num, params.max_java_log_file_size);
+
+      RayLog.init(params.working_directory);
+      assert RayLog.core != null;
+
       ins = instantiate(params);
       assert (ins != null);
 

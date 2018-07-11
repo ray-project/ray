@@ -3,6 +3,34 @@
 #include "common_protocol.h"
 #include "ray/gcs/client.h"
 
+namespace {
+
+static const std::string kTableAppendCommand = "RAY.TABLE_APPEND";
+static const std::string kChainTableAppendCommand = "RAY.CHAIN.TABLE_APPEND";
+
+static const std::string kTableAddCommand = "RAY.TABLE_ADD";
+static const std::string kChainTableAddCommand = "RAY.CHAIN.TABLE_ADD";
+
+std::string GetLogAppendCommand(const ray::gcs::CommandType command_type) {
+  if (command_type == ray::gcs::CommandType::kRegular) {
+    return kTableAppendCommand;
+  } else {
+    RAY_CHECK(command_type == ray::gcs::CommandType::kChain);
+    return kChainTableAppendCommand;
+  }
+}
+
+std::string GetTableAddCommand(const ray::gcs::CommandType command_type) {
+  if (command_type == ray::gcs::CommandType::kRegular) {
+    return kTableAddCommand;
+  } else {
+    RAY_CHECK(command_type == ray::gcs::CommandType::kChain);
+    return kChainTableAddCommand;
+  }
+}
+
+}  // namespace
+
 namespace ray {
 
 namespace gcs {
@@ -19,8 +47,9 @@ Status Log<ID, Data>::Append(const JobID &job_id, const ID &id,
   flatbuffers::FlatBufferBuilder fbb;
   fbb.ForceDefaults(true);
   fbb.Finish(Data::Pack(fbb, dataT.get()));
-  return context_->RunAsync("RAY.TABLE_APPEND", id, fbb.GetBufferPointer(), fbb.GetSize(),
-                            prefix_, pubsub_channel_, std::move(callback));
+  return context_->RunAsync(GetLogAppendCommand(command_type_), id,
+                            fbb.GetBufferPointer(), fbb.GetSize(), prefix_,
+                            pubsub_channel_, std::move(callback));
 }
 
 template <typename ID, typename Data>
@@ -42,8 +71,9 @@ Status Log<ID, Data>::AppendAt(const JobID &job_id, const ID &id,
   flatbuffers::FlatBufferBuilder fbb;
   fbb.ForceDefaults(true);
   fbb.Finish(Data::Pack(fbb, dataT.get()));
-  return context_->RunAsync("RAY.TABLE_APPEND", id, fbb.GetBufferPointer(), fbb.GetSize(),
-                            prefix_, pubsub_channel_, std::move(callback), log_length);
+  return context_->RunAsync(GetLogAppendCommand(command_type_), id,
+                            fbb.GetBufferPointer(), fbb.GetSize(), prefix_,
+                            pubsub_channel_, std::move(callback), log_length);
 }
 
 template <typename ID, typename Data>
@@ -140,15 +170,8 @@ Status Table<ID, Data>::Add(const JobID &job_id, const ID &id,
   flatbuffers::FlatBufferBuilder fbb;
   fbb.ForceDefaults(true);
   fbb.Finish(Data::Pack(fbb, dataT.get()));
-  if (command_type_ == CommandType::kRegular) {
-    return context_->RunAsync("RAY.TABLE_ADD", id, fbb.GetBufferPointer(), fbb.GetSize(),
-                              prefix_, pubsub_channel_, std::move(callback));
-  } else {
-    RAY_CHECK(command_type_ == CommandType::kChain);
-    return context_->RunAsync("RAY.CHAIN.TABLE_ADD", id, fbb.GetBufferPointer(),
-                              fbb.GetSize(), prefix_, pubsub_channel_,
-                              std::move(callback));
-  }
+  return context_->RunAsync(GetTableAddCommand(command_type_), id, fbb.GetBufferPointer(),
+                            fbb.GetSize(), prefix_, pubsub_channel_, std::move(callback));
 }
 
 template <typename ID, typename Data>
@@ -173,14 +196,74 @@ Status Table<ID, Data>::Lookup(const JobID &job_id, const ID &id, const Callback
 template <typename ID, typename Data>
 Status Table<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
                                   const Callback &subscribe,
+                                  const FailureCallback &failure,
                                   const SubscriptionCallback &done) {
   return Log<ID, Data>::Subscribe(
       job_id, client_id,
-      [subscribe](AsyncGcsClient *client, const ID &id, const std::vector<DataT> &data) {
-        RAY_CHECK(data.size() == 1);
-        subscribe(client, id, data[0]);
+      [subscribe, failure](AsyncGcsClient *client, const ID &id,
+                           const std::vector<DataT> &data) {
+        RAY_CHECK(data.empty() || data.size() == 1);
+        if (data.size() == 1) {
+          subscribe(client, id, data[0]);
+        } else {
+          if (failure != nullptr) {
+            failure(client, id);
+          }
+        }
       },
       done);
+}
+
+Status ErrorTable::PushErrorToDriver(const JobID &job_id, const std::string &type,
+                                     const std::string &error_message, double timestamp) {
+  auto data = std::make_shared<ErrorTableDataT>();
+  data->job_id = job_id.binary();
+  data->type = type;
+  data->error_message = error_message;
+  data->timestamp = timestamp;
+  return Append(job_id, job_id, data, [](ray::gcs::AsyncGcsClient *client,
+                                         const JobID &id, const ErrorTableDataT &data) {
+    RAY_LOG(DEBUG) << "Error message pushed callback";
+  });
+}
+
+Status ProfileTable::AddProfileEvent(const std::string &event_type,
+                                     const std::string &component_type,
+                                     const UniqueID &component_id,
+                                     const std::string &node_ip_address,
+                                     double start_time, double end_time,
+                                     const std::string &extra_data) {
+  auto data = std::make_shared<ProfileTableDataT>();
+
+  ProfileEventT profile_event;
+  profile_event.event_type = event_type;
+  profile_event.start_time = start_time;
+  profile_event.end_time = end_time;
+  profile_event.extra_data = extra_data;
+
+  data->component_type = component_type;
+  data->component_id = component_id.binary();
+  data->node_ip_address = node_ip_address;
+  data->profile_events.emplace_back(new ProfileEventT(profile_event));
+
+  return Append(JobID::nil(), component_id, data,
+                [](ray::gcs::AsyncGcsClient *client, const JobID &id,
+                   const ProfileTableDataT &data) {
+                  RAY_LOG(DEBUG) << "Profile message pushed callback";
+                });
+}
+
+Status ProfileTable::AddProfileEventBatch(const ProfileTableData &profile_events) {
+  auto data = std::make_shared<ProfileTableDataT>();
+  // There is some room for optimization here because the Append function will just
+  // call "Pack" and undo the "UnPack".
+  profile_events.UnPackTo(data.get());
+
+  return Append(JobID::nil(), from_flatbuf(*profile_events.component_id()), data,
+                [](ray::gcs::AsyncGcsClient *client, const JobID &id,
+                   const ProfileTableDataT &data) {
+                  RAY_LOG(DEBUG) << "Profile message pushed callback";
+                });
 }
 
 void ClientTable::RegisterClientAddedCallback(const ClientTableCallback &callback) {
@@ -333,7 +416,9 @@ template class Table<TaskID, TaskTableData>;
 template class Log<ActorID, ActorTableData>;
 template class Log<TaskID, TaskReconstructionData>;
 template class Table<ClientID, HeartbeatTableData>;
+template class Log<JobID, ErrorTableData>;
 template class Log<UniqueID, ClientTableData>;
+template class Log<UniqueID, ProfileTableData>;
 
 }  // namespace gcs
 

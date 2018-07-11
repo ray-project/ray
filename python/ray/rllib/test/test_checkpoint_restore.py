@@ -7,7 +7,7 @@ from __future__ import print_function
 import numpy as np
 import ray
 
-from ray.rllib.agent import get_agent_class
+from ray.rllib.agents.agent import get_agent_class
 
 
 def get_mean_action(alg, obs):
@@ -25,7 +25,7 @@ CONFIGS = {
     "DQN": {},
     "DDPG": {"noise_scale": 0.0, "timesteps_per_iteration": 100},
     "PPO": {"num_sgd_iter": 5, "timesteps_per_batch": 1000, "num_workers": 2},
-    "A3C": {"use_lstm": False, "num_workers": 1},
+    "A3C": {"num_workers": 1},
 }
 
 

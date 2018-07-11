@@ -9,19 +9,13 @@ import os
 import time
 from collections import Counter, defaultdict
 
-import ray
-import ray.utils
 import redis
-# Import flatbuffer bindings.
-from ray.core.generated.DriverTableMessage import DriverTableMessage
-from ray.core.generated.GcsTableEntry import GcsTableEntry
-from ray.core.generated.HeartbeatTableData import HeartbeatTableData
-from ray.core.generated.LocalSchedulerInfoMessage import \
-    LocalSchedulerInfoMessage
-from ray.core.generated.SubscribeToDBClientTableReply import \
-    SubscribeToDBClientTableReply
+
+import ray
 from ray.autoscaler.autoscaler import LoadMetrics, StandardAutoscaler
-from ray.core.generated.TaskInfo import TaskInfo
+import ray.cloudpickle as pickle
+import ray.gcs_utils
+import ray.utils
 from ray.services import get_ip_address, get_port
 from ray.utils import binary_to_hex, binary_to_object_id, hex_to_binary
 from ray.worker import NIL_ACTOR_ID
@@ -112,6 +106,29 @@ class Monitor(object):
                                                  self.load_metrics)
         else:
             self.autoscaler = None
+
+        # Experimental feature: GCS flushing.
+        self.issue_gcs_flushes = "RAY_USE_NEW_GCS" in os.environ
+        self.gcs_flush_policy = None
+        if self.issue_gcs_flushes:
+            # Data is stored under the first data shard, so we issue flushes to
+            # that redis server.
+            addr_port = self.redis.lrange("RedisShards", 0, -1)
+            if len(addr_port) > 1:
+                log.warning("TODO: if launching > 1 redis shard, flushing "
+                            "needs to touch shards in parallel.")
+                self.issue_gcs_flushes = False
+            else:
+                addr_port = addr_port[0].split(b":")
+                self.redis_shard = redis.StrictRedis(
+                    host=addr_port[0], port=addr_port[1])
+                try:
+                    self.redis_shard.execute_command("HEAD.FLUSH 0")
+                except redis.exceptions.ResponseError as e:
+                    log.info(
+                        "Turning off flushing due to exception: {}".format(
+                            str(e)))
+                    self.issue_gcs_flushes = False
 
     def subscribe(self, channel):
         """Subscribe to the given channel.
@@ -245,7 +262,7 @@ class Monitor(object):
         the associated state in the state tables should be handled by the
         caller.
         """
-        notification_object = (SubscribeToDBClientTableReply.
+        notification_object = (ray.gcs_utils.SubscribeToDBClientTableReply.
                                GetRootAsSubscribeToDBClientTableReply(data, 0))
         db_client_id = binary_to_hex(notification_object.DbClientId())
         client_type = notification_object.ClientType()
@@ -271,8 +288,8 @@ class Monitor(object):
     def local_scheduler_info_handler(self, unused_channel, data):
         """Handle a local scheduler heartbeat from Redis."""
 
-        message = LocalSchedulerInfoMessage.GetRootAsLocalSchedulerInfoMessage(
-            data, 0)
+        message = (ray.gcs_utils.LocalSchedulerInfoMessage.
+                   GetRootAsLocalSchedulerInfoMessage(data, 0))
         num_resources = message.DynamicResourcesLength()
         static_resources = {}
         dynamic_resources = {}
@@ -294,9 +311,10 @@ class Monitor(object):
     def xray_heartbeat_handler(self, unused_channel, data):
         """Handle an xray heartbeat message from Redis."""
 
-        gcs_entries = GcsTableEntry.GetRootAsGcsTableEntry(data, 0)
+        gcs_entries = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
+            data, 0)
         heartbeat_data = gcs_entries.Entries(0)
-        message = HeartbeatTableData.GetRootAsHeartbeatTableData(
+        message = ray.gcs_utils.HeartbeatTableData.GetRootAsHeartbeatTableData(
             heartbeat_data, 0)
         num_resources = message.ResourcesAvailableLabelLength()
         static_resources = {}
@@ -349,7 +367,8 @@ class Monitor(object):
         # driver.  Use a cursor in order not to block the redis shards.
         for key in redis.scan_iter(match=TASK_TABLE_PREFIX + b"*"):
             entry = redis.hgetall(key)
-            task_info = TaskInfo.GetRootAsTaskInfo(entry[b"TaskSpec"], 0)
+            task_info = ray.gcs_utils.TaskInfo.GetRootAsTaskInfo(
+                entry[b"TaskSpec"], 0)
             if driver_id != task_info.DriverId():
                 # Ignore tasks that aren't from this driver.
                 continue
@@ -461,7 +480,8 @@ class Monitor(object):
         This releases any GPU resources that were reserved for that driver in
         Redis.
         """
-        message = DriverTableMessage.GetRootAsDriverTableMessage(data, 0)
+        message = ray.gcs_utils.DriverTableMessage.GetRootAsDriverTableMessage(
+            data, 0)
         driver_id = message.DriverId()
         log.info("Driver {} has been removed.".format(
             binary_to_hex(driver_id)))
@@ -534,6 +554,37 @@ class Monitor(object):
                 or local_scheduler_info["NodeManagerAddress"]).split(":")[0]
             self.local_scheduler_id_to_ip_map[client_id] = ip_address
 
+    def _maybe_flush_gcs(self):
+        """Experimental: issue a flush request to the GCS.
+
+        The purpose of this feature is to control GCS memory usage.
+
+        To activate this feature, Ray must be compiled with the flag
+        RAY_USE_NEW_GCS set, and Ray must be started at run time with the flag
+        as well.
+        """
+        if not self.issue_gcs_flushes:
+            return
+        if self.gcs_flush_policy is None:
+            serialized = self.redis.get("gcs_flushing_policy")
+            if serialized is None:
+                # Client has not set any policy; by default flushing is off.
+                return
+            self.gcs_flush_policy = pickle.loads(serialized)
+
+        if not self.gcs_flush_policy.should_flush(self.redis_shard):
+            return
+
+        max_entries_to_flush = self.gcs_flush_policy.num_entries_to_flush()
+        num_flushed = self.redis_shard.execute_command(
+            "HEAD.FLUSH {}".format(max_entries_to_flush))
+        log.info('num_flushed {}'.format(num_flushed))
+
+        # This flushes event log and log files.
+        ray.experimental.flush_redis_unsafe(self.redis)
+
+        self.gcs_flush_policy.record_flush()
+
     def run(self):
         """Run the monitor.
 
@@ -578,12 +629,16 @@ class Monitor(object):
             if self.autoscaler:
                 self.autoscaler.update()
 
+            self._maybe_flush_gcs()
+
             # Record how many dead local schedulers and plasma managers we had
             # at the beginning of this round.
             num_dead_local_schedulers = len(self.dead_local_schedulers)
             num_dead_plasma_managers = len(self.dead_plasma_managers)
+
             # Process a round of messages.
             self.process_messages()
+
             # If any new local schedulers or plasma managers were marked as
             # dead in this round, clean up the associated state.
             if len(self.dead_local_schedulers) > num_dead_local_schedulers:

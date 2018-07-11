@@ -11,7 +11,7 @@ from ray.rllib.models.pytorch.misc import normc_initializer, valid_padding
 class VisionNetwork(Model):
     """Generic vision network"""
 
-    def _init(self, inputs, num_outputs, options):
+    def _build_layers(self, inputs, num_outputs, options):
         """TF visionnet in PyTorch.
 
         Params:

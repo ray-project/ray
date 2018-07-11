@@ -9,11 +9,11 @@ import unittest
 import uuid
 
 import ray
-from ray.rllib.dqn import DQNAgent
-from ray.rllib.pg import PGAgent
-from ray.rllib.utils.common_policy_evaluator import CommonPolicyEvaluator
-from ray.rllib.utils.serving_env import ServingEnv
-from ray.rllib.test.test_common_policy_evaluator import BadPolicyGraph, \
+from ray.rllib.agents.dqn import DQNAgent
+from ray.rllib.agents.pg import PGAgent
+from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
+from ray.rllib.env.serving_env import ServingEnv
+from ray.rllib.test.test_policy_evaluator import BadPolicyGraph, \
     MockPolicyGraph, MockEnv
 from ray.tune.registry import register_env
 
@@ -24,16 +24,16 @@ class SimpleServing(ServingEnv):
         self.env = env
 
     def run(self):
-        self.start_episode()
+        eid = self.start_episode()
         obs = self.env.reset()
         while True:
-            action = self.get_action(obs)
+            action = self.get_action(eid, obs)
             obs, reward, done, info = self.env.step(action)
-            self.log_returns(reward, info=info)
+            self.log_returns(eid, reward, info=info)
             if done:
-                self.end_episode(obs)
+                self.end_episode(eid, obs)
                 obs = self.env.reset()
-                self.start_episode()
+                eid = self.start_episode()
 
 
 class PartOffPolicyServing(ServingEnv):
@@ -43,40 +43,40 @@ class PartOffPolicyServing(ServingEnv):
         self.off_pol_frac = off_pol_frac
 
     def run(self):
-        self.start_episode()
+        eid = self.start_episode()
         obs = self.env.reset()
         while True:
             if random.random() < self.off_pol_frac:
                 action = self.env.action_space.sample()
-                self.log_action(obs, action)
+                self.log_action(eid, obs, action)
             else:
-                action = self.get_action(obs)
+                action = self.get_action(eid, obs)
             obs, reward, done, info = self.env.step(action)
-            self.log_returns(reward, info=info)
+            self.log_returns(eid, reward, info=info)
             if done:
-                self.end_episode(obs)
+                self.end_episode(eid, obs)
                 obs = self.env.reset()
-                self.start_episode()
+                eid = self.start_episode()
 
 
 class SimpleOffPolicyServing(ServingEnv):
-    def __init__(self, env):
+    def __init__(self, env, fixed_action):
         ServingEnv.__init__(self, env.action_space, env.observation_space)
         self.env = env
+        self.fixed_action = fixed_action
 
     def run(self):
-        self.start_episode()
+        eid = self.start_episode()
         obs = self.env.reset()
         while True:
-            # Take random actions
-            action = self.env.action_space.sample()
-            self.log_action(obs, action)
+            action = self.fixed_action
+            self.log_action(eid, obs, action)
             obs, reward, done, info = self.env.step(action)
-            self.log_returns(reward, info=info)
+            self.log_returns(eid, reward, info=info)
             if done:
-                self.end_episode(obs)
+                self.end_episode(eid, obs)
                 obs = self.env.reset()
-                self.start_episode()
+                eid = self.start_episode()
 
 
 class MultiServing(ServingEnv):
@@ -98,20 +98,19 @@ class MultiServing(ServingEnv):
                     self.start_episode(episode_id=eids[i])
                     cur_obs[i] = envs[i].reset()
             actions = [
-                self.get_action(
-                    cur_obs[i], episode_id=eids[i]) for i in active]
+                self.get_action(eids[i], cur_obs[i]) for i in active]
             for i, action in zip(active, actions):
                 obs, reward, done, _ = envs[i].step(action)
                 cur_obs[i] = obs
-                self.log_returns(reward, episode_id=eids[i])
+                self.log_returns(eids[i], reward)
                 if done:
-                    self.end_episode(obs, episode_id=eids[i])
+                    self.end_episode(eids[i], obs)
                     del cur_obs[i]
 
 
 class TestServingEnv(unittest.TestCase):
     def testServingEnvCompleteEpisodes(self):
-        ev = CommonPolicyEvaluator(
+        ev = PolicyEvaluator(
             env_creator=lambda _: SimpleServing(MockEnv(25)),
             policy_graph=MockPolicyGraph,
             batch_steps=40,
@@ -121,7 +120,7 @@ class TestServingEnv(unittest.TestCase):
             self.assertEqual(batch.count, 50)
 
     def testServingEnvTruncateEpisodes(self):
-        ev = CommonPolicyEvaluator(
+        ev = PolicyEvaluator(
             env_creator=lambda _: SimpleServing(MockEnv(25)),
             policy_graph=MockPolicyGraph,
             batch_steps=40,
@@ -131,17 +130,19 @@ class TestServingEnv(unittest.TestCase):
             self.assertEqual(batch.count, 40)
 
     def testServingEnvOffPolicy(self):
-        ev = CommonPolicyEvaluator(
-            env_creator=lambda _: SimpleOffPolicyServing(MockEnv(25)),
+        ev = PolicyEvaluator(
+            env_creator=lambda _: SimpleOffPolicyServing(MockEnv(25), 42),
             policy_graph=MockPolicyGraph,
             batch_steps=40,
             batch_mode="complete_episodes")
         for _ in range(3):
             batch = ev.sample()
             self.assertEqual(batch.count, 50)
+            self.assertEqual(batch["actions"][0], 42)
+            self.assertEqual(batch["actions"][-1], 42)
 
     def testServingEnvBadActions(self):
-        ev = CommonPolicyEvaluator(
+        ev = PolicyEvaluator(
             env_creator=lambda _: SimpleServing(MockEnv(25)),
             policy_graph=BadPolicyGraph,
             sample_async=True,
@@ -185,6 +186,16 @@ class TestServingEnv(unittest.TestCase):
             if result.episode_reward_mean >= 100:
                 return
         raise Exception("failed to improve reward")
+
+    def testServingEnvHorizonNotSupported(self):
+        ev = PolicyEvaluator(
+            env_creator=lambda _: SimpleServing(MockEnv(25)),
+            policy_graph=MockPolicyGraph,
+            episode_horizon=20,
+            batch_steps=10,
+            batch_mode="complete_episodes")
+        ev.sample()
+        self.assertRaises(Exception, lambda: ev.sample())
 
 
 if __name__ == '__main__':

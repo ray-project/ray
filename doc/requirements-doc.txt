@@ -1,5 +1,6 @@
 colorama
 click
+flatbuffers
 funcsigs
 mock
 numpy

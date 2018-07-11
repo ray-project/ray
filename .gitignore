@@ -29,6 +29,7 @@
 
 # Python byte code files
 *.pyc
+python/.eggs
 
 # Backup files
 *.bak
@@ -157,6 +158,5 @@ java/**/lib
 java/**/.settings
 java/**/.classpath
 java/**/.project
-java/**/target
 java/**/bin
 java/**/*.class

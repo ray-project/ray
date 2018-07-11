@@ -1,5 +1,8 @@
 // Local scheduler protocol specification
 
+include "gcs.fbs";
+
+
 // TODO(swang): We put the flatbuffer types in a separate namespace for now to
 // avoid conflicts with legacy Ray types.
 namespace ray.protocol;
@@ -58,7 +61,13 @@ enum MessageType:int {
   WaitRequest,
   // The response message to WaitRequest; replies with the objects found and objects
   // remaining.
-  WaitReply
+  WaitReply,
+  // Push an error to the relevant driver. This is sent from a worker to the
+  // node manager.
+  PushErrorRequest,
+  // Push some profiling events to the GCS. When sending this message to the
+  // node manager, the message itself is serialized as a ProfileTableData object.
+  PushProfileEventsRequest,
 }
 
 table TaskExecutionSpecification {
@@ -160,4 +169,16 @@ table WaitReply {
   found: [string];
   // List of object ids not found.
   remaining: [string];
+}
+
+// This struct is the same as ErrorTableData.
+table PushErrorRequest {
+  // The ID of the job that the error is for.
+  job_id: string;
+  // The type of the error.
+  type: string;
+  // The error message.
+  error_message: string;
+  // The timestamp of the error message.
+  timestamp: double;
 }

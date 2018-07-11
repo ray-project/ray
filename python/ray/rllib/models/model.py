@@ -15,6 +15,19 @@ class Model(object):
     The last layer of the network can also be retrieved if the algorithm
     needs to further post-processing (e.g. Actor and Critic networks in A3C).
 
+    Attributes:
+        inputs (Tensor): The input placeholder for this model, of shape
+            [BATCH_SIZE, ...].
+        outputs (Tensor): The output vector of this model, of shape
+            [BATCH_SIZE, num_outputs].
+        last_layer (Tensor): The network layer right before the model output,
+            of shape [BATCH_SIZE, N].
+        state_init (list): List of initial recurrent state tensors (if any).
+        state_in (list): List of input recurrent state tensors (if any).
+        state_out (list): List of output recurrent state tensors (if any).
+        seq_lens (Tensor): The tensor input for RNN sequence lengths. This
+            defaults to a Tensor of [1] * len(batch) in the non-RNN case.
+
     If `options["free_log_std"]` is True, the last half of the
     output layer will be free variables that are not dependent on
     inputs. This is often used if the output of the network is used
@@ -22,19 +35,24 @@ class Model(object):
     first half of the parameters can be interpreted as a location
     parameter (like a mean) and the second half can be interpreted as
     a scale parameter (like a standard deviation).
-
-    Attributes:
-        inputs (Tensor): The input placeholder for this model.
-        outputs (Tensor): The output vector of this model.
-        last_layer (Tensor): The network layer right before the model output.
     """
 
     def __init__(self, inputs, num_outputs, options):
         self.inputs = inputs
+
+        # Default attribute values for the non-RNN case
+        self.state_init = []
+        self.state_in = []
+        self.state_out = []
+        self.seq_lens = tf.placeholder_with_default(
+            tf.ones(  # reshape needed for older tf versions
+                tf.reshape(tf.shape(inputs)[0], [1]), dtype=tf.int32),
+            [None], name="seq_lens")
+
         if options.get("free_log_std", False):
             assert num_outputs % 2 == 0
             num_outputs = num_outputs // 2
-        self.outputs, self.last_layer = self._init(
+        self.outputs, self.last_layer = self._build_layers(
             inputs, num_outputs, options)
         if options.get("free_log_std", False):
             log_std = tf.get_variable(name="log_std", shape=[num_outputs],
@@ -42,6 +60,6 @@ class Model(object):
             self.outputs = tf.concat(
                 [self.outputs, 0.0 * self.outputs + log_std], 1)
 
-    def _init(self):
+    def _build_layers(self):
         """Builds and returns the output and last layer of the network."""
         raise NotImplementedError

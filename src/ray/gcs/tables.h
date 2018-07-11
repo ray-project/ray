@@ -12,9 +12,12 @@
 
 #include "ray/gcs/format/gcs_generated.h"
 #include "ray/gcs/redis_context.h"
+// TODO(rkn): Remove this include.
 #include "ray/raylet/format/node_manager_generated.h"
 
 // TODO(pcm): Remove this
+// TODO: While removing "task.h", remove the dependency gen_common_python_fbs
+//       from src/ray/CMakeLists.txt.
 #include "task.h"
 
 struct redisAsyncContext;
@@ -93,9 +96,10 @@ class Log : virtual public PubsubInterface<ID> {
   ///
   /// \param job_id The ID of the job (= driver).
   /// \param id The ID of the data that is added to the GCS.
-  /// \param data Data to append to the log.
+  /// \param data Data to append to the log. TODO(rkn): This can be made const,
+  /// right?
   /// \param done Callback that is called once the data has been written to the
-  ///        GCS.
+  /// GCS.
   /// \return Status
   Status Append(const JobID &job_id, const ID &id, std::shared_ptr<DataT> &data,
                 const WriteCallback &done);
@@ -108,10 +112,9 @@ class Log : virtual public PubsubInterface<ID> {
   /// \param data Data to append to the log.
   /// \param done Callback that is called if the data was appended to the log.
   /// \param failure Callback that is called if the data was not appended to
-  ///        the log because the log length did not match the given
-  ///        `log_length`.
+  /// the log because the log length did not match the given `log_length`.
   /// \param log_length The number of entries that the log must have for the
-  ///        append to succeed.
+  /// append to succeed.
   /// \return Status
   Status AppendAt(const JobID &job_id, const ID &id, std::shared_ptr<DataT> &data,
                   const WriteCallback &done, const WriteCallback &failure,
@@ -122,7 +125,7 @@ class Log : virtual public PubsubInterface<ID> {
   /// \param job_id The ID of the job (= driver).
   /// \param id The ID of the data that is looked up in the GCS.
   /// \param lookup Callback that is called after lookup. If the callback is
-  ///        called with an empty vector, then there was no data at the key.
+  /// called with an empty vector, then there was no data at the key.
   /// \return Status
   Status Lookup(const JobID &job_id, const ID &id, const Callback &lookup);
 
@@ -133,15 +136,14 @@ class Log : virtual public PubsubInterface<ID> {
   ///
   /// \param job_id The ID of the job (= driver).
   /// \param client_id The type of update to listen to. If this is nil, then a
-  ///        message for each Add to the table will be received. Else, only
-  ///        messages for the given client will be received. In the latter
-  ///        case, the client may request notifications on specific keys in the
-  ///        table via `RequestNotifications`.
+  /// message for each Add to the table will be received. Else, only
+  /// messages for the given client will be received. In the latter
+  /// case, the client may request notifications on specific keys in the
+  /// table via `RequestNotifications`.
   /// \param subscribe Callback that is called on each received message. If the
-  ///        callback is called with an empty vector, then there was no data at
-  ///        the key.
+  /// callback is called with an empty vector, then there was no data at the key.
   /// \param done Callback that is called when subscription is complete and we
-  ///        are ready to receive messages.
+  /// are ready to receive messages.
   /// \return Status
   Status Subscribe(const JobID &job_id, const ClientID &client_id,
                    const Callback &subscribe, const SubscriptionCallback &done);
@@ -158,8 +160,8 @@ class Log : virtual public PubsubInterface<ID> {
   /// \param job_id The ID of the job (= driver).
   /// \param id The ID of the key to request notifications for.
   /// \param client_id The client who is requesting notifications. Before
-  ///        notifications can be requested, a call to `Subscribe` to this
-  ///        table with the same `client_id` must complete successfully.
+  /// notifications can be requested, a call to `Subscribe` to this
+  /// table with the same `client_id` must complete successfully.
   /// \return Status
   Status RequestNotifications(const JobID &job_id, const ID &id,
                               const ClientID &client_id);
@@ -241,7 +243,7 @@ class Table : private Log<ID, Data>,
   /// \param id The ID of the data that is added to the GCS.
   /// \param data Data that is added to the GCS.
   /// \param done Callback that is called once the data has been written to the
-  ///        GCS.
+  /// GCS.
   /// \return Status
   Status Add(const JobID &job_id, const ID &id, std::shared_ptr<DataT> &data,
              const WriteCallback &done);
@@ -251,15 +253,33 @@ class Table : private Log<ID, Data>,
   /// \param job_id The ID of the job (= driver).
   /// \param id The ID of the data that is looked up in the GCS.
   /// \param lookup Callback that is called after lookup if there was data the
-  ///        key.
+  /// key.
   /// \param failure Callback that is called after lookup if there was no data
-  ///        at the key.
+  /// at the key.
   /// \return Status
   Status Lookup(const JobID &job_id, const ID &id, const Callback &lookup,
                 const FailureCallback &failure);
 
+  /// Subscribe to any Add operations to this table. The caller may choose to
+  /// subscribe to all Adds, or to subscribe only to keys that it requests
+  /// notifications for. This may only be called once per Table instance.
+  ///
+  /// \param job_id The ID of the job (= driver).
+  /// \param client_id The type of update to listen to. If this is nil, then a
+  /// message for each Add to the table will be received. Else, only
+  /// messages for the given client will be received. In the latter
+  /// case, the client may request notifications on specific keys in the
+  /// table via `RequestNotifications`.
+  /// \param subscribe Callback that is called on each received message. If the
+  /// callback is called with an empty vector, then there was no data at the key.
+  /// \param failure Callback that is called if the key is empty at the time
+  /// that notifications are requested.
+  /// \param done Callback that is called when subscription is complete and we
+  /// are ready to receive messages.
+  /// \return Status
   Status Subscribe(const JobID &job_id, const ClientID &client_id,
-                   const Callback &subscribe, const SubscriptionCallback &done);
+                   const Callback &subscribe, const FailureCallback &failure,
+                   const SubscriptionCallback &done);
 
  protected:
   using Log<ID, Data>::context_;
@@ -276,6 +296,13 @@ class ObjectTable : public Log<ObjectID, ObjectTableData> {
     pubsub_channel_ = TablePubsub::OBJECT;
     prefix_ = TablePrefix::OBJECT;
   };
+
+  ObjectTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client,
+              gcs::CommandType command_type)
+      : ObjectTable(context, client) {
+    command_type_ = command_type;
+  };
+
   virtual ~ObjectTable(){};
 };
 
@@ -366,10 +393,10 @@ class TaskTable : public Table<TaskID, TaskTableData> {
   ///
   /// \param task_id The task ID of the task entry to update.
   /// \param test_state_bitmask The bitmask to apply to the task entry's current
-  ///        scheduling state.  The update happens if and only if the current
-  ///        scheduling state AND-ed with the bitmask is greater than 0.
+  /// scheduling state.  The update happens if and only if the current
+  /// scheduling state AND-ed with the bitmask is greater than 0.
   /// \param update_state The value to update the task entry's scheduling state
-  ///        with, if the current state matches test_state_bitmask.
+  /// with, if the current state matches test_state_bitmask.
   /// \param callback Function to be called when database returns result.
   /// \return Status
   Status TestAndUpdate(const JobID &job_id, const TaskID &id,
@@ -397,16 +424,14 @@ class TaskTable : public Table<TaskID, TaskTableData> {
   /// task's local scheduler ID.
   ///
   /// \param local_scheduler_id The db_client_id of the local scheduler whose
-  ///        events we want to listen to. If you want to subscribe to updates
-  ///        from
-  ///        all local schedulers, pass in NIL_ID.
+  /// events we want to listen to. If you want to subscribe to updates from
+  /// all local schedulers, pass in NIL_ID.
   /// \param subscribe_callback Callback that will be called when the task table
-  /// is
-  ///        updated.
+  /// is updated.
   /// \param state_filter Events we want to listen to. Can have values from the
-  ///        enum "scheduling_state" in task.h.
-  ///        TODO(pcm): Make it possible to combine these using flags like
-  ///        TASK_STATUS_WAITING | TASK_STATUS_SCHEDULED.
+  /// enum "scheduling_state" in task.h.
+  /// TODO(pcm): Make it possible to combine these using flags like
+  /// TASK_STATUS_WAITING | TASK_STATUS_SCHEDULED.
   /// \param callback Function to be called when database returns result.
   /// \return Status
   Status SubscribeToTask(const JobID &job_id, const ClientID &local_scheduler_id,
@@ -422,7 +447,60 @@ Status TaskTableTestAndUpdate(AsyncGcsClient *gcs_client, const TaskID &task_id,
                               SchedulingState update_state,
                               const TaskTable::TestAndUpdateCallback &callback);
 
-using ErrorTable = Table<TaskID, ErrorTableData>;
+class ErrorTable : private Log<JobID, ErrorTableData> {
+ public:
+  ErrorTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client)
+      : Log(context, client) {
+    pubsub_channel_ = TablePubsub::ERROR_INFO;
+    prefix_ = TablePrefix::ERROR_INFO;
+  };
+
+  /// Push an error message for a specific job.
+  ///
+  /// TODO(rkn): We need to make sure that the errors are unique because
+  /// duplicate messages currently cause failures (the GCS doesn't allow it). A
+  /// natural way to do this is to have finer-grained time stamps.
+  ///
+  /// \param job_id The ID of the job that generated the error. If the error
+  /// should be pushed to all jobs, then this should be nil.
+  /// \param type The type of the error.
+  /// \param error_message The error message to push.
+  /// \param timestamp The timestamp of the error.
+  /// \return Status.
+  Status PushErrorToDriver(const JobID &job_id, const std::string &type,
+                           const std::string &error_message, double timestamp);
+};
+
+class ProfileTable : private Log<UniqueID, ProfileTableData> {
+ public:
+  ProfileTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client)
+      : Log(context, client) {
+    prefix_ = TablePrefix::PROFILE;
+  };
+
+  /// Add a single profile event to the profile table.
+  ///
+  /// \param event_type The type of the event.
+  /// \param component_type The type of the component that the event came from.
+  /// \param component_id An identifier for the component that generated the event.
+  /// \param node_ip_address The IP address of the node that generated the event.
+  /// \param start_time The timestamp of the event start, this should be in seconds since
+  /// the Unix epoch.
+  /// \param end_time The timestamp of the event end, this should be in seconds since
+  /// the Unix epoch. If the event is a point event, this should be equal to start_time.
+  /// \param extra_data Additional data to associate with the event.
+  /// \return Status.
+  Status AddProfileEvent(const std::string &event_type, const std::string &component_type,
+                         const UniqueID &component_id, const std::string &node_ip_address,
+                         double start_time, double end_time,
+                         const std::string &extra_data);
+
+  /// Add a batch of profiling events to the profile table.
+  ///
+  /// \param profile_events The profile events to record.
+  /// \return Status.
+  Status AddProfileEventBatch(const ProfileTableData &profile_events);
+};
 
 using CustomSerializerTable = Table<ClassID, CustomSerializerData>;
 
@@ -467,7 +545,7 @@ class ClientTable : private Log<UniqueID, ClientTableData> {
   /// and begins subscription to client table notifications.
   ///
   /// \param Information about the connecting client. This must have the
-  ///        same client_id as the one set in the client table.
+  /// same client_id as the one set in the client table.
   /// \return Status
   ray::Status Connect(const ClientTableDataT &local_client);
 
@@ -499,7 +577,7 @@ class ClientTable : private Log<UniqueID, ClientTableData> {
   ///
   /// \param client The client to get information about.
   /// \return A reference to the requested client. If the client is not in the
-  ///         cache, then an entry with a nil ClientID will be returned.
+  /// cache, then an entry with a nil ClientID will be returned.
   const ClientTableDataT &GetClient(const ClientID &client);
 
   /// Get the local client's ID.
