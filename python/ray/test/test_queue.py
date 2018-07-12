@@ -39,6 +39,7 @@ def test_simple_use():
     for item in items:
         assert item == q.get()
 
+
 def test_async():
     start_ray()
     q = Queue()
@@ -52,6 +53,7 @@ def test_async():
     result = set(ray.get(consumers))
 
     assert items == result
+
 
 def test_put():
     start_ray()
@@ -83,6 +85,7 @@ def test_put():
 
     assert ray.get(get_id) == 1
 
+
 def test_get():
     start_ray()
     q = Queue()
@@ -107,6 +110,7 @@ def test_get():
     item = 0
     put_async.remote(q, item, True, None, 0.2)
     assert q.get() == item
+
 
 def test_qsize():
     start_ray()
