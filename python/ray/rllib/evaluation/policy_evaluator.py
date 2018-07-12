@@ -86,6 +86,7 @@ class PolicyEvaluator(EvaluatorInterface):
             self,
             env_creator,
             policy_graph,
+            seed=None,
             policy_mapping_fn=None,
             tf_session_creator=None,
             batch_steps=100,
@@ -166,6 +167,11 @@ class PolicyEvaluator(EvaluatorInterface):
         self.compress_observations = compress_observations
 
         self.env = env_creator(env_context)
+        if seed is not None:
+            from ray.rllib.utils.seed import seed as seeder
+            seeder(seed)
+            self.env.seed(seed)
+            print("seeded")
         if isinstance(self.env, VectorEnv) or \
                 isinstance(self.env, ServingEnv) or \
                 isinstance(self.env, MultiAgentEnv) or \

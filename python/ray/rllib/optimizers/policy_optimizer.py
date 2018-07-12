@@ -124,8 +124,9 @@ class PolicyOptimizer(object):
 
     @classmethod
     def make(cls, env_creator, policy_graph, optimizer_batch_size=None,
-             num_workers=0, num_envs_per_worker=None, optimizer_config=None,
-             remote_num_cpus=None, remote_num_gpus=None, **eval_kwargs):
+             seed=1, num_workers=0, num_envs_per_worker=None,
+             optimizer_config=None, remote_num_cpus=None,
+             remote_num_gpus=None, **eval_kwargs):
         """Creates an Optimizer with local and remote evaluators.
 
         Args:
@@ -135,6 +136,10 @@ class PolicyOptimizer(object):
                 PolicyGraph, or a dictionary of policy id strings to
                 (PolicyGraph, obs_space, action_space, config) tuples.
                 See PolicyEvaluator documentation.
+            optimizer_batch_size (int): Batch size summed across all workers.
+                Will override worker `batch_steps`.
+            seed (int): Seed for seeding environment, Tensorflow, numpy,
+                random. Will override worker "seed".
             num_workers (int): Number of remote evaluators
             num_envs_per_worker (int): (Optional) Sets the number
                 environments per evaluator for vectorization.
@@ -156,11 +161,17 @@ class PolicyOptimizer(object):
         if optimizer_batch_size:
             assert optimizer_batch_size > 0
             eval_kwargs["batch_steps"] = optimizer_batch_size / num_workers if num_workers else optimizer_batch_size
-        evaluator = PolicyEvaluator(env_creator, policy_graph, **eval_kwargs)
+        evaluator = PolicyEvaluator(
+            env_creator, policy_graph,
+            seed=seed,
+            **eval_kwargs)
         remote_cls = PolicyEvaluator.as_remote(
             remote_num_cpus, remote_num_gpus)
         remote_evaluators = [
-            remote_cls.remote(env_creator, policy_graph, **eval_kwargs)
+            remote_cls.remote(
+                env_creator, policy_graph,
+                seed=seed + i if type(seed) is int else None,
+                **eval_kwargs)
             for i in range(num_workers)]
 
         return cls(evaluator, remote_evaluators, optimizer_config)
