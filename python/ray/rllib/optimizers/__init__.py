@@ -6,6 +6,9 @@ from ray.rllib.optimizers.sync_samples_optimizer import SyncSamplesOptimizer
 from ray.rllib.optimizers.sync_replay_optimizer import SyncReplayOptimizer
 from ray.rllib.optimizers.multi_gpu_optimizer import LocalMultiGPUOptimizer
 
+import logging
+logging.getLogger("ray").setLevel(logging.ERROR)
+
 
 def run_optimizer(optimizer, tag="", seconds=30):
     from ray.tune.logger import UnifiedLogger
