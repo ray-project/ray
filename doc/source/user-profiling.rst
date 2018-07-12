@@ -201,7 +201,7 @@ compared to the completely serialized ``ex1()`` version, this speedup is
 still nowhere near the ideal speedup of ``ex2()``. 
 
 The dramatic speedup of ``ex2()`` is possible because ``ex2()`` is 
-theoretically completely serializable: if we were given 5 CPUs, all 5 calls 
+theoretically completely parallelizable: if we were given 5 CPUs, all 5 calls 
 to ``func()`` can be run in parallel. What is happening with ``ex3()``, 
 however, is that each parallelized call to ``func()`` is staggered by a wait 
 of 0.3 seconds for the local ``other_func()`` to finish.
