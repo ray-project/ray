@@ -640,6 +640,7 @@ def hash_runtime_conf(file_mounts, extra_objs):
     hasher = hashlib.sha1()
 
     def add_content_hashes(path):
+        path = os.path.expanduser(path)
         if os.path.isdir(path):
             dirs = []
             for dirpath, _, filenames in os.walk(path):
@@ -651,7 +652,7 @@ def hash_runtime_conf(file_mounts, extra_objs):
                     with open(os.path.join(dirpath, name), "rb") as f:
                         hasher.update(binascii.hexlify(f.read()))
         else:
-            with open(os.path.expanduser(path), "rb") as f:
+            with open(path, "rb") as f:
                 hasher.update(binascii.hexlify(f.read()))
 
     hasher.update(json.dumps(sorted(file_mounts.items())).encode("utf-8"))
