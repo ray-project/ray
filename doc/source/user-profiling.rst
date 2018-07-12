@@ -128,7 +128,6 @@ and ``ex3()``:
   if __name__ == "__main__":
     main()
 
-
 Then, running the three timed loops should yield output similar to this:
 
 .. code-block:: bash
@@ -213,15 +212,15 @@ no better than the time it takes to run all serial parts in serial.
 
 .. _`Amdahls Law`: https://en.wikipedia.org/wiki/Amdahl%27s_law
 
-While one can yearn for Ray to guarantee a factor or two of speedup to one's 
-application code, due to Amdahl's Law, ``ex3()`` must take at least 1.5 
+While one can yearn for Ray to always guarantee a factor or two of speedup to 
+one's application code, due to Amdahl's Law, ``ex3()`` must take at least 1.5 
 seconds-- the time it takes for 5 serial calls to ``other_func()`` to finish! 
 Given this limitation, an execution time of 2 seconds is within the realm of 
 reasonable expectation.
 
 
-Profiling Using An External Profiler
-------------------------------------
+Profiling Using An External Profiler (Line Profiler)
+----------------------------------------------------
 
 One way to profile the performance of our code using Ray is to use a third-party
 profiler such as `Line_profiler`_. Line_profiler is a useful line-by-line
@@ -421,6 +420,151 @@ can be noticed at ``worker.py:2535(get)``. Meanwhile, the act of calling the
 remote function itself at ``remote_function.py:103(remote)`` only takes 0.001 
 seconds over 5 calls, and thus is not the source of the slow performance of 
 ``ex1()``.
+
+Considering that the detailed output of cProfile can be quite different depending 
+on what Ray functionalities we use, let us see what cProfile's output might look 
+like if our example involved Actors (for an introduction to Ray actors, see our 
+`Actor documentation here`_). 
+
+.. _`Actor documentation here`: http://ray.readthedocs.io/en/latest/actors.html
+
+Now, instead of looping over five calls to a remote function like in ``ex1``,
+let's create a new example and loop over five calls to a remote function 
+**inside an actor**. Our actor's remote function again just sleeps for 0.5
+seconds:
+
+.. code-block:: python
+
+  # Our actor
+  @ray.remote
+  class Sleeper(object):  
+    def __init__(self):
+        self.sleepValue = 0.5
+
+    # Equivalent to func(), but defined within an actor
+    def actor_func(self):
+        time.sleep(self.sleepValue)
+
+Remembering the suboptimality of ``ex1``, let's first see what happens if we 
+attempt to perform all five ``actor_func()`` calls within a single actor:
+
+.. code-block:: python
+
+  def ex4():
+    # This is suboptimal in Ray, and should only be used for the sake of this example
+    actor_example = Sleeper.remote()
+
+    five_results = []
+    for i in range(5):
+      five_results.append(actor_example.actor_func.remote())
+
+    # Wait until the end to call ray.get()
+    ray.get(five_results)
+
+We enable cProfile on this example as follows:
+
+.. code-block:: python
+
+  def main():
+    ray.init()
+    cProfile.run('ex4()') 
+
+  if __name__ == "__main__":
+    main()
+
+Running our new Actor example, cProfile's abbreviated output is as follows:
+
+.. code-block:: bash
+
+  12519 function calls (11956 primitive calls) in 2.525 seconds
+
+  ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+  ...
+  1    0.000    0.000    0.015    0.015 actor.py:546(remote)
+  1    0.000    0.000    0.015    0.015 actor.py:560(_submit)
+  1    0.000    0.000    0.000    0.000 actor.py:697(__init__)
+  ...
+  1    0.000    0.000    2.525    2.525 your_script_here.py:63(ex4)
+  ...
+  9    0.000    0.000    0.000    0.000 worker.py:2459(__init__)
+  1    0.000    0.000    2.509    2.509 worker.py:2535(get)
+  9    0.000    0.000    0.000    0.000 worker.py:2695(get_global_worker)
+  4    0.000    0.000    2.508    0.627 worker.py:374(retrieve_and_deserialize)
+  1    0.000    0.000    2.509    2.509 worker.py:424(get_object)
+  8    0.000    0.000    0.001    0.000 worker.py:514(submit_task)
+  ...
+
+It turns out that the entire example still took 2.5 seconds to execute, or the 
+time for five calls to ``actor_func()`` to run in serial. We remember in ``ex1`` 
+that this behavior was because we did not wait until after submitting all five 
+remote function tasks to call ``ray.get()``, but we can verify on cProfile's
+output line ``worker.py:2535(get)`` that ``ray.get()`` was only called once at 
+the end, for 2.509 seconds. What happened? 
+
+Looking at the cProfile output again, we notice that because we are now using 
+actors, we are invoking corresponding methods in ``actor.py`` instead of in 
+``remote_function.py``. Interestingly however, we only make a single call to 
+``actor.py:560(_submit)``, instead of five, to submit our remote function task 
+``action_func()`` to a worker instance:
+
+.. code-block:: bash
+
+  ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+
+  # cProfile output again from ex1:
+  5    0.000    0.000    0.001    0.000 remote_function.py:103(remote)
+  5    0.000    0.000    0.001    0.000 remote_function.py:107(_submit)
+
+  # In comparison, from ex4:
+  1    0.000    0.000    0.015    0.015 actor.py:546(remote)
+  1    0.000    0.000    0.015    0.015 actor.py:560(_submit)
+
+It turns out Ray cannot parallelize this example, because we have only 
+initialized a single ``Sleeper`` actor. Because each actor is a single, 
+stateful worker, our entire code is submitted and ran on a single worker the 
+whole time.
+
+To better parallelize the actors in ``ex4``, we can take advantage
+that each call to ``actor_func()`` is independent, and instead
+create five ``Sleeper`` actors. That way, we are creating five workers
+that can work in parallel, instead of creating a single worker that 
+can only handle one call to ``actor_func()`` at a time.
+
+.. code-block:: python
+
+  def ex4():
+    # Modified to create five separate Sleepers
+    five_actors = [Sleeper.remote() for i in range(5)]
+
+    # Each call to actor_func now goes to a different Sleeper
+    five_results = []
+    for actor_example in five_actors:
+      five_results.append(actor_example.actor_func.remote())
+      
+    ray.get(five_results)
+
+cProfile now shows us calling on the ``actor.py`` remote function methods five 
+times, and our example in total now takes only 1.5 seconds to run:
+
+.. code-block:: bash 
+
+  1378 function calls (1363 primitive calls) in 1.567 seconds
+
+  ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+  ...
+  5    0.000    0.000    0.002    0.000 actor.py:546(remote)
+  5    0.000    0.000    0.002    0.000 actor.py:560(_submit)
+  5    0.000    0.000    0.000    0.000 actor.py:697(__init__)
+  ...
+  1    0.000    0.000    1.566    1.566 your_script_here.py:71(ex4)
+  ...
+  21    0.000    0.000    0.000    0.000 worker.py:2459(__init__)
+  1    0.000    0.000    1.564    1.564 worker.py:2535(get)
+  25    0.000    0.000    0.000    0.000 worker.py:2695(get_global_worker)
+  3    0.000    0.000    1.564    0.521 worker.py:374(retrieve_and_deserialize)
+  1    0.000    0.000    1.564    1.564 worker.py:424(get_object)
+  20    0.001    0.000    0.001    0.000 worker.py:514(submit_task)
+  ...
 
 
 Visualizing Tasks in the Ray Timeline
