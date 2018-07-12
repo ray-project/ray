@@ -28,18 +28,15 @@ class Queue(object):
         self.actor = _QueueActor.remote(maxsize)
 
     def qsize(self):
-        """The size of the queue.
-        """
+        """The size of the queue."""
         return ray.get(self.actor.qsize.remote())
 
     def empty(self):
-        """Whether the queue is empty.
-        """
+        """Whether the queue is empty."""
         return ray.get(self.actor.qsize.remote())
 
     def full(self):
-        """Whether the queue is full.
-        """
+        """Whether the queue is full."""
         return ray.get(self.actor.full.remote())
 
     def put(self, item, block=True, timeout=None):
