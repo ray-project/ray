@@ -7,11 +7,12 @@ from ray.rllib.optimizers.sync_replay_optimizer import SyncReplayOptimizer
 from ray.rllib.optimizers.multi_gpu_optimizer import LocalMultiGPUOptimizer
 
 
-def run_optimizer(optimizer, num_steps, tag=""):
+def run_optimizer(optimizer, seconds, tag=""):
     from ray.tune.logger import UnifiedLogger
     from ray.tune.result import TrainingResult
     import os
     import shutil
+    import time
     path = os.path.join("/tmp/demo/", tag)
     try:
         shutil.rmtree(path)
@@ -42,9 +43,12 @@ def run_optimizer(optimizer, num_steps, tag=""):
         timesteps_total=0)
     logger.on_result(result)
     logger.flush()
-
+    print("Warmup done.")
+    print("Running for {} seconds...".format(seconds))
     timesteps_total = 0
-    for itr in range(1, num_steps + 1):
+    start = time.time()
+    itr = 1
+    while time.time() - start < seconds:
         optimizer.step()
         result = optimizer.collect_metrics()
         timesteps_total = optimizer.num_steps_sampled
@@ -52,9 +56,11 @@ def run_optimizer(optimizer, num_steps, tag=""):
             training_iteration=itr,
             timesteps_total=timesteps_total)
         logger.on_result(result)
+        itr += 1
     logger.close()
     termination = [r.__ray_terminate__.remote() for r in optimizer.remote_evaluators]
-    return termination
+    print("done")
+    # return termination
 
 
 __all__ = [
