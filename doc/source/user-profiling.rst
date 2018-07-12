@@ -73,7 +73,7 @@ function in between each call to the remote function ``func()``:
     list3 = []
     for i in range(5):
       other_func()
-      list2.append(func.remote())
+      list3.append(func.remote())
     ray.get(list3)
 
 
