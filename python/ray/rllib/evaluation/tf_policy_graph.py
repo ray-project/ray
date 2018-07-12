@@ -37,9 +37,8 @@ class TFPolicyGraph(PolicyGraph):
 
     def __init__(
             self, observation_space, action_space, sess, obs_input,
-            action_sampler, loss, loss_inputs, is_training,
-            state_inputs=None, state_outputs=None, seq_lens=None,
-            max_seq_len=20):
+            action_sampler, loss, loss_inputs, state_inputs=None,
+            state_outputs=None, seq_lens=None, max_seq_len=20):
         """Initialize the policy graph.
 
         Arguments:
@@ -55,8 +54,6 @@ class TFPolicyGraph(PolicyGraph):
                 input argument. Each placeholder name must correspond to a
                 SampleBatch column key returned by postprocess_trajectory(),
                 and has shape [BATCH_SIZE, data...].
-            is_training (Tensor): input placeholder for whether we are
-                currently training the policy.
             state_inputs (list): list of RNN state input Tensors.
             state_outputs (list): list of RNN state output Tensors.
             seq_lens (Tensor): placeholder for RNN sequence lengths, of shape
@@ -73,7 +70,7 @@ class TFPolicyGraph(PolicyGraph):
         self._loss = loss
         self._loss_inputs = loss_inputs
         self._loss_input_dict = dict(self._loss_inputs)
-        self._is_training = is_training
+        self._is_training = tf.placeholder_with_default(True, ())
         self._state_inputs = state_inputs or []
         self._state_outputs = state_outputs or []
         for i, ph in enumerate(self._state_inputs):

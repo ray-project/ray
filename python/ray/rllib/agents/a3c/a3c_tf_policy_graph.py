@@ -49,7 +49,6 @@ class A3CPolicyGraph(TFPolicyGraph):
             [-1])
         self.var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
                                           tf.get_variable_scope().name)
-        is_training = tf.placeholder_with_default(True, ())
 
         # Setup the policy loss
         if isinstance(action_space, gym.spaces.Box):
@@ -80,8 +79,7 @@ class A3CPolicyGraph(TFPolicyGraph):
             self, observation_space, action_space, self.sess,
             obs_input=self.observations, action_sampler=action_dist.sample(),
             loss=self.loss.total_loss, loss_inputs=loss_in,
-            is_training=is_training, state_inputs=self.state_in,
-            state_outputs=self.state_out,
+            state_inputs=self.state_in, state_outputs=self.state_out,
             seq_lens=self.model.seq_lens,
             max_seq_len=self.config["model"]["max_seq_len"])
 

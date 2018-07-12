@@ -153,14 +153,12 @@ class PPOPolicyGraph(TFPolicyGraph):
             clip_param=self.config["clip_param"],
             vf_loss_coeff=self.config["kl_target"],
             use_gae=self.config["use_gae"])
-        self.is_training = tf.placeholder_with_default(True, ())
 
         TFPolicyGraph.__init__(
             self, observation_space, action_space,
             self.sess, obs_input=obs_ph,
             action_sampler=self.sampler, loss=self.loss_obj.loss,
-            loss_inputs=self.loss_in, is_training=self.is_training,
-            state_inputs=self.model.state_in,
+            loss_inputs=self.loss_in, state_inputs=self.model.state_in,
             state_outputs=self.model.state_out, seq_lens=self.model.seq_lens,
             max_seq_len=config["model"]["max_seq_len"])
 

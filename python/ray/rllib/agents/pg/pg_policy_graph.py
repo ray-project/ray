@@ -41,12 +41,10 @@ class PGPolicyGraph(TFPolicyGraph):
             ("advantages", advantages),
         ]
 
-        is_training = tf.placeholder_with_default(True, ())
         TFPolicyGraph.__init__(
             self, obs_space, action_space, sess, obs_input=obs,
             action_sampler=action_dist.sample(), loss=loss,
-            loss_inputs=loss_in, is_training=is_training,
-            state_inputs=self.model.state_in,
+            loss_inputs=loss_in, state_inputs=self.model.state_in,
             state_outputs=self.model.state_out,
             seq_lens=self.model.seq_lens,
             max_seq_len=config["model"]["max_seq_len"])
