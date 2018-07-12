@@ -26,7 +26,7 @@ let's define our remote function to just sleep for 0.5 seconds:
   # Our time-consuming remote function
   @ray.remote
   def func():
-    time.sleep(0.5)
+      time.sleep(0.5)
 
 In our example setup, we wish to call our remote function ``func()`` five 
 times, and store the result of each call into a list. To compare the 
@@ -41,9 +41,9 @@ into the list, as follows:
 
   # This loop is suboptimal in Ray, and should only be used for the sake of this example
   def ex1():  
-    list1 = []
-    for i in range(5):
-      list1.append(ray.get(func.remote()))
+      list1 = []
+      for i in range(5):
+          list1.append(ray.get(func.remote()))
 
 For the second version **ex2**, each iteration of the loop calls the remote 
 function, and stores it into the list **without** calling ``ray.get`` each time. 
@@ -54,10 +54,10 @@ function, and stores it into the list **without** calling ``ray.get`` each time.
 
   # This loop is more proper in Ray
   def ex2():
-    list2 = []
-    for i in range(5):
-      list2.append(func.remote())
-    ray.get(list2)
+      list2 = []
+      for i in range(5):
+          list2.append(func.remote())
+      ray.get(list2)
 
 Finally, for an example that's not so parallelizable, let's create a 
 third version **ex3** where the driver has to call a local 
@@ -67,14 +67,14 @@ function in between each call to the remote function ``func()``:
 
   # A local function executed on the driver, not on Ray
   def other_func():
-    time.sleep(0.3)
+      time.sleep(0.3)
 
   def ex3():
-    list3 = []
-    for i in range(5):
-      other_func()
-      list3.append(func.remote())
-    ray.get(list3)
+      list3 = []
+      for i in range(5):
+          other_func()
+          list3.append(func.remote())
+      ray.get(list3)
 
 
 Timing Performance Using Python's Timestamps
@@ -95,16 +95,16 @@ function to print out how long each loop takes overall:
 
   # This is a generic wrapper for any driver function you want to time
   def time_this(f):
-    def timed_wrapper(*args, **kw):
-      start_time = time.time()
-      result = f(*args, **kw)
-      end_time = time.time()
+      def timed_wrapper(*args, **kw):
+          start_time = time.time()
+          result = f(*args, **kw)
+          end_time = time.time()
 
-      # Time taken = end_time - start_time
-      print('| func:%r args:[%r, %r] took: %2.4f seconds |' % \
-            (f.__name__, args, kw, end_time - start_time))
-      return result
-    return timed_wrapper
+          # Time taken = end_time - start_time
+          print('| func:%r args:[%r, %r] took: %2.4f seconds |' % \
+                (f.__name__, args, kw, end_time - start_time))
+          return result
+      return timed_wrapper
 
 To always print out how long the loop takes to run each time the loop 
 function ``ex1()`` is called, we can evoke our ``time_this`` wrapper with 
@@ -115,18 +115,18 @@ and ``ex3()``:
 
   @time_this  # Added decorator
   def ex1():
-    list1 = []
-    for i in range(5):
-      list1.append(ray.get(func.remote()))
+      list1 = []
+      for i in range(5):
+          list1.append(ray.get(func.remote()))
 
   def main():
-    ray.init()
-    ex1()
-    ex2()
-    ex3()
+      ray.init()
+      ex1()
+      ex2()
+      ex3()
 
   if __name__ == "__main__":
-    main()
+      main()
 
 Then, running the three timed loops should yield output similar to this:
 
@@ -147,18 +147,18 @@ entire list with ``ray.get`` at once.
 
   @ray.remote
   def func(): # A single call takes 0.5 seconds
-    time.sleep(0.5)
+      time.sleep(0.5)
 
   def ex1():  # Took Ray 2.5 seconds
-  list1 = []
-  for i in range(5):
-    list1.append(ray.get(func.remote()))
+      list1 = []
+      for i in range(5):
+          list1.append(ray.get(func.remote()))
 
   def ex2():  # Took Ray 1 second
-    list2 = []
-    for i in range(5):
-      list2.append(func.remote())
-    ray.get(list2)
+      list2 = []
+      for i in range(5):
+          list2.append(func.remote())
+      ray.get(list2)
 
 Notice how ``ex1()`` took 2.5 seconds, exactly five times 0.5 seconds, or 
 the time it would take to wait for our remote function five times in a row. 
@@ -186,15 +186,15 @@ must run first before each call to ``func()`` can be submitted to Ray.
 .. code-block:: python
 
   # A local function that must run in serial
-    def other_func():
+  def other_func():
       time.sleep(0.3)
 
   def ex3():  # Took Ray 2 seconds, vs. ex1 taking 2.5 seconds
-    list3 = []
-    for i in range(5):
-      other_func()
-      list2.append(func.remote())
-    ray.get(list3)
+      list3 = []
+      for i in range(5):
+          other_func()
+          list2.append(func.remote())
+      ray.get(list3)
 
 What results is that while ``ex3()`` still gained 0.5 seconds of speedup 
 compared to the completely serialized ``ex1()`` version, this speedup is
@@ -250,18 +250,18 @@ application:
 
   @profile  # Added decorator
   def ex1():
-    list1 = []
-    for i in range(5):
-      list1.append(ray.get(func.remote()))
+      list1 = []
+      for i in range(5):
+          list1.append(ray.get(func.remote()))
 
   def main():
-    ray.init()
-    ex1()
-    ex2()
-    ex3()
+      ray.init()
+      ex1()
+      ex2()
+      ex3()
 
   if __name__ == "__main__":
-    main()
+      main()
 
 Then, when we want to execute our Python script from the command line, instead 
 of ``python your_script_here.py``, we use the following shell command to run the 
@@ -373,18 +373,18 @@ statement, then replace calls to the loop functions as follows:
   import cProfile  # Added import statement
 
   def ex1():
-    list1 = []
-    for i in range(5):
-      list1.append(ray.get(func.remote()))
+      list1 = []
+      for i in range(5):
+          list1.append(ray.get(func.remote()))
 
   def main():
-    ray.init()
-    cProfile.run('ex1()')  # Modified call to ex1
-    cProfile.run('ex2()')
-    cProfile.run('ex3()')
+      ray.init()
+      cProfile.run('ex1()')  # Modified call to ex1
+      cProfile.run('ex2()')
+      cProfile.run('ex3()')
 
   if __name__ == "__main__":
-    main()
+      main()
 
 Now, when executing your Python script, a cProfile list of profiled function 
 calls will be outputted to terminal for each call made to ``cProfile.run()``.
@@ -442,12 +442,12 @@ seconds:
   # Our actor
   @ray.remote
   class Sleeper(object):  
-    def __init__(self):
-        self.sleepValue = 0.5
+      def __init__(self):
+          self.sleepValue = 0.5
 
-    # Equivalent to func(), but defined within an actor
-    def actor_func(self):
-        time.sleep(self.sleepValue)
+      # Equivalent to func(), but defined within an actor
+      def actor_func(self):
+          time.sleep(self.sleepValue)
 
 Recalling the suboptimality of ``ex1``, let's first see what happens if we 
 attempt to perform all five ``actor_func()`` calls within a single actor:
@@ -455,26 +455,26 @@ attempt to perform all five ``actor_func()`` calls within a single actor:
 .. code-block:: python
 
   def ex4():
-    # This is suboptimal in Ray, and should only be used for the sake of this example
-    actor_example = Sleeper.remote()
+      # This is suboptimal in Ray, and should only be used for the sake of this example
+      actor_example = Sleeper.remote()
 
-    five_results = []
-    for i in range(5):
-      five_results.append(actor_example.actor_func.remote())
+      five_results = []
+      for i in range(5):
+          five_results.append(actor_example.actor_func.remote())
 
-    # Wait until the end to call ray.get()
-    ray.get(five_results)
+      # Wait until the end to call ray.get()
+      ray.get(five_results)
 
 We enable cProfile on this example as follows:
 
 .. code-block:: python
 
   def main():
-    ray.init()
-    cProfile.run('ex4()') 
+      ray.init()
+      cProfile.run('ex4()') 
 
   if __name__ == "__main__":
-    main()
+      main()
 
 Running our new Actor example, cProfile's abbreviated output is as follows:
 
@@ -537,15 +537,15 @@ can only handle one call to ``actor_func()`` at a time.
 .. code-block:: python
 
   def ex4():
-    # Modified to create five separate Sleepers
-    five_actors = [Sleeper.remote() for i in range(5)]
+      # Modified to create five separate Sleepers
+      five_actors = [Sleeper.remote() for i in range(5)]
 
-    # Each call to actor_func now goes to a different Sleeper
-    five_results = []
-    for actor_example in five_actors:
-      five_results.append(actor_example.actor_func.remote())
+      # Each call to actor_func now goes to a different Sleeper
+      five_results = []
+      for actor_example in five_actors:
+          five_results.append(actor_example.actor_func.remote())
 
-    ray.get(five_results)
+      ray.get(five_results)
 
 cProfile now shows us calling on the ``actor.py`` remote function methods five 
 times, and our example in total now takes only 1.5 seconds to run:
@@ -614,16 +614,16 @@ such as below. You can then browse the web UI for as long as you like:
 .. code-block:: python
 
   def main():
-    ray.init()
-    ex1()
-    ex2()
-    ex3()
+      ray.init()
+      ex1()
+      ex2()
+      ex3()
 
-    # Require user input confirmation before exiting
-    hang = input('Examples finished executing. Press enter to exit:')
+      # Require user input confirmation before exiting
+      hang = input('Examples finished executing. Press enter to exit:')
 
   if __name__ == "__main__":
-    main()
+      main()
 
 Now, when executing your python script, you can access the Ray timeline
 by copying the web UI URL into your web browser on the Ray machine. To 
