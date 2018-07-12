@@ -421,6 +421,10 @@ remote function itself at ``remote_function.py:103(remote)`` only takes 0.001
 seconds over 5 calls, and thus is not the source of the slow performance of 
 ``ex1()``.
 
+
+Profiling Ray Actors with cProfile
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 Considering that the detailed output of cProfile can be quite different depending 
 on what Ray functionalities we use, let us see what cProfile's output might look 
 like if our example involved Actors (for an introduction to Ray actors, see our 
@@ -445,7 +449,7 @@ seconds:
     def actor_func(self):
         time.sleep(self.sleepValue)
 
-Remembering the suboptimality of ``ex1``, let's first see what happens if we 
+Recalling the suboptimality of ``ex1``, let's first see what happens if we 
 attempt to perform all five ``actor_func()`` calls within a single actor:
 
 .. code-block:: python
@@ -509,13 +513,13 @@ actors, we are invoking corresponding methods in ``actor.py`` instead of in
 
 .. code-block:: bash
 
-  ncalls  tottime  percall  cumtime  percall filename:lineno(function)
-
   # cProfile output again from ex1:
+  ncalls  tottime  percall  cumtime  percall filename:lineno(function)
   5    0.000    0.000    0.001    0.000 remote_function.py:103(remote)
   5    0.000    0.000    0.001    0.000 remote_function.py:107(_submit)
 
   # In comparison, from ex4:
+  ncalls  tottime  percall  cumtime  percall filename:lineno(function)
   1    0.000    0.000    0.015    0.015 actor.py:546(remote)
   1    0.000    0.000    0.015    0.015 actor.py:560(_submit)
 
@@ -527,7 +531,7 @@ whole time.
 To better parallelize the actors in ``ex4``, we can take advantage
 that each call to ``actor_func()`` is independent, and instead
 create five ``Sleeper`` actors. That way, we are creating five workers
-that can work in parallel, instead of creating a single worker that 
+that can run in parallel, instead of creating a single worker that 
 can only handle one call to ``actor_func()`` at a time.
 
 .. code-block:: python
@@ -540,7 +544,7 @@ can only handle one call to ``actor_func()`` at a time.
     five_results = []
     for actor_example in five_actors:
       five_results.append(actor_example.actor_func.remote())
-      
+
     ray.get(five_results)
 
 cProfile now shows us calling on the ``actor.py`` remote function methods five 
@@ -577,9 +581,9 @@ parallelization (or lack thereof) of user tasks submitted to Ray!
 This method does have its own limitations, however. The Ray Timeline 
 can only show timing info about Ray tasks, and not timing for normal
 Python functions. This can be an issue especially for debugging slow
-Python code running on the driver, and not running as a task on one of 
-the workers. The other profiling techniques above are options that do
-cover profiling normal Python functions.
+Python code that is running on the driver, and not running as a task on 
+one of the workers. The other profiling techniques above are options that 
+do cover profiling normal Python functions.
 
 Currently, whenever initializing Ray, a URL is generated and printed
 in the terminal. This URL can be used to view Ray's web UI as a Jupyter 
@@ -651,7 +655,7 @@ calls is finished.
 
 In ``ex3()``, because of the serial dependency on ``other_func()``, we 
 aren't even able to use all 4 of our cores to parallelize calls to ``func()``.
-The time gaps between the ``func()`` blocks are a result of the staggered
+The time gaps between the ``func()`` blocks are a result of staggering the
 calls to ``func()`` in between waiting 0.3 seconds for ``other_func()``. 
 
 Also, notice that due to the aforementioned limitation of the Ray timeline, 
