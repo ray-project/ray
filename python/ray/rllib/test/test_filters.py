@@ -78,7 +78,7 @@ class FilterManagerTest(unittest.TestCase):
         ray.init(num_cpus=1)
 
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
 
     def testSynchronize(self):
         """Synchronize applies filter buffer onto own filter"""

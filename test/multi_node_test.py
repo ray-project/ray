@@ -40,7 +40,7 @@ class MultiNodeTest(unittest.TestCase):
         self.redis_address = redis_address.split("\"")[0]
 
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
         # Kill the Ray cluster.
         subprocess.Popen(["ray", "stop"]).wait()
 
@@ -281,7 +281,7 @@ class StartRayScriptTest(unittest.TestCase):
 
 class MiscellaneousTest(unittest.TestCase):
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
 
     def testConnectingInLocalCase(self):
         address_info = ray.init(num_cpus=0)
