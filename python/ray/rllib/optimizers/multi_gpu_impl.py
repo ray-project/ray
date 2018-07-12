@@ -3,9 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 from collections import namedtuple
-import os
 
-from tensorflow.python.client import timeline
 import tensorflow as tf
 
 
@@ -129,16 +127,16 @@ class LocalSyncParallelOptimizer(object):
                 arr[:len(state_inputs[0]) * seq_len]
                 for arr in inputs
             ]
-            print("Truncated lens", [len(x) for x in state_inputs])
-            print("Truncated lens", [len(x) for x in inputs])
             assert len(state_inputs[0]) * seq_len == len(inputs[0])
             assert len(state_inputs[0]) % self.batch_size == 0
-            assert len(inputs[0]) % self.batch_size == 0
-
-        for ph, arr in zip(self.loss_inputs, inputs + state_inputs):
-            truncated_arr = make_divisible_by(arr, self.batch_size)
-            feed_dict[ph] = truncated_arr
-            truncated_len = len(truncated_arr)
+            for ph, arr in zip(self.loss_inputs, inputs + state_inputs):
+                feed_dict[ph] = arr
+            truncated_len = len(inputs[0])
+        else:
+            for ph, arr in zip(self.loss_inputs, inputs + state_inputs):
+                truncated_arr = make_divisible_by(arr, self.batch_size)
+                feed_dict[ph] = truncated_arr
+                truncated_len = len(truncated_arr)
 
         sess.run(
             [t.init_op for t in self._towers], feed_dict=feed_dict)
@@ -152,7 +150,7 @@ class LocalSyncParallelOptimizer(object):
         assert tuples_per_device % self.per_device_batch_size == 0
         return tuples_per_device
 
-    def optimize(self, sess, batch_index, file_writer=None):
+    def optimize(self, sess, batch_index):
         """Run a single step of SGD.
 
         Runs a SGD step over a slice of the preloaded batch with size given by
@@ -167,18 +165,10 @@ class LocalSyncParallelOptimizer(object):
             batch_index: Offset into the preloaded data. This value must be
                 between `0` and `tuples_per_device`. The amount of data to
                 process is always fixed to `per_device_batch_size`.
-            file_writer: If specified, tf metrics will be written out using
-                this.
 
         Returns:
             The outputs of extra_ops evaluated over the batch.
         """
-        if file_writer:
-            run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
-        else:
-            run_options = tf.RunOptions(trace_level=tf.RunOptions.NO_TRACE)
-        run_metadata = tf.RunMetadata()
-
         feed_dict = {
             self._batch_index: batch_index,
             self._max_seq_len: self._loaded_max_seq_len,
@@ -192,21 +182,7 @@ class LocalSyncParallelOptimizer(object):
             fetches.update(tower.loss_graph.extra_compute_grad_fetches())
             fetches.update(tower.loss_graph.extra_apply_grad_fetches())
 
-        outs = sess.run(
-            fetches,
-            feed_dict=feed_dict,
-            options=run_options,
-            run_metadata=run_metadata)
-
-        if file_writer:
-            trace = timeline.Timeline(step_stats=run_metadata.step_stats)
-            trace_file = open(os.path.join(self.logdir, "timeline-sgd.json"),
-                              "w")
-            trace_file.write(trace.generate_chrome_trace_format())
-            file_writer.add_run_metadata(
-                run_metadata, "sgd_train_{}".format(batch_index))
-
-        return outs
+        return sess.run(fetches, feed_dict=feed_dict)
 
     def get_common_loss(self):
         return self._shared_loss
@@ -231,17 +207,12 @@ class LocalSyncParallelOptimizer(object):
                     else:
                         scale = self._max_seq_len
                         granularity = 1
-
-
-                    # TODO(ekl) make sure per device batch size is divisible
-                    # by max seq len
-
-
                     current_slice = tf.slice(
                         current_batch,
-                        [self._batch_index // scale * granularity] + [0] * len(ph.shape[1:]),
-                        ([self.per_device_batch_size // scale * granularity] + [-1] *
-                         len(ph.shape[1:])))
+                        ([self._batch_index // scale * granularity] +
+                            [0] * len(ph.shape[1:])),
+                        ([self.per_device_batch_size // scale * granularity] +
+                            [-1] * len(ph.shape[1:])))
                     current_slice.set_shape(ph.shape)
                     device_input_slices.append(current_slice)
                 graph_obj = self.build_graph(device_input_slices)

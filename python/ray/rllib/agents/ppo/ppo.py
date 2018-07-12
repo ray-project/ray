@@ -50,7 +50,7 @@ DEFAULT_CONFIG = with_common_config({
     "simple_optimizer": False,
     # Override model config
     "model": {
-        # Use LSTM model (note: requires simple optimizer for now).
+        # Whether to use LSTM model
         "use_lstm": False,
         # Max seq length for LSTM training.
         "max_seq_len": 20,

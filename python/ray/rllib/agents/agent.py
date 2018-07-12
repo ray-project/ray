@@ -46,6 +46,8 @@ COMMON_CONFIG = {
         "gpu_options": {
             "allow_growth": True,
         },
+        "log_device_placement": False,
+        "device_count": {"CPU": 1},
     },
     # Whether to LZ4 compress observations
     "compress_observations": False,
