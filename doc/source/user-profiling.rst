@@ -504,24 +504,6 @@ remote function tasks to call ``ray.get()``, but we can verify on cProfile's
 output line ``worker.py:2535(get)`` that ``ray.get()`` was only called once at 
 the end, for 2.509 seconds. What happened? 
 
-Looking at the cProfile output again, we notice that because we are now using 
-actors, we are invoking corresponding methods in ``actor.py`` instead of in 
-``remote_function.py``. Interestingly however, we only make a single call to 
-``actor.py:560(_submit)``, instead of five, to submit our remote function task 
-``action_func()`` to a worker instance:
-
-.. code-block:: bash
-
-  # cProfile output again from ex1:
-  ncalls  tottime  percall  cumtime  percall filename:lineno(function)
-  5    0.000    0.000    0.001    0.000 remote_function.py:103(remote)
-  5    0.000    0.000    0.001    0.000 remote_function.py:107(_submit)
-
-  # In comparison, from ex4:
-  ncalls  tottime  percall  cumtime  percall filename:lineno(function)
-  1    0.000    0.000    0.015    0.015 actor.py:546(remote)
-  1    0.000    0.000    0.015    0.015 actor.py:560(_submit)
-
 It turns out Ray cannot parallelize this example, because we have only 
 initialized a single ``Sleeper`` actor. Because each actor is a single, 
 stateful worker, our entire code is submitted and ran on a single worker the 
@@ -546,8 +528,7 @@ can only handle one call to ``actor_func()`` at a time.
 
       ray.get(five_results)
 
-cProfile now shows us calling on the ``actor.py`` remote function methods five 
-times, and our example in total now takes only 1.5 seconds to run:
+Our example in total now takes only 1.5 seconds to run:
 
 .. code-block:: bash 
 
