@@ -212,11 +212,10 @@ no better than the time it takes to run all serial parts in serial.
 
 .. _`Amdahls Law`: https://en.wikipedia.org/wiki/Amdahl%27s_law
 
-While one can yearn for Ray to always guarantee a factor or two of speedup to 
-one's application code, due to Amdahl's Law, ``ex3()`` must take at least 1.5 
-seconds-- the time it takes for 5 serial calls to ``other_func()`` to finish! 
-Given this limitation, an execution time of 2 seconds is within the realm of 
-reasonable expectation.
+Due to Amdahl's Law, ``ex3()`` must take at least 1.5 
+seconds -- the time it takes for 5 serial calls to ``other_func()`` to finish!
+After an additional 0.5 seconds to execute func and get the result, the
+computation is done.
 
 
 Profiling Using An External Profiler (Line Profiler)
