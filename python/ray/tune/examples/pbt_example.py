@@ -82,7 +82,6 @@ if __name__ == "__main__":
         {
             "pbt_test": {
                 "run": "my_class",
-                "trial_resources": {"gpu": 1},
                 "stop": {
                     "training_iteration": 2 if args.smoke_test else 99999
                 },
