@@ -66,8 +66,8 @@ function in between each call to the remote function ``func()``:
 .. code-block:: python
 
   # A local function executed on the driver, not on Ray
-    def other_func():
-      time.sleep(0.3)
+  def other_func():
+    time.sleep(0.3)
 
   def ex3():
     list3 = []
