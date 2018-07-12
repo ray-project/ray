@@ -484,7 +484,7 @@ class ActorNesting(unittest.TestCase):
 
     def testRemoteFunctionWithinActor(self):
         # Make sure we can use remote funtions within actors.
-        ray.init(num_cpus=100)
+        ray.init(num_cpus=10)
 
         # Create some values to close over.
         val1 = 1

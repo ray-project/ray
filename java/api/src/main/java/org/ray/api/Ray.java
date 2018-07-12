@@ -3,7 +3,6 @@ package org.ray.api;
 import java.util.List;
 import org.ray.api.internal.RayConnector;
 import org.ray.util.exception.TaskExecutionException;
-import org.ray.util.logger.DynamicLog;
 import org.ray.util.logger.RayLog;
 
 /**
@@ -101,12 +100,5 @@ public final class Ray extends Rpc {
    */
   static RayApi internal() {
     return impl;
-  }
-
-  /**
-   * for ray's app's log.
-   */
-  public static DynamicLog getRappLogger() {
-    return RayLog.rapp;
   }
 }
