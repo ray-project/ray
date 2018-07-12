@@ -26,7 +26,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
         ray.init(num_cpus=4, num_gpus=0)
 
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
         _register_all()  # re-register the evicted objects
 
     def testPinObject(self):
@@ -366,7 +366,7 @@ class RunExperimentTest(unittest.TestCase):
         ray.init()
 
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
         _register_all()  # re-register the evicted objects
 
     def testDict(self):
@@ -441,7 +441,7 @@ class VariantGeneratorTest(unittest.TestCase):
         ray.init()
 
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
         _register_all()  # re-register the evicted objects
 
     def testParseToTrials(self):
@@ -575,7 +575,7 @@ class VariantGeneratorTest(unittest.TestCase):
 
 class TrialRunnerTest(unittest.TestCase):
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
         _register_all()  # re-register the evicted objects
 
     def testTrialStatus(self):
