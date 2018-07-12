@@ -171,7 +171,6 @@ class PolicyEvaluator(EvaluatorInterface):
             from ray.rllib.utils.seed import seed as seeder
             seeder(seed)
             self.env.seed(seed)
-            print("seeded")
         if isinstance(self.env, VectorEnv) or \
                 isinstance(self.env, ServingEnv) or \
                 isinstance(self.env, MultiAgentEnv) or \

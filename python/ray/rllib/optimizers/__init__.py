@@ -7,7 +7,7 @@ from ray.rllib.optimizers.sync_replay_optimizer import SyncReplayOptimizer
 from ray.rllib.optimizers.multi_gpu_optimizer import LocalMultiGPUOptimizer
 
 
-def run_optimizer(optimizer, seconds, tag=""):
+def run_optimizer(optimizer, tag="", seconds=30):
     from ray.tune.logger import UnifiedLogger
     from ray.tune.result import TrainingResult
     import os
@@ -56,6 +56,7 @@ def run_optimizer(optimizer, seconds, tag=""):
             training_iteration=itr,
             timesteps_total=timesteps_total)
         logger.on_result(result)
+        logger.flush()
         itr += 1
     logger.close()
     termination = [r.__ray_terminate__.remote() for r in optimizer.remote_evaluators]
