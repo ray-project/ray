@@ -63,7 +63,7 @@ def profile(event_type, extra_data=None, worker=None):
         # Log the event if this is a worker and not a driver, since the
         # driver's event log never gets flushed.
         if worker.mode == ray.WORKER_MODE:
-            return RayLogSpan(worker.profiler, event_type, contents=extra_data)
+            return RayLogSpanNonRaylet(worker.profiler, event_type, contents=extra_data)
         else:
             return NULL_LOG_SPAN
     else:
@@ -143,7 +143,7 @@ class Profiler(object):
             self.events.append(event)
 
 
-class RayLogSpan(object):
+class RayLogSpanNonRaylet(object):
     """An object used to enable logging a span of events with a with statement.
 
     Attributes:
@@ -152,7 +152,7 @@ class RayLogSpan(object):
     """
 
     def __init__(self, profiler, event_type, contents=None):
-        """Initialize a RayLogSpan object."""
+        """Initialize a RayLogSpanNonRaylet object."""
         self.profiler = profiler
         self.event_type = event_type
         self.contents = contents
@@ -213,7 +213,7 @@ class RayLogSpanRaylet(object):
     """
 
     def __init__(self, profiler, event_type, extra_data=None):
-        """Initialize a RayLogSpan object."""
+        """Initialize a RayLogSpanRaylet object."""
         self.profiler = profiler
         self.event_type = event_type
         self.extra_data = extra_data if extra_data is not None else {}
