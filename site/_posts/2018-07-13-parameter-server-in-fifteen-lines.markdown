@@ -13,9 +13,12 @@ parameter server in a few lines of code. This is powerful for two reasons:
 servers.
 2. The behavior of the parameter server is much more configurable and flexible.
 
-*[Ray][1] is a general-purpose framework for parallel and distributed Python.
-Ray also includes high-performance libraries targeting AI applications, for
-example [hyperparameter tuning][5] and [reinforcement learning][4].*
+**What is Ray?** [Ray][1] is a general-purpose framework for parallel and
+distributed Python. Ray provides a unified task-parallel and actor abstraction
+and achieves high performance through shared memory, zero-copy serialization,
+and distributed scheduling. Ray also includes high-performance libraries
+targeting AI applications, for example [hyperparameter tuning][5] and
+[reinforcement learning][4].
 
 ## What is a Parameter Server?
 
@@ -26,22 +29,23 @@ parameters.
 For example, in a movie **recommendation system**, there may be one key per user
 and one key per movie. For each user and movie, there are corresponding
 user-specific and movie-specific parameters. In a **language-modeling**
-application, there may be one key per word, and one vector of parameters per
-word. In its simplest form, a parameter server may implicitly have a single key,
-and allow all of the parameters to be retrieved and updated at once.
+application, there may be one key per word and one vector of parameters per
+word. In its simplest form (which we show below), a parameter server may
+implicitly have a single key and allow all of the parameters to be retrieved and
+updated at once.
 
 In its simplest form, a parameter server can be implemented as a Ray actor (15
 lines) as follows.
 
 ```python
 import numpy as np
+import ray
 
 
 @ray.remote
 class ParameterServer(object):
     def __init__(self, dim):
-        # Alternatively, params could be a dictionary mapping keys to numpy
-        # arrays.
+        # Alternatively, params could be a dictionary mapping keys to arrays.
         self.params = np.zeros(dim)
 
     def get_params(self):
@@ -52,13 +56,17 @@ class ParameterServer(object):
 ```
 
 Here we assume that the update is a gradient which should be added to the
-parameter vector. However, different choices could be made.
+parameter vector. This is just the simplest possible example, and many different
+choices could be made.
 
-**A parameter server typically exists as a remote process or service**, and
+**A parameter server typically exists as a remote process or service** and
 interacts with clients through remote procedure calls. To instantiate the
 parameter server as a remote actor, we can do the following.
 
 ```python
+# We need to start Ray first.
+ray.init()
+
 # Create a parameter server process.
 ps = ParameterServer.remote(10)
 ```
@@ -74,6 +82,12 @@ As a Ray remote function (though the worker could also be an actor), this looks
 like the following.
 
 ```python
+import time
+
+# Note that the worker function takes a handle to the parameter server as an
+# argument, which allows the worker task to invoke methods on the parameter
+# server actor.
+
 @ray.remote
 def worker(ps):
     for _ in range(100):
@@ -98,6 +112,16 @@ for _ in range(2):
     worker.remote(ps)
 ```
 
+Then we can retrieve the parameters from the driver process and see that they
+are being updated by the workers.
+
+```python
+>>> ray.get(ps.get_params.remote())
+array([64., 64., 64., 64., 64., 64., 64., 64., 64., 64.])
+>>> ray.get(ps.get_params.remote())
+array([78., 78., 78., 78., 78., 78., 78., 78., 78., 78.])
+```
+
 ## Additional Extensions
 
 Here we describe some important modifications to the above design. We describe
@@ -109,8 +133,9 @@ network bandwidth into and out of the machine that the parameter server is on
 (especially if there are many workers).
 
 A natural solution in this case is to shard the parameters across multiple
-parameter servers. An example of how to do this is shown in the code example at
-the bottom.
+parameter servers. This can be achieved by simply starting up multiple parameter
+server actors. An example of how to do this is shown in the code example at the
+bottom.
 
 **Controlling Actor Placement:** The placement of specific actors and tasks on different machines can be
 specified by using Ray's support for arbitrary [resource requirements][2].
@@ -119,6 +144,9 @@ declared with `@ray.remote(num_gpus=1)`. Arbitrary custom resources can be defin
 as well.
 
 ## Unifying Tasks and Actors
+
+Ray supports parameter server applications efficiently in large part due to its
+unified task-parallel and actor abstraction.
 
 Popular data processing systems such as [Apache Spark][12] allow stateless tasks
 (functions with no side effects) to operate on immutable data. This assumption
@@ -132,25 +160,25 @@ interaction with the physical world.
 
 To support these kinds of applications, Ray introduces an actor abstraction. An
 actor will execute methods serially (so there are no concurrency issues), and
-each method can arbitrarily mutate the actor's state. Methods can be invoked by
-other actors and tasks (even other applications on the same cluster).
+each method can arbitrarily mutate the actor's internal state. Methods can be
+invoked by other actors and tasks (and even by other applications on the same
+cluster).
 
 One thing that makes Ray so powerful is that it *unifies the actor abstraction
-with the task parallel abstraction*. Ray uses an underlying dynamic task graph
-abstraction to implement both actors and stateless tasks in the same framework.
-As a consequence, these two abstractions are completely interoperable. Tasks and
-actors can be created from within other tasks and actors. Both return futures,
-which can be passed into other tasks or actor methods to introduce scheduling
-and data dependencies. As a result, Ray applications inherit the best features
-of both abstractions.
-
+with the task-parallel abstraction* inheriting the benefits of both approaches.
+Ray uses an underlying dynamic task graph abstraction to implement both actors
+and stateless tasks in the same framework. As a consequence, these two
+abstractions are completely interoperable. Tasks and actors can be created from
+within other tasks and actors. Both return futures, which can be passed into
+other tasks or actor methods to introduce scheduling and data dependencies. As a
+result, Ray applications inherit the best features of both abstractions.
 
 ## Under the Hood
 
 **Dynamic Task Graphs:** Under the hood, remote function invocations and actor
 method invocations create tasks that are added to a dynamically growing graph of
 tasks. The Ray backend is in charge of scheduling and executing these tasks
-across a cluster (or a single multicore machine). Tasks can be created by the
+across a cluster (or a single multi-core machine). Tasks can be created by the
 "driver" application or by other tasks.
 
 **Data:** Ray efficiently serializes data using the [Apache Arrow][9] data
@@ -180,8 +208,9 @@ customizations, we can do each of these things with a few extra lines of code.
 
 ## Running this Code
 
-To run the code below, first install Ray with `pip install ray`. Then you should
-be able to run the code below, which implements a sharded parameter server.
+To run the complete application, first install Ray with `pip install ray`. Then
+you should be able to run the code below, which implements a sharded parameter
+server.
 
 ```python
 import numpy as np
@@ -195,8 +224,7 @@ ray.init()
 @ray.remote
 class ParameterServer(object):
     def __init__(self, dim):
-        # Alternatively, params could be a dictionary
-        # mapping keys to numpy arrays.
+        # Alternatively, params could be a dictionary mapping keys to arrays.
         self.params = np.zeros(dim)
 
     def get_params(self):
@@ -231,18 +259,26 @@ parameter_servers = [ParameterServer.remote(5) for _ in range(2)]
 
 # Start 2 workers.
 workers = [worker.remote(*parameter_servers) for _ in range(2)]
+
+# Inspect the parameters at regular intervals.
+for _ in range(5):
+    time.sleep(1)
+    print(ray.get([ps.get_params.remote() for ps in parameter_servers]))
 ```
+
+Note that this example focuses on simplicity and that more can be done to
+optimize this code.
 
 ## Read More
 
 For more information about Ray, take a look at the following links:
-1. [The Ray documentation][6]
-2. [The Ray API][7]
-3. [Fast **serialization** with Ray and Apache Arrow][9]
-4. [A paper describing the **Ray system**][11]
-5. [Efficient **hyperparameter tuning** with Ray][5]
-6. [Scalable **reinforcement learning** with Ray][4]
-7. [Speeding up **Pandas** with Ray][8]
+1. The Ray [documentation][6]
+2. The Ray [API][7]
+3. Fast [serialization][9] with Ray and Apache Arrow
+4. A [paper][11] describing the Ray system
+5. Efficient [hyperparameter][5] tuning with Ray
+6. Scalable [reinforcement][4] learning with Ray
+7. Speeding up [Pandas][8] with Ray
 
 Questions should be directed to *ray-dev@googlegroups.com*.
 
@@ -256,6 +292,6 @@ Questions should be directed to *ray-dev@googlegroups.com*.
 [7]: http://ray.readthedocs.io/en/latest/api.html
 [8]: https://github.com/modin-project/modin
 [9]: https://ray-project.github.io/2017/10/15/fast-python-serialization-with-ray-and-arrow.html
-[10]: https://ray-project.github.io/2017/08/07/plasma-in-memory-object-store.html
+[10]: https://ray-project.github.io/2017/08/08/plasma-in-memory-object-store.html
 [11]: https://arxiv.org/abs/1712.05889
 [12]: http://spark.apache.org
