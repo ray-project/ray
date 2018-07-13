@@ -118,6 +118,33 @@ For example, if the worker requires a GPU, then its remote decorator can be
 declared with `@ray.remote(num_gpus=1)`. Arbitrary custom resources can be defined
 as well.
 
+## Unifying Tasks and Actors
+
+Popular data processing systems such as [Apache Spark][12] allow stateless tasks
+(functions with no side effects) to operate on immutable data. This assumption
+simplifies the overall system design and makes it easier for applications to
+reason about correctness.
+
+However, mutable state that is shared between many tasks is a recurring theme in
+machine learning applications. That state could be the weights of a neural
+network, the state of a third-party simulator, or an encapsulation of an
+interaction with the physical world.
+
+To support these kinds of applications, Ray introduces an actor abstraction. An
+actor will execute methods serially (so there are no concurrency issues), and
+each method can arbitrarily mutate the actor's state. Methods can be invoked by
+other actors and tasks (even other applications on the same cluster).
+
+One thing that makes Ray so powerful is that it *unifies the actor abstraction
+with the task parallel abstraction*. Ray uses an underlying dynamic task graph
+abstraction to implement both actors and stateless tasks in the same framework.
+As a consequence, these two abstractions are completely interoperable. Tasks and
+actors can be created from within other tasks and actors. Both return futures,
+which can be passed into other tasks or actor methods to introduce scheduling
+and data dependencies. As a result, Ray applications inherit the best features
+of both abstractions.
+
+
 ## Under the Hood
 
 **Dynamic Task Graphs:** Under the hood, remote function invocations and actor
@@ -231,3 +258,4 @@ Questions should be directed to *ray-dev@googlegroups.com*.
 [9]: https://ray-project.github.io/2017/10/15/fast-python-serialization-with-ray-and-arrow.html
 [10]: https://ray-project.github.io/2017/08/07/plasma-in-memory-object-store.html
 [11]: https://arxiv.org/abs/1712.05889
+[12]: http://spark.apache.org
