@@ -20,7 +20,7 @@ class _NullLogSpan(object):
     def __enter__(self):
         pass
 
-    def __exit__(self):
+    def __exit__(self, type, value, tb):
         pass
 
 
