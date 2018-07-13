@@ -2006,11 +2006,6 @@ def connect(info,
     worker.set_mode(mode)
     worker.use_raylet = use_raylet
 
-    # The worker.events field is used to aggregate logging information and
-    # display it in the web UI. Note that Python lists protected by the GIL,
-    # which is important because we will append to this field from multiple
-    # threads.
-    worker.events = []
     # If running Ray in LOCAL_MODE, there is no need to create call
     # create_worker or to start the worker service.
     if mode == LOCAL_MODE:
