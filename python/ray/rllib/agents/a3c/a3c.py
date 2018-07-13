@@ -80,11 +80,11 @@ class A3CAgent(Agent):
 
     def _init(self):
         if self.config["use_pytorch"]:
-            from ray.rllib.agents.a3c.a3c_torch_policy import \
+            from ray.rllib.agents.a3c.a3c_torch_policy_graph import \
                 A3CTorchPolicyGraph
             policy_cls = A3CTorchPolicyGraph
         else:
-            from ray.rllib.agents.a3c.a3c_tf_policy import A3CPolicyGraph
+            from ray.rllib.agents.a3c.a3c_tf_policy_graph import A3CPolicyGraph
             policy_cls = A3CPolicyGraph
 
         self.local_evaluator = self.make_local_evaluator(

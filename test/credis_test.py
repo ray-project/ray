@@ -20,7 +20,7 @@ class CredisTest(unittest.TestCase):
         self.config = ray.init(num_workers=0)
 
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
 
     def test_credis_started(self):
         assert "redis_address" in self.config

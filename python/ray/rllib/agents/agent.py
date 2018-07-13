@@ -20,7 +20,7 @@ COMMON_CONFIG = {
     # Number of steps after which the rollout gets cut
     "horizon": None,
     # Number of environments to evaluate vectorwise per worker.
-    "num_envs": 1,
+    "num_envs_per_worker": 1,
     # Number of actors used for parallelism
     "num_workers": 2,
     # Default sample batch size
@@ -46,6 +46,7 @@ COMMON_CONFIG = {
         "gpu_options": {
             "allow_growth": True,
         },
+        "allow_soft_placement": True,  # required by PPO multi-gpu
     },
     # Whether to LZ4 compress observations
     "compress_observations": False,
@@ -145,7 +146,7 @@ class Agent(Trainable):
             preprocessor_pref=config["preprocessor_pref"],
             sample_async=config["sample_async"],
             compress_observations=config["compress_observations"],
-            num_envs=config["num_envs"],
+            num_envs=config["num_envs_per_worker"],
             observation_filter=config["observation_filter"],
             env_config=config["env_config"],
             model_config=config["model"],

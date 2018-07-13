@@ -40,11 +40,11 @@ else
   exit 1
 fi
 
-# The PR for this commit is https://github.com/apache/arrow/pull/2224. We
+# The PR for this commit is https://github.com/apache/arrow/pull/2235. We
 # include the link here to make it easier to find the right commit because
 # Arrow often rewrites git history and invalidates certain commits.
-TARGET_COMMIT_ID=010c87402071d715e6fd0c3d22a0b13820b9aed5
-build_arrow_func() {
+TARGET_COMMIT_ID=fa08ddfbe8ada173b2c621172e176f159ce3b728
+build_arrow() {
   echo "building arrow"
 
   # Make sure arrow will be built again when building ray for java later than python
@@ -151,7 +151,7 @@ build_arrow_func() {
 # Download and compile arrow if it isn't already present or the commit-id mismatches.
 if [[ ! -d $TP_DIR/../python/ray/pyarrow_files/pyarrow ]] || \
     [[ "$LANGUAGE" == "java" && ! -f $TP_DIR/build/arrow/cpp/build/release/libplasma_java.dylib ]]; then
-  build_arrow_func
+  build_arrow
 else
   pushd $TP_DIR/build/arrow
   if [[ "$TARGET_COMMIT_ID" != `git rev-parse HEAD` ]]; then
@@ -161,5 +161,5 @@ else
     git checkout $TARGET_COMMIT_ID
   fi
   popd
-  build_arrow_func
+  build_arrow
 fi
