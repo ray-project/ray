@@ -17,9 +17,8 @@ class SyncSamplesOptimizer(PolicyOptimizer):
     model weights are then broadcast to all remote evaluators.
     """
 
-    def _init(self, standardize=True):
+    def _init(self):
         self.update_weights_timer = TimerStat()
-        self.standardize = standardize
         self.sample_timer = TimerStat()
         self.grad_timer = TimerStat()
         self.throughput = RunningStat()
@@ -38,10 +37,6 @@ class SyncSamplesOptimizer(PolicyOptimizer):
                         [e.sample.remote() for e in self.remote_evaluators]))
             else:
                 samples = self.local_evaluator.sample()
-            if self.standardize:
-                value = samples["advantages"]
-                standardized = (value - value.mean()) / max(1e-4, value.std())
-                samples.data["advantages"] = standardized
 
         with self.grad_timer:
             self.local_evaluator.compute_apply(samples)
