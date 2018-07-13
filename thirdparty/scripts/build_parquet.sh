@@ -12,7 +12,7 @@ OPENSSL_DIR=/usr/local/opt/openssl
 BISON_DIR=/usr/local/opt/bison/bin
 TARGET_COMMIT_ID=0875e43010af485e1c0b506d77d7e0edc80c66cc
 
-build_parquet_func() {
+build_parquet() {
   echo "Building Parquet"
   if [ "$unamestr" == "Darwin" ]; then
     OPENSSL_ROOT_DIR=$OPENSSL_DIR \
@@ -56,7 +56,7 @@ if [ ! -d $TP_DIR/build/parquet-cpp ]; then
   git fetch origin master
   git checkout $TARGET_COMMIT_ID
 
-  build_parquet_func
+  build_parquet
   popd
 else
   pushd $TP_DIR/build/parquet-cpp
@@ -67,6 +67,6 @@ else
     git checkout $TARGET_COMMIT_ID
   fi
 
-  build_parquet_func
+  build_parquet
   popd
 fi
