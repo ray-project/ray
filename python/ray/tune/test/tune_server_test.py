@@ -51,7 +51,7 @@ class TuneServerSuite(unittest.TestCase):
             self.runner = None
         except Exception as e:
             print(e)
-        ray.worker.cleanup()
+        ray.shutdown()
         _register_all()
 
     def testAddTrial(self):

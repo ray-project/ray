@@ -147,7 +147,7 @@ def cli():
     "--use-raylet",
     is_flag=True,
     default=None,
-    help="use the raylet code path, this is not supported yet")
+    help="use the raylet code path")
 def start(node_ip_address, redis_address, redis_port, num_redis_shards,
           redis_max_clients, redis_shard_ports, object_manager_port,
           object_store_memory, num_workers, num_cpus, num_gpus, resources,
