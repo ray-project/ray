@@ -277,7 +277,7 @@ For more information about Ray, take a look at the following links:
 3. Fast [serialization][9] with Ray and Apache Arrow
 4. A [paper][11] describing the Ray system
 5. Efficient [hyperparameter][5] tuning with Ray
-6. Scalable [reinforcement][4] learning with Ray
+6. Scalable [reinforcement][4] learning with Ray and [the RLlib paper][13]
 7. Speeding up [Pandas][8] with Ray
 
 Questions should be directed to *ray-dev@googlegroups.com*.
@@ -295,3 +295,4 @@ Questions should be directed to *ray-dev@googlegroups.com*.
 [10]: https://ray-project.github.io/2017/08/08/plasma-in-memory-object-store.html
 [11]: https://arxiv.org/abs/1712.05889
 [12]: http://spark.apache.org
+[13]: https://arxiv.org/abs/1712.09381
