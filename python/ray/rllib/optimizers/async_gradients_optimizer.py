@@ -14,12 +14,11 @@ class AsyncGradientsOptimizer(PolicyOptimizer):
     evaluators, sending updated weights back as needed. This pipelines the
     gradient computations on the remote workers.
     """
-    def _init(self, grads_per_step=100, batch_size=10):
+    def _init(self, grads_per_step=100):
         self.apply_timer = TimerStat()
         self.wait_timer = TimerStat()
         self.dispatch_timer = TimerStat()
         self.grads_per_step = grads_per_step
-        self.batch_size = batch_size
         if not self.remote_evaluators:
             raise ValueError(
                 "Async optimizer requires at least 1 remote evaluator")
@@ -40,11 +39,13 @@ class AsyncGradientsOptimizer(PolicyOptimizer):
         while gradient_queue:
             with self.wait_timer:
                 fut, e = gradient_queue.pop(0)
-                gradient, _ = ray.get(fut)
+                gradient, info = ray.get(fut)
 
             if gradient is not None:
                 with self.apply_timer:
                     self.local_evaluator.apply_gradients(gradient)
+                self.num_steps_sampled += info["batch_count"]
+                self.num_steps_trained += info["batch_count"]
 
             if num_gradients < self.grads_per_step:
                 with self.dispatch_timer:
@@ -52,9 +53,6 @@ class AsyncGradientsOptimizer(PolicyOptimizer):
                     fut = e.compute_gradients.remote(e.sample.remote())
                     gradient_queue.append((fut, e))
                     num_gradients += 1
-
-        self.num_steps_sampled += self.grads_per_step * self.batch_size
-        self.num_steps_trained += self.grads_per_step * self.batch_size
 
     def stats(self):
         return dict(PolicyOptimizer.stats(self), **{
