@@ -76,6 +76,19 @@ ray.init()
 ps = ParameterServer.remote(10)
 ```
 
+**Actor method invocations return futures.** If we want to retrieve the actual
+values, we can use a blocking `ray.get` call. For example,
+
+```python
+>>> params_id = ps.get_params.remote()  # This returns a future.
+
+>>> params_id
+ObjectID(7268cb8d345ef26632430df6f18cc9690eb6b300)
+
+>>> ray.get(params_id)  # This blocks until the task finishes.
+array([0., 0., 0., 0., 0., 0., 0., 0., 0., 0.])
+```
+
 Now, suppose we want to start some worker tasks that continuously compute
 gradients and update the model parameters. Each worker will run in a loop that
 does three things:
@@ -97,7 +110,10 @@ import time
 def worker(ps):
     for _ in range(100):
         # Get the latest parameters.
-        params = ray.get(ps.get_params.remote())
+        params_id = ps.get_params.remote()  # This method call is non-blocking
+                                            # and returns a future.
+        params = ray.get(params_id)  # This is a blocking call which waits for
+                                     # the task to finish and gets the results.
 
         # Compute a gradient update. Here we just make a fake update, but in
         # practice this would use a library like TensorFlow and would also take
@@ -131,7 +147,7 @@ Part of the value that Ray adds here is that *Ray makes it as easy to start up a
 remote service or actor as it is to define a Python class*. Handles to the actor
 can be passed around to other actors and tasks to allow arbitrary and intuitive
 messaging and communication patterns. Current alternatives are much more
-involved. For example, [consider how the equivalent service creation and runtime
+involved. For example, [consider how the equivalent runtime service creation and
 service handle passing would be done with GRPC][14].
 
 ## Additional Extensions
