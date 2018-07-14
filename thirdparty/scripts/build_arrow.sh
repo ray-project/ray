@@ -71,10 +71,6 @@ build_arrow() {
 
   git checkout $TARGET_COMMIT_ID
 
-  # The following 2 lines should be removed at the same time.
-  git checkout cpp/src/arrow/memory_pool.cc
-  git apply $TP_DIR/scripts/arrow-zero-fill.patch
-
   cd cpp
   if [ ! -d "build" ]; then
     mkdir build
