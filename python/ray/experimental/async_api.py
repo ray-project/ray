@@ -53,7 +53,7 @@ async def get(object_ids, worker=global_worker):
 
     Args:
         object_ids: Object ID of the object to get or a list of object IDs to
-            get.
+            get. Futures & coroutines containing IDs is also acceptable.
 
     Returns:
         A Python object or a list of Python objects.
@@ -83,7 +83,8 @@ async def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
     list.
 
     Args:
-        object_ids (List[ObjectID]): List of object IDs for objects that may or
+        object_ids (List[ObjectID]): List of object IDs
+            (also futures & coroutines contain an ID) for objects that may or
             may not be ready. Note that these IDs must be unique.
         num_returns (int): The number of object IDs that should be returned.
         timeout (int): The maximum amount of time in milliseconds to wait
@@ -91,7 +92,10 @@ async def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
 
     Returns:
         A list of object IDs that are ready and a list of the remaining object
-            IDs.
+            IDs. Because `ray.experimental.async_api.wait` supports
+            futures and coroutines as its input,
+            it could happen that a passing in future/coroutine fails to return
+            an ObjectID before timeout. In this case, we will return `None`.
     """
 
     if isinstance(object_ids, ray.ObjectID):
