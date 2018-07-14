@@ -12,12 +12,14 @@ that process data and compute updates to the parameters).
 
 Parameter servers (like databases) are normally built and shipped as standalone
 systems. This post describes how to use [Ray][1] to implement a parameter server
-in a few lines of code. This approach is powerful for two reasons:
+in a few lines of code.
 
-1. This approach makes it orders of magnitude simpler to deploy applications
-that use parameter servers.
-2. This approach makes the behavior of the parameter server much more
-configurable and flexible.
+By turning the parameter server from a "system" into "application code", this
+approach makes it orders of magnitude simpler to deploy applications that use
+parameter servers. Similarly, by allowing applications or libraries to implement
+the parameter server, this approach makes the behavior of the parameter server
+much more configurable and flexible (since the application can simply modify the
+implementation with a few lines of Python).
 
 **What is Ray?** [Ray][1] is a general-purpose framework for parallel and
 distributed Python. Ray provides a unified task-parallel and actor abstraction
@@ -127,9 +129,10 @@ array([78., 78., 78., 78., 78., 78., 78., 78., 78., 78.])
 
 Part of the value that Ray adds here is that *Ray makes it as easy to start up a
 remote service or actor as it is to define a Python class*. Handles to the actor
-can be passed around to other actors and tasks to allow arbitrary messaging and
-communication patterns. Current alternatives are much more involved. For
-example, [consider how this would be done with GRPC][14].
+can be passed around to other actors and tasks to allow arbitrary and intuitive
+messaging and communication patterns. Current alternatives are much more
+involved. For example, [consider how the equivalent service creation and runtime
+service handle passing would be done with GRPC][14].
 
 ## Additional Extensions
 
