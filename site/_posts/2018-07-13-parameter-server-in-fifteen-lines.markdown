@@ -5,9 +5,14 @@ excerpt: "This post describes how to implement a parameter server in Ray."
 date: 2018-07-13 14:00:00
 ---
 
-A parameter server (like a database) is normally built and shipped as a
-standalone system. This post describes how to use [Ray][1] to implement a
-parameter server in a few lines of code. This is powerful for two reasons:
+Parameter servers are a core part of many machine learning applications. Their
+role is to store the *parameters* of a machine learning model (e.g., the weights
+of a neural network) and to *serve* them to clients (clients are often workers
+that process data and compute updates to the parameters).
+
+Parameter servers (like databases) are normally built and shipped as standalone
+systems. This post describes how to use [Ray][1] to implement a parameter server
+in a few lines of code. This is powerful for two reasons:
 
 1. It is orders of magnitude simpler to deploy applications that use parameter
 servers.
