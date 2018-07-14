@@ -37,6 +37,14 @@ class PlasmaObjectFuture(asyncio.Future):
         self.ref_count = 0
         self.object_id = object_id
 
+    @classmethod
+    def create_nil(cls, loop):
+        return cls(loop=loop, object_id=ray.ObjectID(b'\0' * 20))
+
+    @property
+    def is_nil(self):
+        return self.object_id.id() == b'\0' * 20
+
     def inc_refcount(self):
         self.ref_count += 1
 
@@ -441,7 +449,7 @@ class PlasmaSelectorEventLoop(asyncio.BaseEventLoop):
         """
 
         future = asyncio.ensure_future(future, loop=self)
-        fut = PlasmaObjectFuture(loop=self, object_id=ray.ObjectID(b'\0' * 20))
+        fut = PlasmaObjectFuture.create_nil(self)
         if self.get_debug():
             logger.info("Processing indirect future %s", future)
 
@@ -510,7 +518,10 @@ class PlasmaSelectorEventLoop(asyncio.BaseEventLoop):
 
     def _release(self, *fut):
         for f in fut:
-            if isinstance(f, PlasmaObjectFuture):
+            if isinstance(f, PlasmaObjectFuture) and not f.is_nil:
+                if f.ref_count <= 0:
+                    logger.warning("%s has actually done. No more release", f)
+                    return
                 f.dec_refcount()
                 if f.cancelled():
                     self._selector.unregister(f)
@@ -529,6 +540,18 @@ class PlasmaSelectorEventLoop(asyncio.BaseEventLoop):
                    num_returns=1,
                    timeout=None,
                    return_exact_num=True):
+        """This method corresponds to `ray.wait`.
+
+        Args:
+            object_ids:  A single object_id, future, coroutine or list of them.
+            timeout (float): The timeout in seconds (`ray.wait` use milliseconds).
+            num_returns (int): The minimal number of ready object returns.
+            return_exact_num: If true, return no more than the amount of
+
+        Returns:
+            Tuple[List, List]: Ready futures & unready ones.
+        """
+
         futures = [self._register_id(oid) for oid in object_ids]
         _done, _pending = await wait(
             *futures, timeout=timeout, num_returns=num_returns, loop=self)
@@ -536,8 +559,7 @@ class PlasmaSelectorEventLoop(asyncio.BaseEventLoop):
         self._release(*_pending)
         done = [fut.object_id for fut in _done]
         pending = [
-            fut.object_id if isinstance(fut, PlasmaObjectFuture) else None for
-            fut in _pending]
+            fut.object_id if not fut.is_nil else None for fut in _pending]
 
         if return_exact_num and len(done) > num_returns:
             done, pending = done[:num_returns], done[num_returns:] + pending
