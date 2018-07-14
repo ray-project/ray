@@ -38,6 +38,21 @@ def gen_tasks(time_scale=0.1):
 
 
 @pytest.fixture
+def delayed_gen_tasks(delay=5, time_scale=0.1):
+    async def _gen(n):
+        await asyncio.sleep(delay, loop=async_api.eventloop)
+
+        @ray.remote
+        def f(n):
+            time.sleep(n * time_scale)
+            return n
+
+        return f.remote(n)
+
+    return [_gen(i) for i in range(5)]
+
+
+@pytest.fixture
 def run_api():
     # get
     tasks = gen_tasks()
@@ -56,6 +71,13 @@ def run_api():
     fut = async_api.wait(tasks, timeout=5, num_returns=len(tasks))
     results, _ = async_api.run_until_complete(fut)
     assert results[0] == tasks[0]
+
+    # wait_timeout_complex
+    tasks = delayed_gen_tasks(100, 5)
+    fut = async_api.wait(tasks, timeout=5, num_returns=len(tasks))
+    results, pendings = async_api.run_until_complete(fut)
+    print(results, pendings)
+    assert pendings == [None] * 5  # pytest allows list compare
 
     # get from coroutine/future
     async def get_obj():
