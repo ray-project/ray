@@ -120,7 +120,9 @@ async def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
     if num_returns > len(object_ids):
         raise Exception("num_returns cannot be greater than the number "
                         "of objects provided to ray.wait.")
-    timeout = timeout if timeout is not None else 2**30
+
+    # Convert milliseconds into seconds.
+    timeout = timeout / 1000 if timeout is not None else 2**30
 
     return await eventloop.wait(
         object_ids, num_returns=num_returns, timeout=timeout)
