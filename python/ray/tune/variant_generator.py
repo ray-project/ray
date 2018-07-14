@@ -18,6 +18,8 @@ from ray.tune.config_parser import make_parser, json_to_resources
 def to_argv(config):
     argv = []
     for k, v in config.items():
+        if "-" in k:
+            raise ValueError("Use '_' instead of '-' in `{}`".format(k))
         argv.append("--{}".format(k.replace("_", "-")))
         if isinstance(v, str):
             argv.append(v)
