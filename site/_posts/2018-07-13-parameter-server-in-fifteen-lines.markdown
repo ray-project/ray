@@ -12,11 +12,12 @@ that process data and compute updates to the parameters).
 
 Parameter servers (like databases) are normally built and shipped as standalone
 systems. This post describes how to use [Ray][1] to implement a parameter server
-in a few lines of code. This is powerful for two reasons:
+in a few lines of code. This approach is powerful for two reasons:
 
-1. It is orders of magnitude simpler to deploy applications that use parameter
-servers.
-2. The behavior of the parameter server is much more configurable and flexible.
+1. This approach makes it orders of magnitude simpler to deploy applications
+that use parameter servers.
+2. This approach makes the behavior of the parameter server much more
+configurable and flexible.
 
 **What is Ray?** [Ray][1] is a general-purpose framework for parallel and
 distributed Python. Ray provides a unified task-parallel and actor abstraction
@@ -27,20 +28,17 @@ targeting AI applications, for example [hyperparameter tuning][5] and
 
 ## What is a Parameter Server?
 
-A parameter server is a key-value store. The **values** are the parameters of a
-machine-learning model (e.g., a neural network). The **keys** index the model
-parameters.
+A parameter server is a key-value store used for training machine learning
+models on a cluster. The **values** are the parameters of a machine-learning
+model (e.g., a neural network). The **keys** index the model parameters.
 
 For example, in a movie **recommendation system**, there may be one key per user
 and one key per movie. For each user and movie, there are corresponding
 user-specific and movie-specific parameters. In a **language-modeling**
-application, there may be one key per word and one vector of parameters per
-word. In its simplest form (which we show below), a parameter server may
-implicitly have a single key and allow all of the parameters to be retrieved and
-updated at once.
-
-In its simplest form, a parameter server can be implemented as a Ray actor (15
-lines) as follows.
+application, words may act as keys and their embeddings may be the values. In
+its simplest form, a parameter server may implicitly have a single key and allow
+all of the parameters to be retrieved and updated at once. We show how such a
+parameter server can be implemented as a Ray actor (15 lines) below.
 
 ```python
 import numpy as np
@@ -60,7 +58,7 @@ class ParameterServer(object):
         self.params += grad
 ```
 
-Here we assume that the update is a gradient which should be added to the
+Here, we assume that the update is a gradient which should be added to the
 parameter vector. This is just the simplest possible example, and many different
 choices could be made.
 
@@ -103,7 +101,7 @@ def worker(ps):
         # practice this would use a library like TensorFlow and would also take
         # in a batch of data.
         grad = np.ones(10)
-        time.sleep(0.2)
+        time.sleep(0.2)  # This is a fake placeholder for some computation.
 
         # Update the parameters.
         ps.update_params.remote(grad)
@@ -127,26 +125,32 @@ array([64., 64., 64., 64., 64., 64., 64., 64., 64., 64.])
 array([78., 78., 78., 78., 78., 78., 78., 78., 78., 78.])
 ```
 
+Part of the value that Ray adds here is that *Ray makes it as easy to start up a
+remote service or actor as it is to define a Python class*. Handles to the actor
+can be passed around to other actors and tasks to allow arbitrary messaging and
+communication patterns. Current alternatives are much more involved. For
+example, [consider how this would be done with GRPC][14].
+
 ## Additional Extensions
 
 Here we describe some important modifications to the above design. We describe
-additional natural extensions for dealing with stragglers in [this paper][3].
+additional natural extensions in [this paper][3].
 
-**Sharding Across Multiple Parameter Servers:** When your parameters are large and your cluster is large, a single parameter
-server may not suffice because the application could be bottlenecked by the
-network bandwidth into and out of the machine that the parameter server is on
-(especially if there are many workers).
+**Sharding Across Multiple Parameter Servers:** When your parameters are large
+and your cluster is large, a single parameter server may not suffice because the
+application could be bottlenecked by the network bandwidth into and out of the
+machine that the parameter server is on (especially if there are many workers).
 
 A natural solution in this case is to shard the parameters across multiple
 parameter servers. This can be achieved by simply starting up multiple parameter
 server actors. An example of how to do this is shown in the code example at the
 bottom.
 
-**Controlling Actor Placement:** The placement of specific actors and tasks on different machines can be
-specified by using Ray's support for arbitrary [resource requirements][2].
-For example, if the worker requires a GPU, then its remote decorator can be
-declared with `@ray.remote(num_gpus=1)`. Arbitrary custom resources can be defined
-as well.
+**Controlling Actor Placement:** The placement of specific actors and tasks on
+different machines can be specified by using Ray's support for arbitrary
+[resource requirements][2]. For example, if the worker requires a GPU, then its
+remote decorator can be declared with `@ray.remote(num_gpus=1)`. Arbitrary
+custom resources can be defined as well.
 
 ## Unifying Tasks and Actors
 
@@ -171,12 +175,12 @@ cluster).
 
 One thing that makes Ray so powerful is that it *unifies the actor abstraction
 with the task-parallel abstraction* inheriting the benefits of both approaches.
-Ray uses an underlying dynamic task graph abstraction to implement both actors
-and stateless tasks in the same framework. As a consequence, these two
-abstractions are completely interoperable. Tasks and actors can be created from
-within other tasks and actors. Both return futures, which can be passed into
-other tasks or actor methods to introduce scheduling and data dependencies. As a
-result, Ray applications inherit the best features of both abstractions.
+Ray uses an underlying dynamic task graph to implement both actors and stateless
+tasks in the same framework. As a consequence, these two abstractions are
+completely interoperable. Tasks and actors can be created from within other
+tasks and actors. Both return futures, which can be passed into other tasks or
+actor methods to introduce scheduling and data dependencies. As a result, Ray
+applications inherit the best features of both tasks and actors.
 
 ## Under the Hood
 
@@ -210,6 +214,11 @@ modify the behavior of the parameter server.* For example, if we want to shard
 the parameter server, change the update rule, switch between asynchronous and
 synchronous updates, ignore straggler workers, or any number of other
 customizations, we can do each of these things with a few extra lines of code.
+
+This post describes how to use Ray actors to implement a parameter server.
+However, actors are a much more general concept and can be useful for many
+applications that involve stateful computation. Examples include logging,
+streaming, simulation, model serving, graph processing, and many others.
 
 ## Running this Code
 
@@ -251,7 +260,7 @@ def worker(*parameter_servers):
         # update, but in practice this would use a library like
         # TensorFlow and would also take in a batch of data.
         grad = np.ones(10)
-        time.sleep(0.2)
+        time.sleep(0.2)  # This is a fake placeholder for some computation.
         grad_shards = np.split(grad, len(parameter_servers))
 
         # Send the gradient updates to the parameter servers.
@@ -301,3 +310,4 @@ Questions should be directed to *ray-dev@googlegroups.com*.
 [11]: https://arxiv.org/abs/1712.05889
 [12]: http://spark.apache.org
 [13]: https://arxiv.org/abs/1712.09381
+[14]: https://grpc.io/docs/tutorials/basic/python.html#defining-the-service
