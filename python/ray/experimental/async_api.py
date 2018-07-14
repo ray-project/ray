@@ -4,11 +4,12 @@ from __future__ import print_function
 
 import ray
 from ray.experimental.plasma_eventloop import (PlasmaEpoll, PlasmaPoll,
-                                               PlasmaSelectorEventLoop)
+                                               PlasmaSelectorEventLoop,
+                                               PlasmaFutureGroup,
+                                               RayAsyncParamsType)
 
 global_worker = ray.worker.global_worker
-
-eventloop = None
+eventloop: PlasmaSelectorEventLoop = None
 
 
 def cleanup():
@@ -42,7 +43,18 @@ def run_until_complete(future):
     return eventloop.run_until_complete(future)
 
 
-async def get(object_ids, worker=global_worker):
+def create_group(return_exceptions=False,
+                 keep_duplicated=True,
+                 worker=global_worker) -> PlasmaFutureGroup:
+    worker.check_connected()
+    if eventloop is None:
+        _init_eventloop()
+    return PlasmaFutureGroup(
+        eventloop, return_exceptions=return_exceptions,
+        keep_duplicated=keep_duplicated)
+
+
+async def get(object_ids: RayAsyncParamsType, worker=global_worker):
     """Get a remote object or a list of remote objects from the object store.
 
     This method blocks until the object corresponding to the object ID is
@@ -52,8 +64,9 @@ async def get(object_ids, worker=global_worker):
     corresponding to each object in the list will be returned.
 
     Args:
-        object_ids: Object ID of the object to get or a list of object IDs to
-            get. Futures & coroutines containing IDs is also acceptable.
+        object_ids (RayAsyncParamsType): Object ID of the object to get
+        or a list of object IDs to get.
+        Futures & coroutines containing IDs is also acceptable.
 
     Returns:
         A Python object or a list of Python objects.
@@ -65,7 +78,10 @@ async def get(object_ids, worker=global_worker):
     return await eventloop.get(object_ids)
 
 
-async def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
+async def wait(object_ids: RayAsyncParamsType,
+               num_returns=1,
+               timeout=None,
+               worker=global_worker):
     """Return a list of IDs that are ready and a list of IDs that are not.
 
     If timeout is set, the function returns either when the requested number of
@@ -83,7 +99,7 @@ async def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
     list.
 
     Args:
-        object_ids (List[ObjectID]): List of object IDs
+        object_ids (RayAsyncParamsType): List of object IDs
             (also futures & coroutines contain an ID) for objects that may or
             may not be ready. Note that these IDs must be unique.
         num_returns (int): The number of object IDs that should be returned.

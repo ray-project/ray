@@ -2,12 +2,16 @@ import asyncio
 import functools
 import selectors
 import time
+from typing import Union, List, Awaitable, Callable
 
 import pyarrow
 import pyarrow.plasma as plasma
 
 import ray
 from ray.services import logger
+
+RayAsyncType = Union[ray.ObjectID, Awaitable]
+RayAsyncParamsType = Union[RayAsyncType, List[RayAsyncType]]
 
 
 def _release_waiter(waiter, *args):
@@ -32,17 +36,17 @@ class PlasmaObjectFuture(asyncio.Future):
 
     """
 
-    def __init__(self, loop, object_id):
+    def __init__(self, loop: 'PlasmaSelectorEventLoop', object_id):
         super().__init__(loop=loop)
         self.ref_count = 0
         self.object_id = object_id
 
     @classmethod
-    def create_nil(cls, loop):
+    def create_nil(cls, loop: 'PlasmaSelectorEventLoop'):
         return cls(loop=loop, object_id=ray.ObjectID(b'\0' * 20))
 
     @property
-    def is_nil(self):
+    def is_nil(self) -> bool:
         return self.object_id.id() == b'\0' * 20
 
     def inc_refcount(self):
@@ -154,11 +158,11 @@ class PlasmaFutureGroup(asyncio.Future):
 
         return self.halt_on_all_finished()
 
-    def set_halt_condition(self, cond):
+    def set_halt_condition(self, cond: Callable[['PlasmaFutureGroup'], bool]):
         """This function sets the halting condition.
 
         Args:
-            cond (callable): Halting condition.
+            cond (Callable): Halting condition.
         """
 
         self._halt_on = cond
@@ -177,7 +181,7 @@ class PlasmaFutureGroup(asyncio.Future):
 
         return results
 
-    def _done_callback(self, fut):
+    def _done_callback(self, fut: asyncio.Future):
         if self.done():
             if not fut.cancelled():
                 # Mark exception retrieved.
@@ -215,7 +219,7 @@ class PlasmaFutureGroup(asyncio.Future):
                 pending.append(f)
         return done, pending
 
-    async def wait(self, timeout=None):
+    async def wait(self, timeout: float = None):
         if not self._children:
             return [], []
 
@@ -267,8 +271,8 @@ def gather(*coroutines_or_futures, loop=None, return_exceptions=False):
 
 
 async def wait(*coroutines_or_futures,
-               timeout,
-               num_returns,
+               timeout: float,
+               num_returns: int,
                loop=None,
                return_exceptions=False):
     """This method resembles `asyncio.wait`.
@@ -412,7 +416,7 @@ class PlasmaEpoll(PlasmaSelector):
 class PlasmaSelectorEventLoop(asyncio.BaseEventLoop):
     """This class is an eventloop for Plasma which makes it async."""
 
-    def __init__(self, selector, worker):
+    def __init__(self, selector: PlasmaSelector, worker):
         super().__init__()
         assert isinstance(selector, PlasmaSelector)
         self._selector = selector
@@ -448,12 +452,12 @@ class PlasmaSelectorEventLoop(asyncio.BaseEventLoop):
             PlasmaObjectFuture: A future object that waits the object_id.
         """
 
-        future = asyncio.ensure_future(future, loop=self)
+        future: asyncio.Future = asyncio.ensure_future(future, loop=self)
         fut = PlasmaObjectFuture.create_nil(self)
         if self.get_debug():
             logger.info("Processing indirect future %s", future)
 
-        def callback(_future):
+        def callback(_future: asyncio.Future):
             object_id = _future.result()
             assert isinstance(object_id, ray.ObjectID)
             if self.get_debug():
@@ -461,7 +465,7 @@ class PlasmaSelectorEventLoop(asyncio.BaseEventLoop):
             reg_future = self._register_id(object_id)
             fut.object_id = object_id  # here we get the waiting id
 
-            def reg_callback(_fut):
+            def reg_callback(_fut: asyncio.Future):
                 result = _fut.result()
                 fut.set_result(result)
 
@@ -470,7 +474,7 @@ class PlasmaSelectorEventLoop(asyncio.BaseEventLoop):
         future.add_done_callback(callback)
         return fut
 
-    def _register_id(self, object_id):
+    def _register_id(self, object_id: RayAsyncType):
         """Turn an object_id into a Future object.
 
         Args:
@@ -526,7 +530,7 @@ class PlasmaSelectorEventLoop(asyncio.BaseEventLoop):
                 if f.cancelled():
                     self._selector.unregister(f)
 
-    async def get(self, object_ids):
+    async def get(self, object_ids: RayAsyncParamsType):
         if not isinstance(object_ids, list):
             ready_ids = await self._register_id(object_ids)
         else:
@@ -536,14 +540,15 @@ class PlasmaSelectorEventLoop(asyncio.BaseEventLoop):
         return ray.get(ready_ids, worker=self._worker)
 
     async def wait(self,
-                   object_ids,
+                   object_ids: RayAsyncParamsType,
                    num_returns=1,
                    timeout=None,
                    return_exact_num=True):
         """This method corresponds to `ray.wait`.
 
         Args:
-            object_ids:  A single object_id, future, coroutine or list of them.
+            object_ids (RayAsyncParamsType):
+                A single object_id, future, coroutine or list of them.
             timeout (float): The timeout in seconds (`ray.wait` use milliseconds).
             num_returns (int): The minimal number of ready object returns.
             return_exact_num: If true, return no more than the amount of
