@@ -13,8 +13,7 @@ def easy_objective(config, reporter):
     assert type(config["activation"]) == str
     reporter(
         timesteps_total=1,
-        mean_loss=(
-            (config["height"] - 14)**2 + abs(config["width"] - 3)))
+        mean_loss=((config["height"] - 14)**2 + abs(config["width"] - 3)))
     time.sleep(0.2)
 
 
