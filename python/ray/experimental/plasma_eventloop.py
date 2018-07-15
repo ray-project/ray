@@ -561,7 +561,8 @@ class PlasmaSelectorEventLoop(asyncio.BaseEventLoop):
         Args:
             object_ids (RayAsyncParamsType):
                 A single object_id, future, coroutine or list of them.
-            timeout (float): The timeout in seconds (`ray.wait` use milliseconds).
+            timeout (float):
+                The timeout in seconds (`ray.wait` use milliseconds).
             num_returns (int): The minimal number of ready object returns.
             return_exact_num: If true, return no more than the amount of
 
@@ -576,7 +577,8 @@ class PlasmaSelectorEventLoop(asyncio.BaseEventLoop):
         self._release(*_pending)
         done = [fut.object_id for fut in _done]
         pending = [
-            fut.object_id if not fut.is_nil else None for fut in _pending]
+            fut.object_id if not fut.is_nil else None for fut in _pending
+        ]
 
         if return_exact_num and len(done) > num_returns:
             done, pending = done[:num_returns], done[num_returns:] + pending

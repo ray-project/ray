@@ -3,10 +3,9 @@ from __future__ import division
 from __future__ import print_function
 
 import ray
-from ray.experimental.plasma_eventloop import (PlasmaEpoll, PlasmaPoll,
-                                               PlasmaSelectorEventLoop,
-                                               PlasmaFutureGroup,
-                                               RayAsyncParamsType)
+from ray.experimental.plasma_eventloop import (
+    PlasmaEpoll, PlasmaPoll, PlasmaSelectorEventLoop, PlasmaFutureGroup,
+    RayAsyncParamsType)
 
 global_worker = ray.worker.global_worker
 eventloop: PlasmaSelectorEventLoop = None
@@ -62,7 +61,8 @@ def create_group(return_exceptions=False,
     if eventloop is None:
         _init_eventloop()
     return PlasmaFutureGroup(
-        eventloop, return_exceptions=return_exceptions,
+        eventloop,
+        return_exceptions=return_exceptions,
         keep_duplicated=keep_duplicated)
 
 
