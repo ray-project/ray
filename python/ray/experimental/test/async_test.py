@@ -23,7 +23,7 @@ HashFlowNode = namedtuple('HashFlowNode', ['parents', 'delay', 'result'])
 def init():
     ray.init()
     yield
-    ray.worker.cleanup()
+    ray.shutdown()
 
 
 @pytest.fixture
