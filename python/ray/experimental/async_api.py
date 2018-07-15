@@ -46,6 +46,18 @@ def run_until_complete(future):
 def create_group(return_exceptions=False,
                  keep_duplicated=True,
                  worker=global_worker) -> PlasmaFutureGroup:
+    """This function creates an instance of `PlasmaFutureGroup`.
+
+    Args:
+        return_exceptions(bool): If true, return exceptions as results
+            instead of raising them.
+        keep_duplicated(bool): If true, an future can be added multiple times.
+        worker: Ray's worker.
+
+    Returns:
+        A PlasmaFutureGroup
+    """
+
     worker.check_connected()
     if eventloop is None:
         _init_eventloop()
