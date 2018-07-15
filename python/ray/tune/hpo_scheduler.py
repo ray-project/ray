@@ -32,8 +32,8 @@ class HyperOptScheduler(FIFOScheduler):
             are available.
         reward_attr (str): The TrainingResult objective value attribute.
             This refers to an increasing value, which is internally negated
-            when interacting with HyperOpt. Suggestion procedures
-            will use this attribute.
+            when interacting with HyperOpt so that HyperOpt can "maximize"
+            this value.
 
     Examples:
         >>> space = {'param': hp.uniform('param', 0, 20)}

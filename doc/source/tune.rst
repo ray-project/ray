@@ -160,6 +160,11 @@ In order to use this scheduler, you will need to install HyperOpt via the follow
 
 An example of this can be found in `hyperopt_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperopt_example.py>`__.
 
+.. note::
+
+The HyperOptScheduler takes an *increasing* metric in the reward attribute. If trying to
+minimize a loss, be sure to specify *mean_loss* in the function/class reporting and *reward_attr=neg_mean_loss* in the HyperOptScheduler initializer.
+
 .. autoclass:: ray.tune.hpo_scheduler.HyperOptScheduler
 
 
