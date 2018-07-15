@@ -108,7 +108,18 @@ class HyperOptScheduler(FIFOScheduler):
             self._hpopt_trials.refresh()
             new_trial = new_trials[0]
             new_trial_id = new_trial["tid"]
-            suggested_config = hpo.base.spec_from_misc(new_trial["misc"])
+
+            # Taken from HyperOpt.base.evaluate
+            config = hpo.base.spec_from_misc(new_trial["misc"])
+            ctrl = hpo.base.Ctrl(self._hpopt_trials, current_trial=new_trial)
+            memo = self.domain.memo_from_config(config)
+            hpo.utils.use_obj_for_literal_in_memo(
+                self.domain.expr, ctrl, hpo.base.Ctrl, memo)
+
+            suggested_config = hpo.pyll.rec_eval(
+                self.domain.expr, memo=memo,
+                print_node_on_error=self.domain.rec_eval_print_node_on_error)
+
             new_cfg.update(suggested_config)
 
             kv_str = "_".join([
