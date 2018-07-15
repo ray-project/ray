@@ -63,7 +63,8 @@ def profile(event_type, extra_data=None, worker=None):
         # Log the event if this is a worker and not a driver, since the
         # driver's event log never gets flushed.
         if worker.mode == ray.WORKER_MODE:
-            return RayLogSpanNonRaylet(worker.profiler, event_type, contents=extra_data)
+            return RayLogSpanNonRaylet(
+                worker.profiler, event_type, contents=extra_data)
         else:
             return NULL_LOG_SPAN
     else:
