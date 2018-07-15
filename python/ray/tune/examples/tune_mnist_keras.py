@@ -1,19 +1,19 @@
-'''Trains a simple convnet on the MNIST dataset.
-
-Gets to 99.25% test accuracy after 12 epochs
-(there is still a lot of margin for parameter tuning).
-16 seconds per epoch on a GRID K520 GPU.
-'''
-
+from __future__ import absolute_import
+from __future__ import division
 from __future__ import print_function
+
 import numpy as np
+import argparse
 import keras
 from keras.datasets import mnist
 from keras.models import Sequential
 from keras.layers import Dense, Dropout, Flatten
 from keras.layers import Conv2D, MaxPooling2D
 from keras import backend as K
-import argparse
+
+import ray
+from ray import tune
+from ray.tune.async_hyperband import AsyncHyperBandScheduler
 
 
 class TuneCallback(keras.callbacks.Callback):
@@ -104,6 +104,10 @@ def train_mnist(args, cfg, reporter):
 def create_parser():
     parser = argparse.ArgumentParser(description='Keras MNIST Example')
     parser.add_argument(
+        "--smoke-test",
+        action="store_true",
+        help="Finish quickly for testing")
+    parser.add_argument(
         '--jobs',
         type=int,
         default=1,
@@ -166,10 +170,6 @@ if __name__ == '__main__':
     args = parser.parse_args()
     mnist.load_data()  # we do this because it's not threadsafe
 
-    import ray
-    from ray import tune
-    from ray.tune.async_hyperband import AsyncHyperBandScheduler
-
     ray.init()
     sched = AsyncHyperBandScheduler(
         time_attr="timesteps_total",
@@ -183,10 +183,10 @@ if __name__ == '__main__':
             "exp": {
                 "stop": {
                     "mean_accuracy": 0.99,
-                    "timesteps_total": 300
+                    "timesteps_total": 10 if args.smoke_test else 300
                 },
                 "run": "train_mnist",
-                "repeat": 10,
+                "repeat": 1 if args.smoke_test else 10,
                 "config": {
                     "lr": lambda spec: np.random.uniform(0.001, 0.1),
                     "momentum": lambda spec: np.random.uniform(0.1, 0.9),
