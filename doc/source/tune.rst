@@ -162,8 +162,8 @@ An example of this can be found in `hyperopt_example.py <https://github.com/ray-
 
 .. note::
 
-The HyperOptScheduler takes an *increasing* metric in the reward attribute. If trying to
-minimize a loss, be sure to specify *mean_loss* in the function/class reporting and *reward_attr=neg_mean_loss* in the HyperOptScheduler initializer.
+    The HyperOptScheduler takes an *increasing* metric in the reward attribute. If trying to
+    minimize a loss, be sure to specify *mean_loss* in the function/class reporting and *reward_attr=neg_mean_loss* in the HyperOptScheduler initializer.
 
 .. autoclass:: ray.tune.hpo_scheduler.HyperOptScheduler
 
