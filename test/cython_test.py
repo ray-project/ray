@@ -19,7 +19,7 @@ class CythonTest(unittest.TestCase):
         ray.init()
 
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
 
     def assertEqualHelper(self, cython_func, expected, *args):
         self.assertEqual(get_ray_result(cython_func, *args), expected)

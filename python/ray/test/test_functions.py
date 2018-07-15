@@ -90,12 +90,12 @@ def throw_exception_fct3(x):
 
 
 @ray.remote
-def python_mode_f():
+def local_mode_f():
     return np.array([0, 0])
 
 
 @ray.remote
-def python_mode_g(x):
+def local_mode_g(x):
     x[0] = 1
     return x
 

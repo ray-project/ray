@@ -80,6 +80,8 @@ public class StateStoreProxyImpl implements StateStoreProxy {
         return getAddressInfoHelper(nodeIpAddress);
       } catch (Exception e) {
         try {
+          RayLog.core.warn("Error occurred in StateStoreProxyImpl getAddressInfo, " 
+              + (numRetries - count) + " retries remaining", e);
           TimeUnit.MILLISECONDS.sleep(1000);
         } catch (InterruptedException ie) {
           RayLog.core.error("error at StateStoreProxyImpl getAddressInfo", e);
@@ -100,7 +102,7 @@ public class StateStoreProxyImpl implements StateStoreProxy {
    *        The hash contains the following：
    *        "deleted" : 0/1
    *        "ray_client_id"
-   *        "nodeIpAddress"
+   *        "node_ip_address"
    *        "client_type" : plasma_manager/local_scheduler
    *        "store_socket_name"(op)
    *        "manager_socket_name"(op)
@@ -129,27 +131,27 @@ public class StateStoreProxyImpl implements StateStoreProxy {
 
       if (!info.containsKey("ray_client_id".getBytes())) {
         throw new Exception("no ray_client_id in any client");
-      } else if (!info.containsKey("nodeIpAddress".getBytes())) {
-        throw new Exception("no nodeIpAddress in any client");
+      } else if (!info.containsKey("node_ip_address".getBytes())) {
+        throw new Exception("no node_ip_address in any client");
       } else if (!info.containsKey("client_type".getBytes())) {
         throw new Exception("no client_type in any client");
       }
-
-      if (charsetDecode(info.get("nodeIpAddress".getBytes()), "US-ASCII")
+  
+      if (charsetDecode(info.get("node_ip_address".getBytes()), "US-ASCII")
           .equals(nodeIpAddress)) {
         String clientType = charsetDecode(info.get("client_type".getBytes()), "US-ASCII");
-        if (clientType.equals("plasmaManager")) {
+        if (clientType.equals("plasma_manager")) {
           plasmaManager.add(info);
-        } else if (clientType.equals("localScheduler")) {
+        } else if (clientType.equals("local_scheduler")) {
           localScheduler.add(info);
         }
       }
     }
 
     if (plasmaManager.size() < 1 || localScheduler.size() < 1) {
-      throw new Exception("no plasmaManager or localScheduler");
+      throw new Exception("no plasma_manager or local_scheduler");
     } else if (plasmaManager.size() != localScheduler.size()) {
-      throw new Exception("plasmaManager number not Equal localScheduler number");
+      throw new Exception("plasma_manager number not Equal local_scheduler number");
     }
 
     for (int i = 0; i < plasmaManager.size(); i++) {
@@ -173,7 +175,7 @@ public class StateStoreProxyImpl implements StateStoreProxy {
           "US-ASCII");
       si.managerPort = Integer.parseInt(managerAddr.split(":")[1]);
       si.schedulerName = charsetDecode(
-          localScheduler.get(i).get("local_scheduler_socket_name".getBytes()), "US-ASCII");
+        localScheduler.get(i).get("local_scheduler_socket_name".getBytes()), "US-ASCII");
 
       rpc = localScheduler.get(i).get("local_scheduler_rpc_name".getBytes());
       if (rpc != null) {

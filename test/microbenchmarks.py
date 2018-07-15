@@ -17,7 +17,7 @@ if sys.version_info >= (3, 0):
 
 class MicroBenchmarkTest(unittest.TestCase):
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
 
     def testTiming(self):
         reload(test_functions)

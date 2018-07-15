@@ -195,7 +195,7 @@ RAY_TEST_OBJECTS = BASE_OBJECTS + LIST_OBJECTS + TUPLE_OBJECTS + DICT_OBJECTS
 
 class SerializationTest(unittest.TestCase):
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
 
     def testRecursiveObjects(self):
         ray.init(num_workers=0)
@@ -289,7 +289,7 @@ class SerializationTest(unittest.TestCase):
 
 class WorkerTest(unittest.TestCase):
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
 
     def testPythonWorkers(self):
         # Test the codepath for starting workers from the Python script,
@@ -343,7 +343,7 @@ class APITest(unittest.TestCase):
         ray.init(**kwargs)
 
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
 
     def testCustomSerializers(self):
         self.init_ray(num_workers=1)
@@ -1163,13 +1163,13 @@ class APITestSharded(APITest):
         ray.worker._init(**kwargs)
 
 
-class PythonModeTest(unittest.TestCase):
+class LocalModeTest(unittest.TestCase):
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
 
-    def testPythonMode(self):
+    def testLocalMode(self):
         reload(test_functions)
-        ray.init(driver_mode=ray.PYTHON_MODE)
+        ray.init(driver_mode=ray.LOCAL_MODE)
 
         @ray.remote
         def f():
@@ -1186,10 +1186,10 @@ class PythonModeTest(unittest.TestCase):
 
         # Make sure objects are immutable, this example is why we need to copy
         # arguments before passing them into remote functions in python mode
-        aref = test_functions.python_mode_f.remote()
+        aref = test_functions.local_mode_f.remote()
         assert_equal(aref, np.array([0, 0]))
-        bref = test_functions.python_mode_g.remote(aref)
-        # Make sure python_mode_g does not mutate aref.
+        bref = test_functions.local_mode_g.remote(aref)
+        # Make sure local_mode_g does not mutate aref.
         assert_equal(aref, np.array([0, 0]))
         assert_equal(bref, np.array([1, 0]))
 
@@ -1202,10 +1202,10 @@ class PythonModeTest(unittest.TestCase):
         assert_equal(ready, object_ids[:num_returns])
         assert_equal(remaining, object_ids[num_returns:])
 
-        # Test actors in PYTHON_MODE.
+        # Test actors in LOCAL_MODE.
 
         @ray.remote
-        class PythonModeTestClass(object):
+        class LocalModeTestClass(object):
             def __init__(self, array):
                 self.array = array
 
@@ -1219,7 +1219,7 @@ class PythonModeTest(unittest.TestCase):
                 array[0] = -1
                 self.array = array
 
-        test_actor = PythonModeTestClass.remote(np.arange(10))
+        test_actor = LocalModeTestClass.remote(np.arange(10))
         # Remote actor functions should return by value
         assert_equal(test_actor.get_array.remote(), np.arange(10))
 
@@ -1244,7 +1244,7 @@ class PythonModeTest(unittest.TestCase):
 
 class ResourcesTest(unittest.TestCase):
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
 
     def testResourceConstraints(self):
         num_workers = 20
@@ -1852,7 +1852,7 @@ class CudaVisibleDevicesTest(unittest.TestCase):
         self.original_gpu_ids = os.environ.get("CUDA_VISIBLE_DEVICES", None)
 
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
         # Reset the environment variable.
         if self.original_gpu_ids is not None:
             os.environ["CUDA_VISIBLE_DEVICES"] = self.original_gpu_ids
@@ -1884,7 +1884,7 @@ class CudaVisibleDevicesTest(unittest.TestCase):
 
 class WorkerPoolTests(unittest.TestCase):
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
 
     def testNoWorkers(self):
         ray.init(num_workers=0)
@@ -1950,7 +1950,7 @@ class WorkerPoolTests(unittest.TestCase):
 
 class SchedulingAlgorithm(unittest.TestCase):
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
 
     def attempt_to_load_balance(self,
                                 remote_function,
@@ -2036,7 +2036,7 @@ def wait_for_num_objects(num_objects, timeout=10):
     "New GCS API doesn't have a Python API yet.")
 class GlobalStateAPI(unittest.TestCase):
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
 
     def testGlobalStateAPI(self):
         with self.assertRaises(Exception):
