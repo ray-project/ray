@@ -266,7 +266,7 @@ class TestAsyncPlasma(unittest.TestCase):
         ray.init(num_cpus=2)
 
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.disconnect()
 
     def test_baseline(self):
         inputs, stages = gen_hashflow(0, 16, 16)
