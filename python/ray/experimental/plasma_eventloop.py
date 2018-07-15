@@ -383,6 +383,18 @@ class PlasmaEpoll(PlasmaSelector):
         self.client.subscribe()
 
     def _get_ready_ids(self, timeout):
+        """
+        TODO: Currently we don't really make use of `timeout` because
+        the subscribe interface of PlasmaClient hasn't implemented it yet.
+
+        Watch over https://issues.apache.org/jira/browse/ARROW-2759
+        for their progress.
+
+        Lack of timeout control could suspending the eventloop,
+        making it unable to schedule other jobs
+        if there will not be any ready ObjectIDs later (not too often though).
+        """
+
         start = time.time()
         object_ids = []
 
