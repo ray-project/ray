@@ -109,7 +109,7 @@ futures and coroutines.
 
 Because `ray.experimental.async_api.wait` supports futures and coroutines as its input,
 it could happen that a passing in future/coroutine fails to return an ObjectID
-before timeout. In this case, we will return `None`:
+before timeout. In this case, we will return the pending inputs:
 
 .. code-block:: python
 
@@ -130,7 +130,7 @@ before timeout. In this case, we will return `None`:
 
       tasks = delayed_gen_tasks(100, 5)
       fut = async_api.wait(tasks, timeout=5, num_returns=len(tasks))
-      results, pendings = async_api.run_until_complete(fut) # [], [None]*5
+      results, pendings = async_api.run_until_complete(fut) # [], tasks
 
 
 .. autofunction:: ray.experimental.async_api.wait

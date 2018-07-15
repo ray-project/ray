@@ -13,8 +13,8 @@ import pytest
 import random
 import ray
 import ray.experimental.async_api as async_api
-from ray.experimental.plasma_eventloop import (PlasmaPoll, PlasmaEpoll,
-                                               PlasmaSelectorEventLoop)
+from ray.experimental.plasma_eventloop import (
+    PlasmaPoll, PlasmaEpoll, PlasmaSelectorEventLoop)
 
 HashFlowNode = namedtuple('HashFlowNode', ['parents', 'delay', 'result'])
 
@@ -73,11 +73,10 @@ def run_api():
     assert results[0] == tasks[0]
 
     # wait_timeout_complex
-    tasks = delayed_gen_tasks(100, 5)
+    tasks = delayed_gen_tasks(10, 5)
     fut = async_api.wait(tasks, timeout=5, num_returns=len(tasks))
     results, pendings = async_api.run_until_complete(fut)
-    print(results, pendings)
-    assert pendings == [None] * 5  # pytest allows list compare
+    assert tasks == pendings  # pytest supports list compare
 
     # get from coroutine/future
     async def get_obj():
