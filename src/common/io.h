@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+#include <mutex>
 #include <vector>
 
 struct aeEventLoop;
@@ -121,10 +122,16 @@ int accept_client(int socket_fd);
  * @param type The type of the message to send.
  * @param length The size in bytes of the bytes parameter.
  * @param bytes The address of the message to send.
+ * @param mutex If not NULL, the whole write operation will be locked
+ *        with this mutex, otherwise do nothing.
  * @return int Whether there was an error while writing. 0 corresponds to
  *         success and -1 corresponds to an error (errno will be set).
  */
-int write_message(int fd, int64_t type, int64_t length, uint8_t *bytes);
+int write_message(int fd,
+                  int64_t type,
+                  int64_t length,
+                  uint8_t *bytes,
+                  std::mutex *mutex = NULL);
 
 /**
  * Read a sequence of bytes written by write_message from a file descriptor.

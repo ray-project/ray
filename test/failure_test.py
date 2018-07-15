@@ -32,7 +32,7 @@ def wait_for_errors(error_type, num_errors, timeout=10):
 
 class TaskStatusTest(unittest.TestCase):
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
 
     def testFailedTask(self):
         reload(test_functions)
@@ -195,7 +195,7 @@ def temporary_helper_function():
 
 class ActorTest(unittest.TestCase):
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
 
     def testFailedActorInit(self):
         ray.init(num_workers=0, driver_mode=ray.SILENT_MODE)
@@ -267,7 +267,7 @@ class ActorTest(unittest.TestCase):
 
 class WorkerDeath(unittest.TestCase):
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
 
     def testWorkerRaisingException(self):
         ray.init(num_workers=1, driver_mode=ray.SILENT_MODE)
@@ -370,7 +370,7 @@ class WorkerDeath(unittest.TestCase):
     "This test does not work with xray yet.")
 class PutErrorTest(unittest.TestCase):
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
 
     def testPutError1(self):
         store_size = 10**6
@@ -467,7 +467,7 @@ class PutErrorTest(unittest.TestCase):
 
 class ConfigurationTest(unittest.TestCase):
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
 
     def testVersionMismatch(self):
         ray_version = ray.__version__
@@ -482,7 +482,7 @@ class ConfigurationTest(unittest.TestCase):
 
 class WarningTest(unittest.TestCase):
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
 
     def testExportLargeObjects(self):
         import ray.ray_constants as ray_constants

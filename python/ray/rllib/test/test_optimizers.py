@@ -14,7 +14,7 @@ from ray.rllib.evaluation import SampleBatch
 
 class AsyncOptimizerTest(unittest.TestCase):
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
 
     def testBasic(self):
         ray.init(num_cpus=4)
