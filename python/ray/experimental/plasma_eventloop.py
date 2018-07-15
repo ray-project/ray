@@ -571,13 +571,16 @@ class PlasmaSelectorEventLoop(asyncio.BaseEventLoop):
         """
 
         futures = [self._register_id(oid) for oid in object_ids]
+        mapping = dict(zip(futures, object_ids))
+
         _done, _pending = await wait(
             *futures, timeout=timeout, num_returns=num_returns, loop=self)
 
         self._release(*_pending)
         done = [fut.object_id for fut in _done]
         pending = [
-            fut.object_id if not fut.is_nil else None for fut in _pending
+            fut.object_id if not fut.is_nil else mapping[fut] for fut in
+            _pending
         ]
 
         if return_exact_num and len(done) > num_returns:

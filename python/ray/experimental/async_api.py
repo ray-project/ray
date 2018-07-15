@@ -123,7 +123,8 @@ async def wait(object_ids: RayAsyncParamsType,
             IDs. Because `ray.experimental.async_api.wait` supports
             futures and coroutines as its input,
             it could happen that a passing in future/coroutine fails to return
-            an ObjectID before timeout. In this case, we will return `None`.
+            an ObjectID before timeout.  In this case, we will return
+            the pending inputs.
     """
 
     if isinstance(object_ids, ray.ObjectID):
