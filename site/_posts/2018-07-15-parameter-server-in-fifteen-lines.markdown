@@ -2,7 +2,7 @@
 layout: post
 title: "Implementing A Parameter Server in 15 Lines of Python with Ray"
 excerpt: "This post describes how to implement a parameter server in Ray."
-date: 2018-07-13 14:00:00
+date: 2018-07-15 14:00:00
 ---
 
 Parameter servers are a core part of many machine learning applications. Their
