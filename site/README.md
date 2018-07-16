@@ -27,7 +27,7 @@ To deploy the site, run
 
 ```
 cd ~
-git clone https://github.com/ray-project/ray-project.github.io.git
+git clone git@github.com:ray-project/ray-project.github.io.git
 cd ray-project.github.io
 cp -r ~/ray/site/* .
 ```
