@@ -60,6 +60,10 @@ class ParameterServer(object):
         self.params += grad
 ```
 
+**The `@ray.remote` decorator defines a service.** It takes the
+`ParameterServer` class and allows it to be instantiated as a remote service or
+actor.
+
 Here, we assume that the update is a gradient which should be added to the
 parameter vector. This is just the simplest possible example, and many different
 choices could be made.
