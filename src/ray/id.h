@@ -27,7 +27,7 @@ class RAY_EXPORT UniqueID {
   size_t size() const;
   std::string binary() const;
   std::string hex() const;
-  plasma::UniqueID to_plasma_id();
+  plasma::UniqueID to_plasma_id() const;
 
  private:
   uint8_t id_[kUniqueIDSize];
