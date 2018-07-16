@@ -242,14 +242,12 @@ class Worker(object):
         # Identity of the driver that this worker is processing.
         self.task_driver_id = None
 
-    def get_serialization_context(self):
+    def get_serialization_context(self, driver_hash):
         """Get the SerializationContext of the driver that this worker is processing
         """
-        if self.task_driver_id == None:
-            return None
-        if not self.serialization_context_map.has_key(self.task_driver_id):
-            _initialize_serialization()
-        return self.serialization_context_map[self.task_driver_id]
+        if driver_hash not in self.serialization_context_map:
+            _initialize_serialization(driver_hash)
+        return self.serialization_context_map[driver_hash]
 
     def check_connected(self):
         """Check if the worker is connected.
@@ -313,12 +311,12 @@ class Worker(object):
                     value,
                     object_id=pyarrow.plasma.ObjectID(object_id.id()),
                     memcopy_threads=self.memcopy_threads,
-                    serialization_context=self.get_serialization_context())
+                    serialization_context=self.get_serialization_context(self.task_driver_id.__hash__()))
                 break
             except pyarrow.SerializationCallbackError as e:
                 try:
                     register_custom_serializer(
-                        type(e.example_object), use_dict=True)
+                        type(e.example_object), self.task_driver_id.__hash__(), use_dict=True)
                     warning_message = ("WARNING: Serializing objects of type "
                                        "{} by expanding them as dictionaries "
                                        "of their fields. This behavior may "
@@ -332,7 +330,7 @@ class Worker(object):
                     # cloudpickle can fail with many different types of errors.
                     try:
                         register_custom_serializer(
-                            type(e.example_object), use_pickle=True)
+                            type(e.example_object), self.task_driver_id.__hash__(), use_pickle=True)
                         warning_message = ("WARNING: Falling back to "
                                            "serializing objects of type {} by "
                                            "using pickle. This may be "
@@ -342,6 +340,7 @@ class Worker(object):
                     except serialization.CloudPickleError:
                         register_custom_serializer(
                             type(e.example_object),
+                            self.task_driver_id.__hash__(),
                             use_pickle=True,
                             local=True)
                         warning_message = ("WARNING: Pickling the class {} "
@@ -405,7 +404,7 @@ class Worker(object):
                     results += self.plasma_client.get(
                         object_ids[i:(
                             i + ray._config.worker_get_request_size())],
-                        timeout, self.get_serialization_context())
+                        timeout, self.get_serialization_context(self.task_driver_id.__hash__()))
                 return results
             except pyarrow.lib.ArrowInvalid as e:
                 # TODO(ekl): the local scheduler could include relevant
@@ -1223,7 +1222,7 @@ def error_info(worker=global_worker):
     return errors
 
 
-def _initialize_serialization(worker=global_worker):
+def _initialize_serialization(driver_hash, worker=global_worker):
     """Initialize the serialization library.
 
     This defines a custom serializer for object IDs and also tells ray to
@@ -1270,23 +1269,23 @@ def _initialize_serialization(worker=global_worker):
         custom_serializer=actor_handle_serializer,
         custom_deserializer=actor_handle_deserializer)
 
-    worker.serialization_context_map[worker.task_driver_id] = serialization_context
+    worker.serialization_context_map[driver_hash] = serialization_context
 
     if worker.mode in [SCRIPT_MODE, SILENT_MODE]:
         # These should only be called on the driver because
         # register_custom_serializer will export the class to all of the
         # workers.
-        register_custom_serializer(RayTaskError, use_dict=True, local=True)
-        register_custom_serializer(RayGetError, use_dict=True, local=True)
-        register_custom_serializer(RayGetArgumentError, use_dict=True, local=True)
+        register_custom_serializer(RayTaskError, driver_hash, use_dict=True, local=True)
+        register_custom_serializer(RayGetError, driver_hash, use_dict=True, local=True)
+        register_custom_serializer(RayGetArgumentError, driver_hash, use_dict=True, local=True)
         # Tell Ray to serialize lambdas with pickle.
-        register_custom_serializer(type(lambda: 0), use_pickle=True, local=True)
+        register_custom_serializer(type(lambda: 0), driver_hash, use_pickle=True, local=True)
         # Tell Ray to serialize types with pickle.
-        register_custom_serializer(type(int), use_pickle=True, local=True)
+        register_custom_serializer(type(int), driver_hash, use_pickle=True, local=True)
         # Tell Ray to serialize FunctionSignatures as dictionaries. This is
         # used when passing around actor handles.
         register_custom_serializer(
-            ray.signature.FunctionSignature, use_dict=True, local=True)
+            ray.signature.FunctionSignature, driver_hash, use_dict=True, local=True)
 
 
 def get_address_info_from_redis_helper(redis_address,
@@ -2253,7 +2252,7 @@ def disconnect(worker=global_worker):
     worker.connected = False
     worker.cached_functions_to_run = []
     worker.cached_remote_functions_and_actors = []
-    worker.serialization_context_map[worker.task_driver_id] = pyarrow.SerializationContext()
+    worker.serialization_context_map[worker.task_driver_id.__hash__()] = pyarrow.SerializationContext()
 
 
 def _try_to_compute_deterministic_class_id(cls, depth=5):
@@ -2299,6 +2298,7 @@ def _try_to_compute_deterministic_class_id(cls, depth=5):
 
 
 def register_custom_serializer(cls,
+                               driver_hash,
                                use_pickle=False,
                                use_dict=False,
                                serializer=None,
@@ -2369,14 +2369,13 @@ def register_custom_serializer(cls,
         # we may want to use the last user-defined serializers and ignore
         # subsequent calls to register_custom_serializer that were made by the
         # system.
-        serialization_context = worker_info["worker"].get_serialization_context()
-        if serialization_context:
-            serialization_context.register_type(
-                cls,
-                class_id,
-                pickle=use_pickle,
-                custom_serializer=serializer,
-                custom_deserializer=deserializer)
+        serialization_context = worker_info["worker"].get_serialization_context(driver_hash)
+        serialization_context.register_type(
+            cls,
+            class_id,
+            pickle=use_pickle,
+            custom_serializer=serializer,
+            custom_deserializer=deserializer)
 
     if not local:
         worker.run_function_on_all_workers(register_class_for_serialization, include_driver=True)
