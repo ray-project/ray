@@ -15,6 +15,8 @@ struct redisContext;
 struct redisAsyncContext;
 struct aeEventLoop;
 
+
+
 namespace ray {
 
 namespace gcs {
@@ -51,7 +53,7 @@ class RedisContext {
   RedisContext()
       : context_(nullptr), async_context_(nullptr), subscribe_context_(nullptr) {}
   ~RedisContext();
-  Status Connect(const std::string &address, int port, bool sharding);
+  Status Connect(const std::string &address, int port);
   Status AttachToEventLoop(aeEventLoop *loop);
 
   /// Run an operation on some table key.
@@ -74,6 +76,7 @@ class RedisContext {
 
   Status SubscribeAsync(const ClientID &client_id, const TablePubsub pubsub_channel,
                         const RedisCallback &redisCallback);
+  redisContext *sync_context() { return context_; }
   redisAsyncContext *async_context() { return async_context_; }
   redisAsyncContext *subscribe_context() { return subscribe_context_; };
 

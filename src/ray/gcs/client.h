@@ -69,7 +69,7 @@ class RAY_EXPORT AsyncGcsClient {
   Status GetExport(const std::string &driver_id, int64_t export_index,
                    const GetExportCallback &done_callback);
 
-  std::shared_ptr<RedisContext> context() { return context_; }
+  std::vector<std::shared_ptr<RedisContext>> shard_context() { return shard_contexts_; }
   std::shared_ptr<RedisContext> primary_context() { return primary_context_; }
 
  private:
@@ -85,9 +85,9 @@ class RAY_EXPORT AsyncGcsClient {
   std::unique_ptr<ProfileTable> profile_table_;
   std::unique_ptr<ClientTable> client_table_;
   // The following contexts write to the data shard
-  std::shared_ptr<RedisContext> context_;
-  std::unique_ptr<RedisAsioClient> asio_async_client_;
-  std::unique_ptr<RedisAsioClient> asio_subscribe_client_;
+  std::vector<std::shared_ptr<RedisContext>> shard_contexts_;
+  std::vector<std::unique_ptr<RedisAsioClient>> shard_asio_async_clients_;
+  std::vector<std::unique_ptr<RedisAsioClient>> shard_asio_subscribe_clients_;
   // The following context writes everything to the primary shard
   std::shared_ptr<RedisContext> primary_context_;
   std::unique_ptr<RedisAsioClient> asio_async_auxiliary_client_;
