@@ -46,6 +46,7 @@ COMMON_CONFIG = {
         "gpu_options": {
             "allow_growth": True,
         },
+        "allow_soft_placement": True,  # required by PPO multi-gpu
     },
     # Whether to LZ4 compress observations
     "compress_observations": False,
