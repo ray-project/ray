@@ -65,8 +65,8 @@ else
     echo "Commit ID mismatches."
     git fetch origin master
     git checkout $TARGET_COMMIT_ID
-    build_parquet
   fi
 
+  build_parquet
   popd
 fi
