@@ -10,6 +10,7 @@ import redis
 import ray
 from ray import ray_constants
 from ray import cloudpickle as pickle
+from ray import profiling
 from ray import utils
 
 
@@ -74,21 +75,23 @@ class ImportThread(object):
 
     def _process_key(self, key):
         """Process the given export key from redis."""
-        from ray.worker import profile, WORKER_MODE
         # Handle the driver case first.
-        if self.mode != WORKER_MODE:
+        if self.mode != ray.WORKER_MODE:
             if key.startswith(b"FunctionsToRun"):
-                with profile("fetch_and_run_function", worker=self.worker):
+                with profiling.profile(
+                        "fetch_and_run_function", worker=self.worker):
                     self.fetch_and_execute_function_to_run(key)
             # Return because FunctionsToRun are the only things that
             # the driver should import.
             return
 
         if key.startswith(b"RemoteFunction"):
-            with profile("register_remote_function", worker=self.worker):
+            with profiling.profile(
+                    "register_remote_function", worker=self.worker):
                 self.fetch_and_register_remote_function(key)
         elif key.startswith(b"FunctionsToRun"):
-            with profile("fetch_and_run_function", worker=self.worker):
+            with profiling.profile(
+                    "fetch_and_run_function", worker=self.worker):
                 self.fetch_and_execute_function_to_run(key)
         elif key.startswith(b"ActorClass"):
             # Keep track of the fact that this actor class has been
@@ -154,11 +157,10 @@ class ImportThread(object):
 
     def fetch_and_execute_function_to_run(self, key):
         """Run on arbitrary function on the worker."""
-        from ray.worker import SCRIPT_MODE, SILENT_MODE
         driver_id, serialized_function = self.redis_client.hmget(
             key, ["driver_id", "function"])
 
-        if (self.worker.mode in [SCRIPT_MODE, SILENT_MODE]
+        if (self.worker.mode in [ray.SCRIPT_MODE, ray.SILENT_MODE]
                 and driver_id != self.worker.task_driver_id.id()):
             # This export was from a different driver and there's no need for
             # this driver to import it.
