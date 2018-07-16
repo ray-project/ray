@@ -149,15 +149,13 @@ if [[ ! -d $TP_DIR/../python/ray/pyarrow_files/pyarrow ]] || \
     [[ "$LANGUAGE" == "java" && ! -f $TP_DIR/build/arrow/cpp/build/release/libplasma_java.dylib ]]; then
   build_arrow
 else
-  pushd $TP_DIR/build/arrow
   if [[ "$TARGET_COMMIT_ID" != `git rev-parse HEAD` ]]; then
+    pushd $TP_DIR/build/arrow
     # TARGET_COMMIT_ID may change to later commit.
     echo "Commit ID mismatches."
     git fetch origin master
     git checkout $TARGET_COMMIT_ID
-    popd
     build_arrow
-  else
     popd
   fi
 fi
