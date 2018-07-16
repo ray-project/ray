@@ -68,6 +68,8 @@ enum MessageType:int {
   // Push some profiling events to the GCS. When sending this message to the
   // node manager, the message itself is serialized as a ProfileTableData object.
   PushProfileEventsRequest,
+  // Free the objects in objects store.
+  FreeObjectsInObjectStore,
 }
 
 table TaskExecutionSpecification {
@@ -176,4 +178,11 @@ table PushErrorRequest {
   error_message: string;
   // The timestamp of the error message.
   timestamp: double;
+}
+
+table FreeObjectsRequest {
+  // Whether spread this request to all the object stores that have been registered.
+  spread: bool;
+  // List of object ids we'll delete from object store.
+  object_ids: [string];
 }

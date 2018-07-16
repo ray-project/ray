@@ -163,6 +163,11 @@ class ObjectManager : public ObjectManagerInterface {
                    uint64_t num_required_objects, bool wait_local,
                    const WaitCallback &callback);
 
+  /// Free a list of objects from object store.
+  /// \param object_ids the The list of ObjectIDs to be deleted.
+  /// \param spread Whether send this request to all the object stores.
+  void FreeObjects(const std::vector<ObjectID> &object_ids, bool spread);
+
  private:
   friend class TestObjectManager;
 
@@ -270,6 +275,9 @@ class ObjectManager : public ObjectManagerInterface {
 
   /// Handles receiving a pull request message.
   void ReceivePullRequest(std::shared_ptr<TcpClientConnection> &conn,
+                          const uint8_t *message);
+  /// Handles freeing objects request.
+  void ReceiveFreeRequest(std::shared_ptr<TcpClientConnection> &conn,
                           const uint8_t *message);
 
   /// Handles connect message of a new client connection.

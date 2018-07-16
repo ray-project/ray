@@ -185,4 +185,15 @@ std::vector<ObjectBufferPool::ChunkInfo> ObjectBufferPool::BuildChunks(
   return chunks;
 }
 
+void ObjectBufferPool::FreeObjects(const std::vector<ObjectID> &object_ids) {
+  std::vector<plasma::ObjectID> plasma_ids;
+  plasma_ids.reserve(object_ids.size());
+  for (auto &id : object_ids) {
+    // After merging https://github.com/ray-project/ray/pull/2404,
+    // remove ObjectID().
+    plasma_ids.push_back(ObjectID(id).to_plasma_id());
+  }
+  ARROW_CHECK_OK(store_client_.Delete(plasma_ids));
+}
+
 }  // namespace ray
