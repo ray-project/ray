@@ -579,8 +579,8 @@ class PlasmaSelectorEventLoop(asyncio.BaseEventLoop):
         self._release(*_pending)
         done = [fut.object_id for fut in _done]
         pending = [
-            fut.object_id if not fut.is_nil else mapping[fut] for fut in
-            _pending
+            fut.object_id if not fut.is_nil else mapping[fut]
+            for fut in _pending
         ]
 
         if return_exact_num and len(done) > num_returns:
