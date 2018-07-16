@@ -1,12 +1,15 @@
 The Async Ray API
 =================
 
+Currently, APIs like `ray.get` or `ray.wait` are blocking, limiting flexibility in some scenarios.
+This document talks about alternative APIs that enable asynchronous execution.
+
 Starting Ray
 ------------
 
-Please refer to `The Ray API` _ for instructions.
+Please refer to `Starting Ray`_ for instructions.
 
-.. _`The Ray API`: http://ray.readthedocs.io/en/latest/api.html#starting-ray
+.. _`Starting Ray`: http://ray.readthedocs.io/en/latest/tutorial.html#starting-ray
 
 
 Getting values from object IDs
@@ -20,6 +23,7 @@ ID.
 * A single object ID
 
 .. code-block:: python
+
   import time
   import ray.experimental.async_api as async_api
 
@@ -36,6 +40,7 @@ ID.
 * A single coroutine or future that contains an ObjectID
 
 .. code-block:: python
+
   import time
   import ray
   import ray.experimental.async_api as async_api
@@ -52,6 +57,7 @@ ID.
 * A chain composed of coroutines and futures that will eventually return an ObjectID:
 
 .. code-block:: python
+
     import ray
     import ray.experimental.async_api as async_api
 
@@ -79,7 +85,7 @@ Waiting for a subset of tasks to finish
 ---------------------------------------
 
 `ray.experimental.async_api.wait` has the same purpose with `ray.wait` _ but it supports
-async operations. You could read docs of `ray.wait` _ to understand its behaviors.
+async operations. You could read docs of `ray.wait`_ to understand its behaviors.
 
 .. _`ray.wait`: http://ray.readthedocs.io/en/latest/api.html#ray.wait
 
@@ -198,15 +204,16 @@ So a simple idea is that we could learn the mature asynchronous mechanism of web
 Python3.4+ has already have a sophisticated asynchronous socket library called `asyncio`
 and our implementation follows `asyncio` and is compatible to it.
 
-Eventloops and selectors play decisive roles in efficient asynchronous.
+Eventloops and selectors play decisive roles in efficient asynchronous. They are implemented in `ray.experimental.plasma_eventloop`.
 
-`ray.experimental.plasma_eventloop.PlasmaSelectorEventLoop` inherits form asyncio's eventloop.
-It schedules all tasks assigned to it and that comes asynchronous.
+`PlasmaSelectorEventLoop` inherits form asyncio's eventloop. It schedules all tasks assigned to it and that comes asynchronous.
 
 Selectors watch over a batch of ObjectIDs and return ready ones within a certain time interval.
-We have implemented two kind of selectors: `ray.experimental.plasma_eventloop.PlasmaPoll` & `ray.experimental.plasma_eventloop.PlasmaEpoll`.
+We have implemented two kind of selectors: `PlasmaPoll` & `PlasmaEpoll`.
 `PlasmaPoll` works by making use of `ray.wait`, which makes it something like Linux's `poll` because it is stateless.
 `PlasmaEpoll` works by making use of subscribe interface of plasma_client, which makes it something like Linux's `epoll`.
+
+To be more efficient, a better selector is needed. We could implement selectors in C++ later.
 
 In theory, `PlasmaEpoll` is supposed to be more efficient than `PlasmaPoll` (the known C10K problem).
 But currently we don't really make use of `timeout` in `PlasmaEpoll` because
@@ -214,5 +221,3 @@ the subscribe interface of PlasmaClient hasn't implemented it yet. Watch over ht
 
 Lack of timeout control could suspending the eventloop, making it unable to schedule other jobs
 if there will not be any ready ObjectIDs later (not too often though).
-
-To be more efficient, a better selector is needed. We could implement a C++ version of `PlasmaEpoll` later.

@@ -54,7 +54,7 @@ def create_group(return_exceptions=False,
         worker: Ray's worker.
 
     Returns:
-        A PlasmaFutureGroup
+        A `PlasmaFutureGroup` instance.
     """
 
     worker.check_connected()
@@ -77,8 +77,8 @@ async def get(object_ids: RayAsyncParamsType, worker=global_worker):
 
     Args:
         object_ids (RayAsyncParamsType): Object ID of the object to get
-        or a list of object IDs to get.
-        Futures & coroutines containing IDs is also acceptable.
+            or a list of object IDs to get.
+            Futures & coroutines containing IDs is also acceptable.
 
     Returns:
         A Python object or a list of Python objects.
