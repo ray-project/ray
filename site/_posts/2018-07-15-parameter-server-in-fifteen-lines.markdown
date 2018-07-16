@@ -14,12 +14,12 @@ Parameter servers (like databases) are normally built and shipped as standalone
 systems. This post describes how to use [Ray][1] to implement a parameter server
 in a few lines of code.
 
-By turning the parameter server from a "system" into "application code", this
-approach makes it orders of magnitude simpler to deploy applications that use
-parameter servers. Similarly, by allowing applications or libraries to implement
-the parameter server, this approach makes the behavior of the parameter server
-much more configurable and flexible (since the application can simply modify the
-implementation with a few lines of Python).
+By turning the parameter server from a "system" into an "application", this
+approach makes it orders of magnitude simpler to deploy parameter server
+applications. Similarly, by allowing applications and libraries to implement
+their own parameter servers, this approach makes the behavior of the parameter
+server much more configurable and flexible (since the application can simply
+modify the implementation with a few lines of Python).
 
 **What is Ray?** [Ray][1] is a general-purpose framework for parallel and
 distributed Python. Ray provides a unified task-parallel and actor abstraction
@@ -232,7 +232,7 @@ machine learning applications.
 A parameter server is normally implemented and shipped as a standalone system.
 The thing that makes this approach so powerful is that we're able to implement a
 parameter server with a few lines of code as an application. *This approach
-makes it much simpler to deploy applications using a parameter server and to
+makes it much simpler to deploy applications that use parameter servers and to
 modify the behavior of the parameter server.* For example, if we want to shard
 the parameter server, change the update rule, switch between asynchronous and
 synchronous updates, ignore straggler workers, or any number of other
