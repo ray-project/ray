@@ -155,7 +155,9 @@ else
     echo "Commit ID mismatches."
     git fetch origin master
     git checkout $TARGET_COMMIT_ID
+    popd
+    build_arrow
+  else
+    popd
   fi
-  popd
-  build_arrow
 fi
