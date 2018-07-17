@@ -242,16 +242,16 @@ class Worker(object):
         # Identity of the driver that this worker is processing.
         self.task_driver_id = None
 
-    def get_serialization_context(self, driver_hash):
+    def get_serialization_context(self, driver_id):
         """Get the SerializationContext of the driver that this worker is processing
 
         Args:
-            driver_hash: The hash value of the driver_id that indicates which driver
-                to get the serialization context for.
+            driver_id: The id of the driver that indicates which driver to get the 
+                serialization context for.
         """
-        if driver_hash not in self.serialization_context_map:
-            _initialize_serialization(driver_hash)
-        return self.serialization_context_map[driver_hash]
+        if driver_id not in self.serialization_context_map:
+            _initialize_serialization(driver_id)
+        return self.serialization_context_map[driver_id]
 
     def check_connected(self):
         """Check if the worker is connected.
@@ -315,7 +315,7 @@ class Worker(object):
                     value,
                     object_id=pyarrow.plasma.ObjectID(object_id.id()),
                     memcopy_threads=self.memcopy_threads,
-                    serialization_context=self.get_serialization_context(self.task_driver_id.__hash__()))
+                    serialization_context=self.get_serialization_context(self.task_driver_id))
                 break
             except pyarrow.SerializationCallbackError as e:
                 try:
@@ -407,7 +407,7 @@ class Worker(object):
                     results += self.plasma_client.get(
                         object_ids[i:(
                             i + ray._config.worker_get_request_size())],
-                        timeout, self.get_serialization_context(self.task_driver_id.__hash__()))
+                        timeout, self.get_serialization_context(self.task_driver_id))
                 return results
             except pyarrow.lib.ArrowInvalid as e:
                 # TODO(ekl): the local scheduler could include relevant
@@ -1227,7 +1227,7 @@ def error_info(worker=global_worker):
     return errors
 
 
-def _initialize_serialization(driver_hash, worker=global_worker):
+def _initialize_serialization(driver_id, worker=global_worker):
     """Initialize the serialization library.
 
     This defines a custom serializer for object IDs and also tells ray to
@@ -1274,19 +1274,19 @@ def _initialize_serialization(driver_hash, worker=global_worker):
         custom_serializer=actor_handle_serializer,
         custom_deserializer=actor_handle_deserializer)
 
-    worker.serialization_context_map[driver_hash] = serialization_context
+    worker.serialization_context_map[driver_id] = serialization_context
 
-    register_custom_serializer(RayTaskError, driver_hash, use_dict=True, local=True)
-    register_custom_serializer(RayGetError, driver_hash, use_dict=True, local=True)
-    register_custom_serializer(RayGetArgumentError, driver_hash, use_dict=True, local=True)
+    register_custom_serializer(RayTaskError, driver_id, use_dict=True, local=True)
+    register_custom_serializer(RayGetError, driver_id, use_dict=True, local=True)
+    register_custom_serializer(RayGetArgumentError, driver_id, use_dict=True, local=True)
     # Tell Ray to serialize lambdas with pickle.
-    register_custom_serializer(type(lambda: 0), driver_hash, use_pickle=True, local=True)
+    register_custom_serializer(type(lambda: 0), driver_id, use_pickle=True, local=True)
     # Tell Ray to serialize types with pickle.
-    register_custom_serializer(type(int), driver_hash, use_pickle=True, local=True)
+    register_custom_serializer(type(int), driver_id, use_pickle=True, local=True)
     # Tell Ray to serialize FunctionSignatures as dictionaries. This is
     # used when passing around actor handles.
     register_custom_serializer(
-        ray.signature.FunctionSignature, driver_hash, use_dict=True, local=True)
+        ray.signature.FunctionSignature, driver_id, use_dict=True, local=True)
 
 
 def get_address_info_from_redis_helper(redis_address,
@@ -2253,7 +2253,7 @@ def disconnect(worker=global_worker):
     worker.connected = False
     worker.cached_functions_to_run = []
     worker.cached_remote_functions_and_actors = []
-    worker.serialization_context_map[worker.task_driver_id.__hash__()] = pyarrow.SerializationContext()
+    worker.serialization_context_map[worker.task_driver_id] = pyarrow.SerializationContext()
 
 
 def _try_to_compute_deterministic_class_id(cls, depth=5):
@@ -2299,7 +2299,7 @@ def _try_to_compute_deterministic_class_id(cls, depth=5):
 
 
 def register_custom_serializer(cls,
-                               driver_hash=None,
+                               driver_id=None,
                                use_pickle=False,
                                use_dict=False,
                                serializer=None,
@@ -2364,8 +2364,10 @@ def register_custom_serializer(cls,
         # and not across workers.
         class_id = random_string()
 
-    if driver_hash == None:
-        driver_hash = worker.task_driver_id.__hash__()
+    if driver_id == None:
+        driver_id_bytes = worker.task_driver_id.id()
+    else:
+        driver_id_bytes = driver_id.id()
 
     def register_class_for_serialization(worker_info):
         # TODO(rkn): We need to be more thoughtful about what to do if custom
@@ -2373,7 +2375,8 @@ def register_custom_serializer(cls,
         # we may want to use the last user-defined serializers and ignore
         # subsequent calls to register_custom_serializer that were made by the
         # system.
-        serialization_context = worker_info["worker"].get_serialization_context(driver_hash)
+
+        serialization_context = worker_info["worker"].get_serialization_context(ray.ObjectID(driver_id_bytes))
         serialization_context.register_type(
             cls,
             class_id,
@@ -2382,7 +2385,7 @@ def register_custom_serializer(cls,
             custom_deserializer=deserializer)
 
     if not local:
-        worker.run_function_on_all_workers(register_class_for_serialization, run_on_other_drivers=True)
+        worker.run_function_on_all_workers(register_class_for_serialization)
     else:
         # Since we are pickling objects of this class, we don't actually need
         # to ship the class definition.

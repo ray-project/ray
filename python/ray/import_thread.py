@@ -162,8 +162,6 @@ class ImportThread(object):
         
         if (run_on_other_drivers == "False" and self.worker.mode in [ray.SCRIPT_MODE, ray.SILENT_MODE]
                 and driver_id != self.worker.task_driver_id.id()):
-            # Usually we don't import a function from another driver but sometimes we do,
-            # for example registering serialization context for a type.
             return
 
         try:
