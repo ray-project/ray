@@ -123,7 +123,7 @@ Status AsyncGcsClient::Connect(const std::string &address, int port, bool shardi
 
   // Call connect for all contexts. Safe to do many times.
   for (unsigned int i = 0; i < addresses.size(); ++i) {
-    RAY_RETURN_NOT_OK(shard_contexts_.back()->Connect(addresses[i], ports[i]));
+    RAY_RETURN_NOT_OK(shard_contexts_[i]->Connect(addresses[i], ports[i]));
   }
 
   // Now tables need to add shards.
