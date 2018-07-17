@@ -82,9 +82,7 @@ bool UniqueID::operator==(const UniqueID &rhs) const {
   return std::memcmp(data(), rhs.data(), kUniqueIDSize) == 0;
 }
 
-bool UniqueID::operator!=(const UniqueID &rhs) const {
-  return !(*this == rhs);
-}
+bool UniqueID::operator!=(const UniqueID &rhs) const { return !(*this == rhs); }
 
 // This code is from https://sites.google.com/site/murmurhash/
 // and is public domain.

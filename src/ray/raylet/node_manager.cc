@@ -143,8 +143,8 @@ ray::Status NodeManager::RegisterGcs() {
   };
   gcs_client_->client_table().RegisterClientAddedCallback(node_manager_client_added);
   // Register a callback on the client table for removed clients.
-  auto node_manager_client_removed = [this](gcs::AsyncGcsClient *client, const UniqueID &id,
-                                            const ClientTableDataT &data) {
+  auto node_manager_client_removed = [this](
+      gcs::AsyncGcsClient *client, const UniqueID &id, const ClientTableDataT &data) {
     ClientRemoved(data);
   };
   gcs_client_->client_table().RegisterClientRemovedCallback(node_manager_client_removed);
