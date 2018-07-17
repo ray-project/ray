@@ -71,10 +71,11 @@ namespace gcs {
 
 AsyncGcsClient::AsyncGcsClient(const ClientID &client_id, CommandType command_type) {
   primary_context_ = std::make_shared<RedisContext>();
-  std::vector<std::shared_ptr> tmp_primary;
+  std::vector<std::shared_ptr<RedisContext>> tmp_primary;
   tmp_primary.push_back(primary_context_);
   client_table_.reset(new ClientTable(tmp_primary, this, client_id));
   error_table_.reset(new ErrorTable(tmp_primary, this));
+  profile_table_.reset(new ProfileTable(tmp_primary, this));
   // Tables below would be sharded.
   // They are created but not populated for now.
   object_table_.reset(new ObjectTable(shard_contexts_, this, command_type));
@@ -83,7 +84,6 @@ AsyncGcsClient::AsyncGcsClient(const ClientID &client_id, CommandType command_ty
   raylet_task_table_.reset(new raylet::TaskTable(shard_contexts_, this, command_type));
   task_reconstruction_log_.reset(new TaskReconstructionLog(shard_contexts_, this));
   heartbeat_table_.reset(new HeartbeatTable(shard_contexts_, this));
-  profile_table_.reset(new ProfileTable(shard_contexts_, this));
   command_type_ = command_type;
 }
 
@@ -110,7 +110,7 @@ Status AsyncGcsClient::Connect(const std::string &address, int port, bool shardi
   // If sharding, use all available shards.
   // Else, use the the same as primary.
   if (sharding) {
-    GetRedisShards(primary_context->sync_context(), &addresses, &ports);
+    GetRedisShards(primary_context_->sync_context(), &addresses, &ports);
   }
 
   // First time connect: populate shard_contexts.
@@ -128,13 +128,12 @@ Status AsyncGcsClient::Connect(const std::string &address, int port, bool shardi
 
   // Now tables need to add shards.
   // These shards would be only added once.
-  object_table_.AddShards(shard_contexts_);
-  actor_table_.AddShards(shard_contexts_);
-  task_table_.AddShards(shard_contexts_);
-  raylet_task_table_.AddShards(shard_contexts_);
-  task_reconstruction_log_.AddShards(shard_contexts_);
-  heartbeat_table_.AddShards(shard_contexts_);
-  profile_table_.AddShards(shard_contexts_);
+  object_table_->AddShards(shard_contexts_);
+  actor_table_->AddShards(shard_contexts_);
+  task_table_->AddShards(shard_contexts_);
+  raylet_task_table_->AddShards(shard_contexts_);
+  task_reconstruction_log_->AddShards(shard_contexts_);
+  heartbeat_table_->AddShards(shard_contexts_);
 
   // TODO(swang): Call the client table's Connect() method here. To do this,
   // we need to make sure that we are attached to an event loop first. This
