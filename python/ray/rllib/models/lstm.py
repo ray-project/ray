@@ -41,8 +41,8 @@ def add_time_dimension(padded_inputs, seq_lens):
     # Sequence lengths have to be specified for LSTM batch inputs. The
     # input batch must be padded to the max seq length given here. That is,
     # batch_size == len(seq_lens) * max(seq_lens)
-    max_seq_len = tf.reduce_max(seq_lens)
     padded_batch_size = tf.shape(padded_inputs)[0]
+    max_seq_len = padded_batch_size // tf.shape(seq_lens)[0]
 
     # Dynamically reshape the padded batch to introduce a time dimension.
     new_batch_size = padded_batch_size // max_seq_len
@@ -155,9 +155,14 @@ class LSTM(Model):
             np.zeros(lstm.state_size.h, np.float32)]
 
         # Setup LSTM inputs
-        c_in = tf.placeholder(tf.float32, [None, lstm.state_size.c], name="c")
-        h_in = tf.placeholder(tf.float32, [None, lstm.state_size.h], name="h")
-        self.state_in = [c_in, h_in]
+        if self.state_in:
+            c_in, h_in = self.state_in
+        else:
+            c_in = tf.placeholder(
+                tf.float32, [None, lstm.state_size.c], name="c")
+            h_in = tf.placeholder(
+                tf.float32, [None, lstm.state_size.h], name="h")
+            self.state_in = [c_in, h_in]
 
         # Setup LSTM outputs
         if use_tf100_api:

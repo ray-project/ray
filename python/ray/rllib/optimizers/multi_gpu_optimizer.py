@@ -55,12 +55,12 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
         print("LocalMultiGPUOptimizer devices", self.devices)
 
         assert set(self.local_evaluator.policy_map.keys()) == {"default"}, \
-            "Multi-agent is not supported"
+            ("Multi-agent is not supported with multi-GPU. Try using the "
+             "simple optimizer instead.")
         self.policy = self.local_evaluator.policy_map["default"]
         assert isinstance(self.policy, TFPolicyGraph), \
-            "Only TF policies are supported"
-        assert len(self.policy.get_initial_state()) == 0, \
-            "No RNN support yet for multi-gpu. Try the simple optimizer."
+            ("Only TF policies are supported with multi-GPU. Try using the "
+             "simple optimizer instead.")
 
         # per-GPU graph copies created below must share vars with the policy
         # reuse is set to AUTO_REUSE because Adam nodes are created after
@@ -68,10 +68,16 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
         with self.local_evaluator.tf_sess.graph.as_default():
             with self.local_evaluator.tf_sess.as_default():
                 with tf.variable_scope("default", reuse=tf.AUTO_REUSE):
+                    if self.policy._state_inputs:
+                        rnn_inputs = self.policy._state_inputs + [
+                            self.policy._seq_lens]
+                    else:
+                        rnn_inputs = []
                     self.par_opt = LocalSyncParallelOptimizer(
                         tf.train.AdamOptimizer(self.sgd_stepsize),
                         self.devices,
-                        self.policy.loss_inputs(),
+                        [v for _, v in self.policy.loss_inputs()],
+                        rnn_inputs,
                         self.per_device_batch_size,
                         self.policy.copy,
                         os.getcwd())
@@ -103,9 +109,17 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
         samples.shuffle()
 
         with self.load_timer:
+            tuples = self.policy._get_loss_inputs_dict(samples)
+            data_keys = [ph for _, ph in self.policy.loss_inputs()]
+            if self.policy._state_inputs:
+                state_keys = (
+                    self.policy._state_inputs + [self.policy._seq_lens])
+            else:
+                state_keys = []
             tuples_per_device = self.par_opt.load_data(
                 self.sess,
-                samples.columns([key for key, _ in self.policy.loss_inputs()]))
+                [tuples[k] for k in data_keys],
+                [tuples[k] for k in state_keys])
 
         with self.grad_timer:
             num_batches = (
