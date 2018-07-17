@@ -48,6 +48,7 @@ COMMON_CONFIG = {
         },
         "log_device_placement": False,
         "device_count": {"CPU": 1},
+        "allow_soft_placement": True,  # required by PPO multi-gpu
     },
     # Whether to LZ4 compress observations
     "compress_observations": False,

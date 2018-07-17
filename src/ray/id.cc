@@ -72,7 +72,7 @@ std::string UniqueID::hex() const {
   return result;
 }
 
-plasma::UniqueID UniqueID::to_plasma_id() {
+plasma::UniqueID UniqueID::to_plasma_id() const {
   plasma::UniqueID result;
   std::memcpy(result.mutable_data(), &id_, kUniqueIDSize);
   return result;

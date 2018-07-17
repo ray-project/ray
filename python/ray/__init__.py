@@ -47,11 +47,11 @@ except ImportError as e:
     raise
 
 from ray.local_scheduler import ObjectID, _config  # noqa: E402
+from ray.profiling import profile  # noqa: E402
 from ray.worker import (error_info, init, connect, disconnect, get, put, wait,
-                        remote, profile, flush_profile_data, get_gpu_ids,
-                        get_resource_ids, get_webui_url,
-                        register_custom_serializer)  # noqa: E402
-from ray.worker import (SCRIPT_MODE, WORKER_MODE, PYTHON_MODE,
+                        remote, get_gpu_ids, get_resource_ids, get_webui_url,
+                        register_custom_serializer, shutdown)  # noqa: E402
+from ray.worker import (SCRIPT_MODE, WORKER_MODE, LOCAL_MODE,
                         SILENT_MODE)  # noqa: E402
 from ray.worker import global_state  # noqa: E402
 # We import ray.actor because some code is run in actor.py which initializes
@@ -65,10 +65,10 @@ __version__ = "0.5.0"
 
 __all__ = [
     "error_info", "init", "connect", "disconnect", "get", "put", "wait",
-    "remote", "profile", "flush_profile_data", "actor", "method",
-    "get_gpu_ids", "get_resource_ids", "get_webui_url",
-    "register_custom_serializer", "SCRIPT_MODE", "WORKER_MODE", "PYTHON_MODE",
-    "SILENT_MODE", "global_state", "ObjectID", "_config", "__version__"
+    "remote", "profile", "actor", "method", "get_gpu_ids", "get_resource_ids",
+    "get_webui_url", "register_custom_serializer", "shutdown", "SCRIPT_MODE",
+    "WORKER_MODE", "LOCAL_MODE", "SILENT_MODE", "global_state", "ObjectID",
+    "_config", "__version__"
 ]
 
 import ctypes  # noqa: E402

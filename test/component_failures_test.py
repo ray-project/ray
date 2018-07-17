@@ -12,7 +12,7 @@ import pyarrow as pa
 
 class ComponentFailureTest(unittest.TestCase):
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
 
     # This test checks that when a worker dies in the middle of a get, the
     # plasma store and manager will not die.
