@@ -320,7 +320,7 @@ class Worker(object):
             except pyarrow.SerializationCallbackError as e:
                 try:
                     register_custom_serializer(
-                        type(e.example_object), self.task_driver_id.__hash__(), use_dict=True)
+                        type(e.example_object), use_dict=True)
                     warning_message = ("WARNING: Serializing objects of type "
                                        "{} by expanding them as dictionaries "
                                        "of their fields. This behavior may "
@@ -334,7 +334,7 @@ class Worker(object):
                     # cloudpickle can fail with many different types of errors.
                     try:
                         register_custom_serializer(
-                            type(e.example_object), self.task_driver_id.__hash__(), use_pickle=True)
+                            type(e.example_object), use_pickle=True)
                         warning_message = ("WARNING: Falling back to "
                                            "serializing objects of type {} by "
                                            "using pickle. This may be "
@@ -344,7 +344,6 @@ class Worker(object):
                     except serialization.CloudPickleError:
                         register_custom_serializer(
                             type(e.example_object),
-                            self.task_driver_id.__hash__(),
                             use_pickle=True,
                             local=True)
                         warning_message = ("WARNING: Pickling the class {} "
@@ -2300,7 +2299,7 @@ def _try_to_compute_deterministic_class_id(cls, depth=5):
 
 
 def register_custom_serializer(cls,
-                               driver_hash,
+                               driver_hash=None,
                                use_pickle=False,
                                use_dict=False,
                                serializer=None,
@@ -2364,6 +2363,9 @@ def register_custom_serializer(cls,
         # In this case, the class ID only needs to be meaningful on this worker
         # and not across workers.
         class_id = random_string()
+
+    if driver_hash == None:
+        driver_hash = worker.task_driver_id.__hash__()
 
     def register_class_for_serialization(worker_info):
         # TODO(rkn): We need to be more thoughtful about what to do if custom
