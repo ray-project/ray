@@ -92,9 +92,10 @@ class PPOPolicyGraph(TFPolicyGraph):
         dist_cls, logit_dim = ModelCatalog.get_action_dist(action_space)
 
         if existing_inputs:
-            self.loss_in = existing_inputs
             obs_ph, value_targets_ph, adv_ph, act_ph, \
-                logits_ph, vf_preds_ph = [ph for _, ph in existing_inputs]
+                logits_ph, vf_preds_ph = existing_inputs[:6]
+            existing_state_in = existing_inputs[6:-1]
+            existing_seq_lens = existing_inputs[-1]
         else:
             obs_ph = tf.placeholder(
                 tf.float32, name="obs", shape=(None,)+observation_space.shape)
@@ -107,23 +108,20 @@ class PPOPolicyGraph(TFPolicyGraph):
                 tf.float32, name="vf_preds", shape=(None,))
             value_targets_ph = tf.placeholder(
                 tf.float32, name="value_targets", shape=(None,))
+            existing_state_in = None
+            existing_seq_lens = None
 
-            self.loss_in = [
-                ("obs", obs_ph),
-                ("value_targets", value_targets_ph),
-                ("advantages", adv_ph),
-                ("actions", act_ph),
-                ("logits", logits_ph),
-                ("vf_preds", vf_preds_ph),
-            ]
-
+        self.loss_in = [
+            ("obs", obs_ph),
+            ("value_targets", value_targets_ph),
+            ("advantages", adv_ph),
+            ("actions", act_ph),
+            ("logits", logits_ph),
+            ("vf_preds", vf_preds_ph),
+        ]
         self.model = ModelCatalog.get_model(
-            obs_ph, logit_dim, self.config["model"])
-
-        # LSTM support
-        if not existing_inputs:
-            for i, ph in enumerate(self.model.state_in):
-                self.loss_in.append(("state_in_{}".format(i), ph))
+            obs_ph, logit_dim, self.config["model"],
+            state_in=existing_state_in, seq_lens=existing_seq_lens)
 
         # KL Coefficient
         self.kl_coeff = tf.get_variable(
@@ -155,15 +153,14 @@ class PPOPolicyGraph(TFPolicyGraph):
             clip_param=self.config["clip_param"],
             vf_loss_coeff=self.config["kl_target"],
             use_gae=self.config["use_gae"])
-        self.is_training = tf.placeholder_with_default(True, ())
 
         TFPolicyGraph.__init__(
             self, observation_space, action_space,
             self.sess, obs_input=obs_ph,
             action_sampler=self.sampler, loss=self.loss_obj.loss,
-            loss_inputs=self.loss_in, is_training=self.is_training,
-            state_inputs=self.model.state_in,
-            state_outputs=self.model.state_out, seq_lens=self.model.seq_lens)
+            loss_inputs=self.loss_in, state_inputs=self.model.state_in,
+            state_outputs=self.model.state_out, seq_lens=self.model.seq_lens,
+            max_seq_len=config["model"]["max_seq_len"])
 
         self.sess.run(tf.global_variables_initializer())
 
