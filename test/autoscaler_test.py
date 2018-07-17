@@ -178,7 +178,7 @@ class AutoscalingTest(unittest.TestCase):
     def tearDown(self):
         del NODE_PROVIDERS["mock"]
         shutil.rmtree(self.tmpdir)
-        ray.worker.cleanup()
+        ray.shutdown()
 
     def waitFor(self, condition):
         for _ in range(50):

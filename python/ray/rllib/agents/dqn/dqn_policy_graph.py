@@ -171,12 +171,11 @@ class DQNPolicyGraph(TFPolicyGraph):
             ("dones", self.done_mask),
             ("weights", self.importance_weights),
         ]
-        self.is_training = tf.placeholder_with_default(True, ())
         TFPolicyGraph.__init__(
             self, observation_space, action_space, self.sess,
             obs_input=self.cur_observations,
             action_sampler=self.output_actions, loss=self.loss.loss,
-            loss_inputs=self.loss_inputs, is_training=self.is_training)
+            loss_inputs=self.loss_inputs)
         self.sess.run(tf.global_variables_initializer())
 
     def optimizer(self):

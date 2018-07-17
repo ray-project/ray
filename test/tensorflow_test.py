@@ -95,7 +95,7 @@ class TrainActor(object):
 
 class TensorFlowTest(unittest.TestCase):
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
 
     def testTensorFlowVariables(self):
         ray.init(num_workers=2)
