@@ -360,6 +360,8 @@ class PlasmaPoll(PlasmaSelector):
     """
 
     def _get_ready_ids(self, timeout):
+        if timeout is not None:
+            timeout = int(timeout * 1000)  # second to millisecond
         polling_ids = list(self.waiting_dict.keys())
         object_ids, _ = ray.wait(
             polling_ids,
