@@ -149,13 +149,18 @@ if [[ ! -d $TP_DIR/../python/ray/pyarrow_files/pyarrow ]] || \
     [[ "$LANGUAGE" == "java" && ! -f $TP_DIR/build/arrow/cpp/build/release/libplasma_java.dylib ]]; then
   build_arrow
 else
+  REBUILD=off
   pushd $TP_DIR/build/arrow
   if [[ "$TARGET_COMMIT_ID" != `git rev-parse HEAD` ]]; then
     # TARGET_COMMIT_ID may change to later commit.
     echo "Commit ID mismatches."
     git fetch origin master
     git checkout $TARGET_COMMIT_ID
+    REBUILD=on
   fi
   popd
-  build_arrow
+
+  if [[ "$REBUILD" == "on" ]]; then
+    build_arrow
+  fi
 fi
