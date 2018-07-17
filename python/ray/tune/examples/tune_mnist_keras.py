@@ -104,9 +104,7 @@ def train_mnist(args, cfg, reporter):
 def create_parser():
     parser = argparse.ArgumentParser(description='Keras MNIST Example')
     parser.add_argument(
-        "--smoke-test",
-        action="store_true",
-        help="Finish quickly for testing")
+        "--smoke-test", action="store_true", help="Finish quickly for testing")
     parser.add_argument(
         '--jobs',
         type=int,
