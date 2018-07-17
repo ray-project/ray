@@ -187,8 +187,9 @@ public class RayNativeRuntime extends RayRuntime {
   private void initStateStore(String redisAddress, boolean useRaylet) throws Exception {
     kvStore = new RedisClient();
     kvStore.setAddr(redisAddress);
-    stateStoreProxy = useRaylet ? new StateStoreProxyImpl(kvStore) 
-                                : new RayletStateStoreProxyImpl(kvStore);
+    stateStoreProxy = useRaylet
+            ? new RayletStateStoreProxyImpl(kvStore)
+            : new StateStoreProxyImpl(kvStore);
     //stateStoreProxy.setStore(kvStore);
     stateStoreProxy.initializeGlobalState();
   }
