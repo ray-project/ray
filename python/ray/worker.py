@@ -244,6 +244,10 @@ class Worker(object):
 
     def get_serialization_context(self, driver_hash):
         """Get the SerializationContext of the driver that this worker is processing
+
+        Args:
+            driver_hash: The hash value of the driver_id that indicates which driver
+                to get the serialization context for.
         """
         if driver_hash not in self.serialization_context_map:
             _initialize_serialization(driver_hash)
@@ -686,7 +690,7 @@ class Worker(object):
             })
         self.redis_client.rpush("Exports", key)
 
-    def run_function_on_all_workers(self, function, include_driver=False):
+    def run_function_on_all_workers(self, function, run_on_other_drivers=False):
         """Run arbitrary code on all of the workers.
 
         This function will first be run on the driver, and then it will be
@@ -698,6 +702,8 @@ class Worker(object):
             function (Callable): The function to run on all of the workers. It
                 should not take any arguments. If it returns anything, its
                 return values will not be used.
+            run_on_other_drivers: The boolean that indicates whether we want to
+                run this funtion on other dirvers.
         """
         check_main_thread()
         # If ray.init has not been called yet, then cache the function and
@@ -732,7 +738,7 @@ class Worker(object):
                     "driver_id": self.task_driver_id.id(),
                     "function_id": function_to_run_id,
                     "function": pickled_function,
-                    "include_driver": include_driver
+                    "run_on_other_drivers": run_on_other_drivers
                 })
             self.redis_client.rpush("Exports", key)
             # TODO(rkn): If the worker fails after it calls setnx and before it
@@ -1271,21 +1277,17 @@ def _initialize_serialization(driver_hash, worker=global_worker):
 
     worker.serialization_context_map[driver_hash] = serialization_context
 
-    if worker.mode in [SCRIPT_MODE, SILENT_MODE]:
-        # These should only be called on the driver because
-        # register_custom_serializer will export the class to all of the
-        # workers.
-        register_custom_serializer(RayTaskError, driver_hash, use_dict=True, local=True)
-        register_custom_serializer(RayGetError, driver_hash, use_dict=True, local=True)
-        register_custom_serializer(RayGetArgumentError, driver_hash, use_dict=True, local=True)
-        # Tell Ray to serialize lambdas with pickle.
-        register_custom_serializer(type(lambda: 0), driver_hash, use_pickle=True, local=True)
-        # Tell Ray to serialize types with pickle.
-        register_custom_serializer(type(int), driver_hash, use_pickle=True, local=True)
-        # Tell Ray to serialize FunctionSignatures as dictionaries. This is
-        # used when passing around actor handles.
-        register_custom_serializer(
-            ray.signature.FunctionSignature, driver_hash, use_dict=True, local=True)
+    register_custom_serializer(RayTaskError, driver_hash, use_dict=True, local=True)
+    register_custom_serializer(RayGetError, driver_hash, use_dict=True, local=True)
+    register_custom_serializer(RayGetArgumentError, driver_hash, use_dict=True, local=True)
+    # Tell Ray to serialize lambdas with pickle.
+    register_custom_serializer(type(lambda: 0), driver_hash, use_pickle=True, local=True)
+    # Tell Ray to serialize types with pickle.
+    register_custom_serializer(type(int), driver_hash, use_pickle=True, local=True)
+    # Tell Ray to serialize FunctionSignatures as dictionaries. This is
+    # used when passing around actor handles.
+    register_custom_serializer(
+        ray.signature.FunctionSignature, driver_hash, use_dict=True, local=True)
 
 
 def get_address_info_from_redis_helper(redis_address,
@@ -2378,7 +2380,7 @@ def register_custom_serializer(cls,
             custom_deserializer=deserializer)
 
     if not local:
-        worker.run_function_on_all_workers(register_class_for_serialization, include_driver=True)
+        worker.run_function_on_all_workers(register_class_for_serialization, run_on_other_drivers=True)
     else:
         # Since we are pickling objects of this class, we don't actually need
         # to ship the class definition.
