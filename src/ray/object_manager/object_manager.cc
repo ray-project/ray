@@ -774,7 +774,6 @@ void ObjectManager::ReceiveFreeRequest(std::shared_ptr<TcpClientConnection> &con
   // Do not spread this request.
   bool spread = false;
   FreeObjects(object_ids, spread);
-  conn->ProcessMessages();
 }
 
 void ObjectManager::FreeObjects(const std::vector<ObjectID> &object_ids, bool spread) {

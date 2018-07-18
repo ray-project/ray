@@ -69,7 +69,7 @@ enum MessageType:int {
   // node manager, the message itself is serialized as a ProfileTableData object.
   PushProfileEventsRequest,
   // Free the objects in objects store.
-  FreeObjectsInObjectStore,
+  FreeObjectsInObjectStoreRequest,
 }
 
 table TaskExecutionSpecification {

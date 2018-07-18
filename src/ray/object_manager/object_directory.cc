@@ -119,10 +119,12 @@ ray::Status ObjectDirectory::GetInformation(const ClientID &client_id,
 
 ray::Status ObjectDirectory::GetAllClientInfo(
     const InfoSuccessCallback &success_callback) {
-  auto clients = gcs_client_->client_table().GetAllClients();
-  for (auto &client_pair : clients) {
+  const auto &clients = gcs_client_->client_table().GetAllClients();
+  for (const auto &client_pair : clients) {
     const ClientTableDataT &data = client_pair.second;
-    if (client_pair.first == ClientID::nil() || !data.is_insertion) {
+    if (client_pair.first == ClientID::nil() ||
+        client_pair.first == gcs_client_->client_table().GetLocalClientId() ||
+        !data.is_insertion) {
       continue;
     } else {
       const auto &info =

@@ -708,7 +708,7 @@ void NodeManager::ProcessClientMessage(
 
     RAY_CHECK_OK(gcs_client_->profile_table().AddProfileEventBatch(*message));
   } break;
-  case protocol::MessageType::FreeObjectsInObjectStore: {
+  case protocol::MessageType::FreeObjectsInObjectStoreRequest: {
     auto message = flatbuffers::GetRoot<protocol::FreeObjectsRequest>(message_data);
     std::vector<ObjectID> object_ids = from_flatbuf(*message->object_ids());
     object_manager_.FreeObjects(object_ids, message->spread());

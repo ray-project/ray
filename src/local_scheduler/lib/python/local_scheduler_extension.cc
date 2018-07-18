@@ -414,6 +414,43 @@ static PyObject *PyLocalSchedulerClient_push_profile_events(PyObject *self,
   Py_RETURN_NONE;
 }
 
+static PyObject *PyLocalSchedulerClient_free(PyObject *self, PyObject *args) {
+  PyObject *py_object_ids;
+  PyObject *py_spread;
+
+  if (!PyArg_ParseTuple(args, "OO", &py_object_ids, &py_spread)) {
+    return NULL;
+  }
+
+  bool spread = static_cast<bool>(PyObject_IsTrue(py_spread));
+
+  // Convert object ids.
+  PyObject *iter = PyObject_GetIter(py_object_ids);
+  if (!iter) {
+    return NULL;
+  }
+  std::vector<ObjectID> object_ids;
+  while (true) {
+    PyObject *next = PyIter_Next(iter);
+    ObjectID object_id;
+    if (!next) {
+      break;
+    }
+    if (!PyObjectToUniqueID(next, &object_id)) {
+      // Error parsing object id.
+      return NULL;
+    }
+    object_ids.push_back(object_id);
+  }
+
+  // Invoke local_scheduler_free_objects_in_object_store.
+  local_scheduler_free_objects_in_object_store(
+      reinterpret_cast<PyLocalSchedulerClient *>(self)
+          ->local_scheduler_connection,
+      object_ids, spread);
+  Py_RETURN_NONE;
+}
+
 static PyMethodDef PyLocalSchedulerClient_methods[] = {
     {"disconnect", (PyCFunction) PyLocalSchedulerClient_disconnect, METH_NOARGS,
      "Notify the local scheduler that this client is exiting gracefully."},
@@ -446,6 +483,8 @@ static PyMethodDef PyLocalSchedulerClient_methods[] = {
     {"push_profile_events",
      (PyCFunction) PyLocalSchedulerClient_push_profile_events, METH_VARARGS,
      "Store some profiling events in the GCS."},
+    {"free", (PyCFunction) PyLocalSchedulerClient_free, METH_VARARGS,
+     "Free a list of objects from object stores."},
     {NULL} /* Sentinel */
 };
 
