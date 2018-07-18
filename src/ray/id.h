@@ -22,6 +22,7 @@ class RAY_EXPORT UniqueID {
   size_t hash() const;
   bool is_nil() const;
   bool operator==(const UniqueID &rhs) const;
+  bool operator!=(const UniqueID &rhs) const;
   const uint8_t *data() const;
   uint8_t *mutable_data();
   size_t size() const;
