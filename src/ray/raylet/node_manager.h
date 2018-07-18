@@ -26,6 +26,8 @@ struct NodeManagerConfig {
   std::vector<std::string> worker_command;
   uint64_t heartbeat_period_ms;
   uint64_t max_lineage_size;
+  /// The store socket name.
+  std::string store_socket_name;
 };
 
 class NodeManager {
@@ -73,6 +75,8 @@ class NodeManager {
   /// Methods for task scheduling.
   /// Enqueue a placeable task to wait on object dependencies or be ready for dispatch.
   void EnqueuePlaceableTask(const Task &task);
+  /// Handle an actor task that cannot be executed because the actor is dead.
+  void HandleTaskForDeadActor(const TaskSpecification &spec);
   /// Handle specified task's submission to the local node manager.
   void SubmitTask(const Task &task, const Lineage &uncommitted_lineage,
                   bool forwarded = false);
@@ -117,6 +121,10 @@ class NodeManager {
 
   boost::asio::io_service &io_service_;
   ObjectManager &object_manager_;
+  /// A Plasma object store client. This is used exclusively for creating new
+  /// objects in the object store (e.g., for actor tasks that can't be run
+  /// because the actor died).
+  plasma::PlasmaClient store_client_;
   /// A client connection to the GCS.
   std::shared_ptr<gcs::AsyncGcsClient> gcs_client_;
   boost::asio::deadline_timer heartbeat_timer_;
@@ -143,7 +151,12 @@ class NodeManager {
   /// this could grow unbounded.
   std::unordered_set<ClientID> removed_clients_;
   std::unordered_map<ClientID, TcpServerConnection> remote_server_connections_;
+  /// A mapping from actor ID to registration information about that actor
+  /// (including which node manager owns it).
   std::unordered_map<ActorID, ActorRegistration> actor_registry_;
+  /// A list of the actors on this node that have died. In principle, this could
+  /// grow unbounded.
+  std::unordered_set<ActorID> dead_actors_;
 };
 
 }  // namespace raylet

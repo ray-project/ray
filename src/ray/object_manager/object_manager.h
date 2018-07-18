@@ -38,7 +38,7 @@ struct ObjectManagerConfig {
   int max_receives;
   /// Object chunk size, in bytes
   uint64_t object_chunk_size;
-  /// The stored socked name.
+  /// The store socket name.
   std::string store_socket_name;
   /// The time in milliseconds to wait until a Push request
   /// fails due to unsatisfied local object. Special value:

@@ -111,6 +111,8 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
   }));
   RAY_CHECK_OK(object_manager_.SubscribeObjDeleted(
       [this](const ObjectID &object_id) { HandleObjectMissing(object_id); }));
+
+  ARROW_CHECK_OK(store_client_.Connect(config.store_socket_name.c_str(), "", 0));
 }
 
 ray::Status NodeManager::RegisterGcs() {
@@ -437,7 +439,8 @@ void NodeManager::ProcessClientMessage(
             });
         RAY_CHECK(running_tasks.size() != 0);
         RAY_CHECK(it != running_tasks.end());
-        JobID job_id = it->GetTaskSpecification().DriverId();
+        const TaskSpecification &spec = it->GetTaskSpecification();
+        JobID job_id = spec.DriverId();
         // TODO(rkn): Define this constant somewhere else.
         std::string type = "worker_died";
         std::ostringstream error_message;
@@ -445,9 +448,20 @@ void NodeManager::ProcessClientMessage(
                       << ".";
         RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
             job_id, type, error_message.str(), current_time_ms()));
+
+        // Handle the task failure in order to raise an exception in the
+        // application.
+        HandleTaskForDeadActor(spec);
       }
 
       worker_pool_.DisconnectWorker(worker);
+
+      // If the worker was an actor, add it to the list of dead actors.
+      ActorID actor_id = worker->GetActorId();
+      if (!actor_id.is_nil()) {
+        RAY_LOG(DEBUG) << "The actor with ID " << actor_id << " died.";
+        dead_actors_.insert(actor_id);
+      }
 
       const ClientID &client_id = gcs_client_->client_table().GetLocalClientId();
 
@@ -673,6 +687,38 @@ void NodeManager::ScheduleTasks() {
   }
 }
 
+// This will simply store fake outputs in the object store for this task's
+// outputs. When those objects are retrieved by clients, the client will raise
+// an exception.
+// TODO(rkn): Rename since this is used for regular tasks as well!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+void NodeManager::HandleTaskForDeadActor(const TaskSpecification &spec) {
+  RAY_LOG(INFO) << "HandleTaskForDeadActor " << spec.ActorId();
+  // Loop over the return IDs (except the dummy ID) and store a fake object in
+  // the object store.
+  int64_t num_returns = spec.NumReturns();
+  if (spec.IsActorTask()) {
+    // TODO(rkn): We subtract 1 to avoid the dummy ID. However, this leaks
+    // information about the TaskSpecification implementation.
+    num_returns -= 1;
+  }
+  for (int64_t i = 0; i < num_returns; i++) {
+    const ObjectID object_id = spec.ReturnId(i);
+
+    std::shared_ptr<Buffer> data;
+    // TODO(ekl): this writes an invalid arrow object, which is sufficient to
+    // signal that the worker failed, but it would be nice to return more
+    // detailed failure metadata in the future.
+    arrow::Status status =
+        store_client_.Create(object_id.to_plasma_id(), 1, NULL, 0, &data);
+    if (!status.IsPlasmaObjectExists()) {
+      // TODO(rkn): We probably don't want this checks. E.g., if the object
+      // store is full, we don't want to kill the raylet.
+      ARROW_CHECK_OK(status);
+      ARROW_CHECK_OK(store_client_.Seal(object_id.to_plasma_id()));
+    }
+  }
+}
+
 void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineage,
                              bool forwarded) {
   // Add the task and its uncommitted lineage to the lineage cache.
@@ -690,13 +736,25 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
       // We have a known location for the actor.
       auto node_manager_id = actor_entry->second.GetNodeManagerId();
       if (node_manager_id == gcs_client_->client_table().GetLocalClientId()) {
-        // The actor is local. Queue the task for local execution, bypassing placement.
-        EnqueuePlaceableTask(task);
+        // The actor is local. Check if the actor is still alive.
+        if (dead_actors_.find(spec.ActorId()) != dead_actors_.end()) {
+          // Handle the fact that this actor is dead.
+          HandleTaskForDeadActor(spec);
+        } else {
+          // Queue the task for local execution, bypassing placement.
+          EnqueuePlaceableTask(task);
+        }
       } else {
         // The actor is remote. Forward the task to the node manager that owns
         // the actor.
-        // TODO(swang): Handle forward task failure.
-        RAY_CHECK_OK(ForwardTask(task, node_manager_id));
+        if (removed_clients_.find(node_manager_id) != removed_clients_.end()) {
+          // The remote node manager is dead, so handle the fact that this actor
+          // is also dead.
+          HandleTaskForDeadActor(spec);
+        } else {
+          // TODO(swang): Handle forward task failure.
+          RAY_CHECK_OK(ForwardTask(task, node_manager_id));
+        }
       }
     } else {
       // We do not have a registered location for the object, so either the
