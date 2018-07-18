@@ -753,7 +753,24 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
           HandleTaskForDeadActor(spec);
         } else {
           // TODO(swang): Handle forward task failure.
-          RAY_CHECK_OK(ForwardTask(task, node_manager_id));
+          if (!ForwardTask(task, node_manager_id).ok()) {
+            RAY_LOG(INFO) << "ForwardTask failed...";
+            // TODO(rkn): Confirm that io_service_ is the right place to do this.........................
+            boost::asio::deadline_timer timer(io_service_);
+            int64_t forward_task_retry_duration_milliseconds_ = 1000;  // Define this elsewhere..............
+            auto retry_duration = boost::posix_time::milliseconds(forward_task_retry_duration_milliseconds_);
+            timer.expires_from_now(retry_duration);
+            timer.async_wait(
+                [this, task](const boost::system::error_code &error) {
+                  // Timer killing will receive the boost::asio::error::operation_aborted,
+                  // we only handle the timeout event.
+                  if (!error) {
+                    RAY_LOG(INFO) << "In ForwardTask retry callback...";
+                    // TODO(rkn): What will this do to the lineage cache? It will re-add the task to the lineage cache, which is probably not what we want.
+                    SubmitTask(task, Lineage());
+                  }
+                });
+          }
         }
       }
     } else {
