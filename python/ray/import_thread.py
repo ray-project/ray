@@ -159,8 +159,8 @@ class ImportThread(object):
         """Run on arbitrary function on the worker."""
         driver_id, serialized_function, run_on_other_drivers = self.redis_client.hmget(
             key, ["driver_id", "function", "run_on_other_drivers"])
-        
-        if (run_on_other_drivers == "False" 
+
+        if (run_on_other_drivers == "False"
                 and self.worker.mode in [ray.SCRIPT_MODE, ray.SILENT_MODE]
                 and driver_id != self.worker.task_driver_id.id()):
             return

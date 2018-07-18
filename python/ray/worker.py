@@ -1298,7 +1298,10 @@ def _initialize_serialization(driver_id, worker=global_worker):
     # Tell Ray to serialize FunctionSignatures as dictionaries. This is
     # used when passing around actor handles.
     register_custom_serializer(
-        ray.signature.FunctionSignature, use_dict=True, local=True, driver_id=driver_id)
+        ray.signature.FunctionSignature,
+        use_dict=True,
+        local=True,
+        driver_id=driver_id)
 
 
 def get_address_info_from_redis_helper(redis_address,
