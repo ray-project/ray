@@ -336,10 +336,11 @@ class PolicyEvaluator(EvaluatorInterface):
                 for pid, batch in samples.policy_batches.items():
                     grad_out[pid], info_out[pid] = (
                         self.policy_map[pid].compute_gradients(batch))
-            return grad_out, info_out
         else:
-            return self.policy_map[DEFAULT_POLICY_ID].compute_gradients(
-                samples)
+            grad_out, info_out = (
+                self.policy_map[DEFAULT_POLICY_ID].compute_gradients(samples))
+        info_out["batch_count"] = samples.count
+        return grad_out, info_out
 
     def apply_gradients(self, grads):
         if isinstance(grads, dict):
