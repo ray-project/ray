@@ -108,8 +108,6 @@ class Profiler(object):
             # This is to suppress errors that occur at shutdown.
             pass
 
-    # TODO(rkn): Support calling this function in the middle of a task, and
-    # also call this periodically in the background from the driver.
     def flush_profile_data(self):
         """Push the logged profiling data to the global control store.
 
