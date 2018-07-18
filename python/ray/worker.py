@@ -243,11 +243,14 @@ class Worker(object):
         self.task_driver_id = None
 
     def get_serialization_context(self, driver_id):
-        """Get the SerializationContext of the driver that this worker is processing
+        """Get the SerializationContext of the driver that this worker is processing.
 
         Args:
             driver_id: The id of the driver that indicates which driver to get the 
                 serialization context for.
+        
+        Returns:
+            The serialization context of the given driver.
         """
         if driver_id not in self.serialization_context_map:
             _initialize_serialization(driver_id)
@@ -315,7 +318,8 @@ class Worker(object):
                     value,
                     object_id=pyarrow.plasma.ObjectID(object_id.id()),
                     memcopy_threads=self.memcopy_threads,
-                    serialization_context=self.get_serialization_context(self.task_driver_id))
+                    serialization_context=self.get_serialization_context(
+                        self.task_driver_id))
                 break
             except pyarrow.SerializationCallbackError as e:
                 try:
@@ -407,7 +411,8 @@ class Worker(object):
                     results += self.plasma_client.get(
                         object_ids[i:(
                             i + ray._config.worker_get_request_size())],
-                        timeout, self.get_serialization_context(self.task_driver_id))
+                        timeout,
+                        self.get_serialization_context(self.task_driver_id))
                 return results
             except pyarrow.lib.ArrowInvalid as e:
                 # TODO(ekl): the local scheduler could include relevant
@@ -689,7 +694,8 @@ class Worker(object):
             })
         self.redis_client.rpush("Exports", key)
 
-    def run_function_on_all_workers(self, function, run_on_other_drivers=False):
+    def run_function_on_all_workers(self, function,
+                                    run_on_other_drivers=False):
         """Run arbitrary code on all of the workers.
 
         This function will first be run on the driver, and then it will be
@@ -702,7 +708,8 @@ class Worker(object):
                 should not take any arguments. If it returns anything, its
                 return values will not be used.
             run_on_other_drivers: The boolean that indicates whether we want to
-                run this funtion on other dirvers.
+                run this funtion on other drivers. One case is we may need to share
+                objects across drivers.
         """
         check_main_thread()
         # If ray.init has not been called yet, then cache the function and
@@ -1276,17 +1283,22 @@ def _initialize_serialization(driver_id, worker=global_worker):
 
     worker.serialization_context_map[driver_id] = serialization_context
 
-    register_custom_serializer(RayTaskError, driver_id, use_dict=True, local=True)
-    register_custom_serializer(RayGetError, driver_id, use_dict=True, local=True)
-    register_custom_serializer(RayGetArgumentError, driver_id, use_dict=True, local=True)
+    register_custom_serializer(
+        RayTaskError, use_dict=True, local=True, driver_id=driver_id)
+    register_custom_serializer(
+        RayGetError, use_dict=True, local=True, driver_id=driver_id)
+    register_custom_serializer(
+        RayGetArgumentError, use_dict=True, local=True, driver_id=driver_id)
     # Tell Ray to serialize lambdas with pickle.
-    register_custom_serializer(type(lambda: 0), driver_id, use_pickle=True, local=True)
+    register_custom_serializer(
+        type(lambda: 0), use_pickle=True, local=True, driver_id=driver_id)
     # Tell Ray to serialize types with pickle.
-    register_custom_serializer(type(int), driver_id, use_pickle=True, local=True)
+    register_custom_serializer(
+        type(int), use_pickle=True, local=True, driver_id=driver_id)
     # Tell Ray to serialize FunctionSignatures as dictionaries. This is
     # used when passing around actor handles.
     register_custom_serializer(
-        ray.signature.FunctionSignature, driver_id, use_dict=True, local=True)
+        ray.signature.FunctionSignature, use_dict=True, local=True, driver_id=driver_id)
 
 
 def get_address_info_from_redis_helper(redis_address,
@@ -2253,7 +2265,8 @@ def disconnect(worker=global_worker):
     worker.connected = False
     worker.cached_functions_to_run = []
     worker.cached_remote_functions_and_actors = []
-    worker.serialization_context_map[worker.task_driver_id] = pyarrow.SerializationContext()
+    worker.serialization_context_map[
+        worker.task_driver_id] = pyarrow.SerializationContext()
 
 
 def _try_to_compute_deterministic_class_id(cls, depth=5):
@@ -2299,12 +2312,12 @@ def _try_to_compute_deterministic_class_id(cls, depth=5):
 
 
 def register_custom_serializer(cls,
-                               driver_id=None,
                                use_pickle=False,
                                use_dict=False,
                                serializer=None,
                                deserializer=None,
                                local=False,
+                               driver_id=None,
                                worker=global_worker):
     """Enable serialization and deserialization for a particular class.
 
@@ -2364,7 +2377,7 @@ def register_custom_serializer(cls,
         # and not across workers.
         class_id = random_string()
 
-    if driver_id == None:
+    if driver_id is None:
         driver_id_bytes = worker.task_driver_id.id()
     else:
         driver_id_bytes = driver_id.id()
@@ -2376,7 +2389,8 @@ def register_custom_serializer(cls,
         # subsequent calls to register_custom_serializer that were made by the
         # system.
 
-        serialization_context = worker_info["worker"].get_serialization_context(ray.ObjectID(driver_id_bytes))
+        serialization_context = worker_info[
+            "worker"].get_serialization_context(ray.ObjectID(driver_id_bytes))
         serialization_context.register_type(
             cls,
             class_id,
