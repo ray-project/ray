@@ -158,8 +158,9 @@ Status Log<ID, Data>::CancelNotifications(const JobID &job_id, const ID &id,
                                           const ClientID &client_id) {
   RAY_CHECK(subscribe_callback_index_ >= 0)
       << "Client canceled notifications on a key before Subscribe completed";
-  return GetRedisContext(id)->RunAsync("RAY.TABLE_CANCEL_NOTIFICATIONS", id, client_id.data(),
-                            client_id.size(), prefix_, pubsub_channel_, nullptr);
+  return GetRedisContext(id)->RunAsync("RAY.TABLE_CANCEL_NOTIFICATIONS", id,
+                                       client_id.data(), client_id.size(), prefix_,
+                                       pubsub_channel_, nullptr);
 }
 
 template <typename ID, typename Data>

@@ -389,14 +389,15 @@ class TaskTable : public Table<TaskID, ray::protocol::Task> {
 
 class TaskTable : public Table<TaskID, TaskTableData> {
  public:
-  TaskTable(const std::vector<std::shared_ptr<RedisContext>> &contexts, AsyncGcsClient *client)
+  TaskTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
+            AsyncGcsClient *client)
       : Table(contexts, client) {
     pubsub_channel_ = TablePubsub::TASK;
     prefix_ = TablePrefix::TASK;
   };
 
-  TaskTable(const std::vector<std::shared_ptr<RedisContext>> &contexts, AsyncGcsClient *client,
-            gcs::CommandType command_type)
+  TaskTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
+            AsyncGcsClient *client, gcs::CommandType command_type)
       : TaskTable(contexts, client) {
     command_type_ = command_type;
   }
