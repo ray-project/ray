@@ -58,10 +58,14 @@ public class RayletStateStoreProxyImpl extends StateStoreProxyImpl {
 
   }
 
-  /*
-   * get address info of one node from primary redis
-   * @param: node ip address, usually local ip address
-   * @return: a list of SchedulerInfo which contains rayletName and rayletPort
+  /**
+   *
+   * Get address info of one node from primary redis.
+   *
+   * @param nodeIpAddress Usually local ip address.
+   * @param redisAddress The primary redis address.
+   * @return A list of SchedulerInfo which contains raylet name and raylet port.
+   * @throws Exception No redis client exception.
    */
   @Override
   public List<AddressInfo> getAddressInfoHelper(final String nodeIpAddress,

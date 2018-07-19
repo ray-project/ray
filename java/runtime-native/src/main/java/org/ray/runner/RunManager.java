@@ -340,8 +340,9 @@ public class RunManager {
       }
     }
 
-    // start object stores
+    // start object stores and local scheduler
     for (int i = 0; i < params.num_local_schedulers; i++) {
+      // start object stores
       AddressInfo info = new AddressInfo();
       
       int rpcPort = params.object_store_rpc_port + i;
@@ -358,12 +359,16 @@ public class RunManager {
             params.node_ip_address, params.redirect, params.cleanup);
       }  
       
-      // start local scheduler
+      // start local scheduler or raylet
       int workerCount = 0;
 
-      if (params.start_workers_from_local_scheduler) {
+      if (!params.use_raylet && params.start_workers_from_local_scheduler) {
         workerCount = localNumWorkers[i];
         localNumWorkers[i] = 0;
+      }
+
+      if (params.use_raylet) {
+        workerCount = localNumWorkers[i];
       }
 
       if (!params.use_raylet) {
@@ -387,6 +392,8 @@ public class RunManager {
       localStores.workerCount = localNumWorkers[i];
       for (int j = 0; j < localNumWorkers[i]; j++) {
         if (!params.use_raylet) {
+          // TODO(wq): This code path cannot be executed.
+          // Becase in non-raylet mode, the local scheduler will start workers' process.
           startWorker(localStores.storeName, localStores.managerName, localStores.schedulerName,
               params.working_directory + "/worker" + i + "." + j, params.redis_address,
               params.node_ip_address, UniqueID.nil, "",
