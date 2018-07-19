@@ -361,6 +361,41 @@ void NodeManager::HandleActorCreation(const ActorID &actor_id,
   }
 }
 
+void NodeManager::GetActorTasksFromList(const ActorID &actor_id,
+                                        const std::list<Task> &tasks,
+                                        std::unordered_set<TaskID> &tasks_to_remove) {
+  for (auto const &task : tasks) {
+    auto const &spec = task.GetTaskSpecification();
+    if (actor_id == spec.ActorId()) {
+      tasks_to_remove.insert(spec.TaskId());
+    }
+  }
+}
+
+void NodeManager::CleanUpTasksForDeadActor(const ActorID &actor_id) {
+  // TODO(rkn): The code below should be cleaned up when we improve the
+  // SchedulingQueue API.
+  std::unordered_set<TaskID> tasks_to_remove;
+
+  GetActorTasksFromList(actor_id, local_queues_.GetUncreatedActorMethods(),
+                        tasks_to_remove);
+  GetActorTasksFromList(actor_id, local_queues_.GetWaitingTasks(),
+                        tasks_to_remove);
+  GetActorTasksFromList(actor_id, local_queues_.GetPlaceableTasks(),
+                        tasks_to_remove);
+  GetActorTasksFromList(actor_id, local_queues_.GetReadyTasks(),
+                        tasks_to_remove);
+  GetActorTasksFromList(actor_id, local_queues_.GetRunningTasks(),
+                        tasks_to_remove);
+  GetActorTasksFromList(actor_id, local_queues_.GetBlockedTasks(),
+                        tasks_to_remove);
+
+  auto removed_tasks = local_queues_.RemoveTasks(tasks_to_remove);
+  for (auto const &task : removed_tasks) {
+    TreatTaskAsFailed(task.GetTaskSpecification());
+  }
+}
+
 void NodeManager::ProcessNewClient(LocalClientConnection &client) {
   // The new client is a worker, so begin listening for messages.
   client.ProcessMessages();
@@ -452,6 +487,13 @@ void NodeManager::ProcessClientMessage(
         // Handle the task failure in order to raise an exception in the
         // application.
         TreatTaskAsFailed(spec);
+
+        // For dead actors, if there are remaining tasks for this actor, we
+        // should handle them.
+        const ActorID actor_id = worker->GetActorId();
+        if (!actor_id.is_nil()) {
+          CleanUpTasksForDeadActor(actor_id);
+        }
       }
 
       worker_pool_.DisconnectWorker(worker);

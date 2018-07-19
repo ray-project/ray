@@ -116,6 +116,28 @@ class NodeManager {
   void HandleActorCreation(const ActorID &actor_id,
                            const std::vector<ActorTableDataT> &data);
 
+  /// TODO(rkn): This should probably be removed when we improve the
+  /// SchedulingQueue API. This is a helper function for
+  /// CleanUpTasksForDeadActor.
+  ///
+  /// This essentially loops over all of the tasks in the provided list and
+  /// finds The IDs of the tasks that belong to the given actor.
+  ///
+  /// \param actor_id The actor to get the tasks for.
+  /// \param tasks A list of tasks to extract from.
+  /// \param tasks_to_remove The task IDs of the extracted tasks are inserted in
+  /// this vector.
+  void GetActorTasksFromList(const ActorID &actor_id,
+                             const std::list<Task> &tasks,
+                             std::unordered_set<TaskID> &tasks_to_remove);
+
+  /// When an actor dies, loop over all of the queued tasks for that actor and
+  /// treat them as failed.
+  ///
+  /// \param actor_id The actor that died.
+  /// \return Void.
+  void CleanUpTasksForDeadActor(const ActorID &actor_id);
+
   /// Methods for managing object dependencies.
   /// Handle a dependency required by a queued task that is missing locally.
   /// The dependency is (1) on a remote node, (2) pending creation on a remote
