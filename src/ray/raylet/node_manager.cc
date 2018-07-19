@@ -754,8 +754,9 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
                           << " to node manager " << node_manager_id;
             // TODO(rkn): Confirm that io_service_ is the right place to do this.........................
             boost::asio::deadline_timer timer(io_service_);
-            int64_t forward_task_retry_duration_milliseconds_ = 1000;  // Define this elsewhere..............
-            auto retry_duration = boost::posix_time::milliseconds(forward_task_retry_duration_milliseconds_);
+            auto retry_duration = boost::posix_time::milliseconds(
+                RayConfig::instance()
+                    .node_manager_forward_task_retry_timeout_milliseconds());
             timer.expires_from_now(retry_duration);
             timer.async_wait(
                 [this, task](const boost::system::error_code &error) {
