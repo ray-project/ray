@@ -2268,8 +2268,7 @@ def disconnect(worker=global_worker):
     worker.connected = False
     worker.cached_functions_to_run = []
     worker.cached_remote_functions_and_actors = []
-    worker.serialization_context_map[
-        worker.task_driver_id] = pyarrow.SerializationContext()
+    worker.serialization_context_map.clear()
 
 
 def _try_to_compute_deterministic_class_id(cls, depth=5):
@@ -2373,7 +2372,7 @@ def register_custom_serializer(cls,
         class_id = _try_to_compute_deterministic_class_id(cls)
     except Exception as e:
         raise serialization.CloudPickleError("Failed to pickle class "
-                                                "'{}'".format(cls))
+                                             "'{}'".format(cls))
 
     if driver_id is None:
         driver_id_bytes = worker.task_driver_id.id()
