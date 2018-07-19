@@ -2360,25 +2360,20 @@ def register_custom_serializer(cls,
         # Raise an exception if cls cannot be serialized efficiently by Ray.
         serialization.check_serializable(cls)
 
-    if not local:
-        # In this case, the class ID will be used to deduplicate the class
-        # across workers. Note that cloudpickle unfortunately does not produce
-        # deterministic strings, so these IDs could be different on different
-        # workers. We could use something weaker like cls.__name__, however
-        # that would run the risk of having collisions. TODO(rkn): We should
-        # improve this.
-        try:
-            # Attempt to produce a class ID that will be the same on each
-            # worker. However, determinism is not guaranteed, and the result
-            # may be different on different workers.
-            class_id = _try_to_compute_deterministic_class_id(cls)
-        except Exception as e:
-            raise serialization.CloudPickleError("Failed to pickle class "
-                                                 "'{}'".format(cls))
-    else:
-        # In this case, the class ID only needs to be meaningful on this worker
-        # and not across workers.
-        class_id = random_string()
+    # In this case, the class ID will be used to deduplicate the class
+    # across workers. Note that cloudpickle unfortunately does not produce
+    # deterministic strings, so these IDs could be different on different
+    # workers. We could use something weaker like cls.__name__, however
+    # that would run the risk of having collisions. TODO(rkn): We should
+    # improve this.
+    try:
+        # Attempt to produce a class ID that will be the same on each
+        # worker. However, determinism is not guaranteed, and the result
+        # may be different on different workers.
+        class_id = _try_to_compute_deterministic_class_id(cls)
+    except Exception as e:
+        raise serialization.CloudPickleError("Failed to pickle class "
+                                                "'{}'".format(cls))
 
     if driver_id is None:
         driver_id_bytes = worker.task_driver_id.id()
