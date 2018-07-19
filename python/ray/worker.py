@@ -1284,24 +1284,45 @@ def _initialize_serialization(driver_id, worker=global_worker):
     worker.serialization_context_map[driver_id] = serialization_context
 
     register_custom_serializer(
-        RayTaskError, use_dict=True, local=True, driver_id=driver_id)
+        RayTaskError,
+        use_dict=True,
+        local=True,
+        driver_id=driver_id,
+        class_id="ray.RayTaskError")
     register_custom_serializer(
-        RayGetError, use_dict=True, local=True, driver_id=driver_id)
+        RayGetError,
+        use_dict=True,
+        local=True,
+        driver_id=driver_id,
+        class_id="ray.RayGetError")
     register_custom_serializer(
-        RayGetArgumentError, use_dict=True, local=True, driver_id=driver_id)
+        RayGetArgumentError,
+        use_dict=True,
+        local=True,
+        driver_id=driver_id,
+        class_id="ray.RayGetArgumentError")
     # Tell Ray to serialize lambdas with pickle.
     register_custom_serializer(
-        type(lambda: 0), use_pickle=True, local=True, driver_id=driver_id)
+        type(lambda: 0),
+        use_pickle=True,
+        local=True,
+        driver_id=driver_id,
+        class_id="lambda0")
     # Tell Ray to serialize types with pickle.
     register_custom_serializer(
-        type(int), use_pickle=True, local=True, driver_id=driver_id)
+        type(int),
+        use_pickle=True,
+        local=True,
+        driver_id=driver_id,
+        class_id="int")
     # Tell Ray to serialize FunctionSignatures as dictionaries. This is
     # used when passing around actor handles.
     register_custom_serializer(
         ray.signature.FunctionSignature,
         use_dict=True,
         local=True,
-        driver_id=driver_id)
+        driver_id=driver_id,
+        class_id="ray.signature.FunctionSignature")
 
 
 def get_address_info_from_redis_helper(redis_address,
@@ -2320,6 +2341,7 @@ def register_custom_serializer(cls,
                                deserializer=None,
                                local=False,
                                driver_id=None,
+                               class_id=None,
                                worker=global_worker):
     """Enable serialization and deserialization for a particular class.
 
@@ -2340,6 +2362,9 @@ def register_custom_serializer(cls,
             if and only if use_pickle and use_dict are False.
         local: True if the serializers should only be registered on the current
             worker. This should usually be False.
+        driver_id: Id of the driver for which we want to register cls for.
+        class_id: Id of the cls that used to register. If this is specified, we
+            will not calculate a new one inside the funtion.
 
     Raises:
         Exception: An exception is raised if pickle=False and the class cannot
@@ -2359,20 +2384,26 @@ def register_custom_serializer(cls,
         # Raise an exception if cls cannot be serialized efficiently by Ray.
         serialization.check_serializable(cls)
 
-    # In this case, the class ID will be used to deduplicate the class
-    # across workers. Note that cloudpickle unfortunately does not produce
-    # deterministic strings, so these IDs could be different on different
-    # workers. We could use something weaker like cls.__name__, however
-    # that would run the risk of having collisions. TODO(rkn): We should
-    # improve this.
-    try:
-        # Attempt to produce a class ID that will be the same on each
-        # worker. However, determinism is not guaranteed, and the result
-        # may be different on different workers.
-        class_id = _try_to_compute_deterministic_class_id(cls)
-    except Exception as e:
-        raise serialization.CloudPickleError("Failed to pickle class "
-                                             "'{}'".format(cls))
+    if class_id is None:
+        if not local:
+            # In this case, the class ID will be used to deduplicate the class
+            # across workers. Note that cloudpickle unfortunately does not produce
+            # deterministic strings, so these IDs could be different on different
+            # workers. We could use something weaker like cls.__name__, however
+            # that would run the risk of having collisions. TODO(rkn): We should
+            # improve this.
+            try:
+                # Attempt to produce a class ID that will be the same on each
+                # worker. However, determinism is not guaranteed, and the result
+                # may be different on different workers.
+                class_id = _try_to_compute_deterministic_class_id(cls)
+            except Exception as e:
+                raise serialization.CloudPickleError("Failed to pickle class "
+                                                    "'{}'".format(cls))
+        else:
+            # In this case, the class ID only needs to be meaningful on this worker
+            # and not across workers.
+            class_id = random_string()
 
     if driver_id is None:
         driver_id_bytes = worker.task_driver_id.id()
