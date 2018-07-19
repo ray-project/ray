@@ -6,7 +6,6 @@ from collections import namedtuple
 
 import tensorflow as tf
 
-
 # Variable scope in which created variables will be placed under
 TOWER_SCOPE_NAME = "tower"
 
@@ -47,8 +46,14 @@ class LocalSyncParallelOptimizer(object):
         grad_norm_clipping: None or int stdev to clip grad norms by
     """
 
-    def __init__(self, optimizer, devices, input_placeholders, rnn_inputs,
-                 per_device_batch_size, build_graph, logdir,
+    def __init__(self,
+                 optimizer,
+                 devices,
+                 input_placeholders,
+                 rnn_inputs,
+                 per_device_batch_size,
+                 build_graph,
+                 logdir,
                  grad_norm_clipping=None):
         # TODO(rliaw): remove logdir
         self.optimizer = optimizer
@@ -78,8 +83,8 @@ class LocalSyncParallelOptimizer(object):
         self._towers = []
         for device, device_placeholders in zip(self.devices, data_splits):
             self._towers.append(
-                self._setup_device(
-                    device, device_placeholders, len(input_placeholders)))
+                self._setup_device(device, device_placeholders,
+                                   len(input_placeholders)))
 
         avg = average_gradients([t.grads for t in self._towers])
         if grad_norm_clipping:
@@ -119,14 +124,10 @@ class LocalSyncParallelOptimizer(object):
             assert len(state_inputs[0]) * seq_len == len(inputs[0])
             # Make sure the shorter state inputs arrays are evenly divisible
             state_inputs = [
-                make_divisible_by(arr, self.batch_size)
-                for arr in state_inputs
+                make_divisible_by(arr, self.batch_size) for arr in state_inputs
             ]
             # Then truncate the data inputs to match
-            inputs = [
-                arr[:len(state_inputs[0]) * seq_len]
-                for arr in inputs
-            ]
+            inputs = [arr[:len(state_inputs[0]) * seq_len] for arr in inputs]
             assert len(state_inputs[0]) * seq_len == len(inputs[0])
             assert len(state_inputs[0]) % self.batch_size == 0
             for ph, arr in zip(self.loss_inputs, inputs + state_inputs):
@@ -138,8 +139,7 @@ class LocalSyncParallelOptimizer(object):
                 feed_dict[ph] = truncated_arr
                 truncated_len = len(truncated_arr)
 
-        sess.run(
-            [t.init_op for t in self._towers], feed_dict=feed_dict)
+        sess.run([t.init_op for t in self._towers], feed_dict=feed_dict)
 
         tuples_per_device = truncated_len / len(self.devices)
         assert tuples_per_device > 0, \
@@ -198,7 +198,9 @@ class LocalSyncParallelOptimizer(object):
                 device_input_slices = []
                 for i, ph in enumerate(device_input_placeholders):
                     current_batch = tf.Variable(
-                        ph, trainable=False, validate_shape=False,
+                        ph,
+                        trainable=False,
+                        validate_shape=False,
                         collections=[])
                     device_input_batches.append(current_batch)
                     if i < num_data_in:
@@ -210,18 +212,17 @@ class LocalSyncParallelOptimizer(object):
                     current_slice = tf.slice(
                         current_batch,
                         ([self._batch_index // scale * granularity] +
-                            [0] * len(ph.shape[1:])),
+                         [0] * len(ph.shape[1:])),
                         ([self.per_device_batch_size // scale * granularity] +
-                            [-1] * len(ph.shape[1:])))
+                         [-1] * len(ph.shape[1:])))
                     current_slice.set_shape(ph.shape)
                     device_input_slices.append(current_slice)
                 graph_obj = self.build_graph(device_input_slices)
                 device_grads = graph_obj.gradients(self.optimizer)
             return Tower(
-                tf.group(*[batch.initializer
-                           for batch in device_input_batches]),
-                device_grads,
-                graph_obj)
+                tf.group(
+                    *[batch.initializer for batch in device_input_batches]),
+                device_grads, graph_obj)
 
 
 # Each tower is a copy of the loss graph pinned to a specific device.

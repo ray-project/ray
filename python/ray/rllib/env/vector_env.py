@@ -71,8 +71,7 @@ class _VectorizedGymEnv(VectorEnv):
         self.envs = existing_envs
         self.num_envs = num_envs
         if make_env and num_envs > 1:
-            self.resetter = _AsyncResetter(
-                make_env, int(self.num_envs ** 0.5))
+            self.resetter = _AsyncResetter(make_env, int(self.num_envs**0.5))
         else:
             self.resetter = _SimpleResetter(make_env)
         while len(self.envs) < self.num_envs:

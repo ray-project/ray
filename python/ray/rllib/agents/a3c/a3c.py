@@ -92,15 +92,15 @@ class A3CAgent(Agent):
         self.remote_evaluators = self.make_remote_evaluators(
             self.env_creator, policy_cls, self.config["num_workers"],
             {"num_gpus": 1 if self.config["use_gpu_for_workers"] else 0})
-        self.optimizer = AsyncGradientsOptimizer(
-            self.local_evaluator, self.remote_evaluators,
-            self.config["optimizer"])
+        self.optimizer = AsyncGradientsOptimizer(self.local_evaluator,
+                                                 self.remote_evaluators,
+                                                 self.config["optimizer"])
 
     def _train(self):
         prev_steps = self.optimizer.num_steps_sampled
         self.optimizer.step()
-        FilterManager.synchronize(
-            self.local_evaluator.filters, self.remote_evaluators)
+        FilterManager.synchronize(self.local_evaluator.filters,
+                                  self.remote_evaluators)
         result = self.optimizer.collect_metrics()
         result = result._replace(
             timesteps_this_iter=self.optimizer.num_steps_sampled - prev_steps)

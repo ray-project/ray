@@ -9,13 +9,12 @@ APEX_DDPG_DEFAULT_CONFIG = merge_dicts(
     DDPG_CONFIG,
     {
         "optimizer_class": "AsyncSamplesOptimizer",
-        "optimizer":
-            merge_dicts(
-                DDPG_CONFIG["optimizer"], {
-                    "max_weight_sync_delay": 400,
-                    "num_replay_buffer_shards": 4,
-                    "debug": False
-                }),
+        "optimizer": merge_dicts(
+            DDPG_CONFIG["optimizer"], {
+                "max_weight_sync_delay": 400,
+                "num_replay_buffer_shards": 4,
+                "debug": False
+            }),
         "n_step": 3,
         "num_workers": 32,
         "buffer_size": 2000000,
