@@ -4,12 +4,10 @@ import com.google.flatbuffers.FlatBufferBuilder;
 import java.io.UnsupportedEncodingException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
+
+import org.apache.commons.lang3.ArrayUtils;
 import org.ray.api.UniqueID;
 import org.ray.format.gcs.ClientTableData;
 import org.ray.format.gcs.GcsTableEntry;
@@ -19,6 +17,7 @@ import org.ray.spi.StateStoreProxy;
 import org.ray.spi.model.AddressInfo;
 import org.ray.util.NetworkUtil;
 import org.ray.util.logger.RayLog;
+import redis.clients.util.SafeEncoder;
 
 /**
  * A class used to interface with the Ray control state for raylet.
@@ -29,6 +28,7 @@ public class RayletStateStoreProxyImpl extends StateStoreProxyImpl {
     super(rayKvStore);
   }
 
+  @Override
   public synchronized void initializeGlobalState() throws Exception {
 
     String es;
@@ -71,16 +71,27 @@ public class RayletStateStoreProxyImpl extends StateStoreProxyImpl {
     }
     List<AddressInfo> schedulerInfo = new ArrayList<>();
 
-    String clientKey = "CLIENT:" + UniqueID.genNil();
-    Set<String> clients = rayKvStore.zrange(clientKey, 0, -1);
+    byte[] prefix = "CLIENT".getBytes();
+    byte[] postfix = UniqueID.genNil().getBytes();
+    byte[] clientKey = new byte[prefix.length + postfix.length];
+    System.arraycopy(prefix, 0, clientKey, 0, prefix.length);
+    System.arraycopy(postfix, 0, clientKey, prefix.length, postfix.length);
 
-    for (String clientMessage : clients) {
-      ByteBuffer bb = ByteBuffer.wrap(clientMessage.getBytes());
+    Set<byte[]> clients = rayKvStore.zrange(clientKey, 0, -1);
+
+    for (byte[] clientMessage : clients) {
+      ByteBuffer bb = ByteBuffer.wrap(clientMessage);
       ClientTableData client = ClientTableData.getRootAsClientTableData(bb);
       String clientNodeIpAddress = client.nodeManagerAddress();
-      if (clientNodeIpAddress == nodeIpAddress 
-          || clientNodeIpAddress == "127.0.0.1"
-          && redisAddress == NetworkUtil.getIpAddress(null)) {
+
+      String localIpAddress = NetworkUtil.getIpAddress(null);
+      String redisIpAddress = redisAddress.substring(0, redisAddress.indexOf(':'));
+
+      boolean headNodeAddress = "127.0.0.1".equals(clientNodeIpAddress)
+              && Objects.equals(redisIpAddress, localIpAddress);
+      boolean notHeadNodeAddress = Objects.equals(clientNodeIpAddress, nodeIpAddress);
+
+      if (headNodeAddress || notHeadNodeAddress) {
         AddressInfo si = new AddressInfo();
         si.storeName = client.objectStoreSocketName();
         si.rayletName = client.rayletSocketName();

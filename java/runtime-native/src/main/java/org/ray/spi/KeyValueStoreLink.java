@@ -105,6 +105,8 @@ public interface KeyValueStoreLink {
 
   Set<String> zrange(String key, long start, long end);
 
+  Set<byte[]> zrange(byte[] key, long start, long end);
+
   /**
    * Rpush.
    * @return Integer reply, specifically, the number of elements inside the list after the push

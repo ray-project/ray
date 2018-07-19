@@ -180,6 +180,13 @@ public class RedisClient implements KeyValueStoreLink {
   }
 
   @Override
+  public Set<byte[]> zrange(byte[] key, long start, long end) {
+    try (Jedis jedis = jedisPool.getResource()) {
+      return jedis.zrange(key, start, end);
+    }
+  }
+
+  @Override
   public Long rpush(String key, String... strings) {
     try (Jedis jedis = jedisPool.getResource()) {
       return jedis.rpush(key, strings);
