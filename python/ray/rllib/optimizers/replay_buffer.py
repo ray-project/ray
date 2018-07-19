@@ -7,7 +7,7 @@ import random
 import sys
 
 from ray.rllib.optimizers.segment_tree import SumSegmentTree, MinSegmentTree
-from ray.rllib.utils.compression import unpack
+from ray.rllib.utils.compression import unpack_if_needed
 from ray.rllib.utils.window_stat import WindowStat
 
 
@@ -59,10 +59,10 @@ class ReplayBuffer(object):
         for i in idxes:
             data = self._storage[i]
             obs_t, action, reward, obs_tp1, done = data
-            obses_t.append(np.array(unpack(obs_t), copy=False))
+            obses_t.append(np.array(unpack_if_needed(obs_t), copy=False))
             actions.append(np.array(action, copy=False))
             rewards.append(reward)
-            obses_tp1.append(np.array(unpack(obs_tp1), copy=False))
+            obses_tp1.append(np.array(unpack_if_needed(obs_tp1), copy=False))
             dones.append(done)
             self._hit_count[i] += 1
         return (np.array(obses_t), np.array(actions), np.array(rewards),

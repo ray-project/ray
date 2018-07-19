@@ -63,6 +63,8 @@ DEFAULT_CONFIG = with_common_config({
     "prioritized_replay_eps": 1e-6,
     # Whether to clip rewards to [-1, 1] prior to adding to the replay buffer.
     "clip_rewards": True,
+    # Whether to LZ4 compress observations
+    "compress_observations": False,
 
     # === Optimization ===
     # Learning rate for adam optimizer

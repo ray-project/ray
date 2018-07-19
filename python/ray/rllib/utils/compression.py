@@ -42,6 +42,12 @@ def unpack(data):
     return data
 
 
+def unpack_if_needed(data):
+    if isinstance(data, bytes):
+        data = unpack(data)
+    return data
+
+
 # Intel(R) Core(TM) i7-4600U CPU @ 2.10GHz
 # Compression speed: 753.664 MB/s
 # Compression ratio: 87.4839812046
