@@ -202,9 +202,11 @@ def _env_runner(async_vector_env,
         else:
             return MultiAgentSampleBatchBuilder(policies)
 
-    active_episodes = defaultdict(
-        lambda: _MultiAgentEpisode(policies, policy_mapping_fn, get_batch_builder)
-    )
+    def new_episode():
+        return _MultiAgentEpisode(policies, policy_mapping_fn,
+                                  get_batch_builder)
+
+    active_episodes = defaultdict(new_episode)
 
     while True:
         # Get observations from all ready agents

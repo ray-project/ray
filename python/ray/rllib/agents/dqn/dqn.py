@@ -150,9 +150,9 @@ class DQNAgent(Agent):
         if self.config["per_worker_exploration"]:
             assert self.config["num_workers"] > 1, \
                 "This requires multiple workers"
-            return ConstantSchedule(
-                0.4**
-                (1 + worker_index / float(self.config["num_workers"] - 1) * 7))
+            exponent = (
+                1 + worker_index / float(self.config["num_workers"] - 1) * 7)
+            return ConstantSchedule(0.4**exponent)
         return LinearSchedule(
             schedule_timesteps=int(self.config["exploration_fraction"] *
                                    self.config["schedule_max_timesteps"]),

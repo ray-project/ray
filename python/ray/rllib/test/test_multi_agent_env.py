@@ -328,12 +328,15 @@ class TestMultiAgentEnv(unittest.TestCase):
             policy_mapping_fn=lambda agent_id: ["p1", "p2"][agent_id % 2],
             batch_steps=50)
         if optimizer_cls == AsyncGradientsOptimizer:
+
+            def policy_mapper(agent_id):
+                return ["p1", "p2"][agent_id % 2]
+
             remote_evs = [
                 PolicyEvaluator.as_remote().remote(
                     env_creator=lambda _: MultiCartpole(n),
                     policy_graph=policies,
-                    policy_mapping_fn=
-                    lambda agent_id: ["p1", "p2"][agent_id % 2],
+                    policy_mapping_fn=policy_mapper,
                     batch_steps=50)
             ]
         else:
