@@ -136,8 +136,8 @@ class PolicyEvaluator(EvaluatorInterface):
             sample_async (bool): Whether to compute samples asynchronously in
                 the background, which improves throughput but can cause samples
                 to be slightly off-policy.
-            compress_observations (bool): If true, compress the observations
-                returned.
+            compress_observations (bool): If true, compress the observations.
+                They can be decompressed with rllib/utils/compression.
             num_envs (int): If more than one, will create multiple envs
                 and vectorize the computation of actions. This has no effect if
                 if the env already implements VectorEnv.
