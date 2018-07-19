@@ -137,8 +137,10 @@ Status Log<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
     return false;
   };
   subscribe_callback_index_ = 1;
-  // TODO(heyucongtom): check if hash by client_id is a valid hashing scheme.
-  return GetRedisContext(client_id)->SubscribeAsync(client_id, pubsub_channel_, std::move(callback));
+  for (auto& context : shard_contexts_) {
+    RAY_RETURN_NOT_OK(context->SubscribeAsync(client_id, pubsub_channel, callback));
+  }
+  return Status::OK();
 }
 
 template <typename ID, typename Data>
@@ -146,7 +148,7 @@ Status Log<ID, Data>::RequestNotifications(const JobID &job_id, const ID &id,
                                            const ClientID &client_id) {
   RAY_CHECK(subscribe_callback_index_ >= 0)
       << "Client requested notifications on a key before Subscribe completed";
-  return GetRedisContext(client_id)->RunAsync("RAY.TABLE_REQUEST_NOTIFICATIONS", id, client_id.data(),
+  return GetRedisContext(id)->RunAsync("RAY.TABLE_REQUEST_NOTIFICATIONS", id, client_id.data(),
                             client_id.size(), prefix_, pubsub_channel_, nullptr);
 }
 
@@ -155,7 +157,7 @@ Status Log<ID, Data>::CancelNotifications(const JobID &job_id, const ID &id,
                                           const ClientID &client_id) {
   RAY_CHECK(subscribe_callback_index_ >= 0)
       << "Client canceled notifications on a key before Subscribe completed";
-  return GetRedisContext(client_id)->RunAsync("RAY.TABLE_CANCEL_NOTIFICATIONS", id, client_id.data(),
+  return GetRedisContext(id)->RunAsync("RAY.TABLE_CANCEL_NOTIFICATIONS", id, client_id.data(),
                             client_id.size(), prefix_, pubsub_channel_, nullptr);
 }
 
