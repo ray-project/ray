@@ -147,21 +147,35 @@ class SchedulingQueue {
   /// \param filter_state The task state to filter out.
   void FilterState(std::unordered_set<TaskID> &task_ids, TaskState filter_state) const;
 
+  class TaskQueue {
+  public:
+    TaskQueue() {}
+    bool Append(const TaskID &task_id, const Task &task);
+    bool Remove(const TaskID &task_id);
+    bool Remove(const TaskID &task_id, std::vector<Task> &removed_tasks);
+
+    const std::list<Task> &GetTasks() const;
+  private:
+    std::list<Task> list_;
+    std::unordered_map<TaskID, std::list<Task>::iterator> map_;
+  };
+
  private:
+
   /// Tasks that are destined for actors that have not yet been created.
-  std::list<Task> methods_waiting_for_actor_creation_;
+  TaskQueue methods_waiting_for_actor_creation_;
   /// Tasks that are waiting for an object dependency to appear locally.
-  std::list<Task> waiting_tasks_;
+  TaskQueue waiting_tasks_;
   /// Tasks whose object dependencies are locally available, but that are
   /// waiting to be scheduled.
-  std::list<Task> placeable_tasks_;
+  TaskQueue placeable_tasks_;
   /// Tasks ready for dispatch, but that are waiting for a worker.
-  std::list<Task> ready_tasks_;
+  TaskQueue ready_tasks_;
   /// Tasks that are running on a worker.
-  std::list<Task> running_tasks_;
+  TaskQueue running_tasks_;
   /// Tasks that were dispatched to a worker but are blocked on a data
   /// dependency that was missing at runtime.
-  std::list<Task> blocked_tasks_;
+  TaskQueue blocked_tasks_;
   /// The set of currently running driver tasks. These are empty tasks that are
   /// started by a driver process on initialization.
   std::unordered_set<TaskID> driver_task_ids_;
