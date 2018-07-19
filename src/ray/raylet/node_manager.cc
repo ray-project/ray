@@ -440,7 +440,7 @@ void NodeManager::ProcessClientMessage(
         RAY_CHECK(running_tasks.size() != 0);
         RAY_CHECK(it != running_tasks.end());
         const TaskSpecification &spec = it->GetTaskSpecification();
-        JobID job_id = spec.DriverId();
+        const JobID job_id = spec.DriverId();
         // TODO(rkn): Define this constant somewhere else.
         std::string type = "worker_died";
         std::ostringstream error_message;
