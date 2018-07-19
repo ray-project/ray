@@ -119,7 +119,7 @@ class DDPGAgent(DQNAgent):
             assert self.config["num_workers"] > 1, \
                 "This requires multiple workers"
             return ConstantSchedule(
-                self.config["noise_scale"] * 0.4 **
+                self.config["noise_scale"] * 0.4**
                 (1 + worker_index / float(self.config["num_workers"] - 1) * 7))
         else:
             return LinearSchedule(
