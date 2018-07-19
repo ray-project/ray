@@ -75,8 +75,14 @@ class NodeManager {
   /// Methods for task scheduling.
   /// Enqueue a placeable task to wait on object dependencies or be ready for dispatch.
   void EnqueuePlaceableTask(const Task &task);
-  /// Handle an actor task that cannot be executed because the actor is dead.
-  void HandleTaskForDeadActor(const TaskSpecification &spec);
+  /// This will treat the task as if it had been executed and failed. This is
+  /// done by looping over the task return IDs and for each ID storing an object
+  /// that represents a failure in the object store. When clients retrieve these
+  /// objects, they will raise application-level exceptions.
+  ///
+  /// \param spec The specification of the task.
+  /// \return Void.
+  void TreatTaskAsFailed(const TaskSpecification &spec);
   /// Handle specified task's submission to the local node manager.
   void SubmitTask(const Task &task, const Lineage &uncommitted_lineage,
                   bool forwarded = false);

@@ -451,7 +451,7 @@ void NodeManager::ProcessClientMessage(
 
         // Handle the task failure in order to raise an exception in the
         // application.
-        HandleTaskForDeadActor(spec);
+        TreatTaskAsFailed(spec);
       }
 
       worker_pool_.DisconnectWorker(worker);
@@ -687,12 +687,8 @@ void NodeManager::ScheduleTasks() {
   }
 }
 
-// This will simply store fake outputs in the object store for this task's
-// outputs. When those objects are retrieved by clients, the client will raise
-// an exception.
-// TODO(rkn): Rename since this is used for regular tasks as well!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-void NodeManager::HandleTaskForDeadActor(const TaskSpecification &spec) {
-  RAY_LOG(INFO) << "HandleTaskForDeadActor " << spec.ActorId();
+void NodeManager::TreatTaskAsFailed(const TaskSpecification &spec) {
+  RAY_LOG(DEBUG) << "Treating task " << spec.TaskId() << " as failed.";
   // Loop over the return IDs (except the dummy ID) and store a fake object in
   // the object store.
   int64_t num_returns = spec.NumReturns();
@@ -739,7 +735,7 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
         // The actor is local. Check if the actor is still alive.
         if (dead_actors_.find(spec.ActorId()) != dead_actors_.end()) {
           // Handle the fact that this actor is dead.
-          HandleTaskForDeadActor(spec);
+          TreatTaskAsFailed(spec);
         } else {
           // Queue the task for local execution, bypassing placement.
           EnqueuePlaceableTask(task);
@@ -750,11 +746,12 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
         if (removed_clients_.find(node_manager_id) != removed_clients_.end()) {
           // The remote node manager is dead, so handle the fact that this actor
           // is also dead.
-          HandleTaskForDeadActor(spec);
+          TreatTaskAsFailed(spec);
         } else {
-          // TODO(swang): Handle forward task failure.
+          // Attempt to forward the task.
           if (!ForwardTask(task, node_manager_id).ok()) {
-            RAY_LOG(INFO) << "ForwardTask failed...";
+            RAY_LOG(INFO) << "Failed to forward task " << spec.TaskId()
+                          << " to node manager " << node_manager_id;
             // TODO(rkn): Confirm that io_service_ is the right place to do this.........................
             boost::asio::deadline_timer timer(io_service_);
             int64_t forward_task_retry_duration_milliseconds_ = 1000;  // Define this elsewhere..............
@@ -1161,16 +1158,21 @@ ray::Status NodeManager::ForwardTask(const Task &task, const ClientID &node_id) 
           ObjectID argument_id = spec.ArgId(i, j);
           // If the argument is local, then push it to the receiving node.
           if (task_dependency_manager_.CheckObjectLocal(argument_id)) {
-            RAY_CHECK_OK(object_manager_.Push(argument_id, node_id));
+            if (!object_manager_.Push(argument_id, node_id).ok()) {
+              // It's ok if this fails, as pushing objects is done on a
+              // best-effort basis. TODO(rkn): This may not do anything as
+              // ObjectManager::Push to always return success.
+              RAY_LOG(INFO) << "Failed to push object " << argument_id << " to node "
+                            << node_id << ".";
+            }
           }
         }
       }
     }
   } else {
-    // TODO(atumanov): caller must handle ForwardTask failure to ensure tasks are not
-    // lost.
-    RAY_LOG(FATAL) << "[NodeManager][ForwardTask] failed to forward task " << task_id
-                   << " to node " << node_id;
+    // TODO(atumanov): caller must handle ForwardTask failure.
+    RAY_LOG(WARNING) << "[NodeManager][ForwardTask] failed to forward task " << task_id
+                     << " to node " << node_id;
   }
   return status;
 }
