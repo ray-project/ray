@@ -77,28 +77,30 @@ class PPOAgent(Agent):
         self.local_evaluator = self.make_local_evaluator(
             self.env_creator, PPOPolicyGraph)
         self.remote_evaluators = self.make_remote_evaluators(
-            self.env_creator, PPOPolicyGraph, self.config["num_workers"],
-            {"num_cpus": self.config["num_cpus_per_worker"],
-             "num_gpus": self.config["num_gpus_per_worker"]})
+            self.env_creator, PPOPolicyGraph, self.config["num_workers"], {
+                "num_cpus": self.config["num_cpus_per_worker"],
+                "num_gpus": self.config["num_gpus_per_worker"]
+            })
         if self.config["simple_optimizer"]:
             self.optimizer = SyncSamplesOptimizer(
                 self.local_evaluator, self.remote_evaluators,
                 {"num_sgd_iter": self.config["num_sgd_iter"]})
         else:
             self.optimizer = LocalMultiGPUOptimizer(
-                self.local_evaluator, self.remote_evaluators,
-                {"sgd_batch_size": self.config["sgd_batchsize"],
-                 "sgd_stepsize": self.config["sgd_stepsize"],
-                 "num_sgd_iter": self.config["num_sgd_iter"],
-                 "timesteps_per_batch": self.config["timesteps_per_batch"],
-                 "standardize_fields": ["advantages"]})
+                self.local_evaluator, self.remote_evaluators, {
+                    "sgd_batch_size": self.config["sgd_batchsize"],
+                    "sgd_stepsize": self.config["sgd_stepsize"],
+                    "num_sgd_iter": self.config["num_sgd_iter"],
+                    "timesteps_per_batch": self.config["timesteps_per_batch"],
+                    "standardize_fields": ["advantages"]
+                })
 
     def _train(self):
         prev_steps = self.optimizer.num_steps_sampled
         fetches = self.optimizer.step()
         self.local_evaluator.for_policy(lambda pi: pi.update_kl(fetches["kl"]))
-        FilterManager.synchronize(
-            self.local_evaluator.filters, self.remote_evaluators)
+        FilterManager.synchronize(self.local_evaluator.filters,
+                                  self.remote_evaluators)
         res = self.optimizer.collect_metrics()
         res = res._replace(
             timesteps_this_iter=self.optimizer.num_steps_sampled - prev_steps,
@@ -115,9 +117,7 @@ class PPOAgent(Agent):
                                        "checkpoint-{}".format(self.iteration))
         agent_state = ray.get(
             [a.save.remote() for a in self.remote_evaluators])
-        extra_data = [
-            self.local_evaluator.save(),
-            agent_state]
+        extra_data = [self.local_evaluator.save(), agent_state]
         pickle.dump(extra_data, open(checkpoint_path + ".extra_data", "wb"))
         return checkpoint_path
 
@@ -126,4 +126,5 @@ class PPOAgent(Agent):
         self.local_evaluator.restore(extra_data[0])
         ray.get([
             a.restore.remote(o)
-                for (a, o) in zip(self.remote_evaluators, extra_data[1])])
+            for (a, o) in zip(self.remote_evaluators, extra_data[1])
+        ])

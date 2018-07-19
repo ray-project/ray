@@ -15,7 +15,6 @@ import yaml
 import ray
 from ray import tune
 
-
 CONFIG_DIR = os.path.dirname(os.path.abspath(__file__))
 
 

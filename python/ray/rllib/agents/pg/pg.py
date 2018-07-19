@@ -7,7 +7,6 @@ from ray.rllib.agents.pg.pg_policy_graph import PGPolicyGraph
 from ray.rllib.optimizers import SyncSamplesOptimizer
 from ray.tune.trial import Resources
 
-
 DEFAULT_CONFIG = with_common_config({
     # No remote workers by default
     "num_workers": 0,
@@ -43,9 +42,9 @@ class PGAgent(Agent):
             self.env_creator, PGPolicyGraph)
         self.remote_evaluators = self.make_remote_evaluators(
             self.env_creator, PGPolicyGraph, self.config["num_workers"], {})
-        self.optimizer = SyncSamplesOptimizer(
-            self.local_evaluator, self.remote_evaluators,
-            self.config["optimizer"])
+        self.optimizer = SyncSamplesOptimizer(self.local_evaluator,
+                                              self.remote_evaluators,
+                                              self.config["optimizer"])
 
     def _train(self):
         prev_steps = self.optimizer.num_steps_sampled
