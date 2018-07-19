@@ -94,6 +94,12 @@ class NodeManager {
   void ScheduleTasks();
   /// Resubmit a task whose return value needs to be reconstructed.
   void ResubmitTask(const TaskID &task_id);
+  /// Attempt to forward a task to a remote different node manager. If this
+  /// fails, the task will be resubmit locally.
+  ///
+  /// \param task The task in question.
+  /// \param node_manager_id The ID of the remote node manager.
+  void ForwardTaskOrResubmit(const Task &task, const ClientID &node_manager_id);
   /// Forward a task to another node to execute. The task is assumed to not be
   /// queued in local_queues_.
   ray::Status ForwardTask(const Task &task, const ClientID &node_id);

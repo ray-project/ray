@@ -672,9 +672,10 @@ void NodeManager::ScheduleTasks() {
       local_task_ids.insert(task_id);
     } else {
       // TODO(atumanov): need a better interface for task exit on forward.
-      const auto task = local_queues_.RemoveTask(task_id);
-      // TODO(swang): Handle forward task failure.
-      RAY_CHECK_OK(ForwardTask(task, client_id));
+      const auto task = local_queues_.RemoveTasks(task_id);
+      // Attempt to forward the task. If this fails to forward the task,
+      // the task will be resubmit locally.
+      ForwardTaskOrResubmit(task, client_id);
     }
   }
 
@@ -748,27 +749,9 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
           // is also dead.
           TreatTaskAsFailed(spec);
         } else {
-          // Attempt to forward the task.
-          if (!ForwardTask(task, node_manager_id).ok()) {
-            RAY_LOG(INFO) << "Failed to forward task " << spec.TaskId()
-                          << " to node manager " << node_manager_id;
-            // TODO(rkn): Confirm that io_service_ is the right place to do this.........................
-            boost::asio::deadline_timer timer(io_service_);
-            auto retry_duration = boost::posix_time::milliseconds(
-                RayConfig::instance()
-                    .node_manager_forward_task_retry_timeout_milliseconds());
-            timer.expires_from_now(retry_duration);
-            timer.async_wait(
-                [this, task](const boost::system::error_code &error) {
-                  // Timer killing will receive the boost::asio::error::operation_aborted,
-                  // we only handle the timeout event.
-                  if (!error) {
-                    RAY_LOG(INFO) << "In ForwardTask retry callback...";
-                    // TODO(rkn): What will this do to the lineage cache? It will re-add the task to the lineage cache, which is probably not what we want.
-                    SubmitTask(task, Lineage());
-                  }
-                });
-          }
+          // Attempt to forward the task. If this fails to forward the task,
+          // the task will be resubmit locally.
+          ForwardTaskOrResubmit(task, node_manager_id);
         }
       }
     } else {
@@ -1103,6 +1086,38 @@ void NodeManager::HandleObjectMissing(const ObjectID &object_id) {
       RAY_CHECK(waiting_task_id_set.size() == 1);
       RAY_CHECK(waiting_task_id_set.begin()->is_nil());
     }
+  }
+}
+
+void NodeManager::ForwardTaskOrResubmit(const Task &task,
+                                        const ClientID &node_manager_id) {
+  /// TODO(rkn): Should we check that the node manager is remote and not local?
+  /// TODO(rkn): Should we check if the remote node manager is known to be dead?
+  const TaskID task_id = task.GetTaskSpecification().TaskId();
+
+  // Attempt to forward the task.
+  if (!ForwardTask(task, node_manager_id).ok()) {
+    RAY_LOG(INFO) << "Failed to forward task " << task_id << " to node manager "
+                  << node_manager_id;
+
+    // Create a timer to resubmit the task in a little bit.
+    boost::asio::deadline_timer timer(io_service_);
+    auto retry_duration = boost::posix_time::milliseconds(
+        RayConfig::instance()
+            .node_manager_forward_task_retry_timeout_milliseconds());
+    timer.expires_from_now(retry_duration);
+    timer.async_wait(
+        [this, task, task_id](const boost::system::error_code &error) {
+          // Timer killing will receive the boost::asio::error::operation_aborted,
+          // we only handle the timeout event.
+          if (!error) {
+            RAY_LOG(INFO) << "In ForwardTask retry callback for task " << task_id;
+            // TODO(rkn): What will this do to the lineage cache? It
+            // will re-add the task to the lineage cache, which is
+            // probably not what we want.
+            SubmitTask(task, Lineage());
+          }
+        });
   }
 }
 
