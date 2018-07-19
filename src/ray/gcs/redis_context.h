@@ -15,8 +15,6 @@ struct redisContext;
 struct redisAsyncContext;
 struct aeEventLoop;
 
-
-
 namespace ray {
 
 namespace gcs {

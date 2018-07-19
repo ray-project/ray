@@ -169,8 +169,8 @@ Status RedisContext::Connect(const std::string &address, int port) {
   // Connect to subscribe context
   subscribe_context_ = redisAsyncConnect(address.c_str(), port);
   if (subscribe_context_ == nullptr || subscribe_context_->err) {
-    RAY_LOG(FATAL) << "Could not establish subscribe connection to redis "
-                   << address << ":" << port;
+    RAY_LOG(FATAL) << "Could not establish subscribe connection to redis " << address
+                   << ":" << port;
   }
   return Status::OK();
 }
