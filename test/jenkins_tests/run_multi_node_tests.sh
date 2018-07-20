@@ -192,10 +192,10 @@ docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     --config '{"num_workers": 1}'
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
-    python /ray/python/ray/rllib/train.py \
+./train.py \
     --env Pendulum-v0 \
     --run APEX_DDPG \
-    --ray-num-cpus 8
+    --ray-num-cpus 8 \
     --stop '{"training_iteration": 2}' \
     --config '{"num_workers": 2, "optimizer": {"num_replay_buffer_shards": 1}, "learning_starts": 100}'
 
