@@ -246,9 +246,9 @@ class Worker(object):
         """Get the SerializationContext of the driver that this worker is processing.
 
         Args:
-            driver_id: The id of the driver that indicates which driver to get the 
-                serialization context for.
-        
+            driver_id: The id of the driver that indicates which driver to get
+                the serialization context for.
+
         Returns:
             The serialization context of the given driver.
         """
@@ -708,8 +708,8 @@ class Worker(object):
                 should not take any arguments. If it returns anything, its
                 return values will not be used.
             run_on_other_drivers: The boolean that indicates whether we want to
-                run this funtion on other drivers. One case is we may need to share
-                objects across drivers.
+                run this funtion on other drivers. One case is we may need to
+                share objects across drivers.
         """
         check_main_thread()
         # If ray.init has not been called yet, then cache the function and
@@ -2387,22 +2387,23 @@ def register_custom_serializer(cls,
     if class_id is None:
         if not local:
             # In this case, the class ID will be used to deduplicate the class
-            # across workers. Note that cloudpickle unfortunately does not produce
-            # deterministic strings, so these IDs could be different on different
-            # workers. We could use something weaker like cls.__name__, however
-            # that would run the risk of having collisions. TODO(rkn): We should
-            # improve this.
+            # across workers. Note that cloudpickle unfortunately does not
+            # produce deterministic strings, so these IDs could be different
+            # on different workers. We could use something weaker like
+            # cls.__name__, however that would run the risk of having
+            # collisions.
+            # TODO(rkn): We should improve this.
             try:
                 # Attempt to produce a class ID that will be the same on each
-                # worker. However, determinism is not guaranteed, and the result
-                # may be different on different workers.
+                # worker. However, determinism is not guaranteed, and the
+                # result may be different on different workers.
                 class_id = _try_to_compute_deterministic_class_id(cls)
             except Exception as e:
                 raise serialization.CloudPickleError("Failed to pickle class "
                                                      "'{}'".format(cls))
         else:
-            # In this case, the class ID only needs to be meaningful on this worker
-            # and not across workers.
+            # In this case, the class ID only needs to be meaningful on this
+            # worker and not across workers.
             class_id = random_string()
 
     if driver_id is None:
