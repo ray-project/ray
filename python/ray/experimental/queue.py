@@ -27,9 +27,16 @@ class Queue(object):
         self.maxsize = maxsize
         self.actor = _QueueActor.remote(maxsize)
 
-    def qsize(self):
+    def __len__(self):
+        return self.size()
+
+    def size(self):
         """The size of the queue."""
         return ray.get(self.actor.qsize.remote())
+
+    def qsize(self):
+        """The size of the queue."""
+        return self.size()
 
     def empty(self):
         """Whether the queue is empty."""
