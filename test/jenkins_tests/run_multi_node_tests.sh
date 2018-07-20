@@ -192,7 +192,7 @@ docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     --config '{"num_workers": 1}'
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
-./train.py \
+    python /ray/python/ray/rllib/train.py \
     --env Pendulum-v0 \
     --run APEX_DDPG \
     --ray-num-cpus 8 \
@@ -260,6 +260,9 @@ docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/examples/multiagent_cartpole.py --num-iters=2
+
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/rllib/examples/multiagent_two_trainers.py --num-iters=2
 
 python $ROOT_DIR/multi_node_docker_test.py \
     --docker-image=$DOCKER_SHA \
