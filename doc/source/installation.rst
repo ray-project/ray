@@ -26,7 +26,6 @@ features but may be subject to more bugs. To install these wheels, run the follo
 `Linux Python 3.6`_  `MacOS Python 3.6`_
 `Linux Python 3.5`_  `MacOS Python 3.5`_
 `Linux Python 3.4`_  `MacOS Python 3.4`_
-`Linux Python 3.3`_
 `Linux Python 2.7`_  `MacOS Python 2.7`_
 ===================  ===================
 
@@ -34,7 +33,6 @@ features but may be subject to more bugs. To install these wheels, run the follo
 .. _`Linux Python 3.6`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.5.0-cp36-cp36m-manylinux1_x86_64.whl
 .. _`Linux Python 3.5`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.5.0-cp35-cp35m-manylinux1_x86_64.whl
 .. _`Linux Python 3.4`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.5.0-cp34-cp34m-manylinux1_x86_64.whl
-.. _`Linux Python 3.3`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.5.0-cp33-cp33m-manylinux1_x86_64.whl
 .. _`Linux Python 2.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.5.0-cp27-cp27mu-manylinux1_x86_64.whl
 .. _`MacOS Python 3.6`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.5.0-cp36-cp36m-macosx_10_6_intel.whl
 .. _`MacOS Python 3.5`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.5.0-cp35-cp35m-macosx_10_6_intel.whl
