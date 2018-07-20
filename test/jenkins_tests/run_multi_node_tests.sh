@@ -30,7 +30,14 @@ docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     --env CartPole-v1 \
     --run PPO \
     --stop '{"training_iteration": 2}' \
-    --config '{"simple_optimizer": true, "model": {"use_lstm": true}}'
+    --config '{"simple_optimizer": false, "num_sgd_iter": 2, "model": {"use_lstm": true}}'
+
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/rllib/train.py \
+    --env CartPole-v1 \
+    --run PPO \
+    --stop '{"training_iteration": 2}' \
+    --config '{"simple_optimizer": true, "num_sgd_iter": 2, "model": {"use_lstm": true}}'
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/train.py \
@@ -185,6 +192,14 @@ docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     --config '{"num_workers": 1}'
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/rllib/train.py \
+    --env Pendulum-v0 \
+    --run APEX_DDPG \
+    --ray-num-cpus 8
+    --stop '{"training_iteration": 2}' \
+    --config '{"num_workers": 2, "optimizer": {"num_replay_buffer_shards": 1}, "learning_starts": 100}'
+
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     sh /ray/test/jenkins_tests/multi_node_tests/test_rllib_eval.sh
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
@@ -231,6 +246,10 @@ docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/tune/examples/hyperopt_example.py \
+    --smoke-test
+
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/tune/examples/tune_mnist_keras.py \
     --smoke-test
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \

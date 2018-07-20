@@ -46,20 +46,21 @@ class A3CTorchPolicyGraph(TorchPolicyGraph):
             action_space, self.config["model"])
         self.model = ModelCatalog.get_torch_model(
             obs_space.shape, self.logit_dim, self.config["model"])
-        loss = A3CLoss(
-            self.model, self.config["vf_loss_coeff"],
-            self.config["entropy_coeff"])
+        loss = A3CLoss(self.model, self.config["vf_loss_coeff"],
+                       self.config["entropy_coeff"])
         TorchPolicyGraph.__init__(
-            self, obs_space, action_space, self.model, loss,
-            loss_inputs=[
-                "obs", "actions", "advantages", "value_targets"])
+            self,
+            obs_space,
+            action_space,
+            self.model,
+            loss,
+            loss_inputs=["obs", "actions", "advantages", "value_targets"])
 
     def extra_action_out(self, model_out):
         return {"vf_preds": var_to_np(model_out[1])}
 
     def optimizer(self):
-        return torch.optim.Adam(
-            self.model.parameters(), lr=self.config["lr"])
+        return torch.optim.Adam(self.model.parameters(), lr=self.config["lr"])
 
     def postprocess_trajectory(self, sample_batch, other_agent_batches=None):
         completed = sample_batch["dones"][-1]
@@ -67,8 +68,8 @@ class A3CTorchPolicyGraph(TorchPolicyGraph):
             last_r = 0.0
         else:
             last_r = self._value(sample_batch["new_obs"][-1])
-        return compute_advantages(
-            sample_batch, last_r, self.config["gamma"], self.config["lambda"])
+        return compute_advantages(sample_batch, last_r, self.config["gamma"],
+                                  self.config["lambda"])
 
     def _value(self, obs):
         with self.lock:

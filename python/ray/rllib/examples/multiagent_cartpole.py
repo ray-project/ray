@@ -1,7 +1,6 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-
 """Simple example of setting up a multi-agent policy mapping.
 
 Control the number of agents and policies via --num-agents and --num-policies.
@@ -24,13 +23,11 @@ from ray.rllib.test.test_multi_agent_env import MultiCartpole
 from ray.tune.logger import pretty_print
 from ray.tune.registry import register_env
 
-
 parser = argparse.ArgumentParser()
 
 parser.add_argument("--num-agents", type=int, default=4)
 parser.add_argument("--num-policies", type=int, default=2)
 parser.add_argument("--num-iters", type=int, default=20)
-
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -51,7 +48,8 @@ if __name__ == "__main__":
 
     # Setup PG with an ensemble of `num_policies` different policy graphs
     policy_graphs = {
-        "policy_{}".format(i): gen_policy() for i in range(args.num_policies)
+        "policy_{}".format(i): gen_policy()
+        for i in range(args.num_policies)
     }
     policy_ids = list(policy_graphs.keys())
 

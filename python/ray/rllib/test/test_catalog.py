@@ -8,8 +8,8 @@ import ray
 
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.model import Model
-from ray.rllib.models.preprocessors import (
-    NoPreprocessor, OneHotPreprocessor, Preprocessor)
+from ray.rllib.models.preprocessors import (NoPreprocessor, OneHotPreprocessor,
+                                            Preprocessor)
 from ray.rllib.models.fcnet import FullyConnectedNetwork
 from ray.rllib.models.visionnet import VisionNetwork
 
@@ -44,9 +44,11 @@ class ModelCatalogTest(unittest.TestCase):
         class TupleEnv(object):
             def __init__(self):
                 self.observation_space = Tuple(
-                    [Discrete(5), Box(0, 1, shape=(3,), dtype=np.float32)])
+                    [Discrete(5),
+                     Box(0, 1, shape=(3, ), dtype=np.float32)])
+
         p1 = ModelCatalog.get_preprocessor(TupleEnv())
-        self.assertEqual(p1.shape, (8,))
+        self.assertEqual(p1.shape, (8, ))
         self.assertEqual(
             list(p1.transform((0, [1, 2, 3]))),
             [float(x) for x in [1, 0, 0, 0, 0, 1, 2, 3]])

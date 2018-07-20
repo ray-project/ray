@@ -2,6 +2,10 @@ set(GFLAGS_VERSION "2.2.0")
 set(GTEST_VERSION "1.8.0")
 set(GBENCHMARK_VERSION "1.1.0")
 
+# Because we use the old C++ ABI to be compatible with TensorFlow,
+# we have to turn it on for dependencies too
+set(EP_CXX_FLAGS "${EP_CXX_FLAGS} -D_GLIBCXX_USE_CXX11_ABI=0")
+
 if(RAY_BUILD_TESTS OR RAY_BUILD_BENCHMARKS)
   add_custom_target(unittest ctest -L unittest)
 

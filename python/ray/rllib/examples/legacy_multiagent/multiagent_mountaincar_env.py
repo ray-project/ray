@@ -2,7 +2,6 @@ from math import cos
 from gym.spaces import Box, Tuple, Discrete
 import numpy as np
 from gym.envs.classic_control.mountain_car import MountainCarEnv
-
 """
 Multiagent mountain car that sums and then
 averages its actions to produce the velocity
@@ -22,8 +21,8 @@ class MultiAgentMountainCarEnv(MountainCarEnv):
         self.viewer = None
 
         self.action_space = [Discrete(3) for _ in range(2)]
-        self.observation_space = Tuple([
-            Box(self.low, self.high, dtype=np.float32) for _ in range(2)])
+        self.observation_space = Tuple(
+            [Box(self.low, self.high, dtype=np.float32) for _ in range(2)])
 
         self.seed()
         self.reset()

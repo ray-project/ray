@@ -15,9 +15,10 @@ def collect_metrics(local_evaluator, remote_evaluators=[]):
     episode_rewards = []
     episode_lengths = []
     policy_rewards = collections.defaultdict(list)
-    metric_lists = ray.get(
-        [a.apply.remote(lambda ev: ev.sampler.get_metrics())
-         for a in remote_evaluators])
+    metric_lists = ray.get([
+        a.apply.remote(lambda ev: ev.sampler.get_metrics())
+        for a in remote_evaluators
+    ])
     metric_lists.append(local_evaluator.sampler.get_metrics())
     for metrics in metric_lists:
         for episode in metrics:

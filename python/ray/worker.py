@@ -472,8 +472,9 @@ class Worker(object):
         # repeat.
         while len(unready_ids) > 0:
             for unready_id in unready_ids:
-                self.local_scheduler_client.reconstruct_objects(
-                    [ray.ObjectID(unready_id)], False)
+                if not self.use_raylet:
+                    self.local_scheduler_client.reconstruct_objects(
+                        [ray.ObjectID(unready_id)], False)
             # Do another fetch for objects that aren't available locally yet,
             # in case they were evicted since the last fetch. We divide the
             # fetch into smaller fetches so as to not block the manager for a
@@ -491,7 +492,7 @@ class Worker(object):
                     self.local_scheduler_client.reconstruct_objects(
                         ray_object_ids_to_fetch[i:(
                             i + ray._config.worker_fetch_request_size())],
-                        True)
+                        False)
             results = self.retrieve_and_deserialize(
                 object_ids_to_fetch,
                 max([
@@ -1001,8 +1002,11 @@ class Worker(object):
             with profiling.profile("task", extra_data=extra_data, worker=self):
                 self._process_task(task)
 
-        # Push all of the log events to the global state store.
-        self.profiler.flush_profile_data()
+        # In the non-raylet code path, push all of the log events to the global
+        # state store. In the raylet code path, this is done periodically in a
+        # background thread.
+        if not self.use_raylet:
+            self.profiler.flush_profile_data()
 
         # Increase the task execution counter.
         self.num_task_executions[driver_id][function_id.id()] += 1
@@ -2191,7 +2195,9 @@ def connect(info,
         t.daemon = True
         t.start()
 
-    if mode in [SCRIPT_MODE, SILENT_MODE] and worker.use_raylet:
+    # If we are using the raylet code path and we are not in local mode, start
+    # a background thread to periodically flush profiling data to the GCS.
+    if mode != LOCAL_MODE and worker.use_raylet:
         worker.profiler.start_flush_thread()
 
     if mode in [SCRIPT_MODE, SILENT_MODE]:
