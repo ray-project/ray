@@ -594,7 +594,6 @@ class ActorClass(object):
             A handle to the newly created actor.
         """
         worker = ray.worker.get_global_worker()
-        ray.worker.check_main_thread()
         if worker.mode is None:
             raise Exception("Actors cannot be created before ray.init() "
                             "has been called.")
@@ -773,7 +772,6 @@ class ActorHandle(object):
         worker = ray.worker.get_global_worker()
 
         worker.check_connected()
-        ray.worker.check_main_thread()
 
         function_signature = self._ray_method_signatures[method_name]
         if args is None:
@@ -929,7 +927,6 @@ class ActorHandle(object):
         """
         worker = ray.worker.get_global_worker()
         worker.check_connected()
-        ray.worker.check_main_thread()
 
         if state["ray_forking"]:
             actor_handle_id = compute_actor_handle_id(
