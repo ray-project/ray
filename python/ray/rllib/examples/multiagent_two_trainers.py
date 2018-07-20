@@ -83,6 +83,11 @@ if __name__ == "__main__":
         lambda ev: ev.for_policy(
             lambda pi: pi.set_epsilon(0.0), policy_id="dqn_policy"))
 
+    # You should see both the printed X and Y approach 200 as this trains:
+    # info:
+    #   policy_reward_mean:
+    #     dqn_policy: X
+    #     ppo_policy: Y
     for i in range(args.num_iters):
         print("== Iteration", i, "==")
 
