@@ -1,7 +1,6 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-
 """Example of using two different training methods at once in multi-agent.
 
 Here we create a number of CartPole agents, some of which are trained with
@@ -16,18 +15,16 @@ import argparse
 import gym
 
 import ray
-from ray.rllib.agents.dqn.dqn import DQNAgent, DEFAULT_CONFIG as DQN_CONFIG
+from ray.rllib.agents.dqn.dqn import DQNAgent
 from ray.rllib.agents.dqn.dqn_policy_graph import DQNPolicyGraph
-from ray.rllib.agents.ppo.ppo import PPOAgent, DEFAULT_CONFIG as PPO_CONFIG
+from ray.rllib.agents.ppo.ppo import PPOAgent
 from ray.rllib.agents.ppo.ppo_policy_graph import PPOPolicyGraph
-from ray.rllib.test.test_multi_agent_env import MultiCartpole
 from ray.rllib.test.test_multi_agent_env import MultiCartpole
 from ray.tune.logger import pretty_print
 from ray.tune.registry import register_env
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--num-iters", type=int, default=20)
-
 
 if __name__ == "__main__":
     args = parser.parse_args()
