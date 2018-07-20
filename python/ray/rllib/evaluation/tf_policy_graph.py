@@ -35,10 +35,18 @@ class TFPolicyGraph(PolicyGraph):
         SampleBatch({"action": ..., "advantages": ..., ...})
     """
 
-    def __init__(
-            self, observation_space, action_space, sess, obs_input,
-            action_sampler, loss, loss_inputs, state_inputs=None,
-            state_outputs=None, seq_lens=None, max_seq_len=20):
+    def __init__(self,
+                 observation_space,
+                 action_space,
+                 sess,
+                 obs_input,
+                 action_sampler,
+                 loss,
+                 loss_inputs,
+                 state_inputs=None,
+                 state_outputs=None,
+                 seq_lens=None,
+                 max_seq_len=20):
         """Initialize the policy graph.
 
         Arguments:
@@ -78,9 +86,9 @@ class TFPolicyGraph(PolicyGraph):
         self._seq_lens = seq_lens
         self._max_seq_len = max_seq_len
         self._optimizer = self.optimizer()
-        self._grads_and_vars = [
-            (g, v) for (g, v) in self.gradients(self._optimizer)
-            if g is not None]
+        self._grads_and_vars = [(g, v)
+                                for (g, v) in self.gradients(self._optimizer)
+                                if g is not None]
         self._grads = [g for (g, v) in self._grads_and_vars]
         self._apply_op = self._optimizer.apply_gradients(self._grads_and_vars)
         self._variables = ray.experimental.TensorFlowVariables(
@@ -92,8 +100,11 @@ class TFPolicyGraph(PolicyGraph):
         if self._state_inputs:
             assert self._seq_lens is not None
 
-    def build_compute_actions(
-            self, builder, obs_batch, state_batches=None, is_training=False):
+    def build_compute_actions(self,
+                              builder,
+                              obs_batch,
+                              state_batches=None,
+                              is_training=False):
         state_batches = state_batches or []
         assert len(self._state_inputs) == len(state_batches), \
             (self._state_inputs, state_batches)
@@ -103,16 +114,15 @@ class TFPolicyGraph(PolicyGraph):
             builder.add_feed_dict({self._seq_lens: np.ones(len(obs_batch))})
         builder.add_feed_dict({self._is_training: is_training})
         builder.add_feed_dict(dict(zip(self._state_inputs, state_batches)))
-        fetches = builder.add_fetches(
-            [self._sampler] + self._state_outputs +
-            [self.extra_compute_action_fetches()])
+        fetches = builder.add_fetches([self._sampler] + self._state_outputs +
+                                      [self.extra_compute_action_fetches()])
         return fetches[0], fetches[1:-1], fetches[-1]
 
-    def compute_actions(
-            self, obs_batch, state_batches=None, is_training=False):
+    def compute_actions(self, obs_batch, state_batches=None,
+                        is_training=False):
         builder = TFRunBuilder(self._sess, "compute_actions")
-        fetches = self.build_compute_actions(
-            builder, obs_batch, state_batches, is_training)
+        fetches = self.build_compute_actions(builder, obs_batch, state_batches,
+                                             is_training)
         return builder.get(fetches)
 
     def _get_loss_inputs_dict(self, batch):
@@ -127,12 +137,11 @@ class TFPolicyGraph(PolicyGraph):
         # RNN case
         feature_keys = [k for k, v in self._loss_inputs]
         state_keys = [
-            "state_in_{}".format(i) for i in range(len(self._state_inputs))]
+            "state_in_{}".format(i) for i in range(len(self._state_inputs))
+        ]
         feature_sequences, initial_states, seq_lens = chop_into_sequences(
-            batch["t"],
-            [batch[k] for k in feature_keys],
-            [batch[k] for k in state_keys],
-            self._max_seq_len)
+            batch["t"], [batch[k] for k in feature_keys],
+            [batch[k] for k in state_keys], self._max_seq_len)
         for k, v in zip(feature_keys, feature_sequences):
             feed_dict[self._loss_input_dict[k]] = v
         for k, v in zip(state_keys, initial_states):
@@ -172,9 +181,11 @@ class TFPolicyGraph(PolicyGraph):
         builder.add_feed_dict(self.extra_apply_grad_feed_dict())
         builder.add_feed_dict(self._get_loss_inputs_dict(postprocessed_batch))
         builder.add_feed_dict({self._is_training: True})
-        fetches = builder.add_fetches(
-            [self._apply_op, self.extra_compute_grad_fetches(),
-             self.extra_apply_grad_fetches()])
+        fetches = builder.add_fetches([
+            self._apply_op,
+            self.extra_compute_grad_fetches(),
+            self.extra_apply_grad_fetches()
+        ])
         return fetches[1], fetches[2]
 
     def compute_apply(self, postprocessed_batch):

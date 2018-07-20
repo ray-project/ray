@@ -1,7 +1,6 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-
 """Example of querying a policy server. Copy this file for your use case.
 
 To try this out, in two separate shells run:
@@ -14,17 +13,18 @@ import gym
 
 from ray.rllib.utils.policy_client import PolicyClient
 
-
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "--no-train", action="store_true", help="Whether to disable training.")
 parser.add_argument(
-    "--off-policy", action="store_true",
+    "--off-policy",
+    action="store_true",
     help="Whether to take random instead of on-policy actions.")
 parser.add_argument(
-    "--stop-at-reward", type=int, default=9999,
+    "--stop-at-reward",
+    type=int,
+    default=9999,
     help="Stop once the specified reward is reached.")
-
 
 if __name__ == "__main__":
     args = parser.parse_args()

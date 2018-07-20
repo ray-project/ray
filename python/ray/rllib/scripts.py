@@ -9,7 +9,6 @@ import argparse
 from ray.rllib import train
 from ray.rllib import rollout
 
-
 EXAMPLE_USAGE = """
 Example usage for training:
     rllib train --run DQN --env CartPole-v0
