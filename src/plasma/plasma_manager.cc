@@ -42,7 +42,7 @@
 #include "state/object_table.h"
 #include "state/task_table.h"
 
-// plasma/plasma.h and plasma/protocal.h are private now.
+// plasma/plasma.h and plasma/protocol.h are private now.
 // using forward declaration here.
 namespace plasma {
 using arrow::Status;

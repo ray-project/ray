@@ -19,7 +19,7 @@
 #include "../plasma_manager.h"
 #include "plasma/client.h"
 
-// plasma/plasma.h and plasma/protocal.h are private now.
+// plasma/plasma.h and plasma/protocol.h are private now.
 // using forward declaration here.
 namespace plasma {
 namespace fb = plasma::flatbuf;
