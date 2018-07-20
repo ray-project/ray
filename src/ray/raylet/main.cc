@@ -64,12 +64,9 @@ int main(int argc, char *argv[]) {
       RayConfig::instance().object_manager_default_chunk_size();
 
   RAY_LOG(DEBUG) << "Starting object manager with configuration: \n"
-                    "max_sends = "
-                 << object_manager_config.max_sends << "\n"
-                                                       "max_receives = "
-                 << object_manager_config.max_receives << "\n"
-                                                          "object_chunk_size = "
-                 << object_manager_config.object_chunk_size;
+                 << "max_sends = " << object_manager_config.max_sends << "\n"
+                 << "max_receives = " << object_manager_config.max_receives << "\n"
+                 << "object_chunk_size = " << object_manager_config.object_chunk_size;
 
   //  initialize mock gcs & object directory
   auto gcs_client = std::make_shared<ray::gcs::AsyncGcsClient>();
