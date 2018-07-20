@@ -27,4 +27,4 @@ target_link_libraries(object_manager common ray_static ${PLASMA_STATIC_LIB} ${AR
 
 install(TARGETS
         object_manager
-        DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/ray/object_manager")
+        DESTINATION "${CMAKE_INSTALL_LIBDIR}")

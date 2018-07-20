@@ -50,4 +50,4 @@ target_link_libraries(raylet_monitor rayletlib ${Boost_SYSTEM_LIBRARY} pthread)
 
 install(TARGETS
         raylet
-        DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/ray/raylet")
+        DESTINATION "${CMAKE_INSTALL_BINDIR}")
