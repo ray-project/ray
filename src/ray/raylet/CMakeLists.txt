@@ -48,6 +48,6 @@ target_link_libraries(raylet rayletlib ${Boost_SYSTEM_LIBRARY} pthread)
 add_executable(raylet_monitor monitor_main.cc)
 target_link_libraries(raylet_monitor rayletlib ${Boost_SYSTEM_LIBRARY} pthread)
 
-install(FILES
+install(TARGETS
         raylet
         DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/ray/raylet")
