@@ -481,10 +481,10 @@ class Worker(object):
             for i in range(0, len(object_ids_to_fetch),
                            ray._config.worker_fetch_request_size()):
                 if not self.use_raylet:
-                    self.local_scheduler_client.reconstruct_objects(
-                        ray_object_ids_to_fetch[i:(
-                            i + ray._config.worker_fetch_request_size())],
-                        False)
+                    for unready_id in ray_object_ids_to_fetch[i:(
+                            i + ray._config.worker_fetch_request_size())]:
+                        self.local_scheduler_client.reconstruct_objects(
+                            [unready_id], False)
                     # Do another fetch for objects that aren't available
                     # locally yet, in case they were evicted since the last
                     # fetch. This is only necessary for legacy ray since
