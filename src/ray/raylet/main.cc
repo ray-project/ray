@@ -32,8 +32,8 @@ int main(int argc, char *argv[]) {
   }
   node_manager_config.resource_config =
       ray::raylet::ResourceSet(std::move(static_resource_conf));
-  RAY_LOG(INFO) << "Starting raylet with static resource configuration: "
-                << node_manager_config.resource_config.ToString();
+  RAY_LOG(DEBUG) << "Starting raylet with static resource configuration: "
+                 << node_manager_config.resource_config.ToString();
   node_manager_config.num_initial_workers = num_initial_workers;
   node_manager_config.num_workers_per_process =
       RayConfig::instance().num_workers_per_process();
@@ -63,18 +63,15 @@ int main(int argc, char *argv[]) {
   object_manager_config.object_chunk_size =
       RayConfig::instance().object_manager_default_chunk_size();
 
-  RAY_LOG(INFO) << "Starting object manager with configuration: \n"
-                   "max_sends = "
-                << object_manager_config.max_sends << "\n"
-                                                      "max_receives = "
-                << object_manager_config.max_receives << "\n"
-                                                         "object_chunk_size = "
-                << object_manager_config.object_chunk_size;
+  RAY_LOG(DEBUG) << "Starting object manager with configuration: \n"
+                 << "max_sends = " << object_manager_config.max_sends << "\n"
+                 << "max_receives = " << object_manager_config.max_receives << "\n"
+                 << "object_chunk_size = " << object_manager_config.object_chunk_size;
 
   //  initialize mock gcs & object directory
   auto gcs_client = std::make_shared<ray::gcs::AsyncGcsClient>();
-  RAY_LOG(INFO) << "Initializing GCS client "
-                << gcs_client->client_table().GetLocalClientId();
+  RAY_LOG(DEBUG) << "Initializing GCS client "
+                 << gcs_client->client_table().GetLocalClientId();
 
   // Initialize the node manager.
   boost::asio::io_service main_service;
