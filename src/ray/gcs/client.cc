@@ -136,6 +136,7 @@ Status AsyncGcsClient::Connect(const std::string &address, int port, bool shardi
   raylet_task_table_->AddShards(shard_contexts_);
   task_reconstruction_log_->AddShards(shard_contexts_);
   heartbeat_table_->AddShards(shard_contexts_);
+  // Profile table shall use context?
   profile_table_->AddShards(shard_contexts_);
 
   // TODO(swang): Call the client table's Connect() method here. To do this,
