@@ -17,6 +17,7 @@ namespace flatbuf {
 enum class MessageType : int64_t;
 };
 };  // namespace plasma
+
 /**
  * Initializes the plasma manager state. This connects the manager to the local
  * plasma store, starts the manager listening for client connections, and
