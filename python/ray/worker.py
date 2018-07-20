@@ -238,7 +238,7 @@ class Worker(object):
         self.profiler = profiling.Profiler(self)
         # A dictionary that maps from driver id to SerializationContext
         # TODO: clean up the SerializationContext once the job finished.
-        self.serialization_context_map = dict()
+        self.serialization_context_map = {}
         # Identity of the driver that this worker is processing.
         self.task_driver_id = None
 
