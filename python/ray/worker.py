@@ -2399,7 +2399,7 @@ def register_custom_serializer(cls,
                 class_id = _try_to_compute_deterministic_class_id(cls)
             except Exception as e:
                 raise serialization.CloudPickleError("Failed to pickle class "
-                                                    "'{}'".format(cls))
+                                                     "'{}'".format(cls))
         else:
             # In this case, the class ID only needs to be meaningful on this worker
             # and not across workers.
