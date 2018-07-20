@@ -14,7 +14,6 @@
 
 #include "plasma/client.h"
 #include "plasma/events.h"
-#include "plasma/plasma.h"
 
 #include "ray/common/client_connection.h"
 #include "ray/id.h"

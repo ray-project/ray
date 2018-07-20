@@ -26,22 +26,72 @@
 #include <unordered_set>
 #include <vector>
 
+#include "common.h"
 #include "common_protocol.h"
+#include "event_loop.h"
+#include "format/plasma_generated.h"
 #include "io.h"
 #include "net.h"
-#include "event_loop.h"
-#include "common.h"
-#include "plasma/plasma.h"
-#include "plasma/events.h"
-#include "plasma/protocol.h"
 #include "plasma/client.h"
+#include "plasma/events.h"
 #include "plasma_manager.h"
-#include "state/db.h"
-#include "state/object_table.h"
-#include "state/error_table.h"
-#include "state/task_table.h"
-#include "state/db_client_table.h"
 #include "ray/gcs/client.h"
+#include "state/db.h"
+#include "state/db_client_table.h"
+#include "state/error_table.h"
+#include "state/object_table.h"
+#include "state/task_table.h"
+
+// plasma/plasma.h and plasma/protocal.h are private now.
+// using forward declaration here.
+namespace plasma {
+using arrow::Status;
+typedef std::unordered_map<ObjectID, ObjectRequest> ObjectRequestMap;
+Status SendWaitReply(int sock,
+                     const ObjectRequestMap &object_requests,
+                     int num_ready_objects);
+Status SendStatusReply(int sock,
+                       ObjectID object_ids[],
+                       int object_status[],
+                       int64_t num_objects);
+Status SendDataRequest(int sock,
+                       ObjectID object_id,
+                       const char *address,
+                       int port);
+Status SendDataReply(int sock,
+                     ObjectID object_id,
+                     int64_t object_size,
+                     int64_t metadata_size);
+Status ReadDataRequest(uint8_t *data,
+                       size_t size,
+                       ObjectID *object_id,
+                       char **address,
+                       int *port);
+Status ReadDataReply(uint8_t *data,
+                     size_t size,
+                     ObjectID *object_id,
+                     int64_t *object_size,
+                     int64_t *metadata_size);
+Status ReadFetchRequest(uint8_t *data,
+                        size_t size,
+                        std::vector<ObjectID> &object_ids);
+Status ReadStatusRequest(uint8_t *data,
+                         size_t size,
+                         ObjectID object_ids[],
+                         int64_t num_objects);
+Status ReadWaitRequest(uint8_t *data,
+                       size_t size,
+                       ObjectRequestMap &object_requests,
+                       int64_t *timeout_ms,
+                       int *num_ready_objects);
+Status ReadStatusRequest(uint8_t *data,
+                         size_t size,
+                         ObjectID object_ids[],
+                         int64_t num_objects);
+}  // namespace plasma
+
+using plasma::ObjectLocation;
+using plasma::flatbuf::MessageType;
 
 int handle_sigpipe(plasma::Status s, int fd) {
   if (s.ok()) {
@@ -101,9 +151,9 @@ void process_status_request(ClientConnection *client_conn, ObjectID object_id);
  * @param context Client connection.
  * @return Status of object_id as defined in plasma.h
  */
-ObjectStatus request_status(ObjectID object_id,
-                            const std::vector<DBClientID> &manager_vector,
-                            void *context);
+ObjectLocation request_status(ObjectID object_id,
+                              const std::vector<DBClientID> &manager_vector,
+                              void *context);
 
 /**
  * Send requested object_id back to the Plasma Manager identified
@@ -394,7 +444,7 @@ void return_from_wait(PlasmaManagerState *manager_state,
 void update_object_wait_requests(PlasmaManagerState *manager_state,
                                  ObjectID obj_id,
                                  plasma::ObjectRequestType type,
-                                 ObjectStatus status) {
+                                 ObjectLocation status) {
   auto &object_wait_requests =
       object_wait_requests_from_type(manager_state, type);
   /* Update the in-progress wait requests in the specified table. */
@@ -418,9 +468,11 @@ void update_object_wait_requests(PlasmaManagerState *manager_state,
       /* Check that we found the object. */
       RAY_CHECK(object_request != wait_req->object_requests.end());
       /* Check that the object found was not previously known to us. */
-      RAY_CHECK(object_request->second.status == ObjectStatus::Nonexistent);
+      RAY_CHECK(object_request->second.location ==
+                plasma::ObjectLocation::Nonexistent);
       /* Update the found object's status to a known status. */
-      object_request->second.status = status;
+      object_request->second.location =
+          static_cast<plasma::ObjectLocation>(status);
 
       /* If this wait request is done, reply to the client. */
       if (wait_req->num_satisfied == wait_req->num_objects_to_wait_for) {
@@ -1087,7 +1139,7 @@ void object_table_subscribe_callback(ObjectID object_id,
   /* Run the callback for wait requests. */
   update_object_wait_requests(manager_state, object_id,
                               plasma::ObjectRequestType::PLASMA_QUERY_ANYWHERE,
-                              ObjectStatus::Remote);
+                              ObjectLocation::Remote);
 }
 
 void process_fetch_requests(ClientConnection *client_conn,
@@ -1168,7 +1220,7 @@ void process_wait_request(ClientConnection *client_conn,
     /* Check if this object is already present locally. If so, mark the object
      * as present. */
     if (is_object_local(manager_state, obj_id)) {
-      object_request.status = ObjectStatus::Local;
+      object_request.location = plasma::ObjectLocation::Local;
       wait_req->num_satisfied += 1;
       continue;
     }
@@ -1238,28 +1290,28 @@ void request_status_done(ObjectID object_id,
       client_conn->fd);
 }
 
-ObjectStatus request_status(ObjectID object_id,
-                            const std::vector<DBClientID> &manager_vector,
-                            void *context) {
+ObjectLocation request_status(ObjectID object_id,
+                              const std::vector<DBClientID> &manager_vector,
+                              void *context) {
   ClientConnection *client_conn = (ClientConnection *) context;
 
   /* Return success immediately if we already have this object. */
   if (is_object_local(client_conn->manager_state, object_id)) {
-    return ObjectStatus::Local;
+    return ObjectLocation::Local;
   }
 
   /* Since object is not stored at the local locally, manager_vector.size() > 0
    * means that the object is stored at another remote object. Otherwise, if
    * manager_vector.size() == 0, the object is not stored anywhere. */
-  return manager_vector.size() > 0 ? ObjectStatus::Remote
-                                   : ObjectStatus::Nonexistent;
+  return manager_vector.size() > 0 ? ObjectLocation::Remote
+                                   : ObjectLocation::Nonexistent;
 }
 
 void object_table_lookup_fail_callback(ObjectID object_id,
                                        void *user_context,
                                        void *user_data) {
-  /* Fail for now. Later, we may want to send a ObjectStatus::Nonexistent to the
-   * client. */
+  /* Fail for now. Later, we may want to send a ObjectLocation::Nonexistent to
+   * the client. */
   RAY_CHECK(0);
 }
 
@@ -1267,7 +1319,7 @@ void process_status_request(ClientConnection *client_conn,
                             plasma::ObjectID object_id) {
   /* Return success immediately if we already have this object. */
   if (is_object_local(client_conn->manager_state, object_id)) {
-    int status = static_cast<int>(ObjectStatus::Local);
+    int status = static_cast<int>(ObjectLocation::Local);
     handle_sigpipe(
         plasma::SendStatusReply(client_conn->fd, &object_id, &status, 1),
         client_conn->fd);
@@ -1275,7 +1327,7 @@ void process_status_request(ClientConnection *client_conn,
   }
 
   if (client_conn->manager_state->db == NULL) {
-    auto status = static_cast<int>(ObjectStatus::Nonexistent);
+    auto status = static_cast<int>(ObjectLocation::Nonexistent);
     handle_sigpipe(
         plasma::SendStatusReply(client_conn->fd, &object_id, &status, 1),
         client_conn->fd);
@@ -1374,10 +1426,10 @@ void process_add_object_notification(PlasmaManagerState *state,
   /* Update the in-progress local and remote wait requests. */
   update_object_wait_requests(state, object_id,
                               plasma::ObjectRequestType::PLASMA_QUERY_LOCAL,
-                              ObjectStatus::Local);
+                              ObjectLocation::Local);
   update_object_wait_requests(state, object_id,
                               plasma::ObjectRequestType::PLASMA_QUERY_ANYWHERE,
-                              ObjectStatus::Local);
+                              ObjectLocation::Local);
 }
 
 void process_object_notification(event_loop *loop,

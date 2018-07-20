@@ -9,8 +9,14 @@
 
 typedef struct PlasmaManagerState PlasmaManagerState;
 typedef struct ClientConnection ClientConnection;
-enum class MessageType : int64_t;
 
+// plasma/plasma.h and plasma/protocal.h are private now.
+// using forward declaration here.
+namespace plasma {
+namespace flatbuf {
+enum class MessageType : int64_t;
+};
+};  // namespace plasma
 /**
  * Initializes the plasma manager state. This connects the manager to the local
  * plasma store, starts the manager listening for client connections, and
@@ -155,7 +161,7 @@ ClientConnection *ClientConnection_listen(event_loop *loop,
 
 /* Buffer for requests between plasma managers. */
 typedef struct PlasmaRequestBuffer {
-  MessageType type;
+  plasma::flatbuf::MessageType type;
   ray::ObjectID object_id;
   uint8_t *data;
   int64_t data_size;
