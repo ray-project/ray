@@ -125,7 +125,7 @@ class BinaryDistribution(Distribution):
 setup(
     name="ray",
     # The version string is also in __init__.py. TODO(pcm): Fix this.
-    version="0.4.0",
+    version="0.5.0",
     packages=find_packages(),
     cmdclass={"build_ext": build_ext},
     # The BinaryDistribution argument triggers build_ext.
@@ -145,7 +145,12 @@ setup(
     ],
     setup_requires=["cython >= 0.27, < 0.28"],
     extras_require=extras,
-    entry_points={"console_scripts": ["ray=ray.scripts.scripts:main"]},
+    entry_points={
+        "console_scripts": [
+            "ray=ray.scripts.scripts:main",
+            "rllib=ray.rllib.scripts:cli [rllib]"
+        ]
+    },
     include_package_data=True,
     zip_safe=False,
     license="Apache 2.0")

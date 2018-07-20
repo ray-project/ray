@@ -72,7 +72,7 @@ This PyTorch script runs a small grid search over the ``train_func`` function us
 
 In order to report incremental progress, ``train_func`` periodically calls the ``reporter`` function passed in by Ray Tune to return the current timestep and other metrics as defined in `ray.tune.result.TrainingResult <https://github.com/ray-project/ray/blob/master/python/ray/tune/result.py>`__. Incremental results will be synced to local disk on the head node of the cluster.
 
-``tune.run_experiments`` returns a list of Trial objects which you can inspect results of via ``trial.last_result``.
+`tune.run_experiments <tune.html#ray.tune.run_experiments>`__ returns a list of Trial objects which you can inspect results of via ``trial.last_result``.
 
 Learn more `about specifying experiments <tune-config.html>`__.
 
@@ -159,6 +159,11 @@ In order to use this scheduler, you will need to install HyperOpt via the follow
     $ pip install --upgrade git+git://github.com/hyperopt/hyperopt.git
 
 An example of this can be found in `hyperopt_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperopt_example.py>`__.
+
+.. note::
+
+    The HyperOptScheduler takes an *increasing* metric in the reward attribute. If trying to
+    minimize a loss, be sure to specify *mean_loss* in the function/class reporting and *reward_attr=neg_mean_loss* in the HyperOptScheduler initializer.
 
 .. autoclass:: ray.tune.hpo_scheduler.HyperOptScheduler
 
@@ -274,4 +279,4 @@ For an example notebook for using the Client API, see the `Client API Example <h
 Examples
 --------
 
-You can find a list of examples `using Ray Tune and its various features here <https://github.com/ray-project/ray/tree/master/python/ray/tune/examples>`__.
+You can find a list of examples `using Ray Tune and its various features here <https://github.com/ray-project/ray/tree/master/python/ray/tune/examples>`__, including examples using Keras, TensorFlow, and Population-Based Training.

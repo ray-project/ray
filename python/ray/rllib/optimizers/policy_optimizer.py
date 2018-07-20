@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import ray
+from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.evaluation.sample_batch import MultiAgentBatch
 
 
@@ -31,7 +32,7 @@ class PolicyOptimizer(object):
             evaluators created by this optimizer.
     """
 
-    def __init__(self, config, local_evaluator, remote_evaluators):
+    def __init__(self, local_evaluator, remote_evaluators=None, config=None):
         """Create an optimizer instance.
 
         Args:
@@ -41,10 +42,10 @@ class PolicyOptimizer(object):
                 evaluators instances. If empty, the optimizer should fall back
                 to using only the local evaluator.
         """
-        self.config = config
         self.local_evaluator = local_evaluator
-        self.remote_evaluators = remote_evaluators
-        self._init(**config)
+        self.remote_evaluators = remote_evaluators or []
+        self.config = config or {}
+        self._init(**self.config)
 
         # Counters that should be updated by sub-classes
         self.num_steps_trained = 0
@@ -61,6 +62,9 @@ class PolicyOptimizer(object):
         This should run for long enough to minimize call overheads (i.e., at
         least a couple seconds), but short enough to return control
         periodically to callers (i.e., at most a few tens of seconds).
+
+        Returns:
+            fetches (dict|None): Optional fetches from compute grads calls.
         """
 
         raise NotImplementedError
@@ -99,10 +103,15 @@ class PolicyOptimizer(object):
         """
 
         local_result = [func(self.local_evaluator, 0)]
-        remote_results = ray.get(
-            [ev.apply.remote(func, i + 1)
-             for i, ev in enumerate(self.remote_evaluators)])
+        remote_results = ray.get([
+            ev.apply.remote(func, i + 1)
+            for i, ev in enumerate(self.remote_evaluators)
+        ])
         return local_result + remote_results
+
+    def collect_metrics(self):
+        res = collect_metrics(self.local_evaluator, self.remote_evaluators)
+        return res._replace(info=self.stats())
 
     def _check_not_multiagent(self, sample_batch):
         if isinstance(sample_batch, MultiAgentBatch):

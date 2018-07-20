@@ -75,14 +75,14 @@ def _make_handler(serving_env):
                 response["action"] = serving_env.get_action(
                     args["episode_id"], args["observation"])
             elif command == PolicyClient.LOG_ACTION:
-                serving_env.log_action(
-                    args["episode_id"], args["observation"], args["action"])
+                serving_env.log_action(args["episode_id"], args["observation"],
+                                       args["action"])
             elif command == PolicyClient.LOG_RETURNS:
-                serving_env.log_returns(
-                    args["episode_id"], args["reward"], args["info"])
+                serving_env.log_returns(args["episode_id"], args["reward"],
+                                        args["info"])
             elif command == PolicyClient.END_EPISODE:
-                serving_env.end_episode(
-                    args["episode_id"], args["observation"])
+                serving_env.end_episode(args["episode_id"],
+                                        args["observation"])
             else:
                 raise Exception("Unknown command: {}".format(command))
             return response

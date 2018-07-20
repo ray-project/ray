@@ -1,7 +1,6 @@
 pendulum-ppo:
     env: Pendulum-v0
     run: PPO
-    repeat: 3
     stop:
         episode_reward_mean: -160
         # expect -140 within 300-500k steps

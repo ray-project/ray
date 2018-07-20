@@ -33,7 +33,7 @@ LocalSchedulerConnection *LocalSchedulerConnection_init(
   /* Register the process ID with the local scheduler. */
   int success = write_message(
       result->conn, static_cast<int64_t>(MessageType::RegisterClientRequest),
-      fbb.GetSize(), fbb.GetBufferPointer());
+      fbb.GetSize(), fbb.GetBufferPointer(), &result->write_mutex);
   RAY_CHECK(success == 0) << "Unable to register worker with local scheduler";
 
   return result;
@@ -49,7 +49,7 @@ void local_scheduler_disconnect_client(LocalSchedulerConnection *conn) {
   auto message = ray::local_scheduler::protocol::CreateDisconnectClient(fbb);
   fbb.Finish(message);
   write_message(conn->conn, static_cast<int64_t>(MessageType::DisconnectClient),
-                fbb.GetSize(), fbb.GetBufferPointer());
+                fbb.GetSize(), fbb.GetBufferPointer(), &conn->write_mutex);
 }
 
 void local_scheduler_log_event(LocalSchedulerConnection *conn,
@@ -65,7 +65,7 @@ void local_scheduler_log_event(LocalSchedulerConnection *conn,
       fbb, key_string, value_string, timestamp);
   fbb.Finish(message);
   write_message(conn->conn, static_cast<int64_t>(MessageType::EventLogMessage),
-                fbb.GetSize(), fbb.GetBufferPointer());
+                fbb.GetSize(), fbb.GetBufferPointer(), &conn->write_mutex);
 }
 
 void local_scheduler_submit(LocalSchedulerConnection *conn,
@@ -80,7 +80,7 @@ void local_scheduler_submit(LocalSchedulerConnection *conn,
       fbb, execution_dependencies, task_spec);
   fbb.Finish(message);
   write_message(conn->conn, static_cast<int64_t>(MessageType::SubmitTask),
-                fbb.GetSize(), fbb.GetBufferPointer());
+                fbb.GetSize(), fbb.GetBufferPointer(), &conn->write_mutex);
 }
 
 void local_scheduler_submit_raylet(
@@ -93,19 +93,22 @@ void local_scheduler_submit_raylet(
       fbb, execution_dependencies_message, task_spec.ToFlatbuffer(fbb));
   fbb.Finish(message);
   write_message(conn->conn, static_cast<int64_t>(MessageType::SubmitTask),
-                fbb.GetSize(), fbb.GetBufferPointer());
+                fbb.GetSize(), fbb.GetBufferPointer(), &conn->write_mutex);
 }
 
 TaskSpec *local_scheduler_get_task(LocalSchedulerConnection *conn,
                                    int64_t *task_size) {
-  write_message(conn->conn, static_cast<int64_t>(MessageType::GetTask), 0,
-                NULL);
   int64_t type;
   int64_t reply_size;
   uint8_t *reply;
-  /* Receive a task from the local scheduler. This will block until the local
-   * scheduler gives this client a task. */
-  read_message(conn->conn, &type, &reply_size, &reply);
+  {
+    std::unique_lock<std::mutex> guard(conn->mutex);
+    write_message(conn->conn, static_cast<int64_t>(MessageType::GetTask), 0,
+                  NULL, &conn->write_mutex);
+    /* Receive a task from the local scheduler. This will block until the local
+     * scheduler gives this client a task. */
+    read_message(conn->conn, &type, &reply_size, &reply);
+  }
   if (type == static_cast<int64_t>(CommonMessageType::DISCONNECT_CLIENT)) {
     RAY_LOG(DEBUG) << "Exiting because local scheduler closed connection.";
     exit(1);
@@ -141,14 +144,17 @@ TaskSpec *local_scheduler_get_task(LocalSchedulerConnection *conn,
 // the raylet and non-raylet code paths.
 TaskSpec *local_scheduler_get_task_raylet(LocalSchedulerConnection *conn,
                                           int64_t *task_size) {
-  write_message(conn->conn, static_cast<int64_t>(MessageType::GetTask), 0,
-                NULL);
   int64_t type;
   int64_t reply_size;
   uint8_t *reply;
-  // Receive a task from the local scheduler. This will block until the local
-  // scheduler gives this client a task.
-  read_message(conn->conn, &type, &reply_size, &reply);
+  {
+    std::unique_lock<std::mutex> guard(conn->mutex);
+    write_message(conn->conn, static_cast<int64_t>(MessageType::GetTask), 0,
+                  NULL, &conn->write_mutex);
+    // Receive a task from the local scheduler. This will block until the local
+    // scheduler gives this client a task.
+    read_message(conn->conn, &type, &reply_size, &reply);
+  }
   if (type == static_cast<int64_t>(CommonMessageType::DISCONNECT_CLIENT)) {
     RAY_LOG(DEBUG) << "Exiting because local scheduler closed connection.";
     exit(1);
@@ -199,7 +205,7 @@ TaskSpec *local_scheduler_get_task_raylet(LocalSchedulerConnection *conn,
 
 void local_scheduler_task_done(LocalSchedulerConnection *conn) {
   write_message(conn->conn, static_cast<int64_t>(MessageType::TaskDone), 0,
-                NULL);
+                NULL, &conn->write_mutex);
 }
 
 void local_scheduler_reconstruct_objects(
@@ -213,18 +219,18 @@ void local_scheduler_reconstruct_objects(
   fbb.Finish(message);
   write_message(conn->conn,
                 static_cast<int64_t>(MessageType::ReconstructObjects),
-                fbb.GetSize(), fbb.GetBufferPointer());
+                fbb.GetSize(), fbb.GetBufferPointer(), &conn->write_mutex);
   /* TODO(swang): Propagate the error. */
 }
 
 void local_scheduler_log_message(LocalSchedulerConnection *conn) {
   write_message(conn->conn, static_cast<int64_t>(MessageType::EventLogMessage),
-                0, NULL);
+                0, NULL, &conn->write_mutex);
 }
 
 void local_scheduler_notify_unblocked(LocalSchedulerConnection *conn) {
   write_message(conn->conn, static_cast<int64_t>(MessageType::NotifyUnblocked),
-                0, NULL);
+                0, NULL, &conn->write_mutex);
 }
 
 void local_scheduler_put_object(LocalSchedulerConnection *conn,
@@ -236,7 +242,7 @@ void local_scheduler_put_object(LocalSchedulerConnection *conn,
   fbb.Finish(message);
 
   write_message(conn->conn, static_cast<int64_t>(MessageType::PutObject),
-                fbb.GetSize(), fbb.GetBufferPointer());
+                fbb.GetSize(), fbb.GetBufferPointer(), &conn->write_mutex);
 }
 
 const std::vector<uint8_t> local_scheduler_get_actor_frontier(
@@ -246,13 +252,16 @@ const std::vector<uint8_t> local_scheduler_get_actor_frontier(
   auto message = ray::local_scheduler::protocol::CreateGetActorFrontierRequest(
       fbb, to_flatbuf(fbb, actor_id));
   fbb.Finish(message);
-  write_message(conn->conn,
-                static_cast<int64_t>(MessageType::GetActorFrontierRequest),
-                fbb.GetSize(), fbb.GetBufferPointer());
-
   int64_t type;
   std::vector<uint8_t> reply;
-  read_vector(conn->conn, &type, reply);
+  {
+    std::unique_lock<std::mutex> guard(conn->mutex);
+    write_message(conn->conn,
+                  static_cast<int64_t>(MessageType::GetActorFrontierRequest),
+                  fbb.GetSize(), fbb.GetBufferPointer(), &conn->write_mutex);
+
+    read_vector(conn->conn, &type, reply);
+  }
   if (static_cast<CommonMessageType>(type) ==
       CommonMessageType::DISCONNECT_CLIENT) {
     RAY_LOG(DEBUG) << "Exiting because local scheduler closed connection.";
@@ -266,7 +275,8 @@ const std::vector<uint8_t> local_scheduler_get_actor_frontier(
 void local_scheduler_set_actor_frontier(LocalSchedulerConnection *conn,
                                         const std::vector<uint8_t> &frontier) {
   write_message(conn->conn, static_cast<int64_t>(MessageType::SetActorFrontier),
-                frontier.size(), const_cast<uint8_t *>(frontier.data()));
+                frontier.size(), const_cast<uint8_t *>(frontier.data()),
+                &conn->write_mutex);
 }
 
 std::pair<std::vector<ObjectID>, std::vector<ObjectID>> local_scheduler_wait(
@@ -281,14 +291,17 @@ std::pair<std::vector<ObjectID>, std::vector<ObjectID>> local_scheduler_wait(
       fbb, to_flatbuf(fbb, object_ids), num_returns, timeout_milliseconds,
       wait_local);
   fbb.Finish(message);
-  write_message(conn->conn,
-                static_cast<int64_t>(ray::protocol::MessageType::WaitRequest),
-                fbb.GetSize(), fbb.GetBufferPointer());
-  // Read result.
   int64_t type;
   int64_t reply_size;
   uint8_t *reply;
-  read_message(conn->conn, &type, &reply_size, &reply);
+  {
+    std::unique_lock<std::mutex> guard(conn->mutex);
+    write_message(conn->conn,
+                  static_cast<int64_t>(ray::protocol::MessageType::WaitRequest),
+                  fbb.GetSize(), fbb.GetBufferPointer(), &conn->write_mutex);
+    // Read result.
+    read_message(conn->conn, &type, &reply_size, &reply);
+  }
   RAY_CHECK(static_cast<ray::protocol::MessageType>(type) ==
             ray::protocol::MessageType::WaitReply);
   auto reply_message = flatbuffers::GetRoot<ray::protocol::WaitReply>(reply);
@@ -322,7 +335,7 @@ void local_scheduler_push_error(LocalSchedulerConnection *conn,
 
   write_message(conn->conn, static_cast<int64_t>(
                                 ray::protocol::MessageType::PushErrorRequest),
-                fbb.GetSize(), fbb.GetBufferPointer());
+                fbb.GetSize(), fbb.GetBufferPointer(), &conn->write_mutex);
 }
 
 void local_scheduler_push_profile_events(
@@ -336,5 +349,5 @@ void local_scheduler_push_profile_events(
   write_message(conn->conn,
                 static_cast<int64_t>(
                     ray::protocol::MessageType::PushProfileEventsRequest),
-                fbb.GetSize(), fbb.GetBufferPointer());
+                fbb.GetSize(), fbb.GetBufferPointer(), &conn->write_mutex);
 }

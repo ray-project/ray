@@ -17,12 +17,12 @@ class SyncSamplesOptimizer(PolicyOptimizer):
     model weights are then broadcast to all remote evaluators.
     """
 
-    def _init(self, batch_size=32):
+    def _init(self, num_sgd_iter=1):
         self.update_weights_timer = TimerStat()
         self.sample_timer = TimerStat()
         self.grad_timer = TimerStat()
         self.throughput = RunningStat()
-        self.batch_size = batch_size
+        self.num_sgd_iter = num_sgd_iter
 
     def step(self):
         with self.update_weights_timer:
@@ -40,18 +40,24 @@ class SyncSamplesOptimizer(PolicyOptimizer):
                 samples = self.local_evaluator.sample()
 
         with self.grad_timer:
-            grad, _ = self.local_evaluator.compute_gradients(samples)
-            self.local_evaluator.apply_gradients(grad)
+            for i in range(self.num_sgd_iter):
+                fetches = self.local_evaluator.compute_apply(samples)
+                if self.num_sgd_iter > 1:
+                    print(i, fetches)
             self.grad_timer.push_units_processed(samples.count)
 
         self.num_steps_sampled += samples.count
         self.num_steps_trained += samples.count
+        return fetches
 
     def stats(self):
-        return dict(PolicyOptimizer.stats(self), **{
-            "sample_time_ms": round(1000 * self.sample_timer.mean, 3),
-            "grad_time_ms": round(1000 * self.grad_timer.mean, 3),
-            "update_time_ms": round(1000 * self.update_weights_timer.mean, 3),
-            "opt_peak_throughput": round(self.grad_timer.mean_throughput, 3),
-            "opt_samples": round(self.grad_timer.mean_units_processed, 3),
-        })
+        return dict(
+            PolicyOptimizer.stats(self), **{
+                "sample_time_ms": round(1000 * self.sample_timer.mean, 3),
+                "grad_time_ms": round(1000 * self.grad_timer.mean, 3),
+                "update_time_ms": round(1000 * self.update_weights_timer.mean,
+                                        3),
+                "opt_peak_throughput": round(self.grad_timer.mean_throughput,
+                                             3),
+                "opt_samples": round(self.grad_timer.mean_units_processed, 3),
+            })

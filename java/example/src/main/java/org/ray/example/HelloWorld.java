@@ -33,6 +33,12 @@ public class HelloWorld implements Serializable {
   public static void main(String[] args) throws Exception {
     try {
       Ray.init();
+
+      RayLog.rapp.info("HelloWorld.main() has " + args.length + " args");
+      for (String arg: args) {
+        RayLog.rapp.info("arg: " + arg);
+      }
+
       String helloWorld = HelloWorld.sayHelloWorld();
       RayLog.rapp.info(helloWorld);
       assert helloWorld.equals("hello,world!");
@@ -41,8 +47,6 @@ public class HelloWorld implements Serializable {
     } finally {
       RayRuntime.getInstance().cleanUp();
     }
-
-
   }
 
   public static String sayHelloWorld() {

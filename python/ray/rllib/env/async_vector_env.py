@@ -16,7 +16,7 @@ class AsyncVectorEnv(object):
     can be sent back via send_actions().
 
     All other env types can be adapted to AsyncVectorEnv. RLlib handles these
-    conversions internally in CommonPolicyEvaluator, for example:
+    conversions internally in PolicyEvaluator, for example:
 
         gym.Env => rllib.VectorEnv => rllib.AsyncVectorEnv
         rllib.MultiAgentEnv => rllib.AsyncVectorEnv
@@ -286,8 +286,8 @@ class _MultiAgentEnvState(object):
         self.reset()
 
     def poll(self):
-        obs, rew, dones, info = (
-            self.last_obs, self.last_rewards, self.last_dones, self.last_infos)
+        obs, rew, dones, info = (self.last_obs, self.last_rewards,
+                                 self.last_dones, self.last_infos)
         self.last_obs = {}
         self.last_rewards = {}
         self.last_dones = {"__all__": False}
@@ -303,10 +303,13 @@ class _MultiAgentEnvState(object):
     def reset(self):
         self.last_obs = self.env.reset()
         self.last_rewards = {
-            agent_id: None for agent_id in self.last_obs.keys()}
+            agent_id: None
+            for agent_id in self.last_obs.keys()
+        }
         self.last_dones = {
-            agent_id: False for agent_id in self.last_obs.keys()}
-        self.last_infos = {
-            agent_id: {} for agent_id in self.last_obs.keys()}
+            agent_id: False
+            for agent_id in self.last_obs.keys()
+        }
+        self.last_infos = {agent_id: {} for agent_id in self.last_obs.keys()}
         self.last_dones["__all__"] = False
         return self.last_obs

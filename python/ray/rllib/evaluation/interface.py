@@ -5,10 +5,10 @@ from __future__ import print_function
 import os
 
 
-class PolicyEvaluator(object):
+class EvaluatorInterface(object):
     """This is the interface between policy optimizers and policy evaluation.
 
-    See also: CommonPolicyEvaluator
+    See also: PolicyEvaluator
     """
 
     def sample(self):
@@ -109,44 +109,3 @@ class PolicyEvaluator(object):
         """Apply the given function to this evaluator instance."""
 
         return func(self, *args)
-
-
-class TFMultiGPUSupport(PolicyEvaluator):
-    """The multi-GPU TF optimizer requires additional TF-specific support.
-
-    Attributes:
-        sess (Session): the tensorflow session associated with this evaluator.
-    """
-
-    def tf_loss_inputs(self):
-        """Returns a list of the input placeholders required for the loss.
-
-        For example, the following calls should work:
-
-        Returns:
-            list: a (name, placeholder) tuple for each loss input argument.
-                Each placeholder name must correspond to one of the SampleBatch
-                column keys returned by sample().
-
-        Examples:
-            >>> print(ev.tf_loss_inputs())
-            [("action", action_placeholder), ("reward", reward_placeholder)]
-
-            >>> print(ev.sample()[0].data.keys())
-            ["action", "reward"]
-        """
-
-        raise NotImplementedError
-
-    def build_tf_loss(self, input_placeholders):
-        """Returns a new loss tensor graph for the specified inputs.
-
-        The graph must share vars with this Evaluator's policy model, so that
-        the multi-gpu optimizer can update the weights.
-
-        Examples:
-            >>> loss_inputs = ev.tf_loss_inputs()
-            >>> ev.build_tf_loss([ph for _, ph in loss_inputs])
-        """
-
-        raise NotImplementedError

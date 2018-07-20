@@ -17,7 +17,7 @@ import ray.test.test_utils
 
 class ActorAPI(unittest.TestCase):
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
 
     def testKeywordArgs(self):
         ray.init(num_workers=0, driver_mode=ray.SILENT_MODE)
@@ -314,7 +314,7 @@ class ActorAPI(unittest.TestCase):
 
 class ActorMethods(unittest.TestCase):
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
 
     def testDefineActor(self):
         ray.init()
@@ -480,11 +480,11 @@ class ActorMethods(unittest.TestCase):
 
 class ActorNesting(unittest.TestCase):
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
 
     def testRemoteFunctionWithinActor(self):
         # Make sure we can use remote funtions within actors.
-        ray.init(num_cpus=100)
+        ray.init(num_cpus=10)
 
         # Create some values to close over.
         val1 = 1
@@ -656,7 +656,7 @@ class ActorNesting(unittest.TestCase):
 
 class ActorInheritance(unittest.TestCase):
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
 
     def testInheritActorFromClass(self):
         # Make sure we can define an actor by inheriting from a regular class.
@@ -688,7 +688,7 @@ class ActorInheritance(unittest.TestCase):
 
 class ActorSchedulingProperties(unittest.TestCase):
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
 
     def testRemoteFunctionsNotScheduledOnActors(self):
         # Make sure that regular remote functions are not scheduled on actors.
@@ -715,7 +715,7 @@ class ActorSchedulingProperties(unittest.TestCase):
 
 class ActorsOnMultipleNodes(unittest.TestCase):
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
 
     def testActorsOnNodesWithNoCPUs(self):
         ray.init(num_cpus=0)
@@ -774,7 +774,7 @@ class ActorsOnMultipleNodes(unittest.TestCase):
 
 class ActorsWithGPUs(unittest.TestCase):
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
 
     @unittest.skipIf(
         os.environ.get('RAY_USE_NEW_GCS', False), "Crashing with new GCS API.")
@@ -1276,7 +1276,7 @@ class ActorsWithGPUs(unittest.TestCase):
     "This test does not work with xray yet.")
 class ActorReconstruction(unittest.TestCase):
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
 
     @unittest.skipIf(
         os.environ.get('RAY_USE_NEW_GCS', False), "Hanging with new GCS API.")
@@ -1799,7 +1799,7 @@ class ActorReconstruction(unittest.TestCase):
 
 class DistributedActorHandles(unittest.TestCase):
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
 
     def setup_queue_actor(self):
         ray.init()
@@ -1967,7 +1967,7 @@ class DistributedActorHandles(unittest.TestCase):
 
 class ActorPlacementAndResources(unittest.TestCase):
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
 
     @unittest.skipIf(
         os.environ.get("RAY_USE_XRAY") == "1",
