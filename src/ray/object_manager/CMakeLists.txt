@@ -25,6 +25,6 @@ ADD_RAY_TEST(test/object_manager_stress_test STATIC_LINK_LIBS ray_static ${PLASM
 add_library(object_manager object_manager.cc object_manager.h ${OBJECT_MANAGER_FBS_OUTPUT_FILES})
 target_link_libraries(object_manager common ray_static ${PLASMA_STATIC_LIB} ${ARROW_STATIC_LIB} ${Boost_SYSTEM_LIBRARY})
 
-install(FILES
+install(TARGETS
         object_manager
         DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/ray/object_manager")
