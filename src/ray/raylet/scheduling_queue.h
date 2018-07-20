@@ -12,7 +12,7 @@ namespace ray {
 
 namespace raylet {
 
-enum class TaskState { INIT, PLACEABLE, WAITING, READY, RUNNING, BLOCKED };
+enum class TaskState { INIT, PLACEABLE, WAITING, READY, RUNNING, BLOCKED, DRIVER };
 
 /// \class SchedulingQueue
 ///
@@ -68,15 +68,31 @@ class SchedulingQueue {
   /// at runtime.
   const std::list<Task> &GetBlockedTasks() const;
 
+  /// Get the set of driver task IDs.
+  ///
+  /// \return A const reference to the set of driver task IDs. These are empty
+  /// tasks used to represent drivers.
+  const std::unordered_set<TaskID> &GetDriverTaskIds() const;
+
   /// Remove tasks from the task queue.
   ///
   /// \param tasks The set of task IDs to remove from the queue. The
-  ///        corresponding tasks must be contained in the queue. The IDs of
-  ///        removed tasks will be erased from the set.
+  /// corresponding tasks must be contained in the queue. The IDs of removed
+  /// tasks will be erased from the set.
   /// \return A vector of the tasks that were removed.
   std::vector<Task> RemoveTasks(std::unordered_set<TaskID> &tasks);
 
+  /// Remove a task from the task queue.
+  ///
+  /// \param task_id The task ID to remove from the queue. The corresponding
+  /// task must be contained in the queue.
+  /// \return The task that was removed.
   Task RemoveTask(const TaskID &task_id);
+
+  /// Remove a driver task ID. This is an empty task used to represent a driver.
+  ///
+  /// \param The driver task ID to remove.
+  void RemoveDriverTaskId(const TaskID &task_id);
 
   /// Queue tasks that are destined for actors that have not yet been created.
   ///
@@ -110,6 +126,11 @@ class SchedulingQueue {
   ///
   /// \param tasks The tasks to queue.
   void QueueBlockedTasks(const std::vector<Task> &tasks);
+
+  /// Add a driver task ID. This is an empty task used to represent a driver.
+  ///
+  /// \param The driver task ID to add.
+  void AddDriverTaskId(const TaskID &task_id);
 
   /// \brief Move the specified tasks from the source state to the destination
   /// state.
@@ -145,6 +166,9 @@ class SchedulingQueue {
   /// Tasks that were dispatched to a worker but are blocked on a data
   /// dependency that was missing at runtime.
   std::list<Task> blocked_tasks_;
+  /// The set of currently running driver tasks. These are empty tasks that are
+  /// started by a driver process on initialization.
+  std::unordered_set<TaskID> driver_task_ids_;
 };
 
 }  // namespace raylet

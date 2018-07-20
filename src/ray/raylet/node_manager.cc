@@ -349,11 +349,16 @@ void NodeManager::ProcessClientMessage(
   switch (static_cast<protocol::MessageType>(message_type)) {
   case protocol::MessageType::RegisterClientRequest: {
     auto message = flatbuffers::GetRoot<protocol::RegisterClientRequest>(message_data);
+    auto worker = std::make_shared<Worker>(message->worker_pid(), client);
     if (message->is_worker()) {
-      // Create a new worker from the registration request.
-      auto worker = std::make_shared<Worker>(message->worker_pid(), client);
       // Register the new worker.
       worker_pool_.RegisterWorker(std::move(worker));
+    } else {
+      // Register the new driver.
+      JobID job_id = from_flatbuf(*message->driver_id());
+      worker->AssignTaskId(job_id);
+      worker_pool_.RegisterDriver(std::move(worker));
+      local_queues_.AddDriverTaskId(job_id);
     }
   } break;
   case protocol::MessageType::GetTask: {
@@ -373,10 +378,10 @@ void NodeManager::ProcessClientMessage(
     // Remove the dead worker from the pool and stop listening for messages.
     const std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
 
-    // This if statement distinguishes workers from drivers.
     if (worker) {
-      // Handle the case where the worker is killed while executing a task.
-      // Clean up the assigned task's resources, push an error to the driver.
+      // The client is a worker. Handle the case where the worker is killed
+      // while executing a task. Clean up the assigned task's resources, push
+      // an error to the driver.
       const TaskID &task_id = worker->GetAssignedTaskId();
       if (!task_id.is_nil()) {
         auto const &running_tasks = local_queues_.GetRunningTasks();
@@ -414,6 +419,14 @@ void NodeManager::ProcessClientMessage(
 
       // Since some resources may have been released, we can try to dispatch more tasks.
       DispatchTasks();
+    } else {
+      // The client is a driver.
+      const std::shared_ptr<Worker> driver = worker_pool_.GetRegisteredDriver(client);
+      RAY_CHECK(driver);
+      auto driver_id = driver->GetAssignedTaskId();
+      RAY_CHECK(!driver_id.is_nil());
+      local_queues_.RemoveDriverTaskId(driver_id);
+      worker_pool_.DisconnectDriver(driver);
     }
     return;
   } break;
@@ -448,12 +461,20 @@ void NodeManager::ProcessClientMessage(
       auto current_task_id = TaskID::nil();
       std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
       if (worker) {
-        RAY_CHECK(!worker->GetAssignedTaskId().is_nil());
+        // The client is a worker.
         current_task_id = worker->GetAssignedTaskId();
-
-        // Mark the worker as blocked.
+        // Mark the worker as blocked. This temporarily releases any resources
+        // that the worker holds while it is blocked.
         HandleWorkerBlocked(worker);
+      } else {
+        // The client is a driver. Drivers do not hold resources, so we simply
+        // mark the driver as blocked.
+        worker = worker_pool_.GetRegisteredDriver(client);
+        RAY_CHECK(worker);
+        current_task_id = worker->GetAssignedTaskId();
+        worker->MarkBlocked();
       }
+      RAY_CHECK(!current_task_id.is_nil());
       // Subscribe to the objects required by the ray.get. These objects will
       // be fetched and/or reconstructed as necessary, until the objects become
       // local or are unsubscribed.
@@ -471,13 +492,20 @@ void NodeManager::ProcessClientMessage(
     // dependency manager, we could actually remove this message entirely and
     // instead unblock the worker once all the objects become available.
     if (worker) {
-      RAY_CHECK(!worker->GetAssignedTaskId().is_nil());
+      // The client is a worker.
       current_task_id = worker->GetAssignedTaskId();
-
-      // Mark the worker as unblocked.
+      // Mark the worker as unblocked. This returns the temporarily released
+      // resources to the worker.
       HandleWorkerUnblocked(worker);
+    } else {
+      // The client is a driver. Drivers do not hold resources, so we simply
+      // mark the driver as unblocked.
+      worker = worker_pool_.GetRegisteredDriver(client);
+      RAY_CHECK(worker);
+      current_task_id = worker->GetAssignedTaskId();
+      worker->MarkUnblocked();
     }
-
+    RAY_CHECK(!current_task_id.is_nil());
     // Unsubscribe to the objects. Any fetch or reconstruction operations to
     // make the objects local are canceled.
     task_dependency_manager_.UnsubscribeDependencies(current_task_id);
@@ -926,10 +954,8 @@ void NodeManager::HandleObjectLocal(const ObjectID &object_id) {
     // Check that remaining tasks that could not be transitioned are blocked
     // workers or drivers.
     local_queues_.FilterState(ready_task_id_set, TaskState::BLOCKED);
-    if (!ready_task_id_set.empty()) {
-      RAY_CHECK(ready_task_id_set.size() == 1);
-      RAY_CHECK(ready_task_id_set.begin()->is_nil());
-    }
+    local_queues_.FilterState(ready_task_id_set, TaskState::DRIVER);
+    RAY_CHECK(ready_task_id_set.empty());
   }
 }
 

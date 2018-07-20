@@ -87,8 +87,18 @@ void SchedulingQueue::FilterState(std::unordered_set<TaskID> &task_ids,
   case TaskState::BLOCKED:
     FilterStateFromQueue(blocked_tasks_, task_ids, filter_state);
     break;
+  case TaskState::DRIVER: {
+    const auto driver_ids = GetDriverTaskIds();
+    for (auto it = task_ids.begin(); it != task_ids.end();) {
+      if (driver_ids.count(*it) == 1) {
+        it = task_ids.erase(it);
+      } else {
+        it++;
+      }
+    }
+  } break;
   default:
-    RAY_LOG(ERROR) << "Attempting to filter tasks on unrecognized state "
+    RAY_LOG(FATAL) << "Attempting to filter tasks on unrecognized state "
                    << static_cast<std::underlying_type<TaskState>::type>(filter_state);
   }
 }
@@ -138,7 +148,7 @@ void SchedulingQueue::MoveTasks(std::unordered_set<TaskID> &task_ids, TaskState 
     RemoveTasksFromQueue(blocked_tasks_, task_ids, removed_tasks);
     break;
   default:
-    RAY_LOG(ERROR) << "Attempting to move tasks from unrecognized state "
+    RAY_LOG(FATAL) << "Attempting to move tasks from unrecognized state "
                    << static_cast<std::underlying_type<TaskState>::type>(src_state);
   }
   // Add the tasks to the specified destination queue.
@@ -159,7 +169,7 @@ void SchedulingQueue::MoveTasks(std::unordered_set<TaskID> &task_ids, TaskState 
     QueueTasks(blocked_tasks_, removed_tasks);
     break;
   default:
-    RAY_LOG(ERROR) << "Attempting to move tasks to unrecognized state "
+    RAY_LOG(FATAL) << "Attempting to move tasks to unrecognized state "
                    << static_cast<std::underlying_type<TaskState>::type>(dst_state);
   }
 }
@@ -186,6 +196,20 @@ void SchedulingQueue::QueueRunningTasks(const std::vector<Task> &tasks) {
 
 void SchedulingQueue::QueueBlockedTasks(const std::vector<Task> &tasks) {
   QueueTasks(blocked_tasks_, tasks);
+}
+
+void SchedulingQueue::AddDriverTaskId(const TaskID &driver_id) {
+  auto inserted = driver_task_ids_.insert(driver_id);
+  RAY_CHECK(inserted.second);
+}
+
+void SchedulingQueue::RemoveDriverTaskId(const TaskID &driver_id) {
+  auto erased = driver_task_ids_.erase(driver_id);
+  RAY_CHECK(erased == 1);
+}
+
+const std::unordered_set<TaskID> &SchedulingQueue::GetDriverTaskIds() const {
+  return driver_task_ids_;
 }
 
 }  // namespace raylet

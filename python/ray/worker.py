@@ -2155,6 +2155,8 @@ def connect(info,
     # the correct driver.
     if mode != WORKER_MODE:
         worker.task_driver_id = ray.ObjectID(worker.worker_id)
+    else:
+        worker.task_driver_id = ray_constants.NIL_JOB_ID
 
     # All workers start out as non-actors. A worker can be turned into an actor
     # after it is created.
@@ -2271,7 +2273,8 @@ def connect(info,
         local_scheduler_socket = info["raylet_socket_name"]
 
     worker.local_scheduler_client = ray.local_scheduler.LocalSchedulerClient(
-        local_scheduler_socket, worker.worker_id, is_worker, worker.use_raylet)
+        local_scheduler_socket, worker.worker_id, is_worker,
+        worker.task_driver_id, worker.use_raylet)
 
     # If this is a driver, set the current task ID, the task driver ID, and set
     # the task index to 0.

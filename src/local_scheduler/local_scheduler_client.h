@@ -26,16 +26,20 @@ struct LocalSchedulerConnection {
  *
  * @param local_scheduler_socket The name of the socket to use to connect to the
  *        local scheduler.
+ * @param worker_id A unique ID to represent the worker.
  * @param is_worker Whether this client is a worker. If it is a worker, an
  *        additional message will be sent to register as one.
+ * @param driver_id The ID of the driver. This is non-nil if the client is a
+ *        driver.
  * @param use_raylet True if we should use the raylet code path and false
  *        otherwise.
  * @return The connection information.
  */
 LocalSchedulerConnection *LocalSchedulerConnection_init(
     const char *local_scheduler_socket,
-    UniqueID worker_id,
+    const UniqueID &worker_id,
     bool is_worker,
+    const JobID &driver_id,
     bool use_raylet);
 
 /**
