@@ -114,7 +114,6 @@ class RemoteFunction(object):
         """An experimental alternate way to submit remote functions."""
         worker = ray.worker.get_global_worker()
         worker.check_connected()
-        ray.worker.check_main_thread()
         kwargs = {} if kwargs is None else kwargs
         args = ray.signature.extend_args(self._function_signature, args,
                                          kwargs)
