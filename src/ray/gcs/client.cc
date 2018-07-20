@@ -75,7 +75,7 @@ AsyncGcsClient::AsyncGcsClient(const ClientID &client_id, CommandType command_ty
   tmp_primary.push_back(primary_context_);
   client_table_.reset(new ClientTable(tmp_primary, this, client_id));
   error_table_.reset(new ErrorTable(tmp_primary, this));
-  profile_table_.reset(new ProfileTable(tmp_primary, this));
+
   // Tables below would be sharded.
   // They are created but not populated for now.
   object_table_.reset(new ObjectTable(shard_contexts_, this, command_type));
@@ -84,6 +84,7 @@ AsyncGcsClient::AsyncGcsClient(const ClientID &client_id, CommandType command_ty
   raylet_task_table_.reset(new raylet::TaskTable(shard_contexts_, this, command_type));
   task_reconstruction_log_.reset(new TaskReconstructionLog(shard_contexts_, this));
   heartbeat_table_.reset(new HeartbeatTable(shard_contexts_, this));
+  profile_table_.reset(new ProfileTable(shard_contexts_, this));
   command_type_ = command_type;
 }
 
@@ -135,6 +136,7 @@ Status AsyncGcsClient::Connect(const std::string &address, int port, bool shardi
   raylet_task_table_->AddShards(shard_contexts_);
   task_reconstruction_log_->AddShards(shard_contexts_);
   heartbeat_table_->AddShards(shard_contexts_);
+  profile_table_->AddShards(shard_contexts_);
 
   // TODO(swang): Call the client table's Connect() method here. To do this,
   // we need to make sure that we are attached to an event loop first. This

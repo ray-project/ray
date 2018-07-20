@@ -495,7 +495,7 @@ class ErrorTable : private Log<JobID, ErrorTableData> {
                            const std::string &error_message, double timestamp);
 };
 
-class ProfileTable : private Log<UniqueID, ProfileTableData> {
+class ProfileTable : public Log<UniqueID, ProfileTableData> {
  public:
   ProfileTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
                AsyncGcsClient *client)

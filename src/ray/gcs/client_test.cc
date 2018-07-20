@@ -60,7 +60,9 @@ class TestGcsWithAe : public TestGcs {
  public:
   TestGcsWithAe(CommandType command_type) : TestGcs(command_type) {
     loop_ = aeCreateEventLoop(1024);
-    RAY_CHECK_OK(client_->shard_contexts()[0]->AttachToEventLoop(loop_));
+    for (auto &context : client_->shard_contexts()) {
+      RAY_CHECK_OK(context->AttachToEventLoop(loop_));
+    }
   }
 
   TestGcsWithAe() : TestGcsWithAe(CommandType::kRegular) {}
