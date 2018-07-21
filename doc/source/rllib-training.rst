@@ -116,6 +116,60 @@ It is common to need to access an agent's internal state, e.g., to set or get in
 
 You can also access just the "master" copy of the agent state through ``agent.optimizer.local_evaluator``, but note that updates here may not be reflected in remote replicas if you have configured ``num_workers > 0``.
 
+Customizing Policy Graphs
+--------
+
+Additionally, Python API provides simple and flexible way of policy graphs customization, for example:
+
+.. code-block:: python
+
+    from ray.rllib.models import ModelCatalog
+    from ray.rllib.agents.ddpg.ddpg_policy_graph import DDPGPolicyGraph as BaseDDPGPolicyGraph
+
+    class CustomPNetwork(object):
+        def __init__(self, dim_actions, hiddens, activation):
+            action_out = ...
+            # Use sigmoid layer to bound values within (0, 1)
+            # shape of action_scores is [batch_size, dim_actions]
+            self.action_scores = layers.fully_connected(
+                action_out, num_outputs=dim_actions, activation_fn=tf.nn.sigmoid)
+
+    class CustomQNetwork(object):
+        def __init__(self, action_inputs, hiddens, activation):
+            q_out = ...
+            self.value = layers.fully_connected(
+                q_out, num_outputs=1, activation_fn=None)
+
+
+    class CustomDDPGPolicyGraph(BaseDDPGPolicyGraph):
+        def _build_p_network(self, obs):
+            return CustomPNetwork(
+                self.dim_actions,
+                self.config["actor_hiddens"],
+                self.config["actor_hidden_activation"]).action_scores
+
+        def _build_q_network(self, obs, actions):
+            return CustomQNetwork(
+                actions,
+                self.config["critic_hiddens"],
+                self.config["critic_hidden_activation"]).value
+
+
+Finally, you can simply redefine agent policy by:
+
+.. code-block:: python
+
+    from ray.rllib.agents.ddpg.ddpg import DDPGAgent
+    from custom_policy_graph import CustomDDPGPolicyGraph
+
+
+    DDPGAgent._policy_graph = CustomDDPGPolicyGraph
+    agent = ...
+
+That's it.
+For now, this option is only available for DQN (`_build_q_network`, `_build_q_value_policy`, `_build_q_loss`) and DDPG (`_build_q_network`, `_build_p_network`, `_build_action_network`, `_build_actor_critic_loss`) graphs.
+
+
 REST API
 --------
 
