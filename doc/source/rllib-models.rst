@@ -75,3 +75,53 @@ Similarly, custom preprocessors should subclass the RLlib `preprocessor class <h
             "custom_options": {},  # extra options to pass to your preprocessor
         },
     })
+
+
+Customizing Policy Graphs
+-------------------------
+
+For deeper customization of algorithms, you can modify the policy graphs of the agent classes. Here's an example of extending the DDPG policy graph to specify custom sub-network modules:
+
+.. code-block:: python
+
+    from ray.rllib.models import ModelCatalog
+    from ray.rllib.agents.ddpg.ddpg_policy_graph import DDPGPolicyGraph as BaseDDPGPolicyGraph
+
+    class CustomPNetwork(object):
+        def __init__(self, dim_actions, hiddens, activation):
+            action_out = ...
+            # Use sigmoid layer to bound values within (0, 1)
+            # shape of action_scores is [batch_size, dim_actions]
+            self.action_scores = layers.fully_connected(
+                action_out, num_outputs=dim_actions, activation_fn=tf.nn.sigmoid)
+
+    class CustomQNetwork(object):
+        def __init__(self, action_inputs, hiddens, activation):
+            q_out = ...
+            self.value = layers.fully_connected(
+                q_out, num_outputs=1, activation_fn=None)
+
+    class CustomDDPGPolicyGraph(BaseDDPGPolicyGraph):
+        def _build_p_network(self, obs):
+            return CustomPNetwork(
+                self.dim_actions,
+                self.config["actor_hiddens"],
+                self.config["actor_hidden_activation"]).action_scores
+
+        def _build_q_network(self, obs, actions):
+            return CustomQNetwork(
+                actions,
+                self.config["critic_hiddens"],
+                self.config["critic_hidden_activation"]).value
+
+Then, you can create an agent with your custom policy graph by:
+
+.. code-block:: python
+
+    from ray.rllib.agents.ddpg.ddpg import DDPGAgent
+    from custom_policy_graph import CustomDDPGPolicyGraph
+
+    DDPGAgent._policy_graph = CustomDDPGPolicyGraph
+    agent = DDPGAgent(...)
+
+That's it. In this example we overrode existing methods of the existing DDPG policy graph, i.e., `_build_q_network`, `_build_p_network`, `_build_action_network`, `_build_actor_critic_loss`, but you can also replace the entire graph class entirely.
