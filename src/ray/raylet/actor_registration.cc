@@ -37,13 +37,9 @@ void ActorRegistration::ExtendFrontier(const ActorHandleID &handle_id,
   execution_dependency_ = execution_dependency;
 }
 
-bool ActorRegistration::IsAlive() const {
-  return alive_;
-}
+bool ActorRegistration::IsAlive() const { return alive_; }
 
-void ActorRegistration::MarkDead() {
-  alive_ = false;
-}
+void ActorRegistration::MarkDead() { alive_ = false; }
 
 }  // namespace raylet
 

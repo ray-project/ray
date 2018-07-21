@@ -379,16 +379,11 @@ void NodeManager::CleanUpTasksForDeadActor(const ActorID &actor_id) {
 
   GetActorTasksFromList(actor_id, local_queues_.GetUncreatedActorMethods(),
                         tasks_to_remove);
-  GetActorTasksFromList(actor_id, local_queues_.GetWaitingTasks(),
-                        tasks_to_remove);
-  GetActorTasksFromList(actor_id, local_queues_.GetPlaceableTasks(),
-                        tasks_to_remove);
-  GetActorTasksFromList(actor_id, local_queues_.GetReadyTasks(),
-                        tasks_to_remove);
-  GetActorTasksFromList(actor_id, local_queues_.GetRunningTasks(),
-                        tasks_to_remove);
-  GetActorTasksFromList(actor_id, local_queues_.GetBlockedTasks(),
-                        tasks_to_remove);
+  GetActorTasksFromList(actor_id, local_queues_.GetWaitingTasks(), tasks_to_remove);
+  GetActorTasksFromList(actor_id, local_queues_.GetPlaceableTasks(), tasks_to_remove);
+  GetActorTasksFromList(actor_id, local_queues_.GetReadyTasks(), tasks_to_remove);
+  GetActorTasksFromList(actor_id, local_queues_.GetRunningTasks(), tasks_to_remove);
+  GetActorTasksFromList(actor_id, local_queues_.GetBlockedTasks(), tasks_to_remove);
 
   auto removed_tasks = local_queues_.RemoveTasks(tasks_to_remove);
   for (auto const &task : removed_tasks) {
@@ -1144,18 +1139,16 @@ void NodeManager::ForwardTaskOrResubmit(const Task &task,
     // Create a timer to resubmit the task in a little bit.
     boost::asio::deadline_timer timer(io_service_);
     auto retry_duration = boost::posix_time::milliseconds(
-        RayConfig::instance()
-            .node_manager_forward_task_retry_timeout_milliseconds());
+        RayConfig::instance().node_manager_forward_task_retry_timeout_milliseconds());
     timer.expires_from_now(retry_duration);
-    timer.async_wait(
-        [this, task, task_id](const boost::system::error_code &error) {
-          // Timer killing will receive the boost::asio::error::operation_aborted,
-          // we only handle the timeout event.
-          if (!error) {
-            RAY_LOG(INFO) << "In ForwardTask retry callback for task " << task_id;
-            EnqueuePlaceableTask(task);
-          }
-        });
+    timer.async_wait([this, task, task_id](const boost::system::error_code &error) {
+      // Timer killing will receive the boost::asio::error::operation_aborted,
+      // we only handle the timeout event.
+      if (!error) {
+        RAY_LOG(INFO) << "In ForwardTask retry callback for task " << task_id;
+        EnqueuePlaceableTask(task);
+      }
+    });
   }
 }
 

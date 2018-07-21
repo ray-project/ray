@@ -127,8 +127,7 @@ class NodeManager {
   /// \param tasks A list of tasks to extract from.
   /// \param tasks_to_remove The task IDs of the extracted tasks are inserted in
   /// this vector.
-  void GetActorTasksFromList(const ActorID &actor_id,
-                             const std::list<Task> &tasks,
+  void GetActorTasksFromList(const ActorID &actor_id, const std::list<Task> &tasks,
                              std::unordered_set<TaskID> &tasks_to_remove);
 
   /// When an actor dies, loop over all of the queued tasks for that actor and

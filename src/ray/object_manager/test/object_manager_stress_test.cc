@@ -368,7 +368,7 @@ class StressTestObjectManager : public TestObjectManagerBase {
     case TransferPattern::PUSH_B_A: {
       for (int i = -1; ++i < num_trials;) {
         ObjectID oid2 = WriteDataToClient(client2, data_size);
-         server2->object_manager_.Push(oid2, client_id_1);
+        server2->object_manager_.Push(oid2, client_id_1);
       }
     } break;
     case TransferPattern::BIDIRECTIONAL_PUSH: {
