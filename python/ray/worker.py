@@ -255,7 +255,7 @@ class Worker(object):
         """Get the SerializationContext of the driver that this worker is processing.
 
         Args:
-            driver_id: The id of the driver that indicates which driver to get
+            driver_id: The ID of the driver that indicates which driver to get
                 the serialization context for.
 
         Returns:
@@ -1308,14 +1308,14 @@ def _initialize_serialization(driver_id, worker=global_worker):
         use_pickle=True,
         local=True,
         driver_id=driver_id,
-        class_id="lambda0")
+        class_id="lambda")
     # Tell Ray to serialize types with pickle.
     register_custom_serializer(
         type(int),
         use_pickle=True,
         local=True,
         driver_id=driver_id,
-        class_id="int")
+        class_id="type")
     # Tell Ray to serialize FunctionSignatures as dictionaries. This is
     # used when passing around actor handles.
     register_custom_serializer(
@@ -2364,9 +2364,9 @@ def register_custom_serializer(cls,
             if and only if use_pickle and use_dict are False.
         local: True if the serializers should only be registered on the current
             worker. This should usually be False.
-        driver_id: Id of the driver for which we want to register cls for.
-        class_id: Id of the cls that used to register. If this is specified, we
-            will not calculate a new one inside the funtion.
+        driver_id: ID of the driver that we want to register the class for.
+        class_id: ID of the class that we are registering. If this is not
+            specified, we will calculate a new one inside the function.
 
     Raises:
         Exception: An exception is raised if pickle=False and the class cannot
