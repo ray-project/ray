@@ -1,3 +1,6 @@
+Task State: Definitions & Transition Diagram
+============================================
+
 A task can be in one of the following states:
 
 - Placeable: the task is ready to be placed at the node where is going to be
