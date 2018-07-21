@@ -117,9 +117,9 @@ It is common to need to access an agent's internal state, e.g., to set or get in
 You can also access just the "master" copy of the agent state through ``agent.optimizer.local_evaluator``, but note that updates here may not be reflected in remote replicas if you have configured ``num_workers > 0``.
 
 Customizing Policy Graphs
---------
+-------------------------
 
-Additionally, Python API provides simple and flexible way of policy graphs customization, for example:
+For deeper customization of algorithms, you can modify the policy graphs of the agent classes. Here's an example of extending the DDPG policy graph to specify custom sub-network modules:
 
 .. code-block:: python
 
@@ -140,7 +140,6 @@ Additionally, Python API provides simple and flexible way of policy graphs custo
             self.value = layers.fully_connected(
                 q_out, num_outputs=1, activation_fn=None)
 
-
     class CustomDDPGPolicyGraph(BaseDDPGPolicyGraph):
         def _build_p_network(self, obs):
             return CustomPNetwork(
@@ -154,21 +153,17 @@ Additionally, Python API provides simple and flexible way of policy graphs custo
                 self.config["critic_hiddens"],
                 self.config["critic_hidden_activation"]).value
 
-
-Finally, you can simply redefine agent policy by:
+Then, you can create an agent with your custom policy graph by:
 
 .. code-block:: python
 
     from ray.rllib.agents.ddpg.ddpg import DDPGAgent
     from custom_policy_graph import CustomDDPGPolicyGraph
 
-
     DDPGAgent._policy_graph = CustomDDPGPolicyGraph
-    agent = ...
+    agent = DDPGAgent(...)
 
-That's it.
-For now, this option is only available for DQN (`_build_q_network`, `_build_q_value_policy`, `_build_q_loss`) and DDPG (`_build_q_network`, `_build_p_network`, `_build_action_network`, `_build_actor_critic_loss`) graphs.
-
+That's it. In this example we overrode existing methods of the existing DDPG policy graph, i.e., `_build_q_network`, `_build_p_network`, `_build_action_network`, `_build_actor_critic_loss`, but you can also replace the entire graph class entirely.
 
 REST API
 --------
