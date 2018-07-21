@@ -493,10 +493,14 @@ void NodeManager::ProcessClientMessage(
       ObjectID object_id = from_flatbuf(*message->object_ids()->Get(i));
       if (!task_dependency_manager_.CheckObjectLocal(object_id)) {
         if (message->fetch_only()) {
+          // If only a fetch is required, then do not subscribe to the
+          // dependencies to the task dependency manager.
           RAY_CHECK_OK(object_manager_.Pull(object_id));
         } else {
-          // Add any missing objects to the list to subscribe to in the task
-          // dependency manager.
+          // If reconstruction is also required, then add any missing objects
+          // to the list to subscribe to in the task dependency manager. These
+          // objects will be pulled from remote node managers and reconstructed
+          // if necessary.
           required_object_ids.push_back(object_id);
         }
       }
