@@ -101,8 +101,8 @@ class ObjectManager : public ObjectManagerInterface {
   ///
   /// \param object_id The object's object id.
   /// \param client_id The remote node's client id.
-  /// \return Status of whether the push request successfully initiated.
-  ray::Status Push(const ObjectID &object_id, const ClientID &client_id);
+  /// \return Void.
+  void Push(const ObjectID &object_id, const ClientID &client_id);
 
   /// Pull an object from ClientID. Returns UniqueID asociated with
   /// an invocation of this method.

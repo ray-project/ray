@@ -487,22 +487,21 @@ void NodeManager::ProcessClientMessage(
         // Handle the task failure in order to raise an exception in the
         // application.
         TreatTaskAsFailed(spec);
-
-        // For dead actors, if there are remaining tasks for this actor, we
-        // should handle them.
-        const ActorID actor_id = worker->GetActorId();
-        if (!actor_id.is_nil()) {
-          CleanUpTasksForDeadActor(actor_id);
-        }
+        local_queues_.RemoveTasks({spec.TaskId()});
       }
 
       worker_pool_.DisconnectWorker(worker);
 
       // If the worker was an actor, add it to the list of dead actors.
-      ActorID actor_id = worker->GetActorId();
+      const ActorID actor_id = worker->GetActorId();
       if (!actor_id.is_nil()) {
         RAY_LOG(DEBUG) << "The actor with ID " << actor_id << " died.";
-        dead_actors_.insert(actor_id);
+        auto actor_entry = actor_registry_.find(actor_id);
+        RAY_CHECK(actor_entry != actor_registry_.end());
+        actor_entry->second.MarkDead();
+        // For dead actors, if there are remaining tasks for this actor, we
+        // should handle them.
+        CleanUpTasksForDeadActor(actor_id);
       }
 
       const ClientID &client_id = gcs_client_->client_table().GetLocalClientId();
@@ -776,7 +775,7 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
       auto node_manager_id = actor_entry->second.GetNodeManagerId();
       if (node_manager_id == gcs_client_->client_table().GetLocalClientId()) {
         // The actor is local. Check if the actor is still alive.
-        if (dead_actors_.find(spec.ActorId()) != dead_actors_.end()) {
+        if (!actor_entry->second.IsAlive()) {
           // Handle the fact that this actor is dead.
           TreatTaskAsFailed(spec);
         } else {
@@ -1154,10 +1153,7 @@ void NodeManager::ForwardTaskOrResubmit(const Task &task,
           // we only handle the timeout event.
           if (!error) {
             RAY_LOG(INFO) << "In ForwardTask retry callback for task " << task_id;
-            // TODO(rkn): What will this do to the lineage cache? It
-            // will re-add the task to the lineage cache, which is
-            // probably not what we want.
-            SubmitTask(task, Lineage());
+            EnqueuePlaceableTask(task);
           }
         });
   }
@@ -1216,13 +1212,7 @@ ray::Status NodeManager::ForwardTask(const Task &task, const ClientID &node_id) 
           ObjectID argument_id = spec.ArgId(i, j);
           // If the argument is local, then push it to the receiving node.
           if (task_dependency_manager_.CheckObjectLocal(argument_id)) {
-            if (!object_manager_.Push(argument_id, node_id).ok()) {
-              // It's ok if this fails, as pushing objects is done on a
-              // best-effort basis. TODO(rkn): This may not do anything as
-              // ObjectManager::Push to always return success.
-              RAY_LOG(INFO) << "Failed to push object " << argument_id << " to node "
-                            << node_id << ".";
-            }
+            object_manager_.Push(argument_id, node_id);
           }
         }
       }

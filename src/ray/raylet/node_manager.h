@@ -188,9 +188,6 @@ class NodeManager {
   /// A mapping from actor ID to registration information about that actor
   /// (including which node manager owns it).
   std::unordered_map<ActorID, ActorRegistration> actor_registry_;
-  /// A list of the actors on this node that have died. In principle, this could
-  /// grow unbounded.
-  std::unordered_set<ActorID> dead_actors_;
 };
 
 }  // namespace raylet
