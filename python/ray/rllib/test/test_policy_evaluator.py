@@ -66,8 +66,7 @@ class MockEnv2(gym.Env):
 
 class MockVectorEnv(VectorEnv):
     def __init__(self, episode_length, num_envs):
-        self.envs = [
-            MockEnv(episode_length) for _ in range(num_envs)]
+        self.envs = [MockEnv(episode_length) for _ in range(num_envs)]
         self.observation_space = gym.spaces.Discrete(1)
         self.action_space = gym.spaces.Discrete(2)
         self.num_envs = num_envs
@@ -102,7 +101,10 @@ class TestPolicyEvaluator(unittest.TestCase):
     def testQueryEvaluators(self):
         register_env("test", lambda _: gym.make("CartPole-v0"))
         pg = PGAgent(
-            env="test", config={"num_workers": 2, "sample_batch_size": 5})
+            env="test", config={
+                "num_workers": 2,
+                "sample_batch_size": 5
+            })
         results = pg.optimizer.foreach_evaluator(lambda ev: ev.batch_steps)
         results2 = pg.optimizer.foreach_evaluator_with_index(
             lambda ev, i: (i, ev.batch_steps))
@@ -112,10 +114,12 @@ class TestPolicyEvaluator(unittest.TestCase):
     def testMetrics(self):
         ev = PolicyEvaluator(
             env_creator=lambda _: MockEnv(episode_length=10),
-            policy_graph=MockPolicyGraph, batch_mode="complete_episodes")
+            policy_graph=MockPolicyGraph,
+            batch_mode="complete_episodes")
         remote_ev = PolicyEvaluator.as_remote().remote(
             env_creator=lambda _: MockEnv(episode_length=10),
-            policy_graph=MockPolicyGraph, batch_mode="complete_episodes")
+            policy_graph=MockPolicyGraph,
+            batch_mode="complete_episodes")
         ev.sample()
         ray.get(remote_ev.sample.remote())
         result = collect_metrics(ev, [remote_ev])
@@ -149,7 +153,8 @@ class TestPolicyEvaluator(unittest.TestCase):
             env_creator=lambda _: MockEnv(episode_length=20),
             policy_graph=MockPolicyGraph,
             batch_mode="truncate_episodes",
-            batch_steps=16, num_envs=8)
+            batch_steps=16,
+            num_envs=8)
         for _ in range(8):
             batch = ev.sample()
             self.assertEqual(batch.count, 16)
@@ -175,7 +180,8 @@ class TestPolicyEvaluator(unittest.TestCase):
             env_creator=lambda _: MockEnv(episode_length=8),
             policy_graph=MockPolicyGraph,
             batch_mode="truncate_episodes",
-            batch_steps=16, num_envs=4)
+            batch_steps=16,
+            num_envs=4)
         batch = ev.sample()
         self.assertEqual(batch.count, 16)
         result = collect_metrics(ev, [])
@@ -186,8 +192,7 @@ class TestPolicyEvaluator(unittest.TestCase):
 
     def testVectorEnvSupport(self):
         ev = PolicyEvaluator(
-            env_creator=lambda _: MockVectorEnv(
-                episode_length=20, num_envs=8),
+            env_creator=lambda _: MockVectorEnv(episode_length=20, num_envs=8),
             policy_graph=MockPolicyGraph,
             batch_mode="truncate_episodes",
             batch_steps=10)

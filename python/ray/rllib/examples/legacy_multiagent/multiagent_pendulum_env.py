@@ -2,7 +2,6 @@ from gym.spaces import Box, Tuple
 from gym.utils import seeding
 from gym.envs.classic_control.pendulum import PendulumEnv
 import numpy as np
-
 """
  Multiagent pendulum that sums its torques to generate an action
 """
@@ -10,8 +9,8 @@ import numpy as np
 
 class MultiAgentPendulumEnv(PendulumEnv):
     metadata = {
-      'render.modes': ['human', 'rgb_array'],
-      'video.frames_per_second': 30
+        'render.modes': ['human', 'rgb_array'],
+        'video.frames_per_second': 30
     }
 
     def __init__(self):
@@ -21,13 +20,14 @@ class MultiAgentPendulumEnv(PendulumEnv):
         self.viewer = None
 
         high = np.array([1., 1., self.max_speed])
-        self.action_space = [Box(low=-self.max_torque / 2,
-                                 high=self.max_torque / 2,
-                                 shape=(1,),
-                                 dtype=np.float32)
-                             for _ in range(2)]
-        self.observation_space = Tuple([
-            Box(low=-high, high=high, dtype=np.float32) for _ in range(2)])
+        self.action_space = [
+            Box(low=-self.max_torque / 2,
+                high=self.max_torque / 2,
+                shape=(1, ),
+                dtype=np.float32) for _ in range(2)
+        ]
+        self.observation_space = Tuple(
+            [Box(low=-high, high=high, dtype=np.float32) for _ in range(2)])
 
         self.seed()
 
@@ -49,8 +49,8 @@ class MultiAgentPendulumEnv(PendulumEnv):
         costs = self.angle_normalize(th) ** 2 + .1 * thdot ** 2 + \
             .001 * (summed_u ** 2)
 
-        newthdot = thdot + (-3 * g / (2 * length) * np.sin(th + np.pi) +
-                            3. / (m * length ** 2) * summed_u) * dt
+        newthdot = thdot + (-3 * g / (2 * length) * np.sin(th + np.pi) + 3. /
+                            (m * length**2) * summed_u) * dt
         newth = th + newthdot * dt
         newthdot = np.clip(newthdot, -self.max_speed, self.max_speed)
 
@@ -65,8 +65,10 @@ class MultiAgentPendulumEnv(PendulumEnv):
 
     def _get_obs(self):
         theta, thetadot = self.state
-        return [np.array([np.cos(theta), np.sin(theta), thetadot])
-                for _ in range(2)]
+        return [
+            np.array([np.cos(theta), np.sin(theta), thetadot])
+            for _ in range(2)
+        ]
 
     def angle_normalize(self, x):
         return (((x + np.pi) % (2 * np.pi)) - np.pi)

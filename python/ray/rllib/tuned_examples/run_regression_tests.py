@@ -8,7 +8,6 @@ import yaml
 import ray
 from ray.tune import run_experiments
 
-
 if __name__ == '__main__':
     experiments = {}
 
@@ -29,5 +28,4 @@ if __name__ == '__main__':
             num_failures += 1
 
     if num_failures:
-        raise Exception(
-            "{} trials did not converge".format(num_failures))
+        raise Exception("{} trials did not converge".format(num_failures))

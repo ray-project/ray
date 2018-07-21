@@ -22,14 +22,17 @@ class FullyConnectedNetwork(Model):
             for size in hiddens:
                 label = "fc{}".format(i)
                 last_layer = slim.fully_connected(
-                    last_layer, size,
+                    last_layer,
+                    size,
                     weights_initializer=normc_initializer(1.0),
                     activation_fn=activation,
                     scope=label)
                 i += 1
             label = "fc_out"
             output = slim.fully_connected(
-                last_layer, num_outputs,
+                last_layer,
+                num_outputs,
                 weights_initializer=normc_initializer(0.01),
-                activation_fn=None, scope=label)
+                activation_fn=None,
+                scope=label)
             return output, last_layer

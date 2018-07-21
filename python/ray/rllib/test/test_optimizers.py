@@ -21,8 +21,8 @@ class AsyncOptimizerTest(unittest.TestCase):
         local = _MockEvaluator()
         remotes = ray.remote(_MockEvaluator)
         remote_evaluators = [remotes.remote() for i in range(5)]
-        test_optimizer = AsyncGradientsOptimizer(
-            local, remote_evaluators, {"grads_per_step": 10})
+        test_optimizer = AsyncGradientsOptimizer(local, remote_evaluators,
+                                                 {"grads_per_step": 10})
         test_optimizer.step()
         self.assertTrue(all(local.get_weights() == 0))
 

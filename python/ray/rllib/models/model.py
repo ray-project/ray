@@ -37,8 +37,12 @@ class Model(object):
     a scale parameter (like a standard deviation).
     """
 
-    def __init__(
-            self, inputs, num_outputs, options, state_in=None, seq_lens=None):
+    def __init__(self,
+                 inputs,
+                 num_outputs,
+                 options,
+                 state_in=None,
+                 seq_lens=None):
         self.inputs = inputs
 
         # Default attribute values for the non-RNN case
@@ -57,8 +61,10 @@ class Model(object):
         self.outputs, self.last_layer = self._build_layers(
             inputs, num_outputs, options)
         if options.get("free_log_std", False):
-            log_std = tf.get_variable(name="log_std", shape=[num_outputs],
-                                      initializer=tf.zeros_initializer)
+            log_std = tf.get_variable(
+                name="log_std",
+                shape=[num_outputs],
+                initializer=tf.zeros_initializer)
             self.outputs = tf.concat(
                 [self.outputs, 0.0 * self.outputs + log_std], 1)
 

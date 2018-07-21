@@ -1,7 +1,6 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-
 """LSTM support for RLlib.
 
 The main trick here is that we add the time dimension at the last moment.
@@ -13,7 +12,6 @@ reshaping is possible.
 See the add_time_dimension() and chop_into_sequences() functions below for
 more info.
 """
-
 
 import numpy as np
 import tensorflow as tf
@@ -46,14 +44,13 @@ def add_time_dimension(padded_inputs, seq_lens):
 
     # Dynamically reshape the padded batch to introduce a time dimension.
     new_batch_size = padded_batch_size // max_seq_len
-    new_shape = (
-        [new_batch_size, max_seq_len] +
-        padded_inputs.get_shape().as_list()[1:])
+    new_shape = ([new_batch_size, max_seq_len] +
+                 padded_inputs.get_shape().as_list()[1:])
     return tf.reshape(padded_inputs, new_shape)
 
 
-def chop_into_sequences(
-        time_column, feature_columns, state_columns, max_seq_len):
+def chop_into_sequences(time_column, feature_columns, state_columns,
+                        max_seq_len):
     """Truncate and pad experiences into fixed-length sequences.
 
     Arguments:
@@ -106,7 +103,7 @@ def chop_into_sequences(
     feature_sequences = []
     for f in feature_columns:
         f = np.array(f)
-        f_pad = np.zeros((len(seq_lens) * max_seq_len,) + np.shape(f)[1:])
+        f_pad = np.zeros((len(seq_lens) * max_seq_len, ) + np.shape(f)[1:])
         seq_base = 0
         i = 0
         for l in seq_lens:
@@ -152,7 +149,8 @@ class LSTM(Model):
             lstm = rnn.rnn_cell.BasicLSTMCell(cell_size, state_is_tuple=True)
         self.state_init = [
             np.zeros(lstm.state_size.c, np.float32),
-            np.zeros(lstm.state_size.h, np.float32)]
+            np.zeros(lstm.state_size.h, np.float32)
+        ]
 
         # Setup LSTM inputs
         if self.state_in:
@@ -170,12 +168,15 @@ class LSTM(Model):
         else:
             state_in = rnn.rnn_cell.LSTMStateTuple(c_in, h_in)
         lstm_out, lstm_state = tf.nn.dynamic_rnn(
-            lstm, last_layer, initial_state=state_in,
-            sequence_length=self.seq_lens, time_major=False)
+            lstm,
+            last_layer,
+            initial_state=state_in,
+            sequence_length=self.seq_lens,
+            time_major=False)
         self.state_out = list(lstm_state)
 
         # Compute outputs
         last_layer = tf.reshape(lstm_out, [-1, cell_size])
-        logits = linear(
-            last_layer, num_outputs, "action", normc_initializer(0.01))
+        logits = linear(last_layer, num_outputs, "action",
+                        normc_initializer(0.01))
         return logits, last_layer
