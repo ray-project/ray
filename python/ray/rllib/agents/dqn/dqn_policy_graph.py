@@ -71,7 +71,6 @@ class QLoss(object):
                  done_mask,
                  gamma=0.99,
                  n_step=1):
-
         q_tp1_best_masked = (1.0 - done_mask) * q_tp1_best
 
         # compute RHS of bellman equation
@@ -93,12 +92,7 @@ class DQNPolicyGraph(TFPolicyGraph):
 
         self.config = config
         self.cur_epsilon = 1.0
-        num_actions = action_space.n
-
-        def _build_q_network(obs):
-            return QNetwork(
-                ModelCatalog.get_model(obs, 1, config["model"]), num_actions,
-                config["dueling"], config["hiddens"]).value
+        self.num_actions = action_space.n
 
         # Action inputs
         self.stochastic = tf.placeholder(tf.bool, (), name="stochastic")
@@ -108,13 +102,11 @@ class DQNPolicyGraph(TFPolicyGraph):
 
         # Action Q network
         with tf.variable_scope(Q_SCOPE) as scope:
-            q_values = _build_q_network(self.cur_observations)
+            q_values = self._build_q_network(self.cur_observations)
             self.q_func_vars = _scope_vars(scope.name)
 
         # Action outputs
-        self.output_actions = QValuePolicy(q_values, self.cur_observations,
-                                           num_actions, self.stochastic,
-                                           self.eps).action
+        self.output_actions = self._build_q_value_policy(q_values)
 
         # Replay inputs
         self.obs_t = tf.placeholder(
@@ -129,31 +121,29 @@ class DQNPolicyGraph(TFPolicyGraph):
 
         # q network evaluation
         with tf.variable_scope(Q_SCOPE, reuse=True):
-            q_t = _build_q_network(self.obs_t)
+            q_t = self._build_q_network(self.obs_t)
 
         # target q network evalution
         with tf.variable_scope(Q_TARGET_SCOPE) as scope:
-            q_tp1 = _build_q_network(self.obs_tp1)
+            q_tp1 = self._build_q_network(self.obs_tp1)
             self.target_q_func_vars = _scope_vars(scope.name)
 
         # q scores for actions which we know were selected in the given state.
-        q_t_selected = tf.reduce_sum(q_t * tf.one_hot(self.act_t, num_actions),
-                                     1)
+        q_t_selected = tf.reduce_sum(
+            q_t * tf.one_hot(self.act_t, self.num_actions), 1)
 
         # compute estimate of best possible value starting from state at t + 1
         if config["double_q"]:
             with tf.variable_scope(Q_SCOPE, reuse=True):
-                q_tp1_using_online_net = _build_q_network(self.obs_tp1)
+                q_tp1_using_online_net = self._build_q_network(self.obs_tp1)
             q_tp1_best_using_online_net = tf.argmax(q_tp1_using_online_net, 1)
             q_tp1_best = tf.reduce_sum(
-                q_tp1 * tf.one_hot(q_tp1_best_using_online_net, num_actions),
-                1)
+                q_tp1 * tf.one_hot(q_tp1_best_using_online_net,
+                                   self.num_actions), 1)
         else:
             q_tp1_best = tf.reduce_max(q_tp1, 1)
 
-        self.loss = QLoss(q_t_selected, q_tp1_best, self.importance_weights,
-                          self.rew_t, self.done_mask, config["gamma"],
-                          config["n_step"])
+        self.loss = self._build_q_loss(q_t_selected, q_tp1_best)
 
         # update_target_fn will be called periodically to copy Q network to
         # target Q network
@@ -184,6 +174,21 @@ class DQNPolicyGraph(TFPolicyGraph):
             loss=self.loss.loss,
             loss_inputs=self.loss_inputs)
         self.sess.run(tf.global_variables_initializer())
+
+    def _build_q_network(self, obs):
+        return QNetwork(
+            ModelCatalog.get_model(obs, 1,
+                                   self.config["model"]), self.num_actions,
+            self.config["dueling"], self.config["hiddens"]).value
+
+    def _build_q_value_policy(self, q_values):
+        return QValuePolicy(q_values, self.cur_observations, self.num_actions,
+                            self.stochastic, self.eps).action
+
+    def _build_q_loss(self, q_t_selected, q_tp1_best):
+        return QLoss(q_t_selected, q_tp1_best, self.importance_weights,
+                     self.rew_t, self.done_mask, self.config["gamma"],
+                     self.config["n_step"])
 
     def optimizer(self):
         return tf.train.AdamOptimizer(learning_rate=self.config["lr"])
