@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import tensorflow as tf
 
+import ray
 from ray.rllib.evaluation.postprocessing import compute_advantages
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 from ray.rllib.models.catalog import ModelCatalog
@@ -96,6 +97,7 @@ class PPOPolicyGraph(TFPolicyGraph):
             existing_inputs (list): Optional list of tuples that specify the
                 placeholders upon which the graph should be built upon.
         """
+        config = dict(ray.rllib.agents.ppo.ppo.DEFAULT_CONFIG, **config)
         self.sess = tf.get_default_session()
         self.action_space = action_space
         self.config = config

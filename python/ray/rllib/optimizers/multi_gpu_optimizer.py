@@ -58,13 +58,15 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
 
         print("LocalMultiGPUOptimizer devices", self.devices)
 
-        assert set(self.local_evaluator.policy_map.keys()) == {"default"}, \
-            ("Multi-agent is not supported with multi-GPU. Try using the "
-             "simple optimizer instead.")
+        if set(self.local_evaluator.policy_map.keys()) != {"default"}:
+            raise ValueError(
+                "Multi-agent is not supported with multi-GPU. Try using the "
+                "simple optimizer instead.")
         self.policy = self.local_evaluator.policy_map["default"]
-        assert isinstance(self.policy, TFPolicyGraph), \
-            ("Only TF policies are supported with multi-GPU. Try using the "
-             "simple optimizer instead.")
+        if not isinstance(self.policy, TFPolicyGraph):
+            raise ValueError(
+                "Only TF policies are supported with multi-GPU. Try using the "
+                "simple optimizer instead.")
 
         # per-GPU graph copies created below must share vars with the policy
         # reuse is set to AUTO_REUSE because Adam nodes are created after
