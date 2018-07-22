@@ -301,6 +301,11 @@ class Monitor(object):
 
         # Update the load metrics for this local scheduler.
         client_id = binascii.hexlify(message.DbClientId()).decode("utf-8")
+
+        for keys, values in self.local_scheduler_id_to_ip_map.items():
+            print(keys)
+            print(values)
+
         ip = self.local_scheduler_id_to_ip_map.get(client_id)
         if ip:
             self.load_metrics.update(ip, static_resources, dynamic_resources)
