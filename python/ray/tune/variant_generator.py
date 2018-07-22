@@ -28,7 +28,7 @@ def to_argv(config):
     return argv
 
 
-def generate_trials(unresolved_spec, output_path=''):
+def generate_trials(unresolved_spec, algo=None, output_path=''):
     """Wraps `generate_variants()` to return a Trial object for each variant.
 
     See also: generate_variants()
@@ -43,6 +43,7 @@ def generate_trials(unresolved_spec, output_path=''):
         raise TuneError("Must specify `run` in {}".format(unresolved_spec))
     parser = make_parser()
     i = 0
+    suggested_config = None
     for _ in range(unresolved_spec.get("repeat", 1)):
         for resolved_vars, spec in generate_variants(unresolved_spec):
             try:
@@ -52,6 +53,16 @@ def generate_trials(unresolved_spec, output_path=''):
                     spec["config"] = spec.get("config", {})
                     spec["config"]["env"] = spec["env"]
                     del spec["env"]
+                if algo:
+                    while True:
+                        suggested_config = algo.try_suggest()
+                        if suggested_config is None:
+                            yield None
+                        else:
+                            break
+                    new_config = copy.deepcopy(spec["config"])
+                    new_config.update(suggested_config)
+                    # TODO(rliaw): link new_config back into everything
                 args = parser.parse_args(to_argv(spec))
             except SystemExit:
                 raise TuneError("Error parsing args, see above message", spec)

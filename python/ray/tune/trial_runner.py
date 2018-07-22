@@ -12,6 +12,7 @@ from ray.tune import TuneError
 from ray.tune.web_server import TuneServer
 from ray.tune.trial import Trial, Resources
 from ray.tune.trial_scheduler import FIFOScheduler, TrialScheduler
+from ray.tune.variant_generator import generate_trials
 
 MAX_DEBUG_TRIALS = 20
 
@@ -39,6 +40,7 @@ class TrialRunner(object):
     """
 
     def __init__(self,
+                 trial_generator
                  scheduler=None,
                  launch_web_server=False,
                  server_port=TuneServer.DEFAULT_PORT,
@@ -76,6 +78,7 @@ class TrialRunner(object):
         self._stop_queue = []
         self._verbose = verbose
         self._queue_trials = queue_trials
+        self._trial_generator = trial_generator
 
     def is_finished(self):
         """Returns whether all trials have finished running."""
@@ -225,6 +228,7 @@ class TrialRunner(object):
 
     def _get_next_trial(self):
         self._update_avail_resources()
+        self._update_trial_queue()
         trial = self._scheduler_alg.choose_trial_to_run(self)
         return trial
 
@@ -299,6 +303,13 @@ class TrialRunner(object):
             error_msg = traceback.format_exc()
             print("Error recovering trial from checkpoint, abort:", error_msg)
             self._stop_trial(trial, error=True, error_msg=error_msg)
+
+    def _update_trial_queue(self):
+        for trial in self.trial_generator:
+            if trial:
+                self.add_trial(trial)
+            else:
+                break
 
     def _commit_resources(self, resources):
         self._committed_resources = Resources(

@@ -44,14 +44,14 @@ class HyperOptScheduler(FIFOScheduler):
         >>> run_experiments(config, scheduler=HyperOptScheduler())
     """
 
-    def __init__(self, max_concurrent=None, reward_attr="episode_reward_mean"):
-        assert hpo is not None, "HyperOpt must be installed!"
-        assert type(max_concurrent) in [type(None), int]
-        if type(max_concurrent) is int:
-            assert max_concurrent > 0
-        self._max_concurrent = max_concurrent  # NOTE: this is modified later
-        self._reward_attr = reward_attr
-        self._experiment = None
+    # def __init__(self, max_concurrent=None, reward_attr="episode_reward_mean"):
+    #     assert hpo is not None, "HyperOpt must be installed!"
+    #     assert type(max_concurrent) in [type(None), int]
+    #     if type(max_concurrent) is int:
+    #         assert max_concurrent > 0
+    #     self._max_concurrent = max_concurrent  # NOTE: this is modified later
+    #     self._reward_attr = reward_attr
+    #     self._experiment = None
 
     def add_experiment(self, experiment, trial_runner):
         """Tracks one experiment.
@@ -78,48 +78,48 @@ class HyperOptScheduler(FIFOScheduler):
         del spec["config"]["space"]
 
         self.parser = make_parser()
-        self.args = self.parser.parse_args(to_argv(spec))
-        self.args.scheduler = "HyperOpt"
-        self.default_config = copy.deepcopy(spec["config"])
+        # self.args = self.parser.parse_args(to_argv(spec))
+        # self.args.scheduler = "HyperOpt"
+        # self.default_config = copy.deepcopy(spec["config"])
 
-        self.algo = hpo.tpe.suggest
-        self.domain = hpo.Domain(lambda spc: spc, space)
-        self._hpopt_trials = hpo.Trials()
-        self._tune_to_hp = {}
-        self._num_trials_left = self.args.repeat
+        # self.algo = hpo.tpe.suggest
+        # self.domain = hpo.Domain(lambda spc: spc, space)
+        # self._hpopt_trials = hpo.Trials()
+        # self._tune_to_hp = {}
+        # self._num_trials_left = self.args.repeat
 
-        if type(self._max_concurrent) is int:
-            self._max_concurrent = min(self._max_concurrent, self.args.repeat)
+        # if type(self._max_concurrent) is int:
+        #     self._max_concurrent = min(self._max_concurrent, self.args.repeat)
 
-        self.rstate = np.random.RandomState()
+        # self.rstate = np.random.RandomState()
         self.trial_generator = self._trial_generator()
         self._add_new_trials_if_needed(trial_runner)
 
     def _trial_generator(self):
         while self._num_trials_left > 0:
             new_cfg = copy.deepcopy(self.default_config)
-            new_ids = self._hpopt_trials.new_trial_ids(1)
-            self._hpopt_trials.refresh()
+    #         new_ids = self._hpopt_trials.new_trial_ids(1)
+    #         self._hpopt_trials.refresh()
 
-            # Get new suggestion from
-            new_trials = self.algo(new_ids, self.domain, self._hpopt_trials,
-                                   self.rstate.randint(2**31 - 1))
-            self._hpopt_trials.insert_trial_docs(new_trials)
-            self._hpopt_trials.refresh()
-            new_trial = new_trials[0]
-            new_trial_id = new_trial["tid"]
+    #         # Get new suggestion from
+    #         new_trials = self.algo(new_ids, self.domain, self._hpopt_trials,
+    #                                self.rstate.randint(2**31 - 1))
+    #         self._hpopt_trials.insert_trial_docs(new_trials)
+    #         self._hpopt_trials.refresh()
+    #         new_trial = new_trials[0]
+    #         new_trial_id = new_trial["tid"]
 
-            # Taken from HyperOpt.base.evaluate
-            config = hpo.base.spec_from_misc(new_trial["misc"])
-            ctrl = hpo.base.Ctrl(self._hpopt_trials, current_trial=new_trial)
-            memo = self.domain.memo_from_config(config)
-            hpo.utils.use_obj_for_literal_in_memo(self.domain.expr, ctrl,
-                                                  hpo.base.Ctrl, memo)
+    #         # Taken from HyperOpt.base.evaluate
+    #         config = hpo.base.spec_from_misc(new_trial["misc"])
+    #         ctrl = hpo.base.Ctrl(self._hpopt_trials, current_trial=new_trial)
+    #         memo = self.domain.memo_from_config(config)
+    #         hpo.utils.use_obj_for_literal_in_memo(self.domain.expr, ctrl,
+    #                                               hpo.base.Ctrl, memo)
 
-            suggested_config = hpo.pyll.rec_eval(
-                self.domain.expr,
-                memo=memo,
-                print_node_on_error=self.domain.rec_eval_print_node_on_error)
+    #         suggested_config = hpo.pyll.rec_eval(
+    #             self.domain.expr,
+    #             memo=memo,
+    #             print_node_on_error=self.domain.rec_eval_print_node_on_error)
 
             new_cfg.update(suggested_config)
 
@@ -147,43 +147,43 @@ class HyperOptScheduler(FIFOScheduler):
             self._num_trials_left -= 1
             yield trial
 
-    def on_trial_result(self, trial_runner, trial, result):
-        ho_trial = self._get_hyperopt_trial(self._tune_to_hp[trial])
-        now = hpo.utils.coarse_utcnow()
-        ho_trial['book_time'] = now
-        ho_trial['refresh_time'] = now
-        return TrialScheduler.CONTINUE
+    # def on_trial_result(self, trial_runner, trial, result):
+    #     ho_trial = self._get_hyperopt_trial(self._tune_to_hp[trial])
+    #     now = hpo.utils.coarse_utcnow()
+    #     ho_trial['book_time'] = now
+    #     ho_trial['refresh_time'] = now
+    #     return TrialScheduler.CONTINUE
 
-    def on_trial_error(self, trial_runner, trial):
-        ho_trial = self._get_hyperopt_trial(self._tune_to_hp[trial])
-        ho_trial['refresh_time'] = hpo.utils.coarse_utcnow()
-        ho_trial['state'] = hpo.base.JOB_STATE_ERROR
-        ho_trial['misc']['error'] = (str(TuneError), "Tune Error")
-        self._hpopt_trials.refresh()
-        del self._tune_to_hp[trial]
+    # def on_trial_error(self, trial_runner, trial):
+    #     ho_trial = self._get_hyperopt_trial(self._tune_to_hp[trial])
+    #     ho_trial['refresh_time'] = hpo.utils.coarse_utcnow()
+    #     ho_trial['state'] = hpo.base.JOB_STATE_ERROR
+    #     ho_trial['misc']['error'] = (str(TuneError), "Tune Error")
+    #     self._hpopt_trials.refresh()
+    #     del self._tune_to_hp[trial]
 
-    def on_trial_remove(self, trial_runner, trial):
-        ho_trial = self._get_hyperopt_trial(self._tune_to_hp[trial])
-        ho_trial['refresh_time'] = hpo.utils.coarse_utcnow()
-        ho_trial['state'] = hpo.base.JOB_STATE_ERROR
-        ho_trial['misc']['error'] = (str(TuneError), "Tune Removed")
-        self._hpopt_trials.refresh()
-        del self._tune_to_hp[trial]
+    # def on_trial_remove(self, trial_runner, trial):
+    #     ho_trial = self._get_hyperopt_trial(self._tune_to_hp[trial])
+    #     ho_trial['refresh_time'] = hpo.utils.coarse_utcnow()
+    #     ho_trial['state'] = hpo.base.JOB_STATE_ERROR
+    #     ho_trial['misc']['error'] = (str(TuneError), "Tune Removed")
+    #     self._hpopt_trials.refresh()
+    #     del self._tune_to_hp[trial]
 
-    def on_trial_complete(self, trial_runner, trial, result):
-        ho_trial = self._get_hyperopt_trial(self._tune_to_hp[trial])
-        ho_trial['refresh_time'] = hpo.utils.coarse_utcnow()
-        ho_trial['state'] = hpo.base.JOB_STATE_DONE
-        hp_result = self._to_hyperopt_result(result)
-        ho_trial['result'] = hp_result
-        self._hpopt_trials.refresh()
-        del self._tune_to_hp[trial]
+    # def on_trial_complete(self, trial_runner, trial, result):
+    #     ho_trial = self._get_hyperopt_trial(self._tune_to_hp[trial])
+    #     ho_trial['refresh_time'] = hpo.utils.coarse_utcnow()
+    #     ho_trial['state'] = hpo.base.JOB_STATE_DONE
+    #     hp_result = self._to_hyperopt_result(result)
+    #     ho_trial['result'] = hp_result
+    #     self._hpopt_trials.refresh()
+    #     del self._tune_to_hp[trial]
 
-    def _to_hyperopt_result(self, result):
-        return {"loss": -getattr(result, self._reward_attr), "status": "ok"}
+    # def _to_hyperopt_result(self, result):
+    #     return {"loss": -getattr(result, self._reward_attr), "status": "ok"}
 
-    def _get_hyperopt_trial(self, tid):
-        return [t for t in self._hpopt_trials.trials if t["tid"] == tid][0]
+    # def _get_hyperopt_trial(self, tid):
+    #     return [t for t in self._hpopt_trials.trials if t["tid"] == tid][0]
 
     def choose_trial_to_run(self, trial_runner):
         self._add_new_trials_if_needed(trial_runner)
@@ -211,5 +211,5 @@ class HyperOptScheduler(FIFOScheduler):
                 except StopIteration:
                     break
 
-    def _num_live_trials(self):
-        return len(self._tune_to_hp)
+    # def _num_live_trials(self):
+    #     return len(self._tune_to_hp)

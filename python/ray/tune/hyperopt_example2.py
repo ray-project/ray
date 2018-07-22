@@ -1,0 +1,50 @@
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
+import ray
+from ray.tune import run_experiments, register_trainable
+from ray.tune.hpo_scheduler import HyperOptScheduler
+from ray.tune.search import HyperOptAlgorithm
+
+
+def easy_objective(config, reporter):
+    import time
+    time.sleep(0.2)
+    assert type(config["activation"]) == str
+    reporter(
+        timesteps_total=1,
+        mean_loss=((config["height"] - 14)**2 + abs(config["width"] - 3)))
+    time.sleep(0.2)
+
+
+if __name__ == '__main__':
+    import argparse
+    from hyperopt import hp
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--smoke-test", action="store_true", help="Finish quickly for testing")
+    args, _ = parser.parse_known_args()
+    ray.init(redirect_output=True)
+
+    register_trainable("exp", easy_objective)
+
+    space = {
+        'width': hp.uniform('width', 0, 20),
+        'height': hp.uniform('height', -100, 100),
+        'activation': hp.choice("activation", ["relu", "tanh"])
+    }
+
+    config = {
+        "my_exp": {
+            "run": "exp",
+            "repeat": 5 if args.smoke_test else 1000,
+            "stop": {
+                "training_iteration": 1
+            },
+            "config":
+        }
+    }
+    algo = HyperOptAlgorithm(space, reward_attr="neg_mean_loss")
+    run_experiments(config, verbose=False, algo=algo)

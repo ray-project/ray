@@ -34,6 +34,7 @@ def _make_scheduler(args):
 
 
 def run_experiments(experiments,
+                    algo=None,
                     scheduler=None,
                     with_server=False,
                     server_port=TuneServer.DEFAULT_PORT,
@@ -62,12 +63,6 @@ def run_experiments(experiments,
     if scheduler is None:
         scheduler = FIFOScheduler()
 
-    runner = TrialRunner(
-        scheduler,
-        launch_web_server=with_server,
-        server_port=server_port,
-        verbose=verbose,
-        queue_trials=queue_trials)
     exp_list = experiments
     if isinstance(experiments, Experiment):
         exp_list = [experiments]
@@ -80,9 +75,18 @@ def run_experiments(experiments,
     if (type(exp_list) is list
             and all(isinstance(exp, Experiment) for exp in exp_list)):
         for experiment in exp_list:
-            scheduler.add_experiment(experiment, runner)
+            # instead, create a trial_generator here
+            # scheduler.add_experiment(experiment, runner)
     else:
         raise TuneError("Invalid argument: {}".format(experiments))
+
+    runner = TrialRunner(
+        scheduler,
+        trial_generator,
+        launch_web_server=with_server,
+        server_port=server_port,
+        verbose=verbose,
+        queue_trials=queue_trials)
 
     print(runner.debug_string(max_debug=99999))
 
