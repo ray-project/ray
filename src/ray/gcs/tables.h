@@ -435,9 +435,9 @@ class TaskTable : public Table<TaskID, TaskTableData> {
     flatbuffers::FlatBufferBuilder fbb;
     fbb.Finish(TaskTableTestAndUpdate::Pack(fbb, data.get()));
     for (auto context : shard_contexts_) {
-      RAY_RETURN_NOT_OK(context->RunAsync(
-          "RAY.TABLE_TEST_AND_UPDATE", id, fbb.GetBufferPointer(), fbb.GetSize(), prefix_,
-          pubsub_channel_, redisCallback));
+      RAY_RETURN_NOT_OK(context->RunAsync("RAY.TABLE_TEST_AND_UPDATE", id,
+                                          fbb.GetBufferPointer(), fbb.GetSize(), prefix_,
+                                          pubsub_channel_, redisCallback));
     }
     return Status::OK();
   }
