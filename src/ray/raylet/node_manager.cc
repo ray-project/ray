@@ -387,7 +387,9 @@ void NodeManager::CleanUpTasksForDeadActor(const ActorID &actor_id) {
 
   auto removed_tasks = local_queues_.RemoveTasks(tasks_to_remove);
   for (auto const &task : removed_tasks) {
-    TreatTaskAsFailed(task.GetTaskSpecification());
+    const TaskSpecification &spec = task.GetTaskSpecification();
+    TreatTaskAsFailed(spec);
+    task_dependency_manager_.TaskCanceled(spec.TaskId());
   }
 }
 
@@ -482,6 +484,7 @@ void NodeManager::ProcessClientMessage(
         // Handle the task failure in order to raise an exception in the
         // application.
         TreatTaskAsFailed(spec);
+        task_dependency_manager_.TaskCanceled(spec.TaskId());
         local_queues_.RemoveTasks({spec.TaskId()});
       }
 
