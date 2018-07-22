@@ -1205,6 +1205,45 @@ class APITest(unittest.TestCase):
         # test multi-threading in the worker
         ray.get(test_multi_threading_in_worker.remote())
 
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") != "1",
+        "This test only works with xray.")
+    def testFreeObjects(self):
+        ray.init(num_workers=1, use_raylet=True)
+
+        @ray.remote
+        def f():
+            return 1
+
+        @ray.remote
+        def g():
+            return 2
+
+        def create():
+            a = f.remote()
+            b = g.remote()
+            (l1, l2) = ray.wait([a, b], num_returns=2)
+            assert len(l1) == 2
+            assert len(l2) == 0
+            return (a, b)
+
+        def flush():
+            # Flush the Release History.
+            print("Start Flush!")
+            for i in range(1000):
+                f.remote()
+                g.remote()
+            print("Flush finished!")
+
+        (a, b) = create()
+        ray.internal.free([a, b])
+
+        flush()
+        (l1, l2) = ray.wait([a, b], timeout=1)
+        # The objects are deleted.
+        assert len(l1) == 0
+        assert len(l2) == 2
+
 
 @unittest.skipIf(
     os.environ.get('RAY_USE_NEW_GCS', False),

@@ -164,9 +164,14 @@ class ObjectManager : public ObjectManagerInterface {
                    const WaitCallback &callback);
 
   /// Free a list of objects from object store.
+  ///
   /// \param object_ids the The list of ObjectIDs to be deleted.
   /// \param spread Whether send this request to all the object stores.
   void FreeObjects(const std::vector<ObjectID> &object_ids, bool spread);
+  /// Spread the Free request to all objects managers.
+  ///
+  /// \param object_ids the The list of ObjectIDs to be deleted.
+  void SpreadFreeObjectRequest(const std::vector<ObjectID> &object_ids);
 
  private:
   friend class TestObjectManager;

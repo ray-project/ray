@@ -779,31 +779,34 @@ void ObjectManager::ReceiveFreeRequest(std::shared_ptr<TcpClientConnection> &con
 void ObjectManager::FreeObjects(const std::vector<ObjectID> &object_ids, bool spread) {
   buffer_pool_.FreeObjects(object_ids);
   if (spread) {
-    // This code path should be called from node manager.
-    flatbuffers::FlatBufferBuilder fbb;
-    flatbuffers::Offset<object_manager_protocol::FreeRequestMessage> request =
-        object_manager_protocol::CreateFreeRequestMessage(fbb,
-                                                          to_flatbuf(fbb, object_ids));
-    fbb.Finish(request);
-    auto callback = [this, &fbb](const RemoteConnectionInfo &connection_info) {
-      ray::Status status;
-      std::shared_ptr<SenderConnection> conn;
-      status = connection_pool_.GetSender(ConnectionPool::ConnectionType::MESSAGE,
-                                          connection_info.client_id, &conn);
-      RAY_CHECK_OK(status);
-      if (conn == nullptr) {
-        conn = CreateSenderConnection(ConnectionPool::ConnectionType::MESSAGE,
-                                      connection_info);
-        connection_pool_.RegisterSender(ConnectionPool::ConnectionType::MESSAGE,
-                                        connection_info.client_id, conn);
-      }
-      RAY_CHECK_OK(conn->WriteMessage(
-          static_cast<int64_t>(object_manager_protocol::MessageType::FreeRequest),
-          fbb.GetSize(), fbb.GetBufferPointer()));
-      RAY_CHECK_OK(
-          connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::MESSAGE, conn));
-    };
-    RAY_CHECK_OK(object_directory_->GetAllClientInfo(callback));
+    SpreadFreeObjectRequest(object_ids);
   }
+}
+
+void ObjectManager::SpreadFreeObjectRequest(const std::vector<ObjectID> &object_ids) {
+  // This code path should be called from node manager.
+  flatbuffers::FlatBufferBuilder fbb;
+  flatbuffers::Offset<object_manager_protocol::FreeRequestMessage> request =
+      object_manager_protocol::CreateFreeRequestMessage(fbb, to_flatbuf(fbb, object_ids));
+  fbb.Finish(request);
+  auto callback = [this, &fbb](const RemoteConnectionInfo &connection_info) {
+    ray::Status status;
+    std::shared_ptr<SenderConnection> conn;
+    status = connection_pool_.GetSender(ConnectionPool::ConnectionType::MESSAGE,
+                                        connection_info.client_id, &conn);
+    RAY_CHECK_OK(status);
+    if (conn == nullptr) {
+      conn = CreateSenderConnection(ConnectionPool::ConnectionType::MESSAGE,
+                                    connection_info);
+      connection_pool_.RegisterSender(ConnectionPool::ConnectionType::MESSAGE,
+                                      connection_info.client_id, conn);
+    }
+    RAY_CHECK_OK(conn->WriteMessage(
+        static_cast<int64_t>(object_manager_protocol::MessageType::FreeRequest),
+        fbb.GetSize(), fbb.GetBufferPointer()));
+    RAY_CHECK_OK(
+        connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::MESSAGE, conn));
+  };
+  RAY_CHECK_OK(object_directory_->GetAllClientInfo(callback));
 }
 }  // namespace ray
