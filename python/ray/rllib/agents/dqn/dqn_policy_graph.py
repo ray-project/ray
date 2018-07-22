@@ -74,7 +74,7 @@ class QLoss(object):
         q_tp1_best_masked = (1.0 - done_mask) * q_tp1_best
 
         # compute RHS of bellman equation
-        q_t_selected_target = rewards + gamma ** n_step * q_tp1_best_masked
+        q_t_selected_target = rewards + gamma**n_step * q_tp1_best_masked
 
         # compute the error (potentially clipped)
         self.td_error = q_t_selected - tf.stop_gradient(q_t_selected_target)
@@ -98,7 +98,7 @@ class DQNPolicyGraph(TFPolicyGraph):
         self.stochastic = tf.placeholder(tf.bool, (), name="stochastic")
         self.eps = tf.placeholder(tf.float32, (), name="eps")
         self.cur_observations = tf.placeholder(
-            tf.float32, shape=(None,) + observation_space.shape)
+            tf.float32, shape=(None, ) + observation_space.shape)
 
         # Action Q network
         with tf.variable_scope(Q_SCOPE) as scope:
@@ -110,11 +110,11 @@ class DQNPolicyGraph(TFPolicyGraph):
 
         # Replay inputs
         self.obs_t = tf.placeholder(
-            tf.float32, shape=(None,) + observation_space.shape)
+            tf.float32, shape=(None, ) + observation_space.shape)
         self.act_t = tf.placeholder(tf.int32, [None], name="action")
         self.rew_t = tf.placeholder(tf.float32, [None], name="reward")
         self.obs_tp1 = tf.placeholder(
-            tf.float32, shape=(None,) + observation_space.shape)
+            tf.float32, shape=(None, ) + observation_space.shape)
         self.done_mask = tf.placeholder(tf.float32, [None], name="done")
         self.importance_weights = tf.placeholder(
             tf.float32, [None], name="weight")
@@ -138,8 +138,8 @@ class DQNPolicyGraph(TFPolicyGraph):
                 q_tp1_using_online_net = self._build_q_network(self.obs_tp1)
             q_tp1_best_using_online_net = tf.argmax(q_tp1_using_online_net, 1)
             q_tp1_best = tf.reduce_sum(
-                q_tp1 * tf.one_hot(
-                    q_tp1_best_using_online_net, self.num_actions), 1)
+                q_tp1 * tf.one_hot(q_tp1_best_using_online_net,
+                                   self.num_actions), 1)
         else:
             q_tp1_best = tf.reduce_max(q_tp1, 1)
 
@@ -177,14 +177,13 @@ class DQNPolicyGraph(TFPolicyGraph):
 
     def _build_q_network(self, obs):
         return QNetwork(
-            ModelCatalog.get_model(obs, 1, self.config["model"]),
-            self.num_actions, self.config["dueling"],
-            self.config["hiddens"]).value
+            ModelCatalog.get_model(obs, 1,
+                                   self.config["model"]), self.num_actions,
+            self.config["dueling"], self.config["hiddens"]).value
 
     def _build_q_value_policy(self, q_values):
-        return QValuePolicy(q_values, self.cur_observations,
-                            self.num_actions, self.stochastic,
-                            self.eps).action
+        return QValuePolicy(q_values, self.cur_observations, self.num_actions,
+                            self.stochastic, self.eps).action
 
     def _build_q_loss(self, q_t_selected, q_tp1_best):
         return QLoss(q_t_selected, q_tp1_best, self.importance_weights,
@@ -268,7 +267,7 @@ def adjust_nstep(n_step, gamma, obs, actions, rewards, new_obs, dones):
             continue  # episode end
         for j in range(1, n_step):
             new_obs[i] = new_obs[i + j]
-            rewards[i] += gamma ** j * rewards[i + j]
+            rewards[i] += gamma**j * rewards[i + j]
             if dones[i + j]:
                 break  # episode end
     # truncate ends of the trajectory
@@ -304,7 +303,7 @@ def _postprocess_dqn(policy_graph, sample_batch):
             batch["obs"], batch["actions"], batch["rewards"], batch["new_obs"],
             batch["dones"], batch["weights"])
         new_priorities = (
-                np.abs(td_errors) + policy_graph.config["prioritized_replay_eps"])
+            np.abs(td_errors) + policy_graph.config["prioritized_replay_eps"])
         batch.data["weights"] = new_priorities
 
     return batch

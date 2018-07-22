@@ -204,8 +204,8 @@ class DDPGPolicyGraph(TFPolicyGraph):
 
         # target q network evalution
         with tf.variable_scope(Q_TARGET_SCOPE) as scope:
-            q_tp1 = self._build_q_network(
-                self.obs_tp1, output_actions_estimated)
+            q_tp1 = self._build_q_network(self.obs_tp1,
+                                          output_actions_estimated)
             target_q_func_vars = _scope_vars(scope.name)
 
         self.loss = self._build_actor_critic_loss(q_t, q_tp1, q_tp0)
