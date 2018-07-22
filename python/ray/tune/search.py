@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import copy
 import os
 import ray
 import time
@@ -36,16 +37,12 @@ class HyperOptAlgorithm(SearchAlgorithm):
         assert type(max_concurrent) in [type(None), int]
         if type(max_concurrent) is int:
             assert max_concurrent > 0
-        self._max_concurrent = max_concurrent  # NOTE: this is modified later
+        self._max_concurrent = max_concurrent
         self._reward_attr = reward_attr
         self.algo = hpo.tpe.suggest
         self.domain = hpo.Domain(lambda spc: spc, space)
         self._hpopt_trials = hpo.Trials()
         self._tune_to_hp = {}
-        self._num_trials_left = self.args.repeat
-
-        if type(self._max_concurrent) is int:
-            self._max_concurrent = min(self._max_concurrent, self.args.repeat)
 
         self.rstate = np.random.RandomState()
 
@@ -73,7 +70,7 @@ class HyperOptAlgorithm(SearchAlgorithm):
                 self.domain.expr,
                 memo=memo,
                 print_node_on_error=self.domain.rec_eval_print_node_on_error)
-            return suggested_config
+            return copy.deepcopy(suggested_config)
 
     def on_trial_result(self, trial_runner, trial, result):
         ho_trial = self._get_hyperopt_trial(self._tune_to_hp[trial])

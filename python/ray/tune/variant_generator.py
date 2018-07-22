@@ -43,7 +43,6 @@ def generate_trials(unresolved_spec, algo=None, output_path=''):
         raise TuneError("Must specify `run` in {}".format(unresolved_spec))
     parser = make_parser()
     i = 0
-    suggested_config = None
     for _ in range(unresolved_spec.get("repeat", 1)):
         for resolved_vars, spec in generate_variants(unresolved_spec):
             try:
@@ -53,19 +52,18 @@ def generate_trials(unresolved_spec, algo=None, output_path=''):
                     spec["config"] = spec.get("config", {})
                     spec["config"]["env"] = spec["env"]
                     del spec["env"]
-                if algo:
-                    while True:
-                        suggested_config = algo.try_suggest()
-                        if suggested_config is None:
-                            yield None
-                        else:
-                            break
-                    new_config = copy.deepcopy(spec["config"])
-                    new_config.update(suggested_config)
-                    # TODO(rliaw): link new_config back into everything
                 args = parser.parse_args(to_argv(spec))
             except SystemExit:
                 raise TuneError("Error parsing args, see above message", spec)
+            new_config = copy.deepcopy(spec.get("config", {}))
+            if algo:
+                while True:
+                    suggested_config = algo.try_suggest()
+                    if suggested_config is None:
+                        yield None
+                    else:
+                        break
+                new_config.update(suggested_config)
             if resolved_vars:
                 experiment_tag = "{}_{}".format(i, resolved_vars)
             else:
@@ -77,7 +75,7 @@ def generate_trials(unresolved_spec, algo=None, output_path=''):
                 resources = None
             yield Trial(
                 trainable_name=spec["run"],
-                config=spec.get("config", {}),
+                config=new_config,
                 local_dir=os.path.join(args.local_dir, output_path),
                 experiment_tag=experiment_tag,
                 resources=resources,

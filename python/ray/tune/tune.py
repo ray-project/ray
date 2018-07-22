@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import time
+from itertools import chain
 
 from ray.tune.error import TuneError
 from ray.tune.hyperband import HyperBandScheduler
@@ -34,7 +35,7 @@ def _make_scheduler(args):
 
 
 def run_experiments(experiments,
-                    algo=None,
+                    search_algos=None,
                     scheduler=None,
                     with_server=False,
                     server_port=TuneServer.DEFAULT_PORT,
@@ -44,6 +45,7 @@ def run_experiments(experiments,
 
     Args:
         experiments (Experiment | list | dict): Experiments to run.
+        search_algos (SearchAlgorithm | list): Search Algorithm per experiment.
         scheduler (TrialScheduler): Scheduler for executing
             the experiment. Choose among FIFO (default), MedianStopping,
             AsyncHyperBand, HyperBand, or HyperOpt.
@@ -74,9 +76,9 @@ def run_experiments(experiments,
 
     if (type(exp_list) is list
             and all(isinstance(exp, Experiment) for exp in exp_list)):
-        for experiment in exp_list:
-            # instead, create a trial_generator here
-            # scheduler.add_experiment(experiment, runner)
+        trial_generator = chain.from_iterable(
+            [generate_experiments(exp.spec, algo, exp.name)
+             for algo, exp in zip(search_algos, exp_list)])
     else:
         raise TuneError("Invalid argument: {}".format(experiments))
 
