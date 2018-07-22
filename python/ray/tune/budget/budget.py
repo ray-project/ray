@@ -64,7 +64,7 @@ class BudgetedScheduler(FIFOScheduler):
         assert t_budget > 0, "t_budget (time_attr) not valid!"
         FIFOScheduler.__init__(self)
 
-        self._t_budget = t_budget 
+        self._t_budget = t_budget
         self._reward_attr = reward_attr
         self._time_attr = time_attr
         # setup belief model, currently use Freeze-Thaw
@@ -93,7 +93,6 @@ class BudgetedScheduler(FIFOScheduler):
                                                        log_noise=log_noise, tscale=tscale))
         # sampler for GP hyperparameter
         self.sampler = dict(bounds=bounds)
-
 
     def _update_trial_stats(self, trial, result):
         """Update result for trial. Called after trial has finished
@@ -132,6 +131,7 @@ class BudgetedScheduler(FIFOScheduler):
             GP_epoch[idx] = list(range(self._state_iter[arm]*global_step))
             predt[idx] = (self._t_remain + 1 + self._state_iter[arm])*global_step
             yobs[idx] = self._all_trials[arm]
+        # belief model for future predictions
         t_star, mu, var, self.hyp0, fail = self.belief.predict_xiid(GP_config, GP_epoch, yobs, predt,
                                                                self.hyp0, self.sampler, debug=False)
         Tpred, ymu, yv = self.belief.convergence(t_star, mu, var)
@@ -158,12 +158,21 @@ class BudgetedScheduler(FIFOScheduler):
     def on_trial_result(self, trial_runner, trial, result):
         self._update_trial_stats(trial, result)
         # TODO delete overfitting trial
-        return TrialScheduler.PAUSE
+        if self._t_remain <= 0:
+            action = TrialScheduler.STOP
+        else:
+            action = TrialScheduler.PAUSE
+        return action
 
     def on_trial_remove(self, trial_runner, trial):
         """Notification when trial terminates.
-        Trial info is removed from bracket. """
-        trial_runner.stop_trial(trial)
+        """
+        # trial_runner.stop_trial(trial)
+        key = trial.config['index']
+        del self._state_iter[key], self._state_acc[key], self._all_trials[key]
+        self._cur_pool.remove(trial)
+        self._idx_pool.remove(key)
+        self._pool_size -= 1
 
     def on_trial_complete(self, trial_runner, trial, result):
         """Cleans up trial info from bracket if trial completed early."""
@@ -196,9 +205,13 @@ class BudgetedScheduler(FIFOScheduler):
         print('\n### SCHEDULER ###: PLANNING remain T', self._t_remain, '### ')
         print('### SCHEDULER ###: PLANNING NEXT index', self._idx_pool[nextidx], stage, 'predt', Tpred[bestidx], 
               'with predicted perf', ymu[bestidx], '###\n')
-        if (trial.status in [Trial.PAUSED, Trial.PENDING]
+        if self._t_remain > 0 and (trial.status in [Trial.PAUSED, Trial.PENDING]
                 and trial_runner.has_resources(trial.resources)):
             return trial
+        # terminate when budget exhausts
+        elif self._t_remain <= 0:
+          for t in self._cur_pool:
+            trial_runner.stop_trial(t)
         return None
 
     def debug_string(self):
