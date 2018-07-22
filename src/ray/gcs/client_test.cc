@@ -60,7 +60,7 @@ class TestGcsWithAe : public TestGcs {
  public:
   TestGcsWithAe(CommandType command_type) : TestGcs(command_type) {
     loop_ = aeCreateEventLoop(1024);
-    RAY_CHECK_OK(client->primary_context()->AttachToEventLoop(loop_));
+    RAY_CHECK_OK(client_->primary_context()->AttachToEventLoop(loop_));
     for (auto &context : client_->shard_contexts()) {
       RAY_CHECK_OK(context->AttachToEventLoop(loop_));
     }
