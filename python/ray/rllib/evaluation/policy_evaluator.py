@@ -162,8 +162,6 @@ class PolicyEvaluator(EvaluatorInterface):
         policy_mapping_fn = (policy_mapping_fn
                              or (lambda agent_id: DEFAULT_POLICY_ID))
         self.env_creator = env_creator
-        self.policy_graph = policy_graph
-        self.policies_to_train = policies_to_train or list(policy_graph.keys())
         self.batch_steps = batch_steps
         self.batch_mode = batch_mode
         self.compress_observations = compress_observations
@@ -195,6 +193,7 @@ class PolicyEvaluator(EvaluatorInterface):
 
         self.tf_sess = None
         policy_dict = _validate_and_canonicalize(policy_graph, self.env)
+        self.policies_to_train = policies_to_train or list(policy_dict.keys())
         if _has_tensorflow_graph(policy_dict):
             with tf.Graph().as_default():
                 if tf_session_creator:
