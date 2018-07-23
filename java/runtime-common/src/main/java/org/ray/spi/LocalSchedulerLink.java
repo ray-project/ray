@@ -1,6 +1,5 @@
 package org.ray.spi;
 
-
 import java.util.List;
 import org.ray.api.UniqueID;
 import org.ray.spi.model.TaskSpec;

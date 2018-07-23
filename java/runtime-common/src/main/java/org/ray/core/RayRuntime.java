@@ -385,12 +385,12 @@ public abstract class RayRuntime implements RayApi {
       }
       RayLog.core.debug(
         "Task " + taskId + " Object " + objectId.toString() + " get" + ", the result " + ret
-              .getLeft());        
-        return ret.getLeft();
-      } catch (TaskExecutionException e) { 
-        RayLog.core
+                .getLeft());
+      return ret.getLeft();
+    } catch (TaskExecutionException e) {
+      RayLog.core
           .error("Task " + taskId + " Object " + objectId.toString() + " get with Exception", e);
-        throw e;
+      throw e;
     } finally {
       // If the object was not able to get locally, let the local scheduler
       // know that we're now unblocked.

@@ -426,7 +426,7 @@ void NodeManager::ProcessClientMessage(
         from_flatbuf(*message->execution_dependencies()));
     TaskSpecification task_spec(*message->task_spec());
     Task task(task_execution_spec, task_spec);
-   // Submit the task to the local scheduler. Since the task was submitted
+    // Submit the task to the local scheduler. Since the task was submitted
     // locally, there is no uncommitted lineage.
     SubmitTask(task, Lineage());
   } break;

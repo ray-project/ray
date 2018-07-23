@@ -1,6 +1,6 @@
 package org.ray.runner;
 
-import java.io.File;   
+import java.io.File;
 import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -20,7 +20,6 @@ import org.ray.util.StringUtil;
 import org.ray.util.config.ConfigReader;
 import org.ray.util.logger.RayLog;
 import redis.clients.jedis.Jedis;
-import java.io.FileWriter;
 
 /**
  * Ray service management on one box.
@@ -40,7 +39,7 @@ public class RunManager {
   private String procStderrFileName = "";
 
   private RunInfo runInfo = new RunInfo();
-  
+
   public RunManager(RayParameters params, PathConfig paths, ConfigReader configReader) {
     this.params = params;
     this.paths = paths;

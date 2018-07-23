@@ -107,8 +107,6 @@ public class RayNativeRuntime extends RayRuntime {
           .getIntegerValue("ray", "plasma_default_release_delay", 0,
               "how many release requests should be delayed in plasma client");
 
-      
-
       if (!params.use_raylet) {
         ObjectStoreLink plink = new PlasmaClient(params.object_store_name, 
             params.object_store_manager_name, releaseDelay);
