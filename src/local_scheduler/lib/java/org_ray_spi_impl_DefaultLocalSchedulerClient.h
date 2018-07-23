@@ -19,7 +19,8 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1init(JNIEnv *,
                                                          jbyteArray,
                                                          jbyteArray,
                                                          jboolean,
-                                                         jlong);
+                                                         jlong,
+                                                         jboolean);
 
 /*
  * Class:     org_ray_spi_impl_DefaultLocalSchedulerClient
@@ -33,7 +34,8 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1submitTask(JNIEnv *,
                                                                jbyteArray,
                                                                jobject,
                                                                jint,
-                                                               jint);
+                                                               jint,
+                                                               jboolean);
 
 /*
  * Class:     org_ray_spi_impl_DefaultLocalSchedulerClient
@@ -43,7 +45,8 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1submitTask(JNIEnv *,
 JNIEXPORT jbyteArray JNICALL
 Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1getTaskTodo(JNIEnv *,
                                                                 jclass,
-                                                                jlong);
+                                                                jlong,
+                                                                jboolean);
 
 /*
  * Class:     org_ray_spi_impl_DefaultLocalSchedulerClient
@@ -110,6 +113,22 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1put_1object(JNIEnv *,
                                                                 jlong,
                                                                 jbyteArray,
                                                                 jbyteArray);
+
+
+                             
+/*
+ * Class:     org_ray_spi_impl_DefaultLocalSchedulerClient
+ * Method:    _waitObject
+ * Signature: (J[[BIIZ)[Z
+ */
+JNIEXPORT jbooleanArray JNICALL 
+Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1waitObject(JNIEnv *,
+                                                               jclass, 
+                                                               jlong, 
+                                                               jobjectArray, 
+                                                               jint, 
+                                                               jint, 
+                                                               jboolean);
 
 #ifdef __cplusplus
 }

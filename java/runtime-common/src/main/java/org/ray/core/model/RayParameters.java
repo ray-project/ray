@@ -112,6 +112,15 @@ public class RayParameters {
   @AConfig(comment = "delay seconds under onebox before app logic for debugging")
   public int onebox_delay_seconds_before_run_app_logic = 0;
 
+  @AConfig(comment = "whether to use raylet")
+  public boolean use_raylet = false;
+
+  @AConfig(comment = "raylet name (e.g., /tmp/raylet1111")
+  public String raylet_name = "";
+
+  @AConfig(comment = "raylet rpc listen port")
+  public int raylet_port = 35567;
+
   public RayParameters(ConfigReader config) {
     if (null != config) {
       String networkInterface = config.getStringValue("ray.java", "network_interface", null,

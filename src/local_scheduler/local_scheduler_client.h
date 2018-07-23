@@ -7,6 +7,11 @@
 #include "local_scheduler_shared.h"
 #include "ray/raylet/task_spec.h"
 
+enum class WorkerType {
+    Python,
+    Java
+};
+
 struct LocalSchedulerConnection {
   /// True if we should use the raylet code path and false otherwise.
   bool use_raylet;
@@ -42,7 +47,8 @@ LocalSchedulerConnection *LocalSchedulerConnection_init(
     const char *local_scheduler_socket,
     UniqueID worker_id,
     bool is_worker,
-    bool use_raylet);
+    bool use_raylet,
+    WorkerType workerType = WorkerType::Python);
 
 /**
  * Disconnect from the local scheduler.
@@ -72,7 +78,7 @@ void local_scheduler_submit(LocalSchedulerConnection *conn,
 void local_scheduler_submit_raylet(
     LocalSchedulerConnection *conn,
     const std::vector<ObjectID> &execution_dependencies,
-    ray::raylet::TaskSpecification task_spec);
+    ray::raylet::TaskSpecification &task_spec);
 
 /**
  * Notify the local scheduler that this client is disconnecting gracefully. This

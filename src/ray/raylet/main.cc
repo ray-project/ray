@@ -4,6 +4,8 @@
 #include "ray/raylet/raylet.h"
 #include "ray/status.h"
 
+#include <boost/algorithm/string.hpp>
+
 #ifndef RAYLET_TEST
 int main(int argc, char *argv[]) {
   RAY_CHECK(argc == 9);
@@ -39,9 +41,9 @@ int main(int argc, char *argv[]) {
       RayConfig::instance().num_workers_per_process();
   // Use a default worker that can execute empty tasks with dependencies.
 
-  std::stringstream worker_command_stream(worker_command);
-  std::string token;
-  while (getline(worker_command_stream, token, ' ')) {
+  std::vector<std::string> tokens;
+  boost::split(tokens, worker_command, boost::is_any_of(" "), boost::token_compress_on);
+  for (const auto &token : tokens) {
     node_manager_config.worker_command.push_back(token);
   }
 

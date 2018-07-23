@@ -16,7 +16,8 @@ LocalSchedulerConnection *LocalSchedulerConnection_init(
     const char *local_scheduler_socket,
     UniqueID client_id,
     bool is_worker,
-    bool use_raylet) {
+    bool use_raylet,
+    WorkerType workerType) {
   LocalSchedulerConnection *result = new LocalSchedulerConnection();
   result->use_raylet = use_raylet;
   result->conn = connect_ipc_sock_retry(local_scheduler_socket, -1, -1);
@@ -26,7 +27,8 @@ LocalSchedulerConnection *LocalSchedulerConnection_init(
    * worker, we will get killed. */
   flatbuffers::FlatBufferBuilder fbb;
   auto message = ray::local_scheduler::protocol::CreateRegisterClientRequest(
-      fbb, is_worker, to_flatbuf(fbb, client_id), getpid());
+      fbb, is_worker, to_flatbuf(fbb, client_id), getpid(), 
+      static_cast<ray::local_scheduler::protocol::WorkerType>(workerType));
   fbb.Finish(message);
   /* Register the process ID with the local scheduler. */
   int success = write_message(
@@ -84,7 +86,7 @@ void local_scheduler_submit(LocalSchedulerConnection *conn,
 void local_scheduler_submit_raylet(
     LocalSchedulerConnection *conn,
     const std::vector<ObjectID> &execution_dependencies,
-    ray::raylet::TaskSpecification task_spec) {
+    ray::raylet::TaskSpecification &task_spec) {
   flatbuffers::FlatBufferBuilder fbb;
   auto execution_dependencies_message = to_flatbuf(fbb, execution_dependencies);
   auto message = ray::local_scheduler::protocol::CreateSubmitTaskRequest(

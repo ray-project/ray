@@ -122,7 +122,13 @@ public abstract class RayRuntime implements RayApi {
 
     functions = new LocalFunctionManager(remoteLoader);
     localSchedulerProxy = new LocalSchedulerProxy(slink);
-    objectStoreProxy = new ObjectStoreProxy(plink);
+
+    if (!params.use_raylet) {
+      objectStoreProxy = new ObjectStoreProxy(plink);
+    } else {
+      objectStoreProxy = new ObjectStoreProxy(plink, slink);
+    }
+    
     worker = new Worker(localSchedulerProxy, functions);
   }
 
@@ -188,7 +194,9 @@ public abstract class RayRuntime implements RayApi {
 
   public <T, TMT> void putRaw(UniqueID taskId, UniqueID objectId, T obj, TMT metadata) {
     RayLog.core.info("Task " + taskId.toString() + " Object " + objectId.toString() + " put");
-    localSchedulerProxy.markTaskPutDependency(taskId, objectId);
+    if (!params.use_raylet) {
+      localSchedulerProxy.markTaskPutDependency(taskId, objectId);
+    }
     objectStoreProxy.put(objectId, obj, metadata);
   }
 
@@ -360,23 +368,24 @@ public abstract class RayRuntime implements RayApi {
           .get(objectId, params.default_first_check_timeout_ms, isMetadata);
 
       wasBlocked = (ret.getRight() != GetStatus.SUCCESS);
-
+      
       // Try reconstructing the object. Try to get it until at least PlasmaLink.GET_TIMEOUT_MS
       // milliseconds passes, then repeat.
       while (ret.getRight() != GetStatus.SUCCESS) {
         RayLog.core.warn(
-            "Task " + taskId + " Object " + objectId.toString() + " get failed, reconstruct ...");
+          "Task " + taskId + " Object " + objectId.toString() + " get failed, reconstruct ...");
         localSchedulerProxy.reconstructObject(objectId);
 
         // Do another fetch
         objectStoreProxy.fetch(objectId);
 
+        //Check the result every 5s, but it will return once available.
         ret = objectStoreProxy.get(objectId, params.default_get_check_interval_ms,
-            isMetadata);//check the result every 5s, but it will return once available
+            isMetadata);
       }
       RayLog.core.debug(
-          "Task " + taskId + " Object " + objectId.toString() + " get" + ", the result " + ret
-              .getLeft());
+        "Task " + taskId + " Object " + objectId.toString() + " get" + ", the result " + ret
+                .getLeft());
       return ret.getLeft();
     } catch (TaskExecutionException e) {
       RayLog.core

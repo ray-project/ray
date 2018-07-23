@@ -103,6 +103,10 @@ public interface KeyValueStoreLink {
    */
   List<String> lrange(final String key, final long start, final long end);
 
+  Set<String> zrange(String key, long start, long end);
+
+  Set<byte[]> zrange(byte[] key, long start, long end);
+
   /**
    * Rpush.
    * @return Integer reply, specifically, the number of elements inside the list after the push
@@ -123,4 +127,7 @@ public interface KeyValueStoreLink {
   Long publish(byte[] channel, byte[] message);
 
   Object getImpl();
+
+  byte[] sendCommand(String command, int commandType, byte[] objectId);
+
 }
