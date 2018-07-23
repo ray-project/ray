@@ -30,8 +30,12 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
     may result in unexpected behavior.
     """
 
-    def _init(self, sgd_batch_size=128, sgd_stepsize=5e-5, num_sgd_iter=10,
-              timesteps_per_batch=1024, standardize_fields=[]):
+    def _init(self,
+              sgd_batch_size=128,
+              sgd_stepsize=5e-5,
+              num_sgd_iter=10,
+              timesteps_per_batch=1024,
+              standardize_fields=[]):
         self.batch_size = sgd_batch_size
         self.sgd_stepsize = sgd_stepsize
         self.num_sgd_iter = num_sgd_iter
@@ -41,8 +45,8 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
             self.devices = ["/cpu:0"]
         else:
             self.devices = ["/gpu:{}".format(i) for i in range(len(gpu_ids))]
-        self.batch_size = int(
-                sgd_batch_size / len(self.devices)) * len(self.devices)
+        self.batch_size = int(sgd_batch_size / len(self.devices)) * len(
+            self.devices)
         assert self.batch_size % len(self.devices) == 0
         assert self.batch_size >= len(self.devices), "batch size too small"
         self.per_device_batch_size = int(self.batch_size / len(self.devices))
@@ -54,13 +58,15 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
 
         print("LocalMultiGPUOptimizer devices", self.devices)
 
-        assert set(self.local_evaluator.policy_map.keys()) == {"default"}, \
-            ("Multi-agent is not supported with multi-GPU. Try using the "
-             "simple optimizer instead.")
+        if set(self.local_evaluator.policy_map.keys()) != {"default"}:
+            raise ValueError(
+                "Multi-agent is not supported with multi-GPU. Try using the "
+                "simple optimizer instead.")
         self.policy = self.local_evaluator.policy_map["default"]
-        assert isinstance(self.policy, TFPolicyGraph), \
-            ("Only TF policies are supported with multi-GPU. Try using the "
-             "simple optimizer instead.")
+        if not isinstance(self.policy, TFPolicyGraph):
+            raise ValueError(
+                "Only TF policies are supported with multi-GPU. Try using the "
+                "simple optimizer instead.")
 
         # per-GPU graph copies created below must share vars with the policy
         # reuse is set to AUTO_REUSE because Adam nodes are created after
@@ -70,16 +76,15 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
                 with tf.variable_scope("default", reuse=tf.AUTO_REUSE):
                     if self.policy._state_inputs:
                         rnn_inputs = self.policy._state_inputs + [
-                            self.policy._seq_lens]
+                            self.policy._seq_lens
+                        ]
                     else:
                         rnn_inputs = []
                     self.par_opt = LocalSyncParallelOptimizer(
-                        tf.train.AdamOptimizer(self.sgd_stepsize),
-                        self.devices,
-                        [v for _, v in self.policy.loss_inputs()],
-                        rnn_inputs,
-                        self.per_device_batch_size,
-                        self.policy.copy,
+                        tf.train.AdamOptimizer(
+                            self.sgd_stepsize), self.devices,
+                        [v for _, v in self.policy.loss_inputs()], rnn_inputs,
+                        self.per_device_batch_size, self.policy.copy,
                         os.getcwd())
 
                 self.sess = self.local_evaluator.tf_sess
@@ -117,8 +122,7 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
             else:
                 state_keys = []
             tuples_per_device = self.par_opt.load_data(
-                self.sess,
-                [tuples[k] for k in data_keys],
+                self.sess, [tuples[k] for k in data_keys],
                 [tuples[k] for k in state_keys])
 
         with self.grad_timer:
@@ -141,12 +145,14 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
         return _averaged(iter_extra_fetches)
 
     def stats(self):
-        return dict(PolicyOptimizer.stats(self), **{
-            "sample_time_ms": round(1000 * self.sample_timer.mean, 3),
-            "load_time_ms": round(1000 * self.load_timer.mean, 3),
-            "grad_time_ms": round(1000 * self.grad_timer.mean, 3),
-            "update_time_ms": round(1000 * self.update_weights_timer.mean, 3),
-        })
+        return dict(
+            PolicyOptimizer.stats(self), **{
+                "sample_time_ms": round(1000 * self.sample_timer.mean, 3),
+                "load_time_ms": round(1000 * self.load_timer.mean, 3),
+                "grad_time_ms": round(1000 * self.grad_timer.mean, 3),
+                "update_time_ms": round(1000 * self.update_weights_timer.mean,
+                                        3),
+            })
 
 
 def _averaged(kv):

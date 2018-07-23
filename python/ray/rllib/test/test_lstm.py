@@ -10,22 +10,15 @@ from ray.rllib.models.lstm import chop_into_sequences
 class LSTMUtilsTest(unittest.TestCase):
     def testBasic(self):
         t = [1, 2, 3, 1, 2, 3, 4, 5]
-        f = [
-            [101, 102, 103, 201, 202, 203, 204, 205],
-            [[101], [102], [103], [201], [202], [203], [204], [205]]
-        ]
+        f = [[101, 102, 103, 201, 202, 203, 204, 205],
+             [[101], [102], [103], [201], [202], [203], [204], [205]]]
         s = [[209, 208, 207, 109, 108, 107, 106, 105]]
         f_pad, s_init, seq_lens = chop_into_sequences(t, f, s, 4)
-        self.assertEqual(
-            [f.tolist() for f in f_pad],
-            [
-                [101, 102, 103, 0,
-                 201, 202, 203, 204,
-                 205, 0, 0, 0],
-                [[101], [102], [103], [0],
-                 [201], [202], [203], [204],
-                 [205], [0], [0], [0]],
-            ])
+        self.assertEqual([f.tolist() for f in f_pad], [
+            [101, 102, 103, 0, 201, 202, 203, 204, 205, 0, 0, 0],
+            [[101], [102], [103], [0], [201], [202], [203], [204], [205], [0],
+             [0], [0]],
+        ])
         self.assertEqual([s.tolist() for s in s_init], [[209, 109, 105]])
         self.assertEqual(seq_lens.tolist(), [3, 4, 1])
 

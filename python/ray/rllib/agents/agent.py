@@ -36,7 +36,10 @@ COMMON_CONFIG = {
     # Arguments to pass to the env creator
     "env_config": {},
     # Arguments to pass to model
-    "model": {},
+    "model": {
+        "use_lstm": False,
+        "max_seq_len": 20,
+    },
     # Arguments to pass to the rllib optimizer
     "optimizer": {},
     # Configure TF for single-process operation by default
@@ -47,7 +50,9 @@ COMMON_CONFIG = {
             "allow_growth": True,
         },
         "log_device_placement": False,
-        "device_count": {"CPU": 1},
+        "device_count": {
+            "CPU": 1
+        },
         "allow_soft_placement": True,  # required by PPO multi-gpu
     },
     # Whether to LZ4 compress observations
@@ -55,8 +60,13 @@ COMMON_CONFIG = {
 
     # === Multiagent ===
     "multiagent": {
+        # Map from policy ids to tuples of (policy_graph_cls, obs_space,
+        # act_space, config). See policy_evaluator.py for more info.
         "policy_graphs": {},
+        # Function mapping agent ids to policy ids.
         "policy_mapping_fn": None,
+        # Optional whitelist of policies to train, or None for all policies.
+        "policies_to_train": None,
     },
 }
 
@@ -86,8 +96,7 @@ def _deep_update(original, new_dict, new_keys_allowed, whitelist):
     for k, value in new_dict.items():
         if k not in original and k != "env":
             if not new_keys_allowed:
-                raise Exception(
-                    "Unknown config parameter `{}` ".format(k))
+                raise Exception("Unknown config parameter `{}` ".format(k))
         if type(original.get(k)) is dict:
             if k in whitelist:
                 _deep_update(original[k], value, True, [])
@@ -112,22 +121,24 @@ class Agent(Trainable):
 
     _allow_unknown_configs = False
     _allow_unknown_subkeys = [
-        "tf_session_args", "env_config", "model", "optimizer", "multiagent"]
+        "tf_session_args", "env_config", "model", "optimizer", "multiagent"
+    ]
 
     def make_local_evaluator(self, env_creator, policy_graph):
         """Convenience method to return configured local evaluator."""
 
-        return self._make_evaluator(
-            PolicyEvaluator, env_creator, policy_graph, 0)
+        return self._make_evaluator(PolicyEvaluator, env_creator, policy_graph,
+                                    0)
 
-    def make_remote_evaluators(
-            self, env_creator, policy_graph, count, remote_args):
+    def make_remote_evaluators(self, env_creator, policy_graph, count,
+                               remote_args):
         """Convenience method to return a number of remote evaluators."""
 
         cls = PolicyEvaluator.as_remote(**remote_args).remote
         return [
-            self._make_evaluator(cls, env_creator, policy_graph, i+1)
-            for i in range(count)]
+            self._make_evaluator(cls, env_creator, policy_graph, i + 1)
+            for i in range(count)
+        ]
 
     def _make_evaluator(self, cls, env_creator, policy_graph, worker_index):
         config = self.config
@@ -140,8 +151,9 @@ class Agent(Trainable):
             env_creator,
             self.config["multiagent"]["policy_graphs"] or policy_graph,
             policy_mapping_fn=self.config["multiagent"]["policy_mapping_fn"],
-            tf_session_creator=(
-                session_creator if config["tf_session_args"] else None),
+            policies_to_train=self.config["multiagent"]["policies_to_train"],
+            tf_session_creator=(session_creator
+                                if config["tf_session_args"] else None),
             batch_steps=config["sample_batch_size"],
             batch_mode=config["batch_mode"],
             episode_horizon=config["horizon"],
@@ -157,14 +169,12 @@ class Agent(Trainable):
 
     @classmethod
     def resource_help(cls, config):
-        return (
-            "\n\nYou can adjust the resource requests of RLlib agents by "
-            "setting `num_workers` and other configs. See the "
-            "DEFAULT_CONFIG defined by each agent for more info.\n\n"
-            "The config of this agent is: " + json.dumps(config))
+        return ("\n\nYou can adjust the resource requests of RLlib agents by "
+                "setting `num_workers` and other configs. See the "
+                "DEFAULT_CONFIG defined by each agent for more info.\n\n"
+                "The config of this agent is: " + json.dumps(config))
 
-    def __init__(
-            self, config=None, env=None, logger_creator=None):
+    def __init__(self, config=None, env=None, logger_creator=None):
         """Initialize an RLLib agent.
 
         Args:
@@ -235,8 +245,25 @@ class Agent(Trainable):
         obs = self.local_evaluator.filters["default"](
             observation, update=False)
         return self.local_evaluator.for_policy(
-            lambda p: p.compute_single_action(
-                obs, state, is_training=False)[0])
+            lambda p: p.compute_single_action(obs, state, is_training=False)[0]
+        )
+
+    def get_weights(self, policies=None):
+        """Return a dictionary of policy ids to weights.
+
+        Arguments:
+            policies (list): Optional list of policies to return weights for,
+                or None for all policies.
+        """
+        return self.local_evaluator.get_weights(policies)
+
+    def set_weights(self, weights):
+        """Set policy weights by policy id.
+
+        Arguments:
+            weights (dict): Map of policy ids to weights to set.
+        """
+        self.local_evaluator.set_weights(weights)
 
 
 class _MockAgent(Agent):
@@ -257,8 +284,10 @@ class _MockAgent(Agent):
                 and (self.config["persistent_error"] or not self.restored):
             raise Exception("mock error")
         return TrainingResult(
-            episode_reward_mean=10, episode_len_mean=10,
-            timesteps_this_iter=10, info={})
+            episode_reward_mean=10,
+            episode_len_mean=10,
+            timesteps_this_iter=10,
+            info={})
 
     def _save(self, checkpoint_dir):
         path = os.path.join(checkpoint_dir, "mock_agent.pkl")
@@ -299,9 +328,11 @@ class _SigmoidFakeData(_MockAgent):
         v = np.tanh(float(i) / self.config["width"])
         v *= self.config["height"]
         return TrainingResult(
-            episode_reward_mean=v, episode_len_mean=v,
+            episode_reward_mean=v,
+            episode_len_mean=v,
             timesteps_this_iter=self.config["iter_timesteps"],
-            time_this_iter_s=self.config["iter_time"], info={})
+            time_this_iter_s=self.config["iter_time"],
+            info={})
 
 
 class _ParameterTuningAgent(_MockAgent):
@@ -320,7 +351,8 @@ class _ParameterTuningAgent(_MockAgent):
             episode_reward_mean=self.config["reward_amt"] * self.iteration,
             episode_len_mean=self.config["reward_amt"],
             timesteps_this_iter=self.config["iter_timesteps"],
-            time_this_iter_s=self.config["iter_time"], info={})
+            time_this_iter_s=self.config["iter_time"],
+            info={})
 
 
 def get_agent_class(alg):
@@ -363,5 +395,4 @@ def get_agent_class(alg):
     elif alg == "__parameter_tuning":
         return _ParameterTuningAgent
     else:
-        raise Exception(
-            ("Unknown algorithm {}.").format(alg))
+        raise Exception(("Unknown algorithm {}.").format(alg))

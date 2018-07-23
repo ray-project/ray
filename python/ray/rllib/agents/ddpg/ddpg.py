@@ -63,6 +63,8 @@ DEFAULT_CONFIG = with_common_config({
     "prioritized_replay_eps": 1e-6,
     # Whether to clip rewards to [-1, 1] prior to adding to the replay buffer.
     "clip_rewards": True,
+    # Whether to LZ4 compress observations
+    "compress_observations": False,
 
     # === Optimization ===
     # Learning rate for adam optimizer
@@ -118,9 +120,9 @@ class DDPGAgent(DQNAgent):
         if self.config["per_worker_exploration"]:
             assert self.config["num_workers"] > 1, \
                 "This requires multiple workers"
-            return ConstantSchedule(
-                self.config["noise_scale"] * 0.4 **
-                (1 + worker_index / float(self.config["num_workers"] - 1) * 7))
+            exponent = (
+                1 + worker_index / float(self.config["num_workers"] - 1) * 7)
+            return ConstantSchedule(self.config["noise_scale"] * 0.4**exponent)
         else:
             return LinearSchedule(
                 schedule_timesteps=int(self.config["exploration_fraction"] *

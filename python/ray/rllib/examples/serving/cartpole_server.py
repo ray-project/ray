@@ -1,7 +1,6 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-
 """Example of running a policy server. Copy this file for your use case.
 
 To try this out, in two separate shells run:
@@ -26,12 +25,12 @@ CHECKPOINT_FILE = "last_checkpoint.out"
 
 class CartpoleServing(ServingEnv):
     def __init__(self):
-        ServingEnv.__init__(
-            self, spaces.Discrete(2), spaces.Box(low=-10, high=10, shape=(4,)))
+        ServingEnv.__init__(self, spaces.Discrete(2),
+                            spaces.Box(low=-10, high=10, shape=(4, )))
 
     def run(self):
-        print("Starting policy server at {}:{}".format(
-            SERVER_ADDRESS, SERVER_PORT))
+        print("Starting policy server at {}:{}".format(SERVER_ADDRESS,
+                                                       SERVER_PORT))
         server = PolicyServer(self, SERVER_ADDRESS, SERVER_PORT)
         server.serve_forever()
 
@@ -42,14 +41,16 @@ if __name__ == "__main__":
 
     # We use DQN since it supports off-policy actions, but you can choose and
     # configure any agent.
-    dqn = DQNAgent(env="srv", config={
-        # Use a single process to avoid needing to set up a load balancer
-        "num_workers": 0,
-        # Configure the agent to run short iterations for debugging
-        "exploration_fraction": 0.01,
-        "learning_starts": 100,
-        "timesteps_per_iteration": 200,
-    })
+    dqn = DQNAgent(
+        env="srv",
+        config={
+            # Use a single process to avoid needing to set up a load balancer
+            "num_workers": 0,
+            # Configure the agent to run short iterations for debugging
+            "exploration_fraction": 0.01,
+            "learning_starts": 100,
+            "timesteps_per_iteration": 200,
+        })
 
     # Attempt to restore from checkpoint if possible.
     if os.path.exists(CHECKPOINT_FILE):

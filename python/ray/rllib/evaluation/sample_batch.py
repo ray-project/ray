@@ -45,7 +45,8 @@ class SampleBatchBuilder(object):
         """Returns a sample batch including all previously added values."""
 
         batch = SampleBatch(
-            {k: to_float_array(v) for k, v in self.buffers.items()})
+            {k: to_float_array(v)
+             for k, v in self.buffers.items()})
         self.buffers.clear()
         self.count = 0
         return batch
@@ -69,7 +70,9 @@ class MultiAgentSampleBatchBuilder(object):
 
         self.policy_map = policy_map
         self.policy_builders = {
-            k: SampleBatchBuilder() for k in policy_map.keys()}
+            k: SampleBatchBuilder()
+            for k in policy_map.keys()
+        }
         self.agent_builders = {}
         self.agent_to_policy = {}
         self.count = 0  # increment this manually

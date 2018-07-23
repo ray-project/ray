@@ -19,7 +19,6 @@ from ray.rllib.models.visionnet import VisionNetwork
 from ray.rllib.models.lstm import LSTM
 from ray.rllib.models.multiagentfcnet import MultiAgentFullyConnectedNetwork
 
-
 MODEL_CONFIGS = [
     # === Built-in options ===
     "conv_filters",  # Filter configuration
@@ -30,11 +29,9 @@ MODEL_CONFIGS = [
     "grayscale",  # Converts ATARI frame to 1 Channel Grayscale image
     "zero_mean",  # Changes frame to range from [-1, 1] if true
     "extra_frameskip",  # (int) for number of frames to skip
-
     "free_log_std",  # Documented in ray.rllib.models.Model
     "channel_major",  # Pytorch conv requires images to be channel-major
     "squash_to_range",  # Whether to squash the action output to space range
-
     "use_lstm",  # Whether to wrap the model with a LSTM
     "max_seq_len",  # Max seq len for training the LSTM, defaults to 20
     "lstm_cell_size",  # Size of the LSTM cell
@@ -81,8 +78,8 @@ class ModelCatalog(object):
             if dist_type is None:
                 dist = DiagGaussian
                 if config.get("squash_to_range"):
-                    dist = squash_to_range(
-                        dist, action_space.low, action_space.high)
+                    dist = squash_to_range(dist, action_space.low,
+                                           action_space.high)
                 return dist, action_space.shape[0] * 2
             elif dist_type == 'deterministic':
                 return Deterministic, action_space.shape[0]
@@ -95,12 +92,13 @@ class ModelCatalog(object):
                 dist, action_size = ModelCatalog.get_action_dist(action)
                 child_dist.append(dist)
                 size += action_size
-            return partial(MultiActionDistribution,
-                           child_distributions=child_dist,
-                           action_space=action_space), size
+            return partial(
+                MultiActionDistribution,
+                child_distributions=child_dist,
+                action_space=action_space), size
 
-        raise NotImplementedError(
-            "Unsupported args: {} {}".format(action_space, dist_type))
+        raise NotImplementedError("Unsupported args: {} {}".format(
+            action_space, dist_type))
 
     @staticmethod
     def get_action_placeholder(action_space):
@@ -120,7 +118,7 @@ class ModelCatalog(object):
             return tf.placeholder(
                 tf.float32, shape=(None, action_space.shape[0]), name="action")
         elif isinstance(action_space, gym.spaces.Discrete):
-            return tf.placeholder(tf.int64, shape=(None,), name="action")
+            return tf.placeholder(tf.int64, shape=(None, ), name="action")
         elif isinstance(action_space, gym.spaces.Tuple):
             size = 0
             all_discrete = True
@@ -131,15 +129,19 @@ class ModelCatalog(object):
                     all_discrete = False
                     size += np.product(action_space.spaces[i].shape)
             return tf.placeholder(
-                tf.int64 if all_discrete else tf.float32, shape=(None, size),
+                tf.int64 if all_discrete else tf.float32,
+                shape=(None, size),
                 name="action")
         else:
             raise NotImplementedError("action space {}"
                                       " not supported".format(action_space))
 
     @staticmethod
-    def get_model(
-            inputs, num_outputs, options=None, state_in=None, seq_lens=None):
+    def get_model(inputs,
+                  num_outputs,
+                  options=None,
+                  state_in=None,
+                  seq_lens=None):
         """Returns a suitable model conforming to given input and output specs.
 
         Args:
@@ -154,12 +156,12 @@ class ModelCatalog(object):
         """
 
         options = options or {}
-        model = ModelCatalog._get_model(
-            inputs, num_outputs, options, state_in, seq_lens)
+        model = ModelCatalog._get_model(inputs, num_outputs, options, state_in,
+                                        seq_lens)
 
         if options.get("use_lstm"):
-            model = LSTM(
-                model.last_layer, num_outputs, options, state_in, seq_lens)
+            model = LSTM(model.last_layer, num_outputs, options, state_in,
+                         seq_lens)
 
         return model
 
@@ -169,16 +171,20 @@ class ModelCatalog(object):
             model = options["custom_model"]
             print("Using custom model {}".format(model))
             return _global_registry.get(RLLIB_MODEL, model)(
-                inputs, num_outputs, options,
-                state_in=state_in, seq_lens=seq_lens)
+                inputs,
+                num_outputs,
+                options,
+                state_in=state_in,
+                seq_lens=seq_lens)
 
         obs_rank = len(inputs.shape) - 1
 
         # num_outputs > 1 used to avoid hitting this with the value function
-        if isinstance(options.get("custom_options", {}).get(
-          "multiagent_fcnet_hiddens", 1), list) and num_outputs > 1:
-            return MultiAgentFullyConnectedNetwork(
-                inputs, num_outputs, options)
+        if isinstance(
+                options.get("custom_options", {}).get(
+                    "multiagent_fcnet_hiddens", 1), list) and num_outputs > 1:
+            return MultiAgentFullyConnectedNetwork(inputs, num_outputs,
+                                                   options)
 
         if obs_rank > 1:
             return VisionNetwork(inputs, num_outputs, options)
@@ -198,10 +204,10 @@ class ModelCatalog(object):
         Returns:
             model (Model): Neural network model.
         """
-        from ray.rllib.models.pytorch.fcnet import (
-            FullyConnectedNetwork as PyTorchFCNet)
-        from ray.rllib.models.pytorch.visionnet import (
-            VisionNetwork as PyTorchVisionNet)
+        from ray.rllib.models.pytorch.fcnet import (FullyConnectedNetwork as
+                                                    PyTorchFCNet)
+        from ray.rllib.models.pytorch.visionnet import (VisionNetwork as
+                                                        PyTorchVisionNet)
 
         if "custom_model" in options:
             model = options["custom_model"]
@@ -232,9 +238,8 @@ class ModelCatalog(object):
         """
         for k in options.keys():
             if k not in MODEL_CONFIGS:
-                raise Exception(
-                    "Unknown config key `{}`, all keys: {}".format(
-                        k, MODEL_CONFIGS))
+                raise Exception("Unknown config key `{}`, all keys: {}".format(
+                    k, MODEL_CONFIGS))
 
         if "custom_preprocessor" in options:
             preprocessor = options["custom_preprocessor"]
@@ -271,8 +276,8 @@ class ModelCatalog(object):
             preprocessor_name (str): Name to register the preprocessor under.
             preprocessor_class (type): Python class of the preprocessor.
         """
-        _global_registry.register(
-            RLLIB_PREPROCESSOR, preprocessor_name, preprocessor_class)
+        _global_registry.register(RLLIB_PREPROCESSOR, preprocessor_name,
+                                  preprocessor_class)
 
     @staticmethod
     def register_custom_model(model_name, model_class):

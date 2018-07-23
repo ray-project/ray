@@ -103,9 +103,10 @@ class PolicyOptimizer(object):
         """
 
         local_result = [func(self.local_evaluator, 0)]
-        remote_results = ray.get(
-            [ev.apply.remote(func, i + 1)
-             for i, ev in enumerate(self.remote_evaluators)])
+        remote_results = ray.get([
+            ev.apply.remote(func, i + 1)
+            for i, ev in enumerate(self.remote_evaluators)
+        ])
         return local_result + remote_results
 
     def collect_metrics(self):

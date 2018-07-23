@@ -20,13 +20,12 @@ def pass_params_to_gym(env_name):
     global env_version_num
 
     register(
-      id=env_name,
-      entry_point=(
-        "ray.rllib.examples.legacy_multiagent.multiagent_mountaincar_env:"
-        "MultiAgentMountainCarEnv"),
-      max_episode_steps=200,
-      kwargs={}
-    )
+        id=env_name,
+        entry_point=(
+            "ray.rllib.examples.legacy_multiagent.multiagent_mountaincar_env:"
+            "MultiAgentMountainCarEnv"),
+        max_episode_steps=200,
+        kwargs={})
 
 
 def create_env(env_config):
@@ -48,10 +47,12 @@ if __name__ == '__main__':
     config["horizon"] = horizon
     config["use_gae"] = False
     config["model"].update({"fcnet_hiddens": [256, 256]})
-    options = {"multiagent_obs_shapes": [2, 2],
-               "multiagent_act_shapes": [1, 1],
-               "multiagent_shared_model": False,
-               "multiagent_fcnet_hiddens": [[32, 32]] * 2}
+    options = {
+        "multiagent_obs_shapes": [2, 2],
+        "multiagent_act_shapes": [1, 1],
+        "multiagent_shared_model": False,
+        "multiagent_fcnet_hiddens": [[32, 32]] * 2
+    }
     config["model"].update({"custom_options": options})
     alg = ppo.PPOAgent(env=env_name, config=config)
     for i in range(1):

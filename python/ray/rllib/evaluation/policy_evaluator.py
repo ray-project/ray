@@ -82,24 +82,24 @@ class PolicyEvaluator(EvaluatorInterface):
     def as_remote(cls, num_cpus=None, num_gpus=None):
         return ray.remote(num_cpus=num_cpus, num_gpus=num_gpus)(cls)
 
-    def __init__(
-            self,
-            env_creator,
-            policy_graph,
-            policy_mapping_fn=None,
-            tf_session_creator=None,
-            batch_steps=100,
-            batch_mode="truncate_episodes",
-            episode_horizon=None,
-            preprocessor_pref="rllib",
-            sample_async=False,
-            compress_observations=False,
-            num_envs=1,
-            observation_filter="NoFilter",
-            env_config=None,
-            model_config=None,
-            policy_config=None,
-            worker_index=0):
+    def __init__(self,
+                 env_creator,
+                 policy_graph,
+                 policy_mapping_fn=None,
+                 policies_to_train=None,
+                 tf_session_creator=None,
+                 batch_steps=100,
+                 batch_mode="truncate_episodes",
+                 episode_horizon=None,
+                 preprocessor_pref="rllib",
+                 sample_async=False,
+                 compress_observations=False,
+                 num_envs=1,
+                 observation_filter="NoFilter",
+                 env_config=None,
+                 model_config=None,
+                 policy_config=None,
+                 worker_index=0):
         """Initialize a policy evaluator.
 
         Arguments:
@@ -114,6 +114,8 @@ class PolicyEvaluator(EvaluatorInterface):
                 policy ids in multi-agent mode. This function will be called
                 each time a new agent appears in an episode, to bind that agent
                 to a policy for the duration of the episode.
+            policies_to_train (list): Optional whitelist of policies to train,
+                or None for all policies.
             tf_session_creator (func): A function that returns a TF session.
                 This is optional and only useful with TFPolicyGraph.
             batch_steps (int): The target number of env transitions to include
@@ -137,8 +139,8 @@ class PolicyEvaluator(EvaluatorInterface):
             sample_async (bool): Whether to compute samples asynchronously in
                 the background, which improves throughput but can cause samples
                 to be slightly off-policy.
-            compress_observations (bool): If true, compress the observations
-                returned.
+            compress_observations (bool): If true, compress the observations.
+                They can be decompressed with rllib/utils/compression.
             num_envs (int): If more than one, will create multiple envs
                 and vectorize the computation of actions. This has no effect if
                 if the env already implements VectorEnv.
@@ -157,10 +159,9 @@ class PolicyEvaluator(EvaluatorInterface):
         policy_config = policy_config or {}
         self.policy_config = policy_config
         model_config = model_config or {}
-        policy_mapping_fn = (
-            policy_mapping_fn or (lambda agent_id: DEFAULT_POLICY_ID))
+        policy_mapping_fn = (policy_mapping_fn
+                             or (lambda agent_id: DEFAULT_POLICY_ID))
         self.env_creator = env_creator
-        self.policy_graph = policy_graph
         self.batch_steps = batch_steps
         self.batch_mode = batch_mode
         self.compress_observations = compress_observations
@@ -170,17 +171,21 @@ class PolicyEvaluator(EvaluatorInterface):
                 isinstance(self.env, ServingEnv) or \
                 isinstance(self.env, MultiAgentEnv) or \
                 isinstance(self.env, AsyncVectorEnv):
+
             def wrap(env):
                 return env  # we can't auto-wrap these env types
         elif is_atari(self.env) and \
                 "custom_preprocessor" not in model_config and \
                 preprocessor_pref == "deepmind":
+
             def wrap(env):
                 return wrap_deepmind(env, dim=model_config.get("dim", 80))
         else:
+
             def wrap(env):
                 return ModelCatalog.get_preprocessor_as_wrapper(
                     env, model_config)
+
         self.env = wrap(self.env)
 
         def make_env():
@@ -188,25 +193,27 @@ class PolicyEvaluator(EvaluatorInterface):
 
         self.tf_sess = None
         policy_dict = _validate_and_canonicalize(policy_graph, self.env)
+        self.policies_to_train = policies_to_train or list(policy_dict.keys())
         if _has_tensorflow_graph(policy_dict):
             with tf.Graph().as_default():
                 if tf_session_creator:
                     self.tf_sess = tf_session_creator()
                 else:
-                    self.tf_sess = tf.Session(config=tf.ConfigProto(
-                        gpu_options=tf.GPUOptions(allow_growth=True)))
+                    self.tf_sess = tf.Session(
+                        config=tf.ConfigProto(
+                            gpu_options=tf.GPUOptions(allow_growth=True)))
                 with self.tf_sess.as_default():
                     self.policy_map = self._build_policy_map(
                         policy_dict, policy_config)
         else:
-            self.policy_map = self._build_policy_map(
-                policy_dict, policy_config)
+            self.policy_map = self._build_policy_map(policy_dict,
+                                                     policy_config)
 
         self.multiagent = self.policy_map.keys() != set(DEFAULT_POLICY_ID)
 
         self.filters = {
-            policy_id: get_filter(
-                observation_filter, policy.observation_space.shape)
+            policy_id: get_filter(observation_filter,
+                                  policy.observation_space.shape)
             for (policy_id, policy) in self.policy_map.items()
         }
 
@@ -226,24 +233,34 @@ class PolicyEvaluator(EvaluatorInterface):
             batch_steps = float("inf")  # never cut episodes
             pack_episodes = False  # sampler will return 1 episode per poll
         else:
-            raise ValueError(
-                "Unsupported batch mode: {}".format(self.batch_mode))
+            raise ValueError("Unsupported batch mode: {}".format(
+                self.batch_mode))
         if sample_async:
             self.sampler = AsyncSampler(
-                self.async_env, self.policy_map, policy_mapping_fn,
-                self.filters, batch_steps, horizon=episode_horizon,
-                pack=pack_episodes, tf_sess=self.tf_sess)
+                self.async_env,
+                self.policy_map,
+                policy_mapping_fn,
+                self.filters,
+                batch_steps,
+                horizon=episode_horizon,
+                pack=pack_episodes,
+                tf_sess=self.tf_sess)
             self.sampler.start()
         else:
             self.sampler = SyncSampler(
-                self.async_env, self.policy_map, policy_mapping_fn,
-                self.filters, batch_steps, horizon=episode_horizon,
-                pack=pack_episodes, tf_sess=self.tf_sess)
+                self.async_env,
+                self.policy_map,
+                policy_mapping_fn,
+                self.filters,
+                batch_steps,
+                horizon=episode_horizon,
+                pack=pack_episodes,
+                tf_sess=self.tf_sess)
 
     def _build_policy_map(self, policy_dict, policy_config):
         policy_map = {}
-        for name, (cls, obs_space, act_space, conf) in sorted(
-                policy_dict.items()):
+        for name, (cls, obs_space, act_space,
+                   conf) in sorted(policy_dict.items()):
             merged_conf = policy_config.copy()
             merged_conf.update(conf)
             with tf.variable_scope(name):
@@ -286,6 +303,16 @@ class PolicyEvaluator(EvaluatorInterface):
 
         return [func(policy, pid) for pid, policy in self.policy_map.items()]
 
+    def foreach_trainable_policy(self, func):
+        """Apply the given function to each (policy, policy_id) tuple.
+
+        This only applies func to policies in `self.policies_to_train`."""
+
+        return [
+            func(policy, pid) for pid, policy in self.policy_map.items()
+            if pid in self.policies_to_train
+        ]
+
     def sync_filters(self, new_filters):
         """Changes self's filter to given and rebases any accumulated delta.
 
@@ -312,10 +339,13 @@ class PolicyEvaluator(EvaluatorInterface):
                 f.clear_buffer()
         return return_filters
 
-    def get_weights(self):
+    def get_weights(self, policies=None):
+        if policies is None:
+            policies = self.policy_map.keys()
         return {
             pid: policy.get_weights()
-            for pid, policy in self.policy_map.items()}
+            for pid, policy in self.policy_map.items() if pid in policies
+        }
 
     def set_weights(self, weights):
         for pid, w in weights.items():
@@ -327,6 +357,8 @@ class PolicyEvaluator(EvaluatorInterface):
             if self.tf_sess is not None:
                 builder = TFRunBuilder(self.tf_sess, "compute_gradients")
                 for pid, batch in samples.policy_batches.items():
+                    if pid not in self.policies_to_train:
+                        continue
                     grad_out[pid], info_out[pid] = (
                         self.policy_map[pid].build_compute_gradients(
                             builder, batch))
@@ -336,10 +368,11 @@ class PolicyEvaluator(EvaluatorInterface):
                 for pid, batch in samples.policy_batches.items():
                     grad_out[pid], info_out[pid] = (
                         self.policy_map[pid].compute_gradients(batch))
-            return grad_out, info_out
         else:
-            return self.policy_map[DEFAULT_POLICY_ID].compute_gradients(
-                samples)
+            grad_out, info_out = (
+                self.policy_map[DEFAULT_POLICY_ID].compute_gradients(samples))
+        info_out["batch_count"] = samples.count
+        return grad_out, info_out
 
     def apply_gradients(self, grads):
         if isinstance(grads, dict):
@@ -350,9 +383,7 @@ class PolicyEvaluator(EvaluatorInterface):
                         builder, grad)
                     for pid, grad in grads.items()
                 }
-                return {
-                    k: builder.get(v) for k, v in outputs.items()
-                }
+                return {k: builder.get(v) for k, v in outputs.items()}
             else:
                 return {
                     pid: self.policy_map[pid].apply_gradients(g)
@@ -367,6 +398,8 @@ class PolicyEvaluator(EvaluatorInterface):
             if self.tf_sess is not None:
                 builder = TFRunBuilder(self.tf_sess, "compute_apply")
                 for pid, batch in samples.policy_batches.items():
+                    if pid not in self.policies_to_train:
+                        continue
                     info_out[pid], _ = (
                         self.policy_map[pid].build_compute_apply(
                             builder, batch))
@@ -427,8 +460,9 @@ def _validate_and_canonicalize(policy_graph, env):
         raise ValueError("policy_graph must be a rllib.PolicyGraph class")
     else:
         return {
-            DEFAULT_POLICY_ID: (
-                policy_graph, env.observation_space, env.action_space, {})}
+            DEFAULT_POLICY_ID: (policy_graph, env.observation_space,
+                                env.action_space, {})
+        }
 
 
 def _has_tensorflow_graph(policy_dict):

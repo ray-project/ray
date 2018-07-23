@@ -157,13 +157,13 @@ class ImportThread(object):
 
     def fetch_and_execute_function_to_run(self, key):
         """Run on arbitrary function on the worker."""
-        driver_id, serialized_function = self.redis_client.hmget(
-            key, ["driver_id", "function"])
+        (driver_id, serialized_function,
+         run_on_other_drivers) = self.redis_client.hmget(
+             key, ["driver_id", "function", "run_on_other_drivers"])
 
-        if (self.worker.mode in [ray.SCRIPT_MODE, ray.SILENT_MODE]
+        if (run_on_other_drivers == "False"
+                and self.worker.mode in [ray.SCRIPT_MODE, ray.SILENT_MODE]
                 and driver_id != self.worker.task_driver_id.id()):
-            # This export was from a different driver and there's no need for
-            # this driver to import it.
             return
 
         try:
