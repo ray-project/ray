@@ -23,6 +23,7 @@ import org.ray.spi.StateStoreProxy;
 import org.ray.spi.impl.NativeRemoteFunctionManager;
 import org.ray.spi.impl.RedisClient;
 import org.ray.spi.impl.StateStoreProxyImpl;
+import org.ray.spi.impl.RayletStateStoreProxyImpl;
 import org.ray.util.FileUtil;
 import org.ray.util.config.ConfigReader;
 import org.ray.util.logger.RayLog;
@@ -152,7 +153,9 @@ public class RayCli {
 
     KeyValueStoreLink kvStore = new RedisClient();
     kvStore.setAddr(cmdSubmit.redisAddress);
-    StateStoreProxy stateStoreProxy = new StateStoreProxyImpl(kvStore);
+    StateStoreProxy stateStoreProxy = params.use_raylet
+            ? new RayletStateStoreProxyImpl(kvStore)
+            : new StateStoreProxyImpl(kvStore);
     stateStoreProxy.initializeGlobalState();
 
     RemoteFunctionManager functionManager = new NativeRemoteFunctionManager(kvStore);
