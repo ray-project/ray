@@ -378,9 +378,10 @@ public abstract class RayRuntime implements RayApi {
 
         // Do another fetch
         objectStoreProxy.fetch(objectId);
-        
+
+        //Check the result every 5s, but it will return once available.
         ret = objectStoreProxy.get(objectId, params.default_get_check_interval_ms,
-            isMetadata);//check the result every 5s, but it will return once available
+            isMetadata);
       }
       RayLog.core.debug(
         "Task " + taskId + " Object " + objectId.toString() + " get" + ", the result " + ret
