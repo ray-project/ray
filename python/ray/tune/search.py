@@ -77,7 +77,6 @@ class HyperOptAlgorithm(SearchAlgorithm):
         now = hpo.utils.coarse_utcnow()
         ho_trial['book_time'] = now
         ho_trial['refresh_time'] = now
-        return TrialScheduler.CONTINUE
 
     def on_trial_error(self, trial_runner, trial):
         ho_trial = self._get_hyperopt_trial(self._tune_to_hp[trial])
