@@ -10,13 +10,12 @@ APEX_DEFAULT_CONFIG = merge_dicts(
     DQN_CONFIG,
     {
         "optimizer_class": "AsyncSamplesOptimizer",
-        "optimizer":
-            merge_dicts(
-                DQN_CONFIG["optimizer"], {
-                    "max_weight_sync_delay": 400,
-                    "num_replay_buffer_shards": 4,
-                    "debug": False
-                }),
+        "optimizer": merge_dicts(
+            DQN_CONFIG["optimizer"], {
+                "max_weight_sync_delay": 400,
+                "num_replay_buffer_shards": 4,
+                "debug": False
+            }),
         "n_step": 3,
         "gpu": True,
         "num_workers": 32,

@@ -13,7 +13,6 @@ from ray.rllib.agents.ppo.utils import flatten, concatenate
 
 # TODO(ekl): move to rllib/models dir
 class DistributionsTest(unittest.TestCase):
-
     def testCategorical(self):
         num_samples = 100000
         logits = tf.placeholder(tf.float32, shape=(None, 10))
@@ -32,10 +31,11 @@ class DistributionsTest(unittest.TestCase):
 
 
 class UtilsTest(unittest.TestCase):
-
     def testFlatten(self):
-        d = {"s": np.array([[[1, -1], [2, -2]], [[3, -3], [4, -4]]]),
-             "a": np.array([[[5], [-5]], [[6], [-6]]])}
+        d = {
+            "s": np.array([[[1, -1], [2, -2]], [[3, -3], [4, -4]]]),
+            "a": np.array([[[5], [-5]], [[6], [-6]]])
+        }
         flat = flatten(d.copy(), start=0, stop=2)
         assert_allclose(d["s"][0][0][:], flat["s"][0][:])
         assert_allclose(d["s"][0][1][:], flat["s"][1][:])

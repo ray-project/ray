@@ -14,19 +14,23 @@ from ray.rllib.models.catalog import ModelCatalog
 
 
 class A3CLoss(object):
-    def __init__(
-            self, action_dist, actions, advantages, v_target, vf,
-            vf_loss_coeff=0.5, entropy_coeff=-0.01):
+    def __init__(self,
+                 action_dist,
+                 actions,
+                 advantages,
+                 v_target,
+                 vf,
+                 vf_loss_coeff=0.5,
+                 entropy_coeff=-0.01):
         log_prob = action_dist.logp(actions)
 
         # The "policy gradients" loss
-        self.pi_loss = - tf.reduce_sum(log_prob * advantages)
+        self.pi_loss = -tf.reduce_sum(log_prob * advantages)
 
         delta = vf - v_target
         self.vf_loss = 0.5 * tf.reduce_sum(tf.square(delta))
         self.entropy = tf.reduce_sum(action_dist.entropy())
-        self.total_loss = (self.pi_loss +
-                           self.vf_loss * vf_loss_coeff +
+        self.total_loss = (self.pi_loss + self.vf_loss * vf_loss_coeff +
                            self.entropy * entropy_coeff)
 
 
@@ -41,15 +45,14 @@ class A3CPolicyGraph(TFPolicyGraph):
             tf.float32, [None] + list(observation_space.shape))
         dist_class, logit_dim = ModelCatalog.get_action_dist(
             action_space, self.config["model"])
-        self.model = ModelCatalog.get_model(
-            self.observations, logit_dim, self.config["model"])
+        self.model = ModelCatalog.get_model(self.observations, logit_dim,
+                                            self.config["model"])
         action_dist = dist_class(self.model.outputs)
         self.vf = tf.reshape(
             linear(self.model.last_layer, 1, "value", normc_initializer(1.0)),
             [-1])
         self.var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
                                           tf.get_variable_scope().name)
-        is_training = tf.placeholder_with_default(True, ())
 
         # Setup the policy loss
         if isinstance(action_space, gym.spaces.Box):
@@ -63,9 +66,9 @@ class A3CPolicyGraph(TFPolicyGraph):
                     action_space))
         advantages = tf.placeholder(tf.float32, [None], name="advantages")
         v_target = tf.placeholder(tf.float32, [None], name="v_target")
-        self.loss = A3CLoss(
-            action_dist, actions, advantages, v_target, self.vf,
-            self.config["vf_loss_coeff"], self.config["entropy_coeff"])
+        self.loss = A3CLoss(action_dist, actions, advantages, v_target,
+                            self.vf, self.config["vf_loss_coeff"],
+                            self.config["entropy_coeff"])
 
         # Initialize TFPolicyGraph
         loss_in = [
@@ -74,15 +77,18 @@ class A3CPolicyGraph(TFPolicyGraph):
             ("advantages", advantages),
             ("value_targets", v_target),
         ]
-        for i, ph in enumerate(self.model.state_in):
-            loss_in.append(("state_in_{}".format(i), ph))
         self.state_in = self.model.state_in
         self.state_out = self.model.state_out
         TFPolicyGraph.__init__(
-            self, observation_space, action_space, self.sess,
-            obs_input=self.observations, action_sampler=action_dist.sample(),
-            loss=self.loss.total_loss, loss_inputs=loss_in,
-            is_training=is_training, state_inputs=self.state_in,
+            self,
+            observation_space,
+            action_space,
+            self.sess,
+            obs_input=self.observations,
+            action_sampler=action_dist.sample(),
+            loss=self.loss.total_loss,
+            loss_inputs=loss_in,
+            state_inputs=self.state_in,
             state_outputs=self.state_out,
             seq_lens=self.model.seq_lens,
             max_seq_len=self.config["model"]["max_seq_len"])
@@ -136,5 +142,5 @@ class A3CPolicyGraph(TFPolicyGraph):
             for i in range(len(self.state_in)):
                 next_state.append([sample_batch["state_out_{}".format(i)][-1]])
             last_r = self.value(sample_batch["new_obs"][-1], *next_state)
-        return compute_advantages(
-            sample_batch, last_r, self.config["gamma"], self.config["lambda"])
+        return compute_advantages(sample_batch, last_r, self.config["gamma"],
+                                  self.config["lambda"])

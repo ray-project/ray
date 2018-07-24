@@ -71,6 +71,9 @@ public class RayCli {
     PathConfig paths = new PathConfig(config);
     RayParameters params = new RayParameters(config);
 
+    // Init RayLog before using it.
+    RayLog.init(params.working_directory);
+
     RayLog.core.info("Using IP address " + params.node_ip_address + " for this node.");
     RunManager manager;
     if (cmdStart.head) {
@@ -165,6 +168,10 @@ public class RayCli {
     //    .getInstance().getRemoteFunctionManager();
 
     UniqueID resourceId = functionManager.registerResource(zip);
+
+    // Init RayLog before using it.
+    RayLog.init(params.working_directory);
+
     RayLog.rapp.debug(
         "registerResource " + resourceId + " for package " + packageName + " done");
 

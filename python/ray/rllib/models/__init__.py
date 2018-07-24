@@ -6,7 +6,7 @@ from ray.rllib.models.preprocessors import Preprocessor
 from ray.rllib.models.fcnet import FullyConnectedNetwork
 from ray.rllib.models.lstm import LSTM
 
-
-__all__ = ["ActionDistribution", "Categorical",
-           "DiagGaussian", "Deterministic", "ModelCatalog", "Model",
-           "Preprocessor", "FullyConnectedNetwork", "LSTM"]
+__all__ = [
+    "ActionDistribution", "Categorical", "DiagGaussian", "Deterministic",
+    "ModelCatalog", "Model", "Preprocessor", "FullyConnectedNetwork", "LSTM"
+]

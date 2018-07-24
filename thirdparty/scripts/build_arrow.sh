@@ -40,10 +40,10 @@ else
   exit 1
 fi
 
-# The PR for this commit is https://github.com/apache/arrow/pull/2235. We
+# The PR for this commit is https://github.com/apache/arrow/pull/2104. We
 # include the link here to make it easier to find the right commit because
 # Arrow often rewrites git history and invalidates certain commits.
-TARGET_COMMIT_ID=fa08ddfbe8ada173b2c621172e176f159ce3b728
+TARGET_COMMIT_ID=cecbcf7de00d2bf255bdba97cee1d37130e5bb79
 build_arrow() {
   echo "building arrow"
 
@@ -98,7 +98,7 @@ build_arrow() {
       -DPYTHON_EXECUTABLE:FILEPATH=$PYTHON_EXECUTABLE \
       -DARROW_PYTHON=on \
       -DARROW_PLASMA=on \
-      -DPLASMA_PYTHON=on \
+      -DARROW_TENSORFLOW=on \
       -DARROW_JEMALLOC=off \
       -DARROW_WITH_BROTLI=off \
       -DARROW_WITH_LZ4=off \
@@ -124,11 +124,13 @@ build_arrow() {
   # find plasma.
   PKG_CONFIG_PATH=$ARROW_HOME/lib/pkgconfig \
   PYARROW_WITH_PLASMA=1 \
+  PYARROW_WITH_TENSORFLOW=1 \
   PYARROW_BUNDLE_ARROW_CPP=1 \
   $PYTHON_EXECUTABLE setup.py build
 
   PKG_CONFIG_PATH=$ARROW_HOME/lib/pkgconfig \
   PYARROW_WITH_PLASMA=1 \
+  PYARROW_WITH_TENSORFLOW=1 \
   PYARROW_BUNDLE_ARROW_CPP=1 \
   PARQUET_HOME=$TP_DIR/pkg/arrow/cpp/build/cpp-install \
   PYARROW_WITH_PARQUET=1 \
@@ -149,13 +151,18 @@ if [[ ! -d $TP_DIR/../python/ray/pyarrow_files/pyarrow ]] || \
     [[ "$LANGUAGE" == "java" && ! -f $TP_DIR/build/arrow/cpp/build/release/libplasma_java.dylib ]]; then
   build_arrow
 else
+  REBUILD=off
   pushd $TP_DIR/build/arrow
   if [[ "$TARGET_COMMIT_ID" != `git rev-parse HEAD` ]]; then
     # TARGET_COMMIT_ID may change to later commit.
     echo "Commit ID mismatches."
     git fetch origin master
     git checkout $TARGET_COMMIT_ID
+    REBUILD=on
   fi
   popd
-  build_arrow
+
+  if [[ "$REBUILD" == "on" ]]; then
+    build_arrow
+  fi
 fi
