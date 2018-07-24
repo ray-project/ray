@@ -44,7 +44,7 @@ class WorkerPoolTest : public ::testing::Test {
     boost::asio::local::stream_protocol::socket socket(io_service_);
     auto client =
         LocalClientConnection::Create(client_handler, message_handler, std::move(socket));
-    return std::shared_ptr<Worker>(new Worker(pid, client, false));
+    return std::shared_ptr<Worker>(new Worker(pid, client));
   }
 
  protected:

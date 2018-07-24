@@ -11,13 +11,12 @@ namespace ray {
 namespace raylet {
 
 /// A constructor responsible for initializing the state of a worker.
-Worker::Worker(pid_t pid, std::shared_ptr<LocalClientConnection> connection, bool isJavaWorker)
+Worker::Worker(pid_t pid, std::shared_ptr<LocalClientConnection> connection)
     : pid_(pid),
       connection_(connection),
       assigned_task_id_(TaskID::nil()),
       actor_id_(ActorID::nil()),
-      blocked_(false),
-      isJavaWorker_(isJavaWorker) {}
+      blocked_(false) {}
 
 void Worker::MarkBlocked() { blocked_ = true; }
 

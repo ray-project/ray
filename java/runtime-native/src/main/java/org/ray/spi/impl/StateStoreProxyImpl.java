@@ -75,6 +75,7 @@ public class StateStoreProxyImpl implements StateStoreProxy {
 
   }
 
+  @Override
   public List<AddressInfo> getAddressInfo(final String nodeIpAddress,
                                           final String redisAddress, 
                                           int numRetries) {

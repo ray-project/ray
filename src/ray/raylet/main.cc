@@ -41,11 +41,8 @@ int main(int argc, char *argv[]) {
       RayConfig::instance().num_workers_per_process();
   // Use a default worker that can execute empty tasks with dependencies.
 
-  std::vector<std::string> tokens;
-  boost::split(tokens, worker_command, boost::is_any_of(" "), boost::token_compress_on);
-  for (const auto &token : tokens) {
-    node_manager_config.worker_command.push_back(token);
-  }
+  boost::split(node_manager_config.worker_command, worker_command,
+               boost::is_any_of(" "), boost::token_compress_on);
 
   node_manager_config.heartbeat_period_ms =
       RayConfig::instance().heartbeat_timeout_milliseconds();

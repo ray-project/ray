@@ -398,7 +398,7 @@ void NodeManager::ProcessClientMessage(
     if (message->is_worker()) {
       // Create a new worker from the registration request. 
       auto worker = std::make_shared<Worker>(message->worker_pid(), 
-          client, message->worker_type() == protocol::WorkerType::Java);
+          client);
       // Register the new worker.
       worker_pool_.RegisterWorker(std::move(worker));
     }

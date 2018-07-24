@@ -368,7 +368,7 @@ public abstract class RayRuntime implements RayApi {
           .get(objectId, params.default_first_check_timeout_ms, isMetadata);
 
       wasBlocked = (ret.getRight() != GetStatus.SUCCESS);
-      
+
       // Try reconstructing the object. Try to get it until at least PlasmaLink.GET_TIMEOUT_MS
       // milliseconds passes, then repeat.
       while (ret.getRight() != GetStatus.SUCCESS) {
@@ -385,7 +385,7 @@ public abstract class RayRuntime implements RayApi {
       }
       RayLog.core.debug(
         "Task " + taskId + " Object " + objectId.toString() + " get" + ", the result " + ret
-                .getLeft());
+        .getLeft());
       return ret.getLeft();
     } catch (TaskExecutionException e) {
       RayLog.core

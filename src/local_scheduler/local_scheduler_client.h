@@ -47,8 +47,7 @@ LocalSchedulerConnection *LocalSchedulerConnection_init(
     const char *local_scheduler_socket,
     UniqueID worker_id,
     bool is_worker,
-    bool use_raylet,
-    WorkerType workerType = WorkerType::Python);
+    bool use_raylet);
 
 /**
  * Disconnect from the local scheduler.

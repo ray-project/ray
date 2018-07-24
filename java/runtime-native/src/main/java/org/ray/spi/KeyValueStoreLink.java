@@ -103,8 +103,13 @@ public interface KeyValueStoreLink {
    */
   List<String> lrange(final String key, final long start, final long end);
 
-  Set<String> zrange(String key, long start, long end);
-
+  /**
+   * Return the set of elements of the sorted set stored at the specified key.
+   * @param key The specified key you want to query.
+   * @param start The start index of the range.
+   * @param end The end index of the range.
+   * @return The set of elements you queried.
+   */
   Set<byte[]> zrange(byte[] key, long start, long end);
 
   /**

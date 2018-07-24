@@ -49,7 +49,7 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1init(JNIEnv *env,
   UniqueIdFromJByteArray worker_id(env, wid);
   const char *nativeString = env->GetStringUTFChars(sockName, JNI_FALSE);
   auto client = LocalSchedulerConnection_init(nativeString, *worker_id.PID,
-                                              isWorker, useRaylet, WorkerType::Java);
+                                              isWorker, useRaylet);
   env->ReleaseStringUTFChars(sockName, nativeString);
   return reinterpret_cast<jlong>(client);
 }
