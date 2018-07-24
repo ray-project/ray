@@ -14,8 +14,6 @@
 #include "event_loop.h"
 #include "io.h"
 
-#include "../format/common_generated.h"
-#include "../format/plasma_generated.h"
 #include "../plasma_manager.h"
 #include "plasma/client.h"
 #include "../protocol.h"
