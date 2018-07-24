@@ -54,7 +54,7 @@ void TaskDependencyManager::HandleRemoteDependencyRequired(const ObjectID &objec
       // If we haven't already, request the object manager to pull it from a
       // remote node.
       RAY_CHECK_OK(object_manager_.Pull(object_id));
-      reconstruction_policy_.Listen(object_id);
+      reconstruction_policy_.Listen(object_id, initial_lease_period_ms_);
     }
   }
 }
@@ -231,9 +231,7 @@ void TaskDependencyManager::TaskPending(const Task &task) {
 void TaskDependencyManager::AcquireTaskLease(const TaskID &task_id) {
   auto it = pending_tasks_.find(task_id);
   RAY_CHECK(it != pending_tasks_.end());
-  if (it->second.expires_at > 0) {
-    RAY_CHECK(current_time_ms() < it->second.expires_at);
-  }
+  RAY_CHECK(current_time_ms() < it->second.expires_at);
 
   int64_t expires_at = current_time_ms() + it->second.lease_period;
 

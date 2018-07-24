@@ -91,7 +91,9 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
                    config.worker_command),
       local_queues_(SchedulingQueue()),
       scheduling_policy_(local_queues_),
-      reconstruction_policy_([this](const TaskID &task_id) { ResubmitTask(task_id); }),
+      reconstruction_policy_([this](const TaskID &task_id) { ResubmitTask(task_id); },
+                             io_service_, gcs_client_->client_table().GetLocalClientId(),
+                             gcs_client->task_lease_table()),
       task_dependency_manager_(object_manager, reconstruction_policy_, io_service,
                                gcs_client_->client_table().GetLocalClientId(),
                                RayConfig::instance().initial_task_lease_milliseconds(),
@@ -132,6 +134,19 @@ ray::Status NodeManager::RegisterGcs() {
   RAY_RETURN_NOT_OK(gcs_client_->raylet_task_table().Subscribe(
       JobID::nil(), gcs_client_->client_table().GetLocalClientId(),
       task_committed_callback, nullptr, nullptr));
+
+  const auto task_lease_notification_callback = [this](gcs::AsyncGcsClient *client,
+                                                       const TaskID &task_id,
+                                                       const TaskLeaseDataT &task_lease) {
+    reconstruction_policy_.HandleTaskLeaseNotification(task_id, task_lease.expires_at);
+  };
+  const auto task_lease_empty_callback = [this](gcs::AsyncGcsClient *client,
+                                                const TaskID &task_id) {
+    reconstruction_policy_.HandleTaskLeaseNotification(task_id, 0);
+  };
+  RAY_RETURN_NOT_OK(gcs_client_->task_lease_table().Subscribe(
+      JobID::nil(), gcs_client_->client_table().GetLocalClientId(),
+      task_lease_notification_callback, task_lease_empty_callback, nullptr));
 
   // Register a callback for actor creation notifications.
   auto actor_creation_callback = [this](

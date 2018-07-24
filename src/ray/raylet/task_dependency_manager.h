@@ -114,7 +114,7 @@ class TaskDependencyManager {
   struct PendingTask {
     PendingTask(int64_t initial_lease_period_ms, boost::asio::io_service &io_service)
         : lease_period(initial_lease_period_ms),
-          expires_at(0),
+          expires_at(INT64_MAX),
           lease_timer(new boost::asio::deadline_timer(io_service)) {}
 
     /// The timeout before the lease should be renewed.

@@ -21,7 +21,8 @@ class MockObjectManager : public ObjectManagerInterface {
 
 class MockReconstructionPolicy : public ReconstructionPolicyInterface {
  public:
-  MOCK_METHOD1(Listen, void(const ObjectID &object_id));
+  MOCK_METHOD2(Listen,
+               void(const ObjectID &object_id, int64_t reconstruction_timeout_ms));
   MOCK_METHOD1(Cancel, void(const ObjectID &object_id));
 };
 
@@ -111,7 +112,7 @@ TEST_F(TaskDependencyManagerTest, TestSimpleTask) {
   // arguments should be remote.
   for (const auto &argument_id : arguments) {
     EXPECT_CALL(object_manager_mock_, Pull(argument_id));
-    EXPECT_CALL(reconstruction_policy_mock_, Listen(argument_id));
+    EXPECT_CALL(reconstruction_policy_mock_, Listen(argument_id, _));
   }
   // Subscribe to the task's dependencies.
   bool ready = task_dependency_manager_.SubscribeDependencies(task_id, arguments);
@@ -149,7 +150,7 @@ TEST_F(TaskDependencyManagerTest, TestDuplicateSubscribe) {
     // duplicates of previous subscription calls. Each argument should only be
     // requested from the node manager once.
     EXPECT_CALL(object_manager_mock_, Pull(argument_id));
-    EXPECT_CALL(reconstruction_policy_mock_, Listen(argument_id));
+    EXPECT_CALL(reconstruction_policy_mock_, Listen(argument_id, _));
     bool ready = task_dependency_manager_.SubscribeDependencies(task_id, arguments);
     ASSERT_FALSE(ready);
   }
@@ -181,7 +182,7 @@ TEST_F(TaskDependencyManagerTest, TestMultipleTasks) {
   // The object should only be requested from the object manager once for all
   // three tasks.
   EXPECT_CALL(object_manager_mock_, Pull(argument_id));
-  EXPECT_CALL(reconstruction_policy_mock_, Listen(argument_id));
+  EXPECT_CALL(reconstruction_policy_mock_, Listen(argument_id, _));
   for (int i = 0; i < num_dependent_tasks; i++) {
     TaskID task_id = TaskID::from_random();
     dependent_tasks.push_back(task_id);
@@ -212,7 +213,7 @@ TEST_F(TaskDependencyManagerTest, TestTaskChain) {
   // No objects should be remote or canceled since each task depends on a
   // locally queued task.
   EXPECT_CALL(object_manager_mock_, Pull(_)).Times(0);
-  EXPECT_CALL(reconstruction_policy_mock_, Listen(_)).Times(0);
+  EXPECT_CALL(reconstruction_policy_mock_, Listen(_, _)).Times(0);
   EXPECT_CALL(object_manager_mock_, Cancel(_)).Times(0);
   EXPECT_CALL(reconstruction_policy_mock_, Cancel(_)).Times(0);
   for (const auto &task : tasks) {
@@ -271,7 +272,7 @@ TEST_F(TaskDependencyManagerTest, TestDependentPut) {
   // No objects have been registered in the task dependency manager, so the put
   // object should be remote.
   EXPECT_CALL(object_manager_mock_, Pull(put_id));
-  EXPECT_CALL(reconstruction_policy_mock_, Listen(put_id));
+  EXPECT_CALL(reconstruction_policy_mock_, Listen(put_id, _));
   // Subscribe to the task's dependencies.
   bool ready = task_dependency_manager_.SubscribeDependencies(
       task2.GetTaskSpecification().TaskId(), {put_id});
@@ -307,7 +308,7 @@ TEST_F(TaskDependencyManagerTest, TestTaskForwarding) {
   // The object returned by the first task should be considered remote once we
   // cancel the forwarded task, since the second task depends on it.
   EXPECT_CALL(object_manager_mock_, Pull(return_id));
-  EXPECT_CALL(reconstruction_policy_mock_, Listen(return_id));
+  EXPECT_CALL(reconstruction_policy_mock_, Listen(return_id, _));
   task_dependency_manager_.TaskCanceled(task_id);
 
   // Simulate the task executing on a remote node and its return value
@@ -332,7 +333,7 @@ TEST_F(TaskDependencyManagerTest, TestEviction) {
   // arguments should be remote.
   for (const auto &argument_id : arguments) {
     EXPECT_CALL(object_manager_mock_, Pull(argument_id));
-    EXPECT_CALL(reconstruction_policy_mock_, Listen(argument_id));
+    EXPECT_CALL(reconstruction_policy_mock_, Listen(argument_id, _));
   }
   // Subscribe to the task's dependencies.
   bool ready = task_dependency_manager_.SubscribeDependencies(task_id, arguments);
@@ -359,7 +360,7 @@ TEST_F(TaskDependencyManagerTest, TestEviction) {
   // considered remote.
   for (const auto &argument_id : arguments) {
     EXPECT_CALL(object_manager_mock_, Pull(argument_id));
-    EXPECT_CALL(reconstruction_policy_mock_, Listen(argument_id));
+    EXPECT_CALL(reconstruction_policy_mock_, Listen(argument_id, _));
   }
   for (size_t i = 0; i < arguments.size(); i++) {
     std::vector<TaskID> waiting_tasks;
