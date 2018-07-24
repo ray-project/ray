@@ -18,27 +18,7 @@
 #include "../format/plasma_generated.h"
 #include "../plasma_manager.h"
 #include "plasma/client.h"
-
-// plasma/plasma.h and plasma/protocol.h are private now.
-// using forward declaration here.
-namespace plasma {
-namespace fb = plasma::flatbuf;
-using arrow::Status;
-typedef std::unordered_map<ObjectID, ObjectRequest> ObjectRequestMap;
-
-Status SendWaitReply(int sock,
-                     const ObjectRequestMap &object_requests,
-                     int num_ready_objects);
-Status PlasmaReceive(int sock,
-                     fb::MessageType message_type,
-                     std::vector<uint8_t> *buffer);
-Status ReadDataRequest(uint8_t *data,
-                       size_t size,
-                       ObjectID *object_id,
-                       char **address,
-                       int *port);
-std::unique_ptr<uint8_t[]> CreateObjectInfoBuffer(fb::ObjectInfoT *object_info);
-}  // namespace plasma
+#include "../protocol.h"
 
 namespace fb = plasma::flatbuf;
 

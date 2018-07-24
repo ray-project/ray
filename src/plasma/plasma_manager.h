@@ -1,6 +1,8 @@
 #ifndef PLASMA_MANAGER_H
 #define PLASMA_MANAGER_H
 
+#include "protocol.h"
+
 #ifndef RAY_NUM_RETRIES
 #define NUM_RETRIES 5
 #else
@@ -9,14 +11,6 @@
 
 typedef struct PlasmaManagerState PlasmaManagerState;
 typedef struct ClientConnection ClientConnection;
-
-// plasma/plasma.h and plasma/protocol.h are private now.
-// using forward declaration here.
-namespace plasma {
-namespace flatbuf {
-enum class MessageType : int64_t;
-};
-};  // namespace plasma
 
 /**
  * Initializes the plasma manager state. This connects the manager to the local
