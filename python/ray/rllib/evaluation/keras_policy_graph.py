@@ -2,8 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
-from keras import backend as K
 import numpy as np
 
 from ray.rllib.evaluation.policy_graph import PolicyGraph
