@@ -40,10 +40,10 @@ if __name__ == '__main__':
             "run": "exp",
             "repeat": 5 if args.smoke_test else 1000,
             "stop": {
-                "training_iteration": 1
+                "training_iteration": 3
             },
         }
     }
     algo = HyperOptAlgorithm(space, reward_attr="neg_mean_loss")
-    scheduler = AsyncHyperBandScheduler(reward_attr="neg_mean_loss")
-    run_experiments(config, scheduler=scheduler, search_alg=algo)
+    # scheduler = AsyncHyperBandScheduler(reward_attr="neg_mean_loss")
+    run_experiments(config, search_alg=algo)

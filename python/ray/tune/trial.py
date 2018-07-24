@@ -132,7 +132,10 @@ class Trial(object):
         self.logdir = None
         self.result_logger = None
         self.last_debug = 0
-        self.trial_id = trial_id or binary_to_hex(random_string())[:8]
+        if trial_id is not None:
+            self.trial_id = trial_id
+        else:
+            self.trial_id = binary_to_hex(random_string())[:8]
         self.error_file = None
         self.num_failures = 0
 
