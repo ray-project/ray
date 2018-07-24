@@ -63,7 +63,9 @@ def compute_targets(rollout, action_space, last_r=0.0, gamma=0.9, lambda_=1.0):
     Args:
         rollout (SampleBatch): SampleBatch of a single trajectory
         action_space (gym.Space): Dimensions of the advantage targets.
+        last_r (float): Value estimation for last observation
         gamma (float): Discount factor.
+        lambda_ (float): Parameter for GAE
     """
 
     rollout = compute_advantages(rollout, last_r, gamma=gamma, lambda_=lambda_)
