@@ -15,6 +15,7 @@ from ray.tune.log_sync import wait_for_log_sync
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.trial_scheduler import FIFOScheduler
 from ray.tune.web_server import TuneServer
+from ray.tune.variant_generator import generate_trials
 from ray.tune.experiment import Experiment
 
 _SCHEDULERS = {
@@ -77,7 +78,7 @@ def run_experiments(experiments,
     if (type(exp_list) is list
             and all(isinstance(exp, Experiment) for exp in exp_list)):
         trial_generator = chain.from_iterable(
-            [generate_experiments(exp.spec, algo, exp.name)
+            [generate_trials(exp.spec, algo, exp.name)
              for algo, exp in zip(search_algos, exp_list)])
     else:
         raise TuneError("Invalid argument: {}".format(experiments))

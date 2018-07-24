@@ -80,6 +80,7 @@ class Trial(object):
     def __init__(self,
                  trainable_name,
                  config=None,
+                 trial_id=None,
                  local_dir=DEFAULT_RESULTS_DIR,
                  experiment_tag="",
                  resources=None,
@@ -131,7 +132,7 @@ class Trial(object):
         self.logdir = None
         self.result_logger = None
         self.last_debug = 0
-        self.trial_id = binary_to_hex(random_string())[:8]
+        self.trial_id = trial_id or binary_to_hex(random_string())[:8]
         self.error_file = None
         self.num_failures = 0
 

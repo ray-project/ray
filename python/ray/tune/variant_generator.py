@@ -10,6 +10,7 @@ import random
 import types
 
 from ray.tune import TuneError
+from ray.tune.search import SearchAlgorithm
 from ray.tune.logger import _SafeFallbackEncoder
 from ray.tune.trial import Trial
 from ray.tune.config_parser import make_parser, json_to_resources
@@ -28,7 +29,7 @@ def to_argv(config):
     return argv
 
 
-def generate_trials(unresolved_spec, algo=None, output_path=''):
+def generate_trials(unresolved_spec, search_alg=None, output_path=''):
     """Wraps `generate_variants()` to return a Trial object for each variant.
 
     See also: generate_variants()
@@ -55,11 +56,14 @@ def generate_trials(unresolved_spec, algo=None, output_path=''):
                 args = parser.parse_args(to_argv(spec))
             except SystemExit:
                 raise TuneError("Error parsing args, see above message", spec)
+
             new_config = copy.deepcopy(spec.get("config", {}))
-            if algo:
+            trial_id = None
+            if search_alg:
+                # We hold the other resolved vars until suggestion is ready.
                 while True:
-                    suggested_config = algo.try_suggest()
-                    if suggested_config is None:
+                    suggested_config, trial_id = search_alg.try_suggest()
+                    if suggested_config is SearchAlgorithm.NOT_READY:
                         yield None
                     else:
                         break
@@ -76,6 +80,7 @@ def generate_trials(unresolved_spec, algo=None, output_path=''):
             yield Trial(
                 trainable_name=spec["run"],
                 config=new_config,
+                trial_id=trial_id,
                 local_dir=os.path.join(args.local_dir, output_path),
                 experiment_tag=experiment_tag,
                 resources=resources,

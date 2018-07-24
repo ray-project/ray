@@ -10,9 +10,9 @@ import traceback
 
 from ray.tune import TuneError
 from ray.tune.web_server import TuneServer
+from ray.tune.search import SearchAlgorithm
 from ray.tune.trial import Trial, Resources
 from ray.tune.trial_scheduler import FIFOScheduler, TrialScheduler
-from ray.tune.variant_generator import generate_trials
 
 MAX_DEBUG_TRIALS = 20
 
@@ -40,7 +40,8 @@ class TrialRunner(object):
     """
 
     def __init__(self,
-                 trial_generator
+                 trial_generator,
+                 search_alg=None,
                  scheduler=None,
                  launch_web_server=False,
                  server_port=TuneServer.DEFAULT_PORT,
@@ -49,6 +50,8 @@ class TrialRunner(object):
         """Initializes a new TrialRunner.
 
         Args:
+            trial_generator (generator): Used to generate trials.
+            search_alg (SearchAlgorithm): Defaults to SearchAlgorithm.
             scheduler (TrialScheduler): Defaults to FIFOScheduler.
             launch_web_server (bool): Flag for starting TuneServer
             server_port (int): Port number for launching TuneServer
@@ -59,7 +62,8 @@ class TrialRunner(object):
                 be set to True when running on an autoscaling cluster to enable
                 automatic scale-up.
         """
-
+        self._trial_generator = trial_generator
+        self._search_alg = search_alg or SearchAlgorithm()
         self._scheduler_alg = scheduler or FIFOScheduler()
         self._trials = []
         self._running = {}
@@ -78,7 +82,6 @@ class TrialRunner(object):
         self._stop_queue = []
         self._verbose = verbose
         self._queue_trials = queue_trials
-        self._trial_generator = trial_generator
 
     def is_finished(self):
         """Returns whether all trials have finished running."""
@@ -262,6 +265,8 @@ class TrialRunner(object):
             if trial.should_stop(result):
                 # Hook into scheduler
                 self._scheduler_alg.on_trial_complete(self, trial, result)
+                self._search_alg.on_trial_complete(
+                    trial.trial_id, result)
                 decision = TrialScheduler.STOP
             else:
                 decision = self._scheduler_alg.on_trial_result(
@@ -305,7 +310,7 @@ class TrialRunner(object):
             self._stop_trial(trial, error=True, error_msg=error_msg)
 
     def _update_trial_queue(self):
-        for trial in self.trial_generator:
+        for trial in self._trial_generator:
             if trial:
                 self.add_trial(trial)
             else:
