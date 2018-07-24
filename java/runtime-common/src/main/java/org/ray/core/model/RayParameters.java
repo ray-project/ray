@@ -115,8 +115,8 @@ public class RayParameters {
   @AConfig(comment = "whether to use raylet")
   public boolean use_raylet = false;
 
-  @AConfig(comment = "raylet name (e.g., /tmp/raylet1111")
-  public String raylet_name = "";
+  @AConfig(comment = "raylet socket name (e.g., /tmp/raylet1111")
+  public String raylet_socket_name = "";
 
   @AConfig(comment = "raylet rpc listen port")
   public int raylet_port = 35567;

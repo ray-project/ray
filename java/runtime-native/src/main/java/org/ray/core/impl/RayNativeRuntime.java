@@ -74,7 +74,7 @@ public class RayNativeRuntime extends RayRuntime {
           params.object_store_manager_name = nodes.get(0).managerName;
           params.local_scheduler_name = nodes.get(0).schedulerName;
         } else {
-          params.raylet_name = nodes.get(0).rayletName;
+          params.raylet_socket_name = nodes.get(0).rayletSocketName;
         }
       }
     }
@@ -130,7 +130,7 @@ public class RayNativeRuntime extends RayRuntime {
         ObjectStoreLink plink = new PlasmaClient(params.object_store_name, "", releaseDelay);
 
         LocalSchedulerLink slink = new DefaultLocalSchedulerClient(
-            params.raylet_name,
+            params.raylet_socket_name,
             WorkerContext.currentWorkerId(),
             UniqueID.nil,
             isWorker,
@@ -142,7 +142,7 @@ public class RayNativeRuntime extends RayRuntime {
 
         // register
         registerWorker(isWorker, params.node_ip_address, params.object_store_name,
-            params.raylet_name);
+            params.raylet_socket_name);
       }
     }
 
@@ -178,7 +178,7 @@ public class RayNativeRuntime extends RayRuntime {
     params.object_store_name = manager.info().localStores.get(0).storeName;
     params.object_store_manager_name = manager.info().localStores.get(0).managerName;
     params.local_scheduler_name = manager.info().localStores.get(0).schedulerName;
-    params.raylet_name = manager.info().localStores.get(0).rayletName;
+    params.raylet_socket_name = manager.info().localStores.get(0).rayletSocketName;
     //params.node_ip_address = NetworkUtil.getIpAddress();
   }
 
@@ -193,7 +193,7 @@ public class RayNativeRuntime extends RayRuntime {
   }
 
   private void registerWorker(boolean isWorker, String nodeIpAddress, String storeName,
-                              String rayletName) {
+                              String rayletSocketName) {
     Map<String, String> workerInfo = new HashMap<>();
     String workerId = new String(WorkerContext.currentWorkerId().getBytes());
     if (!isWorker) {
@@ -201,14 +201,14 @@ public class RayNativeRuntime extends RayRuntime {
       workerInfo.put("driver_id", workerId);
       workerInfo.put("start_time", String.valueOf(System.currentTimeMillis()));
       workerInfo.put("plasma_store_socket", storeName);
-      workerInfo.put("raylet_socket", rayletName);
+      workerInfo.put("raylet_socket", rayletSocketName);
       workerInfo.put("name", System.getProperty("user.dir"));
       //TODO: worker.redis_client.hmset(b"Drivers:" + worker.workerId, driver_info)
       kvStore.hmset("Drivers:" + workerId, workerInfo);
     } else {
       workerInfo.put("node_ip_address", nodeIpAddress);
       workerInfo.put("plasma_store_socket", storeName);
-      workerInfo.put("raylet_socket", rayletName);
+      workerInfo.put("raylet_socket", rayletSocketName);
       //TODO: b"Workers:" + worker.workerId,
       kvStore.hmset("Workers:" + workerId, workerInfo);
     }

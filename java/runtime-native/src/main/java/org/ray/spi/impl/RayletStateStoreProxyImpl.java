@@ -98,7 +98,7 @@ public class RayletStateStoreProxyImpl extends StateStoreProxyImpl {
       if (headNodeAddress || notHeadNodeAddress) {
         AddressInfo si = new AddressInfo();
         si.storeName = client.objectStoreSocketName();
-        si.rayletName = client.rayletSocketName();
+        si.rayletSocketName = client.rayletSocketName();
         si.managerRpcAddr = client.nodeManagerAddress();
         si.managerPort = client.nodeManagerPort();
         schedulerInfo.add(si);

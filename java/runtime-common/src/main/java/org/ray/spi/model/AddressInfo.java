@@ -8,7 +8,7 @@ public class AddressInfo {
   public String managerName;
   public String storeName;
   public String schedulerName;
-  public String rayletName;
+  public String rayletSocketName;
   public int managerPort;
   public int workerCount;
   public String managerRpcAddr;
