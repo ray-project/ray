@@ -5,6 +5,7 @@ from __future__ import print_function
 import tensorflow as tf
 from keras import backend as K
 import numpy as np
+
 from ray.rllib.evaluation.policy_graph import PolicyGraph
 
 
@@ -16,6 +17,8 @@ class KerasPolicyGraph(PolicyGraph):
     """Initialize the Keras Policy Graph.
 
     This is a Policy Graph used for models with actor and critics.
+    Note: This class is built for specific usage of Actor-Critic models,
+    and is less general compared to TFPolicyGraph and TorchPolicyGraphs.
 
     Args:
         observation_space (gym.Space): Observation space of the policy.

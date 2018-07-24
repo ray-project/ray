@@ -159,7 +159,7 @@ class PolicyOptimizer(object):
         if optimizer_batch_size:
             assert optimizer_batch_size > 0
             if num_workers > 1:
-                eval_kwargs["batch_steps"] = optimizer_batch_size / num_workers
+                eval_kwargs["batch_steps"] = optimizer_batch_size // num_workers
             else:
                 eval_kwargs["batch_steps"] = optimizer_batch_size
         evaluator = PolicyEvaluator(
