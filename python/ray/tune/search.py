@@ -48,7 +48,7 @@ class HyperOptAlgorithm(SearchAlgorithm):
         self.algo = hpo.tpe.suggest
         self.domain = hpo.Domain(lambda spc: spc, space)
         self._hpopt_trials = hpo.Trials()
-        self._tune_to_hp = {}
+        self._live_trials = {}
 
         self.rstate = np.random.RandomState()
 
@@ -65,6 +65,7 @@ class HyperOptAlgorithm(SearchAlgorithm):
         self._hpopt_trials.refresh()
         new_trial = new_trials[0]
         new_trial_id = new_trial["tid"]
+        self._live_trials[new_trial_id] = new_trial
 
         # Taken from HyperOpt.base.evaluate
         config = hpo.base.spec_from_misc(new_trial["misc"])
@@ -79,36 +80,36 @@ class HyperOptAlgorithm(SearchAlgorithm):
             print_node_on_error=self.domain.rec_eval_print_node_on_error)
         return copy.deepcopy(suggested_config), new_trial_id
 
-    def on_trial_result(self, suggestion_id, result):
-        ho_trial = self._get_hyperopt_trial(self._tune_to_hp[suggestion_id])
+    def on_trial_result(self, trial_id, result):
+        ho_trial = self._get_hyperopt_trial(trial_id)
         now = hpo.utils.coarse_utcnow()
         ho_trial['book_time'] = now
         ho_trial['refresh_time'] = now
 
-    def on_trial_error(self, suggestion_id):
-        ho_trial = self._get_hyperopt_trial(self._tune_to_hp[suggestion_id])
+    def on_trial_error(self, trial_id):
+        ho_trial = self._get_hyperopt_trial(trial_id)
         ho_trial['refresh_time'] = hpo.utils.coarse_utcnow()
         ho_trial['state'] = hpo.base.JOB_STATE_ERROR
         ho_trial['misc']['error'] = (str(TuneError), "Tune Error")
         self._hpopt_trials.refresh()
-        del self._tune_to_hp[suggestion_id]
+        del self._live_trials[trial_id]
 
-    def on_trial_remove(self, suggestion_id):
-        ho_trial = self._get_hyperopt_trial(self._tune_to_hp[suggestion_id])
+    def on_trial_remove(self, trial_id):
+        ho_trial = self._get_hyperopt_trial(trial_id)
         ho_trial['refresh_time'] = hpo.utils.coarse_utcnow()
         ho_trial['state'] = hpo.base.JOB_STATE_ERROR
         ho_trial['misc']['error'] = (str(TuneError), "Tune Removed")
         self._hpopt_trials.refresh()
-        del self._tune_to_hp[suggestion_id]
+        del self._live_trials[trial_id]
 
-    def on_trial_complete(self, suggestion_id, result):
-        ho_trial = self._get_hyperopt_trial(self._tune_to_hp[suggestion_id])
+    def on_trial_complete(self, trial_id, result):
+        ho_trial = self._get_hyperopt_trial(trial_id)
         ho_trial['refresh_time'] = hpo.utils.coarse_utcnow()
         ho_trial['state'] = hpo.base.JOB_STATE_DONE
         hp_result = self._to_hyperopt_result(result)
         ho_trial['result'] = hp_result
         self._hpopt_trials.refresh()
-        del self._tune_to_hp[suggestion_id]
+        del self._live_trials[trial_id]
 
     def _to_hyperopt_result(self, result):
         return {"loss": -getattr(result, self._reward_attr), "status": "ok"}
@@ -117,4 +118,4 @@ class HyperOptAlgorithm(SearchAlgorithm):
         return [t for t in self._hpopt_trials.trials if t["tid"] == tid][0]
 
     def _num_live_trials(self):
-        return len(self._tune_to_hp)
+        return len(self._live_trials)
