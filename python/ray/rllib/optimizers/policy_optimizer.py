@@ -127,10 +127,16 @@ class PolicyOptimizer(object):
                 "This optimizer does not support multi-agent yet.")
 
     @classmethod
-    def make(cls, env_creator, policy_graph, optimizer_batch_size=None,
-             num_workers=0, num_envs_per_worker=None,
-             optimizer_config=None, remote_num_cpus=None,
-             remote_num_gpus=None, **eval_kwargs):
+    def make(cls,
+             env_creator,
+             policy_graph,
+             optimizer_batch_size=None,
+             num_workers=0,
+             num_envs_per_worker=None,
+             optimizer_config=None,
+             remote_num_cpus=None,
+             remote_num_gpus=None,
+             **eval_kwargs):
         """Creates an Optimizer with local and remote evaluators.
 
         Args:
@@ -167,15 +173,12 @@ class PolicyOptimizer(object):
                     optimizer_batch_size // num_workers
             else:
                 eval_kwargs["batch_steps"] = optimizer_batch_size
-        evaluator = PolicyEvaluator(
-            env_creator, policy_graph,
-            **eval_kwargs)
-        remote_cls = PolicyEvaluator.as_remote(
-            remote_num_cpus, remote_num_gpus)
+        evaluator = PolicyEvaluator(env_creator, policy_graph, **eval_kwargs)
+        remote_cls = PolicyEvaluator.as_remote(remote_num_cpus,
+                                               remote_num_gpus)
         remote_evaluators = [
-            remote_cls.remote(
-                env_creator, policy_graph,
-                **eval_kwargs)
-            for i in range(num_workers)]
+            remote_cls.remote(env_creator, policy_graph, **eval_kwargs)
+            for i in range(num_workers)
+        ]
 
         return cls(evaluator, remote_evaluators, optimizer_config)

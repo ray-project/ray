@@ -25,8 +25,13 @@ class KerasPolicyGraph(PolicyGraph):
         actor (Model): A model that holds the policy.
         critic (Model): A model that holds the value function.
     """
-    def __init__(self, observation_space, action_space, config,
-                 actor=None, critic=None):
+
+    def __init__(self,
+                 observation_space,
+                 action_space,
+                 config,
+                 actor=None,
+                 critic=None):
         PolicyGraph.__init__(self, observation_space, action_space, config)
         self.actor = actor
         self.critic = critic
@@ -40,11 +45,17 @@ class KerasPolicyGraph(PolicyGraph):
 
     def compute_apply(self, batch, *args):
         self.actor.fit(
-            batch["obs"], batch["adv_targets"],
-            epochs=1, verbose=0, steps_per_epoch=20)
+            batch["obs"],
+            batch["adv_targets"],
+            epochs=1,
+            verbose=0,
+            steps_per_epoch=20)
         self.critic.fit(
-            batch["obs"], batch["value_targets"],
-            epochs=1, verbose=0, steps_per_epoch=20)
+            batch["obs"],
+            batch["value_targets"],
+            epochs=1,
+            verbose=0,
+            steps_per_epoch=20)
         return {}, {}
 
     def get_weights(self):
