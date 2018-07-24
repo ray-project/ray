@@ -298,5 +298,50 @@ print("success")
         self.assertIn("success", out)
 
 
+class RunDriverForMultipleTimesTest(unittest.TestCase):
+    def tearDown(self):
+        ray.shutdown()
+
+    def testRunDriverForTwice(self):
+        # We used to have issue 2165 and 2288: driver will hang when we run it
+        # for the second time.
+        # This test is used to verify the fix for above issue, it will run the
+        # same driver for twice and verify whether both of them succeed.
+        address_info = ray.init()
+        driver_script = """
+import ray
+import ray.tune as tune
+import os
+import time
+
+def train_func(config, reporter):  # add a reporter arg
+    for i in range(2):
+        time.sleep(0.1)
+        reporter(timesteps_total=i, mean_accuracy=i+97)  # report metrics
+
+ray.init(redis_address="{}", driver_mode=ray.SILENT_MODE)
+ray.tune.register_trainable("train_func", train_func)
+
+tune.run_experiments({{
+    "my_experiment": {{
+        "run": "train_func",
+        "stop": {{"mean_accuracy": 99}},
+        "config": {{
+            "layer1": {{
+                "class_name": tune.grid_search(["a"]),
+                "config": {{"lr": tune.grid_search([1, 2])}}
+            }},
+        }},
+        "local_dir": os.path.expanduser("~/tmp")
+    }}
+}})
+print("success")
+""".format(address_info["redis_address"])
+
+        for i in range(2):
+            out = run_string_as_driver(driver_script)
+            self.assertIn("success", out)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
