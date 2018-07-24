@@ -7,7 +7,7 @@
 namespace plasma {
 
 namespace flatbuf {
-  enum class MessageType : int64_t;
+enum class MessageType : int64_t;
 };
 
 using arrow::Status;
@@ -69,7 +69,8 @@ Status ReadStatusRequest(uint8_t *data,
                          ObjectID object_ids[],
                          int64_t num_objects);
 
-std::unique_ptr<uint8_t[]> CreateObjectInfoBuffer(flatbuf::ObjectInfoT *object_info);
+std::unique_ptr<uint8_t[]> CreateObjectInfoBuffer(
+    flatbuf::ObjectInfoT *object_info);
 
 }  // namespace plasma
 
