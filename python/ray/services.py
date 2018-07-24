@@ -1046,8 +1046,8 @@ def start_objstore(node_ip_address,
         if sys.platform == "linux" or sys.platform == "linux2":
             # On linux we use /dev/shm, its size is half the size of the
             # physical memory. To not overflow it, we set the plasma memory
-            # limit to 0.4 times the size of the physical memory.
-            objstore_memory = int(system_memory * 0.4)
+            # limit to 0.35 times the size of the physical memory.
+            objstore_memory = int(system_memory * 0.35)
             # Compare the requested memory size to the memory available in
             # /dev/shm.
             shm_fd = os.open("/dev/shm", os.O_RDONLY)
@@ -1058,18 +1058,22 @@ def start_objstore(node_ip_address,
                 # blocks.
                 shm_avail = shm_fs_stats.f_bsize * shm_fs_stats.f_bavail
                 if objstore_memory > shm_avail:
+                    # Change the plasma store to use /tmp instead of /dev/shm
+                    # because the shared memory file system is too small. This
+                    # will allow Ray to run more easily in Docker.
+                    plasma_directory = "/tmp"
                     logger.warning(
-                        "Warning: Reducing object store memory because "
-                        "/dev/shm has only {} bytes available. You may be "
-                        "able to free up space by deleting files in "
-                        "/dev/shm. If you are inside a Docker container, "
+                        "Warning: The object store is using /tmp instead of "
+                        "/dev/shm because /dev/shm has only {} bytes "
+                        "available. This will probably slow down performance! "
+                        "You may be able to free up space by deleting files "
+                        "in /dev/shm. If you are inside a Docker container, "
                         "you may need to pass an argument with the flag "
                         "'--shm-size' to 'docker run'.".format(shm_avail))
-                    objstore_memory = int(shm_avail * 0.8)
             finally:
                 os.close(shm_fd)
         else:
-            objstore_memory = int(system_memory * 0.8)
+            objstore_memory = int(system_memory * 0.5)
     # Start the Plasma store.
     plasma_store_name, p1 = ray.plasma.start_plasma_store(
         plasma_store_memory=objstore_memory,
