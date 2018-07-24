@@ -4,7 +4,6 @@ from __future__ import print_function
 
 import ray
 from ray.tune import run_experiments, register_trainable
-from ray.tune.hpo_scheduler import HyperOptScheduler
 from ray.tune.search import HyperOptAlgorithm
 
 
@@ -43,7 +42,6 @@ if __name__ == '__main__':
             "stop": {
                 "training_iteration": 1
             },
-            "config":
         }
     }
     algo = HyperOptAlgorithm(space, reward_attr="neg_mean_loss")

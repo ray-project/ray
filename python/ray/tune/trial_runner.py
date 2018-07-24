@@ -271,6 +271,8 @@ class TrialRunner(object):
             else:
                 decision = self._scheduler_alg.on_trial_result(
                     self, trial, result)
+                self._search_alg.on_trial_result(
+                    trial.trial_id, result)
             trial.update_last_result(
                 result, terminate=(decision == TrialScheduler.STOP))
 
@@ -295,6 +297,7 @@ class TrialRunner(object):
                     self._try_recover(trial, error_msg)
                 else:
                     self._scheduler_alg.on_trial_error(self, trial)
+                    self._search_alg.on_trial_error(trial.trial_id)
                     self._stop_trial(trial, error=True, error_msg=error_msg)
 
     def _try_recover(self, trial, error_msg):
@@ -340,9 +343,10 @@ class TrialRunner(object):
         """Stops trial.
 
         Trials may be stopped at any time. If trial is in state PENDING
-        or PAUSED, calls `scheduler.on_trial_remove`. Otherwise waits for
-        result for the trial and calls `scheduler.on_trial_complete`
-        if RUNNING."""
+        or PAUSED, calls `on_trial_remove`  for scheduler and search alg.
+        Otherwise waits for result for the trial and calls
+        `on_trial_complete` for scheduler and search alg if RUNNING.
+        """
         error = False
         error_msg = None
 
@@ -350,6 +354,7 @@ class TrialRunner(object):
             return
         elif trial.status in [Trial.PENDING, Trial.PAUSED]:
             self._scheduler_alg.on_trial_remove(self, trial)
+            self._search_alg.on_trial_remove(trial.trial_id)
         elif trial.status is Trial.RUNNING:
             # NOTE: There should only be one...
             result_id = [
@@ -360,10 +365,12 @@ class TrialRunner(object):
                 result = ray.get(result_id)
                 trial.update_last_result(result, terminate=True)
                 self._scheduler_alg.on_trial_complete(self, trial, result)
+                self._search_alg.on_trial_complete(trial.trial_id, result)
             except Exception:
                 error_msg = traceback.format_exc()
                 print("Error processing event:", error_msg)
                 self._scheduler_alg.on_trial_error(self, trial)
+                self._search_alg.on_trial_error(trial.trial_id)
                 error = True
 
         self._stop_trial(trial, error=error, error_msg=error_msg)

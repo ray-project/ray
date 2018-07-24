@@ -9,7 +9,6 @@ from ray.tune.error import TuneError
 from ray.tune.hyperband import HyperBandScheduler
 from ray.tune.async_hyperband import AsyncHyperBandScheduler
 from ray.tune.median_stopping_rule import MedianStoppingRule
-from ray.tune.hpo_scheduler import HyperOptScheduler
 from ray.tune.trial import Trial, DEBUG_PRINT_INTERVAL
 from ray.tune.log_sync import wait_for_log_sync
 from ray.tune.trial_runner import TrialRunner
@@ -23,7 +22,6 @@ _SCHEDULERS = {
     "MedianStopping": MedianStoppingRule,
     "HyperBand": HyperBandScheduler,
     "AsyncHyperBand": AsyncHyperBandScheduler,
-    "HyperOpt": HyperOptScheduler,
 }
 
 
@@ -36,7 +34,7 @@ def _make_scheduler(args):
 
 
 def run_experiments(experiments,
-                    search_algos=None,
+                    search_algo=None,
                     scheduler=None,
                     with_server=False,
                     server_port=TuneServer.DEFAULT_PORT,
@@ -46,10 +44,10 @@ def run_experiments(experiments,
 
     Args:
         experiments (Experiment | list | dict): Experiments to run.
-        search_algos (SearchAlgorithm | list): Search Algorithm per experiment.
+        search_algo (SearchAlgorithm): Search Algorithm.
         scheduler (TrialScheduler): Scheduler for executing
             the experiment. Choose among FIFO (default), MedianStopping,
-            AsyncHyperBand, HyperBand, or HyperOpt.
+            AsyncHyperBand, HyperBand.
         with_server (bool): Starts a background Tune server. Needed for
             using the Client API.
         server_port (int): Port number for launching TuneServer.
@@ -77,15 +75,18 @@ def run_experiments(experiments,
 
     if (type(exp_list) is list
             and all(isinstance(exp, Experiment) for exp in exp_list)):
+        if len(exp_list) > 1 and search_algo is not None:
+            print("All experiments will be using the same Search Algorithm.")
         trial_generator = chain.from_iterable(
-            [generate_trials(exp.spec, algo, exp.name)
-             for algo, exp in zip(search_algos, exp_list)])
+            [generate_trials(exp.spec, search_algo, exp.name)
+             for exp in exp_list])
     else:
         raise TuneError("Invalid argument: {}".format(experiments))
 
     runner = TrialRunner(
-        scheduler,
         trial_generator,
+        scheduler=scheduler,
+        search_algo=search_algo,
         launch_web_server=with_server,
         server_port=server_port,
         verbose=verbose,
