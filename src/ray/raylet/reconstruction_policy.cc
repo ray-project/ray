@@ -15,13 +15,29 @@ ReconstructionPolicy::ReconstructionPolicy(
       client_id_(client_id),
       task_lease_pubsub_(task_lease_pubsub) {}
 
+void ReconstructionPolicy::SetTaskTimeout(
+    std::unordered_map<TaskID, ReconstructionTask>::iterator task_it,
+    int64_t timeout_ms) {
+  task_it->second.expires_at = current_time_ms() + timeout_ms;
+  auto timeout = boost::posix_time::milliseconds(timeout_ms);
+  task_it->second.reconstruction_timer->expires_from_now(timeout);
+  const TaskID task_id = task_it->first;
+  task_it->second.reconstruction_timer->async_wait(
+      [this, task_id](const boost::system::error_code &error) {
+        if (!error) {
+          HandleReconstructionTimeout(task_id);
+        }
+      });
+}
+
 void ReconstructionPolicy::Reconstruct(const TaskID &task_id) {
   auto it = listening_tasks_.find(task_id);
   RAY_CHECK(it != listening_tasks_.end());
   // TODO(swang): Suppress simultaneous attempts to reconstruct the task using
   // the task reconstruction log.
   reconstruction_handler_(task_id);
-  // TODO(swang): Reset the timer to wait for notifications again.
+  // Reset the timer to wait for notifications again.
+  SetTaskTimeout(it, initial_reconstruction_timeout_ms_);
 }
 
 void ReconstructionPolicy::HandleReconstructionTimeout(const TaskID &task_id) {
@@ -49,27 +65,15 @@ void ReconstructionPolicy::HandleTaskLeaseNotification(const TaskID &task_id,
     return;
   }
 
-  if (expires_at_ms != 0) {
-    RAY_CHECK(expires_at_ms >= it->second.expires_at);
-  }
-
   auto now_ms = current_time_ms();
   if (now_ms >= expires_at_ms) {
     // The current lease has expired. Reconstruct the task.
     Reconstruct(task_id);
   } else {
-    RAY_LOG(INFO) << "Lease renewal received " << task_id;
+    RAY_CHECK(expires_at_ms >= it->second.expires_at);
     // The current lease is still active. Reset the timer to the lease's
     // expiration time.
-    auto timeout = boost::posix_time::milliseconds(expires_at_ms - now_ms);
-    it->second.reconstruction_timer->expires_from_now(timeout);
-    it->second.expires_at = expires_at_ms;
-    it->second.reconstruction_timer->async_wait(
-        [this, task_id](const boost::system::error_code &error) {
-          if (!error) {
-            HandleReconstructionTimeout(task_id);
-          }
-        });
+    SetTaskTimeout(it, expires_at_ms - now_ms);
   }
 }
 
@@ -82,23 +86,12 @@ void ReconstructionPolicy::Listen(const ObjectID &object_id) {
     return;
   }
 
-  auto task_entry = ReconstructionTask(io_service_);
-  task_entry.created_objects.insert(object_id);
+  auto inserted = listening_tasks_.emplace(task_id, ReconstructionTask(io_service_));
+  it = inserted.first;
 
   // Set a timer for the task that created the object. If the lease for that
   // task expires, then reconstruction of that task will be triggered.
-  task_entry.expires_at = current_time_ms() + initial_reconstruction_timeout_ms_;
-  auto reconstruction_timeout =
-      boost::posix_time::milliseconds(initial_reconstruction_timeout_ms_);
-  task_entry.reconstruction_timer->expires_from_now(reconstruction_timeout);
-  task_entry.reconstruction_timer->async_wait(
-      [this, task_id](const boost::system::error_code &error) {
-        if (!error) {
-          HandleReconstructionTimeout(task_id);
-        }
-      });
-
-  listening_tasks_.emplace(task_id, std::move(task_entry));
+  SetTaskTimeout(it, initial_reconstruction_timeout_ms_);
 }
 
 void ReconstructionPolicy::Cancel(const ObjectID &object_id) {

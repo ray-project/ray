@@ -85,6 +85,11 @@ class ReconstructionPolicy : public ReconstructionPolicyInterface {
     std::unique_ptr<boost::asio::deadline_timer> reconstruction_timer;
   };
 
+  // Set the reconstruction timer for a task. If no task lease notifications
+  // are received within the timeout, then reconstruction will be triggered.
+  void SetTaskTimeout(std::unordered_map<TaskID, ReconstructionTask>::iterator task_it,
+                      int64_t timeout_ms);
+
   /// Reconstruct a task.
   void Reconstruct(const TaskID &task_id);
 
