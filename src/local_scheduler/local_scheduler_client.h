@@ -7,11 +7,6 @@
 #include "local_scheduler_shared.h"
 #include "ray/raylet/task_spec.h"
 
-enum class WorkerType {
-    Python,
-    Java
-};
-
 struct LocalSchedulerConnection {
   /// True if we should use the raylet code path and false otherwise.
   bool use_raylet;
