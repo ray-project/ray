@@ -16,7 +16,7 @@ namespace raylet {
 
 class ReconstructionPolicyInterface {
  public:
-  virtual void Listen(const ObjectID &object_id, int64_t reconstruction_timeout_ms) = 0;
+  virtual void Listen(const ObjectID &object_id) = 0;
   virtual void Cancel(const ObjectID &object_id) = 0;
   virtual ~ReconstructionPolicyInterface(){};
 };
@@ -25,25 +25,29 @@ class ReconstructionPolicy : public ReconstructionPolicyInterface {
  public:
   /// Create the reconstruction policy.
   ///
+  /// \param io_service The event loop to attach reconstruction timers to.
   /// \param reconstruction_handler The handler to call if a task needs to be
   /// re-executed.
-  // TODO(swang): This requires at minimum references to the Raylet's lineage
-  // cache and GCS client.
-  ReconstructionPolicy(std::function<void(const TaskID &)> reconstruction_handler,
-                       boost::asio::io_service &io_service, const ClientID &client_id,
+  /// \param initial_reconstruction_timeout_ms The initial timeout within which
+  /// a task lease notification must be received. Otherwise, reconstruction
+  /// will be triggered.
+  /// \param client_id The client ID to use when requesting notifications from
+  /// the GCS.
+  /// \param task_lease_pubsub The GCS pub-sub storage system to request task
+  /// lease notifications from.
+  ReconstructionPolicy(boost::asio::io_service &io_service,
+                       std::function<void(const TaskID &)> reconstruction_handler,
+                       int64_t initial_reconstruction_timeout_ms,
+                       const ClientID &client_id,
                        gcs::PubsubInterface<TaskID> &task_lease_pubsub);
 
   /// Listen for task lease notifications about an object that may require
-  /// reconstruction. If there is no currently active task lease and no
-  /// notifications are received within the given timeout, then the registered
-  /// task reconstruction handler will be called for the task that created the
-  /// object.
+  /// reconstruction. If no notifications are received within the initial
+  /// timeout, then the registered task reconstruction handler will be called
+  /// for the task that created the object.
   ///
   /// \param object_id The object to check for reconstruction.
-  /// \param reconstruction_timeout_ms The amount of time to wait for a task
-  /// lease notification. This parameter is ignored if there is already an
-  /// active task lease.
-  void Listen(const ObjectID &object_id, int64_t reconstruction_timeout_ms);
+  void Listen(const ObjectID &object_id);
 
   /// Cancel listening for an object. Notifications for the object will be
   /// ignored. This does not cancel a reconstruction attempt that is already in
@@ -81,15 +85,24 @@ class ReconstructionPolicy : public ReconstructionPolicyInterface {
     std::unique_ptr<boost::asio::deadline_timer> reconstruction_timer;
   };
 
+  /// Reconstruct a task.
   void Reconstruct(const TaskID &task_id);
 
+  /// Handle expiration of a task lease.
   void HandleReconstructionTimeout(const TaskID &task_id);
 
-  std::function<void(const TaskID &)> reconstruction_handler_;
+  /// The event loop.
   boost::asio::io_service &io_service_;
+  /// The handler to call for tasks that require reconstruction.
+  std::function<void(const TaskID &)> reconstruction_handler_;
+  /// The initial timeout within which a task lease notification must be
+  /// received. Otherwise, reconstruction will be triggered.
+  const int64_t initial_reconstruction_timeout_ms_;
+  /// The client ID to use when requesting notifications from the GCS.
   const ClientID client_id_;
+  /// The GCS pub-sub storage system to request task lease notifications from.
   gcs::PubsubInterface<TaskID> &task_lease_pubsub_;
-  int64_t initial_reconstruction_timeout_ms_;
+  /// The tasks that we are currently subscribed to in the GCS.
   std::unordered_map<TaskID, ReconstructionTask> listening_tasks_;
 };
 

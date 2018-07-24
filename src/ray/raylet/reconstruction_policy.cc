@@ -5,11 +5,13 @@ namespace ray {
 namespace raylet {
 
 ReconstructionPolicy::ReconstructionPolicy(
+    boost::asio::io_service &io_service,
     std::function<void(const TaskID &)> reconstruction_handler,
-    boost::asio::io_service &io_service, const ClientID &client_id,
+    int64_t initial_reconstruction_timeout_ms, const ClientID &client_id,
     gcs::PubsubInterface<TaskID> &task_lease_pubsub)
-    : reconstruction_handler_(reconstruction_handler),
-      io_service_(io_service),
+    : io_service_(io_service),
+      reconstruction_handler_(reconstruction_handler),
+      initial_reconstruction_timeout_ms_(initial_reconstruction_timeout_ms),
       client_id_(client_id),
       task_lease_pubsub_(task_lease_pubsub) {}
 
@@ -47,6 +49,10 @@ void ReconstructionPolicy::HandleTaskLeaseNotification(const TaskID &task_id,
     return;
   }
 
+  if (expires_at_ms != 0) {
+    RAY_CHECK(expires_at_ms >= it->second.expires_at);
+  }
+
   auto now_ms = current_time_ms();
   if (now_ms >= expires_at_ms) {
     // The current lease has expired. Reconstruct the task.
@@ -67,8 +73,7 @@ void ReconstructionPolicy::HandleTaskLeaseNotification(const TaskID &task_id,
   }
 }
 
-void ReconstructionPolicy::Listen(const ObjectID &object_id,
-                                  int64_t reconstruction_timeout_ms) {
+void ReconstructionPolicy::Listen(const ObjectID &object_id) {
   TaskID task_id = ComputeTaskId(object_id);
   auto it = listening_tasks_.find(task_id);
   // Add this object to the list of objects created by the same task.
@@ -82,9 +87,9 @@ void ReconstructionPolicy::Listen(const ObjectID &object_id,
 
   // Set a timer for the task that created the object. If the lease for that
   // task expires, then reconstruction of that task will be triggered.
+  task_entry.expires_at = current_time_ms() + initial_reconstruction_timeout_ms_;
   auto reconstruction_timeout =
-      boost::posix_time::milliseconds(reconstruction_timeout_ms);
-  task_entry.expires_at = current_time_ms() + reconstruction_timeout_ms;
+      boost::posix_time::milliseconds(initial_reconstruction_timeout_ms_);
   task_entry.reconstruction_timer->expires_from_now(reconstruction_timeout);
   task_entry.reconstruction_timer->async_wait(
       [this, task_id](const boost::system::error_code &error) {

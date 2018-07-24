@@ -54,7 +54,7 @@ void TaskDependencyManager::HandleRemoteDependencyRequired(const ObjectID &objec
       // If we haven't already, request the object manager to pull it from a
       // remote node.
       RAY_CHECK_OK(object_manager_.Pull(object_id));
-      reconstruction_policy_.Listen(object_id, initial_lease_period_ms_);
+      reconstruction_policy_.Listen(object_id);
     }
   }
 }
