@@ -45,4 +45,5 @@ if __name__ == '__main__':
         }
     }
     algo = HyperOptAlgorithm(space, reward_attr="neg_mean_loss")
-    run_experiments(config, verbose=False, search_alg=algo)
+    scheduler = AsyncHyperBandScheduler(reward_attr="neg_mean_loss")
+    run_experiments(config, scheduler=scheduler, search_alg=algo)
