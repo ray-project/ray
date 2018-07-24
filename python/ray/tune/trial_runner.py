@@ -91,6 +91,7 @@ class TrialRunner(object):
                 self._total_time, self._global_time_limit))
             return True
 
+        self._update_trial_queue()
         for t in self._trials:
             if t.status in [Trial.PENDING, Trial.RUNNING, Trial.PAUSED]:
                 return False
