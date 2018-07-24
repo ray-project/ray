@@ -115,16 +115,6 @@ class Lineage {
   boost::optional<const LineageEntry &> GetEntry(const TaskID &entry_id) const;
   boost::optional<LineageEntry &> GetEntryMutable(const UniqueID &task_id);
 
-  /// Set an entry in the lineage. If an entry with this ID already exists,
-  /// then the entry is overwritten if and only if the new entry has a higher
-  /// GCS status than the current. The current entry's object or task data will
-  /// also be overwritten.
-  ///
-  /// \param entry The new entry to set in the lineage, if its GCS status is
-  /// greater than the current entry.
-  /// \return Whether the entry was set.
-  bool SetEntry(const LineageEntry &entry);
-
    /// Set an entry in the lineage. If an entry with this ID already exists,
   /// then the entry is overwritten if and only if the new entry has a higher
   /// GCS status than the current. The current entry's object or task data will

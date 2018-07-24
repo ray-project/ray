@@ -73,6 +73,10 @@ class Task {
   /// false otherwise.
   bool DependsOn(const ObjectID &object_id) const;
 
+  /// Update the dynamic/mutable information for this task.
+  /// \param task Task structure with updated dynamic information.
+  void Update(const Task &task);
+
  private:
   /// Task execution specification, consisting of all dynamic/mutable
   /// information about this task determined at execution time..

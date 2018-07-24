@@ -70,10 +70,6 @@ boost::optional<LineageEntry &> Lineage::GetEntryMutable(const UniqueID &task_id
   }
 }
 
-bool Lineage::SetEntry(const LineageEntry &new_entry) {
-  return SetEntry(new_entry.TaskData(), new_entry.GetStatus());
-}
-
 bool Lineage::SetEntry(const Task &task, GcsStatus status) {
   // Get the status of the current entry at the key.
   auto task_id = task.GetTaskSpecification().TaskId();
@@ -82,8 +78,7 @@ bool Lineage::SetEntry(const Task &task, GcsStatus status) {
     if (current_entry->GetStatus() < status) {
       // If the new status is greater, then overwrite the current entry.
       current_entry->SetStatus(status);
-      current_entry->TaskDataMutable().GetTaskExecutionSpec() =
-        task.GetTaskExecutionSpecReadonly();
+      current_entry->TaskDataMutable().Update(task);
       return true;
     }
     return false;
@@ -162,7 +157,7 @@ void MergeLineageHelper(const UniqueID &task_id, const Lineage &lineage_from,
   // If the insert is successful, then continue the DFS. The insert will fail
   // if the new entry has an equal or lower GCS status than the current entry
   // in lineage_to. This also prevents us from traversing the same node twice.
-  if (lineage_to.SetEntry(*entry)) {
+  if (lineage_to.SetEntry(entry->TaskData(), entry->GetStatus())) {
     for (const auto &parent_id : parent_ids) {
       MergeLineageHelper(parent_id, lineage_from, lineage_to, stopping_condition);
     }
@@ -206,7 +201,7 @@ void LineageCache::AddReadyTask(const Task &task) {
 
   entry->SetStatus(GcsStatus::UNCOMMITTED_READY);
   // TaskSepc is immutable, just update TaskExecSpec.
-  entry->TaskDataMutable().GetTaskExecutionSpec() = task.GetTaskExecutionSpecReadonly();
+  entry->TaskDataMutable().Update(task);
   // Attempt to flush the task.
   bool flushed = FlushTask(task_id);
   if (!flushed) {
