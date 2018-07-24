@@ -497,8 +497,8 @@ class Worker(object):
                         if not self.use_raylet:
                             for unready_id in ray_object_ids_to_fetch[i:(
                                     i + fetch_request_size)]:
-                                (self.local_scheduler_client
-                                     .reconstruct_objects([unready_id], False))
+                                (self.local_scheduler_client.
+                                 reconstruct_objects([unready_id], False))
                             # Do another fetch for objects that aren't
                             # available locally yet, in case they were evicted
                             # since the last fetch. We divide the fetch into
@@ -512,8 +512,7 @@ class Worker(object):
                         else:
                             self.local_scheduler_client.reconstruct_objects(
                                 ray_object_ids_to_fetch[i:(
-                                    i + fetch_request_size)],
-                                False)
+                                    i + fetch_request_size)], False)
                     results = self.retrieve_and_deserialize(
                         object_ids_to_fetch,
                         max([
