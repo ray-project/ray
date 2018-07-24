@@ -63,6 +63,9 @@ class PolicyOptimizer(object):
         This should run for long enough to minimize call overheads (i.e., at
         least a couple seconds), but short enough to return control
         periodically to callers (i.e., at most a few tens of seconds).
+
+        Returns:
+            fetches (dict|None): Optional fetches from compute grads calls.
         """
 
         raise NotImplementedError
@@ -112,9 +115,10 @@ class PolicyOptimizer(object):
         """
 
         local_result = [func(self.local_evaluator, 0)]
-        remote_results = ray.get(
-            [ev.apply.remote(func, i + 1)
-             for i, ev in enumerate(self.remote_evaluators)])
+        remote_results = ray.get([
+            ev.apply.remote(func, i + 1)
+            for i, ev in enumerate(self.remote_evaluators)
+        ])
         return local_result + remote_results
 
     def _check_not_multiagent(self, sample_batch):

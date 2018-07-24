@@ -44,10 +44,19 @@ def _tune_error(msg):
     raise TuneError(msg)
 
 
-def make_parser(**kwargs):
-    """Returns a base argument parser for the ray.tune tool."""
+def make_parser(parser_creator=None, **kwargs):
+    """Returns a base argument parser for the ray.tune tool.
 
-    parser = argparse.ArgumentParser(**kwargs)
+    Args:
+        parser_creator: A constructor for the parser class.
+        kwargs: Non-positional args to be passed into the
+            parser class constructor.
+    """
+
+    if parser_creator:
+        parser = parser_creator(**kwargs)
+    else:
+        parser = argparse.ArgumentParser(**kwargs)
 
     # Note: keep this in sync with rllib/train.py
     parser.add_argument(

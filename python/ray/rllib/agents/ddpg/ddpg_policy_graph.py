@@ -14,7 +14,6 @@ from ray.rllib.models import ModelCatalog
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 
-
 A_SCOPE = "a_func"
 P_SCOPE = "p_func"
 P_TARGET_SCOPE = "target_p_func"
@@ -26,8 +25,8 @@ class PNetwork(object):
     """Maps an observations (i.e., state) to an action where each entry takes
     value from (0, 1) due to the sigmoid function."""
 
-    def __init__(
-            self, model, dim_actions, hiddens=[64, 64], activation="relu"):
+    def __init__(self, model, dim_actions, hiddens=[64, 64],
+                 activation="relu"):
         action_out = model.last_layer
         activation = tf.nn.__dict__[activation]
         for hidden in hiddens:
@@ -44,9 +43,14 @@ class ActionNetwork(object):
     for training, thus ignoring the batch_size issue when constructing a
     stochastic action."""
 
-    def __init__(
-            self, p_values, low_action, high_action, stochastic, eps,
-            theta=0.15, sigma=0.2):
+    def __init__(self,
+                 p_values,
+                 low_action,
+                 high_action,
+                 stochastic,
+                 eps,
+                 theta=0.15,
+                 sigma=0.2):
 
         # shape is [None, dim_action]
         deterministic_actions = (
@@ -65,15 +69,16 @@ class ActionNetwork(object):
         stochastic_actions = deterministic_actions + eps * (
             high_action - low_action) * exploration_value
 
-        self.actions = tf.cond(
-            stochastic, lambda: stochastic_actions,
-            lambda: deterministic_actions)
+        self.actions = tf.cond(stochastic, lambda: stochastic_actions,
+                               lambda: deterministic_actions)
 
 
 class QNetwork(object):
-    def __init__(
-            self, model, action_inputs,
-            hiddens=[64, 64], activation="relu"):
+    def __init__(self,
+                 model,
+                 action_inputs,
+                 hiddens=[64, 64],
+                 activation="relu"):
         q_out = tf.concat([model.last_layer, action_inputs], axis=1)
         activation = tf.nn.__dict__[activation]
         for hidden in hiddens:
@@ -84,14 +89,21 @@ class QNetwork(object):
 
 
 class ActorCriticLoss(object):
-    def __init__(
-            self, q_t, q_tp1, q_tp0, importance_weights, rewards, done_mask,
-            gamma=0.99, n_step=1, use_huber=False, huber_threshold=1.0):
+    def __init__(self,
+                 q_t,
+                 q_tp1,
+                 q_tp0,
+                 importance_weights,
+                 rewards,
+                 done_mask,
+                 gamma=0.99,
+                 n_step=1,
+                 use_huber=False,
+                 huber_threshold=1.0):
 
         q_t_selected = tf.squeeze(q_t, axis=len(q_t.shape) - 1)
 
-        q_tp1_best = tf.squeeze(
-            input=q_tp1, axis=len(q_tp1.shape) - 1)
+        q_tp1_best = tf.squeeze(input=q_tp1, axis=len(q_tp1.shape) - 1)
         q_tp1_best_masked = (1.0 - done_mask) * q_tp1_best
 
         # compute RHS of bellman equation
@@ -131,27 +143,20 @@ class DDPGPolicyGraph(TFPolicyGraph):
 
         def _build_q_network(obs, actions):
             return QNetwork(
-                ModelCatalog.get_model(obs, 1, config["model"]),
-                actions,
+                ModelCatalog.get_model(obs, 1, config["model"]), actions,
                 config["critic_hiddens"],
                 config["critic_hidden_activation"]).value
 
         def _build_p_network(obs):
             return PNetwork(
-                ModelCatalog.get_model(obs, 1, config["model"]),
-                dim_actions,
+                ModelCatalog.get_model(obs, 1, config["model"]), dim_actions,
                 config["actor_hiddens"],
                 config["actor_hidden_activation"]).action_scores
 
         def _build_action_network(p_values, stochastic, eps):
-            return ActionNetwork(
-                p_values,
-                low_action,
-                high_action,
-                stochastic,
-                eps,
-                config["exploration_theta"],
-                config["exploration_sigma"]).actions
+            return ActionNetwork(p_values, low_action, high_action, stochastic,
+                                 eps, config["exploration_theta"],
+                                 config["exploration_sigma"]).actions
 
         # Action inputs
         self.stochastic = tf.placeholder(tf.bool, (), name="stochastic")
@@ -262,12 +267,15 @@ class DDPGPolicyGraph(TFPolicyGraph):
             ("dones", self.done_mask),
             ("weights", self.importance_weights),
         ]
-        self.is_training = tf.placeholder_with_default(True, ())
         TFPolicyGraph.__init__(
-            self, observation_space, action_space, self.sess,
+            self,
+            observation_space,
+            action_space,
+            self.sess,
             obs_input=self.cur_observations,
-            action_sampler=self.output_actions, loss=self.loss.total_loss,
-            loss_inputs=self.loss_inputs, is_training=self.is_training)
+            action_sampler=self.output_actions,
+            loss=self.loss.total_loss,
+            loss_inputs=self.loss_inputs)
         self.sess.run(tf.global_variables_initializer())
 
         # Note that this encompasses both the policy and Q-value networks and
@@ -295,10 +303,10 @@ class DDPGPolicyGraph(TFPolicyGraph):
                 self.loss.actor_loss, var_list=self.p_func_vars)
             critic_grads_and_vars = self.critic_optimizer.compute_gradients(
                 self.loss.critic_loss, var_list=self.q_func_vars)
-        actor_grads_and_vars = [
-            (g, v) for (g, v) in actor_grads_and_vars if g is not None]
-        critic_grads_and_vars = [
-            (g, v) for (g, v) in critic_grads_and_vars if g is not None]
+        actor_grads_and_vars = [(g, v) for (g, v) in actor_grads_and_vars
+                                if g is not None]
+        critic_grads_and_vars = [(g, v) for (g, v) in critic_grads_and_vars
+                                 if g is not None]
         grads_and_vars = actor_grads_and_vars + critic_grads_and_vars
         return grads_and_vars
 

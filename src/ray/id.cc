@@ -72,7 +72,7 @@ std::string UniqueID::hex() const {
   return result;
 }
 
-plasma::UniqueID UniqueID::to_plasma_id() {
+plasma::UniqueID UniqueID::to_plasma_id() const {
   plasma::UniqueID result;
   std::memcpy(result.mutable_data(), &id_, kUniqueIDSize);
   return result;
@@ -81,6 +81,8 @@ plasma::UniqueID UniqueID::to_plasma_id() {
 bool UniqueID::operator==(const UniqueID &rhs) const {
   return std::memcmp(data(), rhs.data(), kUniqueIDSize) == 0;
 }
+
+bool UniqueID::operator!=(const UniqueID &rhs) const { return !(*this == rhs); }
 
 // This code is from https://sites.google.com/site/murmurhash/
 // and is public domain.

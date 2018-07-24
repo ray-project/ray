@@ -10,10 +10,10 @@ from ray.tune.hpo_scheduler import HyperOptScheduler
 def easy_objective(config, reporter):
     import time
     time.sleep(0.2)
+    assert type(config["activation"]) == str
     reporter(
         timesteps_total=1,
-        episode_reward_mean=-(
-            (config["height"] - 14)**2 + abs(config["width"] - 3)))
+        mean_loss=((config["height"] - 14)**2 + abs(config["width"] - 3)))
     time.sleep(0.2)
 
 
@@ -32,6 +32,7 @@ if __name__ == '__main__':
     space = {
         'width': hp.uniform('width', 0, 20),
         'height': hp.uniform('height', -100, 100),
+        'activation': hp.choice("activation", ["relu", "tanh"])
     }
 
     config = {
@@ -46,6 +47,6 @@ if __name__ == '__main__':
             }
         }
     }
-    hpo_sched = HyperOptScheduler()
+    hpo_sched = HyperOptScheduler(reward_attr="neg_mean_loss")
 
     run_experiments(config, verbose=False, scheduler=hpo_sched)

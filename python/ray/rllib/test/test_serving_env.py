@@ -83,8 +83,8 @@ class MultiServing(ServingEnv):
     def __init__(self, env_creator):
         self.env_creator = env_creator
         self.env = env_creator()
-        ServingEnv.__init__(
-            self, self.env.action_space, self.env.observation_space)
+        ServingEnv.__init__(self, self.env.action_space,
+                            self.env.observation_space)
 
     def run(self):
         envs = [self.env_creator() for _ in range(5)]
@@ -97,8 +97,7 @@ class MultiServing(ServingEnv):
                     eids[i] = uuid.uuid4().hex
                     self.start_episode(episode_id=eids[i])
                     cur_obs[i] = envs[i].reset()
-            actions = [
-                self.get_action(eids[i], cur_obs[i]) for i in active]
+            actions = [self.get_action(eids[i], cur_obs[i]) for i in active]
             for i, action in zip(active, actions):
                 obs, reward, done, _ = envs[i].step(action)
                 cur_obs[i] = obs
@@ -164,8 +163,7 @@ class TestServingEnv(unittest.TestCase):
         raise Exception("failed to improve reward")
 
     def testTrainCartpole(self):
-        register_env(
-            "test", lambda _: SimpleServing(gym.make("CartPole-v0")))
+        register_env("test", lambda _: SimpleServing(gym.make("CartPole-v0")))
         pg = PGAgent(env="test", config={"num_workers": 0})
         for i in range(100):
             result = pg.train()
@@ -176,8 +174,8 @@ class TestServingEnv(unittest.TestCase):
         raise Exception("failed to improve reward")
 
     def testTrainCartpoleMulti(self):
-        register_env(
-            "test2", lambda _: MultiServing(lambda: gym.make("CartPole-v0")))
+        register_env("test2",
+                     lambda _: MultiServing(lambda: gym.make("CartPole-v0")))
         pg = PGAgent(env="test2", config={"num_workers": 0})
         for i in range(100):
             result = pg.train()

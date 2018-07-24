@@ -145,7 +145,12 @@ setup(
     ],
     setup_requires=["cython >= 0.27, < 0.28"],
     extras_require=extras,
-    entry_points={"console_scripts": ["ray=ray.scripts.scripts:main"]},
+    entry_points={
+        "console_scripts": [
+            "ray=ray.scripts.scripts:main",
+            "rllib=ray.rllib.scripts:cli [rllib]"
+        ]
+    },
     include_package_data=True,
     zip_safe=False,
     license="Apache 2.0")
