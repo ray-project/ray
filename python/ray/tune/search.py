@@ -15,7 +15,6 @@ from ray.tune.error import TuneError
 
 class SearchAlgorithm():
     """This class is unaware of Tune trials."""
-    NULL_ID = "NULL_ID"
     NOT_READY = "NOT_READY"
 
     def try_suggest():
@@ -24,7 +23,7 @@ class SearchAlgorithm():
             Configuration for a trial
             Suggestion ID
         """
-        pass
+        return {}, None
 
     def on_trial_result():
         pass
@@ -37,6 +36,22 @@ class SearchAlgorithm():
 
 
 class HyperOptAlgorithm(SearchAlgorithm):
+    """A wrapper around HyperOpt to provide trial suggestions.
+
+    Requires HyperOpt to be installed via source.
+    Uses the Tree-structured Parzen Estimators algorithm, although can be
+    trivially extended to support any algorithm HyperOpt uses.
+    Externally added trials will not be tracked by HyperOpt.
+
+    Parameters:
+        max_concurrent (int | None): Number of maximum concurrent trials.
+            If None, then trials will be queued only if resources
+            are available.
+        reward_attr (str): The TrainingResult objective value attribute.
+            This refers to an increasing value, which is internally negated
+            when interacting with HyperOpt so that HyperOpt can "maximize"
+            this value.
+    """
 
     def __init__(
             self, space, max_concurrent=10,
@@ -54,7 +69,7 @@ class HyperOptAlgorithm(SearchAlgorithm):
 
     def try_suggest(self):
         if not self._num_live_trials() < self._max_concurrent:
-            return SearchAlgorithm.NOT_READY, SearchAlgorithm.NULL_ID
+            return SearchAlgorithm.NOT_READY, None
         new_ids = self._hpopt_trials.new_trial_ids(1)
         self._hpopt_trials.refresh()
 

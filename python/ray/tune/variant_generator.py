@@ -29,15 +29,24 @@ def to_argv(config):
     return argv
 
 
-def generate_trials(unresolved_spec, search_alg=None, output_path=''):
+def generate_trials(unresolved_spec, search_alg, output_path=''):
     """Wraps `generate_variants()` to return a Trial object for each variant.
+
+    Specified/sampled hyperparameters for the Search Algorithm will be
+    used to update the generated configuration.
 
     See also: generate_variants()
 
     Arguments:
         unresolved_spec (dict): Experiment spec conforming to the argument
             schema defined in `ray.tune.config_parser`.
+        search_alg (SearchAlgorithm): SearchAlgorithm for hyperparameters.
         output_path (str): Path where to store experiment outputs.
+
+    Yields:
+        Trial|None: If search_alg is specified but cannot be queried at
+            a certain time (i.e. due to contrained concurrency), this will
+            yield None. Otherwise, it will yield a trial.
     """
 
     if "run" not in unresolved_spec:
@@ -58,16 +67,16 @@ def generate_trials(unresolved_spec, search_alg=None, output_path=''):
                 raise TuneError("Error parsing args, see above message", spec)
 
             new_config = copy.deepcopy(spec.get("config", {}))
-            trial_id = None
-            if search_alg:
-                # We hold the other resolved vars until suggestion is ready.
-                while True:
-                    suggested_config, trial_id = search_alg.try_suggest()
-                    if suggested_config is SearchAlgorithm.NOT_READY:
-                        yield None
-                    else:
-                        break
-                new_config.update(suggested_config)
+
+            # We hold the other resolved vars until suggestion is ready.
+            while True:
+                suggested_config, trial_id = search_alg.try_suggest()
+                if suggested_config is SearchAlgorithm.NOT_READY:
+                    yield None
+                else:
+                    new_config.update(suggested_config)
+                    break
+
             if resolved_vars:
                 experiment_tag = "{}_{}".format(i, resolved_vars)
             else:

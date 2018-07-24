@@ -6,6 +6,7 @@ import time
 from itertools import chain
 
 from ray.tune.error import TuneError
+from ray.tune.search import SearchAlgorithm
 from ray.tune.hyperband import HyperBandScheduler
 from ray.tune.async_hyperband import AsyncHyperBandScheduler
 from ray.tune.median_stopping_rule import MedianStoppingRule
@@ -60,9 +61,11 @@ def run_experiments(experiments,
     Returns:
         List of Trial objects, holding data for each executed trial.
     """
-
     if scheduler is None:
         scheduler = FIFOScheduler()
+
+    if search_alg is None:
+        search_alg = SearchAlgorithm()
 
     exp_list = experiments
     if isinstance(experiments, Experiment):
@@ -75,7 +78,7 @@ def run_experiments(experiments,
 
     if (type(exp_list) is list
             and all(isinstance(exp, Experiment) for exp in exp_list)):
-        if len(exp_list) > 1 and search_alg is not None:
+        if len(exp_list) > 1:
             print("All experiments will be using the same Search Algorithm.")
         trial_generator = chain.from_iterable(
             [generate_trials(exp.spec, search_alg, exp.name)
