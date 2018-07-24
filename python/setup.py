@@ -131,7 +131,7 @@ setup(
     # The BinaryDistribution argument triggers build_ext.
     distclass=BinaryDistribution,
     install_requires=[
-        "numpy",
+        "numpy >= 1.10.4",
         "funcsigs",
         "click",
         "colorama",
