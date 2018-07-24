@@ -177,9 +177,13 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionSuppressed) {
   // Listen for an object.
   reconstruction_policy_->Listen(object_id);
   // Send the reconstruction manager heartbeats about the object.
-  SetPeriodicTimer(reconstruction_timeout_ms_ / 2, [this, object_id]() {
-    reconstruction_policy_->HandleTaskLeaseNotification(
-        object_id, current_time_ms() + reconstruction_timeout_ms_);
+  SetPeriodicTimer(reconstruction_timeout_ms_ / 2, [this, task_id]() {
+    auto task_lease_data = std::make_shared<TaskLeaseDataT>();
+    task_lease_data->node_manager_id = ClientID::from_random().hex();
+    task_lease_data->acquired_at = current_time_ms();
+    task_lease_data->expires_at =
+        task_lease_data->acquired_at + reconstruction_timeout_ms_;
+    mock_gcs_.Add(DriverID::nil(), task_id, task_lease_data);
   });
   // Run the test for much longer than the reconstruction timeout.
   Run(reconstruction_timeout_ms_ * 2);
