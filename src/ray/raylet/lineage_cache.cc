@@ -47,9 +47,8 @@ Lineage::Lineage(const protocol::ForwardTaskRequest &task_request) {
   // Deserialize and set entries for the uncommitted tasks.
   auto tasks = task_request.uncommitted_tasks();
   for (auto it = tasks->begin(); it != tasks->end(); it++) {
-    auto task = Task(**it);
-    LineageEntry entry(task, GcsStatus::UNCOMMITTED_REMOTE);
-    RAY_CHECK(SetEntry(std::move(entry)));
+    const auto &task = **it;
+    RAY_CHECK(SetEntry(task, GcsStatus::UNCOMMITTED_REMOTE));
   }
 }
 
@@ -71,24 +70,27 @@ boost::optional<LineageEntry &> Lineage::GetEntryMutable(const UniqueID &task_id
   }
 }
 
-bool Lineage::SetEntry(LineageEntry &&new_entry) {
-  // Get the status of the current entry at the key.
-  auto task_id = new_entry.GetEntryId();
-  GcsStatus current_status = GcsStatus::NONE;
-  auto current_entry = PopEntry(task_id);
-  if (current_entry) {
-    current_status = current_entry->GetStatus();
-  }
+bool Lineage::SetEntry(const LineageEntry &new_entry) {
+  return SetEntry(new_entry.TaskData(), new_entry.GetStatus());
+}
 
-  if (current_status < new_entry.GetStatus()) {
-    // If the new status is greater, then overwrite the current entry.
+bool Lineage::SetEntry(const Task &task, GcsStatus status) {
+  // Get the status of the current entry at the key.
+  auto task_id = task.GetTaskSpecification().TaskId();
+  auto current_entry = GetEntryMutable(task_id);
+  if (current_entry) {
+    if (current_entry->GetStatus() < status) {
+      // If the new status is greater, then overwrite the current entry.
+      current_entry->SetStatus(status);
+      current_entry->TaskDataMutable().GetTaskExecutionSpec() =
+        task.GetTaskExecutionSpecReadonly();
+      return true;
+    }
+    return false;
+  } else {
+    LineageEntry new_entry(task, status);
     entries_.emplace(std::make_pair(task_id, std::move(new_entry)));
     return true;
-  } else {
-    // If the new status is not greater, then the new entry is invalid. Replace
-    // the current entry at the key.
-    entries_.emplace(std::make_pair(task_id, std::move(*current_entry)));
-    return false;
   }
 }
 
@@ -156,12 +158,11 @@ void MergeLineageHelper(const UniqueID &task_id, const Lineage &lineage_from,
   }
 
   // Insert a copy of the entry into lineage_to.
-  LineageEntry entry_copy = *entry;
-  auto parent_ids = entry_copy.GetParentTaskIds();
+  auto parent_ids = entry->GetParentTaskIds();
   // If the insert is successful, then continue the DFS. The insert will fail
   // if the new entry has an equal or lower GCS status than the current entry
   // in lineage_to. This also prevents us from traversing the same node twice.
-  if (lineage_to.SetEntry(std::move(entry_copy))) {
+  if (lineage_to.SetEntry(*entry)) {
     for (const auto &parent_id : parent_ids) {
       MergeLineageHelper(parent_id, lineage_from, lineage_to, stopping_condition);
     }
@@ -192,20 +193,20 @@ void LineageCache::AddWaitingTask(const Task &task, const Lineage &uncommitted_l
 
   // Add the submitted task to the lineage cache as UNCOMMITTED_WAITING. It
   // should be marked as UNCOMMITTED_READY once the task starts execution.
-  LineageEntry task_entry(task, GcsStatus::UNCOMMITTED_WAITING);
-  RAY_CHECK(lineage_.SetEntry(std::move(task_entry)));
+  RAY_CHECK(lineage_.SetEntry(task, GcsStatus::UNCOMMITTED_WAITING));
 }
 
 void LineageCache::AddReadyTask(const Task &task) {
   const TaskID task_id = task.GetTaskSpecification().TaskId();
 
   // Tasks can only become READY if they were in WAITING.
-  auto entry = lineage_.GetEntry(task_id);
+  auto entry = lineage_.GetEntryMutable(task_id);
   RAY_CHECK(entry);
   RAY_CHECK(entry->GetStatus() == GcsStatus::UNCOMMITTED_WAITING);
 
-  auto new_entry = LineageEntry(task, GcsStatus::UNCOMMITTED_READY);
-  RAY_CHECK(lineage_.SetEntry(std::move(new_entry)));
+  entry->SetStatus(GcsStatus::UNCOMMITTED_READY);
+  // TaskSepc is immutable, just update TaskExecSpec.
+  entry->TaskDataMutable().GetTaskExecutionSpec() = task.GetTaskExecutionSpecReadonly();
   // Attempt to flush the task.
   bool flushed = FlushTask(task_id);
   if (!flushed) {
@@ -231,7 +232,11 @@ uint64_t LineageCache::CountUnsubscribedLineage(const TaskID &task_id) const {
 }
 
 void LineageCache::RemoveWaitingTask(const TaskID &task_id) {
-  auto entry = lineage_.PopEntry(task_id);
+  auto entry = lineage_.GetEntryMutable(task_id);
+  if (!entry) {
+    return;
+  }
+
   // It's only okay to remove a task that is waiting for execution.
   // TODO(swang): Is this necessarily true when there is reconstruction?
   RAY_CHECK(entry->GetStatus() == GcsStatus::UNCOMMITTED_WAITING);
@@ -239,7 +244,6 @@ void LineageCache::RemoveWaitingTask(const TaskID &task_id) {
   // completely in case another task is submitted locally that depends on this
   // one.
   entry->ResetStatus(GcsStatus::UNCOMMITTED_REMOTE);
-  RAY_CHECK(lineage_.SetEntry(std::move(*entry)));
 
   // Request a notification for every max_lineage_size_ tasks,
   // so that the task and its uncommitted lineage can be evicted
@@ -318,9 +322,9 @@ bool LineageCache::FlushTask(const TaskID &task_id) {
 
     // We successfully wrote the task, so mark it as committing.
     // TODO(swang): Use a batched interface and write with all object entries.
-    auto entry = lineage_.PopEntry(task_id);
+    auto entry = lineage_.GetEntryMutable(task_id);
+    RAY_CHECK(entry);
     RAY_CHECK(entry->SetStatus(GcsStatus::COMMITTING));
-    RAY_CHECK(lineage_.SetEntry(std::move(*entry)));
   }
   return all_arguments_committed;
 }
