@@ -34,7 +34,7 @@ def _make_scheduler(args):
 
 
 def run_experiments(experiments,
-                    search_algo=None,
+                    search_alg=None,
                     scheduler=None,
                     with_server=False,
                     server_port=TuneServer.DEFAULT_PORT,
@@ -44,7 +44,7 @@ def run_experiments(experiments,
 
     Args:
         experiments (Experiment | list | dict): Experiments to run.
-        search_algo (SearchAlgorithm): Search Algorithm.
+        search_alg (SearchAlgorithm): Search Algorithm.
         scheduler (TrialScheduler): Scheduler for executing
             the experiment. Choose among FIFO (default), MedianStopping,
             AsyncHyperBand, HyperBand.
@@ -75,10 +75,10 @@ def run_experiments(experiments,
 
     if (type(exp_list) is list
             and all(isinstance(exp, Experiment) for exp in exp_list)):
-        if len(exp_list) > 1 and search_algo is not None:
+        if len(exp_list) > 1 and search_alg is not None:
             print("All experiments will be using the same Search Algorithm.")
         trial_generator = chain.from_iterable(
-            [generate_trials(exp.spec, search_algo, exp.name)
+            [generate_trials(exp.spec, search_alg, exp.name)
              for exp in exp_list])
     else:
         raise TuneError("Invalid argument: {}".format(experiments))
@@ -86,7 +86,7 @@ def run_experiments(experiments,
     runner = TrialRunner(
         trial_generator,
         scheduler=scheduler,
-        search_algo=search_algo,
+        search_alg=search_alg,
         launch_web_server=with_server,
         server_port=server_port,
         verbose=verbose,
