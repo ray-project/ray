@@ -129,7 +129,10 @@ matrix:
         - python -m pytest python/ray/test/test_queue.py
         - python -m pytest test/xray_test.py
 
-        - pytest -v test/runtest.py
+        # The --assert=plain here is because pytest's assertion
+        # rewriting mechanism seems to mess up on this file,
+        # see https://api.travis-ci.org/v3/job/408275838/log.txt
+        - pytest -v --assert=plain test/runtest.py
         - pytest test/array_test.py
         - pytest test/actor_test.py
         - pytest test/autoscaler_test.py
@@ -189,7 +192,10 @@ script:
   - python -m pytest python/ray/test/test_queue.py
   - python -m pytest test/xray_test.py
 
-  - pytest -v test/runtest.py
+  # The --assert=plain here is because pytest's assertion
+  # rewriting mechanism seems to mess up on this file,
+  # see https://api.travis-ci.org/v3/job/408275838/log.txt
+  - pytest --assert=plain -v test/runtest.py
   - pytest test/array_test.py
   - pytest test/actor_test.py
   - pytest test/autoscaler_test.py
