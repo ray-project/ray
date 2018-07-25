@@ -523,9 +523,9 @@ class Monitor(object):
         driver_task_ids = task_table_infos.keys()
 
         # Get the list of objects returned by driver tasks.
-        driver_object_ids = []
+        driver_object_ids = set()
         for task_info in task_table_infos.values():
-            driver_object_ids.extend([
+            driver_object_ids |= set([
                 task_info.Returns(i) for i in range(task_info.ReturnsLength())
             ])
 
@@ -540,15 +540,15 @@ class Monitor(object):
                 ray.gcs_utils.ObjectTableData.GetRootAsObjectTableData(
                     entry[0], 0))
             object_id = key.split(xray_object_table_prefix)[1]
-            if not object_table_data.IsPut():
-                continue
-            all_put_objects.append((object_id, object_table_data.TaskId()))
+            task_id = ray.local_scheduler.compute_task_id(
+                ray.ObjectID(object_id)).id()
+            all_put_objects.append((object_id, task_id))
 
         # Keep put objects from relevant tasks.
         driver_task_ids_set = set(driver_task_ids)
         for object_id, task_id in all_put_objects:
             if task_id in driver_task_ids_set:
-                driver_object_ids.append(object_id)
+                driver_object_ids.add(object_id)
 
         # Clean up entries for non-empty objects.
         non_empty_objects = []

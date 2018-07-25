@@ -491,6 +491,8 @@ static PyTypeObject PyLocalSchedulerClientType = {
 static PyMethodDef local_scheduler_methods[] = {
     {"check_simple_value", check_simple_value, METH_VARARGS,
      "Should the object be passed by value?"},
+    {"compute_task_id", compute_task_id, METH_VARARGS,
+     "Return the task ID of an object ID."},
     {"task_from_string", PyTask_from_string, METH_VARARGS,
      "Creates a Python PyTask object from a string representation of "
      "TaskSpec."},

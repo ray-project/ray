@@ -48,6 +48,7 @@ class MonitorTest(unittest.TestCase):
             ray.get(ray.put(1111))
             attempts = 0
             while (2, 1, summary_start[2]) != StateSummary():
+                time.sleep(0.1)
                 attempts += 1
                 if attempts == max_attempts_before_failing:
                     success.value = False
@@ -61,6 +62,7 @@ class MonitorTest(unittest.TestCase):
             # 1 new function.
             attempts = 0
             while (2, 1, summary_start[2] + 1) != StateSummary():
+                time.sleep(0.1)
                 attempts += 1
                 if attempts == max_attempts_before_failing:
                     success.value = False
@@ -69,6 +71,7 @@ class MonitorTest(unittest.TestCase):
             ray.get(f.remote())
             attempts = 0
             while (4, 2, summary_start[2] + 1) != StateSummary():
+                time.sleep(0.1)
                 attempts += 1
                 if attempts == max_attempts_before_failing:
                     success.value = False
