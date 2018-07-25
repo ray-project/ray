@@ -16,7 +16,7 @@ def easy_objective(config, reporter):
         reporter(
             timesteps_total=i,
             mean_loss=((config["height"] - 14)**2 + abs(config["width"] - 3)))
-    time.sleep(0.2)
+        time.sleep(0.2)
 
 
 if __name__ == '__main__':
