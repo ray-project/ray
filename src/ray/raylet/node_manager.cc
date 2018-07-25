@@ -507,22 +507,20 @@ void NodeManager::ProcessClientMessage(
     }
 
     if (!required_object_ids.empty()) {
-      auto current_task_id = TaskID::nil();
       std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
       if (worker) {
-        // The client is a worker.
-        current_task_id = worker->GetAssignedTaskId();
-        // Mark the worker as blocked. This temporarily releases any resources
-        // that the worker holds while it is blocked.
+        // The client is a worker.  Mark the worker as blocked. This
+        // temporarily releases any resources that the worker holds while it is
+        // blocked.
         HandleWorkerBlocked(worker);
       } else {
         // The client is a driver. Drivers do not hold resources, so we simply
         // mark the driver as blocked.
         worker = worker_pool_.GetRegisteredDriver(client);
         RAY_CHECK(worker);
-        current_task_id = worker->GetAssignedTaskId();
         worker->MarkBlocked();
       }
+      const TaskID current_task_id = worker->GetAssignedTaskId();
       RAY_CHECK(!current_task_id.is_nil());
       // Subscribe to the objects required by the ray.get. These objects will
       // be fetched and/or reconstructed as necessary, until the objects become
@@ -533,16 +531,15 @@ void NodeManager::ProcessClientMessage(
   } break;
   case protocol::MessageType::NotifyUnblocked: {
     std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
-    TaskID current_task_id = TaskID::nil();
 
     // Re-acquire the CPU resources for the task that was assigned to the
     // unblocked worker.
     // TODO(swang): Because the object dependencies are tracked in the task
     // dependency manager, we could actually remove this message entirely and
     // instead unblock the worker once all the objects become available.
+    bool was_blocked;
     if (worker) {
-      // The client is a worker.
-      current_task_id = worker->GetAssignedTaskId();
+      was_blocked = worker->IsBlocked();
       // Mark the worker as unblocked. This returns the temporarily released
       // resources to the worker.
       HandleWorkerUnblocked(worker);
@@ -551,13 +548,16 @@ void NodeManager::ProcessClientMessage(
       // mark the driver as unblocked.
       worker = worker_pool_.GetRegisteredDriver(client);
       RAY_CHECK(worker);
-      current_task_id = worker->GetAssignedTaskId();
+      was_blocked = worker->IsBlocked();
       worker->MarkUnblocked();
     }
-    RAY_CHECK(!current_task_id.is_nil());
     // Unsubscribe to the objects. Any fetch or reconstruction operations to
     // make the objects local are canceled.
-    task_dependency_manager_.UnsubscribeDependencies(current_task_id);
+    if (was_blocked) {
+      const TaskID current_task_id = worker->GetAssignedTaskId();
+      RAY_CHECK(!current_task_id.is_nil());
+      task_dependency_manager_.UnsubscribeDependencies(current_task_id);
+    }
   } break;
   case protocol::MessageType::WaitRequest: {
     // Read the data.
@@ -766,7 +766,10 @@ void NodeManager::HandleWorkerBlocked(std::shared_ptr<Worker> worker) {
 }
 
 void NodeManager::HandleWorkerUnblocked(std::shared_ptr<Worker> worker) {
-  RAY_CHECK(worker->IsBlocked());
+  RAY_CHECK(worker);
+  if (!worker->IsBlocked()) {
+    return;
+  }
 
   const auto task = local_queues_.RemoveTask(worker->GetAssignedTaskId());
   // Get the CPU resources required by the running task.
