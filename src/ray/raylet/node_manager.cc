@@ -1139,24 +1139,21 @@ void NodeManager::ForwardTaskOrResubmit(const Task &task,
     RAY_LOG(INFO) << "Failed to forward task " << task_id << " to node manager "
                   << node_manager_id;
 
-    // Create a timer to resubmit the task in a little bit.
-    auto it_and_inserted = task_resubmission_timers_.emplace(task_id, io_service_);
-    auto it = it_and_inserted.first;
-    bool inserted = it_and_inserted.second;
-    RAY_CHECK(inserted);
-
+    // Create a timer to resubmit the task in a little bit. TODO(rkn): Really
+    // this should be a unique_ptr instead of a shared_ptr. However, it's a
+    // little harder to move unique_ptrs into lambdas.
+    auto retry_timer = std::make_shared<boost::asio::deadline_timer>(io_service_);
     auto retry_duration = boost::posix_time::milliseconds(
         RayConfig::instance().node_manager_forward_task_retry_timeout_milliseconds());
-    it->second.expires_from_now(retry_duration);
-    it->second.async_wait([this, task, task_id](const boost::system::error_code &error) {
-      // Timer killing will receive the boost::asio::error::operation_aborted,
-      // we only handle the timeout event.
-      RAY_CHECK(!error);
-      RAY_LOG(INFO) << "In ForwardTask retry callback for task " << task_id;
-      EnqueuePlaceableTask(task);
-      // Now that the timer has fired, deallocate the timer.
-      RAY_CHECK(task_resubmission_timers_.erase(task_id) == 1);
-    });
+    retry_timer->expires_from_now(retry_duration);
+    retry_timer->async_wait(
+        [this, task, task_id, retry_timer](const boost::system::error_code &error) {
+          // Timer killing will receive the boost::asio::error::operation_aborted,
+          // we only handle the timeout event.
+          RAY_CHECK(!error);
+          RAY_LOG(INFO) << "In ForwardTask retry callback for task " << task_id;
+          EnqueuePlaceableTask(task);
+        });
   }
 }
 

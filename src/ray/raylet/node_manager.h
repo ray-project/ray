@@ -187,12 +187,6 @@ class NodeManager {
   /// A mapping from actor ID to registration information about that actor
   /// (including which node manager owns it).
   std::unordered_map<ActorID, ActorRegistration> actor_registry_;
-  /// If we attempt to forward a task to another node and the forward fails,
-  /// then we create a timer to resubmit the task after some time. That timer is
-  /// stored here and is deallocated once the timer fires. TODO(rkn): This feels
-  /// too much like manual memory management. There must be a cleaner way of
-  /// doing this.
-  std::unordered_map<TaskID, boost::asio::deadline_timer> task_resubmission_timers_;
 };
 
 }  // namespace raylet
