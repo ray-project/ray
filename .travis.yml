@@ -133,7 +133,7 @@ matrix:
         - pytest test/array_test.py
         - pytest test/actor_test.py
         - pytest test/autoscaler_test.py
-        - pytest test/tensorflow_test.py
+        - python test/tensorflow_test.py
         - pytest test/failure_test.py
         - pytest test/microbenchmarks.py
         - python -m pytest test/stress_tests.py
@@ -193,7 +193,7 @@ script:
   - pytest test/array_test.py
   - pytest test/actor_test.py
   - pytest test/autoscaler_test.py
-  - pytest test/tensorflow_test.py
+  - python test/tensorflow_test.py
   - pytest test/failure_test.py
   - pytest test/microbenchmarks.py
   - python -m pytest test/stress_tests.py
