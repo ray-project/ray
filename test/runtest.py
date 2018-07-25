@@ -518,7 +518,6 @@ class APITest(unittest.TestCase):
             self.assertFalse(hasattr(c2, "method1"))
 
     def testKeywordArgs(self):
-
         @ray.remote
         def keyword_fct1(a, b="hello"):
             return "{} {}".format(a, b)
@@ -605,7 +604,6 @@ class APITest(unittest.TestCase):
         self.assertEqual(ray.get(f3.remote(4)), 4)
 
     def testVariableNumberOfArgs(self):
-
         @ray.remote
         def varargs_fct1(*a):
             return " ".join(map(str, a))
@@ -615,6 +613,7 @@ class APITest(unittest.TestCase):
             return " ".join(map(str, b))
 
         try:
+
             @ray.remote
             def kwargs_throw_exception(**c):
                 return ()
@@ -652,7 +651,6 @@ class APITest(unittest.TestCase):
         self.assertEqual(ray.get(f2.remote(1, 2, 3, 4)), (1, 2, (3, 4)))
 
     def testNoArgs(self):
-
         @ray.remote
         def no_op():
             pass
@@ -1229,11 +1227,9 @@ class LocalModeTest(unittest.TestCase):
         ray.shutdown()
 
     def testLocalMode(self):
-
         @ray.remote
         def local_mode_f():
             return np.array([0, 0])
-
 
         @ray.remote
         def local_mode_g(x):
