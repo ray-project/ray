@@ -2230,7 +2230,7 @@ class GlobalStateAPI(unittest.TestCase):
         function_table_entry = function_table[task_spec["FunctionID"]]
         self.assertEqual(function_table_entry["Name"], "runtest.f")
         self.assertEqual(function_table_entry["DriverID"], driver_id)
-        self.assertEqual(function_table_entry["Module"], "__main__")
+        self.assertEqual(function_table_entry["Module"], "runtest")
 
         self.assertEqual(task_table[task_id],
                          ray.global_state.task_table(task_id))
