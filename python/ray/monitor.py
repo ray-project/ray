@@ -507,6 +507,7 @@ class Monitor(object):
             # Parse the message.
             channel = message["channel"]
             data = message["data"]
+            print("MESSAGE", channel, data)
 
             # Determine the appropriate message handler.
             message_handler = None
