@@ -3,7 +3,6 @@
 #include "common/state/ray_config.h"
 #include "ray/raylet/raylet.h"
 #include "ray/status.h"
-
 #include <boost/algorithm/string.hpp>
 
 #ifndef RAYLET_TEST
@@ -82,8 +81,11 @@ int main(int argc, char *argv[]) {
   // Destroy the Raylet on a SIGTERM. The pointer to main_service is
   // guaranteed to be valid since this function will run the event loop
   // instead of returning immediately.
-  auto handler = [&main_service](const boost::system::error_code &error,
-                                 int signal_number) { main_service.stop(); };
+  auto handler = [&main_service, &raylet_socket_name](const boost::system::error_code &error,
+                                 int signal_number) {
+    main_service.stop();
+    remove(raylet_socket_name.c_str());
+  };
   boost::asio::signal_set signals(main_service, SIGTERM);
   signals.async_wait(handler);
 

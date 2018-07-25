@@ -45,5 +45,5 @@ public interface StateStoreProxy {
    * @throws Exception No redis client exception.
    */
   List<AddressInfo> getAddressInfoHelper(final String nodeIpAddress,
-                                         final String redisAddress) throws Exception;
+                      final String redisAddress) throws Exception;
 }

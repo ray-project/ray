@@ -27,7 +27,7 @@ public class RayletStateStoreProxyImpl extends BaseStateStoreProxyImpl {
 
   @Override
   public List<AddressInfo> getAddressInfoHelper(final String nodeIpAddress,
-                                                final String redisAddress) throws Exception {
+      final String redisAddress) throws Exception {
     if (this.rayKvStore == null) {
       throw new Exception("no redis client when use getAddressInfoHelper");
     }
