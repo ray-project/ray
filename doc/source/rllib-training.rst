@@ -108,7 +108,7 @@ Here is an example of the basic usage:
            checkpoint = agent.save()
            print("checkpoint saved at", checkpoint)
 
-All RLlib agents implement the tune Trainable API, which means they support incremental training and checkpointing. This enables them to be easily used in experiments with Ray Tune.
+All RLlib agents implement the Tune Trainable API, which means they support incremental training and checkpointing. This enables them to be easily used in experiments with Tune.
 
 Accessing Global State
 ~~~~~~~~~~~~~~~~~~~~~~

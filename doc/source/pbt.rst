@@ -1,13 +1,13 @@
 Population Based Training
 =========================
 
-Ray Tune includes a distributed implementation of `Population Based Training (PBT) <https://deepmind.com/blog/population-based-training-neural-networks>`__.
+Tune includes a distributed implementation of `Population Based Training (PBT) <https://deepmind.com/blog/population-based-training-neural-networks>`__.
 
 
 PBT Scheduler
 -------------
 
-Ray Tune's PBT scheduler can be plugged in on top of an existing grid or random search experiment. This can be enabled by setting the ``scheduler`` parameter of ``run_experiments``, e.g.
+Tune's PBT scheduler can be plugged in on top of an existing grid or random search experiment. This can be enabled by setting the ``scheduler`` parameter of ``run_experiments``, e.g.
 
 .. code-block:: python
 

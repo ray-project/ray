@@ -1,7 +1,7 @@
-Ray Tune: Hyperparameter Optimization Framework
+Tune: Hyperparameter Optimization Framework
 ===============================================
 
-Ray Tune is a scalable hyperparameter optimization framework for reinforcement learning and deep learning. Go from running one experiment on a single machine to running on a large cluster with efficient search algorithms without changing your code.
+Tune is a scalable hyperparameter optimization framework for reinforcement learning and deep learning. Go from running one experiment on a single machine to running on a large cluster with efficient search algorithms without changing your code.
 
 
 Getting Started
@@ -10,7 +10,7 @@ Getting Started
 Installation
 ~~~~~~~~~~~~
 
-You'll need to first `install ray <installation.html>`__ to import Ray Tune.
+You'll need to first `install ray <installation.html>`__ to import Tune.
 
 Quick Start
 ~~~~~~~~~~~
@@ -35,7 +35,7 @@ Quick Start
     })
 
 
-For the function you wish to tune, add a two-line modification (note that we use PyTorch as an example but Ray Tune works with any deep learning framework):
+For the function you wish to tune, add a two-line modification (note that we use PyTorch as an example but Tune works with any deep learning framework):
 
 .. code-block:: python
    :emphasize-lines: 1,14
@@ -55,7 +55,7 @@ For the function you wish to tune, add a two-line modification (note that we use
             accuracy = eval_accuracy(...)
             reporter(timesteps_total=idx, mean_accuracy=accuracy) # report metrics
 
-This PyTorch script runs a small grid search over the ``train_func`` function using Ray Tune, reporting status on the command line until the stopping condition of ``mean_accuracy >= 99`` is reached (for metrics like `loss` that decrease over time, specify `neg_mean_loss <https://github.com/ray-project/ray/blob/master/python/ray/tune/result.py#L40>`__ as a condition instead):
+This PyTorch script runs a small grid search over the ``train_func`` function using Tune, reporting status on the command line until the stopping condition of ``mean_accuracy >= 99`` is reached (for metrics like `loss` that decrease over time, specify `neg_mean_loss <https://github.com/ray-project/ray/blob/master/python/ray/tune/result.py#L40>`__ as a condition instead):
 
 ::
 
@@ -70,7 +70,7 @@ This PyTorch script runs a small grid search over the ``train_func`` function us
      - train_func_4_lr=0.4,momentum=2:  RUNNING [pid=6800], 209 s, 41204 ts, 70.1 acc
      - train_func_5_lr=0.6,momentum=2:  TERMINATED [pid=6809], 10 s, 2164 ts, 100 acc
 
-In order to report incremental progress, ``train_func`` periodically calls the ``reporter`` function passed in by Ray Tune to return the current timestep and other metrics as defined in `ray.tune.result.TrainingResult <https://github.com/ray-project/ray/blob/master/python/ray/tune/result.py>`__. Incremental results will be synced to local disk on the head node of the cluster.
+In order to report incremental progress, ``train_func`` periodically calls the ``reporter`` function passed in by Tune to return the current timestep and other metrics as defined in `ray.tune.result.TrainingResult <https://github.com/ray-project/ray/blob/master/python/ray/tune/result.py>`__. Incremental results will be synced to local disk on the head node of the cluster.
 
 `tune.run_experiments <tune.html#ray.tune.run_experiments>`__ returns a list of Trial objects which you can inspect results of via ``trial.last_result``.
 
@@ -80,7 +80,7 @@ Learn more `about specifying experiments <tune-config.html>`__.
 Features
 --------
 
-Ray Tune has the following features:
+Tune has the following features:
 
 -  Scalable implementations of search algorithms such as `Population Based Training (PBT) <pbt.html>`__, `Median Stopping Rule <hyperband.html#median-stopping-rule>`__, Model-Based Optimization (HyperOpt), and `HyperBand <hyperband.html>`__.
 
@@ -96,25 +96,25 @@ Concepts
 
 .. image:: tune-api.svg
 
-Ray Tune schedules a number of *trials* in a cluster. Each trial runs a user-defined Python function or class and is parameterized by a *config* variation passed to the user code.
+Tune schedules a number of *trials* in a cluster. Each trial runs a user-defined Python function or class and is parameterized by a *config* variation passed to the user code.
 
 In order to run any given function, you need to run ``register_trainable`` to a name. This makes all Ray workers aware of the function.
 
 .. autofunction:: ray.tune.register_trainable
 
-Ray Tune provides a ``run_experiments`` function that generates and runs the trials described by the experiment specification. The trials are scheduled and managed by a *trial scheduler* that implements the search algorithm (default is FIFO).
+Tune provides a ``run_experiments`` function that generates and runs the trials described by the experiment specification. The trials are scheduled and managed by a *trial scheduler* that implements the search algorithm (default is FIFO).
 
 .. autofunction:: ray.tune.run_experiments
 
-Ray Tune can be used anywhere Ray can, e.g. on your laptop with ``ray.init()`` embedded in a Python script, or in an `auto-scaling cluster <autoscaling.html>`__ for massive parallelism.
+Tune can be used anywhere Ray can, e.g. on your laptop with ``ray.init()`` embedded in a Python script, or in an `auto-scaling cluster <autoscaling.html>`__ for massive parallelism.
 
-You can find the code for Ray Tune `here on GitHub <https://github.com/ray-project/ray/tree/master/python/ray/tune>`__.
+You can find the code for Tune `here on GitHub <https://github.com/ray-project/ray/tree/master/python/ray/tune>`__.
 
 
 Trial Schedulers
 ----------------
 
-By default, Ray Tune schedules trials in serial order with the ``FIFOScheduler`` class. However, you can also specify a custom scheduling algorithm that can early stop trials, perturb parameters, or incorporate suggestions from an external service. Currently implemented trial schedulers include
+By default, Tune schedules trials in serial order with the ``FIFOScheduler`` class. However, you can also specify a custom scheduling algorithm that can early stop trials, perturb parameters, or incorporate suggestions from an external service. Currently implemented trial schedulers include
 `Population Based Training (PBT) <pbt.html>`__, `Median Stopping Rule <hyperband.html#median-stopping-rule>`__, `Model Based Optimization (HyperOpt) <#hyperopt-integration>`__, and `HyperBand <hyperband.html>`__.
 
 .. code-block:: python
@@ -125,7 +125,7 @@ By default, Ray Tune schedules trials in serial order with the ``FIFOScheduler``
 Handling Large Datasets
 -----------------------
 
-You often will want to compute a large object (e.g., training data, model weights) on the driver and use that object within each trial. Ray Tune provides a ``pin_in_object_store`` utility function that can be used to broadcast such large objects. Objects pinned in this way will never be evicted from the Ray object store while the driver process is running, and can be efficiently retrieved from any task via ``get_pinned_object``.
+You often will want to compute a large object (e.g., training data, model weights) on the driver and use that object within each trial. Tune provides a ``pin_in_object_store`` utility function that can be used to broadcast such large objects. Objects pinned in this way will never be evicted from the Ray object store while the driver process is running, and can be efficiently retrieved from any task via ``get_pinned_object``.
 
 .. code-block:: python
 
@@ -171,7 +171,7 @@ An example of this can be found in `hyperopt_example.py <https://github.com/ray-
 Visualizing Results
 -------------------
 
-Ray Tune logs trial results to a unique directory per experiment, e.g. ``~/ray_results/my_experiment`` in the above example. The log records are compatible with a number of visualization tools:
+Tune logs trial results to a unique directory per experiment, e.g. ``~/ray_results/my_experiment`` in the above example. The log records are compatible with a number of visualization tools:
 
 To visualize learning in tensorboard, install TensorFlow:
 
@@ -279,4 +279,4 @@ For an example notebook for using the Client API, see the `Client API Example <h
 Examples
 --------
 
-You can find a list of examples `using Ray Tune and its various features here <https://github.com/ray-project/ray/tree/master/python/ray/tune/examples>`__, including examples using Keras, TensorFlow, and Population-Based Training.
+You can find a list of examples `using Tune and its various features here <https://github.com/ray-project/ray/tree/master/python/ray/tune/examples>`__, including examples using Keras, TensorFlow, and Population-Based Training.

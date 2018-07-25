@@ -1,7 +1,7 @@
 HyperBand and Early Stopping
 ============================
 
-Ray Tune includes distributed implementations of early stopping algorithms such as `Median Stopping Rule <https://research.google.com/pubs/pub46180.html>`__, `HyperBand <https://arxiv.org/abs/1603.06560>`__, and an `asynchronous version of HyperBand <https://openreview.net/forum?id=S1Y7OOlRZ>`__. These algorithms are very resource efficient and can outperform Bayesian Optimization methods in `many cases <https://people.eecs.berkeley.edu/~kjamieson/hyperband.html>`__.
+Tune includes distributed implementations of early stopping algorithms such as `Median Stopping Rule <https://research.google.com/pubs/pub46180.html>`__, `HyperBand <https://arxiv.org/abs/1603.06560>`__, and an `asynchronous version of HyperBand <https://openreview.net/forum?id=S1Y7OOlRZ>`__. These algorithms are very resource efficient and can outperform Bayesian Optimization methods in `many cases <https://people.eecs.berkeley.edu/~kjamieson/hyperband.html>`__.
 
 Asynchronous HyperBand
 ----------------------
@@ -19,9 +19,9 @@ Compared to the original version of HyperBand, this implementation provides bett
 HyperBand
 ---------
 
-.. note:: Note that the HyperBand scheduler requires your trainable to support checkpointing, which is described in `Ray Tune documentation <tune.html#trial-checkpointing>`__. Checkpointing enables the scheduler to multiplex many concurrent trials onto a limited size cluster.
+.. note:: Note that the HyperBand scheduler requires your trainable to support checkpointing, which is described in `Tune documentation <tune.html#trial-checkpointing>`__. Checkpointing enables the scheduler to multiplex many concurrent trials onto a limited size cluster.
 
-Ray Tune also implements the `standard version of HyperBand <https://arxiv.org/abs/1603.06560>`__. You can use it as such:
+Tune also implements the `standard version of HyperBand <https://arxiv.org/abs/1603.06560>`__. You can use it as such:
 
 .. code-block:: python
 

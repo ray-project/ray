@@ -1,14 +1,14 @@
-Ray.tune: Hyperparameter Optimization Framework
-===============================================
+Tune: Distributed Hyperparameter Search
+=======================================
 
-Ray.tune is a hyperparameter tuning framework for long-running tasks such as RL and deep learning training.
+Tune is a framework for hyperparameter search focused on long-running tasks such as RL and deep learning training.
 
 User documentation can be `found here <http://ray.readthedocs.io/en/latest/tune.html>`__.
 
 Implementation overview
 -----------------------
 
-At a high level, Ray.tune takes in JSON experiment configs (e.g. that defines the grid or random search)
+At a high level, Tune takes in JSON experiment configs (e.g. that defines the grid or random search)
 and compiles them into a number of `Trial` objects. It schedules trials on the Ray cluster using a given
 `TrialScheduler` implementation (e.g. median stopping rule or HyperBand).
 

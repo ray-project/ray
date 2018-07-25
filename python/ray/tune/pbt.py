@@ -97,7 +97,7 @@ class PopulationBasedTraining(FIFOScheduler):
     during training time. This enables very fast hyperparameter discovery and
     also automatically discovers good annealing schedules.
 
-    This Ray Tune PBT implementation considers all trials added as part of the
+    This Tune PBT implementation considers all trials added as part of the
     PBT population. If the number of trials exceeds the cluster capacity,
     they will be time-multiplexed as to balance training progress across the
     population.

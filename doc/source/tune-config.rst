@@ -49,7 +49,7 @@ An example of this can be found in `async_hyperband_example.py <https://github.c
 Trial Variant Generation
 ------------------------
 
-In the above example, we specified a grid search over two parameters using the ``grid_search`` helper function. Ray Tune also supports sampling parameters from user-specified lambda functions, which can be used in combination with grid search.
+In the above example, we specified a grid search over two parameters using the ``grid_search`` helper function. Tune also supports sampling parameters from user-specified lambda functions, which can be used in combination with grid search.
 
 The following shows grid search over two nested parameters combined with random sampling from two lambda functions. Note that the value of ``beta`` depends on the value of ``alpha``, which is represented by referencing ``spec.config.alpha`` in the lambda function. This lets you specify conditional parameter distributions.
 
@@ -72,7 +72,7 @@ For more information on variant generation, see `variant_generator.py <https://g
 Resource Allocation
 -------------------
 
-Ray Tune runs each trial as a Ray actor, allocating the specified GPU and CPU ``trial_resources`` to each actor (defaulting to 1 CPU per trial). A trial will not be scheduled unless at least that amount of resources is available in the cluster, preventing the cluster from being overloaded.
+Tune runs each trial as a Ray actor, allocating the specified GPU and CPU ``trial_resources`` to each actor (defaulting to 1 CPU per trial). A trial will not be scheduled unless at least that amount of resources is available in the cluster, preventing the cluster from being overloaded.
 
 If GPU resources are not requested, the ``CUDA_VISIBLE_DEVICES`` environment variable will be set as empty, disallowing GPU access.
 Otherwise, it will be set to the GPUs in the list (this is managed by Ray).
