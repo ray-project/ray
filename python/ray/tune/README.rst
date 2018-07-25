@@ -1,14 +1,14 @@
 Tune: Distributed Hyperparameter Search
 =======================================
 
-Tune is a framework for hyperparameter search focused on long-running tasks such as RL and deep learning training.
+Tune is a distributed hyperparameter search framework for deep learning and deep reinforcement learning.
 
 User documentation can be `found here <http://ray.readthedocs.io/en/latest/tune.html>`__.
 
 Implementation overview
 -----------------------
 
-At a high level, Tune takes in JSON experiment configs (e.g. that defines the grid or random search)
+At a high level, Tune takes in JSON experiment configs
 and compiles them into a number of `Trial` objects. It schedules trials on the Ray cluster using a given
 `TrialScheduler` implementation (e.g. median stopping rule or HyperBand).
 

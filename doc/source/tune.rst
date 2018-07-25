@@ -4,7 +4,7 @@ Tune: Distributed Hyperparameter Search
 .. image:: images/tune.png
 
 Tune is a distributed hyperparameter search framework for deep learning and deep reinforcement learning.
-Go from running one experiment on a single machine to running on a large cluster with efficient search algorithms without changing your code.
+Go from running one experiment on a single machine to running on a large cluster without changing your code.
 
 
 Getting Started
@@ -17,10 +17,15 @@ You'll need to first `install ray <installation.html>`__ to import Tune.
 
 .. code-block:: bash
 
-  pip install ray
+    pip install ray
 
 Quick Start
 ~~~~~~~~~~~
+
+
+This example runs a small grid search over a neural network training function using Tune, reporting status on the command line until the stopping condition of ``mean_accuracy >= 99`` is reached. Tune works with any deep learning framework.
+
+Tune uses Ray as a backend, so we will first import and initialize Ray.
 
 .. code-block:: python
 
@@ -28,60 +33,38 @@ Quick Start
     import ray.tune as tune
 
     ray.init()
-    tune.register_trainable("train_func", train_func)
-
-    all_trials = tune.run_experiments({
-        "my_experiment": {
-            "run": "train_func",
-            "stop": {"mean_accuracy": 99},
-            "config": {
-                "lr": tune.grid_search([0.2, 0.4, 0.6]),
-                "momentum": tune.grid_search([0.1, 0.2]),
-            }
-        }
-    })
 
 
-For the function you wish to tune, add a two-line modification (note that we use PyTorch as an example but Tune works with any deep learning framework):
+For the function you wish to tune, pass in a ``reporter`` object:
+.. TODO(rliaw) Document reporter
 
 .. code-block:: python
-   :emphasize-lines: 1,14
+   :emphasize-lines: 1,11
 
     def train_func(config, reporter):  # add a reporter arg
-        model = NeuralNet()
-        optimizer = torch.optim.SGD(
-            model.parameters(), lr=config["lr"], momentum=config["momentum"])
+        model = ( ... )
+        optimizer = SGD(model.parameters(),
+                        lr=config["lr"],
+                        momentum=config["momentum"])
         dataset = ( ... )
 
         for idx, (data, target) in enumerate(dataset):
             # ...
-            output = model(data)
-            loss = F.MSELoss(output, target)
-            loss.backward()
-            optimizer.step()
-            accuracy = eval_accuracy(...)
+            accuracy = model.fit(data, target)
             reporter(timesteps_total=idx, mean_accuracy=accuracy) # report metrics
 
-This PyTorch script runs a small grid search over the ``train_func`` function using Tune, reporting status on the command line until the stopping condition of ``mean_accuracy >= 99`` is reached (for metrics like `loss` that decrease over time, specify `neg_mean_loss <https://github.com/ray-project/ray/blob/master/python/ray/tune/result.py#L40>`__ as a condition instead):
 
-::
+**Finally**, configure your search and execute it on your Ray cluster:
 
-    == Status ==
-    Using FIFO scheduling algorithm.
-    Resources used: 4/8 CPUs, 0/0 GPUs
-    Result logdir: ~/ray_results/my_experiment
-     - train_func_0_lr=0.2,momentum=1:  RUNNING [pid=6778], 209 s, 20604 ts, 7.29 acc
-     - train_func_1_lr=0.4,momentum=1:  RUNNING [pid=6780], 208 s, 20522 ts, 53.1 acc
-     - train_func_2_lr=0.6,momentum=1:  TERMINATED [pid=6789], 21 s, 2190 ts, 100 acc
-     - train_func_3_lr=0.2,momentum=2:  RUNNING [pid=6791], 208 s, 41004 ts, 8.37 acc
-     - train_func_4_lr=0.4,momentum=2:  RUNNING [pid=6800], 209 s, 41204 ts, 70.1 acc
-     - train_func_5_lr=0.6,momentum=2:  TERMINATED [pid=6809], 10 s, 2164 ts, 100 acc
+.. code-block:: python
 
-In order to report incremental progress, ``train_func`` periodically calls the ``reporter`` function passed in by Tune to return the current timestep and other metrics as defined in `ray.tune.result.TrainingResult <https://github.com/ray-project/ray/blob/master/python/ray/tune/result.py>`__. Incremental results will be synced to local disk on the head node of the cluster.
-
-`tune.run_experiments <tune.html#ray.tune.run_experiments>`__ returns a list of Trial objects which you can inspect results of via ``trial.last_result``.
-
-Learn more `about specifying experiments <tune-config.html>`__.
+    all_trials = tune.run_experiments({
+        "my_experiment": {
+            "run": train_func,
+            "stop": {},
+            "config": {"momentum": tune.grid_search([0.1, 0.2])}
+        }
+    })
 
 
 Features
