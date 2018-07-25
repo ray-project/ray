@@ -1140,17 +1140,22 @@ void NodeManager::ForwardTaskOrResubmit(const Task &task,
                   << node_manager_id;
 
     // Create a timer to resubmit the task in a little bit.
-    boost::asio::deadline_timer timer(io_service_);
+    auto it_and_inserted = task_resubmission_timers_.emplace(task_id, io_service_);
+    auto it = it_and_inserted.first;
+    bool inserted = it_and_inserted.second;
+    RAY_CHECK(inserted);
+
     auto retry_duration = boost::posix_time::milliseconds(
         RayConfig::instance().node_manager_forward_task_retry_timeout_milliseconds());
-    timer.expires_from_now(retry_duration);
-    timer.async_wait([this, task, task_id](const boost::system::error_code &error) {
+    it->second.expires_from_now(retry_duration);
+    it->second.async_wait([this, task, task_id](const boost::system::error_code &error) {
       // Timer killing will receive the boost::asio::error::operation_aborted,
       // we only handle the timeout event.
-      if (!error) {
-        RAY_LOG(INFO) << "In ForwardTask retry callback for task " << task_id;
-        EnqueuePlaceableTask(task);
-      }
+      RAY_CHECK(!error);
+      RAY_LOG(INFO) << "In ForwardTask retry callback for task " << task_id;
+      EnqueuePlaceableTask(task);
+      // Now that the timer has fired, deallocate the timer.
+      RAY_CHECK(task_resubmission_timers_.erase(task_id) == 1);
     });
   }
 }
