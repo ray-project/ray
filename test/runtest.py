@@ -2228,7 +2228,7 @@ class GlobalStateAPI(unittest.TestCase):
         self.assertEqual(task_spec["DriverID"], driver_id)
         self.assertEqual(task_spec["ReturnObjectIDs"], [result_id])
         function_table_entry = function_table[task_spec["FunctionID"]]
-        self.assertEqual(function_table_entry["Name"], "__main__.f")
+        self.assertEqual(function_table_entry["Name"], "runtest.f")
         self.assertEqual(function_table_entry["DriverID"], driver_id)
         self.assertEqual(function_table_entry["Module"], "__main__")
 
