@@ -10,10 +10,10 @@ except Exception as e:
     hpo = None
 
 from ray.tune.error import TuneError
-from ray.tune.search import SearchAlgorithm
+from ray.tune.suggest import SearchAlgorithm
 
 
-class HyperOptAlgorithm(SearchAlgorithm):
+class HyperOptSearch(SearchAlgorithm):
     """A wrapper around HyperOpt to provide trial suggestions.
 
     Requires HyperOpt to be installed from source.

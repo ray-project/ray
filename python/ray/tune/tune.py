@@ -6,7 +6,7 @@ import time
 from itertools import chain
 
 from ray.tune.error import TuneError
-from ray.tune.search import SearchAlgorithm
+from ray.tune.suggest import SearchAlgorithm
 from ray.tune.hyperband import HyperBandScheduler
 from ray.tune.async_hyperband import AsyncHyperBandScheduler
 from ray.tune.median_stopping_rule import MedianStoppingRule
@@ -45,10 +45,11 @@ def run_experiments(experiments,
 
     Args:
         experiments (Experiment | list | dict): Experiments to run.
-        search_alg (SearchAlgorithm): Search Algorithm.
+        search_alg (SearchAlgorithm): Search Algorithm. Defaults to
+            SearchAlgorithm.
         scheduler (TrialScheduler): Scheduler for executing
             the experiment. Choose among FIFO (default), MedianStopping,
-            AsyncHyperBand, HyperBand.
+            AsyncHyperBand, and HyperBand.
         with_server (bool): Starts a background Tune server. Needed for
             using the Client API.
         server_port (int): Port number for launching TuneServer.
@@ -79,7 +80,8 @@ def run_experiments(experiments,
     if (type(exp_list) is list
             and all(isinstance(exp, Experiment) for exp in exp_list)):
         if len(exp_list) > 1:
-            print("All experiments will be using the same Search Algorithm.")
+            print("Warning: All experiments will be"
+                  " using the same Search Algorithm.")
         trial_generator = chain.from_iterable([
             generate_trials(exp.spec, search_alg, exp.name) for exp in exp_list
         ])
