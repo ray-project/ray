@@ -136,7 +136,7 @@ class LearnerThread(threading.Thread):
         self.weights_updated = True
 
 
-class AsyncSamplesOptimizer(PolicyOptimizer):
+class AsyncReplayOptimizer(PolicyOptimizer):
     """Main event loop of the Ape-X optimizer (async sampling with replay).
 
     This class coordinates the data transfers between the learner thread,
