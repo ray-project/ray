@@ -266,14 +266,12 @@ class TrialRunner(object):
             if trial.should_stop(result):
                 # Hook into scheduler
                 self._scheduler_alg.on_trial_complete(self, trial, result)
-                self._search_alg.on_trial_complete(
-                    trial.trial_id, result)
+                self._search_alg.on_trial_complete(trial.trial_id, result)
                 decision = TrialScheduler.STOP
             else:
                 decision = self._scheduler_alg.on_trial_result(
                     self, trial, result)
-                self._search_alg.on_trial_result(
-                    trial.trial_id, result)
+                self._search_alg.on_trial_result(trial.trial_id, result)
             trial.update_last_result(
                 result, terminate=(decision == TrialScheduler.STOP))
 

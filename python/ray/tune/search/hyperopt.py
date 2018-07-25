@@ -33,9 +33,10 @@ class HyperOptAlgorithm(SearchAlgorithm):
             this value.
     """
 
-    def __init__(
-            self, space, max_concurrent=10,
-            reward_attr="episode_reward_mean"):
+    def __init__(self,
+                 space,
+                 max_concurrent=10,
+                 reward_attr="episode_reward_mean"):
         assert hpo is not None, "HyperOpt must be installed!"
         assert type(max_concurrent) is int and max_concurrent > 0
         self._max_concurrent = max_concurrent

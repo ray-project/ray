@@ -80,9 +80,9 @@ def run_experiments(experiments,
             and all(isinstance(exp, Experiment) for exp in exp_list)):
         if len(exp_list) > 1:
             print("All experiments will be using the same Search Algorithm.")
-        trial_generator = chain.from_iterable(
-            [generate_trials(exp.spec, search_alg, exp.name)
-             for exp in exp_list])
+        trial_generator = chain.from_iterable([
+            generate_trials(exp.spec, search_alg, exp.name) for exp in exp_list
+        ])
     else:
         raise TuneError("Invalid argument: {}".format(experiments))
 
