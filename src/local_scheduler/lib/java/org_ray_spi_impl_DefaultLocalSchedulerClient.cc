@@ -260,7 +260,7 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1waitObject(JNIEnv *env,
                            object_ids, num_returns, timeout_ms,
                            static_cast<bool>(wait_local));
   
-  // Convert result to py object.
+  // Convert result to java object.
   jboolean putValue = true;
   jbooleanArray resultArray = env->NewBooleanArray(object_ids.size());
   for (uint i = 0; i < result.first.size(); ++i) {

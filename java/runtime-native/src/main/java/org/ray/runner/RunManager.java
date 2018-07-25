@@ -389,14 +389,12 @@ public class RunManager {
       for (int j = 0; j < localNumWorkers[i]; j++) {
         if (!params.use_raylet) {
           startWorker(localStores.storeName, localStores.managerName, localStores.schedulerName,
-              params.working_directory + "/worker" + i + "." + j, params.redis_address,
-              params.node_ip_address, UniqueID.nil, "",
-              params.redirect, params.cleanup);
+                  params.working_directory + "/worker" + i + "." + j, params.redis_address,
+                  params.node_ip_address, UniqueID.nil, "", params.redirect, params.cleanup);
         } else {
-          startWorker(localStores.storeName, localStores.rayletSocketName,
-              params.working_directory + "/worker" + i + "." + j, params.redis_address,
-              params.node_ip_address, UniqueID.nil, "",
-              params.redirect, params.cleanup);
+          startWorkerRaylet(localStores.storeName, localStores.rayletSocketName,
+                  params.working_directory + "/worker" + i + "." + j, params.redis_address,
+                  params.node_ip_address, UniqueID.nil, "", params.redirect, params.cleanup);
         }
       }
     }
@@ -693,7 +691,7 @@ public class RunManager {
     String filePath = paths.raylet;
     
     String workerCmd = null;
-    workerCmd = buildWorkerCommand(info.storeName, rayletSocketName, UniqueID.nil,
+    workerCmd = buildWorkerCommandRaylet(info.storeName, rayletSocketName, UniqueID.nil,
             "", workDir + rpcPort, ip, redisAddress);
 
     int sep = redisAddress.indexOf(':');
@@ -706,8 +704,7 @@ public class RunManager {
     String[] cmds = new String[]{filePath, rayletSocketName, storeName, ip, gcsIp,
                                  gcsPort, "" + numWorkers, workerCmd, resourceArgument};
 
-    Map<String, String> env = null;
-    Process p = startProcess(cmds, env, RunInfo.ProcessType.PT_RAYLET,
+    Process p = startProcess(cmds, null, RunInfo.ProcessType.PT_RAYLET,
         workDir + rpcPort, redisAddress, ip, redirect, cleanup);
 
     if (p != null && p.isAlive()) {
@@ -721,15 +718,15 @@ public class RunManager {
     if (p == null || !p.isAlive()) {
       info.rayletSocketName = "";
       info.rayletRpcAddr = "";
-      throw new RuntimeException("Start raylet failed ...");
+      throw new RuntimeException("Failed to start raylet process.");
     } else {
       info.rayletSocketName = rayletSocketName;
       info.rayletRpcAddr = ip + ":" + rpcPort;
     }
   }
 
-  private String buildWorkerCommand(String storeName, String rayletSocketName,
-      UniqueID actorId, String actorClass, String workDir, String ip, String redisAddress) {
+  private String buildWorkerCommandRaylet(String storeName, String rayletSocketName, UniqueID actorId,
+                                          String actorClass, String workDir, String ip, String redisAddress) {
     String workerConfigs = "ray.java.start.object_store_name=" + storeName
         + ";ray.java.start.raylet_socket_name=" + rayletSocketName
         + ";ray.java.start.worker_mode=WORKER;ray.java.start.use_raylet=true";
@@ -867,12 +864,12 @@ public class RunManager {
         redirect, cleanup);
   }
 
-  public void startWorker(String storeName, String rayletSocketName,
-      String workDir, String redisAddress,
+  public void startWorkerRaylet(String storeName, String rayletSocketName,
+                                String workDir, String redisAddress,
       String ip, UniqueID actorId, String actorClass,
       boolean redirect, boolean cleanup) {
-    String cmd = buildWorkerCommand(storeName, rayletSocketName, actorId,
-        actorClass, workDir, ip, redisAddress);
+    String cmd = buildWorkerCommandRaylet(storeName, rayletSocketName, actorId,
+            actorClass, workDir, ip, redisAddress);
     startProcess(cmd.split(" "), null, RunInfo.ProcessType.PT_WORKER, workDir, redisAddress, ip,
         redirect, cleanup);
   }

@@ -24,10 +24,12 @@ public class StateStoreProxyImpl implements StateStoreProxy {
     this.rayKvStore = rayKvStore;
   }
 
+  @Override
   public void setStore(KeyValueStoreLink rayKvStore) {
     this.rayKvStore = rayKvStore;
   }
 
+  @Override
   public synchronized void initializeGlobalState() throws Exception {
 
     String es;
@@ -113,6 +115,7 @@ public class StateStoreProxyImpl implements StateStoreProxy {
    *        "manager_socket_name"(op)
    *        "local_scheduler_socket_name"(op)
    */
+  @Override
   public List<AddressInfo> getAddressInfoHelper(final String nodeIpAddress, 
       final String redisAddress) throws Exception {
     if (this.rayKvStore == null) {
