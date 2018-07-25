@@ -120,32 +120,32 @@ matrix:
       script:
         - export PATH="$HOME/miniconda/bin:$PATH"
 
-        - python python/ray/common/test/test.py
-        - python python/ray/common/redis_module/runtest.py
-        - python python/ray/plasma/test/test.py
-        # - python python/ray/local_scheduler/test/test.py
-        # - python python/ray/global_scheduler/test/test.py
+        - pytest python/ray/common/test/test.py
+        - pytest python/ray/common/redis_module/runtest.py
+        - pytest python/ray/plasma/test/test.py
+        # - pytest python/ray/local_scheduler/test/test.py
+        # - pytest python/ray/global_scheduler/test/test.py
 
         - python -m pytest python/ray/test/test_queue.py
         - python -m pytest test/xray_test.py
 
-        - python test/runtest.py
-        - python test/array_test.py
-        - python test/actor_test.py
-        - python test/autoscaler_test.py
-        - python test/tensorflow_test.py
-        - python test/failure_test.py
-        - python test/microbenchmarks.py
+        - pytest test/runtest.py
+        - pytest test/array_test.py
+        - pytest test/actor_test.py
+        - pytest test/autoscaler_test.py
+        - pytest test/tensorflow_test.py
+        - pytest test/failure_test.py
+        - pytest test/microbenchmarks.py
         - python -m pytest test/stress_tests.py
-        # - python test/component_failures_test.py
-        - python test/multi_node_test.py
-        - python test/recursion_test.py
-        # - python test/monitor_test.py
-        - python test/cython_test.py
-        - python test/credis_test.py
+        # - pytest test/component_failures_test.py
+        - pytest test/multi_node_test.py
+        - pytest test/recursion_test.py
+        # - pytest test/monitor_test.py
+        - pytest test/cython_test.py
+        - pytest test/credis_test.py
 
         # ray tune tests
-        - python python/ray/tune/test/dependency_test.py
+        - pytest python/ray/tune/test/dependency_test.py
         - python -m pytest python/ray/tune/test/trial_runner_test.py
         - python -m pytest python/ray/tune/test/trial_scheduler_test.py
         - python -m pytest python/ray/tune/test/tune_server_test.py
@@ -180,32 +180,32 @@ install:
 script:
   - export PATH="$HOME/miniconda/bin:$PATH"
 
-  - python python/ray/common/test/test.py
-  - python python/ray/common/redis_module/runtest.py
-  - python python/ray/plasma/test/test.py
-  - python python/ray/local_scheduler/test/test.py
-  - python python/ray/global_scheduler/test/test.py
+  - pytest python/ray/common/test/test.py
+  - pytest python/ray/common/redis_module/runtest.py
+  - pytest python/ray/plasma/test/test.py
+  - pytest python/ray/local_scheduler/test/test.py
+  - pytest python/ray/global_scheduler/test/test.py
 
   - python -m pytest python/ray/test/test_queue.py
   - python -m pytest test/xray_test.py
 
-  - python test/runtest.py
-  - python test/array_test.py
-  - python test/actor_test.py
-  - python test/autoscaler_test.py
-  - python test/tensorflow_test.py
-  - python test/failure_test.py
-  - python test/microbenchmarks.py
+  - pytest test/runtest.py
+  - pytest test/array_test.py
+  - pytest test/actor_test.py
+  - pytest test/autoscaler_test.py
+  - pytest test/tensorflow_test.py
+  - pytest test/failure_test.py
+  - pytest test/microbenchmarks.py
   - python -m pytest test/stress_tests.py
-  - python test/component_failures_test.py
-  - python test/multi_node_test.py
-  - python test/recursion_test.py
-  - python test/monitor_test.py
-  - python test/cython_test.py
-  - python test/credis_test.py
+  - pytest test/component_failures_test.py
+  - pytest test/multi_node_test.py
+  - pytest test/recursion_test.py
+  - pytest test/monitor_test.py
+  - pytest test/cython_test.py
+  - pytest test/credis_test.py
 
   # ray tune tests
-  - python python/ray/tune/test/dependency_test.py
+  - pytest python/ray/tune/test/dependency_test.py
   - python -m pytest python/ray/tune/test/trial_runner_test.py
   - python -m pytest python/ray/tune/test/trial_scheduler_test.py
   - python -m pytest python/ray/tune/test/tune_server_test.py
