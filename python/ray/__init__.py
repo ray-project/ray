@@ -52,7 +52,7 @@ from ray.worker import (error_info, init, connect, disconnect, get, put, wait,
                         remote, get_gpu_ids, get_resource_ids, get_webui_url,
                         register_custom_serializer, shutdown)  # noqa: E402
 from ray.worker import (SCRIPT_MODE, WORKER_MODE, LOCAL_MODE, SILENT_MODE,
-                        PYTHON_MODE)  # noqa: E402
+                        PYTHON_MODE, CLIENT_MODE)  # noqa: E402
 from ray.worker import global_state  # noqa: E402
 # We import ray.actor because some code is run in actor.py which initializes
 # some functions in the worker.
@@ -67,8 +67,8 @@ __all__ = [
     "error_info", "init", "connect", "disconnect", "get", "put", "wait",
     "remote", "profile", "actor", "method", "get_gpu_ids", "get_resource_ids",
     "get_webui_url", "register_custom_serializer", "shutdown", "SCRIPT_MODE",
-    "WORKER_MODE", "LOCAL_MODE", "SILENT_MODE", "PYTHON_MODE", "global_state",
-    "ObjectID", "_config", "__version__"
+    "WORKER_MODE", "LOCAL_MODE", "SILENT_MODE", "PYTHON_MODE", "CLIENT_MODE",
+    "global_state", "ObjectID", "_config", "__version__"
 ]
 
 import ctypes  # noqa: E402

@@ -148,11 +148,23 @@ def cli():
     is_flag=True,
     default=None,
     help="use the raylet code path")
+@click.option(
+    "--with-gateway",
+    is_flag=True,
+    default=False,
+    help="enable external clients to connect, this is not supported yet")
+@click.option(
+    "--gateway-port",
+    required=False,
+    type=int,
+    default=5432,
+    help="the port that socat will listen on for commands to forward"
+)
 def start(node_ip_address, redis_address, redis_port, num_redis_shards,
           redis_max_clients, redis_shard_ports, object_manager_port,
           object_store_memory, num_workers, num_cpus, num_gpus, resources,
           head, no_ui, block, plasma_directory, huge_pages, autoscaling_config,
-          use_raylet):
+          use_raylet, with_gateway, gateway_port):
     # Convert hostnames to numerical IP address.
     if node_ip_address is not None:
         node_ip_address = services.address_to_ip(node_ip_address)
@@ -229,7 +241,9 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             plasma_directory=plasma_directory,
             huge_pages=huge_pages,
             autoscaling_config=autoscaling_config,
-            use_raylet=use_raylet)
+            use_raylet=use_raylet,
+            with_gateway=with_gateway,
+            gateway_port=gateway_port)
         print(address_info)
         print("\nStarted Ray on this node. You can add additional nodes to "
               "the cluster by calling\n\n"
@@ -239,10 +253,21 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
               "    import ray\n"
               "    ray.init(redis_address=\"{}\")\n\n"
               "If you have trouble connecting from a different machine, check "
-              "that your firewall is configured properly. If you wish to "
-              "terminate the processes that have been started, run\n\n"
-              "    ray stop".format(address_info["redis_address"],
-                                    address_info["redis_address"]))
+              "that your firewall is configured properly.\n\n".format(address_info["redis_address"],
+                                                                      address_info["redis_address"]))
+        if with_gateway:
+            # TODO: Assume redis and head node have same IP address
+            print("\nYou can also connect an external client to the cluster "
+                  "from Python by running\n\n"
+                  "    import ray\n"
+                  "    ray.init(redis_address=\"{}\", driver_mode=ray.CLIENT_MODE, "
+                  "gateway_port={})\n\n".format(address_info["redis_address"],
+                                                gateway_port))
+
+        print("If you wish to terminate the processes that have been started"
+              ", run\n\n"
+              "    ray stop")
+
     else:
         # Start Ray on a non-head node.
         if redis_port is not None:
@@ -345,6 +370,22 @@ def stop():
     subprocess.call(
         [
             "kill $(ps aux | grep log_monitor.py | grep -v grep | "
+            "awk '{ print $2 }') 2> /dev/null"
+        ],
+        shell=True)
+
+    # Find the PID of the Ray gateway process and kill it.
+    subprocess.call(
+        [
+            "kill $(ps aux | grep gateway.py | grep -v grep | "
+            "awk '{ print $2 }') 2> /dev/null"
+        ],
+        shell=True)
+
+    # Find the PID of the Ray gateway socat process and kill it.
+    subprocess.call(
+        [
+            "kill $(ps aux | grep \"socat TCP-LISTEN\" | grep -v grep | "
             "awk '{ print $2 }') 2> /dev/null"
         ],
         shell=True)
