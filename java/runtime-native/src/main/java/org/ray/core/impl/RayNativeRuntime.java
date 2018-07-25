@@ -27,7 +27,7 @@ import org.ray.spi.impl.DefaultLocalSchedulerClient;
 import org.ray.spi.impl.NativeRemoteFunctionManager;
 import org.ray.spi.impl.RayletStateStoreProxyImpl;
 import org.ray.spi.impl.RedisClient;
-import org.ray.spi.impl.StateStoreProxyImpl;
+import org.ray.spi.impl.NonRayletStateStoreProxyImpl;
 import org.ray.spi.model.AddressInfo;
 import org.ray.util.exception.TaskExecutionException;
 import org.ray.util.logger.RayLog;
@@ -187,7 +187,7 @@ public class RayNativeRuntime extends RayRuntime {
     kvStore.setAddr(redisAddress);
     stateStoreProxy = useRaylet
             ? new RayletStateStoreProxyImpl(kvStore)
-            : new StateStoreProxyImpl(kvStore);
+            : new NonRayletStateStoreProxyImpl(kvStore);
     //stateStoreProxy.setStore(kvStore);
     stateStoreProxy.initializeGlobalState();
   }

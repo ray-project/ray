@@ -35,6 +35,15 @@ public interface StateStoreProxy {
                                    final String redisAddress,
                                    int numRetries);
 
+  /**
+   *
+   * Get address info of one node from primary redis.
+   *
+   * @param nodeIpAddress Usually local ip address.
+   * @param redisAddress The primary redis address.
+   * @return A list of SchedulerInfo which contains raylet name and raylet port.
+   * @throws Exception No redis client exception.
+   */
   List<AddressInfo> getAddressInfoHelper(final String nodeIpAddress,
-                      final String redisAddress) throws Exception;
+                                         final String redisAddress) throws Exception;
 }
