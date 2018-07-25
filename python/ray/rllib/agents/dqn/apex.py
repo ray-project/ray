@@ -23,7 +23,6 @@ APEX_DEFAULT_CONFIG = merge_dicts(
         "learning_starts": 50000,
         "train_batch_size": 512,
         "sample_batch_size": 50,
-        "max_weight_sync_delay": 400,
         "target_network_update_freq": 500000,
         "timesteps_per_iteration": 25000,
         "per_worker_exploration": True,
