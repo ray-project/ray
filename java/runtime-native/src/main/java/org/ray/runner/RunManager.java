@@ -48,7 +48,7 @@ public class RunManager {
 
   private static boolean killProcess(Process p) {
     if (p.isAlive()) {
-      p.destroyForcibly();
+      p.destroy();
       return true;
     } else {
       return false;

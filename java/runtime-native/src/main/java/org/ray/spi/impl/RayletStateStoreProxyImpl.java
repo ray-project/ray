@@ -2,19 +2,12 @@ package org.ray.spi.impl;
 
 import java.nio.ByteBuffer;
 import java.util.*;
-import java.util.concurrent.TimeUnit;
 
-import org.apache.commons.lang3.ArrayUtils;
 import org.ray.api.UniqueID;
 import org.ray.format.gcs.ClientTableData;
-import org.ray.format.gcs.GcsTableEntry;
-import org.ray.format.gcs.TablePrefix;
 import org.ray.spi.KeyValueStoreLink;
-import org.ray.spi.StateStoreProxy;
 import org.ray.spi.model.AddressInfo;
 import org.ray.util.NetworkUtil;
-import org.ray.util.logger.RayLog;
-import redis.clients.util.SafeEncoder;
 
 /**
  * A class used to interface with the Ray control state for raylet.
