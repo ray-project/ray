@@ -39,7 +39,7 @@ class ActorInstantiationSuite(object):
         self.instantiate_actor()
 
     def time_instantiate_many_actors(self):
-        actors = [MyActor.remote() for _ in range()]
+        actors = [MyActor.remote() for _ in range(NUM_WORKERS + 10)]
         ray.get([actor.get_x.remote() for actor in actors])
 
 
@@ -54,7 +54,6 @@ class ActorMethodSuite(object):
 
     def peakmem_call_method(self):
         ray.get(self.actor.get_x.remote())
-
 
 class ActorCheckpointSuite(object):
     def checkpoint_and_restore(self):
