@@ -16,7 +16,7 @@ class SearchAlgorithm():
         """
         return {}, None
 
-    def on_trial_result(self, trial_id):
+    def on_trial_result(self, trial_id, result):
         """Called on each intermediate result returned by a trial.
 
         This will only be called when the trial is in the RUNNING state.
@@ -44,7 +44,7 @@ class SearchAlgorithm():
             trial_id: Identifier for the trial."""
         pass
 
-    def on_trial_complete(self, trial_id):
+    def on_trial_complete(self, trial_id, result):
         """Notification for the completion of trial.
 
         This will only be called when the trial is in the RUNNING state and
