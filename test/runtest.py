@@ -12,11 +12,7 @@ from collections import defaultdict, namedtuple, OrderedDict
 import numpy as np
 
 import ray
-import ray.test.test_functions as test_functions
 import ray.test.test_utils
-
-if sys.version_info >= (3, 0):
-    from importlib import reload
 
 
 def assert_equal(obj1, obj2):
@@ -522,46 +518,58 @@ class APITest(unittest.TestCase):
             self.assertFalse(hasattr(c2, "method1"))
 
     def testKeywordArgs(self):
-        reload(test_functions)
+
+        @ray.remote
+        def keyword_fct1(a, b="hello"):
+            return "{} {}".format(a, b)
+
+        @ray.remote
+        def keyword_fct2(a="hello", b="world"):
+            return "{} {}".format(a, b)
+
+        @ray.remote
+        def keyword_fct3(a, b, c="hello", d="world"):
+            return "{} {} {} {}".format(a, b, c, d)
+
         self.init_ray()
 
-        x = test_functions.keyword_fct1.remote(1)
+        x = keyword_fct1.remote(1)
         self.assertEqual(ray.get(x), "1 hello")
-        x = test_functions.keyword_fct1.remote(1, "hi")
+        x = keyword_fct1.remote(1, "hi")
         self.assertEqual(ray.get(x), "1 hi")
-        x = test_functions.keyword_fct1.remote(1, b="world")
+        x = keyword_fct1.remote(1, b="world")
         self.assertEqual(ray.get(x), "1 world")
-        x = test_functions.keyword_fct1.remote(a=1, b="world")
+        x = keyword_fct1.remote(a=1, b="world")
         self.assertEqual(ray.get(x), "1 world")
 
-        x = test_functions.keyword_fct2.remote(a="w", b="hi")
+        x = keyword_fct2.remote(a="w", b="hi")
         self.assertEqual(ray.get(x), "w hi")
-        x = test_functions.keyword_fct2.remote(b="hi", a="w")
+        x = keyword_fct2.remote(b="hi", a="w")
         self.assertEqual(ray.get(x), "w hi")
-        x = test_functions.keyword_fct2.remote(a="w")
+        x = keyword_fct2.remote(a="w")
         self.assertEqual(ray.get(x), "w world")
-        x = test_functions.keyword_fct2.remote(b="hi")
+        x = keyword_fct2.remote(b="hi")
         self.assertEqual(ray.get(x), "hello hi")
-        x = test_functions.keyword_fct2.remote("w")
+        x = keyword_fct2.remote("w")
         self.assertEqual(ray.get(x), "w world")
-        x = test_functions.keyword_fct2.remote("w", "hi")
+        x = keyword_fct2.remote("w", "hi")
         self.assertEqual(ray.get(x), "w hi")
 
-        x = test_functions.keyword_fct3.remote(0, 1, c="w", d="hi")
+        x = keyword_fct3.remote(0, 1, c="w", d="hi")
         self.assertEqual(ray.get(x), "0 1 w hi")
-        x = test_functions.keyword_fct3.remote(0, b=1, c="w", d="hi")
+        x = keyword_fct3.remote(0, b=1, c="w", d="hi")
         self.assertEqual(ray.get(x), "0 1 w hi")
-        x = test_functions.keyword_fct3.remote(a=0, b=1, c="w", d="hi")
+        x = keyword_fct3.remote(a=0, b=1, c="w", d="hi")
         self.assertEqual(ray.get(x), "0 1 w hi")
-        x = test_functions.keyword_fct3.remote(0, 1, d="hi", c="w")
+        x = keyword_fct3.remote(0, 1, d="hi", c="w")
         self.assertEqual(ray.get(x), "0 1 w hi")
-        x = test_functions.keyword_fct3.remote(0, 1, c="w")
+        x = keyword_fct3.remote(0, 1, c="w")
         self.assertEqual(ray.get(x), "0 1 w world")
-        x = test_functions.keyword_fct3.remote(0, 1, d="hi")
+        x = keyword_fct3.remote(0, 1, d="hi")
         self.assertEqual(ray.get(x), "0 1 hello hi")
-        x = test_functions.keyword_fct3.remote(0, 1)
+        x = keyword_fct3.remote(0, 1)
         self.assertEqual(ray.get(x), "0 1 hello world")
-        x = test_functions.keyword_fct3.remote(a=0, b=1)
+        x = keyword_fct3.remote(a=0, b=1)
         self.assertEqual(ray.get(x), "0 1 hello world")
 
         # Check that we cannot pass invalid keyword arguments to functions.
@@ -597,15 +605,32 @@ class APITest(unittest.TestCase):
         self.assertEqual(ray.get(f3.remote(4)), 4)
 
     def testVariableNumberOfArgs(self):
-        reload(test_functions)
+
+        @ray.remote
+        def varargs_fct1(*a):
+            return " ".join(map(str, a))
+
+        @ray.remote
+        def varargs_fct2(a, *b):
+            return " ".join(map(str, b))
+
+        try:
+            @ray.remote
+            def kwargs_throw_exception(**c):
+                return ()
+
+            kwargs_exception_thrown = False
+        except Exception:
+            kwargs_exception_thrown = True
+
         self.init_ray()
 
-        x = test_functions.varargs_fct1.remote(0, 1, 2)
+        x = varargs_fct1.remote(0, 1, 2)
         self.assertEqual(ray.get(x), "0 1 2")
-        x = test_functions.varargs_fct2.remote(0, 1, 2)
+        x = varargs_fct2.remote(0, 1, 2)
         self.assertEqual(ray.get(x), "1 2")
 
-        self.assertTrue(test_functions.kwargs_exception_thrown)
+        self.assertTrue(kwargs_exception_thrown)
 
         @ray.remote
         def f1(*args):
@@ -627,10 +652,14 @@ class APITest(unittest.TestCase):
         self.assertEqual(ray.get(f2.remote(1, 2, 3, 4)), (1, 2, (3, 4)))
 
     def testNoArgs(self):
-        reload(test_functions)
+
+        @ray.remote
+        def no_op():
+            pass
+
         self.init_ray()
 
-        ray.get(test_functions.no_op.remote())
+        ray.get(no_op.remote())
 
     def testDefiningRemoteFunctions(self):
         self.init_ray(num_cpus=3)
@@ -1200,7 +1229,17 @@ class LocalModeTest(unittest.TestCase):
         ray.shutdown()
 
     def testLocalMode(self):
-        reload(test_functions)
+
+        @ray.remote
+        def local_mode_f():
+            return np.array([0, 0])
+
+
+        @ray.remote
+        def local_mode_g(x):
+            x[0] = 1
+            return x
+
         ray.init(driver_mode=ray.LOCAL_MODE)
 
         @ray.remote
@@ -1218,9 +1257,9 @@ class LocalModeTest(unittest.TestCase):
 
         # Make sure objects are immutable, this example is why we need to copy
         # arguments before passing them into remote functions in python mode
-        aref = test_functions.local_mode_f.remote()
+        aref = local_mode_f.remote()
         assert_equal(aref, np.array([0, 0]))
-        bref = test_functions.local_mode_g.remote(aref)
+        bref = local_mode_g.remote(aref)
         # Make sure local_mode_g does not mutate aref.
         assert_equal(aref, np.array([0, 0]))
         assert_equal(bref, np.array([1, 0]))
