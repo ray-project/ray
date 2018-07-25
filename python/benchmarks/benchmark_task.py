@@ -16,6 +16,8 @@ def square(x):
 
 
 class TaskSuite(object):
+    timeout = 10
+
     def setup(self):
         self.square = ray.remote(square)
 
