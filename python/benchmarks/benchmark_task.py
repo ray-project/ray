@@ -7,7 +7,7 @@ import ray
 
 def setup():
     if not hasattr(setup, "is_initialized"):
-        ray.init(num_workers=4, num_cpus=4, resources={"foo": 1})
+        ray.init(num_workers=10, num_cpus=10, resources={"foo": 1})
         setup.is_initialized = True
 
 
@@ -17,7 +17,6 @@ def square(x):
 
 class TaskSuite(object):
     def setup(self):
-        setup()
         self.square = ray.remote(square)
 
     def run_many_tasks(self):
@@ -52,11 +51,9 @@ class TaskSuite(object):
 
 class CPUTaskSuite(TaskSuite):
     def setup(self):
-        setup()
-        self.square = ray.remote(num_cpus=1)
+        self.square = ray.remote(num_cpus=1)(square)
 
 
 class CustomResourceTaskSuite(TaskSuite):
     def setup(self):
-        setup()
-        self.square = ray.remote(resources={"foo": 1})
+        self.square = ray.remote(resources={"foo": 1})(square)
