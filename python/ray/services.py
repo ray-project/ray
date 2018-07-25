@@ -994,6 +994,55 @@ def start_raylet(redis_address,
     return raylet_name
 
 
+def start_gateway(node_ip_address,
+                  gateway_port,
+                  raylet_name,
+                  store_socket_name,
+                  redis_address,
+                  stdout_file=None,
+                  stderr_file=None,
+                  cleanup=True):
+    """This method starts the API gateway for external clients to connect.
+
+    Args:
+        node_ip_address (str): The IP address of the node that this worker is
+            running on.
+        gateway_port: The port that socat will listen on for commands to forward.
+        store_socket_name: The named pipe for the Plasma store.
+        redis_address (str): The address that the Redis server is listening on.
+        stdout_file: A file handle opened for writing to redirect stdout to. If
+            no redirection should happen, then this should be None.
+        stderr_file: A file handle opened for writing to redirect stderr to. If
+            no redirection should happen, then this should be None.
+        cleanup (bool): True if using Ray in local mode. If cleanup is true,
+            then this process will be killed by services.cleanup() when the
+            Python process that imported services exits. This is True by
+            default.
+    """
+    # TODO (dsuo): move to gateway.py
+    command = [
+        "socat", "TCP-LISTEN:" + str(gateway_port) + ",reuseaddr,fork",
+        "UNIX-CONNECT:" + raylet_name
+    ]
+    p = subprocess.Popen(command, stdout=stdout_file, stderr=stderr_file)
+    if cleanup:
+        all_processes[PROCESS_TYPE_WORKER].append(p)
+    record_log_files_in_redis(redis_address, node_ip_address,
+                              [stdout_file, stderr_file])
+
+    gateway_path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "gateway.py")
+    command = [
+        sys.executable, "-u", gateway_path, "-s",
+        store_socket_name, "-m", raylet_name
+    ]
+    p = subprocess.Popen(command, stdout=stdout_file, stderr=stderr_file)
+    if cleanup:
+        all_processes[PROCESS_TYPE_MONITOR].append(p)
+    record_log_files_in_redis(redis_address, node_ip_address,
+                              [stdout_file, stderr_file])
+
+
 def start_objstore(node_ip_address,
                    redis_address,
                    object_manager_port=None,
