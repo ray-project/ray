@@ -73,7 +73,7 @@ class RedisContext {
                   int log_length = -1);
 
   Status SubscribeAsync(const ClientID &client_id, const TablePubsub pubsub_channel,
-                        const RedisCallback &redisCallback);
+                        const RedisCallback &redisCallback, int64_t *out_callback_index);
   redisAsyncContext *async_context() { return async_context_; }
   redisAsyncContext *subscribe_context() { return subscribe_context_; };
 
