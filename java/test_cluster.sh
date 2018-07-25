@@ -1,17 +1,32 @@
 #!/bin/bash
 
+set -e
+
 #############################
 # build deploy file and deploy cluster
+
+function sed_config_file()
+{
+    unamestr="$(uname)"
+    if [[ "$unamestr" == "Linux" ]]; then
+        if [[ "$1" == "raylet" ]];then
+            sed -i 's/^use_raylet.*$/use_raylet = true/g' ray.config.ini
+        else
+            sed -i 's/^use_raylet.*$/use_raylet = false/g' ray.config.ini
+        fi
+    elif [[ "$unamestr" == "Darwin" ]]; then
+        if [[ "$1" == "raylet" ]]; then
+            sed -i '_' 's/^use_raylet.*$/use_raylet = true/g' ray.config.ini
+        elif [[ "$1" == "non-raylet" ]]; then
+            sed -i '_' 's/^use_raylet.*$/use_raylet = false/g' ray.config.ini
+        fi
+    fi
+}
 
 function run_test_cluster()
 {
     pushd java
-    if [ "$1" == "raylet" ];then
-        sed -i ' ' 's/^use_raylet.*$/use_raylet = true/g' ray.config.ini
-    else
-        sed -i ' ' 's/^use_raylet.*$/use_raylet = false/g' ray.config.ini
-    fi
-
+    sed_config_file "$1"
     sh cleanup.sh
     rm -rf local_deploy
     ./prepare.sh -t local_deploy
@@ -40,13 +55,13 @@ function run_test_cluster()
     ../local_deploy/run.sh submit $ARGS
     popd
 
-    # check
-    result=$(cat local_deploy/cli.log)
+    # check: sleeping 5 second for waiting programs finished.
+    sleep 5
+        result=$(cat local_deploy/cli.log)
     [[ ${result} =~ "Started Ray head node" ]] || exit 1
 
     result=$(cat /tmp/org.ray.example.HelloWorld/0.out.txt)
     [[ ${result} =~ "hello,world!" ]] || exit 1
-
     popd
 }
 
