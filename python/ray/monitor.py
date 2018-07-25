@@ -308,9 +308,6 @@ class Monitor(object):
         else:
             print("Warning: could not find ip for client {}."
                   .format(client_id))
-            for keys, values in self.local_scheduler_id_to_ip_map.items():
-                print(keys)
-                print(values)
 
     def xray_heartbeat_handler(self, unused_channel, data):
         """Handle an xray heartbeat message from Redis."""
