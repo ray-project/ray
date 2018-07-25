@@ -126,7 +126,7 @@ ray::Status NodeManager::RegisterGcs() {
   };
   RAY_RETURN_NOT_OK(gcs_client_->raylet_task_table().Subscribe(
       JobID::nil(), gcs_client_->client_table().GetLocalClientId(),
-      task_committed_callback, nullptr));
+      task_committed_callback, nullptr, nullptr));
 
   // Register a callback for actor creation notifications.
   auto actor_creation_callback = [this](
@@ -142,6 +142,12 @@ ray::Status NodeManager::RegisterGcs() {
     ClientAdded(data);
   };
   gcs_client_->client_table().RegisterClientAddedCallback(node_manager_client_added);
+  // Register a callback on the client table for removed clients.
+  auto node_manager_client_removed = [this](
+      gcs::AsyncGcsClient *client, const UniqueID &id, const ClientTableDataT &data) {
+    ClientRemoved(data);
+  };
+  gcs_client_->client_table().RegisterClientRemovedCallback(node_manager_client_removed);
 
   // Subscribe to node manager heartbeats.
   const auto heartbeat_added = [this](gcs::AsyncGcsClient *client, const ClientID &id,
@@ -149,7 +155,8 @@ ray::Status NodeManager::RegisterGcs() {
     HeartbeatAdded(client, id, heartbeat_data);
   };
   RAY_RETURN_NOT_OK(gcs_client_->heartbeat_table().Subscribe(
-      UniqueID::nil(), UniqueID::nil(), heartbeat_added, [](gcs::AsyncGcsClient *client) {
+      UniqueID::nil(), UniqueID::nil(), heartbeat_added, nullptr,
+      [](gcs::AsyncGcsClient *client) {
         RAY_LOG(DEBUG) << "heartbeat table subscription done callback called.";
       }));
 
@@ -223,6 +230,15 @@ void NodeManager::Heartbeat() {
 
 void NodeManager::ClientAdded(const ClientTableDataT &client_data) {
   ClientID client_id = ClientID::from_binary(client_data.client_id);
+
+  // Make sure the client hasn't already been removed.
+  if (removed_clients_.find(client_id) != removed_clients_.end()) {
+    // This client has already been removed, so don't do anything.
+    RAY_LOG(INFO) << "The client " << client_id << " has already been removed, so it "
+                  << "can't be added. This is very unusual.";
+    return;
+  }
+
   RAY_LOG(DEBUG) << "[ClientAdded] received callback from client id " << client_id;
   if (client_id == gcs_client_->client_table().GetLocalClientId()) {
     // We got a notification for ourselves, so we are connected to the GCS now.
@@ -258,6 +274,36 @@ void NodeManager::ClientAdded(const ClientTableDataT &client_data) {
                           client_info.node_manager_port));
   auto server_conn = TcpServerConnection(std::move(socket));
   remote_server_connections_.emplace(client_id, std::move(server_conn));
+}
+
+void NodeManager::ClientRemoved(const ClientTableDataT &client_data) {
+  const ClientID client_id = ClientID::from_binary(client_data.client_id);
+  RAY_LOG(DEBUG) << "[ClientRemoved] received callback from client id " << client_id;
+
+  // If the client has already been removed, don't do anything.
+  if (removed_clients_.find(client_id) != removed_clients_.end()) {
+    RAY_LOG(INFO) << "The client " << client_id << " has already been removed. This "
+                  << "should be very unusual.";
+    return;
+  }
+  removed_clients_.insert(client_id);
+
+  RAY_CHECK(client_id != gcs_client_->client_table().GetLocalClientId())
+      << "Exiting because this node manager has mistakenly been marked dead by the "
+      << "monitor.";
+
+  // Below, when we remove client_id from all of these data structures, we could
+  // check that it is actually removed, or log a warning otherwise, but that may
+  // not be necessary.
+
+  // Remove the client from the list of remote clients.
+  std::remove(remote_clients_.begin(), remote_clients_.end(), client_id);
+
+  // Remove the client from the resource map.
+  cluster_resource_map_.erase(client_id);
+
+  // Remove the remote server connection.
+  remote_server_connections_.erase(client_id);
 }
 
 void NodeManager::HeartbeatAdded(gcs::AsyncGcsClient *client, const ClientID &client_id,
@@ -578,6 +624,11 @@ void NodeManager::ProcessClientMessage(
     RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(job_id, type, error_message,
                                                               timestamp));
   } break;
+  case protocol::MessageType::PushProfileEventsRequest: {
+    auto message = flatbuffers::GetRoot<ProfileTableData>(message_data);
+
+    RAY_CHECK_OK(gcs_client_->profile_table().AddProfileEventBatch(*message));
+  } break;
 
   default:
     RAY_LOG(FATAL) << "Received unexpected message type " << message_type;
@@ -829,6 +880,9 @@ void NodeManager::AssignTask(Task &task) {
     lineage_cache_.AddReadyTask(task);
     // Mark the task as running.
     local_queues_.QueueRunningTasks(std::vector<Task>({task}));
+    // Notify the task dependency manager that we no longer need this task's
+    // object dependencies.
+    task_dependency_manager_.UnsubscribeDependencies(spec.TaskId());
   } else {
     RAY_LOG(WARNING) << "Failed to send task to worker, disconnecting client";
     // We failed to send the task to the worker, so disconnect the worker.

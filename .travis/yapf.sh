@@ -24,8 +24,6 @@ YAPF_FLAGS=(
 )
 
 YAPF_EXCLUDES=(
-    '--exclude' 'python/ray/dataframe/*'
-    '--exclude' 'python/ray/rllib/*'
     '--exclude' 'python/ray/cloudpickle/*'
     '--exclude' 'python/build/*'
     '--exclude' 'python/ray/pyarrow_files/*'

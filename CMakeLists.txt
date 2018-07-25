@@ -25,6 +25,9 @@ find_package(Plasma)
 # This ensures that things like gnu++11 get passed correctly
 set(CMAKE_CXX_STANDARD 11)
 
+# Use old C++ ABI to be compatible with TensorFlow
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_GLIBCXX_USE_CXX11_ABI=0")
+
 # We require a C++11 compliant compiler
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -54,6 +57,17 @@ include(BuildUtils)
 enable_testing()
 
 include(ThirdpartyToolchain)
+
+
+# TODO(rkn): Fix all of this. This include is needed for the following
+# reason. The local scheduler depends on tables.cc which depends on
+# node_manager_generated.h which depends on gcs_generated.h. However,
+# the include statement for gcs_generated.h doesn't include the file
+# path, so we include the relevant directory here.
+set(GCS_FBS_OUTPUT_DIRECTORY
+        "${CMAKE_CURRENT_LIST_DIR}/src/ray/gcs/format")
+include_directories(${GCS_FBS_OUTPUT_DIRECTORY})
+
 
 include_directories(SYSTEM ${ARROW_INCLUDE_DIR})
 include_directories(SYSTEM ${PLASMA_INCLUDE_DIR})

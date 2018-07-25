@@ -1,5 +1,8 @@
 // Local scheduler protocol specification
 
+include "gcs.fbs";
+
+
 // TODO(swang): We put the flatbuffer types in a separate namespace for now to
 // avoid conflicts with legacy Ray types.
 namespace ray.protocol;
@@ -62,6 +65,9 @@ enum MessageType:int {
   // Push an error to the relevant driver. This is sent from a worker to the
   // node manager.
   PushErrorRequest,
+  // Push some profiling events to the GCS. When sending this message to the
+  // node manager, the message itself is serialized as a ProfileTableData object.
+  PushProfileEventsRequest,
 }
 
 table TaskExecutionSpecification {

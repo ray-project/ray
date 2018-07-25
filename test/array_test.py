@@ -18,7 +18,7 @@ if sys.version_info >= (3, 0):
 
 class RemoteArrayTest(unittest.TestCase):
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
 
     def testMethods(self):
         for module in [
@@ -55,7 +55,7 @@ class RemoteArrayTest(unittest.TestCase):
 
 class DistributedArrayTest(unittest.TestCase):
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
 
     def testAssemble(self):
         for module in [

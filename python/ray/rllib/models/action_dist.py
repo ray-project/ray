@@ -42,25 +42,25 @@ class Categorical(ActionDistribution):
             logits=self.inputs, labels=x)
 
     def entropy(self):
-        a0 = self.inputs - tf.reduce_max(self.inputs, reduction_indices=[1],
-                                         keepdims=True)
+        a0 = self.inputs - tf.reduce_max(
+            self.inputs, reduction_indices=[1], keepdims=True)
         ea0 = tf.exp(a0)
         z0 = tf.reduce_sum(ea0, reduction_indices=[1], keepdims=True)
         p0 = ea0 / z0
         return tf.reduce_sum(p0 * (tf.log(z0) - a0), reduction_indices=[1])
 
     def kl(self, other):
-        a0 = self.inputs - tf.reduce_max(self.inputs, reduction_indices=[1],
-                                         keepdims=True)
-        a1 = other.inputs - tf.reduce_max(other.inputs, reduction_indices=[1],
-                                          keepdims=True)
+        a0 = self.inputs - tf.reduce_max(
+            self.inputs, reduction_indices=[1], keepdims=True)
+        a1 = other.inputs - tf.reduce_max(
+            other.inputs, reduction_indices=[1], keepdims=True)
         ea0 = tf.exp(a0)
         ea1 = tf.exp(a1)
         z0 = tf.reduce_sum(ea0, reduction_indices=[1], keepdims=True)
         z1 = tf.reduce_sum(ea1, reduction_indices=[1], keepdims=True)
         p0 = ea0 / z0
-        return tf.reduce_sum(p0 * (a0 - tf.log(z0) - a1 + tf.log(z1)),
-                             reduction_indices=[1])
+        return tf.reduce_sum(
+            p0 * (a0 - tf.log(z0) - a1 + tf.log(z1)), reduction_indices=[1])
 
     def sample(self):
         return tf.squeeze(tf.multinomial(self.inputs, 1), axis=1)
@@ -90,22 +90,23 @@ class DiagGaussian(ActionDistribution):
         self.std = tf.exp(log_std)
 
     def logp(self, x):
-        return (-0.5 * tf.reduce_sum(tf.square((x - self.mean) / self.std),
-                                     reduction_indices=[1]) -
+        return (-0.5 * tf.reduce_sum(
+            tf.square((x - self.mean) / self.std), reduction_indices=[1]) -
                 0.5 * np.log(2.0 * np.pi) * tf.to_float(tf.shape(x)[1]) -
                 tf.reduce_sum(self.log_std, reduction_indices=[1]))
 
     def kl(self, other):
         assert isinstance(other, DiagGaussian)
-        return tf.reduce_sum(other.log_std - self.log_std +
-                             (tf.square(self.std) +
-                              tf.square(self.mean - other.mean)) /
-                             (2.0 * tf.square(other.std)) - 0.5,
-                             reduction_indices=[1])
+        return tf.reduce_sum(
+            other.log_std - self.log_std +
+            (tf.square(self.std) + tf.square(self.mean - other.mean)) /
+            (2.0 * tf.square(other.std)) - 0.5,
+            reduction_indices=[1])
 
     def entropy(self):
-        return tf.reduce_sum(self.log_std + .5 * np.log(2.0 * np.pi * np.e),
-                             reduction_indices=[1])
+        return tf.reduce_sum(
+            self.log_std + .5 * np.log(2.0 * np.pi * np.e),
+            reduction_indices=[1])
 
     def sample(self):
         out = self.mean + self.std * tf.random_normal(tf.shape(self.mean))
@@ -158,6 +159,7 @@ class MultiActionDistribution(ActionDistribution):
     Args:
         inputs (Tensor list): A list of tensors from which to compute samples.
     """
+
     def __init__(self, inputs, action_space, child_distributions):
         # you actually have to instantiate the child distributions
         self.reshaper = Reshaper(action_space.spaces)
@@ -174,23 +176,25 @@ class MultiActionDistribution(ActionDistribution):
             # Remove extra categorical dimension
             if isinstance(distribution, Categorical):
                 split_list[i] = tf.squeeze(split_list[i], axis=-1)
-        log_list = np.asarray([distribution.logp(split_x) for
-                              distribution, split_x in
-                               zip(self.child_distributions, split_list)])
+        log_list = np.asarray([
+            distribution.logp(split_x) for distribution, split_x in zip(
+                self.child_distributions, split_list)
+        ])
         return np.sum(log_list)
 
     def kl(self, other):
         """The KL-divergence between two action distributions."""
-        kl_list = np.asarray([distribution.kl(other_distribution) for
-                              distribution, other_distribution in
-                              zip(self.child_distributions,
-                                  other.child_distributions)])
+        kl_list = np.asarray([
+            distribution.kl(other_distribution)
+            for distribution, other_distribution in zip(
+                self.child_distributions, other.child_distributions)
+        ])
         return np.sum(kl_list)
 
     def entropy(self):
         """The entropy of the action distribution."""
-        entropy_list = np.array([s.entropy() for s in
-                                 self.child_distributions])
+        entropy_list = np.array(
+            [s.entropy() for s in self.child_distributions])
         return np.sum(entropy_list)
 
     def sample(self):

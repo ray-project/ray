@@ -74,7 +74,7 @@ class MonitorTest(unittest.TestCase):
                     success.value = False
                     break
 
-            ray.worker.cleanup()
+            ray.shutdown()
 
         success = multiprocessing.Value('b', False)
         driver = multiprocessing.Process(target=Driver, args=(success, ))
@@ -95,7 +95,7 @@ class MonitorTest(unittest.TestCase):
         # the global state.
         self.assertEqual((0, 1), StateSummary()[:2])
 
-        ray.worker.cleanup()
+        ray.shutdown()
         subprocess.Popen(["ray", "stop"]).wait()
 
     @unittest.skipIf(

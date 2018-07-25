@@ -110,10 +110,14 @@ public class RunManager {
 
   public Process startDriver(String mainClass, String redisAddress, UniqueID driverId,
                              String workDir, String ip,
-                             String driverClass, String additonalClassPaths, String
-                                 additionalConfigs) {
+                             String driverClass, String driverArgs, String additonalClassPaths, 
+                             String additionalConfigs) {
     String driverConfigs =
         "ray.java.start.driver_id=" + driverId + ";ray.java.start.driver_class=" + driverClass;
+    if (driverArgs != null) {
+      driverConfigs += ";ray.java.start.driver_args=" + driverArgs;
+    }
+
     if (null != additionalConfigs) {
       additionalConfigs += ";" + driverConfigs;
     } else {
@@ -174,8 +178,7 @@ public class RunManager {
         + section + "node_ip_address=" + ip + ";"
         + section + "redis_address=" + redisAddr + ";"
         + section + "working_directory=" + workDir + ";"
-        + section + "logging_directory=" + params.logging_directory + ";"
-        + section + "working_directory=" + workDir;
+        + section + "run_mode=" + params.run_mode;
 
     if (additionalConfigs.length() > 0) {
       cmd += ";" + additionalConfigs;
@@ -397,7 +400,7 @@ public class RunManager {
       for (int j = 0; j < runInfo.allProcesses.get(i).size(); ) {
         p = runInfo.allProcesses.get(i).get(j);
         if (!p.process.isAlive()) {
-          RayLog.core.error("Process " + p.hashCode() + " is not alive!" + " Process Type "
+          RayLog.core.error("Process " + p.process.hashCode() + " is not alive!" + " Process Type "
               + types[i].name());
           runInfo.deadProcess.add(p);
           runInfo.allProcesses.get(i).remove(j);
@@ -454,7 +457,7 @@ public class RunManager {
       if (killAll) {
         runInfo.allProcesses.get(i).forEach(p -> {
           if (killProcess(p.process)) {
-            RayLog.core.info("Kill process " + p.hashCode() + " forcely");
+            RayLog.core.info("Kill process " + p.process.hashCode() + " forcely");
           }
         });
       } else {
@@ -670,7 +673,8 @@ public class RunManager {
     }
 
     String jvmArgs = "";
-    jvmArgs += " -DlogOutput=" + params.logging_directory + "/workers/*pid_suffix*";
+    jvmArgs += " -Dlogging.path=" + params.working_directory + "/logs/workers";
+    jvmArgs += " -Dlogging.file.name=core-*pid_suffix*";
 
     return buildJavaProcessCommand(
         RunInfo.ProcessType.PT_WORKER,

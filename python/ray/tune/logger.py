@@ -76,6 +76,8 @@ class UnifiedLogger(Logger):
         self._log_syncer.sync_now(force=True)
 
     def flush(self):
+        for logger in self._loggers:
+            logger.flush()
         self._log_syncer.sync_now(force=True)
         self._log_syncer.wait()
 
@@ -109,7 +111,7 @@ def to_tf_values(result, path):
     values = []
     for attr, value in result.items():
         if value is not None:
-            if type(value) in [int, float]:
+            if type(value) in [int, float, np.float32, np.float64, np.int32]:
                 values.append(
                     tf.Summary.Value(
                         tag="/".join(path + [attr]), simple_value=value))
@@ -131,6 +133,15 @@ class _TFLogger(Logger):
         values = to_tf_values(tmp, ["ray", "tune"])
         train_stats = tf.Summary(value=values)
         self._file_writer.add_summary(train_stats, result.timesteps_total)
+        timesteps_value = to_tf_values({
+            "timesteps_total": result.timesteps_total
+        }, ["ray", "tune"])
+        timesteps_stats = tf.Summary(value=timesteps_value)
+        self._file_writer.add_summary(timesteps_stats,
+                                      result.training_iteration)
+
+    def flush(self):
+        self._file_writer.flush()
 
     def close(self):
         self._file_writer.close()

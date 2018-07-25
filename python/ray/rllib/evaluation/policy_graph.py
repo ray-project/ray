@@ -25,7 +25,7 @@ class PolicyGraph(object):
         """Initialize the graph.
 
         This is the standard constructor for policy graphs. The policy graph
-        class you pass into CommonPolicyEvaluator will be constructed with
+        class you pass into PolicyEvaluator will be constructed with
         these arguments.
 
         Args:
@@ -105,6 +105,22 @@ class PolicyGraph(object):
             info (dict): Extra policy-specific values
         """
         raise NotImplementedError
+
+    def compute_apply(self, samples):
+        """Fused compute gradients and apply gradients call.
+
+        Returns:
+            grad_info: dictionary of extra metadata from compute_gradients().
+            apply_info: dictionary of extra metadata from apply_gradients().
+
+        Examples:
+            >>> batch = ev.sample()
+            >>> ev.compute_apply(samples)
+        """
+
+        grads, grad_info = self.compute_gradients(samples)
+        apply_info = self.apply_gradients(grads)
+        return grad_info, apply_info
 
     def get_weights(self):
         """Returns model weights.

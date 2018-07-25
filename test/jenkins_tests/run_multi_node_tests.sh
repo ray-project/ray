@@ -30,6 +30,20 @@ docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     --env CartPole-v1 \
     --run PPO \
     --stop '{"training_iteration": 2}' \
+    --config '{"simple_optimizer": false, "num_sgd_iter": 2, "model": {"use_lstm": true}}'
+
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/rllib/train.py \
+    --env CartPole-v1 \
+    --run PPO \
+    --stop '{"training_iteration": 2}' \
+    --config '{"simple_optimizer": true, "num_sgd_iter": 2, "model": {"use_lstm": true}}'
+
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/rllib/train.py \
+    --env CartPole-v1 \
+    --run PPO \
+    --stop '{"training_iteration": 2}' \
     --config '{"kl_coeff": 1.0, "num_sgd_iter": 10, "sgd_stepsize": 1e-4, "sgd_batchsize": 64, "timesteps_per_batch": 2000, "num_workers": 1, "use_gae": false}'
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
@@ -140,7 +154,7 @@ docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     --env CartPole-v0 \
     --run PG \
     --stop '{"training_iteration": 2}' \
-    --config '{"sample_batch_size": 500, "num_workers": 1, "num_envs": 10}'
+    --config '{"sample_batch_size": 500, "num_workers": 1, "num_envs_per_worker": 10}'
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/train.py \
@@ -171,13 +185,28 @@ docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     --config '{"num_workers": 1}'
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+    rllib train \
+    --env MountainCarContinuous-v0 \
+    --run DDPG \
+    --stop '{"training_iteration": 2}' \
+    --config '{"num_workers": 1}'
+
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/rllib/train.py \
+    --env Pendulum-v0 \
+    --run APEX_DDPG \
+    --ray-num-cpus 8 \
+    --stop '{"training_iteration": 2}' \
+    --config '{"num_workers": 2, "optimizer": {"num_replay_buffer_shards": 1}, "learning_starts": 100}'
+
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     sh /ray/test/jenkins_tests/multi_node_tests/test_rllib_eval.sh
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/test/test_checkpoint_restore.py
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
-    python /ray/python/ray/rllib/test/test_common_policy_evaluator.py
+    python /ray/python/ray/rllib/test/test_policy_evaluator.py
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/test/test_serving_env.py
@@ -220,13 +249,20 @@ docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     --smoke-test
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/tune/examples/tune_mnist_keras.py \
+    --smoke-test
+
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/examples/legacy_multiagent/multiagent_mountaincar.py
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/examples/legacy_multiagent/multiagent_pendulum.py
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
-    python /ray/python/ray/rllib/examples/multiagent_cartpole.py
+    python /ray/python/ray/rllib/examples/multiagent_cartpole.py --num-iters=2
+
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/rllib/examples/multiagent_two_trainers.py --num-iters=2
 
 python $ROOT_DIR/multi_node_docker_test.py \
     --docker-image=$DOCKER_SHA \

@@ -10,6 +10,7 @@ import subprocess
 import ray.services as services
 from ray.autoscaler.commands import (create_or_update_cluster,
                                      teardown_cluster, get_head_node_ip)
+import ray.utils
 
 
 def check_no_existing_redis_clients(node_ip_address, redis_client):
@@ -31,7 +32,7 @@ def check_no_existing_redis_clients(node_ip_address, redis_client):
         if deleted:
             continue
 
-        if info[b"node_ip_address"].decode("ascii") == node_ip_address:
+        if ray.utils.decode(info[b"node_ip_address"]) == node_ip_address:
             raise Exception("This Redis instance is already connected to "
                             "clients with this IP address.")
 
@@ -146,7 +147,7 @@ def cli():
     "--use-raylet",
     is_flag=True,
     default=None,
-    help="use the raylet code path, this is not supported yet")
+    help="use the raylet code path")
 def start(node_ip_address, redis_address, redis_port, num_redis_shards,
           redis_max_clients, redis_shard_ports, object_manager_port,
           object_store_memory, num_workers, num_cpus, num_gpus, resources,

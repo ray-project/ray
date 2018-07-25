@@ -1,6 +1,8 @@
 #ifndef LOCAL_SCHEDULER_CLIENT_H
 #define LOCAL_SCHEDULER_CLIENT_H
 
+#include <mutex>
+
 #include "common/task.h"
 #include "local_scheduler_shared.h"
 #include "ray/raylet/task_spec.h"
@@ -19,6 +21,10 @@ struct LocalSchedulerConnection {
   /// of that resource allocated for this worker.
   std::unordered_map<std::string, std::vector<std::pair<int64_t, double>>>
       resource_ids_;
+  /// A mutex to protect stateful operations of the local scheduler client.
+  std::mutex mutex;
+  /// A mutext to protect write operations of the local scheduler client.
+  std::mutex write_mutex;
 };
 
 /**
@@ -224,5 +230,14 @@ void local_scheduler_push_error(LocalSchedulerConnection *conn,
                                 const std::string &type,
                                 const std::string &error_message,
                                 double timestamp);
+
+/// Store some profile events in the GCS.
+///
+/// \param conn The connection information.
+/// \param profile_events A batch of profiling event information.
+/// \return Void.
+void local_scheduler_push_profile_events(
+    LocalSchedulerConnection *conn,
+    const ProfileTableDataT &profile_events);
 
 #endif

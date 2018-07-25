@@ -11,6 +11,18 @@ import subprocess
 import sys
 
 
+# This is duplicated from ray.utils so that we do not have to introduce a
+# dependency on Ray to run this file.
+def decode(byte_str):
+    """Make this unicode in Python 3, otherwise leave it as bytes."""
+    if not isinstance(byte_str, bytes):
+        raise ValueError("The argument must be a bytes object.")
+    if sys.version_info >= (3, 0):
+        return byte_str.decode("ascii")
+    else:
+        return byte_str
+
+
 def wait_for_output(proc):
     """This is a convenience method to parse a process's stdout and stderr.
 
@@ -27,7 +39,7 @@ def wait_for_output(proc):
             # NOTE(rkn): This try/except block is here because I once saw an
             # exception raised here and want to print more information if that
             # happens again.
-            stdout_data = stdout_data.decode("ascii")
+            stdout_data = decode(stdout_data)
         except UnicodeDecodeError:
             raise Exception("Failed to decode stdout_data:", stdout_data)
 
@@ -36,7 +48,7 @@ def wait_for_output(proc):
             # NOTE(rkn): This try/except block is here because I once saw an
             # exception raised here and want to print more information if that
             # happens again.
-            stderr_data = stderr_data.decode("ascii")
+            stderr_data = decode(stderr_data)
         except UnicodeDecodeError:
             raise Exception("Failed to decode stderr_data:", stderr_data)
 
