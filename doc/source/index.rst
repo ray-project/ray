@@ -44,7 +44,7 @@ Ray comes with libraries that accelerate deep learning and reinforcement learnin
 - `RLlib`_: Scalable Reinforcement Learning
 
 .. _`Tune`: tune.html
-.. _`Ray RLlib`: rllib.html
+.. _`RLlib`: rllib.html
 
 
 .. toctree::

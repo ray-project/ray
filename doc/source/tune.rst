@@ -1,7 +1,10 @@
-Tune: Hyperparameter Optimization Framework
-===============================================
+Tune: Distributed Hyperparameter Search
+=======================================
 
-Tune is a scalable hyperparameter optimization framework for reinforcement learning and deep learning. Go from running one experiment on a single machine to running on a large cluster with efficient search algorithms without changing your code.
+.. image:: images/tune.png
+
+Tune is a distributed hyperparameter search framework for deep learning and deep reinforcement learning.
+Go from running one experiment on a single machine to running on a large cluster with efficient search algorithms without changing your code.
 
 
 Getting Started
@@ -11,6 +14,10 @@ Installation
 ~~~~~~~~~~~~
 
 You'll need to first `install ray <installation.html>`__ to import Tune.
+
+.. code-block:: bash
+
+  pip install ray
 
 Quick Start
 ~~~~~~~~~~~
