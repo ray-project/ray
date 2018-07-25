@@ -303,8 +303,10 @@ class RunDriverForMultipleTimesTest(unittest.TestCase):
         ray.shutdown()
 
     def testRunDriverForTwice(self):
-        # We used to have issue 2165 and 2288: driver will hang when we run it
-        # for the second time.
+        # We used to have issue 2165 and 2288:
+        # https://github.com/ray-project/ray/issues/2165
+        # https://github.com/ray-project/ray/issues/2288
+        # both complain that driver will hang when run for the second time.
         # This test is used to verify the fix for above issue, it will run the
         # same driver for twice and verify whether both of them succeed.
         address_info = ray.init()
