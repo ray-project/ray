@@ -275,7 +275,7 @@ class ActorAPI(unittest.TestCase):
         self.assertEqual(len(actor_keys), 1)
         actor_class_info = r.hgetall(actor_keys[0])
         self.assertEqual(actor_class_info[b"class_name"], b"Foo")
-        self.assertEqual(actor_class_info[b"module"], b"__main__")
+        self.assertEqual(actor_class_info[b"module"], b"actor_test")
 
     def testMultipleReturnValues(self):
         ray.init(num_workers=0)
