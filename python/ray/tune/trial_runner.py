@@ -40,7 +40,7 @@ class TrialRunner(object):
     """
 
     def __init__(self,
-                 trial_generator,
+                 trial_generator=None,
                  search_alg=None,
                  scheduler=None,
                  launch_web_server=False,
@@ -62,7 +62,7 @@ class TrialRunner(object):
                 be set to True when running on an autoscaling cluster to enable
                 automatic scale-up.
         """
-        self._trial_generator = trial_generator
+        self._trial_generator = trial_generator or []
         self._search_alg = search_alg or SearchAlgorithm()
         self._scheduler_alg = scheduler or FIFOScheduler()
         self._trials = []
