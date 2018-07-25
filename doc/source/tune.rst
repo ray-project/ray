@@ -82,7 +82,9 @@ Features
 
 Ray Tune has the following features:
 
--  Scalable implementations of search algorithms such as `Population Based Training (PBT) <pbt.html>`__, `Median Stopping Rule <hyperband.html#median-stopping-rule>`__, Model-Based Optimization (HyperOpt), and `HyperBand <hyperband.html>`__.
+-  Scalable implementations of search execution techniques such as `Population Based Training (PBT) <pbt.html>`__, `Median Stopping Rule <hyperband.html#median-stopping-rule>`__, and `HyperBand <hyperband.html>`__.
+
+-  The ability to combine search execution and search algorithms, such as Model-Based Optimization (HyperOpt) with HyperBand.
 
 -  Integration with visualization tools such as `TensorBoard <https://www.tensorflow.org/get_started/summaries_and_tensorboard>`__, `rllab's VisKit <https://media.readthedocs.org/pdf/rllab/latest/rllab.pdf>`__, and a `parallel coordinates visualization <https://en.wikipedia.org/wiki/Parallel_coordinates>`__.
 
@@ -115,11 +117,37 @@ Trial Schedulers
 ----------------
 
 By default, Ray Tune schedules trials in serial order with the ``FIFOScheduler`` class. However, you can also specify a custom scheduling algorithm that can early stop trials, perturb parameters, or incorporate suggestions from an external service. Currently implemented trial schedulers include
-`Population Based Training (PBT) <pbt.html>`__, `Median Stopping Rule <hyperband.html#median-stopping-rule>`__, `Model Based Optimization (HyperOpt) <#hyperopt-integration>`__, and `HyperBand <hyperband.html>`__.
+`Population Based Training (PBT) <pbt.html>`__, `Median Stopping Rule <hyperband.html#median-stopping-rule>`__, and `HyperBand <hyperband.html>`__.
 
 .. code-block:: python
 
     run_experiments({...}, scheduler=AsyncHyperBandScheduler())
+
+Search Algorithms
+-----------------
+
+Tune allows you to use different search algorithms in combination with different scheduling algorithms. Currently, Tune offers the following search algorithms:
+
+  - (Default) Grid search / Random Search
+  - Tree-structured Parzen Estimators (HyperOpt)
+
+HyperOpt Integration
+~~~~~~~~~~~~~~~~~~~~
+The ``HyperOptAlgorithm`` is a SearchAlgorithm that is backed by HyperOpt to perform sequential model-based hyperparameter optimization.
+In order to use this search algorithm, you will need to install HyperOpt via the following command:
+
+.. code-block:: bash
+
+    $ pip install --upgrade git+git://github.com/hyperopt/hyperopt.git
+
+An example of this can be found in `hyperopt_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperopt_example.py>`__.
+
+.. note::
+
+    The HyperOptScheduler takes an *increasing* metric in the reward attribute. If trying to minimize a loss, be sure to
+    specify *mean_loss* in the function/class reporting and *reward_attr=neg_mean_loss* in the HyperOptScheduler initializer.
+
+.. autoclass:: ray.tune.search.HyperOptAlgorithm
 
 
 Handling Large Datasets
@@ -148,24 +176,6 @@ You often will want to compute a large object (e.g., training data, model weight
     run_experiments(...)
 
 
-HyperOpt Integration
---------------------
-
-The ``HyperOptScheduler`` is a Trial Scheduler that is backed by HyperOpt to perform sequential model-based hyperparameter optimization.
-In order to use this scheduler, you will need to install HyperOpt via the following command:
-
-.. code-block:: bash
-
-    $ pip install --upgrade git+git://github.com/hyperopt/hyperopt.git
-
-An example of this can be found in `hyperopt_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperopt_example.py>`__.
-
-.. note::
-
-    The HyperOptScheduler takes an *increasing* metric in the reward attribute. If trying to
-    minimize a loss, be sure to specify *mean_loss* in the function/class reporting and *reward_attr=neg_mean_loss* in the HyperOptScheduler initializer.
-
-.. autoclass:: ray.tune.hpo_scheduler.HyperOptScheduler
 
 
 Visualizing Results

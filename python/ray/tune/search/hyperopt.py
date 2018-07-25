@@ -16,15 +16,17 @@ from ray.tune.search import SearchAlgorithm
 class HyperOptAlgorithm(SearchAlgorithm):
     """A wrapper around HyperOpt to provide trial suggestions.
 
-    Requires HyperOpt to be installed via source.
+    Requires HyperOpt to be installed from source.
     Uses the Tree-structured Parzen Estimators algorithm, although can be
     trivially extended to support any algorithm HyperOpt uses.
     Externally added trials will not be tracked by HyperOpt.
 
     Parameters:
-        max_concurrent (int | None): Number of maximum concurrent trials.
-            If None, then trials will be queued only if resources
-            are available.
+        space (dict): HyperOpt configuration. Parameters will be sampled
+            from this configuration and will be used to override
+            parameters generated in the variant generation process.
+        max_concurrent (int): Number of maximum concurrent trials. Defaults
+            to 10.
         reward_attr (str): The TrainingResult objective value attribute.
             This refers to an increasing value, which is internally negated
             when interacting with HyperOpt so that HyperOpt can "maximize"
