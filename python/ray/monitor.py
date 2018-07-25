@@ -499,6 +499,7 @@ class Monitor(object):
             max_messages: The maximum number of messages to process before
                 returning.
         """
+        print("PROCESS MESSAGES")
         for _ in range(max_messages):
             message = self.subscribe_client.get_message()
             if message is None:
