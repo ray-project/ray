@@ -75,10 +75,10 @@ bool Lineage::SetEntry(const Task &task, GcsStatus status) {
   auto task_id = task.GetTaskSpecification().TaskId();
   auto current_entry = GetEntryMutable(task_id);
   if (current_entry) {
-    if (current_entry->GetStatus() < status) {
-      // If the new status is greater, then overwrite the current entry.
-      current_entry->SetStatus(status);
-      current_entry->TaskDataMutable().Update(task);
+    if (current_entry->SetStatus(status)) {
+      // SetStatus() would check if the new status is greater,
+      // if it succeeds, go ahead to update the task field.
+      current_entry->TaskDataMutable().CopyTaskExecutionSpec(task);
       return true;
     }
     return false;
@@ -200,8 +200,8 @@ void LineageCache::AddReadyTask(const Task &task) {
   RAY_CHECK(entry->GetStatus() == GcsStatus::UNCOMMITTED_WAITING);
 
   entry->SetStatus(GcsStatus::UNCOMMITTED_READY);
-  // TaskSepc is immutable, just update TaskExecSpec.
-  entry->TaskDataMutable().Update(task);
+  // TaskSepc. is immutable, just update TaskExecSpec.
+  entry->TaskDataMutable().CopyTaskExecutionSpec(task);
   // Attempt to flush the task.
   bool flushed = FlushTask(task_id);
   if (!flushed) {

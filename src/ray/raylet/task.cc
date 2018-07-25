@@ -58,7 +58,7 @@ bool Task::DependsOn(const ObjectID &object_id) const {
   return false;
 }
 
-void Task::Update(const Task &task) {
+void Task::CopyTaskExecutionSpec(const Task &task) {
   task_execution_spec_ = task.GetTaskExecutionSpecReadonly();
 }
 

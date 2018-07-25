@@ -75,7 +75,7 @@ class Task {
 
   /// Update the dynamic/mutable information for this task.
   /// \param task Task structure with updated dynamic information.
-  void Update(const Task &task);
+  void CopyTaskExecutionSpec(const Task &task);
 
  private:
   /// Task execution specification, consisting of all dynamic/mutable
