@@ -93,11 +93,10 @@ void WorkerPool::RegisterWorker(std::shared_ptr<Worker> worker) {
   registered_workers_.push_back(std::move(worker));
 
   auto it = starting_worker_processes_.find(pid);
-  if (it != starting_worker_processes_.end()) {
-    it->second--;
-    if (it->second == 0) {
-      starting_worker_processes_.erase(it);
-    }
+  RAY_CHECK(it != starting_worker_processes_.end());
+  it->second--;
+  if (it->second == 0) {
+    starting_worker_processes_.erase(it);
   }
 }
 

@@ -9,7 +9,6 @@ import org.ray.core.Worker;
 import org.ray.spi.LocalSchedulerLink;
 import org.ray.spi.model.FunctionArg;
 import org.ray.spi.model.TaskSpec;
-import java.util.ArrayList;
 
 /**
  * A mock implementation of {@code org.ray.spi.LocalSchedulerLink}, which stores waiting tasks in a

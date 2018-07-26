@@ -340,9 +340,9 @@ public class RunManager {
       }
     }
 
-    // start object stores and local scheduler
+    // Start local backend processes
     for (int i = 0; i < params.num_local_schedulers; i++) {
-      // start object stores
+      // Start object stores
       AddressInfo info = new AddressInfo();
       
       int rpcPort = params.object_store_rpc_port + i;
@@ -353,28 +353,27 @@ public class RunManager {
           params.redis_address, params.node_ip_address, params.redirect, params.cleanup);
 
       if (!params.use_raylet) {
-        // store manager
         startObjectManager(i, info,
-            params.working_directory + "/storeManager", params.redis_address,
-            params.node_ip_address, params.redirect, params.cleanup);
-      }  
-      
-      // start local scheduler or raylet
-      int workerCount = 0;
+                params.working_directory + "/storeManager", params.redis_address,
+                params.node_ip_address, params.redirect, params.cleanup);
 
-      if (params.start_workers_from_local_scheduler) {
-        workerCount = localNumWorkers[i];
-        localNumWorkers[i] = 0;
-      }
+        // start local scheduler
+        int workerCount = 0;
 
-      if (!params.use_raylet) {
+        if (params.start_workers_from_local_scheduler) {
+          workerCount = localNumWorkers[i];
+          localNumWorkers[i] = 0;
+        }
+
         startLocalScheduler(i, info,
             params.num_cpus[i], params.num_gpus[i], workerCount,
             params.working_directory + "/localsc", params.redis_address,
             params.node_ip_address, params.redirect, params.cleanup);
+
       } else {
+        //Start raylet
         startRaylet(i, storeName, info,
-            params.num_cpus[i], params.num_gpus[i], workerCount,
+            params.num_cpus[i], params.num_gpus[i], localNumWorkers[i],
             params.working_directory + "/raylet", params.redis_address,
             params.node_ip_address, params.redirect, params.cleanup);
       }
@@ -383,16 +382,12 @@ public class RunManager {
     }
 
     // start local workers
-    for (int i = 0; i < params.num_local_schedulers; i++) {
-      AddressInfo localStores = runInfo.localStores.get(i);
-      localStores.workerCount = localNumWorkers[i];
-      for (int j = 0; j < localNumWorkers[i]; j++) {
-        if (!params.use_raylet) {
+    if (!params.use_raylet) {
+      for (int i = 0; i < params.num_local_schedulers; i++) {
+        AddressInfo localStores = runInfo.localStores.get(i);
+        localStores.workerCount = localNumWorkers[i];
+        for (int j = 0; j < localNumWorkers[i]; j++) {
           startWorker(localStores.storeName, localStores.managerName, localStores.schedulerName,
-                  params.working_directory + "/worker" + i + "." + j, params.redis_address,
-                  params.node_ip_address, UniqueID.nil, "", params.redirect, params.cleanup);
-        } else {
-          startWorkerRaylet(localStores.storeName, localStores.rayletSocketName,
                   params.working_directory + "/worker" + i + "." + j, params.redis_address,
                   params.node_ip_address, UniqueID.nil, "", params.redirect, params.cleanup);
         }
@@ -646,8 +641,8 @@ public class RunManager {
     cmd += " -m " + info.managerName;
 
     String workerCmd = null;
-    workerCmd = buildWorkerCommand(true, info.storeName, info.managerName, name, UniqueID.nil,
-        "", workDir + rpcPort, ip, redisAddress);
+    workerCmd = buildWorkerCommand(true, info.storeName, info.managerName, name,
+            UniqueID.nil, "", workDir + rpcPort, ip, redisAddress);
     cmd += " -w \"" + workerCmd + "\"";
 
     if (redisAddress.length() > 0) {
@@ -725,8 +720,9 @@ public class RunManager {
     }
   }
 
-  private String buildWorkerCommandRaylet(String storeName, String rayletSocketName, UniqueID actorId,
-                                          String actorClass, String workDir, String ip, String redisAddress) {
+  private String buildWorkerCommandRaylet(String storeName, String rayletSocketName,
+                                          UniqueID actorId, String actorClass, String workDir,
+                                          String ip, String redisAddress) {
     String workerConfigs = "ray.java.start.object_store_name=" + storeName
         + ";ray.java.start.raylet_socket_name=" + rayletSocketName
         + ";ray.java.start.worker_mode=WORKER;ray.java.start.use_raylet=true";

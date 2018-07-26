@@ -100,7 +100,6 @@ public abstract class BaseStateStoreProxyImpl implements StateStoreProxy {
   }
 
   /**
-   *
    * Get address info of one node from primary redis.
    * This method only tries to get address info once, without any retry.
    *
