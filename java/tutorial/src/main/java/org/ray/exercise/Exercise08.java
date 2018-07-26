@@ -7,17 +7,16 @@ import org.ray.api.RayRemote;
 import org.ray.core.RayRuntime;
 
 /**
- * Actor Support of create Actor and call Actor method.
+ * Show usage of actors.
  */
 public class Exercise08 {
 
-  /**
-   * Main.
-   */
   public static void main(String[] args) {
     try {
       Ray.init();
+      // `Ray.create` creates an actor instance.
       RayActor<Adder> adder = Ray.create(Adder.class);
+      // Use `Ray.call(actor, parameters)` to call an actor method.
       RayObject<Integer> result1 = Ray.call(Adder::add, adder, 1);
       RayObject<Integer> result2 = Ray.call(Adder::add, adder, 10);
       System.out.println(result1.get());
@@ -30,10 +29,12 @@ public class Exercise08 {
   }
 
   /**
-   * Remote function.
+   * An example actor.
    */
+  // `@RayRemote` annotation also converts a normal class to an actor.
   @RayRemote
   public static class Adder {
+
     public Adder() {
       sum = 0;
     }

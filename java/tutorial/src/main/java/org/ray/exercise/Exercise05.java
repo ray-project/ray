@@ -7,16 +7,12 @@ import org.ray.api.returns.RayObjects2;
 import org.ray.core.RayRuntime;
 
 /**
- * Enable multiple heterogeneous return values
- * Java worker support at most four multiple heterogeneous return values,
- * and in order to let the runtime know the number of return values we
- * supply the method of ``Ray.call_X`` as follows.
+ * Use multiple heterogeneous return values
+ * Java worker support at most four heterogeneous return values,
+ * To call such remote functions, use {@code Ray.call_X} as follows.
  */
 public class Exercise05 {
 
-  /**
-   * Main.
-   */
   public static void main(String[] args) {
     try {
       Ray.init();
@@ -33,7 +29,7 @@ public class Exercise05 {
   }
 
   /**
-   * Remote function with MultipleReturns.
+   * A remote function that returns multiple heterogeneous values.
    */
   @RayRemote
   public static MultipleReturns2<Integer, String> sayMultiRet() {

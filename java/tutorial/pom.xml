@@ -11,10 +11,10 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>org.ray</groupId>
-    <artifactId>ray-example</artifactId>
+    <artifactId>ray-tutorial</artifactId>
 
-    <name>java example for ray</name>
-    <description>java example for ray</description>
+    <name>java tutorial</name>
+    <description>Tutorial of using Ray with Java</description>
     <url></url>
 
     <packaging>jar</packaging>

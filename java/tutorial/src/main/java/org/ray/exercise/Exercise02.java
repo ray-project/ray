@@ -4,16 +4,12 @@ import org.ray.api.Ray;
 import org.ray.api.RayObject;
 import org.ray.api.RayRemote;
 import org.ray.core.RayRuntime;
-import org.ray.example.HelloWorld;
 
 /**
  * Execute remote functions in parallel with some dependencies.
  */
 public class Exercise02 {
 
-  /**
-   * Remote function.
-   */
   @RayRemote
   public static String sayHello() {
     String ret = "hello";
@@ -21,9 +17,6 @@ public class Exercise02 {
     return ret;
   }
 
-  /**
-   * Remote function.
-   */
   @RayRemote
   public static String sayWorld() {
     String ret = "world!";
@@ -32,29 +25,24 @@ public class Exercise02 {
   }
 
   /**
-   * Remote function with dependency.
+   * A remote function with dependency.
    */
   @RayRemote
   public static String merge(String hello, String world) {
     return hello + "," + world;
   }
 
-  /**
-   * Entry function.
-   */
   public static String sayHelloWorld() {
-    RayObject<String> hello = Ray.call(HelloWorld::sayHello);
-    RayObject<String> world = Ray.call(HelloWorld::sayWorld);
-    return Ray.call(HelloWorld::merge, hello, world).get();
+    RayObject<String> hello = Ray.call(Exercise02::sayHello);
+    RayObject<String> world = Ray.call(Exercise02::sayWorld);
+    // Pass unfinished results as the parameters to another remote function.
+    return Ray.call(Exercise02::merge, hello, world).get();
   }
 
-  /**
-   * Main.
-   */
   public static void main(String[] args) throws Exception {
     try {
       Ray.init();
-      String helloWorld = HelloWorld.sayHelloWorld();
+      String helloWorld = Exercise02.sayHelloWorld();
       System.out.println(helloWorld);
       assert helloWorld.equals("hello,world!");
     } catch (Throwable t) {

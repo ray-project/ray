@@ -6,12 +6,12 @@ import org.ray.api.RayRemote;
 import org.ray.core.RayRuntime;
 
 /**
- * Call remote functions from within remote functions.
+ * Call a remote function from within another remote function.
  */
 public class Exercise03 {
 
   /**
-   * Remote function which will call another remote function.
+   * A remote function which will call another remote function.
    */
   @RayRemote
   public static String sayHelloWithWorld() {
@@ -22,7 +22,7 @@ public class Exercise03 {
   }
 
   /**
-   * Remote function which will be called by another remote function.
+   * A remote function which will be called by another remote function.
    */
   @RayRemote
   public static String sayWorld() {
@@ -31,9 +31,6 @@ public class Exercise03 {
     return ret;
   }
 
-  /**
-   * Main.
-   */
   public static void main(String[] args) throws Exception {
     try {
       Ray.init();

@@ -9,19 +9,17 @@ import org.ray.api.RayRemote;
 import org.ray.core.RayRuntime;
 
 /**
- * Usage of RayList.
- * A list of ``RayObject``, inherited from ``List`` in Java. It can
- * be used as the type for both return value and parameters.
+ * Show usage of RayList.
+ * RayList is a list of {@code RayObject}s, inherited from {@code List}.
+ * It can be used as the type for both return values and parameters.
  *
  */
 public class Exercise06 {
 
-  /**
-   * Main.
-   */
   public static void main(String[] args) {
     try {
       Ray.init();
+      // The result is a `RayList`.
       RayList<Integer> ns = Ray.call_n(Exercise06::sayList, 10, 10);
       for (int i = 0; i < 10; i++) {
         RayObject<Integer> obj = ns.Get(i);
@@ -35,7 +33,7 @@ public class Exercise06 {
   }
 
   /**
-   * Remote function.
+   * A remote function that returns a list.
    */
   @RayRemote
   public static List<Integer> sayList(Integer count) {

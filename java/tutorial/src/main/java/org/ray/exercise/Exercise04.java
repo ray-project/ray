@@ -12,9 +12,6 @@ import org.ray.core.RayRuntime;
  */
 public class Exercise04 {
 
-  /**
-   * Remote function.
-   */
   @RayRemote
   public static String f1() {
     String ret = "f1";
@@ -22,9 +19,6 @@ public class Exercise04 {
     return ret;
   }
 
-  /**
-   * Remote function.
-   */
   @RayRemote
   public static String f2() {
     String ret = "f2";
@@ -33,7 +27,7 @@ public class Exercise04 {
   }
 
   /**
-   * Remote function.
+   * A slow remote function.
    */
   @RayRemote
   public static String f3() {
@@ -47,9 +41,6 @@ public class Exercise04 {
     return ret;
   }
 
-  /**
-   * Main.
-   */
   public static void main(String[] args) throws Exception {
     try {
       Ray.init();
@@ -60,6 +51,9 @@ public class Exercise04 {
       rayList.add(o1);
       rayList.add(o2);
       rayList.add(o3);
+      // Ray.wait will block until specified number of results are ready
+      // or specified timeout have passed.
+      // In this case, the result of f3 will be ignored.
       WaitResult<String> waitResult = Ray.wait(rayList,2, 3000);
       RayList<String> readyOnes = waitResult.getReadyOnes();
       RayList<String> remainOnes = waitResult.getRemainOnes();

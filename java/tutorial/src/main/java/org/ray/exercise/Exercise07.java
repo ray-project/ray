@@ -11,15 +11,12 @@ import org.ray.api.RayRemote;
 import org.ray.core.RayRuntime;
 
 /**
- * Usage of RayMap
- * A map of ``RayObject``
- * inherited from ``Map``. It can be used as the type for both
- * return value and parameters.
+ * Show usage of RayMap.
+ * {@code RayMap} is a map of {@code RayObject}s, inherited from {@code Map}.
+ * It can be used as the type for both return values and parameters.
  */
 public class Exercise07 {
-  /**
-   * Main.
-   */
+
   public static void main(String[] args) {
     try {
       Ray.init();
@@ -38,7 +35,7 @@ public class Exercise07 {
   }
 
   /**
-   * Remote function.
+   * A remote function that returns a map.
    */
   @RayRemote()
   public static Map<Integer, String> sayMap(Collection<Integer> ids, String prefix) {

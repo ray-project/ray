@@ -12,8 +12,9 @@ import org.ray.core.RayRuntime;
 public class Exercise01 implements Serializable {
 
   /**
-   * Remote function.
+   * A plain remote function.
    */
+  // `@RayRemote` annotation converts a normal function to a remote function.
   @RayRemote
   public static String sayHello() {
     String ret = "hello";
@@ -21,9 +22,6 @@ public class Exercise01 implements Serializable {
     return ret;
   }
 
-  /**
-   * Remote function.
-   */
   @RayRemote
   public static String sayWorld() {
     String ret = "world!";
@@ -31,16 +29,15 @@ public class Exercise01 implements Serializable {
     return ret;
   }
 
-  /**
-   * Main.
-   */
   public static void main(String[] args) throws Exception {
     try {
+      // Use `Ray.init` to initialize the Ray runtime.
       Ray.init();
+      // Use `Ray.call` to call a remote function.
       RayObject<String> hello = Ray.call(Exercise01::sayHello);
       RayObject<String> world = Ray.call(Exercise01::sayWorld);
-      System.out.println("first remote call result:" + hello.get());
-      System.out.println("second remote call result:" + world.get());
+      System.out.println("First remote call result:" + hello.get());
+      System.out.println("Second remote call result:" + world.get());
     } catch (Throwable t) {
       t.printStackTrace();
     } finally {
