@@ -328,7 +328,8 @@ class Monitor(object):
         # Update the load metrics for this local scheduler.
         client_id = message.ClientId().decode("utf-8")
         ip = self.local_scheduler_id_to_ip_map.get(client_id)
-        print("XRAY HEARTBEAT", client_id, ip, static_resources, dynamic_resources)
+        print("XRAY HEARTBEAT", client_id, ip, static_resources,
+              dynamic_resources)
         if ip:
             self.load_metrics.update(ip, static_resources, dynamic_resources)
         else:

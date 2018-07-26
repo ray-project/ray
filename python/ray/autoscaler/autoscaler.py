@@ -483,10 +483,9 @@ class StandardAutoscaler(object):
         delta = time.time() - last_heartbeat_time
         if delta < AUTOSCALER_HEARTBEAT_TIMEOUT_S:
             return
-        print(
-            "StandardAutoscaler: No heartbeat from node "
-            "{} in {} seconds, restarting Ray to recover...".format(
-                node_id, delta))
+        print("StandardAutoscaler: No heartbeat from node "
+              "{} in {} seconds, restarting Ray to recover...".format(
+                  node_id, delta))
         updater = self.node_updater_cls(
             node_id,
             self.config["provider"],
