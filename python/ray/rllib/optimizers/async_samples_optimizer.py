@@ -225,8 +225,13 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
         weights = None
 
         with self.timers["sample_processing"]:
-            for ev, (sample_batch, count) in self.sample_tasks.completed():
-                count = ray.get(count)
+            completed = self.sample_tasks.completed()
+
+            # Bulk fetch all the batch counts for each batch
+            for count in ray.get([c[1][1] for c in completed]):
+                completed[1][1] = count
+
+            for ev, (sample_batch, count) in completed:
                 sample_timesteps += count
 
                 # Send the data to the replay buffer
