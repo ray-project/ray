@@ -513,23 +513,22 @@ class Monitor(object):
         for task_id_hex in task_table_objects:
             if len(task_table_objects[task_id_hex]) == 0:
                 continue
-            task_table_object = task_table_objects[
-                task_id_hex][0]['TaskSpec']
+            task_table_object = task_table_objects[task_id_hex][0]['TaskSpec']
             task_driver_id_hex = task_table_object['DriverID']
             if driver_id_hex != task_driver_id_hex:
                 # Ignore tasks that aren't from this driver.
                 continue
             task_table_infos[task_id_hex] = task_table_object
-        driver_task_id_bins = [hex_to_binary(task_id_hex)
-                               for task_id_hex in task_table_infos.keys()]
+        driver_task_id_bins = [
+            hex_to_binary(task_id_hex)
+            for task_id_hex in task_table_infos.keys()
+        ]
 
         # Get the list of objects returned by driver tasks.
         driver_object_ids = set()
         for task_info in task_table_infos.values():
             driver_object_ids |= set(
-                [object_id.id()
-                 for object_id in task_info['ReturnObjectIDs']]
-            )
+                [object_id.id() for object_id in task_info['ReturnObjectIDs']])
 
         # Also record all the ray.put()'d objects.
         all_put_objects = []
@@ -555,10 +554,10 @@ class Monitor(object):
         sharded_keys = [[] for _ in range(len(self.state.redis_clients))]
         for task_id_bin in driver_task_id_bins:
             sharded_keys[to_shard_index(task_id_bin)].append(
-                    xray_task_table_prefix + task_id_bin)
+                xray_task_table_prefix + task_id_bin)
         for object_id_bin in driver_object_ids:
             sharded_keys[to_shard_index(object_id_bin)].append(
-                    xray_object_table_prefix + object_id_bin)
+                xray_object_table_prefix + object_id_bin)
 
         # Remove with best effort.
         for shard_index in range(len(sharded_keys)):
@@ -567,15 +566,12 @@ class Monitor(object):
                 continue
             redis = self.state.redis_clients[shard_index]
             num_deleted = redis.delete(*keys)
-            log.info(
-                "Removed {} dead redis entries of the driver"
-                " from redis shard {}.".
-                    format(num_deleted, shard_index))
+            log.info("Removed {} dead redis entries of the driver"
+                     " from redis shard {}.".format(num_deleted, shard_index))
             if num_deleted != len(keys):
-                log.warning(
-                    "Failed to remove {} relevant redis entries"
-                    " from redis shard {}.".format(
-                        len(keys) - num_deleted, shard_index))
+                log.warning("Failed to remove {} relevant redis entries"
+                            " from redis shard {}.".format(
+                                len(keys) - num_deleted, shard_index))
 
     def xray_driver_removed_handler(self, unused_channel, data):
         """Handle a notification that a driver has been removed.

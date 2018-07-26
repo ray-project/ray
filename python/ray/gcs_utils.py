@@ -36,8 +36,8 @@ __all__ = [
     "TaskExecutionDependencies", "TaskReply", "DriverTableMessage",
     "LocalSchedulerInfoMessage", "SubscribeToDBClientTableReply", "TaskInfo",
     "GcsTableEntry", "ClientTableData", "ErrorTableData", "HeartbeatTableData",
-    "DriverTableData", "ProfileTableData", "ObjectTableData", "Task", "TablePrefix",
-    "TablePubsub", "construct_error_message"
+    "DriverTableData", "ProfileTableData", "ObjectTableData", "Task",
+    "TablePrefix", "TablePubsub", "construct_error_message"
 ]
 
 # These prefixes must be kept up-to-date with the definitions in
