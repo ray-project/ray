@@ -187,6 +187,13 @@ def cleanup():
     if not successfully_shut_down:
         logger.warning("Ray did not shut down properly.")
 
+    subprocess.call(
+        [
+            "kill $(ps aux | grep \"socat UNIX-LISTEN\" | grep -v grep | "
+            "awk '{ print $2 }') 2> /dev/null"
+        ],
+        shell=True)
+
 
 def all_processes_alive(exclude=[]):
     """Check if all of the processes are still alive.
@@ -1294,7 +1301,9 @@ def start_ray_processes(address_info=None,
                         plasma_directory=None,
                         huge_pages=False,
                         autoscaling_config=None,
-                        use_raylet=False):
+                        use_raylet=False,
+                        with_gateway=False,
+                        gateway_port=None):
     """Helper method to start Ray processes.
 
     Args:
@@ -1349,6 +1358,9 @@ def start_ray_processes(address_info=None,
         autoscaling_config: path to autoscaling config file.
         use_raylet: True if the new raylet code path should be used. This is
             not supported yet.
+        with_gateway: True if this head node can receive commands from an
+            external client.
+        gateway_port: The port that socat will listen on for commands to forward.
 
     Returns:
         A dictionary of the address information for the processes that were
@@ -1572,6 +1584,30 @@ def start_ray_processes(address_info=None,
         # Make sure that we've started all the workers.
         assert (sum(workers_per_local_scheduler) == 0)
 
+    print(use_raylet, with_gateway)
+    if use_raylet and with_gateway:
+        raylet_socket_name = address_info["raylet_socket_names"][0]
+        print(raylet_socket_name)
+
+        print("Starting gateway on {}".format(raylet_socket_name))
+
+        # Create log files
+        gateway_stdout_file, gateway_stderr_file = new_log_files(
+            "gateway", redirect_output)
+
+        print(gateway_stdout_file)
+
+        start_gateway(
+            node_ip_address,
+            gateway_port,
+            raylet_socket_name,
+            object_store_addresses[0].name,
+            redis_address,
+            stdout_file=gateway_stdout_file,
+            stderr_file=gateway_stderr_file,
+            cleanup=cleanup
+        )
+
     # Try to start the web UI.
     if include_webui:
         ui_stdout_file, ui_stderr_file = new_log_files(
@@ -1680,7 +1716,9 @@ def start_ray_head(address_info=None,
                    plasma_directory=None,
                    huge_pages=False,
                    autoscaling_config=None,
-                   use_raylet=False):
+                   use_raylet=False,
+                   with_gateway=False,
+                   gateway_port=None):
     """Start Ray in local mode.
 
     Args:
@@ -1729,6 +1767,9 @@ def start_ray_head(address_info=None,
         autoscaling_config: path to autoscaling config file.
         use_raylet: True if the new raylet code path should be used. This is
             not supported yet.
+        with_gateway: True if this head node can receive commands from an
+            external client.
+        gateway_port: The port that socat will listen on for commands to forward.
 
     Returns:
         A dictionary of the address information for the processes that were
@@ -1757,7 +1798,9 @@ def start_ray_head(address_info=None,
         plasma_directory=plasma_directory,
         huge_pages=huge_pages,
         autoscaling_config=autoscaling_config,
-        use_raylet=use_raylet)
+        use_raylet=use_raylet,
+        with_gateway=with_gateway,
+        gateway_port=gateway_port)
 
 
 def try_to_create_directory(directory_path):

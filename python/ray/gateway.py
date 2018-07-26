@@ -3,6 +3,7 @@ import click
 # TODO (dsuo): eventually remove this dependency
 from flask import Flask, request, send_file
 import io
+import ray
 import pyarrow
 from pyarrow import plasma as plasma
 

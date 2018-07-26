@@ -11,7 +11,6 @@ import numpy as np
 import os
 import redis
 import signal
-import subprocess
 import sys
 import threading
 import time
@@ -272,12 +271,7 @@ class Worker(object):
         if driver_id not in self.serialization_context_map:
             _initialize_serialization(driver_id)
 
-        context = self.serialization_context_map[driver_id]
-
-        if self.client is not None:
-            self.client.serialization_context = context
-
-        return context
+        return self.serialization_context_map[driver_id]
 
     def check_connected(self):
         """Check if the worker is connected.
@@ -289,7 +283,7 @@ class Worker(object):
             raise RayConnectionError("Ray has not been started yet. You can "
                                      "start Ray with 'ray.init()'.")
 
-def set_mode(self, mode):
+    def set_mode(self, mode):
         """Set the mode of the worker.
 
         The mode SCRIPT_MODE should be used if this Worker is a driver that is
@@ -1531,7 +1525,7 @@ def _init(address_info=None,
           huge_pages=False,
           include_webui=True,
           use_raylet=None,
-          client_socket_name=None):
+          gateway_port=None):
     """Helper method to connect to an existing Ray cluster or start a new one.
 
     This method handles two cases. Either a Ray cluster already exists and we
@@ -1588,8 +1582,7 @@ def _init(address_info=None,
         include_webui: Boolean flag indicating whether to start the web
             UI, which is a Jupyter notebook.
         use_raylet: True if the new raylet code path should be used.
-        client_socket_name: The named pipe that forwards messages to the remote
-            head node for processing.
+        gateway_port: The port that socat will listen on for commands to forward.
 
     Returns:
         Address information about the started processes.
@@ -1711,26 +1704,20 @@ def _init(address_info=None,
     # shutdown() when the Python script exits.
     if driver_mode == LOCAL_MODE:
         driver_address_info = {}
-    elif driver_mode == CLIENT_MODE:
+    elif driver_mode == CLIENT_MODE and use_raylet:
         driver_address_info = {
             "node_ip_address": address_info["node_ip_address"],
             "redis_address": address_info["redis_address"],
-            "gateway_port": address_info["gateway_port"],
+            "gateway_port": gateway_port,
+            "raylet_socket_names": address_info["raylet_socket_names"]
         }
-
-        # TODO (dsuo): generate this name more meaningfully
-        # TODO (dsuo): ignore raylets for now
-        if client_socket_name is None:
-            driver_address_info["local_scheduler_socket_name"] = "/tmp/ray_client" + str(np.random.randint(0, 99999999)).zfill(8)
-        else:
-            driver_address_info["local_scheduler_socket_name"] = client_socket_name
 
         global_worker.client = Client(
             gateway_address=driver_address_info["redis_address"].split(":")[0],
             gateway_port=driver_address_info["gateway_port"],
             gateway_data_port=5000,
-            client_socket_name=driver_address_info["local_scheduler_socket_name"] if \
-                client_socket_name is None else None,
+            # client_socket_name=driver_address_info["local_scheduler_socket_name"] if \
+            #    client_socket_name is None else None,
             # memcopy_threads=global_worker.memcopy_threads,
             # serialization_context=global_worker.serialization_context
         )
@@ -1778,8 +1765,7 @@ def init(redis_address=None,
          huge_pages=False,
          include_webui=True,
          use_raylet=None,
-         gateway_port=5432,
-         client_socket_name=None):
+         gateway_port=None):
     """Connect to an existing Ray cluster or start one and connect to it.
 
     This method handles two cases. Either a Ray cluster already exists and we
@@ -1841,8 +1827,6 @@ def init(redis_address=None,
             UI, which is a Jupyter notebook.
         use_raylet: True if the new raylet code path should be used.
         gateway_port: The port that socat will listen on for commands to forward.
-        client_socket_name: The named pipe that forwards messages to the remote
-            head node for processing.
 
     Returns:
         Address information about the started processes.
@@ -1872,9 +1856,6 @@ def init(redis_address=None,
 
     info = {"node_ip_address": node_ip_address, "redis_address": redis_address}
 
-    if driver_mode == CLIENT_MODE:
-        info["gateway_port"] = gateway_port
-
     ret = _init(
         address_info=info,
         start_ray_local=(redis_address is None),
@@ -1892,7 +1873,7 @@ def init(redis_address=None,
         include_webui=include_webui,
         object_store_memory=object_store_memory,
         use_raylet=use_raylet,
-        client_socket_name=client_socket_name)
+        gateway_port=gateway_port)
     for hook in _post_init_hooks:
         hook()
     return ret
@@ -2242,7 +2223,8 @@ def connect(info,
     if not worker.use_raylet:
         local_scheduler_socket = info["local_scheduler_socket_name"]
     else:
-        local_scheduler_socket = info["raylet_socket_name"]
+        print(info)
+        local_scheduler_socket = info["raylet_socket_names"][0]
 
     # If this is a driver, set the current task ID, the task driver ID, and set
     # the task index to 0.
@@ -2379,14 +2361,7 @@ def disconnect(worker=global_worker):
     worker.cached_functions_to_run = []
     worker.cached_remote_functions_and_actors = []
     worker.serialization_context_map.clear()
-
-    subprocess.call(
-        [
-            "kill $(ps aux | grep \"socat UNIX-LISTEN\" | grep -v grep | "
-            "awk '{ print $2 }') 2> /dev/null"
-        ],
-        shell=True)
-
+ 
 
 def _try_to_compute_deterministic_class_id(cls, depth=5):
     """Attempt to produce a deterministic class ID for a given class.
@@ -2561,6 +2536,8 @@ def get(object_ids, worker=global_worker):
             # TODO (dsuo): same as put; likely want to reuse validation / retry logic,
             # but branching here now for simplicity
             if worker.mode == CLIENT_MODE:
+                # TODO (dsuo): An example of duplicated logic.
+                worker.client.serialization_context = worker.get_serialization_context(worker.task_driver_id)
                 values = worker.client.get(object_ids)
             else:
                 values = worker.get_object(object_ids)
@@ -2570,6 +2547,8 @@ def get(object_ids, worker=global_worker):
             return values
         else:
             if worker.mode == CLIENT_MODE:
+                # TODO (dsuo): An example of duplicated logic.
+                worker.client.serialization_context = worker.get_serialization_context(worker.task_driver_id)
                 value = worker.client.get([object_ids])
                 if isinstance(value, list):
                     value = value[0]
@@ -2596,11 +2575,13 @@ def put(value, worker=global_worker):
     with profiling.profile("ray.put", worker=worker):
         if worker.mode == LOCAL_MODE:
             # In LOCAL_MODE, ray.put is the identity operation.
-            originreturn value
+            return value
         object_id = worker.local_scheduler_client.compute_put_id(
             worker.current_task_id, worker.put_index, worker.use_raylet)
 
         if worker.mode == CLIENT_MODE:
+            # TODO (dsuo): An example of duplicated logic.
+            worker.client.serialization_context = worker.get_serialization_context(worker.task_driver_id)
             worker.client.put(
                 value,
                 object_id=object_id.id())
