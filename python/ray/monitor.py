@@ -501,7 +501,6 @@ class Monitor(object):
         Args:
             driver_id: The driver id.
         """
-        redis = self.state.redis_clients[0]
 
         xray_task_table_prefix = (
             ray.gcs_utils.TablePrefix_RAYLET_TASK_string.encode("ascii"))
@@ -509,69 +508,74 @@ class Monitor(object):
             ray.gcs_utils.TablePrefix_OBJECT_string.encode("ascii"))
 
         task_table_infos = {}  # task id -> TaskInfo
-        for key in redis.scan_iter(match=xray_task_table_prefix + b"*"):
-            entry = redis.get(key)
-            if entry is None:
+        task_table_objects = self.state.task_table()
+        driver_id_hex = binary_to_hex(driver_id)
+        for task_id_hex in task_table_objects:
+            if len(task_table_objects[task_id_hex]) == 0:
                 continue
-            task = ray.gcs_utils.Task.GetRootAsTask(entry, 0)
-            task_info = ray.gcs_utils.TaskInfo.GetRootAsTaskInfo(
-                task.TaskSpecification(), 0)
-            if driver_id != task_info.DriverId():
+            task_table_object = task_table_objects[
+                task_id_hex][0]['TaskSpec']
+            task_driver_id_hex = task_table_object['DriverID']
+            if driver_id_hex != task_driver_id_hex:
                 # Ignore tasks that aren't from this driver.
                 continue
-            task_table_infos[task_info.TaskId()] = task_info
-        driver_task_ids = task_table_infos.keys()
+            task_table_infos[task_id_hex] = task_table_object
+        driver_task_id_bins = [hex_to_binary(task_id_hex)
+                               for task_id_hex in task_table_infos.keys()]
 
         # Get the list of objects returned by driver tasks.
         driver_object_ids = set()
         for task_info in task_table_infos.values():
-            driver_object_ids |= set([
-                task_info.Returns(i) for i in range(task_info.ReturnsLength())
-            ])
+            driver_object_ids |= set(
+                [object_id.id()
+                 for object_id in task_info['ReturnObjectIDs']]
+            )
 
         # Also record all the ray.put()'d objects.
         all_put_objects = []
-        for key in redis.scan_iter(match=xray_object_table_prefix + b"*"):
-            entry = redis.zrange(key, 0, 0)
-            if entry is None:
+        object_table_objects = self.state.object_table()
+        for object_id in object_table_objects:
+            if len(object_table_objects[object_id]) == 0:
                 continue
-            assert len(entry) == 1
-            object_table_data = (
-                ray.gcs_utils.ObjectTableData.GetRootAsObjectTableData(
-                    entry[0], 0))
-            object_id = key.split(xray_object_table_prefix)[1]
-            task_id = ray.local_scheduler.compute_task_id(
-                ray.ObjectID(object_id)).id()
-            all_put_objects.append((object_id, task_id))
+            object_id_bin = object_id.id()
+            task_id_bin = ray.local_scheduler.compute_task_id(object_id).id()
+            all_put_objects.append((object_id_bin, task_id_bin))
 
-        # Keep put objects from relevant tasks.
-        driver_task_ids_set = set(driver_task_ids)
+        # Keep objects from relevant tasks.
+        driver_task_ids_set = set(driver_task_id_bins)
         for object_id, task_id in all_put_objects:
             if task_id in driver_task_ids_set:
                 driver_object_ids.add(object_id)
 
-        # Clean up entries for non-empty objects.
-        non_empty_objects = []
-        for object_id in driver_object_ids:
-            entry = redis.zrange(xray_object_table_prefix + object_id, 0, 0)
-            if entry:
-                non_empty_objects.append(object_id)
+        def to_shard_index(id_bin):
+            return binary_to_object_id(id_bin).redis_shard_hash() % len(
+                self.state.redis_clients)
 
         # Form the redis keys to delete.
-        keys = [xray_task_table_prefix + k for k in driver_task_ids]
-        keys.extend([xray_object_table_prefix + k for k in non_empty_objects])
-
-        if not keys:
-            return
+        sharded_keys = [[] for _ in range(len(self.state.redis_clients))]
+        for task_id_bin in driver_task_id_bins:
+            sharded_keys[to_shard_index(task_id_bin)].append(
+                    xray_task_table_prefix + task_id_bin)
+        for object_id_bin in driver_object_ids:
+            sharded_keys[to_shard_index(object_id_bin)].append(
+                    xray_object_table_prefix + object_id_bin)
 
         # Remove with best effort.
-        num_deleted = redis.delete(*keys)
-        log.info(
-            "Removed {} dead redis entries of the driver from redis.".format(
-                num_deleted))
-        if num_deleted != len(keys):
-            log.warning("Failed to remove {} relevant "
-                        "redis entries.".format(len(keys) - num_deleted))
+        for shard_index in range(len(sharded_keys)):
+            keys = sharded_keys[shard_index]
+            if len(keys) == 0:
+                continue
+            redis = self.state.redis_clients[shard_index]
+            num_deleted = redis.delete(*keys)
+            log.info(
+                "Removed {} dead redis entries of the driver"
+                " from redis shard {}.".
+                    format(num_deleted, shard_index))
+            if num_deleted != len(keys):
+                log.warning(
+                    "Failed to remove {} relevant redis entries"
+                    " from redis shard {}.".format(
+                        len(keys) - num_deleted, shard_index))
 
     def xray_driver_removed_handler(self, unused_channel, data):
         """Handle a notification that a driver has been removed.
