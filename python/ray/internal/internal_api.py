@@ -2,15 +2,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-
 import ray.local_scheduler
 import ray.worker
 from ray import profiling
 import pyarrow.plasma as plasma
 
-__all__ = [
-    "free"
-]
+__all__ = ["free"]
 
 
 def free(object_ids, spread=True, worker=ray.worker.get_global_worker()):
@@ -52,7 +49,6 @@ def free(object_ids, spread=True, worker=ray.worker.get_global_worker()):
             plain_object_ids = [
                 plasma.ObjectID(object_id.id()) for object_id in object_ids
             ]
-            worker.local_scheduler_client.free(
-                object_ids, spread)
+            worker.local_scheduler_client.free(object_ids, spread)
         else:
             raise Exception("Free is not supported in legacy backend.")

@@ -69,7 +69,7 @@ __all__ = [
     "remote", "profile", "actor", "method", "get_gpu_ids", "get_resource_ids",
     "get_webui_url", "register_custom_serializer", "shutdown", "SCRIPT_MODE",
     "WORKER_MODE", "LOCAL_MODE", "SILENT_MODE", "PYTHON_MODE", "global_state",
-    "ObjectID", "_config", "__version__"
+    "ObjectID", "_config", "__version__", "internal"
 ]
 
 import ctypes  # noqa: E402
