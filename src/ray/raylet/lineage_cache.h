@@ -120,10 +120,10 @@ class Lineage {
   /// GCS status than the current. The current entry's object or task data will
   /// also be overwritten.
   ///
-  /// \param entry The new entry to set in the lineage, if its GCS status is
-  /// greater than the current entry.
+  /// \param task The task data to set, if status is greater than the current entry.
+  /// \param status The GCS status.
   /// \return Whether the entry was set.
-  bool SetEntry(LineageEntry &&entry);
+  bool SetEntry(const Task &task, GcsStatus status);
 
   /// Delete and return an entry from the lineage.
   ///
