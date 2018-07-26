@@ -18,8 +18,8 @@ class HyperOptSearch(SearchAlgorithm):
 
     Requires HyperOpt to be installed from source.
     Uses the Tree-structured Parzen Estimators algorithm, although can be
-    trivially extended to support any algorithm HyperOpt uses.
-    Externally added trials will not be tracked by HyperOpt.
+    trivially extended to support any algorithm HyperOpt uses. Externally
+    added trials will not be tracked by HyperOpt.
 
     Parameters:
         space (dict): HyperOpt configuration. Parameters will be sampled
@@ -82,28 +82,23 @@ class HyperOptSearch(SearchAlgorithm):
         ho_trial['book_time'] = now
         ho_trial['refresh_time'] = now
 
-    def on_trial_error(self, trial_id):
+    def on_trial_complete(self,
+                          trial_id,
+                          result=None,
+                          error=False,
+                          early_terminated=False):
         ho_trial = self._get_hyperopt_trial(trial_id)
         ho_trial['refresh_time'] = hpo.utils.coarse_utcnow()
-        ho_trial['state'] = hpo.base.JOB_STATE_ERROR
-        ho_trial['misc']['error'] = (str(TuneError), "Tune Error")
-        self._hpopt_trials.refresh()
-        del self._live_trials[trial_id]
-
-    def on_trial_remove(self, trial_id):
-        ho_trial = self._get_hyperopt_trial(trial_id)
-        ho_trial['refresh_time'] = hpo.utils.coarse_utcnow()
-        ho_trial['state'] = hpo.base.JOB_STATE_ERROR
-        ho_trial['misc']['error'] = (str(TuneError), "Tune Removed")
-        self._hpopt_trials.refresh()
-        del self._live_trials[trial_id]
-
-    def on_trial_complete(self, trial_id, result):
-        ho_trial = self._get_hyperopt_trial(trial_id)
-        ho_trial['refresh_time'] = hpo.utils.coarse_utcnow()
-        ho_trial['state'] = hpo.base.JOB_STATE_DONE
-        hp_result = self._to_hyperopt_result(result)
-        ho_trial['result'] = hp_result
+        if error:
+            ho_trial['state'] = hpo.base.JOB_STATE_ERROR
+            ho_trial['misc']['error'] = (str(TuneError), "Tune Error")
+        elif early_terminated:
+            ho_trial['state'] = hpo.base.JOB_STATE_ERROR
+            ho_trial['misc']['error'] = (str(TuneError), "Tune Removed")
+        else:
+            ho_trial['state'] = hpo.base.JOB_STATE_DONE
+            hp_result = self._to_hyperopt_result(result)
+            ho_trial['result'] = hp_result
         self._hpopt_trials.refresh()
         del self._live_trials[trial_id]
 

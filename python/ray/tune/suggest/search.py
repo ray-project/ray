@@ -58,34 +58,22 @@ class SearchAlgorithm(object):
         """
         pass
 
-    def on_trial_error(self, trial_id):
-        """Notification for the error of trial.
-
-        This will only be called when the trial is in the RUNNING state.
-
-        Arguments:
-            trial_id: Identifier for the trial.
-        """
-        pass
-
-    def on_trial_remove(self, trial_id):
-        """Called to remove trial.
-
-        This is called when the trial is in PAUSED or PENDING state. Otherwise,
-        call `on_trial_complete`.
-
-        Arguments:
-            trial_id: Identifier for the trial.
-        """
-        pass
-
-    def on_trial_complete(self, trial_id, result):
+    def on_trial_complete(self,
+                          trial_id,
+                          result=None,
+                          error=False,
+                          early_terminated=False):
         """Notification for the completion of trial.
 
-        This will only be called when the trial is in the RUNNING state and
-        either completes naturally or by manual termination.
-
         Arguments:
             trial_id: Identifier for the trial.
+            result (TrainingResult): Defaults to None. A TrainingResult will
+                be provided with this notification when the trial is in
+                the RUNNING state AND either completes naturally or
+                by manual termination.
+            error (bool): Defaults to False. True if the trial is in
+                the RUNNING state and errors.
+            early_terminated (bool): Defaults to False. True if the trial
+                is stopped while in PAUSED or PENDING state.
         """
         pass

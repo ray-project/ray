@@ -131,6 +131,11 @@ Tune allows you to use different search algorithms in combination with different
   - Grid search / Random Search
   - Tree-structured Parzen Estimators (HyperOpt)
 
+If you are interested in implementing or contributing a new Search Algorithm, the API is straightforward:
+
+.. autoclass:: ray.tune.suggest.SearchAlgorithm
+
+
 HyperOpt Integration
 ~~~~~~~~~~~~~~~~~~~~
 The ``HyperOptSearch`` is a SearchAlgorithm that is backed by HyperOpt to perform sequential model-based hyperparameter optimization.

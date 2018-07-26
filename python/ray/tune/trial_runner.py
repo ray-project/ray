@@ -296,7 +296,8 @@ class TrialRunner(object):
                     self._try_recover(trial, error_msg)
                 else:
                     self._scheduler_alg.on_trial_error(self, trial)
-                    self._search_alg.on_trial_error(trial.trial_id)
+                    self._search_alg.on_trial_complete(trial.trial_id,
+                                                       error=True)
                     self._stop_trial(trial, error=True, error_msg=error_msg)
 
     def _try_recover(self, trial, error_msg):
@@ -342,9 +343,10 @@ class TrialRunner(object):
         """Stops trial.
 
         Trials may be stopped at any time. If trial is in state PENDING
-        or PAUSED, calls `on_trial_remove`  for scheduler and search alg.
+        or PAUSED, calls `on_trial_remove`  for scheduler and
+        `on_trial_complete(..., early_terminated=True) for search_alg.
         Otherwise waits for result for the trial and calls
-        `on_trial_complete` for scheduler and search alg if RUNNING.
+        `on_trial_complete` for scheduler and search_alg if RUNNING.
         """
         error = False
         error_msg = None
@@ -353,7 +355,8 @@ class TrialRunner(object):
             return
         elif trial.status in [Trial.PENDING, Trial.PAUSED]:
             self._scheduler_alg.on_trial_remove(self, trial)
-            self._search_alg.on_trial_remove(trial.trial_id)
+            self._search_alg.on_trial_complete(trial.trial_id,
+                                               early_terminated=True)
         elif trial.status is Trial.RUNNING:
             # NOTE: There should only be one...
             result_id = [
@@ -369,7 +372,8 @@ class TrialRunner(object):
                 error_msg = traceback.format_exc()
                 print("Error processing event:", error_msg)
                 self._scheduler_alg.on_trial_error(self, trial)
-                self._search_alg.on_trial_error(trial.trial_id)
+                self._search_alg.on_trial_complete(trial.trial_id,
+                                                   error=True)
                 error = True
 
         self._stop_trial(trial, error=error, error_msg=error_msg)
