@@ -7,7 +7,6 @@ import ray.local_scheduler
 import ray.worker
 from ray import profiling
 import pyarrow.plasma as plasma
-from ray.worker import check_main_thread
 
 __all__ = [
     "free"
@@ -41,10 +40,8 @@ def free(object_ids, spread=True, worker=ray.worker.get_global_worker()):
     if not isinstance(object_ids, list):
         raise TypeError("free() expected a list of ObjectID, got {}".format(
             type(object_ids)))
-
     worker.check_connected()
     with profiling.profile("ray.free", worker=worker):
-        check_main_thread()
 
         if len(object_ids) == 0:
             return
@@ -55,8 +52,6 @@ def free(object_ids, spread=True, worker=ray.worker.get_global_worker()):
             plain_object_ids = [
                 plasma.ObjectID(object_id.id()) for object_id in object_ids
             ]
-            worker.plasma_client.delete(plain_object_ids)
-            print(object_ids)
             worker.local_scheduler_client.free(
                 object_ids, spread)
         else:
