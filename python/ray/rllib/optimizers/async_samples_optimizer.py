@@ -225,7 +225,7 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
         weights = None
 
         with self.timers["sample_processing"]:
-            completed = self.sample_tasks.completed()
+            completed = list(self.sample_tasks.completed())
 
             # Bulk fetch all the batch counts for each batch
             for count in ray.get([c[1][1] for c in completed]):
