@@ -296,8 +296,8 @@ class TrialRunner(object):
                     self._try_recover(trial, error_msg)
                 else:
                     self._scheduler_alg.on_trial_error(self, trial)
-                    self._search_alg.on_trial_complete(trial.trial_id,
-                                                       error=True)
+                    self._search_alg.on_trial_complete(
+                        trial.trial_id, error=True)
                     self._stop_trial(trial, error=True, error_msg=error_msg)
 
     def _try_recover(self, trial, error_msg):
@@ -355,8 +355,8 @@ class TrialRunner(object):
             return
         elif trial.status in [Trial.PENDING, Trial.PAUSED]:
             self._scheduler_alg.on_trial_remove(self, trial)
-            self._search_alg.on_trial_complete(trial.trial_id,
-                                               early_terminated=True)
+            self._search_alg.on_trial_complete(
+                trial.trial_id, early_terminated=True)
         elif trial.status is Trial.RUNNING:
             # NOTE: There should only be one...
             result_id = [
@@ -372,8 +372,7 @@ class TrialRunner(object):
                 error_msg = traceback.format_exc()
                 print("Error processing event:", error_msg)
                 self._scheduler_alg.on_trial_error(self, trial)
-                self._search_alg.on_trial_complete(trial.trial_id,
-                                                   error=True)
+                self._search_alg.on_trial_complete(trial.trial_id, error=True)
                 error = True
 
         self._stop_trial(trial, error=error, error_msg=error_msg)
