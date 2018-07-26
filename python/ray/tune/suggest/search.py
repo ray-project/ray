@@ -89,7 +89,7 @@ class _MockAlgorithm(SearchAlgorithm):
         if len(self.live_trials) < self._max_concurrent:
             id_str = self._generate_id()
             self.live_trials[id_str] = 1
-            return {"a": 1, "b": 2}, id_str
+            return {"test_variable": 2}, id_str
         else:
             return SearchAlgorithm.NOT_READY, None
 
@@ -97,5 +97,5 @@ class _MockAlgorithm(SearchAlgorithm):
         self._id += 1
         return str(self._id) * 5
 
-    def on_trial_complete(self, trial_id, **kwargs):
+    def on_trial_complete(self, trial_id, *args, **kwargs):
         del self.live_trials[trial_id]

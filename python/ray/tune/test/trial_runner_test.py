@@ -959,35 +959,21 @@ class TrialRunnerTest(unittest.TestCase):
         """Checks notification of trial to the Search Algorithm."""
         ray.init(num_cpus=4, num_gpus=2)
         searcher = _MockAlgorithm(max_concurrent=10)
-        runner = TrialRunner(search_alg=searcher)
-        kwargs = {
-            "stopping_criterion": {
-                "training_iteration": 1
+
+        trialgenerator = generate_trials(
+            {
+                "run": "__fake",
+                "stop": {"training_iteration": 1},
             },
-            "resources": Resources(cpu=1, gpu=1),
-        }
-        trials = [Trial("__fake", **kwargs), Trial("__fake", **kwargs)]
-        for t in trials:
-            runner.add_trial(t)
-
+            search_alg=searcher)
+        runner = TrialRunner(trialgenerator, search_alg=searcher)
         runner.step()
+        trials = runner.get_trials()
         self.assertEqual(trials[0].status, Trial.RUNNING)
-        self.assertEqual(trials[1].status, Trial.PENDING)
-        self.assertEqual(len(searcher.live_trials), 1)
-
-        runner.step()
-        self.assertEqual(trials[0].status, Trial.RUNNING)
-        self.assertEqual(trials[1].status, Trial.RUNNING)
-        self.assertEqual(len(searcher.live_trials), 2)
-
-        runner.step()
-        self.assertEqual(trials[0].status, Trial.RUNNING)
-        self.assertEqual(trials[1].status, Trial.TERMINATED)
         self.assertEqual(len(searcher.live_trials), 1)
 
         runner.step()
         self.assertEqual(trials[0].status, Trial.TERMINATED)
-        self.assertEqual(trials[1].status, Trial.TERMINATED)
         self.assertEqual(len(searcher.live_trials), 0)
 
 
