@@ -19,7 +19,7 @@ if __name__ == "__main__":
     redis_address = os.environ["RAY_REDIS_ADDRESS"]
     print("Driver {} started at {}.".format(driver_index, time.time()))
 
-    ray.init(redis_address=redis_address)
+    ray.init(redis_address=redis_address, use_raylet=True)
     # Check that tasks are scheduled on all nodes.
     num_attempts = 30
     for i in range(num_attempts):

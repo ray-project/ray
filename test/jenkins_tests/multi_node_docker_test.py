@@ -3,12 +3,14 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
-import numpy as np
+import random
 import os
 import re
 import signal
 import subprocess
 import sys
+import datetime
+import time
 
 
 # This is duplicated from ray.utils so that we do not have to introduce a
@@ -33,9 +35,11 @@ def wait_for_output(proc):
         A tuple of the stdout and stderr of the process as strings.
     """
     try:
-        stdout_data, stderr_data = proc.communicate(timeout=10)
+        stdout_data, stderr_data = proc.communicate(timeout=200)
     except subprocess.TimeoutExpired:
-        # Retry once.
+        # Timeout: kill the process.
+        # Get the remaining message from PIPE for debugging purpose.
+        print("Kill one process.")
         proc.kill()
         stdout_data, stderr_data = proc.communicate()
 
@@ -76,11 +80,12 @@ class DockerRunner(object):
             head node.
     """
 
-    def __init__(self):
+    def __init__(self, use_raylet):
         """Initialize the DockerRunner."""
         self.head_container_id = None
         self.worker_container_ids = []
         self.head_container_ip = None
+        self.use_raylet = use_raylet
 
     def _get_container_id(self, stdout_data):
         """Parse the docker container ID from stdout_data.
@@ -144,6 +149,8 @@ class DockerRunner(object):
             "--num-cpus={}".format(num_cpus), "--num-gpus={}".format(num_gpus),
             "--no-ui"
         ])
+        if self.use_raylet:
+            command.append("--use-raylet")
         print("Starting head node with command:{}".format(command))
 
         proc = subprocess.Popen(
@@ -170,6 +177,8 @@ class DockerRunner(object):
             "--redis-address={:s}:6379".format(self.head_container_ip),
             "--num-cpus={}".format(num_cpus), "--num-gpus={}".format(num_gpus)
         ])
+        if self.use_raylet:
+            command.append("--use-raylet")
         print("Starting worker node with command:{}".format(command))
         proc = subprocess.Popen(
             command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -223,6 +232,8 @@ class DockerRunner(object):
             self._start_worker_node(docker_image, mem_size, shm_size,
                                     num_cpus[1 + i], num_gpus[1 + i],
                                     development_mode)
+        # Sleep to wait for the registration of raylet workers.
+        time.sleep(5)
 
     def _stop_node(self, container_id):
         """Stop a node in the Ray cluster."""
@@ -294,13 +305,15 @@ class DockerRunner(object):
         Raises:
             Exception: An exception is raised if the timeout expires.
         """
+        print("Start Time: %s" % datetime.datetime.now())
         all_container_ids = (
             [self.head_container_id] + self.worker_container_ids)
         if driver_locations is None:
             driver_locations = [
-                np.random.randint(0, len(all_container_ids))
-                for _ in range(num_drivers)
+                random.randrange(0, len(all_container_ids))
+                for i in range(num_drivers)
             ]
+        print("driver_locations: %s" % driver_locations)
 
         # Define a signal handler and set an alarm to go off in
         # timeout_seconds.
@@ -327,7 +340,6 @@ class DockerRunner(object):
                 command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             driver_processes.append(p)
 
-        # Wait for the drivers to finish.
         results = []
         for p in driver_processes:
             stdout_data, stderr_data = wait_for_output(p)
@@ -342,7 +354,7 @@ class DockerRunner(object):
 
         # Disable the alarm.
         signal.alarm(0)
-
+        print("End Time: %s" % datetime.datetime.now())
         return results
 
 
@@ -386,6 +398,10 @@ if __name__ == "__main__":
         "--development-mode",
         action="store_true",
         help="use local copies of the test scripts")
+    parser.add_argument(
+        "--use-raylet",
+        action="store_true",
+        help="use raylet mode in Docker")
     args = parser.parse_args()
 
     # Parse the number of CPUs and GPUs to use for each worker.
@@ -399,7 +415,7 @@ if __name__ == "__main__":
     driver_locations = (None if args.driver_locations is None else
                         [int(i) for i in args.driver_locations.split(",")])
 
-    d = DockerRunner()
+    d = DockerRunner(args.use_raylet)
     d.start_ray(
         docker_image=args.docker_image,
         mem_size=args.mem_size,
