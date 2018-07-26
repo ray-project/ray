@@ -73,7 +73,7 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1submitTask(
   // native private static void _submitTask(long client, /*Direct*/ByteBuffer
   // task);
   auto client = reinterpret_cast<LocalSchedulerConnection *>(c);
-  
+
   std::vector<ObjectID> execution_dependencies;
   if (cursorId != nullptr) {
     UniqueIdFromJByteArray cursor_id(env, cursorId);
@@ -86,7 +86,8 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1submitTask(
         TaskExecutionSpec(execution_dependencies, task, sz);
     local_scheduler_submit(client, taskExecutionSpec);
   } else {
-    auto data = reinterpret_cast<uint8_t *>(env->GetDirectBufferAddress(buff)) + pos;
+    auto data =
+        reinterpret_cast<uint8_t *>(env->GetDirectBufferAddress(buff)) + pos;
     ray::raylet::TaskSpecification task_spec(data, sz);
     local_scheduler_submit_raylet(client, execution_dependencies, task_spec);
   }
@@ -98,17 +99,19 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1submitTask(
  * Signature: (J)[B
  */
 JNIEXPORT jbyteArray JNICALL
-Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1getTaskTodo(JNIEnv *env,
-                                                                jclass,
-                                                                jlong c,
-                                                                jboolean useRaylet) {
+Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1getTaskTodo(
+    JNIEnv *env,
+    jclass,
+    jlong c,
+    jboolean useRaylet) {
   // native private static ByteBuffer _getTaskTodo(long client);
   auto client = reinterpret_cast<LocalSchedulerConnection *>(c);
   int64_t task_size = 0;
 
   // TODO: handle actor failure later
-  TaskSpec *spec = !useRaylet ? local_scheduler_get_task(client, &task_size)
-                              : local_scheduler_get_task_raylet(client, &task_size);
+  TaskSpec *spec = !useRaylet
+                       ? local_scheduler_get_task(client, &task_size)
+                       : local_scheduler_get_task_raylet(client, &task_size);
 
   jbyteArray result;
   result = env->NewByteArray(task_size);
@@ -236,17 +239,18 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1put_1object(
 }
 
 JNIEXPORT jbooleanArray JNICALL 
-Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1waitObject(JNIEnv *env, 
-                                                              jclass, 
-                                                              jlong c, 
-                                                              jobjectArray oids, 
-                                                              jint num_returns, 
-                                                              jint timeout_ms,
-                                                              jboolean wait_local) {
+Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1waitObject(
+    JNIEnv *env,
+    jclass,
+    jlong c,
+    jobjectArray oids,
+    jint num_returns,
+    jint timeout_ms,
+    jboolean wait_local) {
   std::vector<ObjectID> object_ids;
   auto len = env->GetArrayLength(oids);
   for (int i = 0; i < len; i++) {
-    jbyteArray oid = (jbyteArray)env->GetObjectArrayElement(oids, i);
+    jbyteArray oid = (jbyteArray) env->GetObjectArrayElement(oids, i);
     UniqueIdFromJByteArray o(env, oid);
     object_ids.push_back(*o.PID);
     env->DeleteLocalRef(oid);
@@ -256,8 +260,7 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1waitObject(JNIEnv *env,
 
   // Invoke wait.
   std::pair<std::vector<ObjectID>, std::vector<ObjectID>> result =
-      local_scheduler_wait(client,
-                           object_ids, num_returns, timeout_ms,
+      local_scheduler_wait(client, object_ids, num_returns, timeout_ms,
                            static_cast<bool>(wait_local));
   
   // Convert result to java object.

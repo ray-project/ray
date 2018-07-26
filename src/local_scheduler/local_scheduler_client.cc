@@ -81,9 +81,10 @@ void local_scheduler_submit(LocalSchedulerConnection *conn,
                 fbb.GetSize(), fbb.GetBufferPointer(), &conn->write_mutex);
 }
 
-void local_scheduler_submit_raylet(LocalSchedulerConnection *conn,
-                                   const std::vector<ObjectID> &execution_dependencies,
-                                   const ray::raylet::TaskSpecification &task_spec) {
+void local_scheduler_submit_raylet(
+    LocalSchedulerConnection *conn,
+    const std::vector<ObjectID> &execution_dependencies,
+    const ray::raylet::TaskSpecification &task_spec) {
   flatbuffers::FlatBufferBuilder fbb;
   auto execution_dependencies_message = to_flatbuf(fbb, execution_dependencies);
   auto message = ray::local_scheduler::protocol::CreateSubmitTaskRequest(

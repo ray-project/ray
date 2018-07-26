@@ -859,14 +859,4 @@ public class RunManager {
     startProcess(cmd.split(" "), null, RunInfo.ProcessType.PT_WORKER, workDir, redisAddress, ip,
         redirect, cleanup);
   }
-
-  public void startWorkerRaylet(String storeName, String rayletSocketName,
-                                String workDir, String redisAddress,
-      String ip, UniqueID actorId, String actorClass,
-      boolean redirect, boolean cleanup) {
-    String cmd = buildWorkerCommandRaylet(storeName, rayletSocketName, actorId,
-            actorClass, workDir, ip, redisAddress);
-    startProcess(cmd.split(" "), null, RunInfo.ProcessType.PT_WORKER, workDir, redisAddress, ip,
-        redirect, cleanup);
-  }
 }
