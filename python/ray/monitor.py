@@ -527,8 +527,8 @@ class Monitor(object):
         # Get the list of objects returned by driver tasks.
         driver_object_ids = set()
         for task_info in task_table_infos.values():
-            driver_object_ids |= set(
-                [object_id.id() for object_id in task_info['ReturnObjectIDs']])
+            driver_object_ids |= {
+                object_id.id() for object_id in task_info['ReturnObjectIDs']}
 
         # Also record all the ray.put()'d objects.
         all_put_objects = []
