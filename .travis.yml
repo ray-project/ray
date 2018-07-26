@@ -141,7 +141,7 @@ matrix:
         - pytest test/microbenchmarks.py
         - python -m pytest test/stress_tests.py
         # - pytest test/component_failures_test.py
-        - pytest test/multi_node_test.py
+        - python test/multi_node_test.py
         - pytest test/recursion_test.py
         # - pytest test/monitor_test.py
         - pytest test/cython_test.py
@@ -204,7 +204,7 @@ script:
   - pytest test/microbenchmarks.py
   - python -m pytest test/stress_tests.py
   - pytest test/component_failures_test.py
-  - pytest test/multi_node_test.py
+  - python test/multi_node_test.py
   - pytest test/recursion_test.py
   - pytest test/monitor_test.py
   - pytest test/cython_test.py
