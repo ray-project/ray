@@ -26,9 +26,9 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
   private long client = 0;
 
   public DefaultLocalSchedulerClient(String schedulerSockName, UniqueID clientId, UniqueID actorId,
-                                     boolean isWorker, long numGpus) {
+                                     boolean isWorker, UniqueID driverId, long numGpus) {
     client = _init(schedulerSockName, clientId.getBytes(), actorId.getBytes(), isWorker,
-        numGpus);
+        driverId.getBytes(), numGpus);
   }
 
   private static native long _init(String localSchedulerSocket, byte[] workerId, byte[] actorId,

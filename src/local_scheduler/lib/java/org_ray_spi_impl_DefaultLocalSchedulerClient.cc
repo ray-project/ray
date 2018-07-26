@@ -42,6 +42,7 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1init(JNIEnv *env,
                                                          jbyteArray wid,
                                                          jbyteArray actorId,
                                                          jboolean isWorker,
+                                                         jbyteArray driverId,
                                                          jlong numGpus) {
   // 	native private static long _init(String localSchedulerSocket,
   //     byte[] workerId, byte[] actorId, boolean isWorker, long numGpus);
@@ -49,7 +50,7 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1init(JNIEnv *env,
   const char *nativeString = env->GetStringUTFChars(sockName, JNI_FALSE);
   bool use_raylet = false;
   auto client = LocalSchedulerConnection_init(nativeString, *worker_id.PID,
-                                              isWorker, use_raylet);
+                                              isWorker, driverId, use_raylet);
   env->ReleaseStringUTFChars(sockName, nativeString);
   return reinterpret_cast<jlong>(client);
 }

@@ -104,11 +104,18 @@ public class RayNativeRuntime extends RayRuntime {
       ObjectStoreLink plink = new PlasmaClient(params.object_store_name, params
           .object_store_manager_name, releaseDelay);
 
+      // TODO(rkn): This needs to be checked carefully.
+      UniqueID driver_task_id = UniqueID.nil;
+      if (params.worker_mode == WorkerMode.DRIVER) {
+        driver_task_id = params.driver_id;
+      }
+
       LocalSchedulerLink slink = new DefaultLocalSchedulerClient(
           params.local_scheduler_name,
           WorkerContext.currentWorkerId(),
           UniqueID.nil,
           isWorker,
+          driver_task_id,
           0
       );
 
