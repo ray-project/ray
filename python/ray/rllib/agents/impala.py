@@ -13,7 +13,8 @@ from ray.rllib.utils import FilterManager
 from ray.tune.trial import Resources
 
 OPTIMIZER_SHARED_CONFIGS = [
-    "sample_batch_size", "train_batch_size",
+    "sample_batch_size",
+    "train_batch_size",
 ]
 
 DEFAULT_CONFIG = with_common_config({
@@ -55,7 +56,6 @@ DEFAULT_CONFIG = with_common_config({
 class ImpalaAgent(Agent):
     """IMPALA implementation using DeepMind's v-trace."""
 
-
     _agent_name = "IMPALA"
     _default_config = DEFAULT_CONFIG
 
@@ -78,9 +78,9 @@ class ImpalaAgent(Agent):
         self.remote_evaluators = self.make_remote_evaluators(
             self.env_creator, policy_cls, self.config["num_workers"],
             {"num_cpus": 1})
-        self.optimizer = AsyncSamplesOptimizer(
-            self.local_evaluator, self.remote_evaluators,
-            self.config["optimizer"])
+        self.optimizer = AsyncSamplesOptimizer(self.local_evaluator,
+                                               self.remote_evaluators,
+                                               self.config["optimizer"])
 
     def _train(self):
         prev_steps = self.optimizer.num_steps_sampled
