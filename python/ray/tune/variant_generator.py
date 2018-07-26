@@ -29,7 +29,7 @@ def to_argv(config):
     return argv
 
 
-def generate_trials(unresolved_spec, search_alg, output_path=''):
+def generate_trials(unresolved_spec, output_path='', search_alg=None):
     """Wraps `generate_variants()` to return a Trial object for each variant.
 
     Specified/sampled hyperparameters for the Search Algorithm will be
@@ -41,6 +41,7 @@ def generate_trials(unresolved_spec, search_alg, output_path=''):
         unresolved_spec (dict): Experiment spec conforming to the argument
             schema defined in `ray.tune.config_parser`.
         search_alg (SearchAlgorithm): SearchAlgorithm for hyperparameters.
+            Defaults to SearchAlgorithm.
         output_path (str): Path where to store experiment outputs.
 
     Yields:
@@ -48,7 +49,7 @@ def generate_trials(unresolved_spec, search_alg, output_path=''):
             a certain time (i.e. due to contrained concurrency), this will
             yield None. Otherwise, it will yield a trial.
     """
-
+    search_alg = search_alg or SearchAlgorithm()
     if "run" not in unresolved_spec:
         raise TuneError("Must specify `run` in {}".format(unresolved_spec))
     parser = make_parser()

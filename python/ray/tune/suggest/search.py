@@ -77,3 +77,25 @@ class SearchAlgorithm(object):
                 is stopped while in PAUSED or PENDING state.
         """
         pass
+
+
+class _MockAlgorithm(SearchAlgorithm):
+    def __init__(self, max_concurrent=2):
+        self._id = 0
+        self._max_concurrent = max_concurrent
+        self.live_trials = {}
+
+    def try_suggest(self):
+        if len(self.live_trials) < self._max_concurrent:
+            id_str = self._generate_id()
+            self.live_trials[id_str] = 1
+            return {"a": 1, "b": 2}, id_str
+        else:
+            return SearchAlgorithm.NOT_READY, None
+
+    def _generate_id(self):
+        self._id += 1
+        return str(self._id) * 5
+
+    def on_trial_complete(self, trial_id, **kwargs):
+        del self.live_trials[trial_id]
