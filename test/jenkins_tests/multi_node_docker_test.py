@@ -32,7 +32,12 @@ def wait_for_output(proc):
     Returns:
         A tuple of the stdout and stderr of the process as strings.
     """
-    stdout_data, stderr_data = proc.communicate()
+    try:
+        stdout_data, stderr_data = proc.communicate(timeout=10)
+    except subprocess.TimeoutExpired:
+        # Retry once.
+        proc.kill()
+        stdout_data, stderr_data = proc.communicate()
 
     if stdout_data is not None:
         try:
