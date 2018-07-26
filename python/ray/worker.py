@@ -44,6 +44,7 @@ SCRIPT_MODE = 0
 WORKER_MODE = 1
 LOCAL_MODE = 2
 SILENT_MODE = 3
+PYTHON_MODE = 4
 
 ERROR_KEY_PREFIX = b"Error:"
 DRIVER_ID_LENGTH = 20
@@ -1571,6 +1572,9 @@ def _init(address_info=None,
         Exception: An exception is raised if an inappropriate combination of
             arguments is passed in.
     """
+    if driver_mode == PYTHON_MODE:
+        raise Exception("ray.PYTHON_MODE has been renamed to ray.LOCAL_MODE. "
+                        "Please use ray.LOCAL_MODE.")
     if driver_mode not in [SCRIPT_MODE, LOCAL_MODE, SILENT_MODE]:
         raise Exception("Driver_mode must be in [ray.SCRIPT_MODE, "
                         "ray.LOCAL_MODE, ray.SILENT_MODE].")
