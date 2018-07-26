@@ -40,8 +40,12 @@ int main(int argc, char *argv[]) {
       RayConfig::instance().num_workers_per_process();
   // Use a default worker that can execute empty tasks with dependencies.
 
-  boost::split(node_manager_config.worker_command, worker_command,
-               boost::is_any_of(" "), boost::token_compress_on);
+  std::istringstream iss(worker_command);
+  std::vector<std::string> results(std::istream_iterator<std::string> {iss},
+                                   std::istream_iterator<std::string>());
+  node_manager_config.worker_command.swap(results);
+  //boost::split(node_manager_config.worker_command, worker_command,
+  //             boost::is_any_of(" "), boost::token_compress_on);
 
   node_manager_config.heartbeat_period_ms =
       RayConfig::instance().heartbeat_timeout_milliseconds();
@@ -81,6 +85,7 @@ int main(int argc, char *argv[]) {
   // Destroy the Raylet on a SIGTERM. The pointer to main_service is
   // guaranteed to be valid since this function will run the event loop
   // instead of returning immediately.
+  // We should stop the service and remove the local socket file.
   auto handler = [&main_service, &raylet_socket_name](const boost::system::error_code &error,
                                  int signal_number) {
     main_service.stop();

@@ -32,10 +32,10 @@ public class NonRayletStateStoreProxyImpl extends BaseStateStoreProxyImpl {
      *        "local_scheduler_socket_name"(op)
      */
     @Override
-    public List<AddressInfo> getAddressInfoHelper(final String nodeIpAddress,
-                                                  final String redisAddress) throws Exception {
+    public List<AddressInfo> doGetAddressInfo(final String nodeIpAddress,
+                                              final String redisAddress) throws Exception {
         if (this.rayKvStore == null) {
-            throw new Exception("no redis client when use getAddressInfoHelper");
+            throw new Exception("no redis client when use doGetAddressInfo");
         }
         List<AddressInfo> schedulerInfo = new ArrayList<>();
 

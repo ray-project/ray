@@ -83,7 +83,7 @@ public abstract class BaseStateStoreProxyImpl implements StateStoreProxy {
     int count = 0;
     while (count < numRetries) {
       try {
-        return getAddressInfoHelper(nodeIpAddress, redisAddress);
+        return doGetAddressInfo(nodeIpAddress, redisAddress);
       } catch (Exception e) {
         try {
           RayLog.core.warn("Error occurred in BaseStateStoreProxyImpl getAddressInfo, "
@@ -98,6 +98,19 @@ public abstract class BaseStateStoreProxyImpl implements StateStoreProxy {
     }
     throw new RuntimeException("cannot get address info from state store");
   }
+
+  /**
+   *
+   * Get address info of one node from primary redis.
+   * This method only tries to get address info once, without any retry.
+   *
+   * @param nodeIpAddress Usually local ip address.
+   * @param redisAddress The primary redis address.
+   * @return A list of SchedulerInfo which contains node manager or local scheduler address info.
+   * @throws Exception No redis client exception.
+   */
+  protected abstract List<AddressInfo> doGetAddressInfo(final String nodeIpAddress,
+                                                        final String redisAddress) throws Exception;
 
   protected String charsetDecode(byte[] bs, String charset) throws UnsupportedEncodingException {
     return new String(bs, charset);

@@ -108,7 +108,11 @@ class TaskSpecification {
                     const std::vector<std::shared_ptr<TaskArgument>> &task_arguments,
                     int64_t num_returns,
                     const std::unordered_map<std::string, double> &required_resources);
-  
+
+  /// Create a task specification from a pointer.
+  ///
+  /// \param spec The specification data from a pointer.
+  /// \param spec_size The specification data size.
   TaskSpecification(const uint8_t *spec, size_t spec_size) {
     AssignSpecification(spec, spec_size);
   }

@@ -373,7 +373,7 @@ public abstract class RayRuntime implements RayApi {
       // milliseconds passes, then repeat.
       while (ret.getRight() != GetStatus.SUCCESS) {
         RayLog.core.warn(
-          "Task " + taskId + " Object " + objectId.toString() + " get failed, reconstruct ...");
+            "Task " + taskId + " Object " + objectId.toString() + " get failed, reconstruct ...");
         localSchedulerProxy.reconstructObject(objectId);
 
         // Do another fetch
@@ -384,8 +384,8 @@ public abstract class RayRuntime implements RayApi {
             isMetadata);
       }
       RayLog.core.debug(
-        "Task " + taskId + " Object " + objectId.toString() + " get" + ", the result " + ret
-        .getLeft());
+          "Task " + taskId + " Object " + objectId.toString() + " get" + ", the result " + ret
+          .getLeft());
       return ret.getLeft();
     } catch (TaskExecutionException e) {
       RayLog.core
