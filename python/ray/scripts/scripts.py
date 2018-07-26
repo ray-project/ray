@@ -257,7 +257,7 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
                                                                       address_info["redis_address"]))
         if with_gateway:
             # TODO: Assume redis and head node have same IP address
-            print("\nYou can also connect an external client to the cluster "
+            print("You can also connect an external client to the cluster "
                   "from Python by running\n\n"
                   "    import ray\n"
                   "    ray.init(redis_address=\"{}\", driver_mode=ray.CLIENT_MODE, "

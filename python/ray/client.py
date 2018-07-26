@@ -4,7 +4,7 @@ import subprocess
 import requests
 import pyarrow
 # import pickle
-# import numpy as np
+import numpy as np
 
 # TODO (dsuo): rename so it's clear what "client" means
 class Client(object):
@@ -15,16 +15,13 @@ class Client(object):
     def __init__(self,
                  gateway_address,
                  gateway_port=5432,
-                 gateway_data_port=5000,
-                 client_socket_name=None):
+                 gateway_data_port=5000):
         """Initialize a new client.
 
         Args:
             gateway_address (str): The IP address of the head node / gateway.
             gateway_port (int): The gateway's port.
             data_port (int): The gateway's port for transferring data.
-            client_socket_name (str): The named pipe that forwards local
-                scheduler client to remote head node for processing.
 
         Returns:
             A new Client object
@@ -32,22 +29,21 @@ class Client(object):
         self.gateway_address = gateway_address
         self.gateway_port = gateway_port
         self.gateway_data_port = gateway_data_port
-        self.client_socket_name = client_socket_name
+        self.client_socket_name = "/tmp/ray_client" + str(np.random.randint(0, 99999999)).zfill(8)
         self.serialization_context = None
         self.url = "http://{}:{}".format(
             self.gateway_address,
             self.gateway_data_port)
         
-        if client_socket_name is not None:
-            # TODO (dsuo): should move to connect()
-            command = [
-                "socat", "UNIX-LISTEN:" + self.client_socket_name + \
-                ",reuseaddr,fork", "TCP:" + self.gateway_address + ":" + \
-                str(self.gateway_port)
-            ]
+        # TODO (dsuo): should move to connect()
+        command = [
+            "socat", "UNIX-LISTEN:" + self.client_socket_name + \
+            ",reuseaddr,fork", "TCP:" + self.gateway_address + ":" + \
+            str(self.gateway_port)
+        ]
 
-            # TODO (dsuo): handle cleanup, logging, etc
-            p = subprocess.Popen(command, stdout=None, stderr=None)
+        # TODO (dsuo): handle cleanup, logging, etc
+        p = subprocess.Popen(command, stdout=None, stderr=None)
 
     def put(self, value, object_id):
         """TODO (dsuo): Add comments
