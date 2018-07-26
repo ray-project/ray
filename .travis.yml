@@ -148,7 +148,7 @@ matrix:
         - pytest test/credis_test.py
 
         # ray tune tests
-        - pytest python/ray/tune/test/dependency_test.py
+        - python python/ray/tune/test/dependency_test.py
         - python -m pytest python/ray/tune/test/trial_runner_test.py
         - python -m pytest python/ray/tune/test/trial_scheduler_test.py
         - python -m pytest python/ray/tune/test/tune_server_test.py
@@ -211,7 +211,7 @@ script:
   - pytest test/credis_test.py
 
   # ray tune tests
-  - pytest python/ray/tune/test/dependency_test.py
+  - python python/ray/tune/test/dependency_test.py
   - python -m pytest python/ray/tune/test/trial_runner_test.py
   - python -m pytest python/ray/tune/test/trial_scheduler_test.py
   - python -m pytest python/ray/tune/test/tune_server_test.py
