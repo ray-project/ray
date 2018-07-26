@@ -83,8 +83,8 @@ def run_experiments(experiments,
             print("Warning: All experiments will be"
                   " using the same Search Algorithm.")
         trial_generator = chain.from_iterable([
-            generate_trials(
-                exp.spec, exp.name, search_alg=search_alg) for exp in exp_list
+            generate_trials(exp.spec, exp.name, search_alg=search_alg)
+            for exp in exp_list
         ])
     else:
         raise TuneError("Invalid argument: {}".format(experiments))

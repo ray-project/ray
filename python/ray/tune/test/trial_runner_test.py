@@ -575,24 +575,33 @@ class VariantGeneratorTest(unittest.TestCase):
 
     def testMaxConcurrentSearchAlgorithm(self):
         searcher = _MockAlgorithm(max_concurrent=2)
-        trials = generate_trials({
-            "run": "PPO",
-            "config": {
-                "bar": {
-                    "grid_search": [True, False]
-                },
-                "foo": {
-                    "grid_search": [1, 2, 3]
+        trialgenerator = generate_trials(
+            {
+                "run": "PPO",
+                "config": {
+                    "bar": {
+                        "grid_search": [True, False]
+                    },
+                    "foo": {
+                        "grid_search": [1, 2, 3]
+                    },
                 },
             },
-        }, search_alg=searcher)
-        trials = list(trials)
+            search_alg=searcher)
+
+        trials = []
+        for trial in trialgenerator:
+            if trial:
+                trials += [trial]
+            else:
+                break
         self.assertEqual(len(trials), 2)
         self.assertEqual(searcher.try_suggest()[0], SearchAlgorithm.NOT_READY)
 
         finished_trial = trials.pop()
         searcher.on_trial_complete(finished_trial.trial_id)
-        self.assertNotEqual(searcher.try_suggest()[0], SearchAlgorithm.NOT_READY)
+        self.assertNotEqual(searcher.try_suggest()[0],
+                            SearchAlgorithm.NOT_READY)
 
 
 class TrialRunnerTest(unittest.TestCase):
