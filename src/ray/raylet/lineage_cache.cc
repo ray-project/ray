@@ -200,7 +200,7 @@ void LineageCache::AddReadyTask(const Task &task) {
   RAY_CHECK(entry->GetStatus() == GcsStatus::UNCOMMITTED_WAITING);
 
   entry->SetStatus(GcsStatus::UNCOMMITTED_READY);
-  // TaskSepc. is immutable, just update TaskExecSpec.
+  // TaskSepc is immutable, just update TaskExecSpec.
   entry->TaskDataMutable().CopyTaskExecutionSpec(task);
   // Attempt to flush the task.
   bool flushed = FlushTask(task_id);
