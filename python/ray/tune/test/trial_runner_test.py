@@ -963,7 +963,9 @@ class TrialRunnerTest(unittest.TestCase):
         trialgenerator = generate_trials(
             {
                 "run": "__fake",
-                "stop": {"training_iteration": 1},
+                "stop": {
+                    "training_iteration": 1
+                },
             },
             search_alg=searcher)
         runner = TrialRunner(trialgenerator, search_alg=searcher)
