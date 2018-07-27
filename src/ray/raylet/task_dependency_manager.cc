@@ -208,9 +208,7 @@ void TaskDependencyManager::TaskPending(const Task &task) {
   TaskID task_id = task.GetTaskSpecification().TaskId();
 
   // Record that the task is pending execution.
-  auto inserted =
-      pending_tasks_.emplace(task_id, PendingTask(initial_lease_period_ms_, io_service_));
-  RAY_CHECK(inserted.second);
+  pending_tasks_.emplace(task_id, PendingTask(initial_lease_period_ms_, io_service_));
 
   // Find any subscribed tasks that are dependent on objects created by the
   // pending task.
