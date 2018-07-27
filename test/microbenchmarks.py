@@ -5,7 +5,6 @@ from __future__ import print_function
 import os
 import unittest
 import ray
-import sys
 import time
 import numpy as np
 

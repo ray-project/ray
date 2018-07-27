@@ -222,7 +222,6 @@ class SerializationTest(unittest.TestCase):
         for obj in recursive_objects:
             self.assertRaises(Exception, lambda: ray.put(obj))
 
-    """
     def testPassingArgumentsByValue(self):
         ray.init(num_workers=1)
 
@@ -234,7 +233,6 @@ class SerializationTest(unittest.TestCase):
         # that they are uncorrupted.
         for obj in RAY_TEST_OBJECTS:
             assert_equal(obj, ray.get(f.remote(obj)))
-    """
 
     def testPassingArgumentsByValueOutOfTheBox(self):
         ray.init(num_workers=1)
@@ -381,7 +379,6 @@ class APITest(unittest.TestCase):
         self.assertEqual(
             ray.get(f.remote()), ((3, "string1", Bar.__name__), "string2"))
 
-    """
     def testRegisterClass(self):
         self.init_ray(num_workers=2)
 
@@ -519,7 +516,6 @@ class APITest(unittest.TestCase):
             self.assertFalse(hasattr(c1, "method2"))
             self.assertFalse(hasattr(c2, "method0"))
             self.assertFalse(hasattr(c2, "method1"))
-    """
 
     def testKeywordArgs(self):
         @ray.remote
