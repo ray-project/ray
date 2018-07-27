@@ -40,10 +40,10 @@ else
   exit 1
 fi
 
-# The PR for this commit is https://github.com/apache/arrow/pull/2282. We
+# The PR for this commit is https://github.com/apache/arrow/pull/2332. We
 # include the link here to make it easier to find the right commit because
 # Arrow often rewrites git history and invalidates certain commits.
-TARGET_COMMIT_ID=35ef303ad4f5a1f7a7e156e94ef331b7f9586ca5
+TARGET_COMMIT_ID=a18f36201e5cd1e6f8bc244a5e755fa54bc9c7b0
 build_arrow() {
   echo "building arrow"
 
@@ -108,6 +108,22 @@ build_arrow() {
       ..
   make VERBOSE=1 -j$PARALLEL
   make install
+
+  cmake -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_C_FLAGS="-g -O3" \
+      -DCMAKE_CXX_FLAGS="-g -O3" \
+      -DARROW_BUILD_TESTS=off \
+      -DARROW_HDFS=on \
+      -DARROW_BOOST_USE_SHARED=off \
+      -DARROW_PYTHON=on \
+      -DARROW_PLASMA=on \
+      -DARROW_TENSORFLOW=on \
+      -DARROW_JEMALLOC=off \
+      -DARROW_WITH_BROTLI=off \
+      -DARROW_WITH_LZ4=off \
+      -DARROW_WITH_ZLIB=off \
+      -DARROW_WITH_ZSTD=off \
+      ..
 
   if [[ -d $ARROW_HOME/lib64 ]]; then
       # On CentOS, Arrow gets installed under lib64 instead of lib, so copy it for
