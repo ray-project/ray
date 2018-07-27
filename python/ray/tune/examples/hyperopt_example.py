@@ -4,17 +4,19 @@ from __future__ import print_function
 
 import ray
 from ray.tune import run_experiments, register_trainable
-from ray.tune.hpo_scheduler import HyperOptScheduler
+from ray.tune.async_hyperband import AsyncHyperBandScheduler
+from ray.tune.suggest import HyperOptSearch
 
 
 def easy_objective(config, reporter):
     import time
     time.sleep(0.2)
     assert type(config["activation"]) == str
-    reporter(
-        timesteps_total=1,
-        mean_loss=((config["height"] - 14)**2 + abs(config["width"] - 3)))
-    time.sleep(0.2)
+    for i in range(100):
+        reporter(
+            timesteps_total=i,
+            mean_loss=((config["height"] - 14)**2 + abs(config["width"] - 3)))
+        time.sleep(0.2)
 
 
 if __name__ == '__main__':
@@ -40,13 +42,10 @@ if __name__ == '__main__':
             "run": "exp",
             "repeat": 5 if args.smoke_test else 1000,
             "stop": {
-                "training_iteration": 1
+                "training_iteration": 100
             },
-            "config": {
-                "space": space
-            }
         }
     }
-    hpo_sched = HyperOptScheduler(reward_attr="neg_mean_loss")
-
-    run_experiments(config, verbose=False, scheduler=hpo_sched)
+    algo = HyperOptSearch(space, reward_attr="neg_mean_loss")
+    scheduler = AsyncHyperBandScheduler(reward_attr="neg_mean_loss")
+    run_experiments(config, search_alg=algo, scheduler=scheduler)

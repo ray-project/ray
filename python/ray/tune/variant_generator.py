@@ -10,6 +10,7 @@ import random
 import types
 
 from ray.tune import TuneError
+from ray.tune.suggest import SearchAlgorithm
 from ray.tune.logger import _SafeFallbackEncoder
 from ray.tune.trial import Trial
 from ray.tune.config_parser import make_parser, json_to_resources
@@ -28,17 +29,27 @@ def to_argv(config):
     return argv
 
 
-def generate_trials(unresolved_spec, output_path=''):
+def generate_trials(unresolved_spec, output_path='', search_alg=None):
     """Wraps `generate_variants()` to return a Trial object for each variant.
+
+    Specified/sampled hyperparameters for the Search Algorithm will be
+    used to update the generated configuration.
 
     See also: generate_variants()
 
     Arguments:
         unresolved_spec (dict): Experiment spec conforming to the argument
             schema defined in `ray.tune.config_parser`.
+        search_alg (SearchAlgorithm): SearchAlgorithm for hyperparameters.
+            Defaults to SearchAlgorithm.
         output_path (str): Path where to store experiment outputs.
-    """
 
+    Yields:
+        Trial|None: If search_alg is specified but cannot be queried at
+            a certain time (i.e. due to contrained concurrency), this will
+            yield None. Otherwise, it will yield a trial.
+    """
+    search_alg = search_alg or SearchAlgorithm()
     if "run" not in unresolved_spec:
         raise TuneError("Must specify `run` in {}".format(unresolved_spec))
     parser = make_parser()
@@ -55,6 +66,18 @@ def generate_trials(unresolved_spec, output_path=''):
                 args = parser.parse_args(to_argv(spec))
             except SystemExit:
                 raise TuneError("Error parsing args, see above message", spec)
+
+            new_config = copy.deepcopy(spec.get("config", {}))
+
+            # We hold the other resolved vars until suggestion is ready.
+            while True:
+                suggested_config, trial_id = search_alg.try_suggest()
+                if suggested_config is SearchAlgorithm.NOT_READY:
+                    yield None
+                else:
+                    new_config.update(suggested_config)
+                    break
+
             if resolved_vars:
                 experiment_tag = "{}_{}".format(i, resolved_vars)
             else:
@@ -66,7 +89,8 @@ def generate_trials(unresolved_spec, output_path=''):
                 resources = None
             yield Trial(
                 trainable_name=spec["run"],
-                config=spec.get("config", {}),
+                config=new_config,
+                trial_id=trial_id,
                 local_dir=os.path.join(args.local_dir, output_path),
                 experiment_tag=experiment_tag,
                 resources=resources,

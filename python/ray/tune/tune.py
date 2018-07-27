@@ -3,17 +3,19 @@ from __future__ import division
 from __future__ import print_function
 
 import time
+from itertools import chain
 
 from ray.tune.error import TuneError
+from ray.tune.suggest import SearchAlgorithm
 from ray.tune.hyperband import HyperBandScheduler
 from ray.tune.async_hyperband import AsyncHyperBandScheduler
 from ray.tune.median_stopping_rule import MedianStoppingRule
-from ray.tune.hpo_scheduler import HyperOptScheduler
 from ray.tune.trial import Trial, DEBUG_PRINT_INTERVAL
 from ray.tune.log_sync import wait_for_log_sync
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.trial_scheduler import FIFOScheduler
 from ray.tune.web_server import TuneServer
+from ray.tune.variant_generator import generate_trials
 from ray.tune.experiment import Experiment
 
 _SCHEDULERS = {
@@ -21,7 +23,6 @@ _SCHEDULERS = {
     "MedianStopping": MedianStoppingRule,
     "HyperBand": HyperBandScheduler,
     "AsyncHyperBand": AsyncHyperBandScheduler,
-    "HyperOpt": HyperOptScheduler,
 }
 
 
@@ -34,6 +35,7 @@ def _make_scheduler(args):
 
 
 def run_experiments(experiments,
+                    search_alg=None,
                     scheduler=None,
                     with_server=False,
                     server_port=TuneServer.DEFAULT_PORT,
@@ -43,9 +45,11 @@ def run_experiments(experiments,
 
     Args:
         experiments (Experiment | list | dict): Experiments to run.
+        search_alg (SearchAlgorithm): Search Algorithm. Defaults to
+            SearchAlgorithm.
         scheduler (TrialScheduler): Scheduler for executing
             the experiment. Choose among FIFO (default), MedianStopping,
-            AsyncHyperBand, HyperBand, or HyperOpt.
+            AsyncHyperBand, and HyperBand.
         with_server (bool): Starts a background Tune server. Needed for
             using the Client API.
         server_port (int): Port number for launching TuneServer.
@@ -58,16 +62,12 @@ def run_experiments(experiments,
     Returns:
         List of Trial objects, holding data for each executed trial.
     """
-
     if scheduler is None:
         scheduler = FIFOScheduler()
 
-    runner = TrialRunner(
-        scheduler,
-        launch_web_server=with_server,
-        server_port=server_port,
-        verbose=verbose,
-        queue_trials=queue_trials)
+    if search_alg is None:
+        search_alg = SearchAlgorithm()
+
     exp_list = experiments
     if isinstance(experiments, Experiment):
         exp_list = [experiments]
@@ -79,10 +79,24 @@ def run_experiments(experiments,
 
     if (type(exp_list) is list
             and all(isinstance(exp, Experiment) for exp in exp_list)):
-        for experiment in exp_list:
-            scheduler.add_experiment(experiment, runner)
+        if len(exp_list) > 1:
+            print("Warning: All experiments will be"
+                  " using the same Search Algorithm.")
+        trial_generator = chain.from_iterable([
+            generate_trials(exp.spec, exp.name, search_alg=search_alg)
+            for exp in exp_list
+        ])
     else:
         raise TuneError("Invalid argument: {}".format(experiments))
+
+    runner = TrialRunner(
+        trial_generator,
+        scheduler=scheduler,
+        search_alg=search_alg,
+        launch_web_server=with_server,
+        server_port=server_port,
+        verbose=verbose,
+        queue_trials=queue_trials)
 
     print(runner.debug_string(max_debug=99999))
 

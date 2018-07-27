@@ -10,6 +10,7 @@ import traceback
 
 from ray.tune import TuneError
 from ray.tune.web_server import TuneServer
+from ray.tune.suggest import SearchAlgorithm
 from ray.tune.trial import Trial, Resources
 from ray.tune.trial_scheduler import FIFOScheduler, TrialScheduler
 
@@ -39,6 +40,8 @@ class TrialRunner(object):
     """
 
     def __init__(self,
+                 trial_generator=None,
+                 search_alg=None,
                  scheduler=None,
                  launch_web_server=False,
                  server_port=TuneServer.DEFAULT_PORT,
@@ -47,6 +50,8 @@ class TrialRunner(object):
         """Initializes a new TrialRunner.
 
         Args:
+            trial_generator (generator): Used to generate trials.
+            search_alg (SearchAlgorithm): Defaults to SearchAlgorithm.
             scheduler (TrialScheduler): Defaults to FIFOScheduler.
             launch_web_server (bool): Flag for starting TuneServer
             server_port (int): Port number for launching TuneServer
@@ -57,7 +62,8 @@ class TrialRunner(object):
                 be set to True when running on an autoscaling cluster to enable
                 automatic scale-up.
         """
-
+        self._trial_generator = trial_generator or []
+        self._search_alg = search_alg or SearchAlgorithm()
         self._scheduler_alg = scheduler or FIFOScheduler()
         self._trials = []
         self._running = {}
@@ -85,6 +91,7 @@ class TrialRunner(object):
                 self._total_time, self._global_time_limit))
             return True
 
+        self._update_trial_queue()
         for t in self._trials:
             if t.status in [Trial.PENDING, Trial.RUNNING, Trial.PAUSED]:
                 return False
@@ -225,6 +232,7 @@ class TrialRunner(object):
 
     def _get_next_trial(self):
         self._update_avail_resources()
+        self._update_trial_queue()
         trial = self._scheduler_alg.choose_trial_to_run(self)
         return trial
 
@@ -258,10 +266,12 @@ class TrialRunner(object):
             if trial.should_stop(result):
                 # Hook into scheduler
                 self._scheduler_alg.on_trial_complete(self, trial, result)
+                self._search_alg.on_trial_complete(trial.trial_id, result)
                 decision = TrialScheduler.STOP
             else:
                 decision = self._scheduler_alg.on_trial_result(
                     self, trial, result)
+                self._search_alg.on_trial_result(trial.trial_id, result)
             trial.update_last_result(
                 result, terminate=(decision == TrialScheduler.STOP))
 
@@ -286,6 +296,8 @@ class TrialRunner(object):
                     self._try_recover(trial, error_msg)
                 else:
                     self._scheduler_alg.on_trial_error(self, trial)
+                    self._search_alg.on_trial_complete(
+                        trial.trial_id, error=True)
                     self._stop_trial(trial, error=True, error_msg=error_msg)
 
     def _try_recover(self, trial, error_msg):
@@ -299,6 +311,13 @@ class TrialRunner(object):
             error_msg = traceback.format_exc()
             print("Error recovering trial from checkpoint, abort:", error_msg)
             self._stop_trial(trial, error=True, error_msg=error_msg)
+
+    def _update_trial_queue(self):
+        for trial in self._trial_generator:
+            if trial:
+                self.add_trial(trial)
+            else:
+                break
 
     def _commit_resources(self, resources):
         self._committed_resources = Resources(
@@ -324,9 +343,11 @@ class TrialRunner(object):
         """Stops trial.
 
         Trials may be stopped at any time. If trial is in state PENDING
-        or PAUSED, calls `scheduler.on_trial_remove`. Otherwise waits for
-        result for the trial and calls `scheduler.on_trial_complete`
-        if RUNNING."""
+        or PAUSED, calls `on_trial_remove`  for scheduler and
+        `on_trial_complete(..., early_terminated=True) for search_alg.
+        Otherwise waits for result for the trial and calls
+        `on_trial_complete` for scheduler and search_alg if RUNNING.
+        """
         error = False
         error_msg = None
 
@@ -334,6 +355,8 @@ class TrialRunner(object):
             return
         elif trial.status in [Trial.PENDING, Trial.PAUSED]:
             self._scheduler_alg.on_trial_remove(self, trial)
+            self._search_alg.on_trial_complete(
+                trial.trial_id, early_terminated=True)
         elif trial.status is Trial.RUNNING:
             # NOTE: There should only be one...
             result_id = [
@@ -344,10 +367,12 @@ class TrialRunner(object):
                 result = ray.get(result_id)
                 trial.update_last_result(result, terminate=True)
                 self._scheduler_alg.on_trial_complete(self, trial, result)
+                self._search_alg.on_trial_complete(trial.trial_id, result)
             except Exception:
                 error_msg = traceback.format_exc()
                 print("Error processing event:", error_msg)
                 self._scheduler_alg.on_trial_error(self, trial)
+                self._search_alg.on_trial_complete(trial.trial_id, error=True)
                 error = True
 
         self._stop_trial(trial, error=error, error_msg=error_msg)

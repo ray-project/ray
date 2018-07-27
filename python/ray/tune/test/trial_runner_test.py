@@ -15,6 +15,7 @@ from ray.tune.registry import _global_registry, TRAINABLE_CLASS
 from ray.tune.result import DEFAULT_RESULTS_DIR, TrainingResult
 from ray.tune.util import pin_in_object_store, get_pinned_object
 from ray.tune.experiment import Experiment
+from ray.tune.suggest.search import _MockAlgorithm, SearchAlgorithm
 from ray.tune.trial import Trial, Resources
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.variant_generator import generate_trials, grid_search, \
@@ -572,6 +573,36 @@ class VariantGeneratorTest(unittest.TestCase):
         else:
             assert False
 
+    def testMaxConcurrentSearchAlgorithm(self):
+        searcher = _MockAlgorithm(max_concurrent=2)
+        trialgenerator = generate_trials(
+            {
+                "run": "PPO",
+                "config": {
+                    "bar": {
+                        "grid_search": [True, False]
+                    },
+                    "foo": {
+                        "grid_search": [1, 2, 3]
+                    },
+                },
+            },
+            search_alg=searcher)
+
+        trials = []
+        for trial in trialgenerator:
+            if trial:
+                trials += [trial]
+            else:
+                break
+        self.assertEqual(len(trials), 2)
+        self.assertEqual(searcher.try_suggest()[0], SearchAlgorithm.NOT_READY)
+
+        finished_trial = trials.pop()
+        searcher.on_trial_complete(finished_trial.trial_id)
+        self.assertNotEqual(searcher.try_suggest()[0],
+                            SearchAlgorithm.NOT_READY)
+
 
 class TrialRunnerTest(unittest.TestCase):
     def tearDown(self):
@@ -923,6 +954,29 @@ class TrialRunnerTest(unittest.TestCase):
         self.assertEqual(trials[1].status, Trial.RUNNING)
         self.assertEqual(trials[2].status, Trial.RUNNING)
         self.assertEqual(trials[-1].status, Trial.TERMINATED)
+
+    def testSearchAlgNotification(self):
+        """Checks notification of trial to the Search Algorithm."""
+        ray.init(num_cpus=4, num_gpus=2)
+        searcher = _MockAlgorithm(max_concurrent=10)
+
+        trialgenerator = generate_trials(
+            {
+                "run": "__fake",
+                "stop": {
+                    "training_iteration": 1
+                },
+            },
+            search_alg=searcher)
+        runner = TrialRunner(trialgenerator, search_alg=searcher)
+        runner.step()
+        trials = runner.get_trials()
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+        self.assertEqual(len(searcher.live_trials), 1)
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.TERMINATED)
+        self.assertEqual(len(searcher.live_trials), 0)
 
 
 if __name__ == "__main__":
