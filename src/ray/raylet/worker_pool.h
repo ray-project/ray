@@ -52,6 +52,11 @@ class WorkerPool {
   /// \param The Worker to be registered.
   void RegisterWorker(std::shared_ptr<Worker> worker);
 
+  /// Register a new driver.
+  ///
+  /// \param The driver to be registered.
+  void RegisterDriver(const std::shared_ptr<Worker> worker);
+
   /// Get the client connection's registered worker.
   ///
   /// \param The client connection owned by a registered worker.
@@ -60,11 +65,24 @@ class WorkerPool {
   std::shared_ptr<Worker> GetRegisteredWorker(
       const std::shared_ptr<LocalClientConnection> &connection) const;
 
+  /// Get the client connection's registered driver.
+  ///
+  /// \param The client connection owned by a registered driver.
+  /// \return The Worker that owns the given client connection. Returns nullptr
+  /// if the client has not registered a driver.
+  std::shared_ptr<Worker> GetRegisteredDriver(
+      const std::shared_ptr<LocalClientConnection> &connection) const;
+
   /// Disconnect a registered worker.
   ///
   /// \param The worker to disconnect. The worker must be registered.
   /// \return Whether the given worker was in the pool of idle workers.
   bool DisconnectWorker(std::shared_ptr<Worker> worker);
+
+  /// Disconnect a registered driver.
+  ///
+  /// \param The driver to disconnect. The driver must be registered.
+  void DisconnectDriver(std::shared_ptr<Worker> driver);
 
   /// Add an idle worker to the pool.
   ///
@@ -105,6 +123,8 @@ class WorkerPool {
   /// idle and executing.
   // TODO(swang): Make this a map to make GetRegisteredWorker faster.
   std::list<std::shared_ptr<Worker>> registered_workers_;
+  /// All drivers that have registered and are still connected.
+  std::list<std::shared_ptr<Worker>> registered_drivers_;
 };
 
 }  // namespace raylet

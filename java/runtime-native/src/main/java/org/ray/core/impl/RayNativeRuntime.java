@@ -109,6 +109,7 @@ public class RayNativeRuntime extends RayRuntime {
           WorkerContext.currentWorkerId(),
           UniqueID.nil,
           isWorker,
+          WorkerContext.currentTask().taskId,
           0
       );
 
