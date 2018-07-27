@@ -109,22 +109,6 @@ build_arrow() {
   make VERBOSE=1 -j$PARALLEL
   make install
 
-  cmake -DCMAKE_BUILD_TYPE=Release \
-      -DCMAKE_C_FLAGS="-g -O3" \
-      -DCMAKE_CXX_FLAGS="-g -O3" \
-      -DARROW_BUILD_TESTS=off \
-      -DARROW_HDFS=on \
-      -DARROW_BOOST_USE_SHARED=off \
-      -DARROW_PYTHON=on \
-      -DARROW_PLASMA=on \
-      -DARROW_TENSORFLOW=on \
-      -DARROW_JEMALLOC=off \
-      -DARROW_WITH_BROTLI=off \
-      -DARROW_WITH_LZ4=off \
-      -DARROW_WITH_ZLIB=off \
-      -DARROW_WITH_ZSTD=off \
-      ..
-
   if [[ -d $ARROW_HOME/lib64 ]]; then
       # On CentOS, Arrow gets installed under lib64 instead of lib, so copy it for
       # now. TODO(rkn): A preferable solution would be to add both directories to
