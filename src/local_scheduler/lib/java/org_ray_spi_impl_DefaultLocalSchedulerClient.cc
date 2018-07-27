@@ -238,7 +238,7 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1put_1object(
   local_scheduler_put_object(client, *t.PID, *o.PID);
 }
 
-JNIEXPORT jbooleanArray JNICALL 
+JNIEXPORT jbooleanArray JNICALL
 Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1waitObject(
     JNIEnv *env,
     jclass,
@@ -262,7 +262,7 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1waitObject(
   std::pair<std::vector<ObjectID>, std::vector<ObjectID>> result =
       local_scheduler_wait(client, object_ids, num_returns, timeout_ms,
                            static_cast<bool>(wait_local));
-  
+
   // Convert result to java object.
   jboolean putValue = true;
   jbooleanArray resultArray = env->NewBooleanArray(object_ids.size());

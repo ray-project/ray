@@ -354,8 +354,8 @@ public class RunManager {
 
       if (!params.use_raylet) {
         startObjectManager(i, info,
-                params.working_directory + "/storeManager", params.redis_address,
-                params.node_ip_address, params.redirect, params.cleanup);
+          params.working_directory + "/storeManager", params.redis_address,
+          params.node_ip_address, params.redirect, params.cleanup);
 
         // start local scheduler
         int workerCount = 0;
@@ -642,7 +642,7 @@ public class RunManager {
 
     String workerCmd = null;
     workerCmd = buildWorkerCommand(true, info.storeName, info.managerName, name,
-            UniqueID.nil, "", workDir + rpcPort, ip, redisAddress);
+        UniqueID.nil, "", workDir + rpcPort, ip, redisAddress);
     cmd += " -w \"" + workerCmd + "\"";
 
     if (redisAddress.length() > 0) {

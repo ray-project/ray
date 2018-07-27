@@ -119,7 +119,7 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1put_1object(JNIEnv *,
  * Method:    _waitObject
  * Signature: (J[[BIIZ)[Z
  */
-JNIEXPORT jbooleanArray JNICALL 
+JNIEXPORT jbooleanArray JNICALL
 Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1waitObject(JNIEnv *,
                                                                jclass,
                                                                jlong,
