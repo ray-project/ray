@@ -505,13 +505,13 @@ class Monitor(object):
                 returning.
         """
 
+        print("Subscribe clients", self.subscribe_clients)
         for subscribe_client in self.subscribe_clients:
-            print("Subscribe client", subscribe_client)
             for _ in range(max_messages):
                 message = subscribe_client.get_message()
-                print("message", message)
                 if message is None:
                     return
+                print("message", message)
 
                 # Parse the message.
                 channel = message["channel"]
