@@ -246,14 +246,14 @@ class TestObjectManager : public TestObjectManagerBase {
 
     // dummy_id is not local. The push function will timeout.
     ObjectID dummy_id = ObjectID::from_random();
-    status = server1->object_manager_.Push(
-        dummy_id, gcs_client_2->client_table().GetLocalClientId());
+    server1->object_manager_.Push(dummy_id,
+                                  gcs_client_2->client_table().GetLocalClientId());
 
     created_object_id1 = ObjectID::from_random();
     WriteDataToClient(client1, data_size, created_object_id1);
     // Server1 holds Object1 so this Push call will success.
-    status = server1->object_manager_.Push(
-        created_object_id1, gcs_client_2->client_table().GetLocalClientId());
+    server1->object_manager_.Push(created_object_id1,
+                                  gcs_client_2->client_table().GetLocalClientId());
 
     // This timer is used to guarantee that the Push function for dummy_id will timeout.
     timer.reset(new boost::asio::deadline_timer(main_service));
