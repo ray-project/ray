@@ -88,9 +88,12 @@ class Monitor(object):
         self.use_raylet = self.state.use_raylet
         self.redis = redis.StrictRedis(
             host=redis_address, port=redis_port, db=0)
-        # TODO(swang): Update pubsub client to use ray.experimental.state once
-        # subscriptions are implemented there.
-        self.subscribe_client = self.redis.pubsub()
+        # Setup subscriptions
+        self.subscribe_clients = []
+        for redis_client in self.state.redis_clients:
+            subscribe_client = redis_client.pubsub(
+                ignore_subscribe_messages=True)
+            self.subscribe_clients.append(subscribe_client)
         self.subscribed = {}
         # Initialize data structures to keep track of the active database
         # clients.
@@ -139,8 +142,9 @@ class Monitor(object):
         Raises:
             Exception: An exception is raised if the subscription fails.
         """
-        self.subscribe_client.subscribe(channel)
-        self.subscribed[channel] = False
+        for subscribe_client in self.subscribe_clients:
+            subscribe_client.subscribe(channel)
+            self.subscribed[channel] = False
 
     def cleanup_task_table(self):
         """Clean up global state for failed local schedulers.
@@ -500,47 +504,49 @@ class Monitor(object):
             max_messages: The maximum number of messages to process before
                 returning.
         """
-        for _ in range(max_messages):
-            message = self.subscribe_client.get_message()
-            if message is None:
-                return
 
-            # Parse the message.
-            channel = message["channel"]
-            data = message["data"]
+        for subscribe_client in self.subscribe_clients:
+            for _ in range(max_messages):
+                message = subscribe_client.get_message()
+                if message is None:
+                    return
 
-            # Determine the appropriate message handler.
-            message_handler = None
-            if not self.subscribed[channel]:
-                # If the data was an integer, then the message was a response
-                # to an initial subscription request.
-                message_handler = self.subscribe_handler
-            elif channel == PLASMA_MANAGER_HEARTBEAT_CHANNEL:
-                assert self.subscribed[channel]
-                # The message was a heartbeat from a plasma manager.
-                message_handler = self.plasma_manager_heartbeat_handler
-            elif channel == LOCAL_SCHEDULER_INFO_CHANNEL:
-                assert self.subscribed[channel]
-                # The message was a heartbeat from a local scheduler
-                message_handler = self.local_scheduler_info_handler
-            elif channel == DB_CLIENT_TABLE_NAME:
-                assert self.subscribed[channel]
-                # The message was a notification from the db_client table.
-                message_handler = self.db_client_notification_handler
-            elif channel == DRIVER_DEATH_CHANNEL:
-                assert self.subscribed[channel]
-                # The message was a notification that a driver was removed.
-                log.info("message-handler: driver_removed_handler")
-                message_handler = self.driver_removed_handler
-            elif channel == XRAY_HEARTBEAT_CHANNEL:
-                # Similar functionality as local scheduler info channel
-                message_handler = self.xray_heartbeat_handler
-            else:
-                raise Exception("This code should be unreachable.")
+                # Parse the message.
+                channel = message["channel"]
+                data = message["data"]
 
-            # Call the handler.
-            assert (message_handler is not None)
-            message_handler(channel, data)
+                # Determine the appropriate message handler.
+                message_handler = None
+                if not self.subscribed[channel]:
+                    # If the data was an integer, then the message was a resp
+                    # to an initial subscription request.
+                    message_handler = self.subscribe_handler
+                elif channel == PLASMA_MANAGER_HEARTBEAT_CHANNEL:
+                    assert self.subscribed[channel]
+                    # The message was a heartbeat from a plasma manager.
+                    message_handler = self.plasma_manager_heartbeat_handler
+                elif channel == LOCAL_SCHEDULER_INFO_CHANNEL:
+                    assert self.subscribed[channel]
+                    # The message was a heartbeat from a local scheduler
+                    message_handler = self.local_scheduler_info_handler
+                elif channel == DB_CLIENT_TABLE_NAME:
+                    assert self.subscribed[channel]
+                    # The message was a notification from the db_client table.
+                    message_handler = self.db_client_notification_handler
+                elif channel == DRIVER_DEATH_CHANNEL:
+                    assert self.subscribed[channel]
+                    # The message was a notification that a driver was removed.
+                    log.info("message-handler: driver_removed_handler")
+                    message_handler = self.driver_removed_handler
+                elif channel == XRAY_HEARTBEAT_CHANNEL:
+                    # Similar functionality as local scheduler info channel
+                    message_handler = self.xray_heartbeat_handler
+                else:
+                    raise Exception("This code should be unreachable.")
+
+                # Call the handler.
+                assert (message_handler is not None)
+                message_handler(channel, data)
 
     def update_local_scheduler_map(self):
         if self.use_raylet:
