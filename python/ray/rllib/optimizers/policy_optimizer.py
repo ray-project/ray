@@ -121,7 +121,8 @@ class PolicyOptimizer(object):
         ])
         return local_result + remote_results
 
-    def _check_not_multiagent(self, sample_batch):
+    @staticmethod
+    def _check_not_multiagent(sample_batch):
         if isinstance(sample_batch, MultiAgentBatch):
             raise NotImplementedError(
                 "This optimizer does not support multi-agent yet.")
