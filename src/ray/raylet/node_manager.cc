@@ -493,6 +493,8 @@ void NodeManager::ProcessClientMessage(
       // If the worker was an actor, add it to the list of dead actors.
       const ActorID actor_id = worker->GetActorId();
       if (!actor_id.is_nil()) {
+        // TODO(rkn): Consider broadcasting a message to all of the other
+        // node managers so that they can mark the actor as dead.
         RAY_LOG(DEBUG) << "The actor with ID " << actor_id << " died.";
         auto actor_entry = actor_registry_.find(actor_id);
         RAY_CHECK(actor_entry != actor_registry_.end());
