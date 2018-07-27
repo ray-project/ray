@@ -89,7 +89,7 @@ class Monitor(object):
         self.redis = redis.StrictRedis(
             host=redis_address, port=redis_port, db=0)
         # Setup subscriptions
-        self.subscribe_clients = []
+        self.subscribe_clients = [self.redis.pubsub()]
         for redis_client in self.state.redis_clients:
             subscribe_client = redis_client.pubsub(
                 ignore_subscribe_messages=True)
