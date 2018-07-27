@@ -62,8 +62,6 @@ class NodeManager {
   /// Methods for handling clients.
   /// Handler for the addition of a new GCS client.
   void ClientAdded(const ClientTableDataT &data);
-  /// Handler for the removal of a GCS client.
-  void ClientRemoved(const ClientTableDataT &client_data);
   /// Send heartbeats to the GCS.
   void Heartbeat();
   /// Handler for a heartbeat notification from the GCS.
@@ -72,7 +70,7 @@ class NodeManager {
 
   /// Methods for task scheduling.
   /// Enqueue a placeable task to wait on object dependencies or be ready for dispatch.
-  void EnqueuePlaceableTask(const Task &task);
+  void ProcessPlaceableTask(const Task &task);
   /// Handle specified task's submission to the local node manager.
   void SubmitTask(const Task &task, const Lineage &uncommitted_lineage,
                   bool forwarded = false);
@@ -135,9 +133,6 @@ class NodeManager {
   /// The lineage cache for the GCS object and task tables.
   LineageCache lineage_cache_;
   std::vector<ClientID> remote_clients_;
-  /// A set of all of the remote clients that have been removed. In principle,
-  /// this could grow unbounded.
-  std::unordered_set<ClientID> removed_clients_;
   std::unordered_map<ClientID, TcpServerConnection> remote_server_connections_;
   std::unordered_map<ActorID, ActorRegistration> actor_registry_;
 };

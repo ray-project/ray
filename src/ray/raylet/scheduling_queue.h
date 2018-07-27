@@ -15,12 +15,8 @@ namespace raylet {
 enum TaskState { INIT, PLACEABLE, WAITING, READY, RUNNING };
 /// \class SchedulingQueue
 ///
-/// Encapsulates task queues. Each queue represents a scheduling state for a
-/// task. The scheduling state is one of
-/// (1) placeable: the task is ready for a placement decision,
-/// (2) waiting: waiting for object dependencies to become locally available,
-/// (3) ready: the task is ready for local dispatch, with all arguments locally ready,
-/// (4) running: the task has been dispatched and is running on a worker.
+/// Encapsulates task queues.
+// (See design_docs/task_states.rst for the state transition diagram.)
 class SchedulingQueue {
  public:
   /// Create a scheduling queue.
@@ -34,7 +30,7 @@ class SchedulingQueue {
   ///
   /// \return A const reference to the queue of tasks that are destined for
   /// actors that have not yet been created.
-  const std::list<Task> &GetUncreatedActorMethods() const;
+  const std::list<Task> &GetWaitForActorCreationMethods() const;
 
   /// Get the queue of tasks in the waiting state.
   ///
@@ -77,7 +73,7 @@ class SchedulingQueue {
   /// Queue tasks that are destined for actors that have not yet been created.
   ///
   /// \param tasks The tasks to queue.
-  void QueueUncreatedActorMethods(const std::vector<Task> &tasks);
+  void QueueWaitForActorCreationMethods(const std::vector<Task> &tasks);
 
   /// Queue tasks in the waiting state. These are tasks that cannot yet be
   /// dispatched since they are blocked on a missing data dependency.
@@ -118,7 +114,7 @@ class SchedulingQueue {
 
  private:
   /// Tasks that are destined for actors that have not yet been created.
-  std::list<Task> uncreated_actor_methods_;
+  std::list<Task> wait_for_actor_creation_methods_;
   /// Tasks that are waiting for an object dependency to appear locally.
   std::list<Task> waiting_tasks_;
   /// Tasks whose object dependencies are locally available, but that are

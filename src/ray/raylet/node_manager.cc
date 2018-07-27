@@ -142,12 +142,6 @@ ray::Status NodeManager::RegisterGcs() {
     ClientAdded(data);
   };
   gcs_client_->client_table().RegisterClientAddedCallback(node_manager_client_added);
-  // Register a callback on the client table for removed clients.
-  auto node_manager_client_removed = [this](
-      gcs::AsyncGcsClient *client, const UniqueID &id, const ClientTableDataT &data) {
-    ClientRemoved(data);
-  };
-  gcs_client_->client_table().RegisterClientRemovedCallback(node_manager_client_removed);
 
   // Subscribe to node manager heartbeats.
   const auto heartbeat_added = [this](gcs::AsyncGcsClient *client, const ClientID &id,
@@ -209,15 +203,6 @@ void NodeManager::Heartbeat() {
 
 void NodeManager::ClientAdded(const ClientTableDataT &client_data) {
   ClientID client_id = ClientID::from_binary(client_data.client_id);
-
-  // Make sure the client hasn't already been removed.
-  if (removed_clients_.find(client_id) != removed_clients_.end()) {
-    // This client has already been removed, so don't do anything.
-    RAY_LOG(INFO) << "The client " << client_id << " has already been removed, so it "
-                  << "can't be added. This is very unusual.";
-    return;
-  }
-
   RAY_LOG(DEBUG) << "[ClientAdded] received callback from client id " << client_id;
   if (client_id == gcs_client_->client_table().GetLocalClientId()) {
     // We got a notification for ourselves, so we are connected to the GCS now.
@@ -253,36 +238,6 @@ void NodeManager::ClientAdded(const ClientTableDataT &client_data) {
                           client_info.node_manager_port));
   auto server_conn = TcpServerConnection(std::move(socket));
   remote_server_connections_.emplace(client_id, std::move(server_conn));
-}
-
-void NodeManager::ClientRemoved(const ClientTableDataT &client_data) {
-  const ClientID client_id = ClientID::from_binary(client_data.client_id);
-  RAY_LOG(DEBUG) << "[ClientRemoved] received callback from client id " << client_id;
-
-  // If the client has already been removed, don't do anything.
-  if (removed_clients_.find(client_id) != removed_clients_.end()) {
-    RAY_LOG(INFO) << "The client " << client_id << " has already been removed. This "
-                  << "should be very unusual.";
-    return;
-  }
-  removed_clients_.insert(client_id);
-
-  RAY_CHECK(client_id != gcs_client_->client_table().GetLocalClientId())
-      << "Exiting because this node manager has mistakenly been marked dead by the "
-      << "monitor.";
-
-  // Below, when we remove client_id from all of these data structures, we could
-  // check that it is actually removed, or log a warning otherwise, but that may
-  // not be necessary.
-
-  // Remove the client from the list of remote clients.
-  std::remove(remote_clients_.begin(), remote_clients_.end(), client_id);
-
-  // Remove the client from the resource map.
-  cluster_resource_map_.erase(client_id);
-
-  // Remove the remote server connection.
-  remote_server_connections_.erase(client_id);
 }
 
 void NodeManager::HeartbeatAdded(gcs::AsyncGcsClient *client, const ClientID &client_id,
@@ -339,7 +294,7 @@ void NodeManager::HandleActorCreation(const ActorID &actor_id,
   } else {
     // The actor's location is now known. Dequeue any methods that were
     // submitted before the actor's location was known.
-    const auto &methods = local_queues_.GetUncreatedActorMethods();
+    const auto &methods = local_queues_.GetWaitForActorCreationMethods();
     std::unordered_set<TaskID> created_actor_method_ids;
     for (const auto &method : methods) {
       if (method.GetTaskSpecification().ActorId() == actor_id) {
@@ -393,6 +348,7 @@ void NodeManager::ProcessClientMessage(
   RAY_LOG(DEBUG) << "Message of type " << message_type;
 
   switch (static_cast<protocol::MessageType>(message_type)) {
+
   case protocol::MessageType::RegisterClientRequest: {
     auto message = flatbuffers::GetRoot<protocol::RegisterClientRequest>(message_data);
     if (message->is_worker()) {
@@ -402,6 +358,7 @@ void NodeManager::ProcessClientMessage(
       worker_pool_.RegisterWorker(std::move(worker));
     }
   } break;
+
   case protocol::MessageType::GetTask: {
     std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
     RAY_CHECK(worker);
@@ -415,6 +372,7 @@ void NodeManager::ProcessClientMessage(
     DispatchTasks();
 
   } break;
+
   case protocol::MessageType::DisconnectClient: {
     // Remove the dead worker from the pool and stop listening for messages.
     const std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
@@ -463,6 +421,7 @@ void NodeManager::ProcessClientMessage(
     }
     return;
   } break;
+
   case protocol::MessageType::SubmitTask: {
     // Read the task submitted by the client.
     auto message = flatbuffers::GetRoot<protocol::SubmitTaskRequest>(message_data);
@@ -474,6 +433,7 @@ void NodeManager::ProcessClientMessage(
     // locally, there is no uncommitted lineage.
     SubmitTask(task, Lineage());
   } break;
+
   case protocol::MessageType::ReconstructObjects: {
     // TODO(hme): handle multiple object ids.
     auto message = flatbuffers::GetRoot<protocol::ReconstructObjects>(message_data);
@@ -511,6 +471,7 @@ void NodeManager::ProcessClientMessage(
                         .Release(ResourceSet(cpu_resources)));
 
           // Mark the task as blocked.
+          // (See design_docs/task_states.rst for the state transition diagram.)
           local_queues_.QueueBlockedTasks(tasks);
           worker->MarkBlocked();
 
@@ -521,6 +482,7 @@ void NodeManager::ProcessClientMessage(
       }
     }
   } break;
+
   case protocol::MessageType::NotifyUnblocked: {
     std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
     // Re-acquire the CPU resources for the task that was assigned to the
@@ -561,10 +523,12 @@ void NodeManager::ProcessClientMessage(
       }
 
       // Mark the task as running again.
+      // (See design_docs/task_states.rst for the state transition diagram.)
       local_queues_.QueueRunningTasks(tasks);
       worker->MarkUnblocked();
     }
   } break;
+
   case protocol::MessageType::WaitRequest: {
     // Read the data.
     auto message = flatbuffers::GetRoot<protocol::WaitRequest>(message_data);
@@ -587,6 +551,7 @@ void NodeManager::ProcessClientMessage(
         });
     RAY_CHECK_OK(status);
   } break;
+
   case protocol::MessageType::PushErrorRequest: {
     auto message = flatbuffers::GetRoot<protocol::PushErrorRequest>(message_data);
 
@@ -676,7 +641,7 @@ void NodeManager::ScheduleTasks() {
   if (local_task_ids.size() > 0) {
     std::vector<Task> tasks = local_queues_.RemoveTasks(local_task_ids);
     for (const auto &t : tasks) {
-      EnqueuePlaceableTask(t);
+      ProcessPlaceableTask(t);
     }
   }
 }
@@ -699,7 +664,7 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
       auto node_manager_id = actor_entry->second.GetNodeManagerId();
       if (node_manager_id == gcs_client_->client_table().GetLocalClientId()) {
         // The actor is local. Queue the task for local execution, bypassing placement.
-        EnqueuePlaceableTask(task);
+        ProcessPlaceableTask(task);
       } else {
         // The actor is remote. Forward the task to the node manager that owns
         // the actor.
@@ -713,6 +678,7 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
       // was already created. Look up the actor's registered location in case
       // we missed the creation notification.
       // NOTE(swang): This codepath needs to be tested in a cluster setting.
+      // (See design_docs/task_states.rst for state transitions.)
       auto lookup_callback = [this](gcs::AsyncGcsClient *client, const ActorID &actor_id,
                                     const std::vector<ActorTableDataT> &data) {
         if (!data.empty()) {
@@ -727,14 +693,14 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
       RAY_CHECK_OK(gcs_client_->actor_table().Lookup(JobID::nil(), spec.ActorId(),
                                                      lookup_callback));
       // Keep the task queued until we discover the actor's location.
-      local_queues_.QueueUncreatedActorMethods({task});
+      local_queues_.QueueWaitForActorCreationMethods({task});
     }
   } else {
     // This is a non-actor task. Queue the task for a placement decision or for dispatch
     // if the task was forwarded.
     if (forwarded) {
       // Check for local dependencies and enqueue as waiting or ready for dispatch.
-      EnqueuePlaceableTask(task);
+      ProcessPlaceableTask(task);
     } else {
       local_queues_.QueuePlaceableTasks({task});
       ScheduleTasks();
@@ -755,14 +721,16 @@ void NodeManager::HandleRemoteDependencyCanceled(const ObjectID &dependency_id) 
   // TODO(swang): Cancel reconstruction of the object.
 }
 
-void NodeManager::EnqueuePlaceableTask(const Task &task) {
-  // TODO(atumanov): add task lookup hashmap and change EnqueuePlaceableTask to take
+void NodeManager::ProcessPlaceableTask(const Task &task) {
+  // TODO(atumanov): add task lookup hashmap and change ProcessPlaceableTask to take
   // a vector of TaskIDs. Trigger MoveTask internally.
   // Subscribe to the task's dependencies.
+  // (See design_docs/task_states.rst for the state transition diagram.)
   bool args_ready = task_dependency_manager_.SubscribeDependencies(
       task.GetTaskSpecification().TaskId(), task.GetDependencies());
   // Enqueue the task. If all dependencies are available, then the task is queued
   // in the READY state, else the WAITING state.
+  // (See design_docs/task_states.rst for state transitions.)
   if (args_ready) {
     local_queues_.QueueReadyTasks({task});
     // Try to dispatch the newly ready task.
@@ -794,6 +762,7 @@ void NodeManager::AssignTask(Task &task) {
     }
     // Queue this task for future assignment. The task will be assigned to a
     // worker once one becomes available.
+    // (See design_docs/task_states.rst for state transitions.)
     local_queues_.QueueReadyTasks(std::vector<Task>({task}));
     return;
   }
@@ -947,6 +916,7 @@ void NodeManager::HandleObjectMissing(const ObjectID &object_id) {
   const auto waiting_task_ids = task_dependency_manager_.HandleObjectMissing(object_id);
   // Transition any tasks that were in the runnable state and are dependent on
   // this object to the waiting state.
+  // (See design_docs/task_states.rst for state transitions.)
   if (!waiting_task_ids.empty()) {
     // Transition the tasks back to the waiting state. They will be made
     // runnable once the deleted object becomes available again.

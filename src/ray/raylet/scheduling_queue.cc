@@ -6,8 +6,9 @@ namespace ray {
 
 namespace raylet {
 
-const std::list<Task> &SchedulingQueue::GetUncreatedActorMethods() const {
-  return this->uncreated_actor_methods_;
+// For the task state transition diagram see design_docs/task_states.rst
+const std::list<Task> &SchedulingQueue::GetWaitForActorCreationMethods() const {
+  return this->wait_for_actor_creation_methods_;
 }
 
 const std::list<Task> &SchedulingQueue::GetWaitingTasks() const {
@@ -56,7 +57,7 @@ std::vector<Task> SchedulingQueue::RemoveTasks(std::unordered_set<TaskID> task_i
   std::vector<Task> removed_tasks;
 
   // Try to find the tasks to remove from the waiting tasks.
-  removeTasksFromQueue(uncreated_actor_methods_, task_ids, removed_tasks);
+  removeTasksFromQueue(wait_for_actor_creation_methods_, task_ids, removed_tasks);
   removeTasksFromQueue(waiting_tasks_, task_ids, removed_tasks);
   removeTasksFromQueue(placeable_tasks_, task_ids, removed_tasks);
   removeTasksFromQueue(ready_tasks_, task_ids, removed_tasks);
@@ -108,8 +109,8 @@ void SchedulingQueue::MoveTasks(std::unordered_set<TaskID> task_ids, TaskState s
   }
 }
 
-void SchedulingQueue::QueueUncreatedActorMethods(const std::vector<Task> &tasks) {
-  queueTasks(uncreated_actor_methods_, tasks);
+void SchedulingQueue::QueueWaitForActorCreationMethods(const std::vector<Task> &tasks) {
+  queueTasks(wait_for_actor_creation_methods_, tasks);
 }
 
 void SchedulingQueue::QueueWaitingTasks(const std::vector<Task> &tasks) {
