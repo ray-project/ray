@@ -10,21 +10,6 @@ This directory contains the java worker, with the following components.
 -  src/local\_scheduler/lib/java: JNI client library for local scheduler
 -  src/plasma/lib/java: JNI client library for plasma storage
 
-Build and test
-==============
-
-::
-
-    # build native components
-    ../build.sh -l java
-
-    # build java worker
-    mvn clean install -Dmaven.test.skip
-
-    # test
-    export RAY_CONFIG=ray.config.ini
-    mvn test
-
 Quick start
 ===========
 
@@ -92,8 +77,9 @@ correspondent calls executed on remote machines.
     }
 
 More information
-============
+================
 
-- `API document <https://github.com/ray-project/ray/tree/master/java/api_doc.rst>`_
+- `Installation <https://github.com/ray-project/ray/tree/master/java/doc/installation.rst>`_
+- `API document <https://github.com/ray-project/ray/tree/master/java/doc/api.rst>`_
 - `Tutorial <https://github.com/ray-project/ray/tree/master/java/tutorial>`_
 

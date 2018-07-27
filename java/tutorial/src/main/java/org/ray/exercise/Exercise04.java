@@ -54,7 +54,7 @@ public class Exercise04 {
       // Ray.wait will block until specified number of results are ready
       // or specified timeout have passed.
       // In this case, the result of f3 will be ignored.
-      WaitResult<String> waitResult = Ray.wait(rayList,2, 3000);
+      WaitResult<String> waitResult = Ray.wait(rayList, 2, 3000);
       RayList<String> readyOnes = waitResult.getReadyOnes();
       RayList<String> remainOnes = waitResult.getRemainOnes();
       System.out.println("Number of readyOnes: " + readyOnes.size());

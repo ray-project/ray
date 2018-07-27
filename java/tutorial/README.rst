@@ -1,38 +1,14 @@
 Ray Java Tutorial
-============
+=================
 
-Requirement
------
-::
-
-    JDK (>=8.0)
-
-    Maven(>=3.5.0)
-
-Setup
------
-::
-
-    # build native components
-    ../build.sh -l java
-
-    # build java worker
-    mvn clean install -Dmaven.test.skip
-
-    # set config file and test
-    # set RAY_CONFIG to your absolute path of ray.config.ini
-    export RAY_CONFIG=/absolute/path/to/ray/java/ray.config.ini
-    mvn test
-
-Introduction of API
----------
-Please reference the `API document <https://github.com/ray-project/ray/tree/master/java#ray-java-api>`_
+- `Installation guide <https://github.com/ray-project/ray/tree/master/java/doc/installation.rst>`_
+- `API document <https://github.com/ray-project/ray/tree/master/java/doc/api.rst>`_
 
 Exercises
 ---------
 
 Each file ``java/example/src/main/java/org/ray/exercise/Exercise*.java`` is a separate exercise.
-To run a exercise case, set the RAY_CONFIG env variable and run the following command in ``ray/java/`` directory.
+To run a exercise case, set the ``RAY_CONFIG`` env variable and run the following command in ``ray/java/`` directory.
 
 .. code-block:: shell
 
