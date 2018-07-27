@@ -86,7 +86,7 @@ Tune has the following features:
 Concepts
 --------
 
-.. image:: tune-api.svg
+.. image:: images/tune-api.svg
 
 Tune schedules a number of *trials* in a cluster. Each trial runs a user-defined Python function or class and is parameterized by a *config* variation passed to the user code.
 
