@@ -222,6 +222,7 @@ class PolicyEvaluator(EvaluatorInterface):
         # Always use vector env for consistency even if num_envs = 1
         self.async_env = AsyncVectorEnv.wrap_async(
             self.env, make_env=make_env, num_envs=num_envs)
+        self.num_envs = num_envs
 
         if self.batch_mode == "truncate_episodes":
             if batch_steps % num_envs != 0:
@@ -279,12 +280,17 @@ class PolicyEvaluator(EvaluatorInterface):
         batches = [self.sampler.get_data()]
         steps_so_far = batches[0].count
 
-        # In truncate_episodes mode, never extend the batch.
-        if self.batch_mode != "truncate_episodes":
-            while steps_so_far < self.batch_steps:
-                batch = self.sampler.get_data()
-                steps_so_far += batch.count
-                batches.append(batch)
+        # In truncate_episodes mode, never pull more than 1 batch per env.
+        # This avoids over-running the target batch size.
+        if self.batch_mode == "truncate_episodes":
+            max_batches = self.num_envs
+        else:
+            max_batches = float("inf")
+
+        while steps_so_far < self.batch_steps and len(batches) < max_batches:
+            batch = self.sampler.get_data()
+            steps_so_far += batch.count
+            batches.append(batch)
         batch = batches[0].concat_samples(batches)
 
         if self.compress_observations:
