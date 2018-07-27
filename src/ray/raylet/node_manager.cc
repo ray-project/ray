@@ -111,6 +111,8 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
   }));
   RAY_CHECK_OK(object_manager_.SubscribeObjDeleted(
       [this](const ObjectID &object_id) { HandleObjectMissing(object_id); }));
+
+  ARROW_CHECK_OK(store_client_.Connect(config.store_socket_name.c_str(), "", 0));
 }
 
 ray::Status NodeManager::RegisterGcs() {
@@ -359,6 +361,38 @@ void NodeManager::HandleActorCreation(const ActorID &actor_id,
   }
 }
 
+void NodeManager::GetActorTasksFromList(const ActorID &actor_id,
+                                        const std::list<Task> &tasks,
+                                        std::unordered_set<TaskID> &tasks_to_remove) {
+  for (auto const &task : tasks) {
+    auto const &spec = task.GetTaskSpecification();
+    if (actor_id == spec.ActorId()) {
+      tasks_to_remove.insert(spec.TaskId());
+    }
+  }
+}
+
+void NodeManager::CleanUpTasksForDeadActor(const ActorID &actor_id) {
+  // TODO(rkn): The code below should be cleaned up when we improve the
+  // SchedulingQueue API.
+  std::unordered_set<TaskID> tasks_to_remove;
+
+  GetActorTasksFromList(actor_id, local_queues_.GetUncreatedActorMethods(),
+                        tasks_to_remove);
+  GetActorTasksFromList(actor_id, local_queues_.GetWaitingTasks(), tasks_to_remove);
+  GetActorTasksFromList(actor_id, local_queues_.GetPlaceableTasks(), tasks_to_remove);
+  GetActorTasksFromList(actor_id, local_queues_.GetReadyTasks(), tasks_to_remove);
+  GetActorTasksFromList(actor_id, local_queues_.GetRunningTasks(), tasks_to_remove);
+  GetActorTasksFromList(actor_id, local_queues_.GetBlockedTasks(), tasks_to_remove);
+
+  auto removed_tasks = local_queues_.RemoveTasks(tasks_to_remove);
+  for (auto const &task : removed_tasks) {
+    const TaskSpecification &spec = task.GetTaskSpecification();
+    TreatTaskAsFailed(spec);
+    task_dependency_manager_.TaskCanceled(spec.TaskId());
+  }
+}
+
 void NodeManager::ProcessNewClient(LocalClientConnection &client) {
   // The new client is a worker, so begin listening for messages.
   client.ProcessMessages();
@@ -437,7 +471,8 @@ void NodeManager::ProcessClientMessage(
             });
         RAY_CHECK(running_tasks.size() != 0);
         RAY_CHECK(it != running_tasks.end());
-        JobID job_id = it->GetTaskSpecification().DriverId();
+        const TaskSpecification &spec = it->GetTaskSpecification();
+        const JobID job_id = spec.DriverId();
         // TODO(rkn): Define this constant somewhere else.
         std::string type = "worker_died";
         std::ostringstream error_message;
@@ -445,9 +480,29 @@ void NodeManager::ProcessClientMessage(
                       << ".";
         RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
             job_id, type, error_message.str(), current_time_ms()));
+
+        // Handle the task failure in order to raise an exception in the
+        // application.
+        TreatTaskAsFailed(spec);
+        task_dependency_manager_.TaskCanceled(spec.TaskId());
+        local_queues_.RemoveTask(spec.TaskId());
       }
 
       worker_pool_.DisconnectWorker(worker);
+
+      // If the worker was an actor, add it to the list of dead actors.
+      const ActorID actor_id = worker->GetActorId();
+      if (!actor_id.is_nil()) {
+        // TODO(rkn): Consider broadcasting a message to all of the other
+        // node managers so that they can mark the actor as dead.
+        RAY_LOG(DEBUG) << "The actor with ID " << actor_id << " died.";
+        auto actor_entry = actor_registry_.find(actor_id);
+        RAY_CHECK(actor_entry != actor_registry_.end());
+        actor_entry->second.MarkDead();
+        // For dead actors, if there are remaining tasks for this actor, we
+        // should handle them.
+        CleanUpTasksForDeadActor(actor_id);
+      }
 
       const ClientID &client_id = gcs_client_->client_table().GetLocalClientId();
 
@@ -652,15 +707,16 @@ void NodeManager::ScheduleTasks() {
   std::unordered_set<TaskID> local_task_ids;
   // Iterate over (taskid, clientid) pairs, extract tasks assigned to the local node.
   for (const auto &task_schedule : policy_decision) {
-    TaskID task_id = task_schedule.first;
-    ClientID client_id = task_schedule.second;
+    const TaskID task_id = task_schedule.first;
+    const ClientID client_id = task_schedule.second;
     if (client_id == gcs_client_->client_table().GetLocalClientId()) {
       local_task_ids.insert(task_id);
     } else {
       // TODO(atumanov): need a better interface for task exit on forward.
       const auto task = local_queues_.RemoveTask(task_id);
-      // TODO(swang): Handle forward task failure.
-      RAY_CHECK_OK(ForwardTask(task, client_id));
+      // Attempt to forward the task. If this fails to forward the task,
+      // the task will be resubmit locally.
+      ForwardTaskOrResubmit(task, client_id);
     }
   }
 
@@ -669,6 +725,34 @@ void NodeManager::ScheduleTasks() {
     std::vector<Task> tasks = local_queues_.RemoveTasks(local_task_ids);
     for (const auto &t : tasks) {
       EnqueuePlaceableTask(t);
+    }
+  }
+}
+
+void NodeManager::TreatTaskAsFailed(const TaskSpecification &spec) {
+  RAY_LOG(DEBUG) << "Treating task " << spec.TaskId() << " as failed.";
+  // Loop over the return IDs (except the dummy ID) and store a fake object in
+  // the object store.
+  int64_t num_returns = spec.NumReturns();
+  if (spec.IsActorTask()) {
+    // TODO(rkn): We subtract 1 to avoid the dummy ID. However, this leaks
+    // information about the TaskSpecification implementation.
+    num_returns -= 1;
+  }
+  for (int64_t i = 0; i < num_returns; i++) {
+    const ObjectID object_id = spec.ReturnId(i);
+
+    std::shared_ptr<Buffer> data;
+    // TODO(ekl): this writes an invalid arrow object, which is sufficient to
+    // signal that the worker failed, but it would be nice to return more
+    // detailed failure metadata in the future.
+    arrow::Status status =
+        store_client_.Create(object_id.to_plasma_id(), 1, NULL, 0, &data);
+    if (!status.IsPlasmaObjectExists()) {
+      // TODO(rkn): We probably don't want this checks. E.g., if the object
+      // store is full, we don't want to kill the raylet.
+      ARROW_CHECK_OK(status);
+      ARROW_CHECK_OK(store_client_.Seal(object_id.to_plasma_id()));
     }
   }
 }
@@ -690,13 +774,26 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
       // We have a known location for the actor.
       auto node_manager_id = actor_entry->second.GetNodeManagerId();
       if (node_manager_id == gcs_client_->client_table().GetLocalClientId()) {
-        // The actor is local. Queue the task for local execution, bypassing placement.
-        EnqueuePlaceableTask(task);
+        // The actor is local. Check if the actor is still alive.
+        if (!actor_entry->second.IsAlive()) {
+          // Handle the fact that this actor is dead.
+          TreatTaskAsFailed(spec);
+        } else {
+          // Queue the task for local execution, bypassing placement.
+          EnqueuePlaceableTask(task);
+        }
       } else {
         // The actor is remote. Forward the task to the node manager that owns
         // the actor.
-        // TODO(swang): Handle forward task failure.
-        RAY_CHECK_OK(ForwardTask(task, node_manager_id));
+        if (removed_clients_.find(node_manager_id) != removed_clients_.end()) {
+          // The remote node manager is dead, so handle the fact that this actor
+          // is also dead.
+          TreatTaskAsFailed(spec);
+        } else {
+          // Attempt to forward the task. If this fails to forward the task,
+          // the task will be resubmit locally.
+          ForwardTaskOrResubmit(task, node_manager_id);
+        }
       }
     } else {
       // We do not have a registered location for the object, so either the
@@ -1033,6 +1130,35 @@ void NodeManager::HandleObjectMissing(const ObjectID &object_id) {
   }
 }
 
+void NodeManager::ForwardTaskOrResubmit(const Task &task,
+                                        const ClientID &node_manager_id) {
+  /// TODO(rkn): Should we check that the node manager is remote and not local?
+  /// TODO(rkn): Should we check if the remote node manager is known to be dead?
+  const TaskID task_id = task.GetTaskSpecification().TaskId();
+
+  // Attempt to forward the task.
+  if (!ForwardTask(task, node_manager_id).ok()) {
+    RAY_LOG(INFO) << "Failed to forward task " << task_id << " to node manager "
+                  << node_manager_id;
+
+    // Create a timer to resubmit the task in a little bit. TODO(rkn): Really
+    // this should be a unique_ptr instead of a shared_ptr. However, it's a
+    // little harder to move unique_ptrs into lambdas.
+    auto retry_timer = std::make_shared<boost::asio::deadline_timer>(io_service_);
+    auto retry_duration = boost::posix_time::milliseconds(
+        RayConfig::instance().node_manager_forward_task_retry_timeout_milliseconds());
+    retry_timer->expires_from_now(retry_duration);
+    retry_timer->async_wait(
+        [this, task, task_id, retry_timer](const boost::system::error_code &error) {
+          // Timer killing will receive the boost::asio::error::operation_aborted,
+          // we only handle the timeout event.
+          RAY_CHECK(!error);
+          RAY_LOG(INFO) << "In ForwardTask retry callback for task " << task_id;
+          EnqueuePlaceableTask(task);
+        });
+  }
+}
+
 ray::Status NodeManager::ForwardTask(const Task &task, const ClientID &node_id) {
   const auto &spec = task.GetTaskSpecification();
   auto task_id = spec.TaskId();
@@ -1086,16 +1212,15 @@ ray::Status NodeManager::ForwardTask(const Task &task, const ClientID &node_id) 
           ObjectID argument_id = spec.ArgId(i, j);
           // If the argument is local, then push it to the receiving node.
           if (task_dependency_manager_.CheckObjectLocal(argument_id)) {
-            RAY_CHECK_OK(object_manager_.Push(argument_id, node_id));
+            object_manager_.Push(argument_id, node_id);
           }
         }
       }
     }
   } else {
-    // TODO(atumanov): caller must handle ForwardTask failure to ensure tasks are not
-    // lost.
-    RAY_LOG(FATAL) << "[NodeManager][ForwardTask] failed to forward task " << task_id
-                   << " to node " << node_id;
+    // TODO(atumanov): caller must handle ForwardTask failure.
+    RAY_LOG(WARNING) << "[NodeManager][ForwardTask] failed to forward task " << task_id
+                     << " to node " << node_id;
   }
   return status;
 }
