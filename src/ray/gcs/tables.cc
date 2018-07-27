@@ -321,10 +321,12 @@ void ClientTable::HandleNotification(AsyncGcsClient *client,
       if (client_added_callback_ != nullptr) {
         client_added_callback_(client, client_id, data);
       }
+      RAY_CHECK(removed_clients_.find(client_id) == removed_clients_.end());
     } else {
       if (client_removed_callback_ != nullptr) {
         client_removed_callback_(client, client_id, data);
       }
+      removed_clients_.insert(client_id);
     }
   }
 }
@@ -338,6 +340,10 @@ void ClientTable::HandleConnected(AsyncGcsClient *client, const ClientTableDataT
 const ClientID &ClientTable::GetLocalClientId() { return client_id_; }
 
 const ClientTableDataT &ClientTable::GetLocalClient() { return local_client_; }
+
+const std::unordered_set<ClientID> &ClientTable::GetRemovedClients() {
+  return removed_clients_;
+}
 
 Status ClientTable::Connect(const ClientTableDataT &local_client) {
   RAY_CHECK(!disconnected_) << "Tried to reconnect a disconnected client.";

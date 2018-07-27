@@ -62,6 +62,8 @@ class ObjectManager : public ObjectManagerInterface {
   /// \param main_service The main asio io_service.
   /// \param config ObjectManager configuration.
   /// \param gcs_client A client connection to the Ray GCS.
+  /// \param removed_nodes A const reference to the set of removed nodes. These
+  /// should be ignored when considering object locations and transfers.
   explicit ObjectManager(boost::asio::io_service &main_service,
                          const ObjectManagerConfig &config,
                          std::shared_ptr<gcs::AsyncGcsClient> gcs_client);

@@ -172,9 +172,6 @@ class NodeManager {
   /// The lineage cache for the GCS object and task tables.
   LineageCache lineage_cache_;
   std::vector<ClientID> remote_clients_;
-  /// A set of all of the remote clients that have been removed. In principle,
-  /// this could grow unbounded.
-  std::unordered_set<ClientID> removed_clients_;
   std::unordered_map<ClientID, TcpServerConnection> remote_server_connections_;
   /// A mapping from actor ID to registration information about that actor
   /// (including which node manager owns it).

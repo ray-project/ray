@@ -4,6 +4,7 @@
 #include <map>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 
 #include "ray/constants.h"
 #include "ray/id.h"
@@ -599,6 +600,11 @@ class ClientTable : private Log<UniqueID, ClientTableData> {
   /// \return The local client's information.
   const ClientTableDataT &GetLocalClient();
 
+  /// Get the removed clients.
+  ///
+  /// \return The removed clients.
+  const std::unordered_set<ClientID> &GetRemovedClients();
+
  private:
   /// Handle a client table notification.
   void HandleNotification(AsyncGcsClient *client, const ClientTableDataT &notifications);
@@ -621,6 +627,8 @@ class ClientTable : private Log<UniqueID, ClientTableData> {
   ClientTableCallback client_removed_callback_;
   /// A cache for information about all clients.
   std::unordered_map<ClientID, ClientTableDataT> client_cache_;
+  /// The set of removed clients.
+  std::unordered_set<ClientID> removed_clients_;
 };
 
 }  // namespace gcs

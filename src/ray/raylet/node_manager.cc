@@ -231,14 +231,6 @@ void NodeManager::Heartbeat() {
 void NodeManager::ClientAdded(const ClientTableDataT &client_data) {
   ClientID client_id = ClientID::from_binary(client_data.client_id);
 
-  // Make sure the client hasn't already been removed.
-  if (removed_clients_.find(client_id) != removed_clients_.end()) {
-    // This client has already been removed, so don't do anything.
-    RAY_LOG(INFO) << "The client " << client_id << " has already been removed, so it "
-                  << "can't be added. This is very unusual.";
-    return;
-  }
-
   RAY_LOG(DEBUG) << "[ClientAdded] received callback from client id " << client_id;
   if (client_id == gcs_client_->client_table().GetLocalClientId()) {
     // We got a notification for ourselves, so we are connected to the GCS now.
@@ -279,14 +271,6 @@ void NodeManager::ClientAdded(const ClientTableDataT &client_data) {
 void NodeManager::ClientRemoved(const ClientTableDataT &client_data) {
   const ClientID client_id = ClientID::from_binary(client_data.client_id);
   RAY_LOG(DEBUG) << "[ClientRemoved] received callback from client id " << client_id;
-
-  // If the client has already been removed, don't do anything.
-  if (removed_clients_.find(client_id) != removed_clients_.end()) {
-    RAY_LOG(INFO) << "The client " << client_id << " has already been removed. This "
-                  << "should be very unusual.";
-    return;
-  }
-  removed_clients_.insert(client_id);
 
   RAY_CHECK(client_id != gcs_client_->client_table().GetLocalClientId())
       << "Exiting because this node manager has mistakenly been marked dead by the "
