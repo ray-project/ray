@@ -340,24 +340,33 @@ public class RunManager {
       }
     }
 
-    // Start local backend processes
-    for (int i = 0; i < params.num_local_schedulers; i++) {
-      // Start object stores
-      AddressInfo info = new AddressInfo();
-      
-      int rpcPort = params.object_store_rpc_port + i;
+    AddressInfo info = new AddressInfo();
+
+    if (params.use_raylet) {
+      // Start object store
+      int rpcPort = params.object_store_rpc_port;
       String storeName = "/tmp/plasma_store" + rpcPort;
 
-      // store
-      startObjectStore(i, info, params.working_directory + "/store",
+      startObjectStore(0, info, params.working_directory + "/store",
           params.redis_address, params.node_ip_address, params.redirect, params.cleanup);
 
-      if (!params.use_raylet) {
-        startObjectManager(i, info,
-          params.working_directory + "/storeManager", params.redis_address,
-          params.node_ip_address, params.redirect, params.cleanup);
+      //Start raylet
+      startRaylet(storeName, info, params.num_cpus[0],params.num_gpus[0],
+          params.num_workers,params.working_directory + "/raylet",
+          params.redis_address, params.node_ip_address, params.redirect, params.cleanup);
 
-        // start local scheduler
+      runInfo.localStores.add(info);
+    } else {
+      for (int i = 0; i < params.num_local_schedulers; i++) {
+        // Start object stores
+        startObjectStore(i, info, params.working_directory + "/store",
+            params.redis_address, params.node_ip_address, params.redirect, params.cleanup);
+
+        startObjectManager(i, info,
+            params.working_directory + "/storeManager", params.redis_address,
+            params.node_ip_address, params.redirect, params.cleanup);
+
+        // Start local scheduler
         int workerCount = 0;
 
         if (params.start_workers_from_local_scheduler) {
@@ -370,15 +379,8 @@ public class RunManager {
             params.working_directory + "/localsc", params.redis_address,
             params.node_ip_address, params.redirect, params.cleanup);
 
-      } else {
-        //Start raylet
-        startRaylet(i, storeName, info,
-            params.num_cpus[i], params.num_gpus[i], localNumWorkers[i],
-            params.working_directory + "/raylet", params.redis_address,
-            params.node_ip_address, params.redirect, params.cleanup);
+        runInfo.localStores.add(info);
       }
-
-      runInfo.localStores.add(info);
     }
 
     // start local workers
@@ -675,12 +677,12 @@ public class RunManager {
     }
   }
 
-  private void startRaylet(int index, String storeName, AddressInfo info, int numCpus,
-      int numGpus, int numWorkers, String workDir,
-      String redisAddress, String ip, boolean redirect,
-      boolean cleanup) {
+  private void startRaylet(String storeName, AddressInfo info, int numCpus,
+                           int numGpus, int numWorkers, String workDir,
+                           String redisAddress, String ip, boolean redirect,
+                           boolean cleanup) {
 
-    int rpcPort = params.raylet_port + index;
+    int rpcPort = params.raylet_port;
     String rayletSocketName = "/tmp/raylet" + rpcPort;
 
     String filePath = paths.raylet;
