@@ -12,7 +12,7 @@ To run a exercise case, set the ``RAY_CONFIG`` env variable and run the followin
 
 .. code-block:: shell
 
-    java -Djava.library.path=../build/src/plasma/:../build/src/local_scheduler/ -classpath "tutorial/target/ray-tutorial-1.0.jar:test/lib/*" org.ray.exercise.Exercise01
+    java -Djava.library.path=../build/src/plasma/:../build/src/local_scheduler/ -classpath "tutorial/target/ray-tutorial-1.0.jar:tutorial/lib/*" org.ray.exercise.Exercise01
 
 `Exercise 1 <https://github.com/ray-project/ray/tree/master/java/tutorial/src/main/java/org/ray/exercise/Exercise01.java>`_: Define a remote function, and execute multiple remote functions in parallel.
 
