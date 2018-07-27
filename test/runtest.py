@@ -1,6 +1,7 @@
 from __future__ import absolute_import, division, print_function
 
 import os
+import pytest
 import re
 import string
 import sys
@@ -190,98 +191,100 @@ DICT_OBJECTS = (
 RAY_TEST_OBJECTS = BASE_OBJECTS + LIST_OBJECTS + TUPLE_OBJECTS + DICT_OBJECTS
 
 
-class SerializationTest(unittest.TestCase):
-    def tearDown(self):
-        ray.shutdown()
+@pytest.fixture
+def ray_start():
+    # Start the Ray processes.
+    ray.init(num_cpus=1)
+    yield None
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
 
-    def testRecursiveObjects(self):
-        ray.init(num_workers=0)
 
-        class ClassA(object):
+def test_passing_arguments_by_value(ray_start):
+    @ray.remote
+    def f(x):
+        return x
+
+    # Check that we can pass arguments by value to remote functions and
+    # that they are uncorrupted.
+    for obj in RAY_TEST_OBJECTS:
+        assert_equal(obj, ray.get(f.remote(obj)))
+
+
+def test_ray_recursive_objects(ray_start):
+    class ClassA(object):
+        pass
+
+    # Make a list that contains itself.
+    lst = []
+    lst.append(lst)
+    # Make an object that contains itself as a field.
+    a1 = ClassA()
+    a1.field = a1
+    # Make two objects that contain each other as fields.
+    a2 = ClassA()
+    a3 = ClassA()
+    a2.field = a3
+    a3.field = a2
+    # Make a dictionary that contains itself.
+    d1 = {}
+    d1["key"] = d1
+    # Create a list of recursive objects.
+    recursive_objects = [lst, a1, a2, a3, d1]
+
+    # Check that exceptions are thrown when we serialize the recursive
+    # objects.
+    for obj in recursive_objects:
+        with pytest.raises(Exception):
+            ray.put(obj)
+
+
+def test_passing_arguments_by_value_out_of_the_box(ray_start):
+    @ray.remote
+    def f(x):
+        return x
+
+    # Test passing lambdas.
+
+    def temp():
+        return 1
+
+    assert ray.get(f.remote(temp))() == 1
+    assert ray.get(f.remote(lambda x: x + 1))(3) == 4
+
+    # Test sets.
+    assert ray.get(f.remote(set())) == set()
+    s = {1, (1, 2, "hi")}
+    assert ray.get(f.remote(s)) == s
+
+    # Test types.
+    assert ray.get(f.remote(int)) == int
+    assert ray.get(f.remote(float)) == float
+    assert ray.get(f.remote(str)) == str
+
+    class Foo(object):
+        def __init__(self):
             pass
 
-        # Make a list that contains itself.
-        lst = []
-        lst.append(lst)
-        # Make an object that contains itself as a field.
-        a1 = ClassA()
-        a1.field = a1
-        # Make two objects that contain each other as fields.
-        a2 = ClassA()
-        a3 = ClassA()
-        a2.field = a3
-        a3.field = a2
-        # Make a dictionary that contains itself.
-        d1 = {}
-        d1["key"] = d1
-        # Create a list of recursive objects.
-        recursive_objects = [lst, a1, a2, a3, d1]
+    # Make sure that we can put and get a custom type. Note that the result
+    # won't be "equal" to Foo.
+    ray.get(ray.put(Foo))
 
-        # Check that exceptions are thrown when we serialize the recursive
-        # objects.
-        for obj in recursive_objects:
-            self.assertRaises(Exception, lambda: ray.put(obj))
 
-    def testPassingArgumentsByValue(self):
-        ray.init(num_workers=1)
+def test_putting_object_that_closes_over_object_id(ray_start):
+    # This test is here to prevent a regression of
+    # https://github.com/ray-project/ray/issues/1317.
 
-        @ray.remote
-        def f(x):
-            return x
+    class Foo(object):
+        def __init__(self):
+            self.val = ray.put(0)
 
-        # Check that we can pass arguments by value to remote functions and
-        # that they are uncorrupted.
-        for obj in RAY_TEST_OBJECTS:
-            assert_equal(obj, ray.get(f.remote(obj)))
+        def method(self):
+            f
 
-    def testPassingArgumentsByValueOutOfTheBox(self):
-        ray.init(num_workers=1)
-
-        @ray.remote
-        def f(x):
-            return x
-
-        # Test passing lambdas.
-
-        def temp():
-            return 1
-
-        self.assertEqual(ray.get(f.remote(temp))(), 1)
-        self.assertEqual(ray.get(f.remote(lambda x: x + 1))(3), 4)
-
-        # Test sets.
-        self.assertEqual(ray.get(f.remote(set())), set())
-        s = {1, (1, 2, "hi")}
-        self.assertEqual(ray.get(f.remote(s)), s)
-
-        # Test types.
-        self.assertEqual(ray.get(f.remote(int)), int)
-        self.assertEqual(ray.get(f.remote(float)), float)
-        self.assertEqual(ray.get(f.remote(str)), str)
-
-        class Foo(object):
-            def __init__(self):
-                pass
-
-        # Make sure that we can put and get a custom type. Note that the result
-        # won't be "equal" to Foo.
-        ray.get(ray.put(Foo))
-
-    def testPuttingObjectThatClosesOverObjectID(self):
-        # This test is here to prevent a regression of
-        # https://github.com/ray-project/ray/issues/1317.
-        ray.init(num_workers=0)
-
-        class Foo(object):
-            def __init__(self):
-                self.val = ray.put(0)
-
-            def method(self):
-                f
-
-        f = Foo()
-        with self.assertRaises(ray.local_scheduler.common_error):
-            ray.put(f)
+    f = Foo()
+    with pytest.raises(ray.local_scheduler.common_error):
+        ray.put(f)
 
 
 class WorkerTest(unittest.TestCase):
