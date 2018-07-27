@@ -89,11 +89,14 @@ class Monitor(object):
         self.redis = redis.StrictRedis(
             host=redis_address, port=redis_port, db=0)
         # Setup subscriptions
-        self.subscribe_clients = [self.redis.pubsub()]
-#        for redis_client in self.state.redis_clients:
-#            subscribe_client = redis_client.pubsub(
-#                ignore_subscribe_messages=True)
-#            self.subscribe_clients.append(subscribe_client)
+        if self.use_raylet:
+            self.subscribe_clients = []
+            for redis_client in self.state.redis_clients:
+                subscribe_client = redis_client.pubsub(
+                    ignore_subscribe_messages=True)
+                self.subscribe_clients.append(subscribe_client)
+        else:
+            self.subscribe_clients = [self.redis.pubsub()]
         self.subscribed = {}
         # Initialize data structures to keep track of the active database
         # clients.
