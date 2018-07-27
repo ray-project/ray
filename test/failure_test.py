@@ -11,7 +11,6 @@ import time
 import unittest
 
 import ray.ray_constants as ray_constants
-import ray.test.test_functions as test_functions
 
 
 def relevant_errors(error_type):
@@ -32,7 +31,6 @@ class TaskStatusTest(unittest.TestCase):
         ray.shutdown()
 
     def testFailedTask(self):
-
         @ray.remote
         def throw_exception_fct1():
             raise Exception("Test function 1 intentionally failed.")

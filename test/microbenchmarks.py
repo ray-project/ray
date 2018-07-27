@@ -9,8 +9,6 @@ import sys
 import time
 import numpy as np
 
-import ray.test.test_functions as test_functions
-
 
 class MicroBenchmarkTest(unittest.TestCase):
     def tearDown(self):
