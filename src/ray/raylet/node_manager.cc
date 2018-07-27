@@ -485,7 +485,7 @@ void NodeManager::ProcessClientMessage(
         // application.
         TreatTaskAsFailed(spec);
         task_dependency_manager_.TaskCanceled(spec.TaskId());
-        local_queues_.RemoveTasks({spec.TaskId()});
+        local_queues_.RemoveTask(spec.TaskId());
       }
 
       worker_pool_.DisconnectWorker(worker);
@@ -705,13 +705,13 @@ void NodeManager::ScheduleTasks() {
   std::unordered_set<TaskID> local_task_ids;
   // Iterate over (taskid, clientid) pairs, extract tasks assigned to the local node.
   for (const auto &task_schedule : policy_decision) {
-    TaskID task_id = task_schedule.first;
-    ClientID client_id = task_schedule.second;
+    const TaskID task_id = task_schedule.first;
+    const ClientID client_id = task_schedule.second;
     if (client_id == gcs_client_->client_table().GetLocalClientId()) {
       local_task_ids.insert(task_id);
     } else {
       // TODO(atumanov): need a better interface for task exit on forward.
-      const auto task = local_queues_.RemoveTasks(task_id);
+      const auto task = local_queues_.RemoveTask(task_id);
       // Attempt to forward the task. If this fails to forward the task,
       // the task will be resubmit locally.
       ForwardTaskOrResubmit(task, client_id);
