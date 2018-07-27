@@ -96,7 +96,8 @@ class TestGlobalScheduler(unittest.TestCase):
                 static_resources={"CPU": 10})
             # Connect to the scheduler.
             local_scheduler_client = local_scheduler.LocalSchedulerClient(
-                local_scheduler_name, NIL_WORKER_ID, False, False)
+                local_scheduler_name, NIL_WORKER_ID, False, random_task_id(),
+                False)
             self.local_scheduler_clients.append(local_scheduler_client)
             self.local_scheduler_pids.append(p4)
 
