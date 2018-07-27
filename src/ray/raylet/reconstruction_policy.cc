@@ -18,7 +18,7 @@ ReconstructionPolicy::ReconstructionPolicy(
 void ReconstructionPolicy::SetTaskTimeout(
     std::unordered_map<TaskID, ReconstructionTask>::iterator task_it,
     int64_t timeout_ms) {
-  task_it->second.expires_at = current_time_ms() + timeout_ms;
+  task_it->second.expires_at = current_sys_time_ms() + timeout_ms;
   auto timeout = boost::posix_time::milliseconds(timeout_ms);
   task_it->second.reconstruction_timer->expires_from_now(timeout);
   const TaskID task_id = task_it->first;
@@ -65,12 +65,11 @@ void ReconstructionPolicy::HandleTaskLeaseNotification(const TaskID &task_id,
     return;
   }
 
-  auto now_ms = current_time_ms();
+  auto now_ms = current_sys_time_ms();
   if (now_ms >= expires_at_ms) {
     // The current lease has expired. Reconstruct the task.
     Reconstruct(task_id);
-  } else {
-    RAY_CHECK(expires_at_ms >= it->second.expires_at);
+  } else if (expires_at_ms > it->second.expires_at) {
     // The current lease is still active. Reset the timer to the lease's
     // expiration time.
     SetTaskTimeout(it, expires_at_ms - now_ms);

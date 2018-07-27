@@ -231,13 +231,14 @@ void TaskDependencyManager::TaskPending(const Task &task) {
 void TaskDependencyManager::AcquireTaskLease(const TaskID &task_id) {
   auto it = pending_tasks_.find(task_id);
   RAY_CHECK(it != pending_tasks_.end());
-  RAY_CHECK(current_time_ms() < it->second.expires_at);
+  int64_t now_ms = current_sys_time_ms();
+  RAY_CHECK(now_ms < it->second.expires_at);
 
-  int64_t expires_at = current_time_ms() + it->second.lease_period;
+  int64_t expires_at = now_ms + it->second.lease_period;
 
   auto task_lease_data = std::make_shared<TaskLeaseDataT>();
   task_lease_data->node_manager_id = client_id_.hex();
-  task_lease_data->acquired_at = current_time_ms();
+  task_lease_data->acquired_at = now_ms;
   task_lease_data->expires_at = expires_at;
   task_lease_table_.Add(DriverID::nil(), task_id, task_lease_data, nullptr);
 

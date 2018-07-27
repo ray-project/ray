@@ -5,7 +5,6 @@
 //       gen_local_scheduler_fbs from src/ray/CMakeLists.txt.
 #include "local_scheduler/format/local_scheduler_generated.h"
 #include "ray/raylet/format/node_manager_generated.h"
-#include "ray/util/util.h"
 
 namespace {
 

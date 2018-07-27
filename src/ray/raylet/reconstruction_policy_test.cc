@@ -173,6 +173,33 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionSuppressed) {
   TaskID task_id = TaskID::from_random();
   task_id = FinishTaskId(task_id);
   ObjectID object_id = ComputeReturnId(task_id, 1);
+  // Run the test for much longer than the reconstruction timeout.
+  int64_t test_period = 2 * reconstruction_timeout_ms_;
+
+  // Acquire the task lease for a period longer than the test period.
+  auto task_lease_data = std::make_shared<TaskLeaseDataT>();
+  task_lease_data->node_manager_id = ClientID::from_random().hex();
+  task_lease_data->acquired_at = current_sys_time_ms();
+  task_lease_data->expires_at = task_lease_data->acquired_at + (2 * test_period);
+  mock_gcs_.Add(DriverID::nil(), task_id, task_lease_data);
+
+  // Listen for an object.
+  reconstruction_policy_->Listen(object_id);
+  // Run the test.
+  Run(test_period);
+  // Check that reconstruction is suppressed by the active task lease.
+  ASSERT_TRUE(reconstructed_tasks_.empty());
+
+  // Run the test again past the expiration time of the lease.
+  Run((task_lease_data->expires_at - current_sys_time_ms()) * 1.1);
+  // Check that this time, reconstruction is triggered.
+  ASSERT_EQ(reconstructed_tasks_[task_id], 1);
+}
+
+TEST_F(ReconstructionPolicyTest, TestReconstructionContinuallySuppressed) {
+  TaskID task_id = TaskID::from_random();
+  task_id = FinishTaskId(task_id);
+  ObjectID object_id = ComputeReturnId(task_id, 1);
 
   // Listen for an object.
   reconstruction_policy_->Listen(object_id);
@@ -180,7 +207,7 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionSuppressed) {
   SetPeriodicTimer(reconstruction_timeout_ms_ / 2, [this, task_id]() {
     auto task_lease_data = std::make_shared<TaskLeaseDataT>();
     task_lease_data->node_manager_id = ClientID::from_random().hex();
-    task_lease_data->acquired_at = current_time_ms();
+    task_lease_data->acquired_at = current_sys_time_ms();
     task_lease_data->expires_at =
         task_lease_data->acquired_at + reconstruction_timeout_ms_;
     mock_gcs_.Add(DriverID::nil(), task_id, task_lease_data);

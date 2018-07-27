@@ -9,6 +9,7 @@
 
 #include "ray/gcs/tables.h"
 #include "ray/id.h"
+#include "ray/util/util.h"
 
 namespace ray {
 
