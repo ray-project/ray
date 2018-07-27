@@ -332,8 +332,6 @@ class Monitor(object):
         # Update the load metrics for this local scheduler.
         client_id = message.ClientId().decode("utf-8")
         ip = self.local_scheduler_id_to_ip_map.get(client_id)
-        print("XRAY HEARTBEAT", client_id, ip, static_resources,
-              dynamic_resources)
         if ip:
             self.load_metrics.update(ip, static_resources, dynamic_resources)
         else:
@@ -505,13 +503,11 @@ class Monitor(object):
                 returning.
         """
 
-        print("Subscribe clients", self.subscribe_clients)
         for subscribe_client in self.subscribe_clients:
             for _ in range(max_messages):
                 message = subscribe_client.get_message()
                 if message is None:
                     return
-                print("message", message)
 
                 # Parse the message.
                 channel = message["channel"]
