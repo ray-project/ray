@@ -90,10 +90,10 @@ class Monitor(object):
             host=redis_address, port=redis_port, db=0)
         # Setup subscriptions
         self.subscribe_clients = [self.redis.pubsub()]
-        for redis_client in self.state.redis_clients:
-            subscribe_client = redis_client.pubsub(
-                ignore_subscribe_messages=True)
-            self.subscribe_clients.append(subscribe_client)
+#        for redis_client in self.state.redis_clients:
+#            subscribe_client = redis_client.pubsub(
+#                ignore_subscribe_messages=True)
+#            self.subscribe_clients.append(subscribe_client)
         self.subscribed = {}
         # Initialize data structures to keep track of the active database
         # clients.
