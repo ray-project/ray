@@ -8,11 +8,52 @@
 #include "ray/raylet/format/node_manager_generated.h"
 #include "ray/raylet/reconstruction_policy.h"
 
+#include "ray/object_manager/object_directory.h"
+
 namespace ray {
 
 namespace raylet {
 
-class MockGcs : virtual public gcs::PubsubInterface<TaskID> {
+class MockObjectDirectory : public ObjectDirectoryInterface {
+ public:
+  MockObjectDirectory() {}
+
+  ray::Status LookupLocations(const ObjectID &object_id,
+                              const OnLocationsFound &callback) {
+    callbacks_.push_back({object_id, callback});
+    return ray::Status::OK();
+  }
+
+  void FlushCallbacks() {
+    for (const auto &callback : callbacks_) {
+      const ObjectID object_id = callback.first;
+      callback.second(locations_[object_id], object_id);
+    }
+    callbacks_.clear();
+  }
+
+  void SetObjectLocations(const ObjectID &object_id, std::vector<ClientID> locations) {
+    locations_[object_id] = locations;
+  }
+
+  MOCK_METHOD0(RegisterBackend, void(void));
+  MOCK_METHOD3(GetInformation, ray::Status(const ClientID &, const InfoSuccessCallback &,
+                                           const InfoFailureCallback &));
+  MOCK_METHOD3(SubscribeObjectLocations,
+               ray::Status(const ray::UniqueID &, const ObjectID &,
+                           const OnLocationsFound &));
+  MOCK_METHOD2(UnsubscribeObjectLocations,
+               ray::Status(const ray::UniqueID &, const ObjectID &));
+  MOCK_METHOD3(ReportObjectAdded,
+               ray::Status(const ObjectID &, const ClientID &, const ObjectInfoT &));
+  MOCK_METHOD2(ReportObjectRemoved, ray::Status(const ObjectID &, const ClientID &));
+
+ private:
+  std::vector<std::pair<ObjectID, OnLocationsFound>> callbacks_;
+  std::unordered_map<ObjectID, std::vector<ClientID>> locations_;
+};
+
+class MockGcs : public gcs::PubsubInterface<TaskID> {
  public:
   MockGcs() : notification_callback_(nullptr), failure_callback_(nullptr){};
 
@@ -60,11 +101,13 @@ class ReconstructionPolicyTest : public ::testing::Test {
   ReconstructionPolicyTest()
       : io_service_(),
         mock_gcs_(),
-        reconstruction_timeout_ms_(100),
+        mock_object_directory_(std::make_shared<MockObjectDirectory>()),
+        reconstruction_timeout_ms_(50),
         reconstruction_policy_(std::make_shared<ReconstructionPolicy>(
             io_service_,
             [this](const TaskID &task_id) { TriggerReconstruction(task_id); },
-            reconstruction_timeout_ms_, ClientID::from_random(), mock_gcs_)),
+            reconstruction_timeout_ms_, ClientID::from_random(), mock_gcs_,
+            mock_object_directory_)),
         timer_canceled_(false) {
     mock_gcs_.Subscribe(
         [this](gcs::AsyncGcsClient *client, const TaskID &task_id,
@@ -117,18 +160,21 @@ class ReconstructionPolicyTest : public ::testing::Test {
     });
     io_service_.run();
     io_service_.reset();
+
+    mock_object_directory_->FlushCallbacks();
   }
 
  protected:
   boost::asio::io_service io_service_;
   MockGcs mock_gcs_;
+  std::shared_ptr<MockObjectDirectory> mock_object_directory_;
   uint64_t reconstruction_timeout_ms_;
   std::shared_ptr<ReconstructionPolicy> reconstruction_policy_;
   bool timer_canceled_;
   std::unordered_map<TaskID, int> reconstructed_tasks_;
 };
 
-TEST_F(ReconstructionPolicyTest, TestReconstruction) {
+TEST_F(ReconstructionPolicyTest, TestReconstructionSimple) {
   TaskID task_id = TaskID::from_random();
   task_id = FinishTaskId(task_id);
   ObjectID object_id = ComputeReturnId(task_id, 1);
@@ -145,6 +191,29 @@ TEST_F(ReconstructionPolicyTest, TestReconstruction) {
   Run(reconstruction_timeout_ms_ * 1.1);
   // Check that reconstruction was triggered again.
   ASSERT_EQ(reconstructed_tasks_[task_id], 2);
+}
+
+TEST_F(ReconstructionPolicyTest, TestReconstructionEvicted) {
+  TaskID task_id = TaskID::from_random();
+  task_id = FinishTaskId(task_id);
+  ObjectID object_id = ComputeReturnId(task_id, 1);
+  mock_object_directory_->SetObjectLocations(object_id, {ClientID::from_random()});
+
+  // Listen for both objects.
+  reconstruction_policy_->Listen(object_id);
+  // Run the test for longer than the reconstruction timeout.
+  Run(reconstruction_timeout_ms_ * 1.1);
+  // Check that reconstruction was not triggered, since the objects still
+  // exist on a live node.
+  ASSERT_EQ(reconstructed_tasks_[task_id], 0);
+
+  // Simulate evicting one of the objects.
+  mock_object_directory_->SetObjectLocations(object_id, {});
+  // Run the test again.
+  Run(reconstruction_timeout_ms_ * 1.1);
+  // Check that reconstruction was triggered, since one of the objects was
+  // evicted.
+  ASSERT_EQ(reconstructed_tasks_[task_id], 1);
 }
 
 TEST_F(ReconstructionPolicyTest, TestDuplicateReconstruction) {
@@ -234,7 +303,12 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionCanceled) {
   reconstruction_policy_->Listen(object_id);
   // Halfway through the reconstruction timeout, cancel the object
   // reconstruction.
-  reconstruction_policy_->Cancel(object_id);
+  auto timer_period = boost::posix_time::milliseconds(reconstruction_timeout_ms_);
+  auto timer = std::make_shared<boost::asio::deadline_timer>(io_service_, timer_period);
+  timer->async_wait([this, timer, object_id](const boost::system::error_code &error) {
+    ASSERT_FALSE(error);
+    reconstruction_policy_->Cancel(object_id);
+  });
   Run(reconstruction_timeout_ms_ * 2);
   // Check that reconstruction is suppressed.
   ASSERT_TRUE(reconstructed_tasks_.empty());

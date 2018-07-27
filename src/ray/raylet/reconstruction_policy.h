@@ -11,6 +11,8 @@
 #include "ray/id.h"
 #include "ray/util/util.h"
 
+#include "ray/object_manager/object_directory.h"
+
 namespace ray {
 
 namespace raylet {
@@ -40,7 +42,8 @@ class ReconstructionPolicy : public ReconstructionPolicyInterface {
                        std::function<void(const TaskID &)> reconstruction_handler,
                        int64_t initial_reconstruction_timeout_ms,
                        const ClientID &client_id,
-                       gcs::PubsubInterface<TaskID> &task_lease_pubsub);
+                       gcs::PubsubInterface<TaskID> &task_lease_pubsub,
+                       std::shared_ptr<ObjectDirectoryInterface> object_directory);
 
   /// Listen for task lease notifications about an object that may require
   /// reconstruction. If no notifications are received within the initial
@@ -73,6 +76,7 @@ class ReconstructionPolicy : public ReconstructionPolicyInterface {
         : created_objects(),
           expires_at(INT64_MAX),
           subscribed(false),
+          reconstruction_attempt(0),
           reconstruction_timer(new boost::asio::deadline_timer(io_service)) {}
 
     // The objects created by this task that we are listening for notifications for.
@@ -81,6 +85,8 @@ class ReconstructionPolicy : public ReconstructionPolicyInterface {
     int64_t expires_at;
     // Whether we are subscribed to lease notifications for this task.
     bool subscribed;
+    // The number of times we've attempted reconstructing this task so far.
+    int reconstruction_attempt;
     // The task's reconstruction timer. If this expires before a lease
     // notification is received, then the task will be reconstructed.
     std::unique_ptr<boost::asio::deadline_timer> reconstruction_timer;
@@ -92,10 +98,11 @@ class ReconstructionPolicy : public ReconstructionPolicyInterface {
                       int64_t timeout_ms);
 
   /// Reconstruct a task.
-  void Reconstruct(const TaskID &task_id);
+  void AttemptReconstruction(const TaskID &task_id, const ObjectID &object_id,
+                             int reconstruction_attempt);
 
   /// Handle expiration of a task lease.
-  void HandleReconstructionTimeout(const TaskID &task_id);
+  void HandleTaskLeaseExpired(const TaskID &task_id);
 
   /// The event loop.
   boost::asio::io_service &io_service_;
@@ -108,6 +115,8 @@ class ReconstructionPolicy : public ReconstructionPolicyInterface {
   const ClientID client_id_;
   /// The GCS pub-sub storage system to request task lease notifications from.
   gcs::PubsubInterface<TaskID> &task_lease_pubsub_;
+  /// The object directory used to lookup object locations.
+  std::shared_ptr<ObjectDirectoryInterface> object_directory_;
   /// The tasks that we are currently subscribed to in the GCS.
   std::unordered_map<TaskID, ReconstructionTask> listening_tasks_;
 };
