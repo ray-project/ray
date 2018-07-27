@@ -4,7 +4,6 @@ from __future__ import print_function
 
 import ray
 
-
 NUM_WORKERS = 4
 
 
