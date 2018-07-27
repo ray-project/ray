@@ -15,15 +15,6 @@ public class RayMethod {
   public final RayRemote remoteAnnotation;
   private final UniqueID funcId;
 
-  public void check() {
-    for (Class<?> paramCls : invokable.getParameterTypes()) {
-      if (paramCls.isPrimitive()) {
-        throw new RuntimeException(
-            "@RayRemote function " + fullName + " must have all non-primitive typed parameters");
-      }
-    }
-  }
-
   private RayMethod(Method m, RayRemote remoteAnnotation, UniqueID funcId) {
     this.invokable = m;
     this.remoteAnnotation = remoteAnnotation;
@@ -39,7 +30,6 @@ public class RayMethod {
     RayMethod method = new RayMethod(m,
         remoteAnnotation != null ? remoteAnnotation : parentRemoteAnnotation,
         funcId);
-    method.check();
     return method;
   }
 
