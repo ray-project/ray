@@ -1,6 +1,8 @@
 #ifndef PLASMA_MANAGER_H
 #define PLASMA_MANAGER_H
 
+#include "protocol.h"
+
 #ifndef RAY_NUM_RETRIES
 #define NUM_RETRIES 5
 #else
@@ -9,7 +11,6 @@
 
 typedef struct PlasmaManagerState PlasmaManagerState;
 typedef struct ClientConnection ClientConnection;
-enum class MessageType : int64_t;
 
 /**
  * Initializes the plasma manager state. This connects the manager to the local
@@ -155,7 +156,7 @@ ClientConnection *ClientConnection_listen(event_loop *loop,
 
 /* Buffer for requests between plasma managers. */
 typedef struct PlasmaRequestBuffer {
-  MessageType type;
+  plasma::flatbuf::MessageType type;
   ray::ObjectID object_id;
   uint8_t *data;
   int64_t data_size;
