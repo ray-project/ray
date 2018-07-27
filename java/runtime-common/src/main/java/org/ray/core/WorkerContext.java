@@ -2,6 +2,7 @@ package org.ray.core;
 
 import org.ray.api.UniqueID;
 import org.ray.core.model.RayParameters;
+import org.ray.core.model.WorkerMode;
 import org.ray.spi.model.TaskSpec;
 
 public class WorkerContext {
