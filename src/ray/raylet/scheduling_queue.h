@@ -173,6 +173,11 @@ class SchedulingQueue {
     //  removed from the queue, the task data is appened to the vector..
     bool RemoveTask(const TaskID &task_id, std::vector<Task> &removed_tasks);
 
+    /// \brief Check if the queue contains a specific task id.
+    ///
+    /// \param task_id The task ID for the task.
+    bool HasTask(const TaskID &task_id) const;
+
     /// \brief Remove the task list of the queue.
     const std::list<Task> &GetTasks() const;
 
