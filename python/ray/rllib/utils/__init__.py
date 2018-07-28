@@ -15,9 +15,9 @@ __all__ = [
 
 def merge_dicts(d1, d2):
     """Returns a new dict that is d1 and d2 deep merged."""
-    copy = copy.deepcopy(d1)
-    deep_update(copy, d2, True, [])
-    return copy
+    merged = copy.deepcopy(d1)
+    deep_update(merged, d2, True, [])
+    return merged
 
 
 def deep_update(original, new_dict, new_keys_allowed, whitelist):
@@ -40,9 +40,9 @@ def deep_update(original, new_dict, new_keys_allowed, whitelist):
                 raise Exception("Unknown config parameter `{}` ".format(k))
         if type(original.get(k)) is dict:
             if k in whitelist:
-                _deep_update(original[k], value, True, [])
+                deep_update(original[k], value, True, [])
             else:
-                _deep_update(original[k], value, new_keys_allowed, [])
+                deep_update(original[k], value, new_keys_allowed, [])
         else:
             original[k] = value
     return original
