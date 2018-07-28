@@ -1354,15 +1354,61 @@ class GlobalState(object):
                     if local_scheduler_id not in local_scheduler_ids:
                         del available_resources_by_id[local_scheduler_id]
         else:
-            # Use client table, see xray_heartbeat_handler
-            pass
+            # Assumes the number of Redis clients does not change
+            subscribe_clients = [
+                redis_client.pubsub(ignore_subscribe_messages=True)
+                for redis_client in self.redis_clients
+            ]
+            for subscribe_client in subscribe_clients:
+                subscribe_client.subscribe(XRAY_HEARTBEAT_CHANNEL)
 
+            client_ids = {
+                client["ClientID"] for client in self.client_table()
+            }
+
+            while set(available_resources_by_id.keys()) != client_ids:
+                for subscribe_client in subscribe_clients:
+                    # Parse client message
+                    raw_message = subscribe_client.get_message()
+                    if (raw_message is None or
+                            raw_message["channel"] != XRAY_HEARTBEAT_CHANNEL):
+                        continue
+                    data = raw_message["data"]
+                    gcs_entries = (ray.gcs_utils.GcsTableEntry.
+                                   GetRootAsGcsTableEntry(data, 0))
+                    heartbeat_data = gcs_entries.Entries(0)
+                    message = (ray.gcs_utils.HeartbeatTableData.
+                               GetRootAsHeartbeatTableData(heartbeat_data, 0))
+                    # Calculate available resources for this client
+                    num_resources = message.ResourcesAvailableLabelLength()
+                    dynamic_resources = {}
+                    for i in range(num_resources):
+                        dyn = message.ResourcesAvailableLabel(i)
+                        dynamic_resources[dyn] = (
+                                message.ResourcesAvailableCapacity(i))
+
+                    # Update available resources for this client
+                    client_id = message.ClientId().decode("utf-8")
+                    available_resources_by_id[client_id] = dynamic_resources
+
+                # Update clients in cluster
+                client_ids = {
+                    client["ClientID"] for client in self.client_table()
+                }
+
+                # Remove disconnected clients
+                for client_id in available_resources_by_id.keys():
+                    if client_id not in client_ids:
+                        del available_resources_by_id[client_id]
+
+        # Calculate total available resources
         total_available_resources = defaultdict(lambda: 0)
         for available_resources in available_resources_by_id.values():
             for resource_id, num_available in available_resources.items():
+                resource_id = resource_id.decode("utf-8")
                 total_available_resources[resource_id] += num_available
 
-        return total_available_resources
+        return dict(total_available_resources)
 
     def _error_messages(self, job_id):
         """Get the error messages for a specific job.
