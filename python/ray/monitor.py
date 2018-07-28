@@ -512,7 +512,8 @@ class Monitor(object):
             for _ in range(max_messages):
                 message = subscribe_client.get_message()
                 if message is None:
-                    return
+                    # Continue on to the next subscribe client.
+                    break
 
                 # Parse the message.
                 channel = message["channel"]
