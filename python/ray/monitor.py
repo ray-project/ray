@@ -68,8 +68,6 @@ class Monitor(object):
             not.
         subscribe_client: A pubsub client for the Redis server. This is used to
             receive notifications about failed components.
-        subscribed: A dictionary mapping channel names (str) to whether or not
-            the subscription to that channel has succeeded yet (bool).
         dead_local_schedulers: A set of the local scheduler IDs of all of the
             local schedulers that were up at one point and have died since
             then.
@@ -88,16 +86,18 @@ class Monitor(object):
         self.use_raylet = self.state.use_raylet
         self.redis = redis.StrictRedis(
             host=redis_address, port=redis_port, db=0)
-        # Setup subscriptions
+        # Setup subscriptions to the primary Redis server and the Redis shards.
+        self.primary_subscribe_client = self.redis.pubsub(
+            ignore_subscribe_messages=True)
         if self.use_raylet:
-            self.subscribe_clients = []
+            self.shard_subscribe_clients = []
             for redis_client in self.state.redis_clients:
                 subscribe_client = redis_client.pubsub(
                     ignore_subscribe_messages=True)
-                self.subscribe_clients.append(subscribe_client)
+                self.shard_subscribe_clients.append(subscribe_client)
         else:
-            self.subscribe_clients = [self.redis.pubsub()]
-        self.subscribed = {}
+            # We don't need to subscribe to the shards in legacy Ray.
+            self.shard_subscribe_clients = []
         # Initialize data structures to keep track of the active database
         # clients.
         self.dead_local_schedulers = set()
@@ -136,18 +136,23 @@ class Monitor(object):
                             str(e)))
                     self.issue_gcs_flushes = False
 
-    def subscribe(self, channel):
+    def subscribe(self, channel, primary=True):
         """Subscribe to the given channel.
 
         Args:
             channel (str): The channel to subscribe to.
+            primary: If True, then we only subscribe to the primary Redis
+                shard. Otherwise we subscribe to all of the other shards but
+                not the primary.
 
         Raises:
             Exception: An exception is raised if the subscription fails.
         """
-        for subscribe_client in self.subscribe_clients:
-            subscribe_client.subscribe(channel)
-            self.subscribed[channel] = False
+        if primary:
+            self.primary_subscribe_client.subscribe(channel)
+        else:
+            for subscribe_client in self.shard_subscribe_clients:
+                subscribe_client.subscribe(channel)
 
     def cleanup_task_table(self):
         """Clean up global state for failed local schedulers.
@@ -254,11 +259,6 @@ class Monitor(object):
                         self.dead_local_schedulers.add(db_client_id)
                     elif client_type == PLASMA_MANAGER_CLIENT_TYPE:
                         self.dead_plasma_managers.add(db_client_id)
-
-    def subscribe_handler(self, channel, data):
-        """Handle a subscription success message from Redis."""
-        log.debug("Subscribed to {}, data was {}".format(channel, data))
-        self.subscribed[channel] = True
 
     def db_client_notification_handler(self, unused_channel, data):
         """Handle a notification from the db_client table from Redis.
@@ -505,8 +505,9 @@ class Monitor(object):
             max_messages: The maximum number of messages to process before
                 returning.
         """
-
-        for subscribe_client in self.subscribe_clients:
+        subscribe_clients = (
+            [self.primary_subscribe_client] + self.shard_subscribe_clients)
+        for subscribe_client in subscribe_clients:
             for _ in range(max_messages):
                 message = subscribe_client.get_message()
                 if message is None:
@@ -518,24 +519,16 @@ class Monitor(object):
 
                 # Determine the appropriate message handler.
                 message_handler = None
-                if not self.subscribed[channel]:
-                    # If the data was an integer, then the message was a resp
-                    # to an initial subscription request.
-                    message_handler = self.subscribe_handler
-                elif channel == PLASMA_MANAGER_HEARTBEAT_CHANNEL:
-                    assert self.subscribed[channel]
+                if channel == PLASMA_MANAGER_HEARTBEAT_CHANNEL:
                     # The message was a heartbeat from a plasma manager.
                     message_handler = self.plasma_manager_heartbeat_handler
                 elif channel == LOCAL_SCHEDULER_INFO_CHANNEL:
-                    assert self.subscribed[channel]
                     # The message was a heartbeat from a local scheduler
                     message_handler = self.local_scheduler_info_handler
                 elif channel == DB_CLIENT_TABLE_NAME:
-                    assert self.subscribed[channel]
                     # The message was a notification from the db_client table.
                     message_handler = self.db_client_notification_handler
                 elif channel == DRIVER_DEATH_CHANNEL:
-                    assert self.subscribed[channel]
                     # The message was a notification that a driver was removed.
                     log.info("message-handler: driver_removed_handler")
                     message_handler = self.driver_removed_handler
@@ -605,7 +598,7 @@ class Monitor(object):
         self.subscribe(LOCAL_SCHEDULER_INFO_CHANNEL)
         self.subscribe(PLASMA_MANAGER_HEARTBEAT_CHANNEL)
         self.subscribe(DRIVER_DEATH_CHANNEL)
-        self.subscribe(XRAY_HEARTBEAT_CHANNEL)
+        self.subscribe(ray.gcs_utils.TablePubsub.HEARTBEAT, primary=False)
 
         # Scan the database table for dead database clients. NOTE: This must be
         # called before reading any messages from the subscription channel.
