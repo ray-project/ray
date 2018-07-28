@@ -38,7 +38,8 @@ void ReconstructionPolicy::SetTaskTimeout(
             // This task is still required, so subscribe to task lease notifications.
             // Reconstruction will be triggered if the current task lease expires, or
             // if no one has acquired the task lease.
-            task_lease_pubsub_.RequestNotifications(JobID::nil(), task_id, client_id_);
+            RAY_CHECK_OK(task_lease_pubsub_.RequestNotifications(JobID::nil(), task_id,
+                                                                 client_id_));
             it->second.subscribed = true;
           }
         }
