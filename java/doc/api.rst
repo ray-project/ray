@@ -13,49 +13,54 @@ the runtime.
 ``@RayRemote``
 ~~~~~~~~~~~~~~
 
-The annotation of ``@RayRemote`` can be used to decorate static java
-method or class. The former indicates that a target function is a remote
-function, which is valid with the follow requirements. \* it must be a
-public static method \* parameters and return value must not be the
-primitive type of java such as int, double, but could use the wrapper
-class like Integer,Double \* the return value of the method must always
-be the same with the same input
+The ``@RayRemote`` annotation can be used to decorate static java
+methods and classes. The former indicates that a target function is a remote
+function, which is valid with the follow requirements.
 
-When the annotation is used for classes, the classes are considered
-actors(a mechanism to share state among many remote functions). The
+- It must be a public static method.
+- Its parameters and return value cannot be primitive types like int or
+  double but can use wrapper classes like Integer or Double.
+- The method must be deterministic for task reconstruction to behave correctly.
+
+When the annotation is used for a class, the class becomes an actor class
+(an encapsulation of state shared among many remote functions). The
 member functions can be invoked using ``Ray.call``. The requirements for
-an actor class are as follows. \* it must have an constructor without
-any parameter \* if it is an inner class, it must be public static \* it
-must not have a member field or method decorated using
-``public static``, as the semantic is undefined with multiple instances
-of this same class on different machines \* an actor method must be
-decorated using ``public`` but no ``static``, and the other requirements
-are the same as above.
+an actor class are as follows.
+
+- It must have a constructor without any parameters.
+- Any inner class must be public static.
+- It must not have a member field or method decorated using ``public static``,
+  as the semantic is undefined with multiple instances of this same class on
+  different machines
+- An actor method must be decorated using ``public`` but not ``static``
+- The other requirements are the same as for remote functions.
 
 ``Ray.call``
 ~~~~~~~~~~~~
+
+Here is a simple example of invoking a remote function using ``Ray.call``.
 
 .. code:: java
 
     RayObject<R> call(Func func, ...);
 
-``func`` is the target method, continued with appropriate parameters.
-There are some requirements here:
+Here, ``func`` is the target method and the ``...``'s should be filled in with
+the arguments to ``func``. In addition, the following must hold.
 
--  the return type of ``func`` must be ``R``
--  currently at most 6 parameters of ``func`` are allowed
--  each parameter must be of type ``T`` of the correspondent ``func``'s
-   parameter, or be the lifted ``RayObject<T>`` to indicate a result
-   from another ray call
+-  The return type of ``func`` must be ``R``.
+-  Currently at most 6 parameters of ``func`` are allowed.
+-  Each parameter must have the same type ``T`` as the corresponding parameter
+   to ``func``, or it must have the type ``RayObject<T>`` to indicate a result
+   from another ``Ray.call`` invocation.
 
-The returned object is labled as ``RayObject<R>`` and its value will be
-put into memory of the machine where the function call is executed.
+The returned object is labeled as ``RayObject<R>`` and its value will be
+put into the object store on the machine where the function call is executed.
 
 ``Ray.put``
 ~~~~~~~~~~~
 
-You can also invoke ``Ray.put`` to explicitly place an object into local
-memory.
+You can also invoke ``Ray.put`` to explicitly place an object into the object
+store.
 
 .. code:: java
 
@@ -72,13 +77,13 @@ memory.
         public <M> M getMeta() throws TaskExecutionException;
     }
 
-This method blocks current thread until requested data gets ready and is
-fetched (if needed) from remote memory to local.
+This method blocks the current thread until the requested data is ready and has
+been fetched (if necessary) from a remote machine.
 
 ``Ray.wait``
 ~~~~~~~~~~~~
 
-Calling ``Ray.wait`` will block current thread and wait for specified
+Calling ``Ray.wait`` will block the current thread and wait for specified
 ray calls. It returns when at least ``numReturns`` calls are completed,
 or the ``timeout`` expires. See multi-value support for ``RayList``.
 
@@ -94,36 +99,36 @@ Multi-value API
 Multi-value Types
 ~~~~~~~~~~~~~~~~~
 
-Java worker supports multiple ``RayObject``\ s in a single data
-structure as a return value or a ray call parameter, through the
+Multiple ``RayObject``'s can be placed in a single data
+structure as a return value or as a ``Ray.call`` parameter through the
 following container types.
 
 ``MultipleReturnsX<R0, R1, ...>``
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-There are multiple heterogeneous values, with their types as ``R0``,
-``R1``,... respectively. Note currently this container type is only
-supported as the return type of a ray call, therefore you can not use it
+This consists of multiple heterogeneous values, with types ``R0``,
+``R1``,... respectively. Currently this container type is only
+supported as the return type of ``Ray.call``. Therefore you cannot use it
 as the type of an input parameter.
 
 ``RayList<T>``
-''''''''''''''
+^^^^^^^^^^^^^^
 
-A list of ``RayObject<T>``, inherited from ``List<T>`` in Java. It can
-be used as the type for both return value and parameters.
+This is a list of ``RayObject<T>``s, which inherits from ``List<T>`` in Java. It
+can be used as the type for both a return value and a parameter value.
 
 ``RayMap<L, T>``
-''''''''''''''''
+^^^^^^^^^^^^^^^^
 
-A map of ``RayObject<T>`` with each indexed using a label with type
+A map of ``RayObject<T>``s with each indexed using a label with type
 ``L``, inherited from ``Map<L, T>``. It can be used as the type for both
-return value and parameters.
+a return value and a parameter value.
 
 Enable multiple heterogeneous return values
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Java worker support at most four multiple heterogeneous return values,
-and in order to let the runtime know the number of return values we
+At most four multiple heterogeneous return values are supported.
+In order to let the runtime know the number of return values, we
 supply the method of ``Ray.call_X`` as follows.
 
 .. code:: java
@@ -134,8 +139,8 @@ supply the method of ``Ray.call_X`` as follows.
 
 Note ``func`` must match the following requirements.
 
--  It must hava the return value of ``MultipleReturnsX``, and must be
-   invoked using correspondent ``Ray.call_X``
+-  It must have a return value of type ``MultipleReturnsX``, and must be
+   invoked using the corresponding ``Ray.call_X``.
 
 Here is an example.
 
@@ -160,10 +165,10 @@ Here is an example.
 Return with ``RayList``
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-We use ``Ray.call_n`` to do so, which is similar to ``Ray.call`` except
-an additional parameter ``returnCount`` which tells the number of return
-``RayObject<R>`` in ``RayList<R>``. This is because Ray core engines
-needs to know it before the method is really called.
+We use ``Ray.call_n`` to do so, which is similar to ``Ray.call`` except it has
+an additional parameter ``returnCount`` which specifies the number of return
+``RayObject<R>``s in ``RayList<R>``. This is because Ray needs to know the
+number of return values before the method is actually executed.
 
 .. code:: java
 
