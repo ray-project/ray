@@ -12,7 +12,7 @@ from ray.tune import TuneError
 from ray.tune.web_server import TuneServer
 from ray.tune.suggest import SearchAlgorithm
 from ray.tune.trial import Trial, Resources
-from ray.tune.trial_scheduler import FIFOScheduler, TrialScheduler
+from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 
 MAX_DEBUG_TRIALS = 20
 

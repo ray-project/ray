@@ -13,7 +13,7 @@ from keras import backend as K
 
 import ray
 from ray import tune
-from ray.tune.async_hyperband import AsyncHyperBandScheduler
+from ray.tune.schedulers import AsyncHyperBandScheduler
 
 
 class TuneCallback(keras.callbacks.Callback):

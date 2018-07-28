@@ -7,13 +7,11 @@ from itertools import chain
 
 from ray.tune.error import TuneError
 from ray.tune.suggest import SearchAlgorithm
-from ray.tune.hyperband import HyperBandScheduler
-from ray.tune.async_hyperband import AsyncHyperBandScheduler
-from ray.tune.median_stopping_rule import MedianStoppingRule
 from ray.tune.trial import Trial, DEBUG_PRINT_INTERVAL
 from ray.tune.log_sync import wait_for_log_sync
 from ray.tune.trial_runner import TrialRunner
-from ray.tune.trial_scheduler import FIFOScheduler
+from ray.tune.schedulers import (HyperBandScheduler, AsyncHyperBandScheduler,
+                                 FIFOScheduler, MedianStoppingRule)
 from ray.tune.web_server import TuneServer
 from ray.tune.variant_generator import generate_trials
 from ray.tune.experiment import Experiment

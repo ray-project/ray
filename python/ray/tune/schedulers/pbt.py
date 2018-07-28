@@ -8,7 +8,7 @@ import copy
 
 from ray.tune.error import TuneError
 from ray.tune.trial import Trial
-from ray.tune.trial_scheduler import FIFOScheduler, TrialScheduler
+from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.variant_generator import _format_vars
 
 # Parameters are transferred from the top PBT_QUANTILE fraction of trials to

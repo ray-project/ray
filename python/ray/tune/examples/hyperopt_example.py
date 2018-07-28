@@ -4,7 +4,7 @@ from __future__ import print_function
 
 import ray
 from ray.tune import run_experiments, register_trainable
-from ray.tune.async_hyperband import AsyncHyperBandScheduler
+from ray.tune.schedulers import AsyncHyperBandScheduler
 from ray.tune.suggest import HyperOptSearch
 
 

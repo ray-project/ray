@@ -14,7 +14,7 @@ import numpy as np
 import ray
 from ray.tune import Trainable, TrainingResult, register_trainable, \
     run_experiments
-from ray.tune.async_hyperband import AsyncHyperBandScheduler
+from ray.tune.schedulers import AsyncHyperBandScheduler
 
 
 class MyTrainableClass(Trainable):

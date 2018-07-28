@@ -27,7 +27,7 @@ from ray.tune import grid_search, run_experiments
 from ray.tune import register_trainable
 from ray.tune import Trainable
 from ray.tune import TrainingResult
-from ray.tune.pbt import PopulationBasedTraining
+from ray.tune.schedulers import PopulationBasedTraining
 
 num_classes = 10
 

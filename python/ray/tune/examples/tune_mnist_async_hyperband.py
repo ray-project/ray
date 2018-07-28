@@ -237,7 +237,7 @@ if __name__ == '__main__':
 
     ray.init()
 
-    from ray.tune.async_hyperband import AsyncHyperBandScheduler
+    from ray.tune.schedulers import AsyncHyperBandScheduler
     run_experiments(
         {
             'tune_mnist_test': mnist_spec

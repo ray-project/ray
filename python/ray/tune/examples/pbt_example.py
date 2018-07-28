@@ -13,7 +13,7 @@ import time
 import ray
 from ray.tune import Trainable, TrainingResult, register_trainable, \
     run_experiments
-from ray.tune.pbt import PopulationBasedTraining
+from ray.tune.schedulers import PopulationBasedTraining
 
 
 class MyTrainableClass(Trainable):
