@@ -11,9 +11,7 @@ Tune's PBT scheduler can be plugged in on top of an existing grid or random sear
 
 .. code-block:: python
 
-    run_experiments(
-        {...},
-        scheduler=PopulationBasedTraining(
+    pbt_scheduler = PopulationBasedTraining(
             time_attr='time_total_s',
             reward_attr='mean_accuracy',
             perturbation_interval=600.0,
@@ -21,7 +19,8 @@ Tune's PBT scheduler can be plugged in on top of an existing grid or random sear
                 "lr": [1e-3, 5e-4, 1e-4, 5e-5, 1e-5],
                 "alpha": lambda: random.uniform(0.0, 1.0),
                 ...
-            }))
+            })
+    run_experiments({...}, scheduler=pbt_scheduler)
 
 When the PBT scheduler is enabled, each trial variant is treated as a member of the population. Periodically, top-performing trials are checkpointed (this requires your Trainable to support `checkpointing <tune.html#trial-checkpointing>`__). Low-performing trials clone the checkpoints of top performers and perturb the configurations in the hope of discovering an even better variation.
 
@@ -29,5 +28,5 @@ You can run this `toy PBT example <https://github.com/ray-project/ray/blob/maste
 
 .. image:: pbt.png
 
-.. autoclass:: ray.tune.pbt.PopulationBasedTraining
+.. autoclass:: ray.tune.schedulers.PopulationBasedTraining
 

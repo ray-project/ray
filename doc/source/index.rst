@@ -73,6 +73,7 @@ Ray comes with libraries that accelerate deep learning and reinforcement learnin
    tune-config.rst
    hyperband.rst
    pbt.rst
+   tune-package-ref.rst
 
 .. toctree::
    :maxdepth: 1

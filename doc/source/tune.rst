@@ -19,9 +19,9 @@ You'll need to first `install ray <installation.html>`__ to import Tune.
 
     pip install ray
 
+
 Quick Start
 ~~~~~~~~~~~
-
 
 This example runs a small grid search over a neural network training function using Tune, reporting status on the command line until the stopping condition of ``mean_accuracy >= 99`` is reached. Tune works with any deep learning framework.
 
@@ -36,7 +36,6 @@ Tune uses Ray as a backend, so we will first import and initialize Ray.
 
 
 For the function you wish to tune, pass in a ``reporter`` object:
-.. TODO(rliaw) Document reporter
 
 .. code-block:: python
    :emphasize-lines: 1,11
@@ -61,11 +60,12 @@ For the function you wish to tune, pass in a ``reporter`` object:
     all_trials = tune.run_experiments({
         "my_experiment": {
             "run": train_func,
-            "stop": {},
+            "stop": {"mean_accuracy": 99},
             "config": {"momentum": tune.grid_search([0.1, 0.2])}
         }
     })
 
+Tune can be used anywhere Ray can, e.g. on your laptop with ``ray.init()`` embedded in a Python script, or in an `auto-scaling cluster <autoscaling.html>`__ for massive parallelism.
 
 Features
 --------
@@ -90,15 +90,9 @@ Concepts
 
 Tune schedules a number of *trials* in a cluster. Each trial runs a user-defined Python function or class and is parameterized by a *config* variation passed to the user code.
 
-In order to run any given function, you need to run ``register_trainable`` to a name. This makes all Ray workers aware of the function.
-
-.. autofunction:: ray.tune.register_trainable
-
 Tune provides a ``run_experiments`` function that generates and runs the trials described by the experiment specification. The trials are scheduled and managed by a *trial scheduler* that implements the search algorithm (default is FIFO).
 
 .. autofunction:: ray.tune.run_experiments
-
-Tune can be used anywhere Ray can, e.g. on your laptop with ``ray.init()`` embedded in a Python script, or in an `auto-scaling cluster <autoscaling.html>`__ for massive parallelism.
 
 You can find the code for Tune `here on GitHub <https://github.com/ray-project/ray/tree/master/python/ray/tune>`__.
 
@@ -169,7 +163,6 @@ You often will want to compute a large object (e.g., training data, model weight
 
     register_trainable("f", f)
     run_experiments(...)
-
 
 
 

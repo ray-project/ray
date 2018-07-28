@@ -10,7 +10,8 @@ import random
 import types
 import inspect
 
-from ray.tune import TuneError, register_trainable
+from ray.tune import TuneError
+from ray.tune.registry import register_trainable
 from ray.tune.suggest import SearchAlgorithm
 from ray.tune.logger import _SafeFallbackEncoder
 from ray.tune.trial import Trial
@@ -153,7 +154,11 @@ def generate_variants(unresolved_spec):
 
 
 def grid_search(values):
-    """Convenience method for specifying grid search over a value."""
+    """Convenience method for specifying grid search over a value.
+
+    Arguments:
+        values: An iterable whose parameters will be gridded.
+    """
 
     return {"grid_search": values}
 

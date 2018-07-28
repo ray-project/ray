@@ -13,7 +13,12 @@ from ray.tune.util import _serve_get_pin_requests
 
 
 class StatusReporter(object):
-    """Object passed into your main() that you can report status through."""
+    """Object passed into your main() that you can report status through.
+
+    Example:
+        >>> reporter = StatusReporter()
+        >>> reporter(timesteps_total=1)
+    """
 
     def __init__(self):
         self._latest_result = None
@@ -26,7 +31,7 @@ class StatusReporter(object):
         """Report updated training status.
 
         Args:
-            kwargs (TrainingResult): Latest training result status. You must
+            kwargs: Latest training result status. You must
                 at least define `timesteps_total`, but probably want to report
                 some of the other metrics as well.
         """
