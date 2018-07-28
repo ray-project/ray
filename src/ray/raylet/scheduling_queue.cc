@@ -46,8 +46,8 @@ namespace ray {
 namespace raylet {
 
 SchedulingQueue::TaskQueue::~TaskQueue() {
-    task_map_.clear();
-    task_list_.clear();
+  task_map_.clear();
+  task_list_.clear();
 }
 
 bool SchedulingQueue::TaskQueue::AppendTask(const TaskID &task_id, const Task &task) {
@@ -69,7 +69,8 @@ bool SchedulingQueue::TaskQueue::RemoveTask(const TaskID &task_id) {
   return true;
 }
 
-bool SchedulingQueue::TaskQueue::RemoveTask(const TaskID &task_id, std::vector<Task> &removed_tasks) {
+bool SchedulingQueue::TaskQueue::RemoveTask(const TaskID &task_id,
+                                            std::vector<Task> &removed_tasks) {
   auto iter = task_map_.find(task_id);
   if (iter == task_map_.end()) {
     return false;
@@ -86,9 +87,7 @@ bool SchedulingQueue::TaskQueue::HasTask(const TaskID &task_id) const {
   return task_map_.find(task_id) != task_map_.end();
 }
 
-const std::list<Task> &SchedulingQueue::TaskQueue::GetTasks() const {
-  return task_list_;
-}
+const std::list<Task> &SchedulingQueue::TaskQueue::GetTasks() const { return task_list_; }
 
 const std::list<Task> &SchedulingQueue::GetMethodsWaitingForActorCreation() const {
   return this->methods_waiting_for_actor_creation_.GetTasks();

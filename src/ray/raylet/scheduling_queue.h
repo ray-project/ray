@@ -148,7 +148,7 @@ class SchedulingQueue {
   void FilterState(std::unordered_set<TaskID> &task_ids, TaskState filter_state) const;
 
   class TaskQueue {
-  public:
+   public:
     /// Creating a task queue.
     TaskQueue() {}
 
@@ -181,7 +181,7 @@ class SchedulingQueue {
     /// \brief Remove the task list of the queue.
     const std::list<Task> &GetTasks() const;
 
-  private:
+   private:
     // A list of tasks.
     std::list<Task> task_list_;
     // A hash to speed up looking up a task.
@@ -189,7 +189,6 @@ class SchedulingQueue {
   };
 
  private:
-
   /// Tasks that are destined for actors that have not yet been created.
   TaskQueue methods_waiting_for_actor_creation_;
   /// Tasks that are waiting for an object dependency to appear locally.
