@@ -34,7 +34,8 @@ PLASMA_MANAGER_HEARTBEAT_CHANNEL = b"plasma_managers"
 DRIVER_DEATH_CHANNEL = b"driver_deaths"
 
 # xray heartbeats
-XRAY_HEARTBEAT_CHANNEL = b"6"
+XRAY_HEARTBEAT_CHANNEL = str(
+    ray.gcs_utils.TablePubsub.HEARTBEAT).encode("ascii")
 
 # common/redis_module/ray_redis_module.cc
 OBJECT_INFO_PREFIX = b"OI:"
@@ -598,7 +599,7 @@ class Monitor(object):
         self.subscribe(LOCAL_SCHEDULER_INFO_CHANNEL)
         self.subscribe(PLASMA_MANAGER_HEARTBEAT_CHANNEL)
         self.subscribe(DRIVER_DEATH_CHANNEL)
-        self.subscribe(ray.gcs_utils.TablePubsub.HEARTBEAT, primary=False)
+        self.subscribe(XRAY_HEARTBEAT_CHANNEL, primary=False)
 
         # Scan the database table for dead database clients. NOTE: This must be
         # called before reading any messages from the subscription channel.
