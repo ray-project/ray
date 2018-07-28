@@ -480,9 +480,12 @@ class StandardAutoscaler(object):
             return
         last_heartbeat_time = self.load_metrics.last_heartbeat_time_by_ip.get(
             self.provider.internal_ip(node_id), 0)
-        if time.time() - last_heartbeat_time < AUTOSCALER_HEARTBEAT_TIMEOUT_S:
+        delta = time.time() - last_heartbeat_time
+        if delta < AUTOSCALER_HEARTBEAT_TIMEOUT_S:
             return
-        print("StandardAutoscaler: Restarting Ray on {}".format(node_id))
+        print("StandardAutoscaler: No heartbeat from node "
+              "{} in {} seconds, restarting Ray to recover...".format(
+                  node_id, delta))
         updater = self.node_updater_cls(
             node_id,
             self.config["provider"],
