@@ -8,8 +8,9 @@ import numpy
 import os
 import random
 import types
+import inspect
 
-from ray.tune import TuneError
+from ray.tune import TuneError, register_trainable
 from ray.tune.suggest import SearchAlgorithm
 from ray.tune.logger import _SafeFallbackEncoder
 from ray.tune.trial import Trial
@@ -27,6 +28,22 @@ def to_argv(config):
         else:
             argv.append(json.dumps(v, cls=_SafeFallbackEncoder))
     return argv
+
+
+def _register_trainable_check(unresolved_spec):
+    """Converts`run` parameter to registered label if not already."""
+    if "run" not in unresolved_spec:
+        raise TuneError("Must specify `run` in {}".format(unresolved_spec))
+
+    run = unresolved_spec["run"]
+    if type(run) == "str":
+        return
+    elif inspect.isclass(run) or inspect.isfunction(run):
+        register_id = "tune:" + str(run)
+        register_trainable(register_id, run)
+        unresolved_spec["run"] = register_id
+    else:
+        raise TuneError("`run` argument is not a function, class, or str.")
 
 
 def generate_trials(unresolved_spec, output_path='', search_alg=None):
@@ -50,8 +67,7 @@ def generate_trials(unresolved_spec, output_path='', search_alg=None):
             yield None. Otherwise, it will yield a trial.
     """
     search_alg = search_alg or SearchAlgorithm()
-    if "run" not in unresolved_spec:
-        raise TuneError("Must specify `run` in {}".format(unresolved_spec))
+    _register_trainable_check(unresolved_spec)
     parser = make_parser()
     i = 0
     for _ in range(unresolved_spec.get("repeat", 1)):
