@@ -808,7 +808,7 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
       } else {
         // The actor is remote. Forward the task to the node manager that owns
         // the actor.
-        if (removed_clients_.find(node_manager_id) != removed_clients_.end()) {
+        if (gcs_client_->client_table().IsRemoved(node_manager_id)) {
           // The remote node manager is dead, so handle the fact that this actor
           // is also dead.
           TreatTaskAsFailed(spec);
