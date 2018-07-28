@@ -208,31 +208,40 @@ void TaskDependencyManager::TaskPending(const Task &task) {
   TaskID task_id = task.GetTaskSpecification().TaskId();
 
   // Record that the task is pending execution.
-  pending_tasks_.emplace(task_id, PendingTask(initial_lease_period_ms_, io_service_));
-
-  // Find any subscribed tasks that are dependent on objects created by the
-  // pending task.
-  auto remote_task_entry = required_tasks_.find(task_id);
-  if (remote_task_entry != required_tasks_.end()) {
-    for (const auto &object_entry : remote_task_entry->second) {
-      // This object created by the pending task will appear locally once the
-      // task completes execution. Cancel any in-progress operations to make
-      // the object local.
-      HandleRemoteDependencyCanceled(object_entry.first);
+  auto inserted =
+      pending_tasks_.emplace(task_id, PendingTask(initial_lease_period_ms_, io_service_));
+  if (inserted.second) {
+    // This is the first time we've heard that this task is pending.  Find any
+    // subscribed tasks that are dependent on objects created by the pending
+    // task.
+    auto remote_task_entry = required_tasks_.find(task_id);
+    if (remote_task_entry != required_tasks_.end()) {
+      for (const auto &object_entry : remote_task_entry->second) {
+        // This object created by the pending task will appear locally once the
+        // task completes execution. Cancel any in-progress operations to make
+        // the object local.
+        HandleRemoteDependencyCanceled(object_entry.first);
+      }
     }
-  }
 
-  // Acquire the lease for the task's execution in the global lease table.
-  AcquireTaskLease(task_id);
+    // Acquire the lease for the task's execution in the global lease table.
+    AcquireTaskLease(task_id);
+  }
 }
 
 void TaskDependencyManager::AcquireTaskLease(const TaskID &task_id) {
   auto it = pending_tasks_.find(task_id);
-  RAY_CHECK(it != pending_tasks_.end());
   int64_t now_ms = current_time_ms();
+  if (it == pending_tasks_.end()) {
+    return;
+  }
+
   // Check that we were able to renew the task lease before the previous one
   // expired.
-  RAY_CHECK(now_ms < it->second.expires_at);
+  if (now_ms > it->second.expires_at) {
+    RAY_LOG(WARNING) << "Task lease to renew has already expired by "
+                     << (it->second.expires_at - now_ms) << "ms";
+  }
 
   auto task_lease_data = std::make_shared<TaskLeaseDataT>();
   task_lease_data->node_manager_id = client_id_.hex();
@@ -255,7 +264,11 @@ void TaskDependencyManager::AcquireTaskLease(const TaskID &task_id) {
 
 void TaskDependencyManager::TaskCanceled(const TaskID &task_id) {
   // Record that the task is no longer pending execution.
-  pending_tasks_.erase(task_id);
+  auto it = pending_tasks_.find(task_id);
+  if (it == pending_tasks_.end()) {
+    return;
+  }
+
   // Find any subscribed tasks that are dependent on objects created by the
   // canceled task.
   auto remote_task_entry = required_tasks_.find(task_id);
@@ -266,6 +279,7 @@ void TaskDependencyManager::TaskCanceled(const TaskID &task_id) {
       HandleRemoteDependencyRequired(object_entry.first);
     }
   }
+  pending_tasks_.erase(it);
 }
 
 }  // namespace raylet

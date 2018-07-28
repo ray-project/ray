@@ -28,7 +28,9 @@ void ReconstructionPolicy::SetTaskTimeout(
       [this, task_id](const boost::system::error_code &error) {
         if (!error) {
           auto it = listening_tasks_.find(task_id);
-          RAY_CHECK(it != listening_tasks_.end());
+          if (it == listening_tasks_.end()) {
+            return;
+          }
           if (it->second.subscribed) {
             // If the timer expired and we were subscribed to notifications,
             // then this means that we did not receive a task lease

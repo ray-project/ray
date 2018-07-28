@@ -784,10 +784,6 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
                              bool forwarded) {
   // Add the task and its uncommitted lineage to the lineage cache.
   lineage_cache_.AddWaitingTask(task, uncommitted_lineage);
-  // Mark the task as pending. Once the task has finished execution, or once it
-  // has been forwarded to another node, the task must be marked as canceled in
-  // the TaskDependencyManager.
-  task_dependency_manager_.TaskPending(task);
 
   const TaskSpecification &spec = task.GetTaskSpecification();
   if (spec.IsActorTask()) {
@@ -841,6 +837,10 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
       // Keep the task queued until we discover the actor's location.
       // (See design_docs/task_states.rst for the state transition diagram.)
       local_queues_.QueueMethodsWaitingForActorCreation({task});
+      // Mark the task as pending. It will be canceled once we discover the
+      // actor's location and either execute the task ourselves or forward it
+      // to another node.
+      task_dependency_manager_.TaskPending(task);
     }
   } else {
     // This is a non-actor task. Queue the task for a placement decision or for dispatch
@@ -932,6 +932,10 @@ void NodeManager::HandleWorkerUnblocked(std::shared_ptr<Worker> worker) {
 }
 
 void NodeManager::EnqueuePlaceableTask(const Task &task) {
+  // Mark the task as pending. Once the task has finished execution, or once it
+  // has been forwarded to another node, the task must be marked as canceled in
+  // the TaskDependencyManager.
+  task_dependency_manager_.TaskPending(task);
   // TODO(atumanov): add task lookup hashmap and change EnqueuePlaceableTask to take
   // a vector of TaskIDs. Trigger MoveTask internally.
   // Subscribe to the task's dependencies.
