@@ -120,7 +120,8 @@ class TaskDependencyManager {
 
     /// The timeout before the lease should be renewed.
     int64_t lease_period;
-    /// The time at which the current lease will expire.
+    /// The time at which the current lease will expire, according to this
+    /// node's steady clock.
     int64_t expires_at;
     std::unique_ptr<boost::asio::deadline_timer> lease_timer;
   };

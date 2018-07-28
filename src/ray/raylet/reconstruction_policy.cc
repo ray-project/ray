@@ -20,7 +20,7 @@ ReconstructionPolicy::ReconstructionPolicy(
 void ReconstructionPolicy::SetTaskTimeout(
     std::unordered_map<TaskID, ReconstructionTask>::iterator task_it,
     int64_t timeout_ms) {
-  task_it->second.expires_at = current_sys_time_ms() + timeout_ms;
+  task_it->second.expires_at = current_time_ms() + timeout_ms;
   auto timeout = boost::posix_time::milliseconds(timeout_ms);
   task_it->second.reconstruction_timer->expires_from_now(timeout);
   const TaskID task_id = task_it->first;
@@ -29,7 +29,6 @@ void ReconstructionPolicy::SetTaskTimeout(
         if (!error) {
           auto it = listening_tasks_.find(task_id);
           RAY_CHECK(it != listening_tasks_.end());
-
           if (it->second.subscribed) {
             // We did not receive a task lease notification within the lease period.
             // The lease is expired, so attempt to reconstruct the task.
@@ -99,21 +98,19 @@ void ReconstructionPolicy::HandleTaskLeaseExpired(const TaskID &task_id) {
 }
 
 void ReconstructionPolicy::HandleTaskLeaseNotification(const TaskID &task_id,
-                                                       int64_t expires_at_ms) {
+                                                       int64_t lease_timeout_ms) {
   auto it = listening_tasks_.find(task_id);
   if (it == listening_tasks_.end()) {
     // We are no longer listening for this task, so ignore the notification.
     return;
   }
 
-  auto now_ms = current_sys_time_ms();
-  if (now_ms >= expires_at_ms) {
-    // The current lease has expired.
+  if (lease_timeout_ms == 0) {
     HandleTaskLeaseExpired(task_id);
-  } else if (expires_at_ms > it->second.expires_at) {
-    // The current lease is still active. Reset the timer to the lease's
-    // expiration time.
-    SetTaskTimeout(it, expires_at_ms - now_ms);
+  } else if ((current_time_ms() + lease_timeout_ms) > it->second.expires_at) {
+    // The current lease is longer than the timer's current expiration time.
+    // Reset the timer according to the current lease.
+    SetTaskTimeout(it, lease_timeout_ms);
   }
 }
 

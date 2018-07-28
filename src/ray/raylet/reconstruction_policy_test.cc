@@ -113,7 +113,7 @@ class ReconstructionPolicyTest : public ::testing::Test {
         [this](gcs::AsyncGcsClient *client, const TaskID &task_id,
                const TaskLeaseDataT &task_lease) {
           reconstruction_policy_->HandleTaskLeaseNotification(task_id,
-                                                              task_lease.expires_at);
+                                                              task_lease.timeout);
         },
         [this](gcs::AsyncGcsClient *client, const TaskID &task_id) {
           reconstruction_policy_->HandleTaskLeaseNotification(task_id, 0);
@@ -249,7 +249,7 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionSuppressed) {
   auto task_lease_data = std::make_shared<TaskLeaseDataT>();
   task_lease_data->node_manager_id = ClientID::from_random().hex();
   task_lease_data->acquired_at = current_sys_time_ms();
-  task_lease_data->expires_at = task_lease_data->acquired_at + (2 * test_period);
+  task_lease_data->timeout = 2 * test_period;
   mock_gcs_.Add(DriverID::nil(), task_id, task_lease_data);
 
   // Listen for an object.
@@ -260,7 +260,7 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionSuppressed) {
   ASSERT_TRUE(reconstructed_tasks_.empty());
 
   // Run the test again past the expiration time of the lease.
-  Run((task_lease_data->expires_at - current_sys_time_ms()) * 1.1);
+  Run(task_lease_data->timeout * 1.1);
   // Check that this time, reconstruction is triggered.
   ASSERT_EQ(reconstructed_tasks_[task_id], 1);
 }
@@ -277,8 +277,7 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionContinuallySuppressed) {
     auto task_lease_data = std::make_shared<TaskLeaseDataT>();
     task_lease_data->node_manager_id = ClientID::from_random().hex();
     task_lease_data->acquired_at = current_sys_time_ms();
-    task_lease_data->expires_at =
-        task_lease_data->acquired_at + reconstruction_timeout_ms_;
+    task_lease_data->timeout = reconstruction_timeout_ms_;
     mock_gcs_.Add(DriverID::nil(), task_id, task_lease_data);
   });
   // Run the test for much longer than the reconstruction timeout.

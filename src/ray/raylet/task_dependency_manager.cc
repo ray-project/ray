@@ -229,15 +229,15 @@ void TaskDependencyManager::TaskPending(const Task &task) {
 void TaskDependencyManager::AcquireTaskLease(const TaskID &task_id) {
   auto it = pending_tasks_.find(task_id);
   RAY_CHECK(it != pending_tasks_.end());
-  int64_t now_ms = current_sys_time_ms();
+  int64_t now_ms = current_time_ms();
+  // Check that we were able to renew the task lease before the previous one
+  // expired.
   RAY_CHECK(now_ms < it->second.expires_at);
-
-  int64_t expires_at = now_ms + it->second.lease_period;
 
   auto task_lease_data = std::make_shared<TaskLeaseDataT>();
   task_lease_data->node_manager_id = client_id_.hex();
-  task_lease_data->acquired_at = now_ms;
-  task_lease_data->expires_at = expires_at;
+  task_lease_data->acquired_at = current_sys_time_ms();
+  task_lease_data->timeout = it->second.lease_period;
   RAY_CHECK_OK(task_lease_table_.Add(DriverID::nil(), task_id, task_lease_data, nullptr));
 
   auto period = boost::posix_time::milliseconds(it->second.lease_period / 2);
@@ -249,7 +249,7 @@ void TaskDependencyManager::AcquireTaskLease(const TaskID &task_id) {
         }
       });
 
-  it->second.expires_at = expires_at;
+  it->second.expires_at = now_ms + it->second.lease_period;
   it->second.lease_period *= 2;
 }
 

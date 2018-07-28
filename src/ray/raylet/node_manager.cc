@@ -139,7 +139,18 @@ ray::Status NodeManager::RegisterGcs() {
   const auto task_lease_notification_callback = [this](gcs::AsyncGcsClient *client,
                                                        const TaskID &task_id,
                                                        const TaskLeaseDataT &task_lease) {
-    reconstruction_policy_.HandleTaskLeaseNotification(task_id, task_lease.expires_at);
+    const ClientID node_manager_id = ClientID::from_binary(task_lease.node_manager_id);
+    if (gcs_client_->client_table().IsRemoved(node_manager_id)) {
+      // The node manager that added the task lease is already removed. The
+      // lease is considered inactive.
+      reconstruction_policy_.HandleTaskLeaseNotification(task_id, 0);
+    } else {
+      // NOTE(swang): The task_lease.timeout is an overestimate of the lease's
+      // expiration period since the entry may have been in the GCS for some
+      // time already. For a more accurate estimate, the age of the entry in
+      // the GCS should be subtracted from task_lease.timeout.
+      reconstruction_policy_.HandleTaskLeaseNotification(task_id, task_lease.timeout);
+    }
   };
   const auto task_lease_empty_callback = [this](gcs::AsyncGcsClient *client,
                                                 const TaskID &task_id) {

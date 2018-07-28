@@ -5,10 +5,12 @@ namespace ray {
 ObjectDirectory::ObjectDirectory(std::shared_ptr<gcs::AsyncGcsClient> &gcs_client)
     : gcs_client_(gcs_client) {}
 
+namespace {
+
 std::vector<ClientID> UpdateObjectLocations(
     std::unordered_set<ClientID> &client_ids,
     const std::vector<ObjectTableDataT> &location_history,
-    const std::unordered_set<ClientID> &removed_nodes) {
+    const ray::gcs::ClientTable &client_table) {
   // location_history contains the history of locations of the object (it is a log),
   // which might look like the following:
   //   client1.is_eviction = false
@@ -26,7 +28,7 @@ std::vector<ClientID> UpdateObjectLocations(
   }
   // Filter out the removed clients from the object locations.
   for (auto it = client_ids.begin(); it != client_ids.end();) {
-    if (removed_nodes.count(*it) == 1) {
+    if (client_table.IsRemoved(*it)) {
       it = client_ids.erase(it);
     } else {
       it++;
@@ -34,6 +36,8 @@ std::vector<ClientID> UpdateObjectLocations(
   }
   return std::vector<ClientID>(client_ids.begin(), client_ids.end());
 }
+
+}  // namespace
 
 void ObjectDirectory::RegisterBackend() {
   auto object_notification_callback = [this](
@@ -46,9 +50,9 @@ void ObjectDirectory::RegisterBackend() {
       return;
     }
     // Update entries for this object.
-    std::vector<ClientID> client_id_vec = UpdateObjectLocations(
-        object_id_listener_pair->second.current_object_locations, location_history,
-        gcs_client_->client_table().GetRemovedClients());
+    std::vector<ClientID> client_id_vec =
+        UpdateObjectLocations(object_id_listener_pair->second.current_object_locations,
+                              location_history, gcs_client_->client_table());
     if (!client_id_vec.empty()) {
       // Copy the callbacks so that the callbacks can unsubscribe without interrupting
       // looping over the callbacks.
@@ -161,9 +165,8 @@ ray::Status ObjectDirectory::LookupLocations(const ObjectID &object_id,
                        const std::vector<ObjectTableDataT> &location_history) {
         // Build the set of current locations based on the entries in the log.
         std::unordered_set<ClientID> client_ids;
-        std::vector<ClientID> locations_vector =
-            UpdateObjectLocations(client_ids, location_history,
-                                  gcs_client_->client_table().GetRemovedClients());
+        std::vector<ClientID> locations_vector = UpdateObjectLocations(
+            client_ids, location_history, gcs_client_->client_table());
         callback(locations_vector, object_id);
       });
   return status;

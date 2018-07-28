@@ -195,8 +195,10 @@ table HeartbeatTableData {
 table TaskLeaseData {
   // Node manager client id.
   node_manager_id: string;
-  // The time that the lease was last acquired at.
+  // The time that the lease was last acquired at. NOTE(swang): This is the
+  // system clock time according to the node that added the entry and is not
+  // synchronized with other nodes.
   acquired_at: long;
-  // The time that the lease will expire at.
-  expires_at: long;
+  // The period that the lease is active for.
+  timeout: long;
 }

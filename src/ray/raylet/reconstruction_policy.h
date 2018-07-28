@@ -61,14 +61,14 @@ class ReconstructionPolicy : public ReconstructionPolicyInterface {
   void Cancel(const ObjectID &object_id);
 
   /// Handle a notification for a task lease. This handler should be called to
-  /// indicate that a task currently being executed, so any objects that it
+  /// indicate that a task is currently being executed, so any objects that it
   /// creates should not be reconstructed.
   ///
   /// \param task_id The task ID of the task being executed.
-  /// \param expires_at The time at which the task's lease expires. If a second
-  /// notification is not received within this timeout, then objects that the
-  /// task creates may be reconstructed.
-  void HandleTaskLeaseNotification(const TaskID &task_id, int64_t expires_at);
+  /// \param lease_timeout_ms After this timeout, the task's lease is
+  /// guaranteed to be expired. If a second notification is not received within
+  /// this timeout, then objects that the task creates may be reconstructed.
+  void HandleTaskLeaseNotification(const TaskID &task_id, int64_t lease_timeout_ms);
 
  private:
   struct ReconstructionTask {
@@ -81,7 +81,8 @@ class ReconstructionPolicy : public ReconstructionPolicyInterface {
 
     // The objects created by this task that we are listening for notifications for.
     std::unordered_set<ObjectID> created_objects;
-    // The time at which the current lease for this task expires.
+    // The time at which the timer for this task expires, according to this
+    // node's steady clock.
     int64_t expires_at;
     // Whether we are subscribed to lease notifications for this task.
     bool subscribed;

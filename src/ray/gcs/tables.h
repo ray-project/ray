@@ -588,22 +588,23 @@ class ClientTable : private Log<UniqueID, ClientTableData> {
   /// \param client The client to get information about.
   /// \return A reference to the requested client. If the client is not in the
   /// cache, then an entry with a nil ClientID will be returned.
-  const ClientTableDataT &GetClient(const ClientID &client);
+  const ClientTableDataT &GetClient(const ClientID &client) const;
 
   /// Get the local client's ID.
   ///
   /// \return The local client's ID.
-  const ClientID &GetLocalClientId();
+  const ClientID &GetLocalClientId() const;
 
   /// Get the local client's information.
   ///
   /// \return The local client's information.
-  const ClientTableDataT &GetLocalClient();
+  const ClientTableDataT &GetLocalClient() const;
 
-  /// Get the removed clients.
+  /// Check whether the given client is removed.
   ///
-  /// \return The removed clients.
-  const std::unordered_set<ClientID> &GetRemovedClients();
+  /// \param client_id The ID of the client to check.
+  /// \return Whether the client with ID client_id is removed.
+  bool IsRemoved(const ClientID &client_id) const;
 
  private:
   /// Handle a client table notification.
