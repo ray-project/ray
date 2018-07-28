@@ -11,10 +11,11 @@ class Experiment(object):
 
     Parameters:
         name (str): Name of experiment.
-        run (str): The algorithm or model to train. This may refer to the
-            name of a built-on algorithm (e.g. RLLib's DQN or PPO), or a
-            user-defined trainable function or class
-            registered in the tune registry.
+        run (function|class|str): The algorithm or model to train.
+            This may refer to the name of a built-on algorithm
+            (e.g. RLLib's DQN or PPO), a user-defined trainable
+            function or class, or the string identifier of a
+            trainable function or class registered in the tune registry.
         stop (dict): The stopping criteria. The keys may be any field in
             TrainingResult, whichever is reached first.  Defaults to
             empty dict.
