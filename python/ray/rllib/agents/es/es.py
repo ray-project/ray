@@ -19,6 +19,7 @@ from ray.rllib.agents.es import optimizers
 from ray.rllib.agents.es import policies
 from ray.rllib.agents.es import tabular_logger as tlogger
 from ray.rllib.agents.es import utils
+from ray.rllib.utils import merge_dicts
 
 Result = namedtuple("Result", [
     "noise_indices", "noisy_returns", "sign_noisy_returns", "noisy_lengths",
@@ -147,7 +148,7 @@ class ESAgent(Agent):
 
     @classmethod
     def default_resource_request(cls, config):
-        cf = dict(cls._default_config, **config)
+        cf = merge_dicts(cls._default_config, config)
         return Resources(cpu=1, gpu=0, extra_cpu=cf["num_workers"])
 
     def _init(self):
