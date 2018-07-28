@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import binascii
 import copy
 from collections import defaultdict
 import heapq
@@ -16,6 +17,10 @@ import ray.gcs_utils
 import ray.ray_constants as ray_constants
 from ray.utils import (decode, binary_to_object_id, binary_to_hex,
                        hex_to_binary)
+
+# These channels must be kept up-to-date with the C++ codebase
+LOCAL_SCHEDULER_INFO_CHANNEL = b"local_schedulers"
+XRAY_HEARTBEAT_CHANNEL = b"6"
 
 # This mapping from integer to task state string must be kept up-to-date with
 # the scheduling_state enum in task.h.
@@ -1296,6 +1301,68 @@ class GlobalState(object):
                     resources[key] += value
 
         return dict(resources)
+
+    def available_resources(self):
+        """Get the current available cluster resources.
+
+        Note that this information can grow stale as tasks start and finish.
+
+        Returns:
+            A dictionary mapping resource name to the total quantity of that
+                resource in the cluster.
+        """
+        available_resources_by_id = {}
+
+        if not self.use_raylet:
+            subscribe_client = self.redis_client.pubsub()
+            subscribe_client.subscribe(LOCAL_SCHEDULER_INFO_CHANNEL)
+
+            local_scheduler_ids = {
+                local_scheduler["DBClientID"] for local_scheduler in
+                self.local_schedulers()
+            }
+
+            while set(available_resources_by_id.keys()) != local_scheduler_ids:
+                raw_message = subscribe_client.get_message()
+                if raw_message is None:
+                    continue
+                data = raw_message["data"]
+                # Ignore subscribtion success message from Redis
+                if isinstance(data, int):
+                    continue
+                message = (ray.gcs_utils.LocalSchedulerInfoMessage.
+                           GetRootAsLocalSchedulerInfoMessage(data, 0))
+                num_resources = message.DynamicResourcesLength()
+                dynamic_resources = {}
+                for i in range(num_resources):
+                    dyn = message.DynamicResources(i)
+                    dynamic_resources[dyn.Key().decode("utf-8")] = dyn.Value()
+
+                # Update available resources for this local scheduler
+                client_id = (binascii.hexlify(message.DbClientId()).
+                             decode("utf-8"))
+                available_resources_by_id[client_id] = dynamic_resources
+
+                # Update local schedulers in cluster
+                local_scheduler_ids = {
+                    local_scheduler["DBClientID"] for local_scheduler in
+                    self.local_schedulers()
+                }
+
+                # Remove disconnected local schedulers
+                for local_scheduler_id in available_resources_by_id.keys():
+                    if local_scheduler_id not in local_scheduler_ids:
+                        del available_resources_by_id[local_scheduler_id]
+        else:
+            # Use client table, see xray_heartbeat_handler
+            pass
+
+        total_available_resources = defaultdict(lambda: 0)
+        for available_resources in available_resources_by_id.values():
+            for resource_id, num_available in available_resources.items():
+                total_available_resources[resource_id] += num_available
+
+        return total_available_resources
 
     def _error_messages(self, job_id):
         """Get the error messages for a specific job.
