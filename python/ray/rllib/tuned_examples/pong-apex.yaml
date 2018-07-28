@@ -11,5 +11,3 @@ pong-apex:
         # num_envs_per_worker: 4
         lr: .0001
         gamma: 0.99
-        optimizer:
-            debug: true
