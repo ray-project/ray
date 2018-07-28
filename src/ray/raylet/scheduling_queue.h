@@ -149,15 +149,38 @@ class SchedulingQueue {
 
   class TaskQueue {
   public:
+    /// Creating a task queue.
     TaskQueue() {}
-    bool Append(const TaskID &task_id, const Task &task);
-    bool Remove(const TaskID &task_id);
-    bool Remove(const TaskID &task_id, std::vector<Task> &removed_tasks);
 
+    /// Destructor for task queue.
+    ~TaskQueue();
+
+    /// \brief Append a task to queue.
+    ///
+    /// \param task_id The task ID for the task to append.
+    /// \param task The task to append to the queue.
+    bool AppendTask(const TaskID &task_id, const Task &task);
+
+    /// \brief Remove a task from queue.
+    ///
+    /// \param task_id The task ID for the task to remove from the queue.
+    bool RemoveTask(const TaskID &task_id);
+
+    /// \brief Remove a task from queue.
+    ///
+    /// \param task_id The task ID for the task to remove from the queue.
+    /// \param removed_tasks If the task specified by task_id is successfully
+    //  removed from the queue, the task data is appened to the vector..
+    bool RemoveTask(const TaskID &task_id, std::vector<Task> &removed_tasks);
+
+    /// \brief Remove the task list of the queue.
     const std::list<Task> &GetTasks() const;
+
   private:
-    std::list<Task> list_;
-    std::unordered_map<TaskID, std::list<Task>::iterator> map_;
+    // A list of tasks.
+    std::list<Task> task_list_;
+    // A hash to speed up looking up a task.
+    std::unordered_map<TaskID, std::list<Task>::iterator> task_map_;
   };
 
  private:
