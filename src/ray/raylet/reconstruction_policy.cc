@@ -30,13 +30,22 @@ void ReconstructionPolicy::SetTaskTimeout(
           auto it = listening_tasks_.find(task_id);
           RAY_CHECK(it != listening_tasks_.end());
           if (it->second.subscribed) {
-            // We did not receive a task lease notification within the lease period.
-            // The lease is expired, so attempt to reconstruct the task.
+            // If the timer expired and we were subscribed to notifications,
+            // then this means that we did not receive a task lease
+            // notification within the lease period. Otherwise, the timer
+            // would have been reset when the most recent notification was
+            // received. The current lease is now considered expired.
             HandleTaskLeaseExpired(task_id);
           } else {
-            // This task is still required, so subscribe to task lease notifications.
-            // Reconstruction will be triggered if the current task lease expires, or
-            // if no one has acquired the task lease.
+            // This task is still required, so subscribe to task lease
+            // notifications.  Reconstruction will be triggered if the current
+            // task lease expires, or if no one has acquired the task lease.
+            // NOTE(swang): When reconstruction for a task is first requested,
+            // we do not initially subscribe to task lease notifications, which
+            // requires at least one GCS operation. This is in case the objects
+            // required by the task are no longer needed soon after.  If the
+            // task is still required after this initial period, then we now
+            // subscribe to task lease notifications.
             RAY_CHECK_OK(task_lease_pubsub_.RequestNotifications(JobID::nil(), task_id,
                                                                  client_id_));
             it->second.subscribed = true;
@@ -46,23 +55,29 @@ void ReconstructionPolicy::SetTaskTimeout(
 }
 
 void ReconstructionPolicy::AttemptReconstruction(const TaskID &task_id,
-                                                 const ObjectID &object_id,
+                                                 const ObjectID &required_object_id,
                                                  int reconstruction_attempt) {
-  // If we are no longer listening for objects created this task, give up.
+  // If we are no longer listening for objects created by this task, give up.
   auto it = listening_tasks_.find(task_id);
   if (it == listening_tasks_.end()) {
     return;
   }
 
-  if (it->second.created_objects.count(object_id) == 0) {
+  // If the object is no longer required, give up.
+  if (it->second.created_objects.count(required_object_id) == 0) {
     return;
   }
 
-  // If we're already past this reconstruction attempt, give up.
+  // Suppress duplicate reconstructions of the same task. This can happen if,
+  // for example, a task creates two different objects that both require
+  // reconstruction.
   if (reconstruction_attempt != it->second.reconstruction_attempt) {
+    // Through some other path, reconstruction was already attempted more than
+    // reconstruction_attempt many times.
     return;
   }
-  // Increment the number of times reconstruction has been attempted.
+  // Increment the number of times reconstruction has been attempted. This is
+  // used to suppress duplicate reconstructions of the same task.
   it->second.reconstruction_attempt++;
 
   // Reset the timer to wait for task lease notifications again. NOTE(swang):
@@ -141,6 +156,11 @@ void ReconstructionPolicy::Cancel(const ObjectID &object_id) {
   // for notifications.
   if (it->second.created_objects.empty()) {
     listening_tasks_.erase(it);
+    // Cancel notifications for the task lease if we were subscribed to them.
+    if (it->second.subscribed) {
+      RAY_CHECK_OK(
+          task_lease_pubsub_.CancelNotifications(JobID::nil(), task_id, client_id_));
+    }
   }
 }
 

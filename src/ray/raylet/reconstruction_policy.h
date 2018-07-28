@@ -73,8 +73,7 @@ class ReconstructionPolicy : public ReconstructionPolicyInterface {
  private:
   struct ReconstructionTask {
     ReconstructionTask(boost::asio::io_service &io_service)
-        : created_objects(),
-          expires_at(INT64_MAX),
+        : expires_at(INT64_MAX),
           subscribed(false),
           reconstruction_attempt(0),
           reconstruction_timer(new boost::asio::deadline_timer(io_service)) {}
@@ -98,8 +97,16 @@ class ReconstructionPolicy : public ReconstructionPolicyInterface {
   void SetTaskTimeout(std::unordered_map<TaskID, ReconstructionTask>::iterator task_it,
                       int64_t timeout_ms);
 
-  /// Reconstruct a task.
-  void AttemptReconstruction(const TaskID &task_id, const ObjectID &object_id,
+  /// Attempt to re-execute a task to reconstruct the required object.
+  ///
+  /// \param task_id The task to attempt to re-execute.
+  /// \param required_object_id The object created by the task that requires
+  /// reconstruction.
+  /// \param reconstruction_attempt What number attempt this is at
+  /// reconstructing the task. This is used to suppress duplicate
+  /// reconstructions of the same task (e.g., if a task creates two objects
+  /// that both require reconstruction).
+  void AttemptReconstruction(const TaskID &task_id, const ObjectID &required_object_id,
                              int reconstruction_attempt);
 
   /// Handle expiration of a task lease.
@@ -108,7 +115,7 @@ class ReconstructionPolicy : public ReconstructionPolicyInterface {
   /// The event loop.
   boost::asio::io_service &io_service_;
   /// The handler to call for tasks that require reconstruction.
-  std::function<void(const TaskID &)> reconstruction_handler_;
+  const std::function<void(const TaskID &)> reconstruction_handler_;
   /// The initial timeout within which a task lease notification must be
   /// received. Otherwise, reconstruction will be triggered.
   const int64_t initial_reconstruction_timeout_ms_;

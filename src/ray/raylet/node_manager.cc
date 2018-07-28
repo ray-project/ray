@@ -92,13 +92,14 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       scheduling_policy_(local_queues_),
       reconstruction_policy_(
           io_service_, [this](const TaskID &task_id) { ResubmitTask(task_id); },
-          RayConfig::instance().initial_task_lease_milliseconds(),
+          RayConfig::instance().initial_reconstruction_timeout_milliseconds(),
           gcs_client_->client_table().GetLocalClientId(), gcs_client->task_lease_table(),
           std::make_shared<ObjectDirectory>(gcs_client)),
-      task_dependency_manager_(object_manager, reconstruction_policy_, io_service,
-                               gcs_client_->client_table().GetLocalClientId(),
-                               RayConfig::instance().initial_task_lease_milliseconds(),
-                               gcs_client->task_lease_table()),
+      task_dependency_manager_(
+          object_manager, reconstruction_policy_, io_service,
+          gcs_client_->client_table().GetLocalClientId(),
+          RayConfig::instance().initial_reconstruction_timeout_milliseconds(),
+          gcs_client->task_lease_table()),
       lineage_cache_(gcs_client_->client_table().GetLocalClientId(),
                      gcs_client->raylet_task_table(), gcs_client->raylet_task_table(),
                      config.max_lineage_size),
@@ -280,6 +281,8 @@ void NodeManager::ClientAdded(const ClientTableDataT &client_data) {
 }
 
 void NodeManager::ClientRemoved(const ClientTableDataT &client_data) {
+  // TODO(swang): If we receive a notification for our own death, clean up and
+  // exit immediately.
   const ClientID client_id = ClientID::from_binary(client_data.client_id);
   RAY_LOG(DEBUG) << "[ClientRemoved] received callback from client id " << client_id;
 
@@ -1102,7 +1105,7 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
 }
 
 void NodeManager::ResubmitTask(const TaskID &task_id) {
-  throw std::runtime_error("Method not implemented");
+  RAY_LOG(WARNING) << "Task re-execution is not currently implemented";
 }
 
 void NodeManager::HandleObjectLocal(const ObjectID &object_id) {

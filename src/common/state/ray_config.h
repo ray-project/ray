@@ -18,8 +18,8 @@ class RayConfig {
 
   int64_t num_heartbeats_timeout() const { return num_heartbeats_timeout_; }
 
-  int64_t initial_task_lease_milliseconds() const {
-    return initial_task_lease_milliseconds_;
+  int64_t initial_reconstruction_timeout_milliseconds() const {
+    return initial_reconstruction_timeout_milliseconds_;
   }
 
   int64_t get_timeout_milliseconds() const { return get_timeout_milliseconds_; }
@@ -115,7 +115,7 @@ class RayConfig {
       : ray_protocol_version_(0x0000000000000000),
         heartbeat_timeout_milliseconds_(100),
         num_heartbeats_timeout_(100),
-        initial_task_lease_milliseconds_(200),
+        initial_reconstruction_timeout_milliseconds_(200),
         get_timeout_milliseconds_(1000),
         worker_get_request_size_(10000),
         worker_fetch_request_size_(10000),
@@ -163,8 +163,10 @@ class RayConfig {
   int64_t num_heartbeats_timeout_;
 
   /// The initial period for a task execution lease. The lease will expire this
-  /// many milliseconds after the first acquisition of the lease.
-  int64_t initial_task_lease_milliseconds_;
+  /// many milliseconds after the first acquisition of the lease. Nodes that
+  /// require an object will not try to reconstruct the task until at least
+  /// this many milliseconds.
+  int64_t initial_reconstruction_timeout_milliseconds_;
 
   /// These are used by the worker to set timeouts and to batch requests when
   /// getting objects.
