@@ -166,7 +166,8 @@ class DQNAgent(Agent):
     def update_target_if_needed(self):
         if self.global_timestep - self.last_target_update_ts > \
                 self.config["target_network_update_freq"]:
-            self.local_evaluator.foreach_policy(lambda p, _: p.update_target())
+            self.local_evaluator.foreach_trainable_policy(
+                lambda p, _: p.update_target())
             self.last_target_update_ts = self.global_timestep
             self.num_target_updates += 1
 
@@ -179,11 +180,12 @@ class DQNAgent(Agent):
             self.update_target_if_needed()
 
         exp_vals = [self.exploration0.value(self.global_timestep)]
-        self.local_evaluator.foreach_policy(
+        self.local_evaluator.foreach_trainable_policy(
             lambda p, _: p.set_epsilon(exp_vals[0]))
         for i, e in enumerate(self.remote_evaluators):
             exp_val = self.explorations[i].value(self.global_timestep)
-            e.foreach_policy.remote(lambda p, _: p.set_epsilon(exp_val))
+            e.foreach_trainable_policy.remote(
+                lambda p, _: p.set_epsilon(exp_val))
             exp_vals.append(exp_val)
 
         if self.config["per_worker_exploration"]:

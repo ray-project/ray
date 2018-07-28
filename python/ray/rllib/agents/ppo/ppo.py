@@ -98,7 +98,14 @@ class PPOAgent(Agent):
     def _train(self):
         prev_steps = self.optimizer.num_steps_sampled
         fetches = self.optimizer.step()
-        self.local_evaluator.for_policy(lambda pi: pi.update_kl(fetches["kl"]))
+        if "kl" in fetches:
+            # single-agent
+            self.local_evaluator.for_policy(
+                lambda pi: pi.update_kl(fetches["kl"]))
+        else:
+            # multi-agent
+            self.local_evaluator.foreach_trainable_policy(
+                lambda pi, pi_id: pi.update_kl(fetches[pi_id]["kl"]))
         FilterManager.synchronize(self.local_evaluator.filters,
                                   self.remote_evaluators)
         res = self.optimizer.collect_metrics()

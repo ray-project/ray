@@ -11,13 +11,13 @@ def discount(x, gamma):
     return scipy.signal.lfilter([1], [1, -gamma], x[::-1], axis=0)[::-1]
 
 
-def compute_advantages(rollout, last_r, gamma, lambda_=1.0, use_gae=True):
+def compute_advantages(rollout, last_r, gamma=0.9, lambda_=1.0, use_gae=True):
     """Given a rollout, compute its value targets and the advantage.
 
     Args:
-        rollout (PartialRollout): Partial Rollout Object
+        rollout (SampleBatch): SampleBatch of a single trajectory
         last_r (float): Value estimation for last observation
-        gamma (float): Parameter for GAE
+        gamma (float): Discount factor.
         lambda_ (float): Parameter for GAE
         use_gae (bool): Using Generalized Advantage Estamation
 
@@ -52,3 +52,26 @@ def compute_advantages(rollout, last_r, gamma, lambda_=1.0, use_gae=True):
     assert all(val.shape[0] == trajsize for val in traj.values()), \
         "Rollout stacked incorrectly!"
     return SampleBatch(traj)
+
+
+def compute_targets(rollout, action_space, last_r=0.0, gamma=0.9, lambda_=1.0):
+    """Given a rollout, compute targets.
+
+    Used for categorical crossentropy loss on the policy. Also assumes
+    there is a value function. Uses GAE to calculate advantages.
+
+    Args:
+        rollout (SampleBatch): SampleBatch of a single trajectory
+        action_space (gym.Space): Dimensions of the advantage targets.
+        last_r (float): Value estimation for last observation
+        gamma (float): Discount factor.
+        lambda_ (float): Parameter for GAE
+    """
+
+    rollout = compute_advantages(rollout, last_r, gamma=gamma, lambda_=lambda_)
+    rollout["adv_targets"] = np.zeros((rollout.count, action_space.n))
+    rollout["adv_targets"][np.arange(rollout.count), rollout["actions"]] = \
+        rollout["advantages"]
+    rollout["value_targets"] = rollout["rewards"].copy()
+    rollout["value_targets"][:-1] += gamma * rollout["vf_preds"][1:]
+    return rollout

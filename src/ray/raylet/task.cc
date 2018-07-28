@@ -58,6 +58,10 @@ bool Task::DependsOn(const ObjectID &object_id) const {
   return false;
 }
 
+void Task::CopyTaskExecutionSpec(const Task &task) {
+  task_execution_spec_ = task.GetTaskExecutionSpecReadonly();
+}
+
 }  // namespace raylet
 
 }  // namespace ray

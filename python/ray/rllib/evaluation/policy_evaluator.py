@@ -86,6 +86,7 @@ class PolicyEvaluator(EvaluatorInterface):
                  env_creator,
                  policy_graph,
                  policy_mapping_fn=None,
+                 policies_to_train=None,
                  tf_session_creator=None,
                  batch_steps=100,
                  batch_mode="truncate_episodes",
@@ -113,16 +114,20 @@ class PolicyEvaluator(EvaluatorInterface):
                 policy ids in multi-agent mode. This function will be called
                 each time a new agent appears in an episode, to bind that agent
                 to a policy for the duration of the episode.
+            policies_to_train (list): Optional whitelist of policies to train,
+                or None for all policies.
             tf_session_creator (func): A function that returns a TF session.
                 This is optional and only useful with TFPolicyGraph.
             batch_steps (int): The target number of env transitions to include
                 in each sample batch returned from this evaluator.
             batch_mode (str): One of the following batch modes:
                 "truncate_episodes": Each call to sample() will return a batch
-                    of exactly `batch_steps` in size. Episodes may be truncated
-                    in order to meet this size requirement. When
-                    `num_envs > 1`, episodes will be truncated to sequences of
-                    `batch_size / num_envs` in length.
+                    of at most `batch_steps` in size. The batch will be exactly
+                    `batch_steps` in size if postprocessing does not change
+                    batch sizes. Episodes may be truncated in order to meet
+                    this size requirement. When `num_envs > 1`, episodes will
+                    be truncated to sequences of `batch_size / num_envs` in
+                    length.
                 "complete_episodes": Each call to sample() will return a batch
                     of at least `batch_steps in size. Episodes will not be
                     truncated, but multiple episodes may be packed within one
@@ -159,7 +164,6 @@ class PolicyEvaluator(EvaluatorInterface):
         policy_mapping_fn = (policy_mapping_fn
                              or (lambda agent_id: DEFAULT_POLICY_ID))
         self.env_creator = env_creator
-        self.policy_graph = policy_graph
         self.batch_steps = batch_steps
         self.batch_mode = batch_mode
         self.compress_observations = compress_observations
@@ -191,6 +195,7 @@ class PolicyEvaluator(EvaluatorInterface):
 
         self.tf_sess = None
         policy_dict = _validate_and_canonicalize(policy_graph, self.env)
+        self.policies_to_train = policies_to_train or list(policy_dict.keys())
         if _has_tensorflow_graph(policy_dict):
             with tf.Graph().as_default():
                 if tf_session_creator:
@@ -217,6 +222,7 @@ class PolicyEvaluator(EvaluatorInterface):
         # Always use vector env for consistency even if num_envs = 1
         self.async_env = AsyncVectorEnv.wrap_async(
             self.env, make_env=make_env, num_envs=num_envs)
+        self.num_envs = num_envs
 
         if self.batch_mode == "truncate_episodes":
             if batch_steps % num_envs != 0:
@@ -273,7 +279,15 @@ class PolicyEvaluator(EvaluatorInterface):
 
         batches = [self.sampler.get_data()]
         steps_so_far = batches[0].count
-        while steps_so_far < self.batch_steps:
+
+        # In truncate_episodes mode, never pull more than 1 batch per env.
+        # This avoids over-running the target batch size.
+        if self.batch_mode == "truncate_episodes":
+            max_batches = self.num_envs
+        else:
+            max_batches = float("inf")
+
+        while steps_so_far < self.batch_steps and len(batches) < max_batches:
             batch = self.sampler.get_data()
             steps_so_far += batch.count
             batches.append(batch)
@@ -290,6 +304,12 @@ class PolicyEvaluator(EvaluatorInterface):
 
         return batch
 
+    @ray.method(num_return_vals=2)
+    def sample_with_count(self):
+        """Same as sample() but returns the count as a separate future."""
+        batch = self.sample()
+        return batch, batch.count
+
     def for_policy(self, func, policy_id=DEFAULT_POLICY_ID):
         """Apply the given function to the specified policy graph."""
 
@@ -299,6 +319,16 @@ class PolicyEvaluator(EvaluatorInterface):
         """Apply the given function to each (policy, policy_id) tuple."""
 
         return [func(policy, pid) for pid, policy in self.policy_map.items()]
+
+    def foreach_trainable_policy(self, func):
+        """Apply the given function to each (policy, policy_id) tuple.
+
+        This only applies func to policies in `self.policies_to_train`."""
+
+        return [
+            func(policy, pid) for pid, policy in self.policy_map.items()
+            if pid in self.policies_to_train
+        ]
 
     def sync_filters(self, new_filters):
         """Changes self's filter to given and rebases any accumulated delta.
@@ -326,10 +356,12 @@ class PolicyEvaluator(EvaluatorInterface):
                 f.clear_buffer()
         return return_filters
 
-    def get_weights(self):
+    def get_weights(self, policies=None):
+        if policies is None:
+            policies = self.policy_map.keys()
         return {
             pid: policy.get_weights()
-            for pid, policy in self.policy_map.items()
+            for pid, policy in self.policy_map.items() if pid in policies
         }
 
     def set_weights(self, weights):
@@ -342,6 +374,8 @@ class PolicyEvaluator(EvaluatorInterface):
             if self.tf_sess is not None:
                 builder = TFRunBuilder(self.tf_sess, "compute_gradients")
                 for pid, batch in samples.policy_batches.items():
+                    if pid not in self.policies_to_train:
+                        continue
                     grad_out[pid], info_out[pid] = (
                         self.policy_map[pid].build_compute_gradients(
                             builder, batch))
@@ -381,6 +415,8 @@ class PolicyEvaluator(EvaluatorInterface):
             if self.tf_sess is not None:
                 builder = TFRunBuilder(self.tf_sess, "compute_apply")
                 for pid, batch in samples.policy_batches.items():
+                    if pid not in self.policies_to_train:
+                        continue
                     info_out[pid], _ = (
                         self.policy_map[pid].build_compute_apply(
                             builder, batch))

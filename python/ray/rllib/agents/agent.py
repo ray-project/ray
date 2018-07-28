@@ -36,7 +36,10 @@ COMMON_CONFIG = {
     # Arguments to pass to the env creator
     "env_config": {},
     # Arguments to pass to model
-    "model": {},
+    "model": {
+        "use_lstm": False,
+        "max_seq_len": 20,
+    },
     # Arguments to pass to the rllib optimizer
     "optimizer": {},
     # Configure TF for single-process operation by default
@@ -57,8 +60,13 @@ COMMON_CONFIG = {
 
     # === Multiagent ===
     "multiagent": {
+        # Map from policy ids to tuples of (policy_graph_cls, obs_space,
+        # act_space, config). See policy_evaluator.py for more info.
         "policy_graphs": {},
+        # Function mapping agent ids to policy ids.
         "policy_mapping_fn": None,
+        # Optional whitelist of policies to train, or None for all policies.
+        "policies_to_train": None,
     },
 }
 
@@ -143,6 +151,7 @@ class Agent(Trainable):
             env_creator,
             self.config["multiagent"]["policy_graphs"] or policy_graph,
             policy_mapping_fn=self.config["multiagent"]["policy_mapping_fn"],
+            policies_to_train=self.config["multiagent"]["policies_to_train"],
             tf_session_creator=(session_creator
                                 if config["tf_session_args"] else None),
             batch_steps=config["sample_batch_size"],
@@ -238,6 +247,23 @@ class Agent(Trainable):
         return self.local_evaluator.for_policy(
             lambda p: p.compute_single_action(obs, state, is_training=False)[0]
         )
+
+    def get_weights(self, policies=None):
+        """Return a dictionary of policy ids to weights.
+
+        Arguments:
+            policies (list): Optional list of policies to return weights for,
+                or None for all policies.
+        """
+        return self.local_evaluator.get_weights(policies)
+
+    def set_weights(self, weights):
+        """Set policy weights by policy id.
+
+        Arguments:
+            weights (dict): Map of policy ids to weights to set.
+        """
+        self.local_evaluator.set_weights(weights)
 
 
 class _MockAgent(Agent):
