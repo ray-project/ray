@@ -2031,7 +2031,7 @@ def testCustomLabelPlacement(ray_stop):
     for location in locations1:
         assert location == local_plasma
     for location in locations2:
-        assert location == local_plasma
+        assert location != local_plasma
 
 def testCreatingMoreActorsThanResources(ray_stop):
     ray.init(
