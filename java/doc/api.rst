@@ -15,43 +15,37 @@ the runtime.
 
 The ``@RayRemote`` annotation can be used to decorate static java
 methods and classes. The former indicates that a target function is a remote
-function, which is valid with the follow requirements.
+function, which is valid with the following requirements:
 
 - It must be a public static method.
-- Its parameters and return value cannot be primitive types like int or
-  double but can use wrapper classes like Integer or Double.
 - The method must be deterministic for task reconstruction to behave correctly.
 
 When the annotation is used for a class, the class becomes an actor class
 (an encapsulation of state shared among many remote functions). The
 member functions can be invoked using ``Ray.call``. The requirements for
-an actor class are as follows.
+an actor class are as follows:
 
 - It must have a constructor without any parameters.
 - Any inner class must be public static.
-- It must not have a member field or method decorated using ``public static``,
-  as the semantic is undefined with multiple instances of this same class on
-  different machines
-- An actor method must be decorated using ``public`` but not ``static``
-- The other requirements are the same as for remote functions.
+- It must not have any static fields or methods, as the semantic is undefined
+  with multiple instances of this same class on different machines.
+- An actor method must be ``public``.
 
 ``Ray.call``
 ~~~~~~~~~~~~
 
-Here is a simple example of invoking a remote function using ``Ray.call``.
+``Ray.call`` is used to invoke a remote function.
 
 .. code:: java
 
     RayObject<R> call(Func func, ...);
 
-Here, ``func`` is the target method and the ``...``'s should be filled in with
-the arguments to ``func``. In addition, the following must hold.
+The parameters of ``Ray.call`` are the target method ``func``, followed by
+its original parameters.
 
 -  The return type of ``func`` must be ``R``.
 -  Currently at most 6 parameters of ``func`` are allowed.
--  Each parameter must have the same type ``T`` as the corresponding parameter
-   to ``func``, or it must have the type ``RayObject<T>`` to indicate a result
-   from another ``Ray.call`` invocation.
+-  Each parameter can either be the raw type ``T``, or ``RayObject<T>``.
 
 The returned object is labeled as ``RayObject<R>`` and its value will be
 put into the object store on the machine where the function call is executed.
@@ -77,15 +71,15 @@ store.
         public <M> M getMeta() throws TaskExecutionException;
     }
 
-This method blocks the current thread until the requested data is ready and has
-been fetched (if necessary) from a remote machine.
+These 2 methods will block the current thread until the requested data is
+locally available.
 
 ``Ray.wait``
 ~~~~~~~~~~~~
 
-Calling ``Ray.wait`` will block the current thread and wait for specified
-ray calls. It returns when at least ``numReturns`` calls are completed,
-or the ``timeout`` expires. See multi-value support for ``RayList``.
+``Ray.wait`` is used to wait for a list of ``RayObject``'s to be locally available.
+It will block the current thread until ``numReturns`` objects are ready or ``timeout``
+has passed. See multi-value support for ``RayList``.
 
 .. code:: java
 
@@ -114,129 +108,47 @@ as the type of an input parameter.
 ``RayList<T>``
 ^^^^^^^^^^^^^^
 
-This is a list of ``RayObject<T>``s, which inherits from ``List<T>`` in Java. It
+This is a list of ``RayObject<T>``'s, which inherits from ``List<T>`` in Java. It
 can be used as the type for both a return value and a parameter value.
 
 ``RayMap<L, T>``
 ^^^^^^^^^^^^^^^^
 
-A map of ``RayObject<T>``s with each indexed using a label with type
+A map of ``RayObject<T>``'s with each indexed using a label with type
 ``L``, inherited from ``Map<L, T>``. It can be used as the type for both
 a return value and a parameter value.
 
-Enable multiple heterogeneous return values
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Multiple heterogeneous return values
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-At most four multiple heterogeneous return values are supported.
-In order to let the runtime know the number of return values, we
-supply the method of ``Ray.call_X`` as follows.
+To return multiple heterogeneous values in a remote functions, you can
+define your original method's return type as ``MultipleReturnsX`` and
+then invoke it with ``Ray.call_X``. Note: ``X`` is the number of return
+values, at most 4 values are supported.
 
-.. code:: java
+Here's an `example <https://github.com/ray-project/ray/tree/master/java/tutorial/src/main/java/org/ray/exercise/Exercise05.java>`_.
 
-    RayObjects2<R0, R1> call_2(Func func, ...);
-    RayObjects3<R0, R1, R2> call_3(Func func, ...);
-    RayObjects4<R0, R1, R2, R3> call_4(Func func, ...);
-
-Note ``func`` must match the following requirements.
-
--  It must have a return value of type ``MultipleReturnsX``, and must be
-   invoked using the corresponding ``Ray.call_X``.
-
-Here is an example.
-
-.. code:: java
-
-    public class MultiRExample {
-        public static void main(String[] args) {
-            Ray.init();
-            RayObjects2<Integer, String> refs = Ray.call_2(MultiRExample::sayMultiRet);
-            Integer obj1 = refs.r0().get();
-            String obj2 = refs.r1().get();
-            Assert.assertTrue(obj1.equals(123));
-            Assert.assertTrue(obj2.equals("123"));
-        }
-
-        @RayRemote
-        public static MultipleReturns2<Integer, String> sayMultiRet() {
-            return new MultipleReturns2<Integer, String>(123, "123");
-        }
-    }
 
 Return with ``RayList``
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-We use ``Ray.call_n`` to do so, which is similar to ``Ray.call`` except it has
-an additional parameter ``returnCount`` which specifies the number of return
-``RayObject<R>``s in ``RayList<R>``. This is because Ray needs to know the
-number of return values before the method is actually executed.
+To return a list of ``RayObject``'s, you can invoke your method with ``Ray.call_n``.
+``Ray.call_n`` is similar to ``Ray.call`` except that it has an additional parameter
+``returnCount``, which specifies the number of return values in the list.
 
-.. code:: java
-
-    RayList<R> call_n(Func func, Integer returnCount, ...);
-
-Here is an example.
-
-.. code:: java
-
-    public class ListRExample {
-        public static void main(String[] args) {
-            Ray.init();
-            RayList<Integer> ns = Ray.call_n(ListRExample::sayList, 10, 10);
-            for (int i = 0; i < 10; i++) {
-                RayObject<Integer> obj = ns.Get(i);
-                Assert.assertTrue(i == obj.get());
-            }
-        }
-
-        @RayRemote
-        public static List<Integer> sayList(Integer count) {
-            ArrayList<Integer> rets = new ArrayList<>();
-            for (int i = 0; i < count; i++)
-                rets.add(i);
-            return rets;
-        }
-    }
+Here's an `example <https://github.com/ray-project/ray/tree/master/java/tutorial/src/main/java/org/ray/exercise/Exercise06.java>`_.
 
 Return with ``RayMap``
 ~~~~~~~~~~~~~~~~~~~~~~
 
-This is similar to ``RayList`` case, except that now each return
+This is similar to ``RayList`` case, except that now each returned
 ``RayObject<R>`` in ``RayMap<L,R>`` has a given label when
-``Ray.call_n`` is made.
+``Ray.call_n`` is called.
 
-.. code:: java
+Here's an `example <https://github.com/ray-project/ray/tree/master/java/tutorial/src/main/java/org/ray/exercise/Exercise07.java>`_.
 
-    RayMap<L, R> call_n(Func func, Collection<L> returnLabels, ...);
-
-Here is an example.
-
-.. code:: java
-
-    public class MapRExample {
-        public static void main(String[] args) {
-            Ray.init();
-            RayMap<Integer, String> ns = Ray.call_n(MapRExample::sayMap,
-                    Arrays.asList(1, 2, 4, 3), "n_futures_");
-            for (Entry<Integer, RayObject<String>> ne : ns.EntrySet()) {
-                Integer key = ne.getKey();
-                RayObject<String> obj = ne.getValue();
-                Assert.assertTrue(obj.get().equals("n_futures_" + key));
-            }
-        }
-
-        @RayRemote(externalIO = true)
-        public static Map<Integer, String> sayMap(Collection<Integer> ids,
-                                                String prefix) {
-            Map<Integer, String> ret = new HashMap<>();
-            for (int id : ids) {
-                ret.put(id, prefix + id);
-            }
-            return ret;
-        }
-    }
-
-Enable ``RayList`` and ``RayMap`` as parameters
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Use ``RayList`` and ``RayMap`` as parameters
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code:: java
 
@@ -247,13 +159,12 @@ Enable ``RayList`` and ``RayMap`` as parameters
             ints.add(Ray.put(new Integer(1)));
             ints.add(Ray.put(new Integer(1)));
             ints.add(Ray.put(new Integer(1)));
-            RayObject<Integer> obj = Ray.call(ListTExample::sayReadRayList，
-                                            (List<Integer>)ints);
+            RayObject<Integer> obj = Ray.call(ListTExample::sum，(List<Integer>)ints);
             Assert.assertTrue(obj.get().equals(3));
         }
 
         @RayRemote
-        public static int sayReadRayList(List<Integer> ints) {
+        public static int sum(List<Integer> ints) {
             int sum = 0;
             for (Integer i : ints) {
                 sum += i;
@@ -278,15 +189,14 @@ A regular class annotated with ``@RayRemote`` is an actor class.
         sum = 0;
       }
 
-      public Integer add(Integer n) {
+      public int add(int n) {
         return sum += n;
       }
 
-      private Integer sum;
+      private int sum;
     }
 
-Whenever you call ``Ray.create()`` method, an actor will be created, and
-you get a local ``RayActor`` of that actor as the return value.
+To create an actor instance, use ``Ray.create()``.
 
 .. code:: java
 
@@ -295,12 +205,12 @@ you get a local ``RayActor`` of that actor as the return value.
 Call Actor Methods
 ~~~~~~~~~~~~~~~~~~
 
-The same ``Ray.call`` or its extended versions (e.g., ``Ray.call_n``) is
-applied, except that the first argument becomes ``RayActor``.
+``Ray.call`` or its extended versions (e.g., ``Ray.call_n``)  are also
+used to call actor methods, and the actor instance must be the first parameter.
 
 .. code:: java
 
-    RayObject<R> Ray.call(Func func, RayActor<Adder> actor, ...);
     RayObject<Integer> result1 = Ray.call(Adder::add, adder, 1);
+    System.out.println(result1.get()); // 1
     RayObject<Integer> result2 = Ray.call(Adder::add, adder, 10);
-    result2.get(); // 11
+    System.out.println(result2.get()); // 11
