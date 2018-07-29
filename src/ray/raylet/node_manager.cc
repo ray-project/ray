@@ -342,7 +342,7 @@ void NodeManager::HandleActorCreation(const ActorID &actor_id,
     // The actor's location is now known. Dequeue any methods that were
     // submitted before the actor's location was known.
     // (See design_docs/task_states.rst for the state transition diagram.)
-    const auto &methods = local_queues_.GetWaitForActorCreationMethods();
+    const auto &methods = local_queues_.GetMethodsWaitingForActorCreation();
     std::unordered_set<TaskID> created_actor_method_ids;
     for (const auto &method : methods) {
       if (method.GetTaskSpecification().ActorId() == actor_id) {
@@ -379,7 +379,7 @@ void NodeManager::CleanUpTasksForDeadActor(const ActorID &actor_id) {
   std::unordered_set<TaskID> tasks_to_remove;
 
   // (See design_docs/task_states.rst for the state transition diagram.)
-  GetActorTasksFromList(actor_id, local_queues_.GetWaitForActorCreationMethods(),
+  GetActorTasksFromList(actor_id, local_queues_.GetMethodsWaitingForActorCreation(),
                         tasks_to_remove);
   GetActorTasksFromList(actor_id, local_queues_.GetWaitingTasks(), tasks_to_remove);
   GetActorTasksFromList(actor_id, local_queues_.GetPlaceableTasks(), tasks_to_remove);
@@ -730,7 +730,7 @@ void NodeManager::ScheduleTasks() {
   if (local_task_ids.size() > 0) {
     std::vector<Task> tasks = local_queues_.RemoveTasks(local_task_ids);
     for (const auto &t : tasks) {
-      ProcessPlaceableTask(t);
+      EnqueuePlaceableTask(t);
     }
   }
 }
@@ -786,7 +786,7 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
           TreatTaskAsFailed(spec);
         } else {
           // Queue the task for local execution, bypassing placement.
-          ProcessPlaceableTask(task);
+          EnqueuePlaceableTask(task);
         }
       } else {
         // The actor is remote. Forward the task to the node manager that owns
@@ -823,14 +823,14 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
                                                      lookup_callback));
       // Keep the task queued until we discover the actor's location.
       // (See design_docs/task_states.rst for the state transition diagram.)
-      local_queues_.QueueWaitForActorCreationMethods({task});
+      local_queues_.QueueMethodsWaitingForActorCreation({task});
     }
   } else {
     // This is a non-actor task. Queue the task for a placement decision or for dispatch
     // if the task was forwarded.
     if (forwarded) {
       // Check for local dependencies and enqueue as waiting or ready for dispatch.
-      ProcessPlaceableTask(task);
+      EnqueuePlaceableTask(task);
     } else {
       // (See design_docs/task_states.rst for the state transition diagram.)
       local_queues_.QueuePlaceableTasks({task});
@@ -927,8 +927,8 @@ void NodeManager::HandleRemoteDependencyCanceled(const ObjectID &dependency_id) 
   // TODO(swang): Cancel reconstruction of the object.
 }
 
-void NodeManager::ProcessPlaceableTask(const Task &task) {
-  // TODO(atumanov): add task lookup hashmap and change ProcessPlaceableTask to take
+void NodeManager::EnqueuePlaceableTask(const Task &task) {
+  // TODO(atumanov): add task lookup hashmap and change EnqueuePlaceableTask to take
   // a vector of TaskIDs. Trigger MoveTask internally.
   // Subscribe to the task's dependencies.
   bool args_ready = task_dependency_manager_.SubscribeDependencies(
@@ -1172,7 +1172,7 @@ void NodeManager::ForwardTaskOrResubmit(const Task &task,
           // we only handle the timeout event.
           RAY_CHECK(!error);
           RAY_LOG(INFO) << "In ForwardTask retry callback for task " << task_id;
-          ProcessPlaceableTask(task);
+          EnqueuePlaceableTask(task);
         });
   }
 }

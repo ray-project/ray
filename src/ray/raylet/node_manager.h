@@ -74,7 +74,7 @@ class NodeManager {
 
   /// Methods for task scheduling.
   /// Enqueue a placeable task to wait on object dependencies or be ready for dispatch.
-  void ProcessPlaceableTask(const Task &task);
+  void EnqueuePlaceableTask(const Task &task);
   /// This will treat the task as if it had been executed and failed. This is
   /// done by looping over the task return IDs and for each ID storing an object
   /// that represents a failure in the object store. When clients retrieve these

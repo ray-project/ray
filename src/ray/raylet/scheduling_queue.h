@@ -31,7 +31,7 @@ class SchedulingQueue {
   ///
   /// \return A const reference to the queue of tasks that are destined for
   /// actors that have not yet been created.
-  const std::list<Task> &GetWaitForActorCreationMethods() const;
+  const std::list<Task> &GetMethodsWaitingForActorCreation() const;
 
   /// Get the queue of tasks in the waiting state.
   ///
@@ -93,7 +93,7 @@ class SchedulingQueue {
   /// Queue tasks that are destined for actors that have not yet been created.
   ///
   /// \param tasks The tasks to queue.
-  void QueueWaitForActorCreationMethods(const std::vector<Task> &tasks);
+  void QueueMethodsWaitingForActorCreation(const std::vector<Task> &tasks);
 
   /// Queue tasks in the waiting state. These are tasks that cannot yet be
   /// dispatched since they are blocked on a missing data dependency.
@@ -149,7 +149,7 @@ class SchedulingQueue {
 
  private:
   /// Tasks that are destined for actors that have not yet been created.
-  std::list<Task> wait_for_actor_creation_methods_;
+  std::list<Task> methods_waiting_for_actor_creation_;
   /// Tasks that are waiting for an object dependency to appear locally.
   std::list<Task> waiting_tasks_;
   /// Tasks whose object dependencies are locally available, but that are
