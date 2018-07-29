@@ -20,13 +20,15 @@ OPTIMIZER_SHARED_CONFIGS = [
 
 DEFAULT_CONFIG = with_common_config({
     # Whether to enable vtrace. If off, this reverts to the A3C policy graph.
-    "enable_vtrace": True,
+    "vtrace": True,
+    # Clipping threshold for v-trace target calculation.
+    "vtrace_clip_rho_threshold": 1.0,
+    # Clipping threshold for v-trace advantage calculation.
+    "vtrace_clip_pg_threshold": 1.0,
     # Size of rollout batch
     "sample_batch_size": 50,
     # Size of batch to train on.
     "train_batch_size": 512,
-    # GAE(gamma) parameter
-    "lambda": 1.0,
     # Max global norm for each gradient calculated by worker
     "grad_clip": 40.0,
     # Learning rate
@@ -75,7 +77,7 @@ class ImpalaAgent(Agent):
         for k in OPTIMIZER_SHARED_CONFIGS:
             if k not in self.config["optimizer"]:
                 self.config["optimizer"][k] = self.config[k]
-        if self.config["enable_vtrace"]:
+        if self.config["vtrace"]:
             policy_cls = VTracePolicyGraph
         else:
             policy_cls = A3CPolicyGraph

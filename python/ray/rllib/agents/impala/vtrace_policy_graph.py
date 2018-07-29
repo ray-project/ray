@@ -131,7 +131,9 @@ class VTracePolicyGraph(TFPolicyGraph):
             rewards=rewards,
             values=values,
             vf_loss_coeff=self.config["vf_loss_coeff"],
-            entropy_coeff=self.config["entropy_coeff"])
+            entropy_coeff=self.config["entropy_coeff"],
+            clip_rho_threshold=self.config["vtrace_clip_rho_threshold"],
+            clip_pg_threshold=self.config["vtrace_clip_pg_threshold"])
 
         # Initialize TFPolicyGraph
         loss_in = [
