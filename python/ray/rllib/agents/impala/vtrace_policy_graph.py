@@ -1,4 +1,4 @@
-"""This is an variant of A3CPolicyGraph that uses V-trace for loss calc.
+"""Adapted from A3CPolicyGraph to add V-trace.
 
 Keep in sync with changes to A3CPolicyGraph."""
 
