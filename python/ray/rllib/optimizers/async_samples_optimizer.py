@@ -21,7 +21,6 @@ from ray.rllib.utils.actors import TaskPool, create_colocated
 from ray.rllib.utils.timer import TimerStat
 from ray.rllib.utils.window_stat import WindowStat
 
-
 SAMPLE_QUEUE_DEPTH = 2
 LEARNER_QUEUE_MAX_SIZE = 16
 
@@ -53,7 +52,7 @@ class LearnerThread(threading.Thread):
     def step(self):
         with self.queue_timer:
             ra, replay = self.inqueue.get()
-        
+
         if replay is not None:
             with self.grad_timer:
                 self.local_evaluator.compute_apply(replay)
@@ -69,9 +68,12 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
     and remote evaluators (IMPALA actors).
     """
 
-    def _init(
-            self, train_batch_size=512, sample_batch_size=50,
-            min_batch_size=3, clip_rewards=True, debug=False):
+    def _init(self,
+              train_batch_size=512,
+              sample_batch_size=50,
+              min_batch_size=3,
+              clip_rewards=True,
+              debug=False):
 
         self.debug = debug
         self.learning_started = False
@@ -86,9 +88,11 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
         assert len(self.remote_evaluators) > 0
 
         # Stats
-        self.timers = {k: TimerStat() for k in [
-            "put_weights", "enqueue", "sample_processing",
-            "train", "sample"]}
+        self.timers = {
+            k: TimerStat()
+            for k in
+            ["put_weights", "enqueue", "sample_processing", "train", "sample"]
+        }
         self.num_weight_syncs = 0
         self.learning_started = False
 
@@ -140,7 +144,7 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
                 self.sample_tasks.add(ev, ev.sample.remote())
 
         while not self.learner.outqueue.empty():
-            flag  = self.learner.outqueue.get()
+            flag = self.learner.outqueue.get()
             train_timesteps += self.train_batch_size
 
         return sample_timesteps, train_timesteps
@@ -155,8 +159,8 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
         timing["learner_dequeue_time_ms"] = round(
             1000 * self.learner.queue_timer.mean, 3)
         stats = {
-            "sample_throughput": round(
-                self.timers["sample"].mean_throughput, 3),
+            "sample_throughput": round(self.timers["sample"].mean_throughput,
+                                       3),
             "train_throughput": round(self.timers["train"].mean_throughput, 3),
             "num_weight_syncs": self.num_weight_syncs,
         }

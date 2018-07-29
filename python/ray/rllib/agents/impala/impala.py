@@ -7,6 +7,7 @@ import os
 
 import ray
 from ray.rllib.agents.a3c.a3c_tf_policy_graph import A3CPolicyGraph
+from ray.rllib.agents.impala.vtrace_policy_graph import VTracePolicyGraph
 from ray.rllib.agents.agent import Agent, with_common_config
 from ray.rllib.optimizers import AsyncSamplesOptimizer
 from ray.rllib.utils import FilterManager
@@ -18,6 +19,8 @@ OPTIMIZER_SHARED_CONFIGS = [
 ]
 
 DEFAULT_CONFIG = with_common_config({
+    # Whether to enable vtrace. If off, this reverts to the A3C policy graph.
+    "enable_vtrace": True,
     # Size of rollout batch
     "sample_batch_size": 50,
     # Size of batch to train on.
@@ -72,7 +75,10 @@ class ImpalaAgent(Agent):
         for k in OPTIMIZER_SHARED_CONFIGS:
             if k not in self.config["optimizer"]:
                 self.config["optimizer"][k] = self.config[k]
-        policy_cls = A3CPolicyGraph
+        if self.config["enable_vtrace"]:
+            policy_cls = VTracePolicyGraph
+        else:
+            policy_cls = A3CPolicyGraph
         self.local_evaluator = self.make_local_evaluator(
             self.env_creator, policy_cls)
         self.remote_evaluators = self.make_remote_evaluators(
