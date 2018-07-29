@@ -10,12 +10,11 @@ import tensorflow as tf
 import gym
 
 import ray
-import ray.rllib.impala.vtrace
-from ray.rllib.utils.error import UnsupportedSpaceException
-from ray.rllib.evaluation.postprocessing import compute_advantages
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
-from ray.rllib.models.misc import linear, normc_initializer
+from ray.rllib.impala import vtrace
 from ray.rllib.models.catalog import ModelCatalog
+from ray.rllib.models.misc import linear, normc_initializer
+from ray.rllib.utils.error import UnsupportedSpaceException
 
 
 class VTraceLoss(object):
@@ -61,7 +60,7 @@ class VTraceLoss(object):
                 behavior_policy_logits=tf.expand_dims(behavior_logits, 1),
                 target_policy_logits=tf.expand_dims(target_logits, 1),
                 actions=tf.expand_dims(actions, 1),
-                discounts=tf.expand_dims(tf.to_float(~done) * discount, 1),
+                discounts=tf.expand_dims(tf.to_float(~dones) * discount, 1),
                 rewards=tf.expand_dims(rewards, 1),
                 values=tf.expand_dims(values, 1),
                 bootstrap_value=tf.expand_dims(bootstrap_value, 0),
@@ -73,7 +72,7 @@ class VTraceLoss(object):
         self.pi_loss = -tf.reduce_sum(log_prob * vtrace_returns.pg_advantages)
 
         # The baseline loss
-        delta = vf - vtrace_returns.vs
+        delta = values - vtrace_returns.vs
         self.vf_loss = 0.5 * tf.reduce_sum(tf.square(delta))
 
         # The entropy loss
@@ -116,7 +115,6 @@ class VTracePolicyGraph(TFPolicyGraph):
                     action_space))
         dones = tf.placeholder(tf.bool, [None], name="dones")
         rewards = tf.placeholder(tf.float32, [None], name="rewards")
-        v_target = tf.placeholder(tf.float32, [None], name="v_target")
         behavior_logits = tf.placeholder(
             tf.float32, [None, ac_size], name="behavior_logits")
 

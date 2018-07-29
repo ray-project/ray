@@ -6,18 +6,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
-import random
 import time
 import threading
 
-import numpy as np
 from six.moves import queue
 
 import ray
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
-from ray.rllib.optimizers.sample_batch import SampleBatch
-from ray.rllib.utils.actors import TaskPool, create_colocated
+from ray.rllib.utils.actors import TaskPool
 from ray.rllib.utils.timer import TimerStat
 from ray.rllib.utils.window_stat import WindowStat
 
@@ -51,13 +47,13 @@ class LearnerThread(threading.Thread):
 
     def step(self):
         with self.queue_timer:
-            ra, replay = self.inqueue.get()
+            ra, batch = self.inqueue.get()
 
-        if replay is not None:
+        if batch is not None:
             with self.grad_timer:
-                self.local_evaluator.compute_apply(replay)
+                self.local_evaluator.compute_apply(batch)
                 self.weights_updated += 1
-            self.outqueue.put(True)
+            self.outqueue.put(batch.count)
         self.learner_queue_size.push(self.inqueue.qsize())
 
 
@@ -78,7 +74,6 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
         self.learning_started = False
         self.train_batch_size = train_batch_size
         self.sample_batch_size = sample_batch_size
-        self.max_weight_sync_delay = max_weight_sync_delay
 
         self.learner = LearnerThread(self.local_evaluator)
         self.learner.start()
@@ -125,7 +120,7 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
                 sample_batch = ray.get(sample_batch)
                 sample_timesteps += sample_batch.count
 
-                # trajectory whose length < n_step can NOT provide v-trace
+                # TODO(ekl) we should batch to train_batch_size first
                 with self.timers["enqueue"]:
                     self.learner.inqueue.put((ev, sample_batch))
 
@@ -142,8 +137,8 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
                 self.sample_tasks.add(ev, ev.sample.remote())
 
         while not self.learner.outqueue.empty():
-            flag = self.learner.outqueue.get()
-            train_timesteps += self.train_batch_size
+            count = self.learner.outqueue.get()
+            train_timesteps += count
 
         return sample_timesteps, train_timesteps
 
