@@ -122,10 +122,14 @@ class VTracePolicyGraph(TFPolicyGraph):
         def to_batches(tensor):
             B = self.config["sample_batch_size"]
             T = tf.shape(tensor)[0] // B
-            return tf.reshape(
-                tensor, tf.concat([[T, B], tf.shape(tensor)[1:]], axis=0))
+            rs = tf.reshape(
+                tensor, tf.concat([[B, T], tf.shape(tensor)[1:]], axis=0))
+            # swap B and T axes
+            return tf.transpose(
+                rs,
+                [1, 0] + list(range(2, 1 + int(tf.shape(tensor).shape[0]))))
 
-        # Inputs are reshaped from [T * B] => [T - 1, B] for V-trace calc.
+        # Inputs are reshaped from [B * T] => [T - 1, B] for V-trace calc.
         self.loss = VTraceLoss(
             actions=to_batches(actions)[:-1],
             actions_logp=to_batches(action_dist.logp(actions))[:-1],
@@ -150,8 +154,6 @@ class VTracePolicyGraph(TFPolicyGraph):
             ("rewards", rewards),
             ("obs", self.observations),
         ]
-        self.state_in = self.model.state_in
-        self.state_out = self.model.state_out
         TFPolicyGraph.__init__(
             self,
             observation_space,
@@ -161,8 +163,8 @@ class VTracePolicyGraph(TFPolicyGraph):
             action_sampler=action_dist.sample(),
             loss=self.loss.total_loss,
             loss_inputs=loss_in,
-            state_inputs=self.state_in,
-            state_outputs=self.state_out,
+            state_inputs=self.model.state_in,
+            state_outputs=self.model.state_out,
             seq_lens=self.model.seq_lens,
             max_seq_len=self.config["model"]["max_seq_len"])
 

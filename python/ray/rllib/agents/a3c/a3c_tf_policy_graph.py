@@ -79,8 +79,6 @@ class A3CPolicyGraph(TFPolicyGraph):
             ("advantages", advantages),
             ("value_targets", v_target),
         ]
-        self.state_in = self.model.state_in
-        self.state_out = self.model.state_out
         TFPolicyGraph.__init__(
             self,
             observation_space,
@@ -90,8 +88,8 @@ class A3CPolicyGraph(TFPolicyGraph):
             action_sampler=action_dist.sample(),
             loss=self.loss.total_loss,
             loss_inputs=loss_in,
-            state_inputs=self.state_in,
-            state_outputs=self.state_out,
+            state_inputs=self.model.state_in,
+            state_outputs=self.model.state_out,
             seq_lens=self.model.seq_lens,
             max_seq_len=self.config["model"]["max_seq_len"])
 
