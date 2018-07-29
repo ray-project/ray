@@ -54,7 +54,6 @@ class LearnerThread(threading.Thread):
             with self.grad_timer:
                 fetches = self.local_evaluator.compute_apply(batch)
                 self.weights_updated += 1
-                print(fetches)
                 if "stats" in fetches:
                     self.stats = fetches["stats"]
             self.outqueue.put(batch.count)
