@@ -1,4 +1,4 @@
-"""This is an extension of A3CPolicyGraph that uses V-trace for loss calc.
+"""This is an variant of A3CPolicyGraph that uses V-trace for loss calc.
 
 Keep in sync with changes to A3CPolicyGraph."""
 
@@ -10,8 +10,8 @@ import tensorflow as tf
 import gym
 
 import ray
+from ray.rllib.agents.impala import vtrace
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
-from ray.rllib.impala import vtrace
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.misc import linear, normc_initializer
 from ray.rllib.utils.error import UnsupportedSpaceException
@@ -22,50 +22,44 @@ class VTraceLoss(object):
                  action_dist,
                  actions,
                  dones,
-                 behavior_logits,
+                 behaviour_logits,
                  target_logits,
                  discount,
                  rewards,
                  values,
+                 bootstrap_value,
                  vf_loss_coeff=0.5,
                  entropy_coeff=-0.01,
                  clip_rho_threshold=1.0,
-                 clip_pg_threshold=1.0):
-        """Loss using vtrace.
+                 clip_pg_rho_threshold=1.0):
+        """Policy gradient loss with vtrace importance weighting.
 
         Args:
             action_dist: ActionDistribution of the policy.
             actions: An int32 tensor of shape [T, NUM_ACTIONS].
             dones: A bool tensor of shape [T].
-            behavior_logits: A float32 tensor of shape [T, NUM_ACTIONS].
+            behaviour_logits: A float32 tensor of shape [T, NUM_ACTIONS].
             target_logits: A float32 tensor of shape [T, NUM_ACTIONS].
             discount: A float32 scalar.
             rewards: A float32 tensor of shape [T].
             values: A float32 tensor of shape [T].
+            bootstrap_value: A float32 tensor.
         """
-
-        # Use the last value prediction for bootstrapping only.
-        bootstrap_value = values[-1]
-        actions = actions[:-1]
-        dones = dones[:-1]
-        behavior_logits = behavior_logits[:-1]
-        target_logits = target_logits[:-1]
-        rewards = rewards[:-1]
-        values = values[:-1]
 
         # Compute vtrace returns with B=1. This should be fine since we handle
         # LSTM sequencing elsewhere, so the T dim can span multiple episodes.
         with tf.device("/cpu:0"):
             vtrace_returns = vtrace.from_logits(
-                behavior_policy_logits=tf.expand_dims(behavior_logits, 1),
+                behaviour_policy_logits=tf.expand_dims(behaviour_logits, 1),
                 target_policy_logits=tf.expand_dims(target_logits, 1),
-                actions=tf.expand_dims(actions, 1),
+                actions=tf.cast(tf.expand_dims(actions, 1), tf.int32),
                 discounts=tf.expand_dims(tf.to_float(~dones) * discount, 1),
                 rewards=tf.expand_dims(rewards, 1),
                 values=tf.expand_dims(values, 1),
                 bootstrap_value=tf.expand_dims(bootstrap_value, 0),
-                clip_rho_threshold=clip_rho_threshold,
-                clip_pg_threshold=clip_pg_threshold)
+                clip_rho_threshold=tf.cast(clip_rho_threshold, tf.float32),
+                clip_pg_rho_threshold=
+                    tf.cast(clip_pg_rho_threshold, tf.float32))
 
         # The policy gradients loss
         log_prob = action_dist.logp(actions)
@@ -108,36 +102,38 @@ class VTracePolicyGraph(TFPolicyGraph):
             ac_size = action_space.shape[0]
             actions = tf.placeholder(tf.float32, [None, ac_size], name="ac")
         elif isinstance(action_space, gym.spaces.Discrete):
+            ac_size = action_space.n
             actions = tf.placeholder(tf.int64, [None], name="ac")
         else:
             raise UnsupportedSpaceException(
-                "Action space {} is not supported for VTrace.".format(
+                "Action space {} is not supported for IMPALA.".format(
                     action_space))
         dones = tf.placeholder(tf.bool, [None], name="dones")
         rewards = tf.placeholder(tf.float32, [None], name="rewards")
-        behavior_logits = tf.placeholder(
-            tf.float32, [None, ac_size], name="behavior_logits")
+        behaviour_logits = tf.placeholder(
+            tf.float32, [None, ac_size], name="behaviour_logits")
 
         self.loss = VTraceLoss(
-            action_dist=action_dist,
-            actions=actions,
-            dones=dones,
-            behavior_logits=behavior_logits,
-            target_logits=self.model.outputs,
+            action_dist=dist_class(self.model.outputs[:-1]),
+            actions=actions[:-1],
+            dones=dones[:-1],
+            behaviour_logits=behaviour_logits[:-1],
+            target_logits=self.model.outputs[:-1],
             discount=config["gamma"],
-            rewards=rewards,
-            values=values,
+            rewards=rewards[:-1],
+            values=values[:-1],
+            bootstrap_value=values[-1],
             vf_loss_coeff=self.config["vf_loss_coeff"],
             entropy_coeff=self.config["entropy_coeff"],
             clip_rho_threshold=self.config["vtrace_clip_rho_threshold"],
-            clip_pg_threshold=self.config["vtrace_clip_pg_threshold"])
+            clip_pg_rho_threshold=self.config["vtrace_clip_pg_rho_threshold"])
 
         # Initialize TFPolicyGraph
         loss_in = [
             ("actions", actions),
             ("dones", dones),
-            ("behavior_logits", behavior_logits),
-            ("reward", rewards),
+            ("behaviour_logits", behaviour_logits),
+            ("rewards", rewards),
             ("obs", self.observations),
         ]
         self.state_in = self.model.state_in
@@ -177,13 +173,17 @@ class VTracePolicyGraph(TFPolicyGraph):
         return clipped_grads
 
     def extra_compute_action_fetches(self):
-        return {"behavior_logits": self.model.outputs}
+        return {"behaviour_logits": self.model.outputs}
 
     def extra_compute_grad_fetches(self):
         if self.config.get("summarize"):
             return {"summary": self.summary_op}
         else:
             return {}
+
+    def postprocess_trajectory(self, sample_batch, other_agent_batches=None):
+        del sample_batch.data["new_obs"]  # not used, so save some bandwidth
+        return sample_batch
 
     def get_initial_state(self):
         return self.model.state_init

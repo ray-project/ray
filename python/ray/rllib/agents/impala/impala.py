@@ -21,17 +21,17 @@ OPTIMIZER_SHARED_CONFIGS = [
 ]
 
 DEFAULT_CONFIG = with_common_config({
-    # V-trace params.
+    # V-trace params (see vtrace.py).
     "vtrace": True,
     "vtrace_clip_rho_threshold": 1.0,
-    "vtrace_clip_pg_threshold": 1.0,
+    "vtrace_clip_pg_rho_threshold": 1.0,
 
     # System params.
     "sample_batch_size": 50,
     "train_batch_size": 512,
     "min_iter_time_s": 10,  # Should be >30s at large scale for efficiency.
     "gpu": True,
-    "num_workers": 1,
+    "num_workers": 2,
     "num_cpus_per_worker": 1,
     "num_gpus_per_worker": 0,
 
