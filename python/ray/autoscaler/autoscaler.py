@@ -653,7 +653,12 @@ def hash_runtime_conf(file_mounts, extra_objs):
                 for name in filenames:
                     hasher.update(name.encode("utf-8"))
                     with open(os.path.join(dirpath, name), "rb") as f:
-                        hasher.update(binascii.hexlify(f.read()))
+                        if os.path.getsize(os.path.join(dirpath,
+                                                        name)) < 1000000000:
+                            hasher.update(binascii.hexlify(f.read()))
+                        else:
+                            for chunk in iter(lambda: f.read(8192), b''):
+                                hasher.update(binascii.hexlify(chunk))
         else:
             with open(path, "rb") as f:
                 hasher.update(binascii.hexlify(f.read()))
