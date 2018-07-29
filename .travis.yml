@@ -134,9 +134,9 @@ matrix:
         # see https://api.travis-ci.org/v3/job/408275838/log.txt
         - PYTHONPATH="./test/" python -m pytest -v --assert=plain test/runtest.py
         - python -m pytest test/array_test.py
-        - python -m pytest test/actor_test.py
+        - PYTHONPATH="./test/" python -m pytest test/actor_test.py
         - python -m pytest test/autoscaler_test.py
-        - python test/tensorflow_test.py
+        - PYTHONPATH="./test/" python -m pytest test/tensorflow_test.py
         - python -m pytest test/failure_test.py
         - python -m pytest test/microbenchmarks.py
         - python -m pytest test/stress_tests.py
@@ -197,9 +197,9 @@ script:
   # see https://api.travis-ci.org/v3/job/408275838/log.txt
   - PYTHONPATH="./test/" python -m pytest --assert=plain -v test/runtest.py
   - python -m pytest test/array_test.py
-  - python -m pytest test/actor_test.py
+  - PYTHONPATH="./test/" python -m pytest test/actor_test.py
   - python -m pytest test/autoscaler_test.py
-  - python test/tensorflow_test.py
+  - PYTHONPATH="./test/" python -m pytest test/tensorflow_test.py
   - python -m pytest test/failure_test.py
   - python -m pytest test/microbenchmarks.py
   - python -m pytest test/stress_tests.py
