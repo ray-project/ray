@@ -19,8 +19,9 @@ from ray.rllib.utils.error import UnsupportedSpaceException
 
 class VTraceLoss(object):
     def __init__(self,
-                 action_dist,
                  actions,
+                 actions_logp,
+                 actions_entropy,
                  dones,
                  behaviour_logits,
                  target_logits,
@@ -34,43 +35,48 @@ class VTraceLoss(object):
                  clip_pg_rho_threshold=1.0):
         """Policy gradient loss with vtrace importance weighting.
 
+        VTraceLoss takes tensors of shape [T, B, ...], where `B` is the
+        batch_size. The reason we need to know `B` is for V-trace to properly
+        handle episode cut boundaries.
+
         Args:
-            action_dist: ActionDistribution of the policy.
-            actions: An int32 tensor of shape [T, NUM_ACTIONS].
-            dones: A bool tensor of shape [T].
-            behaviour_logits: A float32 tensor of shape [T, NUM_ACTIONS].
-            target_logits: A float32 tensor of shape [T, NUM_ACTIONS].
+            actions: An int32 tensor of shape [T, B, NUM_ACTIONS].
+            actions_logp: A float32 tensor of shape [T, B].
+            actions_entropy: A float32 tensor of shape [T, B].
+            dones: A bool tensor of shape [T, B].
+            behaviour_logits: A float32 tensor of shape [T, B, NUM_ACTIONS].
+            target_logits: A float32 tensor of shape [T, B, NUM_ACTIONS].
             discount: A float32 scalar.
-            rewards: A float32 tensor of shape [T].
-            values: A float32 tensor of shape [T].
-            bootstrap_value: A float32 tensor.
+            rewards: A float32 tensor of shape [T, B].
+            values: A float32 tensor of shape [T, B].
+            bootstrap_value: A float32 tensor of shape [B].
         """
 
         # Compute vtrace returns with B=1. This should be fine since we handle
         # LSTM sequencing elsewhere, so the T dim can span multiple episodes.
         with tf.device("/cpu:0"):
             vtrace_returns = vtrace.from_logits(
-                behaviour_policy_logits=tf.expand_dims(behaviour_logits, 1),
-                target_policy_logits=tf.expand_dims(target_logits, 1),
-                actions=tf.cast(tf.expand_dims(actions, 1), tf.int32),
-                discounts=tf.expand_dims(tf.to_float(~dones) * discount, 1),
-                rewards=tf.expand_dims(rewards, 1),
-                values=tf.expand_dims(values, 1),
-                bootstrap_value=tf.expand_dims(bootstrap_value, 0),
+                behaviour_policy_logits=behaviour_logits,
+                target_policy_logits=target_logits,
+                actions=tf.cast(actions, tf.int32),
+                discounts=tf.to_float(~dones) * discount,
+                rewards=rewards,
+                values=values,
+                bootstrap_value=bootstrap_value,
                 clip_rho_threshold=tf.cast(clip_rho_threshold, tf.float32),
                 clip_pg_rho_threshold=tf.cast(clip_pg_rho_threshold,
                                               tf.float32))
 
         # The policy gradients loss
-        log_prob = action_dist.logp(actions)
-        self.pi_loss = -tf.reduce_mean(log_prob * vtrace_returns.pg_advantages)
+        self.pi_loss = -tf.reduce_mean(
+            actions_logp * vtrace_returns.pg_advantages)
 
         # The baseline loss
         delta = values - vtrace_returns.vs
         self.vf_loss = 0.5 * tf.reduce_mean(tf.square(delta))
 
         # The entropy loss
-        self.entropy = tf.reduce_mean(action_dist.entropy())
+        self.entropy = tf.reduce_mean(actions_entropy)
 
         # The summed weighted loss
         self.total_loss = (self.pi_loss + self.vf_loss * vf_loss_coeff +
@@ -113,16 +119,24 @@ class VTracePolicyGraph(TFPolicyGraph):
         behaviour_logits = tf.placeholder(
             tf.float32, [None, ac_size], name="behaviour_logits")
 
+        def to_batches(tensor):
+            B = self.config["sample_batch_size"]
+            T = tf.shape(tensor)[0] // B
+            return tf.reshape(
+                tensor, tf.concat([[T, B], tf.shape(tensor)[1:]], axis=0))
+
+        # Inputs are reshaped from [T * B] => [T - 1, B] for V-trace calc.
         self.loss = VTraceLoss(
-            action_dist=dist_class(self.model.outputs[:-1]),
-            actions=actions[:-1],
-            dones=dones[:-1],
-            behaviour_logits=behaviour_logits[:-1],
-            target_logits=self.model.outputs[:-1],
+            actions=to_batches(actions)[:-1],
+            actions_logp=to_batches(action_dist.logp(actions))[:-1],
+            actions_entropy=to_batches(action_dist.entropy())[:-1],
+            dones=to_batches(dones)[:-1],
+            behaviour_logits=to_batches(behaviour_logits)[:-1],
+            target_logits=to_batches(self.model.outputs)[:-1],
             discount=config["gamma"],
-            rewards=rewards[:-1],
-            values=values[:-1],
-            bootstrap_value=values[-1],
+            rewards=to_batches(rewards)[:-1],
+            values=to_batches(values)[:-1],
+            bootstrap_value=to_batches(values)[-1],
             vf_loss_coeff=self.config["vf_loss_coeff"],
             entropy_coeff=self.config["entropy_coeff"],
             clip_rho_threshold=self.config["vtrace_clip_rho_threshold"],
