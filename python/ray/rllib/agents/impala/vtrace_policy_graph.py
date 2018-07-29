@@ -1,10 +1,10 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 """This is an extension of A3CPolicyGraph that uses V-trace for loss calc.
 
 Keep in sync with changes to A3CPolicyGraph."""
+
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
 
 import tensorflow as tf
 import gym
@@ -85,7 +85,6 @@ class VTraceLoss(object):
 
 
 class VTracePolicyGraph(TFPolicyGraph):
-
     def __init__(self, observation_space, action_space, config):
         config = dict(ray.rllib.agents.a3c.a3c.DEFAULT_CONFIG, **config)
         self.config = config

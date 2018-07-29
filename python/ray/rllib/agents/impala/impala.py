@@ -16,44 +16,38 @@ from ray.tune.trial import Resources
 OPTIMIZER_SHARED_CONFIGS = [
     "sample_batch_size",
     "train_batch_size",
+    "clip_rewards",
 ]
 
 DEFAULT_CONFIG = with_common_config({
-    # Whether to enable vtrace. If off, this reverts to the A3C policy graph.
+    # V-trace params.
     "vtrace": True,
-    # Clipping threshold for v-trace target calculation.
     "vtrace_clip_rho_threshold": 1.0,
-    # Clipping threshold for v-trace advantage calculation.
     "vtrace_clip_pg_threshold": 1.0,
-    # Size of rollout batch
+
+    # System params.
     "sample_batch_size": 50,
-    # Size of batch to train on.
     "train_batch_size": 512,
-    # Max global norm for each gradient calculated by worker
+    "min_iter_time_s": 10,  # Should be >30s at large scale for efficiency.
+    "gpu": True,
+    "num_workers": 1,
+    "num_cpus_per_worker": 1,
+    "num_gpus_per_worker": 0,
+
+    # Learning params.
     "grad_clip": 40.0,
-    # Learning rate
     "lr": 0.0001,
-    # Value Function Loss coefficient
     "vf_loss_coeff": 0.5,
-    # Entropy coefficient
     "entropy_coeff": -0.01,
-    # Model and preprocessor options
+
+    # Model and preprocessor options.
+    "clip_rewards": True,
     "model": {
-        # Use LSTM model. Requires TF.
         "use_lstm": False,
-        # Max seq length for LSTM training.
         "max_seq_len": 20,
-        # (Image statespace) - Converts image to Channels = 1
         "grayscale": True,
-        # (Image statespace) - Each pixel
         "zero_mean": False,
-        # (Image statespace) - Converts image to (dim, dim, C)
         "dim": 80,
-    },
-    # Arguments to pass to the rllib optimizer
-    "optimizer": {
-        "max_weight_sync_delay": 400,
-        "debug": False
     },
 })
 
@@ -69,9 +63,9 @@ class ImpalaAgent(Agent):
         cf = dict(cls._default_config, **config)
         return Resources(
             cpu=1,
-            gpu=0,
-            extra_cpu=cf["num_workers"],
-            extra_gpu=cf["use_gpu_for_workers"] and cf["num_workers"] or 0)
+            gpu=cf["gpu"] and 1 or 0,
+            extra_cpu=cf["num_cpus_per_worker"] * cf["num_workers"],
+            extra_gpu=cf["num_gpus_per_worker"] * cf["num_workers"])
 
     def _init(self):
         for k in OPTIMIZER_SHARED_CONFIGS:
@@ -92,7 +86,10 @@ class ImpalaAgent(Agent):
 
     def _train(self):
         prev_steps = self.optimizer.num_steps_sampled
+        start = time.time()
         self.optimizer.step()
+        while time.time() - start < self.config["min_iter_time_s"]:
+            self.optimizer.step()
         FilterManager.synchronize(self.local_evaluator.filters,
                                   self.remote_evaluators)
         result = self.optimizer.collect_metrics()

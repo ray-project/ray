@@ -71,13 +71,11 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
     def _init(self,
               train_batch_size=512,
               sample_batch_size=50,
-              min_batch_size=3,
               clip_rewards=True,
               debug=False):
 
         self.debug = debug
         self.learning_started = False
-        self.min_batch_size = min_batch_size
         self.train_batch_size = train_batch_size
         self.sample_batch_size = sample_batch_size
         self.max_weight_sync_delay = max_weight_sync_delay

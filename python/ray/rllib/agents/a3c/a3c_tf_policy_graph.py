@@ -1,8 +1,8 @@
+"""Note: Keep in sync with changes to VTracePolicyGraph."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-
-"""Note: Keep in sync with changes to VTracePolicyGraph."""
 
 import tensorflow as tf
 import gym
