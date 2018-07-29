@@ -54,7 +54,7 @@ DEFAULT_CONFIG = with_common_config({
 
 
 class ImpalaAgent(Agent):
-    """IMPALA implementation using DeepMind's v-trace."""
+    """IMPALA implementation using DeepMind's V-trace."""
 
     _agent_name = "IMPALA"
     _default_config = DEFAULT_CONFIG
