@@ -28,6 +28,8 @@ DEFAULT_CONFIG = with_common_config({
     "entropy_coeff": -0.01,
     # Whether to place workers on GPUs
     "use_gpu_for_workers": False,
+    # Whether to emit extra summary stats
+    "summarize": False,
     # Workers sample async
     "sample_async": True,
     # Model and preprocessor options

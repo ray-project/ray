@@ -181,15 +181,18 @@ class VTracePolicyGraph(TFPolicyGraph):
         return {"behaviour_logits": self.model.outputs}
 
     def extra_compute_grad_fetches(self):
-        return {
-            "stats": {
-                "policy_loss": self.loss.pi_loss,
-                "value_loss": self.loss.vf_loss,
-                "entropy": self.loss.entropy,
-                "grad_gnorm": tf.global_norm(self._grads),
-                "var_gnorm": tf.global_norm(self.var_list),
-            },
-        }
+        if self.config.get("summarize"):
+            return {
+                "stats": {
+                    "policy_loss": self.loss.pi_loss,
+                    "value_loss": self.loss.vf_loss,
+                    "entropy": self.loss.entropy,
+                    "grad_gnorm": tf.global_norm(self._grads),
+                    "var_gnorm": tf.global_norm(self.var_list),
+                },
+            }
+        else:
+            return {}
 
     def postprocess_trajectory(self, sample_batch, other_agent_batches=None):
         del sample_batch.data["new_obs"]  # not used, so save some bandwidth

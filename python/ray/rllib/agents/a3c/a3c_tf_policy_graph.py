@@ -118,15 +118,18 @@ class A3CPolicyGraph(TFPolicyGraph):
         return clipped_grads
 
     def extra_compute_grad_fetches(self):
-        return {
-            "stats": {
-                "policy_loss": self.loss.pi_loss,
-                "value_loss": self.loss.vf_loss,
-                "entropy": self.loss.entropy,
-                "grad_gnorm": tf.global_norm(self._grads),
-                "var_gnorm": tf.global_norm(self.var_list),
-            },
-        }
+        if self.config.get("summarize"):
+            return {
+                "stats": {
+                    "policy_loss": self.loss.pi_loss,
+                    "value_loss": self.loss.vf_loss,
+                    "entropy": self.loss.entropy,
+                    "grad_gnorm": tf.global_norm(self._grads),
+                    "var_gnorm": tf.global_norm(self.var_list),
+                },
+            }
+        else:
+            return {}
 
     def get_initial_state(self):
         return self.model.state_init
