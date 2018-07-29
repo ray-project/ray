@@ -6,12 +6,6 @@ import os
 import ray
 
 
-def fetch(oids):
-    for o in oids:
-        plasma_id = ray.pyarrow.plasma.ObjectID(o.id())
-        ray.worker.global_worker.plasma_client.fetch([plasma_id])
-
-
 class TaskPool(object):
     """Helper class for tracking the status of many in-flight actor tasks."""
 
