@@ -7,7 +7,7 @@ Basic API
 ``Ray.init()``
 ~~~~~~~~~~~~~~
 
-Ray.init should be invoked before any other Ray functions to initialize
+``Ray.init`` should be invoked before any other Ray functions to initialize
 the runtime.
 
 ``@RayRemote``
