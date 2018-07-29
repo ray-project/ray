@@ -30,6 +30,7 @@ DEFAULT_CONFIG = with_common_config({
     "sample_batch_size": 50,
     "train_batch_size": 512,
     "min_iter_time_s": 10,  # Should be >30s at large scale for efficiency.
+    "summarize": True,
     "gpu": True,
     "num_workers": 2,
     "num_cpus_per_worker": 1,

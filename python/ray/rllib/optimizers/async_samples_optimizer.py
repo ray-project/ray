@@ -40,6 +40,7 @@ class LearnerThread(threading.Thread):
         self.grad_timer = TimerStat()
         self.daemon = True
         self.weights_updated = 0
+        self.stats = {}
 
     def run(self):
         while True:
@@ -51,8 +52,11 @@ class LearnerThread(threading.Thread):
 
         if batch is not None:
             with self.grad_timer:
-                self.local_evaluator.compute_apply(batch)
+                fetches = self.local_evaluator.compute_apply(batch)
                 self.weights_updated += 1
+                print(fetches)
+                if "stats" in fetches:
+                    self.stats = fetches["stats"]
             self.outqueue.put(batch.count)
         self.learner_queue_size.push(self.inqueue.qsize())
 
@@ -99,6 +103,7 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
         self.batch_buffer = []
 
     def step(self):
+        assert self.learner.is_alive()
         start = time.time()
         sample_timesteps, train_timesteps = self._step()
         time_delta = time.time() - start
@@ -169,4 +174,6 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
         }
         if self.debug:
             stats.update(debug_stats)
+        if self.learner.stats:
+            stats["learner"] = self.learner.stats
         return dict(PolicyOptimizer.stats(self), **stats)

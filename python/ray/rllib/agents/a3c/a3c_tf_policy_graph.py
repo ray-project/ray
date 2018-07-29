@@ -95,15 +95,6 @@ class A3CPolicyGraph(TFPolicyGraph):
             seq_lens=self.model.seq_lens,
             max_seq_len=self.config["model"]["max_seq_len"])
 
-        if self.config.get("summarize"):
-            bs = tf.to_float(tf.shape(self.observations)[0])
-            tf.summary.scalar("model/policy_graph", self.loss.pi_loss / bs)
-            tf.summary.scalar("model/value_loss", self.loss.vf_loss / bs)
-            tf.summary.scalar("model/entropy", self.loss.entropy / bs)
-            tf.summary.scalar("model/grad_gnorm", tf.global_norm(self._grads))
-            tf.summary.scalar("model/var_gnorm", tf.global_norm(self.var_list))
-            self.summary_op = tf.summary.merge_all()
-
         self.sess.run(tf.global_variables_initializer())
 
     def extra_compute_action_fetches(self):
@@ -128,7 +119,15 @@ class A3CPolicyGraph(TFPolicyGraph):
 
     def extra_compute_grad_fetches(self):
         if self.config.get("summarize"):
-            return {"summary": self.summary_op}
+            return {
+                "stats": {
+                    "policy_loss": self.loss.pi_loss,
+                    "value_loss": self.loss.vf_loss,
+                    "entropy": self.loss.entropy,
+                    "grad_gnorm": tf.global_norm(self._grads),
+                    "var_gnorm": tf.global_norm(self.var_list),
+                },
+            }
         else:
             return {}
 

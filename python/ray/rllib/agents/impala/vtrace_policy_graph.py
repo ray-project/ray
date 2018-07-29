@@ -63,14 +63,14 @@ class VTraceLoss(object):
 
         # The policy gradients loss
         log_prob = action_dist.logp(actions)
-        self.pi_loss = -tf.reduce_sum(log_prob * vtrace_returns.pg_advantages)
+        self.pi_loss = -tf.reduce_mean(log_prob * vtrace_returns.pg_advantages)
 
         # The baseline loss
         delta = values - vtrace_returns.vs
-        self.vf_loss = 0.5 * tf.reduce_sum(tf.square(delta))
+        self.vf_loss = 0.5 * tf.reduce_mean(tf.square(delta))
 
         # The entropy loss
-        self.entropy = tf.reduce_sum(action_dist.entropy())
+        self.entropy = tf.reduce_mean(action_dist.entropy())
 
         # The summed weighted loss
         self.total_loss = (self.pi_loss + self.vf_loss * vf_loss_coeff +
@@ -152,15 +152,6 @@ class VTracePolicyGraph(TFPolicyGraph):
             seq_lens=self.model.seq_lens,
             max_seq_len=self.config["model"]["max_seq_len"])
 
-        if self.config.get("summarize"):
-            bs = tf.to_float(tf.shape(self.observations)[0])
-            tf.summary.scalar("model/policy_graph", self.loss.pi_loss / bs)
-            tf.summary.scalar("model/value_loss", self.loss.vf_loss / bs)
-            tf.summary.scalar("model/entropy", self.loss.entropy / bs)
-            tf.summary.scalar("model/grad_gnorm", tf.global_norm(self._grads))
-            tf.summary.scalar("model/var_gnorm", tf.global_norm(self.var_list))
-            self.summary_op = tf.summary.merge_all()
-
         self.sess.run(tf.global_variables_initializer())
 
     def optimizer(self):
@@ -177,7 +168,15 @@ class VTracePolicyGraph(TFPolicyGraph):
 
     def extra_compute_grad_fetches(self):
         if self.config.get("summarize"):
-            return {"summary": self.summary_op}
+            return {
+                "stats": {
+                    "policy_loss": self.loss.pi_loss,
+                    "value_loss": self.loss.vf_loss,
+                    "entropy": self.loss.entropy,
+                    "grad_gnorm": tf.global_norm(self._grads),
+                    "var_gnorm": tf.global_norm(self.var_list),
+                },
+            }
         else:
             return {}
 
