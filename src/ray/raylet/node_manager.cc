@@ -341,7 +341,8 @@ void NodeManager::HandleActorCreation(const ActorID &actor_id,
   } else {
     // The actor's location is now known. Dequeue any methods that were
     // submitted before the actor's location was known.
-    const auto &methods = local_queues_.GetUncreatedActorMethods();
+    // (See design_docs/task_states.rst for the state transition diagram.)
+    const auto &methods = local_queues_.GetMethodsWaitingForActorCreation();
     std::unordered_set<TaskID> created_actor_method_ids;
     for (const auto &method : methods) {
       if (method.GetTaskSpecification().ActorId() == actor_id) {
@@ -377,7 +378,8 @@ void NodeManager::CleanUpTasksForDeadActor(const ActorID &actor_id) {
   // SchedulingQueue API.
   std::unordered_set<TaskID> tasks_to_remove;
 
-  GetActorTasksFromList(actor_id, local_queues_.GetUncreatedActorMethods(),
+  // (See design_docs/task_states.rst for the state transition diagram.)
+  GetActorTasksFromList(actor_id, local_queues_.GetMethodsWaitingForActorCreation(),
                         tasks_to_remove);
   GetActorTasksFromList(actor_id, local_queues_.GetWaitingTasks(), tasks_to_remove);
   GetActorTasksFromList(actor_id, local_queues_.GetPlaceableTasks(), tasks_to_remove);
@@ -400,6 +402,7 @@ void NodeManager::ProcessNewClient(LocalClientConnection &client) {
 
 void NodeManager::DispatchTasks() {
   // Work with a copy of scheduled tasks.
+  // (See design_docs/task_states.rst for the state transition diagram.)
   auto scheduled_tasks = local_queues_.GetReadyTasks();
   // Return if there are no tasks to schedule.
   if (scheduled_tasks.empty()) {
@@ -415,6 +418,7 @@ void NodeManager::DispatchTasks() {
     }
     // We have enough resources for this task. Assign task.
     // TODO(atumanov): perform the task state/queue transition inside AssignTask.
+    // (See design_docs/task_states.rst for the state transition diagram.)
     auto dispatched_task = local_queues_.RemoveTask(task.GetTaskSpecification().TaskId());
     AssignTask(dispatched_task);
   }
@@ -461,6 +465,7 @@ void NodeManager::ProcessClientMessage(
       // The client is a worker. Handle the case where the worker is killed
       // while executing a task. Clean up the assigned task's resources, push
       // an error to the driver.
+      // (See design_docs/task_states.rst for the state transition diagram.)
       const TaskID &task_id = worker->GetAssignedTaskId();
       if (!task_id.is_nil()) {
         auto const &running_tasks = local_queues_.GetRunningTasks();
@@ -713,6 +718,7 @@ void NodeManager::ScheduleTasks() {
       local_task_ids.insert(task_id);
     } else {
       // TODO(atumanov): need a better interface for task exit on forward.
+      // (See design_docs/task_states.rst for the state transition diagram.)
       const auto task = local_queues_.RemoveTask(task_id);
       // Attempt to forward the task. If this fails to forward the task,
       // the task will be resubmit locally.
@@ -816,7 +822,8 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
       RAY_CHECK_OK(gcs_client_->actor_table().Lookup(JobID::nil(), spec.ActorId(),
                                                      lookup_callback));
       // Keep the task queued until we discover the actor's location.
-      local_queues_.QueueUncreatedActorMethods({task});
+      // (See design_docs/task_states.rst for the state transition diagram.)
+      local_queues_.QueueMethodsWaitingForActorCreation({task});
     }
   } else {
     // This is a non-actor task. Queue the task for a placement decision or for dispatch
@@ -825,6 +832,7 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
       // Check for local dependencies and enqueue as waiting or ready for dispatch.
       EnqueuePlaceableTask(task);
     } else {
+      // (See design_docs/task_states.rst for the state transition diagram.)
       local_queues_.QueuePlaceableTasks({task});
       ScheduleTasks();
     }
@@ -840,6 +848,7 @@ void NodeManager::HandleWorkerBlocked(std::shared_ptr<Worker> worker) {
   // it acquired for its assigned task while it is blocked. The resources will
   // be acquired again once the worker is unblocked.
   RAY_CHECK(!worker->GetAssignedTaskId().is_nil());
+  // (See design_docs/task_states.rst for the state transition diagram.)
   const auto task = local_queues_.RemoveTask(worker->GetAssignedTaskId());
   // Get the CPU resources required by the running task.
   const auto required_resources = task.GetTaskSpecification().GetRequiredResources();
@@ -868,6 +877,7 @@ void NodeManager::HandleWorkerUnblocked(std::shared_ptr<Worker> worker) {
     return;
   }
 
+  // (See design_docs/task_states.rst for the state transition diagram.)
   const auto task = local_queues_.RemoveTask(worker->GetAssignedTaskId());
   // Get the CPU resources required by the running task.
   const auto required_resources = task.GetTaskSpecification().GetRequiredResources();
@@ -899,6 +909,7 @@ void NodeManager::HandleWorkerUnblocked(std::shared_ptr<Worker> worker) {
   }
 
   // Mark the task as running again.
+  // (See design_docs/task_states.rst for the state transition diagram.)
   local_queues_.QueueRunningTasks({task});
   worker->MarkUnblocked();
 }
@@ -924,6 +935,7 @@ void NodeManager::EnqueuePlaceableTask(const Task &task) {
       task.GetTaskSpecification().TaskId(), task.GetDependencies());
   // Enqueue the task. If all dependencies are available, then the task is queued
   // in the READY state, else the WAITING state.
+  // (See design_docs/task_states.rst for the state transition diagram.)
   if (args_ready) {
     local_queues_.QueueReadyTasks({task});
     // Try to dispatch the newly ready task.
@@ -955,6 +967,7 @@ void NodeManager::AssignTask(Task &task) {
     }
     // Queue this task for future assignment. The task will be assigned to a
     // worker once one becomes available.
+    // (See design_docs/task_states.rst for the state transition diagram.)
     local_queues_.QueueReadyTasks(std::vector<Task>({task}));
     return;
   }
@@ -1014,6 +1027,7 @@ void NodeManager::AssignTask(Task &task) {
     // We started running the task, so the task is ready to write to GCS.
     lineage_cache_.AddReadyTask(task);
     // Mark the task as running.
+    // (See design_docs/task_states.rst for the state transition diagram.)
     local_queues_.QueueRunningTasks(std::vector<Task>({task}));
     // Notify the task dependency manager that we no longer need this task's
     // object dependencies.
@@ -1026,6 +1040,7 @@ void NodeManager::AssignTask(Task &task) {
                          nullptr);
     // Queue this task for future assignment. The task will be assigned to a
     // worker once one becomes available.
+    // (See design_docs/task_states.rst for the state transition diagram.)
     local_queues_.QueueReadyTasks(std::vector<Task>({task}));
   }
 }
@@ -1033,6 +1048,8 @@ void NodeManager::AssignTask(Task &task) {
 void NodeManager::FinishAssignedTask(Worker &worker) {
   TaskID task_id = worker.GetAssignedTaskId();
   RAY_LOG(DEBUG) << "Finished task " << task_id;
+
+  // (See design_docs/task_states.rst for the state transition diagram.)
   const auto task = local_queues_.RemoveTask(task_id);
 
   if (task.GetTaskSpecification().IsActorCreationTask()) {
@@ -1096,6 +1113,7 @@ void NodeManager::HandleObjectLocal(const ObjectID &object_id) {
     std::unordered_set<TaskID> ready_task_id_set(ready_task_ids.begin(),
                                                  ready_task_ids.end());
     // Transition tasks from waiting to scheduled.
+    // (See design_docs/task_states.rst for the state transition diagram.)
     local_queues_.MoveTasks(ready_task_id_set, TaskState::WAITING, TaskState::READY);
     // New scheduled tasks appeared in the queue, try to dispatch them.
     DispatchTasks();
