@@ -120,8 +120,12 @@ class VTracePolicyGraph(TFPolicyGraph):
             tf.float32, [None, ac_size], name="behaviour_logits")
 
         def to_batches(tensor):
-            B = self.config["sample_batch_size"]
-            T = tf.shape(tensor)[0] // B
+            if self.config["model"]["use_lstm"]:
+                B = tf.shape(self.model.seq_lens)[0]
+                T = tf.shape(tensor)[0] // B
+            else:
+                T = self.config["sample_batch_size"]
+                B = tf.shape(tensor)[0] // T
             rs = tf.reshape(
                 tensor, tf.concat([[B, T], tf.shape(tensor)[1:]], axis=0))
             # swap B and T axes

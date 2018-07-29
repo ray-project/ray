@@ -186,6 +186,13 @@ docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/train.py \
+    --env CartPole-v0 \
+    --run IMPALA \
+    --stop '{"training_iteration": 2}' \
+    --config '{"gpu": false, "num_workers": 2, "min_iter_time_s": 1, "model": {"use_lstm": true}}'
+
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/rllib/train.py \
     --env MountainCarContinuous-v0 \
     --run DDPG \
     --stop '{"training_iteration": 2}' \
