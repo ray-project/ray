@@ -6,12 +6,19 @@ import os
 import ray
 
 
+def fetch(oids):
+    for o in oids:
+        plasma_id = ray.pyarrow.plasma.ObjectID(o.id())
+        ray.worker.global_worker.plasma_client.fetch([plasma_id])
+
+
 class TaskPool(object):
     """Helper class for tracking the status of many in-flight actor tasks."""
 
     def __init__(self):
         self._tasks = {}
         self._objects = {}
+        self._fetching = []
 
     def add(self, worker, all_obj_ids):
         if isinstance(all_obj_ids, list):
@@ -27,6 +34,25 @@ class TaskPool(object):
             ready, _ = ray.wait(pending, num_returns=len(pending), timeout=10)
             for obj_id in ready:
                 yield (self._tasks.pop(obj_id), self._objects.pop(obj_id))
+
+    def completed_prefetch(self):
+        """Similar to completed but only returns once the object is local.
+
+        Assumes obj_id only is one id."""
+
+        for worker, obj_id in self.completed():
+            plasma_id = ray.pyarrow.plasma.ObjectID(obj_id.id())
+            ray.worker.global_worker.plasma_client.fetch([plasma_id])
+            self._fetching.append((worker, obj_id))
+
+        remaining = []
+        for worker, obj_id in self._fetching:
+            plasma_id = ray.pyarrow.plasma.ObjectID(obj_id.id())
+            if ray.worker.global_worker.plasma_client.contains(plasma_id):
+                yield (worker, obj_id)
+            else:
+                remaining.append((worker, obj_id))
+        self._fetching = remaining
 
     @property
     def count(self):

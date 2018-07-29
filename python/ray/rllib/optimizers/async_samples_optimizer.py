@@ -121,8 +121,8 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
         weights = None
 
         with self.timers["sample_processing"]:
-            for ev, sample_batch in self.sample_tasks.completed():
-                sample_batch = ray.get(sample_batch)  # TODO prefetch this
+            for ev, sample_batch in self.sample_tasks.completed_prefetch():
+                sample_batch = ray.get(sample_batch)
                 sample_timesteps += sample_batch.count
 
                 # trajectory whose length < n_step can NOT provide v-trace
