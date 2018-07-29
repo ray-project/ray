@@ -58,8 +58,8 @@ class VTraceLoss(object):
                 values=tf.expand_dims(values, 1),
                 bootstrap_value=tf.expand_dims(bootstrap_value, 0),
                 clip_rho_threshold=tf.cast(clip_rho_threshold, tf.float32),
-                clip_pg_rho_threshold=
-                    tf.cast(clip_pg_rho_threshold, tf.float32))
+                clip_pg_rho_threshold=tf.cast(clip_pg_rho_threshold,
+                                              tf.float32))
 
         # The policy gradients loss
         log_prob = action_dist.logp(actions)

@@ -73,7 +73,6 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
         self.debug = debug
         self.learning_started = False
         self.train_batch_size = train_batch_size
-        self.sample_batch_size = sample_batch_size
 
         self.learner = LearnerThread(self.local_evaluator)
         self.learner.start()
@@ -97,6 +96,8 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
             for _ in range(SAMPLE_QUEUE_DEPTH):
                 self.sample_tasks.add(ev, ev.sample.remote())
 
+        self.batch_buffer = []
+
     def step(self):
         start = time.time()
         sample_timesteps, train_timesteps = self._step()
@@ -119,10 +120,14 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
             for ev, sample_batch in self.sample_tasks.completed_prefetch():
                 sample_batch = ray.get(sample_batch)
                 sample_timesteps += sample_batch.count
-
-                # TODO(ekl) we should batch to train_batch_size first
-                with self.timers["enqueue"]:
-                    self.learner.inqueue.put((ev, sample_batch))
+                self.batch_buffer.append(sample_batch)
+                if sum([b.count
+                        for b in self.batch_buffer]) >= self.train_batch_size:
+                    train_batch = self.batch_buffer[0].concat_samples(
+                        self.batch_buffer)
+                    with self.timers["enqueue"]:
+                        self.learner.inqueue.put((ev, train_batch))
+                    self.batch_buffer = []
 
                 # Note that it's important to pull new weights once
                 # updated to avoid excessive correlation between actors

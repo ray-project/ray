@@ -47,6 +47,15 @@ Tuned examples: `Humanoid-v1 <https://github.com/ray-project/ray/blob/master/pyt
 
    RLlib's ES implementation scales further and is faster than a reference Redis implementation.
 
+Importance Weighted Actor-Learner Architecture
+----------------------------------------------
+
+`[paper] <https://arxiv.org/abs/1802.01561>`__
+`[implementation] <https://github.com/ray-project/ray/blob/master/python/ray/rllib/agents/impala/impala.py>`__
+In IMPALA, a central learner runs SGD in a tight loop while asynchronously pulling sample batches from many actor processes. RLlib's IMPALA implementation uses DeepMind's reference `V-trace code <https://github.com/deepmind/scalable_agent/blob/master/vtrace.py>`__.
+
+This implementation is currently **experimental**.
+
 Policy Gradients
 ----------------
 `[paper] <https://papers.nips.cc/paper/1713-policy-gradient-methods-for-reinforcement-learning-with-function-approximation.pdf>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/python/ray/rllib/agents/pg/pg.py>`__ We include a vanilla policy gradients implementation as an example algorithm. This is usually outperformed by PPO.
