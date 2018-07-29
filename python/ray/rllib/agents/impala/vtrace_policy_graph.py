@@ -68,15 +68,15 @@ class VTraceLoss(object):
                                               tf.float32))
 
         # The policy gradients loss
-        self.pi_loss = -tf.reduce_mean(
+        self.pi_loss = -tf.reduce_sum(
             actions_logp * vtrace_returns.pg_advantages)
 
         # The baseline loss
         delta = values - vtrace_returns.vs
-        self.vf_loss = 0.5 * tf.reduce_mean(tf.square(delta))
+        self.vf_loss = 0.5 * tf.reduce_sum(tf.square(delta))
 
         # The entropy loss
-        self.entropy = tf.reduce_mean(actions_entropy)
+        self.entropy = tf.reduce_sum(actions_entropy)
 
         # The summed weighted loss
         self.total_loss = (self.pi_loss + self.vf_loss * vf_loss_coeff +
