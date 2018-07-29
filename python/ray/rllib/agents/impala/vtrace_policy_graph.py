@@ -29,7 +29,9 @@ class VTraceLoss(object):
                  rewards,
                  values,
                  vf_loss_coeff=0.5,
-                 entropy_coeff=-0.01):
+                 entropy_coeff=-0.01,
+                 clip_rho_threshold=1.0,
+                 clip_pg_threshold=1.0):
         """Loss using vtrace.
 
         Args:
@@ -62,7 +64,9 @@ class VTraceLoss(object):
                 discounts=tf.expand_dims(tf.to_float(~done) * discount, 1),
                 rewards=tf.expand_dims(rewards, 1),
                 values=tf.expand_dims(values, 1),
-                bootstrap_value=tf.expand_dims(bootstrap_value, 0))
+                bootstrap_value=tf.expand_dims(bootstrap_value, 0),
+                clip_rho_threshold=clip_rho_threshold,
+                clip_pg_threshold=clip_pg_threshold)
 
         # The policy gradients loss
         log_prob = action_dist.logp(actions)
@@ -184,15 +188,3 @@ class VTracePolicyGraph(TFPolicyGraph):
 
     def get_initial_state(self):
         return self.model.state_init
-
-    def postprocess_trajectory(self, sample_batch, other_agent_batches=None):
-        completed = sample_batch["dones"][-1]
-        if completed:
-            last_r = 0.0
-        else:
-            next_state = []
-            for i in range(len(self.state_in)):
-                next_state.append([sample_batch["state_out_{}".format(i)][-1]])
-            last_r = self.value(sample_batch["new_obs"][-1], *next_state)
-        return compute_advantages(sample_batch, last_r, self.config["gamma"],
-                                  self.config["lambda"])
