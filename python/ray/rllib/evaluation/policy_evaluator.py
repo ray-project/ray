@@ -86,6 +86,7 @@ class PolicyEvaluator(EvaluatorInterface):
                  env_creator,
                  policy_graph,
                  policy_mapping_fn=None,
+                 policies_to_train=None,
                  tf_session_creator=None,
                  batch_steps=100,
                  batch_mode="truncate_episodes",
@@ -113,6 +114,8 @@ class PolicyEvaluator(EvaluatorInterface):
                 policy ids in multi-agent mode. This function will be called
                 each time a new agent appears in an episode, to bind that agent
                 to a policy for the duration of the episode.
+            policies_to_train (list): Optional whitelist of policies to train,
+                or None for all policies.
             tf_session_creator (func): A function that returns a TF session.
                 This is optional and only useful with TFPolicyGraph.
             batch_steps (int): The target number of env transitions to include
@@ -159,7 +162,6 @@ class PolicyEvaluator(EvaluatorInterface):
         policy_mapping_fn = (policy_mapping_fn
                              or (lambda agent_id: DEFAULT_POLICY_ID))
         self.env_creator = env_creator
-        self.policy_graph = policy_graph
         self.batch_steps = batch_steps
         self.batch_mode = batch_mode
         self.compress_observations = compress_observations
@@ -191,6 +193,7 @@ class PolicyEvaluator(EvaluatorInterface):
 
         self.tf_sess = None
         policy_dict = _validate_and_canonicalize(policy_graph, self.env)
+        self.policies_to_train = policies_to_train or list(policy_dict.keys())
         if _has_tensorflow_graph(policy_dict):
             with tf.Graph().as_default():
                 if tf_session_creator:
@@ -300,6 +303,16 @@ class PolicyEvaluator(EvaluatorInterface):
 
         return [func(policy, pid) for pid, policy in self.policy_map.items()]
 
+    def foreach_trainable_policy(self, func):
+        """Apply the given function to each (policy, policy_id) tuple.
+
+        This only applies func to policies in `self.policies_to_train`."""
+
+        return [
+            func(policy, pid) for pid, policy in self.policy_map.items()
+            if pid in self.policies_to_train
+        ]
+
     def sync_filters(self, new_filters):
         """Changes self's filter to given and rebases any accumulated delta.
 
@@ -326,10 +339,12 @@ class PolicyEvaluator(EvaluatorInterface):
                 f.clear_buffer()
         return return_filters
 
-    def get_weights(self):
+    def get_weights(self, policies=None):
+        if policies is None:
+            policies = self.policy_map.keys()
         return {
             pid: policy.get_weights()
-            for pid, policy in self.policy_map.items()
+            for pid, policy in self.policy_map.items() if pid in policies
         }
 
     def set_weights(self, weights):
@@ -342,6 +357,8 @@ class PolicyEvaluator(EvaluatorInterface):
             if self.tf_sess is not None:
                 builder = TFRunBuilder(self.tf_sess, "compute_gradients")
                 for pid, batch in samples.policy_batches.items():
+                    if pid not in self.policies_to_train:
+                        continue
                     grad_out[pid], info_out[pid] = (
                         self.policy_map[pid].build_compute_gradients(
                             builder, batch))
@@ -381,6 +398,8 @@ class PolicyEvaluator(EvaluatorInterface):
             if self.tf_sess is not None:
                 builder = TFRunBuilder(self.tf_sess, "compute_apply")
                 for pid, batch in samples.policy_batches.items():
+                    if pid not in self.policies_to_train:
+                        continue
                     info_out[pid], _ = (
                         self.policy_map[pid].build_compute_apply(
                             builder, batch))
