@@ -110,9 +110,9 @@ Here is an example of the basic usage:
 
 .. note::
 
-    It's recommended that you run RLlib agents with Tune, for easy experiment management and visualization of results.
+    It's recommended that you run RLlib agents with `Tune <tune.html>`__, for easy experiment management and visualization of results. Just set ``"run": AGENT_NAME, "env": ENV_NAME`` in the experiment config.
 
-All RLlib agents implement the `Tune API <tune.html#concepts>`__. This enables them to be easily used in experiments with `Tune <tune.html>`__. For example, the following code performs a simple param sweep of PPO:
+All RLlib agents are compatible with the `Tune API <tune.html#concepts>`__. This enables them to be easily used in experiments with `Tune <tune.html>`__. For example, the following code performs a simple hyperparam sweep of PPO:
 
 .. code-block:: python
 
@@ -123,9 +123,10 @@ All RLlib agents implement the `Tune API <tune.html#concepts>`__. This enables t
     tune.run_experiments({
         "my_experiment": {
             "run": "PPO",
+            "env": "CartPole-v0",
             "stop": {"episode_reward_mean": 200},
             "config": {
-                "env": "CartPole-v0",
+                "num_workers": 2,
                 "sgd_stepsize": tune.grid_search([0.01, 0.001, 0.0001]),
             },
         },
