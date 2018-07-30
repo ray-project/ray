@@ -39,14 +39,14 @@ from ray.utils import (
     random_string,
     thread_safe_client,
 )
-from ray.client import Client
+from ray.external_client import ExternalClient
 
 SCRIPT_MODE = 0
 WORKER_MODE = 1
 LOCAL_MODE = 2
 SILENT_MODE = 3
 PYTHON_MODE = 4
-CLIENT_MODE = 5
+EXTERNAL_CLIENT_MODE = 5
 
 ERROR_KEY_PREFIX = b"Error:"
 DRIVER_ID_LENGTH = 20
@@ -194,7 +194,7 @@ class Worker(object):
             executed by this worker.
         connected (bool): True if Ray has been started and False otherwise.
         mode: The mode of the worker. One of SCRIPT_MODE, LOCAL_MODE,
-            SILENT_MODE, WORKER_MODE, and CLIENT_MODE.
+            SILENT_MODE, WORKER_MODE, and EXTERNAL_CLIENT_MODE.
         cached_remote_functions_and_actors: A list of information for exporting
             remote functions and actor classes definitions that were defined
             before the worker called connect. When the worker eventually does
@@ -255,8 +255,7 @@ class Worker(object):
         self.task_driver_id = None
 
         # Workers typically are not external clients
-        # TODO (dsuo): should rename this so it's clear what "client" means
-        self.client = None
+        self.external_client = None
 
     def get_serialization_context(self, driver_id):
         """Get the SerializationContext of the driver that this worker is processing.
@@ -302,13 +301,13 @@ class Worker(object):
         print any information about errors because some of the tests
         intentionally fail.
 
-        The mode CLIENT_MODE should be used only if no local resources or Ray
+        The mode EXTERNAL_CLIENT_MODE should be used only if no local resources or Ray
         process exist. All behavior is proxied to the head node on a Ray
         cluster.
 
         Args:
             mode: One of SCRIPT_MODE, WORKER_MODE, LOCAL_MODE,
-                SILENT_MODE, and CLIENT_MODE.
+                SILENT_MODE, and EXTERNAL_CLIENT_MODE.
         """
         self.mode = mode
 
@@ -688,7 +687,7 @@ class Worker(object):
             decorated_function: The decorated function (this is used to enable
                 the remote function to recursively call itself).
         """
-        if self.mode not in [SCRIPT_MODE, SILENT_MODE, CLIENT_MODE]:
+        if self.mode not in [SCRIPT_MODE, SILENT_MODE, EXTERNAL_CLIENT_MODE]:
             raise Exception("export_remote_function can only be called on a "
                             "driver.")
 
@@ -1250,7 +1249,7 @@ def error_info(worker=global_worker):
     return errors
 
 
-# TODO (dsuo): unclear if we care about this in CLIENT_MODE or if we can
+# TODO (dsuo): unclear if we care about this in EXTERNAL_CLIENT_MODE or if we can
 # just rely on the fact that Ray workers will have this same initialization.
 def _initialize_serialization(driver_id, worker=global_worker):
     """Initialize the serialization library.
@@ -1555,7 +1554,7 @@ def _init(address_info=None,
             object store with.
         driver_mode (bool): The mode in which to start the driver. This should
             be one of ray.SCRIPT_MODE, ray.LOCAL_MODE, ray.SILENT_MODE, and
-            ray.CLIENT_MODE.
+            ray.EXTERNAL_CLIENT_MODE.
         redirect_worker_output: True if the stdout and stderr of worker
             processes should be redirected to files.
         redirect_output (bool): True if stdout and stderr for non-worker
@@ -1582,7 +1581,8 @@ def _init(address_info=None,
         include_webui: Boolean flag indicating whether to start the web
             UI, which is a Jupyter notebook.
         use_raylet: True if the new raylet code path should be used.
-        gateway_port: The port that socat will listen on for commands to forward.
+        gateway_port: The port that socat will listen on for commands to
+            forward.
 
     Returns:
         Address information about the started processes.
@@ -1594,9 +1594,11 @@ def _init(address_info=None,
     if driver_mode == PYTHON_MODE:
         raise Exception("ray.PYTHON_MODE has been renamed to ray.LOCAL_MODE. "
                         "Please use ray.LOCAL_MODE.")
-    if driver_mode not in [SCRIPT_MODE, LOCAL_MODE, SILENT_MODE, CLIENT_MODE]:
+    if driver_mode not in [SCRIPT_MODE, LOCAL_MODE, SILENT_MODE,
+                           EXTERNAL_CLIENT_MODE]:
         raise Exception("Driver_mode must be in [ray.SCRIPT_MODE, "
-                        "ray.LOCAL_MODE, ray.SILENT_MODE, ray.CLIENT_MODE].")
+                        "ray.LOCAL_MODE, ray.SILENT_MODE, "
+                        "ray.EXTERNAL_CLIENT_MODE].")
 
     if use_raylet is None and os.environ.get("RAY_USE_XRAY") == "1":
         # This environment variable is used in our testing setup.
@@ -1657,9 +1659,9 @@ def _init(address_info=None,
             huge_pages=huge_pages,
             include_webui=include_webui,
             use_raylet=use_raylet,
-            with_gateway=(driver_mode == CLIENT_MODE),
+            with_gateway=(driver_mode == EXTERNAL_CLIENT_MODE),
             gateway_port=address_info.get("gateway_port") if \
-            driver_mode == CLIENT_MODE else None)
+            driver_mode == EXTERNAL_CLIENT_MODE else None)
     else:
         if redis_address is None:
             raise Exception("When connecting to an existing cluster, "
@@ -1704,7 +1706,7 @@ def _init(address_info=None,
     # shutdown() when the Python script exits.
     if driver_mode == LOCAL_MODE:
         driver_address_info = {}
-    elif driver_mode == CLIENT_MODE and use_raylet:
+    elif driver_mode == EXTERNAL_CLIENT_MODE and use_raylet:
         driver_address_info = {
             "node_ip_address": address_info["node_ip_address"],
             "redis_address": address_info["redis_address"],
@@ -1712,7 +1714,7 @@ def _init(address_info=None,
             "raylet_socket_name": address_info["raylet_socket_names"][0]
         }
 
-        global_worker.client = Client(
+        global_worker.external_client = ExternalClient(
             gateway_address=driver_address_info["redis_address"].split(":")[0],
             gateway_port=driver_address_info["gateway_port"],
             gateway_data_port=5000,
@@ -1808,7 +1810,7 @@ def init(redis_address=None,
             provided if redis_address is not provided.
         driver_mode (bool): The mode in which to start the driver. This should
             be one of ray.SCRIPT_MODE, ray.LOCAL_MODE, ray.SILENT_MODE, and
-            ray.CLIENT_MODE.
+            ray.EXTERNAL_CLIENT_MODE.
         redirect_worker_output: True if the stdout and stderr of worker
             processes should be redirected to files.
         redirect_output (bool): True if stdout and stderr for non-worker
@@ -1826,7 +1828,8 @@ def init(redis_address=None,
         include_webui: Boolean flag indicating whether to start the web
             UI, which is a Jupyter notebook.
         use_raylet: True if the new raylet code path should be used.
-        gateway_port: The port that socat will listen on for commands to forward.
+        gateway_port: The port that socat will listen on for commands to
+        forward.
 
     Returns:
         Address information about the started processes.
@@ -1848,10 +1851,10 @@ def init(redis_address=None,
         logger.info("Detected environment variable 'RAY_USE_XRAY'.")
         use_raylet = True
 
-    if driver_mode == CLIENT_MODE and (redis_address is None or
+    if driver_mode == EXTERNAL_CLIENT_MODE and (redis_address is None or
                                        gateway_port is None or
                                        not use_raylet):
-        raise Exception("ray.CLIENT_MODE requires redis_address and "
+        raise Exception("ray.EXTERNAL_CLIENT_MODE requires redis_address and "
                         "gateway_port. use_raylet must be True.")
 
     # Convert hostnames to numerical IP address.
@@ -1914,7 +1917,7 @@ def shutdown(worker=global_worker):
     if hasattr(worker, "plasma_client"):
         worker.plasma_client.disconnect()
 
-    if worker.mode in [SCRIPT_MODE, SILENT_MODE, CLIENT_MODE]:
+    if worker.mode in [SCRIPT_MODE, SILENT_MODE, EXTERNAL_CLIENT_MODE]:
         # If this is a driver, push the finish time to Redis and clean up any
         # other services that were started with the driver.
         worker.redis_client.hmset(b"Drivers:" + worker.worker_id,
@@ -1941,7 +1944,7 @@ normal_excepthook = sys.excepthook
 
 def custom_excepthook(type, value, tb):
     # If this is a driver, push the exception to redis.
-    if global_worker.mode in [SCRIPT_MODE, SILENT_MODE, CLIENT_MODE]:
+    if global_worker.mode in [SCRIPT_MODE, SILENT_MODE, EXTERNAL_CLIENT_MODE]:
         error_message = "".join(traceback.format_tb(tb))
         global_worker.redis_client.hmset(b"Drivers:" + global_worker.worker_id,
                                          {"exception": error_message})
@@ -2088,7 +2091,7 @@ def connect(info,
         object_id_seed: A seed to use to make the generation of object IDs
             deterministic.
         mode: The mode of the worker. One of SCRIPT_MODE, WORKER_MODE,
-            LOCAL_MODE, SILENT_MODE, CLIENT_MODE.
+            LOCAL_MODE, SILENT_MODE, EXTERNAL_CLIENT_MODE.
         use_raylet: True if the new raylet code path should be used.
     """
     # Do some basic checking to make sure we didn't call ray.init twice.
@@ -2134,7 +2137,7 @@ def connect(info,
     try:
         ray.services.check_version_info(worker.redis_client)
     except Exception as e:
-        if mode in [SCRIPT_MODE, SILENT_MODE, CLIENT_MODE]:
+        if mode in [SCRIPT_MODE, SILENT_MODE, EXTERNAL_CLIENT_MODE]:
             raise e
         elif mode == WORKER_MODE:
             traceback_str = traceback.format_exc()
@@ -2202,7 +2205,7 @@ def connect(info,
             worker_dict["stderr_file"] = os.path.abspath(log_stderr_file.name)
         worker.redis_client.hmset(b"Workers:" + worker.worker_id, worker_dict)
         is_worker = True
-    elif mode == CLIENT_MODE:
+    elif mode == EXTERNAL_CLIENT_MODE:
         driver_info = {
             "node_ip_address": worker.node_ip_address,
             "driver_id": worker.worker_id,
@@ -2215,8 +2218,8 @@ def connect(info,
     else:
         raise Exception("This code should be unreachable.")
 
-    # TODO (dsuo): ignore object store if in CLIENT_MODE
-    if mode != CLIENT_MODE:
+    # TODO (dsuo): ignore object store if in EXTERNAL_CLIENT_MODE
+    if mode != EXTERNAL_CLIENT_MODE:
         # Create an object store client.
         if not worker.use_raylet:
             worker.plasma_client = thread_safe_client(
@@ -2233,7 +2236,7 @@ def connect(info,
 
     # If this is a driver, set the current task ID, the task driver ID, and set
     # the task index to 0.
-    if mode in [SCRIPT_MODE, SILENT_MODE, CLIENT_MODE]:
+    if mode in [SCRIPT_MODE, SILENT_MODE, EXTERNAL_CLIENT_MODE]:
         # If the user provided an object_id_seed, then set the current task ID
         # deterministically based on that seed (without altering the state of
         # the user's random number generator). Otherwise, set the current task
@@ -2318,7 +2321,7 @@ def connect(info,
     if mode != LOCAL_MODE and worker.use_raylet:
         worker.profiler.start_flush_thread()
 
-    # TODO (dsuo): does CLIENT_MODE need this?
+    # TODO (dsuo): does EXTERNAL_CLIENT_MODE need this?
     if mode in [SCRIPT_MODE, SILENT_MODE]:
         # Add the directory containing the script that is running to the Python
         # paths of the workers. Also add the current directory. Note that this
@@ -2366,7 +2369,7 @@ def disconnect(worker=global_worker):
     worker.cached_functions_to_run = []
     worker.cached_remote_functions_and_actors = []
     worker.serialization_context_map.clear()
- 
+
 
 def _try_to_compute_deterministic_class_id(cls, depth=5):
     """Attempt to produce a deterministic class ID for a given class.
@@ -2540,10 +2543,10 @@ def get(object_ids, worker=global_worker):
         if isinstance(object_ids, list):
             # TODO (dsuo): same as put; likely want to reuse validation / retry logic,
             # but branching here now for simplicity
-            if worker.mode == CLIENT_MODE:
+            if worker.mode == EXTERNAL_CLIENT_MODE:
                 # TODO (dsuo): An example of duplicated logic.
-                worker.client.serialization_context = worker.get_serialization_context(worker.task_driver_id)
-                values = worker.client.get(object_ids)
+                worker.external_client.serialization_context = worker.get_serialization_context(worker.task_driver_id)
+                values = worker.external_client.get(object_ids)
             else:
                 values = worker.get_object(object_ids)
             for i, value in enumerate(values):
@@ -2551,10 +2554,10 @@ def get(object_ids, worker=global_worker):
                     raise RayGetError(object_ids[i], value)
             return values
         else:
-            if worker.mode == CLIENT_MODE:
+            if worker.mode == EXTERNAL_CLIENT_MODE:
                 # TODO (dsuo): An example of duplicated logic.
-                worker.client.serialization_context = worker.get_serialization_context(worker.task_driver_id)
-                value = worker.client.get([object_ids])
+                worker.external_client.serialization_context = worker.get_serialization_context(worker.task_driver_id)
+                value = worker.external_client.get([object_ids])
                 if isinstance(value, list):
                     value = value[0]
             else:
@@ -2584,10 +2587,10 @@ def put(value, worker=global_worker):
         object_id = worker.local_scheduler_client.compute_put_id(
             worker.current_task_id, worker.put_index, worker.use_raylet)
 
-        if worker.mode == CLIENT_MODE:
+        if worker.mode == EXTERNAL_CLIENT_MODE:
             # TODO (dsuo): An example of duplicated logic.
-            worker.client.serialization_context = worker.get_serialization_context(worker.task_driver_id)
-            worker.client.put(
+            worker.external_client.serialization_context = worker.get_serialization_context(worker.task_driver_id)
+            worker.external_client.put(
                 value,
                 object_id=object_id.id())
         else:

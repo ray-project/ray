@@ -6,9 +6,8 @@ import pyarrow
 # import pickle
 import numpy as np
 
-# TODO (dsuo): rename so it's clear what "client" means
-class Client(object):
-    """A class used to proxy communication between a Ray client
+class ExternalClient(object):
+    """A class used to proxy communication between a Ray external client
     and a remote Ray head node.
     """
 
@@ -16,7 +15,7 @@ class Client(object):
                  gateway_address,
                  gateway_port=5432,
                  gateway_data_port=5000):
-        """Initialize a new client.
+        """Initialize a new external client.
 
         Args:
             gateway_address (str): The IP address of the head node / gateway.
@@ -24,19 +23,20 @@ class Client(object):
             data_port (int): The gateway's port for transferring data.
 
         Returns:
-            A new Client object
+            A new ExternalClient object
         """
         self.gateway_address = gateway_address
         self.gateway_port = gateway_port
         self.gateway_data_port = gateway_data_port
-        self.client_socket_name = "/tmp/ray_client" + str(np.random.randint(0, 99999999)).zfill(8)
+        self.client_socket_name = "/tmp/ray_external_client" + \
+            str(np.random.randint(0, 99999999)).zfill(8)
         self.serialization_context = None
         self.url = "http://{}:{}".format(
             self.gateway_address,
             self.gateway_data_port)
 
         print(self.url)
-        
+
         # TODO (dsuo): should move to connect()
         command = [
             "socat", "UNIX-LISTEN:" + self.client_socket_name + \
@@ -55,7 +55,8 @@ class Client(object):
                 was not properly initialized by the worker.py.
         """
         if self.serialization_context is None:
-            raise Exception("Serialization context in Client not initialized.")
+            raise Exception("Serialization context in ExternalClient not "
+                            "initialized.")
 
         data = self.serialization_context.serialize(value) \
                                          .to_buffer().to_pybytes()
@@ -87,7 +88,7 @@ class Client(object):
                            stream=True)
 
         objects = self.serialization_context.deserialize(res.raw.read())
-        
+
         return objects
 
     def submit(self, *args, **kwargs):
