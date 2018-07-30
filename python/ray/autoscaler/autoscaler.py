@@ -480,9 +480,12 @@ class StandardAutoscaler(object):
             return
         last_heartbeat_time = self.load_metrics.last_heartbeat_time_by_ip.get(
             self.provider.internal_ip(node_id), 0)
-        if time.time() - last_heartbeat_time < AUTOSCALER_HEARTBEAT_TIMEOUT_S:
+        delta = time.time() - last_heartbeat_time
+        if delta < AUTOSCALER_HEARTBEAT_TIMEOUT_S:
             return
-        print("StandardAutoscaler: Restarting Ray on {}".format(node_id))
+        print("StandardAutoscaler: No heartbeat from node "
+              "{} in {} seconds, restarting Ray to recover...".format(
+                  node_id, delta))
         updater = self.node_updater_cls(
             node_id,
             self.config["provider"],
@@ -650,7 +653,12 @@ def hash_runtime_conf(file_mounts, extra_objs):
                 for name in filenames:
                     hasher.update(name.encode("utf-8"))
                     with open(os.path.join(dirpath, name), "rb") as f:
-                        hasher.update(binascii.hexlify(f.read()))
+                        if os.path.getsize(os.path.join(dirpath,
+                                                        name)) < 1000000000:
+                            hasher.update(binascii.hexlify(f.read()))
+                        else:
+                            for chunk in iter(lambda: f.read(8192), b''):
+                                hasher.update(binascii.hexlify(chunk))
         else:
             with open(path, "rb") as f:
                 hasher.update(binascii.hexlify(f.read()))
