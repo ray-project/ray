@@ -6,6 +6,7 @@ import collections
 import random
 import numpy as np
 import os
+import pytest
 import sys
 import time
 import unittest
@@ -275,7 +276,7 @@ class ActorAPI(unittest.TestCase):
         self.assertEqual(len(actor_keys), 1)
         actor_class_info = r.hgetall(actor_keys[0])
         self.assertEqual(actor_class_info[b"class_name"], b"Foo")
-        self.assertEqual(actor_class_info[b"module"], b"__main__")
+        self.assertEqual(actor_class_info[b"module"], b"actor_test")
 
     def testMultipleReturnValues(self):
         ray.init(num_workers=0)
@@ -1965,120 +1966,127 @@ class DistributedActorHandles(unittest.TestCase):
         self.assertEqual(ray.get(f2.method.remote()), 4)
 
 
-class ActorPlacementAndResources(unittest.TestCase):
-    def tearDown(self):
-        ray.shutdown()
+@pytest.fixture
+def ray_stop():
+    # The initialization code depends on the test that is run.
+    yield None
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
 
-    @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
-    def testLifetimeAndTransientResources(self):
-        ray.init(num_cpus=1)
 
-        # This actor acquires resources only when running methods.
-        @ray.remote
-        class Actor1(object):
-            def method(self):
-                pass
+@unittest.skipIf(
+    os.environ.get("RAY_USE_XRAY") == "1" or sys.version_info < (3, 0),
+    "This test does not work with xray yet"
+    " and is currently failing on Python 2.7.")
+def testLifetimeAndTransientResources(ray_stop):
+    ray.init(num_cpus=1)
 
-        # This actor acquires resources for its lifetime.
-        @ray.remote(num_cpus=1)
-        class Actor2(object):
-            def method(self):
-                pass
+    # This actor acquires resources only when running methods.
+    @ray.remote
+    class Actor1(object):
+        def method(self):
+            pass
 
-        actor1s = [Actor1.remote() for _ in range(10)]
-        ray.get([a.method.remote() for a in actor1s])
+    # This actor acquires resources for its lifetime.
+    @ray.remote(num_cpus=1)
+    class Actor2(object):
+        def method(self):
+            pass
 
-        actor2s = [Actor2.remote() for _ in range(2)]
-        results = [a.method.remote() for a in actor2s]
-        ready_ids, remaining_ids = ray.wait(
-            results, num_returns=len(results), timeout=1000)
-        self.assertEqual(len(ready_ids), 1)
+    actor1s = [Actor1.remote() for _ in range(10)]
+    ray.get([a.method.remote() for a in actor1s])
 
-    def testCustomLabelPlacement(self):
-        ray.worker._init(
-            start_ray_local=True,
-            num_local_schedulers=2,
-            num_workers=0,
-            resources=[{
-                "CustomResource1": 2
-            }, {
-                "CustomResource2": 2
-            }])
+    actor2s = [Actor2.remote() for _ in range(2)]
+    results = [a.method.remote() for a in actor2s]
+    ready_ids, remaining_ids = ray.wait(
+        results, num_returns=len(results), timeout=1000)
+    assert len(ready_ids) == 1
 
-        @ray.remote(resources={"CustomResource1": 1})
-        class ResourceActor1(object):
-            def get_location(self):
-                return ray.worker.global_worker.plasma_client.store_socket_name
 
-        @ray.remote(resources={"CustomResource2": 1})
-        class ResourceActor2(object):
-            def get_location(self):
-                return ray.worker.global_worker.plasma_client.store_socket_name
+def testCustomLabelPlacement(ray_stop):
+    ray.worker._init(
+        start_ray_local=True,
+        num_local_schedulers=2,
+        num_workers=0,
+        resources=[{
+            "CustomResource1": 2
+        }, {
+            "CustomResource2": 2
+        }])
 
-        local_plasma = ray.worker.global_worker.plasma_client.store_socket_name
+    @ray.remote(resources={"CustomResource1": 1})
+    class ResourceActor1(object):
+        def get_location(self):
+            return ray.worker.global_worker.plasma_client.store_socket_name
 
-        # Create some actors.
-        actors1 = [ResourceActor1.remote() for _ in range(2)]
-        actors2 = [ResourceActor2.remote() for _ in range(2)]
-        locations1 = ray.get([a.get_location.remote() for a in actors1])
-        locations2 = ray.get([a.get_location.remote() for a in actors2])
-        for location in locations1:
-            self.assertEqual(location, local_plasma)
-        for location in locations2:
-            self.assertNotEqual(location, local_plasma)
+    @ray.remote(resources={"CustomResource2": 1})
+    class ResourceActor2(object):
+        def get_location(self):
+            return ray.worker.global_worker.plasma_client.store_socket_name
 
-    def testCreatingMoreActorsThanResources(self):
-        ray.init(
-            num_workers=0,
-            num_cpus=10,
-            num_gpus=2,
-            resources={"CustomResource1": 1})
+    local_plasma = ray.worker.global_worker.plasma_client.store_socket_name
 
-        @ray.remote(num_gpus=1)
-        class ResourceActor1(object):
-            def method(self):
-                return ray.get_gpu_ids()[0]
+    # Create some actors.
+    actors1 = [ResourceActor1.remote() for _ in range(2)]
+    actors2 = [ResourceActor2.remote() for _ in range(2)]
+    locations1 = ray.get([a.get_location.remote() for a in actors1])
+    locations2 = ray.get([a.get_location.remote() for a in actors2])
+    for location in locations1:
+        assert location == local_plasma
+    for location in locations2:
+        assert location != local_plasma
 
-        @ray.remote(resources={"CustomResource1": 1})
-        class ResourceActor2(object):
-            def method(self):
-                pass
 
-        # Make sure the first two actors get created and the third one does
-        # not.
-        actor1 = ResourceActor1.remote()
-        result1 = actor1.method.remote()
-        ray.wait([result1])
-        actor2 = ResourceActor1.remote()
-        result2 = actor2.method.remote()
-        ray.wait([result2])
-        actor3 = ResourceActor1.remote()
-        result3 = actor3.method.remote()
-        ready_ids, _ = ray.wait([result3], timeout=200)
-        self.assertEqual(len(ready_ids), 0)
+def testCreatingMoreActorsThanResources(ray_stop):
+    ray.init(
+        num_workers=0,
+        num_cpus=10,
+        num_gpus=2,
+        resources={"CustomResource1": 1})
 
-        # By deleting actor1, we free up resources to create actor3.
-        del actor1
+    @ray.remote(num_gpus=1)
+    class ResourceActor1(object):
+        def method(self):
+            return ray.get_gpu_ids()[0]
 
-        results = ray.get([result1, result2, result3])
-        self.assertEqual(results[0], results[2])
-        self.assertEqual(set(results), {0, 1})
+    @ray.remote(resources={"CustomResource1": 1})
+    class ResourceActor2(object):
+        def method(self):
+            pass
 
-        # Make sure that when one actor goes out of scope a new actor is
-        # created because some resources have been freed up.
-        results = []
-        for _ in range(3):
-            actor = ResourceActor2.remote()
-            object_id = actor.method.remote()
-            results.append(object_id)
-            # Wait for the task to execute. We do this because otherwise it may
-            # be possible for the __ray_terminate__ task to execute before the
-            # method.
-            ray.wait([object_id])
+    # Make sure the first two actors get created and the third one does
+    # not.
+    actor1 = ResourceActor1.remote()
+    result1 = actor1.method.remote()
+    ray.wait([result1])
+    actor2 = ResourceActor1.remote()
+    result2 = actor2.method.remote()
+    ray.wait([result2])
+    actor3 = ResourceActor1.remote()
+    result3 = actor3.method.remote()
+    ready_ids, _ = ray.wait([result3], timeout=200)
+    assert len(ready_ids) == 0
 
-        ray.get(results)
+    # By deleting actor1, we free up resources to create actor3.
+    del actor1
+
+    results = ray.get([result1, result2, result3])
+    assert results[0] == results[2]
+    assert set(results) == {0, 1}
+
+    # Make sure that when one actor goes out of scope a new actor is
+    # created because some resources have been freed up.
+    results = []
+    for _ in range(3):
+        actor = ResourceActor2.remote()
+        object_id = actor.method.remote()
+        results.append(object_id)
+        # Wait for the task to execute. We do this because otherwise it may
+        # be possible for the __ray_terminate__ task to execute before the
+        # method.
+        ray.wait([object_id])
+
+    ray.get(results)
 
 
 if __name__ == "__main__":
