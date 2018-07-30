@@ -169,7 +169,7 @@ class TestPolicyEvaluator(unittest.TestCase):
         indices = []
         for env in ev.async_env.vector_env.envs:
             self.assertEqual(env.unwrapped.config.worker_index, 0)
-            indices.append(env.unwrapped.config.env_index)
+            indices.append(env.unwrapped.config.vector_index)
         self.assertEqual(indices, [0, 1, 2, 3, 4, 5, 6, 7])
 
     def testBatchDivisibilityCheck(self):
