@@ -38,12 +38,13 @@ class ReconstructionPolicy : public ReconstructionPolicyInterface {
   /// the GCS.
   /// \param task_lease_pubsub The GCS pub-sub storage system to request task
   /// lease notifications from.
-  ReconstructionPolicy(boost::asio::io_service &io_service,
-                       std::function<void(const TaskID &)> reconstruction_handler,
-                       int64_t initial_reconstruction_timeout_ms,
-                       const ClientID &client_id,
-                       gcs::PubsubInterface<TaskID> &task_lease_pubsub,
-                       std::shared_ptr<ObjectDirectoryInterface> object_directory);
+  ReconstructionPolicy(
+      boost::asio::io_service &io_service,
+      std::function<void(const TaskID &)> reconstruction_handler,
+      int64_t initial_reconstruction_timeout_ms, const ClientID &client_id,
+      gcs::PubsubInterface<TaskID> &task_lease_pubsub,
+      std::shared_ptr<ObjectDirectoryInterface> object_directory,
+      gcs::LogInterface<TaskID, TaskReconstructionData> &task_reconstruction_log);
 
   /// Listen for task lease notifications about an object that may require
   /// reconstruction. If no notifications are received within the initial
@@ -69,6 +70,8 @@ class ReconstructionPolicy : public ReconstructionPolicyInterface {
   /// guaranteed to be expired. If a second notification is not received within
   /// this timeout, then objects that the task creates may be reconstructed.
   void HandleTaskLeaseNotification(const TaskID &task_id, int64_t lease_timeout_ms);
+
+  void HandleReconstructionLogAppend(const TaskID &task_id, bool success);
 
  private:
   struct ReconstructionTask {
@@ -127,6 +130,7 @@ class ReconstructionPolicy : public ReconstructionPolicyInterface {
   gcs::PubsubInterface<TaskID> &task_lease_pubsub_;
   /// The object directory used to lookup object locations.
   std::shared_ptr<ObjectDirectoryInterface> object_directory_;
+  gcs::LogInterface<TaskID, TaskReconstructionData> &task_reconstruction_log_;
   /// The tasks that we are currently subscribed to in the GCS.
   std::unordered_map<TaskID, ReconstructionTask> listening_tasks_;
 };

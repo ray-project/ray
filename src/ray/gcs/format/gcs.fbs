@@ -55,7 +55,9 @@ table ObjectTableData {
 }
 
 table TaskReconstructionData {
-  num_executions: int;
+  // The number of times this task has been reconstructed so far.
+  num_reconstructions: int;
+  // The node manager that is trying to reconstruct the task.
   node_manager_id: string;
 }
 

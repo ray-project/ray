@@ -53,7 +53,8 @@ class MockObjectDirectory : public ObjectDirectoryInterface {
   std::unordered_map<ObjectID, std::vector<ClientID>> locations_;
 };
 
-class MockGcs : public gcs::PubsubInterface<TaskID> {
+class MockGcs : public gcs::PubsubInterface<TaskID>,
+                public ray::gcs::LogInterface<TaskID, TaskReconstructionData> {
  public:
   MockGcs() : notification_callback_(nullptr), failure_callback_(nullptr){};
 
@@ -89,6 +90,24 @@ class MockGcs : public gcs::PubsubInterface<TaskID> {
     return ray::Status::OK();
   }
 
+  Status AppendAt(
+      const JobID &job_id, const TaskID &task_id,
+      std::shared_ptr<TaskReconstructionDataT> &task_data,
+      const ray::gcs::LogInterface<TaskID, TaskReconstructionData>::WriteCallback
+          &success_callback,
+      const ray::gcs::LogInterface<TaskID, TaskReconstructionData>::WriteCallback
+          &failure_callback,
+      int reconstruction_attempt) {
+    success_callback(nullptr, task_id, *task_data);
+    return Status::OK();
+  }
+
+  MOCK_METHOD4(
+      Append,
+      ray::Status(
+          const JobID &, const TaskID &, std::shared_ptr<TaskReconstructionDataT> &,
+          const ray::gcs::LogInterface<TaskID, TaskReconstructionData>::WriteCallback &));
+
  private:
   gcs::TaskLeaseTable::WriteCallback notification_callback_;
   gcs::TaskLeaseTable::FailureCallback failure_callback_;
@@ -107,7 +126,7 @@ class ReconstructionPolicyTest : public ::testing::Test {
             io_service_,
             [this](const TaskID &task_id) { TriggerReconstruction(task_id); },
             reconstruction_timeout_ms_, ClientID::from_random(), mock_gcs_,
-            mock_object_directory_)),
+            mock_object_directory_, mock_gcs_)),
         timer_canceled_(false) {
     mock_gcs_.Subscribe(
         [this](gcs::AsyncGcsClient *client, const TaskID &task_id,

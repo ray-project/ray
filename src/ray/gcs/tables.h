@@ -50,6 +50,20 @@ class PubsubInterface {
   virtual ~PubsubInterface(){};
 };
 
+template <typename ID, typename Data>
+class LogInterface {
+ public:
+  using DataT = typename Data::NativeTableType;
+  using WriteCallback =
+      std::function<void(AsyncGcsClient *client, const ID &id, const DataT &data)>;
+  virtual Status Append(const JobID &job_id, const ID &id, std::shared_ptr<DataT> &data,
+                        const WriteCallback &done) = 0;
+  virtual Status AppendAt(const JobID &job_id, const ID &task_id,
+                          std::shared_ptr<DataT> &data, const WriteCallback &done,
+                          const WriteCallback &failure, int log_length) = 0;
+  virtual ~LogInterface(){};
+};
+
 /// \class Log
 ///
 /// A GCS table where every entry is an append-only log. This class is not
@@ -63,14 +77,13 @@ class PubsubInterface {
 ///   ClientTable: Stores a log of which GCS clients have been added or deleted
 ///                from the system.
 template <typename ID, typename Data>
-class Log : virtual public PubsubInterface<ID> {
+class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
  public:
   using DataT = typename Data::NativeTableType;
   using Callback = std::function<void(AsyncGcsClient *client, const ID &id,
                                       const std::vector<DataT> &data)>;
   /// The callback to call when a write to a key succeeds.
-  using WriteCallback =
-      std::function<void(AsyncGcsClient *client, const ID &id, const DataT &data)>;
+  using WriteCallback = typename LogInterface<ID, Data>::WriteCallback;
   /// The callback to call when a SUBSCRIBE call completes and we are ready to
   /// request and receive notifications.
   using SubscriptionCallback = std::function<void(AsyncGcsClient *client)>;
