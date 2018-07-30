@@ -86,6 +86,8 @@ class VTraceLoss(object):
 class VTracePolicyGraph(TFPolicyGraph):
     def __init__(self, observation_space, action_space, config):
         config = dict(ray.rllib.agents.a3c.a3c.DEFAULT_CONFIG, **config)
+        assert config["batch_mode"] == "truncate_episodes", \
+            "Must use `truncate_episodes` batch mode with V-trace."
         self.config = config
         self.sess = tf.get_default_session()
 
@@ -124,10 +126,13 @@ class VTracePolicyGraph(TFPolicyGraph):
                 B = tf.shape(self.model.seq_lens)[0]
                 T = tf.shape(tensor)[0] // B
             else:
-                T = self.config["sample_batch_size"]
+                # TODO(ekl) instead of this hack to segment episodes, we could
+                # always pad the episodes as in RNN mode
+                T = (self.config["sample_batch_size"] //
+                     self.config["num_envs_per_worker"])
                 B = tf.shape(tensor)[0] // T
-            rs = tf.reshape(
-                tensor, tf.concat([[B, T], tf.shape(tensor)[1:]], axis=0))
+            rs = tf.reshape(tensor,
+                            tf.concat([[B, T], tf.shape(tensor)[1:]], axis=0))
             # swap B and T axes
             return tf.transpose(
                 rs,
