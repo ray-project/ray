@@ -19,6 +19,7 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1init(JNIEnv *,
                                                          jbyteArray,
                                                          jbyteArray,
                                                          jboolean,
+                                                         jbyteArray,
                                                          jlong,
                                                          jboolean);
 
@@ -90,7 +91,8 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1reconstruct_1object(
     JNIEnv *,
     jclass,
     jlong,
-    jbyteArray);
+    jbyteArray,
+    jboolean);
 
 /*
  * Class:     org_ray_spi_impl_DefaultLocalSchedulerClient

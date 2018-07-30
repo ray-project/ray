@@ -47,6 +47,7 @@ int main(int argc, char *argv[]) {
   node_manager_config.heartbeat_period_ms =
       RayConfig::instance().heartbeat_timeout_milliseconds();
   node_manager_config.max_lineage_size = RayConfig::instance().max_lineage_size();
+  node_manager_config.store_socket_name = store_socket_name;
 
   // Configuration for the object manager.
   ray::ObjectManagerConfig object_manager_config;

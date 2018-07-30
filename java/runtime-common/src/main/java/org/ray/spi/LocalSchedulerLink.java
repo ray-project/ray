@@ -15,19 +15,19 @@ public interface LocalSchedulerLink {
 
   void markTaskPutDependency(UniqueID taskId, UniqueID objectId);
 
-  void reconstructObject(UniqueID objectId);
+  void reconstructObject(UniqueID objectId, boolean fetchOnly);
 
   void notifyUnblocked();
 
   List<byte[]> wait(byte[][] objectIds, int timeoutMs, int numReturns);
 
-  default void fetch(UniqueID objectId) {
-    reconstructObject(objectId);
+  default void fetch(UniqueID objectId, boolean fetchOnly) {
+    reconstructObject(objectId, fetchOnly);
   }
 
-  default void fetch(List<UniqueID> objectIds) {
+  default void fetch(List<UniqueID> objectIds, boolean fetchOnly) {
     for (UniqueID objectId : objectIds) {
-      reconstructObject(objectId);
+      reconstructObject(objectId, fetchOnly);
     }
   }
 }

@@ -14,8 +14,9 @@ using MessageType = ray::local_scheduler::protocol::MessageType;
 
 LocalSchedulerConnection *LocalSchedulerConnection_init(
     const char *local_scheduler_socket,
-    UniqueID client_id,
+    const UniqueID &client_id,
     bool is_worker,
+    const JobID &driver_id,
     bool use_raylet) {
   LocalSchedulerConnection *result = new LocalSchedulerConnection();
   result->use_raylet = use_raylet;
@@ -26,7 +27,8 @@ LocalSchedulerConnection *LocalSchedulerConnection_init(
    * worker, we will get killed. */
   flatbuffers::FlatBufferBuilder fbb;
   auto message = ray::local_scheduler::protocol::CreateRegisterClientRequest(
-      fbb, is_worker, to_flatbuf(fbb, client_id), getpid());
+      fbb, is_worker, to_flatbuf(fbb, client_id), getpid(),
+      to_flatbuf(fbb, driver_id));
   fbb.Finish(message);
   /* Register the process ID with the local scheduler. */
   int success = write_message(

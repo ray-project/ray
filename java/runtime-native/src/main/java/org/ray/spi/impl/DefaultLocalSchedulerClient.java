@@ -27,14 +27,14 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
   boolean useRaylet = false;
 
   public DefaultLocalSchedulerClient(String schedulerSockName, UniqueID clientId, UniqueID actorId,
-                                     boolean isWorker, long numGpus, boolean useRaylet) {
+                                     boolean isWorker, UniqueID driverId, long numGpus, boolean useRaylet) {
     client = _init(schedulerSockName, clientId.getBytes(), actorId.getBytes(), isWorker,
-        numGpus, useRaylet);
+        driverId.getBytes(), numGpus, useRaylet);
     this.useRaylet = useRaylet;
   }
 
   private static native long _init(String localSchedulerSocket, byte[] workerId, byte[] actorId,
-                                   boolean isWorker, long numGpus, boolean useRaylet);
+                                   boolean isWorker, byte[] driverTaskId, long numGpus, boolean useRaylet);
 
   private static native byte[] _computePutId(long client, byte[] taskId, int putIndex);
 
@@ -60,7 +60,6 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
     return ret; 
   }
 
-
   @Override
   public void submitTask(TaskSpec task) {
     ByteBuffer info = taskSpec2Info(task);
@@ -68,6 +67,7 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
     if (!task.actorId.isNil()) {
       a = task.cursorId.getBytes();
     }
+
     _submitTask(client, a, info, info.position(), info.remaining(), useRaylet);
   }
 
@@ -85,8 +85,9 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
   }
 
   @Override
-  public void reconstructObject(UniqueID objectId) {
-    _reconstruct_object(client, objectId.getBytes());
+  public void reconstructObject(UniqueID objectId, boolean fetchOnly) {
+    RayLog.core.info("reconstruct " + objectId.toString());
+    _reconstruct_object(client, objectId.getBytes(), fetchOnly);
   }
 
   @Override
@@ -96,7 +97,7 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
 
   private static native void _notify_unblocked(long client);
 
-  private static native void _reconstruct_object(long client, byte[] objectId);
+  private static native void _reconstruct_object(long client, byte[] objectId, boolean fetchOnly);
 
   private static native void _put_object(long client, byte[] taskId, byte[] objectId);
 

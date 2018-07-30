@@ -75,7 +75,7 @@ public class MockLocalScheduler implements LocalSchedulerLink {
   }
 
   @Override
-  public void reconstructObject(UniqueID objectId) {
+  public void reconstructObject(UniqueID objectId, boolean fetchOnly) {
 
   }
 

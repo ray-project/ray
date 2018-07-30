@@ -88,6 +88,10 @@ class RayConfig {
     return actor_creation_num_spillbacks_warning_;
   }
 
+  int node_manager_forward_task_retry_timeout_milliseconds() const {
+    return node_manager_forward_task_retry_timeout_milliseconds_;
+  }
+
   int object_manager_pull_timeout_ms() const {
     return object_manager_pull_timeout_ms_;
   }
@@ -131,6 +135,7 @@ class RayConfig {
         L3_cache_size_bytes_(100000000),
         max_tasks_to_spillback_(10),
         actor_creation_num_spillbacks_warning_(100),
+        node_manager_forward_task_retry_timeout_milliseconds_(1000),
         // TODO: Setting this to large values results in latency, which needs to
         // be addressed. This timeout is often on the critical path for object
         // transfers.
@@ -225,6 +230,10 @@ class RayConfig {
   /// corresponding driver. Since spillback currently occurs on a 100ms timer,
   /// a value of 100 corresponds to a warning every 10 seconds.
   int64_t actor_creation_num_spillbacks_warning_;
+
+  /// If a node manager attempts to forward a task to another node manager and
+  /// the forward fails, then it will resubmit the task after this duration.
+  int64_t node_manager_forward_task_retry_timeout_milliseconds_;
 
   /// Timeout, in milliseconds, to wait before retrying a failed pull in the
   /// ObjectManager.

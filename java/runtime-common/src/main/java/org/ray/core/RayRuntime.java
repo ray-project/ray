@@ -310,7 +310,7 @@ public abstract class RayRuntime implements RayApi {
       // until at least PlasmaLink.GET_TIMEOUT_MS milliseconds passes, then repeat.
       while (unreadys.size() > 0) {
         for (UniqueID id : unreadys.keySet()) {
-          localSchedulerProxy.reconstructObject(id);
+          localSchedulerProxy.reconstructObject(id, false);
         }
 
         // Do another fetch for objects that aren't available locally yet, in case
@@ -361,7 +361,7 @@ public abstract class RayRuntime implements RayApi {
     UniqueID taskId = getCurrentTaskId();
     try {
       // Do an initial fetch.
-      objectStoreProxy.fetch(objectId);
+      objectStoreProxy.fetch(objectId, params.use_raylet);
 
       // Get the object. We initially try to get the object immediately.
       Pair<T, GetStatus> ret = objectStoreProxy
@@ -374,16 +374,16 @@ public abstract class RayRuntime implements RayApi {
       while (ret.getRight() != GetStatus.SUCCESS) {
         RayLog.core.warn(
             "Task " + taskId + " Object " + objectId.toString() + " get failed, reconstruct ...");
-        localSchedulerProxy.reconstructObject(objectId);
+        localSchedulerProxy.reconstructObject(objectId, false);
 
         // Do another fetch
-        objectStoreProxy.fetch(objectId);
+        objectStoreProxy.fetch(objectId, false);
 
         //Check the result every 5s, but it will return once available.
         ret = objectStoreProxy.get(objectId, params.default_get_check_interval_ms,
             isMetadata);
       }
-      RayLog.core.debug(
+      RayLog.core.warn(
           "Task " + taskId + " Object " + objectId.toString() + " get" + ", the result " + ret
           .getLeft());
       return ret.getLeft();
@@ -410,9 +410,9 @@ public abstract class RayRuntime implements RayApi {
     for (int i = 0; i < numObjectIds; i += fetchSize) {
       int endIndex = i + fetchSize;
       if (endIndex < numObjectIds) {
-        objectStoreProxy.fetch(objectIds.subList(i, endIndex));
+        objectStoreProxy.fetch(objectIds.subList(i, endIndex), false);
       } else {
-        objectStoreProxy.fetch(objectIds.subList(i, numObjectIds));
+        objectStoreProxy.fetch(objectIds.subList(i, numObjectIds), false);
       }
     }
   }

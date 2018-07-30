@@ -42,14 +42,16 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1init(JNIEnv *env,
                                                          jbyteArray wid,
                                                          jbyteArray actorId,
                                                          jboolean isWorker,
+                                                         jbyteArray driverId,
                                                          jlong numGpus,
                                                          jboolean useRaylet) {
   // 	native private static long _init(String localSchedulerSocket,
   //     byte[] workerId, byte[] actorId, boolean isWorker, long numGpus);
   UniqueIdFromJByteArray worker_id(env, wid);
+  UniqueIdFromJByteArray driver_id(env, driverId);
   const char *nativeString = env->GetStringUTFChars(sockName, JNI_FALSE);
-  auto client = LocalSchedulerConnection_init(nativeString, *worker_id.PID,
-                                              isWorker, useRaylet);
+  auto client = LocalSchedulerConnection_init(
+      nativeString, *worker_id.PID, isWorker, *driver_id.PID, useRaylet);
   env->ReleaseStringUTFChars(sockName, nativeString);
   return reinterpret_cast<jlong>(client);
 }
@@ -197,12 +199,13 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1reconstruct_1object(
     JNIEnv *env,
     jclass,
     jlong c,
-    jbyteArray oid) {
+    jbyteArray oid,
+    jboolean fetch_only) {
   // native private static void _reconstruct_object(long client, byte[]
   // objectId);
   UniqueIdFromJByteArray o(env, oid);
   auto client = reinterpret_cast<LocalSchedulerConnection *>(c);
-  local_scheduler_reconstruct_objects(client, {*o.PID});
+  local_scheduler_reconstruct_objects(client, {*o.PID}, fetch_only);
 }
 
 /*
