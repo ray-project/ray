@@ -26,6 +26,24 @@ In the high-level agent APIs, environments are identified with string names. By 
     while True:
         print(trainer.train())
 
+Configuring Environments
+------------------------
+
+In the above example, note that the ``env_creator`` function takes in an ``env_config`` object. This is a dict containing options passed in through your agent. You can also access ``env_config.worker_index`` and ``env_config.env_index`` to get the worker id and env id within the worker (if ``num_envs_per_worker > 0``). This can be useful if you want to train over an ensemble of different environments, for example:
+
+.. code-block:: python
+
+    class MultiEnv(gym.Env):
+        def __init__(self, env_config):
+            # pick actual env based on worker and env indexes
+            self.env = gym.make(
+                choose_env_for(env_config.worker_index, env_config.env_index))
+        def reset(self):
+            return self.env.reset()
+        def step(self, action):
+            return self.env.step(action)
+
+    register_env("multienv", MultiEnv)
 
 OpenAI Gym
 ----------

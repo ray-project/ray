@@ -251,7 +251,7 @@ class _MultiAgentEnvToAsync(AsyncVectorEnv):
         self.num_envs = num_envs
         self.dones = set()
         while len(self.envs) < self.num_envs:
-            self.envs.append(self.make_env())
+            self.envs.append(self.make_env(env_index=len(self.envs)))
         for env in self.envs:
             assert isinstance(env, MultiAgentEnv)
         self.env_states = [_MultiAgentEnvState(env) for env in self.envs]
