@@ -268,6 +268,7 @@ void TaskDependencyManager::TaskCanceled(const TaskID &task_id) {
   if (it == pending_tasks_.end()) {
     return;
   }
+  pending_tasks_.erase(it);
 
   // Find any subscribed tasks that are dependent on objects created by the
   // canceled task.
@@ -279,7 +280,6 @@ void TaskDependencyManager::TaskCanceled(const TaskID &task_id) {
       HandleRemoteDependencyRequired(object_entry.first);
     }
   }
-  pending_tasks_.erase(it);
 }
 
 }  // namespace raylet
