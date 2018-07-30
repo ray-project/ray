@@ -370,12 +370,14 @@ class HyperbandSuite(unittest.TestCase):
             mock_runner._launch_trial(t)
 
         sched.on_trial_error(mock_runner, t3)
-        self.assertEqual(TrialScheduler.PAUSE,
-                         sched.on_trial_result(mock_runner, t1,
-                                               result(stats[str(1)]["r"], 10)))
-        self.assertEqual(TrialScheduler.CONTINUE,
-                         sched.on_trial_result(mock_runner, t2,
-                                               result(stats[str(1)]["r"], 10)))
+        self.assertEqual(
+            TrialScheduler.PAUSE,
+            sched.on_trial_result(mock_runner, t1,
+                                  result(stats[str(1)]["r"], 10)))
+        self.assertEqual(
+            TrialScheduler.CONTINUE,
+            sched.on_trial_result(mock_runner, t2,
+                                  result(stats[str(1)]["r"], 10)))
 
     def testTrialErrored2(self):
         """Check successive halving happened even when last trial failed"""
@@ -405,12 +407,14 @@ class HyperbandSuite(unittest.TestCase):
             mock_runner._launch_trial(t)
 
         sched.on_trial_complete(mock_runner, t3, result(1, 12))
-        self.assertEqual(TrialScheduler.PAUSE,
-                         sched.on_trial_result(mock_runner, t1,
-                                               result(stats[str(1)]["r"], 10)))
-        self.assertEqual(TrialScheduler.CONTINUE,
-                         sched.on_trial_result(mock_runner, t2,
-                                               result(stats[str(1)]["r"], 10)))
+        self.assertEqual(
+            TrialScheduler.PAUSE,
+            sched.on_trial_result(mock_runner, t1,
+                                  result(stats[str(1)]["r"], 10)))
+        self.assertEqual(
+            TrialScheduler.CONTINUE,
+            sched.on_trial_result(mock_runner, t2,
+                                  result(stats[str(1)]["r"], 10)))
 
     def testTrialEndedEarly2(self):
         """Check successive halving happened even when last trial failed"""
@@ -449,13 +453,13 @@ class HyperbandSuite(unittest.TestCase):
         self.assertEqual(len(sched._state["bracket"].current_trials()), 2)
 
         # Make sure that newly added trial gets fair computation (not just 1)
-        self.assertEqual(TrialScheduler.CONTINUE,
-                         sched.on_trial_result(mock_runner, t,
-                                               result(init_units, 12)))
+        self.assertEqual(
+            TrialScheduler.CONTINUE,
+            sched.on_trial_result(mock_runner, t, result(init_units, 12)))
         new_units = init_units + int(init_units * sched._eta)
-        self.assertEqual(TrialScheduler.PAUSE,
-                         sched.on_trial_result(mock_runner, t,
-                                               result(new_units, 12)))
+        self.assertEqual(
+            TrialScheduler.PAUSE,
+            sched.on_trial_result(mock_runner, t, result(new_units, 12)))
 
     def testAlternateMetrics(self):
         """Checking that alternate metrics will pass."""
