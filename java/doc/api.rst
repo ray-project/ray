@@ -29,7 +29,7 @@ an actor class are as follows:
 - Any inner class must be public static.
 - It must not have any static fields or methods, as the semantic is undefined
   with multiple instances of this same class on different machines.
-- An actor method must be ``public``.
+- All methods that will be invoked remotely must be ``public``.
 
 ``Ray.call``
 ~~~~~~~~~~~~
@@ -77,13 +77,13 @@ locally available.
 ``Ray.wait``
 ~~~~~~~~~~~~
 
-``Ray.wait`` is used to wait for a list of ``RayObject``'s to be locally available.
-It will block the current thread until ``numReturns`` objects are ready or ``timeout``
-has passed. See multi-value support for ``RayList``.
+``Ray.wait`` is used to wait for a list of ``RayObject``\s to be locally available.
+It will block the current thread until ``numReturns`` objects are ready or
+``timeoutMilliseconds`` has passed. See multi-value support for ``RayList``.
 
 .. code:: java
 
-    public static WaitResult<T> wait(RayList<T> waitfor, int numReturns, int timeout);
+    public static WaitResult<T> wait(RayList<T> waitfor, int numReturns, int timeoutMilliseconds);
     public static WaitResult<T> wait(RayList<T> waitfor, int numReturns);
     public static WaitResult<T> wait(RayList<T> waitfor);
 
@@ -93,7 +93,7 @@ Multi-value API
 Multi-value Types
 ~~~~~~~~~~~~~~~~~
 
-Multiple ``RayObject``'s can be placed in a single data
+Multiple ``RayObject``\s can be placed in a single data
 structure as a return value or as a ``Ray.call`` parameter through the
 following container types.
 
@@ -108,13 +108,13 @@ as the type of an input parameter.
 ``RayList<T>``
 ^^^^^^^^^^^^^^
 
-This is a list of ``RayObject<T>``'s, which inherits from ``List<T>`` in Java. It
+This is a list of ``RayObject<T>``\s, which inherits from ``List<T>`` in Java. It
 can be used as the type for both a return value and a parameter value.
 
 ``RayMap<L, T>``
 ^^^^^^^^^^^^^^^^
 
-A map of ``RayObject<T>``'s with each indexed using a label with type
+A map of ``RayObject<T>``\s with each indexed using a label with type
 ``L``, inherited from ``Map<L, T>``. It can be used as the type for both
 a return value and a parameter value.
 
@@ -132,7 +132,7 @@ Here's an `example <https://github.com/ray-project/ray/tree/master/java/tutorial
 Return with ``RayList``
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-To return a list of ``RayObject``'s, you can invoke your method with ``Ray.call_n``.
+To return a list of ``RayObject``\s, you can invoke your method with ``Ray.call_n``.
 ``Ray.call_n`` is similar to ``Ray.call`` except that it has an additional parameter
 ``returnCount``, which specifies the number of return values in the list.
 
