@@ -8,7 +8,7 @@ import os
 import ray
 from ray.rllib.agents.agent import Agent, with_common_config
 from ray.rllib.optimizers import AsyncGradientsOptimizer
-from ray.rllib.utils import FilterManager
+from ray.rllib.utils import FilterManager, merge_dicts
 from ray.tune.trial import Resources
 
 DEFAULT_CONFIG = with_common_config({
@@ -71,7 +71,7 @@ class A3CAgent(Agent):
 
     @classmethod
     def default_resource_request(cls, config):
-        cf = dict(cls._default_config, **config)
+        cf = merge_dicts(cls._default_config, config)
         return Resources(
             cpu=1,
             gpu=0,
