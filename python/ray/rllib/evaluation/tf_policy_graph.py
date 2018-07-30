@@ -140,7 +140,7 @@ class TFPolicyGraph(PolicyGraph):
             "state_in_{}".format(i) for i in range(len(self._state_inputs))
         ]
         feature_sequences, initial_states, seq_lens = chop_into_sequences(
-            batch["t"], [batch[k] for k in feature_keys],
+            batch["eps_id"], [batch[k] for k in feature_keys],
             [batch[k] for k in state_keys], self._max_seq_len)
         for k, v in zip(feature_keys, feature_sequences):
             feed_dict[self._loss_input_dict[k]] = v

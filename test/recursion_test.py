@@ -18,9 +18,10 @@ def factorial(n):
     return n * ray.get(factorial.remote(n - 1))
 
 
-assert ray.get(factorial.remote(0)) == 1
-assert ray.get(factorial.remote(1)) == 1
-assert ray.get(factorial.remote(2)) == 2
-assert ray.get(factorial.remote(3)) == 6
-assert ray.get(factorial.remote(4)) == 24
-assert ray.get(factorial.remote(5)) == 120
+def test_recursion():
+    assert ray.get(factorial.remote(0)) == 1
+    assert ray.get(factorial.remote(1)) == 1
+    assert ray.get(factorial.remote(2)) == 2
+    assert ray.get(factorial.remote(3)) == 6
+    assert ray.get(factorial.remote(4)) == 24
+    assert ray.get(factorial.remote(5)) == 120

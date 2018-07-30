@@ -18,8 +18,8 @@ public class Exercise08 {
       RayActor<Adder> adder = Ray.create(Adder.class);
       // Use `Ray.call(actor, parameters)` to call an actor method.
       RayObject<Integer> result1 = Ray.call(Adder::add, adder, 1);
-      RayObject<Integer> result2 = Ray.call(Adder::add, adder, 10);
       System.out.println(result1.get());
+      RayObject<Integer> result2 = Ray.call(Adder::add, adder, 10);
       System.out.println(result2.get());
     } catch (Throwable t) {
       t.printStackTrace();
@@ -39,10 +39,10 @@ public class Exercise08 {
       sum = 0;
     }
 
-    public Integer add(Integer n) {
+    public int add(int n) {
       return sum += n;
     }
 
-    private Integer sum;
+    private int sum;
   }
 }

@@ -4,6 +4,7 @@ from __future__ import print_function
 
 from collections import defaultdict, namedtuple
 import numpy as np
+import random
 import six.moves.queue as queue
 import threading
 
@@ -258,6 +259,7 @@ def _env_runner(async_vector_env,
                         agent_id,
                         policy_id,
                         t=episode.length - 1,
+                        eps_id=episode.episode_id,
                         obs=last_observation,
                         actions=episode.last_action_for(agent_id),
                         rewards=rewards[env_id][agent_id],
@@ -367,6 +369,7 @@ class _MultiAgentEpisode(object):
         self.batch_builder = batch_builder_factory()
         self.total_reward = 0.0
         self.length = 0
+        self.episode_id = random.randrange(2e9)
         self.agent_rewards = defaultdict(float)
         self._policies = policies
         self._policy_mapping_fn = policy_mapping_fn
