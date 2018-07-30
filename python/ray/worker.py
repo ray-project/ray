@@ -1848,6 +1848,12 @@ def init(redis_address=None,
         logger.info("Detected environment variable 'RAY_USE_XRAY'.")
         use_raylet = True
 
+    if driver_mode == CLIENT_MODE and (redis_address is None or
+                                       gateway_port is None or
+                                       not use_raylet):
+        raise Exception("ray.CLIENT_MODE requires redis_address and "
+                        "gateway_port. use_raylet must be True.")
+
     # Convert hostnames to numerical IP address.
     if node_ip_address is not None:
         node_ip_address = services.address_to_ip(node_ip_address)
