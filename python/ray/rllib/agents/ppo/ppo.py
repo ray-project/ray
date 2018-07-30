@@ -8,7 +8,7 @@ import pickle
 import ray
 from ray.rllib.agents import Agent, with_common_config
 from ray.rllib.agents.ppo.ppo_policy_graph import PPOPolicyGraph
-from ray.rllib.utils import FilterManager
+from ray.rllib.utils import FilterManager, merge_dicts
 from ray.rllib.optimizers import SyncSamplesOptimizer, LocalMultiGPUOptimizer
 from ray.tune.trial import Resources
 
@@ -66,7 +66,7 @@ class PPOAgent(Agent):
 
     @classmethod
     def default_resource_request(cls, config):
-        cf = dict(cls._default_config, **config)
+        cf = merge_dicts(cls._default_config, config)
         return Resources(
             cpu=1,
             gpu=cf["num_gpus"],
