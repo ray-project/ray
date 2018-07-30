@@ -38,12 +38,14 @@ In the above example, note that the ``env_creator`` function takes in an ``env_c
             # pick actual env based on worker and env indexes
             self.env = gym.make(
                 choose_env_for(env_config.worker_index, env_config.vector_index))
+            self.action_space = self.env.action_space
+            self.observation_space = self.env.observation_space
         def reset(self):
             return self.env.reset()
         def step(self, action):
             return self.env.step(action)
 
-    register_env("multienv", MultiEnv)
+    register_env("multienv", lambda config: MultiEnv(config))
 
 OpenAI Gym
 ----------
