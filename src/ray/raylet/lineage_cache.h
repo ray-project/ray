@@ -228,6 +228,12 @@ class LineageCache {
   /// \param task_id The ID of the task entry that was committed.
   void HandleEntryCommitted(const TaskID &task_id);
 
+  /// Get a task. The task must be in the lineage cache.
+  ///
+  /// \param task_id The ID of the task to get.
+  /// \return A const reference to the task data.
+  const Task &GetTask(const TaskID &task_id) const;
+
  private:
   /// Try to flush a task that is in UNCOMMITTED_READY state. If the task has
   /// parents that are not committed yet, then the child will be flushed once

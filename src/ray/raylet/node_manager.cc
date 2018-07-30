@@ -1117,7 +1117,23 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
 }
 
 void NodeManager::ResubmitTask(const TaskID &task_id) {
-  RAY_LOG(WARNING) << "Task re-execution is not currently implemented";
+  // TODO(swang): Handle put and driver tasks.
+  RAY_LOG(INFO) << "Reconstructing task " << task_id;
+  gcs_client_->raylet_task_table().Lookup(
+      JobID::nil(), task_id,
+      [this](ray::gcs::AsyncGcsClient *client, const TaskID &task_id,
+             const ray::protocol::TaskT &task_data) {
+        const Task task(task_data);
+        SubmitTask(task, Lineage());
+      },
+      [this](ray::gcs::AsyncGcsClient *client, const TaskID &task_id) {
+        const Task &task = lineage_cache_.GetTask(task_id);
+        SubmitTask(task, Lineage());
+      });
+
+  // if actor task, treat task as failed.
+  // if driver task, throw error.
+  // if put task, throw error.
 }
 
 void NodeManager::HandleObjectLocal(const ObjectID &object_id) {

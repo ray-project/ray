@@ -17,6 +17,9 @@ namespace raylet {
 /// TaskSpecification that is determined at submission time.
 class TaskExecutionSpecification {
  public:
+  TaskExecutionSpecification(const protocol::TaskExecutionSpecificationT &execution_spec)
+      : execution_spec_(execution_spec) {}
+
   /// Create a task execution specification.
   ///
   /// \param dependencies The task's dependencies, determined at execution
