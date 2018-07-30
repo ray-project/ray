@@ -99,7 +99,7 @@ class A3CPolicyGraph(TFPolicyGraph):
         return {"vf_preds": self.vf}
 
     def value(self, ob, *args):
-        feed_dict = {self.observations: [ob]}
+        feed_dict = {self.observations: [ob], self.model.seq_lens: [1]}
         assert len(args) == len(self.model.state_in), \
             (args, self.model.state_in)
         for k, v in zip(self.model.state_in, args):
