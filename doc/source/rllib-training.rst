@@ -126,7 +126,7 @@ All RLlib agents are compatible with the `Tune API <tune.html#concepts>`__. This
             "env": "CartPole-v0",
             "stop": {"episode_reward_mean": 200},
             "config": {
-                "num_workers": 2,
+                "num_workers": 1,
                 "sgd_stepsize": tune.grid_search([0.01, 0.001, 0.0001]),
             },
         },
@@ -138,13 +138,13 @@ Tune will schedule the trials to run in parallel on your Ray cluster:
 
     == Status ==
     Using FIFO scheduling algorithm.
-    Resources requested: 3/4 CPUs, 0/0 GPUs
+    Resources requested: 4/4 CPUs, 0/0 GPUs
     Result logdir: /home/eric/ray_results/my_experiment
     PENDING trials:
-     - PPO_CartPole-v0_1_sgd_stepsize=0.001:	PENDING
      - PPO_CartPole-v0_2_sgd_stepsize=0.0001:	PENDING
     RUNNING trials:
-     - PPO_CartPole-v0_0_sgd_stepsize=0.01:	RUNNING [pid=7379], 30 s, 12170 ts, 20.2 rew
+     - PPO_CartPole-v0_0_sgd_stepsize=0.01:	RUNNING [pid=21940], 16 s, 4013 ts, 22 rew
+     - PPO_CartPole-v0_1_sgd_stepsize=0.001:	RUNNING [pid=21942], 27 s, 8111 ts, 54.7 rew
 
 Accessing Global State
 ~~~~~~~~~~~~~~~~~~~~~~
