@@ -32,6 +32,8 @@ DEFAULT_CONFIG = with_common_config({
     "summarize": False,
     # Workers sample async
     "sample_async": True,
+    # Preprocessor to use
+    "preprocessor_pref": "rllib",
     # Model and preprocessor options
     "model": {
         # Use LSTM model. Requires TF.

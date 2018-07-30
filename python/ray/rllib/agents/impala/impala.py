@@ -44,6 +44,7 @@ DEFAULT_CONFIG = with_common_config({
 
     # Model and preprocessor options.
     "clip_rewards": True,
+    "preprocessor_pref": "rllib",
     "model": {
         "use_lstm": False,
         "max_seq_len": 20,
