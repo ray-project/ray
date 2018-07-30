@@ -190,8 +190,9 @@ class PolicyEvaluator(EvaluatorInterface):
 
         self.env = wrap(self.env)
 
-        def make_env(env_index):
-            return wrap(env_creator(env_context.with_env_index(env_index)))
+        def make_env(vector_index):
+            return wrap(
+                env_creator(env_context.with_vector_index(vector_index)))
 
         self.tf_sess = None
         policy_dict = _validate_and_canonicalize(policy_graph, self.env)
