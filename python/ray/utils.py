@@ -17,14 +17,13 @@ import ray.local_scheduler
 import ray.ray_constants as ray_constants
 
 ERROR_KEY_PREFIX = b"Error:"
-DRIVER_ID_LENGTH = 20
 
 
 def _random_string():
     id_hash = hashlib.sha1()
     id_hash.update(uuid.uuid4().bytes)
     id_bytes = id_hash.digest()
-    assert len(id_bytes) == 20
+    assert len(id_bytes) == ray_constants.ID_SIZE
     return id_bytes
 
 
@@ -157,14 +156,14 @@ def random_string():
     deterministic manner, then we will need to make some changes here.
 
     Returns:
-        A random byte string of length 20.
+        A random byte string of length ray_constants.ID_SIZE.
     """
     # Get the state of the numpy random number generator.
     numpy_state = np.random.get_state()
     # Try to use true randomness.
     np.random.seed(None)
     # Generate the random ID.
-    random_id = np.random.bytes(20)
+    random_id = np.random.bytes(ray_constants.ID_SIZE)
     # Reset the state of the numpy random number generator.
     np.random.set_state(numpy_state)
     return random_id
