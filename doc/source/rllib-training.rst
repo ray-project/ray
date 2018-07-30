@@ -108,7 +108,11 @@ Here is an example of the basic usage:
            checkpoint = agent.save()
            print("checkpoint saved at", checkpoint)
 
-All RLlib agents implement the `Tune API <tune.html#concepts>`__, which means they support incremental training and checkpointing. This enables them to be easily used in experiments with `Tune <tune.html>`__. For example, the following code performs a simple param sweep of PPO:
+.. note::
+
+    It's recommended that you run RLlib agents with Tune, for easy experiment management and visualization of results.
+
+All RLlib agents implement the `Tune API <tune.html#concepts>`__. This enables them to be easily used in experiments with `Tune <tune.html>`__. For example, the following code performs a simple param sweep of PPO:
 
 .. code-block:: python
 
