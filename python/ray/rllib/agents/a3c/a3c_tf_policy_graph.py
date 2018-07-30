@@ -100,8 +100,9 @@ class A3CPolicyGraph(TFPolicyGraph):
 
     def value(self, ob, *args):
         feed_dict = {self.observations: [ob]}
-        assert len(args) == len(self.state_in), (args, self.state_in)
-        for k, v in zip(self.state_in, args):
+        assert len(args) == len(self.model.state_in), \
+            (args, self.model.state_in)
+        for k, v in zip(self.model.state_in, args):
             feed_dict[k] = v
         vf = self.sess.run(self.vf, feed_dict)
         return vf[0]
@@ -138,7 +139,7 @@ class A3CPolicyGraph(TFPolicyGraph):
             last_r = 0.0
         else:
             next_state = []
-            for i in range(len(self.state_in)):
+            for i in range(len(self.model.state_in)):
                 next_state.append([sample_batch["state_out_{}".format(i)][-1]])
             last_r = self.value(sample_batch["new_obs"][-1], *next_state)
         return compute_advantages(sample_batch, last_r, self.config["gamma"],
