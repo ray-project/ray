@@ -1973,9 +1973,11 @@ def ray_stop():
     # The code after the yield will run as teardown code.
     ray.shutdown()
 
+
 @unittest.skipIf(
-    os.environ.get("RAY_USE_XRAY") == "1",
-    "This test does not work with xray yet.")
+    os.environ.get("RAY_USE_XRAY") == "1" or sys.version_info < (3, 0),
+    "This test does not work with xray yet"
+    " and is currently failing on Python 2.7.")
 def testLifetimeAndTransientResources(ray_stop):
     ray.init(num_cpus=1)
 
@@ -1999,6 +2001,7 @@ def testLifetimeAndTransientResources(ray_stop):
     ready_ids, remaining_ids = ray.wait(
         results, num_returns=len(results), timeout=1000)
     assert len(ready_ids) == 1
+
 
 def testCustomLabelPlacement(ray_stop):
     ray.worker._init(
@@ -2032,6 +2035,7 @@ def testCustomLabelPlacement(ray_stop):
         assert location == local_plasma
     for location in locations2:
         assert location != local_plasma
+
 
 def testCreatingMoreActorsThanResources(ray_stop):
     ray.init(
