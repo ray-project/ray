@@ -97,8 +97,17 @@ class MockGcs : public gcs::PubsubInterface<TaskID>,
           &success_callback,
       const ray::gcs::LogInterface<TaskID, TaskReconstructionData>::WriteCallback
           &failure_callback,
-      int reconstruction_attempt) {
-    success_callback(nullptr, task_id, *task_data);
+      int log_index) {
+    if (task_reconstruction_log_[task_id].size() == static_cast<size_t>(log_index)) {
+      task_reconstruction_log_[task_id].push_back(*task_data);
+      if (success_callback != nullptr) {
+        success_callback(nullptr, task_id, *task_data);
+      }
+    } else {
+      if (failure_callback != nullptr) {
+        failure_callback(nullptr, task_id, *task_data);
+      }
+    }
     return Status::OK();
   }
 
@@ -113,6 +122,8 @@ class MockGcs : public gcs::PubsubInterface<TaskID>,
   gcs::TaskLeaseTable::FailureCallback failure_callback_;
   std::unordered_map<TaskID, std::shared_ptr<TaskLeaseDataT>> task_lease_table_;
   std::unordered_set<TaskID> subscribed_tasks_;
+  std::unordered_map<TaskID, std::vector<TaskReconstructionDataT>>
+      task_reconstruction_log_;
 };
 
 class ReconstructionPolicyTest : public ::testing::Test {
@@ -336,6 +347,40 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionCanceled) {
   // Run the test again.
   Run(reconstruction_timeout_ms_ * 1.1);
   // Check that this time, reconstruction is triggered.
+  ASSERT_EQ(reconstructed_tasks_[task_id], 1);
+}
+
+TEST_F(ReconstructionPolicyTest, TestSimultaneousReconstructionSuppressed) {
+  TaskID task_id = TaskID::from_random();
+  task_id = FinishTaskId(task_id);
+  ObjectID object_id = ComputeReturnId(task_id, 1);
+
+  // Log a reconstruction attempt to simulate a different node attempting the
+  // reconstruction first. This should suppress this node's first attempt at
+  // reconstruction.
+  auto task_reconstruction_data = std::make_shared<TaskReconstructionDataT>();
+  task_reconstruction_data->node_manager_id = ClientID::from_random().hex();
+  task_reconstruction_data->num_reconstructions = 0;
+  mock_gcs_.AppendAt(DriverID::nil(), task_id, task_reconstruction_data, nullptr,
+                     /*failure_callback=*/
+                     [this](ray::gcs::AsyncGcsClient *client, const TaskID &task_id,
+                            const TaskReconstructionDataT &data) { ASSERT_TRUE(false); },
+                     /*log_index=*/0);
+
+  // Listen for an object.
+  reconstruction_policy_->ListenAndMaybeReconstruct(object_id);
+  // Run the test for longer than the reconstruction timeout.
+  Run(reconstruction_timeout_ms_ * 1.1);
+  // Check that reconstruction is suppressed by the reconstruction attempt
+  // logged by the other node.
+  ASSERT_TRUE(reconstructed_tasks_.empty());
+
+  // Run the test for longer than the reconstruction timeout again.
+  Run(reconstruction_timeout_ms_ * 1.1);
+  // Check that this time, reconstruction is triggered, since we did not
+  // receive a task lease notification from the other node yet and our next
+  // attempt to reconstruct adds an entry at the next index in the
+  // TaskReconstructionLog.
   ASSERT_EQ(reconstructed_tasks_[task_id], 1);
 }
 

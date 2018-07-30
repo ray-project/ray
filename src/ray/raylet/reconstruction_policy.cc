@@ -122,7 +122,9 @@ void ReconstructionPolicy::AttemptReconstruction(const TaskID &task_id,
       reconstruction_attempt));
 
   // Increment the number of times reconstruction has been attempted. This is
-  // used to suppress duplicate reconstructions of the same task.
+  // used to suppress duplicate reconstructions of the same task. If
+  // reconstruction is attempted again, the next attempt will try to insert a
+  // task reconstruction entry at the next index in the log.
   it->second.reconstruction_attempt++;
 }
 
