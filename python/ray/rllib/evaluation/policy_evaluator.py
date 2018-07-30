@@ -122,10 +122,12 @@ class PolicyEvaluator(EvaluatorInterface):
                 in each sample batch returned from this evaluator.
             batch_mode (str): One of the following batch modes:
                 "truncate_episodes": Each call to sample() will return a batch
-                    of exactly `batch_steps` in size. Episodes may be truncated
-                    in order to meet this size requirement. When
-                    `num_envs > 1`, episodes will be truncated to sequences of
-                    `batch_size / num_envs` in length.
+                    of at most `batch_steps` in size. The batch will be exactly
+                    `batch_steps` in size if postprocessing does not change
+                    batch sizes. Episodes may be truncated in order to meet
+                    this size requirement. When `num_envs > 1`, episodes will
+                    be truncated to sequences of `batch_size / num_envs` in
+                    length.
                 "complete_episodes": Each call to sample() will return a batch
                     of at least `batch_steps in size. Episodes will not be
                     truncated, but multiple episodes may be packed within one
@@ -220,6 +222,7 @@ class PolicyEvaluator(EvaluatorInterface):
         # Always use vector env for consistency even if num_envs = 1
         self.async_env = AsyncVectorEnv.wrap_async(
             self.env, make_env=make_env, num_envs=num_envs)
+        self.num_envs = num_envs
 
         if self.batch_mode == "truncate_episodes":
             if batch_steps % num_envs != 0:
@@ -276,7 +279,15 @@ class PolicyEvaluator(EvaluatorInterface):
 
         batches = [self.sampler.get_data()]
         steps_so_far = batches[0].count
-        while steps_so_far < self.batch_steps:
+
+        # In truncate_episodes mode, never pull more than 1 batch per env.
+        # This avoids over-running the target batch size.
+        if self.batch_mode == "truncate_episodes":
+            max_batches = self.num_envs
+        else:
+            max_batches = float("inf")
+
+        while steps_so_far < self.batch_steps and len(batches) < max_batches:
             batch = self.sampler.get_data()
             steps_so_far += batch.count
             batches.append(batch)
@@ -292,6 +303,12 @@ class PolicyEvaluator(EvaluatorInterface):
                 batch["new_obs"] = [pack(o) for o in batch["new_obs"]]
 
         return batch
+
+    @ray.method(num_return_vals=2)
+    def sample_with_count(self):
+        """Same as sample() but returns the count as a separate future."""
+        batch = self.sample()
+        return batch, batch.count
 
     def for_policy(self, func, policy_id=DEFAULT_POLICY_ID):
         """Apply the given function to the specified policy graph."""

@@ -17,7 +17,7 @@
         <module>runtime-dev</module>
         <module>cli</module>
         <module>test</module>
-        <module>example</module>
+        <module>tutorial</module>
     </modules>
 
     <properties>
