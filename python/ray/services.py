@@ -1584,18 +1584,14 @@ def start_ray_processes(address_info=None,
         # Make sure that we've started all the workers.
         assert (sum(workers_per_local_scheduler) == 0)
 
-    print(use_raylet, with_gateway)
     if use_raylet and with_gateway:
         raylet_socket_name = address_info["raylet_socket_names"][0]
-        print(raylet_socket_name)
 
         print("Starting gateway on {}".format(raylet_socket_name))
 
         # Create log files
         gateway_stdout_file, gateway_stderr_file = new_log_files(
             "gateway", redirect_output)
-
-        print(gateway_stdout_file)
 
         start_gateway(
             node_ip_address,

@@ -261,8 +261,9 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
                   "from Python by running\n\n"
                   "    import ray\n"
                   "    ray.init(redis_address=\"{}\", driver_mode=ray.CLIENT_MODE, "
-                  "gateway_port={})\n\n".format(address_info["redis_address"],
-                                                gateway_port))
+                  "gateway_port={}, use_raylet=True)\n\n"
+                  .format(address_info["redis_address"],
+                          gateway_port))
 
         print("If you wish to terminate the processes that have been started"
               ", run\n\n"

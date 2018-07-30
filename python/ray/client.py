@@ -34,6 +34,8 @@ class Client(object):
         self.url = "http://{}:{}".format(
             self.gateway_address,
             self.gateway_data_port)
+
+        print(self.url)
         
         # TODO (dsuo): should move to connect()
         command = [

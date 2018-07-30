@@ -1709,7 +1709,7 @@ def _init(address_info=None,
             "node_ip_address": address_info["node_ip_address"],
             "redis_address": address_info["redis_address"],
             "gateway_port": gateway_port,
-            "raylet_socket_names": address_info["raylet_socket_names"]
+            "raylet_socket_name": address_info["raylet_socket_names"][0]
         }
 
         global_worker.client = Client(
@@ -2223,8 +2223,7 @@ def connect(info,
     if not worker.use_raylet:
         local_scheduler_socket = info["local_scheduler_socket_name"]
     else:
-        print(info)
-        local_scheduler_socket = info["raylet_socket_names"][0]
+        local_scheduler_socket = info["raylet_socket_name"]
 
     # If this is a driver, set the current task ID, the task driver ID, and set
     # the task index to 0.
