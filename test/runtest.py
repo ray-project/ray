@@ -1,6 +1,7 @@
 from __future__ import absolute_import, division, print_function
 
 import os
+import pytest
 import re
 import string
 import sys
@@ -12,11 +13,7 @@ from collections import defaultdict, namedtuple, OrderedDict
 import numpy as np
 
 import ray
-import ray.test.test_functions as test_functions
 import ray.test.test_utils
-
-if sys.version_info >= (3, 0):
-    from importlib import reload
 
 
 def assert_equal(obj1, obj2):
@@ -194,98 +191,100 @@ DICT_OBJECTS = (
 RAY_TEST_OBJECTS = BASE_OBJECTS + LIST_OBJECTS + TUPLE_OBJECTS + DICT_OBJECTS
 
 
-class SerializationTest(unittest.TestCase):
-    def tearDown(self):
-        ray.shutdown()
+@pytest.fixture
+def ray_start():
+    # Start the Ray processes.
+    ray.init(num_cpus=1)
+    yield None
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
 
-    def testRecursiveObjects(self):
-        ray.init(num_workers=0)
 
-        class ClassA(object):
+def test_passing_arguments_by_value(ray_start):
+    @ray.remote
+    def f(x):
+        return x
+
+    # Check that we can pass arguments by value to remote functions and
+    # that they are uncorrupted.
+    for obj in RAY_TEST_OBJECTS:
+        assert_equal(obj, ray.get(f.remote(obj)))
+
+
+def test_ray_recursive_objects(ray_start):
+    class ClassA(object):
+        pass
+
+    # Make a list that contains itself.
+    lst = []
+    lst.append(lst)
+    # Make an object that contains itself as a field.
+    a1 = ClassA()
+    a1.field = a1
+    # Make two objects that contain each other as fields.
+    a2 = ClassA()
+    a3 = ClassA()
+    a2.field = a3
+    a3.field = a2
+    # Make a dictionary that contains itself.
+    d1 = {}
+    d1["key"] = d1
+    # Create a list of recursive objects.
+    recursive_objects = [lst, a1, a2, a3, d1]
+
+    # Check that exceptions are thrown when we serialize the recursive
+    # objects.
+    for obj in recursive_objects:
+        with pytest.raises(Exception):
+            ray.put(obj)
+
+
+def test_passing_arguments_by_value_out_of_the_box(ray_start):
+    @ray.remote
+    def f(x):
+        return x
+
+    # Test passing lambdas.
+
+    def temp():
+        return 1
+
+    assert ray.get(f.remote(temp))() == 1
+    assert ray.get(f.remote(lambda x: x + 1))(3) == 4
+
+    # Test sets.
+    assert ray.get(f.remote(set())) == set()
+    s = {1, (1, 2, "hi")}
+    assert ray.get(f.remote(s)) == s
+
+    # Test types.
+    assert ray.get(f.remote(int)) == int
+    assert ray.get(f.remote(float)) == float
+    assert ray.get(f.remote(str)) == str
+
+    class Foo(object):
+        def __init__(self):
             pass
 
-        # Make a list that contains itself.
-        lst = []
-        lst.append(lst)
-        # Make an object that contains itself as a field.
-        a1 = ClassA()
-        a1.field = a1
-        # Make two objects that contain each other as fields.
-        a2 = ClassA()
-        a3 = ClassA()
-        a2.field = a3
-        a3.field = a2
-        # Make a dictionary that contains itself.
-        d1 = {}
-        d1["key"] = d1
-        # Create a list of recursive objects.
-        recursive_objects = [lst, a1, a2, a3, d1]
+    # Make sure that we can put and get a custom type. Note that the result
+    # won't be "equal" to Foo.
+    ray.get(ray.put(Foo))
 
-        # Check that exceptions are thrown when we serialize the recursive
-        # objects.
-        for obj in recursive_objects:
-            self.assertRaises(Exception, lambda: ray.put(obj))
 
-    def testPassingArgumentsByValue(self):
-        ray.init(num_workers=1)
+def test_putting_object_that_closes_over_object_id(ray_start):
+    # This test is here to prevent a regression of
+    # https://github.com/ray-project/ray/issues/1317.
 
-        @ray.remote
-        def f(x):
-            return x
+    class Foo(object):
+        def __init__(self):
+            self.val = ray.put(0)
 
-        # Check that we can pass arguments by value to remote functions and
-        # that they are uncorrupted.
-        for obj in RAY_TEST_OBJECTS:
-            assert_equal(obj, ray.get(f.remote(obj)))
+        def method(self):
+            f
 
-    def testPassingArgumentsByValueOutOfTheBox(self):
-        ray.init(num_workers=1)
-
-        @ray.remote
-        def f(x):
-            return x
-
-        # Test passing lambdas.
-
-        def temp():
-            return 1
-
-        self.assertEqual(ray.get(f.remote(temp))(), 1)
-        self.assertEqual(ray.get(f.remote(lambda x: x + 1))(3), 4)
-
-        # Test sets.
-        self.assertEqual(ray.get(f.remote(set())), set())
-        s = {1, (1, 2, "hi")}
-        self.assertEqual(ray.get(f.remote(s)), s)
-
-        # Test types.
-        self.assertEqual(ray.get(f.remote(int)), int)
-        self.assertEqual(ray.get(f.remote(float)), float)
-        self.assertEqual(ray.get(f.remote(str)), str)
-
-        class Foo(object):
-            def __init__(self):
-                pass
-
-        # Make sure that we can put and get a custom type. Note that the result
-        # won't be "equal" to Foo.
-        ray.get(ray.put(Foo))
-
-    def testPuttingObjectThatClosesOverObjectID(self):
-        # This test is here to prevent a regression of
-        # https://github.com/ray-project/ray/issues/1317.
-        ray.init(num_workers=0)
-
-        class Foo(object):
-            def __init__(self):
-                self.val = ray.put(0)
-
-            def method(self):
-                f
-
-        f = Foo()
-        with self.assertRaises(ray.local_scheduler.common_error):
-            ray.put(f)
+    f = Foo()
+    with pytest.raises(ray.local_scheduler.common_error):
+        ray.put(f)
 
 
 class WorkerTest(unittest.TestCase):
@@ -522,46 +521,57 @@ class APITest(unittest.TestCase):
             self.assertFalse(hasattr(c2, "method1"))
 
     def testKeywordArgs(self):
-        reload(test_functions)
+        @ray.remote
+        def keyword_fct1(a, b="hello"):
+            return "{} {}".format(a, b)
+
+        @ray.remote
+        def keyword_fct2(a="hello", b="world"):
+            return "{} {}".format(a, b)
+
+        @ray.remote
+        def keyword_fct3(a, b, c="hello", d="world"):
+            return "{} {} {} {}".format(a, b, c, d)
+
         self.init_ray()
 
-        x = test_functions.keyword_fct1.remote(1)
+        x = keyword_fct1.remote(1)
         self.assertEqual(ray.get(x), "1 hello")
-        x = test_functions.keyword_fct1.remote(1, "hi")
+        x = keyword_fct1.remote(1, "hi")
         self.assertEqual(ray.get(x), "1 hi")
-        x = test_functions.keyword_fct1.remote(1, b="world")
+        x = keyword_fct1.remote(1, b="world")
         self.assertEqual(ray.get(x), "1 world")
-        x = test_functions.keyword_fct1.remote(a=1, b="world")
+        x = keyword_fct1.remote(a=1, b="world")
         self.assertEqual(ray.get(x), "1 world")
 
-        x = test_functions.keyword_fct2.remote(a="w", b="hi")
+        x = keyword_fct2.remote(a="w", b="hi")
         self.assertEqual(ray.get(x), "w hi")
-        x = test_functions.keyword_fct2.remote(b="hi", a="w")
+        x = keyword_fct2.remote(b="hi", a="w")
         self.assertEqual(ray.get(x), "w hi")
-        x = test_functions.keyword_fct2.remote(a="w")
+        x = keyword_fct2.remote(a="w")
         self.assertEqual(ray.get(x), "w world")
-        x = test_functions.keyword_fct2.remote(b="hi")
+        x = keyword_fct2.remote(b="hi")
         self.assertEqual(ray.get(x), "hello hi")
-        x = test_functions.keyword_fct2.remote("w")
+        x = keyword_fct2.remote("w")
         self.assertEqual(ray.get(x), "w world")
-        x = test_functions.keyword_fct2.remote("w", "hi")
+        x = keyword_fct2.remote("w", "hi")
         self.assertEqual(ray.get(x), "w hi")
 
-        x = test_functions.keyword_fct3.remote(0, 1, c="w", d="hi")
+        x = keyword_fct3.remote(0, 1, c="w", d="hi")
         self.assertEqual(ray.get(x), "0 1 w hi")
-        x = test_functions.keyword_fct3.remote(0, b=1, c="w", d="hi")
+        x = keyword_fct3.remote(0, b=1, c="w", d="hi")
         self.assertEqual(ray.get(x), "0 1 w hi")
-        x = test_functions.keyword_fct3.remote(a=0, b=1, c="w", d="hi")
+        x = keyword_fct3.remote(a=0, b=1, c="w", d="hi")
         self.assertEqual(ray.get(x), "0 1 w hi")
-        x = test_functions.keyword_fct3.remote(0, 1, d="hi", c="w")
+        x = keyword_fct3.remote(0, 1, d="hi", c="w")
         self.assertEqual(ray.get(x), "0 1 w hi")
-        x = test_functions.keyword_fct3.remote(0, 1, c="w")
+        x = keyword_fct3.remote(0, 1, c="w")
         self.assertEqual(ray.get(x), "0 1 w world")
-        x = test_functions.keyword_fct3.remote(0, 1, d="hi")
+        x = keyword_fct3.remote(0, 1, d="hi")
         self.assertEqual(ray.get(x), "0 1 hello hi")
-        x = test_functions.keyword_fct3.remote(0, 1)
+        x = keyword_fct3.remote(0, 1)
         self.assertEqual(ray.get(x), "0 1 hello world")
-        x = test_functions.keyword_fct3.remote(a=0, b=1)
+        x = keyword_fct3.remote(a=0, b=1)
         self.assertEqual(ray.get(x), "0 1 hello world")
 
         # Check that we cannot pass invalid keyword arguments to functions.
@@ -597,15 +607,32 @@ class APITest(unittest.TestCase):
         self.assertEqual(ray.get(f3.remote(4)), 4)
 
     def testVariableNumberOfArgs(self):
-        reload(test_functions)
+        @ray.remote
+        def varargs_fct1(*a):
+            return " ".join(map(str, a))
+
+        @ray.remote
+        def varargs_fct2(a, *b):
+            return " ".join(map(str, b))
+
+        try:
+
+            @ray.remote
+            def kwargs_throw_exception(**c):
+                return ()
+
+            kwargs_exception_thrown = False
+        except Exception:
+            kwargs_exception_thrown = True
+
         self.init_ray()
 
-        x = test_functions.varargs_fct1.remote(0, 1, 2)
+        x = varargs_fct1.remote(0, 1, 2)
         self.assertEqual(ray.get(x), "0 1 2")
-        x = test_functions.varargs_fct2.remote(0, 1, 2)
+        x = varargs_fct2.remote(0, 1, 2)
         self.assertEqual(ray.get(x), "1 2")
 
-        self.assertTrue(test_functions.kwargs_exception_thrown)
+        self.assertTrue(kwargs_exception_thrown)
 
         @ray.remote
         def f1(*args):
@@ -627,10 +654,13 @@ class APITest(unittest.TestCase):
         self.assertEqual(ray.get(f2.remote(1, 2, 3, 4)), (1, 2, (3, 4)))
 
     def testNoArgs(self):
-        reload(test_functions)
+        @ray.remote
+        def no_op():
+            pass
+
         self.init_ray()
 
-        ray.get(test_functions.no_op.remote())
+        ray.get(no_op.remote())
 
     def testDefiningRemoteFunctions(self):
         self.init_ray(num_cpus=3)
@@ -1200,7 +1230,15 @@ class LocalModeTest(unittest.TestCase):
         ray.shutdown()
 
     def testLocalMode(self):
-        reload(test_functions)
+        @ray.remote
+        def local_mode_f():
+            return np.array([0, 0])
+
+        @ray.remote
+        def local_mode_g(x):
+            x[0] = 1
+            return x
+
         ray.init(driver_mode=ray.LOCAL_MODE)
 
         @ray.remote
@@ -1218,9 +1256,9 @@ class LocalModeTest(unittest.TestCase):
 
         # Make sure objects are immutable, this example is why we need to copy
         # arguments before passing them into remote functions in python mode
-        aref = test_functions.local_mode_f.remote()
+        aref = local_mode_f.remote()
         assert_equal(aref, np.array([0, 0]))
-        bref = test_functions.local_mode_g.remote(aref)
+        bref = local_mode_g.remote(aref)
         # Make sure local_mode_g does not mutate aref.
         assert_equal(aref, np.array([0, 0]))
         assert_equal(bref, np.array([1, 0]))
@@ -2189,9 +2227,9 @@ class GlobalStateAPI(unittest.TestCase):
         self.assertEqual(task_spec["DriverID"], driver_id)
         self.assertEqual(task_spec["ReturnObjectIDs"], [result_id])
         function_table_entry = function_table[task_spec["FunctionID"]]
-        self.assertEqual(function_table_entry["Name"], "__main__.f")
+        self.assertEqual(function_table_entry["Name"], "runtest.f")
         self.assertEqual(function_table_entry["DriverID"], driver_id)
-        self.assertEqual(function_table_entry["Module"], "__main__")
+        self.assertEqual(function_table_entry["Module"], "runtest")
 
         self.assertEqual(task_table[task_id],
                          ray.global_state.task_table(task_id))
