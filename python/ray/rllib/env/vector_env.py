@@ -68,7 +68,7 @@ class _VectorizedGymEnv(VectorEnv):
         self.envs = existing_envs
         self.num_envs = num_envs
         while len(self.envs) < self.num_envs:
-            self.envs.append(self.make_env(env_index=len(self.envs)))
+            self.envs.append(self.make_env(vector_index=len(self.envs)))
 
     def vector_reset(self):
         return [e.reset() for e in self.envs]
