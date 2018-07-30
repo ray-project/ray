@@ -52,6 +52,9 @@ void ReconstructionPolicy::SetTaskTimeout(
                                                                  client_id_));
             it->second.subscribed = true;
           }
+        } else {
+          // Check that the error was due to the timer being canceled.
+          RAY_CHECK(error == boost::asio::error::operation_aborted);
         }
       });
 }
@@ -131,7 +134,7 @@ void ReconstructionPolicy::HandleTaskLeaseNotification(const TaskID &task_id,
   }
 }
 
-void ReconstructionPolicy::Listen(const ObjectID &object_id) {
+void ReconstructionPolicy::ListenAndMaybeReconstruct(const ObjectID &object_id) {
   TaskID task_id = ComputeTaskId(object_id);
   auto it = listening_tasks_.find(task_id);
   // Add this object to the list of objects created by the same task.

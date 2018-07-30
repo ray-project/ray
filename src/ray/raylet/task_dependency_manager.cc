@@ -54,7 +54,7 @@ void TaskDependencyManager::HandleRemoteDependencyRequired(const ObjectID &objec
       // If we haven't already, request the object manager to pull it from a
       // remote node.
       RAY_CHECK_OK(object_manager_.Pull(object_id));
-      reconstruction_policy_.Listen(object_id);
+      reconstruction_policy_.ListenAndMaybeReconstruct(object_id);
     }
   }
 }
@@ -255,6 +255,9 @@ void TaskDependencyManager::AcquireTaskLease(const TaskID &task_id) {
       [this, task_id](const boost::system::error_code &error) {
         if (!error) {
           AcquireTaskLease(task_id);
+        } else {
+          // Check that the error was due to the timer being canceled.
+          RAY_CHECK(error == boost::asio::error::operation_aborted);
         }
       });
 

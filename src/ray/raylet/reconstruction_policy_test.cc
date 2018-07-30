@@ -180,7 +180,7 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionSimple) {
   ObjectID object_id = ComputeReturnId(task_id, 1);
 
   // Listen for an object.
-  reconstruction_policy_->Listen(object_id);
+  reconstruction_policy_->ListenAndMaybeReconstruct(object_id);
   // Run the test for longer than the reconstruction timeout.
   Run(reconstruction_timeout_ms_ * 1.1);
   // Check that reconstruction was triggered for the task that created the
@@ -200,7 +200,7 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionEvicted) {
   mock_object_directory_->SetObjectLocations(object_id, {ClientID::from_random()});
 
   // Listen for both objects.
-  reconstruction_policy_->Listen(object_id);
+  reconstruction_policy_->ListenAndMaybeReconstruct(object_id);
   // Run the test for longer than the reconstruction timeout.
   Run(reconstruction_timeout_ms_ * 1.1);
   // Check that reconstruction was not triggered, since the objects still
@@ -224,8 +224,8 @@ TEST_F(ReconstructionPolicyTest, TestDuplicateReconstruction) {
   ObjectID object_id2 = ComputeReturnId(task_id, 2);
 
   // Listen for both objects.
-  reconstruction_policy_->Listen(object_id1);
-  reconstruction_policy_->Listen(object_id2);
+  reconstruction_policy_->ListenAndMaybeReconstruct(object_id1);
+  reconstruction_policy_->ListenAndMaybeReconstruct(object_id2);
   // Run the test for longer than the reconstruction timeout.
   Run(reconstruction_timeout_ms_ * 1.1);
   // Check that reconstruction is only triggered once for the task that created
@@ -253,7 +253,7 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionSuppressed) {
   mock_gcs_.Add(DriverID::nil(), task_id, task_lease_data);
 
   // Listen for an object.
-  reconstruction_policy_->Listen(object_id);
+  reconstruction_policy_->ListenAndMaybeReconstruct(object_id);
   // Run the test.
   Run(test_period);
   // Check that reconstruction is suppressed by the active task lease.
@@ -271,7 +271,7 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionContinuallySuppressed) {
   ObjectID object_id = ComputeReturnId(task_id, 1);
 
   // Listen for an object.
-  reconstruction_policy_->Listen(object_id);
+  reconstruction_policy_->ListenAndMaybeReconstruct(object_id);
   // Send the reconstruction manager heartbeats about the object.
   SetPeriodicTimer(reconstruction_timeout_ms_ / 2, [this, task_id]() {
     auto task_lease_data = std::make_shared<TaskLeaseDataT>();
@@ -299,7 +299,7 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionCanceled) {
   ObjectID object_id = ComputeReturnId(task_id, 1);
 
   // Listen for an object.
-  reconstruction_policy_->Listen(object_id);
+  reconstruction_policy_->ListenAndMaybeReconstruct(object_id);
   // Halfway through the reconstruction timeout, cancel the object
   // reconstruction.
   auto timer_period = boost::posix_time::milliseconds(reconstruction_timeout_ms_);
@@ -313,7 +313,7 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionCanceled) {
   ASSERT_TRUE(reconstructed_tasks_.empty());
 
   // Listen for the object again.
-  reconstruction_policy_->Listen(object_id);
+  reconstruction_policy_->ListenAndMaybeReconstruct(object_id);
   // Run the test again.
   Run(reconstruction_timeout_ms_ * 1.1);
   // Check that this time, reconstruction is triggered.

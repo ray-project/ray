@@ -19,7 +19,7 @@ namespace raylet {
 
 class ReconstructionPolicyInterface {
  public:
-  virtual void Listen(const ObjectID &object_id) = 0;
+  virtual void ListenAndMaybeReconstruct(const ObjectID &object_id) = 0;
   virtual void Cancel(const ObjectID &object_id) = 0;
   virtual ~ReconstructionPolicyInterface(){};
 };
@@ -51,7 +51,7 @@ class ReconstructionPolicy : public ReconstructionPolicyInterface {
   /// for the task that created the object.
   ///
   /// \param object_id The object to check for reconstruction.
-  void Listen(const ObjectID &object_id);
+  void ListenAndMaybeReconstruct(const ObjectID &object_id);
 
   /// Cancel listening for an object. Notifications for the object will be
   /// ignored. This does not cancel a reconstruction attempt that is already in
@@ -92,8 +92,10 @@ class ReconstructionPolicy : public ReconstructionPolicyInterface {
     std::unique_ptr<boost::asio::deadline_timer> reconstruction_timer;
   };
 
-  // Set the reconstruction timer for a task. If no task lease notifications
-  // are received within the timeout, then reconstruction will be triggered.
+  /// Set the reconstruction timer for a task. If no task lease notifications
+  /// are received within the timeout, then reconstruction will be triggered.
+  /// If the timer was previously set, this method will cancel it and reset the
+  /// timer to the new timeout.
   void SetTaskTimeout(std::unordered_map<TaskID, ReconstructionTask>::iterator task_it,
                       int64_t timeout_ms);
 
