@@ -7,7 +7,7 @@ import sys
 import threading
 
 from ray.tune.error import TuneError, TuneManagerError
-from ray.tune.variant_generator import generate_trials
+from ray.tune.suggest import generate_trials
 
 if sys.version_info[0] == 2:
     from SimpleHTTPServer import SimpleHTTPRequestHandler

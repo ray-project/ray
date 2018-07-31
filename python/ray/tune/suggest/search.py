@@ -4,7 +4,7 @@ from __future__ import print_function
 
 import itertools
 
-from ray.tune.variant_generator import generate_trials
+from ray.tune.suggest.variant_generator import generate_trials
 
 
 class SearchAlgorithm(object):
@@ -17,7 +17,7 @@ class SearchAlgorithm(object):
     this class upon new events, so custom search algorithms should
     maintain a list of trials ID generated from this class.
 
-    See `VariantGenerationAlgorithm`.
+    See `VariantAlgorithm`.
     """
 
     def add_experiment(self, experiment):
@@ -74,7 +74,9 @@ class VariantAlgorithm(SearchAlgorithm):
 
     Custom search algorithms can extend this class easily by overriding the
     `try_suggest` method, which will override conflicting fields from
-    the initially generated parameters. See `ray.tune.variant_generator`.
+    the initially generated parameters.
+
+    See `ray.tune.suggest.variant_generator`.
 
     To track suggestions and their corresponding evaluations, the method
     `try_suggest` will need to generate a trial_id. This trial_id will
