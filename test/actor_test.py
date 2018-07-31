@@ -873,9 +873,8 @@ class ActorsWithGPUs(unittest.TestCase):
         # Make sure that no two actors are assigned to the same GPU.
         locations_and_ids = ray.get(
             [actor.get_location_and_ids.remote() for actor in actors2])
-        assert node_names == \
-                         {location
-                          for location, gpu_id in locations_and_ids}
+        names = {location for location, gpu_id in locations_and_ids}
+        assert node_names == names
         for location, gpu_ids in locations_and_ids:
             gpus_in_use[location].extend(gpu_ids)
         for node_name in node_names:
@@ -1370,8 +1369,8 @@ class ActorReconstruction(unittest.TestCase):
 
         # Get the results and check that they have the correct values.
         for _, result_id_list in result_ids.items():
-            assert ray.get(result_id_list) == list(
-                range(1, len(result_id_list) + 1))
+            l = list(range(1, len(result_id_list) + 1))
+            assert ray.get(result_id_list) == l
 
     def setup_counter_actor(self,
                             test_checkpoint=False,
