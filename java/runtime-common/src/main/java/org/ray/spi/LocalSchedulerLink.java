@@ -21,13 +21,13 @@ public interface LocalSchedulerLink {
 
   List<byte[]> wait(byte[][] objectIds, int timeoutMs, int numReturns);
 
-  default void fetch(UniqueID objectId, boolean fetchOnly) {
-    reconstructObject(objectId, fetchOnly);
+  default void fetch(UniqueID objectId) {
+    reconstructObject(objectId, false);
   }
 
-  default void fetch(List<UniqueID> objectIds, boolean fetchOnly) {
+  default void fetch(List<UniqueID> objectIds) {
     for (UniqueID objectId : objectIds) {
-      reconstructObject(objectId, fetchOnly);
+      reconstructObject(objectId, false);
     }
   }
 }

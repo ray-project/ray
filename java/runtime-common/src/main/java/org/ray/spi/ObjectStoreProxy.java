@@ -116,19 +116,21 @@ public class ObjectStoreProxy {
     return new WaitResult<>(readyObjs, remainObjs);
   }
 
-  public void fetch(UniqueID objectId, boolean fetchOnly) {
+  public void fetch(UniqueID objectId) {
     if (localSchedulerLink == null) {
       store.fetch(objectId.getBytes());
     } else {
-      localSchedulerLink.fetch(objectId, fetchOnly);
+      localSchedulerLink.reconstructObject(objectId, true);
     }
   }
 
-  public void fetch(List<UniqueID> objectIds, boolean fetchOnly) {
+  public void fetch(List<UniqueID> objectIds) {
     if (localSchedulerLink == null) {
       store.fetch(getIdBytes(objectIds));
     } else {
-      localSchedulerLink.fetch(objectIds, fetchOnly);
+      for (UniqueID objectId : objectIds) {
+        localSchedulerLink.reconstructObject(objectId, true);
+      }
     }
   }
 

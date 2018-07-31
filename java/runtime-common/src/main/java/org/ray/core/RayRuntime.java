@@ -284,6 +284,7 @@ public abstract class RayRuntime implements RayApi {
 
   private <T> List<T> doGet(List<UniqueID> objectIds, boolean isMetadata)
       throws TaskExecutionException {
+
     boolean wasBlocked = false;
     UniqueID taskId = getCurrentTaskId();
     try {
@@ -317,7 +318,9 @@ public abstract class RayRuntime implements RayApi {
         // they were evicted since the last fetch.
         List<UniqueID> unreadyList = new ArrayList<>(unreadys.keySet());
 
-        dividedFetch(unreadyList);
+        if (!params.use_raylet) {
+          dividedFetch(unreadyList);
+        }
 
         List<Pair<T, GetStatus>> results = objectStoreProxy
             .get(unreadyList, params.default_get_check_interval_ms, isMetadata);
@@ -337,9 +340,11 @@ public abstract class RayRuntime implements RayApi {
       RayLog.core
           .debug("Task " + taskId + " Objects " + Arrays.toString(objectIds.toArray()) + " get");
       List<T> finalRet = new ArrayList<>();
+
       for (Pair<T, GetStatus> value : ret) {
         finalRet.add(value.getLeft());
       }
+
       return finalRet;
     } catch (TaskExecutionException e) {
       RayLog.core.error("Task " + taskId + " Objects " + Arrays.toString(objectIds.toArray())
@@ -361,7 +366,7 @@ public abstract class RayRuntime implements RayApi {
     UniqueID taskId = getCurrentTaskId();
     try {
       // Do an initial fetch.
-      objectStoreProxy.fetch(objectId, params.use_raylet);
+      objectStoreProxy.fetch(objectId);
 
       // Get the object. We initially try to get the object immediately.
       Pair<T, GetStatus> ret = objectStoreProxy
@@ -374,10 +379,12 @@ public abstract class RayRuntime implements RayApi {
       while (ret.getRight() != GetStatus.SUCCESS) {
         RayLog.core.warn(
             "Task " + taskId + " Object " + objectId.toString() + " get failed, reconstruct ...");
+        // Do another fetch
         localSchedulerProxy.reconstructObject(objectId, false);
 
-        // Do another fetch
-        objectStoreProxy.fetch(objectId, false);
+        if (!params.use_raylet) {
+          objectStoreProxy.fetch(objectId);
+        }
 
         //Check the result every 5s, but it will return once available.
         ret = objectStoreProxy.get(objectId, params.default_get_check_interval_ms,
@@ -410,9 +417,9 @@ public abstract class RayRuntime implements RayApi {
     for (int i = 0; i < numObjectIds; i += fetchSize) {
       int endIndex = i + fetchSize;
       if (endIndex < numObjectIds) {
-        objectStoreProxy.fetch(objectIds.subList(i, endIndex), false);
+        objectStoreProxy.fetch(objectIds.subList(i, endIndex));
       } else {
-        objectStoreProxy.fetch(objectIds.subList(i, numObjectIds), false);
+        objectStoreProxy.fetch(objectIds.subList(i, numObjectIds));
       }
     }
   }
