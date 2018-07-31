@@ -1119,14 +1119,21 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
 }
 
 void NodeManager::HandleTaskReconstruction(const TaskID &task_id) {
+  // Retrieve the task spec in order to re-execute the task.
   gcs_client_->raylet_task_table().Lookup(
       JobID::nil(), task_id,
+      /*success_callback=*/
       [this](ray::gcs::AsyncGcsClient *client, const TaskID &task_id,
              const ray::protocol::TaskT &task_data) {
+        // The task was in the GCS task table. Use the stored task spec to
+        // re-execute the task.
         const Task task(task_data);
         ResubmitTask(task);
       },
+      /*failure_callback=*/
       [this](ray::gcs::AsyncGcsClient *client, const TaskID &task_id) {
+        // The task was not in the GCS task table. It must therefore be in the
+        // lineage cache. Use the cached task spec to re-execute the task.
         const Task &task = lineage_cache_.GetTask(task_id);
         ResubmitTask(task);
       });
@@ -1156,7 +1163,9 @@ void NodeManager::ResubmitTask(const Task &task) {
   }
 
   // The task may be reconstructed. Submit it with an empty lineage, since any
-  // uncommitted lineage must already be in the lineage cache.
+  // uncommitted lineage must already be in the lineage cache. At this point,
+  // the task should not yet exist in the local scheduling queue. If it does,
+  // then this is a spurious reconstruction.
   SubmitTask(task, Lineage());
 }
 

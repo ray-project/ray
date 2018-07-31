@@ -82,6 +82,10 @@ class TaskSpecification {
   /// \param string A serialized task specification flatbuffer.
   TaskSpecification(const flatbuffers::String &string);
 
+  /// Deserialize a task specification from a flatbuffer's string data.
+  ///
+  /// \param string The string data for a serialized task specification
+  /// flatbuffer.
   TaskSpecification(const std::string &string);
 
   // TODO(swang): Define an actor task constructor.

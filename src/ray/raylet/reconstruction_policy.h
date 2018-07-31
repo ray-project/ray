@@ -71,8 +71,6 @@ class ReconstructionPolicy : public ReconstructionPolicyInterface {
   /// this timeout, then objects that the task creates may be reconstructed.
   void HandleTaskLeaseNotification(const TaskID &task_id, int64_t lease_timeout_ms);
 
-  void HandleReconstructionLogAppend(const TaskID &task_id, bool success);
-
  private:
   struct ReconstructionTask {
     ReconstructionTask(boost::asio::io_service &io_service)
@@ -116,6 +114,10 @@ class ReconstructionPolicy : public ReconstructionPolicyInterface {
 
   /// Handle expiration of a task lease.
   void HandleTaskLeaseExpired(const TaskID &task_id);
+
+  /// Handle the response for an attempt at adding an entry to the task
+  /// reconstruction log.
+  void HandleReconstructionLogAppend(const TaskID &task_id, bool success);
 
   /// The event loop.
   boost::asio::io_service &io_service_;

@@ -375,7 +375,10 @@ class TaskLeaseTable : public Table<TaskID, TaskLeaseData> {
     // since the lease entry itself contains the expiration period. In the
     // worst case, if the command fails, then a client that looks up the lease
     // entry will overestimate the expiration time.
-    std::vector<std::string> args = {"PEXPIRE", "TASK_LEASE" + id.binary(),
+    // TODO(swang): Use a common helper function to format the key instead of
+    // hardcoding it to match the Redis module.
+    std::vector<std::string> args = {"PEXPIRE",
+                                     EnumNameTablePrefix(prefix_) + id.binary(),
                                      std::to_string(data->timeout)};
     return context_->RunArgvAsync(args);
   }

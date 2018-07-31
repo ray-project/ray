@@ -94,7 +94,8 @@ class NodeManager {
   void ScheduleTasks();
   /// Handle a task whose return value(s) must be reconstructed.
   void HandleTaskReconstruction(const TaskID &task_id);
-  /// Resubmit a task for execution.
+  /// Resubmit a task for execution. This is a task that was previously already
+  /// submitted to a raylet but which must now be re-executed.
   void ResubmitTask(const Task &task);
   /// Attempt to forward a task to a remote different node manager. If this
   /// fails, the task will be resubmit locally.

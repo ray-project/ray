@@ -277,7 +277,7 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionSuppressed) {
 
   // Acquire the task lease for a period longer than the test period.
   auto task_lease_data = std::make_shared<TaskLeaseDataT>();
-  task_lease_data->node_manager_id = ClientID::from_random().hex();
+  task_lease_data->node_manager_id = ClientID::from_random().binary();
   task_lease_data->acquired_at = current_sys_time_ms();
   task_lease_data->timeout = 2 * test_period;
   mock_gcs_.Add(DriverID::nil(), task_id, task_lease_data);
@@ -305,7 +305,7 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionContinuallySuppressed) {
   // Send the reconstruction manager heartbeats about the object.
   SetPeriodicTimer(reconstruction_timeout_ms_ / 2, [this, task_id]() {
     auto task_lease_data = std::make_shared<TaskLeaseDataT>();
-    task_lease_data->node_manager_id = ClientID::from_random().hex();
+    task_lease_data->node_manager_id = ClientID::from_random().binary();
     task_lease_data->acquired_at = current_sys_time_ms();
     task_lease_data->timeout = reconstruction_timeout_ms_;
     mock_gcs_.Add(DriverID::nil(), task_id, task_lease_data);
@@ -359,7 +359,7 @@ TEST_F(ReconstructionPolicyTest, TestSimultaneousReconstructionSuppressed) {
   // reconstruction first. This should suppress this node's first attempt at
   // reconstruction.
   auto task_reconstruction_data = std::make_shared<TaskReconstructionDataT>();
-  task_reconstruction_data->node_manager_id = ClientID::from_random().hex();
+  task_reconstruction_data->node_manager_id = ClientID::from_random().binary();
   task_reconstruction_data->num_reconstructions = 0;
   mock_gcs_.AppendAt(DriverID::nil(), task_id, task_reconstruction_data, nullptr,
                      /*failure_callback=*/
