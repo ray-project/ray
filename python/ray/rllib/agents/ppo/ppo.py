@@ -46,6 +46,8 @@ DEFAULT_CONFIG = with_common_config({
     "batch_mode": "complete_episodes",
     # Which observation filter to apply to the observation
     "observation_filter": "MeanStdFilter",
+    # Preprocessor to use
+    "preprocessor_pref": "deepmind",
     # Use the sync samples optimizer instead of the multi-gpu one
     "simple_optimizer": False,
     # Override model config

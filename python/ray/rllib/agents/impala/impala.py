@@ -44,12 +44,10 @@ DEFAULT_CONFIG = with_common_config({
 
     # Model and preprocessor options.
     "clip_rewards": True,
-    "preprocessor_pref": "rllib",
+    "preprocessor_pref": "deepmind",
     "model": {
         "use_lstm": False,
         "max_seq_len": 20,
-        "grayscale": True,
-        "zero_mean": False,
         "dim": 80,
     },
 })

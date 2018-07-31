@@ -33,21 +33,15 @@ DEFAULT_CONFIG = with_common_config({
     # Workers sample async
     "sample_async": True,
     # Preprocessor to use
-    "preprocessor_pref": "rllib",
+    "preprocessor_pref": "deepmind",
     # Model and preprocessor options
     "model": {
         # Use LSTM model. Requires TF.
         "use_lstm": False,
         # Max seq length for LSTM training.
         "max_seq_len": 20,
-        # (Image statespace) - Converts image to Channels = 1
-        "grayscale": True,
-        # (Image statespace) - Each pixel
-        "zero_mean": False,
         # (Image statespace) - Converts image to (dim, dim, C)
         "dim": 80,
-        # (Image statespace) - Converts image shape to (C, dim, dim)
-        "channel_major": False,
     },
     # Configure TF for single-process operation
     "tf_session_args": {
