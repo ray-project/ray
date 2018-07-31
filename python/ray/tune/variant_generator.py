@@ -10,7 +10,7 @@ import random
 import types
 
 from ray.tune import TuneError
-from ray.tune.suggest import SearchAlgorithm
+from ray.tune.suggest import VariantAlgorithm
 from ray.tune.logger import _SafeFallbackEncoder
 from ray.tune.trial import Trial
 from ray.tune.config_parser import make_parser, json_to_resources
@@ -29,19 +29,18 @@ def to_argv(config):
     return argv
 
 
-def generate_trials(unresolved_spec, output_path='', search_alg=None):
+def generate_trials(search_alg, unresolved_spec, output_path=''):
     """Wraps `generate_variants()` to return a Trial object for each variant.
 
     Specified/sampled hyperparameters for the Search Algorithm will be
     used to update the generated configuration.
 
-    See also: generate_variants()
+    See also: `generate_variants()`.
 
     Arguments:
+        search_alg (VariantAlgorithm): VariantAlgorithm for hyperparameters.
         unresolved_spec (dict): Experiment spec conforming to the argument
             schema defined in `ray.tune.config_parser`.
-        search_alg (SearchAlgorithm): SearchAlgorithm for hyperparameters.
-            Defaults to SearchAlgorithm.
         output_path (str): Path where to store experiment outputs.
 
     Yields:
@@ -49,7 +48,6 @@ def generate_trials(unresolved_spec, output_path='', search_alg=None):
             a certain time (i.e. due to contrained concurrency), this will
             yield None. Otherwise, it will yield a trial.
     """
-    search_alg = search_alg or SearchAlgorithm()
     if "run" not in unresolved_spec:
         raise TuneError("Must specify `run` in {}".format(unresolved_spec))
     parser = make_parser()
@@ -72,7 +70,7 @@ def generate_trials(unresolved_spec, output_path='', search_alg=None):
             # We hold the other resolved vars until suggestion is ready.
             while True:
                 suggested_config, trial_id = search_alg.try_suggest()
-                if suggested_config is SearchAlgorithm.NOT_READY:
+                if suggested_config is VariantAlgorithm.NOT_READY:
                     yield None
                 else:
                     new_config.update(suggested_config)

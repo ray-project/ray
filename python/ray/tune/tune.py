@@ -6,7 +6,7 @@ import time
 from itertools import chain
 
 from ray.tune.error import TuneError
-from ray.tune.suggest import SearchAlgorithm
+from ray.tune.suggest import VariantAlgorithm
 from ray.tune.hyperband import HyperBandScheduler
 from ray.tune.async_hyperband import AsyncHyperBandScheduler
 from ray.tune.median_stopping_rule import MedianStoppingRule
@@ -46,7 +46,7 @@ def run_experiments(experiments,
     Args:
         experiments (Experiment | list | dict): Experiments to run.
         search_alg (SearchAlgorithm): Search Algorithm. Defaults to
-            SearchAlgorithm.
+            VariantAlgorithm.
         scheduler (TrialScheduler): Scheduler for executing
             the experiment. Choose among FIFO (default), MedianStopping,
             AsyncHyperBand, and HyperBand.
@@ -66,7 +66,7 @@ def run_experiments(experiments,
         scheduler = FIFOScheduler()
 
     if search_alg is None:
-        search_alg = SearchAlgorithm()
+        search_alg = VariantAlgorithm()
 
     exp_list = experiments
     if isinstance(experiments, Experiment):
@@ -76,21 +76,17 @@ def run_experiments(experiments,
             Experiment.from_json(name, spec)
             for name, spec in experiments.items()
         ]
-
     if (type(exp_list) is list
             and all(isinstance(exp, Experiment) for exp in exp_list)):
         if len(exp_list) > 1:
             print("Warning: All experiments will be"
                   " using the same Search Algorithm.")
-        trial_generator = chain.from_iterable([
-            generate_trials(exp.spec, exp.name, search_alg=search_alg)
-            for exp in exp_list
-        ])
+        for experiment in exp_list:
+            search_alg.add_experiment(exp_list)
     else:
         raise TuneError("Invalid argument: {}".format(experiments))
 
     runner = TrialRunner(
-        trial_generator,
         scheduler=scheduler,
         search_alg=search_alg,
         launch_web_server=with_server,

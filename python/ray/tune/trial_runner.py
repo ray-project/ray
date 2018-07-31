@@ -10,7 +10,7 @@ import traceback
 
 from ray.tune import TuneError
 from ray.tune.web_server import TuneServer
-from ray.tune.suggest import SearchAlgorithm
+from ray.tune.suggest import VariantAlgorithm
 from ray.tune.trial import Trial, Resources
 from ray.tune.trial_scheduler import FIFOScheduler, TrialScheduler
 
@@ -40,7 +40,6 @@ class TrialRunner(object):
     """
 
     def __init__(self,
-                 trial_generator=None,
                  search_alg=None,
                  scheduler=None,
                  launch_web_server=False,
@@ -50,8 +49,7 @@ class TrialRunner(object):
         """Initializes a new TrialRunner.
 
         Args:
-            trial_generator (generator): Used to generate trials.
-            search_alg (SearchAlgorithm): Defaults to SearchAlgorithm.
+            search_alg (SearchAlgorithm): Defaults to VariantAlgorithm.
             scheduler (TrialScheduler): Defaults to FIFOScheduler.
             launch_web_server (bool): Flag for starting TuneServer
             server_port (int): Port number for launching TuneServer
@@ -62,8 +60,7 @@ class TrialRunner(object):
                 be set to True when running on an autoscaling cluster to enable
                 automatic scale-up.
         """
-        self._trial_generator = trial_generator or []
-        self._search_alg = search_alg or SearchAlgorithm()
+        self._search_alg = search_alg or VariantAlgorithm()
         self._scheduler_alg = scheduler or FIFOScheduler()
         self._trials = []
         self._running = {}
@@ -313,11 +310,10 @@ class TrialRunner(object):
             self._stop_trial(trial, error=True, error_msg=error_msg)
 
     def _update_trial_queue(self):
-        for trial in self._trial_generator:
-            if trial:
-                self.add_trial(trial)
-            else:
-                break
+        trial = self._search_alg.next_trial()
+        while trial is not None:
+            self.add_trial(trial)
+            trial = self._search_alg.next_trial()
 
     def _commit_resources(self, resources):
         self._committed_resources = Resources(

@@ -15,7 +15,7 @@ from ray.tune.registry import _global_registry, TRAINABLE_CLASS
 from ray.tune.result import DEFAULT_RESULTS_DIR, TrainingResult
 from ray.tune.util import pin_in_object_store, get_pinned_object
 from ray.tune.experiment import Experiment
-from ray.tune.suggest.search import _MockAlgorithm, SearchAlgorithm
+from ray.tune.suggest.search import _MockAlgorithm, VariantAlgorithm
 from ray.tune.trial import Trial, Resources
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.variant_generator import generate_trials, grid_search, \
@@ -573,7 +573,7 @@ class VariantGeneratorTest(unittest.TestCase):
         else:
             assert False
 
-    def testMaxConcurrentSearchAlgorithm(self):
+    def testMaxConcurrentVariantAlgorithm(self):
         searcher = _MockAlgorithm(max_concurrent=2)
         trialgenerator = generate_trials(
             {
@@ -596,12 +596,12 @@ class VariantGeneratorTest(unittest.TestCase):
             else:
                 break
         self.assertEqual(len(trials), 2)
-        self.assertEqual(searcher.try_suggest()[0], SearchAlgorithm.NOT_READY)
+        self.assertEqual(searcher.try_suggest()[0], VariantAlgorithm.NOT_READY)
 
         finished_trial = trials.pop()
         searcher.on_trial_complete(finished_trial.trial_id)
         self.assertNotEqual(searcher.try_suggest()[0],
-                            SearchAlgorithm.NOT_READY)
+                            VariantAlgorithm.NOT_READY)
 
 
 class TrialRunnerTest(unittest.TestCase):
