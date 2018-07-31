@@ -96,6 +96,19 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1reconstruct_1object(
 
 /*
  * Class:     org_ray_spi_impl_DefaultLocalSchedulerClient
+ * Method:    _reconstruct_objects
+ * Signature: (J[B)V
+ */
+JNIEXPORT void JNICALL
+Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1reconstruct_1objects(
+    JNIEnv *,
+    jclass,
+    jlong,
+    jobjectArray,
+    jboolean);
+
+/*
+ * Class:     org_ray_spi_impl_DefaultLocalSchedulerClient
  * Method:    _notify_unblocked
  * Signature: (J)V
  */

@@ -80,6 +80,11 @@ public class MockLocalScheduler implements LocalSchedulerLink {
   }
 
   @Override
+  public void reconstructObjects(byte[][] objectIds, boolean fetchOnly) {
+
+  }
+
+  @Override
   public void notifyUnblocked() {
 
   }

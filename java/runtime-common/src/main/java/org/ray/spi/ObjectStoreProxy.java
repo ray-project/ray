@@ -128,9 +128,7 @@ public class ObjectStoreProxy {
     if (localSchedulerLink == null) {
       store.fetch(getIdBytes(objectIds));
     } else {
-      for (UniqueID objectId : objectIds) {
-        localSchedulerLink.reconstructObject(objectId, true);
-      }
+      localSchedulerLink.reconstructObjects(getIdBytes(objectIds), true);
     }
   }
 

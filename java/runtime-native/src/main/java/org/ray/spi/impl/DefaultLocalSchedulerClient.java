@@ -93,13 +93,30 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
   }
 
   @Override
+  public void reconstructObjects(byte[][] objectIds, boolean fetchOnly) {
+    StringBuilder builder = new StringBuilder();
+    for (byte[] item : objectIds) {
+      UniqueID id = new UniqueID(item);
+      builder.append(id.toString());
+      builder.append(" ");
+    }
+
+    RayLog.core.info("reconstruct objects " + builder.toString());
+    _reconstruct_objects(client, objectIds, fetchOnly);
+  }
+
+  @Override
   public void notifyUnblocked() {
     _notify_unblocked(client);
   }
 
   private static native void _notify_unblocked(long client);
 
-  private static native void _reconstruct_object(long client, byte[] objectId, boolean fetchOnly);
+  private static native void _reconstruct_object(long client, byte[] objectId,
+                                                 boolean fetchOnly);
+
+  private static native void _reconstruct_objects(long client, byte[][] objectIds,
+                                                  boolean fetchOnly);
 
   private static native void _put_object(long client, byte[] taskId, byte[] objectId);
 

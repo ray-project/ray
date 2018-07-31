@@ -121,6 +121,9 @@ public class RayParameters {
   @AConfig(comment = "raylet rpc listen port")
   public int raylet_port = 35567;
 
+  @AConfig(comment = "worker fetch request size")
+  public int worker_fetch_request_size = 10000;
+
   public RayParameters(ConfigReader config) {
     if (null != config) {
       String networkInterface = config.getStringValue("ray.java", "network_interface", null,

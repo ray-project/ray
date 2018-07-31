@@ -210,6 +210,33 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1reconstruct_1object(
 
 /*
  * Class:     org_ray_spi_impl_DefaultLocalSchedulerClient
+ * Method:    _reconstruct_objects
+ * Signature: (J[B)V
+ */
+JNIEXPORT void JNICALL
+Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1reconstruct_1objects(
+    JNIEnv *env,
+    jclass,
+    jlong c,
+    jobjectArray oids,
+    jboolean fetch_only) {
+  // native private static void _reconstruct_objects(long client, byte[][]
+  // objectIds, boolean fetchOnly);
+
+  std::vector<ObjectID> object_ids;
+  auto len = env->GetArrayLength(oids);
+  for (int i = 0; i < len; i++) {
+  jbyteArray oid = (jbyteArray) env->GetObjectArrayElement(oids, i);
+  UniqueIdFromJByteArray o(env, oid);
+  object_ids.push_back(*o.PID);
+  env->DeleteLocalRef(oid);
+  }
+  auto client = reinterpret_cast<LocalSchedulerConnection *>(c);
+  local_scheduler_reconstruct_objects(client, object_ids, fetch_only);
+}
+
+/*
+ * Class:     org_ray_spi_impl_DefaultLocalSchedulerClient
  * Method:    _notify_unblocked
  * Signature: (J)V
  */

@@ -1,5 +1,6 @@
 package org.ray.core;
 
+import com.google.common.collect.ImmutableList;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
@@ -282,14 +283,14 @@ public abstract class RayRuntime implements RayApi {
     return worker.rpcWithReturnIndices(taskId, funcCls, lambda, returnCount, args);
   }
 
+
   private <T> List<T> doGet(List<UniqueID> objectIds, boolean isMetadata)
       throws TaskExecutionException {
-
     boolean wasBlocked = false;
     UniqueID taskId = getCurrentTaskId();
+
     try {
       int numObjectIds = objectIds.size();
-
       // Do an initial fetch for remote objects.
       dividedFetch(objectIds);
 
@@ -298,7 +299,7 @@ public abstract class RayRuntime implements RayApi {
           .get(objectIds, params.default_first_check_timeout_ms, isMetadata);
       assert ret.size() == numObjectIds;
 
-      // mapping the object IDs that we haven't gotten yet to their original index in objectIds
+      // Mapping the object IDs that we haven't gotten yet to their original index in objectIds.
       Map<UniqueID, Integer> unreadys = new HashMap<>();
       for (int i = 0; i < numObjectIds; i++) {
         if (ret.get(i).getRight() != GetStatus.SUCCESS) {
@@ -310,17 +311,8 @@ public abstract class RayRuntime implements RayApi {
       // Try reconstructing any objects we haven't gotten yet. Try to get them
       // until at least PlasmaLink.GET_TIMEOUT_MS milliseconds passes, then repeat.
       while (unreadys.size() > 0) {
-        for (UniqueID id : unreadys.keySet()) {
-          localSchedulerProxy.reconstructObject(id, false);
-        }
-
-        // Do another fetch for objects that aren't available locally yet, in case
-        // they were evicted since the last fetch.
         List<UniqueID> unreadyList = new ArrayList<>(unreadys.keySet());
-
-        if (!params.use_raylet) {
-          dividedFetch(unreadyList);
-        }
+        dividedReconstruct(unreadyList);
 
         List<Pair<T, GetStatus>> results = objectStoreProxy
             .get(unreadyList, params.default_get_check_interval_ms, isMetadata);
@@ -335,8 +327,8 @@ public abstract class RayRuntime implements RayApi {
             unreadys.remove(id);
           }
         }
-      }
 
+      }
       RayLog.core
           .debug("Task " + taskId + " Objects " + Arrays.toString(objectIds.toArray()) + " get");
       List<T> finalRet = new ArrayList<>();
@@ -357,69 +349,53 @@ public abstract class RayRuntime implements RayApi {
         localSchedulerProxy.notifyUnblocked();
       }
     }
-
   }
 
   private <T> T doGet(UniqueID objectId, boolean isMetadata) throws TaskExecutionException {
+    ImmutableList<UniqueID> objectIds = ImmutableList.of(objectId);
+    List<T> results = doGet(objectIds, isMetadata);
 
-    boolean wasBlocked = false;
-    UniqueID taskId = getCurrentTaskId();
-    try {
-      // Do an initial fetch.
-      objectStoreProxy.fetch(objectId);
-
-      // Get the object. We initially try to get the object immediately.
-      Pair<T, GetStatus> ret = objectStoreProxy
-          .get(objectId, params.default_first_check_timeout_ms, isMetadata);
-
-      wasBlocked = (ret.getRight() != GetStatus.SUCCESS);
-
-      // Try reconstructing the object. Try to get it until at least PlasmaLink.GET_TIMEOUT_MS
-      // milliseconds passes, then repeat.
-      while (ret.getRight() != GetStatus.SUCCESS) {
-        RayLog.core.warn(
-            "Task " + taskId + " Object " + objectId.toString() + " get failed, reconstruct ...");
-        // Do another fetch
-        localSchedulerProxy.reconstructObject(objectId, false);
-
-        if (!params.use_raylet) {
-          objectStoreProxy.fetch(objectId);
-        }
-
-        //Check the result every 5s, but it will return once available.
-        ret = objectStoreProxy.get(objectId, params.default_get_check_interval_ms,
-            isMetadata);
-      }
-      RayLog.core.warn(
-          "Task " + taskId + " Object " + objectId.toString() + " get" + ", the result " + ret
-          .getLeft());
-      return ret.getLeft();
-    } catch (TaskExecutionException e) {
-      RayLog.core
-          .error("Task " + taskId + " Object " + objectId.toString() + " get with Exception", e);
-      throw e;
-    } finally {
-      // If the object was not able to get locally, let the local scheduler
-      // know that we're now unblocked.
-      if (wasBlocked) {
-        localSchedulerProxy.notifyUnblocked();
-      }
-    }
-
+    assert results.size() == 1;
+    return results.get(0);
   }
 
   // We divide the fetch into smaller fetches so as to not block the manager
   // for a prolonged period of time in a single call.
   private void dividedFetch(List<UniqueID> objectIds) {
-    int fetchSize = objectStoreProxy.getFetchSize();
-
+    int fetchSize = params.worker_fetch_request_size;
     int numObjectIds = objectIds.size();
     for (int i = 0; i < numObjectIds; i += fetchSize) {
       int endIndex = i + fetchSize;
-      if (endIndex < numObjectIds) {
-        objectStoreProxy.fetch(objectIds.subList(i, endIndex));
+
+      List<UniqueID> fetchIds = (endIndex < numObjectIds)
+          ? objectIds.subList(i, endIndex)
+          : objectIds.subList(i, numObjectIds);
+
+      if (params.use_raylet) {
+        localSchedulerProxy.reconstructObjects(fetchIds, true);
       } else {
-        objectStoreProxy.fetch(objectIds.subList(i, numObjectIds));
+        objectStoreProxy.fetch(fetchIds);
+      }
+    }
+  }
+
+  private void dividedReconstruct(List<UniqueID> objectIds) {
+    int reconstructSize = params.worker_fetch_request_size;
+    int numObjectIds = objectIds.size();
+
+    for (int i = 0; i < numObjectIds; i += reconstructSize) {
+      int endIndex = i + reconstructSize;
+
+      List<UniqueID> reconstructIds = (endIndex < numObjectIds)
+          ? objectIds.subList(i, endIndex)
+          : objectIds.subList(i, numObjectIds);
+
+      localSchedulerProxy.reconstructObjects(reconstructIds, false);
+
+      // Do another fetch for objects that aren't available locally yet, in case
+      // they were evicted since the last fetch.
+      if (!params.use_raylet) {
+        objectStoreProxy.fetch(reconstructIds);
       }
     }
   }

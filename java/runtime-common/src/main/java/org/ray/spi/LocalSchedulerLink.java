@@ -17,17 +17,9 @@ public interface LocalSchedulerLink {
 
   void reconstructObject(UniqueID objectId, boolean fetchOnly);
 
+  void reconstructObjects(byte[][] objectIds, boolean fetchOnly);
+
   void notifyUnblocked();
 
   List<byte[]> wait(byte[][] objectIds, int timeoutMs, int numReturns);
-
-  default void fetch(UniqueID objectId) {
-    reconstructObject(objectId, false);
-  }
-
-  default void fetch(List<UniqueID> objectIds) {
-    for (UniqueID objectId : objectIds) {
-      reconstructObject(objectId, false);
-    }
-  }
 }
