@@ -111,15 +111,15 @@ public class RayNativeRuntime extends RayRuntime {
         ObjectStoreLink plink = new PlasmaClient(params.object_store_name, 
             params.object_store_manager_name, releaseDelay);
 
-      LocalSchedulerLink slink = new DefaultLocalSchedulerClient(
-          params.local_scheduler_name,
-          WorkerContext.currentWorkerId(),
-          UniqueID.nil,
-          isWorker,
-          WorkerContext.currentTask().taskId,
-          0,
-          false
-      );
+        LocalSchedulerLink slink = new DefaultLocalSchedulerClient(
+            params.local_scheduler_name,
+            WorkerContext.currentWorkerId(),
+            UniqueID.nil,
+            isWorker,
+            WorkerContext.currentTask().taskId,
+            0,
+            false
+        );
 
         init(slink, plink, funcMgr, pathConfig);
 

@@ -26,15 +26,17 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
   private long client = 0;
   boolean useRaylet = false;
 
-  public DefaultLocalSchedulerClient(String schedulerSockName, UniqueID clientId, UniqueID actorId,
-                                     boolean isWorker, UniqueID driverId, long numGpus, boolean useRaylet) {
+  public DefaultLocalSchedulerClient(String schedulerSockName, UniqueID clientId,
+                                     UniqueID actorId, boolean isWorker, UniqueID driverId,
+                                     long numGpus, boolean useRaylet) {
     client = _init(schedulerSockName, clientId.getBytes(), actorId.getBytes(), isWorker,
         driverId.getBytes(), numGpus, useRaylet);
     this.useRaylet = useRaylet;
   }
 
-  private static native long _init(String localSchedulerSocket, byte[] workerId, byte[] actorId,
-                                   boolean isWorker, byte[] driverTaskId, long numGpus, boolean useRaylet);
+  private static native long _init(String localSchedulerSocket, byte[] workerId,
+                                   byte[] actorId, boolean isWorker, byte[] driverTaskId,
+                                   long numGpus, boolean useRaylet);
 
   private static native byte[] _computePutId(long client, byte[] taskId, int putIndex);
 
