@@ -47,16 +47,14 @@ SILENT_MODE = 3
 PYTHON_MODE = 4
 
 ERROR_KEY_PREFIX = b"Error:"
-DRIVER_ID_LENGTH = 20
-ERROR_ID_LENGTH = 20
 
 # This must match the definition of NIL_ACTOR_ID in task.h.
-NIL_ID = 20 * b"\xff"
+NIL_ID = ray_constants.ID_SIZE * b"\xff"
 NIL_LOCAL_SCHEDULER_ID = NIL_ID
 NIL_FUNCTION_ID = NIL_ID
 NIL_ACTOR_ID = NIL_ID
 NIL_ACTOR_HANDLE_ID = NIL_ID
-NIL_CLIENT_ID = 20 * b"\xff"
+NIL_CLIENT_ID = ray_constants.ID_SIZE * b"\xff"
 
 # This must be kept in sync with the `error_types` array in
 # common/state/error_table.h.
@@ -1207,13 +1205,13 @@ def error_applies_to_driver(error_key, worker=global_worker):
     """Return True if the error is for this driver and false otherwise."""
     # TODO(rkn): Should probably check that this is only called on a driver.
     # Check that the error key is formatted as in push_error_to_driver.
-    assert len(error_key) == (len(ERROR_KEY_PREFIX) + DRIVER_ID_LENGTH + 1 +
-                              ERROR_ID_LENGTH), error_key
+    assert len(error_key) == (len(ERROR_KEY_PREFIX) + ray_constants.ID_SIZE + 1
+                              + ray_constants.ID_SIZE), error_key
     # If the driver ID in the error message is a sequence of all zeros, then
     # the message is intended for all drivers.
-    generic_driver_id = DRIVER_ID_LENGTH * b"\x00"
+    generic_driver_id = ray_constants.ID_SIZE * b"\x00"
     driver_id = error_key[len(ERROR_KEY_PREFIX):(
-        len(ERROR_KEY_PREFIX) + DRIVER_ID_LENGTH)]
+        len(ERROR_KEY_PREFIX) + ray_constants.ID_SIZE)]
     return (driver_id == worker.task_driver_id.id()
             or driver_id == generic_driver_id)
 
@@ -1951,7 +1949,7 @@ def print_error_messages_raylet(worker):
             assert gcs_entry.EntriesLength() == 1
             error_data = ray.gcs_utils.ErrorTableData.GetRootAsErrorTableData(
                 gcs_entry.Entries(0), 0)
-            NIL_JOB_ID = 20 * b"\x00"
+            NIL_JOB_ID = ray_constants.ID_SIZE * b"\x00"
             job_id = error_data.JobId()
             if job_id not in [worker.task_driver_id.id(), NIL_JOB_ID]:
                 continue
@@ -2182,7 +2180,8 @@ def connect(info,
         else:
             # Try to use true randomness.
             np.random.seed(None)
-        worker.current_task_id = ray.ObjectID(np.random.bytes(20))
+        worker.current_task_id = ray.ObjectID(
+            np.random.bytes(ray_constants.ID_SIZE))
         # Reset the state of the numpy random number generator.
         np.random.set_state(numpy_state)
         # Set other fields needed for computing task IDs.
