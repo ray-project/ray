@@ -293,9 +293,9 @@ public abstract class RayRuntime implements RayApi {
       int numObjectIds = objectIds.size();
 
       // Do an initial fetch for remote objects.
-      List<List<UniqueID>> fetchBatchs =
-          splitIntoBatchs(objectIds, params.worker_fetch_request_size);
-      for (List<UniqueID> batch : fetchBatchs) {
+      List<List<UniqueID>> fetchBatches =
+          splitIntoBatches(objectIds, params.worker_fetch_request_size);
+      for (List<UniqueID> batch : fetchBatches) {
         if (!params.use_raylet) {
           objectStoreProxy.fetch(batch);
         } else {
@@ -321,16 +321,16 @@ public abstract class RayRuntime implements RayApi {
       // until at least PlasmaLink.GET_TIMEOUT_MS milliseconds passes, then repeat.
       while (unreadys.size() > 0) {
         List<UniqueID> unreadyList = new ArrayList<>(unreadys.keySet());
-        List<List<UniqueID>> reconstructBatchs =
-            splitIntoBatchs(unreadyList, params.worker_fetch_request_size);
+        List<List<UniqueID>> reconstructBatches =
+            splitIntoBatches(unreadyList, params.worker_fetch_request_size);
 
-        for (List<UniqueID> batch : reconstructBatchs) {
-          // Do another fetch for objects that aren't available locally yet, in case
-          // they were evicted since the last fetch.
+        for (List<UniqueID> batch : reconstructBatches) {
           if (!params.use_raylet) {
             for (UniqueID objectId : batch) {
               localSchedulerProxy.reconstructObject(objectId, false);
             }
+            // Do another fetch for objects that aren't available locally yet, in case
+            // they were evicted since the last fetch.
             objectStoreProxy.fetch(batch);
           } else {
             localSchedulerProxy.reconstructObjects(batch, false);
@@ -382,8 +382,8 @@ public abstract class RayRuntime implements RayApi {
     return results.get(0);
   }
 
-  private List<List<UniqueID>> splitIntoBatchs(List<UniqueID> objectIds, int batchSize) {
-    List<List<UniqueID>> batchs = new ArrayList<>();
+  private List<List<UniqueID>> splitIntoBatches(List<UniqueID> objectIds, int batchSize) {
+    List<List<UniqueID>> batches = new ArrayList<>();
     int objectsSize = objectIds.size();
 
     for (int i = 0; i < objectsSize; i += batchSize) {
@@ -392,10 +392,10 @@ public abstract class RayRuntime implements RayApi {
           ? objectIds.subList(i, endIndex)
           : objectIds.subList(i, objectsSize);
 
-      batchs.add(batchIds);
+      batches.add(batchIds);
     }
 
-    return batchs;
+    return batches;
   }
 
   /**

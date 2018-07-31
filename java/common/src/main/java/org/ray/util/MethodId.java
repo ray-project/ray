@@ -148,7 +148,7 @@ public final class MethodId {
 
     if (methods.size() != 1) {
       RayLog.core.error(
-          "Load method " + toString() + " failed as there are " + methods.size() + " definitions");
+          "Load method {} failed as there are {} definitions.", toString(), methods.size());
       return null;
     }
 
