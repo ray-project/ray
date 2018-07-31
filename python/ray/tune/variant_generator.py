@@ -29,7 +29,7 @@ def to_argv(config):
     return argv
 
 
-def generate_trials(search_alg, unresolved_spec, output_path=''):
+def generate_trials(unresolved_spec, output_path='', search_alg=None):
     """Wraps `generate_variants()` to return a Trial object for each variant.
 
     Specified/sampled hyperparameters for the Search Algorithm will be
@@ -38,10 +38,10 @@ def generate_trials(search_alg, unresolved_spec, output_path=''):
     See also: `generate_variants()`.
 
     Arguments:
-        search_alg (VariantAlgorithm): VariantAlgorithm for hyperparameters.
         unresolved_spec (dict): Experiment spec conforming to the argument
             schema defined in `ray.tune.config_parser`.
         output_path (str): Path where to store experiment outputs.
+        search_alg (VariantAlgorithm): VariantAlgorithm for hyperparameters.
 
     Yields:
         Trial|None: If search_alg is specified but cannot be queried at
@@ -68,7 +68,7 @@ def generate_trials(search_alg, unresolved_spec, output_path=''):
             new_config = copy.deepcopy(spec.get("config", {}))
 
             # We hold the other resolved vars until suggestion is ready.
-            while True:
+            while search_alg is not None:
                 suggested_config, trial_id = search_alg.try_suggest()
                 if suggested_config is VariantAlgorithm.NOT_READY:
                     yield None

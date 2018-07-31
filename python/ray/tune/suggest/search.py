@@ -106,7 +106,7 @@ class VariantAlgorithm(SearchAlgorithm):
 
         self._generator = itertools.chain(
             self._generator,
-            generate_trials(self, experiment.spec, experiment.name))
+            generate_trials(experiment.spec, experiment.name, self))
 
     def next_trial(self):
         return next(self._generator)

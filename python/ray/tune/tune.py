@@ -15,7 +15,6 @@ from ray.tune.log_sync import wait_for_log_sync
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.trial_scheduler import FIFOScheduler
 from ray.tune.web_server import TuneServer
-from ray.tune.variant_generator import generate_trials
 from ray.tune.experiment import Experiment
 
 _SCHEDULERS = {
