@@ -364,7 +364,8 @@ class APITest(unittest.TestCase):
             serializer=custom_serializer,
             deserializer=custom_deserializer)
 
-        assert ray.get(ray.put(Foo())) == ((3, "string1", Foo.__name__), "string2")
+        assert ray.get(ray.put(Foo())) == ((3, "string1", Foo.__name__),
+                                           "string2")
 
         class Bar(object):
             def __init__(self):
@@ -2142,32 +2143,17 @@ class GlobalStateAPI(unittest.TestCase):
             assert task_table[driver_task_id]["State"] == \
                              ray.experimental.state.TASK_STATUS_RUNNING
         if not ray.worker.global_worker.use_raylet:
-            assert task_table[driver_task_id]["TaskSpec"]["TaskID"] == \
-                             driver_task_id
-            assert task_table[driver_task_id]["TaskSpec"]["ActorID"] == \
-                             ray_constants.ID_SIZE * "ff"
-            assert task_table[driver_task_id]["TaskSpec"]["Args"] == \
-                             []
-            assert task_table[driver_task_id]["TaskSpec"]["DriverID"] == driver_id
-            assert task_table[driver_task_id]["TaskSpec"]["FunctionID"] == \
-                ray_constants.ID_SIZE * "ff"
-            assert (task_table[driver_task_id]["TaskSpec"]["ReturnObjectIDs"]) == \
-                []
-
+            task_spec = task_table[driver_task_id]["TaskSpec"]
         else:
             assert len(task_table[driver_task_id]) == 1
-            assert task_table[driver_task_id][0]["TaskSpec"]["TaskID"] == \
-                driver_task_id
-            assert task_table[driver_task_id][0]["TaskSpec"]["ActorID"] == \
-                ray_constants.ID_SIZE * "ff"
-            assert task_table[driver_task_id][0]["TaskSpec"]["Args"] == \
-                             []
-            assert task_table[driver_task_id][0]["TaskSpec"]["DriverID"] == \
-                driver_id
-            assert task_table[driver_task_id][0]["TaskSpec"]["FunctionID"] == \
-                ray_constants.ID_SIZE * "ff"
-            assert (task_table[driver_task_id][0]["TaskSpec"]["ReturnObjectIDs"]) == \
-                []
+            task_spec = task_table[driver_task_id][0]["TaskSpec"]
+
+        assert task_spec["TaskID"] == driver_task_id
+        assert task_spec["ActorID"] == ray_constants.ID_SIZE * "ff"
+        assert task_spec["Args"] == []
+        assert task_spec["DriverID"] == driver_id
+        assert task_spec["FunctionID"] == ray_constants.ID_SIZE * "ff"
+        assert task_spec["ReturnObjectIDs"] == []
 
         client_table = ray.global_state.client_table()
         node_ip_address = ray.worker.global_worker.node_ip_address
@@ -2246,23 +2232,23 @@ class GlobalStateAPI(unittest.TestCase):
         assert len(object_table) == 2
 
         if not ray.worker.global_worker.use_raylet:
-            assert object_table[x_id]["IsPut"] == True
+            assert object_table[x_id]["IsPut"] is True
             assert object_table[x_id]["TaskID"] == driver_task_id
             assert object_table[x_id]["ManagerIDs"] == \
                              [manager_client["DBClientID"]]
 
-            assert object_table[result_id]["IsPut"] == False
+            assert object_table[result_id]["IsPut"] is False
             assert object_table[result_id]["TaskID"] == task_id
             assert object_table[result_id]["ManagerIDs"] == \
                              [manager_client["DBClientID"]]
 
         else:
             assert len(object_table[x_id]) == 1
-            assert object_table[x_id][0]["IsEviction"] == False
+            assert object_table[x_id][0]["IsEviction"] is False
             assert object_table[x_id][0]["NumEvictions"] == 0
 
             assert len(object_table[result_id]) == 1
-            assert object_table[result_id][0]["IsEviction"] == False
+            assert object_table[result_id][0]["IsEviction"] is False
             assert object_table[result_id][0]["NumEvictions"] == 0
 
         assert object_table[x_id] == \
@@ -2298,7 +2284,7 @@ class GlobalStateAPI(unittest.TestCase):
                 break
             time.sleep(0.1)
 
-        assert found_message == True
+        assert found_message is True
 
     @unittest.skipIf(
         os.environ.get("RAY_USE_XRAY") == "1",

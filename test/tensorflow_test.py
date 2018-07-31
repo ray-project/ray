@@ -129,7 +129,7 @@ class TensorFlowTest(unittest.TestCase):
         assert_almost_equal(flat_weights, variables2.get_flat())
 
         variables3 = ray.experimental.TensorFlowVariables([loss2])
-        assert variables3.sess == None
+        assert variables3.sess is None
         sess = tf.Session()
         variables3.set_session(sess)
         assert variables3.sess == sess

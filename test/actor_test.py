@@ -91,7 +91,7 @@ class ActorAPI(unittest.TestCase):
 
         actor = Actor.remote(1, 2, "c")
         assert ray.get(actor.get_values.remote(2, 3, "d")) == (3, 5, ("c", ),
-                                                          ("d", ))
+                                                               ("d", ))
 
         actor = Actor.remote(1, 2, "a", "b", "c", "d")
         assert ray.get(actor.get_values.remote(2, 3, 1, 2, 3, 4)) == \
@@ -925,7 +925,7 @@ class ActorsWithGPUs(unittest.TestCase):
             ]
             assert len(node_gpu_ids) in [5, 10]
             assert set(node_gpu_ids) == {(i, )
-                                    for i in range(len(node_gpu_ids))}
+                                         for i in range(len(node_gpu_ids))}
 
         # Creating a new actor should fail because all of the GPUs are being
         # used.
@@ -1371,8 +1371,8 @@ class ActorReconstruction(unittest.TestCase):
         # Get the results and check that they have the correct values.
         for _, result_id_list in result_ids.items():
             assert ray.get(result_id_list) == list(
-                    range(1,
-                          len(result_id_list) + 1))
+                range(1,
+                    len(result_id_list) + 1))
 
     def setup_counter_actor(self,
                             test_checkpoint=False,

@@ -51,7 +51,7 @@ class ComponentFailureTest(unittest.TestCase):
 
         # Make sure that nothing has died.
         assert ray.services.all_processes_alive(
-                exclude=[ray.services.PROCESS_TYPE_WORKER])
+            exclude=[ray.services.PROCESS_TYPE_WORKER])
 
     # This test checks that when a worker dies in the middle of a wait, the
     # plasma store and manager will not die.
@@ -90,7 +90,7 @@ class ComponentFailureTest(unittest.TestCase):
 
         # Make sure that nothing has died.
         assert ray.services.all_processes_alive(
-                exclude=[ray.services.PROCESS_TYPE_WORKER])
+            exclude=[ray.services.PROCESS_TYPE_WORKER])
 
     def _testWorkerFailed(self, num_local_schedulers):
         @ray.remote

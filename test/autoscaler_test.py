@@ -214,8 +214,7 @@ class AutoscalingTest(unittest.TestCase):
 
     def testInvalidConfig(self):
         invalid_config = "/dev/null"
-        with pytest.raises(
-            ValueError):
+        with pytest.raises(ValueError):
             StandardAutoscaler(
                 invalid_config, LoadMetrics(), update_interval_s=0)
 
@@ -697,8 +696,7 @@ class AutoscalingTest(unittest.TestCase):
             "module": "mymodule.provider_class",
         }
         invalid_provider = self.write_config(config)
-        with pytest.raises(
-            ImportError):
+        with pytest.raises(ImportError):
             StandardAutoscaler(
                 invalid_provider, LoadMetrics(), update_interval_s=0)
 
@@ -709,8 +707,7 @@ class AutoscalingTest(unittest.TestCase):
             "module": "does-not-exist",
         }
         invalid_provider = self.write_config(config)
-        with pytest.raises(
-            ValueError):
+        with pytest.raises(ValueError):
             StandardAutoscaler(
                 invalid_provider, LoadMetrics(), update_interval_s=0)
 
