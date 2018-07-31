@@ -452,10 +452,10 @@ TEST_F(LineageCacheTest, TestOutOfOrderEviction) {
 
 TEST_F(LineageCacheTest, TestEvictionUncommittedChildren) {
   // Insert a chain of dependent tasks.
+  size_t num_tasks_flushed = 0;
   uint64_t lineage_size = max_lineage_size_ + 1;
   std::vector<Task> tasks;
   InsertTaskChain(lineage_cache_, tasks, lineage_size, std::vector<ObjectID>(), 1);
-  int num_tasks = tasks.size();
 
   // Simulate forwarding the chain of tasks to a remote node.
   for (const auto &task : tasks) {
@@ -470,7 +470,10 @@ TEST_F(LineageCacheTest, TestEvictionUncommittedChildren) {
     auto dependent_task = ExampleTask({return_id}, 1);
     lineage_cache_.AddWaitingTask(dependent_task, Lineage());
     lineage_cache_.AddReadyTask(dependent_task);
-    num_tasks++;
+    // Once the forwarded tasks are evicted from the lineage cache, we expect
+    // each of these dependent tasks to be flushed, since all of their
+    // dependencies have been committed.
+    num_tasks_flushed++;
   }
 
   // Check that the last task in the chain still has all tasks in its
@@ -485,11 +488,13 @@ TEST_F(LineageCacheTest, TestEvictionUncommittedChildren) {
   auto it = tasks.rbegin();
   RAY_CHECK_OK(mock_gcs_.RemoteAdd(it->GetTaskSpecification().TaskId(), task_data));
   it++;
-  // Check that when the last task is flushed, all tasks are flushed. This
-  // includes the chain of tasks that was forwarded to a remote node and the
-  // tasks that remained local that are dependent on the forwarded tasks.
+  // We expect the task that was added remotely to be flushed.
+  num_tasks_flushed++;
+  // Check that once the last task in the forwarded chain is flushed, all local
+  // tasks are flushed, since all of their dependencies have been evicted and
+  // are therefore committed in the GCS.
   mock_gcs_.Flush();
-  CheckFlush(lineage_cache_, mock_gcs_, num_tasks);
+  CheckFlush(lineage_cache_, mock_gcs_, num_tasks_flushed);
 }
 
 }  // namespace raylet

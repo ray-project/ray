@@ -365,48 +365,10 @@ bool LineageCache::UnsubscribeTask(const UniqueID &task_id) {
   return subscribed;
 }
 
-void LineageCache::EvictRemoteLineage(const UniqueID &task_id) {
-  // Remove the ancestor task.
+boost::optional<LineageEntry> LineageCache::EvictTask(const UniqueID &task_id) {
   auto entry = lineage_.PopEntry(task_id);
   if (!entry) {
-    return;
-  }
-  // Tasks are committed in data dependency order per node, so the only
-  // ancestors of a committed task should be other remote tasks.
-  auto status = entry->GetStatus();
-  RAY_CHECK(status == GcsStatus::UNCOMMITTED_REMOTE);
-  // We are evicting the remote ancestors of a task, so there should not be
-  // any dependent tasks that need to be flushed.
-  RAY_CHECK(uncommitted_ready_children_.count(task_id) == 0);
-  // Unsubscribe from the remote ancestor task if we were subscribed to
-  // notifications.
-  UnsubscribeTask(task_id);
-  // Recurse and remove this task's ancestors.
-  for (const auto &parent_id : entry->GetParentTaskIds()) {
-    EvictRemoteLineage(parent_id);
-  }
-}
-
-void LineageCache::HandleEntryCommitted(const UniqueID &task_id) {
-  RAY_LOG(DEBUG) << "task committed: " << task_id;
-  auto entry = lineage_.PopEntry(task_id);
-  if (!entry) {
-    // The committed entry has already been evicted. Check that the committed
-    // entry does not have any dependent tasks, since we should've already
-    // attempted to flush these tasks on the first commit notification.
-    RAY_CHECK(uncommitted_ready_children_.count(task_id) == 0);
-    // Check that we already unsubscribed from the task when handling the
-    // first commit notification.
-    RAY_CHECK(subscribed_tasks_.count(task_id) == 0);
-    // Do nothing if the committed entry has already been evicted.
-    return;
-  }
-
-  // Evict the committed task's uncommitted lineage. Since local tasks are
-  // written in data dependency order, the uncommitted lineage should only
-  // include remote tasks, i.e. tasks that were committed by a different node.
-  for (const auto &parent_id : entry->GetParentTaskIds()) {
-    EvictRemoteLineage(parent_id);
+    return entry;
   }
 
   // Stop listening for notifications about this task.
@@ -430,6 +392,47 @@ void LineageCache::HandleEntryCommitted(const UniqueID &task_id) {
         RAY_CHECK(erased == 1);
       }
     }
+  }
+
+  return entry;
+}
+
+void LineageCache::EvictRemoteLineage(const UniqueID &task_id) {
+  // Remove the ancestor task.
+  auto entry = EvictTask(task_id);
+  if (!entry) {
+    return;
+  }
+  // Tasks are committed in data dependency order per node, so the only
+  // ancestors of a committed task should be other remote tasks.
+  auto status = entry->GetStatus();
+  RAY_CHECK(status == GcsStatus::UNCOMMITTED_REMOTE);
+  // Recurse and remove this task's ancestors.
+  for (const auto &parent_id : entry->GetParentTaskIds()) {
+    EvictRemoteLineage(parent_id);
+  }
+}
+
+void LineageCache::HandleEntryCommitted(const UniqueID &task_id) {
+  RAY_LOG(DEBUG) << "task committed: " << task_id;
+  auto entry = EvictTask(task_id);
+  if (!entry) {
+    // The committed entry has already been evicted. Check that the committed
+    // entry does not have any dependent tasks, since we should've already
+    // attempted to flush these tasks on the first commit notification.
+    RAY_CHECK(uncommitted_ready_children_.count(task_id) == 0);
+    // Check that we already unsubscribed from the task when handling the
+    // first commit notification.
+    RAY_CHECK(subscribed_tasks_.count(task_id) == 0);
+    // Do nothing if the committed entry has already been evicted.
+    return;
+  }
+
+  // Evict the committed task's uncommitted lineage. Since local tasks are
+  // written in data dependency order, the uncommitted lineage should only
+  // include remote tasks, i.e. tasks that were committed by a different node.
+  for (const auto &parent_id : entry->GetParentTaskIds()) {
+    EvictRemoteLineage(parent_id);
   }
 }
 
