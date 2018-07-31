@@ -2204,8 +2204,7 @@ class GlobalStateAPI(unittest.TestCase):
         assert function_table_entry["DriverID"] == driver_id
         assert function_table_entry["Module"] == "runtest"
 
-        assert task_table[task_id] == \
-                         ray.global_state.task_table(task_id)
+        assert task_table[task_id] == ray.global_state.task_table(task_id)
 
         # Wait for two objects, one for the x_id and one for result_id.
         wait_for_num_objects(2)
@@ -2230,17 +2229,16 @@ class GlobalStateAPI(unittest.TestCase):
 
         object_table = ray.global_state.object_table()
         assert len(object_table) == 2
+        db_client_id = manager_client["DBClientID"]
 
         if not ray.worker.global_worker.use_raylet:
             assert object_table[x_id]["IsPut"] is True
             assert object_table[x_id]["TaskID"] == driver_task_id
-            assert object_table[x_id]["ManagerIDs"] == \
-                             [manager_client["DBClientID"]]
+            assert object_table[x_id]["ManagerIDs"] == [db_client_id]
 
             assert object_table[result_id]["IsPut"] is False
             assert object_table[result_id]["TaskID"] == task_id
-            assert object_table[result_id]["ManagerIDs"] == \
-                             [manager_client["DBClientID"]]
+            assert object_table[result_id]["ManagerIDs"] == [db_client_id]
 
         else:
             assert len(object_table[x_id]) == 1
@@ -2251,10 +2249,9 @@ class GlobalStateAPI(unittest.TestCase):
             assert object_table[result_id][0]["IsEviction"] is False
             assert object_table[result_id][0]["NumEvictions"] == 0
 
-        assert object_table[x_id] == \
-                         ray.global_state.object_table(x_id)
-        assert object_table[result_id] == \
-                         ray.global_state.object_table(result_id)
+        assert object_table[x_id] == ray.global_state.object_table(x_id)
+        object_table_entry = ray.global_state.object_table(result_id)
+        assert object_table[result_id] == object_table_entry
 
     def testLogFileAPI(self):
         ray.init(redirect_worker_output=True)

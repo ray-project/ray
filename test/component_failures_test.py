@@ -168,7 +168,7 @@ class ComponentFailureTest(unittest.TestCase):
         for process in components[1:]:
             process.kill()
             process.wait()
-            assert process.poll() != None
+            assert not process.poll() is None
 
         # Make sure that we can still get the objects after the executing tasks
         # died.

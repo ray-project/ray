@@ -134,11 +134,10 @@ def temporary_helper_function():
         ray.worker.global_worker.run_function_on_all_workers(f)
         wait_for_errors(ray_constants.FUNCTION_TO_RUN_PUSH_ERROR, 2)
         # Check that the error message is in the task info.
-        assert len(ray.error_info()) == 2
-        assert "Function to run failed." in \
-                      ray.error_info()[0]["message"]
-        assert "Function to run failed." in \
-                      ray.error_info()[1]["message"]
+        error_info = ray.error_info()
+        assert len(error_info) == 2
+        assert "Function to run failed." in error_info[0]["message"]
+        assert "Function to run failed." in error_info[1]["message"]
 
     def testFailImportingActor(self):
         ray.init(num_workers=2, driver_mode=ray.SILENT_MODE)
@@ -302,9 +301,9 @@ class WorkerDeath(unittest.TestCase):
 
         wait_for_errors(ray_constants.WORKER_DIED_PUSH_ERROR, 1)
 
-        assert len(ray.error_info()) == 1
-        assert "died or was killed while executing" in \
-                      ray.error_info()[0]["message"]
+        error_info = ray.error_info()
+        assert len(error_info) == 1
+        assert "died or was killed while executing" in error_info[0]["message"]
 
     def testActorWorkerDying(self):
         ray.init(num_workers=0, driver_mode=ray.SILENT_MODE)

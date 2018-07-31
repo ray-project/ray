@@ -124,7 +124,7 @@ class ActorAPI(unittest.TestCase):
                 pass
 
         actor = Actor.remote()
-        assert ray.get(actor.get_values.remote()) == None
+        assert ray.get(actor.get_values.remote()) is None
 
     def testNoConstructor(self):
         # If no __init__ method is provided, that should not be a problem.
@@ -136,7 +136,7 @@ class ActorAPI(unittest.TestCase):
                 pass
 
         actor = Actor.remote()
-        assert ray.get(actor.get_values.remote()) == None
+        assert ray.get(actor.get_values.remote()) is None
 
     def testCustomClasses(self):
         ray.init(num_workers=0)
