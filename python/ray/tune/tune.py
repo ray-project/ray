@@ -3,7 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 import time
-from itertools import chain
 
 from ray.tune.error import TuneError
 from ray.tune.suggest import VariantAlgorithm
