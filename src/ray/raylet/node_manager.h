@@ -137,14 +137,6 @@ class NodeManager {
   /// \return Void.
   void CleanUpTasksForDeadActor(const ActorID &actor_id);
 
-  /// Methods for managing object dependencies.
-  /// Handle a dependency required by a queued task that is missing locally.
-  /// The dependency is (1) on a remote node, (2) pending creation on a remote
-  /// node, or (3) missing from all nodes and requires reconstruction.
-  void HandleRemoteDependencyRequired(const ObjectID &dependency_id);
-  /// Handle a dependency that was previously required by a queued task that is
-  /// no longer required.
-  void HandleRemoteDependencyCanceled(const ObjectID &dependency_id);
   /// Handle an object becoming local. This updates any local accounting, but
   /// does not write to any global accounting in the GCS.
   void HandleObjectLocal(const ObjectID &object_id);
@@ -180,9 +172,6 @@ class NodeManager {
   /// The lineage cache for the GCS object and task tables.
   LineageCache lineage_cache_;
   std::vector<ClientID> remote_clients_;
-  /// A set of all of the remote clients that have been removed. In principle,
-  /// this could grow unbounded.
-  std::unordered_set<ClientID> removed_clients_;
   std::unordered_map<ClientID, TcpServerConnection> remote_server_connections_;
   /// A mapping from actor ID to registration information about that actor
   /// (including which node manager owns it).
