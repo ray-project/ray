@@ -1120,7 +1120,7 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
 
 void NodeManager::HandleTaskReconstruction(const TaskID &task_id) {
   // Retrieve the task spec in order to re-execute the task.
-  gcs_client_->raylet_task_table().Lookup(
+  RAY_CHECK_OK(gcs_client_->raylet_task_table().Lookup(
       JobID::nil(), task_id,
       /*success_callback=*/
       [this](ray::gcs::AsyncGcsClient *client, const TaskID &task_id,
@@ -1136,7 +1136,7 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id) {
         // lineage cache. Use the cached task spec to re-execute the task.
         const Task &task = lineage_cache_.GetTask(task_id);
         ResubmitTask(task);
-      });
+      }));
 }
 
 void NodeManager::ResubmitTask(const Task &task) {
@@ -1156,9 +1156,9 @@ void NodeManager::ResubmitTask(const Task &task) {
     error_message << "The task with ID " << task.GetTaskSpecification().TaskId()
                   << " is a driver task and so the object created by ray.put "
                   << "could not be reconstructed.";
-    gcs_client_->error_table().PushErrorToDriver(task.GetTaskSpecification().DriverId(),
-                                                 type, error_message.str(),
-                                                 current_time_ms());
+    RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
+        task.GetTaskSpecification().DriverId(), type, error_message.str(),
+        current_time_ms()));
     return;
   }
 
