@@ -111,7 +111,11 @@ class VariantAlgorithm(SearchAlgorithm):
             generate_trials(experiment.spec, experiment.name, self))
 
     def next_trial(self):
-        return next(self._generator)
+        try:
+            trial = next(self._generator)
+        except StopIteration:
+            trial = None
+        return trial
 
     def try_suggest(self):
         """Queries the algorithm to retrieve the next set of parameters.

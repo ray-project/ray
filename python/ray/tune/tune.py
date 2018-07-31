@@ -80,7 +80,7 @@ def run_experiments(experiments,
             print("Warning: All experiments will be"
                   " using the same Search Algorithm.")
         for experiment in exp_list:
-            search_alg.add_experiment(exp_list)
+            search_alg.add_experiment(experiment)
     else:
         raise TuneError("Invalid argument: {}".format(experiments))
 
