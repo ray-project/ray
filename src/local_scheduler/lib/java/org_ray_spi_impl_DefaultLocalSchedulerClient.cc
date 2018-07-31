@@ -207,10 +207,10 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1reconstruct_1objects(
   std::vector<ObjectID> object_ids;
   auto len = env->GetArrayLength(oids);
   for (int i = 0; i < len; i++) {
-  jbyteArray oid = (jbyteArray) env->GetObjectArrayElement(oids, i);
-  UniqueIdFromJByteArray o(env, oid);
-  object_ids.push_back(*o.PID);
-  env->DeleteLocalRef(oid);
+    jbyteArray oid = (jbyteArray) env->GetObjectArrayElement(oids, i);
+    UniqueIdFromJByteArray o(env, oid);
+    object_ids.push_back(*o.PID);
+    env->DeleteLocalRef(oid);
   }
   auto client = reinterpret_cast<LocalSchedulerConnection *>(c);
   local_scheduler_reconstruct_objects(client, object_ids, fetch_only);
