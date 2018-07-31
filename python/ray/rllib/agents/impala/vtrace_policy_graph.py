@@ -125,8 +125,8 @@ class VTracePolicyGraph(TFPolicyGraph):
                 B = tf.shape(self.model.seq_lens)[0]
                 T = tf.shape(tensor)[0] // B
             else:
-                # TODO(ekl) instead of this hack to segment episodes, we could
-                # always pad the episodes as in RNN mode
+                # Important: chop the tensor into batches at known episode cut
+                # boundaries. TODO(ekl) this is kind of a hack
                 T = (self.config["sample_batch_size"] //
                      self.config["num_envs_per_worker"])
                 B = tf.shape(tensor)[0] // T
