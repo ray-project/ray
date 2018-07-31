@@ -750,6 +750,12 @@ void NodeManager::ScheduleTasks() {
       EnqueuePlaceableTask(t);
     }
   }
+
+  // All remaining placeable tasks should be registered with the task dependency
+  // manager.
+  for (const auto &task : local_queues_.GetPlaceableTasks()) {
+    task_dependency_manager_.TaskPending(task);
+  }
 }
 
 void NodeManager::TreatTaskAsFailed(const TaskSpecification &spec) {
