@@ -113,7 +113,7 @@ class Lineage {
   /// \return An optional reference to the entry. If this is empty, then the
   /// entry ID is not in the lineage.
   boost::optional<const LineageEntry &> GetEntry(const TaskID &entry_id) const;
-  boost::optional<LineageEntry &> GetEntryMutable(const UniqueID &task_id);
+  boost::optional<LineageEntry &> GetEntryMutable(const TaskID &task_id);
 
   /// Set an entry in the lineage. If an entry with this ID already exists,
   /// then the entry is overwritten if and only if the new entry has a higher
@@ -216,18 +216,18 @@ class LineageCache {
   /// evicted task's children that are in UNCOMMITTED_READY state.  Returns an
   /// optional reference to the evicted task that is empty if the task was not
   /// in the lineage cache.
-  boost::optional<LineageEntry> EvictTask(const UniqueID &task_id);
+  boost::optional<LineageEntry> EvictTask(const TaskID &task_id);
   /// Evict a remote task and its lineage. This should only be called if we
   /// are sure that the remote task and its lineage are committed.
-  void EvictRemoteLineage(const UniqueID &task_id);
+  void EvictRemoteLineage(const TaskID &task_id);
   /// Subscribe to notifications for a task. Returns whether the operation
   /// was successful (whether we were not already subscribed).
-  bool SubscribeTask(const UniqueID &task_id);
+  bool SubscribeTask(const TaskID &task_id);
   /// Unsubscribe from notifications for a task. Returns whether the operation
   /// was successful (whether we were subscribed).
-  bool UnsubscribeTask(const UniqueID &task_id);
+  bool UnsubscribeTask(const TaskID &task_id);
   /// Count the size of unsubscribed and uncommitted lineage
-  uint64_t CountUnsubscribedLineage(const UniqueID &task_id) const;
+  uint64_t CountUnsubscribedLineage(const TaskID &task_id) const;
 
   /// The client ID, used to request notifications for specific tasks.
   /// TODO(swang): Move the ClientID into the generic Table implementation.
