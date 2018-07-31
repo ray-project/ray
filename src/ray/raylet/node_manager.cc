@@ -1119,7 +1119,6 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
 }
 
 void NodeManager::HandleTaskReconstruction(const TaskID &task_id) {
-  RAY_LOG(INFO) << "Reconstructing task " << task_id;
   gcs_client_->raylet_task_table().Lookup(
       JobID::nil(), task_id,
       [this](ray::gcs::AsyncGcsClient *client, const TaskID &task_id,

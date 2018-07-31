@@ -367,6 +367,18 @@ class TaskLeaseTable : public Table<TaskID, TaskLeaseData> {
     pubsub_channel_ = TablePubsub::TASK_LEASE;
     prefix_ = TablePrefix::TASK_LEASE;
   }
+
+  Status Add(const JobID &job_id, const TaskID &id, std::shared_ptr<TaskLeaseDataT> &data,
+             const WriteCallback &done) override {
+    RAY_RETURN_NOT_OK((Table<TaskID, TaskLeaseData>::Add(job_id, id, data, done)));
+    // Mark the entry for expiration in Redis. It's okay if this command fails
+    // since the lease entry itself contains the expiration period. In the
+    // worst case, if the command fails, then a client that looks up the lease
+    // entry will overestimate the expiration time.
+    std::vector<std::string> args = {"PEXPIRE", "TASK_LEASE" + id.binary(),
+                                     std::to_string(data->timeout)};
+    return context_->RunArgvAsync(args);
+  }
 };
 
 namespace raylet {

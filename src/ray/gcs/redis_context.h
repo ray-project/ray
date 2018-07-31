@@ -73,6 +73,12 @@ class RedisContext {
                   const TablePubsub pubsub_channel, RedisCallback redisCallback,
                   int log_length = -1);
 
+  /// Run an arbitrary Redis command without a callback.
+  ///
+  /// \param args The vector of command args to pass to Redis.
+  /// \return Status.
+  Status RunArgvAsync(const std::vector<std::string> &args);
+
   /// Subscribe to a specific Pub-Sub channel.
   ///
   /// \param client_id The client ID that subscribe this message.
