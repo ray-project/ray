@@ -10,7 +10,6 @@ import random
 import types
 
 from ray.tune import TuneError
-from ray.tune.suggest import VariantAlgorithm
 from ray.tune.logger import _SafeFallbackEncoder
 from ray.tune.trial import Trial
 from ray.tune.config_parser import make_parser, json_to_resources
@@ -70,7 +69,7 @@ def generate_trials(unresolved_spec, output_path='', search_alg=None):
             # We hold the other resolved vars until suggestion is ready.
             while search_alg is not None:
                 suggested_config, trial_id = search_alg.try_suggest()
-                if suggested_config is VariantAlgorithm.NOT_READY:
+                if suggested_config is search_alg.NOT_READY:
                     yield None
                 else:
                     new_config.update(suggested_config)
