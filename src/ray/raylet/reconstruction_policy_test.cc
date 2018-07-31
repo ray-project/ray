@@ -361,11 +361,12 @@ TEST_F(ReconstructionPolicyTest, TestSimultaneousReconstructionSuppressed) {
   auto task_reconstruction_data = std::make_shared<TaskReconstructionDataT>();
   task_reconstruction_data->node_manager_id = ClientID::from_random().binary();
   task_reconstruction_data->num_reconstructions = 0;
-  mock_gcs_.AppendAt(DriverID::nil(), task_id, task_reconstruction_data, nullptr,
-                     /*failure_callback=*/
-                     [this](ray::gcs::AsyncGcsClient *client, const TaskID &task_id,
-                            const TaskReconstructionDataT &data) { ASSERT_TRUE(false); },
-                     /*log_index=*/0);
+  RAY_CHECK_OK(mock_gcs_.AppendAt(
+      DriverID::nil(), task_id, task_reconstruction_data, nullptr,
+      /*failure_callback=*/
+      [](ray::gcs::AsyncGcsClient *client, const TaskID &task_id,
+            const TaskReconstructionDataT &data) { ASSERT_TRUE(false); },
+      /*log_index=*/0));
 
   // Listen for an object.
   reconstruction_policy_->ListenAndMaybeReconstruct(object_id);
