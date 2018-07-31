@@ -1133,8 +1133,9 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id) {
       /*failure_callback=*/
       [this](ray::gcs::AsyncGcsClient *client, const TaskID &task_id) {
         // The task was not in the GCS task table. It must therefore be in the
-        // lineage cache. Use the cached task spec to re-execute the task.
-        const Task &task = lineage_cache_.GetTask(task_id);
+        // lineage cache. Use a copy of the cached task spec to re-execute the
+        // task.
+        const Task task = lineage_cache_.GetTask(task_id);
         ResubmitTask(task);
       }));
 }
