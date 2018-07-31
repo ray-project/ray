@@ -752,7 +752,7 @@ void NodeManager::ScheduleTasks() {
   }
 
   // All remaining placeable tasks should be registered with the task dependency
-  // manager.
+  // manager. TaskDependencyManager::TaskPending() is assumed to be idempotent.
   for (const auto &task : local_queues_.GetPlaceableTasks()) {
     task_dependency_manager_.TaskPending(task);
   }
