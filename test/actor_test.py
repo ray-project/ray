@@ -1369,8 +1369,8 @@ class ActorReconstruction(unittest.TestCase):
 
         # Get the results and check that they have the correct values.
         for _, result_id_list in result_ids.items():
-            l = list(range(1, len(result_id_list) + 1))
-            assert ray.get(result_id_list) == l
+            results = list(range(1, len(result_id_list) + 1))
+            assert ray.get(result_id_list) == results
 
     def setup_counter_actor(self,
                             test_checkpoint=False,
