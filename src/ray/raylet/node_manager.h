@@ -92,8 +92,10 @@ class NodeManager {
   void FinishAssignedTask(Worker &worker);
   /// Perform a placement decision on placeable tasks.
   void ScheduleTasks();
-  /// Resubmit a task whose return value needs to be reconstructed.
-  void ResubmitTask(const TaskID &task_id);
+  /// Handle a task whose return value(s) must be reconstructed.
+  void HandleTaskReconstruction(const TaskID &task_id);
+  /// Resubmit a task for execution.
+  void ResubmitTask(const Task &task);
   /// Attempt to forward a task to a remote different node manager. If this
   /// fails, the task will be resubmit locally.
   ///

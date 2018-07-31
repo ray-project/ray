@@ -130,7 +130,8 @@ int64_t TaskSpecification::ParentCounter() const {
   throw std::runtime_error("Method not implemented");
 }
 FunctionID TaskSpecification::FunctionId() const {
-  throw std::runtime_error("Method not implemented");
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
+  return from_flatbuf(*message->function_id());
 }
 
 int64_t TaskSpecification::NumArgs() const {
@@ -175,6 +176,11 @@ const ResourceSet TaskSpecification::GetRequiredResources() const {
   auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
   auto required_resources = map_from_flatbuf(*message->required_resources());
   return ResourceSet(required_resources);
+}
+
+bool TaskSpecification::IsDriverTask() const {
+  // Driver tasks are empty tasks that have no function ID set.
+  return FunctionId().is_nil();
 }
 
 bool TaskSpecification::IsActorCreationTask() const {

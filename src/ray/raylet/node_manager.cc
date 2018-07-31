@@ -91,7 +91,8 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       local_queues_(SchedulingQueue()),
       scheduling_policy_(local_queues_),
       reconstruction_policy_(
-          io_service_, [this](const TaskID &task_id) { ResubmitTask(task_id); },
+          io_service_,
+          [this](const TaskID &task_id) { HandleTaskReconstruction(task_id); },
           RayConfig::instance().initial_reconstruction_timeout_milliseconds(),
           gcs_client_->client_table().GetLocalClientId(), gcs_client->task_lease_table(),
           std::make_shared<ObjectDirectory>(gcs_client),
@@ -1117,24 +1118,47 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
   worker.AssignTaskId(TaskID::nil());
 }
 
-void NodeManager::ResubmitTask(const TaskID &task_id) {
-  // TODO(swang): Handle put and driver tasks.
+void NodeManager::HandleTaskReconstruction(const TaskID &task_id) {
   RAY_LOG(INFO) << "Reconstructing task " << task_id;
   gcs_client_->raylet_task_table().Lookup(
       JobID::nil(), task_id,
       [this](ray::gcs::AsyncGcsClient *client, const TaskID &task_id,
              const ray::protocol::TaskT &task_data) {
         const Task task(task_data);
-        SubmitTask(task, Lineage());
+        ResubmitTask(task);
       },
       [this](ray::gcs::AsyncGcsClient *client, const TaskID &task_id) {
         const Task &task = lineage_cache_.GetTask(task_id);
-        SubmitTask(task, Lineage());
+        ResubmitTask(task);
       });
+}
 
-  // if actor task, treat task as failed.
-  // if driver task, throw error.
-  // if put task, throw error.
+void NodeManager::ResubmitTask(const Task &task) {
+  // Actor reconstruction is turned off by default right now. If this is an
+  // actor task, treat the task as failed and do not resubmit it.
+  if (task.GetTaskSpecification().IsActorTask()) {
+    TreatTaskAsFailed(task.GetTaskSpecification());
+    return;
+  }
+
+  // Driver tasks cannot be reconstructed. If this is a driver task, push an
+  // error to the driver and do not resubmit it.
+  if (task.GetTaskSpecification().IsDriverTask()) {
+    // TODO(rkn): Define this constant somewhere else.
+    std::string type = "put_reconstruction";
+    std::ostringstream error_message;
+    error_message << "The task with ID " << task.GetTaskSpecification().TaskId()
+                  << " is a driver task and so the object created by ray.put "
+                  << "could not be reconstructed.";
+    gcs_client_->error_table().PushErrorToDriver(task.GetTaskSpecification().DriverId(),
+                                                 type, error_message.str(),
+                                                 current_time_ms());
+    return;
+  }
+
+  // The task may be reconstructed. Submit it with an empty lineage, since any
+  // uncommitted lineage must already be in the lineage cache.
+  SubmitTask(task, Lineage());
 }
 
 void NodeManager::HandleObjectLocal(const ObjectID &object_id) {
