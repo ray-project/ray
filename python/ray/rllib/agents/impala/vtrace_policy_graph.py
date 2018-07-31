@@ -52,8 +52,7 @@ class VTraceLoss(object):
             bootstrap_value: A float32 tensor of shape [B].
         """
 
-        # Compute vtrace returns with B=1. This should be fine since we handle
-        # LSTM sequencing elsewhere, so the T dim can span multiple episodes.
+        # Compute vtrace on the CPU for better perf.
         with tf.device("/cpu:0"):
             vtrace_returns = vtrace.from_logits(
                 behaviour_policy_logits=behaviour_logits,
