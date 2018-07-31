@@ -450,6 +450,48 @@ TEST_F(LineageCacheTest, TestOutOfOrderEviction) {
   ASSERT_TRUE(uncommitted_lineage.GetEntries().size() <= max_lineage_size_);
 }
 
+TEST_F(LineageCacheTest, TestEvictionUncommittedChildren) {
+  // Insert a chain of dependent tasks.
+  uint64_t lineage_size = max_lineage_size_ + 1;
+  std::vector<Task> tasks;
+  InsertTaskChain(lineage_cache_, tasks, lineage_size, std::vector<ObjectID>(), 1);
+  int num_tasks = tasks.size();
+
+  // Simulate forwarding the chain of tasks to a remote node.
+  for (const auto &task : tasks) {
+    auto task_id = task.GetTaskSpecification().TaskId();
+    lineage_cache_.RemoveWaitingTask(task_id);
+  }
+
+  // Add more tasks to the lineage cache that will remain local. Each of these
+  // tasks is dependent one of the tasks that was forwarded above.
+  for (const auto &task : tasks) {
+    auto return_id = task.GetTaskSpecification().ReturnId(0);
+    auto dependent_task = ExampleTask({return_id}, 1);
+    lineage_cache_.AddWaitingTask(dependent_task, Lineage());
+    lineage_cache_.AddReadyTask(dependent_task);
+    num_tasks++;
+  }
+
+  // Check that the last task in the chain still has all tasks in its
+  // uncommitted lineage.
+  const auto last_task_id = tasks.back().GetTaskSpecification().TaskId();
+  auto uncommitted_lineage = lineage_cache_.GetUncommittedLineage(last_task_id);
+  ASSERT_EQ(uncommitted_lineage.GetEntries().size(), lineage_size);
+
+  // Simulate executing the last task on a remote node and adding it to the
+  // GCS.
+  auto task_data = std::make_shared<protocol::TaskT>();
+  auto it = tasks.rbegin();
+  RAY_CHECK_OK(mock_gcs_.RemoteAdd(it->GetTaskSpecification().TaskId(), task_data));
+  it++;
+  // Check that when the last task is flushed, all tasks are flushed. This
+  // includes the chain of tasks that was forwarded to a remote node and the
+  // tasks that remained local that are dependent on the forwarded tasks.
+  mock_gcs_.Flush();
+  CheckFlush(lineage_cache_, mock_gcs_, num_tasks);
+}
+
 }  // namespace raylet
 
 }  // namespace ray
