@@ -452,8 +452,8 @@ class ActorMethods(unittest.TestCase):
             ]
         result_values = ray.get(results)
         for i in range(num_actors):
-            assert result_values[(num_increases * i):(num_increases * (i + 1))] == \
-                list(range(i + 1, num_increases + i + 1))
+            v = result_values[(num_increases * i):(num_increases * (i + 1))]
+            assert v == list(range(i + 1, num_increases + i + 1))
 
         # Reset the actor values.
         [actor.reset.remote() for actor in actors]
@@ -464,8 +464,8 @@ class ActorMethods(unittest.TestCase):
             results += [actor.increase.remote() for actor in actors]
         result_values = ray.get(results)
         for j in range(num_increases):
-            assert result_values[(num_actors * j):(num_actors * (j + 1))] == \
-                num_actors * [j + 1]
+            v = result_values[(num_actors * j):(num_actors * (j + 1))]
+            assert v == num_actors * [j + 1]
 
 
 class ActorNesting(unittest.TestCase):
@@ -1371,8 +1371,7 @@ class ActorReconstruction(unittest.TestCase):
         # Get the results and check that they have the correct values.
         for _, result_id_list in result_ids.items():
             assert ray.get(result_id_list) == list(
-                range(1,
-                    len(result_id_list) + 1))
+                range(1, len(result_id_list) + 1))
 
     def setup_counter_actor(self,
                             test_checkpoint=False,
