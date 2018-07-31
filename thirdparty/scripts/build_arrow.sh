@@ -40,10 +40,10 @@ else
   exit 1
 fi
 
-# The PR for this commit is https://github.com/apache/arrow/pull/2332. We
+# The PR for this commit is https://github.com/apache/arrow/pull/2342. We
 # include the link here to make it easier to find the right commit because
 # Arrow often rewrites git history and invalidates certain commits.
-TARGET_COMMIT_ID=a18f36201e5cd1e6f8bc244a5e755fa54bc9c7b0
+TARGET_COMMIT_ID=26affd7b35a1bf3800ab08df3347fe07d220f87d
 build_arrow() {
   echo "building arrow"
 
