@@ -293,7 +293,8 @@ public abstract class RayRuntime implements RayApi {
       int numObjectIds = objectIds.size();
 
       // Do an initial fetch for remote objects.
-      List<List<UniqueID>> fetchBatchs = splitIntoBatchs(objectIds, params.worker_fetch_request_size);
+      List<List<UniqueID>> fetchBatchs =
+          splitIntoBatchs(objectIds, params.worker_fetch_request_size);
       for (List<UniqueID> batch : fetchBatchs) {
         if (!params.use_raylet) {
           objectStoreProxy.fetch(batch);
@@ -387,8 +388,9 @@ public abstract class RayRuntime implements RayApi {
 
     for (int i = 0; i < objectsSize; i += batchSize) {
       int endIndex = i + batchSize;
-      List<UniqueID> batchIds = (endIndex < objectsSize) ?
-          objectIds.subList(i, endIndex) : objectIds.subList(i, objectsSize);
+      List<UniqueID> batchIds = (endIndex < objectsSize)
+          ? objectIds.subList(i, endIndex)
+          : objectIds.subList(i, objectsSize);
 
       batchs.add(batchIds);
     }

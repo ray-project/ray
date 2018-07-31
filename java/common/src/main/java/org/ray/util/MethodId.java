@@ -117,7 +117,7 @@ public final class MethodId {
       cls = Class
           .forName(className, true, loader == null ? this.getClass().getClassLoader() : loader);
     } catch (Throwable e) {
-      RayLog.core.error("Cannot load class " + className, e);
+      RayLog.core.error("Cannot load class {}", className, e);
       return null;
     }
 

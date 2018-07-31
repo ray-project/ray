@@ -48,7 +48,7 @@ public class RayCli {
       throw new RuntimeException("Ray head node start failed", e);
     }
 
-    RayLog.core.info("Started Ray head node. Redis address: " + manager.info().redisAddress);
+    RayLog.core.info("Started Ray head node. Redis address: {}", manager.info().redisAddress);
     return manager;
   }
 
@@ -75,7 +75,7 @@ public class RayCli {
     // Init RayLog before using it.
     RayLog.init(params.working_directory);
 
-    RayLog.core.info("Using IP address " + params.node_ip_address + " for this node.");
+    RayLog.core.info("Using IP address {} for this node.", params.node_ip_address);
     RunManager manager;
     if (cmdStart.head) {
       manager = startRayHead(params, paths, config);
