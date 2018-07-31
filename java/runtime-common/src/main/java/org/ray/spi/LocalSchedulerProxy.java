@@ -128,8 +128,12 @@ public class LocalSchedulerProxy {
     scheduler.markTaskPutDependency(taskId, objectId);
   }
 
+  public void reconstructObject(UniqueID objectId, boolean fetchOnly) {
+    scheduler.reconstructObject(objectId, fetchOnly);
+  }
+
   public void reconstructObjects(List<UniqueID> objectIds, boolean fetchOnly) {
-    scheduler.reconstructObjects(getIdBytes(objectIds), fetchOnly);
+    scheduler.reconstructObjects(objectIds, fetchOnly);
   }
 
   public void notifyUnblocked() {

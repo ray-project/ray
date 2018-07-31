@@ -291,8 +291,16 @@ public abstract class RayRuntime implements RayApi {
 
     try {
       int numObjectIds = objectIds.size();
+
       // Do an initial fetch for remote objects.
-      dividedFetch(objectIds);
+      List<List<UniqueID>> fetchBatchs = splitIntoBatchs(objectIds, params.worker_fetch_request_size);
+      for (List<UniqueID> batch : fetchBatchs) {
+        if (!params.use_raylet) {
+          objectStoreProxy.fetch(batch);
+        } else {
+          localSchedulerProxy.reconstructObjects(batch, true);
+        }
+      }
 
       // Get the objects. We initially try to get the objects immediately.
       List<Pair<T, GetStatus>> ret = objectStoreProxy
@@ -312,7 +320,21 @@ public abstract class RayRuntime implements RayApi {
       // until at least PlasmaLink.GET_TIMEOUT_MS milliseconds passes, then repeat.
       while (unreadys.size() > 0) {
         List<UniqueID> unreadyList = new ArrayList<>(unreadys.keySet());
-        dividedReconstruct(unreadyList);
+        List<List<UniqueID>> reconstructBatchs =
+            splitIntoBatchs(unreadyList, params.worker_fetch_request_size);
+
+        for (List<UniqueID> batch : reconstructBatchs) {
+          // Do another fetch for objects that aren't available locally yet, in case
+          // they were evicted since the last fetch.
+          if (!params.use_raylet) {
+            for (UniqueID objectId : batch) {
+              localSchedulerProxy.reconstructObject(objectId, false);
+            }
+            objectStoreProxy.fetch(batch);
+          } else {
+            localSchedulerProxy.reconstructObjects(batch, false);
+          }
+        }
 
         List<Pair<T, GetStatus>> results = objectStoreProxy
             .get(unreadyList, params.default_get_check_interval_ms, isMetadata);
@@ -327,8 +349,8 @@ public abstract class RayRuntime implements RayApi {
             unreadys.remove(id);
           }
         }
-
       }
+
       RayLog.core
           .debug("Task " + taskId + " Objects " + Arrays.toString(objectIds.toArray()) + " get");
       List<T> finalRet = new ArrayList<>();
@@ -359,45 +381,19 @@ public abstract class RayRuntime implements RayApi {
     return results.get(0);
   }
 
-  // We divide the fetch into smaller fetches so as to not block the manager
-  // for a prolonged period of time in a single call.
-  private void dividedFetch(List<UniqueID> objectIds) {
-    int fetchSize = params.worker_fetch_request_size;
-    int numObjectIds = objectIds.size();
-    for (int i = 0; i < numObjectIds; i += fetchSize) {
-      int endIndex = i + fetchSize;
+  private List<List<UniqueID>> splitIntoBatchs(List<UniqueID> objectIds, int batchSize) {
+    List<List<UniqueID>> batchs = new ArrayList<>();
+    int objectsSize = objectIds.size();
 
-      List<UniqueID> fetchIds = (endIndex < numObjectIds)
-          ? objectIds.subList(i, endIndex)
-          : objectIds.subList(i, numObjectIds);
+    for (int i = 0; i < objectsSize; i += batchSize) {
+      int endIndex = i + batchSize;
+      List<UniqueID> batchIds = (endIndex < objectsSize) ?
+          objectIds.subList(i, endIndex) : objectIds.subList(i, objectsSize);
 
-      if (params.use_raylet) {
-        localSchedulerProxy.reconstructObjects(fetchIds, true);
-      } else {
-        objectStoreProxy.fetch(fetchIds);
-      }
+      batchs.add(batchIds);
     }
-  }
 
-  private void dividedReconstruct(List<UniqueID> objectIds) {
-    int reconstructSize = params.worker_fetch_request_size;
-    int numObjectIds = objectIds.size();
-
-    for (int i = 0; i < numObjectIds; i += reconstructSize) {
-      int endIndex = i + reconstructSize;
-
-      List<UniqueID> reconstructIds = (endIndex < numObjectIds)
-          ? objectIds.subList(i, endIndex)
-          : objectIds.subList(i, numObjectIds);
-
-      localSchedulerProxy.reconstructObjects(reconstructIds, false);
-
-      // Do another fetch for objects that aren't available locally yet, in case
-      // they were evicted since the last fetch.
-      if (!params.use_raylet) {
-        objectStoreProxy.fetch(reconstructIds);
-      }
-    }
+    return batchs;
   }
 
   /**

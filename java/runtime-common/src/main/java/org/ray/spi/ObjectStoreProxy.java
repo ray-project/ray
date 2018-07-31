@@ -116,26 +116,13 @@ public class ObjectStoreProxy {
     return new WaitResult<>(readyObjs, remainObjs);
   }
 
-  public void fetch(UniqueID objectId) {
-    if (localSchedulerLink == null) {
-      store.fetch(objectId.getBytes());
-    } else {
-      localSchedulerLink.reconstructObject(objectId, true);
-    }
-  }
-
   public void fetch(List<UniqueID> objectIds) {
     if (localSchedulerLink == null) {
       store.fetch(getIdBytes(objectIds));
     } else {
-      localSchedulerLink.reconstructObjects(getIdBytes(objectIds), true);
+      localSchedulerLink.reconstructObjects(objectIds, true);
     }
   }
-
-  public int getFetchSize() {
-    return 10000;
-  }
-
 
   public enum GetStatus {
     SUCCESS, FAILED

@@ -80,7 +80,7 @@ public class MockLocalScheduler implements LocalSchedulerLink {
   }
 
   @Override
-  public void reconstructObjects(byte[][] objectIds, boolean fetchOnly) {
+  public void reconstructObjects(List<UniqueID> objectIds, boolean fetchOnly) {
 
   }
 

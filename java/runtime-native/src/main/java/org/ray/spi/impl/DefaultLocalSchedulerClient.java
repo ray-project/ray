@@ -88,21 +88,16 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
 
   @Override
   public void reconstructObject(UniqueID objectId, boolean fetchOnly) {
-    RayLog.core.info("reconstruct " + objectId.toString());
-    _reconstruct_object(client, objectId.getBytes(), fetchOnly);
+    RayLog.core.info("reconstruct object {}", objectId);
+    List<UniqueID> objects = new ArrayList<>();
+    objects.add(objectId);
+    _reconstruct_objects(client, getIdBytes(objects), fetchOnly);
   }
 
   @Override
-  public void reconstructObjects(byte[][] objectIds, boolean fetchOnly) {
-    StringBuilder builder = new StringBuilder();
-    for (byte[] item : objectIds) {
-      UniqueID id = new UniqueID(item);
-      builder.append(id.toString());
-      builder.append(" ");
-    }
-
-    RayLog.core.info("reconstruct objects " + builder.toString());
-    _reconstruct_objects(client, objectIds, fetchOnly);
+  public void reconstructObjects(List<UniqueID> objectIds, boolean fetchOnly) {
+     RayLog.core.info("reconstruct objects {}", objectIds);
+    _reconstruct_objects(client, getIdBytes(objectIds), fetchOnly);
   }
 
   @Override
@@ -111,9 +106,6 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
   }
 
   private static native void _notify_unblocked(long client);
-
-  private static native void _reconstruct_object(long client, byte[] objectId,
-                                                 boolean fetchOnly);
 
   private static native void _reconstruct_objects(long client, byte[][] objectIds,
                                                   boolean fetchOnly);
@@ -262,6 +254,15 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
   // task -> TaskInfo (with FlatBuffer)
   protected static native void _submitTask(long client, byte[] cursorId, /*Direct*/ByteBuffer task,
                                          int pos, int sz, boolean useRaylet);
+
+  private static byte[][] getIdBytes(List<UniqueID> objectIds) {
+    int size = objectIds.size();
+    byte[][] ids = new byte[size][];
+    for (int i = 0; i < size; i++) {
+      ids[i] = objectIds.get(i).getBytes();
+    }
+    return ids;
+  }
 
   public void destroy() {
     _destroy(client);

@@ -83,19 +83,6 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1task_1done(JNIEnv *,
 
 /*
  * Class:     org_ray_spi_impl_DefaultLocalSchedulerClient
- * Method:    _reconstruct_object
- * Signature: (J[B)V
- */
-JNIEXPORT void JNICALL
-Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1reconstruct_1object(
-    JNIEnv *,
-    jclass,
-    jlong,
-    jbyteArray,
-    jboolean);
-
-/*
- * Class:     org_ray_spi_impl_DefaultLocalSchedulerClient
  * Method:    _reconstruct_objects
  * Signature: (J[B)V
  */
