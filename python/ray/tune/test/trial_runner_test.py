@@ -970,6 +970,43 @@ class TrialRunnerTest(unittest.TestCase):
         self.assertEqual(trials[0].status, Trial.TERMINATED)
         self.assertEqual(len(searcher.live_trials), 0)
 
+    def testSearchAlgFinished(self):
+        """Checks that runner and searcher state is maintained when stalled."""
+        ray.init(num_cpus=4, num_gpus=2)
+        experiment_spec = {
+            "run": "__fake",
+            "repeat": 3,
+            "stop": {
+                "training_iteration": 1
+            }
+        }
+        experiments = [Experiment.from_json("test", experiment_spec)]
+        searcher = _MockAlgorithm(max_concurrent=1, experiments=experiments)
+        runner = TrialRunner(search_alg=searcher)
+        runner.step()
+        trials = runner.get_trials()
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+        self.assertEqual(len(searcher.live_trials), 1)
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.TERMINATED)
+        self.assertEqual(len(searcher.live_trials), 0)
+
+        trials = runner.get_trials()
+        runner.step()
+        self.assertEqual(trials[1].status, Trial.RUNNING)
+        self.assertEqual(len(searcher.live_trials), 1)
+
+        searcher.stall = True
+
+        runner.step()
+        self.assertEqual(trials[1].status, Trial.TERMINATED)
+        self.assertEqual(len(searcher.live_trials), 0)
+
+        self.assertTrue(all(trial.is_finished() for trial in trials))
+        self.assertFalse(runner.is_finished())
+        self.assertFalse(searcher.is_finished())
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -87,11 +87,8 @@ class TrialRunner(object):
                 self._total_time, self._global_time_limit))
             return True
 
-        self._update_trial_queue()
-        for t in self._trials:
-            if t.status in [Trial.PENDING, Trial.RUNNING, Trial.PAUSED]:
-                return False
-        return True
+        trials_done = all(trial.is_finished() for trial in self._trials)
+        return trials_done and self._search_alg.is_finished()
 
     def step(self):
         """Runs one step of the trial event loop.
@@ -227,8 +224,15 @@ class TrialRunner(object):
         return False
 
     def _get_next_trial(self):
+        """Replenishes queue.
+
+        Blocks if all trials queued have finished, but search algorithm is
+        still not finished.
+        """
         self._update_avail_resources()
-        self._update_trial_queue()
+        trials_done = all(trial.is_finished() for trial in self._trials)
+        wait_for_trial = trials_done and not self._search_alg.is_finished()
+        self._update_trial_queue(blocking=wait_for_trial)
         trial = self._scheduler_alg.choose_trial_to_run(self)
         return trial
 
@@ -308,8 +312,23 @@ class TrialRunner(object):
             print("Error recovering trial from checkpoint, abort:", error_msg)
             self._stop_trial(trial, error=True, error_msg=error_msg)
 
-    def _update_trial_queue(self):
+    def _update_trial_queue(self, blocking=False, timeout=600):
+        """Adds next trials to queue if possible.
+
+        Arguments:
+            blocking (bool): Blocks until either a trial is available
+                or the Runner finishes (i.e., timeout or search algorithm
+                finishes).
+            timeout (int): Seconds before blocking times out."""
         trial = self._search_alg.next_trial()
+        if blocking:
+            start = time.time()
+            while (trial is None and not self.is_finished() and
+                   time.time() - start < timeout):
+                print("Blocking for next trial...")
+                trial = self._search_alg.next_trial()
+                time.sleep(1)
+
         while trial is not None:
             self.add_trial(trial)
             trial = self._search_alg.next_trial()

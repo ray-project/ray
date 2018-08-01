@@ -60,6 +60,11 @@ class SearchAlgorithm(object):
         """
         pass
 
+    def is_finished(self):
+        """Returns True if no trials left."""
+        raise NotImplementedError
+
+
 
 class ExistingVariants(SearchAlgorithm):
     """Uses Tune's variant generation for resolving variables.
@@ -98,12 +103,14 @@ class ExistingVariants(SearchAlgorithm):
             generate_trials(experiment.spec, experiment.name, self)
             for experiment in experiments
         ])
+        self._finished = False
 
     def next_trial(self):
         try:
             trial = next(self._generator)
         except StopIteration:
             trial = None
+            self._finished = True
         return trial
 
     def try_suggest(self):
@@ -130,17 +137,21 @@ class ExistingVariants(SearchAlgorithm):
         """
         return {}, None
 
+    def is_finished(self):
+        return self._finished
+
 
 class _MockAlgorithm(ExistingVariants):
     def __init__(self, max_concurrent=2, **kwargs):
         self._id = 0
         self._max_concurrent = max_concurrent
         self.live_trials = {}
+        self.stall = False
 
         super(_MockAlgorithm, self).__init__(**kwargs)
 
     def try_suggest(self):
-        if len(self.live_trials) < self._max_concurrent:
+        if len(self.live_trials) < self._max_concurrent and not self.stall:
             id_str = self._generate_id()
             self.live_trials[id_str] = 1
             return {"test_variable": 2}, id_str
