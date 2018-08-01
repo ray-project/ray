@@ -64,6 +64,18 @@ class LineageEntry {
   /// \param new_status This must be lower than the current status.
   void ResetStatus(GcsStatus new_status);
 
+  /// Mark this entry as having been explicitly forwarded to a remote node manager.
+  ///
+  /// \param node_id The ID of the remote node manager.
+  void MarkExplicitlyForwarded(const ClientID &node_id);
+
+  /// Get this entry's explicit forwarding status corresponding to a node.
+  /// Ancestors of a forwarded task have an implicitly forwarded status.
+  ///
+  /// \param node_id The ID of the remote node manager.
+  /// \return Whether this node has explicitly been forwarded to the remote node.
+  bool GetExplicitForwardingStatus(const ClientID &node_id) const;
+
   /// Get this entry's ID.
   ///
   /// \return The entry's ID.
@@ -88,6 +100,10 @@ class LineageEntry {
   /// an object.
   //  const Task task_;
   Task task_;
+
+  /// Node managers that this task and its lineage has been forwarded to.
+  std::unordered_set<ClientID> forwarded_to_;
+
 };
 
 /// \class Lineage
@@ -183,6 +199,23 @@ class LineageCache {
   ///
   /// \param task_id The ID of the waiting task to remove.
   void RemoveWaitingTask(const TaskID &task_id);
+
+  /// Mark a task as having been forwarded to a node. The lineage of the task
+  /// is implicitly assumed to have also been forwarded.
+  ///
+  /// \param task_id
+  /// \param node_id
+  void MarkTaskAsForwarded(const TaskID &task_id, const ClientID &node_id);
+
+  /// Get the uncommitted lineage of a task that hasn't been forwarded to a task.
+  /// The uncommitted lineage consists of all tasks in the given task's lineage
+  /// that have not been committed in the GCS, as far as we know.
+  ///
+  /// \param task_id The ID of the task to get the uncommitted lineage for.
+  /// \param node_id
+  /// \return
+  Lineage GetUnforwardedUncommittedLineage(const TaskID &task_id,
+                                           const ClientID &node_id) const;
 
   /// Get the uncommitted lineage of a task. The uncommitted lineage consists
   /// of all tasks in the given task's lineage that have not been committed in

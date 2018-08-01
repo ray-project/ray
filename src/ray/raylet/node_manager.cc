@@ -1189,15 +1189,16 @@ ray::Status NodeManager::ForwardTask(const Task &task, const ClientID &node_id) 
   const auto &spec = task.GetTaskSpecification();
   auto task_id = spec.TaskId();
 
-  // Get and serialize the task's uncommitted lineage.
-  auto uncommitted_lineage = lineage_cache_.GetUncommittedLineage(task_id);
+  // Get and serialize the task's unforwarded, uncommitted lineage.
+  auto unforwarded_uncommitted_lineage =
+          lineage_cache_.GetUnforwardedUncommittedLineage(task_id, node_id);
   Task &lineage_cache_entry_task =
-      uncommitted_lineage.GetEntryMutable(task_id)->TaskDataMutable();
+      unforwarded_uncommitted_lineage.GetEntryMutable(task_id)->TaskDataMutable();
   // Increment forward count for the forwarded task.
   lineage_cache_entry_task.GetTaskExecutionSpec().IncrementNumForwards();
 
   flatbuffers::FlatBufferBuilder fbb;
-  auto request = uncommitted_lineage.ToFlatbuffer(fbb, task_id);
+  auto request = unforwarded_uncommitted_lineage.ToFlatbuffer(fbb, task_id);
   fbb.Finish(request);
 
   RAY_LOG(DEBUG) << "Forwarding task " << task_id << " to " << node_id << " spillback="
@@ -1222,6 +1223,10 @@ ray::Status NodeManager::ForwardTask(const Task &task, const ClientID &node_id) 
     // lineage cache since the receiving node is now responsible for writing
     // the task to the GCS.
     lineage_cache_.RemoveWaitingTask(task_id);
+    // Mark as forwarded so that the task and its lineage is not re-forwarded
+    // in the future to the receiving node.
+    lineage_cache_.MarkTaskAsForwarded(task_id, node_id);
+
     // Notify the task dependency manager that we are no longer responsible
     // for executing this task.
     task_dependency_manager_.TaskCanceled(task_id);
