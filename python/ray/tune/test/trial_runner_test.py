@@ -575,7 +575,7 @@ class VariantGeneratorTest(unittest.TestCase):
 
     def testMaxConcurrentVariantAlgorithm(self):
         searcher = _MockAlgorithm(max_concurrent=2)
-        trialgenerator = generate_trials(
+        searcher.add_experiment(
             {
                 "run": "PPO",
                 "config": {
@@ -586,9 +586,8 @@ class VariantGeneratorTest(unittest.TestCase):
                         "grid_search": [1, 2, 3]
                     },
                 },
-            },
-            search_alg=searcher)
-
+            })
+        trialgenerator = searcher._generator
         trials = []
         for trial in trialgenerator:
             if trial:
@@ -960,15 +959,13 @@ class TrialRunnerTest(unittest.TestCase):
         ray.init(num_cpus=4, num_gpus=2)
         searcher = _MockAlgorithm(max_concurrent=10)
 
-        trialgenerator = generate_trials(
-            {
+        searcher.add_experiment({
                 "run": "__fake",
                 "stop": {
                     "training_iteration": 1
                 },
-            },
-            search_alg=searcher)
-        runner = TrialRunner(trialgenerator, search_alg=searcher)
+            })
+        runner = TrialRunner(search_alg=searcher)
         runner.step()
         trials = runner.get_trials()
         self.assertEqual(trials[0].status, Trial.RUNNING)
