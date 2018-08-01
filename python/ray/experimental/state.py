@@ -1318,8 +1318,8 @@ class GlobalState(object):
             subscribe_client.subscribe(LOCAL_SCHEDULER_INFO_CHANNEL)
 
             local_scheduler_ids = {
-                local_scheduler["DBClientID"] for local_scheduler in
-                self.local_schedulers()
+                local_scheduler["DBClientID"]
+                for local_scheduler in self.local_schedulers()
             }
 
             while set(available_resources_by_id.keys()) != local_scheduler_ids:
@@ -1339,14 +1339,14 @@ class GlobalState(object):
                     dynamic_resources[dyn.Key().decode("utf-8")] = dyn.Value()
 
                 # Update available resources for this local scheduler
-                client_id = (binascii.hexlify(message.DbClientId()).
-                             decode("utf-8"))
+                client_id = (binascii.hexlify(
+                    message.DbClientId()).decode("utf-8"))
                 available_resources_by_id[client_id] = dynamic_resources
 
                 # Update local schedulers in cluster
                 local_scheduler_ids = {
-                    local_scheduler["DBClientID"] for local_scheduler in
-                    self.local_schedulers()
+                    local_scheduler["DBClientID"]
+                    for local_scheduler in self.local_schedulers()
                 }
 
                 # Remove disconnected local schedulers
@@ -1362,9 +1362,7 @@ class GlobalState(object):
             for subscribe_client in subscribe_clients:
                 subscribe_client.subscribe(XRAY_HEARTBEAT_CHANNEL)
 
-            client_ids = {
-                client["ClientID"] for client in self.client_table()
-            }
+            client_ids = {client["ClientID"] for client in self.client_table()}
 
             while set(available_resources_by_id.keys()) != client_ids:
                 for subscribe_client in subscribe_clients:
@@ -1374,8 +1372,9 @@ class GlobalState(object):
                             raw_message["channel"] != XRAY_HEARTBEAT_CHANNEL):
                         continue
                     data = raw_message["data"]
-                    gcs_entries = (ray.gcs_utils.GcsTableEntry.
-                                   GetRootAsGcsTableEntry(data, 0))
+                    gcs_entries = (
+                        ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
+                            data, 0))
                     heartbeat_data = gcs_entries.Entries(0)
                     message = (ray.gcs_utils.HeartbeatTableData.
                                GetRootAsHeartbeatTableData(heartbeat_data, 0))
@@ -1385,7 +1384,7 @@ class GlobalState(object):
                     for i in range(num_resources):
                         dyn = message.ResourcesAvailableLabel(i)
                         dynamic_resources[dyn] = (
-                                message.ResourcesAvailableCapacity(i))
+                            message.ResourcesAvailableCapacity(i))
 
                     # Update available resources for this client
                     client_id = message.ClientId().decode("utf-8")
@@ -1393,7 +1392,8 @@ class GlobalState(object):
 
                 # Update clients in cluster
                 client_ids = {
-                    client["ClientID"] for client in self.client_table()
+                    client["ClientID"]
+                    for client in self.client_table()
                 }
 
                 # Remove disconnected clients
