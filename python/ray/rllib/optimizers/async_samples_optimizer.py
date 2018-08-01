@@ -70,7 +70,6 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
     def _init(self,
               train_batch_size=512,
               sample_batch_size=50,
-              clip_rewards=True,
               debug=False):
 
         self.debug = debug

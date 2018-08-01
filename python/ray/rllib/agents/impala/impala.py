@@ -17,7 +17,6 @@ from ray.tune.trial import Resources
 OPTIMIZER_SHARED_CONFIGS = [
     "sample_batch_size",
     "train_batch_size",
-    "clip_rewards",
 ]
 
 DEFAULT_CONFIG = with_common_config({
