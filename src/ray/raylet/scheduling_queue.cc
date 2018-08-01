@@ -52,34 +52,34 @@ SchedulingQueue::TaskQueue::~TaskQueue() {
 
 bool SchedulingQueue::TaskQueue::AppendTask(const TaskID &task_id, const Task &task) {
   RAY_CHECK(task_map_.find(task_id) == task_map_.end());
-  auto list_iter = task_list_.insert(task_list_.end(), task);
-  task_map_[task_id] = list_iter;
+  auto list_iterator = task_list_.insert(task_list_.end(), task);
+  task_map_[task_id] = list_iterator;
   return true;
 }
 
 bool SchedulingQueue::TaskQueue::RemoveTask(const TaskID &task_id) {
-  auto iter = task_map_.find(task_id);
-  if (iter == task_map_.end()) {
+  auto task_found_iterator = task_map_.find(task_id);
+  if (task_found_iterator == task_map_.end()) {
     return false;
   }
 
-  auto list_iter = iter->second;
-  task_map_.erase(iter);
-  task_list_.erase(list_iter);
+  auto list_iterator = task_found_iterator->second;
+  task_map_.erase(task_found_iterator);
+  task_list_.erase(list_iterator);
   return true;
 }
 
 bool SchedulingQueue::TaskQueue::RemoveTask(const TaskID &task_id,
                                             std::vector<Task> &removed_tasks) {
-  auto iter = task_map_.find(task_id);
-  if (iter == task_map_.end()) {
+  auto task_found_iterator = task_map_.find(task_id);
+  if (task_found_iterator == task_map_.end()) {
     return false;
   }
 
-  auto list_iter = iter->second;
-  removed_tasks.push_back(std::move(*list_iter));
-  task_map_.erase(iter);
-  task_list_.erase(list_iter);
+  auto list_iterator = task_found_iterator->second;
+  removed_tasks.push_back(std::move(*list_iterator));
+  task_map_.erase(task_found_iterator);
+  task_list_.erase(list_iterator);
   return true;
 }
 

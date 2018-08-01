@@ -159,26 +159,31 @@ class SchedulingQueue {
     ///
     /// \param task_id The task ID for the task to append.
     /// \param task The task to append to the queue.
+    /// \return Whether the append operation succeeds.
     bool AppendTask(const TaskID &task_id, const Task &task);
 
     /// \brief Remove a task from queue.
     ///
     /// \param task_id The task ID for the task to remove from the queue.
+    /// \return Whether the removal succeeds.
     bool RemoveTask(const TaskID &task_id);
 
     /// \brief Remove a task from queue.
     ///
     /// \param task_id The task ID for the task to remove from the queue.
     /// \param removed_tasks If the task specified by task_id is successfully
-    //  removed from the queue, the task data is appened to the vector..
+    //  removed from the queue, the task data is appended to the vector.
+    /// \return Whether the removal succeeds.
     bool RemoveTask(const TaskID &task_id, std::vector<Task> &removed_tasks);
 
     /// \brief Check if the queue contains a specific task id.
     ///
     /// \param task_id The task ID for the task.
+    /// \return Whether the task_id exists in this queue.
     bool HasTask(const TaskID &task_id) const;
 
     /// \brief Remove the task list of the queue.
+    /// \return A list of tasks contained in this queue.
     const std::list<Task> &GetTasks() const;
 
    private:
