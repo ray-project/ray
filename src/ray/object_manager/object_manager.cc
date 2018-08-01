@@ -104,8 +104,7 @@ void ObjectManager::HandleUnfulfilledPushRequests(const ObjectInfoT &object_info
   if (iter != unfulfilled_push_requests_.end()) {
     for (auto &pair : iter->second) {
       auto &client_id = pair.first;
-      main_service_->post(
-          [this, object_id, client_id]() { RAY_CHECK_OK(Push(object_id, client_id)); });
+      main_service_->post([this, object_id, client_id]() { Push(object_id, client_id); });
       // When push timeout is set to -1, there will be an empty timer in pair.second.
       if (pair.second != nullptr) {
         pair.second->cancel();
@@ -234,7 +233,7 @@ void ObjectManager::HandlePushTaskTimeout(const ObjectID &object_id,
   }
 }
 
-ray::Status ObjectManager::Push(const ObjectID &object_id, const ClientID &client_id) {
+void ObjectManager::Push(const ObjectID &object_id, const ClientID &client_id) {
   if (local_objects_.count(object_id) == 0) {
     // Avoid setting duplicated timer for the same object and client pair.
     auto &clients = unfulfilled_push_requests_[object_id];
@@ -264,12 +263,12 @@ ray::Status ObjectManager::Push(const ObjectID &object_id, const ClientID &clien
         clients.emplace(client_id, std::move(timer));
       }
     }
-    return ray::Status::OK();
+    return;
   }
 
   // TODO(hme): Cache this data in ObjectDirectory.
   // Okay for now since the GCS client caches this data.
-  Status status = object_directory_->GetInformation(
+  RAY_CHECK_OK(object_directory_->GetInformation(
       client_id,
       [this, object_id, client_id](const RemoteConnectionInfo &info) {
         const ObjectInfoT &object_info = local_objects_[object_id];
@@ -287,8 +286,7 @@ ray::Status ObjectManager::Push(const ObjectID &object_id, const ClientID &clien
       },
       [](const Status &status) {
         // Push is best effort, so do nothing here.
-      });
-  return status;
+      }));
 }
 
 void ObjectManager::ExecuteSendObject(const ClientID &client_id,
@@ -603,7 +601,7 @@ void ObjectManager::ReceivePullRequest(std::shared_ptr<TcpClientConnection> &con
   auto pr = flatbuffers::GetRoot<object_manager_protocol::PullRequestMessage>(message);
   ObjectID object_id = ObjectID::from_binary(pr->object_id()->str());
   ClientID client_id = ClientID::from_binary(pr->client_id()->str());
-  ray::Status push_status = Push(object_id, client_id);
+  Push(object_id, client_id);
   conn->ProcessMessages();
 }
 

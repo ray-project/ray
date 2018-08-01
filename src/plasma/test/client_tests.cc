@@ -5,8 +5,6 @@
 #include <sys/time.h>
 
 #include "plasma/common.h"
-#include "plasma/plasma.h"
-#include "plasma/protocol.h"
 #include "plasma/client.h"
 
 using namespace plasma;
@@ -25,7 +23,7 @@ TEST plasma_status_tests(void) {
   /* Test for object non-existence. */
   int status;
   ARROW_CHECK_OK(client1.Info(oid1, &status));
-  ASSERT(status == static_cast<int>(ObjectStatus::Nonexistent));
+  ASSERT(status == static_cast<int>(ObjectLocation::Nonexistent));
 
   /* Test for the object being in local Plasma store. */
   /* First create object. */
@@ -40,11 +38,11 @@ TEST plasma_status_tests(void) {
    */
   sleep(1);
   ARROW_CHECK_OK(client1.Info(oid1, &status));
-  ASSERT(status == static_cast<int>(ObjectStatus::Local));
+  ASSERT(status == static_cast<int>(ObjectLocation::Local));
 
   /* Test for object being remote. */
   ARROW_CHECK_OK(client2.Info(oid1, &status));
-  ASSERT(status == static_cast<int>(ObjectStatus::Remote));
+  ASSERT(status == static_cast<int>(ObjectLocation::Remote));
 
   ARROW_CHECK_OK(client1.Disconnect());
   ARROW_CHECK_OK(client2.Disconnect());
@@ -66,7 +64,7 @@ TEST plasma_fetch_tests(void) {
 
   /* No object in the system */
   ARROW_CHECK_OK(client1.Info(oid1, &status));
-  ASSERT(status == static_cast<int>(ObjectStatus::Nonexistent));
+  ASSERT(status == static_cast<int>(ObjectLocation::Nonexistent));
 
   /* Test for the object being in local Plasma store. */
   /* First create object. */
@@ -84,24 +82,24 @@ TEST plasma_fetch_tests(void) {
   ObjectID oid_array1[1] = {oid1};
   ARROW_CHECK_OK(client1.Fetch(1, oid_array1));
   ARROW_CHECK_OK(client1.Info(oid1, &status));
-  ASSERT(status == static_cast<int>(ObjectStatus::Local) ||
-         status == static_cast<int>(ObjectStatus::Nonexistent));
+  ASSERT(status == static_cast<int>(ObjectLocation::Local) ||
+         status == static_cast<int>(ObjectLocation::Nonexistent));
 
   /* Sleep to make sure Plasma Manager got the notification. */
   sleep(1);
   ARROW_CHECK_OK(client1.Info(oid1, &status));
-  ASSERT(status == static_cast<int>(ObjectStatus::Local));
+  ASSERT(status == static_cast<int>(ObjectLocation::Local));
 
   /* Test for object being remote. */
   ARROW_CHECK_OK(client2.Info(oid1, &status));
-  ASSERT(status == static_cast<int>(ObjectStatus::Remote));
+  ASSERT(status == static_cast<int>(ObjectLocation::Remote));
 
   /* Sleep to make sure the object has been fetched and it is now stored in the
    * local Plasma Store. */
   ARROW_CHECK_OK(client2.Fetch(1, oid_array1));
   sleep(1);
   ARROW_CHECK_OK(client2.Info(oid1, &status));
-  ASSERT(status == static_cast<int>(ObjectStatus::Local));
+  ASSERT(status == static_cast<int>(ObjectLocation::Local));
 
   sleep(1);
   ARROW_CHECK_OK(client1.Disconnect());

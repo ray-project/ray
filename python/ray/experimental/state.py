@@ -13,6 +13,7 @@ import time
 
 import ray
 import ray.gcs_utils
+import ray.ray_constants as ray_constants
 from ray.utils import (decode, binary_to_object_id, binary_to_hex,
                        hex_to_binary)
 
@@ -496,7 +497,7 @@ class GlobalState(object):
 
         else:
             # This is the raylet code path.
-            NIL_CLIENT_ID = 20 * b"\xff"
+            NIL_CLIENT_ID = ray_constants.ID_SIZE * b"\xff"
             message = self.redis_client.execute_command(
                 "RAY.TABLE_LOOKUP", ray.gcs_utils.TablePrefix.CLIENT, "",
                 NIL_CLIENT_ID)
@@ -1235,7 +1236,7 @@ class GlobalState(object):
         for key in actor_keys:
             info = self.redis_client.hgetall(key)
             actor_id = key[len("Actor:"):]
-            assert len(actor_id) == 20
+            assert len(actor_id) == ray_constants.ID_SIZE
             actor_info[binary_to_hex(actor_id)] = {
                 "class_id": binary_to_hex(info[b"class_id"]),
                 "driver_id": binary_to_hex(info[b"driver_id"]),

@@ -20,16 +20,18 @@ static int PyLocalSchedulerClient_init(PyLocalSchedulerClient *self,
   char *socket_name;
   UniqueID client_id;
   PyObject *is_worker;
+  JobID driver_id;
   PyObject *use_raylet;
-  if (!PyArg_ParseTuple(args, "sO&OO", &socket_name, PyStringToUniqueID,
-                        &client_id, &is_worker, &use_raylet)) {
+  if (!PyArg_ParseTuple(args, "sO&OO&O", &socket_name, PyStringToUniqueID,
+                        &client_id, &is_worker, &PyObjectToUniqueID, &driver_id,
+                        &use_raylet)) {
     self->local_scheduler_connection = NULL;
     return -1;
   }
   /* Connect to the local scheduler. */
   self->local_scheduler_connection = LocalSchedulerConnection_init(
       socket_name, client_id, static_cast<bool>(PyObject_IsTrue(is_worker)),
-      static_cast<bool>(PyObject_IsTrue(use_raylet)));
+      driver_id, static_cast<bool>(PyObject_IsTrue(use_raylet)));
   return 0;
 }
 

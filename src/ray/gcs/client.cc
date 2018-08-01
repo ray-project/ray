@@ -15,9 +15,8 @@ AsyncGcsClient::AsyncGcsClient(const ClientID &client_id, CommandType command_ty
   task_table_.reset(new TaskTable(context_, this, command_type));
   raylet_task_table_.reset(new raylet::TaskTable(context_, this, command_type));
   task_reconstruction_log_.reset(new TaskReconstructionLog(context_, this));
-  // TODO(hme): Eventually move HeartbeatTable to _context to avoid
-  // overloading the primary shard.
-  heartbeat_table_.reset(new HeartbeatTable(primary_context_, this));
+  task_lease_table_.reset(new TaskLeaseTable(context_, this));
+  heartbeat_table_.reset(new HeartbeatTable(context_, this));
   driver_table_.reset(new DriverTable(primary_context_, this));
   error_table_.reset(new ErrorTable(primary_context_, this));
   profile_table_.reset(new ProfileTable(context_, this));
@@ -77,6 +76,8 @@ ActorTable &AsyncGcsClient::actor_table() { return *actor_table_; }
 TaskReconstructionLog &AsyncGcsClient::task_reconstruction_log() {
   return *task_reconstruction_log_;
 }
+
+TaskLeaseTable &AsyncGcsClient::task_lease_table() { return *task_lease_table_; }
 
 ClientTable &AsyncGcsClient::client_table() { return *client_table_; }
 

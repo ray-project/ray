@@ -3,8 +3,8 @@ from __future__ import division
 from __future__ import print_function
 
 from ray.rllib.agents.dqn.dqn import DQNAgent, DEFAULT_CONFIG as DQN_CONFIG
+from ray.rllib.utils import merge_dicts
 from ray.tune.trial import Resources
-from ray.utils import merge_dicts
 
 APEX_DEFAULT_CONFIG = merge_dicts(
     DQN_CONFIG,
@@ -23,11 +23,11 @@ APEX_DEFAULT_CONFIG = merge_dicts(
         "learning_starts": 50000,
         "train_batch_size": 512,
         "sample_batch_size": 50,
-        "max_weight_sync_delay": 400,
         "target_network_update_freq": 500000,
         "timesteps_per_iteration": 25000,
         "per_worker_exploration": True,
         "worker_side_prioritization": True,
+        "min_iter_time_s": 30,
     },
 )
 
@@ -44,7 +44,7 @@ class ApexAgent(DQNAgent):
 
     @classmethod
     def default_resource_request(cls, config):
-        cf = dict(cls._default_config, **config)
+        cf = merge_dicts(cls._default_config, config)
         return Resources(
             cpu=1 + cf["optimizer"]["num_replay_buffer_shards"],
             gpu=cf["gpu"] and 1 or 0,

@@ -126,6 +126,29 @@ class AWSNodeProvider(NodeProvider):
                 "Key": k,
                 "Value": v,
             })
+        tag_specs = [{
+            "ResourceType": "instance",
+            "Tags": tag_pairs,
+        }]
+        user_tag_specs = conf.get("TagSpecifications", [])
+        # Allow users to add tags and override values of existing
+        # tags with their own. This only applies to the resource type
+        # "instance". All other resource types are appended to the list of
+        # tag specs.
+        for user_tag_spec in user_tag_specs:
+            if user_tag_spec["ResourceType"] == "instance":
+                for user_tag in user_tag_spec["Tags"]:
+                    exists = False
+                    for tag in tag_specs[0]["Tags"]:
+                        if user_tag["Key"] == tag["Key"]:
+                            exists = True
+                            tag["Value"] = user_tag["Value"]
+                            break
+                    if not exists:
+                        tag_specs[0]["Tags"] += [user_tag]
+            else:
+                tag_specs += [user_tag_spec]
+
         # SubnetIds is not a real config key: we must resolve to a
         # single SubnetId before invoking the AWS API.
         subnet_ids = conf.pop("SubnetIds")
@@ -135,10 +158,7 @@ class AWSNodeProvider(NodeProvider):
             "MinCount": 1,
             "MaxCount": count,
             "SubnetId": subnet_id,
-            "TagSpecifications": conf.get("TagSpecifications", []) + [{
-                "ResourceType": "instance",
-                "Tags": tag_pairs,
-            }]
+            "TagSpecifications": tag_specs
         })
         self.ec2.create_instances(**conf)
 

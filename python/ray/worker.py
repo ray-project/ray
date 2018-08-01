@@ -44,18 +44,17 @@ SCRIPT_MODE = 0
 WORKER_MODE = 1
 LOCAL_MODE = 2
 SILENT_MODE = 3
+PYTHON_MODE = 4
 
 ERROR_KEY_PREFIX = b"Error:"
-DRIVER_ID_LENGTH = 20
-ERROR_ID_LENGTH = 20
 
 # This must match the definition of NIL_ACTOR_ID in task.h.
-NIL_ID = 20 * b"\xff"
+NIL_ID = ray_constants.ID_SIZE * b"\xff"
 NIL_LOCAL_SCHEDULER_ID = NIL_ID
 NIL_FUNCTION_ID = NIL_ID
 NIL_ACTOR_ID = NIL_ID
 NIL_ACTOR_HANDLE_ID = NIL_ID
-NIL_CLIENT_ID = 20 * b"\xff"
+NIL_CLIENT_ID = ray_constants.ID_SIZE * b"\xff"
 
 # This must be kept in sync with the `error_types` array in
 # common/state/error_table.h.
@@ -503,15 +502,6 @@ class Worker(object):
                 # get them until at least get_timeout_milliseconds
                 # milliseconds passes, then repeat.
                 while len(unready_ids) > 0:
-                    for unready_id in unready_ids:
-                        if not self.use_raylet:
-                            self.local_scheduler_client.reconstruct_objects(
-                                [ray.ObjectID(unready_id)], False)
-                    # Do another fetch for objects that aren't available
-                    # locally yet, in case they were evicted since the last
-                    # fetch. We divide the fetch into smaller fetches so as
-                    # to not block the manager for a prolonged period of time
-                    # in a single call.
                     object_ids_to_fetch = [
                         plasma.ObjectID(unready_id)
                         for unready_id in unready_ids.keys()
@@ -525,6 +515,18 @@ class Worker(object):
                     for i in range(0, len(object_ids_to_fetch),
                                    fetch_request_size):
                         if not self.use_raylet:
+                            for unready_id in ray_object_ids_to_fetch[i:(
+                                    i + fetch_request_size)]:
+                                (self.local_scheduler_client.
+                                 reconstruct_objects([unready_id], False))
+                            # Do another fetch for objects that aren't
+                            # available locally yet, in case they were evicted
+                            # since the last fetch. We divide the fetch into
+                            # smaller fetches so as to not block the manager
+                            # for a prolonged period of time in a single call.
+                            # This is only necessary for legacy ray since
+                            # reconstruction and fetch are implemented by
+                            # different processes.
                             self.plasma_client.fetch(object_ids_to_fetch[i:(
                                 i + fetch_request_size)])
                         else:
@@ -1203,13 +1205,13 @@ def error_applies_to_driver(error_key, worker=global_worker):
     """Return True if the error is for this driver and false otherwise."""
     # TODO(rkn): Should probably check that this is only called on a driver.
     # Check that the error key is formatted as in push_error_to_driver.
-    assert len(error_key) == (len(ERROR_KEY_PREFIX) + DRIVER_ID_LENGTH + 1 +
-                              ERROR_ID_LENGTH), error_key
+    assert len(error_key) == (len(ERROR_KEY_PREFIX) + ray_constants.ID_SIZE + 1
+                              + ray_constants.ID_SIZE), error_key
     # If the driver ID in the error message is a sequence of all zeros, then
     # the message is intended for all drivers.
-    generic_driver_id = DRIVER_ID_LENGTH * b"\x00"
+    generic_driver_id = ray_constants.ID_SIZE * b"\x00"
     driver_id = error_key[len(ERROR_KEY_PREFIX):(
-        len(ERROR_KEY_PREFIX) + DRIVER_ID_LENGTH)]
+        len(ERROR_KEY_PREFIX) + ray_constants.ID_SIZE)]
     return (driver_id == worker.task_driver_id.id()
             or driver_id == generic_driver_id)
 
@@ -1571,6 +1573,9 @@ def _init(address_info=None,
         Exception: An exception is raised if an inappropriate combination of
             arguments is passed in.
     """
+    if driver_mode == PYTHON_MODE:
+        raise Exception("ray.PYTHON_MODE has been renamed to ray.LOCAL_MODE. "
+                        "Please use ray.LOCAL_MODE.")
     if driver_mode not in [SCRIPT_MODE, LOCAL_MODE, SILENT_MODE]:
         raise Exception("Driver_mode must be in [ray.SCRIPT_MODE, "
                         "ray.LOCAL_MODE, ray.SILENT_MODE].")
@@ -1944,7 +1949,7 @@ def print_error_messages_raylet(worker):
             assert gcs_entry.EntriesLength() == 1
             error_data = ray.gcs_utils.ErrorTableData.GetRootAsErrorTableData(
                 gcs_entry.Entries(0), 0)
-            NIL_JOB_ID = 20 * b"\x00"
+            NIL_JOB_ID = ray_constants.ID_SIZE * b"\x00"
             job_id = error_data.JobId()
             if job_id not in [worker.task_driver_id.id(), NIL_JOB_ID]:
                 continue
@@ -2162,9 +2167,6 @@ def connect(info,
     else:
         local_scheduler_socket = info["raylet_socket_name"]
 
-    worker.local_scheduler_client = ray.local_scheduler.LocalSchedulerClient(
-        local_scheduler_socket, worker.worker_id, is_worker, worker.use_raylet)
-
     # If this is a driver, set the current task ID, the task driver ID, and set
     # the task index to 0.
     if mode in [SCRIPT_MODE, SILENT_MODE]:
@@ -2178,7 +2180,8 @@ def connect(info,
         else:
             # Try to use true randomness.
             np.random.seed(None)
-        worker.current_task_id = ray.ObjectID(np.random.bytes(20))
+        worker.current_task_id = ray.ObjectID(
+            np.random.bytes(ray_constants.ID_SIZE))
         # Reset the state of the numpy random number generator.
         np.random.set_state(numpy_state)
         # Set other fields needed for computing task IDs.
@@ -2219,6 +2222,13 @@ def connect(info,
         # Set the driver's current task ID to the task ID assigned to the
         # driver task.
         worker.current_task_id = driver_task.task_id()
+    else:
+        # A non-driver worker begins without an assigned task.
+        worker.current_task_id = ray.ObjectID(NIL_ID)
+
+    worker.local_scheduler_client = ray.local_scheduler.LocalSchedulerClient(
+        local_scheduler_socket, worker.worker_id, is_worker,
+        worker.current_task_id, worker.use_raylet)
 
     # Start the import thread
     import_thread.ImportThread(worker, mode).start()

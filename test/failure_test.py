@@ -11,10 +11,6 @@ import time
 import unittest
 
 import ray.ray_constants as ray_constants
-import ray.test.test_functions as test_functions
-
-if sys.version_info >= (3, 0):
-    from importlib import reload
 
 
 def relevant_errors(error_type):
@@ -35,11 +31,22 @@ class TaskStatusTest(unittest.TestCase):
         ray.shutdown()
 
     def testFailedTask(self):
-        reload(test_functions)
+        @ray.remote
+        def throw_exception_fct1():
+            raise Exception("Test function 1 intentionally failed.")
+
+        @ray.remote
+        def throw_exception_fct2():
+            raise Exception("Test function 2 intentionally failed.")
+
+        @ray.remote(num_return_vals=3)
+        def throw_exception_fct3(x):
+            raise Exception("Test function 3 intentionally failed.")
+
         ray.init(num_workers=3, driver_mode=ray.SILENT_MODE)
 
-        test_functions.throw_exception_fct1.remote()
-        test_functions.throw_exception_fct1.remote()
+        throw_exception_fct1.remote()
+        throw_exception_fct1.remote()
         wait_for_errors(ray_constants.TASK_PUSH_ERROR, 2)
         self.assertEqual(
             len(relevant_errors(ray_constants.TASK_PUSH_ERROR)), 2)
@@ -47,7 +54,7 @@ class TaskStatusTest(unittest.TestCase):
             self.assertIn("Test function 1 intentionally failed.",
                           task.get("message"))
 
-        x = test_functions.throw_exception_fct2.remote()
+        x = throw_exception_fct2.remote()
         try:
             ray.get(x)
         except Exception as e:
@@ -56,7 +63,7 @@ class TaskStatusTest(unittest.TestCase):
             # ray.get should throw an exception.
             self.assertTrue(False)
 
-        x, y, z = test_functions.throw_exception_fct3.remote(1.0)
+        x, y, z = throw_exception_fct3.remote(1.0)
         for ref in [x, y, z]:
             try:
                 ray.get(ref)
@@ -300,9 +307,6 @@ class WorkerDeath(unittest.TestCase):
         self.assertIn("died or was killed while executing",
                       ray.error_info()[0]["message"])
 
-    @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
     def testActorWorkerDying(self):
         ray.init(num_workers=0, driver_mode=ray.SILENT_MODE)
 
@@ -321,9 +325,6 @@ class WorkerDeath(unittest.TestCase):
         self.assertRaises(Exception, lambda: ray.get(consume.remote(obj)))
         wait_for_errors(ray_constants.WORKER_DIED_PUSH_ERROR, 1)
 
-    @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
     def testActorWorkerDyingFutureTasks(self):
         ray.init(num_workers=0, driver_mode=ray.SILENT_MODE)
 
@@ -346,9 +347,6 @@ class WorkerDeath(unittest.TestCase):
 
         wait_for_errors(ray_constants.WORKER_DIED_PUSH_ERROR, 1)
 
-    @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
     def testActorWorkerDyingNothingInProgress(self):
         ray.init(num_workers=0, driver_mode=ray.SILENT_MODE)
 

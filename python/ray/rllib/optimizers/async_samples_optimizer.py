@@ -58,6 +58,7 @@ class ReplayActor(object):
         return os.uname()[1]
 
     def add_batch(self, batch):
+        PolicyOptimizer._check_not_multiagent(batch)
         with self.add_batch_timer:
             for row in batch.rows():
                 self.replay_buffer.add(row["obs"], row["actions"],
@@ -131,7 +132,7 @@ class LearnerThread(threading.Thread):
             with self.grad_timer:
                 td_error = self.local_evaluator.compute_apply(replay)[
                     "td_error"]
-            self.outqueue.put((ra, replay, td_error))
+            self.outqueue.put((ra, replay, td_error, replay.count))
         self.learner_queue_size.push(self.inqueue.qsize())
         self.weights_updated = True
 
@@ -164,8 +165,6 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
         self.replay_starts = learning_starts
         self.prioritized_replay_beta = prioritized_replay_beta
         self.prioritized_replay_eps = prioritized_replay_eps
-        self.train_batch_size = train_batch_size
-        self.sample_batch_size = sample_batch_size
         self.max_weight_sync_delay = max_weight_sync_delay
 
         self.learner = LearnerThread(self.local_evaluator)
@@ -205,7 +204,7 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
             ev.set_weights.remote(weights)
             self.steps_since_update[ev] = 0
             for _ in range(SAMPLE_QUEUE_DEPTH):
-                self.sample_tasks.add(ev, ev.sample.remote())
+                self.sample_tasks.add(ev, ev.sample_with_count.remote())
 
     def step(self):
         start = time.time()
@@ -226,16 +225,17 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
         weights = None
 
         with self.timers["sample_processing"]:
-            for ev, sample_batch in self.sample_tasks.completed():
-                self._check_not_multiagent(sample_batch)
-                sample_timesteps += self.sample_batch_size
+            completed = list(self.sample_tasks.completed())
+            counts = ray.get([c[1][1] for c in completed])
+            for i, (ev, (sample_batch, count)) in enumerate(completed):
+                sample_timesteps += counts[i]
 
                 # Send the data to the replay buffer
                 random.choice(
                     self.replay_actors).add_batch.remote(sample_batch)
 
                 # Update weights if needed
-                self.steps_since_update[ev] += self.sample_batch_size
+                self.steps_since_update[ev] += counts[i]
                 if self.steps_since_update[ev] >= self.max_weight_sync_delay:
                     # Note that it's important to pull new weights once
                     # updated to avoid excessive correlation between actors
@@ -249,7 +249,7 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
                     self.steps_since_update[ev] = 0
 
                 # Kick off another sample request
-                self.sample_tasks.add(ev, ev.sample.remote())
+                self.sample_tasks.add(ev, ev.sample_with_count.remote())
 
         with self.timers["replay_processing"]:
             for ra, replay in self.replay_tasks.completed():
@@ -261,9 +261,9 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
 
         with self.timers["update_priorities"]:
             while not self.learner.outqueue.empty():
-                ra, replay, td_error = self.learner.outqueue.get()
+                ra, replay, td_error, count = self.learner.outqueue.get()
                 ra.update_priorities.remote(replay["batch_indexes"], td_error)
-                train_timesteps += self.train_batch_size
+                train_timesteps += count
 
         return sample_timesteps, train_timesteps
 
