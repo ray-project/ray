@@ -2,9 +2,9 @@ import subprocess
 
 # TODO (dsuo): eventually remove this dependency
 import requests
-import pyarrow
-# import pickle
+import ray
 import numpy as np
+
 
 class ExternalClient(object):
     """A class used to proxy communication between a Ray external client
@@ -30,17 +30,14 @@ class ExternalClient(object):
         self.gateway_data_port = gateway_data_port
         self.client_socket_name = "/tmp/ray_external_client" + \
             str(np.random.randint(0, 99999999)).zfill(8)
-        self.serialization_context = None
         self.url = "http://{}:{}".format(
             self.gateway_address,
             self.gateway_data_port)
 
-        print(self.url)
-
         # TODO (dsuo): should move to connect()
         command = [
-            "socat", "UNIX-LISTEN:" + self.client_socket_name + \
-            ",reuseaddr,fork", "TCP:" + self.gateway_address + ":" + \
+            "socat", "UNIX-LISTEN:" + self.client_socket_name +
+            ",reuseaddr,fork", "TCP:" + self.gateway_address + ":" +
             str(self.gateway_port)
         ]
 
@@ -54,12 +51,7 @@ class ExternalClient(object):
             Exception: An exception is raised if the serialization context
                 was not properly initialized by the worker.py.
         """
-        if self.serialization_context is None:
-            raise Exception("Serialization context in ExternalClient not "
-                            "initialized.")
-
-        data = self.serialization_context.serialize(value) \
-                                         .to_buffer().to_pybytes()
+        data = ray.pyarrow.serialize(value).to_buffer().to_pybytes()
         res = requests.post(url=self.url,
                             files={
                                 "value": data,
@@ -78,8 +70,8 @@ class ExternalClient(object):
 
         # TODO (dsuo): ignore batching
         # TODO (dsuo): would be nice to not encode / decode ObjectIDs
-        param = ",".join([object_id.id().hex() for \
-                         object_id in object_ids])
+        param = ",".join([object_id.id().hex() for
+                          object_id in object_ids])
 
         res = requests.get(url=self.url,
                            params={
@@ -87,7 +79,7 @@ class ExternalClient(object):
                            },
                            stream=True)
 
-        objects = self.serialization_context.deserialize(res.raw.read())
+        objects = ray.pyarrow.deserialize(res.raw.read())
 
         return objects
 

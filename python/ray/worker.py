@@ -1717,11 +1717,10 @@ def _init(address_info=None,
         global_worker.external_client = ExternalClient(
             gateway_address=driver_address_info["redis_address"].split(":")[0],
             gateway_port=driver_address_info["gateway_port"],
-            gateway_data_port=5000,
-            # client_socket_name=driver_address_info["local_scheduler_socket_name"] if \
-            #    client_socket_name is None else None,
-            # memcopy_threads=global_worker.memcopy_threads,
-            # serialization_context=global_worker.serialization_context
+
+            # TODO (dsuo): eventually, this option should be exposed or rolled
+            # up into a single gateway port
+            gateway_data_port=5000
         )
     else:
         driver_address_info = {
@@ -1828,8 +1827,7 @@ def init(redis_address=None,
         include_webui: Boolean flag indicating whether to start the web
             UI, which is a Jupyter notebook.
         use_raylet: True if the new raylet code path should be used.
-        gateway_port: The port that socat will listen on for commands to
-        forward.
+        gateway_port: The port of remote gateway.
 
     Returns:
         Address information about the started processes.
@@ -1851,11 +1849,14 @@ def init(redis_address=None,
         logger.info("Detected environment variable 'RAY_USE_XRAY'.")
         use_raylet = True
 
-    if driver_mode == EXTERNAL_CLIENT_MODE and (redis_address is None or
-                                       gateway_port is None or
-                                       not use_raylet):
-        raise Exception("ray.EXTERNAL_CLIENT_MODE requires redis_address and "
-                        "gateway_port. use_raylet must be True.")
+    if gateway_port is not None:
+        # TODO (dsuo): eventually, we should allow different redis and gateway
+        # addresses, but for now, the gateway depends on colocation with redis.
+        if not use_raylet:
+            raise Exception("ray.EXTERNAL_CLIENT_MODE requires use_raylet True.")
+
+        # Automatically detect driver_mode
+        driver_mode = EXTERNAL_CLIENT_MODE
 
     # Convert hostnames to numerical IP address.
     if node_ip_address is not None:
@@ -1863,7 +1864,10 @@ def init(redis_address=None,
     if redis_address is not None:
         redis_address = services.address_to_ip(redis_address)
 
-    info = {"node_ip_address": node_ip_address, "redis_address": redis_address}
+    info = {
+        "node_ip_address": node_ip_address,
+        "redis_address": redis_address,
+    }
 
     ret = _init(
         address_info=info,
@@ -2544,8 +2548,6 @@ def get(object_ids, worker=global_worker):
             # TODO (dsuo): same as put; likely want to reuse validation / retry logic,
             # but branching here now for simplicity
             if worker.mode == EXTERNAL_CLIENT_MODE:
-                # TODO (dsuo): An example of duplicated logic.
-                worker.external_client.serialization_context = worker.get_serialization_context(worker.task_driver_id)
                 values = worker.external_client.get(object_ids)
             else:
                 values = worker.get_object(object_ids)
@@ -2555,8 +2557,6 @@ def get(object_ids, worker=global_worker):
             return values
         else:
             if worker.mode == EXTERNAL_CLIENT_MODE:
-                # TODO (dsuo): An example of duplicated logic.
-                worker.external_client.serialization_context = worker.get_serialization_context(worker.task_driver_id)
                 value = worker.external_client.get([object_ids])
                 if isinstance(value, list):
                     value = value[0]
@@ -2588,8 +2588,6 @@ def put(value, worker=global_worker):
             worker.current_task_id, worker.put_index, worker.use_raylet)
 
         if worker.mode == EXTERNAL_CLIENT_MODE:
-            # TODO (dsuo): An example of duplicated logic.
-            worker.external_client.serialization_context = worker.get_serialization_context(worker.task_driver_id)
             worker.external_client.put(
                 value,
                 object_id=object_id.id())

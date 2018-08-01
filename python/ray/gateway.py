@@ -12,6 +12,7 @@ from ray.utils import hex_to_binary
 app = Flask(__name__)
 ctx = pyarrow.default_serialization_context()
 
+
 @app.route('/', methods=['GET', 'POST'])
 def index():
     """TODO (dsuo): Add comments.
@@ -36,8 +37,8 @@ def index():
 
         return object_id, 402
     elif request.method == 'GET' and 'object_ids' in request.args:
-        object_ids = [plasma.ObjectID(hex_to_binary(object_id)) for object_id in \
-            request.args['object_ids'].split(",")]
+        object_ids = [plasma.ObjectID(hex_to_binary(object_id)) for object_id
+                      in request.args['object_ids'].split(",")]
 
         # Fetch remote objects
         # TODO (dsuo): maybe care about batching
@@ -56,7 +57,6 @@ def index():
         data = ctx.serialize(results).to_buffer().to_pybytes()
 
         return send_file(io.BytesIO(data), mimetype="application/octet-stream")
-        
     else:
         return '''
         <html><body><h1>hi!</h1></body></html>
@@ -108,6 +108,7 @@ def start(plasma_store_socket_name,
     app.run(host=address,
             port=port,
             debug=debug)
-    
+
+
 if __name__ == '__main__':
     start()

@@ -49,7 +49,7 @@ def testBasicExternalClient(ray_start):
 # def testArrayExternalClient(ray_start):
 #     data = [1, 2, 3]
 #     a = ray.put(data)
-
+#
 #     ret = ray.get(a)
 #     for i in range(len(data)):
 #         assert ret[i] == data[i]
