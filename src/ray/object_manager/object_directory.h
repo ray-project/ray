@@ -141,10 +141,10 @@ class ObjectDirectory : public ObjectDirectoryInterface {
     std::unordered_set<ClientID> current_object_locations;
   };
 
-  /// Info about subscribers to object locations.
-  std::unordered_map<ObjectID, LocationListenerState> listeners_;
   /// Reference to the gcs client.
   std::shared_ptr<gcs::AsyncGcsClient> gcs_client_;
+  /// Info about subscribers to object locations.
+  std::unordered_map<ObjectID, LocationListenerState> listeners_;
   /// Map from object ID to the number of times it's been evicted on this
   /// node before.
   std::unordered_map<ObjectID, int> object_evictions_;

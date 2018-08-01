@@ -13,6 +13,7 @@ from collections import defaultdict, namedtuple, OrderedDict
 import numpy as np
 
 import ray
+import ray.ray_constants as ray_constants
 import ray.test.test_utils
 
 
@@ -2131,8 +2132,6 @@ class GlobalStateAPI(unittest.TestCase):
 
         self.assertEqual(ray.global_state.object_table(), {})
 
-        ID_SIZE = 20
-
         driver_id = ray.experimental.state.binary_to_hex(
             ray.worker.global_worker.worker_id)
         driver_task_id = ray.experimental.state.binary_to_hex(
@@ -2150,14 +2149,14 @@ class GlobalStateAPI(unittest.TestCase):
             self.assertEqual(task_table[driver_task_id]["TaskSpec"]["TaskID"],
                              driver_task_id)
             self.assertEqual(task_table[driver_task_id]["TaskSpec"]["ActorID"],
-                             ID_SIZE * "ff")
+                             ray_constants.ID_SIZE * "ff")
             self.assertEqual(task_table[driver_task_id]["TaskSpec"]["Args"],
                              [])
             self.assertEqual(
                 task_table[driver_task_id]["TaskSpec"]["DriverID"], driver_id)
             self.assertEqual(
                 task_table[driver_task_id]["TaskSpec"]["FunctionID"],
-                ID_SIZE * "ff")
+                ray_constants.ID_SIZE * "ff")
             self.assertEqual(
                 (task_table[driver_task_id]["TaskSpec"]["ReturnObjectIDs"]),
                 [])
@@ -2169,7 +2168,7 @@ class GlobalStateAPI(unittest.TestCase):
                 driver_task_id)
             self.assertEqual(
                 task_table[driver_task_id][0]["TaskSpec"]["ActorID"],
-                ID_SIZE * "ff")
+                ray_constants.ID_SIZE * "ff")
             self.assertEqual(task_table[driver_task_id][0]["TaskSpec"]["Args"],
                              [])
             self.assertEqual(
@@ -2177,7 +2176,7 @@ class GlobalStateAPI(unittest.TestCase):
                 driver_id)
             self.assertEqual(
                 task_table[driver_task_id][0]["TaskSpec"]["FunctionID"],
-                ID_SIZE * "ff")
+                ray_constants.ID_SIZE * "ff")
             self.assertEqual(
                 (task_table[driver_task_id][0]["TaskSpec"]["ReturnObjectIDs"]),
                 [])
@@ -2222,7 +2221,7 @@ class GlobalStateAPI(unittest.TestCase):
             task_spec = task_table[task_id]["TaskSpec"]
         else:
             task_spec = task_table[task_id][0]["TaskSpec"]
-        self.assertEqual(task_spec["ActorID"], ID_SIZE * "ff")
+        self.assertEqual(task_spec["ActorID"], ray_constants.ID_SIZE * "ff")
         self.assertEqual(task_spec["Args"], [1, "hi", x_id])
         self.assertEqual(task_spec["DriverID"], driver_id)
         self.assertEqual(task_spec["ReturnObjectIDs"], [result_id])
