@@ -15,7 +15,7 @@ ray::Status TcpConnect(boost::asio::ip::tcp::socket &socket,
   boost::system::error_code error;
   socket.connect(endpoint, error);
   if (error) {
-    return ray::Status::IOError(error.message());
+    return ray::Status::IOError(strerror(error.value()));
   } else {
     return ray::Status::OK();
   }
@@ -84,7 +84,7 @@ ray::Status ServerConnection<T>::WriteMessage(int64_t type, int64_t length,
   boost::system::error_code error;
   WriteBuffer(message_buffers, error);
   if (error) {
-    return ray::Status::IOError(error.message());
+    return ray::Status::IOError(strerror(error.value()));
   } else {
     return ray::Status::OK();
   }
