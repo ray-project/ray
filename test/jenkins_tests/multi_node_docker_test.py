@@ -399,9 +399,7 @@ if __name__ == "__main__":
         action="store_true",
         help="use local copies of the test scripts")
     parser.add_argument(
-        "--use-raylet",
-        action="store_true",
-        help="use raylet mode in Docker")
+        "--use-raylet", action="store_true", help="use raylet mode in Docker")
     args = parser.parse_args()
 
     # Parse the number of CPUs and GPUs to use for each worker.
