@@ -102,7 +102,7 @@ class MonitorTest(unittest.TestCase):
         subprocess.Popen(["ray", "stop"]).wait()
 
     @unittest.skipIf(
-        os.environ.get('RAY_USE_NEW_GCS', False),
+        os.environ.get("RAY_USE_NEW_GCS", False),
         "Failing with the new GCS API.")
     def testCleanupOnDriverExitSingleRedisShard(self):
         self._testCleanupOnDriverExit(num_redis_shards=1)
@@ -111,7 +111,7 @@ class MonitorTest(unittest.TestCase):
         os.environ.get("RAY_USE_XRAY") == "1",
         "This test does not work with xray yet.")
     @unittest.skipIf(
-        os.environ.get('RAY_USE_NEW_GCS', False),
+        os.environ.get("RAY_USE_NEW_GCS", False),
         "Hanging with the new GCS API.")
     def testCleanupOnDriverExitManyRedisShards(self):
         self._testCleanupOnDriverExit(num_redis_shards=5)

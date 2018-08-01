@@ -100,7 +100,7 @@ class Monitor(object):
                     ignore_subscribe_messages=True)
                 self.shard_subscribe_clients.append(subscribe_client)
         else:
-            # We don't need to subscribe to the shards in legacy Ray.
+            # We don`t need to subscribe to the shards in legacy Ray.
             self.shard_subscribe_clients = []
         # Initialize data structures to keep track of the active database
         # clients.
@@ -514,46 +514,34 @@ class Monitor(object):
         xray_object_table_prefix = (
             ray.gcs_utils.TablePrefix_OBJECT_string.encode("ascii"))
 
-        task_table_infos = {}  # task id -> TaskInfo
         task_table_objects = self.state.task_table()
         driver_id_hex = binary_to_hex(driver_id)
+        driver_task_id_bins = set()
         for task_id_hex in task_table_objects:
             if len(task_table_objects[task_id_hex]) == 0:
                 continue
-            task_table_object = task_table_objects[task_id_hex][0]['TaskSpec']
-            task_driver_id_hex = task_table_object['DriverID']
+            task_table_object = task_table_objects[task_id_hex][0]["TaskSpec"]
+            task_driver_id_hex = task_table_object["DriverID"]
             if driver_id_hex != task_driver_id_hex:
                 # Ignore tasks that aren't from this driver.
                 continue
-            task_table_infos[task_id_hex] = task_table_object
-        driver_task_id_bins = [
-            hex_to_binary(task_id_hex)
-            for task_id_hex in task_table_infos.keys()
-        ]
+            driver_task_id_bins.add(hex_to_binary(task_id_hex))
 
-        # Get the list of objects returned by driver tasks.
-        driver_object_ids = set()
-        for task_info in task_table_infos.values():
-            driver_object_ids |= {
-                object_id.id()
-                for object_id in task_info['ReturnObjectIDs']
-            }
-
-        # Also record all the ray.put()'d objects.
-        all_put_objects = []
+        # Get all objects and their task ids.
+        # We want to keep the ones associated with the driver.
+        all_objects = []
         object_table_objects = self.state.object_table()
-        for object_id in object_table_objects:
-            if len(object_table_objects[object_id]) == 0:
-                continue
+        for object_id, object_table_object in object_table_objects.items():
+            assert len(object_table_object) > 0
             object_id_bin = object_id.id()
             task_id_bin = ray.local_scheduler.compute_task_id(object_id).id()
-            all_put_objects.append((object_id_bin, task_id_bin))
+            all_objects.append((object_id_bin, task_id_bin))
 
         # Keep objects from relevant tasks.
-        driver_task_ids_set = set(driver_task_id_bins)
-        for object_id, task_id in all_put_objects:
-            if task_id in driver_task_ids_set:
-                driver_object_ids.add(object_id)
+        driver_object_id_bins = set()
+        for object_id, task_id in all_objects:
+            if task_id in driver_task_id_bins:
+                driver_object_id_bins.add(object_id)
 
         def to_shard_index(id_bin):
             return binary_to_object_id(id_bin).redis_shard_hash() % len(
@@ -564,7 +552,7 @@ class Monitor(object):
         for task_id_bin in driver_task_id_bins:
             sharded_keys[to_shard_index(task_id_bin)].append(
                 xray_task_table_prefix + task_id_bin)
-        for object_id_bin in driver_object_ids:
+        for object_id_bin in driver_object_id_bins:
             sharded_keys[to_shard_index(object_id_bin)].append(
                 xray_object_table_prefix + object_id_bin)
 
@@ -688,7 +676,7 @@ class Monitor(object):
         max_entries_to_flush = self.gcs_flush_policy.num_entries_to_flush()
         num_flushed = self.redis_shard.execute_command(
             "HEAD.FLUSH {}".format(max_entries_to_flush))
-        log.info('num_flushed {}'.format(num_flushed))
+        log.info("num_flushed {}".format(num_flushed))
 
         # This flushes event log and log files.
         ray.experimental.flush_redis_unsafe(self.redis)
