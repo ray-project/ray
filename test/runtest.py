@@ -1755,8 +1755,8 @@ class ResourcesTest(unittest.TestCase):
                 elif name == "run_on_2":
                     assert result in [store_names[2]]
                 elif name == "run_on_0_1_2":
-                    assert result in \
-                        [store_names[0], store_names[1], store_names[2]]
+                    assert (result in
+                            [store_names[0], store_names[1], store_names[2]])
                 elif name == "run_on_1_2":
                     assert result in [store_names[1], store_names[2]]
                 elif name == "run_on_0_2":
@@ -2140,8 +2140,8 @@ class GlobalStateAPI(unittest.TestCase):
         assert len(task_table) == 1
         assert driver_task_id == list(task_table.keys())[0]
         if not ray.worker.global_worker.use_raylet:
-            assert task_table[driver_task_id]["State"] == \
-                             ray.experimental.state.TASK_STATUS_RUNNING
+            assert (task_table[driver_task_id]["State"] ==
+                    ray.experimental.state.TASK_STATUS_RUNNING)
         if not ray.worker.global_worker.use_raylet:
             task_spec = task_table[driver_task_id]["TaskSpec"]
         else:
