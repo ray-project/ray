@@ -125,8 +125,8 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
                 sample_batch = ray.get(sample_batch)
                 sample_timesteps += sample_batch.count
                 self.batch_buffer.append(sample_batch)
-                if sum([b.count
-                        for b in self.batch_buffer]) >= self.train_batch_size:
+                if sum(b.count
+                       for b in self.batch_buffer) >= self.train_batch_size:
                     train_batch = self.batch_buffer[0].concat_samples(
                         self.batch_buffer)
                     with self.timers["enqueue"]:
