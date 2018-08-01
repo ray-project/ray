@@ -182,7 +182,6 @@ def temporary_helper_function():
         assert ("failed to be imported, and so cannot execute this method" in
                 ray.error_info()[1]["message"])
 
-
         # Check that if we try to get the function it throws an exception and
         # does not hang.
         with pytest.raises(Exception):
