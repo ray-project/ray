@@ -24,13 +24,23 @@ def index():
     if request.method == 'POST':
         raw_object_id = request.files['object_id'].read()
         object_id = ray.pyarrow.plasma.ObjectID(raw_object_id)
+
+        # NOTE (dsuo): we should use readinto in the future if possible.
+        # Otherwise, we create a throwaway buffer when we read the whole
+        # stream of data. Might look something like this:
+        #
+        #   request.files['value'].readinto(buf)
+        #
+        # Unfortunately, the SpooledTemporaryFile type of request.files['value']
+        # doesn't implement. See here: https://bugs.python.org/issue32600.
         data = request.files['value'].read()
 
         # Get a memoryview buffer of type unsigned bytes
         buf = memoryview(plasma_client.create(object_id, len(data))).cast("B")
 
-        for i in range(len(data)):
-            buf[i] = data[i]
+        # Copy data into plasma buffer
+        buf[:] = data
+        
         plasma_client.seal(object_id)
         return raw_object_id, 402
 
