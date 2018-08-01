@@ -89,8 +89,8 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1submitTask(
     local_scheduler_submit(client, taskExecutionSpec);
   } else {
     auto data =
-        reinterpret_cast<uint8_t *>(env->GetDirectBufferAddress(buff)) + pos;
-    ray::raylet::TaskSpecification task_spec(data, sz);
+        reinterpret_cast<char *>(env->GetDirectBufferAddress(buff)) + pos;
+    ray::raylet::TaskSpecification task_spec(std::string(data, sz));
     local_scheduler_submit_raylet(client, execution_dependencies, task_spec);
   }
 }
