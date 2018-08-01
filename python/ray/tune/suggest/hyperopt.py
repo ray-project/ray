@@ -31,12 +31,15 @@ class HyperOptSearch(ExistingVariants):
             This refers to an increasing value, which is internally negated
             when interacting with HyperOpt so that HyperOpt can "maximize"
             this value.
+        experiments (Experiment | list | dict): Experiments to run. Will be
+            used by ExistingVariants parent class to initialize Trials.
     """
 
     def __init__(self,
                  space,
                  max_concurrent=10,
                  reward_attr="episode_reward_mean",
+                 experiments=None,
                  **kwargs):
         assert hpo is not None, "HyperOpt must be installed!"
         assert type(max_concurrent) is int and max_concurrent > 0
@@ -48,7 +51,7 @@ class HyperOptSearch(ExistingVariants):
         self._live_trials = {}
         self.rstate = np.random.RandomState()
 
-        super(HyperOptSearch, self).__init__(**kwargs)
+        super(HyperOptSearch, self).__init__(experiments=experiments, **kwargs)
 
     def try_suggest(self):
         if not self._num_live_trials() < self._max_concurrent:

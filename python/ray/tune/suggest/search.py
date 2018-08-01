@@ -5,6 +5,8 @@ from __future__ import print_function
 from itertools import chain
 
 from ray.tune.suggest.variant_generator import generate_trials
+from ray.tune.experiment import Experiment
+from ray.tune.error import TuneError
 
 
 class SearchAlgorithm(object):
@@ -93,15 +95,32 @@ class ExistingVariants(SearchAlgorithm):
     PASS = "PASS"
 
     def __init__(self, experiments=None):
-        """
+        """Constructs a generator given experiment specifications.
+
         Arguments:
-            experiments (list): List of Experiment objects.
+            experiments (Experiment | list | dict): Experiments to run.
         """
-        experiments = experiments or []
+        exp_list = experiments
+        if isinstance(experiments, Experiment):
+            exp_list = [experiments]
+        elif type(experiments) is dict:
+            exp_list = [
+                Experiment.from_json(name, spec)
+                for name, spec in experiments.items()
+            ]
+        if (type(exp_list) is list
+                and all(isinstance(exp, Experiment) for exp in exp_list)):
+            if len(exp_list) > 1:
+                print("Warning: All experiments will be"
+                      " using the same Search Algorithm.")
+        else:
+            raise TuneError("Invalid argument: {}".format(experiments))
+
         self._generator = chain.from_iterable([
             generate_trials(experiment.spec, experiment.name, self)
-            for experiment in experiments
+            for experiment in exp_list
         ])
+
         self._finished = False
 
     def next_trial(self):

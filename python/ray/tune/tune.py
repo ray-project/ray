@@ -14,7 +14,6 @@ from ray.tune.log_sync import wait_for_log_sync
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.trial_scheduler import FIFOScheduler
 from ray.tune.web_server import TuneServer
-from ray.tune.experiment import Experiment
 
 _SCHEDULERS = {
     "FIFO": FIFOScheduler,
@@ -66,22 +65,7 @@ def run_experiments(experiments=None,
     if search_alg is None:
         assert experiments is not None, "Experiments need to be specified" \
             "if search_alg is not provided."
-        exp_list = experiments
-        if isinstance(experiments, Experiment):
-            exp_list = [experiments]
-        elif type(experiments) is dict:
-            exp_list = [
-                Experiment.from_json(name, spec)
-                for name, spec in experiments.items()
-            ]
-        if (type(exp_list) is list
-                and all(isinstance(exp, Experiment) for exp in exp_list)):
-            if len(exp_list) > 1:
-                print("Warning: All experiments will be"
-                      " using the same Search Algorithm.")
-            search_alg = ExistingVariants(exp_list)
-        else:
-            raise TuneError("Invalid argument: {}".format(experiments))
+        search_alg = ExistingVariants(experiments)
 
     runner = TrialRunner(
         search_alg,
