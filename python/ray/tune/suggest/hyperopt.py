@@ -36,7 +36,8 @@ class HyperOptSearch(ExistingVariants):
     def __init__(self,
                  space,
                  max_concurrent=10,
-                 reward_attr="episode_reward_mean"):
+                 reward_attr="episode_reward_mean",
+                 **kwargs):
         assert hpo is not None, "HyperOpt must be installed!"
         assert type(max_concurrent) is int and max_concurrent > 0
         self._max_concurrent = max_concurrent
@@ -45,8 +46,9 @@ class HyperOptSearch(ExistingVariants):
         self.domain = hpo.Domain(lambda spc: spc, space)
         self._hpopt_trials = hpo.Trials()
         self._live_trials = {}
-
         self.rstate = np.random.RandomState()
+
+        super(HyperOptSearch, self).__init__(**kwargs)
 
     def try_suggest(self):
         if not self._num_live_trials() < self._max_concurrent:
