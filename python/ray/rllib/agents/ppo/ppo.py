@@ -91,8 +91,9 @@ class PPOAgent(Agent):
                     "sgd_batch_size": self.config["sgd_batchsize"],
                     "sgd_stepsize": self.config["sgd_stepsize"],
                     "num_sgd_iter": self.config["num_sgd_iter"],
+                    "num_gpus": self.config["num_gpus"],
                     "timesteps_per_batch": self.config["timesteps_per_batch"],
-                    "standardize_fields": ["advantages"]
+                    "standardize_fields": ["advantages"],
                 })
 
     def _train(self):
