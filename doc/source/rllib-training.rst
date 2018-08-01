@@ -108,7 +108,43 @@ Here is an example of the basic usage:
            checkpoint = agent.save()
            print("checkpoint saved at", checkpoint)
 
-All RLlib agents implement the tune Trainable API, which means they support incremental training and checkpointing. This enables them to be easily used in experiments with Ray Tune.
+.. note::
+
+    It's recommended that you run RLlib agents with `Tune <tune.html>`__, for easy experiment management and visualization of results. Just set ``"run": AGENT_NAME, "env": ENV_NAME`` in the experiment config.
+
+All RLlib agents are compatible with the `Tune API <tune.html#concepts>`__. This enables them to be easily used in experiments with `Tune <tune.html>`__. For example, the following code performs a simple hyperparam sweep of PPO:
+
+.. code-block:: python
+
+    import ray
+    import ray.tune as tune
+
+    ray.init()
+    tune.run_experiments({
+        "my_experiment": {
+            "run": "PPO",
+            "env": "CartPole-v0",
+            "stop": {"episode_reward_mean": 200},
+            "config": {
+                "num_workers": 1,
+                "sgd_stepsize": tune.grid_search([0.01, 0.001, 0.0001]),
+            },
+        },
+    })
+
+Tune will schedule the trials to run in parallel on your Ray cluster:
+
+::
+
+    == Status ==
+    Using FIFO scheduling algorithm.
+    Resources requested: 4/4 CPUs, 0/0 GPUs
+    Result logdir: /home/eric/ray_results/my_experiment
+    PENDING trials:
+     - PPO_CartPole-v0_2_sgd_stepsize=0.0001:	PENDING
+    RUNNING trials:
+     - PPO_CartPole-v0_0_sgd_stepsize=0.01:	RUNNING [pid=21940], 16 s, 4013 ts, 22 rew
+     - PPO_CartPole-v0_1_sgd_stepsize=0.001:	RUNNING [pid=21942], 27 s, 8111 ts, 54.7 rew
 
 Accessing Global State
 ~~~~~~~~~~~~~~~~~~~~~~

@@ -160,7 +160,7 @@ class TestMultiAgentEnv(unittest.TestCase):
         self.assertEqual(done["__all__"], True)
 
     def testVectorizeBasic(self):
-        env = _MultiAgentEnvToAsync(lambda: BasicMultiAgent(2), [], 2)
+        env = _MultiAgentEnvToAsync(lambda v: BasicMultiAgent(2), [], 2)
         obs, rew, dones, _, _ = env.poll()
         self.assertEqual(obs, {0: {0: 0, 1: 0}, 1: {0: 0, 1: 0}})
         self.assertEqual(rew, {0: {0: None, 1: None}, 1: {0: None, 1: None}})
@@ -236,7 +236,7 @@ class TestMultiAgentEnv(unittest.TestCase):
             })
 
     def testVectorizeRoundRobin(self):
-        env = _MultiAgentEnvToAsync(lambda: RoundRobinMultiAgent(2), [], 2)
+        env = _MultiAgentEnvToAsync(lambda v: RoundRobinMultiAgent(2), [], 2)
         obs, rew, dones, _, _ = env.poll()
         self.assertEqual(obs, {0: {0: 0}, 1: {0: 0}})
         self.assertEqual(rew, {0: {0: None}, 1: {0: None}})
