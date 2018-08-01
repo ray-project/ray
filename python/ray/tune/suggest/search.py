@@ -65,7 +65,6 @@ class SearchAlgorithm(object):
         raise NotImplementedError
 
 
-
 class ExistingVariants(SearchAlgorithm):
     """Uses Tune's variant generation for resolving variables.
 
