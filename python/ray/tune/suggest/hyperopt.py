@@ -50,7 +50,7 @@ class HyperOptSearch(VariantAlgorithm):
 
     def try_suggest(self):
         if not self._num_live_trials() < self._max_concurrent:
-            return VariantAlgorithm.NOT_READY, None
+            return VariantAlgorithm.PASS, None
         new_ids = self._hpopt_trials.new_trial_ids(1)
         self._hpopt_trials.refresh()
 

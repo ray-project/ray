@@ -69,7 +69,7 @@ def generate_trials(unresolved_spec, output_path='', search_alg=None):
             # We hold the other resolved vars until suggestion is ready.
             while search_alg is not None:
                 suggested_config, trial_id = search_alg.try_suggest()
-                if suggested_config is search_alg.NOT_READY:
+                if suggested_config is search_alg.PASS:
                     yield None
                 else:
                     new_config.update(suggested_config)

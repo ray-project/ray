@@ -595,12 +595,12 @@ class VariantGeneratorTest(unittest.TestCase):
             else:
                 break
         self.assertEqual(len(trials), 2)
-        self.assertEqual(searcher.try_suggest()[0], VariantAlgorithm.NOT_READY)
+        self.assertEqual(searcher.try_suggest()[0], VariantAlgorithm.PASS)
 
         finished_trial = trials.pop()
         searcher.on_trial_complete(finished_trial.trial_id)
         self.assertNotEqual(searcher.try_suggest()[0],
-                            VariantAlgorithm.NOT_READY)
+                            VariantAlgorithm.PASS)
 
 
 class TrialRunnerTest(unittest.TestCase):
