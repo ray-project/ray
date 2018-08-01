@@ -10,7 +10,6 @@ import traceback
 
 from ray.tune import TuneError
 from ray.tune.web_server import TuneServer
-from ray.tune.suggest import VariantAlgorithm
 from ray.tune.trial import Trial, Resources
 from ray.tune.trial_scheduler import FIFOScheduler, TrialScheduler
 
@@ -21,7 +20,7 @@ class TrialRunner(object):
     """A TrialRunner implements the event loop for scheduling trials on Ray.
 
     Example:
-        runner = TrialRunner()
+        runner = TrialRunner(ExistingVariants())
         runner.add_trial(Trial(...))
         runner.add_trial(Trial(...))
         while not runner.is_finished():
@@ -40,7 +39,7 @@ class TrialRunner(object):
     """
 
     def __init__(self,
-                 search_alg=None,
+                 search_alg,
                  scheduler=None,
                  launch_web_server=False,
                  server_port=TuneServer.DEFAULT_PORT,
@@ -49,7 +48,7 @@ class TrialRunner(object):
         """Initializes a new TrialRunner.
 
         Args:
-            search_alg (SearchAlgorithm): Defaults to VariantAlgorithm.
+            search_alg (SearchAlgorithm): Defaults to ExistingVariants.
             scheduler (TrialScheduler): Defaults to FIFOScheduler.
             launch_web_server (bool): Flag for starting TuneServer
             server_port (int): Port number for launching TuneServer
@@ -60,7 +59,7 @@ class TrialRunner(object):
                 be set to True when running on an autoscaling cluster to enable
                 automatic scale-up.
         """
-        self._search_alg = search_alg or VariantAlgorithm()
+        self._search_alg = search_alg
         self._scheduler_alg = scheduler or FIFOScheduler()
         self._trials = []
         self._running = {}

@@ -40,7 +40,8 @@ def generate_trials(unresolved_spec, output_path='', search_alg=None):
         unresolved_spec (dict): Experiment spec conforming to the argument
             schema defined in `ray.tune.config_parser`.
         output_path (str): Path where to store experiment outputs.
-        search_alg (VariantAlgorithm): VariantAlgorithm for hyperparameters.
+        search_alg (ExistingVariants): ExistingVariants search algorithm
+            for hyperparameters.
 
     Yields:
         Trial|None: If search_alg is specified but cannot be queried at
@@ -65,7 +66,7 @@ def generate_trials(unresolved_spec, output_path='', search_alg=None):
                 raise TuneError("Error parsing args, see above message", spec)
 
             new_config = copy.deepcopy(spec.get("config", {}))
-
+            trial_id = None
             # We hold the other resolved vars until suggestion is ready.
             while search_alg is not None:
                 suggested_config, trial_id = search_alg.try_suggest()

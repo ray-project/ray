@@ -15,7 +15,7 @@ from ray.tune.registry import _global_registry, TRAINABLE_CLASS
 from ray.tune.result import DEFAULT_RESULTS_DIR, TrainingResult
 from ray.tune.util import pin_in_object_store, get_pinned_object
 from ray.tune.experiment import Experiment
-from ray.tune.suggest.search import _MockAlgorithm, VariantAlgorithm
+from ray.tune.suggest.search import _MockAlgorithm, ExistingVariants
 from ray.tune.trial import Trial, Resources
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.suggest import generate_trials, grid_search
@@ -573,20 +573,21 @@ class VariantGeneratorTest(unittest.TestCase):
         else:
             assert False
 
-    def testMaxConcurrentVariantAlgorithm(self):
-        searcher = _MockAlgorithm(max_concurrent=2)
-        searcher.add_experiment(
-            {
-                "run": "PPO",
-                "config": {
-                    "bar": {
-                        "grid_search": [True, False]
-                    },
-                    "foo": {
-                        "grid_search": [1, 2, 3]
-                    },
+    def testMaxConcurrentExistingVariants(self):
+        experiment_spec = {
+            "run": "PPO",
+            "config": {
+                "bar": {
+                    "grid_search": [True, False]
                 },
-            })
+                "foo": {
+                    "grid_search": [1, 2, 3]
+                },
+            },
+        }
+        experiments = [Experiment.from_json("test", experiment_spec)]
+
+        searcher = _MockAlgorithm(max_concurrent=2, experiments=experiments)
         trialgenerator = searcher._generator
         trials = []
         for trial in trialgenerator:
@@ -595,12 +596,11 @@ class VariantGeneratorTest(unittest.TestCase):
             else:
                 break
         self.assertEqual(len(trials), 2)
-        self.assertEqual(searcher.try_suggest()[0], VariantAlgorithm.PASS)
+        self.assertEqual(searcher.try_suggest()[0], ExistingVariants.PASS)
 
         finished_trial = trials.pop()
         searcher.on_trial_complete(finished_trial.trial_id)
-        self.assertNotEqual(searcher.try_suggest()[0],
-                            VariantAlgorithm.PASS)
+        self.assertNotEqual(searcher.try_suggest()[0], ExistingVariants.PASS)
 
 
 class TrialRunnerTest(unittest.TestCase):
@@ -654,7 +654,7 @@ class TrialRunnerTest(unittest.TestCase):
 
     def testExtraResources(self):
         ray.init(num_cpus=4, num_gpus=2)
-        runner = TrialRunner()
+        runner = TrialRunner(ExistingVariants())
         kwargs = {
             "stopping_criterion": {
                 "training_iteration": 1
@@ -675,7 +675,7 @@ class TrialRunnerTest(unittest.TestCase):
 
     def testResourceScheduler(self):
         ray.init(num_cpus=4, num_gpus=1)
-        runner = TrialRunner()
+        runner = TrialRunner(ExistingVariants())
         kwargs = {
             "stopping_criterion": {
                 "training_iteration": 1
@@ -704,7 +704,7 @@ class TrialRunnerTest(unittest.TestCase):
 
     def testMultiStepRun(self):
         ray.init(num_cpus=4, num_gpus=2)
-        runner = TrialRunner()
+        runner = TrialRunner(ExistingVariants())
         kwargs = {
             "stopping_criterion": {
                 "training_iteration": 5
@@ -733,7 +733,7 @@ class TrialRunnerTest(unittest.TestCase):
 
     def testErrorHandling(self):
         ray.init(num_cpus=4, num_gpus=2)
-        runner = TrialRunner()
+        runner = TrialRunner(ExistingVariants())
         kwargs = {
             "stopping_criterion": {
                 "training_iteration": 1
@@ -755,7 +755,7 @@ class TrialRunnerTest(unittest.TestCase):
 
     def testFailureRecoveryDisabled(self):
         ray.init(num_cpus=1, num_gpus=1)
-        runner = TrialRunner()
+        runner = TrialRunner(ExistingVariants())
         kwargs = {
             "resources": Resources(cpu=1, gpu=1),
             "checkpoint_freq": 1,
@@ -777,7 +777,7 @@ class TrialRunnerTest(unittest.TestCase):
 
     def testFailureRecoveryEnabled(self):
         ray.init(num_cpus=1, num_gpus=1)
-        runner = TrialRunner()
+        runner = TrialRunner(ExistingVariants())
         kwargs = {
             "resources": Resources(cpu=1, gpu=1),
             "checkpoint_freq": 1,
@@ -801,7 +801,7 @@ class TrialRunnerTest(unittest.TestCase):
 
     def testFailureRecoveryMaxFailures(self):
         ray.init(num_cpus=1, num_gpus=1)
-        runner = TrialRunner()
+        runner = TrialRunner(ExistingVariants())
         kwargs = {
             "resources": Resources(cpu=1, gpu=1),
             "checkpoint_freq": 1,
@@ -830,7 +830,7 @@ class TrialRunnerTest(unittest.TestCase):
 
     def testCheckpointing(self):
         ray.init(num_cpus=1, num_gpus=1)
-        runner = TrialRunner()
+        runner = TrialRunner(ExistingVariants())
         kwargs = {
             "stopping_criterion": {
                 "training_iteration": 1
@@ -863,7 +863,7 @@ class TrialRunnerTest(unittest.TestCase):
     def testResultDone(self):
         """Tests that last_result is marked `done` after trial is complete."""
         ray.init(num_cpus=1, num_gpus=1)
-        runner = TrialRunner()
+        runner = TrialRunner(ExistingVariants())
         kwargs = {
             "stopping_criterion": {
                 "training_iteration": 2
@@ -882,7 +882,7 @@ class TrialRunnerTest(unittest.TestCase):
 
     def testPauseThenResume(self):
         ray.init(num_cpus=1, num_gpus=1)
-        runner = TrialRunner()
+        runner = TrialRunner(ExistingVariants())
         kwargs = {
             "stopping_criterion": {
                 "training_iteration": 2
@@ -913,7 +913,7 @@ class TrialRunnerTest(unittest.TestCase):
 
     def testStopTrial(self):
         ray.init(num_cpus=4, num_gpus=2)
-        runner = TrialRunner()
+        runner = TrialRunner(ExistingVariants())
         kwargs = {
             "stopping_criterion": {
                 "training_iteration": 5
@@ -957,14 +957,9 @@ class TrialRunnerTest(unittest.TestCase):
     def testSearchAlgNotification(self):
         """Checks notification of trial to the Search Algorithm."""
         ray.init(num_cpus=4, num_gpus=2)
-        searcher = _MockAlgorithm(max_concurrent=10)
-
-        searcher.add_experiment({
-                "run": "__fake",
-                "stop": {
-                    "training_iteration": 1
-                },
-            })
+        experiment_spec = {"run": "__fake", "stop": {"training_iteration": 1}}
+        experiments = [Experiment.from_json("test", experiment_spec)]
+        searcher = _MockAlgorithm(max_concurrent=10, experiments=experiments)
         runner = TrialRunner(search_alg=searcher)
         runner.step()
         trials = runner.get_trials()

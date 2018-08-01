@@ -10,10 +10,10 @@ except Exception as e:
     hpo = None
 
 from ray.tune.error import TuneError
-from ray.tune.suggest import VariantAlgorithm
+from ray.tune.suggest import ExistingVariants
 
 
-class HyperOptSearch(VariantAlgorithm):
+class HyperOptSearch(ExistingVariants):
     """A wrapper around HyperOpt to provide trial suggestions.
 
     Requires HyperOpt to be installed from source.
@@ -50,7 +50,7 @@ class HyperOptSearch(VariantAlgorithm):
 
     def try_suggest(self):
         if not self._num_live_trials() < self._max_concurrent:
-            return VariantAlgorithm.PASS, None
+            return ExistingVariants.PASS, None
         new_ids = self._hpopt_trials.new_trial_ids(1)
         self._hpopt_trials.refresh()
 

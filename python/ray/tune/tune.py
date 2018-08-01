@@ -5,7 +5,7 @@ from __future__ import print_function
 import time
 
 from ray.tune.error import TuneError
-from ray.tune.suggest import VariantAlgorithm
+from ray.tune.suggest import ExistingVariants
 from ray.tune.hyperband import HyperBandScheduler
 from ray.tune.async_hyperband import AsyncHyperBandScheduler
 from ray.tune.median_stopping_rule import MedianStoppingRule
@@ -32,7 +32,7 @@ def _make_scheduler(args):
             args.scheduler, _SCHEDULERS.keys()))
 
 
-def run_experiments(experiments,
+def run_experiments(experiments=None,
                     search_alg=None,
                     scheduler=None,
                     with_server=False,
@@ -44,7 +44,7 @@ def run_experiments(experiments,
     Args:
         experiments (Experiment | list | dict): Experiments to run.
         search_alg (SearchAlgorithm): Search Algorithm. Defaults to
-            VariantAlgorithm.
+            ExistingVariants.
         scheduler (TrialScheduler): Scheduler for executing
             the experiment. Choose among FIFO (default), MedianStopping,
             AsyncHyperBand, and HyperBand.
@@ -64,29 +64,28 @@ def run_experiments(experiments,
         scheduler = FIFOScheduler()
 
     if search_alg is None:
-        search_alg = VariantAlgorithm()
-
-    exp_list = experiments
-    if isinstance(experiments, Experiment):
-        exp_list = [experiments]
-    elif type(experiments) is dict:
-        exp_list = [
-            Experiment.from_json(name, spec)
-            for name, spec in experiments.items()
-        ]
-    if (type(exp_list) is list
-            and all(isinstance(exp, Experiment) for exp in exp_list)):
-        if len(exp_list) > 1:
-            print("Warning: All experiments will be"
-                  " using the same Search Algorithm.")
-        for experiment in exp_list:
-            search_alg.add_experiment(experiment)
-    else:
-        raise TuneError("Invalid argument: {}".format(experiments))
+        assert experiments is not None, "Experiments need to be specified" \
+            "if search_alg is not provided."
+        exp_list = experiments
+        if isinstance(experiments, Experiment):
+            exp_list = [experiments]
+        elif type(experiments) is dict:
+            exp_list = [
+                Experiment.from_json(name, spec)
+                for name, spec in experiments.items()
+            ]
+        if (type(exp_list) is list
+                and all(isinstance(exp, Experiment) for exp in exp_list)):
+            if len(exp_list) > 1:
+                print("Warning: All experiments will be"
+                      " using the same Search Algorithm.")
+            search_alg = ExistingVariants(exp_list)
+        else:
+            raise TuneError("Invalid argument: {}".format(experiments))
 
     runner = TrialRunner(
+        search_alg,
         scheduler=scheduler,
-        search_alg=search_alg,
         launch_web_server=with_server,
         server_port=server_port,
         verbose=verbose,
