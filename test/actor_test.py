@@ -44,15 +44,15 @@ class ActorAPI(unittest.TestCase):
 
         actor = Actor.remote(1, arg2="c")
         assert ray.get(actor.get_values.remote(0, arg2="d")) == (1, 3, "cd")
-        assert ray.get(actor.get_values.remote(0, arg2="d", arg1=0)) == \
-            (1, 1, "cd")
+        assert ray.get(actor.get_values.remote(
+            0, arg2="d", arg1=0)) == (1, 1, "cd")
 
         actor = Actor.remote(1, arg2="c", arg1=2)
         assert ray.get(actor.get_values.remote(0, arg2="d")) == (1, 4, "cd")
-        assert ray.get(actor.get_values.remote(0, arg2="d", arg1=0)) == \
-            (1, 2, "cd")
-        assert ray.get(actor.get_values.remote(arg2="d", arg1=0, arg0=2)) == \
-            (3, 2, "cd")
+        assert ray.get(actor.get_values.remote(
+            0, arg2="d", arg1=0)) == (1, 2, "cd")
+        assert ray.get(actor.get_values.remote(
+            arg2="d", arg1=0, arg0=2)) == (3, 2, "cd")
 
         # Make sure we get an exception if the constructor is called
         # incorrectly.
@@ -94,8 +94,8 @@ class ActorAPI(unittest.TestCase):
                                                                ("d", ))
 
         actor = Actor.remote(1, 2, "a", "b", "c", "d")
-        assert ray.get(actor.get_values.remote(2, 3, 1, 2, 3, 4)) == \
-            (3, 5, ("a", "b", "c", "d"), (1, 2, 3, 4))
+        assert ray.get(actor.get_values.remote(
+            2, 3, 1, 2, 3, 4)) == (3, 5, ("a", "b", "c", "d"), (1, 2, 3, 4))
 
         @ray.remote
         class Actor(object):
@@ -517,8 +517,8 @@ class ActorNesting(unittest.TestCase):
 
         assert ray.get(ray.get(actor.f.remote())) == list(range(1, 6))
         assert ray.get(actor.g.remote()) == list(range(1, 6))
-        assert ray.get(actor.h.remote([f.remote(i) for i in range(5)])) == \
-            list(range(1, 6))
+        assert ray.get(actor.h.remote(
+            [f.remote(i) for i in range(5)])) == list(range(1, 6))
 
     def testDefineActorWithinActor(self):
         # Make sure we can use remote funtions within actors.
@@ -589,8 +589,8 @@ class ActorNesting(unittest.TestCase):
             return ray.get([actor.get_value.remote() for _ in range(n)])
 
         assert ray.get(f.remote(3, 1)) == [3]
-        assert ray.get([f.remote(i, 20) for i in range(10)]) == \
-            [20 * [i] for i in range(10)]
+        assert ray.get([f.remote(
+            i, 20) for i in range(10)]) == [20 * [i] for i in range(10)]
 
     def testUseActorWithinRemoteFunction(self):
         # Make sure we can create and use actors within remote funtions.
@@ -1069,8 +1069,8 @@ class ActorsWithGPUs(unittest.TestCase):
         # Run a bunch of GPU tasks.
         locations_to_intervals = locations_to_intervals_for_many_tasks()
         # Make sure that all GPUs were used.
-        assert len(locations_to_intervals) == \
-            num_local_schedulers * num_gpus_per_scheduler
+        assert (len(locations_to_intervals) ==
+            num_local_schedulers * num_gpus_per_scheduler)
         # For each GPU, verify that the set of tasks that used this specific
         # GPU did not overlap in time.
         for locations in locations_to_intervals:
@@ -1087,8 +1087,8 @@ class ActorsWithGPUs(unittest.TestCase):
         # Run a bunch of GPU tasks.
         locations_to_intervals = locations_to_intervals_for_many_tasks()
         # Make sure that all but one of the GPUs were used.
-        assert len(locations_to_intervals) == \
-            num_local_schedulers * num_gpus_per_scheduler - 1
+        assert (len(locations_to_intervals) ==
+            num_local_schedulers * num_gpus_per_scheduler - 1)
         # For each GPU, verify that the set of tasks that used this specific
         # GPU did not overlap in time.
         for locations in locations_to_intervals:
@@ -1104,8 +1104,8 @@ class ActorsWithGPUs(unittest.TestCase):
         # Run a bunch of GPU tasks.
         locations_to_intervals = locations_to_intervals_for_many_tasks()
         # Make sure that all but 11 of the GPUs were used.
-        assert len(locations_to_intervals) == \
-            num_local_schedulers * num_gpus_per_scheduler - 1 - 3
+        assert (len(locations_to_intervals) ==
+            num_local_schedulers * num_gpus_per_scheduler - 1 - 3)
         # For each GPU, verify that the set of tasks that used this specific
         # GPU did not overlap in time.
         for locations in locations_to_intervals:
@@ -1541,8 +1541,7 @@ class ActorReconstruction(unittest.TestCase):
         errors = ray.error_info()
         assert 0 < len(errors)
         for error in errors:
-            assert error["type"] == \
-                             ray_constants.CHECKPOINT_PUSH_ERROR
+            assert error["type"] == ray_constants.CHECKPOINT_PUSH_ERROR
 
     @unittest.skipIf(
         os.environ.get('RAY_USE_NEW_GCS', False), "Hanging with new GCS API.")
@@ -1572,8 +1571,7 @@ class ActorReconstruction(unittest.TestCase):
         errors = ray.error_info()
         assert len(errors) == 1
         for error in errors:
-            assert error["type"] == \
-                             ray_constants.CHECKPOINT_PUSH_ERROR
+            assert error["type"] == ray_constants.CHECKPOINT_PUSH_ERROR
 
     @unittest.skip("Fork/join consistency not yet implemented.")
     def testDistributedHandle(self):
