@@ -27,7 +27,7 @@ void LineageEntry::MarkExplicitlyForwarded(const ClientID &node_id) {
   forwarded_to_.insert(node_id);
 }
 
-bool LineageEntry::GetExplicitForwardingStatus(const ClientID &node_id) const {
+bool LineageEntry::WasExplicitlyForwarded(const ClientID &node_id) const {
   return forwarded_to_.find(node_id) != forwarded_to_.end();
 }
 
@@ -268,8 +268,8 @@ void LineageCache::MarkTaskAsForwarded(const TaskID &task_id, const ClientID &no
   lineage_.GetEntryMutable(task_id)->MarkExplicitlyForwarded(node_id);
 }
 
-Lineage LineageCache::GetUnforwardedUncommittedLineage(const TaskID &task_id,
-                                                       const ClientID &node_id) const {
+Lineage LineageCache::GetUncommittedLineage(const TaskID &task_id,
+                                            const ClientID &node_id) const {
   Lineage uncommitted_lineage;
   auto entry = lineage_.GetEntry(task_id).get();
   // Add all uncommitted ancestors from the lineage cache to the uncommitted
@@ -277,19 +277,7 @@ Lineage LineageCache::GetUnforwardedUncommittedLineage(const TaskID &task_id,
   MergeLineageHelper(task_id, lineage_, uncommitted_lineage, [&](GcsStatus status) {
     // The stopping condition for recursion is that the entry has either been
     // committed to the GCS, or has already been forwarded to the node.
-    return entry.GetExplicitForwardingStatus(node_id) ;
-  });
-  return uncommitted_lineage;
-}
-
-Lineage LineageCache::GetUncommittedLineage(const TaskID &task_id) const {
-  Lineage uncommitted_lineage;
-  // Add all uncommitted ancestors from the lineage cache to the uncommitted
-  // lineage of the requested task.
-  MergeLineageHelper(task_id, lineage_, uncommitted_lineage, [](GcsStatus status) {
-    // The stopping condition for recursion is that the entry has been
-    // committed to the GCS.
-    return false;
+    return entry.WasExplicitlyForwarded(node_id) ;
   });
   return uncommitted_lineage;
 }

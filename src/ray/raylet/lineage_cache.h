@@ -69,12 +69,11 @@ class LineageEntry {
   /// \param node_id The ID of the remote node manager.
   void MarkExplicitlyForwarded(const ClientID &node_id);
 
-  /// Get this entry's explicit forwarding status corresponding to a node.
-  /// Ancestors of a forwarded task have an implicitly forwarded status.
+  /// Gets whether this entry was explicitly forwarded to a remote node.
   ///
   /// \param node_id The ID of the remote node manager.
-  /// \return Whether this node has explicitly been forwarded to the remote node.
-  bool GetExplicitForwardingStatus(const ClientID &node_id) const;
+  /// \return Whether this entry was explicitly forwarded to the remote node.
+  bool WasExplicitlyForwarded(const ClientID &node_id) const;
 
   /// Get this entry's ID.
   ///
@@ -102,6 +101,7 @@ class LineageEntry {
   Task task_;
 
   /// Node managers that this task and its lineage has been forwarded to.
+  /// Does not include nodes that this entry was not explicitly forwarded to.
   std::unordered_set<ClientID> forwarded_to_;
 
 };
@@ -200,31 +200,23 @@ class LineageCache {
   /// \param task_id The ID of the waiting task to remove.
   void RemoveWaitingTask(const TaskID &task_id);
 
-  /// Mark a task as having been forwarded to a node. The lineage of the task
-  /// is implicitly assumed to have also been forwarded.
+  /// Mark a task as having been explicitly forwarded to a node.
+  /// The lineage of the task is implicitly assumed to have also been forwarded.
   ///
-  /// \param task_id
-  /// \param node_id
+  /// \param task_id The ID of the task to get the uncommitted lineage for.
+  /// \param node_id The ID of the node to get the uncommitted lineage for.
   void MarkTaskAsForwarded(const TaskID &task_id, const ClientID &node_id);
 
-  /// Get the uncommitted lineage of a task that hasn't been forwarded to a task.
+  /// Get the uncommitted lineage of a task that hasn't been forwarded to a node yet.
   /// The uncommitted lineage consists of all tasks in the given task's lineage
   /// that have not been committed in the GCS, as far as we know.
   ///
   /// \param task_id The ID of the task to get the uncommitted lineage for.
-  /// \param node_id
-  /// \return
-  Lineage GetUnforwardedUncommittedLineage(const TaskID &task_id,
-                                           const ClientID &node_id) const;
-
-  /// Get the uncommitted lineage of a task. The uncommitted lineage consists
-  /// of all tasks in the given task's lineage that have not been committed in
-  /// the GCS, as far as we know.
-  ///
-  /// \param entry_id The ID of the task to get the uncommitted lineage for.
-  /// \return The uncommitted lineage of the task. The returned lineage
+  /// \param node_id The ID of the receiving node.
+  /// \return The uncommitted, unforwarded lineage of the task. The returned lineage
   /// includes the entry for the requested entry_id.
-  Lineage GetUncommittedLineage(const TaskID &entry_id) const;
+  Lineage GetUncommittedLineage(const TaskID &task_id,
+                                const ClientID &node_id) const;
 
   /// Asynchronously write any tasks that are in the UNCOMMITTED_READY state
   /// and for which all parents have been committed to the GCS. These tasks

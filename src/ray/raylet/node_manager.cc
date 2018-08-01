@@ -1191,7 +1191,7 @@ ray::Status NodeManager::ForwardTask(const Task &task, const ClientID &node_id) 
 
   // Get and serialize the task's unforwarded, uncommitted lineage.
   auto unforwarded_uncommitted_lineage =
-          lineage_cache_.GetUnforwardedUncommittedLineage(task_id, node_id);
+          lineage_cache_.GetUncommittedLineage(task_id, node_id);
   Task &lineage_cache_entry_task =
       unforwarded_uncommitted_lineage.GetEntryMutable(task_id)->TaskDataMutable();
   // Increment forward count for the forwarded task.
