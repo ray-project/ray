@@ -305,7 +305,8 @@ class DockerRunner(object):
         Raises:
             Exception: An exception is raised if the timeout expires.
         """
-        print("Start Time: %s" % datetime.datetime.now())
+        print(
+            "Multi-node docker test started at: %s" % datetime.datetime.now())
         all_container_ids = (
             [self.head_container_id] + self.worker_container_ids)
         if driver_locations is None:
@@ -354,7 +355,7 @@ class DockerRunner(object):
 
         # Disable the alarm.
         signal.alarm(0)
-        print("End Time: %s" % datetime.datetime.now())
+        print("Multi-node docker test ended at: %s" % datetime.datetime.now())
         return results
 
 
