@@ -41,7 +41,7 @@ can be used) and for choosing the algorithm with ``--run``
 Specifying Parameters
 ~~~~~~~~~~~~~~~~~~~~~
 
-Each algorithm has specific hyperparameters that can be set with ``--config``. See the
+Each algorithm has specific hyperparameters that can be set with ``--config``, in addition to a number of `common hyperparameters <https://github.com/ray-project/ray/blob/master/python/ray/rllib/agents/agent.py>`__. See the
 `algorithms documentation <rllib-algorithms.html>`__ for more information.
 
 In an example below, we train A3C by specifying 8 workers through the config flag.
