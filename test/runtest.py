@@ -2229,9 +2229,9 @@ class GlobalStateAPI(unittest.TestCase):
 
         object_table = ray.global_state.object_table()
         assert len(object_table) == 2
-        db_client_id = manager_client["DBClientID"]
 
         if not ray.worker.global_worker.use_raylet:
+            db_client_id = manager_client["DBClientID"]
             assert object_table[x_id]["IsPut"] is True
             assert object_table[x_id]["TaskID"] == driver_task_id
             assert object_table[x_id]["ManagerIDs"] == [db_client_id]
