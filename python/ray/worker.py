@@ -1524,7 +1524,8 @@ def _init(address_info=None,
           huge_pages=False,
           include_webui=True,
           use_raylet=None,
-          gateway_port=None):
+          gateway_socat_port=None,
+          gateway_data_port=None):
     """Helper method to connect to an existing Ray cluster or start a new one.
 
     This method handles two cases. Either a Ray cluster already exists and we
@@ -1581,8 +1582,9 @@ def _init(address_info=None,
         include_webui: Boolean flag indicating whether to start the web
             UI, which is a Jupyter notebook.
         use_raylet: True if the new raylet code path should be used.
-        gateway_port: The port that socat will listen on for commands to
-            forward.
+        gateway_socat_port: Port that socat will listen on and forward.
+        gateway_data_port: Port of remote gateway for sending and receiving
+            data.
 
     Returns:
         Address information about the started processes.
@@ -1660,8 +1662,8 @@ def _init(address_info=None,
             include_webui=include_webui,
             use_raylet=use_raylet,
             with_gateway=(driver_mode == EXTERNAL_CLIENT_MODE),
-            gateway_port=address_info.get("gateway_port") if \
-            driver_mode == EXTERNAL_CLIENT_MODE else None)
+            gateway_socat_port=gateway_socat_port,
+            gateway_data_port=gateway_data_port)
     else:
         if redis_address is None:
             raise Exception("When connecting to an existing cluster, "
@@ -1710,17 +1712,15 @@ def _init(address_info=None,
         driver_address_info = {
             "node_ip_address": address_info["node_ip_address"],
             "redis_address": address_info["redis_address"],
-            "gateway_port": gateway_port,
+            "gateway_socat_port": gateway_socat_port,
+            "gateway_data_port": gateway_data_port,
             "raylet_socket_name": address_info["raylet_socket_names"][0]
         }
 
         global_worker.external_client = ExternalClient(
             gateway_address=driver_address_info["redis_address"].split(":")[0],
-            gateway_port=driver_address_info["gateway_port"],
-
-            # TODO (dsuo): eventually, this option should be exposed or rolled
-            # up into a single gateway port
-            gateway_data_port=5000
+            gateway_socat_port=driver_address_info["gateway_socat_port"],
+            gateway_data_port=driver_address_info["gateway_data_port"],
         )
     else:
         driver_address_info = {
@@ -1766,7 +1766,8 @@ def init(redis_address=None,
          huge_pages=False,
          include_webui=True,
          use_raylet=None,
-         gateway_port=None):
+         gateway_socat_port=None,
+         gateway_data_port=None):
     """Connect to an existing Ray cluster or start one and connect to it.
 
     This method handles two cases. Either a Ray cluster already exists and we
@@ -1827,7 +1828,9 @@ def init(redis_address=None,
         include_webui: Boolean flag indicating whether to start the web
             UI, which is a Jupyter notebook.
         use_raylet: True if the new raylet code path should be used.
-        gateway_port: The port of remote gateway.
+        gateway_socat_port: Port that socat will listen on and forward.
+        gateway_data_port: Port of remote gateway for sending and receiving
+            data.
 
     Returns:
         Address information about the started processes.
@@ -1849,7 +1852,7 @@ def init(redis_address=None,
         logger.info("Detected environment variable 'RAY_USE_XRAY'.")
         use_raylet = True
 
-    if gateway_port is not None:
+    if gateway_socat_port is not None and gateway_data_port:
         # TODO (dsuo): eventually, we should allow different redis and gateway
         # addresses, but for now, the gateway depends on colocation with redis.
         if not use_raylet:
@@ -1886,7 +1889,8 @@ def init(redis_address=None,
         include_webui=include_webui,
         object_store_memory=object_store_memory,
         use_raylet=use_raylet,
-        gateway_port=gateway_port)
+        gateway_socat_port=gateway_socat_port,
+        gateway_data_port=gateway_data_port)
     for hook in _post_init_hooks:
         hook()
     return ret
@@ -2558,8 +2562,6 @@ def get(object_ids, worker=global_worker):
         else:
             if worker.mode == EXTERNAL_CLIENT_MODE:
                 value = worker.external_client.get([object_ids])
-                if isinstance(value, list):
-                    value = value[0]
             else:
                 value = worker.get_object([object_ids])[0]
             if isinstance(value, RayTaskError):

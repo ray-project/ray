@@ -4,6 +4,7 @@ import subprocess
 import requests
 import ray
 import numpy as np
+import pdb
 
 
 class ExternalClient(object):
@@ -13,20 +14,20 @@ class ExternalClient(object):
 
     def __init__(self,
                  gateway_address,
-                 gateway_port=5432,
-                 gateway_data_port=5000):
+                 gateway_socat_port=5001,
+                 gateway_data_port=5002):
         """Initialize a new external client.
 
         Args:
             gateway_address (str): The IP address of the head node / gateway.
-            gateway_port (int): The gateway's port.
+            gateway_socat_port (int): The gateway's port.
             data_port (int): The gateway's port for transferring data.
 
         Returns:
             A new ExternalClient object
         """
         self.gateway_address = gateway_address
-        self.gateway_port = gateway_port
+        self.gateway_socat_port = gateway_socat_port
         self.gateway_data_port = gateway_data_port
         self.client_socket_name = "/tmp/ray_external_client" + \
             str(np.random.randint(0, 99999999)).zfill(8)
@@ -38,7 +39,7 @@ class ExternalClient(object):
         command = [
             "socat", "UNIX-LISTEN:" + self.client_socket_name +
             ",reuseaddr,fork", "TCP:" + self.gateway_address + ":" +
-            str(self.gateway_port)
+            str(self.gateway_socat_port)
         ]
 
         # TODO (dsuo): handle cleanup, logging, etc
@@ -79,7 +80,7 @@ class ExternalClient(object):
                            },
                            stream=True)
 
-        objects = ray.pyarrow.deserialize(res.raw.read())
+        return ray.pyarrow.deserialize(res.raw.data)
 
         return objects
 

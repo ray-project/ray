@@ -154,17 +154,24 @@ def cli():
     default=False,
     help="enable external clients to connect, this is not supported yet")
 @click.option(
-    "--gateway-port",
+    "--gateway-socat-port",
     required=False,
     type=int,
-    default=5432,
+    default=5001,
     help="the port that socat will listen on for commands to forward"
+)
+@click.option(
+    "--gateway-data-port",
+    required=False,
+    type=int,
+    default=5002,
+    help="the port on the remote machine for sending/receiving data"
 )
 def start(node_ip_address, redis_address, redis_port, num_redis_shards,
           redis_max_clients, redis_shard_ports, object_manager_port,
           object_store_memory, num_workers, num_cpus, num_gpus, resources,
           head, no_ui, block, plasma_directory, huge_pages, autoscaling_config,
-          use_raylet, with_gateway, gateway_port):
+          use_raylet, with_gateway, gateway_socat_port, gateway_data_port):
     # Convert hostnames to numerical IP address.
     if node_ip_address is not None:
         node_ip_address = services.address_to_ip(node_ip_address)
@@ -243,7 +250,8 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             autoscaling_config=autoscaling_config,
             use_raylet=use_raylet,
             with_gateway=with_gateway,
-            gateway_port=gateway_port)
+            gateway_socat_port=gateway_socat_port,
+            gateway_data_port=gateway_data_port)
         print(address_info)
         print("\nStarted Ray on this node. You can add additional nodes to "
               "the cluster by calling\n\n"
@@ -260,10 +268,16 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             print("You can also connect an external client to the cluster "
                   "from Python by running\n\n"
                   "    import ray\n"
-                  "    ray.init(redis_address=\"{}\", gateway_port={}, "
-                  "use_raylet=True)\n\n"
+                  "    ray.init(redis_address=\"{}\", gateway_socat_port={}, "
+                  "gateway_data_port={}, use_raylet=True)\n\n"
                   .format(address_info["redis_address"],
-                          gateway_port))
+                          gateway_socat_port,
+                          gateway_data_port))
+            
+            print("You can debug with the gateway with following command: \n\n"
+                  "    python python/ray/gateway.py -m {} -s {} -p 1234 --debug\n\n"
+                  .format(address_info["raylet_socket_names"][0],
+                          address_info["object_store_addresses"][0].name))
 
         print("If you wish to terminate the processes that have been started"
               ", run\n\n"

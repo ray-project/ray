@@ -4,13 +4,10 @@ import click
 from flask import Flask, request, send_file
 import io
 import ray
-import pyarrow
-from pyarrow import plasma as plasma
 
 from ray.utils import hex_to_binary
 
 app = Flask(__name__)
-ctx = pyarrow.default_serialization_context()
 
 
 @app.route('/', methods=['GET', 'POST'])
@@ -25,38 +22,30 @@ def index():
         put.
     """
     if request.method == 'POST':
-        object_id = request.files['object_id'].read()
+        raw_object_id = request.files['object_id'].read()
+        object_id = ray.pyarrow.plasma.ObjectID(raw_object_id)
         data = request.files['value'].read()
-        value = ctx.deserialize(data)
 
-        plasma_client.put(
-            value,
-            object_id=plasma.ObjectID(object_id),
-            memcopy_threads=12,
-            serialization_context=ctx)
+        # Get a memoryview buffer of type unsigned bytes
+        buf = memoryview(plasma_client.create(object_id, len(data))).cast("B")
 
-        return object_id, 402
+        for i in range(len(data)):
+            buf[i] = data[i]
+        plasma_client.seal(object_id)
+        return raw_object_id, 402
+
     elif request.method == 'GET' and 'object_ids' in request.args:
-        object_ids = [plasma.ObjectID(hex_to_binary(object_id)) for object_id
-                      in request.args['object_ids'].split(",")]
+        object_ids = [ray.pyarrow.plasma.ObjectID(hex_to_binary(object_id))
+                      for object_id in request.args['object_ids'].split(",")]
 
         # Fetch remote objects
         # TODO (dsuo): maybe care about batching
-        plasma_client.fetch(object_ids)
+        # NOTE: this is a really flaky test for "simple value"
+        # NOTE: we don't support retrieving multiple objectIDs at a time
+        data = plasma_client.get_buffers(object_ids)[0]
 
-        # Get local objects
-        # TODO (dsuo): Handle object not available
-        results = plasma_client.get(
-            object_ids,
-            5000,
-            ctx)
-
-        # TODO (dsuo): serialize results into one object
-        # TODO (dsuo): this may cause problems if the object we're getting back
-        # is an array
-        data = ctx.serialize(results).to_buffer().to_pybytes()
-
-        return send_file(io.BytesIO(data), mimetype="application/octet-stream")
+        # Return an appropriate return code?
+        return send_file(io.BytesIO(data.to_pybytes()), mimetype="application/octet-stream")
     else:
         return '''
         <html><body><h1>hi!</h1></body></html>
@@ -88,7 +77,7 @@ def index():
     "-p",
     type=int,
     required=False,
-    default=5000,
+    default=5002,
     help="Gateway data port")
 @click.option(
     "--debug",
@@ -101,7 +90,7 @@ def start(plasma_store_socket_name,
           port,
           debug):
     global plasma_client
-    plasma_client = plasma.connect(
+    plasma_client = ray.pyarrow.plasma.connect(
         plasma_store_socket_name,
         plasma_manager_socket_name,
         64)

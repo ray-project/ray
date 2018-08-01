@@ -1002,7 +1002,8 @@ def start_raylet(redis_address,
 
 
 def start_gateway(node_ip_address,
-                  gateway_port,
+                  gateway_socat_port,
+                  gateway_data_port,
                   raylet_name,
                   store_socket_name,
                   redis_address,
@@ -1014,7 +1015,9 @@ def start_gateway(node_ip_address,
     Args:
         node_ip_address (str): The IP address of the node that this worker is
             running on.
-        gateway_port: The port that socat will listen on for commands to forward.
+        gateway_socat_port: Port that socat will listen on and forward.
+        gateway_data_port: Port of remote gateway for sending and receiving
+            data.
         store_socket_name: The named pipe for the Plasma store.
         redis_address (str): The address that the Redis server is listening on.
         stdout_file: A file handle opened for writing to redirect stdout to. If
@@ -1028,7 +1031,7 @@ def start_gateway(node_ip_address,
     """
     # TODO (dsuo): move to gateway.py
     command = [
-        "socat", "TCP-LISTEN:" + str(gateway_port) + ",reuseaddr,fork",
+        "socat", "TCP-LISTEN:" + str(gateway_socat_port) + ",reuseaddr,fork",
         "UNIX-CONNECT:" + raylet_name
     ]
     p = subprocess.Popen(command, stdout=stdout_file, stderr=stderr_file)
@@ -1041,7 +1044,7 @@ def start_gateway(node_ip_address,
         os.path.dirname(os.path.abspath(__file__)), "gateway.py")
     command = [
         sys.executable, "-u", gateway_path, "-s",
-        store_socket_name, "-m", raylet_name
+        store_socket_name, "-m", raylet_name, "-p", str(gateway_data_port)
     ]
     p = subprocess.Popen(command, stdout=stdout_file, stderr=stderr_file)
     if cleanup:
@@ -1303,7 +1306,8 @@ def start_ray_processes(address_info=None,
                         autoscaling_config=None,
                         use_raylet=False,
                         with_gateway=False,
-                        gateway_port=None):
+                        gateway_socat_port=None,
+                        gateway_data_port=None):
     """Helper method to start Ray processes.
 
     Args:
@@ -1360,7 +1364,9 @@ def start_ray_processes(address_info=None,
             not supported yet.
         with_gateway: True if this head node can receive commands from an
             external client.
-        gateway_port: The port that socat will listen on for commands to forward.
+        gateway_socat_port: Port that socat will listen on and forward.
+        gateway_data_port: Port of remote gateway for sending and receiving
+            data.
 
     Returns:
         A dictionary of the address information for the processes that were
@@ -1595,7 +1601,8 @@ def start_ray_processes(address_info=None,
 
         start_gateway(
             node_ip_address,
-            gateway_port,
+            gateway_socat_port,
+            gateway_data_port,
             raylet_socket_name,
             object_store_addresses[0].name,
             redis_address,
@@ -1714,7 +1721,8 @@ def start_ray_head(address_info=None,
                    autoscaling_config=None,
                    use_raylet=False,
                    with_gateway=False,
-                   gateway_port=None):
+                   gateway_socat_port=None,
+                   gateway_data_port=None):
     """Start Ray in local mode.
 
     Args:
@@ -1765,7 +1773,9 @@ def start_ray_head(address_info=None,
             not supported yet.
         with_gateway: True if this head node can receive commands from an
             external client.
-        gateway_port: The port that socat will listen on for commands to forward.
+        gateway_socat_port: Port that socat will listen on and forward.
+        gateway_data_port: Port of remote gateway for sending and receiving
+            data.
 
     Returns:
         A dictionary of the address information for the processes that were
@@ -1796,7 +1806,8 @@ def start_ray_head(address_info=None,
         autoscaling_config=autoscaling_config,
         use_raylet=use_raylet,
         with_gateway=with_gateway,
-        gateway_port=gateway_port)
+        gateway_socat_port=gateway_socat_port,
+        gateway_data_port=gateway_data_port)
 
 
 def try_to_create_directory(directory_path):
