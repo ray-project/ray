@@ -1755,8 +1755,9 @@ class ResourcesTest(unittest.TestCase):
                 elif name == "run_on_2":
                     assert result in [store_names[2]]
                 elif name == "run_on_0_1_2":
-                    assert (result in
-                            [store_names[0], store_names[1], store_names[2]])
+                    assert (result in [
+                        store_names[0], store_names[1], store_names[2]
+                    ])
                 elif name == "run_on_1_2":
                     assert result in [store_names[1], store_names[2]]
                 elif name == "run_on_0_2":

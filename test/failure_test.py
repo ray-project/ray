@@ -54,7 +54,6 @@ class TaskStatusTest(unittest.TestCase):
             msg = task.get("message")
             assert "Test function 1 intentionally failed." in msg
 
-
         x = throw_exception_fct2.remote()
         try:
             ray.get(x)
@@ -180,8 +179,8 @@ def temporary_helper_function():
 
         # Wait for the error from when the __init__ tries to run.
         wait_for_errors(ray_constants.TASK_PUSH_ERROR, 1)
-        assert ("failed to be imported, and so cannot execute this method"
-                in ray.error_info()[1]["message"])
+        assert ("failed to be imported, and so cannot execute this method" in
+                ray.error_info()[1]["message"])
 
 
         # Check that if we try to get the function it throws an exception and
@@ -191,8 +190,8 @@ def temporary_helper_function():
 
         # Wait for the error from when the call to get_val.
         wait_for_errors(ray_constants.TASK_PUSH_ERROR, 2)
-        assert ("failed to be imported, and so cannot execute this method"
-                in ray.error_info()[2]["message"])
+        assert ("failed to be imported, and so cannot execute this method" in
+                ray.error_info()[2]["message"])
 
         f.close()
 
