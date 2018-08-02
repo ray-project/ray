@@ -21,8 +21,8 @@ from ray.rllib.models.multiagentfcnet import MultiAgentFullyConnectedNetwork
 
 MODEL_CONFIGS = [
     # === Built-in options ===
-    "conv_filters",  # Filter configuration. List of
-                     # [out_channels, kernel, stride] for each filter
+    # Filter config. List of [out_channels, kernel, stride] for each filter
+    "conv_filters",
     "conv_activation",  # Nonlinearity for built-in convnet
     "fcnet_activation",  # Nonlinearity for fully connected net (tanh, relu)
     "fcnet_hiddens",  # Number of hidden layers for fully connected net
