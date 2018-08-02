@@ -22,7 +22,7 @@ class CythonTest(unittest.TestCase):
         ray.shutdown()
 
     def assertEqualHelper(self, cython_func, expected, *args):
-        self.assertEqual(get_ray_result(cython_func, *args), expected)
+        assert get_ray_result(cython_func, *args) == expected
 
     def test_simple_func(self):
         self.assertEqualHelper(cyth.simple_func, 6, 1, 2, 3)
@@ -40,9 +40,9 @@ class CythonTest(unittest.TestCase):
         result2 = ray.get(a2.increment.remote())
         result3 = ray.get(a2.increment.remote())
 
-        self.assertEqual(result1, 1)
-        self.assertEqual(result2, 1)
-        self.assertEqual(result3, 2)
+        assert result1 == 1
+        assert result2 == 1
+        assert result3 == 2
 
     def test_numpy(self):
         array = np.array([-1.0, 0.0, 1.0, 2.0])
