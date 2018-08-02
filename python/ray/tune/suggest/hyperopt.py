@@ -82,6 +82,8 @@ class HyperOptSearch(SuggestionAlgorithm):
 
     def on_trial_result(self, trial_id, result):
         ho_trial = self._get_hyperopt_trial(trial_id)
+        if ho_trial is None:
+            return
         now = hpo.utils.coarse_utcnow()
         ho_trial['book_time'] = now
         ho_trial['refresh_time'] = now
@@ -92,6 +94,8 @@ class HyperOptSearch(SuggestionAlgorithm):
                           error=False,
                           early_terminated=False):
         ho_trial = self._get_hyperopt_trial(trial_id)
+        if ho_trial is None:
+            return
         ho_trial['refresh_time'] = hpo.utils.coarse_utcnow()
         if error:
             ho_trial['state'] = hpo.base.JOB_STATE_ERROR
@@ -110,6 +114,8 @@ class HyperOptSearch(SuggestionAlgorithm):
         return {"loss": -getattr(result, self._reward_attr), "status": "ok"}
 
     def _get_hyperopt_trial(self, trial_id):
+        if trial_id not in self._live_trial_mapping:
+            return
         hyperopt_tid = self._live_trial_mapping[trial_id][0]
         return [
             t for t in self._hpopt_trials.trials if t["tid"] == hyperopt_tid
