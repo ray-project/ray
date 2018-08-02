@@ -141,7 +141,11 @@ setup(
         "redis",
         # The six module is required by pyarrow.
         "six >= 1.0.0",
-        "flatbuffers"
+        "flatbuffers",
+
+        # These are required for now by external clients
+        "flask",
+        "requests"
     ],
     setup_requires=["cython >= 0.27, < 0.28"],
     extras_require=extras,
