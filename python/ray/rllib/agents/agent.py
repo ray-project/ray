@@ -213,7 +213,13 @@ class Agent(Trainable):
         raise NotImplementedError
 
     def compute_action(self, observation, state=None, policy_id="default"):
-        """Computes an action for the specified policy."""
+        """Computes an action for the specified policy.
+
+        Arguments:
+            observation (obj): observation from the environment.
+            state (list): RNN hidden state, if any.
+            policy_id (str): policy to query (only applies to multi-agent).
+        """
 
         if state is None:
             state = []
