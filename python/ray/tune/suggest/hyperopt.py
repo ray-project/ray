@@ -54,7 +54,7 @@ class HyperOptSearch(SuggestionAlgorithm):
         super(HyperOptSearch, self).__init__(experiments=experiments, **kwargs)
 
     def _suggest(self, trial_id):
-        if not self._num_live_trials() <= self._max_concurrent:
+        if self._num_live_trials() >= self._max_concurrent:
             return None
         new_ids = self._hpopt_trials.new_trial_ids(1)
         self._hpopt_trials.refresh()

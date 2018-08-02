@@ -16,8 +16,7 @@ class SuggestionAlgorithm(SearchAlgorithm):
     """Abstract class for suggestion-based algorithms.
 
     Custom search algorithms can extend this class easily by overriding the
-    `_suggest` method, which will override conflicting fields from
-    the initially generated parameters.
+    `_suggest` method provide generated parameters for the trials.
 
     To track suggestions and their corresponding evaluations, the method
     `_suggest` will be passed a trial_id, which will be used in
