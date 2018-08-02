@@ -67,10 +67,7 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
     and remote evaluators (IMPALA actors).
     """
 
-    def _init(self,
-              train_batch_size=512,
-              sample_batch_size=50,
-              debug=False):
+    def _init(self, train_batch_size=512, sample_batch_size=50, debug=False):
 
         self.debug = debug
         self.learning_started = False
