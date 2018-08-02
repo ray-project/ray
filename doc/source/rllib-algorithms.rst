@@ -59,7 +59,7 @@ Tuned examples: `PongNoFrameskip-v4 <https://github.com/ray-project/ray/blob/mas
 .. figure:: impala.png
    :align: center
 
-   RLlib's IMPALA implementation scales from 16 to 128 workers on PongNoFrameskip-v4. With vectorization, similar learning performance to 128 workers can be achieved with only 32 workers. This about an order of magnitude faster than A3C, with similar sample efficiency.
+   RLlib's IMPALA implementation scales from 16 to 128 workers on PongNoFrameskip-v4. With vectorization, similar learning performance to 128 workers can be achieved with only 32 workers. This is about an order of magnitude faster than A3C, with similar sample efficiency.
 
 Policy Gradients
 ----------------
@@ -78,4 +78,4 @@ Tuned examples: `Humanoid-v1 <https://github.com/ray-project/ray/blob/master/pyt
    :width: 500px
    :align: center
 
-   RLlib's multi-GPU PPO can scale to hundreds of cores and be more cost effective than MPI-based implementations by leveraging mixed GPU and high-CPU machines.
+   RLlib's multi-GPU PPO scales to multiple GPUs and hundreds of CPUs. Here we compare against a reference MPI-based implementation.
