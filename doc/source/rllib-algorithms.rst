@@ -59,7 +59,7 @@ Tuned examples: `PongNoFrameskip-v4 <https://github.com/ray-project/ray/blob/mas
 .. figure:: impala.png
    :align: center
 
-   RLlib's IMPALA implementation scales from 16 to 128 workers on PongNoFrameskip-v4. With vectorization, similar learning performance to 128 workers can be achieved with only 32 workers. This is about an order of magnitude faster than A3C, with similar sample efficiency.
+   RLlib's IMPALA implementation scales from 16 to 128 workers on PongNoFrameskip-v4. With vectorization, similar learning performance to 128 workers can be achieved with only 32 workers. This is about an order of magnitude faster than A3C (not shown here), with similar sample efficiency.
 
 Policy Gradients
 ----------------
