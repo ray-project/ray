@@ -7,7 +7,7 @@ import numpy as np
 import ray
 
 if __name__ == "__main__":
-    ray.init(num_workers=0, use_raylet=True)
+    ray.init(num_workers=0)
 
     A = np.ones(2**31 + 1, dtype="int8")
     a = ray.put(A)

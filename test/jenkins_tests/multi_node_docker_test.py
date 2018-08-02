@@ -3,14 +3,13 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
-import random
+import datetime
 import os
+import random
 import re
 import signal
 import subprocess
 import sys
-import datetime
-import time
 
 
 # This is duplicated from ray.utils so that we do not have to introduce a
@@ -35,11 +34,12 @@ def wait_for_output(proc):
         A tuple of the stdout and stderr of the process as strings.
     """
     try:
+        # NOTE: This test must be run with Python 3.
         stdout_data, stderr_data = proc.communicate(timeout=200)
     except subprocess.TimeoutExpired:
         # Timeout: kill the process.
         # Get the remaining message from PIPE for debugging purpose.
-        print("Kill one process.")
+        print("Killing process because it timed out.")
         proc.kill()
         stdout_data, stderr_data = proc.communicate()
 
@@ -232,8 +232,6 @@ class DockerRunner(object):
             self._start_worker_node(docker_image, mem_size, shm_size,
                                     num_cpus[1 + i], num_gpus[1 + i],
                                     development_mode)
-        # Sleep to wait for the registration of raylet workers.
-        time.sleep(5)
 
     def _stop_node(self, container_id):
         """Stop a node in the Ray cluster."""
@@ -305,8 +303,8 @@ class DockerRunner(object):
         Raises:
             Exception: An exception is raised if the timeout expires.
         """
-        print(
-            "Multi-node docker test started at: %s" % datetime.datetime.now())
+        print("Multi-node docker test started at: {}".format(
+            datetime.datetime.now()))
         all_container_ids = (
             [self.head_container_id] + self.worker_container_ids)
         if driver_locations is None:
@@ -314,7 +312,7 @@ class DockerRunner(object):
                 random.randrange(0, len(all_container_ids))
                 for i in range(num_drivers)
             ]
-        print("driver_locations: %s" % driver_locations)
+        print("driver_locations: {}".format(driver_locations))
 
         # Define a signal handler and set an alarm to go off in
         # timeout_seconds.
@@ -327,13 +325,18 @@ class DockerRunner(object):
 
         # Start the different drivers.
         driver_processes = []
+        if self.use_raylet:
+            use_raylet_env = 1
+        else:
+            use_raylet_env = 0
         for i in range(len(driver_locations)):
             # Get the container ID to run the ith driver in.
             container_id = all_container_ids[driver_locations[i]]
             command = [
                 "docker", "exec", container_id, "/bin/bash", "-c",
-                ("RAY_REDIS_ADDRESS={}:6379 RAY_DRIVER_INDEX={} python "
-                 "{}".format(self.head_container_ip, i, test_script))
+                ("RAY_REDIS_ADDRESS={}:6379 RAY_DRIVER_INDEX={} "
+                 "RAY_USE_XRAY={} python {}".format(
+                    self.head_container_ip, i, use_raylet_env, test_script))
             ]
             print("Starting driver with command {}.".format(test_script))
             # Start the driver.
@@ -355,7 +358,8 @@ class DockerRunner(object):
 
         # Disable the alarm.
         signal.alarm(0)
-        print("Multi-node docker test ended at: %s" % datetime.datetime.now())
+        print("Multi-node docker test ended at: {}".format(
+            datetime.datetime.now()))
         return results
 
 

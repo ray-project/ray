@@ -34,7 +34,7 @@ def driver(redis_address, driver_index):
     This driver should create five actors that each use one GPU. After a while,
     it should exit.
     """
-    ray.init(redis_address=redis_address, use_raylet=True)
+    ray.init(redis_address=redis_address)
 
     # Wait for all the nodes to join the cluster.
     _wait_for_nodes_to_join(total_num_nodes)

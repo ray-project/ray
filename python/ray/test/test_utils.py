@@ -37,7 +37,7 @@ def _wait_for_nodes_to_join(num_nodes, timeout=20):
             ready = True
             # Check that for each node, a local scheduler and a plasma manager
             # are present.
-            if isinstance(client_table, list):
+            if ray.global_state.use_raylet:
                 # In raylet mode, this is a list of map.
                 # The GCS info will appear as a whole instead of part by part.
                 return
