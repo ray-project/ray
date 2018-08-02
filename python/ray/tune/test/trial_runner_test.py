@@ -445,8 +445,12 @@ class VariantGeneratorTest(unittest.TestCase):
         ray.shutdown()
         _register_all()  # re-register the evicted objects
 
+    def generate_trials(self, spec, name):
+        suggester = BasicVariantGenerator({name: spec})
+        return suggester.next_trials()
+
     def testParseToTrials(self):
-        trials = generate_trials({
+        trials = self.generate_trials({
             "run": "PPO",
             "repeat": 2,
             "max_failures": 5,
@@ -467,7 +471,7 @@ class VariantGeneratorTest(unittest.TestCase):
         self.assertEqual(trials[1].experiment_tag, "1")
 
     def testEval(self):
-        trials = generate_trials({
+        trials = self.generate_trials({
             "run": "PPO",
             "config": {
                 "foo": {
@@ -481,7 +485,7 @@ class VariantGeneratorTest(unittest.TestCase):
         self.assertEqual(trials[0].experiment_tag, "0_foo=4")
 
     def testGridSearch(self):
-        trials = generate_trials({
+        trials = self.generate_trials({
             "run": "PPO",
             "config": {
                 "bar": {
@@ -504,7 +508,7 @@ class VariantGeneratorTest(unittest.TestCase):
         self.assertEqual(trials[5].config, {"bar": False, "foo": 3})
 
     def testGridSearchAndEval(self):
-        trials = generate_trials({
+        trials = self.generate_trials({
             "run": "PPO",
             "config": {
                 "qux": lambda spec: 2 + 2,
@@ -518,7 +522,7 @@ class VariantGeneratorTest(unittest.TestCase):
         self.assertEqual(trials[0].experiment_tag, "0_bar=True,foo=1,qux=4")
 
     def testConditionResolution(self):
-        trials = generate_trials({
+        trials = self.generate_trials({
             "run": "PPO",
             "config": {
                 "x": 1,
@@ -531,7 +535,7 @@ class VariantGeneratorTest(unittest.TestCase):
         self.assertEqual(trials[0].config, {"x": 1, "y": 2, "z": 3})
 
     def testDependentLambda(self):
-        trials = generate_trials({
+        trials = self.generate_trials({
             "run": "PPO",
             "config": {
                 "x": grid_search([1, 2]),
@@ -544,7 +548,7 @@ class VariantGeneratorTest(unittest.TestCase):
         self.assertEqual(trials[1].config, {"x": 2, "y": 200})
 
     def testDependentGridSearch(self):
-        trials = generate_trials({
+        trials = self.generate_trials({
             "run": "PPO",
             "config": {
                 "x": grid_search([
@@ -562,7 +566,7 @@ class VariantGeneratorTest(unittest.TestCase):
     def testRecursiveDep(self):
         try:
             list(
-                generate_trials({
+                self.self.generate_trials({
                     "run": "PPO",
                     "config": {
                         "foo": lambda spec: spec.config.foo,
@@ -638,7 +642,8 @@ class TrialRunnerTest(unittest.TestCase):
         }
 
         for name, spec in experiments.items():
-            for trial in generate_trials(spec, name):
+            trial_generator = BasicVariantGenerator({name: spec})
+            for trial in trial_generator.next_trials():
                 trial.start()
                 self.assertLessEqual(len(trial.logdir), 200)
                 trial.stop()
