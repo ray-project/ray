@@ -34,6 +34,7 @@ class BasicVariantGenerator(SearchAlgorithm):
             self._generate_trials(experiment.spec, experiment.name)
             for experiment in experiment_list
         ])
+        self._counter = 0
         self._finished = False
 
     def next_trials(self):
