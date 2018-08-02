@@ -9,7 +9,7 @@ from ray.tune.trial import Resources
 APEX_DEFAULT_CONFIG = merge_dicts(
     DQN_CONFIG,
     {
-        "optimizer_class": "AsyncSamplesOptimizer",
+        "optimizer_class": "AsyncReplayOptimizer",
         "optimizer": merge_dicts(
             DQN_CONFIG["optimizer"], {
                 "max_weight_sync_delay": 400,
