@@ -3,26 +3,11 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
-import json
 import numpy
 import random
 import types
 
 from ray.tune import TuneError
-from ray.tune.logger import _SafeFallbackEncoder
-
-
-def to_argv(config):
-    argv = []
-    for k, v in config.items():
-        if "-" in k:
-            raise ValueError("Use '_' instead of '-' in `{}`".format(k))
-        argv.append("--{}".format(k.replace("_", "-")))
-        if isinstance(v, str):
-            argv.append(v)
-        else:
-            argv.append(json.dumps(v, cls=_SafeFallbackEncoder))
-    return argv
 
 
 def generate_variants(unresolved_spec):

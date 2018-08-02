@@ -5,7 +5,7 @@ from __future__ import print_function
 import time
 
 from ray.tune.error import TuneError
-from ray.tune.suggest import ExistingVariants
+from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.hyperband import HyperBandScheduler
 from ray.tune.async_hyperband import AsyncHyperBandScheduler
 from ray.tune.median_stopping_rule import MedianStoppingRule
@@ -43,7 +43,7 @@ def run_experiments(experiments=None,
     Args:
         experiments (Experiment | list | dict): Experiments to run.
         search_alg (SearchAlgorithm): Search Algorithm. Defaults to
-            ExistingVariants.
+            BasicVariantGenerator.
         scheduler (TrialScheduler): Scheduler for executing
             the experiment. Choose among FIFO (default), MedianStopping,
             AsyncHyperBand, and HyperBand.
@@ -65,7 +65,7 @@ def run_experiments(experiments=None,
     if search_alg is None:
         assert experiments is not None, "Experiments need to be specified" \
             "if search_alg is not provided."
-        search_alg = ExistingVariants(experiments)
+        search_alg = BasicVariantGenerator(experiments)
 
     runner = TrialRunner(
         search_alg,

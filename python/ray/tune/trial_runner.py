@@ -20,7 +20,7 @@ class TrialRunner(object):
     """A TrialRunner implements the event loop for scheduling trials on Ray.
 
     Example:
-        runner = TrialRunner(ExistingVariants())
+        runner = TrialRunner(BasicVariantGenerator())
         runner.add_trial(Trial(...))
         runner.add_trial(Trial(...))
         while not runner.is_finished():
@@ -48,7 +48,8 @@ class TrialRunner(object):
         """Initializes a new TrialRunner.
 
         Args:
-            search_alg (SearchAlgorithm): Defaults to ExistingVariants.
+            search_alg (SearchAlgorithm): SearchAlgorithm for generating
+                Trial objects.
             scheduler (TrialScheduler): Defaults to FIFOScheduler.
             launch_web_server (bool): Flag for starting TuneServer
             server_port (int): Port number for launching TuneServer
@@ -323,8 +324,8 @@ class TrialRunner(object):
         trials = self._search_alg.next_trials()
         if blocking and not trials:
             start = time.time()
-            while (not trials and not self.is_finished() and
-                   time.time() - start < timeout):
+            while (not trials and not self.is_finished()
+                   and time.time() - start < timeout):
                 print("Blocking for next trial...")
                 trials = self._search_alg.next_trials()
                 time.sleep(1)

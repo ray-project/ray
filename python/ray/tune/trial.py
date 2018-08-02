@@ -135,9 +135,13 @@ class Trial(object):
         if trial_id is not None:
             self.trial_id = trial_id
         else:
-            self.trial_id = binary_to_hex(random_string())[:8]
+            self.trial_id = Trial.generate_id()
         self.error_file = None
         self.num_failures = 0
+
+    @classmethod
+    def generate_id(cls):
+        return binary_to_hex(random_string())[:8]
 
     def start(self, checkpoint_obj=None):
         """Starts this trial.

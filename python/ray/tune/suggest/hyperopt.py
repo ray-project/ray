@@ -10,10 +10,10 @@ except Exception as e:
     hpo = None
 
 from ray.tune.error import TuneError
-from ray.tune.suggest import ExistingVariants
+from ray.tune.suggest.suggestion import SuggestionAlgorithm
 
 
-class HyperOptSearch(ExistingVariants):
+class HyperOptSearch(SuggestionAlgorithm):
     """A wrapper around HyperOpt to provide trial suggestions.
 
     Requires HyperOpt to be installed from source.
@@ -32,14 +32,14 @@ class HyperOptSearch(ExistingVariants):
             when interacting with HyperOpt so that HyperOpt can "maximize"
             this value.
         experiments (Experiment | list | dict): Experiments to run. Will be
-            used by ExistingVariants parent class to initialize Trials.
+            used by SuggestionAlgorithm parent class to initialize Trials.
     """
 
     def __init__(self,
+                 experiments,
                  space,
                  max_concurrent=10,
                  reward_attr="episode_reward_mean",
-                 experiments=None,
                  **kwargs):
         assert hpo is not None, "HyperOpt must be installed!"
         assert type(max_concurrent) is int and max_concurrent > 0
@@ -48,15 +48,14 @@ class HyperOptSearch(ExistingVariants):
         self.algo = hpo.tpe.suggest
         self.domain = hpo.Domain(lambda spc: spc, space)
         self._hpopt_trials = hpo.Trials()
-        self._live_trials = {}
+        self._live_trial_mapping = {}
         self.rstate = np.random.RandomState()
 
         super(HyperOptSearch, self).__init__(experiments=experiments, **kwargs)
 
-    def _suggest(self, generated_config):
-        # NOTE: generated_config is ignored.
+    def _suggest(self, trial_id):
         if not self._num_live_trials() <= self._max_concurrent:
-            return None, None
+            return None
         new_ids = self._hpopt_trials.new_trial_ids(1)
         self._hpopt_trials.refresh()
 
@@ -66,8 +65,7 @@ class HyperOptSearch(ExistingVariants):
         self._hpopt_trials.insert_trial_docs(new_trials)
         self._hpopt_trials.refresh()
         new_trial = new_trials[0]
-        new_trial_id = new_trial["tid"]
-        self._live_trials[new_trial_id] = new_trial
+        self._live_trial_mapping[trial_id] = (new_trial["tid"], new_trial)
 
         # Taken from HyperOpt.base.evaluate
         config = hpo.base.spec_from_misc(new_trial["misc"])
@@ -80,7 +78,7 @@ class HyperOptSearch(ExistingVariants):
             self.domain.expr,
             memo=memo,
             print_node_on_error=self.domain.rec_eval_print_node_on_error)
-        return copy.deepcopy(suggested_config), new_trial_id
+        return copy.deepcopy(suggested_config)
 
     def on_trial_result(self, trial_id, result):
         ho_trial = self._get_hyperopt_trial(trial_id)
@@ -106,13 +104,16 @@ class HyperOptSearch(ExistingVariants):
             hp_result = self._to_hyperopt_result(result)
             ho_trial['result'] = hp_result
         self._hpopt_trials.refresh()
-        del self._live_trials[trial_id]
+        del self._live_trial_mapping[trial_id]
 
     def _to_hyperopt_result(self, result):
         return {"loss": -getattr(result, self._reward_attr), "status": "ok"}
 
-    def _get_hyperopt_trial(self, tid):
-        return [t for t in self._hpopt_trials.trials if t["tid"] == tid][0]
+    def _get_hyperopt_trial(self, trial_id):
+        hyperopt_tid = self._live_trial_mapping[trial_id][0]
+        return [
+            t for t in self._hpopt_trials.trials if t["tid"] == hyperopt_tid
+        ][0]
 
     def _num_live_trials(self):
-        return len(self._live_trials)
+        return len(self._live_trial_mapping)
