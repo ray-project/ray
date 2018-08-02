@@ -320,18 +320,17 @@ class TrialRunner(object):
                 or the Runner finishes (i.e., timeout or search algorithm
                 finishes).
             timeout (int): Seconds before blocking times out."""
-        trial = self._search_alg.next_trial()
-        if blocking:
+        trials = self._search_alg.next_trials()
+        if blocking and not trials:
             start = time.time()
-            while (trial is None and not self.is_finished() and
+            while (not trials and not self.is_finished() and
                    time.time() - start < timeout):
                 print("Blocking for next trial...")
-                trial = self._search_alg.next_trial()
+                trials = self._search_alg.next_trials()
                 time.sleep(1)
 
-        while trial is not None:
+        for trial in trials:
             self.add_trial(trial)
-            trial = self._search_alg.next_trial()
 
     def _commit_resources(self, resources):
         self._committed_resources = Resources(

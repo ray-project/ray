@@ -5,14 +5,11 @@ from __future__ import print_function
 import copy
 import json
 import numpy
-import os
 import random
 import types
 
 from ray.tune import TuneError
 from ray.tune.logger import _SafeFallbackEncoder
-from ray.tune.trial import Trial
-from ray.tune.config_parser import make_parser, json_to_resources
 
 
 def to_argv(config):
@@ -26,77 +23,6 @@ def to_argv(config):
         else:
             argv.append(json.dumps(v, cls=_SafeFallbackEncoder))
     return argv
-
-
-def generate_trials(unresolved_spec, output_path='', search_alg=None):
-    """Wraps `generate_variants()` to return a Trial object for each variant.
-
-    Specified/sampled hyperparameters for the Search Algorithm will be
-    used to update the generated configuration.
-
-    See also: `generate_variants()`.
-
-    Arguments:
-        unresolved_spec (dict): Experiment spec conforming to the argument
-            schema defined in `ray.tune.config_parser`.
-        output_path (str): Path where to store experiment outputs.
-        search_alg (ExistingVariants): ExistingVariants search algorithm
-            for hyperparameters.
-
-    Yields:
-        Trial|None: If search_alg is specified but cannot be queried at
-            a certain time (i.e. due to contrained concurrency), this will
-            yield None. Otherwise, it will yield a trial.
-    """
-    if "run" not in unresolved_spec:
-        raise TuneError("Must specify `run` in {}".format(unresolved_spec))
-    parser = make_parser()
-    i = 0
-    for _ in range(unresolved_spec.get("repeat", 1)):
-        for resolved_vars, spec in generate_variants(unresolved_spec):
-            try:
-                # Special case the `env` param for RLlib by automatically
-                # moving it into the `config` section.
-                if "env" in spec:
-                    spec["config"] = spec.get("config", {})
-                    spec["config"]["env"] = spec["env"]
-                    del spec["env"]
-                args = parser.parse_args(to_argv(spec))
-            except SystemExit:
-                raise TuneError("Error parsing args, see above message", spec)
-
-            new_config = copy.deepcopy(spec.get("config", {}))
-            trial_id = None
-            # We hold the other resolved vars until suggestion is ready.
-            while search_alg is not None:
-                suggested_config, trial_id = search_alg.try_suggest()
-                if suggested_config is search_alg.PASS:
-                    yield None
-                else:
-                    new_config.update(suggested_config)
-                    break
-
-            if resolved_vars:
-                experiment_tag = "{}_{}".format(i, resolved_vars)
-            else:
-                experiment_tag = str(i)
-            i += 1
-            if "trial_resources" in spec:
-                resources = json_to_resources(spec["trial_resources"])
-            else:
-                resources = None
-            yield Trial(
-                trainable_name=spec["run"],
-                config=new_config,
-                trial_id=trial_id,
-                local_dir=os.path.join(args.local_dir, output_path),
-                experiment_tag=experiment_tag,
-                resources=resources,
-                stopping_criterion=spec.get("stop", {}),
-                checkpoint_freq=args.checkpoint_freq,
-                restore_path=spec.get("restore"),
-                upload_dir=args.upload_dir,
-                max_failures=args.max_failures)
 
 
 def generate_variants(unresolved_spec):

@@ -53,7 +53,7 @@ class HyperOptSearch(ExistingVariants):
 
         super(HyperOptSearch, self).__init__(experiments=experiments, **kwargs)
 
-    def try_suggest(self):
+    def _suggest(self):
         if not self._num_live_trials() < self._max_concurrent:
             return ExistingVariants.PASS, None
         new_ids = self._hpopt_trials.new_trial_ids(1)
