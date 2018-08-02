@@ -24,19 +24,43 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
     return bb;
   });
   private long client = 0;
+  boolean useRaylet = false;
 
-  public DefaultLocalSchedulerClient(String schedulerSockName, UniqueID clientId, UniqueID actorId,
-                                     boolean isWorker, UniqueID driverId, long numGpus) {
+  public DefaultLocalSchedulerClient(String schedulerSockName, UniqueID clientId,
+                                     UniqueID actorId, boolean isWorker, UniqueID driverId,
+                                     long numGpus, boolean useRaylet) {
     client = _init(schedulerSockName, clientId.getBytes(), actorId.getBytes(), isWorker,
-        driverId.getBytes(), numGpus);
+        driverId.getBytes(), numGpus, useRaylet);
+    this.useRaylet = useRaylet;
   }
 
-  private static native long _init(String localSchedulerSocket, byte[] workerId, byte[] actorId,
-                                   boolean isWorker, byte[] driverTaskId, long numGpus);
+  private static native long _init(String localSchedulerSocket, byte[] workerId,
+                                   byte[] actorId, boolean isWorker, byte[] driverTaskId,
+                                   long numGpus, boolean useRaylet);
 
   private static native byte[] _computePutId(long client, byte[] taskId, int putIndex);
 
   private static native void _task_done(long client);
+
+  private static native boolean[] _waitObject(long conn, byte[][] objectIds, 
+       int numReturns, int timeout, boolean waitLocal);
+
+  @Override
+  public List<byte[]> wait(byte[][] objectIds, int timeoutMs, int numReturns) {
+    assert (useRaylet == true);
+
+    boolean[] readys = _waitObject(client, objectIds, numReturns, timeoutMs, false);
+
+    List<byte[]> ret = new ArrayList<>();
+    for (int i = 0; i < readys.length; i++) {
+      if (readys[i]) {
+        ret.add(objectIds[i]);
+      }
+    }
+
+    assert (ret.size() == readys.length);
+    return ret; 
+  }
 
   @Override
   public void submitTask(TaskSpec task) {
@@ -45,12 +69,13 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
     if (!task.actorId.isNil()) {
       a = task.cursorId.getBytes();
     }
-    _submitTask(client, a, info, info.position(), info.remaining());
+
+    _submitTask(client, a, info, info.position(), info.remaining(), useRaylet);
   }
 
   @Override
   public TaskSpec getTaskTodo() {
-    byte[] bytes = _getTaskTodo(client);
+    byte[] bytes = _getTaskTodo(client, useRaylet);
     assert (null != bytes);
     ByteBuffer bb = ByteBuffer.wrap(bytes);
     return taskInfo2Spec(bb);
@@ -62,8 +87,16 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
   }
 
   @Override
-  public void reconstructObject(UniqueID objectId) {
-    _reconstruct_object(client, objectId.getBytes());
+  public void reconstructObject(UniqueID objectId, boolean fetchOnly) {
+    List<UniqueID> objects = new ArrayList<>();
+    objects.add(objectId);
+    _reconstruct_objects(client, getIdBytes(objects), fetchOnly);
+  }
+
+  @Override
+  public void reconstructObjects(List<UniqueID> objectIds, boolean fetchOnly) {
+    RayLog.core.info("reconstruct objects {}", objectIds);
+    _reconstruct_objects(client, getIdBytes(objectIds), fetchOnly);
   }
 
   @Override
@@ -73,12 +106,13 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
 
   private static native void _notify_unblocked(long client);
 
-  private static native void _reconstruct_object(long client, byte[] objectId);
+  private static native void _reconstruct_objects(long client, byte[][] objectIds,
+                                                  boolean fetchOnly);
 
   private static native void _put_object(long client, byte[] taskId, byte[] objectId);
 
   // return TaskInfo (in FlatBuffer)
-  private static native byte[] _getTaskTodo(long client);
+  private static native byte[] _getTaskTodo(long client, boolean useRaylet);
 
   public static TaskSpec taskInfo2Spec(ByteBuffer bb) {
     bb.order(ByteOrder.LITTLE_ENDIAN);
@@ -162,7 +196,10 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
           idOffsets[k] = fbb.createString(task.args[i].ids.get(k).toByteBuffer());
         }
         objectIdOffset = fbb.createVectorOfTables(idOffsets);
+      } else {
+        objectIdOffset = fbb.createVectorOfTables(new int[0]);
       }
+
       if (task.args[i].data != null) {
         dataOffset = fbb.createString(ByteBuffer.wrap(task.args[i].data));
       }
@@ -214,8 +251,17 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
   }
 
   // task -> TaskInfo (with FlatBuffer)
-  private static native void _submitTask(long client, byte[] cursorId, /*Direct*/ByteBuffer task,
-                                         int pos, int sz);
+  protected static native void _submitTask(long client, byte[] cursorId, /*Direct*/ByteBuffer task,
+                                         int pos, int sz, boolean useRaylet);
+
+  private static byte[][] getIdBytes(List<UniqueID> objectIds) {
+    int size = objectIds.size();
+    byte[][] ids = new byte[size][];
+    for (int i = 0; i < size; i++) {
+      ids[i] = objectIds.get(i).getBytes();
+    }
+    return ids;
+  }
 
   public void destroy() {
     _destroy(client);

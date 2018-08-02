@@ -85,8 +85,8 @@ public final class Ray extends Rpc {
       if (cls.getConstructor() == null) {
         System.err.println("class " + cls.getName()
             + " does not (actors must) have a constructor with no arguments");
-        RayLog.core.error("class " + cls.getName()
-            + " does not (actors must) have a constructor with no arguments");
+        RayLog.core.error("class {} does not (actors must) have a constructor with no arguments",
+            cls.getName());
       }
     } catch (Exception e) {
       System.exit(1);

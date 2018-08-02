@@ -47,12 +47,15 @@ declare -a nativeBinaries=(
     "./src/plasma/plasma_manager"
     "./src/local_scheduler/local_scheduler"
     "./src/global_scheduler/global_scheduler"
+    "./src/ray/raylet/raylet"
+    "./src/ray/raylet/raylet_monitor"
 )
 
 declare -a nativeLibraries=(
     "./src/common/redis_module/libray_redis_module.so"
     "./src/local_scheduler/liblocal_scheduler_library_java.*"
     "./src/plasma/libplasma_java.*"
+    "./src/ray/raylet/*lib.a"
 )
 
 declare -a javaBinaries=(
