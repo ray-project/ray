@@ -10,7 +10,17 @@ mvn clean install -Dmaven.test.skip
 check_style=$(mvn checkstyle:check)
 echo "${check_style}"
 [[ ${check_style} =~ "BUILD FAILURE" ]] && exit 1
+
+# test non-raylet
+sed -i 's/^use_raylet.*$/use_raylet = false/g' $ROOT_DIR/../java/ray.config.ini
 mvn_test=$(mvn test)
 echo "${mvn_test}"
 [[ ${mvn_test} =~ "BUILD SUCCESS" ]] || exit 1
+
+# test raylet
+sed -i 's/^use_raylet.*$/use_raylet = true/g' $ROOT_DIR/../java/ray.config.ini
+mvn_test=$(mvn test)
+echo "${mvn_test}"
+[[ ${mvn_test} =~ "BUILD SUCCESS" ]] || exit 1
+
 popd

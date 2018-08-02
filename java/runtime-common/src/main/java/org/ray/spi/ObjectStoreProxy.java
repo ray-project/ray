@@ -10,6 +10,7 @@ import org.ray.api.UniqueID;
 import org.ray.api.WaitResult;
 import org.ray.core.Serializer;
 import org.ray.core.WorkerContext;
+import org.ray.spi.LocalSchedulerLink;
 import org.ray.util.exception.TaskExecutionException;
 
 /**
@@ -19,11 +20,18 @@ import org.ray.util.exception.TaskExecutionException;
 public class ObjectStoreProxy {
 
   private final ObjectStoreLink store;
+  private final LocalSchedulerLink localSchedulerLink;
   private final int getTimeoutMs = 1000;
 
   public ObjectStoreProxy(ObjectStoreLink store) {
     this.store = store;
+    this.localSchedulerLink = null;
   }
+
+  public ObjectStoreProxy(ObjectStoreLink store, LocalSchedulerLink localSchedulerLink) {
+    this.store = store;
+    this.localSchedulerLink = localSchedulerLink;
+  } 
 
   public <T> Pair<T, GetStatus> get(UniqueID objectId, boolean isMetadata)
       throws TaskExecutionException {
@@ -88,7 +96,12 @@ public class ObjectStoreProxy {
     for (RayObject<T> obj : waitfor.Objects()) {
       ids.add(obj.getId());
     }
-    List<byte[]> readys = store.wait(getIdBytes(ids), timeout, numReturns);
+    List<byte[]> readys;
+    if (localSchedulerLink == null) {
+      readys = store.wait(getIdBytes(ids), timeout, numReturns);
+    } else {
+      readys = localSchedulerLink.wait(getIdBytes(ids), timeout, numReturns);
+    }
 
     RayList<T> readyObjs = new RayList<>();
     RayList<T> remainObjs = new RayList<>();
@@ -103,18 +116,13 @@ public class ObjectStoreProxy {
     return new WaitResult<>(readyObjs, remainObjs);
   }
 
-  public void fetch(UniqueID objectId) {
-    store.fetch(objectId.getBytes());
-  }
-
   public void fetch(List<UniqueID> objectIds) {
-    store.fetch(getIdBytes(objectIds));
+    if (localSchedulerLink == null) {
+      store.fetch(getIdBytes(objectIds));
+    } else {
+      localSchedulerLink.reconstructObjects(objectIds, true);
+    }
   }
-
-  public int getFetchSize() {
-    return 10000;
-  }
-
 
   public enum GetStatus {
     SUCCESS, FAILED
