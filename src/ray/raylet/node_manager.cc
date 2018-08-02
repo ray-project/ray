@@ -753,6 +753,8 @@ void NodeManager::ScheduleTasks() {
 
   // All remaining placeable tasks should be registered with the task dependency
   // manager. TaskDependencyManager::TaskPending() is assumed to be idempotent.
+  // TODO(atumanov): evaluate performance implications of registering all new tasks on
+  // submission vs. registering remaining queued placeable tasks here.
   for (const auto &task : local_queues_.GetPlaceableTasks()) {
     task_dependency_manager_.TaskPending(task);
   }
