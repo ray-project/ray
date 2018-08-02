@@ -10,6 +10,7 @@ import pickle
 
 import tensorflow as tf
 from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
+from ray.rllib.utils import deep_update
 from ray.tune.registry import ENV_CREATOR, _global_registry
 from ray.tune.result import TrainingResult
 from ray.tune.trainable import Trainable
@@ -35,6 +36,8 @@ COMMON_CONFIG = {
     "preprocessor_pref": "rllib",
     # Arguments to pass to the env creator
     "env_config": {},
+    # Environment name can also be passed via config
+    "env": None,
     # Arguments to pass to model
     "model": {
         "use_lstm": False,
@@ -77,34 +80,6 @@ def with_common_config(extra_config):
     config = copy.deepcopy(COMMON_CONFIG)
     config.update(extra_config)
     return config
-
-
-def _deep_update(original, new_dict, new_keys_allowed, whitelist):
-    """Updates original dict with values from new_dict recursively.
-    If new key is introduced in new_dict, then if new_keys_allowed is not
-    True, an error will be thrown. Further, for sub-dicts, if the key is
-    in the whitelist, then new subkeys can be introduced.
-
-    Args:
-        original (dict): Dictionary with default values.
-        new_dict (dict): Dictionary with values to be updated
-        new_keys_allowed (bool): Whether new keys are allowed.
-        whitelist (list): List of keys that correspond to dict values
-            where new subkeys can be introduced. This is only at
-            the top level.
-    """
-    for k, value in new_dict.items():
-        if k not in original and k != "env":
-            if not new_keys_allowed:
-                raise Exception("Unknown config parameter `{}` ".format(k))
-        if type(original.get(k)) is dict:
-            if k in whitelist:
-                _deep_update(original[k], value, True, [])
-            else:
-                _deep_update(original[k], value, new_keys_allowed, [])
-        else:
-            original[k] = value
-    return original
 
 
 class Agent(Trainable):
@@ -205,9 +180,9 @@ class Agent(Trainable):
 
         # Merge the supplied config with the class default
         merged_config = self._default_config.copy()
-        merged_config = _deep_update(merged_config, self.config,
-                                     self._allow_unknown_configs,
-                                     self._allow_unknown_subkeys)
+        merged_config = deep_update(merged_config, self.config,
+                                    self._allow_unknown_configs,
+                                    self._allow_unknown_subkeys)
         self.config = merged_config
 
         # TODO(ekl) setting the graph is unnecessary for PyTorch agents
@@ -237,16 +212,23 @@ class Agent(Trainable):
 
         raise NotImplementedError
 
-    def compute_action(self, observation, state=None):
-        """Computes an action using the current trained policy."""
+    def compute_action(self, observation, state=None, policy_id="default"):
+        """Computes an action for the specified policy.
+
+        Arguments:
+            observation (obj): observation from the environment.
+            state (list): RNN hidden state, if any.
+            policy_id (str): policy to query (only applies to multi-agent).
+        """
 
         if state is None:
             state = []
-        obs = self.local_evaluator.filters["default"](
+        filtered_obs = self.local_evaluator.filters[policy_id](
             observation, update=False)
         return self.local_evaluator.for_policy(
-            lambda p: p.compute_single_action(obs, state, is_training=False)[0]
-        )
+            lambda p: p.compute_single_action(
+                filtered_obs, state, is_training=False)[0],
+            policy_id=policy_id)
 
     def get_weights(self, policies=None):
         """Return a dictionary of policy ids to weights.
@@ -385,6 +367,9 @@ def get_agent_class(alg):
     elif alg == "PG":
         from ray.rllib.agents import pg
         return pg.PGAgent
+    elif alg == "IMPALA":
+        from ray.rllib.agents import impala
+        return impala.ImpalaAgent
     elif alg == "script":
         from ray.tune import script_runner
         return script_runner.ScriptRunner

@@ -19,7 +19,7 @@ pushd example
 if [ ! -d "app1/" ];then
     mkdir app1
 fi
-cp -rf target/ray-example-1.0.jar app1/
+cp -rf target/ray-tutorial-1.0.jar app1/
 zip -r app1.zip app1
 popd
 

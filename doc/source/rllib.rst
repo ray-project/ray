@@ -47,6 +47,7 @@ Algorithms
 * `Deep Deterministic Policy Gradients <rllib-algorithms.html#deep-deterministic-policy-gradients>`__
 * `Deep Q Networks <rllib-algorithms.html#deep-q-networks>`__
 * `Evolution Strategies <rllib-algorithms.html#evolution-strategies>`__
+* `Importance Weighted Actor-Learner Architecture <rllib-algorithms.html#importance-weighted-actor-learner-architecture>`__
 * `Policy Gradients <rllib-algorithms.html#policy-gradients>`__
 * `Proximal Policy Optimization <rllib-algorithms.html#proximal-policy-optimization>`__
 

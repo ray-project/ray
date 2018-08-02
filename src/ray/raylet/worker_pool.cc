@@ -5,6 +5,36 @@
 #include "ray/status.h"
 #include "ray/util/logging.h"
 
+namespace {
+
+// A helper function to remove a worker from a list. Returns true if the worker
+// was found and removed.
+std::shared_ptr<ray::raylet::Worker> GetWorker(
+    const std::list<std::shared_ptr<ray::raylet::Worker>> &worker_pool,
+    const std::shared_ptr<ray::LocalClientConnection> &connection) {
+  for (auto it = worker_pool.begin(); it != worker_pool.end(); it++) {
+    if ((*it)->Connection() == connection) {
+      return (*it);
+    }
+  }
+  return nullptr;
+}
+
+// A helper function to remove a worker from a list. Returns true if the worker
+// was found and removed.
+bool RemoveWorker(std::list<std::shared_ptr<ray::raylet::Worker>> &worker_pool,
+                  const std::shared_ptr<ray::raylet::Worker> &worker) {
+  for (auto it = worker_pool.begin(); it != worker_pool.end(); it++) {
+    if (*it == worker) {
+      worker_pool.erase(it);
+      return true;
+    }
+  }
+  return false;
+}
+
+}  // namespace
+
 namespace ray {
 
 namespace raylet {
@@ -91,6 +121,7 @@ void WorkerPool::RegisterWorker(std::shared_ptr<Worker> worker) {
   auto pid = worker->Pid();
   RAY_LOG(DEBUG) << "Registering worker with pid " << pid;
   registered_workers_.push_back(std::move(worker));
+
   auto it = starting_worker_processes_.find(pid);
   RAY_CHECK(it != starting_worker_processes_.end());
   it->second--;
@@ -99,14 +130,19 @@ void WorkerPool::RegisterWorker(std::shared_ptr<Worker> worker) {
   }
 }
 
+void WorkerPool::RegisterDriver(std::shared_ptr<Worker> driver) {
+  RAY_CHECK(!driver->GetAssignedTaskId().is_nil());
+  registered_drivers_.push_back(driver);
+}
+
 std::shared_ptr<Worker> WorkerPool::GetRegisteredWorker(
     const std::shared_ptr<LocalClientConnection> &connection) const {
-  for (auto it = registered_workers_.begin(); it != registered_workers_.end(); it++) {
-    if ((*it)->Connection() == connection) {
-      return (*it);
-    }
-  }
-  return nullptr;
+  return GetWorker(registered_workers_, connection);
+}
+
+std::shared_ptr<Worker> WorkerPool::GetRegisteredDriver(
+    const std::shared_ptr<LocalClientConnection> &connection) const {
+  return GetWorker(registered_drivers_, connection);
 }
 
 void WorkerPool::PushWorker(std::shared_ptr<Worker> worker) {
@@ -138,22 +174,13 @@ std::shared_ptr<Worker> WorkerPool::PopWorker(const ActorID &actor_id) {
   return worker;
 }
 
-// A helper function to remove a worker from a list. Returns true if the worker
-// was found and removed.
-bool removeWorker(std::list<std::shared_ptr<Worker>> &worker_pool,
-                  const std::shared_ptr<Worker> &worker) {
-  for (auto it = worker_pool.begin(); it != worker_pool.end(); it++) {
-    if (*it == worker) {
-      worker_pool.erase(it);
-      return true;
-    }
-  }
-  return false;
+bool WorkerPool::DisconnectWorker(std::shared_ptr<Worker> worker) {
+  RAY_CHECK(RemoveWorker(registered_workers_, worker));
+  return RemoveWorker(pool_, worker);
 }
 
-bool WorkerPool::DisconnectWorker(std::shared_ptr<Worker> worker) {
-  RAY_CHECK(removeWorker(registered_workers_, worker));
-  return removeWorker(pool_, worker);
+void WorkerPool::DisconnectDriver(std::shared_ptr<Worker> driver) {
+  RAY_CHECK(RemoveWorker(registered_drivers_, driver));
 }
 
 }  // namespace raylet

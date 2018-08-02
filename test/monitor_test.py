@@ -24,7 +24,7 @@ class MonitorTest(unittest.TestCase):
         ])
         lines = [m.strip() for m in stdout.split("\n")]
         init_cmd = [m for m in lines if m.startswith("ray.init")]
-        self.assertEqual(1, len(init_cmd))
+        assert 1 == len(init_cmd)
         redis_address = init_cmd[0].split("redis_address=\"")[-1][:-2]
 
         def StateSummary():
@@ -74,12 +74,12 @@ class MonitorTest(unittest.TestCase):
         # values computed in the Driver function are being updated slowly and
         # so the call to StateSummary() is getting outdated values. This could
         # be fixed by looping until StateSummary() returns the desired values.
-        self.assertTrue(success.value)
+        assert success.value
         # Check that objects, tasks, and functions are cleaned up.
         ray.init(redis_address=redis_address)
         # The assertion below can fail if the monitor is too slow to clean up
         # the global state.
-        self.assertEqual((0, 1), StateSummary()[:2])
+        assert (0, 1) == StateSummary()[:2]
 
         ray.shutdown()
         subprocess.Popen(["ray", "stop"]).wait()

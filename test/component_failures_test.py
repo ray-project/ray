@@ -50,9 +50,8 @@ class ComponentFailureTest(unittest.TestCase):
         time.sleep(0.1)
 
         # Make sure that nothing has died.
-        self.assertTrue(
-            ray.services.all_processes_alive(
-                exclude=[ray.services.PROCESS_TYPE_WORKER]))
+        assert ray.services.all_processes_alive(
+            exclude=[ray.services.PROCESS_TYPE_WORKER])
 
     # This test checks that when a worker dies in the middle of a wait, the
     # plasma store and manager will not die.
@@ -90,9 +89,8 @@ class ComponentFailureTest(unittest.TestCase):
         time.sleep(0.1)
 
         # Make sure that nothing has died.
-        self.assertTrue(
-            ray.services.all_processes_alive(
-                exclude=[ray.services.PROCESS_TYPE_WORKER]))
+        assert ray.services.all_processes_alive(
+            exclude=[ray.services.PROCESS_TYPE_WORKER])
 
     def _testWorkerFailed(self, num_local_schedulers):
         @ray.remote
@@ -170,14 +168,14 @@ class ComponentFailureTest(unittest.TestCase):
         for process in components[1:]:
             process.kill()
             process.wait()
-            self.assertNotEqual(process.poll(), None)
+            assert not process.poll() is None
 
         # Make sure that we can still get the objects after the executing tasks
         # died.
         results = ray.get(object_ids)
         expected_results = 4 * list(
             range(num_workers_per_scheduler * num_local_schedulers))
-        self.assertEqual(results, expected_results)
+        assert results == expected_results
 
     def check_components_alive(self, component_type, check_component_alive):
         """Check that a given component type is alive on all worker nodes.
@@ -185,14 +183,14 @@ class ComponentFailureTest(unittest.TestCase):
         components = ray.services.all_processes[component_type][1:]
         for component in components:
             if check_component_alive:
-                self.assertTrue(component.poll() is None)
+                assert component.poll() is None
             else:
                 print("waiting for " + component_type + " with PID " +
                       str(component.pid) + "to terminate")
                 component.wait()
                 print("done waiting for " + component_type + " with PID " +
                       str(component.pid) + "to terminate")
-                self.assertTrue(not component.poll() is None)
+                assert not component.poll() is None
 
     @unittest.skipIf(
         os.environ.get('RAY_USE_NEW_GCS', False), "Hanging with new GCS API.")

@@ -14,7 +14,6 @@
 
 #include "plasma/client.h"
 #include "plasma/events.h"
-#include "plasma/plasma.h"
 
 #include "ray/common/client_connection.h"
 #include "ray/id.h"
@@ -39,7 +38,7 @@ struct ObjectManagerConfig {
   int max_receives;
   /// Object chunk size, in bytes
   uint64_t object_chunk_size;
-  /// The stored socked name.
+  /// The store socket name.
   std::string store_socket_name;
   /// The time in milliseconds to wait until a Push request
   /// fails due to unsatisfied local object. Special value:
@@ -102,8 +101,8 @@ class ObjectManager : public ObjectManagerInterface {
   ///
   /// \param object_id The object's object id.
   /// \param client_id The remote node's client id.
-  /// \return Status of whether the push request successfully initiated.
-  ray::Status Push(const ObjectID &object_id, const ClientID &client_id);
+  /// \return Void.
+  void Push(const ObjectID &object_id, const ClientID &client_id);
 
   /// Pull an object from ClientID. Returns UniqueID asociated with
   /// an invocation of this method.

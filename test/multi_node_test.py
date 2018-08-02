@@ -9,6 +9,7 @@ import unittest
 
 import ray
 from ray.test.test_utils import run_and_get_output
+import pytest
 
 
 def run_string_as_driver(driver_script):
@@ -49,7 +50,7 @@ class MultiNodeTest(unittest.TestCase):
         ray.init(redis_address=self.redis_address, driver_mode=ray.SILENT_MODE)
 
         # There shouldn't be any errors yet.
-        self.assertEqual(len(ray.error_info()), 0)
+        assert len(ray.error_info()) == 0
 
         error_string1 = "error_string1"
         error_string2 = "error_string2"
@@ -59,7 +60,7 @@ class MultiNodeTest(unittest.TestCase):
             raise Exception(error_string1)
 
         # Run a remote function that throws an error.
-        with self.assertRaises(Exception):
+        with pytest.raises(Exception):
             ray.get(f.remote())
 
         # Wait for the error to appear in Redis.
@@ -68,8 +69,8 @@ class MultiNodeTest(unittest.TestCase):
             print("Waiting for error to appear.")
 
         # Make sure we got the error.
-        self.assertEqual(len(ray.error_info()), 1)
-        self.assertIn(error_string1, ray.error_info()[0]["message"])
+        assert len(ray.error_info()) == 1
+        assert error_string1 in ray.error_info()[0]["message"]
 
         # Start another driver and make sure that it does not receive this
         # error. Make the other driver throw an error, and make sure it
@@ -104,12 +105,12 @@ print("success")
 
         out = run_string_as_driver(driver_script)
         # Make sure the other driver succeeded.
-        self.assertIn("success", out)
+        assert "success" in out
 
         # Make sure that the other error message doesn't show up for this
         # driver.
-        self.assertEqual(len(ray.error_info()), 1)
-        self.assertIn(error_string1, ray.error_info()[0]["message"])
+        assert len(ray.error_info()) == 1
+        assert error_string1 in ray.error_info()[0]["message"]
 
     def testRemoteFunctionIsolation(self):
         # This test will run multiple remote functions with the same names in
@@ -146,10 +147,10 @@ print("success")
 
         for _ in range(10000):
             result = ray.get([f.remote(), g.remote(0)])
-            self.assertEqual(result, [1, 2])
+            assert result == [1, 2]
 
         # Make sure the other driver succeeded.
-        self.assertIn("success", out)
+        assert "success" in out
 
     @unittest.skipIf(
         os.environ.get("RAY_USE_XRAY") == "1",
@@ -187,11 +188,11 @@ print("success")
         for _ in range(3):
             out = run_string_as_driver(driver_script1)
             # Make sure the first driver ran to completion.
-            self.assertIn("success", out)
+            assert "success" in out
             out = run_string_as_driver(driver_script2)
             # Make sure the first driver ran to completion.
-            self.assertIn("success", out)
-            self.assertTrue(ray.services.all_processes_alive())
+            assert "success" in out
+            assert ray.services.all_processes_alive()
 
 
 class StartRayScriptTest(unittest.TestCase):
@@ -254,7 +255,7 @@ class StartRayScriptTest(unittest.TestCase):
             subprocess.Popen(["ray", "stop"]).wait()
 
         # Test starting Ray with invalid arguments.
-        with self.assertRaises(Exception):
+        with pytest.raises(Exception):
             run_and_get_output([
                 "ray", "start", "--head", "--redis-address", "127.0.0.1:6379"
             ])
@@ -273,7 +274,7 @@ class StartRayScriptTest(unittest.TestCase):
         def f():
             return 1
 
-        self.assertEqual(ray.get(f.remote()), 1)
+        assert ray.get(f.remote()) == 1
 
         # Kill the Ray cluster.
         subprocess.Popen(["ray", "stop"]).wait()
@@ -295,7 +296,54 @@ print("success")
 
         out = run_string_as_driver(driver_script)
         # Make sure the other driver succeeded.
-        self.assertIn("success", out)
+        assert "success" in out
+
+
+class RunDriverForMultipleTimesTest(unittest.TestCase):
+    def tearDown(self):
+        ray.shutdown()
+
+    def testRunDriverForTwice(self):
+        # We used to have issue 2165 and 2288:
+        # https://github.com/ray-project/ray/issues/2165
+        # https://github.com/ray-project/ray/issues/2288
+        # both complain that driver will hang when run for the second time.
+        # This test is used to verify the fix for above issue, it will run the
+        # same driver for twice and verify whether both of them succeed.
+        address_info = ray.init()
+        driver_script = """
+import ray
+import ray.tune as tune
+import os
+import time
+
+def train_func(config, reporter):  # add a reporter arg
+    for i in range(2):
+        time.sleep(0.1)
+        reporter(timesteps_total=i, mean_accuracy=i+97)  # report metrics
+
+ray.init(redis_address="{}", driver_mode=ray.SILENT_MODE)
+ray.tune.register_trainable("train_func", train_func)
+
+tune.run_experiments({{
+    "my_experiment": {{
+        "run": "train_func",
+        "stop": {{"mean_accuracy": 99}},
+        "config": {{
+            "layer1": {{
+                "class_name": tune.grid_search(["a"]),
+                "config": {{"lr": tune.grid_search([1, 2])}}
+            }},
+        }},
+        "local_dir": os.path.expanduser("~/tmp")
+    }}
+}})
+print("success")
+""".format(address_info["redis_address"])
+
+        for i in range(2):
+            out = run_string_as_driver(driver_script)
+            assert "success" in out
 
 
 if __name__ == "__main__":
