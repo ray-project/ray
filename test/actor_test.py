@@ -1253,6 +1253,51 @@ class ActorsWithGPUs(unittest.TestCase):
         assert remaining_ids == [x_id]
 
 
+class ActorExceptionFailures(unittest.TestCase):
+    def tearDown(self):
+        ray.shutdown()
+
+    def testExceptionRaisedWhenActorNodeDies(self):
+        ray.worker._init(
+            start_ray_local=True,
+            num_local_schedulers=2,
+            num_cpus=1)
+
+        @ray.remote
+        class Counter(object):
+            def __init__(self):
+                self.x = 0
+
+            def local_plasma(self):
+                return ray.worker.global_worker.plasma_client.store_socket_name
+
+            def inc(self):
+                self.x += 1
+                return self.x
+
+        local_plasma = ray.worker.global_worker.plasma_client.store_socket_name
+
+        # Create an actor that is not on the local scheduler.
+        actor = Counter.remote()
+        while ray.get(actor.local_plasma.remote()) == local_plasma:
+            actor = Counter.remote()
+
+        # Kill the second plasma store to get rid of the cached objects and
+        # trigger the corresponding local scheduler to exit.
+        process = ray.services.all_processes[
+            ray.services.PROCESS_TYPE_PLASMA_STORE][1]
+        process.kill()
+        process.wait()
+
+        # Submit a new actor task.
+        x_id = actor.inc.remote()
+
+        # Make sure that getting the result raises an exception.
+        for _ in range(1000):
+            with pytest.raises(ray.worker.RayGetError):
+                ray.get(x_id)
+
+
 @unittest.skipIf(
     os.environ.get("RAY_USE_XRAY") == "1",
     "This test does not work with xray yet.")
