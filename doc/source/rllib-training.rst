@@ -74,12 +74,18 @@ located at ``~/ray_results/default/DQN_CartPole-v0_0upjmdgr0/checkpoint-1``
 and renders its behavior in the environment specified by ``--env``.
 
 Tuned Examples
---------------
+~~~~~~~~~~~~~~
 
 Some good hyperparameters and settings are available in
 `the repository <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tuned_examples>`__
 (some of them are tuned to run on GPUs). If you find better settings or tune
 an algorithm on a different domain, consider submitting a Pull Request!
+
+You can run these with the ``train.py`` script as follows:
+
+.. code-block:: bash
+
+    python ray/python/ray/rllib/train.py -f /path/to/tuned/example.yaml
 
 Python API
 ----------
