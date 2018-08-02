@@ -23,7 +23,7 @@ class SearchAlgorithm(object):
     this class upon new events, so custom search algorithms should
     maintain a list of trials ID generated from this class.
 
-    See `ExistingVariants`.
+    See also: `ExistingVariants`.
     """
 
     def next_trials(self):
