@@ -333,10 +333,11 @@ class DockerRunner(object):
             # Get the container ID to run the ith driver in.
             container_id = all_container_ids[driver_locations[i]]
             command = [
-                "docker", "exec", container_id, "/bin/bash", "-c",
-                ("RAY_REDIS_ADDRESS={}:6379 RAY_DRIVER_INDEX={} "
-                 "RAY_USE_XRAY={} python {}".format(
-                    self.head_container_ip, i, use_raylet_env, test_script))
+                "docker", "exec", container_id, "/bin/bash",
+                "-c", ("RAY_REDIS_ADDRESS={}:6379 RAY_DRIVER_INDEX={} "
+                       "RAY_USE_XRAY={} python {}".format(
+                           self.head_container_ip, i, use_raylet_env,
+                           test_script))
             ]
             print("Starting driver with command {}.".format(test_script))
             # Start the driver.

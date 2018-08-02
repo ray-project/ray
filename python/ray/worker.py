@@ -1418,7 +1418,7 @@ def get_address_info_from_redis_helper(redis_address,
         # the raylet has not connected.
         if len(raylets) == 0:
             raise Exception(
-                      "Redis has started but no raylets have registered yet.")
+                "Redis has started but no raylets have registered yet.")
         object_store_addresses = [
             services.ObjectStoreAddress(
                 name=ray.utils.decode(raylet.ObjectStoreSocketName()),
