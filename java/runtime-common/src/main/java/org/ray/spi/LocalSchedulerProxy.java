@@ -122,7 +122,7 @@ public class LocalSchedulerProxy {
   }
 
   private Map<String, Double> getResourcesMap(ResourceItem[] resourceArray) {
-    Map<String, Double> resourceMap = new HashMap<>(16);
+    Map<String, Double> resourceMap = new HashMap<>();
     for (ResourceItem item : resourceArray) {
       if (!item.name().isEmpty()) {
         resourceMap.put(item.name(), item.value());

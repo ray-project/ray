@@ -60,7 +60,7 @@ public class TaskSpec {
     builder.append("\treturnIds: ").append(Arrays.toString(returnIds)).append("\n");
     builder.append("\tactorHandleId: ").append(actorHandleId).append("\n");
     builder.append("\tcreateActorId: ").append(createActorId).append("\n");
-    builder.append("resources: ").append(getResourcesToString()).append("\n");
+    builder.append("\tresources: ").append(getResourcesString()).append("\n");
     builder.append("\tcursorId: ").append(cursorId).append("\n");
     builder.append("\targs:\n");
     for (FunctionArg arg : args) {
@@ -71,7 +71,7 @@ public class TaskSpec {
     return builder.toString();
   }
 
-  private String getResourcesToString() {
+  private String getResourcesString() {
     StringBuilder builder = new StringBuilder();
     builder.append("{");
     int count = 1;
