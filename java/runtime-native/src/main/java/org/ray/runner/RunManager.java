@@ -3,11 +3,7 @@ package org.ray.runner;
 import java.io.File;
 import java.io.IOException;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.ray.api.UniqueID;
@@ -350,10 +346,18 @@ public class RunManager {
       startObjectStore(0, info, params.working_directory + "/store",
           params.redis_address, params.node_ip_address, params.redirect, params.cleanup);
 
+      Map<String, Double> staticResources = getResourcesFromString(params.static_resources);
+      if (!staticResources.containsKey("CPU")) {
+        staticResources.put("CPU", (double) params.num_cpus[0]);
+      }
+      if (!staticResources.containsKey("GPU")) {
+        staticResources.put("GPU", (double) params.num_gpus[0]);
+      }
+
       //Start raylet
-      startRaylet(storeName, info, params.num_cpus[0],params.num_gpus[0],
-          params.num_workers,params.working_directory + "/raylet",
-          params.redis_address, params.node_ip_address, params.redirect, params.cleanup);
+      startRaylet(storeName, info, params.num_workers,
+          params.working_directory + "/raylet", params.redis_address,
+          params.node_ip_address, params.redirect, staticResources, params.cleanup);
 
       runInfo.localStores.add(info);
     } else {
@@ -677,10 +681,9 @@ public class RunManager {
     }
   }
 
-  private void startRaylet(String storeName, AddressInfo info, int numCpus,
-                           int numGpus, int numWorkers, String workDir,
-                           String redisAddress, String ip, boolean redirect,
-                           boolean cleanup) {
+  private void startRaylet(String storeName, AddressInfo info, int numWorkers,
+                           String workDir, String redisAddress, String ip, boolean redirect,
+                           Map<String, Double> static_resources, boolean cleanup) {
 
     int rpcPort = params.raylet_port;
     String rayletSocketName = "/tmp/raylet" + rpcPort;
@@ -695,8 +698,8 @@ public class RunManager {
     assert (sep != -1);
     String gcsIp = redisAddress.substring(0, sep);
     String gcsPort = redisAddress.substring(sep + 1);
-    
-    String resourceArgument = "GPU," + numGpus + ",CPU," + numCpus;
+
+    String resourceArgument = resourcesToString(static_resources);
 
     String[] cmds = new String[]{filePath, rayletSocketName, storeName, ip, gcsIp,
                                  gcsPort, "" + numWorkers, workerCmd, resourceArgument};
@@ -850,6 +853,30 @@ public class RunManager {
       info.managerRpcAddr = rpcAddr;
       return info;
     }
+  }
+
+  Map<String, Double> getResourcesFromString(String resources) {
+    Map<String, Double> ret = new HashMap<>();
+    String[] items = resources.split(",");
+    for (String item : items) {
+      String[] resourcePair = item.split(":");
+      assert resourcePair.length == 2;
+      ret.put(resourcePair[0], Double.valueOf(resourcePair[1]));
+    }
+    return ret;
+  }
+  String resourcesToString(Map<String, Double> resources) {
+    StringBuilder builder = new StringBuilder();
+    int count = 1;
+    for (Map.Entry<String, Double> entry : resources.entrySet()) {
+      if (count != resources.size()) {
+        builder.append(entry.getKey()).append(",").append(entry.getValue()).append(",");
+      } else {
+        builder.append(entry.getKey()).append(",").append(entry.getValue());
+      }
+      count++;
+    }
+    return builder.toString();
   }
 
   public void startWorker(String storeName, String storeManagerName,

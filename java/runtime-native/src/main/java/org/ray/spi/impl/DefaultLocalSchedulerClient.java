@@ -11,6 +11,7 @@ import org.ray.spi.LocalSchedulerLink;
 import org.ray.spi.model.FunctionArg;
 import org.ray.spi.model.TaskSpec;
 import org.ray.util.logger.RayLog;
+import java.util.Map;
 
 /**
  * JNI-based local scheduler link provider.
@@ -221,12 +222,24 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
     // resources required by this task. The index in this vector corresponds to
     // the resource type defined in the ResourceIndex enum. For example,
 
-    int[]requiredResourcesOffsets = new int[1];
-    for (int i = 0; i < requiredResourcesOffsets.length; i++) {
-      int keyOffset = 0;
-      keyOffset = fbb.createString(ByteBuffer.wrap("CPU".getBytes()));
-      requiredResourcesOffsets[i] = ResourcePair.createResourcePair(fbb, keyOffset, 0.0);
+    final String CPULiteral = "CPU";
+    if (!task.resources.containsKey(CPULiteral)) {
+      task.resources.put(CPULiteral, 0.0);
     }
+    final String GPULiteral = "GPU";
+    if (!task.resources.containsKey(GPULiteral)) {
+      task.resources.put(GPULiteral, 0.0);
+    }
+
+    int[] requiredResourcesOffsets = new int[task.resources.size()];
+    int i = 0;
+    for (Map.Entry<String, Double> entry : task.resources.entrySet()) {
+      int keyOffset = fbb.createString(ByteBuffer.wrap(entry.getKey().getBytes()));
+      requiredResourcesOffsets[i] =
+          ResourcePair.createResourcePair(fbb, keyOffset, entry.getValue());
+      i++;
+    }
+
     int requiredResourcesOffset = fbb.createVectorOfTables(requiredResourcesOffsets);
 
     int root = TaskInfo.createTaskInfo(

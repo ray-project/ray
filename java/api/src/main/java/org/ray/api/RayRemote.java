@@ -13,8 +13,14 @@ import java.lang.annotation.Target;
 public @interface RayRemote {
 
   /**
-   * whether to use external I/O pool to execute the function.
+   *
+   * @return whether to use external I/O pool to execute the function.
    */
   boolean externalIo() default false;
 
+  /**
+   * This is used for default resources.
+   * @return The resources of the method or actor need.
+   */
+  ResourceItem[] resources() default {@ResourceItem()};
 }
