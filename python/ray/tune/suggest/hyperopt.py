@@ -22,6 +22,8 @@ class HyperOptSearch(SuggestionAlgorithm):
     added trials will not be tracked by HyperOpt.
 
     Parameters:
+        experiments (Experiment | list | dict): Experiments to run. Will be
+            used by SuggestionAlgorithm parent class to initialize Trials.
         space (dict): HyperOpt configuration. Parameters will be sampled
             from this configuration and will be used to override
             parameters generated in the variant generation process.
@@ -31,8 +33,6 @@ class HyperOptSearch(SuggestionAlgorithm):
             This refers to an increasing value, which is internally negated
             when interacting with HyperOpt so that HyperOpt can "maximize"
             this value.
-        experiments (Experiment | list | dict): Experiments to run. Will be
-            used by SuggestionAlgorithm parent class to initialize Trials.
     """
 
     def __init__(self,

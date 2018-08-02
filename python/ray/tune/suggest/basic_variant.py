@@ -47,6 +47,17 @@ class BasicVariantGenerator(SearchAlgorithm):
         return trials
 
     def _generate_trials(self, unresolved_spec, output_path=""):
+        """Generates Trial objects with the variant generation process.
+
+        Uses a fixed point iteration to resolve variants. All trials
+        should be able to be generated at once.
+
+        See also: `ray.tune.suggest.variant_generator`.
+
+        Yields:
+            Trial object
+        """
+
         if "run" not in unresolved_spec:
             raise TuneError("Must specify `run` in {}".format(unresolved_spec))
         for _ in range(unresolved_spec.get("repeat", 1)):

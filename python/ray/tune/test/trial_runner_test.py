@@ -18,8 +18,7 @@ from ray.tune.experiment import Experiment
 from ray.tune.trial import Trial, Resources
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.suggest.search import _MockAlgorithm
-from ray.tune.suggest import (generate_trials, grid_search,
-                              BasicVariantGenerator)
+from ray.tune.suggest import grid_search, BasicVariantGenerator
 from ray.tune.suggest.variant_generator import RecursiveDependencyError
 
 
