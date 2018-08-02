@@ -110,25 +110,18 @@ class SuggestionAlgorithm(SearchAlgorithm):
         raise NotImplementedError
 
 
-class _MockAlgorithm(SuggestionAlgorithm):
+class _MockSuggestionAlgorithm(SuggestionAlgorithm):
     def __init__(self, experiments, max_concurrent=2, **kwargs):
-        self._id = 0
         self._max_concurrent = max_concurrent
         self.live_trials = {}
         self.stall = False
-
-        super(_MockAlgorithm, self).__init__(experiments, **kwargs)
+        super(_MockSuggestionAlgorithm, self).__init__(experiments, **kwargs)
 
     def _suggest(self, trial_id):
         if len(self.live_trials) < self._max_concurrent and not self.stall:
             self.live_trials[trial_id] = 1
             return {"test_variable": 2}
-        else:
-            return None
+        return None
 
-    def _generate_id(self):
-        self._id += 1
-        return str(self._id) * 5
-
-    def on_trial_complete(self, trial_id, *args, **kwargs):
+    def on_trial_complete(self, trial_id, **kwargs):
         del self.live_trials[trial_id]

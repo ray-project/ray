@@ -17,7 +17,7 @@ from ray.tune.util import pin_in_object_store, get_pinned_object
 from ray.tune.experiment import Experiment
 from ray.tune.trial import Trial, Resources
 from ray.tune.trial_runner import TrialRunner
-from ray.tune.suggest.suggestion import _MockAlgorithm
+from ray.tune.suggest.suggestion import _MockSuggestionAlgorithm
 from ray.tune.suggest import grid_search, BasicVariantGenerator
 from ray.tune.suggest.variant_generator import RecursiveDependencyError
 
@@ -578,33 +578,21 @@ class VariantGeneratorTest(unittest.TestCase):
             assert False
 
     def testMaxConcurrentSuggestions(self):
+        """Checks that next_trials() supports throttling."""
         experiment_spec = {
             "run": "PPO",
-            "config": {
-                "bar": {
-                    "grid_search": [True, False]
-                },
-                "foo": {
-                    "grid_search": [1, 2, 3]
-                },
-            },
+            "repeat": 10,
         }
         experiments = [Experiment.from_json("test", experiment_spec)]
 
-        searcher = _MockAlgorithm(experiments, max_concurrent=2)
-        trialgenerator = searcher._generator
-        trials = []
-        for trial in trialgenerator:
-            if trial:
-                trials += [trial]
-            else:
-                break
-        self.assertEqual(len(trials), 2)
-        self.assertEqual(searcher._suggest("test"), None)
+        searcher = _MockSuggestionAlgorithm(experiments, max_concurrent=4)
+        trials = searcher.next_trials()
+        self.assertEqual(len(trials), 4)
+        self.assertEqual(searcher.next_trials(), [])
 
         finished_trial = trials.pop()
         searcher.on_trial_complete(finished_trial.trial_id)
-        self.assertNotEqual(searcher._suggest("test"), None)
+        self.assertEqual(len(searcher.next_trials()), 1)
 
 
 class TrialRunnerTest(unittest.TestCase):
@@ -964,7 +952,7 @@ class TrialRunnerTest(unittest.TestCase):
         ray.init(num_cpus=4, num_gpus=2)
         experiment_spec = {"run": "__fake", "stop": {"training_iteration": 1}}
         experiments = [Experiment.from_json("test", experiment_spec)]
-        searcher = _MockAlgorithm(experiments, max_concurrent=10)
+        searcher = _MockSuggestionAlgorithm(experiments, max_concurrent=10)
         runner = TrialRunner(search_alg=searcher)
         runner.step()
         trials = runner.get_trials()
@@ -986,7 +974,7 @@ class TrialRunnerTest(unittest.TestCase):
             }
         }
         experiments = [Experiment.from_json("test", experiment_spec)]
-        searcher = _MockAlgorithm(experiments, max_concurrent=1)
+        searcher = _MockSuggestionAlgorithm(experiments, max_concurrent=1)
         runner = TrialRunner(search_alg=searcher)
         runner.step()
         trials = runner.get_trials()
