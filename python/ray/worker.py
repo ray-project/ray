@@ -299,9 +299,9 @@ class Worker(object):
         print any information about errors because some of the tests
         intentionally fail.
 
-        The mode EXTERNAL_CLIENT_MODE should be used only if no local resources or Ray
-        process exist. All behavior is proxied to the head node on a Ray
-        cluster.
+        The mode EXTERNAL_CLIENT_MODE should be used only if no local resources
+        or Ray processes exist. All behavior is proxied to the head node on a
+        Ray cluster.
 
         Args:
             mode: One of SCRIPT_MODE, WORKER_MODE, LOCAL_MODE,
@@ -1247,8 +1247,8 @@ def error_info(worker=global_worker):
     return errors
 
 
-# TODO (dsuo): unclear if we care about this in EXTERNAL_CLIENT_MODE or if we can
-# just rely on the fact that Ray workers will have this same initialization.
+# TODO (dsuo): unclear if we care about this in EXTERNAL_CLIENT_MODE or if we
+# can rely on the fact that Ray workers will have this same initialization.
 def _initialize_serialization(driver_id, worker=global_worker):
     """Initialize the serialization library.
 
@@ -1854,7 +1854,7 @@ def init(redis_address=None,
         # TODO (dsuo): eventually, we should allow different redis and gateway
         # addresses, but for now, the gateway depends on colocation with redis.
         if not use_raylet:
-            raise Exception("ray.EXTERNAL_CLIENT_MODE requires use_raylet True.")
+            raise Exception("ray.EXTERNAL_CLIENT_MODE requires use_raylet.")
 
         # Automatically detect driver_mode
         driver_mode = EXTERNAL_CLIENT_MODE
@@ -2120,7 +2120,7 @@ def connect(info,
     # All workers start out as non-actors. A worker can be turned into an actor
     # after it is created.
     worker.actor_id = NIL_ACTOR_ID
-    # TODO (dsuo): why is this flag set here and not after checking connections?
+    # TODO (dsuo): why is this flag set here and not after checking connected?
     worker.connected = True
     worker.set_mode(mode)
     worker.use_raylet = use_raylet
@@ -2230,7 +2230,7 @@ def connect(info,
         if not worker.use_raylet:
             worker.plasma_client = thread_safe_client(
                 plasma.connect(info["store_socket_name"],
-                            info["manager_socket_name"], 64))
+                               info["manager_socket_name"], 64))
         else:
             worker.plasma_client = thread_safe_client(
                 plasma.connect(info["store_socket_name"], "", 64))
@@ -2548,7 +2548,7 @@ def get(object_ids, worker=global_worker):
             # actually be a value not an objectid).
             return object_ids
         if isinstance(object_ids, list):
-            # TODO (dsuo): same as put; likely want to reuse validation / retry logic,
+            # TODO (dsuo): likely want to reuse validation / retry logic,
             # but branching here now for simplicity
             if worker.mode == EXTERNAL_CLIENT_MODE:
                 values = worker.external_client.get(object_ids)

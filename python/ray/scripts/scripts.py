@@ -261,8 +261,10 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
               "    import ray\n"
               "    ray.init(redis_address=\"{}\")\n\n"
               "If you have trouble connecting from a different machine, check "
-              "that your firewall is configured properly.\n\n".format(address_info["redis_address"],
-                                                                      address_info["redis_address"]))
+              "that your firewall is configured properly.\n\n"
+              .format(address_info["redis_address"],
+                      address_info["redis_address"]))
+
         if with_gateway:
             # TODO: Assume redis and head node have same IP address
             print("You can also connect an external client to the cluster "
@@ -273,11 +275,6 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
                   .format(address_info["redis_address"],
                           gateway_socat_port,
                           gateway_data_port))
-            
-            print("You can debug with the gateway with following command: \n\n"
-                  "    python python/ray/gateway.py -m {} -s {} -p 1234 --debug\n\n"
-                  .format(address_info["raylet_socket_names"][0],
-                          address_info["object_store_addresses"][0].name))
 
         print("If you wish to terminate the processes that have been started"
               ", run\n\n"

@@ -16,7 +16,6 @@ from ray.test.test_utils import run_and_get_output
 # require multiple machines with a network configured more realistically.
 @pytest.fixture(scope="module")
 def ray_start():
-
     # Start the Ray processes.
     command = [
         "ray",
@@ -39,7 +38,7 @@ def ray_start():
 
     # The code after the yield will run as teardown code.
     ray.shutdown()
-    p = subprocess.Popen(["ray", "stop"])
+    subprocess.Popen(["ray", "stop"])
 
 
 def testBasicExternalClient(ray_start):

@@ -4,7 +4,6 @@ import subprocess
 import requests
 import ray
 import numpy as np
-import pdb
 
 
 class ExternalClient(object):
@@ -43,7 +42,7 @@ class ExternalClient(object):
         ]
 
         # TODO (dsuo): handle cleanup, logging, etc
-        p = subprocess.Popen(command, stdout=None, stderr=None)
+        subprocess.Popen(command, stdout=None, stderr=None)
 
     def put(self, value, object_id):
         """TODO (dsuo): Add comments
@@ -53,11 +52,11 @@ class ExternalClient(object):
                 was not properly initialized by the worker.py.
         """
         data = ray.pyarrow.serialize(value).to_buffer().to_pybytes()
-        res = requests.post(url=self.url,
-                            files={
-                                "value": data,
-                                "object_id": object_id
-                            })
+        requests.post(url=self.url,
+                      files={
+                          "value": data,
+                          "object_id": object_id
+                      })
 
         return object_id
 
@@ -81,8 +80,6 @@ class ExternalClient(object):
                            stream=True)
 
         return ray.pyarrow.deserialize(res.raw.data)
-
-        return objects
 
     def submit(self, *args, **kwargs):
         for arg in kwargs:

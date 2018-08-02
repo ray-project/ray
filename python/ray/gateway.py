@@ -31,7 +31,7 @@ def index():
         #
         #   request.files['value'].readinto(buf)
         #
-        # Unfortunately, the SpooledTemporaryFile type of request.files['value']
+        # Unfortunately, SpooledTemporaryFile request.files['value']
         # doesn't implement. See here: https://bugs.python.org/issue32600.
         data = request.files['value'].read()
 
@@ -40,7 +40,7 @@ def index():
 
         # Copy data into plasma buffer
         buf[:] = data
-        
+
         plasma_client.seal(object_id)
         return raw_object_id, 402
 
@@ -55,7 +55,8 @@ def index():
         data = plasma_client.get_buffers(object_ids)[0]
 
         # Return an appropriate return code?
-        return send_file(io.BytesIO(data.to_pybytes()), mimetype="application/octet-stream")
+        return send_file(io.BytesIO(data.to_pybytes()),
+                         mimetype="application/octet-stream")
     else:
         return '''
         <html><body><h1>hi!</h1></body></html>
