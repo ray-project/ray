@@ -50,7 +50,6 @@ if __name__ == '__main__':
             },
         }
     }
-    algo = HyperOptSearch(
-        config, space, reward_attr="neg_mean_loss")
+    algo = HyperOptSearch(config, space, reward_attr="neg_mean_loss")
     scheduler = AsyncHyperBandScheduler(reward_attr="neg_mean_loss")
     run_experiments(search_alg=algo, scheduler=scheduler)
