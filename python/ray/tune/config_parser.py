@@ -167,7 +167,6 @@ def create_trial_from_spec(spec, output_path, parser, **trial_kwargs):
     Returns:
         A trial object with corresponding parameters to the specification.
     """
-
     try:
         # Special case the `env` param for RLlib by automatically
         # moving it into the `config` section.
@@ -186,7 +185,7 @@ def create_trial_from_spec(spec, output_path, parser, **trial_kwargs):
         local_dir=os.path.join(args.local_dir, output_path),
         stopping_criterion=args.stop,
         checkpoint_freq=args.checkpoint_freq,
-        restore_path=args.restore,
+        restore_path=spec.get("restore"),  # Argparse doesn't handle None well
         upload_dir=args.upload_dir,
         max_failures=args.max_failures,
         **trial_kwargs)
