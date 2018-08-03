@@ -85,7 +85,8 @@ def convert_to_experiment_list(experiments):
     """Produces a list of Experiment objects.
 
     Converts input from dict, single experiment, or list of
-    experiments to list of experiments
+    experiments to list of experiments. If input is None,
+    will return an empty list.
 
     Arguments:
         experiments (Experiment | list | dict): Experiments to run.
@@ -94,13 +95,19 @@ def convert_to_experiment_list(experiments):
         List of experiments.
     """
     exp_list = experiments
-    if isinstance(experiments, Experiment):
+
+    # Transform list if necessary
+    if experiments is None:
+        exp_list = []
+    elif isinstance(experiments, Experiment):
         exp_list = [experiments]
     elif type(experiments) is dict:
         exp_list = [
             Experiment.from_json(name, spec)
             for name, spec in experiments.items()
         ]
+
+    # Validate exp_list
     if (type(exp_list) is list
             and all(isinstance(exp, Experiment) for exp in exp_list)):
         if len(exp_list) > 1:

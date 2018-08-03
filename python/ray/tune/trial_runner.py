@@ -267,7 +267,8 @@ class TrialRunner(object):
             if trial.should_stop(result):
                 # Hook into scheduler
                 self._scheduler_alg.on_trial_complete(self, trial, result)
-                self._search_alg.on_trial_complete(trial.trial_id, result)
+                self._search_alg.on_trial_complete(
+                    trial.trial_id, result=result)
                 decision = TrialScheduler.STOP
             else:
                 decision = self._scheduler_alg.on_trial_result(
@@ -381,7 +382,8 @@ class TrialRunner(object):
                 result = ray.get(result_id)
                 trial.update_last_result(result, terminate=True)
                 self._scheduler_alg.on_trial_complete(self, trial, result)
-                self._search_alg.on_trial_complete(trial.trial_id, result)
+                self._search_alg.on_trial_complete(
+                    trial.trial_id, result=result)
             except Exception:
                 error_msg = traceback.format_exc()
                 print("Error processing event:", error_msg)

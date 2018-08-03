@@ -63,10 +63,10 @@ class BasicVariantGenerator(SearchAlgorithm):
             raise TuneError("Must specify `run` in {}".format(unresolved_spec))
         for _ in range(unresolved_spec.get("repeat", 1)):
             for resolved_vars, spec in generate_variants(unresolved_spec):
-                self._counter += 1
                 experiment_tag = str(self._counter)
                 if resolved_vars:
                     experiment_tag += "_{}".format(resolved_vars)
+                self._counter += 1
                 yield create_trial_from_spec(
                     spec,
                     output_path,

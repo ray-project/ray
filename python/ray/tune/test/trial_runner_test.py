@@ -478,7 +478,7 @@ class VariantGeneratorTest(unittest.TestCase):
                     "eval": "2 + 2"
                 },
             },
-        })
+        }, "eval")
         trials = list(trials)
         self.assertEqual(len(trials), 1)
         self.assertEqual(trials[0].config, {"foo": 4})
@@ -495,7 +495,7 @@ class VariantGeneratorTest(unittest.TestCase):
                     "grid_search": [1, 2, 3]
                 },
             },
-        })
+        }, "grid_search")
         trials = list(trials)
         self.assertEqual(len(trials), 6)
         self.assertEqual(trials[0].config, {"bar": True, "foo": 1})
@@ -515,7 +515,7 @@ class VariantGeneratorTest(unittest.TestCase):
                 "bar": grid_search([True, False]),
                 "foo": grid_search([1, 2, 3]),
             },
-        })
+        }, "grid_eval")
         trials = list(trials)
         self.assertEqual(len(trials), 6)
         self.assertEqual(trials[0].config, {"bar": True, "foo": 1, "qux": 4})
@@ -529,7 +529,7 @@ class VariantGeneratorTest(unittest.TestCase):
                 "y": lambda spec: spec.config.x + 1,
                 "z": lambda spec: spec.config.y + 1,
             },
-        })
+        }, "condition_resolution")
         trials = list(trials)
         self.assertEqual(len(trials), 1)
         self.assertEqual(trials[0].config, {"x": 1, "y": 2, "z": 3})
@@ -541,7 +541,7 @@ class VariantGeneratorTest(unittest.TestCase):
                 "x": grid_search([1, 2]),
                 "y": lambda spec: spec.config.x * 100,
             },
-        })
+        }, "dependent_lambda")
         trials = list(trials)
         self.assertEqual(len(trials), 2)
         self.assertEqual(trials[0].config, {"x": 1, "y": 100})
@@ -557,7 +557,7 @@ class VariantGeneratorTest(unittest.TestCase):
                 ]),
                 "y": lambda spec: 1,
             },
-        })
+        }, "dependent_grid_search")
         trials = list(trials)
         self.assertEqual(len(trials), 2)
         self.assertEqual(trials[0].config, {"x": 100, "y": 1})
@@ -566,12 +566,12 @@ class VariantGeneratorTest(unittest.TestCase):
     def testRecursiveDep(self):
         try:
             list(
-                self.self.generate_trials({
+                self.generate_trials({
                     "run": "PPO",
                     "config": {
                         "foo": lambda spec: spec.config.foo,
                     },
-                }))
+                }, "recursive_dep"))
         except RecursiveDependencyError as e:
             assert "`foo` recursively depends on" in str(e), e
         else:
