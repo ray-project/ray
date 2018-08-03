@@ -124,9 +124,6 @@ class ObjectBufferPool {
   void SealChunk(const ObjectID &object_id, uint64_t chunk_index);
 
  private:
-  /// Gets the chunk size based on data size.
-  uint64_t GetChunkSize(uint64_t data_size);
-
   /// Abort the create operation associated with an object. This destroys the buffer
   /// state, including create operations in progress for all chunks of the object.
   void AbortCreate(const ObjectID &object_id);
