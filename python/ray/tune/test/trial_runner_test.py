@@ -17,8 +17,8 @@ from ray.tune.util import pin_in_object_store, get_pinned_object
 from ray.tune.experiment import Experiment
 from ray.tune.trial import Trial, Resources
 from ray.tune.trial_runner import TrialRunner
-from ray.tune.suggest.suggestion import _MockSuggestionAlgorithm
 from ray.tune.suggest import grid_search, BasicVariantGenerator
+from ray.tune.suggest.suggestion import _MockSuggestionAlgorithm
 from ray.tune.suggest.variant_generator import RecursiveDependencyError
 
 
