@@ -122,8 +122,11 @@ class TFPolicyGraph(PolicyGraph):
                                       [self.extra_compute_action_fetches()])
         return fetches[0], fetches[1:-1], fetches[-1]
 
-    def compute_actions(self, obs_batch, state_batches=None,
-                        is_training=False, episodes=None):
+    def compute_actions(self,
+                        obs_batch,
+                        state_batches=None,
+                        is_training=False,
+                        episodes=None):
         builder = TFRunBuilder(self._sess, "compute_actions")
         fetches = self.build_compute_actions(builder, obs_batch, state_batches,
                                              is_training)

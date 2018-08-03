@@ -317,7 +317,9 @@ def _env_runner(async_vector_env,
                     is_training=True)
             else:
                 eval_results[policy_id] = policy.compute_actions(
-                    [t.obs for t in eval_data], rnn_in, is_training=True,
+                    [t.obs for t in eval_data],
+                    rnn_in,
+                    is_training=True,
                     _episodes=[active_episodes[t.env_id] for t in eval_data])
         if builder:
             for k, v in pending_fetches.items():
