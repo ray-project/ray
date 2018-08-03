@@ -83,8 +83,10 @@ class PPOAgent(Agent):
             })
         if self.config["simple_optimizer"]:
             self.optimizer = SyncSamplesOptimizer(
-                self.local_evaluator, self.remote_evaluators,
-                {"num_sgd_iter": self.config["num_sgd_iter"]})
+                self.local_evaluator, self.remote_evaluators, {
+                    "num_sgd_iter": self.config["num_sgd_iter"],
+                    "timesteps_per_batch": self.config["timesteps_per_batch"]
+                })
         else:
             self.optimizer = LocalMultiGPUOptimizer(
                 self.local_evaluator, self.remote_evaluators, {
