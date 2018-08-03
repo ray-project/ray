@@ -127,6 +127,12 @@ class TFPolicyGraph(PolicyGraph):
                         state_batches=None,
                         is_training=False,
                         episodes=None):
+        """Compute actions for the current policy.
+
+        Note that if you override this in TFPolicyGraph, you should also set
+        _supports_build_compute_actions = False.
+        """
+
         builder = TFRunBuilder(self._sess, "compute_actions")
         fetches = self.build_compute_actions(builder, obs_batch, state_batches,
                                              is_training)

@@ -9,7 +9,7 @@ import numpy as np
 
 
 class MultiAgentEpisode(object):
-    """Tracks the current state of an (possibly multi-agent) episode.
+    """Tracks the current state of a (possibly multi-agent) episode.
 
     The APIs in this class should be considered experimental, but we should
     avoid changing things for the sake of changing them since users may
@@ -42,12 +42,12 @@ class MultiAgentEpisode(object):
         return self._agent_to_policy[agent_id]
 
     def last_observation_for(self, agent_id):
-        """Returns the last recorded observation for the specified agent."""
+        """Returns the last observation for the specified agent."""
 
         return self._agent_to_last_obs.get(agent_id)
 
     def last_action_for(self, agent_id):
-        """Returns the last recorded action for the specified agent."""
+        """Returns the last action for the specified agent."""
 
         action = self._agent_to_last_action[agent_id]
         # Concatenate tuple actions
@@ -56,12 +56,16 @@ class MultiAgentEpisode(object):
         return action
 
     def rnn_state_for(self, agent_id):
+        """Returns the last RNN state for the specified agent."""
+
         if agent_id not in self._agent_to_rnn_state:
             policy = self._policies[self.policy_for(agent_id)]
             self._agent_to_rnn_state[agent_id] = policy.get_initial_state()
         return self._agent_to_rnn_state[agent_id]
 
     def last_pi_info_for(self, agent_id):
+        """Returns the last info object for the specified agent."""
+
         return self._agent_to_last_pi_info[agent_id]
 
     def add_agent_rewards(self, reward_dict):
