@@ -45,9 +45,9 @@ class SyncSampler(object):
         self._obs_filters = obs_filters
         self.extra_batches = queue.Queue()
         self.rollout_provider = _env_runner(
-            self.async_vector_env, self.extra_batches.put, self.policies, self.policy_mapping_fn,
-            self.num_local_steps, self.horizon, self._obs_filters, pack,
-            tf_sess)
+            self.async_vector_env, self.extra_batches.put, self.policies,
+            self.policy_mapping_fn, self.num_local_steps, self.horizon,
+            self._obs_filters, pack, tf_sess)
         self.metrics_queue = queue.Queue()
 
     def get_data(self):
@@ -118,9 +118,9 @@ class AsyncSampler(threading.Thread):
 
     def _run(self):
         rollout_provider = _env_runner(
-            self.async_vector_env, self.extra_batches.put, self.policies, self.policy_mapping_fn,
-            self.num_local_steps, self.horizon, self._obs_filters, self.pack,
-            self.tf_sess)
+            self.async_vector_env, self.extra_batches.put, self.policies,
+            self.policy_mapping_fn, self.num_local_steps, self.horizon,
+            self._obs_filters, self.pack, self.tf_sess)
         while True:
             # The timeout variable exists because apparently, if one worker
             # dies, the other workers won't die with it, unless the timeout is
