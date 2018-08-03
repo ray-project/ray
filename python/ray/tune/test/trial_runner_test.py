@@ -436,6 +436,28 @@ class RunExperimentTest(unittest.TestCase):
             self.assertEqual(trial.status, Trial.TERMINATED)
             self.assertEqual(trial.last_result.timesteps_total, 99)
 
+    def testSpecifyAlgorithm(self):
+        """Tests run_experiments works without specifying experiment."""
+
+        def train(config, reporter):
+            for i in range(100):
+                reporter(timesteps_total=i)
+
+        register_trainable("f1", train)
+
+        alg = BasicVariantGenerator({
+            "foo": {
+                "run": "f1",
+                "config": {
+                    "script_min_iter_time_s": 0
+                }
+            }
+        })
+        trials = run_experiments(search_alg=alg)
+        for trial in trials:
+            self.assertEqual(trial.status, Trial.TERMINATED)
+            self.assertEqual(trial.last_result.timesteps_total, 99)
+
 
 class VariantGeneratorTest(unittest.TestCase):
     def setUp(self):
@@ -581,7 +603,7 @@ class VariantGeneratorTest(unittest.TestCase):
         """Checks that next_trials() supports throttling."""
         experiment_spec = {
             "run": "PPO",
-            "repeat": 10,
+            "repeat": 6,
         }
         experiments = [Experiment.from_json("test", experiment_spec)]
 
@@ -593,6 +615,17 @@ class VariantGeneratorTest(unittest.TestCase):
         finished_trial = trials.pop()
         searcher.on_trial_complete(finished_trial.trial_id)
         self.assertEqual(len(searcher.next_trials()), 1)
+
+        finished_trial = trials.pop()
+        searcher.on_trial_complete(finished_trial.trial_id)
+
+        finished_trial = trials.pop()
+        searcher.on_trial_complete(finished_trial.trial_id)
+
+        finished_trial = trials.pop()
+        searcher.on_trial_complete(finished_trial.trial_id)
+        self.assertEqual(len(searcher.next_trials()), 1)
+        self.assertEqual(len(searcher.next_trials()), 0)
 
 
 class TrialRunnerTest(unittest.TestCase):
@@ -950,6 +983,26 @@ class TrialRunnerTest(unittest.TestCase):
     def testSearchAlgNotification(self):
         """Checks notification of trial to the Search Algorithm."""
         ray.init(num_cpus=4, num_gpus=2)
+        experiment_spec = {"run": "__fake", "stop": {"training_iteration": 2}}
+        experiments = [Experiment.from_json("test", experiment_spec)]
+        searcher = _MockSuggestionAlgorithm(experiments, max_concurrent=10)
+        runner = TrialRunner(search_alg=searcher)
+        runner.step()
+        trials = runner.get_trials()
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.TERMINATED)
+
+        self.assertEqual(searcher.counter["result"], 1)
+        self.assertEqual(searcher.counter["complete"], 1)
+
+    def testSearchAlgFinished(self):
+        """Checks that SearchAlg is Finished before all trials are done."""
+        ray.init(num_cpus=4, num_gpus=2)
         experiment_spec = {"run": "__fake", "stop": {"training_iteration": 1}}
         experiments = [Experiment.from_json("test", experiment_spec)]
         searcher = _MockSuggestionAlgorithm(experiments, max_concurrent=10)
@@ -957,13 +1010,16 @@ class TrialRunnerTest(unittest.TestCase):
         runner.step()
         trials = runner.get_trials()
         self.assertEqual(trials[0].status, Trial.RUNNING)
-        self.assertEqual(len(searcher.live_trials), 1)
+        self.assertTrue(searcher.is_finished())
+        self.assertFalse(runner.is_finished())
 
         runner.step()
         self.assertEqual(trials[0].status, Trial.TERMINATED)
         self.assertEqual(len(searcher.live_trials), 0)
+        self.assertTrue(searcher.is_finished())
+        self.assertTrue(runner.is_finished())
 
-    def testSearchAlgFinished(self):
+    def testSearchAlgStalled(self):
         """Checks that runner and searcher state is maintained when stalled."""
         ray.init(num_cpus=4, num_gpus=2)
         experiment_spec = {
@@ -979,11 +1035,9 @@ class TrialRunnerTest(unittest.TestCase):
         runner.step()
         trials = runner.get_trials()
         self.assertEqual(trials[0].status, Trial.RUNNING)
-        self.assertEqual(len(searcher.live_trials), 1)
 
         runner.step()
         self.assertEqual(trials[0].status, Trial.TERMINATED)
-        self.assertEqual(len(searcher.live_trials), 0)
 
         trials = runner.get_trials()
         runner.step()
@@ -997,8 +1051,21 @@ class TrialRunnerTest(unittest.TestCase):
         self.assertEqual(len(searcher.live_trials), 0)
 
         self.assertTrue(all(trial.is_finished() for trial in trials))
-        self.assertFalse(runner.is_finished())
         self.assertFalse(searcher.is_finished())
+        self.assertFalse(runner.is_finished())
+
+        searcher.stall = False
+
+        runner.step()
+        trials = runner.get_trials()
+        self.assertEqual(trials[2].status, Trial.RUNNING)
+        self.assertEqual(len(searcher.live_trials), 1)
+
+        runner.step()
+        self.assertEqual(trials[2].status, Trial.TERMINATED)
+        self.assertEqual(len(searcher.live_trials), 0)
+        self.assertTrue(searcher.is_finished())
+        self.assertTrue(runner.is_finished())
 
 
 if __name__ == "__main__":

@@ -317,6 +317,8 @@ class TrialRunner(object):
     def _update_trial_queue(self, blocking=False, timeout=600):
         """Adds next trials to queue if possible.
 
+        Note that the timeout is currently unexposed to the user.
+
         Arguments:
             blocking (bool): Blocks until either a trial is available
                 or the Runner finishes (i.e., timeout or search algorithm

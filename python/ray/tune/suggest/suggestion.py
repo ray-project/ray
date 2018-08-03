@@ -114,6 +114,7 @@ class _MockSuggestionAlgorithm(SuggestionAlgorithm):
     def __init__(self, experiments, max_concurrent=2, **kwargs):
         self._max_concurrent = max_concurrent
         self.live_trials = {}
+        self.counter = {"result": 0, "complete": 0}
         self.stall = False
         super(_MockSuggestionAlgorithm, self).__init__(experiments, **kwargs)
 
@@ -123,5 +124,9 @@ class _MockSuggestionAlgorithm(SuggestionAlgorithm):
             return {"test_variable": 2}
         return None
 
+    def on_trial_result(self, trial_id, result):
+        self.counter["result"] += 1
+
     def on_trial_complete(self, trial_id, **kwargs):
+        self.counter["complete"] += 1
         del self.live_trials[trial_id]
