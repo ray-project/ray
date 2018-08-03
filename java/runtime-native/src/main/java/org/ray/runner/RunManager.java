@@ -3,7 +3,12 @@ package org.ray.runner;
 import java.io.File;
 import java.io.IOException;
 import java.time.LocalDateTime;
-import java.util.*;
+import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.ray.api.UniqueID;
@@ -683,7 +688,7 @@ public class RunManager {
 
   private void startRaylet(String storeName, AddressInfo info, int numWorkers,
                            String workDir, String redisAddress, String ip, boolean redirect,
-                           Map<String, Double> static_resources, boolean cleanup) {
+                           Map<String, Double> staticResources, boolean cleanup) {
 
     int rpcPort = params.raylet_port;
     String rayletSocketName = "/tmp/raylet" + rpcPort;
@@ -699,7 +704,7 @@ public class RunManager {
     String gcsIp = redisAddress.substring(0, sep);
     String gcsPort = redisAddress.substring(sep + 1);
 
-    String resourceArgument = resourcesToString(static_resources);
+    String resourceArgument = resourcesToString(staticResources);
 
     String[] cmds = new String[]{filePath, rayletSocketName, storeName, ip, gcsIp,
                                  gcsPort, "" + numWorkers, workerCmd, resourceArgument};
@@ -859,12 +864,14 @@ public class RunManager {
     Map<String, Double> ret = new HashMap<>();
     String[] items = resources.split(",");
     for (String item : items) {
-      String[] resourcePair = item.split(":");
+      String trimItem = item.trim();
+      String[] resourcePair = trimItem.split(":");
       assert resourcePair.length == 2;
       ret.put(resourcePair[0], Double.valueOf(resourcePair[1]));
     }
     return ret;
   }
+
   String resourcesToString(Map<String, Double> resources) {
     StringBuilder builder = new StringBuilder();
     int count = 1;

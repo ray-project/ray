@@ -7,7 +7,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import org.ray.api.*;
+import org.ray.api.ResourceItem;
 import org.ray.api.RayList;
 import org.ray.api.RayMap;
 import org.ray.api.RayObject;

@@ -51,7 +51,10 @@ public class ResourcesManagementTest {
 
     // This is a case that can't satisfy required resources.
     final RayObject<Integer> result2 = Ray.call(ResourcesManagementTest::echo2, 200);
-    asyncExecuteTest(result2, 5);
+    WaitResult<Integer> waitResult = Ray.wait(result2, 3 * 1000);
+
+    Assert.assertEquals(0, waitResult.getReadyOnes().size());
+    Assert.assertEquals(1, waitResult.getRemainOnes().size());
   }
 
   @Test
@@ -63,25 +66,11 @@ public class ResourcesManagementTest {
 
     // This is a case that can't satisfy required resources.
     RayActor<ResourcesManagementTest.Echo2> echo2 = Ray.create(Echo2.class);
-    final RayObject<Integer> result2 = Ray.call(Echo2::echo, echo2, 200);
-    asyncExecuteTest(result2, 5);
-  }
+    final RayObject<Integer> result2 = Ray.call(Echo2::echo, echo2,100);
+    WaitResult<Integer> waitResult = Ray.wait(result2, 3 * 1000);
 
-  private static void asyncExecuteTest(RayObject<Integer> rayObject, int timeoutSeconds) {
-    final ExecutorService exec = Executors.newFixedThreadPool(1);
-
-    try {
-      Future<Integer> future = exec.submit(()-> {return rayObject.get();});
-      future.get(timeoutSeconds, TimeUnit.SECONDS);
-      Assert.fail();
-      System.out.println("failed");
-    } catch (TimeoutException e) {
-      Assert.assertTrue(true);
-      System.out.println("OK OK OK");
-    } catch (Exception e) {
-      e.printStackTrace();
-    }
-    exec.shutdown();
+    Assert.assertEquals(0, waitResult.getReadyOnes().size());
+    Assert.assertEquals(1, waitResult.getRemainOnes().size());
   }
 
 }
