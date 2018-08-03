@@ -12,28 +12,28 @@ import unittest
 
 import ray.local_scheduler as local_scheduler
 import ray.plasma as plasma
+import ray.ray_constants as ray_constants
 import pyarrow as pa
 
 USE_VALGRIND = False
-ID_SIZE = 20
 
-NIL_WORKER_ID = 20 * b"\xff"
+NIL_WORKER_ID = ray_constants.ID_SIZE * b"\xff"
 
 
 def random_object_id():
-    return local_scheduler.ObjectID(np.random.bytes(ID_SIZE))
+    return local_scheduler.ObjectID(np.random.bytes(ray_constants.ID_SIZE))
 
 
 def random_driver_id():
-    return local_scheduler.ObjectID(np.random.bytes(ID_SIZE))
+    return local_scheduler.ObjectID(np.random.bytes(ray_constants.ID_SIZE))
 
 
 def random_task_id():
-    return local_scheduler.ObjectID(np.random.bytes(ID_SIZE))
+    return local_scheduler.ObjectID(np.random.bytes(ray_constants.ID_SIZE))
 
 
 def random_function_id():
-    return local_scheduler.ObjectID(np.random.bytes(ID_SIZE))
+    return local_scheduler.ObjectID(np.random.bytes(ray_constants.ID_SIZE))
 
 
 class TestLocalSchedulerClient(unittest.TestCase):
@@ -46,7 +46,7 @@ class TestLocalSchedulerClient(unittest.TestCase):
             plasma_store_name, use_valgrind=USE_VALGRIND)
         # Connect to the scheduler.
         self.local_scheduler_client = local_scheduler.LocalSchedulerClient(
-            scheduler_name, NIL_WORKER_ID, False, False)
+            scheduler_name, NIL_WORKER_ID, False, random_task_id(), False)
 
     def tearDown(self):
         # Check that the processes are still alive.

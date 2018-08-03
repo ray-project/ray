@@ -15,7 +15,6 @@ import yaml
 import ray
 from ray import tune
 
-
 CONFIG_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
@@ -43,7 +42,7 @@ class Regression():
         raise NotImplementedError
 
     def teardown(self, *args):
-        ray.worker.cleanup()
+        ray.shutdown()
 
     def track_time(self, result):
         return result["time_total_s"]

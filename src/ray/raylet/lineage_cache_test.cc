@@ -450,6 +450,53 @@ TEST_F(LineageCacheTest, TestOutOfOrderEviction) {
   ASSERT_TRUE(uncommitted_lineage.GetEntries().size() <= max_lineage_size_);
 }
 
+TEST_F(LineageCacheTest, TestEvictionUncommittedChildren) {
+  // Insert a chain of dependent tasks.
+  size_t num_tasks_flushed = 0;
+  uint64_t lineage_size = max_lineage_size_ + 1;
+  std::vector<Task> tasks;
+  InsertTaskChain(lineage_cache_, tasks, lineage_size, std::vector<ObjectID>(), 1);
+
+  // Simulate forwarding the chain of tasks to a remote node.
+  for (const auto &task : tasks) {
+    auto task_id = task.GetTaskSpecification().TaskId();
+    lineage_cache_.RemoveWaitingTask(task_id);
+  }
+
+  // Add more tasks to the lineage cache that will remain local. Each of these
+  // tasks is dependent one of the tasks that was forwarded above.
+  for (const auto &task : tasks) {
+    auto return_id = task.GetTaskSpecification().ReturnId(0);
+    auto dependent_task = ExampleTask({return_id}, 1);
+    lineage_cache_.AddWaitingTask(dependent_task, Lineage());
+    lineage_cache_.AddReadyTask(dependent_task);
+    // Once the forwarded tasks are evicted from the lineage cache, we expect
+    // each of these dependent tasks to be flushed, since all of their
+    // dependencies have been committed.
+    num_tasks_flushed++;
+  }
+
+  // Check that the last task in the chain still has all tasks in its
+  // uncommitted lineage.
+  const auto last_task_id = tasks.back().GetTaskSpecification().TaskId();
+  auto uncommitted_lineage = lineage_cache_.GetUncommittedLineage(last_task_id);
+  ASSERT_EQ(uncommitted_lineage.GetEntries().size(), lineage_size);
+
+  // Simulate executing the last task on a remote node and adding it to the
+  // GCS.
+  auto task_data = std::make_shared<protocol::TaskT>();
+  auto it = tasks.rbegin();
+  RAY_CHECK_OK(mock_gcs_.RemoteAdd(it->GetTaskSpecification().TaskId(), task_data));
+  it++;
+  // We expect the task that was added remotely to be flushed.
+  num_tasks_flushed++;
+  // Check that once the last task in the forwarded chain is flushed, all local
+  // tasks are flushed, since all of their dependencies have been evicted and
+  // are therefore committed in the GCS.
+  mock_gcs_.Flush();
+  CheckFlush(lineage_cache_, mock_gcs_, num_tasks_flushed);
+}
+
 }  // namespace raylet
 
 }  // namespace ray

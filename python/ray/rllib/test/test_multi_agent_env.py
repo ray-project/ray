@@ -129,12 +129,21 @@ class TestMultiAgentEnv(unittest.TestCase):
             obs, rew, done, info = env.step({0: 0, 1: 0, 2: 0, 3: 0})
             self.assertEqual(obs, {0: 0, 1: 0, 2: 0, 3: 0})
             self.assertEqual(rew, {0: 1, 1: 1, 2: 1, 3: 1})
-            self.assertEqual(
-                done,
-                {0: False, 1: False, 2: False, 3: False, "__all__": False})
+            self.assertEqual(done, {
+                0: False,
+                1: False,
+                2: False,
+                3: False,
+                "__all__": False
+            })
         obs, rew, done, info = env.step({0: 0, 1: 0, 2: 0, 3: 0})
-        self.assertEqual(
-            done, {0: True, 1: True, 2: True, 3: True, "__all__": True})
+        self.assertEqual(done, {
+            0: True,
+            1: True,
+            2: True,
+            3: True,
+            "__all__": True
+        })
 
     def testRoundRobinMock(self):
         env = RoundRobinMultiAgent(2)
@@ -151,29 +160,56 @@ class TestMultiAgentEnv(unittest.TestCase):
         self.assertEqual(done["__all__"], True)
 
     def testVectorizeBasic(self):
-        env = _MultiAgentEnvToAsync(lambda: BasicMultiAgent(2), [], 2)
+        env = _MultiAgentEnvToAsync(lambda v: BasicMultiAgent(2), [], 2)
         obs, rew, dones, _, _ = env.poll()
         self.assertEqual(obs, {0: {0: 0, 1: 0}, 1: {0: 0, 1: 0}})
         self.assertEqual(rew, {0: {0: None, 1: None}, 1: {0: None, 1: None}})
         self.assertEqual(
-            dones,
-            {0: {0: False, 1: False, "__all__": False},
-             1: {0: False, 1: False, "__all__": False}})
+            dones, {
+                0: {
+                    0: False,
+                    1: False,
+                    "__all__": False
+                },
+                1: {
+                    0: False,
+                    1: False,
+                    "__all__": False
+                }
+            })
         for _ in range(24):
             env.send_actions({0: {0: 0, 1: 0}, 1: {0: 0, 1: 0}})
             obs, rew, dones, _, _ = env.poll()
             self.assertEqual(obs, {0: {0: 0, 1: 0}, 1: {0: 0, 1: 0}})
             self.assertEqual(rew, {0: {0: 1, 1: 1}, 1: {0: 1, 1: 1}})
             self.assertEqual(
-                dones,
-                {0: {0: False, 1: False, "__all__": False},
-                 1: {0: False, 1: False, "__all__": False}})
+                dones, {
+                    0: {
+                        0: False,
+                        1: False,
+                        "__all__": False
+                    },
+                    1: {
+                        0: False,
+                        1: False,
+                        "__all__": False
+                    }
+                })
         env.send_actions({0: {0: 0, 1: 0}, 1: {0: 0, 1: 0}})
         obs, rew, dones, _, _ = env.poll()
         self.assertEqual(
-            dones,
-            {0: {0: True, 1: True, "__all__": True},
-             1: {0: True, 1: True, "__all__": True}})
+            dones, {
+                0: {
+                    0: True,
+                    1: True,
+                    "__all__": True
+                },
+                1: {
+                    0: True,
+                    1: True,
+                    "__all__": True
+                }
+            })
 
         # Reset processing
         self.assertRaises(
@@ -186,12 +222,21 @@ class TestMultiAgentEnv(unittest.TestCase):
         self.assertEqual(obs, {0: {0: 0, 1: 0}, 1: {0: 0, 1: 0}})
         self.assertEqual(rew, {0: {0: 1, 1: 1}, 1: {0: 1, 1: 1}})
         self.assertEqual(
-            dones,
-            {0: {0: False, 1: False, "__all__": False},
-             1: {0: False, 1: False, "__all__": False}})
+            dones, {
+                0: {
+                    0: False,
+                    1: False,
+                    "__all__": False
+                },
+                1: {
+                    0: False,
+                    1: False,
+                    "__all__": False
+                }
+            })
 
     def testVectorizeRoundRobin(self):
-        env = _MultiAgentEnvToAsync(lambda: RoundRobinMultiAgent(2), [], 2)
+        env = _MultiAgentEnvToAsync(lambda v: RoundRobinMultiAgent(2), [], 2)
         obs, rew, dones, _, _ = env.poll()
         self.assertEqual(obs, {0: {0: 0}, 1: {0: 0}})
         self.assertEqual(rew, {0: {0: None}, 1: {0: None}})
@@ -217,9 +262,8 @@ class TestMultiAgentEnv(unittest.TestCase):
         self.assertEqual(batch.count, 50)
         self.assertEqual(batch.policy_batches["p0"].count, 150)
         self.assertEqual(batch.policy_batches["p1"].count, 100)
-        self.assertEqual(
-            batch.policy_batches["p0"]["t"].tolist(),
-            list(range(25)) * 6)
+        self.assertEqual(batch.policy_batches["p0"]["t"].tolist(),
+                         list(range(25)) * 6)
 
     def testMultiAgentSampleRoundRobin(self):
         act_space = gym.spaces.Discrete(2)
@@ -236,21 +280,16 @@ class TestMultiAgentEnv(unittest.TestCase):
         # since we round robin introduce agents into the env, some of the env
         # steps don't count as proper transitions
         self.assertEqual(batch.policy_batches["p0"].count, 42)
-        self.assertEqual(
-            batch.policy_batches["p0"]["obs"].tolist()[:10],
-            [0, 1, 2, 3, 4] * 2)
-        self.assertEqual(
-            batch.policy_batches["p0"]["new_obs"].tolist()[:10],
-            [1, 2, 3, 4, 5] * 2)
-        self.assertEqual(
-            batch.policy_batches["p0"]["rewards"].tolist()[:10],
-            [100, 100, 100, 100, 0] * 2)
-        self.assertEqual(
-            batch.policy_batches["p0"]["dones"].tolist()[:10],
-            [False, False, False, False, True] * 2)
-        self.assertEqual(
-            batch.policy_batches["p0"]["t"].tolist()[:10],
-            [4, 9, 14, 19, 24, 5, 10, 15, 20, 25])
+        self.assertEqual(batch.policy_batches["p0"]["obs"].tolist()[:10],
+                         [0, 1, 2, 3, 4] * 2)
+        self.assertEqual(batch.policy_batches["p0"]["new_obs"].tolist()[:10],
+                         [1, 2, 3, 4, 5] * 2)
+        self.assertEqual(batch.policy_batches["p0"]["rewards"].tolist()[:10],
+                         [100, 100, 100, 100, 0] * 2)
+        self.assertEqual(batch.policy_batches["p0"]["dones"].tolist()[:10],
+                         [False, False, False, False, True] * 2)
+        self.assertEqual(batch.policy_batches["p0"]["t"].tolist()[:10],
+                         [4, 9, 14, 19, 24, 5, 10, 15, 20, 25])
 
     def testTrainMultiCartpoleSinglePolicy(self):
         n = 10
@@ -263,6 +302,46 @@ class TestMultiAgentEnv(unittest.TestCase):
             if result.episode_reward_mean >= 50 * n:
                 return
         raise Exception("failed to improve reward")
+
+    def testTrainMultiCartpoleMultiPolicy(self):
+        n = 10
+        register_env("multi_cartpole", lambda _: MultiCartpole(n))
+        single_env = gym.make("CartPole-v0")
+
+        def gen_policy():
+            config = {
+                "gamma": random.choice([0.5, 0.8, 0.9, 0.95, 0.99]),
+                "n_step": random.choice([1, 2, 3, 4, 5]),
+            }
+            obs_space = single_env.observation_space
+            act_space = single_env.action_space
+            return (PGPolicyGraph, obs_space, act_space, config)
+
+        pg = PGAgent(
+            env="multi_cartpole",
+            config={
+                "num_workers": 0,
+                "multiagent": {
+                    "policy_graphs": {
+                        "policy_1": gen_policy(),
+                        "policy_2": gen_policy(),
+                    },
+                    "policy_mapping_fn": lambda agent_id: "policy_1",
+                },
+            })
+
+        # Just check that it runs without crashing
+        for i in range(10):
+            result = pg.train()
+            print("Iteration {}, reward {}, timesteps {}".format(
+                i, result.episode_reward_mean, result.timesteps_total))
+        self.assertTrue(
+            pg.compute_action([0, 0, 0, 0], policy_id="policy_1") in [0, 1])
+        self.assertTrue(
+            pg.compute_action([0, 0, 0, 0], policy_id="policy_2") in [0, 1])
+        self.assertRaises(
+            KeyError,
+            lambda: pg.compute_action([0, 0, 0, 0], policy_id="policy_3"))
 
     def _testWithOptimizer(self, optimizer_cls):
         n = 3
@@ -289,11 +368,17 @@ class TestMultiAgentEnv(unittest.TestCase):
             policy_mapping_fn=lambda agent_id: ["p1", "p2"][agent_id % 2],
             batch_steps=50)
         if optimizer_cls == AsyncGradientsOptimizer:
-            remote_evs = [PolicyEvaluator.as_remote().remote(
-                env_creator=lambda _: MultiCartpole(n),
-                policy_graph=policies,
-                policy_mapping_fn=lambda agent_id: ["p1", "p2"][agent_id % 2],
-                batch_steps=50)]
+
+            def policy_mapper(agent_id):
+                return ["p1", "p2"][agent_id % 2]
+
+            remote_evs = [
+                PolicyEvaluator.as_remote().remote(
+                    env_creator=lambda _: MultiCartpole(n),
+                    policy_graph=policies,
+                    policy_mapping_fn=policy_mapper,
+                    batch_steps=50)
+            ]
         else:
             remote_evs = []
         optimizer = optimizer_cls(ev, remote_evs, {})
@@ -330,8 +415,8 @@ class TestMultiAgentEnv(unittest.TestCase):
         obs_space = env.observation_space
         policies = {}
         for i in range(20):
-            policies["pg_{}".format(i)] = (
-                PGPolicyGraph, obs_space, act_space, {})
+            policies["pg_{}".format(i)] = (PGPolicyGraph, obs_space, act_space,
+                                           {})
         policy_ids = list(policies.keys())
         ev = PolicyEvaluator(
             env_creator=lambda _: MultiCartpole(n),

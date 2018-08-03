@@ -251,7 +251,7 @@ class _MultiAgentEnvToAsync(AsyncVectorEnv):
         self.num_envs = num_envs
         self.dones = set()
         while len(self.envs) < self.num_envs:
-            self.envs.append(self.make_env())
+            self.envs.append(self.make_env(len(self.envs)))
         for env in self.envs:
             assert isinstance(env, MultiAgentEnv)
         self.env_states = [_MultiAgentEnvState(env) for env in self.envs]
@@ -286,8 +286,8 @@ class _MultiAgentEnvState(object):
         self.reset()
 
     def poll(self):
-        obs, rew, dones, info = (
-            self.last_obs, self.last_rewards, self.last_dones, self.last_infos)
+        obs, rew, dones, info = (self.last_obs, self.last_rewards,
+                                 self.last_dones, self.last_infos)
         self.last_obs = {}
         self.last_rewards = {}
         self.last_dones = {"__all__": False}
@@ -303,10 +303,13 @@ class _MultiAgentEnvState(object):
     def reset(self):
         self.last_obs = self.env.reset()
         self.last_rewards = {
-            agent_id: None for agent_id in self.last_obs.keys()}
+            agent_id: None
+            for agent_id in self.last_obs.keys()
+        }
         self.last_dones = {
-            agent_id: False for agent_id in self.last_obs.keys()}
-        self.last_infos = {
-            agent_id: {} for agent_id in self.last_obs.keys()}
+            agent_id: False
+            for agent_id in self.last_obs.keys()
+        }
+        self.last_infos = {agent_id: {} for agent_id in self.last_obs.keys()}
         self.last_dones["__all__"] = False
         return self.last_obs

@@ -4,6 +4,7 @@ from __future__ import print_function
 
 from collections import defaultdict, namedtuple
 import numpy as np
+import random
 import six.moves.queue as queue
 import threading
 
@@ -12,12 +13,11 @@ from ray.rllib.evaluation.sample_batch import MultiAgentSampleBatchBuilder, \
 from ray.rllib.env.async_vector_env import AsyncVectorEnv
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 
-
 RolloutMetrics = namedtuple(
     "RolloutMetrics", ["episode_length", "episode_reward", "agent_rewards"])
 
-PolicyEvalData = namedtuple(
-    "PolicyEvalData", ["env_id", "agent_id", "obs", "rnn_state"])
+PolicyEvalData = namedtuple("PolicyEvalData",
+                            ["env_id", "agent_id", "obs", "rnn_state"])
 
 
 class SyncSampler(object):
@@ -29,9 +29,15 @@ class SyncSampler(object):
     This class provides data on invocation, rather than on a separate
     thread."""
 
-    def __init__(
-            self, env, policies, policy_mapping_fn, obs_filters,
-            num_local_steps, horizon=None, pack=False, tf_sess=None):
+    def __init__(self,
+                 env,
+                 policies,
+                 policy_mapping_fn,
+                 obs_filters,
+                 num_local_steps,
+                 horizon=None,
+                 pack=False,
+                 tf_sess=None):
         self.async_vector_env = AsyncVectorEnv.wrap_async(env)
         self.num_local_steps = num_local_steps
         self.horizon = horizon
@@ -68,9 +74,15 @@ class AsyncSampler(threading.Thread):
     Note that batch_size is only a unit of measure here. Batches can
     accumulate and the gradient can be calculated on up to 5 batches."""
 
-    def __init__(
-            self, env, policies, policy_mapping_fn, obs_filters,
-            num_local_steps, horizon=None, pack=False, tf_sess=None):
+    def __init__(self,
+                 env,
+                 policies,
+                 policy_mapping_fn,
+                 obs_filters,
+                 num_local_steps,
+                 horizon=None,
+                 pack=False,
+                 tf_sess=None):
         for _, f in obs_filters.items():
             assert getattr(f, "is_concurrent", False), \
                 "Observation Filter must support concurrent updates."
@@ -142,9 +154,14 @@ class AsyncSampler(threading.Thread):
         return completed
 
 
-def _env_runner(
-        async_vector_env, policies, policy_mapping_fn, num_local_steps,
-        horizon, obs_filters, pack, tf_sess=None):
+def _env_runner(async_vector_env,
+                policies,
+                policy_mapping_fn,
+                num_local_steps,
+                horizon,
+                obs_filters,
+                pack,
+                tf_sess=None):
     """This implements the common experience collection logic.
 
     Args:
@@ -186,9 +203,11 @@ def _env_runner(
         else:
             return MultiAgentSampleBatchBuilder(policies)
 
-    active_episodes = defaultdict(
-        lambda: _MultiAgentEpisode(
-            policies, policy_mapping_fn, get_batch_builder))
+    def new_episode():
+        return _MultiAgentEpisode(policies, policy_mapping_fn,
+                                  get_batch_builder)
+
+    active_episodes = defaultdict(new_episode)
 
     while True:
         # Get observations from all ready agents
@@ -213,9 +232,8 @@ def _env_runner(
             # Check episode termination conditions
             if dones[env_id]["__all__"] or episode.length >= horizon:
                 all_done = True
-                yield RolloutMetrics(
-                    episode.length, episode.total_reward,
-                    dict(episode.agent_rewards))
+                yield RolloutMetrics(episode.length, episode.total_reward,
+                                     dict(episode.agent_rewards))
             else:
                 all_done = False
                 # At least send an empty dict if not done
@@ -228,9 +246,8 @@ def _env_runner(
                 agent_done = bool(all_done or dones[env_id].get(agent_id))
                 if not agent_done:
                     to_eval[policy_id].append(
-                        PolicyEvalData(
-                            env_id, agent_id, filtered_obs,
-                            episode.rnn_state_for(agent_id)))
+                        PolicyEvalData(env_id, agent_id, filtered_obs,
+                                       episode.rnn_state_for(agent_id)))
 
                 last_observation = episode.last_observation_for(agent_id)
                 episode.set_last_observation(agent_id, filtered_obs)
@@ -242,6 +259,7 @@ def _env_runner(
                         agent_id,
                         policy_id,
                         t=episode.length - 1,
+                        eps_id=episode.episode_id,
                         obs=last_observation,
                         actions=episode.last_action_for(agent_id),
                         rewards=rewards[env_id][agent_id],
@@ -274,13 +292,12 @@ def _env_runner(
                     episode = active_episodes[env_id]
                     for agent_id, raw_obs in resetted_obs.items():
                         policy_id = episode.policy_for(agent_id)
-                        filtered_obs = _get_or_raise(
-                            obs_filters, policy_id)(raw_obs)
+                        filtered_obs = _get_or_raise(obs_filters,
+                                                     policy_id)(raw_obs)
                         episode.set_last_observation(agent_id, filtered_obs)
                         to_eval[policy_id].append(
-                            PolicyEvalData(
-                                env_id, agent_id, filtered_obs,
-                                episode.rnn_state_for(agent_id)))
+                            PolicyEvalData(env_id, agent_id, filtered_obs,
+                                           episode.rnn_state_for(agent_id)))
 
         # Batch eval policy actions if possible
         if tf_sess:
@@ -295,7 +312,8 @@ def _env_runner(
             policy = _get_or_raise(policies, policy_id)
             if builder:
                 eval_results[policy_id] = policy.build_compute_actions(
-                    builder, [t.obs for t in eval_data], rnn_in,
+                    builder, [t.obs for t in eval_data],
+                    rnn_in,
                     is_training=True)
             else:
                 eval_results[policy_id] = policy.compute_actions(
@@ -319,7 +337,8 @@ def _env_runner(
                 episode = active_episodes[env_id]
                 episode.set_rnn_state(agent_id, [c[i] for c in rnn_out_cols])
                 episode.set_last_pi_info(
-                    agent_id, {k: v[i] for k, v in pi_info_cols.items()})
+                    agent_id, {k: v[i]
+                               for k, v in pi_info_cols.items()})
                 if env_id in off_policy_actions and \
                         agent_id in off_policy_actions[env_id]:
                     episode.set_last_action(
@@ -334,8 +353,7 @@ def _env_runner(
 
 def _to_column_format(rnn_state_rows):
     num_cols = len(rnn_state_rows[0])
-    return [
-        [row[i] for row in rnn_state_rows] for i in range(num_cols)]
+    return [[row[i] for row in rnn_state_rows] for i in range(num_cols)]
 
 
 def _get_or_raise(mapping, policy_id):
@@ -351,6 +369,7 @@ class _MultiAgentEpisode(object):
         self.batch_builder = batch_builder_factory()
         self.total_reward = 0.0
         self.length = 0
+        self.episode_id = random.randrange(2e9)
         self.agent_rewards = defaultdict(float)
         self._policies = policies
         self._policy_mapping_fn = policy_mapping_fn
@@ -363,8 +382,8 @@ class _MultiAgentEpisode(object):
     def add_agent_rewards(self, reward_dict):
         for agent_id, reward in reward_dict.items():
             if reward is not None:
-                self.agent_rewards[
-                    agent_id, self.policy_for(agent_id)] += reward
+                self.agent_rewards[agent_id,
+                                   self.policy_for(agent_id)] += reward
                 self.total_reward += reward
 
     def policy_for(self, agent_id):

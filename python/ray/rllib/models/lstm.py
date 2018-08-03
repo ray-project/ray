@@ -1,7 +1,6 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-
 """LSTM support for RLlib.
 
 The main trick here is that we add the time dimension at the last moment.
@@ -13,7 +12,6 @@ reshaping is possible.
 See the add_time_dimension() and chop_into_sequences() functions below for
 more info.
 """
-
 
 import numpy as np
 import tensorflow as tf
@@ -41,25 +39,22 @@ def add_time_dimension(padded_inputs, seq_lens):
     # Sequence lengths have to be specified for LSTM batch inputs. The
     # input batch must be padded to the max seq length given here. That is,
     # batch_size == len(seq_lens) * max(seq_lens)
-    max_seq_len = tf.reduce_max(seq_lens)
     padded_batch_size = tf.shape(padded_inputs)[0]
+    max_seq_len = padded_batch_size // tf.shape(seq_lens)[0]
 
     # Dynamically reshape the padded batch to introduce a time dimension.
     new_batch_size = padded_batch_size // max_seq_len
-    new_shape = (
-        [new_batch_size, max_seq_len] +
-        padded_inputs.get_shape().as_list()[1:])
+    new_shape = ([new_batch_size, max_seq_len] +
+                 padded_inputs.get_shape().as_list()[1:])
     return tf.reshape(padded_inputs, new_shape)
 
 
-def chop_into_sequences(
-        time_column, feature_columns, state_columns, max_seq_len):
+def chop_into_sequences(episode_ids, feature_columns, state_columns,
+                        max_seq_len):
     """Truncate and pad experiences into fixed-length sequences.
 
     Arguments:
-        time_column (list): Timesteps per feature / state. This contains
-            sequences of monotonically increasing step values, e.g.,
-            [0, 1, 2, 0, 1, 2, 3, 4, 5, 0, 1, 2].
+        episode_ids (list): List of episode ids for each step.
         feature_columns (list): List of arrays containing features.
         state_columns (list): List of arrays containing LSTM state values.
         max_seq_len (int): Max length of sequences before truncation.
@@ -73,7 +68,7 @@ def chop_into_sequences(
 
     Examples:
         >>> f_pad, s_init, seq_lens = chop_into_sequences(
-                time_column=[0, 1, 0, 1, 2, 3],
+                episode_id=[1, 1, 5, 5, 5, 5],
                 feature_columns=[[4, 4, 8, 8, 8, 8],
                                  [1, 1, 0, 1, 1, 0]],
                 state_columns=[[4, 5, 4, 5, 5, 5]],
@@ -87,18 +82,19 @@ def chop_into_sequences(
         [2, 3, 1]
     """
 
-    prev_t = -1
+    prev_id = None
     seq_lens = []
     seq_len = 0
-    for t in time_column:
-        if t <= prev_t or seq_len >= max_seq_len:
+    for eps_id in episode_ids:
+        if (prev_id is not None and eps_id != prev_id) or \
+                seq_len >= max_seq_len:
             seq_lens.append(seq_len)
             seq_len = 0
         seq_len += 1
-        prev_t = t
+        prev_id = eps_id
     if seq_len:
         seq_lens.append(seq_len)
-    assert sum(seq_lens) == len(time_column)
+    assert sum(seq_lens) == len(episode_ids)
 
     # Dynamically shrink max len as needed to optimize memory usage
     max_seq_len = max(seq_lens)
@@ -106,7 +102,7 @@ def chop_into_sequences(
     feature_sequences = []
     for f in feature_columns:
         f = np.array(f)
-        f_pad = np.zeros((len(seq_lens) * max_seq_len,) + np.shape(f)[1:])
+        f_pad = np.zeros((len(seq_lens) * max_seq_len, ) + np.shape(f)[1:])
         seq_base = 0
         i = 0
         for l in seq_lens:
@@ -114,7 +110,7 @@ def chop_into_sequences(
                 f_pad[seq_base + seq_offset] = f[i]
                 i += 1
             seq_base += max_seq_len
-        assert i == len(time_column), f
+        assert i == len(episode_ids), f
         feature_sequences.append(f_pad)
 
     initial_states = []
@@ -152,12 +148,18 @@ class LSTM(Model):
             lstm = rnn.rnn_cell.BasicLSTMCell(cell_size, state_is_tuple=True)
         self.state_init = [
             np.zeros(lstm.state_size.c, np.float32),
-            np.zeros(lstm.state_size.h, np.float32)]
+            np.zeros(lstm.state_size.h, np.float32)
+        ]
 
         # Setup LSTM inputs
-        c_in = tf.placeholder(tf.float32, [None, lstm.state_size.c], name="c")
-        h_in = tf.placeholder(tf.float32, [None, lstm.state_size.h], name="h")
-        self.state_in = [c_in, h_in]
+        if self.state_in:
+            c_in, h_in = self.state_in
+        else:
+            c_in = tf.placeholder(
+                tf.float32, [None, lstm.state_size.c], name="c")
+            h_in = tf.placeholder(
+                tf.float32, [None, lstm.state_size.h], name="h")
+            self.state_in = [c_in, h_in]
 
         # Setup LSTM outputs
         if use_tf100_api:
@@ -165,12 +167,15 @@ class LSTM(Model):
         else:
             state_in = rnn.rnn_cell.LSTMStateTuple(c_in, h_in)
         lstm_out, lstm_state = tf.nn.dynamic_rnn(
-            lstm, last_layer, initial_state=state_in,
-            sequence_length=self.seq_lens, time_major=False)
+            lstm,
+            last_layer,
+            initial_state=state_in,
+            sequence_length=self.seq_lens,
+            time_major=False)
         self.state_out = list(lstm_state)
 
         # Compute outputs
         last_layer = tf.reshape(lstm_out, [-1, cell_size])
-        logits = linear(
-            last_layer, num_outputs, "action", normc_initializer(0.01))
+        logits = linear(last_layer, num_outputs, "action",
+                        normc_initializer(0.01))
         return logits, last_layer

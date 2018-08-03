@@ -119,29 +119,38 @@ matrix:
         - ./.travis/install-cython-examples.sh
       script:
         - export PATH="$HOME/miniconda/bin:$PATH"
+        # The following is needed so cloudpickle can find some of the
+        # class definitions: The main module of tests that are run
+        # with pytest have the same name as the test file -- and this
+        # module is only found if the test directory is in the PYTHONPATH.
+        - export PYTHONPATH="$PYTHONPATH:./test/"
 
-        - python python/ray/common/test/test.py
-        - python python/ray/common/redis_module/runtest.py
-        - python python/ray/plasma/test/test.py
-        # - python python/ray/local_scheduler/test/test.py
-        # - python python/ray/global_scheduler/test/test.py
+        - python -m pytest python/ray/common/test/test.py
+        - python -m pytest python/ray/common/redis_module/runtest.py
+        - python -m pytest python/ray/plasma/test/test.py
+        # - python -m pytest python/ray/local_scheduler/test/test.py
+        # - python -m pytest python/ray/global_scheduler/test/test.py
 
+        - python -m pytest python/ray/test/test_queue.py
         - python -m pytest test/xray_test.py
 
-        - python test/runtest.py
-        - python test/array_test.py
-        - python test/actor_test.py
-        - python test/autoscaler_test.py
-        - python test/tensorflow_test.py
-        - python test/failure_test.py
-        - python test/microbenchmarks.py
+        # The --assert=plain here is because pytest's assertion
+        # rewriting mechanism seems to mess up on this file,
+        # see https://github.com/ray-project/ray/issues/2514
+        - python -m pytest -v --assert=plain test/runtest.py
+        - python -m pytest test/array_test.py
+        - python -m pytest test/actor_test.py
+        - python -m pytest test/autoscaler_test.py
+        - python -m pytest test/tensorflow_test.py
+        - python -m pytest test/failure_test.py
+        - python -m pytest test/microbenchmarks.py
         - python -m pytest test/stress_tests.py
-        # - python test/component_failures_test.py
+        # - pytest test/component_failures_test.py
         - python test/multi_node_test.py
-        - python test/recursion_test.py
-        # - python test/monitor_test.py
-        - python test/cython_test.py
-        - python test/credis_test.py
+        - python -m pytest test/recursion_test.py
+        # - pytest test/monitor_test.py
+        - python -m pytest test/cython_test.py
+        - python -m pytest test/credis_test.py
 
         # ray tune tests
         - python python/ray/tune/test/dependency_test.py
@@ -170,6 +179,7 @@ install:
   - ./src/ray/raylet/worker_pool_test
   - ./src/ray/raylet/lineage_cache_test
   - ./src/ray/raylet/task_dependency_manager_test
+  - ./src/ray/raylet/reconstruction_policy_test
 
   - bash ../src/common/test/run_tests.sh
   - bash ../src/plasma/test/run_tests.sh
@@ -178,29 +188,38 @@ install:
 
 script:
   - export PATH="$HOME/miniconda/bin:$PATH"
+  # The following is needed so cloudpickle can find some of the
+  # class definitions: The main module of tests that are run
+  # with pytest have the same name as the test file -- and this
+  # module is only found if the test directory is in the PYTHONPATH.
+  - export PYTHONPATH="$PYTHONPATH:./test/"
 
-  - python python/ray/common/test/test.py
-  - python python/ray/common/redis_module/runtest.py
-  - python python/ray/plasma/test/test.py
-  - python python/ray/local_scheduler/test/test.py
-  - python python/ray/global_scheduler/test/test.py
+  - python -m pytest python/ray/common/test/test.py
+  - python -m pytest python/ray/common/redis_module/runtest.py
+  - python -m pytest python/ray/plasma/test/test.py
+  - python -m pytest python/ray/local_scheduler/test/test.py
+  - python -m pytest python/ray/global_scheduler/test/test.py
 
+  - python -m pytest python/ray/test/test_queue.py
   - python -m pytest test/xray_test.py
 
-  - python test/runtest.py
-  - python test/array_test.py
-  - python test/actor_test.py
-  - python test/autoscaler_test.py
-  - python test/tensorflow_test.py
-  - python test/failure_test.py
-  - python test/microbenchmarks.py
+  # The --assert=plain here is because pytest's assertion
+  # rewriting mechanism seems to mess up on this file,
+  # see https://github.com/ray-project/ray/issues/2514
+  - python -m pytest --assert=plain -v test/runtest.py
+  - python -m pytest test/array_test.py
+  - python -m pytest test/actor_test.py
+  - python -m pytest test/autoscaler_test.py
+  - python -m pytest test/tensorflow_test.py
+  - python -m pytest test/failure_test.py
+  - python -m pytest test/microbenchmarks.py
   - python -m pytest test/stress_tests.py
-  - python test/component_failures_test.py
+  - python -m pytest test/component_failures_test.py
   - python test/multi_node_test.py
-  - python test/recursion_test.py
-  - python test/monitor_test.py
-  - python test/cython_test.py
-  - python test/credis_test.py
+  - python -m pytest test/recursion_test.py
+  - python -m pytest test/monitor_test.py
+  - python -m pytest test/cython_test.py
+  - python -m pytest test/credis_test.py
 
   # ray tune tests
   - python python/ray/tune/test/dependency_test.py

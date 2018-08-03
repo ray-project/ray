@@ -8,7 +8,7 @@ import os
 import ray
 from ray.rllib.agents.agent import Agent, with_common_config
 from ray.rllib.optimizers import AsyncGradientsOptimizer
-from ray.rllib.utils import FilterManager
+from ray.rllib.utils import FilterManager, merge_dicts
 from ray.tune.trial import Resources
 
 DEFAULT_CONFIG = with_common_config({
@@ -30,7 +30,8 @@ DEFAULT_CONFIG = with_common_config({
     "use_gpu_for_workers": False,
     # Whether to emit extra summary stats
     "summarize": False,
-    # Workers sample async
+    # Workers sample async. Note that this increases the effective
+    # sample_batch_size by up to 5x due to async buffering of batches.
     "sample_async": True,
     # Model and preprocessor options
     "model": {
@@ -71,7 +72,7 @@ class A3CAgent(Agent):
 
     @classmethod
     def default_resource_request(cls, config):
-        cf = dict(cls._default_config, **config)
+        cf = merge_dicts(cls._default_config, config)
         return Resources(
             cpu=1,
             gpu=0,
@@ -80,11 +81,11 @@ class A3CAgent(Agent):
 
     def _init(self):
         if self.config["use_pytorch"]:
-            from ray.rllib.agents.a3c.a3c_torch_policy import \
+            from ray.rllib.agents.a3c.a3c_torch_policy_graph import \
                 A3CTorchPolicyGraph
             policy_cls = A3CTorchPolicyGraph
         else:
-            from ray.rllib.agents.a3c.a3c_tf_policy import A3CPolicyGraph
+            from ray.rllib.agents.a3c.a3c_tf_policy_graph import A3CPolicyGraph
             policy_cls = A3CPolicyGraph
 
         self.local_evaluator = self.make_local_evaluator(
@@ -92,15 +93,15 @@ class A3CAgent(Agent):
         self.remote_evaluators = self.make_remote_evaluators(
             self.env_creator, policy_cls, self.config["num_workers"],
             {"num_gpus": 1 if self.config["use_gpu_for_workers"] else 0})
-        self.optimizer = AsyncGradientsOptimizer(
-            self.local_evaluator, self.remote_evaluators,
-            self.config["optimizer"])
+        self.optimizer = AsyncGradientsOptimizer(self.local_evaluator,
+                                                 self.remote_evaluators,
+                                                 self.config["optimizer"])
 
     def _train(self):
         prev_steps = self.optimizer.num_steps_sampled
         self.optimizer.step()
-        FilterManager.synchronize(
-            self.local_evaluator.filters, self.remote_evaluators)
+        FilterManager.synchronize(self.local_evaluator.filters,
+                                  self.remote_evaluators)
         result = self.optimizer.collect_metrics()
         result = result._replace(
             timesteps_this_iter=self.optimizer.num_steps_sampled - prev_steps)

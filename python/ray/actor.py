@@ -48,7 +48,7 @@ def compute_actor_handle_id(actor_handle_id, num_forks):
     handle_id_hash.update(actor_handle_id.id())
     handle_id_hash.update(str(num_forks).encode("ascii"))
     handle_id = handle_id_hash.digest()
-    assert len(handle_id) == 20
+    assert len(handle_id) == ray_constants.ID_SIZE
     return ray.ObjectID(handle_id)
 
 
@@ -80,7 +80,7 @@ def compute_actor_handle_id_non_forked(actor_id, actor_handle_id,
     handle_id_hash.update(actor_handle_id.id())
     handle_id_hash.update(current_task_id.id())
     handle_id = handle_id_hash.digest()
-    assert len(handle_id) == 20
+    assert len(handle_id) == ray_constants.ID_SIZE
     return ray.ObjectID(handle_id)
 
 
@@ -110,7 +110,7 @@ def compute_actor_method_function_id(class_name, attr):
     function_id_hash.update(class_name.encode("ascii"))
     function_id_hash.update(attr.encode("ascii"))
     function_id = function_id_hash.digest()
-    assert len(function_id) == 20
+    assert len(function_id) == ray_constants.ID_SIZE
     return ray.ObjectID(function_id)
 
 
@@ -421,6 +421,24 @@ def export_actor_class(class_id, Class, actor_method_names,
 
 
 def method(*args, **kwargs):
+    """Annotate an actor method.
+
+    .. code-block:: python
+
+        @ray.remote
+        class Foo(object):
+            @ray.method(num_return_vals=2)
+            def bar(self):
+                return 1, 2
+
+        f = Foo.remote()
+
+        _, _ = f.bar.remote()
+
+    Args:
+        num_return_vals: The number of object IDs that should be returned by
+            invocations of this actor method.
+    """
     assert len(args) == 0
     assert len(kwargs) == 1
     assert "num_return_vals" in kwargs
@@ -576,7 +594,6 @@ class ActorClass(object):
             A handle to the newly created actor.
         """
         worker = ray.worker.get_global_worker()
-        ray.worker.check_main_thread()
         if worker.mode is None:
             raise Exception("Actors cannot be created before ray.init() "
                             "has been called.")
@@ -588,10 +605,10 @@ class ActorClass(object):
         # updated to reflect the new invocation.
         actor_cursor = None
 
-        # Do not export the actor class or the actor if run in PYTHON_MODE
+        # Do not export the actor class or the actor if run in LOCAL_MODE
         # Instead, instantiate the actor locally and add it to the worker's
         # dictionary
-        if worker.mode == ray.PYTHON_MODE:
+        if worker.mode == ray.LOCAL_MODE:
             worker.actors[actor_id] = self._modified_class.__new__(
                 self._modified_class)
         else:
@@ -755,7 +772,6 @@ class ActorHandle(object):
         worker = ray.worker.get_global_worker()
 
         worker.check_connected()
-        ray.worker.check_main_thread()
 
         function_signature = self._ray_method_signatures[method_name]
         if args is None:
@@ -764,9 +780,9 @@ class ActorHandle(object):
             kwargs = {}
         args = signature.extend_args(function_signature, args, kwargs)
 
-        # Execute functions locally if Ray is run in PYTHON_MODE
+        # Execute functions locally if Ray is run in LOCAL_MODE
         # Copy args to prevent the function from mutating them.
-        if worker.mode == ray.PYTHON_MODE:
+        if worker.mode == ray.LOCAL_MODE:
             return getattr(worker.actors[self._ray_actor_id],
                            method_name)(*copy.deepcopy(args))
 
@@ -911,7 +927,6 @@ class ActorHandle(object):
         """
         worker = ray.worker.get_global_worker()
         worker.check_connected()
-        ray.worker.check_main_thread()
 
         if state["ray_forking"]:
             actor_handle_id = compute_actor_handle_id(
@@ -963,7 +978,7 @@ def make_actor(cls, num_cpus, num_gpus, resources, actor_method_cpus,
     class Class(cls):
         def __ray_terminate__(self):
             worker = ray.worker.get_global_worker()
-            if worker.mode != ray.PYTHON_MODE:
+            if worker.mode != ray.LOCAL_MODE:
                 # Disconnect the worker from the local scheduler. The point of
                 # this is so that when the worker kills itself below, the local
                 # scheduler won't push an error message to the driver.

@@ -4,6 +4,7 @@
 #include <map>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 
 #include "ray/constants.h"
 #include "ray/id.h"
@@ -346,6 +347,15 @@ class TaskReconstructionLog : public Log<TaskID, TaskReconstructionData> {
   }
 };
 
+class TaskLeaseTable : public Table<TaskID, TaskLeaseData> {
+ public:
+  TaskLeaseTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client)
+      : Table(context, client) {
+    pubsub_channel_ = TablePubsub::TASK_LEASE;
+    prefix_ = TablePrefix::TASK_LEASE;
+  }
+};
+
 namespace raylet {
 
 class TaskTable : public Table<TaskID, ray::protocol::Task> {
@@ -578,17 +588,23 @@ class ClientTable : private Log<UniqueID, ClientTableData> {
   /// \param client The client to get information about.
   /// \return A reference to the requested client. If the client is not in the
   /// cache, then an entry with a nil ClientID will be returned.
-  const ClientTableDataT &GetClient(const ClientID &client);
+  const ClientTableDataT &GetClient(const ClientID &client) const;
 
   /// Get the local client's ID.
   ///
   /// \return The local client's ID.
-  const ClientID &GetLocalClientId();
+  const ClientID &GetLocalClientId() const;
 
   /// Get the local client's information.
   ///
   /// \return The local client's information.
-  const ClientTableDataT &GetLocalClient();
+  const ClientTableDataT &GetLocalClient() const;
+
+  /// Check whether the given client is removed.
+  ///
+  /// \param client_id The ID of the client to check.
+  /// \return Whether the client with ID client_id is removed.
+  bool IsRemoved(const ClientID &client_id) const;
 
  private:
   /// Handle a client table notification.
@@ -612,6 +628,8 @@ class ClientTable : private Log<UniqueID, ClientTableData> {
   ClientTableCallback client_removed_callback_;
   /// A cache for information about all clients.
   std::unordered_map<ClientID, ClientTableDataT> client_cache_;
+  /// The set of removed clients.
+  std::unordered_set<ClientID> removed_clients_;
 };
 
 }  // namespace gcs

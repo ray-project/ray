@@ -21,8 +21,9 @@ import org.ray.spi.PathConfig;
 import org.ray.spi.RemoteFunctionManager;
 import org.ray.spi.StateStoreProxy;
 import org.ray.spi.impl.NativeRemoteFunctionManager;
+import org.ray.spi.impl.NonRayletStateStoreProxyImpl;
+import org.ray.spi.impl.RayletStateStoreProxyImpl;
 import org.ray.spi.impl.RedisClient;
-import org.ray.spi.impl.StateStoreProxyImpl;
 import org.ray.util.FileUtil;
 import org.ray.util.config.ConfigReader;
 import org.ray.util.logger.RayLog;
@@ -47,7 +48,7 @@ public class RayCli {
       throw new RuntimeException("Ray head node start failed", e);
     }
 
-    RayLog.core.info("Started Ray head node. Redis address: " + manager.info().redisAddress);
+    RayLog.core.info("Started Ray head node. Redis address: {}", manager.info().redisAddress);
     return manager;
   }
 
@@ -71,7 +72,10 @@ public class RayCli {
     PathConfig paths = new PathConfig(config);
     RayParameters params = new RayParameters(config);
 
-    RayLog.core.info("Using IP address " + params.node_ip_address + " for this node.");
+    // Init RayLog before using it.
+    RayLog.init(params.working_directory);
+
+    RayLog.core.info("Using IP address {} for this node.", params.node_ip_address);
     RunManager manager;
     if (cmdStart.head) {
       manager = startRayHead(params, paths, config);
@@ -149,7 +153,9 @@ public class RayCli {
 
     KeyValueStoreLink kvStore = new RedisClient();
     kvStore.setAddr(cmdSubmit.redisAddress);
-    StateStoreProxy stateStoreProxy = new StateStoreProxyImpl(kvStore);
+    StateStoreProxy stateStoreProxy = params.use_raylet
+            ? new RayletStateStoreProxyImpl(kvStore)
+            : new NonRayletStateStoreProxyImpl(kvStore);
     stateStoreProxy.initializeGlobalState();
 
     RemoteFunctionManager functionManager = new NativeRemoteFunctionManager(kvStore);
@@ -165,6 +171,10 @@ public class RayCli {
     //    .getInstance().getRemoteFunctionManager();
 
     UniqueID resourceId = functionManager.registerResource(zip);
+
+    // Init RayLog before using it.
+    RayLog.init(params.working_directory);
+
     RayLog.rapp.debug(
         "registerResource " + resourceId + " for package " + packageName + " done");
 
