@@ -292,8 +292,6 @@ class TestMultiAgentEnv(unittest.TestCase):
                          [4, 9, 14, 19, 24, 5, 10, 15, 20, 25])
 
     def testReturningModelBasedRolloutsData(self):
-        seen_episodes = []
-
         class ModelBasedPolicyGraph(PGPolicyGraph):
             _supports_build_compute_actions = False
 
@@ -302,8 +300,6 @@ class TestMultiAgentEnv(unittest.TestCase):
                                 state_batches,
                                 is_training=False,
                                 episodes=None):
-                seen_episodes.append(episodes)
-
                 # Pretend we did a model-based rollout and want to return
                 # the extra trajectory.
                 builder = episodes[0].new_batch_builder()
@@ -340,7 +336,6 @@ class TestMultiAgentEnv(unittest.TestCase):
         self.assertEqual(batch.count, 5)
         self.assertEqual(batch.policy_batches["p0"].count, 10)
         self.assertEqual(batch.policy_batches["p1"].count, 25)
-        self.assertEqual(len(seen_episodes[0]), 2)
 
     def testTrainMultiCartpoleSinglePolicy(self):
         n = 10
