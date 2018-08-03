@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 from collections import defaultdict
+import queue
 import random
 
 import numpy as np
@@ -14,10 +15,24 @@ class MultiAgentEpisode(object):
     The APIs in this class should be considered experimental, but we should
     avoid changing things for the sake of changing them since users may
     depend on them for advanced algorithms.
+
+    Use case 1: Model-based rollouts in multi-agent:
+        A custom compute_actions() function in a policy graph can inspect the
+        current episode state and perform a number of rollouts based on the
+        policies and state of other agents in the environment.
+
+    Use case 2: Returning extra rollouts data.
+        The model rollouts can be returned back to the sampler by calling:
+        >>> batch = episode.new_batch_builder()
+        >>> for each transition:
+               batch.add_values(...)  # see sampler for usage
+        >>> episode.extra_batches.add(batch.build_and_reset())
     """
 
     def __init__(self, policies, policy_mapping_fn, batch_builder_factory):
         self.batch_builder = batch_builder_factory()
+        self.extra_batches = queue.Queue()
+        self.new_batch_builder = batch_builder_factory
         self.total_reward = 0.0
         self.length = 0
         self.episode_id = random.randrange(2e9)

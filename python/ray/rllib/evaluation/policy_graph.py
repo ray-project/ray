@@ -84,7 +84,7 @@ class PolicyGraph(object):
         """
 
         [action], state_out, info = self.compute_actions(
-            [obs], [[s] for s in state], is_training, _episodes=[_episode])
+            [obs], [[s] for s in state], is_training, episodes=[episode])
         return action, [s[0] for s in state_out], \
             {k: v[0] for k, v in info.items()}
 

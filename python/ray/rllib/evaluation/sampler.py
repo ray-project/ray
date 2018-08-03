@@ -280,6 +280,8 @@ def _env_runner(async_vector_env,
             if all_done:
                 # Handle episode termination
                 batch_builder_pool.append(episode.batch_builder)
+                while episode.extra_batches:
+                    yield episode.extra_batches.pop()
                 del active_episodes[env_id]
                 resetted_obs = async_vector_env.try_reset(env_id)
                 if resetted_obs is None:
@@ -349,6 +351,10 @@ def _env_runner(async_vector_env,
                         agent_id, off_policy_actions[env_id][agent_id])
                 else:
                     episode.set_last_action(agent_id, action)
+
+        # Also return any extra batches produced
+        while episode.has_extra_batches():
+            yield episode.next_extra_batch()
 
         # Return computed actions to ready envs. We also send to envs that have
         # taken off-policy actions; those envs are free to ignore the action.
