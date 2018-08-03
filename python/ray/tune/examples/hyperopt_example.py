@@ -1,3 +1,7 @@
+"""This test checks that HyperOpt is functional.
+
+It also checks that it is usable with a separate scheduler.
+"""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -47,6 +51,6 @@ if __name__ == '__main__':
         }
     }
     algo = HyperOptSearch(
-        space, reward_attr="neg_mean_loss", experiments=config)
+        config, space, reward_attr="neg_mean_loss")
     scheduler = AsyncHyperBandScheduler(reward_attr="neg_mean_loss")
     run_experiments(search_alg=algo, scheduler=scheduler)
