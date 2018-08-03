@@ -3,20 +3,22 @@ package org.ray.api.test;
 import org.junit.Assert;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.ray.api.RayList;
 import org.ray.api.Ray;
-import org.ray.api.RayRemote;
+import org.ray.api.RayList;
 import org.ray.api.RayObject;
+import org.ray.api.RayRemote;
 import org.ray.api.WaitResult;
 
 @RunWith(MyRunner.class)
 public class WaitTest {
 
   @RayRemote
-  public static String hi() {return "hi";}
+  public static String hi() {
+    return "hi";
+  }
 
   @RayRemote
-  public static String delayHi () {
+  public static String delayHi() {
     try {
       Thread.sleep(100 * 1000);
     } catch (Exception e) {
