@@ -157,8 +157,7 @@ TEST_F(LineageCacheTest, TestGetUncommittedLineage) {
     task_ids2.push_back(task.GetTaskSpecification().TaskId());
   }
 
-  // Get the uncommitted lineage for the last task (the leaf) of one of the
-  // chains.
+  // Get the uncommitted lineage for the last task (the leaf) of one of the chains.
   auto uncommitted_lineage = lineage_cache_.GetUncommittedLineage(task_ids1.back(),
                                                                   ClientID::nil());
   // Check that the uncommitted lineage is exactly equal to the first chain of tasks.
@@ -189,15 +188,27 @@ TEST_F(LineageCacheTest, TestGetUncommittedLineage) {
     ASSERT_TRUE(uncommitted_lineage.GetEntry(task_id));
   }
 
-  // Simulate forwarding tasks to a node by marking all except last as forwarded.
+}
+
+TEST_F(LineageCacheTest, TestMarkTaskAsForwarded) {
+  // Insert chain of tasks.
+  std::vector<Task> tasks;
+  auto return_values = InsertTaskChain(lineage_cache_, tasks, 4,
+                                       std::vector<ObjectID>(), 1);
+  std::vector<TaskID> task_ids;
+  for (const auto &task : tasks) {
+    task_ids.push_back(task.GetTaskSpecification().TaskId());
+  }
+
   auto node_id = ClientID::from_random();
-  auto forwarded_task_id = combined_task_ids[combined_task_ids.size() - 2];
-  auto remaining_task_id = combined_task_ids[combined_task_ids.size() - 1];
+  auto forwarded_task_id = task_ids[task_ids.size() - 2];
+  auto remaining_task_id = task_ids[task_ids.size() - 1];
   lineage_cache_.MarkTaskAsForwarded(forwarded_task_id, node_id);
-  uncommitted_lineage = lineage_cache_.GetUncommittedLineage(forwarded_task_id, node_id);
+  auto uncommitted_lineage = lineage_cache_.GetUncommittedLineage(remaining_task_id,
+                                                                  node_id);
+
   ASSERT_EQ(1, uncommitted_lineage.GetEntries().size());
-  ASSERT_EQ(uncommitted_lineage.GetEntry(forwarded_task_id).get().GetEntryId(),
-            remaining_task_id);
+  ASSERT_TRUE(uncommitted_lineage.GetEntry(remaining_task_id));
 
 }
 
@@ -303,14 +314,13 @@ TEST_F(LineageCacheTest, TestForwardTasksRoundTrip) {
   auto return_values1 =
       InsertTaskChain(lineage_cache_, tasks, lineage_size, std::vector<ObjectID>(), 1);
 
-  // Use a nil node id since its value doesn't matter.
-  ClientID node_id;
   // Simulate removing each task, forwarding it to another node, then
   // receiving the task back again.
   for (auto it = tasks.begin(); it != tasks.end(); it++) {
     const auto task_id = it->GetTaskSpecification().TaskId();
     // Simulate removing the task and forwarding it to another node.
-    auto uncommitted_lineage = lineage_cache_.GetUncommittedLineage(task_id, node_id);
+    auto uncommitted_lineage = lineage_cache_.GetUncommittedLineage(task_id,
+                                                                    ClientID::nil());
     lineage_cache_.RemoveWaitingTask(task_id);
     // Simulate receiving the task again. Make sure we can add the task back.
     flatbuffers::FlatBufferBuilder fbb;
@@ -329,15 +339,13 @@ TEST_F(LineageCacheTest, TestForwardTask) {
   auto return_values1 =
       InsertTaskChain(lineage_cache_, tasks, 3, std::vector<ObjectID>(), 1);
 
-  // Use a nil node id since its value doesn't matter.
-  ClientID node_id;
   // Simulate removing the task and forwarding it to another node.
   auto it = tasks.begin() + 1;
   auto forwarded_task = *it;
   tasks.erase(it);
   auto task_id_to_remove = forwarded_task.GetTaskSpecification().TaskId();
   auto uncommitted_lineage = lineage_cache_.GetUncommittedLineage(task_id_to_remove,
-                                                                  node_id);
+                                                                  ClientID::nil());
   lineage_cache_.RemoveWaitingTask(task_id_to_remove);
 
   // Simulate executing the remaining tasks.

@@ -147,7 +147,7 @@ LineageCache::LineageCache(const ClientID &client_id,
 /// lineage_from. This should return true if the merge should stop.
 void MergeLineageHelper(const TaskID &task_id, const Lineage &lineage_from,
                         Lineage &lineage_to,
-                        std::function<bool(GcsStatus)> stopping_condition) {
+                        std::function<bool(const LineageEntry&)> stopping_condition) {
   // If the entry is not found in the lineage to merge, then we stop since
   // there is nothing to copy into the merged lineage.
   auto entry = lineage_from.GetEntry(task_id);
@@ -155,8 +155,7 @@ void MergeLineageHelper(const TaskID &task_id, const Lineage &lineage_from,
     return;
   }
   // Check whether we should stop at this entry in the DFS.
-  auto status = entry->GetStatus();
-  if (stopping_condition(status)) {
+  if (stopping_condition(entry.get())) {
     return;
   }
 
@@ -175,12 +174,13 @@ void MergeLineageHelper(const TaskID &task_id, const Lineage &lineage_from,
 void LineageCache::AddWaitingTask(const Task &task, const Lineage &uncommitted_lineage) {
   auto task_id = task.GetTaskSpecification().TaskId();
   // Merge the uncommitted lineage into the lineage cache.
-  MergeLineageHelper(task_id, uncommitted_lineage, lineage_, [](GcsStatus status) {
-    if (status != GcsStatus::NONE) {
+  MergeLineageHelper(task_id, uncommitted_lineage, lineage_,
+                     [](const LineageEntry& entry) {
+    if (entry.GetStatus() != GcsStatus::NONE) {
       // We received the uncommitted lineage from a remote node, so make sure
       // that all entries in the lineage to merge have status
       // UNCOMMITTED_REMOTE.
-      RAY_CHECK(status == GcsStatus::UNCOMMITTED_REMOTE);
+      RAY_CHECK(entry.GetStatus() == GcsStatus::UNCOMMITTED_REMOTE);
     }
     // The only stopping condition is that an entry is not found.
     return false;
@@ -271,13 +271,13 @@ void LineageCache::MarkTaskAsForwarded(const TaskID &task_id, const ClientID &no
 Lineage LineageCache::GetUncommittedLineage(const TaskID &task_id,
                                             const ClientID &node_id) const {
   Lineage uncommitted_lineage;
-  auto entry = lineage_.GetEntry(task_id).get();
   // Add all uncommitted ancestors from the lineage cache to the uncommitted
   // lineage of the requested task.
-  MergeLineageHelper(task_id, lineage_, uncommitted_lineage, [&](GcsStatus status) {
+  MergeLineageHelper(task_id, lineage_, uncommitted_lineage,
+                     [&](const LineageEntry& entry) {
     // The stopping condition for recursion is that the entry has either been
     // committed to the GCS, or has already been forwarded to the node.
-    return entry.WasExplicitlyForwarded(node_id) ;
+    return entry.WasExplicitlyForwarded(node_id);
   });
   return uncommitted_lineage;
 }

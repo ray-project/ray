@@ -100,8 +100,7 @@ class LineageEntry {
   //  const Task task_;
   Task task_;
 
-  /// Node managers that this task and its lineage has been forwarded to.
-  /// Does not include nodes that this entry was not explicitly forwarded to.
+  /// IDs of node managers that this task has been explicitly forwarded to.
   std::unordered_set<ClientID> forwarded_to_;
 
 };
