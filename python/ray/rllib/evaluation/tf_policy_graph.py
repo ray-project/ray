@@ -108,7 +108,8 @@ class TFPolicyGraph(PolicyGraph):
                               builder,
                               obs_batch,
                               state_batches=None,
-                              is_training=False):
+                              is_training=False,
+                              episodes=None):
         state_batches = state_batches or []
         assert len(self._state_inputs) == len(state_batches), \
             (self._state_inputs, state_batches)

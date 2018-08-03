@@ -3,7 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 from collections import defaultdict
-import queue
+import six.moves.queue as queue
 import random
 
 import numpy as np
@@ -15,6 +15,15 @@ class MultiAgentEpisode(object):
     The APIs in this class should be considered experimental, but we should
     avoid changing things for the sake of changing them since users may
     depend on them for advanced algorithms.
+
+    Attributes:
+        new_batch_builder (func): Create a new empty MultiAgentBatchBuilder.
+        add_extra_batch (func): Return a built MultiAgentBatch to the sampler.
+        batch_builder (obj): Batch builder for the current episode.
+        total_reward (float): Summed reward across all agents in this episode.
+        length (int): Length of this episode.
+        episode_id (int): Unique id identifying this trajectory.
+        agent_rewards (dict): Summed rewards broken down by agent.
 
     Use case 1: Model-based rollouts in multi-agent:
         A custom compute_actions() function in a policy graph can inspect the
@@ -29,10 +38,10 @@ class MultiAgentEpisode(object):
         >>> episode.extra_batches.add(batch.build_and_reset())
     """
 
-    def __init__(self, policies, policy_mapping_fn, batch_builder_factory):
-        self.batch_builder = batch_builder_factory()
-        self.extra_batches = queue.Queue()
+    def __init__(self, policies, policy_mapping_fn, batch_builder_factory, extra_batch_callback):
         self.new_batch_builder = batch_builder_factory
+        self.add_extra_batch = extra_batch_callback
+        self.batch_builder = batch_builder_factory()
         self.total_reward = 0.0
         self.length = 0
         self.episode_id = random.randrange(2e9)

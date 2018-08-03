@@ -43,8 +43,9 @@ class SyncSampler(object):
         self.policies = policies
         self.policy_mapping_fn = policy_mapping_fn
         self._obs_filters = obs_filters
+        self.extra_batches = queue.Queue()
         self.rollout_provider = _env_runner(
-            self.async_vector_env, self.policies, self.policy_mapping_fn,
+            self.async_vector_env, self.extra_batches.put, self.policies, self.policy_mapping_fn,
             self.num_local_steps, self.horizon, self._obs_filters, pack,
             tf_sess)
         self.metrics_queue = queue.Queue()
@@ -65,6 +66,15 @@ class SyncSampler(object):
             except queue.Empty:
                 break
         return completed
+
+    def get_extra_batches(self):
+        extra = []
+        while True:
+            try:
+                extra.append(self.extra_batches.get_nowait())
+            except queue.Empty:
+                break
+        return extra
 
 
 class AsyncSampler(threading.Thread):
@@ -88,6 +98,7 @@ class AsyncSampler(threading.Thread):
         self.async_vector_env = AsyncVectorEnv.wrap_async(env)
         threading.Thread.__init__(self)
         self.queue = queue.Queue(5)
+        self.extra_batches = queue.Queue()
         self.metrics_queue = queue.Queue()
         self.num_local_steps = num_local_steps
         self.horizon = horizon
@@ -107,7 +118,7 @@ class AsyncSampler(threading.Thread):
 
     def _run(self):
         rollout_provider = _env_runner(
-            self.async_vector_env, self.policies, self.policy_mapping_fn,
+            self.async_vector_env, self.extra_batches.put, self.policies, self.policy_mapping_fn,
             self.num_local_steps, self.horizon, self._obs_filters, self.pack,
             self.tf_sess)
         while True:
@@ -152,8 +163,18 @@ class AsyncSampler(threading.Thread):
                 break
         return completed
 
+    def get_extra_batches(self):
+        extra = []
+        while True:
+            try:
+                extra.append(self.extra_batches.get_nowait())
+            except queue.Empty:
+                break
+        return extra
+
 
 def _env_runner(async_vector_env,
+                extra_batch_callback,
                 policies,
                 policy_mapping_fn,
                 num_local_steps,
@@ -165,6 +186,7 @@ def _env_runner(async_vector_env,
 
     Args:
         async_vector_env (AsyncVectorEnv): env implementing AsyncVectorEnv.
+        extra_batch_callback (fn): function to send extra batch data to.
         policies (dict): Map of policy ids to PolicyGraph instances.
         policy_mapping_fn (func): Function that maps agent ids to policy ids.
             This is called when an agent first enters the environment. The
@@ -204,7 +226,7 @@ def _env_runner(async_vector_env,
 
     def new_episode():
         return MultiAgentEpisode(policies, policy_mapping_fn,
-                                 get_batch_builder)
+                                 get_batch_builder, extra_batch_callback)
 
     active_episodes = defaultdict(new_episode)
 
@@ -280,8 +302,6 @@ def _env_runner(async_vector_env,
             if all_done:
                 # Handle episode termination
                 batch_builder_pool.append(episode.batch_builder)
-                while not episode.extra_batches.empty():
-                    yield episode.extra_batch.get_nowait()
                 del active_episodes[env_id]
                 resetted_obs = async_vector_env.try_reset(env_id)
                 if resetted_obs is None:
@@ -322,7 +342,7 @@ def _env_runner(async_vector_env,
                     [t.obs for t in eval_data],
                     rnn_in,
                     is_training=True,
-                    _episodes=[active_episodes[t.env_id] for t in eval_data])
+                    episodes=[active_episodes[t.env_id] for t in eval_data])
         if builder:
             for k, v in pending_fetches.items():
                 eval_results[k] = builder.get(v)
@@ -351,10 +371,6 @@ def _env_runner(async_vector_env,
                         agent_id, off_policy_actions[env_id][agent_id])
                 else:
                     episode.set_last_action(agent_id, action)
-
-        # Also return any extra batches produced
-        while not episode.extra_batches.empty():
-            yield episode.extra_batch.get_nowait()
 
         # Return computed actions to ready envs. We also send to envs that have
         # taken off-policy actions; those envs are free to ignore the action.
