@@ -3,11 +3,10 @@ from __future__ import division
 from __future__ import print_function
 
 from collections import defaultdict, namedtuple
-import numpy as np
-import random
 import six.moves.queue as queue
 import threading
 
+from ray.rllib.evaluation.episode import MultiAgentEpisode
 from ray.rllib.evaluation.sample_batch import MultiAgentSampleBatchBuilder, \
     MultiAgentBatch
 from ray.rllib.env.async_vector_env import AsyncVectorEnv
@@ -204,8 +203,8 @@ def _env_runner(async_vector_env,
             return MultiAgentSampleBatchBuilder(policies)
 
     def new_episode():
-        return _MultiAgentEpisode(policies, policy_mapping_fn,
-                                  get_batch_builder)
+        return MultiAgentEpisode(policies, policy_mapping_fn,
+                                 get_batch_builder)
 
     active_episodes = defaultdict(new_episode)
 
@@ -302,6 +301,7 @@ def _env_runner(async_vector_env,
         # Batch eval policy actions if possible
         if tf_sess:
             builder = TFRunBuilder(tf_sess, "policy_eval")
+            pending_fetches = {}
         else:
             builder = None
         eval_results = {}
@@ -310,16 +310,18 @@ def _env_runner(async_vector_env,
             rnn_in = _to_column_format([t.rnn_state for t in eval_data])
             rnn_in_cols[policy_id] = rnn_in
             policy = _get_or_raise(policies, policy_id)
-            if builder:
-                eval_results[policy_id] = policy.build_compute_actions(
+            if builder and policy._supports_build_compute_actions:
+                pending_fetches[policy_id] = policy.build_compute_actions(
                     builder, [t.obs for t in eval_data],
                     rnn_in,
                     is_training=True)
             else:
                 eval_results[policy_id] = policy.compute_actions(
-                    [t.obs for t in eval_data], rnn_in, is_training=True)
+                    [t.obs for t in eval_data], rnn_in, is_training=True,
+                    _episodes=[active_episodes[t.env_id] for t in eval_data])
         if builder:
-            eval_results = {k: builder.get(v) for k, v in eval_results.items()}
+            for k, v in pending_fetches.items():
+                eval_results[k] = builder.get(v)
 
         # Record the policy eval results
         for policy_id, eval_data in to_eval.items():
@@ -362,62 +364,3 @@ def _get_or_raise(mapping, policy_id):
             "Could not find policy for agent: agent policy id `{}` not "
             "in policy map keys {}.".format(policy_id, mapping.keys()))
     return mapping[policy_id]
-
-
-class _MultiAgentEpisode(object):
-    def __init__(self, policies, policy_mapping_fn, batch_builder_factory):
-        self.batch_builder = batch_builder_factory()
-        self.total_reward = 0.0
-        self.length = 0
-        self.episode_id = random.randrange(2e9)
-        self.agent_rewards = defaultdict(float)
-        self._policies = policies
-        self._policy_mapping_fn = policy_mapping_fn
-        self._agent_to_policy = {}
-        self._agent_to_rnn_state = {}
-        self._agent_to_last_obs = {}
-        self._agent_to_last_action = {}
-        self._agent_to_last_pi_info = {}
-
-    def add_agent_rewards(self, reward_dict):
-        for agent_id, reward in reward_dict.items():
-            if reward is not None:
-                self.agent_rewards[agent_id,
-                                   self.policy_for(agent_id)] += reward
-                self.total_reward += reward
-
-    def policy_for(self, agent_id):
-        if agent_id not in self._agent_to_policy:
-            self._agent_to_policy[agent_id] = self._policy_mapping_fn(agent_id)
-        return self._agent_to_policy[agent_id]
-
-    def rnn_state_for(self, agent_id):
-        if agent_id not in self._agent_to_rnn_state:
-            policy = self._policies[self.policy_for(agent_id)]
-            self._agent_to_rnn_state[agent_id] = policy.get_initial_state()
-        return self._agent_to_rnn_state[agent_id]
-
-    def last_observation_for(self, agent_id):
-        return self._agent_to_last_obs.get(agent_id)
-
-    def last_action_for(self, agent_id):
-        action = self._agent_to_last_action[agent_id]
-        # Concatenate tuple actions
-        if isinstance(action, list):
-            action = np.concatenate(action, axis=0).flatten()
-        return action
-
-    def last_pi_info_for(self, agent_id):
-        return self._agent_to_last_pi_info[agent_id]
-
-    def set_rnn_state(self, agent_id, rnn_state):
-        self._agent_to_rnn_state[agent_id] = rnn_state
-
-    def set_last_observation(self, agent_id, obs):
-        self._agent_to_last_obs[agent_id] = obs
-
-    def set_last_action(self, agent_id, action):
-        self._agent_to_last_action[agent_id] = action
-
-    def set_last_pi_info(self, agent_id, pi_info):
-        self._agent_to_last_pi_info[agent_id] = pi_info

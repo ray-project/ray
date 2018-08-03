@@ -37,13 +37,20 @@ class PolicyGraph(object):
         self.observation_space = observation_space
         self.action_space = action_space
 
-    def compute_actions(self, obs_batch, state_batches, is_training=False):
+    def compute_actions(self,
+                        obs_batch,
+                        state_batches,
+                        is_training=False,
+                        episodes=None):
         """Compute actions for the current policy.
 
         Arguments:
             obs_batch (np.ndarray): batch of observations
             state_batches (list): list of RNN state input batches, if any
             is_training (bool): whether we are training the policy
+            episodes (list): list of MultiAgentEpisode. This provides access
+                to all of the internal episode state, which may be useful for
+                model-based or multiagent algorithms.
 
         Returns:
             actions (np.ndarray): batch of output actions, with shape like
@@ -55,13 +62,20 @@ class PolicyGraph(object):
         """
         raise NotImplementedError
 
-    def compute_single_action(self, obs, state, is_training=False):
+    def compute_single_action(self,
+                              obs,
+                              state,
+                              is_training=False,
+                              episode=None):
         """Unbatched version of compute_actions.
 
         Arguments:
             obs (obj): single observation
             state_batches (list): list of RNN state inputs, if any
             is_training (bool): whether we are training the policy
+            episode (MultiAgentEpisode): this provides access to all of the
+                internal episode state, which may be useful for model-based or
+                multiagent algorithms.
 
         Returns:
             actions (obj): single action
@@ -70,7 +84,7 @@ class PolicyGraph(object):
         """
 
         [action], state_out, info = self.compute_actions(
-            [obs], [[s] for s in state], is_training)
+            [obs], [[s] for s in state], is_training, _episodes=[_episode])
         return action, [s[0] for s in state_out], \
             {k: v[0] for k, v in info.items()}
 
