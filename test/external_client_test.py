@@ -64,4 +64,3 @@ def testNumpyExternalClient(ray_start):
 
 def testMultipleObjectIDs(ray_start):
     pass
-
