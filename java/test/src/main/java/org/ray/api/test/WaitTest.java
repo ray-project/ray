@@ -3,7 +3,11 @@ package org.ray.api.test;
 import org.junit.Assert;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.ray.api.*;
+import org.ray.api.RayList;
+import org.ray.api.Ray;
+import org.ray.api.RayRemote;
+import org.ray.api.RayObject;
+import org.ray.api.WaitResult;
 
 @RunWith(MyRunner.class)
 public class WaitTest {
