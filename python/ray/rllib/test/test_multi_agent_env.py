@@ -265,6 +265,21 @@ class TestMultiAgentEnv(unittest.TestCase):
         self.assertEqual(batch.policy_batches["p0"]["t"].tolist(),
                          list(range(25)) * 6)
 
+    def testMultiAgentSampleWithHorizon(self):
+        act_space = gym.spaces.Discrete(2)
+        obs_space = gym.spaces.Discrete(2)
+        ev = PolicyEvaluator(
+            env_creator=lambda _: BasicMultiAgent(5),
+            policy_graph={
+                "p0": (MockPolicyGraph, obs_space, act_space, {}),
+                "p1": (MockPolicyGraph, obs_space, act_space, {}),
+            },
+            policy_mapping_fn=lambda agent_id: "p{}".format(agent_id % 2),
+            episode_horizon=10,  # test with episode horizon set
+            batch_steps=50)
+        batch = ev.sample()
+        self.assertEqual(batch.count, 50)
+
     def testMultiAgentSampleRoundRobin(self):
         act_space = gym.spaces.Discrete(2)
         obs_space = gym.spaces.Discrete(2)
