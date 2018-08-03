@@ -48,9 +48,9 @@ class PolicyGraph(object):
             obs_batch (np.ndarray): batch of observations
             state_batches (list): list of RNN state input batches, if any
             is_training (bool): whether we are training the policy
-            episodes (list): list of MultiAgentEpisode. This provides access
-                to all of the internal episode state, which may be useful for
-                model-based or multiagent algorithms.
+            episodes (list): MultiAgentEpisode for each obs in obs_batch.
+                This provides access to all of the internal episode state,
+                which may be useful for model-based or multiagent algorithms.
 
         Returns:
             actions (np.ndarray): batch of output actions, with shape like
