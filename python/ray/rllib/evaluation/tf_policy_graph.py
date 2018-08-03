@@ -129,8 +129,9 @@ class TFPolicyGraph(PolicyGraph):
                         episodes=None):
         """Compute actions for the current policy.
 
-        Note that if you override this in TFPolicyGraph, you should also set
-        _supports_build_compute_actions = False.
+        Note that if you override this in a subclass of TFPolicyGraph, you
+        should also set _supports_build_compute_actions = False. Otherwise,
+        your override will not take effect.
         """
 
         builder = TFRunBuilder(self._sess, "compute_actions")
