@@ -8,7 +8,7 @@ import os
 import subprocess
 
 import ray.services as services
-from ray.autoscaler.commands import (create_or_update_cluster,
+from ray.autoscaler.commands import (attach_cluster, create_or_update_cluster,
                                      teardown_cluster, get_head_node_ip)
 import ray.utils
 
@@ -391,10 +391,16 @@ def stop():
     required=False,
     type=str,
     help=("Run this command on the head node after the cluster has started."))
+@click.option(
+    "--screen",
+    is_flag=True,
+    default=False,
+    help=("Open a screen after the cluster has started. If a command is "
+          "specified, it will be run in a screen."))
 def create_or_update(cluster_config_file, min_workers, max_workers, no_restart,
-                     yes, run):
+                     yes, run, screen):
     create_or_update_cluster(cluster_config_file, min_workers, max_workers,
-                             no_restart, yes, run)
+                             no_restart, yes, run, screen)
 
 
 @click.command()
@@ -411,6 +417,12 @@ def teardown(cluster_config_file, yes):
 
 @click.command()
 @click.argument("cluster_config_file", required=True, type=str)
+def attach(cluster_config_file):
+    attach_cluster(cluster_config_file)
+
+
+@click.command()
+@click.argument("cluster_config_file", required=True, type=str)
 def get_head_ip(cluster_config_file):
     click.echo(get_head_node_ip(cluster_config_file))
 
@@ -418,6 +430,7 @@ def get_head_ip(cluster_config_file):
 cli.add_command(start)
 cli.add_command(stop)
 cli.add_command(create_or_update)
+cli.add_command(attach)
 cli.add_command(teardown)
 cli.add_command(get_head_ip)
 

@@ -186,22 +186,24 @@ class NodeUpdater(object):
                 connect_timeout=120,
                 redirect=None,
                 verbose=False,
-                allocate_tty=False):
+                allocate_tty=False,
+                emulate_interactive=True):
         if verbose:
             print(
                 "NodeUpdater: running {} on {}...".format(
                     pretty_cmd(cmd), self.ssh_ip),
                 file=self.stdout)
-        force_interactive = "set -i || true && source ~/.bashrc && "
         ssh = ["ssh"]
         if allocate_tty:
             ssh.append("-tt")
+        if emulate_interactive:
+            force_interactive = "set -i || true && source ~/.bashrc && "
+            cmd = "bash --login -c {}".format(quote(force_interactive + cmd))
         self.process_runner.check_call(
             ssh + [
                 "-o", "ConnectTimeout={}s".format(connect_timeout), "-o",
                 "StrictHostKeyChecking=no", "-i", self.ssh_private_key,
-                "{}@{}".format(self.ssh_user, self.ssh_ip),
-                "bash --login -c {}".format(quote(force_interactive + cmd))
+                "{}@{}".format(self.ssh_user, self.ssh_ip), cmd
             ],
             stdout=redirect or self.stdout,
             stderr=redirect or self.stderr)

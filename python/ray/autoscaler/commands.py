@@ -24,17 +24,22 @@ from ray.autoscaler.updater import NodeUpdaterProcess
 
 
 def create_or_update_cluster(config_file, override_min_workers,
-                             override_max_workers, no_restart, yes, run):
+                             override_max_workers, no_restart, yes, run,
+                             screen):
     """Create or updates an autoscaling Ray cluster from a config json."""
 
     config = yaml.load(open(config_file).read())
-    validate_config(config)
-    config = fillout_defaults(config)
-
     if override_min_workers is not None:
         config["min_workers"] = override_min_workers
     if override_max_workers is not None:
         config["max_workers"] = override_max_workers
+    config = _bootstrap_config(config)
+    get_or_create_head_node(config, no_restart, yes, run, screen)
+
+
+def _bootstrap_config(config):
+    validate_config(config)
+    config = fillout_defaults(config)
 
     importer = NODE_PROVIDERS.get(config["provider"]["type"])
     if not importer:
@@ -42,8 +47,7 @@ def create_or_update_cluster(config_file, override_min_workers,
             config["provider"]))
 
     bootstrap_config, _ = importer()
-    config = bootstrap_config(config)
-    get_or_create_head_node(config, no_restart, yes, run)
+    return bootstrap_config(config)
 
 
 def teardown_cluster(config_file, yes):
@@ -71,7 +75,7 @@ def teardown_cluster(config_file, yes):
         nodes = provider.nodes({})
 
 
-def get_or_create_head_node(config, no_restart, yes, run):
+def get_or_create_head_node(config, no_restart, yes, run, screen):
     """Create the cluster head node, which in turn creates the workers."""
 
     provider = get_node_provider(config["provider"], config["cluster_name"])
@@ -179,9 +183,43 @@ def get_or_create_head_node(config, no_restart, yes, run):
                                        config["auth"]["ssh_user"],
                                        provider.external_ip(head_node)))
 
-    if run:
+    if run or screen:
         print("-" * 80)
-        updater.ssh_cmd(run, verbose=True, allocate_tty=True)
+        if run:
+            if screen:
+                run = [
+                    "screen", "-dm", "bash", "-c",
+                    quote(run + "; exec bash")
+                ]
+                run = " ".join(run)
+            updater.ssh_cmd(run, verbose=True, allocate_tty=True)
+        if screen:
+            updater.ssh_cmd(
+                "screen -xRR",
+                verbose=False,
+                allocate_tty=True,
+                emulate_interactive=False)
+
+
+def attach_cluster(config_file):
+    """Attaches to a screen for the specified cluster."""
+
+    config = yaml.load(open(config_file).read())
+    config = _bootstrap_config(config)
+    head_node = _get_head_node(config)
+    updater = NodeUpdaterProcess(
+        head_node,
+        config["provider"],
+        config["auth"],
+        config["cluster_name"],
+        config["file_mounts"], [],
+        "",
+        redirect_output=False)
+    updater.ssh_cmd(
+        "screen -dRR",
+        verbose=True,
+        allocate_tty=True,
+        emulate_interactive=False)
 
 
 def get_head_node_ip(config_file):
@@ -189,13 +227,19 @@ def get_head_node_ip(config_file):
 
     config = yaml.load(open(config_file).read())
     provider = get_node_provider(config["provider"], config["cluster_name"])
+    head_node = _get_head_node(config)
+    return provider.external_ip(head_node)
+
+
+def _get_head_node(config):
+    provider = get_node_provider(config["provider"], config["cluster_name"])
     head_node_tags = {
         TAG_RAY_NODE_TYPE: "head",
     }
     nodes = provider.nodes(head_node_tags)
     if len(nodes) > 0:
         head_node = nodes[0]
-        return provider.external_ip(head_node)
+        return head_node
     else:
         print("Head node of cluster ({}) not found!".format(
             config["cluster_name"]))
