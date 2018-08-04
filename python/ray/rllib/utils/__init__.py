@@ -7,10 +7,7 @@ from ray.rllib.utils.policy_server import PolicyServer
 from ray.rllib.utils.result import RLTrainingResult
 
 __all__ = [
-    "Filter",
-    "FilterManager",
-    "PolicyClient",
-    "PolicyServer",
+    "Filter", "FilterManager", "PolicyClient", "PolicyServer",
     "RLTrainingResult"
 ]
 
