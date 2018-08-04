@@ -11,6 +11,7 @@ from ray.rllib import _register_all
 
 from ray.tune import Trainable, TuneError
 from ray.tune import register_env, register_trainable, run_experiments
+from ray.tune.trial_scheduler import TrialScheduler, FIFOScheduler
 from ray.tune.registry import _global_registry, TRAINABLE_CLASS
 from ray.tune.result import DEFAULT_RESULTS_DIR, TrainingResult
 from ray.tune.util import pin_in_object_store, get_pinned_object
@@ -1007,6 +1008,30 @@ class TrialRunnerTest(unittest.TestCase):
         experiments = [Experiment.from_json("test", experiment_spec)]
         searcher = _MockSuggestionAlgorithm(experiments, max_concurrent=10)
         runner = TrialRunner(search_alg=searcher)
+        runner.step()
+        trials = runner.get_trials()
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+        self.assertTrue(searcher.is_finished())
+        self.assertFalse(runner.is_finished())
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.TERMINATED)
+        self.assertEqual(len(searcher.live_trials), 0)
+        self.assertTrue(searcher.is_finished())
+        self.assertTrue(runner.is_finished())
+
+    def testSearchAlgSchedulerInteraction(self):
+        """Checks that TrialScheduler killing trial will notify SearchAlg."""
+
+        class _MockScheduler(FIFOScheduler):
+            def on_trial_result(self, *args, **kwargs):
+                return TrialScheduler.STOP
+
+        ray.init(num_cpus=4, num_gpus=2)
+        experiment_spec = {"run": "__fake", "stop": {"training_iteration": 2}}
+        experiments = [Experiment.from_json("test", experiment_spec)]
+        searcher = _MockSuggestionAlgorithm(experiments, max_concurrent=10)
+        runner = TrialRunner(search_alg=searcher, scheduler=_MockScheduler())
         runner.step()
         trials = runner.get_trials()
         self.assertEqual(trials[0].status, Trial.RUNNING)
