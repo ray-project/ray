@@ -24,7 +24,7 @@ from ray.autoscaler.updater import NodeUpdaterProcess
 
 
 def create_or_update_cluster(config_file, override_min_workers,
-                             override_max_workers, no_restart, yes):
+                             override_max_workers, no_restart, yes, run):
     """Create or updates an autoscaling Ray cluster from a config json."""
 
     config = yaml.load(open(config_file).read())
@@ -43,7 +43,7 @@ def create_or_update_cluster(config_file, override_min_workers,
 
     bootstrap_config, _ = importer()
     config = bootstrap_config(config)
-    get_or_create_head_node(config, no_restart, yes)
+    get_or_create_head_node(config, no_restart, yes, run)
 
 
 def teardown_cluster(config_file, yes):
@@ -71,7 +71,7 @@ def teardown_cluster(config_file, yes):
         nodes = provider.nodes({})
 
 
-def get_or_create_head_node(config, no_restart, yes):
+def get_or_create_head_node(config, no_restart, yes, run):
     """Create the cluster head node, which in turn creates the workers."""
 
     provider = get_node_provider(config["provider"], config["cluster_name"])
@@ -178,6 +178,10 @@ def get_or_create_head_node(config, no_restart, yes):
           "  ssh -i {} {}@{}\n".format(config["auth"]["ssh_private_key"],
                                        config["auth"]["ssh_user"],
                                        provider.external_ip(head_node)))
+
+    if run:
+        print("-" * 80)
+        updater.ssh_cmd(run, verbose=True)
 
 
 def get_head_node_ip(config_file):

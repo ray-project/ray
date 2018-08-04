@@ -386,10 +386,15 @@ def stop():
     is_flag=True,
     default=False,
     help=("Don't ask for confirmation."))
+@click.option(
+    "--run",
+    required=False,
+    type=str,
+    help=("Run this command on the head node after the cluster has started."))
 def create_or_update(cluster_config_file, min_workers, max_workers, no_restart,
-                     yes):
+                     yes, run):
     create_or_update_cluster(cluster_config_file, min_workers, max_workers,
-                             no_restart, yes)
+                             no_restart, yes, run)
 
 
 @click.command()
