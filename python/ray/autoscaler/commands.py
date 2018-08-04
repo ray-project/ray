@@ -204,6 +204,12 @@ def get_or_create_head_node(config, no_restart, yes, run, screen):
 def attach_cluster(config_file):
     """Attaches to a screen for the specified cluster."""
 
+    exec_cluster(config_file, "screen -dRR")
+
+
+def exec_cluster(config_file, cmd):
+    """Runs a command on the specified cluster."""
+
     config = yaml.load(open(config_file).read())
     config = _bootstrap_config(config)
     head_node = _get_head_node(config)
@@ -216,10 +222,7 @@ def attach_cluster(config_file):
         "",
         redirect_output=False)
     updater.ssh_cmd(
-        "screen -dRR",
-        verbose=True,
-        allocate_tty=True,
-        emulate_interactive=False)
+        cmd, verbose=True, allocate_tty=True, emulate_interactive=False)
 
 
 def get_head_node_ip(config_file):

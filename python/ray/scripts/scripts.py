@@ -8,7 +8,8 @@ import os
 import subprocess
 
 import ray.services as services
-from ray.autoscaler.commands import (attach_cluster, create_or_update_cluster,
+from ray.autoscaler.commands import (attach_cluster, exec_cluster,
+                                     create_or_update_cluster,
                                      teardown_cluster, get_head_node_ip)
 import ray.utils
 
@@ -423,6 +424,13 @@ def attach(cluster_config_file):
 
 @click.command()
 @click.argument("cluster_config_file", required=True, type=str)
+@click.argument("cmd", required=True, type=str)
+def exec(cluster_config_file, cmd):
+    exec_cluster(cluster_config_file, cmd)
+
+
+@click.command()
+@click.argument("cluster_config_file", required=True, type=str)
 def get_head_ip(cluster_config_file):
     click.echo(get_head_node_ip(cluster_config_file))
 
@@ -431,6 +439,7 @@ cli.add_command(start)
 cli.add_command(stop)
 cli.add_command(create_or_update)
 cli.add_command(attach)
+cli.add_command(exec)
 cli.add_command(teardown)
 cli.add_command(get_head_ip)
 
