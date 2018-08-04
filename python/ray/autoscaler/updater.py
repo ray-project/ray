@@ -181,17 +181,25 @@ class NodeUpdater(object):
         for cmd in self.setup_cmds:
             self.ssh_cmd(cmd, verbose=True)
 
-    def ssh_cmd(self, cmd, connect_timeout=120, redirect=None, verbose=False):
+    def ssh_cmd(self,
+                cmd,
+                connect_timeout=120,
+                redirect=None,
+                verbose=False,
+                force_interactive=False):
         if verbose:
             print(
                 "NodeUpdater: running {} on {}...".format(
                     pretty_cmd(cmd), self.ssh_ip),
                 file=self.stdout)
         force_interactive = "set -i || true && source ~/.bashrc && "
+        ssh = ["ssh"]
+        if force_interactive:
+            ssh.append("-tt")  # avoids stdout buffering
         self.process_runner.check_call(
-            [
-                "ssh", "-o", "ConnectTimeout={}s".format(connect_timeout),
-                "-o", "StrictHostKeyChecking=no", "-i", self.ssh_private_key,
+            ssh + [
+                "-o", "ConnectTimeout={}s".format(connect_timeout), "-o",
+                "StrictHostKeyChecking=no", "-i", self.ssh_private_key,
                 "{}@{}".format(self.ssh_user, self.ssh_ip),
                 "bash --login -c {}".format(quote(force_interactive + cmd))
             ],

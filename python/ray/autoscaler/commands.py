@@ -181,7 +181,7 @@ def get_or_create_head_node(config, no_restart, yes, run):
 
     if run:
         print("-" * 80)
-        updater.ssh_cmd(run, verbose=True)
+        updater.ssh_cmd(run, verbose=True, force_interactive=True)
 
 
 def get_head_node_ip(config_file):
