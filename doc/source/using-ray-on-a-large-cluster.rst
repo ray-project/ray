@@ -1,5 +1,5 @@
-Using Ray on a Large Cluster
-============================
+Manual Cluster Setup on a Large Cluster
+=======================================
 
 .. note::
 

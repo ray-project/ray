@@ -50,6 +50,15 @@ SSH into the head node and then run Ray programs with ``ray.init(redis_address="
     # Teardown the cluster
     $ ray teardown ray/python/ray/autoscaler/gcp/example-full.yaml
 
+Single-command setup and run
+----------------------------
+
+You can pass the arguments ``--yes --run=CMD`` to setup a cluster and run `CMD` on it without any steps in between. This can be very convenient for interactive debugging.
+
+.. code-block:: bash
+
+    $ ray create_or_update cluster.yaml --yes --run 'echo "hello world"'
+
 Port-forwarding applications
 ----------------------------
 
