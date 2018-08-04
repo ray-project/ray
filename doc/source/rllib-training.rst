@@ -36,7 +36,7 @@ The ``train.py`` script has a number of options you can show by running
 The most important options are for choosing the environment
 with ``--env`` (any OpenAI gym environment including ones registered by the user
 can be used) and for choosing the algorithm with ``--run``
-(available options are ``PPO``, ``PG``, ``A3C``, ``ES``, ``DDPG``, ``DDPG2``, ``DQN``, ``APEX``, and ``APEX_DDPG``).
+(available options are ``PPO``, ``PG``, ``A3C``, ``IMPALA``, ``ES``, ``DDPG``, ``DQN``, ``APEX``, and ``APEX_DDPG``).
 
 Specifying Parameters
 ~~~~~~~~~~~~~~~~~~~~~

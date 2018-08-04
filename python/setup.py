@@ -77,12 +77,10 @@ class build_ext(_build_ext.build_ext):
 
         # We also need to install pyarrow along with Ray, so make sure that the
         # relevant non-Python pyarrow files get copied.
-        pyarrow_files = [
-            os.path.join("ray/pyarrow_files/pyarrow", filename)
-            for filename in os.listdir("./ray/pyarrow_files/pyarrow")
-            if not os.path.isdir(
-                os.path.join("ray/pyarrow_files/pyarrow", filename))
-        ]
+        pyarrow_files = []
+        for (root, dirs, filenames) in os.walk("./ray/pyarrow_files/pyarrow"):
+            for name in filenames:
+                pyarrow_files.append(os.path.join(root, name))
 
         files_to_include = ray_files + pyarrow_files
 
