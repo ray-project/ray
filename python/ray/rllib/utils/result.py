@@ -35,14 +35,11 @@ _RLTrainingResult.__new__.__defaults__ = (None, ) * len(
     _RLTrainingResult._fields)
 
 
+# In Python2, this is the only way to document this namedtuple class.
 class RLTrainingResult(_RLTrainingResult):
     """TrainingResult for RLlib.
 
-    Wraps a namedtuple because in Python2, this is the only way to
-    document this namedtuple class.
-
     Most of the fields are optional, the only required one is timesteps_total.
-
     In RLlib, the supplied algorithms fill in TrainingResult for you.
 
     Attributes:
