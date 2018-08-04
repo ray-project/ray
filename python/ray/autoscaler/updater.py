@@ -186,7 +186,7 @@ class NodeUpdater(object):
                 connect_timeout=120,
                 redirect=None,
                 verbose=False,
-                force_interactive=False):
+                allocate_tty=False):
         if verbose:
             print(
                 "NodeUpdater: running {} on {}...".format(
@@ -194,8 +194,8 @@ class NodeUpdater(object):
                 file=self.stdout)
         force_interactive = "set -i || true && source ~/.bashrc && "
         ssh = ["ssh"]
-        if force_interactive:
-            ssh.append("-tt")  # avoids stdout buffering
+        if allocate_tty:
+            ssh.append("-tt")
         self.process_runner.check_call(
             ssh + [
                 "-o", "ConnectTimeout={}s".format(connect_timeout), "-o",
