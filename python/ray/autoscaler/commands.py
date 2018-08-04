@@ -185,20 +185,7 @@ def get_or_create_head_node(config, no_restart, yes, run, screen):
 
     if run or screen:
         print("-" * 80)
-        if run:
-            if screen:
-                run = [
-                    "screen", "-dm", "bash", "-c",
-                    quote(run + "; exec bash")
-                ]
-                run = " ".join(run)
-            updater.ssh_cmd(run, verbose=True, allocate_tty=True)
-        if screen:
-            updater.ssh_cmd(
-                "screen -xRR",
-                verbose=False,
-                allocate_tty=True,
-                emulate_interactive=False)
+        _exec(updater, run, screen)
 
 
 def attach_cluster(config_file):
@@ -207,7 +194,7 @@ def attach_cluster(config_file):
     exec_cluster(config_file, "screen -xRR")
 
 
-def exec_cluster(config_file, cmd):
+def exec_cluster(config_file, cmd, screen):
     """Runs a command on the specified cluster."""
 
     config = yaml.load(open(config_file).read())
@@ -221,8 +208,21 @@ def exec_cluster(config_file, cmd):
         config["file_mounts"], [],
         "",
         redirect_output=False)
-    updater.ssh_cmd(
-        cmd, verbose=True, allocate_tty=True, emulate_interactive=False)
+    _exec(updater, cmd, screen)
+
+
+def _exec(updater, cmd, screen):
+    if cmd:
+        if screen:
+            cmd = ["screen", "-dm", "bash", "-c", quote(cmd + "; exec bash")]
+            cmd = " ".join(cmd)
+        updater.ssh_cmd(cmd, verbose=True, allocate_tty=True)
+    if screen:
+        updater.ssh_cmd(
+            "screen -xRR",
+            verbose=False,
+            allocate_tty=True,
+            emulate_interactive=False)
 
 
 def get_head_node_ip(config_file):
