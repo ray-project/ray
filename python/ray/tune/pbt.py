@@ -9,7 +9,7 @@ import copy
 from ray.tune.error import TuneError
 from ray.tune.trial import Trial
 from ray.tune.trial_scheduler import FIFOScheduler, TrialScheduler
-from ray.tune.suggest.variant_generator import _format_vars
+from ray.tune.suggest.variant_generator import format_vars
 
 # Parameters are transferred from the top PBT_QUANTILE fraction of trials to
 # the bottom PBT_QUANTILE fraction.
@@ -80,7 +80,7 @@ def make_experiment_tag(orig_tag, config, mutations):
     resolved_vars = {}
     for k in mutations.keys():
         resolved_vars[("config", k)] = config[k]
-    return "{}@perturbed[{}]".format(orig_tag, _format_vars(resolved_vars))
+    return "{}@perturbed[{}]".format(orig_tag, format_vars(resolved_vars))
 
 
 class PopulationBasedTraining(FIFOScheduler):
