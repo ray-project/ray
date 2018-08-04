@@ -2,8 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from types import FunctionType
-
 import ray
 import ray.cloudpickle as pickle
 from ray.experimental.internal_kv import _internal_kv_initialized, \
@@ -30,11 +28,12 @@ def register_trainable(name, trainable):
 
     from ray.tune.trainable import Trainable, wrap_function
 
-    if isinstance(trainable, FunctionType):
-        trainable = wrap_function(trainable)
     if not issubclass(trainable, Trainable):
-        raise TypeError("Second argument must be convertable to Trainable",
-                        trainable)
+        if callable(trainable):
+            trainable = wrap_function(trainable)
+        else:
+            raise TypeError("Second argument must be convertable to Trainable",
+                            trainable)
     _global_registry.register(TRAINABLE_CLASS, name, trainable)
 
 
@@ -46,7 +45,7 @@ def register_env(name, env_creator):
         env_creator (obj): Function that creates an env.
     """
 
-    if not isinstance(env_creator, FunctionType):
+    if not callable(env_creator):
         raise TypeError("Second argument must be a function.", env_creator)
     _global_registry.register(ENV_CREATOR, name, env_creator)
 
