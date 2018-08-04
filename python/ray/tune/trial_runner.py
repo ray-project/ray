@@ -285,6 +285,8 @@ class TrialRunner(object):
             elif decision == TrialScheduler.PAUSE:
                 self._pause_trial(trial)
             elif decision == TrialScheduler.STOP:
+                self._search_alg.on_trial_complete(
+                    trial.trial_id, early_terminated=True)
                 self._stop_trial(trial)
             else:
                 assert False, "Invalid scheduling decision: {}".format(
