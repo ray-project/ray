@@ -72,6 +72,11 @@ class RedisContext {
                   const TablePubsub pubsub_channel, RedisCallback redisCallback,
                   int log_length = -1);
 
+  /// Subscribe the message from a specific Pub-Sub channel.
+  /// \param client_id The client ID that subscribe this message.
+  /// \param pubsub_channel The Pub-Sub channel to subscribe.
+  /// \param redisCallback The callback function that the notification calls.
+  /// \param out_callback_index The output pointer to callback index.
   Status SubscribeAsync(const ClientID &client_id, const TablePubsub pubsub_channel,
                         const RedisCallback &redisCallback, int64_t *out_callback_index);
   redisAsyncContext *async_context() { return async_context_; }
