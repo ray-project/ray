@@ -24,8 +24,7 @@ from ray.autoscaler.updater import NodeUpdaterProcess
 
 
 def create_or_update_cluster(config_file, override_min_workers,
-                             override_max_workers, no_restart, yes, run,
-                             screen):
+                             override_max_workers, no_restart, yes):
     """Create or updates an autoscaling Ray cluster from a config json."""
 
     config = yaml.load(open(config_file).read())
@@ -34,7 +33,7 @@ def create_or_update_cluster(config_file, override_min_workers,
     if override_max_workers is not None:
         config["max_workers"] = override_max_workers
     config = _bootstrap_config(config)
-    get_or_create_head_node(config, no_restart, yes, run, screen)
+    get_or_create_head_node(config, no_restart, yes)
 
 
 def _bootstrap_config(config):
@@ -75,7 +74,7 @@ def teardown_cluster(config_file, yes):
         nodes = provider.nodes({})
 
 
-def get_or_create_head_node(config, no_restart, yes, run, screen):
+def get_or_create_head_node(config, no_restart, yes):
     """Create the cluster head node, which in turn creates the workers."""
 
     provider = get_node_provider(config["provider"], config["cluster_name"])
@@ -183,15 +182,11 @@ def get_or_create_head_node(config, no_restart, yes, run, screen):
                                        config["auth"]["ssh_user"],
                                        provider.external_ip(head_node)))
 
-    if run or screen:
-        print("-" * 80)
-        _exec(updater, run, screen)
-
 
 def attach_cluster(config_file):
     """Attaches to a screen for the specified cluster."""
 
-    exec_cluster(config_file, "screen -xRR")
+    exec_cluster(config_file, "screen -L -xRR", False)
 
 
 def exec_cluster(config_file, cmd, screen):
@@ -214,12 +209,15 @@ def exec_cluster(config_file, cmd, screen):
 def _exec(updater, cmd, screen):
     if cmd:
         if screen:
-            cmd = ["screen", "-dm", "bash", "-c", quote(cmd + "; exec bash")]
+            cmd = [
+                "screen", "-L", "-dm", "bash", "-c",
+                quote(cmd + "; exec bash")
+            ]
             cmd = " ".join(cmd)
         updater.ssh_cmd(cmd, verbose=True, allocate_tty=True)
     if screen:
         updater.ssh_cmd(
-            "screen -xRR",
+            "screen -L -xRR",
             verbose=False,
             allocate_tty=True,
             emulate_interactive=False)
