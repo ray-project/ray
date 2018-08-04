@@ -10,6 +10,7 @@ from ray.tune.trial import Trial
 from ray.tune.experiment import convert_to_experiment_list
 from ray.tune.config_parser import make_parser, create_trial_from_spec
 from ray.tune.suggest.search import SearchAlgorithm
+from ray.tune.suggest.variant_generator import format_vars
 
 
 class SuggestionAlgorithm(SearchAlgorithm):
@@ -82,7 +83,11 @@ class SuggestionAlgorithm(SearchAlgorithm):
             spec = copy.deepcopy(experiment_spec)
             spec["config"] = suggested_config
             yield create_trial_from_spec(
-                spec, output_path, self._parser, trial_id=trial_id)
+                spec,
+                output_path,
+                self._parser,
+                experiment_tag=format_vars(spec["config"]),
+                trial_id=trial_id)
 
     def is_finished(self):
         return self._finished

@@ -15,7 +15,8 @@ from ray.tune.suggest import HyperOptSearch
 def easy_objective(config, reporter):
     import time
     time.sleep(0.2)
-    assert type(config["activation"]) == str
+    assert type(config["activation"]) == str, \
+        "Config is incorrect: {}".format(type(config["activation"]))
     for i in range(100):
         reporter(
             timesteps_total=i,

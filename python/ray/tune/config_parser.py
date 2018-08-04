@@ -181,11 +181,14 @@ def create_trial_from_spec(spec, output_path, parser, **trial_kwargs):
         trial_kwargs["resources"] = json_to_resources(spec["trial_resources"])
     return Trial(
         trainable_name=args.run,
-        config=args.config,
+        # json.load leads to str -> unicode in py2.7
+        config=spec.get("config", {}),
         local_dir=os.path.join(args.local_dir, output_path),
-        stopping_criterion=args.stop,
+        # json.load leads to str -> unicode in py2.7
+        stopping_criterion=spec.get("stop", {}),
         checkpoint_freq=args.checkpoint_freq,
-        restore_path=spec.get("restore"),  # Argparse doesn't handle None well
+        # str(None) doesn't create None
+        restore_path=spec.get("restore"),
         upload_dir=args.upload_dir,
         max_failures=args.max_failures,
         **trial_kwargs)

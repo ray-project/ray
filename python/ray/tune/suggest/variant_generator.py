@@ -42,7 +42,7 @@ def generate_variants(unresolved_spec):
     """
     for resolved_vars, spec in _generate_variants(unresolved_spec):
         assert not _unresolved_values(spec)
-        yield _format_vars(resolved_vars), spec
+        yield format_vars(resolved_vars), spec
 
 
 def grid_search(values):
@@ -59,7 +59,7 @@ _STANDARD_IMPORTS = {
 _MAX_RESOLUTION_PASSES = 20
 
 
-def _format_vars(resolved_vars):
+def format_vars(resolved_vars):
     out = []
     for path, value in sorted(resolved_vars.items()):
         if path[0] in ["run", "env", "trial_resources"]:
