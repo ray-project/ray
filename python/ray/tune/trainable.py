@@ -77,7 +77,6 @@ class Trainable(object):
 
         self._iteration = 0
         self._time_total = 0.0
-        self._timesteps_total = 0
         self._setup()
         self._initialize_ok = True
         self._local_ip = ray.services.get_node_ip_address()
@@ -102,8 +101,6 @@ class Trainable(object):
         """Runs one logical iteration of training.
 
         Subclasses should override ``_train()`` instead to return results.
-        This method auto-fills many fields, so only ``timesteps_this_iter``
-        is required to be present.
 
         Returns:
             A TrainingResult that describes training progress.
@@ -116,34 +113,21 @@ class Trainable(object):
         start = time.time()
         result = self._train()
         self._iteration += 1
-        if result.time_this_iter_s is not None:
-            time_this_iter = result.time_this_iter_s
-        else:
+
+        time_this_iter = result.get("time_this_iter_s")
+        # RLlib explicitly has defaults, so `get` will not fallback
+        if time_this_iter is None:
             time_this_iter = time.time() - start
-
-        if result.timesteps_this_iter is None:
-            raise TuneError("Must specify timesteps_this_iter in result",
-                            result)
-
         self._time_total += time_this_iter
-        self._timesteps_total += result.timesteps_this_iter
-
-        # Include the negative loss to use as a stopping condition
-        if result.mean_loss is not None:
-            neg_loss = -result.mean_loss
-        else:
-            neg_loss = result.neg_mean_loss
 
         now = datetime.today()
-        result = result._replace(
+        result = result.update(
             experiment_id=self._experiment_id,
             date=now.strftime("%Y-%m-%d_%H-%M-%S"),
             timestamp=int(time.mktime(now.timetuple())),
             training_iteration=self._iteration,
-            timesteps_total=self._timesteps_total,
             time_this_iter_s=time_this_iter,
             time_total_s=self._time_total,
-            neg_mean_loss=neg_loss,
             pid=os.getpid(),
             hostname=os.uname()[1],
             node_ip=self._local_ip,
@@ -168,8 +152,7 @@ class Trainable(object):
 
         checkpoint_path = self._save(checkpoint_dir or self.logdir)
         pickle.dump([
-            self._experiment_id, self._iteration, self._timesteps_total,
-            self._time_total
+            self._experiment_id, self._iteration, self._time_total
         ], open(checkpoint_path + ".tune_metadata", "wb"))
         return checkpoint_path
 
@@ -217,8 +200,7 @@ class Trainable(object):
         metadata = pickle.load(open(checkpoint_path + ".tune_metadata", "rb"))
         self._experiment_id = metadata[0]
         self._iteration = metadata[1]
-        self._timesteps_total = metadata[2]
-        self._time_total = metadata[3]
+        self._time_total = metadata[2]
 
     def restore_from_object(self, obj):
         """Restores training state from a checkpoint object.
