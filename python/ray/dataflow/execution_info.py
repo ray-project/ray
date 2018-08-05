@@ -3,10 +3,18 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import ray.plasma
 
 FunctionExecutionInfo = collections.namedtuple(
     "FunctionExecutionInfo", ["function", "function_name", "max_calls"])
 """FunctionExecutionInfo: A named tuple storing remote function information."""
+
+
+def _ensure_type(obj):
+    if not isinstance(obj, ray.ObjectID):
+        return ray.ObjectID(obj)
+    else:
+        return obj
 
 
 class ExecutionInfo(object):
@@ -41,30 +49,41 @@ class ExecutionInfo(object):
                           function_name,
                           max_calls,
                           reset_execution_count=True):
-        self.function_execution_info[driver_id][function_id.id()] = (
+        driver_id = _ensure_type(driver_id)
+        function_id = _ensure_type(function_id)
+
+        self.function_execution_info[driver_id][function_id] = (
             FunctionExecutionInfo(
                 function=function,
                 function_name=function_name, max_calls=max_calls))
 
         if reset_execution_count:
-            self.num_task_executions[driver_id][function_id.id()] = 0
+            self.num_task_executions[driver_id][function_id] = 0
 
     def get_function_info(self, driver_id, function_id):
-        function_info = self.function_execution_info[driver_id][
-            function_id.id()]
+        driver_id = _ensure_type(driver_id)
+        function_id = _ensure_type(function_id)
+        function_info = self.function_execution_info[driver_id][function_id]
         return function_info
 
     def get_function_name(self, driver_id, function_id):
+        driver_id = _ensure_type(driver_id)
+        function_id = _ensure_type(function_id)
         return self.function_execution_info[driver_id][
-            function_id.id()].function_name
+            function_id].function_name
 
     def has_function_id(self, driver_id, function_id):
-        return function_id.id() in self.function_execution_info[driver_id]
+        driver_id = _ensure_type(driver_id)
+        function_id = _ensure_type(function_id)
+        return function_id in self.function_execution_info[driver_id]
 
     def increase_function_call_count(self, driver_id, function_id):
-        self.num_task_executions[driver_id][function_id.id()] += 1
+        driver_id = _ensure_type(driver_id)
+        function_id = _ensure_type(function_id)
+        self.num_task_executions[driver_id][function_id] += 1
 
     def has_reached_max_executions(self, driver_id, function_id):
-        return (self.num_task_executions[driver_id][function_id.id()] ==
-                self.function_execution_info[driver_id][
-                    function_id.id()].max_calls)
+        driver_id = _ensure_type(driver_id)
+        function_id = _ensure_type(function_id)
+        return (self.num_task_executions[driver_id][function_id] ==
+                self.function_execution_info[driver_id][function_id].max_calls)
