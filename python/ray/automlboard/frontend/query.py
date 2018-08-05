@@ -21,11 +21,11 @@ def query_job(request):
         "start_time": "2018-07-19 20:49:40",
         "current_round": 1,
         "failed_trials": 0,
-        "best_result": "{'config': {...}, u'prediction:accuracy': 0.56}",
         "best_trial_id": "2067R2ZD",
         "name": "asynchyperband_test",
         "job_id": "asynchyperband_test",
         "user": "Grady",
+        "type": "RAY TUNE",
         "total_trials": 4,
         "end_time": "2018-07-19 20:50:10",
         "progress": 100,
@@ -42,15 +42,14 @@ def query_job(request):
             "job_id": job.job_id,
             "name": job.name,
             "user": job.user,
+            "type": job.type,
             "start_time": job.start_time,
             "end_time": job.end_time,
             "success_trials": job.success_trials,
             "failed_trials": job.failed_trials,
             "running_trials": job.running_trials,
             "total_trials": job.total_trials,
-            "best_result": job.best_result,
             "best_trial_id": job.best_trial_id,
-            "current_round": job.current_round,
             "progress": job.progress
         }
         resp = json.dumps(result)
@@ -68,14 +67,12 @@ def query_trial(request):
 
     {
         "app_url": "None",
-        "trial_type": "RAY TUNE",
         "trial_status": "TERMINATED",
         "metrics": "0.56",
         "job_id": "asynchyperband_test",
         "end_time": "2018-07-19 20:49:44",
         "start_time": "2018-07-19 20:49:40",
         "trial_id": "2067R2ZD",
-        "user": "Grady"
     }
     """
     trial_id = request.GET.get('trial_id')
@@ -87,13 +84,10 @@ def query_trial(request):
         result = {
             "trial_id": trial.trial_id,
             "job_id": trial.job_id,
-            "user": trial.user,
-            "trial_type": trial.trial_type,
             "trial_status": trial.trial_status,
             "start_time": trial.start_time,
             "end_time": trial.end_time,
-            "app_url": trial.app_url,
-            "metrics": trial.metrics
+            "params": trial.params
         }
         resp = json.dumps(result)
     return HttpResponse(resp, content_type='application/json;charset=utf-8')

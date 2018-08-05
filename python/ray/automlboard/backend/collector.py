@@ -159,14 +159,13 @@ class Collector(Thread):
         job = JobRecord(job_id=meta["job_name"],
                         name=meta["job_name"],
                         user=meta["user"],
+                        type=meta["type"],
                         start_time=meta["start_time"],
                         success_trials=meta["success_trials"],
                         failed_trials=meta["failed_trials"],
                         running_trials=meta["running_trials"],
                         total_trials=meta["total_trials"],
-                        best_result="None",
                         best_trial_id="None",
-                        current_round=0,
                         progress=meta["progress"])
         job.save()
 
@@ -204,11 +203,9 @@ class Collector(Thread):
         logging.debug("create trial for %s" % meta)
         trial = TrialRecord(trial_id=meta['trial_id'],
                             job_id=meta["job_id"],
-                            user=meta["user"],
-                            trial_type=meta["type"],
                             trial_status=meta["status"],
                             start_time=meta["start_time"],
-                            metrics=meta["params"])
+                            params=meta["params"])
         trial.save()
 
     @classmethod
@@ -254,17 +251,17 @@ class Collector(Thread):
         job_name = job_dir.split('/')[-1]
         user = os.environ.get("USER", None)
         meta = {
+            "job_id": job_name,
             "job_name": job_name,
             "user": user,
+            "type": "RAY TUNE",
             "start_time": timestamp2date(os.path.getctime(job_dir)),
             "end_time": None,
             "success_trials": 0,
             "running_trials": 0,
             "failed_trials": 0,
             "total_trials": total_trials,
-            "winner": None,
-            "best_trial": None,
-            "current_round": 0,
+            "best_trial_id": None,
         }
         meta["progress"] = cls._get_job_progress(meta["success_trials"], meta["total_trials"])
         meta_file = os.path.join(job_dir, JOB_META_FILE)
@@ -289,7 +286,6 @@ class Collector(Thread):
         meta = {
             "trial_id": trial_id,
             "job_id": job_id,
-            "user": user,
             "status": "RUNNING",
             "type": "RAYTUNE",
             "start_time": timestamp2date(os.path.getctime(expr_dir)),

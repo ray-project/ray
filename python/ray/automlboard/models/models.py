@@ -8,15 +8,14 @@ class JobRecord(models.Model):
     job_id = models.CharField(max_length=50)
     name = models.CharField(max_length=20)
     user = models.CharField(max_length=20)
+    type = models.CharField(max_length=20)
     start_time = models.CharField(max_length=50)
     end_time = models.CharField(max_length=50)
     success_trials = models.BigIntegerField()
     failed_trials = models.BigIntegerField()
     running_trials = models.BigIntegerField()
     total_trials = models.BigIntegerField()
-    best_result = models.TextField()
     best_trial_id = models.CharField(max_length=50)
-    current_round = models.BigIntegerField()
     progress = models.BigIntegerField()
 
     @classmethod
@@ -30,15 +29,15 @@ class JobRecord(models.Model):
             json_info["job_id"],
             json_info["job_name"],
             json_info["user"],
+            json_info["type"],
             json_info["start_time"],
             json_info["end_time"],
             json_info["success_trials"],
             json_info["failed_trials"],
             json_info["running_trials"],
             json_info["total_trials"],
-            json_info["best_result"],
             json_info["best_trial_id"],
-            json_info["current_round"]
+            json_info["progress"]
         )
 
     def is_finished(self):
@@ -51,13 +50,10 @@ class TrialRecord(models.Model):
     """
     trial_id = models.CharField(max_length=50)
     job_id = models.CharField(max_length=50)
-    user = models.CharField(max_length=20)
-    trial_type = models.CharField(max_length=20)
     trial_status = models.CharField(max_length=20)
     start_time = models.CharField(max_length=50)
     end_time = models.CharField(max_length=50)
-    app_url = models.CharField(max_length=256)
-    metrics = models.CharField(max_length=50)
+    params = models.CharField(max_length=50)
 
     @classmethod
     def from_json(cls, json_info):
@@ -69,13 +65,10 @@ class TrialRecord(models.Model):
         return TrialRecord(
             json_info["trial_id"],
             json_info["job_id"],
-            json_info["user"],
-            json_info["job_type"],
             json_info["status"],
             json_info["start_time"],
             json_info["end_time"],
-            json_info["app_url"],
-            json_info["metrics"]
+            json_info["params"]
         )
 
 

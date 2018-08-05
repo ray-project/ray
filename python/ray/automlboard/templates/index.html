@@ -45,9 +45,10 @@
     <div class="container container-fluid">
         <!-- Brand and toggle get grouped for better mobile display -->
         <div class="navbar-header">
-            <a class="navbar-brand" href="#" style="padding-top: 0px;">
-                <img src="/static/ant.png" style="width:100px; height:50px;">
-            </a>
+            <!-- TODO: add a head.png as logo -->
+            <!--a class="navbar-brand" href="#" style="padding-top: 0px;">
+                <img src="/static/head.png" style="width:100px; height:50px;">
+            </a-->
         </div>
 
         <!-- Collect the nav links, forms, and other content for toggling -->
@@ -82,10 +83,10 @@
                 <th class="col-md-5">Job Id</th>
                 <th class="col-md-5">Job Name</th>
                 <th class="col-md-5">User</th>
+                <th class="col-md-5">Type</th>
                 <th class="col-md-5">StartTime</th>
                 <th class="col-md-5">EndTime</th>
                 <th class="col-md-5">Trials suc|run|fail|all</th>
-                <th class="col-md-10">Best Results</th>
                 <th class="col-md-5">Best Trial</th>
                 <th class="col-md-5">Progress</th>
             </tr>
@@ -96,10 +97,10 @@
                 <td><a href="job?job_id={{ job.job_id }}">{{ job.job_id }}</a></td>
                 <td>{{ job.name }}</td>
                 <td>{{ job.user }}</td>
+                <td>{{ job.type }}</td>
                 <td>{{ job.start_time }}</td>
                 <td>{{ job.end_time }}</td>
                 <td>{{ job.success_trials }} / {{ job.running_trials }} / {{ job.failed_trials }} / {{ job.total_trials }}</td>
-                <td>{{ job.best_result }}</td>
                 <td>{{ job.best_trial_id }}</td>
                 <td>
                     <p>Round {{ job.current_round }}</p>

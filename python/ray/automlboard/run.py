@@ -60,7 +60,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--logdir", type=str, help="directory of logs about the trials' status")
     parser.add_argument("--port", type=str, help="port of the service", default="8008")
-    parser.add_argument("--db_address", type=str, help="addaress of the database", default=None)
+    parser.add_argument("--db_address", type=str,
+                        help="addaress of the database, use a local sqlite3 if not set", default=None)
     parser.add_argument("--sleep_interval", type=int, help="time period of polling", default=30)
     parser.add_argument("--log_level", type=str, help="level of the log", default="INFO")
     cmd_args = parser.parse_args()
