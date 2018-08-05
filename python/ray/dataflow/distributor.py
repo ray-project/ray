@@ -29,11 +29,7 @@ ACTOR_CLASS = b'ActorClass'
 
 # This must match the definition of NIL_ACTOR_ID in task.h.
 NIL_ID = ray_constants.ID_SIZE * b"\xff"
-NIL_LOCAL_SCHEDULER_ID = NIL_ID
-NIL_FUNCTION_ID = NIL_ID
 NIL_ACTOR_ID = NIL_ID
-NIL_ACTOR_HANDLE_ID = NIL_ID
-NIL_CLIENT_ID = ray_constants.ID_SIZE * b"\xff"
 
 
 class Distributor(object):

@@ -20,11 +20,12 @@ import ray.remote_function
 import ray.services as services
 from ray.services import logger
 
-import ray.dataflow.signature
 import ray.dataflow.distributor as distributor
 import ray.dataflow.execution_info as execution_info
 import ray.dataflow.logging as worker_logger
 import ray.dataflow.object_store_client as object_store_client
+import ray.dataflow.signature
+
 from ray.dataflow.exceptions import (
     RayTaskError,
     RayGetArgumentError,
@@ -47,8 +48,6 @@ WORKER_MODE = 1
 LOCAL_MODE = 2
 SILENT_MODE = 3
 PYTHON_MODE = 4
-
-ERROR_KEY_PREFIX = b"Error:"
 
 # This must match the definition of NIL_ACTOR_ID in task.h.
 NIL_ID = ray_constants.ID_SIZE * b"\xff"
@@ -102,7 +101,6 @@ class Driver(object):
 
     def __init__(self):
         """Initialize a Worker object."""
-
         self.connected = False
         self.mode = None
         self.use_raylet = False
