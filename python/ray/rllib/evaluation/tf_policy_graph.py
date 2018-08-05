@@ -35,10 +35,6 @@ class TFPolicyGraph(PolicyGraph):
         SampleBatch({"action": ..., "advantages": ..., ...})
     """
 
-    # Set this to False if you override compute_actions() only, and do not
-    # implement build_compute_actions().
-    _supports_build_compute_actions = True
-
     def __init__(self,
                  observation_space,
                  action_space,
@@ -128,13 +124,6 @@ class TFPolicyGraph(PolicyGraph):
                         state_batches=None,
                         is_training=False,
                         episodes=None):
-        """Compute actions for the current policy.
-
-        Note that if you override this in a subclass of TFPolicyGraph, you
-        should also set _supports_build_compute_actions = False. Otherwise,
-        your override will not take effect.
-        """
-
         builder = TFRunBuilder(self._sess, "compute_actions")
         fetches = self.build_compute_actions(builder, obs_batch, state_batches,
                                              is_training)

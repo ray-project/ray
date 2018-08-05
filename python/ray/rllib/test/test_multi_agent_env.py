@@ -293,8 +293,6 @@ class TestMultiAgentEnv(unittest.TestCase):
 
     def testReturningModelBasedRolloutsData(self):
         class ModelBasedPolicyGraph(PGPolicyGraph):
-            _supports_build_compute_actions = False
-
             def compute_actions(self,
                                 obs_batch,
                                 state_batches,

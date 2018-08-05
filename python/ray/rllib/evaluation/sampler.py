@@ -9,6 +9,7 @@ import threading
 from ray.rllib.evaluation.episode import MultiAgentEpisode
 from ray.rllib.evaluation.sample_batch import MultiAgentSampleBatchBuilder, \
     MultiAgentBatch
+from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 from ray.rllib.env.async_vector_env import AsyncVectorEnv
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 
@@ -332,7 +333,8 @@ def _env_runner(async_vector_env,
             rnn_in = _to_column_format([t.rnn_state for t in eval_data])
             rnn_in_cols[policy_id] = rnn_in
             policy = _get_or_raise(policies, policy_id)
-            if builder and policy._supports_build_compute_actions:
+            if builder and (policy.compute_actions.__code__ is
+                            TFPolicyGraph.compute_actions.__code__):
                 pending_fetches[policy_id] = policy.build_compute_actions(
                     builder, [t.obs for t in eval_data],
                     rnn_in,
