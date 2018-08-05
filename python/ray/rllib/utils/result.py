@@ -87,4 +87,3 @@ class RLTrainingResult(TrainingResult):
     @property
     def neg_mean_loss(self):
         return self.get(neg_mean_loss)
-    __slots__ = ()

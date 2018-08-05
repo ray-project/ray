@@ -3,17 +3,16 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-"""
-When using Tune with custom training scripts, you must periodically report
-training status back to Ray by calling reporter(result).
-"""
 
 # Where Tune writes result files by default
 DEFAULT_RESULTS_DIR = os.path.expanduser("~/ray_results")
 
 
 class TrainingResult(dict):
-    """
+    """Dict for storing results for Tune, with extra properties.
+
+    When using Tune with custom training scripts, you must periodically report
+    training status back to Ray by calling reporter(result).
 
     Properties:
         done (bool): (Optional) If training is terminated.
@@ -37,9 +36,6 @@ class TrainingResult(dict):
         node_ip (str): (Auto-filled) The node ip of the machine
             hosting the training process.
     """
-
-    def __init__(self, **kwargs):
-        super(TrainingResult, self).__init__(**kwargs)
 
     @property
     def done(self):
