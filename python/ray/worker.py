@@ -132,6 +132,7 @@ class WorkerBase(object):
         self.task_driver_id = None
         # Other components
         self.object_store_client = None  # type: object_store_client.ObjectStoreClient
+        self.distributor = None # type: distributor.DistributorWithImportThread
 
     def get_serialization_context(self, driver_id):
         self.object_store_client.get_serialization_context(driver_id)
@@ -201,7 +202,7 @@ class WorkerBase(object):
         assert not self.connected, error_message
 
         # TODO: dataflow
-        assert worker.cached_functions_to_run is not None, error_message
+        assert self.distributor.is_startup(), error_message
         assert self.cached_remote_functions_and_actors is not None, (
             error_message)
         # Initialize some fields.
@@ -230,8 +231,7 @@ class WorkerBase(object):
         # tests.
         self.connected = False
 
-        # TODO: suquark
-        worker.cached_functions_to_run = []
+        self.distributor.enter_startup()
         self.cached_remote_functions_and_actors = []
         self.object_store_client.clear()
 
@@ -1730,8 +1730,7 @@ def connect(info,
             else:
                 assert False, "This code should be unreachable."
 
-    # TODO: dataflow
-    worker.cached_functions_to_run = None
+    worker.distributor.finish_startup()
     worker.cached_remote_functions_and_actors = None
 
 

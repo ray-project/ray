@@ -49,7 +49,7 @@ class Distributor(object):
 
     def __init__(self, worker, polling_interval=0.001):
         self.worker = worker
-        self.cached_functions_to_run = None
+        self.cached_functions_to_run = []
 
         # A set of all of the actor class keys that have been imported by the
         # import thread. It is safe to convert this worker into an actor of
@@ -73,6 +73,17 @@ class Distributor(object):
 
         # The inter
         self.polling_interval = polling_interval
+
+    def enter_startup(self):
+        """Begin caching functions. No works will be done."""
+        self.cached_functions_to_run = []
+
+    def finish_startup(self):
+        """Finish caching functions. Start to work."""
+        self.cached_functions_to_run = None
+
+    def is_startup(self):
+        return self.cached_functions_to_run is not None
 
     @property
     def redis_client(self):
