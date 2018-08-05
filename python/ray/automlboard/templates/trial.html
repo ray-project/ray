@@ -1,0 +1,117 @@
+<html>
+<head>
+    <title>AutoMLBoard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    {% load staticfiles %}
+
+    <!-- static dependency backup -->
+    <!--script src="/static/jquery-3.1.0.min.js"></script>
+    <script src="/static/jquery.dataTables.min.js"></script>
+    <script src="/static/moment.min.js"></script>
+    <script src="/static/jquery-ui.js"></script>
+    <script src="/static/bootstrap.min.js"></script>
+    <script src="/static/dataTables.bootstrap.min.js"></script-->
+
+
+    <!-- cdn links for dependency, use the static dependency above if the url failed -->
+    <script src="https://code.jquery.com/jquery-3.1.0.min.js"></script>
+    <script src="https://cdn.datatables.net/1.10.11/js/jquery.dataTables.min.js"></script>
+    <script src="https://momentjs.com/downloads/moment.min.js"></script>
+    <script src="http://code.jquery.com/ui/1.12.1/jquery-ui.js"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js" integrity="sha384-Tc5IQib027qvyjSMfHjOMaLkfuWVxZxUPnCJA7l2mCWNIpG9mGCD8wGNIcPD7Txa" crossorigin="anonymous"></script>
+
+
+    <!-- local static dependency -->
+    <link rel="stylesheet" type="text/css" href="/static/jquery-ui.css">
+    <link rel="stylesheet" type="text/css" href="/static/bootstrap.min.css">
+    <link rel="stylesheet" type="text/css" href="/static/bootstrap.min.css">
+    <link rel="stylesheet" type="text/css" href="/static/bootstrap-sortable.css">
+    <link rel="stylesheet" type="text/css" href="/static/dataTables.bootstrap.min.css">
+    <link rel="stylesheet" type="text/css" href="/static/monitor.css">
+
+    <script src="/static/bootstrap-sortable.js"></script>
+    <script src="/static/dataTables.bootstrap.min.js"></script>
+    <script src="/static/monitor.js"></script>
+
+
+    <!--[if lt IE 9]>
+    <script src="https://oss.maxcdn.com/libs/html5shiv/3.7.0/html5shiv.js"></script>
+    <script src="https://oss.maxcdn.com/libs/respond.js/1.3.0/respond.min.js"></script>
+    <![endif]-->
+</head>
+<body>
+<nav class="navbar navbar-default" style="margin-bottom: 20px; background-color: #00BFFF;">
+    <div class="container container-fluid">
+        <!-- Brand and toggle get grouped for better mobile display -->
+        <div class="navbar-header">
+            <!-- TODO: add a head.png as logo -->
+            <!--a class="navbar-brand" href="#" style="padding-top: 0px;">
+                <img src="/static/head.png" style="width:100px; height:50px;">
+            </a-->
+        </div>
+
+        <!-- Collect the nav links, forms, and other content for toggling -->
+        <div class="collapse navbar-collapse" id="bs-example-navbar-collapse-1">
+            <ul class="nav navbar-nav" id="top-navbar">
+                <li><a href="/" style="color:#FFFFFF">AutoMLBoard</a></li>
+                <li><a href="/job?job_id={{ job_id }}" style="color:#FFFFFF">{{ job_id }}</a></li>
+            </ul>
+            <form class="navbar-form navbar-left">
+            </form>
+            <ul class="nav navbar-nav navbar-right">
+                <li class="dropdown"><a href="#" style="color:#FFFFFF" class="dropdown-toggle"
+                                        data-toggle="dropdown" role="button" aria-haspopup="true"
+                                        aria-expanded="false">Welcome<span class="caret"></span></a>
+                    <ul class="dropdown-menu">
+                        <li><a href="#">Exit</a></li>
+                    </ul>
+                </li>
+            </ul>
+        </div><!-- /.navbar-collapse -->
+    </div><!-- /.container-fluid -->
+</nav>
+<div class="container container-fluid">
+    <div class="row">
+        <ul class="nav nav-tabs" style="margin-bottom: 10px">
+            <li class="active">
+                <h4>Results of trial {{ trial_id }}</h4>
+            </li>
+        </ul>
+        <table class="table table-bordered sortable" style="table-layout: fixed; word-wrap: break-word;"
+               id="metrics_info_table">
+            <thead>
+            <tr class="active">
+                <th class="col-md-3">Trial Id</th>
+                <th class="col-md-3">Timesteps</th>
+                <th class="col-md-2">Info</th>
+                <th class="col-md-4">Episode Reward Mean</th>
+                <th class="col-md-4">Episodes Total</th>
+                <th class="col-md-4">Mean Accuracy</th>
+                <th class="col-md-3">Mean Loss</th>
+                <th class="col-md-3">Time This Iter</th>
+                <th class="col-md-4">Date</th>
+                <th class="col-md-4">Hostname</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for result in recent_results %}
+            <tr>
+                <td>{{ result.trial_id }}</td>
+                <td>{{ result.timesteps_total }}</td>
+                <td>{{ result.info }}</td>
+                <td>{{ result.episode_reward_mean }}</td>
+                <td>{{ result.episodes_total }}</td>
+                <td>{{ result.mean_accuracy }}</td>
+                <td>{{ result.loss }}</td>
+                <td>{{ result.time_this_iter_s }}</td>
+                <td>{{ result.date }}</td>
+                <td>{{ result.hostname }}</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+</body>
+</html>
