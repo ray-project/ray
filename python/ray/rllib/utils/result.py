@@ -8,7 +8,6 @@ from ray.tune.result import TrainingResult
 class RLTrainingResult(TrainingResult):
     """TrainingResult for RLlib.
 
-    Most of the fields are optional, the only required one is timesteps_total.
     In RLlib, the supplied algorithms fill in TrainingResult for you.
 
     Attributes:
