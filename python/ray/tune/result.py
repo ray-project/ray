@@ -72,6 +72,7 @@ class TrainingResult(MutableMapping):
         return "TrainingResult({})".format(self._store)
 
     def as_dict(self):
+        """Retrieves copy ofinternal dict, used for JSON dumping."""
         return copy.deepcopy(self._store)
 
     @property
