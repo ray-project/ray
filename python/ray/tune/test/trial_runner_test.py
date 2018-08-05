@@ -276,6 +276,25 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
         self.assertRaises(TuneError, f)
 
+    def testBadStoppingReturn(self):
+        def train(config, reporter):
+            reporter()
+
+        register_trainable("f1", train)
+
+        def f():
+            run_experiments({
+                "foo": {
+                    "run": "f1",
+                    "stop": {"time": 10},
+                    "config": {
+                        "script_min_iter_time_s": 0,
+                    },
+                }
+            })
+
+        self.assertRaises(TuneError, f)
+
     def testEarlyReturn(self):
         def train(config, reporter):
             reporter(timesteps_total=100, done=True)

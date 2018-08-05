@@ -234,6 +234,8 @@ class Trial(object):
             return True
 
         for criteria, stop_value in self.stopping_criterion.items():
+            if criteria not in result:
+                raise TuneError("Stopping Criteria not provided in result.")
             if result[criteria] >= stop_value:
                 return True
 
