@@ -53,7 +53,8 @@ def push_error_to_driver(worker,
                          error_type,
                          message,
                          driver_id=None,
-                         data=None):
+                         data=None,
+                         force_redis=False):
     """Push an error message to the driver to be printed in the background.
 
     Args:
@@ -65,6 +66,11 @@ def push_error_to_driver(worker,
             is None, then the message will be pushed to all drivers.
         data: This should be a dictionary mapping strings to strings. It
             will be serialized with json and stored in Redis.
+        force_redis: Normally the push_error_to_driver function should be used.
+            However, in some instances,
+            the local scheduler client is not available, e.g.,
+            because the error happens in Python before the driver or worker has
+            connected to the backend processes.
     """
     if driver_id is None:
         driver_id = ray_constants.NIL_JOB_ID.id()
@@ -78,54 +84,17 @@ def push_error_to_driver(worker,
         })
         worker.redis_client.rpush("ErrorKeys", error_key)
     else:
-        worker.local_scheduler_client.push_error(
-            ray.ObjectID(driver_id), error_type, message, time.time())
-
-
-def push_error_to_driver_through_redis(redis_client,
-                                       use_raylet,
-                                       error_type,
-                                       message,
-                                       driver_id=None,
-                                       data=None):
-    """Push an error message to the driver to be printed in the background.
-
-    Normally the push_error_to_driver function should be used. However, in some
-    instances, the local scheduler client is not available, e.g., because the
-    error happens in Python before the driver or worker has connected to the
-    backend processes.
-
-    Args:
-        redis_client: The redis client to use.
-        use_raylet: True if we are using the Raylet code path and false
-            otherwise.
-        error_type (str): The type of the error.
-        message (str): The message that will be printed in the background
-            on the driver.
-        driver_id: The ID of the driver to push the error message to. If this
-            is None, then the message will be pushed to all drivers.
-        data: This should be a dictionary mapping strings to strings. It
-            will be serialized with json and stored in Redis.
-    """
-    if driver_id is None:
-        driver_id = ray_constants.NIL_JOB_ID.id()
-    error_key = ERROR_KEY_PREFIX + driver_id + b":" + _random_string()
-    data = {} if data is None else data
-    if not use_raylet:
-        redis_client.hmset(error_key, {
-            "type": error_type,
-            "message": message,
-            "data": data
-        })
-        redis_client.rpush("ErrorKeys", error_key)
-    else:
-        # Do everything in Python and through the Python Redis client instead
-        # of through the raylet.
-        error_data = ray.gcs_utils.construct_error_message(
-            error_type, message, time.time())
-        redis_client.execute_command(
-            "RAY.TABLE_APPEND", ray.gcs_utils.TablePrefix.ERROR_INFO,
-            ray.gcs_utils.TablePubsub.ERROR_INFO, driver_id, error_data)
+        if force_redis:
+            # Do everything in Python and through the Python Redis client
+            # instead of through the raylet.
+            error_data = ray.gcs_utils.construct_error_message(
+                error_type, message, time.time())
+            worker.redis_client.execute_command(
+                "RAY.TABLE_APPEND", ray.gcs_utils.TablePrefix.ERROR_INFO,
+                ray.gcs_utils.TablePubsub.ERROR_INFO, driver_id, error_data)
+        else:
+            worker.local_scheduler_client.push_error(
+                ray.ObjectID(driver_id), error_type, message, time.time())
 
 
 def is_cython(obj):
