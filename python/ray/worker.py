@@ -75,8 +75,11 @@ DEFAULT_ACTOR_METHOD_CPUS_SPECIFIED_CASE = 0
 DEFAULT_ACTOR_CREATION_CPUS_SPECIFIED_CASE = 1
 
 
-class WorkerBase(object):
+class Driver(object):
     """A class used to define the control flow of a worker process.
+
+    This defines a basic driver-like worker which can submit tasks and
+    transfer objects.
 
     Note:
         The methods in this class are considered unexposed to the user. The
@@ -103,7 +106,6 @@ class WorkerBase(object):
         self.mode = None
         self.use_raylet = False
         self.worker_id = None
-
 
         self.fetch_and_register_actor = None
         self.make_actor = None
@@ -363,7 +365,10 @@ class WorkerBase(object):
             return task.returns()
 
 
-class Worker(WorkerBase):
+class Worker(Driver):
+    """This class represents a worker-like worker which keeps polling
+    tasks and execute them.
+    """
     def __init__(self):
         super(Worker, self).__init__()
 
@@ -1324,7 +1329,7 @@ def shutdown(worker=global_worker):
     """
     disconnect(worker)
 
-    if worker.mode in [SCRIPT_MODE, SILENT_MODE]:
+    if worker.is_driver:
         # If this is a driver, push the finish time to Redis and clean up any
         # other services that were started with the driver.
         worker.redis_client.hmset(b"Drivers:" + worker.worker_id,
@@ -1351,7 +1356,7 @@ normal_excepthook = sys.excepthook
 
 def custom_excepthook(type, value, tb):
     # If this is a driver, push the exception to redis.
-    if global_worker.mode in [SCRIPT_MODE, SILENT_MODE]:
+    if global_worker.is_driver:
         error_message = "".join(traceback.format_tb(tb))
         global_worker.redis_client.hmset(b"Drivers:" + global_worker.worker_id,
                                          {"exception": error_message})
@@ -1505,7 +1510,7 @@ def connect(info,
     worker.connect(mode, use_raylet=use_raylet)
     # If running Ray in LOCAL_MODE, there is no need to create call
     # create_worker or to start the worker service.
-    if mode == LOCAL_MODE:
+    if worker.is_local:
         return
     # Set the node IP address.
     worker.node_ip_address = info["node_ip_address"]
@@ -1521,9 +1526,9 @@ def connect(info,
     try:
         ray.services.check_version_info(worker.redis_client)
     except Exception as e:
-        if mode in [SCRIPT_MODE, SILENT_MODE]:
+        if worker.is_driver:
             raise e
-        elif mode == WORKER_MODE:
+        elif worker.is_worker:
             traceback_str = traceback.format_exc()
             ray.utils.push_error_to_driver_through_redis(
                 worker.redis_client,
@@ -1536,7 +1541,7 @@ def connect(info,
 
     # Check the RedirectOutput key in Redis and based on its value redirect
     # worker output and error to their own files.
-    if mode == WORKER_MODE:
+    if worker.is_worker:
         # This key is set in services.py when Redis is started.
         redirect_worker_output_val = worker.redis_client.get("RedirectOutput")
         if (redirect_worker_output_val is not None
@@ -1557,7 +1562,7 @@ def connect(info,
     global_state._initialize_global_state(redis_ip_address, int(redis_port))
 
     # Register the worker with Redis.
-    if mode in [SCRIPT_MODE, SILENT_MODE]:
+    if worker.is_driver:
         # The concept of a driver is the same as the concept of a "job".
         # Register the driver/job with Redis here.
         import __main__ as main
@@ -1576,7 +1581,7 @@ def connect(info,
         if not worker.redis_client.exists("webui"):
             worker.redis_client.hmset("webui", {"url": info["webui_url"]})
         is_worker = False
-    elif mode == WORKER_MODE:
+    elif worker.is_worker:
         # Register the worker with Redis.
         worker_dict = {
             "node_ip_address": worker.node_ip_address,
@@ -1607,7 +1612,7 @@ def connect(info,
 
     # If this is a driver, set the current task ID, the task driver ID, and set
     # the task index to 0.
-    if mode in [SCRIPT_MODE, SILENT_MODE]:
+    if worker.is_driver:
         # If the user provided an object_id_seed, then set the current task ID
         # deterministically based on that seed (without altering the state of
         # the user's random number generator). Otherwise, set the current task
@@ -1677,7 +1682,7 @@ def connect(info,
     # trying to properly shutdown the driver's worker service, so we are
     # temporarily using this implementation which constantly queries the
     # scheduler for new error messages.
-    if mode == SCRIPT_MODE:
+    if worker.is_real_driver:
         if not worker.use_raylet:
             t = threading.Thread(target=print_error_messages, args=(worker, ))
         else:
@@ -1693,7 +1698,7 @@ def connect(info,
     if mode != LOCAL_MODE and worker.use_raylet:
         worker.profiler.start_flush_thread()
 
-    if mode in [SCRIPT_MODE, SILENT_MODE]:
+    if worker.is_driver:
         # Add the directory containing the script that is running to the Python
         # paths of the workers. Also add the current directory. Note that this
         # assumes that the directory structures on the machines in the clusters

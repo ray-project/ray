@@ -90,7 +90,7 @@ class RemoteFunction(object):
 
         # # Export the function.
         worker = ray.worker.get_global_worker()
-        if worker.mode in [ray.worker.SCRIPT_MODE, ray.worker.SILENT_MODE]:
+        if worker.is_driver:
             self._export()
         elif worker.mode is None:
             worker.distributor.append_cached_remote_function(self)

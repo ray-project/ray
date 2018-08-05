@@ -59,10 +59,6 @@ class ObjectStoreClient(object):
         self.serialization_context.clear()
 
     @property
-    def mode(self):
-        return self.worker.mode
-
-    @property
     def lock(self):
         return self.worker.lock
 
