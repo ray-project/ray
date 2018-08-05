@@ -201,7 +201,6 @@ class WorkerBase(object):
         error_message = "Perhaps you called ray.init twice by accident?"
         assert not self.connected, error_message
 
-        # TODO: dataflow
         assert self.distributor.is_startup(), error_message
         assert self.cached_remote_functions_and_actors is not None, (
             error_message)
@@ -544,7 +543,6 @@ class Worker(WorkerBase):
 
         key = b"ActorClass:" + class_id
 
-        # TODO: dataflow
         self.distributor.wait_for_actor_class(key)
 
         with self.lock:
@@ -569,8 +567,7 @@ class Worker(WorkerBase):
         # on this worker. We will push warnings to the user if we spend too
         # long in this loop.
         with profiling.profile("wait_for_function", worker=self):
-            # TODO: dataflow
-            self._wait_for_function(function_id, driver_id)
+            self.distributor.wait_for_function(function_id, driver_id)
 
         # Execute the task.
         # TODO(rkn): Consider acquiring this lock with a timeout and pushing a
@@ -1717,7 +1714,6 @@ def connect(info,
         # note that the first exports to be defined on the driver will be the
         # ones defined in separate modules that are imported by the driver.
         # Export cached functions_to_run.
-        # TODO: dataflow
         worker.distributor.export_all_cached_functions()
         # Export cached remote functions to the workers.
         for cached_type, info in worker.cached_remote_functions_and_actors:
