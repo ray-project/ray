@@ -150,7 +150,7 @@ class Distributor(object):
                                        "Ray.")
                     if not warning_sent:
                         ray.utils.push_error_to_driver(
-                            self,
+                            self.worker,
                             ray_constants.WAIT_FOR_FUNCTION_PUSH_ERROR,
                             warning_message,
                             driver_id=driver_id)
