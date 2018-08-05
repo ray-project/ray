@@ -171,7 +171,7 @@ class Distributor(object):
             decorated_function: The decorated function (this is used to enable
                 the remote function to recursively call itself).
         """
-        if self.mode not in [SCRIPT_MODE, SILENT_MODE]:
+        if not self.worker.is_driver:
             raise Exception("export_remote_function can only be called on a "
                             "driver.")
 
@@ -274,8 +274,7 @@ class Distributor(object):
          run_on_other_drivers) = self.redis_client.hmget(
             key, ["driver_id", "function", "run_on_other_drivers"])
 
-        if (run_on_other_drivers == "False"
-                and self.mode in [ray.SCRIPT_MODE, ray.SILENT_MODE]
+        if (run_on_other_drivers == "False" and self.worker.is_driver
                 and driver_id != self.task_driver_id.id()):
             return
 
@@ -406,7 +405,7 @@ class DistributorWithImportThread(Distributor):
     def _process_key(self, key):
         """Process the given export key from redis."""
         # Handle the driver case first.
-        if self.mode != ray.WORKER_MODE:
+        if not self.worker.is_worker:
             if key.startswith(FUNCTIONS_TO_RUN):
                 with profiling.profile(
                         "fetch_and_run_function", worker=self.worker):
