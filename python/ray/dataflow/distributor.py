@@ -78,6 +78,10 @@ class Distributor(object):
         return self.worker.lock
 
     @property
+    def worker_id(self):
+        return self.worker.worker_id
+
+    @property
     def actor_id(self):
         return self.worker.actor_id
 
@@ -304,10 +308,10 @@ class Distributor(object):
         def f():
             raise Exception("This function was not imported properly.")
 
-        self.worker.function_execution_info[driver_id][function_id.id()] = (
+        self.function_execution_info[driver_id][function_id.id()] = (
             FunctionExecutionInfo(
                 function=f, function_name=function_name, max_calls=max_calls))
-        self.worker.num_task_executions[driver_id][function_id.id()] = 0
+        self.num_task_executions[driver_id][function_id.id()] = 0
 
         try:
             function = pickle.loads(serialized_function)
@@ -328,14 +332,14 @@ class Distributor(object):
         else:
             # TODO(rkn): Why is the below line necessary?
             function.__module__ = module
-            self.worker.function_execution_info[driver_id][
+            self.function_execution_info[driver_id][
                 function_id.id()] = (FunctionExecutionInfo(
                 function=function,
                 function_name=function_name,
                 max_calls=max_calls))
             # Add the function to the function table.
             self.redis_client.rpush(b"FunctionTable:" + function_id.id(),
-                                    self.worker.worker_id)
+                                    self.worker_id)
 
 
 class DistributorWithImportThread(Distributor):
@@ -368,14 +372,14 @@ class DistributorWithImportThread(Distributor):
         num_imported = 0
 
         # Get the exports that occurred before the call to subscribe.
-        with self.worker.lock:
+        with self.lock:
             export_keys = self.redis_client.lrange("Exports", 0, -1)
             for key in export_keys:
                 num_imported += 1
                 self._process_key(key)
         try:
             for msg in import_pubsub_client.listen():
-                with self.worker.lock:
+                with self.lock:
                     if msg["type"] == "subscribe":
                         continue
                     assert msg["data"] == b"rpush"
@@ -414,7 +418,7 @@ class DistributorWithImportThread(Distributor):
             # Keep track of the fact that this actor class has been
             # exported so that we know it is safe to turn this worker
             # into an actor of that class.
-            self.worker.exporter.add_actor_class(key)
+            self.add_actor_class(key)
         # TODO(rkn): We may need to bring back the case of
         # fetching actor classes here.
         else:
