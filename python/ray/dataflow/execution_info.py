@@ -62,7 +62,7 @@ class ExecutionInfo(object):
         return function_id.id() in self.function_execution_info[driver_id]
 
     def increase_function_call_count(self, driver_id, function_id):
-        self.function_execution_info[driver_id][function_id.id()] += 1
+        self.num_task_executions[driver_id][function_id.id()] += 1
 
     def has_reached_max_executions(self, driver_id, function_id):
         return (self.num_task_executions[driver_id][function_id.id()] ==

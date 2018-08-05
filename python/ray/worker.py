@@ -104,7 +104,6 @@ class WorkerBase(object):
         self.use_raylet = False
         self.worker_id = None
 
-        self.execution_info = execution_info.ExecutionInfo()
 
         self.fetch_and_register_actor = None
         self.make_actor = None
@@ -123,11 +122,12 @@ class WorkerBase(object):
         # Identity of the driver that this worker is processing.
         self.task_driver_id = None
         # Other components
-        self.object_store_client = None  # type: object_store_client.ObjectStoreClient
-        self.distributor = None # type: distributor.DistributorWithImportThread
+        self.execution_info = execution_info.ExecutionInfo()
+        self.object_store_client = None
+        self.distributor = distributor.DistributorWithImportThread(self)
 
     def get_serialization_context(self, driver_id):
-        self.object_store_client.get_serialization_context(driver_id)
+        return self.object_store_client.get_serialization_context(driver_id)
 
     def check_connected(self):
         """Check if the worker is connected.
@@ -1654,7 +1654,6 @@ def connect(info,
         local_scheduler_socket, worker.worker_id, is_worker,
         worker.current_task_id, worker.use_raylet)
 
-    worker.distributor = distributor.DistributorWithImportThread(worker)
     # Start the import thread
     worker.distributor.start()
 
@@ -1703,6 +1702,7 @@ def connect(info,
         # Export cached functions_to_run.
         worker.distributor.export_all_cached_functions()
         # Export cached remote functions to the workers.
+        worker.distributor.export_all_remote_cached_functions()
 
 
     worker.distributor.finish_startup()
