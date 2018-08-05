@@ -121,7 +121,8 @@ class Trainable(object):
         self._time_total += time_this_iter
 
         now = datetime.today()
-        result = result.update(
+        result = result.copy()
+        result.update(
             experiment_id=self._experiment_id,
             date=now.strftime("%Y-%m-%d_%H-%M-%S"),
             timestamp=int(time.mktime(now.timetuple())),

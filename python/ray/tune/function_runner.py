@@ -40,7 +40,8 @@ class StatusReporter(object):
         if self._done and not self._latest_result:
             if not self._last_result:
                 raise TuneError("Trial finished without reporting result!")
-            return self._last_result._replace(done=True)
+            self._last_result.update(done=True)
+            return self._last_result
         with self._lock:
             res = self._latest_result
             self._latest_result = None
@@ -112,14 +113,6 @@ class FunctionRunner(Trainable):
             _serve_get_pin_requests()
             time.sleep(1)
             result = self._status_reporter._get_and_clear_status()
-        if result.timesteps_total is None:
-            raise TuneError("Must specify timesteps_total in result", result)
-
-        result = result._replace(
-            timesteps_this_iter=(
-                result.timesteps_total - self._last_reported_timestep))
-        self._last_reported_timestep = result.timesteps_total
-
         return result
 
     def _stop(self):

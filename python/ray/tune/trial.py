@@ -101,13 +101,6 @@ class Trial(object):
             if not has_trainable(trainable_name):
                 raise TuneError("Unknown trainable: " + trainable_name)
 
-        if stopping_criterion:
-            for k in stopping_criterion:
-                if k not in TrainingResult._fields:
-                    raise TuneError(
-                        "Stopping condition key `{}` must be one of {}".format(
-                            k, TrainingResult._fields))
-
         # Trial config
         self.trainable_name = trainable_name
         self.config = config or {}
@@ -271,8 +264,7 @@ class Trial(object):
                 self._status_string(),
                 location_string(self.last_result.hostname,
                                 self.last_result.pid)),
-            '{} s'.format(int(self.last_result.time_total_s)), '{} ts'.format(
-                int(self.last_result.timesteps_total))
+            '{} s'.format(int(self.last_result.time_total_s)),
         ]
 
         if self.last_result.episode_reward_mean is not None:
@@ -350,7 +342,7 @@ class Trial(object):
 
     def update_last_result(self, result, terminate=False):
         if terminate:
-            result = result._replace(done=True)
+            result.update(done=True)
         if self.verbose and (terminate or time.time() - self.last_debug >
                              DEBUG_PRINT_INTERVAL):
             print("TrainingResult for {}:".format(self))

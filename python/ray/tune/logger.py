@@ -96,7 +96,7 @@ class _JsonLogger(Logger):
         self.local_out = open(local_file, "w")
 
     def on_result(self, result):
-        json.dump(result._asdict(), self, cls=_SafeFallbackEncoder)
+        json.dump(result.copy(), self, cls=_SafeFallbackEncoder)
         self.write("\n")
 
     def write(self, b):
@@ -125,7 +125,7 @@ class _TFLogger(Logger):
         self._file_writer = tf.summary.FileWriter(self.logdir)
 
     def on_result(self, result):
-        tmp = result._asdict()
+        tmp = result.copy()
         for k in [
                 "config", "pid", "timestamp", "time_total_s", "timesteps_total"
         ]:
@@ -149,13 +149,16 @@ class _TFLogger(Logger):
 
 class _VisKitLogger(Logger):
     def _init(self):
+        """CSV outputted with Headers as first set of results."""
         # Note that we assume params.json was already created by JsonLogger
         self._file = open(os.path.join(self.logdir, "progress.csv"), "w")
-        self._csv_out = csv.DictWriter(self._file, TrainingResult._fields)
-        self._csv_out.writeheader()
+        self._csv_out = None
 
     def on_result(self, result):
-        self._csv_out.writerow(result._asdict())
+        if self._csv_out is None:
+            self._csv_out = csv.DictWriter(self._file, result.keys())
+            self._csv_out.writeheader()
+        self._csv_out.writerow(result)
 
     def close(self):
         self._file.close()
@@ -194,9 +197,10 @@ class _SafeFallbackEncoder(json.JSONEncoder):
 
 
 def pretty_print(result):
-    result = result._replace(config=None)  # drop config from pretty print
+    result = result.copy()
+    result.update(config=None)  # drop config from pretty print
     out = {}
-    for k, v in result._asdict().items():
+    for k, v in result.items():
         if v is not None:
             out[k] = v
 
