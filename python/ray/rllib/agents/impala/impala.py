@@ -93,7 +93,7 @@ class ImpalaAgent(Agent):
         FilterManager.synchronize(self.local_evaluator.filters,
                                   self.remote_evaluators)
         result = self.optimizer.collect_metrics()
-        result = result._replace(
+        result.update(
             timesteps_this_iter=self.optimizer.num_steps_sampled - prev_steps)
         return result
 

@@ -86,7 +86,7 @@ class PolicyOptimizer(object):
                 `info` replaced with stats from self.
         """
         res = collect_metrics(self.local_evaluator, self.remote_evaluators)
-        res = res._replace(info=self.stats())
+        res.update(info=self.stats())
         return res
 
     def save(self):
