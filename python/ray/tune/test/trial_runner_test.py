@@ -57,7 +57,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
             }
         })
         self.assertEqual(trial.status, Trial.TERMINATED)
-        self.assertEqual(trial.last_result.timesteps_total, 100)
+        self.assertEqual(trial.last_result["timesteps_total"], 100)
 
     def testRegisterEnv(self):
         register_env("foo", lambda: None)
@@ -81,7 +81,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
             }
         })
         self.assertEqual(trial.status, Trial.TERMINATED)
-        self.assertEqual(trial.last_result.timesteps_total, 200)
+        self.assertEqual(trial.last_result["timesteps_total"], 200)
 
     def testRegisterTrainable(self):
         def train(config, reporter):
@@ -105,7 +105,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
                 return Resources(cpu=config["cpu"], gpu=config["gpu"])
 
             def _train(self):
-                return TrainingResult(timesteps_this_iter=1, done=True)
+                return TrainingResult(done=True)
 
         register_trainable("B", B)
 
@@ -309,7 +309,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
             }
         })
         self.assertEqual(trial.status, Trial.TERMINATED)
-        self.assertEqual(trial.last_result.timesteps_total, 100)
+        self.assertEqual(trial.last_result["timesteps_total"], 100)
 
     def testAbruptReturn(self):
         def train(config, reporter):
@@ -325,7 +325,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
             }
         })
         self.assertEqual(trial.status, Trial.TERMINATED)
-        self.assertEqual(trial.last_result.timesteps_total, 100)
+        self.assertEqual(trial.last_result["timesteps_total"], 100)
 
     def testErrorReturn(self):
         def train(config, reporter):
@@ -360,7 +360,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
             }
         })
         self.assertEqual(trial.status, Trial.TERMINATED)
-        self.assertEqual(trial.last_result.timesteps_total, 99)
+        self.assertEqual(trial.last_result["timesteps_total"], 99)
 
 
 class RunExperimentTest(unittest.TestCase):
@@ -393,7 +393,7 @@ class RunExperimentTest(unittest.TestCase):
         })
         for trial in trials:
             self.assertEqual(trial.status, Trial.TERMINATED)
-            self.assertEqual(trial.last_result.timesteps_total, 99)
+            self.assertEqual(trial.last_result["timesteps_total"], 99)
 
     def testExperiment(self):
         def train(config, reporter):
@@ -410,7 +410,7 @@ class RunExperimentTest(unittest.TestCase):
         })
         [trial] = run_experiments(exp1)
         self.assertEqual(trial.status, Trial.TERMINATED)
-        self.assertEqual(trial.last_result.timesteps_total, 99)
+        self.assertEqual(trial.last_result["timesteps_total"], 99)
 
     def testExperimentList(self):
         def train(config, reporter):
@@ -435,7 +435,7 @@ class RunExperimentTest(unittest.TestCase):
         trials = run_experiments([exp1, exp2])
         for trial in trials:
             self.assertEqual(trial.status, Trial.TERMINATED)
-            self.assertEqual(trial.last_result.timesteps_total, 99)
+            self.assertEqual(trial.last_result["timesteps_total"], 99)
 
     def testSpecifyAlgorithm(self):
         """Tests run_experiments works without specifying experiment."""
@@ -457,7 +457,7 @@ class RunExperimentTest(unittest.TestCase):
         trials = run_experiments(search_alg=alg)
         for trial in trials:
             self.assertEqual(trial.status, Trial.TERMINATED)
-            self.assertEqual(trial.last_result.timesteps_total, 99)
+            self.assertEqual(trial.last_result["timesteps_total"], 99)
 
 
 class VariantGeneratorTest(unittest.TestCase):

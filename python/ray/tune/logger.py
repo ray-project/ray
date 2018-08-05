@@ -132,11 +132,11 @@ class _TFLogger(Logger):
         values = to_tf_values(tmp, ["ray", "tune"])
         train_stats = tf.Summary(value=values)
         self._file_writer.add_summary(train_stats, result.training_iteration)
-        timesteps_value = to_tf_values({
+        iteration_value = to_tf_values({
             "training_iteration": result.training_iteration
         }, ["ray", "tune"])
-        timesteps_stats = tf.Summary(value=timesteps_value)
-        self._file_writer.add_summary(timesteps_stats,
+        iteration_stats = tf.Summary(value=iteration_value)
+        self._file_writer.add_summary(iteration_stats,
                                       result.training_iteration)
 
     def flush(self):

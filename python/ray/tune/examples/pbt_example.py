@@ -37,7 +37,7 @@ class MyTrainableClass(Trainable):
         # Here we use `episode_reward_mean`, but you can also report other
         # objectives such as loss or accuracy (see tune/result.py).
         return TrainingResult(
-            episode_reward_mean=self.current_value, timesteps_this_iter=1)
+            episode_reward_mean=self.current_value)
 
     def _save(self, checkpoint_dir):
         path = os.path.join(checkpoint_dir, "checkpoint")

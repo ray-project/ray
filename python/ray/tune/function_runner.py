@@ -26,9 +26,7 @@ class StatusReporter(object):
         """Report updated training status.
 
         Args:
-            kwargs (TrainingResult): Latest training result status. You must
-                at least define `timesteps_total`, but probably want to report
-                some of the other metrics as well.
+            kwargs (TrainingResult): Latest training result status.
         """
 
         with self._lock:

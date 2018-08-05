@@ -157,7 +157,7 @@ class Cifar10Model(Trainable):
 
         # loss, accuracy
         _, accuracy = self.model.evaluate(x_test, y_test, verbose=0)
-        return TrainingResult(timesteps_this_iter=10, mean_accuracy=accuracy)
+        return TrainingResult(mean_accuracy=accuracy)
 
     def _save(self, checkpoint_dir):
         file_path = checkpoint_dir + "/model"
@@ -189,7 +189,7 @@ if __name__ == "__main__":
         },
         "stop": {
             "mean_accuracy": 0.80,
-            "timesteps_total": 300,
+            "training_iteration": 30,
         },
         "config": {
             "epochs": 1,
@@ -208,7 +208,7 @@ if __name__ == "__main__":
     ray.init()
 
     pbt = PopulationBasedTraining(
-        time_attr="timesteps_total",
+        time_attr="training_iteration",
         reward_attr="mean_accuracy",
         perturbation_interval=10,
         hyperparam_mutations={
