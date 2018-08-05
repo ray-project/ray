@@ -39,7 +39,8 @@ class TaskPool(object):
             if not ray.global_state.use_raylet:
                 ray.worker.global_worker.plasma_client.fetch([plasma_id])
             else:
-                ray.worker.global_worker.local_scheduler_client.reconstruct_objects([obj_id], False)
+                ray.worker.global_worker.local_scheduler_client\
+                    .reconstruct_objects([obj_id], False)
             self._fetching.append((worker, obj_id))
 
         remaining = []
