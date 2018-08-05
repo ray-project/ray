@@ -1898,7 +1898,8 @@ class DistributedActorHandles(unittest.TestCase):
                 pass
 
         f = Foo.remote()
-        new_f = ray.worker.pickle.loads(ray.worker.pickle.dumps(f))
+        import ray.cloudpickle as pickle
+        new_f = pickle.loads(pickle.dumps(f))
         # Verify that we can call a method on the unpickled handle. TODO(rkn):
         # we should also test this from a different driver.
         ray.get(new_f.method.remote())

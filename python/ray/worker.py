@@ -138,6 +138,11 @@ class WorkerBase(object):
         self.distributor.run_function_on_all_workers(
             function, run_on_other_drivers)
 
+    @property
+    def plasma_client(self):
+        """For backward compatibility"""
+        return self.object_store_client.plasma_client
+
     def check_connected(self):
         """Check if the worker is connected.
 
@@ -540,7 +545,7 @@ class Worker(WorkerBase):
         self.actor_id = task.actor_creation_id().id()
         class_id = arguments[0]
 
-        key = b"ActorClass:" + class_id
+        key = distributor.ACTOR_CLASS + b":" + class_id
 
         self.distributor.wait_for_actor_class(key)
 
