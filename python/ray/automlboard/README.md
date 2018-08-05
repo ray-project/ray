@@ -14,7 +14,7 @@ optional arguments:
   --logdir LOGDIR                   directory of logs about the jobs' status
   --port PORT                       port of the service, 8008 as default
   --db_address DB_ADDRESS           addaress of the database, use a local sqlite3 if not set
-  --sleep_interval SLEEP_INTERVAL   time period of polling, 30 seconds as default     
+  --reload_interval RELOAD_INTERVAL time period of polling, 5 seconds as default     
   --log_level LOG_LEVEL             level of the log, "info" as default
 ```
 
