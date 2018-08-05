@@ -121,8 +121,10 @@ class TestObjectManagerBase : public ::testing::Test {
     store_id_2 = StartStore(UniqueID::from_random().hex());
 
     uint pull_timeout_ms = 1;
-    int max_sends = 2;
-    int max_receives = 2;
+    int max_sends_a = 2;
+    int max_receives_a = 2;
+    int max_sends_b = 3;
+    int max_receives_b = 3;
     uint64_t object_chunk_size = static_cast<uint64_t>(std::pow(10, 3));
     int push_timeout_ms = 10000;
 
@@ -131,8 +133,8 @@ class TestObjectManagerBase : public ::testing::Test {
     ObjectManagerConfig om_config_1;
     om_config_1.store_socket_name = store_id_1;
     om_config_1.pull_timeout_ms = pull_timeout_ms;
-    om_config_1.max_sends = max_sends;
-    om_config_1.max_receives = max_receives;
+    om_config_1.max_sends = max_sends_a;
+    om_config_1.max_receives = max_receives_a;
     om_config_1.object_chunk_size = object_chunk_size;
     om_config_1.push_timeout_ms = push_timeout_ms;
     server1.reset(new MockServer(main_service, om_config_1, gcs_client_1));
@@ -142,8 +144,8 @@ class TestObjectManagerBase : public ::testing::Test {
     ObjectManagerConfig om_config_2;
     om_config_2.store_socket_name = store_id_2;
     om_config_2.pull_timeout_ms = pull_timeout_ms;
-    om_config_2.max_sends = max_sends;
-    om_config_2.max_receives = max_receives;
+    om_config_2.max_sends = max_sends_b;
+    om_config_2.max_receives = max_receives_b;
     om_config_2.object_chunk_size = object_chunk_size;
     om_config_2.push_timeout_ms = push_timeout_ms;
     server2.reset(new MockServer(main_service, om_config_2, gcs_client_2));
