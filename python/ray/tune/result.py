@@ -6,7 +6,7 @@ import os
 import sys
 
 if sys.version_info[0] == 2:
-    import collections.MutableMapping as MutableMapping
+    from collections import MutableMapping
 elif sys.version_info[0] == 3:
     from collections.abc import MutableMapping
 
