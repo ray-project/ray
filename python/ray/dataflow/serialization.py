@@ -270,7 +270,7 @@ class SerializationContextMap(object):
                 custom_deserializer=deserializer)
 
         if not local:
-            self.worker.run_function_on_all_workers(
+            self.worker.distributor.run_function_on_all_workers(
                 register_class_for_serialization)
         else:
             # Since we are pickling objects of this class, we don't actually need
