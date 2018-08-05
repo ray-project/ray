@@ -314,18 +314,19 @@ def fetch_and_register_actor(actor_class_key, worker):
     # Register the actor method executors.
     for actor_method_name in actor_method_names:
         function_id = compute_actor_method_function_id(class_name,
-                                                       actor_method_name).id()
+                                                       actor_method_name)
         temporary_executor = make_actor_method_executor(
             worker,
             actor_method_name,
             temporary_actor_method,
             actor_imported=False)
-        worker.function_execution_info[driver_id][function_id] = (
-            ray.worker.FunctionExecutionInfo(
-                function=temporary_executor,
-                function_name=actor_method_name,
-                max_calls=0))
-        worker.num_task_executions[driver_id][function_id] = 0
+
+        worker.execution_info.add_function_info(
+            driver_id,
+            function_id,
+            function=temporary_executor,
+            function_name=actor_method_name,
+            max_calls=0)
 
     try:
         unpickled_class = pickle.loads(pickled_class)
@@ -356,14 +357,17 @@ def fetch_and_register_actor(actor_class_key, worker):
         actor_methods = inspect.getmembers(unpickled_class, predicate=pred)
         for actor_method_name, actor_method in actor_methods:
             function_id = compute_actor_method_function_id(
-                class_name, actor_method_name).id()
+                class_name, actor_method_name)
             executor = make_actor_method_executor(
                 worker, actor_method_name, actor_method, actor_imported=True)
-            worker.function_execution_info[driver_id][function_id] = (
-                ray.worker.FunctionExecutionInfo(
-                    function=executor,
-                    function_name=actor_method_name,
-                    max_calls=0))
+
+            worker.execution_info.add_function_info(
+                driver_id,
+                function_id=function_id,
+                function=executor,
+                function_name=actor_method_name,
+                max_calls=0,
+                reset_execution_count=False)
             # We do not set worker.function_properties[driver_id][function_id]
             # because we currently do need the actor worker to submit new tasks
             # for the actor.
