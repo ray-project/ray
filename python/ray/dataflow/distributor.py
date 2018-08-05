@@ -300,7 +300,7 @@ class Distributor(object):
 
             # First run the function on the driver.
             # We always run the task locally.
-            function({"worker": self})
+            function({"worker": self.worker})
             # Check if the function has already been put into redis.
             function_exported = self.redis_client.setnx(b"Lock:" + key, 1)
             if not function_exported:

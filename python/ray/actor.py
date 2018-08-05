@@ -571,7 +571,7 @@ class ActorClass(object):
                 worker.distributor.export_actor_class(
                     self._class_id, self._modified_class,
                     self._actor_method_names,
-                    self._checkpoint_interval, worker)
+                    self._checkpoint_interval)
                 self._exported = True
 
             resources = ray.utils.resources_from_resource_arguments(

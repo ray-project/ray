@@ -220,11 +220,11 @@ class WorkerBase(object):
         self.connected = False
 
         self.distributor.enter_startup()
-        self.object_store_client.clear()
 
         if hasattr(self, "local_scheduler_client"):
             del self.local_scheduler_client
-        if hasattr(self, "plasma_client"):
+        if self.object_store_client is not None:
+            self.object_store_client.clear()
             self.object_store_client.disconnect()
 
     def put_object(self, object_id, value):
@@ -1582,7 +1582,7 @@ def connect(info,
     worker.object_store_client = object_store_client.ObjectStoreClient(worker)
     worker.object_store_client.connect(
         info["store_socket_name"],
-        info["manager_socket_name"],
+        info.get("manager_socket_name"),
         64,
     )
 
