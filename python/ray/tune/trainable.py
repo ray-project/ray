@@ -14,7 +14,6 @@ import time
 import uuid
 
 import ray
-from ray.tune import TuneError
 from ray.tune.logger import UnifiedLogger
 from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.trial import Resources
@@ -152,9 +151,8 @@ class Trainable(object):
         """
 
         checkpoint_path = self._save(checkpoint_dir or self.logdir)
-        pickle.dump([
-            self._experiment_id, self._iteration, self._time_total
-        ], open(checkpoint_path + ".tune_metadata", "wb"))
+        pickle.dump([self._experiment_id, self._iteration, self._time_total],
+                    open(checkpoint_path + ".tune_metadata", "wb"))
         return checkpoint_path
 
     def save_to_object(self):

@@ -8,7 +8,6 @@ import numpy as np
 import os
 import yaml
 
-from ray.tune.result import TrainingResult
 from ray.tune.log_sync import get_syncer
 
 try:

@@ -36,7 +36,6 @@ class RLTrainingResult(TrainingResult):
         neg_mean_loss (float): (Auto-filled) The negated current training loss.
     """
 
-    Attributes:
     @property
     def timesteps_total(self):
         return self.get(timesteps_total)
