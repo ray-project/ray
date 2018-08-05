@@ -255,6 +255,7 @@ class _MockAgent(Agent):
     _default_config = {
         "mock_error": False,
         "persistent_error": False,
+        "test_variable": 1
     }
 
     def _init(self):

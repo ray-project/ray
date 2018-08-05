@@ -3,78 +3,11 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
-import json
 import numpy
-import os
 import random
 import types
 
 from ray.tune import TuneError
-from ray.tune.logger import _SafeFallbackEncoder
-from ray.tune.trial import Trial
-from ray.tune.config_parser import make_parser, json_to_resources
-
-
-def to_argv(config):
-    argv = []
-    for k, v in config.items():
-        if "-" in k:
-            raise ValueError("Use '_' instead of '-' in `{}`".format(k))
-        argv.append("--{}".format(k.replace("_", "-")))
-        if isinstance(v, str):
-            argv.append(v)
-        else:
-            argv.append(json.dumps(v, cls=_SafeFallbackEncoder))
-    return argv
-
-
-def generate_trials(unresolved_spec, output_path=''):
-    """Wraps `generate_variants()` to return a Trial object for each variant.
-
-    See also: generate_variants()
-
-    Arguments:
-        unresolved_spec (dict): Experiment spec conforming to the argument
-            schema defined in `ray.tune.config_parser`.
-        output_path (str): Path where to store experiment outputs.
-    """
-
-    if "run" not in unresolved_spec:
-        raise TuneError("Must specify `run` in {}".format(unresolved_spec))
-    parser = make_parser()
-    i = 0
-    for _ in range(unresolved_spec.get("repeat", 1)):
-        for resolved_vars, spec in generate_variants(unresolved_spec):
-            try:
-                # Special case the `env` param for RLlib by automatically
-                # moving it into the `config` section.
-                if "env" in spec:
-                    spec["config"] = spec.get("config", {})
-                    spec["config"]["env"] = spec["env"]
-                    del spec["env"]
-                args = parser.parse_args(to_argv(spec))
-            except SystemExit:
-                raise TuneError("Error parsing args, see above message", spec)
-            if resolved_vars:
-                experiment_tag = "{}_{}".format(i, resolved_vars)
-            else:
-                experiment_tag = str(i)
-            i += 1
-            if "trial_resources" in spec:
-                resources = json_to_resources(spec["trial_resources"])
-            else:
-                resources = None
-            yield Trial(
-                trainable_name=spec["run"],
-                config=spec.get("config", {}),
-                local_dir=os.path.join(args.local_dir, output_path),
-                experiment_tag=experiment_tag,
-                resources=resources,
-                stopping_criterion=spec.get("stop", {}),
-                checkpoint_freq=args.checkpoint_freq,
-                restore_path=spec.get("restore"),
-                upload_dir=args.upload_dir,
-                max_failures=args.max_failures)
 
 
 def generate_variants(unresolved_spec):
@@ -109,7 +42,7 @@ def generate_variants(unresolved_spec):
     """
     for resolved_vars, spec in _generate_variants(unresolved_spec):
         assert not _unresolved_values(spec)
-        yield _format_vars(resolved_vars), spec
+        yield format_vars(resolved_vars), spec
 
 
 def grid_search(values):
@@ -126,7 +59,7 @@ _STANDARD_IMPORTS = {
 _MAX_RESOLUTION_PASSES = 20
 
 
-def _format_vars(resolved_vars):
+def format_vars(resolved_vars):
     out = []
     for path, value in sorted(resolved_vars.items()):
         if path[0] in ["run", "env", "trial_resources"]:
