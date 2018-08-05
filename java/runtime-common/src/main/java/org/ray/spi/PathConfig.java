@@ -37,6 +37,9 @@ public class PathConfig {
   @AConfig(comment = "path to global scheduler")
   public String global_scheduler;
 
+  @AConfig(comment = "path to raylet")
+  public String raylet;
+
   @AConfig(comment = "path to python directory")
   public String python_dir;
 

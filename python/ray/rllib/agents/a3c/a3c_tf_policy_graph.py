@@ -1,3 +1,5 @@
+"""Note: Keep in sync with changes to VTracePolicyGraph."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -77,8 +79,6 @@ class A3CPolicyGraph(TFPolicyGraph):
             ("advantages", advantages),
             ("value_targets", v_target),
         ]
-        self.state_in = self.model.state_in
-        self.state_out = self.model.state_out
         TFPolicyGraph.__init__(
             self,
             observation_space,
@@ -88,19 +88,10 @@ class A3CPolicyGraph(TFPolicyGraph):
             action_sampler=action_dist.sample(),
             loss=self.loss.total_loss,
             loss_inputs=loss_in,
-            state_inputs=self.state_in,
-            state_outputs=self.state_out,
+            state_inputs=self.model.state_in,
+            state_outputs=self.model.state_out,
             seq_lens=self.model.seq_lens,
             max_seq_len=self.config["model"]["max_seq_len"])
-
-        if self.config.get("summarize"):
-            bs = tf.to_float(tf.shape(self.observations)[0])
-            tf.summary.scalar("model/policy_graph", self.loss.pi_loss / bs)
-            tf.summary.scalar("model/value_loss", self.loss.vf_loss / bs)
-            tf.summary.scalar("model/entropy", self.loss.entropy / bs)
-            tf.summary.scalar("model/grad_gnorm", tf.global_norm(self._grads))
-            tf.summary.scalar("model/var_gnorm", tf.global_norm(self.var_list))
-            self.summary_op = tf.summary.merge_all()
 
         self.sess.run(tf.global_variables_initializer())
 
@@ -108,9 +99,10 @@ class A3CPolicyGraph(TFPolicyGraph):
         return {"vf_preds": self.vf}
 
     def value(self, ob, *args):
-        feed_dict = {self.observations: [ob]}
-        assert len(args) == len(self.state_in), (args, self.state_in)
-        for k, v in zip(self.state_in, args):
+        feed_dict = {self.observations: [ob], self.model.seq_lens: [1]}
+        assert len(args) == len(self.model.state_in), \
+            (args, self.model.state_in)
+        for k, v in zip(self.model.state_in, args):
             feed_dict[k] = v
         vf = self.sess.run(self.vf, feed_dict)
         return vf[0]
@@ -126,7 +118,15 @@ class A3CPolicyGraph(TFPolicyGraph):
 
     def extra_compute_grad_fetches(self):
         if self.config.get("summarize"):
-            return {"summary": self.summary_op}
+            return {
+                "stats": {
+                    "policy_loss": self.loss.pi_loss,
+                    "value_loss": self.loss.vf_loss,
+                    "entropy": self.loss.entropy,
+                    "grad_gnorm": tf.global_norm(self._grads),
+                    "var_gnorm": tf.global_norm(self.var_list),
+                },
+            }
         else:
             return {}
 
@@ -139,7 +139,7 @@ class A3CPolicyGraph(TFPolicyGraph):
             last_r = 0.0
         else:
             next_state = []
-            for i in range(len(self.state_in)):
+            for i in range(len(self.model.state_in)):
                 next_state.append([sample_batch["state_out_{}".format(i)][-1]])
             last_r = self.value(sample_batch["new_obs"][-1], *next_state)
         return compute_advantages(sample_batch, last_r, self.config["gamma"],

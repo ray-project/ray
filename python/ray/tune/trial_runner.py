@@ -274,6 +274,9 @@ class TrialRunner(object):
                 decision = self._scheduler_alg.on_trial_result(
                     self, trial, result)
                 self._search_alg.on_trial_result(trial.trial_id, result)
+                if decision == TrialScheduler.STOP:
+                    self._search_alg.on_trial_complete(
+                        trial.trial_id, early_terminated=True)
             trial.update_last_result(
                 result, terminate=(decision == TrialScheduler.STOP))
 

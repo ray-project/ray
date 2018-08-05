@@ -1,13 +1,17 @@
 package org.ray.spi;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import org.ray.api.RayList;
 import org.ray.api.RayMap;
 import org.ray.api.RayObject;
 import org.ray.api.RayObjects;
 import org.ray.api.UniqueID;
+import org.ray.api.WaitResult;
 import org.ray.core.ArgumentsBuilder;
 import org.ray.core.UniqueIdHelper;
 import org.ray.core.WorkerContext;
@@ -124,11 +128,44 @@ public class LocalSchedulerProxy {
     scheduler.markTaskPutDependency(taskId, objectId);
   }
 
-  public void reconstructObject(UniqueID objectId) {
-    scheduler.reconstructObject(objectId);
+  public void reconstructObject(UniqueID objectId, boolean fetchOnly) {
+    scheduler.reconstructObject(objectId, fetchOnly);
+  }
+
+  public void reconstructObjects(List<UniqueID> objectIds, boolean fetchOnly) {
+    scheduler.reconstructObjects(objectIds, fetchOnly);
   }
 
   public void notifyUnblocked() {
     scheduler.notifyUnblocked();
+  }
+
+  private static byte[][] getIdBytes(List<UniqueID> objectIds) {
+    int size = objectIds.size();
+    byte[][] ids = new byte[size][];
+    for (int i = 0; i < size; i++) {
+      ids[i] = objectIds.get(i).getBytes();
+    }
+    return ids;
+  }
+
+  public <T> WaitResult<T> wait(RayList<T> waitfor, int numReturns, int timeout) {
+    List<UniqueID> ids = new ArrayList<>();
+    for (RayObject<T> obj : waitfor.Objects()) {
+      ids.add(obj.getId());
+    }
+    List<byte[]> readys = scheduler.wait(getIdBytes(ids), timeout, numReturns);
+
+    RayList<T> readyObjs = new RayList<>();
+    RayList<T> remainObjs = new RayList<>();
+    for (RayObject<T> obj : waitfor.Objects()) {
+      if (readys.contains(obj.getId().getBytes())) {
+        readyObjs.add(obj);
+      } else {
+        remainObjs.add(obj);
+      }
+    }
+
+    return new WaitResult<>(readyObjs, remainObjs);
   }
 }

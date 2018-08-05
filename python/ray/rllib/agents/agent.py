@@ -212,16 +212,23 @@ class Agent(Trainable):
 
         raise NotImplementedError
 
-    def compute_action(self, observation, state=None):
-        """Computes an action using the current trained policy."""
+    def compute_action(self, observation, state=None, policy_id="default"):
+        """Computes an action for the specified policy.
+
+        Arguments:
+            observation (obj): observation from the environment.
+            state (list): RNN hidden state, if any.
+            policy_id (str): policy to query (only applies to multi-agent).
+        """
 
         if state is None:
             state = []
-        obs = self.local_evaluator.filters["default"](
+        filtered_obs = self.local_evaluator.filters[policy_id](
             observation, update=False)
         return self.local_evaluator.for_policy(
-            lambda p: p.compute_single_action(obs, state, is_training=False)[0]
-        )
+            lambda p: p.compute_single_action(
+                filtered_obs, state, is_training=False)[0],
+            policy_id=policy_id)
 
     def get_weights(self, policies=None):
         """Return a dictionary of policy ids to weights.
@@ -361,6 +368,9 @@ def get_agent_class(alg):
     elif alg == "PG":
         from ray.rllib.agents import pg
         return pg.PGAgent
+    elif alg == "IMPALA":
+        from ray.rllib.agents import impala
+        return impala.ImpalaAgent
     elif alg == "script":
         from ray.tune import script_runner
         return script_runner.ScriptRunner

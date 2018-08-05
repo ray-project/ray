@@ -180,7 +180,9 @@ def create_trial_from_spec(spec, output_path, parser, **trial_kwargs):
     if "trial_resources" in spec:
         trial_kwargs["resources"] = json_to_resources(spec["trial_resources"])
     return Trial(
-        trainable_name=args.run,
+        # Submitting trial via server in py2.7 creates Unicode, which does not
+        # convert to string in a straightforward manner.
+        trainable_name=spec["run"],
         # json.load leads to str -> unicode in py2.7
         config=spec.get("config", {}),
         local_dir=os.path.join(args.local_dir, output_path),
