@@ -16,7 +16,6 @@ import ray.worker
 from ray.utils import (
     decode,
     _random_string,
-    check_oversized_pickle,
     is_cython,
     push_error_to_driver,
 )
@@ -373,55 +372,6 @@ def fetch_and_register_actor(actor_class_key, worker):
             # for the actor.
 
 
-def publish_actor_class_to_key(key, actor_class_info, worker):
-    """Push an actor class definition to Redis.
-
-    The is factored out as a separate function because it is also called
-    on cached actor class definitions when a worker connects for the first
-    time.
-
-    Args:
-        key: The key to store the actor class info at.
-        actor_class_info: Information about the actor class.
-        worker: The worker to use to connect to Redis.
-    """
-    # We set the driver ID here because it may not have been available when the
-    # actor class was defined.
-    actor_class_info["driver_id"] = worker.task_driver_id.id()
-    worker.redis_client.hmset(key, actor_class_info)
-    worker.redis_client.rpush("Exports", key)
-
-
-def export_actor_class(class_id, Class, actor_method_names,
-                       checkpoint_interval, worker):
-    key = b"ActorClass:" + class_id
-    actor_class_info = {
-        "class_name": Class.__name__,
-        "module": Class.__module__,
-        "class": pickle.dumps(Class),
-        "checkpoint_interval": checkpoint_interval,
-        "actor_method_names": json.dumps(list(actor_method_names))
-    }
-
-    check_oversized_pickle(actor_class_info["class"],
-                           actor_class_info["class_name"], "actor", worker)
-
-    if worker.mode is None:
-        # This means that 'ray.init()' has not been called yet and so we must
-        # cache the actor class definition and export it when 'ray.init()' is
-        # called.
-        assert worker.cached_remote_functions_and_actors is not None
-        worker.cached_remote_functions_and_actors.append(
-            ("actor", (key, actor_class_info)))
-        # This caching code path is currently not used because we only export
-        # actor class definitions lazily when we instantiate the actor for the
-        # first time.
-        assert False, "This should be unreachable."
-    else:
-        publish_actor_class_to_key(key, actor_class_info, worker)
-    # TODO(rkn): Currently we allow actor classes to be defined within tasks.
-    # I tried to disable this, but it may be necessary because of
-    # https://github.com/ray-project/ray/issues/1146.
 
 
 def method(*args, **kwargs):
@@ -618,9 +568,10 @@ class ActorClass(object):
         else:
             # Export the actor.
             if not self._exported:
-                export_actor_class(self._class_id, self._modified_class,
-                                   self._actor_method_names,
-                                   self._checkpoint_interval, worker)
+                worker.distributor.export_actor_class(
+                    self._class_id, self._modified_class,
+                    self._actor_method_names,
+                    self._checkpoint_interval, worker)
                 self._exported = True
 
             resources = ray.utils.resources_from_resource_arguments(

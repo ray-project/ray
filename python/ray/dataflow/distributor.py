@@ -6,8 +6,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 import hashlib
+import json
 import threading
 import time
 import traceback
@@ -19,6 +19,9 @@ from ray import profiling
 import ray.cloudpickle as pickle
 import ray.ray_constants as ray_constants
 import ray.utils as utils
+
+# Namespace
+EXPORTS = 'Exports'
 
 # Key name constants
 FUNCTIONS_TO_RUN = b'FunctionsToRun'
@@ -41,11 +44,18 @@ class Distributor(object):
         worker: the worker object in this process.
         cached_functions_to_run (List): A list of functions to run on all of
             the workers that should be exported as soon as connect is called.
+        cached_remote_functions_and_actors: A list of information for exporting
+            remote functions and actor classes definitions that were defined
+            before the worker called connect. When the worker eventually does
+            call connect, if it is a driver, it will export these functions and
+            actors. If cached_remote_functions_and_actors is None, that means
+            that connect has been called already.
     """
 
     def __init__(self, worker, polling_interval=0.001):
         self.worker = worker
         self.cached_functions_to_run = []
+        self.cached_remote_functions_and_actors = []
 
         # A set of all of the actor class keys that have been imported by the
         # import thread. It is safe to convert this worker into an actor of
@@ -57,13 +67,16 @@ class Distributor(object):
     def enter_startup(self):
         """Begin caching functions. No works will be done."""
         self.cached_functions_to_run = []
+        self.cached_remote_functions_and_actors = []
 
     def finish_startup(self):
         """Finish caching functions. Start to work."""
         self.cached_functions_to_run = None
+        self.cached_remote_functions_and_actors = None
 
     def is_startup(self):
-        return self.cached_functions_to_run is not None
+        return (self.cached_functions_to_run is not None
+                and self.cached_remote_functions_and_actors is not None)
 
     @property
     def redis_client(self):
@@ -93,20 +106,15 @@ class Distributor(object):
     def execution_info(self):
         return self.worker.execution_info
 
+    def append_cached_remote_function(self, remote_function):
+        self.cached_remote_functions_and_actors.append(
+            ("remote_function", remote_function))
+
+    def append_cached_actor(self, actor):
+        self.cached_remote_functions_and_actors.append(("actor", actor))
+
     def add_actor_class(self, actor_class):
         self.imported_actor_classes.add(actor_class)
-
-    def wait_for_actor_class(self, key):
-        """Wait for the actor class key to have been imported by the import
-        thread.
-
-        TODO(rkn): It shouldn't be possible to end up in an infinite
-        loop here, but we should push an error to the driver if too much time
-        is spent here.
-        """
-
-        while key not in self.imported_actor_classes:
-            time.sleep(self.polling_interval)
 
     def wait_for_function(self, function_id, driver_id, timeout=10):
         """Wait until the function to be executed is present on this worker.
@@ -149,9 +157,35 @@ class Distributor(object):
                     warning_sent = True
             time.sleep(self.polling_interval)
 
+    def wait_for_actor_class(self, key):
+        """Wait for the actor class key to have been imported by the import
+        thread.
+
+        TODO(rkn): It shouldn't be possible to end up in an infinite
+        loop here, but we should push an error to the driver if too much time
+        is spent here.
+        """
+
+        while key not in self.imported_actor_classes:
+            time.sleep(self.polling_interval)
+
+    def _push_exports(self, key, info):
+        self.redis_client.hmset(key, info)
+        self.redis_client.rpush(EXPORTS, key)
+
     def export_all_cached_functions(self):
         for function in self.cached_functions_to_run:
             self.run_function_on_all_workers(function)
+
+    def export_all_remote_cached_functions(self):
+        for cached_type, info in self.cached_remote_functions_and_actors:
+            if cached_type == "remote_function":
+                info._export()
+            elif cached_type == "actor":
+                (key, actor_class_info) = info
+                self.publish_actor_class_to_key(key, actor_class_info)
+            else:
+                assert False, "This code should be unreachable."
 
     def export_remote_function(self, function_id, function_name, function,
                                max_calls, decorated_function):
@@ -193,16 +227,45 @@ class Distributor(object):
         utils.check_oversized_pickle(pickled_function, function_name,
                                      "remote function", self.worker)
 
-        self.redis_client.hmset(
-            key, {
-                "driver_id": self.task_driver_id.id(),
-                "function_id": function_id.id(),
-                "name": function_name,
-                "module": function.__module__,
-                "function": pickled_function,
-                "max_calls": max_calls
-            })
-        self.redis_client.rpush("Exports", key)
+        self._push_exports(key, {
+            "driver_id": self.task_driver_id.id(),
+            "function_id": function_id.id(),
+            "name": function_name,
+            "module": function.__module__,
+            "function": pickled_function,
+            "max_calls": max_calls
+        })
+
+    def export_actor_class(self, class_id, Class, actor_method_names,
+                           checkpoint_interval):
+        key = ACTOR_CLASS + b":" + class_id
+        class_name = Class.__name__
+        _class = pickle.dumps(Class)
+        actor_class_info = {
+            "class_name": class_name,
+            "module": Class.__module__,
+            "class": _class,
+            "checkpoint_interval": checkpoint_interval,
+            "actor_method_names": json.dumps(list(actor_method_names))
+        }
+
+        utils.check_oversized_pickle(_class, class_name, "actor", self.worker)
+
+        if self.mode is None:
+            # This means that 'ray.init()' has not been called yet and so we must
+            # cache the actor class definition and export it when 'ray.init()' is
+            # called.
+            assert self.is_startup()
+            self.append_cached_actor((key, actor_class_info))
+            # This caching code path is currently not used because we only export
+            # actor class definitions lazily when we instantiate the actor for the
+            # first time.
+            assert False, "This should be unreachable."
+        else:
+            self.publish_actor_class_to_key(key, actor_class_info)
+        # TODO(rkn): Currently we allow actor classes to be defined within tasks.
+        # I tried to disable this, but it may be necessary because of
+        # https://github.com/ray-project/ray/issues/1146.
 
     def run_function_on_all_workers(self, function,
                                     run_on_other_drivers=False):
@@ -249,19 +312,33 @@ class Distributor(object):
                                          "function", self.worker)
 
             # Run the function on all workers.
-            self.redis_client.hmset(
-                key, {
-                    "driver_id": self.task_driver_id.id(),
-                    "function_id": function_to_run_id,
-                    "function": pickled_function,
-                    "run_on_other_drivers": run_on_other_drivers
-                })
-            self.redis_client.rpush("Exports", key)
+            self._push_exports(key, {
+                "driver_id": self.task_driver_id.id(),
+                "function_id": function_to_run_id,
+                "function": pickled_function,
+                "run_on_other_drivers": run_on_other_drivers
+            })
             # TODO(rkn): If the worker fails after it calls setnx and before it
             # successfully completes the hmset and rpush, then the program will
             # most likely hang. This could be fixed by making these three
             # operations into a transaction (or by implementing a custom
             # command that does all three things).
+
+    def publish_actor_class_to_key(self, key, actor_class_info):
+        """Push an actor class definition to Redis.
+
+        The is factored out as a separate function because it is also called
+        on cached actor class definitions when a worker connects for the first
+        time.
+
+        Args:
+            key: The key to store the actor class info at.
+            actor_class_info: Information about the actor class.
+        """
+        # We set the driver ID here because it may not have been available when the
+        # actor class was defined.
+        actor_class_info["driver_id"] = self.task_driver_id.id()
+        self._push_exports(key, actor_class_info)
 
     def fetch_and_execute_function_to_run(self, key):
         """Run on arbitrary function on the worker."""
@@ -375,13 +452,13 @@ class DistributorWithImportThread(Distributor):
         # Exports that are published after the call to
         # import_pubsub_client.subscribe and before the call to
         # import_pubsub_client.listen will still be processed in the loop.
-        import_pubsub_client.subscribe("__keyspace@0__:Exports")
+        import_pubsub_client.subscribe("__keyspace@0__:" + EXPORTS)
         # Keep track of the number of imports that we've imported.
         num_imported = 0
 
         # Get the exports that occurred before the call to subscribe.
         with self.lock:
-            export_keys = self.redis_client.lrange("Exports", 0, -1)
+            export_keys = self.redis_client.lrange(EXPORTS, 0, -1)
             for key in export_keys:
                 num_imported += 1
                 self._process_key(key)
@@ -391,11 +468,11 @@ class DistributorWithImportThread(Distributor):
                     if msg["type"] == "subscribe":
                         continue
                     assert msg["data"] == b"rpush"
-                    num_imports = self.redis_client.llen("Exports")
+                    num_imports = self.redis_client.llen(EXPORTS)
                     assert num_imports >= num_imported
                     for i in range(num_imported, num_imports):
                         num_imported += 1
-                        key = self.redis_client.lindex("Exports", i)
+                        key = self.redis_client.lindex(EXPORTS, i)
                         self._process_key(key)
         except redis.ConnectionError:
             # When Redis terminates the listen call will throw a

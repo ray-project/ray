@@ -3,7 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 import atexit
-import collections
 import inspect
 import numpy as np
 import os
@@ -25,12 +24,12 @@ import ray.dataflow.signature
 import ray.dataflow.distributor as distributor
 import ray.dataflow.execution_info as execution_info
 import ray.dataflow.object_store_client as object_store_client
-
 from ray.dataflow.exceptions import (
     RayTaskError,
     RayGetArgumentError,
     RayGetError,
 )
+
 import ray.local_scheduler
 import ray.plasma
 import ray.ray_constants as ray_constants
@@ -87,12 +86,6 @@ class WorkerBase(object):
         connected (bool): True if Ray has been started and False otherwise.
         mode: The mode of the worker. One of SCRIPT_MODE, LOCAL_MODE,
             SILENT_MODE, and WORKER_MODE.
-        cached_remote_functions_and_actors: A list of information for exporting
-            remote functions and actor classes definitions that were defined
-            before the worker called connect. When the worker eventually does
-            call connect, if it is a driver, it will export these functions and
-            actors. If cached_remote_functions_and_actors is None, that means
-            that connect has been called already.
         profiler: the profiler used to aggregate profiling information.
         state_lock (Lock):
             Used to lock worker's non-thread-safe internal states:
@@ -112,7 +105,6 @@ class WorkerBase(object):
         self.worker_id = None
 
         self.execution_info = execution_info.ExecutionInfo()
-        self.cached_remote_functions_and_actors = []
 
         self.fetch_and_register_actor = None
         self.make_actor = None
@@ -200,10 +192,7 @@ class WorkerBase(object):
         # Do some basic checking to make sure we didn't call ray.init twice.
         error_message = "Perhaps you called ray.init twice by accident?"
         assert not self.connected, error_message
-
         assert self.distributor.is_startup(), error_message
-        assert self.cached_remote_functions_and_actors is not None, (
-            error_message)
         # Initialize some fields.
         self.worker_id = random_string()
 
@@ -231,7 +220,6 @@ class WorkerBase(object):
         self.connected = False
 
         self.distributor.enter_startup()
-        self.cached_remote_functions_and_actors = []
         self.object_store_client.clear()
 
         if hasattr(self, "local_scheduler_client"):
@@ -1715,18 +1703,9 @@ def connect(info,
         # Export cached functions_to_run.
         worker.distributor.export_all_cached_functions()
         # Export cached remote functions to the workers.
-        for cached_type, info in worker.cached_remote_functions_and_actors:
-            if cached_type == "remote_function":
-                info._export()
-            elif cached_type == "actor":
-                (key, actor_class_info) = info
-                ray.actor.publish_actor_class_to_key(key, actor_class_info,
-                                                     worker)
-            else:
-                assert False, "This code should be unreachable."
+
 
     worker.distributor.finish_startup()
-    worker.cached_remote_functions_and_actors = None
 
 
 def register_custom_serializer(cls,
