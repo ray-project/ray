@@ -23,6 +23,7 @@ from ray.services import logger
 import ray.dataflow.signature
 import ray.dataflow.distributor as distributor
 import ray.dataflow.execution_info as execution_info
+import ray.dataflow.logging as worker_logger
 import ray.dataflow.object_store_client as object_store_client
 from ray.dataflow.exceptions import (
     RayTaskError,
@@ -528,8 +529,7 @@ class Worker(Driver):
         ]
         self._store_outputs_in_objstore(return_object_ids, failure_objects)
         # Log the error message.
-        ray.utils.push_error_to_driver(
-            self,
+        self.logger.push_error_to_driver(
             ray_constants.TASK_PUSH_ERROR,
             str(failure_object),
             driver_id=self.task_driver_id.id(),
@@ -755,40 +755,12 @@ def print_failed_task(task_status):
                task_status["error_message"]))
 
 
-def error_applies_to_driver(error_key, worker=global_worker):
-    """Return True if the error is for this driver and false otherwise."""
-    # TODO(rkn): Should probably check that this is only called on a driver.
-    # Check that the error key is formatted as in push_error_to_driver.
-    assert len(error_key) == (len(ERROR_KEY_PREFIX) + ray_constants.ID_SIZE + 1
-                              + ray_constants.ID_SIZE), error_key
-    # If the driver ID in the error message is a sequence of all zeros, then
-    # the message is intended for all drivers.
-    generic_driver_id = ray_constants.ID_SIZE * b"\x00"
-    driver_id = error_key[len(ERROR_KEY_PREFIX):(
-        len(ERROR_KEY_PREFIX) + ray_constants.ID_SIZE)]
-    return (driver_id == worker.task_driver_id.id()
-            or driver_id == generic_driver_id)
 
 
 def error_info(worker=global_worker):
     """Return information about failed tasks."""
     worker.check_connected()
-    if worker.use_raylet:
-        return (global_state.error_messages(job_id=worker.task_driver_id) +
-                global_state.error_messages(job_id=ray_constants.NIL_JOB_ID))
-    error_keys = worker.redis_client.lrange("ErrorKeys", 0, -1)
-    errors = []
-    for error_key in error_keys:
-        if error_applies_to_driver(error_key, worker=worker):
-            error_contents = worker.redis_client.hgetall(error_key)
-            error_contents = {
-                "type": ray.utils.decode(error_contents[b"type"]),
-                "message": ray.utils.decode(error_contents[b"message"]),
-                "data": ray.utils.decode(error_contents[b"data"])
-            }
-            errors.append(error_contents)
-
-    return errors
+    return worker.logger.error_info()
 
 
 def get_address_info_from_redis_helper(redis_address,
@@ -1367,128 +1339,6 @@ def custom_excepthook(type, value, tb):
 sys.excepthook = custom_excepthook
 
 
-def print_error_messages_raylet(worker):
-    """Print error messages in the background on the driver.
-
-    This runs in a separate thread on the driver and prints error messages in
-    the background.
-    """
-    if not worker.use_raylet:
-        raise Exception("This function is specific to the raylet code path.")
-
-    worker.error_message_pubsub_client = worker.redis_client.pubsub(
-        ignore_subscribe_messages=True)
-    # Exports that are published after the call to
-    # error_message_pubsub_client.subscribe and before the call to
-    # error_message_pubsub_client.listen will still be processed in the loop.
-
-    # Really we should just subscribe to the errors for this specific job.
-    # However, currently all errors seem to be published on the same channel.
-    error_pubsub_channel = str(
-        ray.gcs_utils.TablePubsub.ERROR_INFO).encode("ascii")
-    worker.error_message_pubsub_client.subscribe(error_pubsub_channel)
-    # worker.error_message_pubsub_client.psubscribe("*")
-
-    # Keep a set of all the error messages that we've seen so far in order to
-    # avoid printing the same error message repeatedly. This is especially
-    # important when running a script inside of a tool like screen where
-    # scrolling is difficult.
-    old_error_messages = set()
-
-    # Get the exports that occurred before the call to subscribe.
-    with worker.lock:
-        error_messages = global_state.error_messages(worker.task_driver_id)
-        for error_message in error_messages:
-            if error_message not in old_error_messages:
-                logger.error(error_message)
-                old_error_messages.add(error_message)
-            else:
-                logger.error("Suppressing duplicate error message.")
-
-    try:
-        for msg in worker.error_message_pubsub_client.listen():
-
-            gcs_entry = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
-                msg["data"], 0)
-            assert gcs_entry.EntriesLength() == 1
-            error_data = ray.gcs_utils.ErrorTableData.GetRootAsErrorTableData(
-                gcs_entry.Entries(0), 0)
-            NIL_JOB_ID = ray_constants.ID_SIZE * b"\x00"
-            job_id = error_data.JobId()
-            if job_id not in [worker.task_driver_id.id(), NIL_JOB_ID]:
-                continue
-
-            error_message = ray.utils.decode(error_data.ErrorMessage())
-
-            if error_message not in old_error_messages:
-                logger.error(error_message)
-                old_error_messages.add(error_message)
-            else:
-                logger.error("Suppressing duplicate error message.")
-
-    except redis.ConnectionError:
-        # When Redis terminates the listen call will throw a ConnectionError,
-        # which we catch here.
-        pass
-
-
-def print_error_messages(worker):
-    """Print error messages in the background on the driver.
-
-    This runs in a separate thread on the driver and prints error messages in
-    the background.
-    """
-    # TODO(rkn): All error messages should have a "component" field indicating
-    # which process the error came from (e.g., a worker or a plasma store).
-    # Currently all error messages come from workers.
-
-    worker.error_message_pubsub_client = worker.redis_client.pubsub()
-    # Exports that are published after the call to
-    # error_message_pubsub_client.subscribe and before the call to
-    # error_message_pubsub_client.listen will still be processed in the loop.
-    worker.error_message_pubsub_client.subscribe("__keyspace@0__:ErrorKeys")
-    num_errors_received = 0
-
-    # Keep a set of all the error messages that we've seen so far in order to
-    # avoid printing the same error message repeatedly. This is especially
-    # important when running a script inside of a tool like screen where
-    # scrolling is difficult.
-    old_error_messages = set()
-
-    # Get the exports that occurred before the call to subscribe.
-    with worker.lock:
-        error_keys = worker.redis_client.lrange("ErrorKeys", 0, -1)
-        for error_key in error_keys:
-            if error_applies_to_driver(error_key, worker=worker):
-                error_message = ray.utils.decode(
-                    worker.redis_client.hget(error_key, "message"))
-                if error_message not in old_error_messages:
-                    logger.error(error_message)
-                    old_error_messages.add(error_message)
-                else:
-                    logger.error("Suppressing duplicate error message.")
-            num_errors_received += 1
-
-    try:
-        for msg in worker.error_message_pubsub_client.listen():
-            with worker.lock:
-                for error_key in worker.redis_client.lrange(
-                        "ErrorKeys", num_errors_received, -1):
-                    if error_applies_to_driver(error_key, worker=worker):
-                        error_message = ray.utils.decode(
-                            worker.redis_client.hget(error_key, "message"))
-                        if error_message not in old_error_messages:
-                            logger.error(error_message)
-                            old_error_messages.add(error_message)
-                        else:
-                            logger.error(
-                                "Suppressing duplicate error message.")
-                    num_errors_received += 1
-    except redis.ConnectionError:
-        # When Redis terminates the listen call will throw a ConnectionError,
-        # which we catch here.
-        pass
-
 
 def connect(info,
             object_id_seed=None,
@@ -1521,6 +1371,8 @@ def connect(info,
     worker.redis_client = thread_safe_client(
         redis.StrictRedis(host=redis_ip_address, port=int(redis_port)))
 
+    worker.logger = worker_logger.WorkerLogger(worker, global_state)
+
     # For driver's check that the version information matches the version
     # information that the Ray cluster was started with.
     try:
@@ -1529,13 +1381,9 @@ def connect(info,
         if worker.is_driver:
             raise e
         elif worker.is_worker:
-            traceback_str = traceback.format_exc()
-            ray.utils.push_error_to_driver_through_redis(
-                worker.redis_client,
-                worker.use_raylet,
+            worker.logger.push_exception_to_driver(
                 ray_constants.VERSION_MISMATCH_PUSH_ERROR,
-                traceback_str,
-                driver_id=None)
+                force_redis=True)
 
     worker.lock = threading.Lock()
 
@@ -1683,15 +1531,7 @@ def connect(info,
     # temporarily using this implementation which constantly queries the
     # scheduler for new error messages.
     if worker.is_real_driver:
-        if not worker.use_raylet:
-            t = threading.Thread(target=print_error_messages, args=(worker, ))
-        else:
-            t = threading.Thread(
-                target=print_error_messages_raylet, args=(worker, ))
-        # Making the thread a daemon causes it to exit when the main thread
-        # exits.
-        t.daemon = True
-        t.start()
+        worker.logger.start_logging_thread()
 
     # If we are using the raylet code path and we are not in local mode, start
     # a background thread to periodically flush profiling data to the GCS.
