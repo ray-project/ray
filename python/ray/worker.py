@@ -127,7 +127,16 @@ class WorkerBase(object):
         self.distributor = distributor.DistributorWithImportThread(self)
 
     def get_serialization_context(self, driver_id):
+        """For backward compatibility"""
         return self.object_store_client.get_serialization_context(driver_id)
+
+    def run_function_on_all_workers(
+            self,
+            function,
+            run_on_other_drivers=False):
+        """For backward compatibility"""
+        self.distributor.run_function_on_all_workers(
+            function, run_on_other_drivers)
 
     def check_connected(self):
         """Check if the worker is connected.
