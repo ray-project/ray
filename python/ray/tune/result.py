@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import os
 import sys
+import copy
 
 if sys.version_info[0] == 2:
     from collections import MutableMapping
@@ -69,6 +70,9 @@ class TrainingResult(MutableMapping):
 
     def __repr__(self):
         return "TrainingResult({})".format(self._store)
+
+    def as_dict(self):
+        return copy.deepcopy(self._store)
 
     @property
     def done(self):

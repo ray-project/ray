@@ -95,7 +95,7 @@ class _JsonLogger(Logger):
         self.local_out = open(local_file, "w")
 
     def on_result(self, result):
-        json.dump(result.copy(), self, cls=_SafeFallbackEncoder)
+        json.dump(result.as_dict(), self, cls=_SafeFallbackEncoder)
         self.write("\n")
 
     def write(self, b):
@@ -124,7 +124,7 @@ class _TFLogger(Logger):
         self._file_writer = tf.summary.FileWriter(self.logdir)
 
     def on_result(self, result):
-        tmp = result.copy()
+        tmp = result.as_dict()
         for k in [
             "config", "pid", "timestamp", "time_total_s", "training_iteration"
         ]:
@@ -157,7 +157,7 @@ class _VisKitLogger(Logger):
         if self._csv_out is None:
             self._csv_out = csv.DictWriter(self._file, result.keys())
             self._csv_out.writeheader()
-        self._csv_out.writerow(result)
+        self._csv_out.writerow(result.as_dict())
 
     def close(self):
         self._file.close()
