@@ -126,14 +126,14 @@ class _TFLogger(Logger):
     def on_result(self, result):
         tmp = result.copy()
         for k in [
-                "config", "pid", "timestamp", "time_total_s", "timesteps_total"
+            "config", "pid", "timestamp", "time_total_s", "training_iteration"
         ]:
             del tmp[k]  # not useful to tf log these
         values = to_tf_values(tmp, ["ray", "tune"])
         train_stats = tf.Summary(value=values)
-        self._file_writer.add_summary(train_stats, result.timesteps_total)
+        self._file_writer.add_summary(train_stats, result.training_iteration)
         timesteps_value = to_tf_values({
-            "timesteps_total": result.timesteps_total
+            "training_iteration": result.training_iteration
         }, ["ray", "tune"])
         timesteps_stats = tf.Summary(value=timesteps_value)
         self._file_writer.add_summary(timesteps_stats,

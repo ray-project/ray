@@ -3,12 +3,18 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import sys
+
+if sys.version_info[0] == 2:
+    import collections.MutableMapping as MutableMapping
+elif sys.version_info[0] == 3:
+    from collections.abc import MutableMapping
 
 # Where Tune writes result files by default
 DEFAULT_RESULTS_DIR = os.path.expanduser("~/ray_results")
 
 
-class TrainingResult(dict):
+class TrainingResult(MutableMapping):
     """Dict for storing results for Tune, with extra properties.
 
     When using Tune with custom training scripts, you must periodically report
@@ -36,6 +42,24 @@ class TrainingResult(dict):
         node_ip (str): (Auto-filled) The node ip of the machine
             hosting the training process.
     """
+    def __init__(self, *args, **kwargs):
+        self._store = dict()
+        self.update(dict(*args, **kwargs))
+
+    def __getitem__(self, key):
+        return self._store[key]
+
+    def __setitem__(self, key, value):
+        self._store[key] = value
+
+    def __delitem__(self, key):
+        del self._store[key]
+
+    def __iter__(self):
+        return iter(self._store)
+
+    def __len__(self):
+        return len(self._store)
 
     @property
     def done(self):
@@ -62,8 +86,8 @@ class TrainingResult(dict):
         return self.get("pid")
 
     @property
-    def qate(self):
-        return self.get("qate")
+    def date(self):
+        return self.get("date")
 
     @property
     def timestamp(self):
@@ -76,3 +100,9 @@ class TrainingResult(dict):
     @property
     def node_ip(self):
         return self.get("node_ip")
+
+    def __repr__(self):
+        return "TrainingResult({})".format(self._store)
+
+    def copy(self):
+        return TrainingResult(**self._store)
