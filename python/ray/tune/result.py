@@ -80,8 +80,3 @@ class TrainingResult(dict):
     @property
     def node_ip(self):
         return self.get("node_ip")
-
-    # TODO(rliaw): Remove this - it should not be part of Tune.
-    @property
-    def timesteps_total(self):
-        return self.get("timesteps_total")

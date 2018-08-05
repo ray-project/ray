@@ -2,41 +2,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from collections import namedtuple
-
-_RLTrainingResult = namedtuple("RLTrainingResult", [
-    "timesteps_total",
-    "done",
-    "info",
-    "episode_reward_mean",
-    "episode_reward_min",
-    "episode_reward_max",
-    "episode_len_mean",
-    "episodes_total",
-    "policy_reward_mean",
-    "mean_accuracy",
-    "mean_validation_accuracy",
-    "mean_loss",
-    "neg_mean_loss",
-    "experiment_id",
-    "training_iteration",
-    "timesteps_this_iter",
-    "time_this_iter_s",
-    "time_total_s",
-    "pid",
-    "date",
-    "timestamp",
-    "hostname",
-    "node_ip",
-    "config",
-])
-
-_RLTrainingResult.__new__.__defaults__ = (None, ) * len(
-    _RLTrainingResult._fields)
+from ray.tune.result import TrainingResult
 
 
-# In Python2, this is the only way to document this namedtuple class.
-class RLTrainingResult(_RLTrainingResult):
+class RLTrainingResult(TrainingResult):
     """TrainingResult for RLlib.
 
     Most of the fields are optional, the only required one is timesteps_total.
@@ -45,7 +14,8 @@ class RLTrainingResult(_RLTrainingResult):
     Attributes:
         timesteps_total (int): (Required) Accumulated timesteps for this
             entire experiment.
-        done (bool): (Optional) If training is terminated.
+        timesteps_this_iter (int): (Auto-filled) Number of timesteps
+            in the simulator in this iteration.
         info (dict): (Optional) Custom metadata to report for this iteration.
         episode_reward_mean (float): (Optional) The mean episode reward
             if applicable.
@@ -64,28 +34,58 @@ class RLTrainingResult(_RLTrainingResult):
             validation accuracy if applicable.
         mean_loss (float): (Optional) The current training loss if applicable.
         neg_mean_loss (float): (Auto-filled) The negated current training loss.
-        experiment_id (str): (Auto-filled) Unique string identifier
-            for this experiment. This id is preserved
-            across checkpoint / restore calls.
-        training_iteration (int): (Auto-filled) The index of this
-            training iteration, e.g. call to train().
-        timesteps_this_iter (int): (Auto-filled) Number of timesteps
-            in the simulator in this iteration.
-        time_this_iter_s (float): (Auto-filled) Time in seconds
-            this iteration took to run. This may be overriden in order to
-            override the system-computed time difference.
-        time_total_s (float): (Auto-filled) Accumulated time in seconds
-            for this entire experiment.
-        pid (str): (Auto-filled) The pid of the training process.
-        date (str): (Auto-filled) A formatted date of
-            when the result was processed.
-        timestamp (str): (Auto-filled) A UNIX timestamp of
-            when the result was processed.
-        hostname (str): (Auto-filled) The hostname of the machine
-            hosting the training process.
-        node_ip (str): (Auto-filled) The node ip of the machine
-            hosting the training process.
     """
 
-    # stackoverflow.com/questions/1606436/adding-docstrings-to-namedtuples
+    Attributes:
+    @property
+    def timesteps_total(self):
+        return self.get(timesteps_total)
+
+    @property
+    def timesteps_this_iter(self):
+        return self.get(timesteps_this_iter)
+
+    @property
+    def info(self):
+        return self.get(info)
+
+    @property
+    def episode_reward_mean(self):
+        return self.get(episode_reward_mean)
+
+    @property
+    def episode_reward_min(self):
+        return self.get(episode_reward_min)
+
+    @property
+    def episode_reward_max(self):
+        return self.get(episode_reward_max)
+
+    @property
+    def episode_len_mean(self):
+        return self.get(episode_len_mean)
+
+    @property
+    def episodes_total(self):
+        return self.get(episodes_total)
+
+    @property
+    def policy_reward_mean(self):
+        return self.get(policy_reward_mean)
+
+    @property
+    def mean_accuracy(self):
+        return self.get(mean_accuracy)
+
+    @property
+    def mean_validation_accuracy(self):
+        return self.get(mean_validation_accuracy)
+
+    @property
+    def mean_loss(self):
+        return self.get(mean_loss)
+
+    @property
+    def neg_mean_loss(self):
+        return self.get(neg_mean_loss)
     __slots__ = ()
