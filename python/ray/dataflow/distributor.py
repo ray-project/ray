@@ -39,9 +39,15 @@ class Distributor(object):
 
     Attributes:
         worker: the worker object in this process.
+        cached_functions_to_run (List): A list of functions to run on all of
+            the workers that should be exported as soon as connect is called.
+        function_execution_info (Dict[str, FunctionExecutionInfo]): A
+            dictionary mapping the name of a remote function to the remote
+            function itself. This is the set of remote functions that can be
+            executed by this worker.
     """
 
-    def __init__(self, worker):
+    def __init__(self, worker, polling_interval=0.001):
         self.worker = worker
         self.cached_functions_to_run = None
 
@@ -64,6 +70,9 @@ class Distributor(object):
         # worker. When the counter reaches the maximum number of executions
         # allowed for a particular function, the worker is killed.
         self.num_task_executions = collections.defaultdict(lambda: {})
+
+        # The inter
+        self.polling_interval = polling_interval
 
     @property
     def redis_client(self):
@@ -102,7 +111,7 @@ class Distributor(object):
         """
 
         while key not in self.imported_actor_classes:
-            time.sleep(0.001)
+            time.sleep(self.polling_interval)
 
     def wait_for_function(self, function_id, driver_id, timeout=10):
         """Wait until the function to be executed is present on this worker.
@@ -143,7 +152,7 @@ class Distributor(object):
                             warning_message,
                             driver_id=driver_id)
                     warning_sent = True
-            time.sleep(0.001)
+            time.sleep(self.polling_interval)
 
     def export_all_cached_functions(self):
         for function in self.cached_functions_to_run:
