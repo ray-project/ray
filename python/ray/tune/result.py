@@ -43,7 +43,10 @@ class TrainingResult(MutableMapping):
             hosting the training process.
     """
     def __init__(self, *args, **kwargs):
-        self._store = dict()
+        # `done` has special treatment because the responsibility
+        # to set it is shared between user and system, and to ensure
+        # CSV Writer doesn't fail, this is defaulted just in case.
+        self._store = dict(done=False)
         self.update(dict(*args, **kwargs))
 
     def __getitem__(self, key):
@@ -60,6 +63,12 @@ class TrainingResult(MutableMapping):
 
     def __len__(self):
         return len(self._store)
+
+    def copy(self):
+        return TrainingResult(**self._store)
+
+    def __repr__(self):
+        return "TrainingResult({})".format(self._store)
 
     @property
     def done(self):
@@ -101,8 +110,7 @@ class TrainingResult(MutableMapping):
     def node_ip(self):
         return self.get("node_ip")
 
-    def __repr__(self):
-        return "TrainingResult({})".format(self._store)
-
-    def copy(self):
-        return TrainingResult(**self._store)
+    @property
+    def metric(self):
+        # TODO(rliaw): expose this better?
+        return self.get("metric")

@@ -324,7 +324,7 @@ class Bracket():
         self._cumul_r += self._r
         sorted_trials = sorted(
             self._live_trials,
-            key=lambda t: getattr(self._live_trials[t], reward_attr))
+            key=lambda t: self._live_trials[t][reward_attr])
 
         good, bad = sorted_trials[-self._n:], sorted_trials[:-self._n]
         return good, bad
@@ -376,7 +376,7 @@ class Bracket():
     def _get_result_time(self, result):
         if result is None:
             return 0
-        return getattr(result, self._time_attr)
+        return result[self._time_attr]
 
     def _calculate_total_work(self, n, r, s):
         work = 0

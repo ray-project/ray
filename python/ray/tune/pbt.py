@@ -175,13 +175,13 @@ class PopulationBasedTraining(FIFOScheduler):
         self._trial_state[trial] = PBTTrialState(trial)
 
     def on_trial_result(self, trial_runner, trial, result):
-        time = getattr(result, self._time_attr)
+        time = result[self._time_attr]
         state = self._trial_state[trial]
 
         if time - state.last_perturbation_time < self._perturbation_interval:
             return TrialScheduler.CONTINUE  # avoid checkpoint overhead
 
-        score = getattr(result, self._reward_attr)
+        score = result[self._reward_attr]
         state.last_score = score
         state.last_perturbation_time = time
         lower_quantile, upper_quantile = self._quantiles()

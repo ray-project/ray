@@ -111,7 +111,7 @@ class HyperOptSearch(SuggestionAlgorithm):
         del self._live_trial_mapping[trial_id]
 
     def _to_hyperopt_result(self, result):
-        return {"loss": -getattr(result, self._reward_attr), "status": "ok"}
+        return {"loss": -result[self._reward_attr], "status": "ok"}
 
     def _get_hyperopt_trial(self, trial_id):
         if trial_id not in self._live_trial_mapping:
