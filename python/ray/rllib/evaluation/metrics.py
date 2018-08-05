@@ -6,7 +6,7 @@ import numpy as np
 import collections
 
 import ray
-from ray.tune.result import TrainingResult
+from ray.rllib.utils import RLTrainingResult as TrainingResult
 
 
 def collect_metrics(local_evaluator, remote_evaluators=[]):

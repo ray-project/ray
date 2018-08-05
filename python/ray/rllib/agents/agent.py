@@ -12,7 +12,7 @@ import tensorflow as tf
 from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
 from ray.rllib.utils import deep_update
 from ray.tune.registry import ENV_CREATOR, _global_registry
-from ray.tune.result import TrainingResult
+from ray.rllib.utils import RLTrainingResult as TrainingResult
 from ray.tune.trainable import Trainable
 
 COMMON_CONFIG = {

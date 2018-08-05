@@ -8,7 +8,7 @@ from ray.rllib.agents.bc.bc_evaluator import BCEvaluator, \
     GPURemoteBCEvaluator, RemoteBCEvaluator
 from ray.rllib.optimizers import AsyncGradientsOptimizer
 from ray.rllib.utils import merge_dicts
-from ray.tune.result import TrainingResult
+from ray.rllib.utils import RLTrainingResult as TrainingResult
 from ray.tune.trial import Resources
 
 DEFAULT_CONFIG = {
