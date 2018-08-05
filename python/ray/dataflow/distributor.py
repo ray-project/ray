@@ -41,10 +41,6 @@ class Distributor(object):
         worker: the worker object in this process.
         cached_functions_to_run (List): A list of functions to run on all of
             the workers that should be exported as soon as connect is called.
-        function_execution_info (Dict[str, FunctionExecutionInfo]): A
-            dictionary mapping the name of a remote function to the remote
-            function itself. This is the set of remote functions that can be
-            executed by this worker.
     """
 
     def __init__(self, worker, polling_interval=0.001):
@@ -55,22 +51,6 @@ class Distributor(object):
         # import thread. It is safe to convert this worker into an actor of
         # these types.
         self.imported_actor_classes = set()
-
-        # This field is a dictionary that maps a driver ID to a dictionary of
-        # functions (and information about those functions) that have been
-        # registered for that driver (this inner dictionary maps function IDs
-        # to a FunctionExecutionInfo object. This should only be used on
-        # workers that execute remote functions.
-        self.function_execution_info = collections.defaultdict(lambda: {})
-
-        # This is a dictionary mapping driver ID to a dictionary that maps
-        # remote function IDs for that driver to a counter of the number of
-        # times that remote function has been executed on this worker. The
-        # counter is incremented every time the function is executed on this
-        # worker. When the counter reaches the maximum number of executions
-        # allowed for a particular function, the worker is killed.
-        self.num_task_executions = collections.defaultdict(lambda: {})
-
         # The inter
         self.polling_interval = polling_interval
 
@@ -109,6 +89,10 @@ class Distributor(object):
     def task_driver_id(self):
         return self.worker.task_driver_id
 
+    @property
+    def execution_info(self):
+        return self.worker.execution_info
+
     def add_actor_class(self, actor_class):
         self.imported_actor_classes.add(actor_class)
 
@@ -145,8 +129,8 @@ class Distributor(object):
         while True:
             with self.lock:
                 if (self.actor_id == NIL_ACTOR_ID
-                        and (function_id.id() in
-                             self.function_execution_info[driver_id])):
+                        and self.execution_info.has_function_id(
+                            driver_id, function_id)):
                     break
                 elif self.actor_id != NIL_ACTOR_ID and (
                         self.actor_id in self.worker.actors):
@@ -310,7 +294,6 @@ class Distributor(object):
 
     def fetch_and_register_remote_function(self, key):
         """Import a remote function."""
-        from ray.worker import FunctionExecutionInfo
         (driver_id, function_id_str, function_name, serialized_function,
          num_return_vals, module, resources,
          max_calls) = self.redis_client.hmget(key, [
@@ -327,10 +310,13 @@ class Distributor(object):
         def f():
             raise Exception("This function was not imported properly.")
 
-        self.function_execution_info[driver_id][function_id.id()] = (
-            FunctionExecutionInfo(
-                function=f, function_name=function_name, max_calls=max_calls))
-        self.num_task_executions[driver_id][function_id.id()] = 0
+        self.execution_info.add_function_info(
+            driver_id,
+            function_id=function_id,
+            function=f,
+            function_name=function_name,
+            max_calls=max_calls
+        )
 
         try:
             function = pickle.loads(serialized_function)
@@ -351,11 +337,14 @@ class Distributor(object):
         else:
             # TODO(rkn): Why is the below line necessary?
             function.__module__ = module
-            self.function_execution_info[driver_id][
-                function_id.id()] = (FunctionExecutionInfo(
+            self.execution_info.add_function_info(
+                driver_id,
+                function_id=function_id,
                 function=function,
                 function_name=function_name,
-                max_calls=max_calls))
+                max_calls=max_calls,
+                reset_execution_count=False,
+            )
             # Add the function to the function table.
             self.redis_client.rpush(b"FunctionTable:" + function_id.id(),
                                     self.worker_id)

@@ -20,9 +20,12 @@ import ray.gcs_utils
 import ray.remote_function
 import ray.services as services
 from ray.services import logger
+
 import ray.dataflow.signature
 import ray.dataflow.distributor as distributor
+import ray.dataflow.execution_info as execution_info
 import ray.dataflow.object_store_client as object_store_client
+
 from ray.dataflow.exceptions import (
     RayTaskError,
     RayGetArgumentError,
@@ -72,10 +75,6 @@ DEFAULT_ACTOR_CREATION_CPUS_SIMPLE_CASE = 0
 DEFAULT_ACTOR_METHOD_CPUS_SPECIFIED_CASE = 0
 DEFAULT_ACTOR_CREATION_CPUS_SPECIFIED_CASE = 1
 
-FunctionExecutionInfo = collections.namedtuple(
-    "FunctionExecutionInfo", ["function", "function_name", "max_calls"])
-"""FunctionExecutionInfo: A named tuple storing remote function information."""
-
 
 class WorkerBase(object):
     """A class used to define the control flow of a worker process.
@@ -112,6 +111,7 @@ class WorkerBase(object):
         self.use_raylet = False
         self.worker_id = None
 
+        self.execution_info = execution_info.ExecutionInfo()
         self.cached_remote_functions_and_actors = []
 
         self.fetch_and_register_actor = None
@@ -454,11 +454,12 @@ class Worker(WorkerBase):
         return_object_ids = task.returns()
         if task.actor_id().id() != NIL_ACTOR_ID:
             dummy_return_id = return_object_ids.pop()
-        # TODO: dataflow
-        function_executor = self.function_execution_info[
-            self.task_driver_id.id()][function_id.id()].function
-        function_name = self.function_execution_info[self.task_driver_id.id()][
-            function_id.id()].function_name
+
+        # TODO: dataflow (Why task_driver_id.id()?)
+        function_info = self.execution_info.get_function_info(
+            self.task_driver_id.id(), function_id)
+        function_executor = function_info.function
+        function_name = function_info.function_name
 
         # Get task arguments from the object store.
         try:
@@ -511,8 +512,9 @@ class Worker(WorkerBase):
 
     def _handle_process_task_failure(self, function_id, return_object_ids,
                                      error, backtrace):
-        function_name = self.function_execution_info[self.task_driver_id.id()][
-            function_id.id()].function_name
+
+        function_name = self.execution_info.get_function_name(
+            self.task_driver_id, function_id)
         failure_object = RayTaskError(function_name, error, backtrace)
         failure_objects = [
             failure_object for _ in range(len(return_object_ids))
@@ -575,9 +577,8 @@ class Worker(WorkerBase):
         # because that may indicate that the system is hanging, and it'd be
         # good to know where the system is hanging.
         with self.lock:
-            # TODO: dataflow
-            function_name = (self.function_execution_info[driver_id][
-                function_id.id()]).function_name
+            function_name = self.execution_info.get_function_name(
+                driver_id, function_id)
             if not self.use_raylet:
                 extra_data = {
                     "function_name": function_name,
@@ -598,14 +599,12 @@ class Worker(WorkerBase):
         if not self.use_raylet:
             self.profiler.flush_profile_data()
 
-        # TODO: dataflow
         # Increase the task execution counter.
-        self.num_task_executions[driver_id][function_id.id()] += 1
+        self.execution_info.increase_function_call_count(
+            driver_id, function_id)
 
-        reached_max_executions = (
-            self.num_task_executions[driver_id][function_id.id()] == self.
-            function_execution_info[driver_id][function_id.id()].max_calls)
-        if reached_max_executions:
+        if self.execution_info.has_reached_max_executions(
+                driver_id, function_id):
             self.local_scheduler_client.disconnect()
             os._exit(0)
 
