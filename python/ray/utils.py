@@ -15,8 +15,6 @@ import ray.gcs_utils
 import ray.local_scheduler
 import ray.ray_constants as ray_constants
 
-ERROR_KEY_PREFIX = b"Error:"
-
 
 def _random_string():
     id_hash = hashlib.sha1()
