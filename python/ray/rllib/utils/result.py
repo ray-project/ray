@@ -38,52 +38,52 @@ class RLTrainingResult(TrainingResult):
 
     @property
     def timesteps_total(self):
-        return self.get(timesteps_total)
+        return self.get("timesteps_total")
 
     @property
     def timesteps_this_iter(self):
-        return self.get(timesteps_this_iter)
+        return self.get("timesteps_this_iter")
 
     @property
     def info(self):
-        return self.get(info)
+        return self.get("info")
 
     @property
     def episode_reward_mean(self):
-        return self.get(episode_reward_mean)
+        return self.get("episode_reward_mean")
 
     @property
     def episode_reward_min(self):
-        return self.get(episode_reward_min)
+        return self.get("episode_reward_min")
 
     @property
     def episode_reward_max(self):
-        return self.get(episode_reward_max)
+        return self.get("episode_reward_max")
 
     @property
     def episode_len_mean(self):
-        return self.get(episode_len_mean)
+        return self.get("episode_len_mean")
 
     @property
     def episodes_total(self):
-        return self.get(episodes_total)
+        return self.get("episodes_total")
 
     @property
     def policy_reward_mean(self):
-        return self.get(policy_reward_mean)
+        return self.get("policy_reward_mean")
 
     @property
     def mean_accuracy(self):
-        return self.get(mean_accuracy)
+        return self.get("mean_accuracy")
 
     @property
     def mean_validation_accuracy(self):
-        return self.get(mean_validation_accuracy)
+        return self.get("mean_validation_accuracy")
 
     @property
     def mean_loss(self):
-        return self.get(mean_loss)
+        return self.get("mean_loss")
 
     @property
     def neg_mean_loss(self):
-        return self.get(neg_mean_loss)
+        return self.get("neg_mean_loss")

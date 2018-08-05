@@ -113,8 +113,7 @@ class Trainable(object):
         result = self._train()
         self._iteration += 1
 
-        time_this_iter = result.get("time_this_iter_s")
-        # RLlib explicitly has defaults, so `get` will not fallback
+        time_this_iter = result.time_this_iter_s
         if time_this_iter is None:
             time_this_iter = time.time() - start
         self._time_total += time_this_iter
