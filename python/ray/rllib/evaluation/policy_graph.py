@@ -91,6 +91,9 @@ class PolicyGraph(object):
     def postprocess_trajectory(self, sample_batch, other_agent_batches=None):
         """Implements algorithm-specific trajectory postprocessing.
 
+        This will be called on each trajectory fragment computed during policy
+        evaluation. Each fragment is guaranteed to be only from one episode.
+
         Arguments:
             sample_batch (SampleBatch): batch of experiences for the policy,
                 which will contain at most one episode trajectory.
