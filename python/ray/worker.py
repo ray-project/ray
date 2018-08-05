@@ -481,7 +481,7 @@ class Worker(Driver):
         except Exception as e:
             self._handle_process_task_failure(
                 function_id, return_object_ids, e,
-                ray.utils.format_error_message(traceback.format_exc()))
+                worker_logger.format_error_message(traceback.format_exc()))
             return
 
         # Execute the task.
@@ -497,7 +497,7 @@ class Worker(Driver):
             # Determine whether the exception occured during a task, not an
             # actor method.
             task_exception = task.actor_id().id() == NIL_ACTOR_ID
-            traceback_str = ray.utils.format_error_message(
+            traceback_str = worker_logger.format_error_message(
                 traceback.format_exc(), task_exception=task_exception)
             self._handle_process_task_failure(function_id, return_object_ids,
                                               e, traceback_str)
@@ -516,7 +516,7 @@ class Worker(Driver):
         except Exception as e:
             self._handle_process_task_failure(
                 function_id, return_object_ids, e,
-                ray.utils.format_error_message(traceback.format_exc()))
+                worker_logger.format_error_message(traceback.format_exc()))
 
     def _handle_process_task_failure(self, function_id, return_object_ids,
                                      error, backtrace):
