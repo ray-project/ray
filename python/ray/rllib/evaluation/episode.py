@@ -16,7 +16,7 @@ class MultiAgentEpisode(object):
     depend on them for advanced algorithms.
 
     Attributes:
-        new_batch_builder (func): Create a new empty MultiAgentBatchBuilder.
+        new_batch_builder (func): Create a new MultiAgentSampleBatchBuilder.
         add_extra_batch (func): Return a built MultiAgentBatch to the sampler.
         batch_builder (obj): Batch builder for the current episode.
         total_reward (float): Summed reward across all agents in this episode.
