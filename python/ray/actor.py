@@ -6,7 +6,6 @@ import copy
 import hashlib
 import inspect
 import json
-import traceback
 
 import ray.cloudpickle as pickle
 import ray.local_scheduler
@@ -17,7 +16,6 @@ from ray.utils import (
     decode,
     _random_string,
     is_cython,
-    push_error_to_driver,
 )
 
 DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS = 1
@@ -166,17 +164,14 @@ def save_and_log_checkpoint(worker, actor):
     try:
         actor.__ray_checkpoint__()
     except Exception:
-        traceback_str = ray.utils.format_error_message(traceback.format_exc())
         # Log the error message.
-        ray.utils.push_error_to_driver(
-            worker,
+        worker.logger.push_exception_to_driver(
             ray_constants.CHECKPOINT_PUSH_ERROR,
-            traceback_str,
             driver_id=worker.task_driver_id.id(),
             data={
                 "actor_class": actor.__class__.__name__,
                 "function_name": actor.__ray_checkpoint__.__name__
-            })
+            }, format_exc=True)
 
 
 def restore_and_log_checkpoint(worker, actor):
@@ -190,17 +185,15 @@ def restore_and_log_checkpoint(worker, actor):
     try:
         checkpoint_resumed = actor.__ray_checkpoint_restore__()
     except Exception:
-        traceback_str = ray.utils.format_error_message(traceback.format_exc())
         # Log the error message.
-        ray.utils.push_error_to_driver(
-            worker,
+        worker.logger.push_exception_to_driver(
             ray_constants.CHECKPOINT_PUSH_ERROR,
-            traceback_str,
             driver_id=worker.task_driver_id.id(),
             data={
                 "actor_class": actor.__class__.__name__,
                 "function_name": actor.__ray_checkpoint_restore__.__name__
-            })
+            }, format_exc=True)
+
     return checkpoint_resumed
 
 
@@ -333,14 +326,12 @@ def fetch_and_register_actor(actor_class_key, worker):
     except Exception:
         # If an exception was thrown when the actor was imported, we record the
         # traceback and notify the scheduler of the failure.
-        traceback_str = ray.utils.format_error_message(traceback.format_exc())
+        #
         # Log the error message.
-        push_error_to_driver(
-            worker,
+        worker.logger.push_exception_to_driver(
             ray_constants.REGISTER_ACTOR_PUSH_ERROR,
-            traceback_str,
-            driver_id,
-            data={"actor_id": actor_id_str})
+            driver_id=driver_id,
+            data={"actor_id": actor_id_str}, format_exc=True)
         # TODO(rkn): In the future, it might make sense to have the worker exit
         # here. However, currently that would lead to hanging if someone calls
         # ray.get on a method invoked on the actor.

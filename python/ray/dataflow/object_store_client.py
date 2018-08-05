@@ -203,8 +203,7 @@ class ObjectStoreClient(object):
                                        "object store. This may be fine, or it "
                                        "may be a bug.")
                     if not warning_sent:
-                        ray.utils.push_error_to_driver(
-                            self.worker,
+                        self.worker.logger.push_error_to_driver(
                             ray_constants.WAIT_FOR_CLASS_PUSH_ERROR,
                             warning_message,
                             driver_id=self.task_driver_id.id())

@@ -69,8 +69,7 @@ if __name__ == "__main__":
         ray.worker.global_worker.main_loop()
     except Exception as e:
         traceback_str = traceback.format_exc() + error_explanation
-        ray.utils.push_error_to_driver(
-            ray.worker.global_worker,
+        ray.worker.global_worker.logger.push_error_to_driver(
             "worker_crash",
             traceback_str,
             driver_id=None)

@@ -10,7 +10,6 @@ import hashlib
 import json
 import threading
 import time
-import traceback
 
 import redis
 
@@ -149,8 +148,7 @@ class Distributor(object):
                                        "registered. You may have to restart "
                                        "Ray.")
                     if not warning_sent:
-                        ray.utils.push_error_to_driver(
-                            self.worker,
+                        self.worker.logger.push_error_to_driver(
                             ray_constants.WAIT_FOR_FUNCTION_PUSH_ERROR,
                             warning_message,
                             driver_id=driver_id)
@@ -356,16 +354,14 @@ class Distributor(object):
             # Run the function.
             function({"worker": self.worker})
         except Exception:
-            # If an exception was thrown when the function was run, we record
-            # the traceback and notify the scheduler of the failure.
-            traceback_str = traceback.format_exc()
             # Log the error message.
             name = function.__name__ if ("function" in locals() and hasattr(
                 function, "__name__")) else ""
-            utils.push_error_to_driver(
-                self.worker,
+
+            # If an exception was thrown when the function was run, we record
+            # the traceback and notify the scheduler of the failure.
+            self.worker.logger.push_exception_to_driver(
                 ray_constants.FUNCTION_TO_RUN_PUSH_ERROR,
-                traceback_str,
                 driver_id=driver_id,
                 data={"name": name})
 
@@ -400,17 +396,13 @@ class Distributor(object):
         except Exception:
             # If an exception was thrown when the remote function was imported,
             # we record the traceback and notify the scheduler of the failure.
-            traceback_str = utils.format_error_message(traceback.format_exc())
-            # Log the error message.
-            utils.push_error_to_driver(
-                self.worker,
+            self.worker.logger.push_exception_to_driver(
                 ray_constants.REGISTER_REMOTE_FUNCTION_PUSH_ERROR,
-                traceback_str,
                 driver_id=driver_id,
                 data={
                     "function_id": function_id.id(),
                     "function_name": function_name
-                })
+                }, format_exc=True)
         else:
             # TODO(rkn): Why is the below line necessary?
             function.__module__ = module
