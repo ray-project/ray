@@ -270,8 +270,7 @@ class Trial(object):
         ]
 
         if self.last_result.metric is not None:
-            pieces.append('{}'.format(
-                format(self.last_result.metric, '.3g')))
+            pieces.append('{}'.format(format(self.last_result.metric, '.3g')))
 
         return ', '.join(pieces)
 

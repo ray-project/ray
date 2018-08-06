@@ -126,7 +126,8 @@ class _TFLogger(Logger):
     def on_result(self, result):
         tmp = result.as_dict()
         for k in [
-            "config", "pid", "timestamp", "time_total_s", "training_iteration"
+                "config", "pid", "timestamp", "time_total_s",
+                "training_iteration"
         ]:
             del tmp[k]  # not useful to tf log these
         values = to_tf_values(tmp, ["ray", "tune"])

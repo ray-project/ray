@@ -323,8 +323,7 @@ class Bracket():
         self._r = int(min(self._r, self._max_t_attr - self._cumul_r))
         self._cumul_r += self._r
         sorted_trials = sorted(
-            self._live_trials,
-            key=lambda t: self._live_trials[t][reward_attr])
+            self._live_trials, key=lambda t: self._live_trials[t][reward_attr])
 
         good, bad = sorted_trials[-self._n:], sorted_trials[:-self._n]
         return good, bad

@@ -286,7 +286,9 @@ class TrainableFunctionApiTest(unittest.TestCase):
             run_experiments({
                 "foo": {
                     "run": "f1",
-                    "stop": {"time": 10},
+                    "stop": {
+                        "time": 10
+                    },
                     "config": {
                         "script_min_iter_time_s": 0,
                     },
