@@ -459,8 +459,8 @@ void LineageCache::HandleEntryCommitted(const TaskID &task_id) {
   }
 }
 
-const Task LineageCache::GetTask(const TaskID &task_id) const {
-  auto entries = lineage_.GetEntries();
+const Task &LineageCache::GetTask(const TaskID &task_id) const {
+  const auto &entries = lineage_.GetEntries();
   auto it = entries.find(task_id);
   RAY_CHECK(it != entries.end());
   return it->second.TaskData();
