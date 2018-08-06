@@ -769,8 +769,6 @@ def print_failed_task(task_status):
                task_status["error_message"]))
 
 
-
-
 def error_info(worker=global_worker):
     """Return information about failed tasks."""
     worker.check_connected()
