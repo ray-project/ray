@@ -26,18 +26,16 @@ class JobRecord(models.Model):
         if json_info is None:
             return None
         return JobRecord(
-            json_info["job_id"],
-            json_info["job_name"],
-            json_info["user"],
-            json_info["type"],
-            json_info["start_time"],
-            json_info["end_time"],
-            json_info["success_trials"],
-            json_info["failed_trials"],
-            json_info["running_trials"],
-            json_info["total_trials"],
-            json_info["best_trial_id"],
-            json_info["progress"]
+            job_id=json_info["job_id"],
+            name=json_info["job_name"],
+            user=json_info["user"],
+            type=json_info["type"],
+            start_time=json_info["start_time"],
+            success_trials=json_info["success_trials"],
+            failed_trials=json_info["failed_trials"],
+            running_trials=json_info["running_trials"],
+            total_trials=json_info["total_trials"],
+            progress=json_info["progress"]
         )
 
     def is_finished(self):
@@ -63,12 +61,11 @@ class TrialRecord(models.Model):
         if json_info is None:
             return None
         return TrialRecord(
-            json_info["trial_id"],
-            json_info["job_id"],
-            json_info["status"],
-            json_info["start_time"],
-            json_info["end_time"],
-            json_info["params"]
+            trial_id=json_info["trial_id"],
+            job_id=json_info["job_id"],
+            trial_status=json_info["status"],
+            start_time=json_info["start_time"],
+            params=json_info["params"]
         )
 
 
@@ -80,8 +77,10 @@ class ResultRecord(models.Model):
     timesteps_total = models.BigIntegerField(blank=True, null=True)
     done = models.CharField(max_length=30, blank=True, null=True)
     info = models.CharField(max_length=256, blank=True, null=True)
-    episode_reward_mean = models.CharField(max_length=30, blank=True, null=True)
-    episode_len_mean = models.CharField(max_length=30, blank=True, null=True)
+    episode_reward_mean = models.CharField(
+        max_length=30, blank=True, null=True)
+    episode_len_mean = models.CharField(
+        max_length=30, blank=True, null=True)
     episodes_total = models.CharField(max_length=30, blank=True, null=True)
     mean_accuracy = models.FloatField(blank=True, null=True)
     mean_validation_accuracy = models.FloatField(blank=True, null=True)
@@ -103,5 +102,25 @@ class ResultRecord(models.Model):
         """
         Build a Result instance from a json string.
         """
-        # TODO: implement this method
-        raise NotImplementedError
+        if json_info is None:
+            return None
+        return ResultRecord(
+            trial_id=json_info["trial_id"],
+            timesteps_total=json_info["timesteps_total"],
+            done=json_info["done"],
+            info=json_info["info"],
+            episode_reward_mean=json_info["episode_reward_mean"],
+            episodes_total=json_info["episodes_total"],
+            mean_accuracy=json_info["mean_accuracy"],
+            mean_validation_accuracy=json_info["mean_validation_accuracy"],
+            mean_loss=json_info["mean_loss"],
+            experiment_id=json_info["experiment_id"],
+            trainning_iteration=json_info["training_iteration"],
+            timesteps_this_iter=json_info["timesteps_this_iter"],
+            time_this_iter_s=json_info["time_this_iter_s"],
+            time_total_s=json_info["time_total_s"],
+            date=json_info["date"],
+            timestamp=json_info["timestamp"],
+            hostname=json_info["hostname"],
+            node_ip=json_info["node_ip"],
+            config=json_info["config"])

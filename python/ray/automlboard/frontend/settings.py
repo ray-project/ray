@@ -39,7 +39,6 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'models',
-    # 'backend'
 ]
 
 MIDDLEWARE = [
@@ -148,5 +147,5 @@ STATICFILES_DIRS = (
 
 # automlboard settings
 AUTOMLBOARD_LOG_DIR = os.environ.get("AUTOMLBOARD_LOGDIR", None)
-AUTOMLBOARD_SLEEP_INTERVAL = os.environ.get("AUTOMLBOARD_SLEEP_INTERVAL", None)
+AUTOMLBOARD_RELOAD_INTERVAL = os.environ.get("AUTOMLBOARD_RELOAD_INTERVAL", None)
 AUTOMLBOARD_LOG_LEVEL = os.environ.get("AUTOMLBOARD_LOGLEVEL", None)
