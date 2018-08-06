@@ -9,6 +9,7 @@ import os
 import yaml
 
 from ray.tune.log_sync import get_syncer
+from ray.tune.result import NODE_IP, TRAINING_ITERATION
 
 try:
     import tensorflow as tf
@@ -66,7 +67,7 @@ class UnifiedLogger(Logger):
     def on_result(self, result):
         for logger in self._loggers:
             logger.on_result(result)
-        self._log_syncer.set_worker_ip(result.get("node_ip"))
+        self._log_syncer.set_worker_ip(result.get(NODE_IP))
         self._log_syncer.sync_if_needed()
 
     def close(self):
@@ -126,19 +127,18 @@ class _TFLogger(Logger):
     def on_result(self, result):
         tmp = result.copy()
         for k in [
-                "config", "pid", "timestamp", "time_total_s",
-                "training_iteration"
+                "config", "pid", "timestamp", "time_total_s", TRAINING_ITERATION
         ]:
             del tmp[k]  # not useful to tf log these
         values = to_tf_values(tmp, ["ray", "tune"])
         train_stats = tf.Summary(value=values)
-        self._file_writer.add_summary(train_stats, result["training_iteration"])
+        self._file_writer.add_summary(train_stats, result[TRAINING_ITERATION])
         iteration_value = to_tf_values({
-            "training_iteration": result["training_iteration"]
+            "training_iteration": result[TRAINING_ITERATION]
         }, ["ray", "tune"])
         iteration_stats = tf.Summary(value=iteration_value)
         self._file_writer.add_summary(iteration_stats,
-                                      result["training_iteration"])
+                                      result[TRAINING_ITERATION])
 
     def flush(self):
         self._file_writer.flush()

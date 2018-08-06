@@ -15,7 +15,7 @@ import uuid
 
 import ray
 from ray.tune.logger import UnifiedLogger
-from ray.tune.result import DEFAULT_RESULTS_DIR
+from ray.tune.result import DEFAULT_RESULTS_DIR, TIME_THIS_ITER_S, TIMESTEPS_THIS_ITER
 from ray.tune.trial import Resources
 
 
@@ -135,13 +135,13 @@ class Trainable(object):
         start = time.time()
         result = self._train()
         self._iteration += 1
-        if result.get("time_this_iter_s") is not None:
-            time_this_iter = result["time_this_iter_s"]
+        if result.get(TIME_THIS_ITER_S) is not None:
+            time_this_iter = result[TIME_THIS_ITER_S]
         else:
             time_this_iter = time.time() - start
 
         self._time_total += time_this_iter
-        self._timesteps_total += result.get("timesteps_this_iter", 0)
+        self._timesteps_total += result.get(TIMESTEPS_THIS_ITER, 0)
 
         now = datetime.today()
         result = result.copy()

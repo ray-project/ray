@@ -230,7 +230,7 @@ class Trial(object):
     def should_stop(self, result):
         """Whether the given result meets this trial's stopping criteria."""
 
-        if result.get("done"):
+        if result.get(DONE):
             return True
 
         for criteria, stop_value in self.stopping_criterion.items():
@@ -264,9 +264,9 @@ class Trial(object):
         pieces = [
             '{} [{}]'.format(
                 self._status_string(),
-                location_string(self.last_result.get("hostname"),
-                                self.last_result.get("pid"))),
-            '{} s'.format(int(self.last_result.get("time_total_s"))),
+                location_string(self.last_result.get(HOSTNAME),
+                                self.last_result.get(PID))),
+            '{} s'.format(int(self.last_result.get(TIME_TOTAL_S))),
         ]
 
         if self.last_result.get("episode_reward_mean") is not None:
