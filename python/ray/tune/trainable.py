@@ -150,6 +150,10 @@ class Trainable(object):
         result.setdefault(DONE, False)
         result.setdefault(TIMESTEPS_TOTAL, self._timesteps_total)
 
+        # Provides auto-filled neg_mean_loss for avoiding regressions
+        if result.get("mean_loss"):
+            result.setdefault("neg_mean_loss", -result["mean_loss"])
+
         now = datetime.today()
         result.update(
             experiment_id=self._experiment_id,
