@@ -504,14 +504,17 @@ class StandardAutoscaler(object):
             return
         if self.files_up_to_date(node_id):
             return
-        if self.config.get("no_restart", False) and \
-                self.num_successful_updates.get(node_id, 0) > 0:
+        successful_updated = self.num_successful_updates.get(node_id, 0) > 0
+        if succesful_updated and self.config.get("restart_only", False):
+            init_commands = self.config["worker_start_ray_commands"]
+        elif succesful_updated and self.config.get("no_restart", False):
             init_commands = (self.config["setup_commands"] +
                              self.config["worker_setup_commands"])
         else:
             init_commands = (self.config["setup_commands"] +
                              self.config["worker_setup_commands"] +
                              self.config["worker_start_ray_commands"])
+
         updater = self.node_updater_cls(
             node_id,
             self.config["provider"],
