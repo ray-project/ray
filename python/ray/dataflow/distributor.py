@@ -60,7 +60,7 @@ class Distributor(object):
         # import thread. It is safe to convert this worker into an actor of
         # these types.
         self.imported_actor_classes = set()
-        # The inter
+        # The interval of checking results.
         self.polling_interval = polling_interval
 
     def enter_startup(self):
