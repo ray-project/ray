@@ -6,8 +6,8 @@ import time
 
 def dump_json(json_info, json_file, overwrite=True):
     """
-    dumps a whole json record into the given file. Overwrite the file
-    if the overwrite flag set.
+    dumps a whole json record into the given file. Overwrite the
+    file if the overwrite flag set.
 
     Args:
         json_info(dict)
@@ -28,8 +28,8 @@ def dump_json(json_info, json_file, overwrite=True):
 
 def parse_json(json_file):
     """
-    parse a whole json record from the given file, return None if the json
-    file does not exists or exception occurs.
+    parse a whole json record from the given file, return None if
+    the json file does not exists or exception occurs.
 
     Args:
         json_file(str)
@@ -55,9 +55,9 @@ def parse_json(json_file):
 
 def parse_multiple_json(json_file, offset=None):
     """
-    parse multiple json records from the given file. Seek to the offset as the
-    start point before parsing if offset set. return empty list if the json file
-    does not exists or exception occurs.
+    parse multiple json records from the given file. Seek to the offset
+    as the start point before parsing if offset set. return empty list
+    if the json file does not exists or exception occurs.
 
     Args:
         json_file(str)

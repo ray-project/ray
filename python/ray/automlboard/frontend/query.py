@@ -9,8 +9,8 @@ import json
 
 def query_job(request):
     """
-    Rest API to query the job info, with the given job_id. The url pattern
-    should be like this:
+    Rest API to query the job info, with the given job_id. The url
+    pattern should be like this:
 
     curl http://<server>:<port>/query_job?job_id=<job_id>
 
@@ -33,7 +33,9 @@ def query_job(request):
     }
     """
     job_id = request.GET.get('job_id')
-    jobs = JobRecord.objects.filter(job_id=job_id).order_by('-start_time')
+    jobs = JobRecord.objects \
+        .filter(job_id=job_id) \
+        .order_by('-start_time')
     if len(jobs) == 0:
         resp = "Unkonwn job id %s.\n" % job_id
     else:
@@ -53,13 +55,14 @@ def query_job(request):
             "progress": job.progress
         }
         resp = json.dumps(result)
-    return HttpResponse(resp, content_type='application/json;charset=utf-8')
+    return HttpResponse(resp,
+                        content_type='application/json;charset=utf-8')
 
 
 def query_trial(request):
     """
-    Rest API to query the trial info, with the given trial_id. The url pattern
-    should be like this:
+    Rest API to query the trial info, with the given trial_id. The url
+    pattern should be like this:
 
     curl http://<server>:<port>/query_trial?trial_id=<trial_id>
 
@@ -76,7 +79,9 @@ def query_trial(request):
     }
     """
     trial_id = request.GET.get('trial_id')
-    trials = TrialRecord.objects.filter(trial_id=trial_id).order_by('-start_time')
+    trials = TrialRecord.objects \
+        .filter(trial_id=trial_id) \
+        .order_by('-start_time')
     if len(trials) == 0:
         resp = "Unkonwn trial id %s.\n" % trials
     else:
@@ -90,4 +95,5 @@ def query_trial(request):
             "params": trial.params
         }
         resp = json.dumps(result)
-    return HttpResponse(resp, content_type='application/json;charset=utf-8')
+    return HttpResponse(resp,
+                        content_type='application/json;charset=utf-8')
