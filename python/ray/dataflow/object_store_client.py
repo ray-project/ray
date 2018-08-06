@@ -53,7 +53,8 @@ class ObjectStoreClient(object):
                 plasma.connect(store_socket_name, "", release_delay))
 
     def disconnect(self):
-        self.plasma_client.disconnect()
+        if hasattr(self, 'plasma_client'):
+            self.plasma_client.disconnect()
 
     def clear(self):
         self.serialization_context.clear()
