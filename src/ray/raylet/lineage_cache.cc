@@ -265,6 +265,7 @@ void LineageCache::RemoveWaitingTask(const TaskID &task_id) {
 }
 
 void LineageCache::MarkTaskAsForwarded(const TaskID &task_id, const ClientID &node_id) {
+  RAY_CHECK(!node_id.is_nil());
   lineage_.GetEntryMutable(task_id)->MarkExplicitlyForwarded(node_id);
 }
 

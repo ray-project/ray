@@ -201,13 +201,18 @@ TEST_F(LineageCacheTest, TestMarkTaskAsForwarded) {
   }
 
   auto node_id = ClientID::from_random();
+  auto node_id2 = ClientID::from_random();
   auto forwarded_task_id = task_ids[task_ids.size() - 2];
   auto remaining_task_id = task_ids[task_ids.size() - 1];
   lineage_cache_.MarkTaskAsForwarded(forwarded_task_id, node_id);
+
   auto uncommitted_lineage =
           lineage_cache_.GetUncommittedLineage(remaining_task_id, node_id);
+  auto uncommitted_lineage_all =
+          lineage_cache_.GetUncommittedLineage(remaining_task_id, node_id2);
 
   ASSERT_EQ(1, uncommitted_lineage.GetEntries().size());
+  ASSERT_EQ(4, uncommitted_lineage_all.GetEntries().size());
   ASSERT_TRUE(uncommitted_lineage.GetEntry(remaining_task_id));
 }
 
