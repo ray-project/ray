@@ -1115,8 +1115,7 @@ void NodeManager::ResubmitTask(const TaskID &task_id) {
 void NodeManager::HandleObjectLocal(const ObjectID &object_id) {
   // Notify the task dependency manager that this object is local.
   const auto ready_task_ids = task_dependency_manager_.HandleObjectLocal(object_id);
-  // Transition the tasks whose dependencies are now fulfilled to the ready
-  // state.
+  // Transition the tasks whose dependencies are now fulfilled to the ready state.
   if (ready_task_ids.size() > 0) {
     std::unordered_set<TaskID> ready_task_id_set(ready_task_ids.begin(),
                                                  ready_task_ids.end());
@@ -1190,15 +1189,15 @@ ray::Status NodeManager::ForwardTask(const Task &task, const ClientID &node_id) 
   auto task_id = spec.TaskId();
 
   // Get and serialize the task's unforwarded, uncommitted lineage.
-  auto unforwarded_uncommitted_lineage =
-          lineage_cache_.GetUncommittedLineage(task_id, node_id);
+  auto uncommitted_lineage = lineage_cache_.GetUncommittedLineage(task_id, node_id);
   Task &lineage_cache_entry_task =
-      unforwarded_uncommitted_lineage.GetEntryMutable(task_id)->TaskDataMutable();
+          uncommitted_lineage.GetEntryMutable(task_id)->TaskDataMutable();
+
   // Increment forward count for the forwarded task.
   lineage_cache_entry_task.GetTaskExecutionSpec().IncrementNumForwards();
 
   flatbuffers::FlatBufferBuilder fbb;
-  auto request = unforwarded_uncommitted_lineage.ToFlatbuffer(fbb, task_id);
+  auto request = uncommitted_lineage.ToFlatbuffer(fbb, task_id);
   fbb.Finish(request);
 
   RAY_LOG(DEBUG) << "Forwarding task " << task_id << " to " << node_id << " spillback="

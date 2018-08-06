@@ -102,7 +102,6 @@ class LineageEntry {
 
   /// IDs of node managers that this task has been explicitly forwarded to.
   std::unordered_set<ClientID> forwarded_to_;
-
 };
 
 /// \class Lineage
@@ -214,8 +213,7 @@ class LineageCache {
   /// \param node_id The ID of the receiving node.
   /// \return The uncommitted, unforwarded lineage of the task. The returned lineage
   /// includes the entry for the requested entry_id.
-  Lineage GetUncommittedLineage(const TaskID &task_id,
-                                const ClientID &node_id) const;
+  Lineage GetUncommittedLineage(const TaskID &task_id, const ClientID &node_id) const;
 
   /// Asynchronously write any tasks that are in the UNCOMMITTED_READY state
   /// and for which all parents have been committed to the GCS. These tasks
