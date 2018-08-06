@@ -18,6 +18,7 @@ import redis
 import ray
 from ray import profiling
 import ray.cloudpickle as pickle
+import ray.dataflow.execution_info as execution_info
 import ray.ray_constants as ray_constants
 import ray.utils as utils
 
@@ -36,7 +37,7 @@ NIL_ID = ray_constants.ID_SIZE * b"\xff"
 NIL_ACTOR_ID = NIL_ID
 
 
-class Distributor(object):
+class Distributor(execution_info.ExecutionInfo):
     """A class that controls function import & export.
 
     Attributes:
@@ -52,14 +53,11 @@ class Distributor(object):
     """
 
     def __init__(self, worker, polling_interval=0.001):
+        super(Distributor, self).__init__()
         self.worker = worker
         self.cached_functions_to_run = []
         self.cached_remote_functions_and_actors = []
 
-        # A set of all of the actor class keys that have been imported by the
-        # import thread. It is safe to convert this worker into an actor of
-        # these types.
-        self.imported_actor_classes = set()
         # The interval of checking results.
         self.polling_interval = polling_interval
 
@@ -101,13 +99,6 @@ class Distributor(object):
     def task_driver_id(self):
         return self.worker.task_driver_id
 
-    @property
-    def execution_info(self):
-        return self.worker.execution_info
-
-    def add_actor_class(self, actor_class):
-        self.imported_actor_classes.add(actor_class)
-
     def wait_for_function(self, function_id, driver_id, timeout=10):
         """Wait until the function to be executed is present on this worker.
 
@@ -129,8 +120,7 @@ class Distributor(object):
         while True:
             with self.lock:
                 if (self.actor_id == NIL_ACTOR_ID
-                        and self.execution_info.has_function_id(
-                            driver_id, function_id)):
+                        and self.has_function_id(driver_id, function_id)):
                     break
                 elif self.actor_id != NIL_ACTOR_ID and (
                         self.actor_id in self.worker.actors):
@@ -362,7 +352,7 @@ class Distributor(object):
         def f():
             raise Exception("This function was not imported properly.")
 
-        self.execution_info.add_function_info(
+        self.add_function_info(
             driver_id,
             function_id=function_id,
             function=f,
@@ -385,7 +375,7 @@ class Distributor(object):
         else:
             # TODO(rkn): Why is the below line necessary?
             function.__module__ = module
-            self.execution_info.add_function_info(
+            self.add_function_info(
                 driver_id,
                 function_id=function_id,
                 function=function,

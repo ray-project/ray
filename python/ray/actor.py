@@ -313,7 +313,7 @@ def fetch_and_register_actor(actor_class_key, worker):
             temporary_actor_method,
             actor_imported=False)
 
-        worker.execution_info.add_function_info(
+        worker.distributor.add_function_info(
             driver_id,
             function_id,
             function=temporary_executor,
@@ -351,7 +351,7 @@ def fetch_and_register_actor(actor_class_key, worker):
             executor = make_actor_method_executor(
                 worker, actor_method_name, actor_method, actor_imported=True)
 
-            worker.execution_info.add_function_info(
+            worker.distributor.add_function_info(
                 driver_id,
                 function_id=function_id,
                 function=executor,

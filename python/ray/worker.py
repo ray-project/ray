@@ -21,7 +21,6 @@ import ray.services as services
 from ray.services import logger
 
 import ray.dataflow.distributor as distributor
-import ray.dataflow.execution_info as execution_info
 import ray.dataflow.logging as worker_logger
 import ray.dataflow.object_store_client as object_store_client
 import ray.dataflow.signature
@@ -126,7 +125,6 @@ class Driver(object):
         # Identity of the driver that this worker is processing.
         self.task_driver_id = None
         # Other components
-        self.execution_info = execution_info.ExecutionInfo()
         self.object_store_client = None
         self.distributor = distributor.DistributorWithImportThread(self)
 
@@ -477,9 +475,8 @@ class Worker(Driver):
         if task.actor_id().id() != NIL_ACTOR_ID:
             dummy_return_id = return_object_ids.pop()
 
-        # TODO: dataflow (Why task_driver_id.id()?)
-        function_info = self.execution_info.get_function_info(
-            self.task_driver_id.id(), function_id)
+        function_info = self.distributor.get_function_info(
+            self.task_driver_id, function_id)
         function_executor = function_info.function
         function_name = function_info.function_name
 
@@ -535,7 +532,7 @@ class Worker(Driver):
     def _handle_process_task_failure(self, function_id, return_object_ids,
                                      error, backtrace):
 
-        function_name = self.execution_info.get_function_name(
+        function_name = self.distributor.get_function_name(
             self.task_driver_id, function_id)
         failure_object = RayTaskError(function_name, error, backtrace)
         failure_objects = [
@@ -598,7 +595,7 @@ class Worker(Driver):
         # because that may indicate that the system is hanging, and it'd be
         # good to know where the system is hanging.
         with self.lock:
-            function_name = self.execution_info.get_function_name(
+            function_name = self.distributor.get_function_name(
                 driver_id, function_id)
             if not self.use_raylet:
                 extra_data = {
@@ -621,11 +618,9 @@ class Worker(Driver):
             self.profiler.flush_profile_data()
 
         # Increase the task execution counter.
-        self.execution_info.increase_function_call_count(
-            driver_id, function_id)
+        self.distributor.increase_function_call_count(driver_id, function_id)
 
-        if self.execution_info.has_reached_max_executions(
-                driver_id, function_id):
+        if self.distributor.has_reached_max_executions(driver_id, function_id):
             self.local_scheduler_client.disconnect()
             os._exit(0)
 

@@ -42,6 +42,17 @@ class ExecutionInfo(object):
         # allowed for a particular function, the worker is killed.
         self.num_task_executions = collections.defaultdict(lambda: {})
 
+        # A set of all of the actor class keys that have been imported by the
+        # import thread. It is safe to convert this worker into an actor of
+        # these types.
+        self.imported_actor_classes = set()
+
+    def add_actor_class(self, actor_class):
+        self.imported_actor_classes.add(actor_class)
+        
+    def has_imported_actor(self, actor_class):
+        return actor_class in self.imported_actor_classes
+
     def add_function_info(self,
                           driver_id,
                           function_id,
