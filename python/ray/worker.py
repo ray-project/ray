@@ -242,6 +242,19 @@ class Driver(object):
             self.object_store_client.clear()
             self.object_store_client.disconnect()
 
+    def check_version_info(self):
+        # For driver's check that the version information matches the version
+        # information that the Ray cluster was started with.
+        try:
+            ray.services.check_version_info(self.redis_client)
+        except Exception as e:
+            if self.is_driver:
+                raise e
+            elif self.is_worker:
+                self.logger.push_exception_to_driver(
+                    ray_constants.VERSION_MISMATCH_PUSH_ERROR,
+                    force_redis=True)
+
     def put_object(self, object_id, value):
         return self.object_store_client.put_object(object_id, value)
 
@@ -1373,15 +1386,7 @@ def connect(info,
 
     # For driver's check that the version information matches the version
     # information that the Ray cluster was started with.
-    try:
-        ray.services.check_version_info(worker.redis_client)
-    except Exception as e:
-        if worker.is_driver:
-            raise e
-        elif worker.is_worker:
-            worker.logger.push_exception_to_driver(
-                ray_constants.VERSION_MISMATCH_PUSH_ERROR,
-                force_redis=True)
+    worker.check_version_info()
 
     worker.lock = threading.Lock()
 
