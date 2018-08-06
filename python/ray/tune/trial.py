@@ -17,7 +17,7 @@ from ray.tune.logger import NoopLogger, UnifiedLogger, pretty_print
 # have been defined yet. See https://github.com/ray-project/ray/issues/1716.
 import ray.tune.registry
 from ray.tune.result import (DEFAULT_RESULTS_DIR, DONE, HOSTNAME, PID,
-                             TIME_TOTAL_S)
+                             TIME_TOTAL_S, TRAINING_ITERATION)
 from ray.utils import random_string, binary_to_hex
 
 DEBUG_PRINT_INTERVAL = 5
@@ -248,7 +248,7 @@ class Trial(object):
         if not self.checkpoint_freq:
             return False
 
-        return self.last_result.training_iteration % self.checkpoint_freq == 0
+        return self.last_result[TRAINING_ITERATION] % self.checkpoint_freq == 0
 
     def progress_string(self):
         """Returns a progress message for printing out to the console."""

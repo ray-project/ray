@@ -105,7 +105,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
                 return Resources(cpu=config["cpu"], gpu=config["gpu"])
 
             def _train(self):
-                return dict(done=True)
+                return dict(timesteps_this_iter=1, done=True)
 
         register_trainable("B", B)
 

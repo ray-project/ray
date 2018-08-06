@@ -16,7 +16,7 @@ import uuid
 import ray
 from ray.tune.logger import UnifiedLogger
 from ray.tune.result import (DEFAULT_RESULTS_DIR, TIME_THIS_ITER_S,
-                             TIMESTEPS_THIS_ITER)
+                             TIMESTEPS_THIS_ITER, DONE, TIMESTEPS_TOTAL)
 from ray.tune.trial import Resources
 
 
@@ -135,23 +135,27 @@ class Trainable(object):
 
         start = time.time()
         result = self._train()
+        result = result.copy()
+
         self._iteration += 1
+
         if result.get(TIME_THIS_ITER_S) is not None:
             time_this_iter = result[TIME_THIS_ITER_S]
         else:
             time_this_iter = time.time() - start
-
         self._time_total += time_this_iter
+
         self._timesteps_total += result.get(TIMESTEPS_THIS_ITER, 0)
 
+        result.setdefault(DONE, False)
+        result.setdefault(TIMESTEPS_TOTAL, self._timesteps_total)
+
         now = datetime.today()
-        result = result.copy()
         result.update(
             experiment_id=self._experiment_id,
             date=now.strftime("%Y-%m-%d_%H-%M-%S"),
             timestamp=int(time.mktime(now.timetuple())),
             training_iteration=self._iteration,
-            timesteps_total=self._timesteps_total,
             time_this_iter_s=time_this_iter,
             time_total_s=self._time_total,
             pid=os.getpid(),
