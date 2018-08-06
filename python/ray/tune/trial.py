@@ -269,8 +269,17 @@ class Trial(object):
             '{} s'.format(int(self.last_result.time_total_s)),
         ]
 
-        if self.last_result.metric is not None:
-            pieces.append('{}'.format(format(self.last_result.metric, '.3g')))
+        if self.last_result.episode_reward_mean is not None:
+            pieces.append('{} rew'.format(
+                format(self.last_result.episode_reward_mean, '.3g')))
+
+        if self.last_result.mean_loss is not None:
+            pieces.append('{} loss'.format(
+                format(self.last_result.mean_loss, '.3g')))
+
+        if self.last_result.mean_accuracy is not None:
+            pieces.append('{} acc'.format(
+                format(self.last_result.mean_accuracy, '.3g')))
 
         return ', '.join(pieces)
 
