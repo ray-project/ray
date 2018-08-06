@@ -452,6 +452,7 @@ def get_head_ip(cluster_config_file):
 cli.add_command(start)
 cli.add_command(stop)
 cli.add_command(create_or_update)
+cli.add_command(create_or_update, name="up")
 cli.add_command(attach)
 cli.add_command(exec_cmd, name="exec")
 cli.add_command(teardown)
