@@ -420,12 +420,17 @@ def attach(cluster_config_file):
 @click.argument("cluster_config_file", required=True, type=str)
 @click.argument("cmd", required=True, type=str)
 @click.option(
+    "--halt",
+    is_flag=True,
+    default=False,
+    help=("Halt the cluster after the command finishes running."))
+@click.option(
     "--screen",
     is_flag=True,
     default=False,
     help=("Run the command in a screen."))
-def exec(cluster_config_file, cmd, screen):
-    exec_cluster(cluster_config_file, cmd, screen)
+def exec(cluster_config_file, cmd, screen, halt):
+    exec_cluster(cluster_config_file, cmd, screen, halt)
 
 
 @click.command()
