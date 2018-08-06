@@ -206,10 +206,10 @@ def exec_cluster(config_file, cmd, screen, halt):
     if halt:
         cmd += ("; ray stop; ray teardown ~/ray_bootstrap_config.yaml --yes "
                 "--workers-only; sudo shutdown -h now")
-    _exec(updater, cmd, screen)
+    _exec(updater, cmd, screen, expect_error=halt)
 
 
-def _exec(updater, cmd, screen):
+def _exec(updater, cmd, screen, expect_error=False):
     if cmd:
         if screen:
             cmd = [
@@ -217,7 +217,8 @@ def _exec(updater, cmd, screen):
                 quote(cmd + "; exec bash")
             ]
             cmd = " ".join(cmd)
-        updater.ssh_cmd(cmd, verbose=True, allocate_tty=True)
+        updater.ssh_cmd(
+            cmd, verbose=True, allocate_tty=True, expect_error=expect_error)
     if screen:
         updater.ssh_cmd(
             "screen -L -xRR",

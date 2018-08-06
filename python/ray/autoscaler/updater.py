@@ -187,7 +187,8 @@ class NodeUpdater(object):
                 redirect=None,
                 verbose=False,
                 allocate_tty=False,
-                emulate_interactive=True):
+                emulate_interactive=True,
+                expect_error=False):
         if verbose:
             print(
                 "NodeUpdater: running {} on {}...".format(
@@ -199,7 +200,11 @@ class NodeUpdater(object):
         if emulate_interactive:
             force_interactive = "set -i || true && source ~/.bashrc && "
             cmd = "bash --login -c {}".format(quote(force_interactive + cmd))
-        self.process_runner.check_call(
+        if expect_error:
+            call = self.process_runner.call
+        else:
+            call = self.process_runner.check_call
+        call(
             ssh + [
                 "-o", "ConnectTimeout={}s".format(connect_timeout), "-o",
                 "StrictHostKeyChecking=no", "-i", self.ssh_private_key,
