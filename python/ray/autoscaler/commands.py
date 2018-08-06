@@ -183,18 +183,18 @@ def get_or_create_head_node(config, no_restart, yes):
                                        provider.external_ip(head_node)))
 
 
-def attach_cluster(config_file):
+def attach_cluster(config_file, start):
     """Attaches to a screen for the specified cluster."""
 
-    exec_cluster(config_file, "screen -L -xRR", False, False)
+    exec_cluster(config_file, "screen -L -xRR", True, False, start)
 
 
-def exec_cluster(config_file, cmd, screen, halt):
+def exec_cluster(config_file, cmd, screen, stop, start):
     """Runs a command on the specified cluster."""
 
     config = yaml.load(open(config_file).read())
     config = _bootstrap_config(config)
-    head_node = _get_head_node(config)
+    head_node = _get_head_node(config, create_if_needed=start)
     updater = NodeUpdaterProcess(
         head_node,
         config["provider"],
@@ -203,10 +203,10 @@ def exec_cluster(config_file, cmd, screen, halt):
         config["file_mounts"], [],
         "",
         redirect_output=False)
-    if halt:
+    if stop:
         cmd += ("; ray stop; ray teardown ~/ray_bootstrap_config.yaml --yes "
                 "--workers-only; sudo shutdown -h now")
-    _exec(updater, cmd, screen, expect_error=halt)
+    _exec(updater, cmd, screen, expect_error=stop)
 
 
 def _exec(updater, cmd, screen, expect_error=False):
@@ -236,7 +236,7 @@ def get_head_node_ip(config_file):
     return provider.external_ip(head_node)
 
 
-def _get_head_node(config):
+def _get_head_node(config, create_if_needed=False):
     provider = get_node_provider(config["provider"], config["cluster_name"])
     head_node_tags = {
         TAG_RAY_NODE_TYPE: "head",
@@ -245,6 +245,8 @@ def _get_head_node(config):
     if len(nodes) > 0:
         head_node = nodes[0]
         return head_node
+    elif create_if_needed:
+        get_or_create_head_node(config, no_restart=False, yes=True)
     else:
         print("Head node of cluster ({}) not found!".format(
             config["cluster_name"]))

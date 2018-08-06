@@ -412,25 +412,35 @@ def teardown(cluster_config_file, yes, workers_only):
 
 @click.command()
 @click.argument("cluster_config_file", required=True, type=str)
-def attach(cluster_config_file):
-    attach_cluster(cluster_config_file)
+@click.option(
+    "--start",
+    is_flag=True,
+    default=False,
+    help=("Start the cluster if needed."))
+def attach(cluster_config_file, start):
+    attach_cluster(cluster_config_file, start)
 
 
 @click.command()
 @click.argument("cluster_config_file", required=True, type=str)
 @click.argument("cmd", required=True, type=str)
 @click.option(
-    "--halt",
+    "--stop",
     is_flag=True,
     default=False,
-    help=("Halt the cluster after the command finishes running."))
+    help=("Stop the cluster after the command finishes running."))
+@click.option(
+    "--start",
+    is_flag=True,
+    default=False,
+    help=("Start the cluster if needed."))
 @click.option(
     "--screen",
     is_flag=True,
     default=False,
     help=("Run the command in a screen."))
-def exec_cmd(cluster_config_file, cmd, screen, halt):
-    exec_cluster(cluster_config_file, cmd, screen, halt)
+def exec_cmd(cluster_config_file, cmd, screen, stop, start):
+    exec_cluster(cluster_config_file, cmd, screen, stop, start)
 
 
 @click.command()
