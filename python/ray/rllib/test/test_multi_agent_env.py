@@ -313,8 +313,8 @@ class TestMultiAgentEnv(unittest.TestCase):
         for i in range(100):
             result = pg.train()
             print("Iteration {}, reward {}, timesteps {}".format(
-                i, result.episode_reward_mean, result.timesteps_total))
-            if result.episode_reward_mean >= 50 * n:
+                i, result["episode_reward_mean"], result["timesteps_total"]))
+            if result["episode_reward_mean"] >= 50 * n:
                 return
         raise Exception("failed to improve reward")
 
@@ -349,7 +349,7 @@ class TestMultiAgentEnv(unittest.TestCase):
         for i in range(10):
             result = pg.train()
             print("Iteration {}, reward {}, timesteps {}".format(
-                i, result.episode_reward_mean, result.timesteps_total))
+                i, result["episode_reward_mean"], result["timesteps_total"]))
         self.assertTrue(
             pg.compute_action([0, 0, 0, 0], policy_id="policy_1") in [0, 1])
         self.assertTrue(
@@ -407,9 +407,9 @@ class TestMultiAgentEnv(unittest.TestCase):
                 ev.foreach_policy(
                     lambda p, _: p.update_target()
                     if isinstance(p, DQNPolicyGraph) else None)
-                print("Iter {}, rew {}".format(i, result.policy_reward_mean))
-                print("Total reward", result.episode_reward_mean)
-            if result.episode_reward_mean >= 25 * n:
+                print("Iter {}, rew {}".format(i, result["policy_reward_mean"]))
+                print("Total reward", result["episode_reward_mean"])
+            if result["episode_reward_mean"] >= 25 * n:
                 return
         print(result)
         raise Exception("failed to improve reward")
@@ -442,9 +442,9 @@ class TestMultiAgentEnv(unittest.TestCase):
         for i in range(100):
             optimizer.step()
             result = collect_metrics(ev)
-            print("Iteration {}, rew {}".format(i, result.policy_reward_mean))
-            print("Total reward", result.episode_reward_mean)
-            if result.episode_reward_mean >= 25 * n:
+            print("Iteration {}, rew {}".format(i, result["policy_reward_mean"]))
+            print("Total reward", result["episode_reward_mean"])
+            if result["episode_reward_mean"] >= 25 * n:
                 return
         raise Exception("failed to improve reward")
 

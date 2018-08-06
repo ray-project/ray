@@ -112,7 +112,7 @@ class PPOAgent(Agent):
         res = self.optimizer.collect_metrics()
         res.update(
             timesteps_this_iter=self.optimizer.num_steps_sampled - prev_steps,
-            info=dict(fetches, **res.info))
+            info=dict(fetches, **res.get("info", {})))
         return res
 
     def _stop(self):
