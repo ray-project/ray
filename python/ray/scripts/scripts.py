@@ -429,7 +429,7 @@ def attach(cluster_config_file):
     is_flag=True,
     default=False,
     help=("Run the command in a screen."))
-def exec(cluster_config_file, cmd, screen, halt):
+def exec_cmd(cluster_config_file, cmd, screen, halt):
     exec_cluster(cluster_config_file, cmd, screen, halt)
 
 
@@ -443,7 +443,7 @@ cli.add_command(start)
 cli.add_command(stop)
 cli.add_command(create_or_update)
 cli.add_command(attach)
-cli.add_command(exec)
+cli.add_command(exec_cmd, name="exec")
 cli.add_command(teardown)
 cli.add_command(get_head_ip)
 
