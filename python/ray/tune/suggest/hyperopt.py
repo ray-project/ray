@@ -29,7 +29,7 @@ class HyperOptSearch(SuggestionAlgorithm):
             parameters generated in the variant generation process.
         max_concurrent (int): Number of maximum concurrent trials. Defaults
             to 10.
-        reward_attr (str): The TrainingResult objective value attribute.
+        reward_attr (str): The training result objective value attribute.
             This refers to an increasing value, which is internally negated
             when interacting with HyperOpt so that HyperOpt can "maximize"
             this value.

@@ -18,11 +18,11 @@ class AsyncHyperBandScheduler(FIFOScheduler):
     See https://openreview.net/forum?id=S1Y7OOlRZ
 
     Args:
-        time_attr (str): The TrainingResult attr to use for comparing time.
+        time_attr (str): A training result attr to use for comparing time.
             Note that you can pass in something non-temporal such as
             `training_iteration` as a measure of progress, the only requirement
             is that the attribute should increase monotonically.
-        reward_attr (str): The TrainingResult objective value attribute. As
+        reward_attr (str): The training result objective value attribute. As
             with `time_attr`, this may refer to any objective value. Stopping
             procedures will use this attribute.
         max_t (float): max time units per trial. Trials will be stopped after

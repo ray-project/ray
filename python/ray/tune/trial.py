@@ -339,7 +339,7 @@ class Trial(object):
             result.update(done=True)
         if self.verbose and (terminate or time.time() - self.last_debug >
                              DEBUG_PRINT_INTERVAL):
-            print("TrainingResult for {}:".format(self))
+            print("Result for {}:".format(self))
             print("  {}".format(pretty_print(result).replace("\n", "\n  ")))
             self.last_debug = time.time()
         self.last_result = result

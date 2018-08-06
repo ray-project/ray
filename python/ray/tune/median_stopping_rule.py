@@ -15,11 +15,11 @@ class MedianStoppingRule(FIFOScheduler):
     https://research.google.com/pubs/pub46180.html
 
     Args:
-        time_attr (str): The TrainingResult attr to use for comparing time.
+        time_attr (str): The training result attr to use for comparing time.
             Note that you can pass in something non-temporal such as
             `training_iteration` as a measure of progress, the only requirement
             is that the attribute should increase monotonically.
-        reward_attr (str): The TrainingResult objective value attribute. As
+        reward_attr (str): The training result objective value attribute. As
             with `time_attr`, this may refer to any objective value that
             is supposed to increase with time.
         grace_period (float): Only stop trials at least this old in time.

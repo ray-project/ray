@@ -12,7 +12,7 @@ import random
 import numpy as np
 
 import ray
-from ray.tune import Trainable, TrainingResult, register_trainable, \
+from ray.tune import Trainable, register_trainable, \
     run_experiments
 from ray.tune.async_hyperband import AsyncHyperBandScheduler
 
@@ -34,7 +34,7 @@ class MyTrainableClass(Trainable):
 
         # Here we use `episode_reward_mean`, but you can also report other
         # objectives such as loss or accuracy (see tune/result.py).
-        return TrainingResult(episode_reward_mean=v)
+        return {"episode_reward_mean": v}
 
     def _save(self, checkpoint_dir):
         path = os.path.join(checkpoint_dir, "checkpoint")

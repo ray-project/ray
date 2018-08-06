@@ -13,7 +13,7 @@ from ray.tune import Trainable, TuneError
 from ray.tune import register_env, register_trainable, run_experiments
 from ray.tune.trial_scheduler import TrialScheduler, FIFOScheduler
 from ray.tune.registry import _global_registry, TRAINABLE_CLASS
-from ray.tune.result import DEFAULT_RESULTS_DIR, TrainingResult
+from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.util import pin_in_object_store, get_pinned_object
 from ray.tune.experiment import Experiment
 from ray.tune.trial import Trial, Resources
@@ -105,7 +105,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
                 return Resources(cpu=config["cpu"], gpu=config["gpu"])
 
             def _train(self):
-                return TrainingResult(done=True)
+                return dict(done=True)
 
         register_trainable("B", B)
 

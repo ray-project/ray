@@ -76,6 +76,7 @@ class Trainable(object):
 
         self._iteration = 0
         self._time_total = 0.0
+        self._timesteps_total = 0
         self._setup()
         self._initialize_ok = True
         self._local_ip = ray.services.get_node_ip_address()
@@ -101,8 +102,30 @@ class Trainable(object):
 
         Subclasses should override ``_train()`` instead to return results.
 
+        This class automatically fills the following fields in the result:
+            done (bool): training is terminated. Filled only if not provided.
+            time_this_iter_s (float): Time in seconds
+                this iteration took to run. This may be overriden in order to
+                override the system-computed time difference.
+            time_total_s (float): Accumulated time in seconds
+                for this entire experiment.
+            experiment_id (str): Unique string identifier
+                for this experiment. This id is preserved
+                across checkpoint / restore calls.
+            training_iteration (int): The index of this
+                training iteration, e.g. call to train().
+            pid (str): The pid of the training process.
+            date (str): A formatted date of
+                when the result was processed.
+            timestamp (str): A UNIX timestamp of
+                when the result was processed.
+            hostname (str): The hostname of the machine
+                hosting the training process.
+            node_ip (str): The node ip of the machine
+                hosting the training process.
+
         Returns:
-            A TrainingResult that describes training progress.
+            A dict that describes training progress.
         """
 
         if not self._initialize_ok:
@@ -112,12 +135,13 @@ class Trainable(object):
         start = time.time()
         result = self._train()
         self._iteration += 1
-
-        if result.time_this_iter_s is None:
-            time_this_iter = time.time() - start
-        else:
+        if result.time_this_iter_s is not None:
             time_this_iter = result.time_this_iter_s
+        else:
+            time_this_iter = time.time() - start
+
         self._time_total += time_this_iter
+        self._timesteps_total += result.get("timesteps_this_iter", 0)
 
         now = datetime.today()
         result = result.copy()
@@ -126,6 +150,7 @@ class Trainable(object):
             date=now.strftime("%Y-%m-%d_%H-%M-%S"),
             timestamp=int(time.mktime(now.timetuple())),
             training_iteration=self._iteration,
+            timesteps_total=self._timesteps_total,
             time_this_iter_s=time_this_iter,
             time_total_s=self._time_total,
             pid=os.getpid(),
@@ -151,8 +176,10 @@ class Trainable(object):
         """
 
         checkpoint_path = self._save(checkpoint_dir or self.logdir)
-        pickle.dump([self._experiment_id, self._iteration, self._time_total],
-                    open(checkpoint_path + ".tune_metadata", "wb"))
+        pickle.dump([
+            self._experiment_id, self._iteration, self._timesteps_total,
+            self._time_total
+        ], open(checkpoint_path + ".tune_metadata", "wb"))
         return checkpoint_path
 
     def save_to_object(self):
@@ -199,7 +226,8 @@ class Trainable(object):
         metadata = pickle.load(open(checkpoint_path + ".tune_metadata", "rb"))
         self._experiment_id = metadata[0]
         self._iteration = metadata[1]
-        self._time_total = metadata[2]
+        self._timesteps_total = metadata[2]
+        self._time_total = metadata[3]
 
     def restore_from_object(self, obj):
         """Restores training state from a checkpoint object.
@@ -228,7 +256,10 @@ class Trainable(object):
             self._stop()
 
     def _train(self):
-        """Subclasses should override this to implement train()."""
+        """Subclasses should override this to implement train().
+
+        Returns:
+            A dict that describes training progress."""
 
         raise NotImplementedError
 

@@ -8,7 +8,6 @@ import traceback
 
 from ray.tune import TuneError
 from ray.tune.trainable import Trainable
-from ray.tune.result import TrainingResult
 from ray.tune.util import _serve_get_pin_requests
 
 
@@ -26,11 +25,11 @@ class StatusReporter(object):
         """Report updated training status.
 
         Args:
-            kwargs (TrainingResult): Latest training result status.
+            kwargs: Latest training result status.
         """
 
         with self._lock:
-            self._latest_result = self._last_result = TrainingResult(**kwargs)
+            self._latest_result = self._last_result = kwargs.copy()
 
     def _get_and_clear_status(self):
         if self._error:
