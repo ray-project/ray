@@ -23,8 +23,9 @@ from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_LAUNCH_CONFIG, \
 from ray.autoscaler.updater import NodeUpdaterProcess
 
 
-def create_or_update_cluster(config_file, override_min_workers,
-                             override_max_workers, no_restart, yes):
+def create_or_update_cluster(
+        config_file, override_min_workers, override_max_workers,
+        no_restart, restart_only, yes):
     """Create or updates an autoscaling Ray cluster from a config json."""
 
     config = yaml.load(open(config_file).read())
@@ -33,7 +34,7 @@ def create_or_update_cluster(config_file, override_min_workers,
     if override_max_workers is not None:
         config["max_workers"] = override_max_workers
     config = _bootstrap_config(config)
-    get_or_create_head_node(config, no_restart, yes)
+    get_or_create_head_node(config, no_restart, restart_only, yes)
 
 
 def _bootstrap_config(config):
@@ -74,7 +75,7 @@ def teardown_cluster(config_file, yes, workers_only):
         nodes = provider.nodes({TAG_RAY_NODE_TYPE: "worker"})
 
 
-def get_or_create_head_node(config, no_restart, yes):
+def get_or_create_head_node(config, no_restart, restart_only, yes):
     """Create the cluster head node, which in turn creates the workers."""
 
     provider = get_node_provider(config["provider"], config["cluster_name"])
@@ -136,7 +137,9 @@ def get_or_create_head_node(config, no_restart, yes):
         "~/ray_bootstrap_config.yaml": remote_config_file.name
     })
 
-    if no_restart:
+    if restart_only:
+        init_commands = config["head_start_ray_commands"]
+    elif no_restart:
         init_commands = (
             config["setup_commands"] + config["head_setup_commands"])
     else:
