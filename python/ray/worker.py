@@ -1456,11 +1456,6 @@ def connect(info,
         64,
     )
 
-    if not worker.use_raylet:
-        local_scheduler_socket = info["local_scheduler_socket_name"]
-    else:
-        local_scheduler_socket = info["raylet_socket_name"]
-
     # If this is a driver, set the current task ID, the task driver ID, and set
     # the task index to 0.
     if worker.is_driver:
@@ -1520,12 +1515,17 @@ def connect(info,
         # A non-driver worker begins without an assigned task.
         worker.current_task_id = ray.ObjectID(NIL_ID)
 
+    # Create the local scheduler client.
+    if not worker.use_raylet:
+        local_scheduler_socket = info["local_scheduler_socket_name"]
+    else:
+        local_scheduler_socket = info["raylet_socket_name"]
     worker.local_scheduler_client = ray.local_scheduler.LocalSchedulerClient(
         local_scheduler_socket, worker.worker_id, is_worker,
         worker.current_task_id, worker.use_raylet)
 
     # Start the import thread
-    worker.distributor.start()
+    worker.distributor.start_import_thread()
 
     # If this is a driver running in SCRIPT_MODE, start a thread to print error
     # messages asynchronously in the background. Ideally the scheduler would
@@ -1538,34 +1538,11 @@ def connect(info,
 
     # If we are using the raylet code path and we are not in local mode, start
     # a background thread to periodically flush profiling data to the GCS.
-    if mode != LOCAL_MODE and worker.use_raylet:
+    if worker.use_raylet:
         worker.profiler.start_flush_thread()
 
     if worker.is_driver:
-        # Add the directory containing the script that is running to the Python
-        # paths of the workers. Also add the current directory. Note that this
-        # assumes that the directory structures on the machines in the clusters
-        # are the same.
-        script_directory = os.path.abspath(os.path.dirname(sys.argv[0]))
-        current_directory = os.path.abspath(os.path.curdir)
-        worker.distributor.run_function_on_all_workers(
-            lambda worker_info: sys.path.insert(1, script_directory))
-        worker.distributor.run_function_on_all_workers(
-            lambda worker_info: sys.path.insert(1, current_directory))
-        # TODO(rkn): Here we first export functions to run, then remote
-        # functions. The order matters. For example, one of the functions to
-        # run may set the Python path, which is needed to import a module used
-        # to define a remote function. We may want to change the order to
-        # simply be the order in which the exports were defined on the driver.
-        # In addition, we will need to retain the ability to decide what the
-        # first few exports are (mostly to set the Python path). Additionally,
-        # note that the first exports to be defined on the driver will be the
-        # ones defined in separate modules that are imported by the driver.
-        # Export cached functions_to_run.
-        worker.distributor.export_all_cached_functions()
-        # Export cached remote functions to the workers.
-        worker.distributor.export_all_remote_cached_functions()
-
+        worker.distributor.export_for_driver()
 
     worker.distributor.finish_startup()
 

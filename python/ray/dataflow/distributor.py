@@ -8,6 +8,8 @@ from __future__ import print_function
 
 import hashlib
 import json
+import os
+import sys
 import threading
 import time
 
@@ -26,6 +28,8 @@ EXPORTS = 'Exports'
 FUNCTIONS_TO_RUN = b'FunctionsToRun'
 REMOTE_FUNCTION = b'RemoteFunction'
 ACTOR_CLASS = b'ActorClass'
+CACHED_REMOTE_FUNCTION = 'remote_function'
+CACHED_ACTOR = 'actor'
 
 # This must match the definition of NIL_ACTOR_ID in task.h.
 NIL_ID = ray_constants.ID_SIZE * b"\xff"
@@ -101,13 +105,6 @@ class Distributor(object):
     def execution_info(self):
         return self.worker.execution_info
 
-    def append_cached_remote_function(self, remote_function):
-        self.cached_remote_functions_and_actors.append(
-            ("remote_function", remote_function))
-
-    def append_cached_actor(self, actor):
-        self.cached_remote_functions_and_actors.append(("actor", actor))
-
     def add_actor_class(self, actor_class):
         self.imported_actor_classes.add(actor_class)
 
@@ -166,20 +163,6 @@ class Distributor(object):
     def _push_exports(self, key, info):
         self.redis_client.hmset(key, info)
         self.redis_client.rpush(EXPORTS, key)
-
-    def export_all_cached_functions(self):
-        for function in self.cached_functions_to_run:
-            self.run_function_on_all_workers(function)
-
-    def export_all_remote_cached_functions(self):
-        for cached_type, info in self.cached_remote_functions_and_actors:
-            if cached_type == "remote_function":
-                info._export()
-            elif cached_type == "actor":
-                (key, actor_class_info) = info
-                self.publish_actor_class_to_key(key, actor_class_info)
-            else:
-                assert False, "This code should be unreachable."
 
     def export_remote_function(self, function_id, function_name, function,
                                max_calls, decorated_function):
@@ -414,6 +397,47 @@ class Distributor(object):
             self.redis_client.rpush(b"FunctionTable:" + function_id.id(),
                                     self.worker_id)
 
+    def append_cached_remote_function(self, remote_function):
+        self.cached_remote_functions_and_actors.append(
+            (CACHED_REMOTE_FUNCTION, remote_function))
+
+    def append_cached_actor(self, actor):
+        self.cached_remote_functions_and_actors.append((CACHED_ACTOR, actor))
+
+    def export_for_driver(self):
+        # Add the directory containing the script that is running to the Python
+        # paths of the workers. Also add the current directory. Note that this
+        # assumes that the directory structures on the machines in the clusters
+        # are the same.
+        script_directory = os.path.abspath(os.path.dirname(sys.argv[0]))
+        current_directory = os.path.abspath(os.path.curdir)
+        self.run_function_on_all_workers(
+            lambda worker_info: sys.path.insert(1, script_directory))
+        self.run_function_on_all_workers(
+            lambda worker_info: sys.path.insert(1, current_directory))
+        # TODO(rkn): Here we first export functions to run, then remote
+        # functions. The order matters. For example, one of the functions to
+        # run may set the Python path, which is needed to import a module used
+        # to define a remote function. We may want to change the order to
+        # simply be the order in which the exports were defined on the driver.
+        # In addition, we will need to retain the ability to decide what the
+        # first few exports are (mostly to set the Python path). Additionally,
+        # note that the first exports to be defined on the driver will be the
+        # ones defined in separate modules that are imported by the driver.
+
+        # Export cached functions_to_run.
+        for function in self.cached_functions_to_run:
+            self.run_function_on_all_workers(function)
+        # Export cached remote functions to the workers.
+        for cached_type, info in self.cached_remote_functions_and_actors:
+            if cached_type == CACHED_REMOTE_FUNCTION:
+                info._export()
+            elif cached_type == CACHED_ACTOR:
+                (key, actor_class_info) = info
+                self.publish_actor_class_to_key(key, actor_class_info)
+            else:
+                assert False, "This code should be unreachable."
+
 
 class DistributorWithImportThread(Distributor):
     """A thread used to import exports from the driver or other workers.
@@ -427,7 +451,7 @@ class DistributorWithImportThread(Distributor):
     def __init__(self, worker):
         super(DistributorWithImportThread, self).__init__(worker)
 
-    def start(self):
+    def start_import_thread(self):
         """Start the import thread."""
         t = threading.Thread(target=self._run)
         # Making the thread a daemon causes it to exit
