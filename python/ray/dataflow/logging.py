@@ -1,3 +1,4 @@
+import sys
 import threading
 import time
 import traceback
@@ -8,6 +9,8 @@ import ray.gcs_utils
 import ray.local_scheduler
 import ray.ray_constants as ray_constants
 from ray.services import logger
+import ray.services as services
+
 from ray.utils import _random_string
 
 ERROR_KEY_PREFIX = b"Error:"
@@ -37,16 +40,16 @@ def format_error_message(exception_message, task_exception=False):
     return "\n".join(lines)
 
 
-class WorkerLogger(object):
-    def __init__(self, worker, global_state):
-        """Initialize the worker logger.
-
-        Args:
-            worker: The worker to use.
-        """
+class LocalLogger(object):
+    def __init__(self, worker):
         self.worker = worker
-        self.global_state = global_state
-        self.error_message_pubsub_client = None
+        self.log_stdout_file = None
+        self.log_stderr_file = None
+
+    @property
+    def redirected(self):
+        return (self.log_stdout_file is not None
+                or self.log_stderr_file is not None)
 
     @property
     def use_raylet(self):
@@ -55,6 +58,34 @@ class WorkerLogger(object):
     @property
     def redis_client(self):
         return self.worker.redis_client
+
+    def redirect_logging_output(self):
+        # This key is set in services.py when Redis is started.
+        redirect_worker_output_val = self.redis_client.get("RedirectOutput")
+        if (redirect_worker_output_val is not None
+                and int(redirect_worker_output_val) == 1):
+            log_stdout_file, log_stderr_file = services.new_log_files(
+                "worker", True)
+            self.log_stdout_file = log_stdout_file
+            self.log_stderr_file = log_stderr_file
+            sys.stdout = log_stdout_file
+            sys.stderr = log_stderr_file
+            services.record_log_files_in_redis(
+                self.worker.redis_address, self.worker.node_ip_address,
+                [log_stdout_file, log_stderr_file])
+
+
+class WorkerLogger(LocalLogger):
+    def __init__(self, worker, global_state):
+        """Initialize the worker logger.
+
+        Args:
+            worker: The worker to use.
+        """
+
+        super(WorkerLogger, self).__init__(worker)
+        self.global_state = global_state
+        self.error_message_pubsub_client = None
 
     @property
     def lock(self):

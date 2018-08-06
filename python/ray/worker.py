@@ -1393,21 +1393,7 @@ def connect(info,
     # Check the RedirectOutput key in Redis and based on its value redirect
     # worker output and error to their own files.
     if worker.is_worker:
-        # This key is set in services.py when Redis is started.
-        redirect_worker_output_val = worker.redis_client.get("RedirectOutput")
-        if (redirect_worker_output_val is not None
-                and int(redirect_worker_output_val) == 1):
-            redirect_worker_output = 1
-        else:
-            redirect_worker_output = 0
-        if redirect_worker_output:
-            log_stdout_file, log_stderr_file = services.new_log_files(
-                "worker", True)
-            sys.stdout = log_stdout_file
-            sys.stderr = log_stderr_file
-            services.record_log_files_in_redis(
-                info["redis_address"], info["node_ip_address"],
-                [log_stdout_file, log_stderr_file])
+        worker.logger.redirect_logging_output()
 
     # Create an object for interfacing with the global state.
     global_state._initialize_global_state(redis_ip_address, int(redis_port))
@@ -1440,9 +1426,11 @@ def connect(info,
             "plasma_manager_socket": info["manager_socket_name"],
             "local_scheduler_socket": info["local_scheduler_socket_name"]
         }
-        if redirect_worker_output:
-            worker_dict["stdout_file"] = os.path.abspath(log_stdout_file.name)
-            worker_dict["stderr_file"] = os.path.abspath(log_stderr_file.name)
+        if worker.logger.redirected:
+            log_stdout_filename = worker.logger.log_stdout_file.name
+            log_stderr_filename = worker.logger.log_stderr_file.name
+            worker_dict["stdout_file"] = os.path.abspath(log_stdout_filename)
+            worker_dict["stderr_file"] = os.path.abspath(log_stderr_filename)
         worker.redis_client.hmset(b"Workers:" + worker.worker_id, worker_dict)
         is_worker = True
     else:
