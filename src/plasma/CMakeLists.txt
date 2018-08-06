@@ -28,7 +28,7 @@ add_dependencies(gen_plasma_fbs flatbuffers_ep)
 # Copy the fbs files from Arrow project to local directory.
 add_custom_command(
   OUTPUT ${PLASMA_FBS_SRC}
-  COMMAND cp -rf ${CMAKE_CURRENT_LIST_DIR}/../../thirdparty/build/arrow/cpp/src/plasma/format/ ${CMAKE_CURRENT_LIST_DIR}/format/
+  COMMAND cp -rf ${CMAKE_CURRENT_LIST_DIR}/../../thirdparty/build/arrow/cpp/src/plasma/format/ ${CMAKE_CURRENT_LIST_DIR}/
   COMMENT "Copying ${PLASMA_FBS_SRC} to local"
   VERBATIM)
 
