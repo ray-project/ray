@@ -60,6 +60,9 @@ class LocalLogger(object):
         return self.worker.redis_client
 
     def redirect_logging_output(self):
+        # TODO(suquark): Could we just redirect output of logger instead of
+        # the standard I/O?
+
         # This key is set in services.py when Redis is started.
         redirect_worker_output_val = self.redis_client.get("RedirectOutput")
         if (redirect_worker_output_val is not None

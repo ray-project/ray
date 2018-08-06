@@ -90,6 +90,7 @@ class Driver(object):
         mode: The mode of the worker. One of SCRIPT_MODE, LOCAL_MODE,
             SILENT_MODE, and WORKER_MODE.
         profiler: the profiler used to aggregate profiling information.
+        lock (Lock): Worker's lock for general-purpose sync.
         state_lock (Lock):
             Used to lock worker's non-thread-safe internal states:
             1) task_index increment: make sure we generate unique task ids;
@@ -118,6 +119,8 @@ class Driver(object):
         # CUDA_VISIBLE_DEVICES environment variable.
         self.original_gpu_ids = ray.utils.get_cuda_visible_devices()
         self.profiler = profiling.Profiler(self)
+
+        self.lock = threading.Lock()
         self.state_lock = threading.Lock()
 
         # Identity of the driver that this worker is processing.
@@ -1387,8 +1390,6 @@ def connect(info,
     # For driver's check that the version information matches the version
     # information that the Ray cluster was started with.
     worker.check_version_info()
-
-    worker.lock = threading.Lock()
 
     # Check the RedirectOutput key in Redis and based on its value redirect
     # worker output and error to their own files.
