@@ -2,11 +2,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import logging
 import os
 try:  # py3
     from shlex import quote
 except ImportError:  # py2
     from pipes import quote
+
+logger = logging.getLogger("ray.autoscaler")
+logger.setLevel(logging.INFO)
 
 
 def dockerize_if_needed(config):
@@ -16,7 +20,8 @@ def dockerize_if_needed(config):
     cname = config["docker"].get("container_name")
     if not docker_image:
         if cname:
-            print("Container name given but no Docker image - continuing...")
+            logger.info(
+                "Container name given but no Docker image - continuing...")
         return config
     else:
         assert cname, "Must provide container name!"

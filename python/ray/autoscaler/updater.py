@@ -6,6 +6,7 @@ try:  # py3
     from shlex import quote
 except ImportError:  # py2
     from pipes import quote
+import logging
 import os
 import subprocess
 import sys
@@ -21,6 +22,9 @@ from ray.autoscaler.tags import TAG_RAY_NODE_STATUS, TAG_RAY_RUNTIME_CONFIG
 # How long to wait for a node to start, in seconds
 NODE_START_WAIT_S = 300
 SSH_CHECK_INTERVAL = 5
+
+logger = logging.getLogger("ray.autoscaler")
+logger.setLevel(logging.INFO)
 
 
 def pretty_cmd(cmd_str):
@@ -74,7 +78,7 @@ class NodeUpdater(object):
             return self.provider.external_ip(self.node_id)
 
     def run(self):
-        print("NodeUpdater: Updating {} to {}, logging to {}".format(
+        logger.info("NodeUpdater: Updating {} to {}, logging to {}".format(
             self.node_id, self.runtime_hash, self.output_name))
         try:
             self.do_update()
@@ -83,23 +87,23 @@ class NodeUpdater(object):
             if hasattr(e, "cmd"):
                 error_str = "(Exit Status {}) {}".format(
                     e.returncode, pretty_cmd(" ".join(e.cmd)))
-            print(
+            logger.error(
                 "NodeUpdater: Error updating {}"
                 "See {} for remote logs.".format(error_str, self.output_name),
                 file=self.stdout)
             self.provider.set_node_tags(self.node_id,
                                         {TAG_RAY_NODE_STATUS: "update-failed"})
             if self.logfile is not None:
-                print("----- BEGIN REMOTE LOGS -----\n" +
-                      open(self.logfile.name).read() +
-                      "\n----- END REMOTE LOGS -----")
+                logger.info("----- BEGIN REMOTE LOGS -----\n" +
+                            open(self.logfile.name).read() +
+                            "\n----- END REMOTE LOGS -----")
             raise e
         self.provider.set_node_tags(
             self.node_id, {
                 TAG_RAY_NODE_STATUS: "up-to-date",
                 TAG_RAY_RUNTIME_CONFIG: self.runtime_hash
             })
-        print(
+        logger.info(
             "NodeUpdater: Applied config {} to node {}".format(
                 self.runtime_hash, self.node_id),
             file=self.stdout)
@@ -112,7 +116,7 @@ class NodeUpdater(object):
         # Wait for external IP
         while time.time() < deadline and \
                 not self.provider.is_terminated(self.node_id):
-            print(
+            logger.info(
                 "NodeUpdater: Waiting for IP of {}...".format(self.node_id),
                 file=self.stdout)
             self.ssh_ip = self.get_node_ip()
@@ -126,7 +130,7 @@ class NodeUpdater(object):
         while time.time() < deadline and \
                 not self.provider.is_terminated(self.node_id):
             try:
-                print(
+                logger.info(
                     "NodeUpdater: Waiting for SSH to {}...".format(
                         self.node_id),
                     file=self.stdout)
@@ -142,7 +146,7 @@ class NodeUpdater(object):
                 if hasattr(e, "cmd"):
                     retry_str = "(Exit Status {}): {}".format(
                         e.returncode, pretty_cmd(" ".join(e.cmd)))
-                print(
+                logger.info(
                     "NodeUpdater: SSH not up, retrying: {}".format(retry_str),
                     file=self.stdout)
                 time.sleep(SSH_CHECK_INTERVAL)
@@ -154,7 +158,7 @@ class NodeUpdater(object):
         self.provider.set_node_tags(self.node_id,
                                     {TAG_RAY_NODE_STATUS: "syncing-files"})
         for remote_path, local_path in self.file_mounts.items():
-            print(
+            logger.info(
                 "NodeUpdater: Syncing {} to {}...".format(
                     local_path, remote_path),
                 file=self.stdout)
@@ -190,7 +194,7 @@ class NodeUpdater(object):
                 emulate_interactive=True,
                 expect_error=False):
         if verbose:
-            print(
+            logger.info(
                 "NodeUpdater: running {} on {}...".format(
                     pretty_cmd(cmd), self.ssh_ip),
                 file=self.stdout)

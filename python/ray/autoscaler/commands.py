@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import copy
 import json
+import logging
 import tempfile
 import time
 import sys
@@ -22,12 +23,14 @@ from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_LAUNCH_CONFIG, \
     TAG_RAY_NODE_NAME
 from ray.autoscaler.updater import NodeUpdaterProcess
 
+logger = logging.getLogger("ray.autoscaler")
+logger.setLevel(logging.INFO)
 
-def create_or_update_cluster(
-        config_file, override_min_workers, override_max_workers,
-        no_restart, restart_only, yes):
+
+def create_or_update_cluster(config_file, override_min_workers,
+                             override_max_workers, no_restart, restart_only,
+                             yes):
     """Create or updates an autoscaling Ray cluster from a config json."""
-
     config = yaml.load(open(config_file).read())
     if override_min_workers is not None:
         config["min_workers"] = override_min_workers
@@ -63,13 +66,13 @@ def teardown_cluster(config_file, yes, workers_only):
 
     if not workers_only:
         for node in provider.nodes({TAG_RAY_NODE_TYPE: "head"}):
-            print("Terminating head node {}".format(node))
+            logger.info("Terminating head node {}".format(node))
             provider.terminate_node(node)
 
     nodes = provider.nodes({TAG_RAY_NODE_TYPE: "worker"})
     while nodes:
         for node in nodes:
-            print("Terminating worker {}".format(node))
+            logger.info("Terminating worker {}".format(node))
             provider.terminate_node(node)
         time.sleep(5)
         nodes = provider.nodes({TAG_RAY_NODE_TYPE: "worker"})
@@ -98,9 +101,9 @@ def get_or_create_head_node(config, no_restart, restart_only, yes):
             TAG_RAY_LAUNCH_CONFIG) != launch_hash:
         if head_node is not None:
             confirm("Head node config out-of-date. It will be terminated", yes)
-            print("Terminating outdated head node {}".format(head_node))
+            logger.info("Terminating outdated head node {}".format(head_node))
             provider.terminate_node(head_node)
-        print("Launching new head node...")
+        logger.info("Launching new head node...")
         head_node_tags[TAG_RAY_LAUNCH_CONFIG] = launch_hash
         head_node_tags[TAG_RAY_NODE_NAME] = "ray-{}-head".format(
             config["cluster_name"])
@@ -113,7 +116,7 @@ def get_or_create_head_node(config, no_restart, restart_only, yes):
     # TODO(ekl) right now we always update the head node even if the hash
     # matches. We could prompt the user for what they want to do in this case.
     runtime_hash = hash_runtime_conf(config["file_mounts"], config)
-    print("Updating files on head node...")
+    logger.info("Updating files on head node...")
 
     # Rewrite the auth config so that the head node can update the workers
     remote_key_path = "~/ray_bootstrap_key.pem"
@@ -163,10 +166,10 @@ def get_or_create_head_node(config, no_restart, restart_only, yes):
     provider.nodes(head_node_tags)
 
     if updater.exitcode != 0:
-        print("Error: updating {} failed".format(
+        logger.error("Updating {} failed".format(
             provider.external_ip(head_node)))
         sys.exit(1)
-    print("Head node up-to-date, IP address is: {}".format(
+    logger.info("Head node up-to-date, IP address is: {}".format(
         provider.external_ip(head_node)))
 
     monitor_str = "tail -n 100 -f /tmp/raylogs/monitor-*"
@@ -175,15 +178,16 @@ def get_or_create_head_node(config, no_restart, restart_only, yes):
                 and "--autoscaling-config" in s):
             monitor_str = "docker exec {} /bin/sh -c {}".format(
                 config["docker"]["container_name"], quote(monitor_str))
-    print("To monitor auto-scaling activity, you can run:\n\n"
-          "  ssh -i {} {}@{} {}\n".format(config["auth"]["ssh_private_key"],
-                                          config["auth"]["ssh_user"],
-                                          provider.external_ip(head_node),
-                                          quote(monitor_str)))
-    print("To login to the cluster, run:\n\n"
-          "  ssh -i {} {}@{}\n".format(config["auth"]["ssh_private_key"],
-                                       config["auth"]["ssh_user"],
-                                       provider.external_ip(head_node)))
+    logger.info(
+        "To monitor auto-scaling activity, you can run:\n\n"
+        "  ssh -i {} {}@{} {}\n".format(config["auth"]["ssh_private_key"],
+                                        config["auth"]["ssh_user"],
+                                        provider.external_ip(head_node),
+                                        quote(monitor_str)))
+    logger.info("To login to the cluster, run:\n\n"
+                "  ssh -i {} {}@{}\n".format(config["auth"]["ssh_private_key"],
+                                             config["auth"]["ssh_user"],
+                                             provider.external_ip(head_node)))
 
 
 def attach_cluster(config_file, start):
@@ -252,9 +256,8 @@ def _get_head_node(config, create_if_needed=False):
         get_or_create_head_node(config, no_restart=False, yes=True)
         return _get_head_node(config, create_if_needed=False)
     else:
-        print("Head node of cluster ({}) not found!".format(
+        raise ValueError("Head node of cluster ({}) not found!".format(
             config["cluster_name"]))
-        sys.exit(1)
 
 
 def confirm(msg, yes):
