@@ -33,7 +33,7 @@ class MyTrainableClass(Trainable):
         v *= self.config["height"]
 
         # Here we use `episode_reward_mean`, but you can also report other
-        # objectives such as loss or accuracy (see tune/result.py).
+        # objectives such as loss or accuracy.
         return {"episode_reward_mean": v}
 
     def _save(self, checkpoint_dir):

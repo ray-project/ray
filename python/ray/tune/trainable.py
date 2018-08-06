@@ -135,8 +135,8 @@ class Trainable(object):
         start = time.time()
         result = self._train()
         self._iteration += 1
-        if result.time_this_iter_s is not None:
-            time_this_iter = result.time_this_iter_s
+        if result.get("time_this_iter_s") is not None:
+            time_this_iter = result["time_this_iter_s"]
         else:
             time_this_iter = time.time() - start
 

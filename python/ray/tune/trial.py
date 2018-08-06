@@ -230,7 +230,7 @@ class Trial(object):
     def should_stop(self, result):
         """Whether the given result meets this trial's stopping criteria."""
 
-        if result.done:
+        if result.get("done"):
             return True
 
         for criteria, stop_value in self.stopping_criterion.items():
@@ -264,22 +264,22 @@ class Trial(object):
         pieces = [
             '{} [{}]'.format(
                 self._status_string(),
-                location_string(self.last_result.hostname,
-                                self.last_result.pid)),
-            '{} s'.format(int(self.last_result.time_total_s)),
+                location_string(self.last_result.get("hostname"),
+                                self.last_result.get("pid"))),
+            '{} s'.format(int(self.last_result.get("time_total_s"))),
         ]
 
-        if self.last_result.episode_reward_mean is not None:
+        if self.last_result.get("episode_reward_mean") is not None:
             pieces.append('{} rew'.format(
-                format(self.last_result.episode_reward_mean, '.3g')))
+                format(self.last_result["episode_reward_mean"], '.3g')))
 
-        if self.last_result.mean_loss is not None:
+        if self.last_result.get("mean_loss") is not None:
             pieces.append('{} loss'.format(
-                format(self.last_result.mean_loss, '.3g')))
+                format(self.last_result["mean_loss"], '.3g')))
 
-        if self.last_result.mean_accuracy is not None:
+        if self.last_result.get("mean_accuracy") is not None:
             pieces.append('{} acc'.format(
-                format(self.last_result.mean_accuracy, '.3g')))
+                format(self.last_result["mean_accuracy"], '.3g')))
 
         return ', '.join(pieces)
 

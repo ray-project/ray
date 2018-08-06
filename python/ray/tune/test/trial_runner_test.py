@@ -906,9 +906,9 @@ class TrialRunnerTest(unittest.TestCase):
         runner.step()
         self.assertEqual(trials[0].status, Trial.RUNNING)
         runner.step()
-        self.assertNotEqual(trials[0].last_result.done, True)
+        self.assertNotEqual(trials[0].last_result["done"], True)
         runner.step()
-        self.assertEqual(trials[0].last_result.done, True)
+        self.assertEqual(trials[0].last_result["done"], True)
 
     def testPauseThenResume(self):
         ray.init(num_cpus=1, num_gpus=1)

@@ -66,7 +66,7 @@ class UnifiedLogger(Logger):
     def on_result(self, result):
         for logger in self._loggers:
             logger.on_result(result)
-        self._log_syncer.set_worker_ip(result.node_ip)
+        self._log_syncer.set_worker_ip(result.get("node_ip"))
         self._log_syncer.sync_if_needed()
 
     def close(self):
@@ -95,7 +95,7 @@ class _JsonLogger(Logger):
         self.local_out = open(local_file, "w")
 
     def on_result(self, result):
-        json.dump(result.as_dict(), self, cls=_SafeFallbackEncoder)
+        json.dump(result, self, cls=_SafeFallbackEncoder)
         self.write("\n")
 
     def write(self, b):
@@ -124,7 +124,7 @@ class _TFLogger(Logger):
         self._file_writer = tf.summary.FileWriter(self.logdir)
 
     def on_result(self, result):
-        tmp = result.as_dict()
+        tmp = result.copy()
         for k in [
                 "config", "pid", "timestamp", "time_total_s",
                 "training_iteration"
@@ -132,13 +132,13 @@ class _TFLogger(Logger):
             del tmp[k]  # not useful to tf log these
         values = to_tf_values(tmp, ["ray", "tune"])
         train_stats = tf.Summary(value=values)
-        self._file_writer.add_summary(train_stats, result.training_iteration)
+        self._file_writer.add_summary(train_stats, result["training_iteration"])
         iteration_value = to_tf_values({
-            "training_iteration": result.training_iteration
+            "training_iteration": result["training_iteration"]
         }, ["ray", "tune"])
         iteration_stats = tf.Summary(value=iteration_value)
         self._file_writer.add_summary(iteration_stats,
-                                      result.training_iteration)
+                                      result["training_iteration"])
 
     def flush(self):
         self._file_writer.flush()
@@ -158,7 +158,7 @@ class _VisKitLogger(Logger):
         if self._csv_out is None:
             self._csv_out = csv.DictWriter(self._file, result.keys())
             self._csv_out.writeheader()
-        self._csv_out.writerow(result.as_dict())
+        self._csv_out.writerow(result.copy())
 
     def close(self):
         self._file.close()
@@ -197,7 +197,7 @@ class _SafeFallbackEncoder(json.JSONEncoder):
 
 
 def pretty_print(result):
-    result = result.as_dict()
+    result = result.copy()
     result.update(config=None)  # drop config from pretty print
     out = {}
     for k, v in result.items():
