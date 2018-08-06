@@ -191,9 +191,8 @@ def get_or_create_head_node(config, no_restart, yes):
 def attach_cluster(config_file, start, override_cluster_name):
     """Attaches to a screen for the specified cluster."""
 
-    exec_cluster(
-        config_file, "screen -L -xRR", False, False, start,
-        override_cluster_name)
+    exec_cluster(config_file, "screen -L -xRR", False, False, start,
+                 override_cluster_name)
 
 
 def exec_cluster(config_file, cmd, screen, stop, start, override_cluster_name):
