@@ -9,7 +9,7 @@ import os
 import yaml
 
 from ray.tune.log_sync import get_syncer
-from ray.tune.result import NODE_IP, TRAINING_ITERATION
+from ray.tune.result import NODE_IP, TRAINING_ITERATION, TIME_TOTAL_S
 
 try:
     import tensorflow as tf
@@ -127,7 +127,8 @@ class _TFLogger(Logger):
     def on_result(self, result):
         tmp = result.copy()
         for k in [
-                "config", "pid", "timestamp", "time_total_s", TRAINING_ITERATION
+                "config", "pid", "timestamp",
+                TIME_TOTAL_S, TRAINING_ITERATION
         ]:
             del tmp[k]  # not useful to tf log these
         values = to_tf_values(tmp, ["ray", "tune"])

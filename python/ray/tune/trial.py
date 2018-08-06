@@ -16,7 +16,8 @@ from ray.tune.logger import NoopLogger, UnifiedLogger, pretty_print
 # need because there are cyclic imports that may cause specific names to not
 # have been defined yet. See https://github.com/ray-project/ray/issues/1716.
 import ray.tune.registry
-from ray.tune.result import DEFAULT_RESULTS_DIR
+from ray.tune.result import (
+    DEFAULT_RESULTS_DIR, DONE, HOSTNAME, PID, TIME_TOTAL_S)
 from ray.utils import random_string, binary_to_hex
 
 DEBUG_PRINT_INTERVAL = 5
