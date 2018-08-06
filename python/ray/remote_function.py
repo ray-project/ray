@@ -7,7 +7,7 @@ import hashlib
 import inspect
 
 import ray.ray_constants as ray_constants
-import ray.dataflow.signature
+import ray.signature
 
 # Default parameters for remote functions.
 DEFAULT_REMOTE_FUNCTION_CPUS = 1
@@ -84,8 +84,8 @@ class RemoteFunction(object):
         self._max_calls = (DEFAULT_REMOTE_FUNCTION_MAX_CALLS
                            if max_calls is None else max_calls)
 
-        ray.dataflow.signature.check_signature_supported(self._function)
-        self._function_signature = ray.dataflow.signature.extract_signature(
+        ray.signature.check_signature_supported(self._function)
+        self._function_signature = ray.signature.extract_signature(
             self._function)
 
         # # Export the function.
@@ -115,8 +115,8 @@ class RemoteFunction(object):
         worker = ray.worker.get_global_worker()
         worker.check_connected()
         kwargs = {} if kwargs is None else kwargs
-        args = ray.dataflow.signature.extend_args(self._function_signature, args,
-                                                  kwargs)
+        args = ray.signature.extend_args(self._function_signature, args,
+                                         kwargs)
 
         if num_return_vals is None:
             num_return_vals = self._num_return_vals

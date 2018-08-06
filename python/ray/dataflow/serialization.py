@@ -6,7 +6,7 @@ import hashlib
 import pyarrow
 
 import ray.cloudpickle as pickle
-import ray.dataflow.signature as signature
+import ray.signature as signature
 from ray.dataflow.exceptions import (
     RayGetError, RayGetArgumentError, RayTaskError)
 import ray.plasma

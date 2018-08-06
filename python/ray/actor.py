@@ -10,7 +10,7 @@ import json
 import ray.cloudpickle as pickle
 import ray.local_scheduler
 import ray.ray_constants as ray_constants
-import ray.dataflow.signature as signature
+import ray.signature as signature
 import ray.worker
 from ray.utils import (
     decode,

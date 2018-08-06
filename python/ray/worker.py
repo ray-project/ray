@@ -23,7 +23,7 @@ from ray.services import logger
 import ray.dataflow.distributor as distributor
 import ray.dataflow.logging as worker_logger
 import ray.dataflow.object_store_client as object_store_client
-import ray.dataflow.signature
+import ray.signature
 
 from ray.dataflow.exceptions import (
     RayTaskError,
