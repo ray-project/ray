@@ -5,6 +5,7 @@ from __future__ import print_function
 import binascii
 import functools
 import hashlib
+import inspect
 import numpy as np
 import os
 import sys
@@ -37,6 +38,14 @@ def is_cython(obj):
     # Check if function or method, respectively
     return check_cython(obj) or \
         (hasattr(obj, "__func__") and check_cython(obj.__func__))
+
+
+def get_methods(cls):
+    def pred(x):
+        return (inspect.isfunction(x) or inspect.ismethod(x)
+                or is_cython(x))
+
+    return inspect.getmembers(cls, predicate=pred)
 
 
 def random_string():

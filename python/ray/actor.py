@@ -5,7 +5,6 @@ from __future__ import print_function
 import copy
 import hashlib
 import inspect
-import json
 
 import ray.cloudpickle as pickle
 import ray.local_scheduler
@@ -266,105 +265,6 @@ def make_actor_method_executor(worker, method_name, method, actor_imported):
     return actor_method_executor
 
 
-def fetch_and_register_actor(actor_class_key, worker):
-    """Import an actor.
-
-    This will be called by the worker's import thread when the worker receives
-    the actor_class export, assuming that the worker is an actor for that
-    class.
-
-    Args:
-        actor_class_key: The key in Redis to use to fetch the actor.
-        worker: The worker to use.
-    """
-    actor_id_str = worker.actor_id
-    (driver_id, class_id, class_name, module, pickled_class,
-     checkpoint_interval, actor_method_names) = worker.redis_client.hmget(
-         actor_class_key, [
-             "driver_id", "class_id", "class_name", "module", "class",
-             "checkpoint_interval", "actor_method_names"
-         ])
-
-    class_name = decode(class_name)
-    module = decode(module)
-    checkpoint_interval = int(checkpoint_interval)
-    actor_method_names = json.loads(decode(actor_method_names))
-
-    # Create a temporary actor with some temporary methods so that if the actor
-    # fails to be unpickled, the temporary actor can be used (just to produce
-    # error messages and to prevent the driver from hanging).
-    class TemporaryActor(object):
-        pass
-
-    worker.actors[actor_id_str] = TemporaryActor()
-    worker.actor_checkpoint_interval = checkpoint_interval
-
-    def temporary_actor_method(*xs):
-        raise Exception("The actor with name {} failed to be imported, and so "
-                        "cannot execute this method".format(class_name))
-
-    # Register the actor method executors.
-    for actor_method_name in actor_method_names:
-        function_id = compute_actor_method_function_id(class_name,
-                                                       actor_method_name)
-        temporary_executor = make_actor_method_executor(
-            worker,
-            actor_method_name,
-            temporary_actor_method,
-            actor_imported=False)
-
-        worker.distributor.add_function_info(
-            driver_id,
-            function_id,
-            function=temporary_executor,
-            function_name=actor_method_name,
-            max_calls=0)
-
-    try:
-        unpickled_class = pickle.loads(pickled_class)
-        worker.actor_class = unpickled_class
-    except Exception:
-        # If an exception was thrown when the actor was imported, we record the
-        # traceback and notify the scheduler of the failure.
-        #
-        # Log the error message.
-        worker.logger.push_exception_to_driver(
-            ray_constants.REGISTER_ACTOR_PUSH_ERROR,
-            driver_id=driver_id,
-            data={"actor_id": actor_id_str}, format_exc=True)
-        # TODO(rkn): In the future, it might make sense to have the worker exit
-        # here. However, currently that would lead to hanging if someone calls
-        # ray.get on a method invoked on the actor.
-    else:
-        # TODO(pcm): Why is the below line necessary?
-        unpickled_class.__module__ = module
-        worker.actors[actor_id_str] = unpickled_class.__new__(unpickled_class)
-
-        def pred(x):
-            return (inspect.isfunction(x) or inspect.ismethod(x)
-                    or is_cython(x))
-
-        actor_methods = inspect.getmembers(unpickled_class, predicate=pred)
-        for actor_method_name, actor_method in actor_methods:
-            function_id = compute_actor_method_function_id(
-                class_name, actor_method_name)
-            executor = make_actor_method_executor(
-                worker, actor_method_name, actor_method, actor_imported=True)
-
-            worker.distributor.add_function_info(
-                driver_id,
-                function_id=function_id,
-                function=executor,
-                function_name=actor_method_name,
-                max_calls=0,
-                reset_execution_count=False)
-            # We do not set worker.function_properties[driver_id][function_id]
-            # because we currently do need the actor worker to submit new tasks
-            # for the actor.
-
-
-
-
 def method(*args, **kwargs):
     """Annotate an actor method.
 
@@ -554,7 +454,7 @@ class ActorClass(object):
         # Instead, instantiate the actor locally and add it to the worker's
         # dictionary
         if worker.mode == ray.LOCAL_MODE:
-            worker.actors[actor_id] = self._modified_class.__new__(
+            worker.distributor.actors[actor_id] = self._modified_class.__new__(
                 self._modified_class)
         else:
             # Export the actor.
@@ -729,7 +629,7 @@ class ActorHandle(object):
         # Execute functions locally if Ray is run in LOCAL_MODE
         # Copy args to prevent the function from mutating them.
         if worker.mode == ray.LOCAL_MODE:
-            return getattr(worker.actors[self._ray_actor_id],
+            return getattr(worker.distributor.actors[self._ray_actor_id],
                            method_name)(*copy.deepcopy(args))
 
         # Add the execution dependency.
@@ -994,7 +894,7 @@ def make_actor(cls, num_cpus, num_gpus, resources, actor_method_cpus,
             checkpoint_resumed = False
             if checkpoint_index is not None:
                 # Load the actor state from the checkpoint.
-                worker.actors[worker.actor_id] = (
+                worker.distributor.actors[worker.actor_id] = (
                     worker.actor_class.__ray_restore_from_checkpoint__(
                         checkpoint))
                 # Set the number of tasks executed so far.
@@ -1014,5 +914,4 @@ def make_actor(cls, num_cpus, num_gpus, resources, actor_method_cpus,
                       resources, actor_method_cpus)
 
 
-ray.worker.global_worker.fetch_and_register_actor = fetch_and_register_actor
 ray.worker.global_worker.make_actor = make_actor

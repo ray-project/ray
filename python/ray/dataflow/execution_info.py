@@ -46,10 +46,16 @@ class ExecutionInfo(object):
         # import thread. It is safe to convert this worker into an actor of
         # these types.
         self.imported_actor_classes = set()
+        self.actors = {}
+
+        self.checkpoint_interval = 0
+
+    def set_checkpoint_interval(self, interval):
+        self.checkpoint_interval = int(interval)
 
     def add_actor_class(self, actor_class):
         self.imported_actor_classes.add(actor_class)
-        
+
     def has_imported_actor(self, actor_class):
         return actor_class in self.imported_actor_classes
 

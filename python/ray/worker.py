@@ -106,12 +106,10 @@ class Driver(object):
         self.use_raylet = False
         self.worker_id = None
 
-        self.fetch_and_register_actor = None
         self.make_actor = None
         # All workers start out as non-actors.
         # A worker can be turned into an actor after it is created.
         self.actor_id = NIL_ACTOR_ID
-        self.actors = {}
         self.actor_task_counter = 0
 
         # When the worker is constructed. Record the original value of the
@@ -501,9 +499,9 @@ class Worker(Driver):
                 if task.actor_id().id() == NIL_ACTOR_ID:
                     outputs = function_executor(*arguments)
                 else:
+                    actor = self.distributor.actors[task.actor_id().id()]
                     outputs = function_executor(
-                        dummy_return_id, self.actors[task.actor_id().id()],
-                        *arguments)
+                        dummy_return_id, actor, *arguments)
         except Exception as e:
             # Determine whether the exception occured during a task, not an
             # actor method.
@@ -566,7 +564,7 @@ class Worker(Driver):
         self.distributor.wait_for_actor_class(key)
 
         with self.lock:
-            self.fetch_and_register_actor(key, self)
+            self.distributor.fetch_and_register_actor(key)
 
     def _wait_for_and_process_task(self, task):
         """Wait for a task to be ready and process the task.

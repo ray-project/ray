@@ -122,8 +122,8 @@ class Distributor(execution_info.ExecutionInfo):
                 if (self.actor_id == NIL_ACTOR_ID
                         and self.has_function_id(driver_id, function_id)):
                     break
-                elif self.actor_id != NIL_ACTOR_ID and (
-                        self.actor_id in self.worker.actors):
+                elif (self.actor_id != NIL_ACTOR_ID
+                      and self.actor_id in self.actors):
                     break
                 if time.time() - start_time > timeout:
                     warning_message = ("This worker was asked to execute a "
@@ -136,18 +136,6 @@ class Distributor(execution_info.ExecutionInfo):
                             warning_message,
                             driver_id=driver_id)
                     warning_sent = True
-            time.sleep(self.polling_interval)
-
-    def wait_for_actor_class(self, key):
-        """Wait for the actor class key to have been imported by the import
-        thread.
-
-        TODO(rkn): It shouldn't be possible to end up in an infinite
-        loop here, but we should push an error to the driver if too much time
-        is spent here.
-        """
-
-        while key not in self.imported_actor_classes:
             time.sleep(self.polling_interval)
 
     def _push_exports(self, key, info):
@@ -202,37 +190,6 @@ class Distributor(execution_info.ExecutionInfo):
             "function": pickled_function,
             "max_calls": max_calls
         })
-
-    def export_actor_class(self, class_id, Class, actor_method_names,
-                           checkpoint_interval):
-        key = ACTOR_CLASS + b":" + class_id
-        class_name = Class.__name__
-        _class = pickle.dumps(Class)
-        actor_class_info = {
-            "class_name": class_name,
-            "module": Class.__module__,
-            "class": _class,
-            "checkpoint_interval": checkpoint_interval,
-            "actor_method_names": json.dumps(list(actor_method_names))
-        }
-
-        utils.check_oversized_pickle(_class, class_name, "actor", self.worker)
-
-        if self.mode is None:
-            # This means that 'ray.init()' has not been called yet and so we must
-            # cache the actor class definition and export it when 'ray.init()' is
-            # called.
-            assert self.is_startup()
-            self.append_cached_actor((key, actor_class_info))
-            # This caching code path is currently not used because we only export
-            # actor class definitions lazily when we instantiate the actor for the
-            # first time.
-            assert False, "This should be unreachable."
-        else:
-            self.publish_actor_class_to_key(key, actor_class_info)
-        # TODO(rkn): Currently we allow actor classes to be defined within tasks.
-        # I tried to disable this, but it may be necessary because of
-        # https://github.com/ray-project/ray/issues/1146.
 
     def run_function_on_all_workers(self, function,
                                     run_on_other_drivers=False):
@@ -290,22 +247,6 @@ class Distributor(execution_info.ExecutionInfo):
             # most likely hang. This could be fixed by making these three
             # operations into a transaction (or by implementing a custom
             # command that does all three things).
-
-    def publish_actor_class_to_key(self, key, actor_class_info):
-        """Push an actor class definition to Redis.
-
-        The is factored out as a separate function because it is also called
-        on cached actor class definitions when a worker connects for the first
-        time.
-
-        Args:
-            key: The key to store the actor class info at.
-            actor_class_info: Information about the actor class.
-        """
-        # We set the driver ID here because it may not have been available when the
-        # actor class was defined.
-        actor_class_info["driver_id"] = self.task_driver_id.id()
-        self._push_exports(key, actor_class_info)
 
     def fetch_and_execute_function_to_run(self, key):
         """Run on arbitrary function on the worker."""
@@ -391,8 +332,173 @@ class Distributor(execution_info.ExecutionInfo):
         self.cached_remote_functions_and_actors.append(
             (CACHED_REMOTE_FUNCTION, remote_function))
 
+
+class DistributorWithActor(Distributor):
+    """A class that controls actor import & export.
+
+    This class is a dual version of `Distributor`.
+    """
+
     def append_cached_actor(self, actor):
         self.cached_remote_functions_and_actors.append((CACHED_ACTOR, actor))
+
+    def wait_for_actor_class(self, key):
+        """Wait for the actor class key to have been imported by the import
+        thread.
+
+        TODO(rkn): It shouldn't be possible to end up in an infinite
+        loop here, but we should push an error to the driver if too much time
+        is spent here.
+        """
+
+        while not self.has_imported_actor(key):
+            time.sleep(self.polling_interval)
+
+    def export_actor_class(self, class_id, Class, actor_method_names,
+                           checkpoint_interval):
+        key = ACTOR_CLASS + b":" + class_id
+        class_name = Class.__name__
+        _class = pickle.dumps(Class)
+        actor_class_info = {
+            "class_name": class_name,
+            "module": Class.__module__,
+            "class": _class,
+            "checkpoint_interval": checkpoint_interval,
+            "actor_method_names": json.dumps(list(actor_method_names))
+        }
+
+        utils.check_oversized_pickle(_class, class_name, "actor", self.worker)
+
+        if self.mode is None:
+            # This means that 'ray.init()' has not been called yet and so we must
+            # cache the actor class definition and export it when 'ray.init()' is
+            # called.
+            assert self.is_startup()
+            self.append_cached_actor((key, actor_class_info))
+            # This caching code path is currently not used because we only export
+            # actor class definitions lazily when we instantiate the actor for the
+            # first time.
+            assert False, "This should be unreachable."
+        else:
+            self.publish_actor_class_to_key(key, actor_class_info)
+        # TODO(rkn): Currently we allow actor classes to be defined within tasks.
+        # I tried to disable this, but it may be necessary because of
+        # https://github.com/ray-project/ray/issues/1146.
+
+    def publish_actor_class_to_key(self, key, actor_class_info):
+        """Push an actor class definition to Redis.
+
+        The is factored out as a separate function because it is also called
+        on cached actor class definitions when a worker connects for the first
+        time.
+
+        Args:
+            key: The key to store the actor class info at.
+            actor_class_info: Information about the actor class.
+        """
+        # We set the driver ID here because it may not have been available when the
+        # actor class was defined.
+        actor_class_info["driver_id"] = self.task_driver_id.id()
+        self._push_exports(key, actor_class_info)
+
+    def fetch_and_register_actor(self, actor_class_key):
+        """Import an actor.
+
+        This will be called by the worker's import thread when the worker receives
+        the actor_class export, assuming that the worker is an actor for that
+        class.
+
+        Args:
+            actor_class_key: The key in Redis to use to fetch the actor.
+        """
+
+        # TODO(suquark): How to resolve circular reference?
+        import ray.actor
+
+        actor_id_str = self.actor_id
+        (driver_id, class_id, class_name, module, pickled_class,
+         checkpoint_interval, actor_method_names) = self.redis_client.hmget(
+            actor_class_key, [
+                "driver_id", "class_id", "class_name", "module", "class",
+                "checkpoint_interval", "actor_method_names"
+            ])
+
+        class_name = utils.decode(class_name)
+        module = utils.decode(module)
+        checkpoint_interval = int(checkpoint_interval)
+        actor_method_names = json.loads(utils.decode(actor_method_names))
+
+        # Create a temporary actor with some temporary methods so that if the actor
+        # fails to be unpickled, the temporary actor can be used (just to produce
+        # error messages and to prevent the driver from hanging).
+        class TemporaryActor(object):
+            pass
+
+        self.actors[actor_id_str] = TemporaryActor()
+        self.worker.actor_checkpoint_interval = checkpoint_interval
+
+        def temporary_actor_method(*xs):
+            raise Exception(
+                "The actor with name {} failed to be imported, and so "
+                "cannot execute this method".format(class_name))
+
+        # Register the actor method executors.
+        for actor_method_name in actor_method_names:
+            function_id = ray.actor.compute_actor_method_function_id(
+                class_name, actor_method_name)
+            temporary_executor = ray.actor.make_actor_method_executor(
+                self.worker,
+                actor_method_name,
+                temporary_actor_method,
+                actor_imported=False)
+
+            self.add_function_info(
+                driver_id,
+                function_id,
+                function=temporary_executor,
+                function_name=actor_method_name,
+                max_calls=0)
+
+        try:
+            unpickled_class = pickle.loads(pickled_class)
+            self.worker.actor_class = unpickled_class
+        except Exception:
+            # If an exception was thrown when the actor was imported, we record the
+            # traceback and notify the scheduler of the failure.
+            #
+            # Log the error message.
+            self.worker.logger.push_exception_to_driver(
+                ray_constants.REGISTER_ACTOR_PUSH_ERROR,
+                driver_id=driver_id,
+                data={"actor_id": actor_id_str}, format_exc=True)
+            # TODO(rkn): In the future, it might make sense to have the worker exit
+            # here. However, currently that would lead to hanging if someone calls
+            # ray.get on a method invoked on the actor.
+        else:
+            # TODO(pcm): Why is the below line necessary?
+            unpickled_class.__module__ = module
+            self.actors[actor_id_str] = unpickled_class.__new__(
+                unpickled_class)
+
+            actor_methods = utils.get_methods(unpickled_class)
+
+            for actor_method_name, actor_method in actor_methods:
+                function_id = ray.actor.compute_actor_method_function_id(
+                    class_name, actor_method_name)
+                executor = ray.actor.make_actor_method_executor(
+                    self.worker, actor_method_name, actor_method,
+                    actor_imported=True)
+
+                self.add_function_info(
+                    driver_id,
+                    function_id=function_id,
+                    function=executor,
+                    function_name=actor_method_name,
+                    max_calls=0,
+                    reset_execution_count=False)
+            # We do not set worker.function_properties[driver_id][function_id]
+            # because we currently do need the actor worker to submit new tasks
+            # for the actor.
 
     def export_for_driver(self):
         # Add the directory containing the script that is running to the Python
@@ -429,7 +535,7 @@ class Distributor(execution_info.ExecutionInfo):
                 assert False, "This code should be unreachable."
 
 
-class DistributorWithImportThread(Distributor):
+class DistributorWithImportThread(DistributorWithActor):
     """A thread used to import exports from the driver or other workers.
 
     Note:
