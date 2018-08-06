@@ -382,15 +382,20 @@ def stop():
     type=int,
     help=("Override the configured max worker node count for the cluster."))
 @click.option(
+    "--cluster-name",
+    required=False,
+    type=str,
+    help=("Override the configured cluster name."))
+@click.option(
     "--yes",
     "-y",
     is_flag=True,
     default=False,
     help=("Don't ask for confirmation."))
 def create_or_update(cluster_config_file, min_workers, max_workers, no_restart,
-                     yes):
+                     yes, cluster_name):
     create_or_update_cluster(cluster_config_file, min_workers, max_workers,
-                             no_restart, yes)
+                             no_restart, yes, cluster_name)
 
 
 @click.command()
@@ -406,8 +411,13 @@ def create_or_update(cluster_config_file, min_workers, max_workers, no_restart,
     is_flag=True,
     default=False,
     help=("Don't ask for confirmation."))
-def teardown(cluster_config_file, yes, workers_only):
-    teardown_cluster(cluster_config_file, yes, workers_only)
+@click.option(
+    "--cluster-name",
+    required=False,
+    type=str,
+    help=("Override the configured cluster name."))
+def teardown(cluster_config_file, yes, workers_only, cluster_name):
+    teardown_cluster(cluster_config_file, yes, workers_only, cluster_name)
 
 
 @click.command()
@@ -417,8 +427,13 @@ def teardown(cluster_config_file, yes, workers_only):
     is_flag=True,
     default=False,
     help=("Start the cluster if needed."))
-def attach(cluster_config_file, start):
-    attach_cluster(cluster_config_file, start)
+@click.option(
+    "--cluster-name",
+    required=False,
+    type=str,
+    help=("Override the configured cluster name."))
+def attach(cluster_config_file, start, cluster_name):
+    attach_cluster(cluster_config_file, start, cluster_name)
 
 
 @click.command()
@@ -439,14 +454,24 @@ def attach(cluster_config_file, start):
     is_flag=True,
     default=False,
     help=("Run the command in a screen."))
-def exec_cmd(cluster_config_file, cmd, screen, stop, start):
-    exec_cluster(cluster_config_file, cmd, screen, stop, start)
+@click.option(
+    "--cluster-name",
+    required=False,
+    type=str,
+    help=("Override the configured cluster name."))
+def exec_cmd(cluster_config_file, cmd, screen, stop, start, cluster_name):
+    exec_cluster(cluster_config_file, cmd, screen, stop, start, cluster_name)
 
 
 @click.command()
 @click.argument("cluster_config_file", required=True, type=str)
-def get_head_ip(cluster_config_file):
-    click.echo(get_head_node_ip(cluster_config_file))
+@click.option(
+    "--cluster-name",
+    required=False,
+    type=str,
+    help=("Override the configured cluster name."))
+def get_head_ip(cluster_config_file, cluster_name):
+    click.echo(get_head_node_ip(cluster_config_file, cluster_name))
 
 
 cli.add_command(start)

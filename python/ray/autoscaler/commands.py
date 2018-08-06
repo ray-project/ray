@@ -24,7 +24,8 @@ from ray.autoscaler.updater import NodeUpdaterProcess
 
 
 def create_or_update_cluster(config_file, override_min_workers,
-                             override_max_workers, no_restart, yes):
+                             override_max_workers, no_restart, yes,
+                             override_cluster_name):
     """Create or updates an autoscaling Ray cluster from a config json."""
 
     config = yaml.load(open(config_file).read())
@@ -32,6 +33,8 @@ def create_or_update_cluster(config_file, override_min_workers,
         config["min_workers"] = override_min_workers
     if override_max_workers is not None:
         config["max_workers"] = override_max_workers
+    if override_cluster_name is not None:
+        config["cluster_name"] = override_cluster_name
     config = _bootstrap_config(config)
     get_or_create_head_node(config, no_restart, yes)
 
@@ -49,10 +52,12 @@ def _bootstrap_config(config):
     return bootstrap_config(config)
 
 
-def teardown_cluster(config_file, yes, workers_only):
+def teardown_cluster(config_file, yes, workers_only, override_cluster_name):
     """Destroys all nodes of a Ray cluster described by a config json."""
 
     config = yaml.load(open(config_file).read())
+    if override_cluster_name is not None:
+        config["cluster_name"] = override_cluster_name
     validate_config(config)
     config = fillout_defaults(config)
 
@@ -183,16 +188,20 @@ def get_or_create_head_node(config, no_restart, yes):
                                        provider.external_ip(head_node)))
 
 
-def attach_cluster(config_file, start):
+def attach_cluster(config_file, start, override_cluster_name):
     """Attaches to a screen for the specified cluster."""
 
-    exec_cluster(config_file, "screen -L -xRR", False, False, start)
+    exec_cluster(
+        config_file, "screen -L -xRR", False, False, start,
+        override_cluster_name)
 
 
-def exec_cluster(config_file, cmd, screen, stop, start):
+def exec_cluster(config_file, cmd, screen, stop, start, override_cluster_name):
     """Runs a command on the specified cluster."""
 
     config = yaml.load(open(config_file).read())
+    if override_cluster_name is not None:
+        config["cluster_name"] = override_cluster_name
     config = _bootstrap_config(config)
     head_node = _get_head_node(config, create_if_needed=start)
     updater = NodeUpdaterProcess(
@@ -227,10 +236,12 @@ def _exec(updater, cmd, screen, expect_error=False):
             emulate_interactive=False)
 
 
-def get_head_node_ip(config_file):
+def get_head_node_ip(config_file, override_cluster_name):
     """Returns head node IP for given configuration file if exists."""
 
     config = yaml.load(open(config_file).read())
+    if override_cluster_name is not None:
+        config["cluster_name"] = override_cluster_name
     provider = get_node_provider(config["provider"], config["cluster_name"])
     head_node = _get_head_node(config)
     return provider.external_ip(head_node)
