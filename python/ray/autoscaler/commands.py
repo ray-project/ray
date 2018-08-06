@@ -186,7 +186,7 @@ def get_or_create_head_node(config, no_restart, yes):
 def attach_cluster(config_file, start):
     """Attaches to a screen for the specified cluster."""
 
-    exec_cluster(config_file, "screen -L -xRR", True, False, start)
+    exec_cluster(config_file, "screen -L -xRR", False, False, start)
 
 
 def exec_cluster(config_file, cmd, screen, stop, start):
@@ -247,6 +247,7 @@ def _get_head_node(config, create_if_needed=False):
         return head_node
     elif create_if_needed:
         get_or_create_head_node(config, no_restart=False, yes=True)
+        return _get_head_node(config, create_if_needed=False)
     else:
         print("Head node of cluster ({}) not found!".format(
             config["cluster_name"]))
