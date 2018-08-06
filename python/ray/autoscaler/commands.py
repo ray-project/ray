@@ -204,17 +204,17 @@ def exec_cluster(config_file, cmd, screen, halt):
         "",
         redirect_output=False)
     if halt:
-        _exec(updater, cmd, screen, post_cmd="ray stop && ray teardown ~/ray_bootstrap_config.yaml --workers && sudo shutdown -h now")
-    else:
-        _exec(updater, cmd, screen)
+        cmd += ("; ray stop; ray teardown ~/ray_bootstrap_config.yaml --yes "
+                "--workers-only; sudo shutdown -h now")
+    _exec(updater, cmd, screen)
 
 
-def _exec(updater, cmd, screen, post_cmd="exec bash"):
+def _exec(updater, cmd, screen):
     if cmd:
         if screen:
             cmd = [
                 "screen", "-L", "-dm", "bash", "-c",
-                quote(cmd + "; " + post_cmd)
+                quote(cmd + "; exec bash")
             ]
             cmd = " ".join(cmd)
         updater.ssh_cmd(cmd, verbose=True, allocate_tty=True)
