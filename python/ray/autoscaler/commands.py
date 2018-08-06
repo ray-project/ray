@@ -49,7 +49,7 @@ def _bootstrap_config(config):
     return bootstrap_config(config)
 
 
-def teardown_cluster(config_file, yes):
+def teardown_cluster(config_file, yes, workers_only):
     """Destroys all nodes of a Ray cluster described by a config json."""
 
     config = yaml.load(open(config_file).read())
@@ -59,19 +59,19 @@ def teardown_cluster(config_file, yes):
     confirm("This will destroy your cluster", yes)
 
     provider = get_node_provider(config["provider"], config["cluster_name"])
-    head_node_tags = {
-        TAG_RAY_NODE_TYPE: "head",
-    }
-    for node in provider.nodes(head_node_tags):
-        print("Terminating head node {}".format(node))
-        provider.terminate_node(node)
-    nodes = provider.nodes({})
+
+    if not workers_only:
+        for node in provider.nodes({TAG_RAY_NODE_TYPE: "head"}):
+            print("Terminating head node {}".format(node))
+            provider.terminate_node(node)
+
+    nodes = provider.nodes({TAG_RAY_NODE_TYPE: "worker"})
     while nodes:
         for node in nodes:
             print("Terminating worker {}".format(node))
             provider.terminate_node(node)
         time.sleep(5)
-        nodes = provider.nodes({})
+        nodes = provider.nodes({TAG_RAY_NODE_TYPE: "worker"})
 
 
 def get_or_create_head_node(config, no_restart, yes):
@@ -189,7 +189,7 @@ def attach_cluster(config_file):
     exec_cluster(config_file, "screen -L -xRR", False)
 
 
-def exec_cluster(config_file, cmd, screen):
+def exec_cluster(config_file, cmd, screen, halt):
     """Runs a command on the specified cluster."""
 
     config = yaml.load(open(config_file).read())
@@ -203,15 +203,18 @@ def exec_cluster(config_file, cmd, screen):
         config["file_mounts"], [],
         "",
         redirect_output=False)
-    _exec(updater, cmd, screen)
+    if halt:
+        _exec(updater, cmd, screen, post_cmd="ray stop && ray teardown ~/ray_bootstrap_config.yaml --workers && sudo shutdown -h now")
+    else:
+        _exec(updater, cmd, screen)
 
 
-def _exec(updater, cmd, screen):
+def _exec(updater, cmd, screen, post_cmd="exec bash"):
     if cmd:
         if screen:
             cmd = [
                 "screen", "-L", "-dm", "bash", "-c",
-                quote(cmd + "; exec bash")
+                quote(cmd + "; " + post_cmd)
             ]
             cmd = " ".join(cmd)
         updater.ssh_cmd(cmd, verbose=True, allocate_tty=True)

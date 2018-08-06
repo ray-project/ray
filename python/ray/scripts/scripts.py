@@ -396,13 +396,18 @@ def create_or_update(cluster_config_file, min_workers, max_workers, no_restart,
 @click.command()
 @click.argument("cluster_config_file", required=True, type=str)
 @click.option(
+    "--workers-only",
+    is_flag=True,
+    default=False,
+    help=("Only destroy the workers."))
+@click.option(
     "--yes",
     "-y",
     is_flag=True,
     default=False,
     help=("Don't ask for confirmation."))
-def teardown(cluster_config_file, yes):
-    teardown_cluster(cluster_config_file, yes)
+def teardown(cluster_config_file, yes, workers_only):
+    teardown_cluster(cluster_config_file, yes, workers_only)
 
 
 @click.command()
