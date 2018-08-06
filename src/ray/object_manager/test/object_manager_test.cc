@@ -437,16 +437,7 @@ class TestObjectManager : public TestObjectManagerBase {
         }));
   }
 
-  void TestWaitComplete() { TestBufferPool(); }
-
-  void TestBufferPool() {
-    // Ensure the number of chunks generated do not exceed the number of send threads.
-    for (uint64_t i = object_chunk_size / 2; i < 10 * object_chunk_size; ++i) {
-      uint64_t num_chunks = server1->object_manager_.buffer_pool_.GetNumChunks(i);
-      ASSERT_LE(num_chunks, max_sends);
-    }
-    main_service.stop();
-  }
+  void TestWaitComplete() { main_service.stop(); }
 
   void TestConnections() {
     RAY_LOG(DEBUG) << "\n"
