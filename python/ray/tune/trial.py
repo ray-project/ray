@@ -16,8 +16,8 @@ from ray.tune.logger import NoopLogger, UnifiedLogger, pretty_print
 # need because there are cyclic imports that may cause specific names to not
 # have been defined yet. See https://github.com/ray-project/ray/issues/1716.
 import ray.tune.registry
-from ray.tune.result import (
-    DEFAULT_RESULTS_DIR, DONE, HOSTNAME, PID, TIME_TOTAL_S)
+from ray.tune.result import (DEFAULT_RESULTS_DIR, DONE, HOSTNAME, PID,
+                             TIME_TOTAL_S)
 from ray.utils import random_string, binary_to_hex
 
 DEBUG_PRINT_INTERVAL = 5
@@ -265,8 +265,9 @@ class Trial(object):
         pieces = [
             '{} [{}]'.format(
                 self._status_string(),
-                location_string(self.last_result.get(HOSTNAME),
-                                self.last_result.get(PID))),
+                location_string(
+                    self.last_result.get(HOSTNAME),
+                    self.last_result.get(PID))),
             '{} s'.format(int(self.last_result.get(TIME_TOTAL_S))),
         ]
 

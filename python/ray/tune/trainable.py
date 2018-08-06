@@ -15,8 +15,8 @@ import uuid
 
 import ray
 from ray.tune.logger import UnifiedLogger
-from ray.tune.result import (
-    DEFAULT_RESULTS_DIR, TIME_THIS_ITER_S, TIMESTEPS_THIS_ITER)
+from ray.tune.result import (DEFAULT_RESULTS_DIR, TIME_THIS_ITER_S,
+                             TIMESTEPS_THIS_ITER)
 from ray.tune.trial import Resources
 
 

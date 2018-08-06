@@ -4,7 +4,6 @@ from __future__ import print_function
 
 import os
 
-
 DONE = "done"
 HOSTNAME = "hostname"
 NODE_IP = "node_ip"
