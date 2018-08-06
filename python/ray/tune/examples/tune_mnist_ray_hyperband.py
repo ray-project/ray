@@ -233,6 +233,6 @@ if __name__ == '__main__':
 
     ray.init()
     hyperband = HyperBandScheduler(
-        time_attr="training_iteration", reward_attr="mean_accuracy", max_t=100)
+        time_attr="training_iteration", reward_attr="mean_accuracy", max_t=10)
 
     run_experiments({'mnist_hyperband_test': mnist_spec}, scheduler=hyperband)

@@ -196,7 +196,7 @@ class _SafeFallbackEncoder(json.JSONEncoder):
 
 
 def pretty_print(result):
-    result = result.copy()
+    result = result.as_dict()
     result.update(config=None)  # drop config from pretty print
     out = {}
     for k, v in result.items():

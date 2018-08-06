@@ -113,9 +113,10 @@ class Trainable(object):
         result = self._train()
         self._iteration += 1
 
-        time_this_iter = result.time_this_iter_s
-        if time_this_iter is None:
+        if result.time_this_iter_s is None:
             time_this_iter = time.time() - start
+        else:
+            time_this_iter = result.time_this_iter_s
         self._time_total += time_this_iter
 
         now = datetime.today()
