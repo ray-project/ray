@@ -50,6 +50,7 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
     assert (useRaylet == true);
 
     boolean[] readys = _waitObject(client, objectIds, numReturns, timeoutMs, false);
+    assert (readys.length == objectIds.length);
 
     List<byte[]> ret = new ArrayList<>();
     for (int i = 0; i < readys.length; i++) {
@@ -58,8 +59,7 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
       }
     }
 
-    assert (ret.size() == readys.length);
-    return ret; 
+    return ret;
   }
 
   @Override
