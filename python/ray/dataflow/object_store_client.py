@@ -360,3 +360,36 @@ class ObjectStoreClient(object):
 
         assert len(final_results) == len(object_ids)
         return final_results
+
+    def wait_object(self, object_ids, num_returns=1, timeout=None):
+        # TODO(rkn): This is a temporary workaround for
+        # https://github.com/ray-project/ray/issues/997. However, it should be
+        # fixed in Arrow instead of here.
+        if len(object_ids) == 0:
+            return [], []
+
+        if len(object_ids) != len(set(object_ids)):
+            raise Exception("Wait requires a list of unique object IDs.")
+        if num_returns <= 0:
+            raise Exception(
+                "Invalid number of objects to return %d." % num_returns)
+        if num_returns > len(object_ids):
+            raise Exception("num_returns cannot be greater than the number "
+                            "of objects provided to ray.wait.")
+        timeout = timeout if timeout is not None else 2**30
+        if self.use_raylet:
+            ready_ids, remaining_ids = self.local_scheduler_client.wait(
+                object_ids, num_returns, timeout, False)
+        else:
+            object_id_strs = [
+                plasma.ObjectID(object_id.id()) for object_id in object_ids
+            ]
+            ready_ids, remaining_ids = self.plasma_client.wait(
+                object_id_strs, timeout, num_returns)
+            ready_ids = [
+                ray.ObjectID(object_id.binary()) for object_id in ready_ids
+            ]
+            remaining_ids = [
+                ray.ObjectID(object_id.binary()) for object_id in remaining_ids
+            ]
+        return ready_ids, remaining_ids
