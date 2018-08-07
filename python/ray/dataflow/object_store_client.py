@@ -173,10 +173,6 @@ class ObjectStoreClient(object):
         self.serialization_context_map.clear()
 
     @property
-    def mode(self):
-        return self.worker.mode
-
-    @property
     def lock(self):
         return self.worker.lock
 
@@ -338,10 +334,10 @@ class ObjectStoreClient(object):
                 # Wait a little bit for the import thread to import the class.
                 # If we currently have the worker lock, we need to release it
                 # so that the import thread can acquire it.
-                if self.mode == WORKER_MODE:
+                if self.worker.is_worker:
                     self.lock.release()
                 time.sleep(0.01)
-                if self.mode == WORKER_MODE:
+                if self.worker.is_worker:
                     self.lock.acquire()
 
                 if time.time() - start_time > error_timeout:
