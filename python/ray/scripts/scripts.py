@@ -372,6 +372,12 @@ def stop():
     help=("Whether to skip restarting Ray services during the update. "
           "This avoids interrupting running jobs."))
 @click.option(
+    "--restart-only",
+    is_flag=True,
+    default=False,
+    help=("Whether to skip running setup commands and only restart Ray. "
+          "This cannot be used with 'no-restart'."))
+@click.option(
     "--min-workers",
     required=False,
     type=int,
@@ -393,9 +399,12 @@ def stop():
     default=False,
     help=("Don't ask for confirmation."))
 def create_or_update(cluster_config_file, min_workers, max_workers, no_restart,
-                     yes, cluster_name):
+                     restart_only, yes, cluster_name):
+    if restart_only or no_restart:
+        assert restart_only != no_restart, "Cannot set both 'restart_only' " \
+            "and 'no_restart' at the same time!"
     create_or_update_cluster(cluster_config_file, min_workers, max_workers,
-                             no_restart, yes, cluster_name)
+                             no_restart, restart_only, yes, cluster_name)
 
 
 @click.command()
