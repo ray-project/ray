@@ -30,9 +30,6 @@ class RayTaskError(Exception):
         self.traceback_str = traceback_str
 
     def __str__(self):
-        import traceback
-        traceback.print_stack()
-
         """Format a RayTaskError as a string."""
         if self.traceback_str is None:
             # This path is taken if getting the task arguments failed.
