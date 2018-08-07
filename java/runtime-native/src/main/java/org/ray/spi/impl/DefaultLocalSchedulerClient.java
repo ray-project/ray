@@ -65,6 +65,22 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
 
   @Override
   public void submitTask(TaskSpec task) {
+    // We don't support resources management in non raylet mode.
+    if (!useRaylet) {
+      task.resources.clear();
+      task.resources.put("CPU", 0.0);
+    } else {
+      final String cpuLiteral = "CPU";
+      if (!task.resources.containsKey(cpuLiteral)) {
+        task.resources.put(cpuLiteral, 0.0);
+      }
+
+      final String gpuLiteral = "GPU";
+      if (!task.resources.containsKey(gpuLiteral)) {
+        task.resources.put(gpuLiteral, 0.0);
+      }
+    }
+
     ByteBuffer info = taskSpec2Info(task);
     byte[] a = null;
     if (!task.actorId.isNil()) {
@@ -221,16 +237,6 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
     // The required_resources vector indicates the quantities of the different
     // resources required by this task. The index in this vector corresponds to
     // the resource type defined in the ResourceIndex enum. For example,
-
-    final String CPULiteral = "CPU";
-    if (!task.resources.containsKey(CPULiteral)) {
-      task.resources.put(CPULiteral, 0.0);
-    }
-    final String GPULiteral = "GPU";
-    if (!task.resources.containsKey(GPULiteral)) {
-      task.resources.put(GPULiteral, 0.0);
-    }
-
     int[] requiredResourcesOffsets = new int[task.resources.size()];
     int i = 0;
     for (Map.Entry<String, Double> entry : task.resources.entrySet()) {
