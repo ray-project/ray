@@ -9,14 +9,14 @@ import ray
 from ray.test.test_utils import (_wait_for_nodes_to_join, _broadcast_event,
                                  _wait_for_event)
 
-# This test should be run with 5 nodes, which have 0, 0, 5, 6, and 50 GPUs for
-# a total of 61 GPUs. It should be run with a large number of drivers (e.g.,
+# This test should be run with 5 nodes, which have 0, 0, 1, 5, and 10 GPUs for
+# a total of 16 GPUs. It should be run with a large number of drivers (e.g.,
 # 100). At most 10 drivers will run at a time, and each driver will use at most
-# 5 GPUs (this is ceil(61 / 15), which guarantees that we will always be able
+# 3 GPUs (this is ceil(16 / 7), which guarantees that we will always be able
 # to make progress).
 total_num_nodes = 5
-max_concurrent_drivers = 15
-num_gpus_per_driver = 5
+max_concurrent_drivers = 7
+num_gpus_per_driver = 3
 
 
 @ray.remote(num_cpus=0, num_gpus=1)
