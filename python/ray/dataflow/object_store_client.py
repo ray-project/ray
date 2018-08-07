@@ -16,6 +16,7 @@ import ray.ray_constants as ray_constants
 from ray.utils import thread_safe_client
 import ray.worker
 
+
 class ObjectStoreClient(object):
     def __init__(self, worker, memcopy_threads=12):
         """Data client for getting & putting objects.
@@ -48,8 +49,8 @@ class ObjectStoreClient(object):
 
         if not self.use_raylet:
             self.plasma_client = thread_safe_client(
-                plasma.connect(
-                    store_socket_name, manager_socket_name, release_delay))
+                plasma.connect(store_socket_name, manager_socket_name,
+                               release_delay))
         else:
             self.plasma_client = thread_safe_client(
                 plasma.connect(store_socket_name, "", release_delay))
@@ -151,7 +152,7 @@ class ObjectStoreClient(object):
                                        "{} by expanding them as dictionaries "
                                        "of their fields. This behavior may "
                                        "be incorrect in some cases.".format(
-                        type(example_object)))
+                                           type(example_object)))
                     logger.warning(warning_message)
                 except (RayNotDictionarySerializable, CloudPickleError,
                         pickle.pickle.PicklingError, Exception):
@@ -164,7 +165,7 @@ class ObjectStoreClient(object):
                                            "serializing objects of type {} by "
                                            "using pickle. This may be "
                                            "inefficient.".format(
-                            type(example_object)))
+                                               type(example_object)))
                         logger.warning(warning_message)
                     except CloudPickleError:
                         ray.worker.register_custom_serializer(
@@ -173,7 +174,7 @@ class ObjectStoreClient(object):
                                            "failed, so we are using pickle "
                                            "and only registering the class "
                                            "locally.".format(
-                            type(example_object)))
+                                               type(example_object)))
                         logger.warning(warning_message)
 
     def put_object(self, object_id, value):
@@ -212,7 +213,7 @@ class ObjectStoreClient(object):
             # message.
             logger.info(
                 "The object with ID {} already exists in the object store."
-                    .format(object_id))
+                .format(object_id))
 
     def retrieve_and_deserialize(self, object_ids, timeout, error_timeout=10):
         start_time = time.time()
@@ -288,8 +289,8 @@ class ObjectStoreClient(object):
         ]
         for i in range(0, len(object_ids), self.worker_fetch_request_size):
             if not self.use_raylet:
-                self.plasma_client.fetch(plain_object_ids[i:(
-                        i + self.worker_fetch_request_size)])
+                self.plasma_client.fetch(
+                    plain_object_ids[i:(i + self.worker_fetch_request_size)])
             else:
                 self.local_scheduler_client.reconstruct_objects(
                     object_ids[i:(i + self.worker_fetch_request_size)], True)
@@ -335,11 +336,11 @@ class ObjectStoreClient(object):
                             # reconstruction and fetch are implemented by
                             # different processes.
                             self.plasma_client.fetch(object_ids_to_fetch[i:(
-                                    i + fetch_request_size)])
+                                i + fetch_request_size)])
                         else:
                             self.local_scheduler_client.reconstruct_objects(
                                 ray_object_ids_to_fetch[i:(
-                                        i + fetch_request_size)], False)
+                                    i + fetch_request_size)], False)
                     results = self.retrieve_and_deserialize(
                         object_ids_to_fetch,
                         max([
