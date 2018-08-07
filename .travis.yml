@@ -195,6 +195,9 @@ script:
   # module is only found if the test directory is in the PYTHONPATH.
   - export PYTHONPATH="$PYTHONPATH:./test/"
 
+  # Python3.5+ only. Otherwise we will get `SyntaxError` regardless of how we set the tester.
+  - python -c 'import sys;exit(sys.version_info>=(3,5))' || python -m pytest python/ray/experimental/test/async_test.py
+
   - python -m pytest python/ray/common/test/test.py
   - python -m pytest python/ray/common/redis_module/runtest.py
   - python -m pytest python/ray/plasma/test/test.py

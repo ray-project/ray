@@ -4,7 +4,6 @@ from __future__ import print_function
 
 import atexit
 import collections
-import colorama
 import hashlib
 import inspect
 import numpy as np
@@ -17,9 +16,10 @@ import time
 import traceback
 
 # Ray modules
-import pyarrow
-import pyarrow.plasma as plasma
 import ray.cloudpickle as pickle
+from ray.dataflow.exceptions import (RayTaskError, RayGetArgumentError,
+                                     RayGetError)
+import ray.dataflow.object_store_client as object_store_client
 import ray.experimental.state as state
 import ray.gcs_utils
 import ray.remote_function
@@ -72,104 +72,6 @@ DEFAULT_ACTOR_CREATION_CPUS_SIMPLE_CASE = 0
 # specified.
 DEFAULT_ACTOR_METHOD_CPUS_SPECIFIED_CASE = 0
 DEFAULT_ACTOR_CREATION_CPUS_SPECIFIED_CASE = 1
-
-
-class RayTaskError(Exception):
-    """An object used internally to represent a task that threw an exception.
-
-    If a task throws an exception during execution, a RayTaskError is stored in
-    the object store for each of the task's outputs. When an object is
-    retrieved from the object store, the Python method that retrieved it checks
-    to see if the object is a RayTaskError and if it is then an exception is
-    thrown propagating the error message.
-
-    Currently, we either use the exception attribute or the traceback attribute
-    but not both.
-
-    Attributes:
-        function_name (str): The name of the function that failed and produced
-            the RayTaskError.
-        exception (Exception): The exception object thrown by the failed task.
-        traceback_str (str): The traceback from the exception.
-    """
-
-    def __init__(self, function_name, exception, traceback_str):
-        """Initialize a RayTaskError."""
-        self.function_name = function_name
-        if (isinstance(exception, RayGetError)
-                or isinstance(exception, RayGetArgumentError)):
-            self.exception = exception
-        else:
-            self.exception = None
-        self.traceback_str = traceback_str
-
-    def __str__(self):
-        """Format a RayTaskError as a string."""
-        if self.traceback_str is None:
-            # This path is taken if getting the task arguments failed.
-            return ("Remote function {}{}{} failed with:\n\n{}".format(
-                colorama.Fore.RED, self.function_name, colorama.Fore.RESET,
-                self.exception))
-        else:
-            # This path is taken if the task execution failed.
-            return ("Remote function {}{}{} failed with:\n\n{}".format(
-                colorama.Fore.RED, self.function_name, colorama.Fore.RESET,
-                self.traceback_str))
-
-
-class RayGetError(Exception):
-    """An exception used when get is called on an output of a failed task.
-
-    Attributes:
-        objectid (lib.ObjectID): The ObjectID that get was called on.
-        task_error (RayTaskError): The RayTaskError object created by the
-            failed task.
-    """
-
-    def __init__(self, objectid, task_error):
-        """Initialize a RayGetError object."""
-        self.objectid = objectid
-        self.task_error = task_error
-
-    def __str__(self):
-        """Format a RayGetError as a string."""
-        return ("Could not get objectid {}. It was created by remote function "
-                "{}{}{} which failed with:\n\n{}".format(
-                    self.objectid, colorama.Fore.RED,
-                    self.task_error.function_name, colorama.Fore.RESET,
-                    self.task_error))
-
-
-class RayGetArgumentError(Exception):
-    """An exception used when a task's argument was produced by a failed task.
-
-    Attributes:
-        argument_index (int): The index (zero indexed) of the failed argument
-            in present task's remote function call.
-        function_name (str): The name of the function for the current task.
-        objectid (lib.ObjectID): The ObjectID that was passed in as the
-            argument.
-        task_error (RayTaskError): The RayTaskError object created by the
-            failed task.
-    """
-
-    def __init__(self, function_name, argument_index, objectid, task_error):
-        """Initialize a RayGetArgumentError object."""
-        self.argument_index = argument_index
-        self.function_name = function_name
-        self.objectid = objectid
-        self.task_error = task_error
-
-    def __str__(self):
-        """Format a RayGetArgumentError as a string."""
-        return ("Failed to get objectid {} as argument {} for remote function "
-                "{}{}{}. It was created by remote function {}{}{} which "
-                "failed with:\n{}".format(
-                    self.objectid, self.argument_index, colorama.Fore.RED,
-                    self.function_name, colorama.Fore.RESET, colorama.Fore.RED,
-                    self.task_error.function_name, colorama.Fore.RESET,
-                    self.task_error))
-
 
 FunctionExecutionInfo = collections.namedtuple(
     "FunctionExecutionInfo", ["function", "function_name", "max_calls"])
@@ -236,33 +138,14 @@ class Worker(object):
         # import thread. It is safe to convert this worker into an actor of
         # these types.
         self.imported_actor_classes = set()
-        # The number of threads Plasma should use when putting an object in the
-        # object store.
-        self.memcopy_threads = 12
         # When the worker is constructed. Record the original value of the
         # CUDA_VISIBLE_DEVICES environment variable.
         self.original_gpu_ids = ray.utils.get_cuda_visible_devices()
         self.profiler = profiling.Profiler(self)
         self.state_lock = threading.Lock()
-        # A dictionary that maps from driver id to SerializationContext
-        # TODO: clean up the SerializationContext once the job finished.
-        self.serialization_context_map = {}
+
         # Identity of the driver that this worker is processing.
         self.task_driver_id = None
-
-    def get_serialization_context(self, driver_id):
-        """Get the SerializationContext of the driver that this worker is processing.
-
-        Args:
-            driver_id: The ID of the driver that indicates which driver to get
-                the serialization context for.
-
-        Returns:
-            The serialization context of the given driver.
-        """
-        if driver_id not in self.serialization_context_map:
-            _initialize_serialization(driver_id)
-        return self.serialization_context_map[driver_id]
 
     def check_connected(self):
         """Check if the worker is connected.
@@ -299,261 +182,44 @@ class Worker(object):
         """
         self.mode = mode
 
-    def store_and_register(self, object_id, value, depth=100):
-        """Store an object and attempt to register its class if needed.
+    def get_serialization_context(self, driver_id):
+        """For backward compatibility"""
+        return self.object_store_client.get_serialization_context(driver_id)
 
-        Args:
-            object_id: The ID of the object to store.
-            value: The value to put in the object store.
-            depth: The maximum number of classes to recursively register.
+    @property
+    def plasma_client(self):
+        """For backward compatibility"""
+        return self.object_store_client.plasma_client
 
-        Raises:
-            Exception: An exception is raised if the attempt to store the
-                object fails. This can happen if there is already an object
-                with the same ID in the object store or if the object store is
-                full.
-        """
-        counter = 0
-        while True:
-            if counter == depth:
-                raise Exception("Ray exceeded the maximum number of classes "
-                                "that it will recursively serialize when "
-                                "attempting to serialize an object of "
-                                "type {}.".format(type(value)))
-            counter += 1
-            try:
-                self.plasma_client.put(
-                    value,
-                    object_id=pyarrow.plasma.ObjectID(object_id.id()),
-                    memcopy_threads=self.memcopy_threads,
-                    serialization_context=self.get_serialization_context(
-                        self.task_driver_id))
-                break
-            except pyarrow.SerializationCallbackError as e:
-                try:
-                    register_custom_serializer(
-                        type(e.example_object), use_dict=True)
-                    warning_message = ("WARNING: Serializing objects of type "
-                                       "{} by expanding them as dictionaries "
-                                       "of their fields. This behavior may "
-                                       "be incorrect in some cases.".format(
-                                           type(e.example_object)))
-                    logger.warning(warning_message)
-                except (serialization.RayNotDictionarySerializable,
-                        serialization.CloudPickleError,
-                        pickle.pickle.PicklingError, Exception):
-                    # We also handle generic exceptions here because
-                    # cloudpickle can fail with many different types of errors.
-                    try:
-                        register_custom_serializer(
-                            type(e.example_object), use_pickle=True)
-                        warning_message = ("WARNING: Falling back to "
-                                           "serializing objects of type {} by "
-                                           "using pickle. This may be "
-                                           "inefficient.".format(
-                                               type(e.example_object)))
-                        logger.warning(warning_message)
-                    except serialization.CloudPickleError:
-                        register_custom_serializer(
-                            type(e.example_object),
-                            use_pickle=True,
-                            local=True)
-                        warning_message = ("WARNING: Pickling the class {} "
-                                           "failed, so we are using pickle "
-                                           "and only registering the class "
-                                           "locally.".format(
-                                               type(e.example_object)))
-                        logger.warning(warning_message)
+    @property
+    def is_driver(self):
+        return self.mode in [SCRIPT_MODE, SILENT_MODE]
+
+    @property
+    def is_real_driver(self):
+        return self.mode == SCRIPT_MODE
+
+    @property
+    def is_worker(self):
+        return self.mode == WORKER_MODE
+
+    @property
+    def is_local(self):
+        return self.mode == LOCAL_MODE
 
     def put_object(self, object_id, value):
-        """Put value in the local object store with object id objectid.
-
-        This assumes that the value for objectid has not yet been placed in the
-        local object store.
-
-        Args:
-            object_id (object_id.ObjectID): The object ID of the value to be
-                put.
-            value: The value to put in the object store.
-
-        Raises:
-            Exception: An exception is raised if the attempt to store the
-                object fails. This can happen if there is already an object
-                with the same ID in the object store or if the object store is
-                full.
-        """
-        # Make sure that the value is not an object ID.
-        if isinstance(value, ray.ObjectID):
-            raise Exception("Calling 'put' on an ObjectID is not allowed "
-                            "(similarly, returning an ObjectID from a remote "
-                            "function is not allowed). If you really want to "
-                            "do this, you can wrap the ObjectID in a list and "
-                            "call 'put' on it (or return it).")
-
-        # Serialize and put the object in the object store.
-        try:
-            self.store_and_register(object_id, value)
-        except pyarrow.PlasmaObjectExists:
-            # The object already exists in the object store, so there is no
-            # need to add it again. TODO(rkn): We need to compare the hashes
-            # and make sure that the objects are in fact the same. We also
-            # should return an error code to the caller instead of printing a
-            # message.
-            logger.info(
-                "The object with ID {} already exists in the object store."
-                .format(object_id))
-
-    def retrieve_and_deserialize(self, object_ids, timeout, error_timeout=10):
-        start_time = time.time()
-        # Only send the warning once.
-        warning_sent = False
-        while True:
-            try:
-                # We divide very large get requests into smaller get requests
-                # so that a single get request doesn't block the store for a
-                # long time, if the store is blocked, it can block the manager
-                # as well as a consequence.
-                results = []
-                for i in range(0, len(object_ids),
-                               ray._config.worker_get_request_size()):
-                    results += self.plasma_client.get(
-                        object_ids[i:(
-                            i + ray._config.worker_get_request_size())],
-                        timeout,
-                        self.get_serialization_context(self.task_driver_id))
-                return results
-            except pyarrow.lib.ArrowInvalid:
-                # TODO(ekl): the local scheduler could include relevant
-                # metadata in the task kill case for a better error message
-                invalid_error = RayTaskError(
-                    "<unknown>", None,
-                    "Invalid return value: likely worker died or was killed "
-                    "while executing the task.")
-                return [invalid_error] * len(object_ids)
-            except pyarrow.DeserializationCallbackError:
-                # Wait a little bit for the import thread to import the class.
-                # If we currently have the worker lock, we need to release it
-                # so that the import thread can acquire it.
-                if self.mode == WORKER_MODE:
-                    self.lock.release()
-                time.sleep(0.01)
-                if self.mode == WORKER_MODE:
-                    self.lock.acquire()
-
-                if time.time() - start_time > error_timeout:
-                    warning_message = ("This worker or driver is waiting to "
-                                       "receive a class definition so that it "
-                                       "can deserialize an object from the "
-                                       "object store. This may be fine, or it "
-                                       "may be a bug.")
-                    if not warning_sent:
-                        ray.utils.push_error_to_driver(
-                            self,
-                            ray_constants.WAIT_FOR_CLASS_PUSH_ERROR,
-                            warning_message,
-                            driver_id=self.task_driver_id.id())
-                    warning_sent = True
+        return self.object_store_client.put_object(object_id, value)
 
     def get_object(self, object_ids):
-        """Get the value or values in the object store associated with the IDs.
+        return self.object_store_client.get_object(object_ids)
 
-        Return the values from the local object store for object_ids. This will
-        block until all the values for object_ids have been written to the
-        local object store.
+    def wait_object(self, object_ids, num_returns, timeout):
+        return self.object_store_client.wait_object(object_ids, num_returns,
+                                                    timeout)
 
-        Args:
-            object_ids (List[object_id.ObjectID]): A list of the object IDs
-                whose values should be retrieved.
-        """
-        # Make sure that the values are object IDs.
-        for object_id in object_ids:
-            if not isinstance(object_id, ray.ObjectID):
-                raise Exception("Attempting to call `get` on the value {}, "
-                                "which is not an ObjectID.".format(object_id))
-        # Do an initial fetch for remote objects. We divide the fetch into
-        # smaller fetches so as to not block the manager for a prolonged period
-        # of time in a single call.
-        plain_object_ids = [
-            plasma.ObjectID(object_id.id()) for object_id in object_ids
-        ]
-        for i in range(0, len(object_ids),
-                       ray._config.worker_fetch_request_size()):
-            if not self.use_raylet:
-                self.plasma_client.fetch(plain_object_ids[i:(
-                    i + ray._config.worker_fetch_request_size())])
-            else:
-                self.local_scheduler_client.reconstruct_objects(
-                    object_ids[i:(
-                        i + ray._config.worker_fetch_request_size())], True)
-
-        # Get the objects. We initially try to get the objects immediately.
-        final_results = self.retrieve_and_deserialize(plain_object_ids, 0)
-        # Construct a dictionary mapping object IDs that we haven't gotten yet
-        # to their original index in the object_ids argument.
-        unready_ids = {
-            plain_object_ids[i].binary(): i
-            for (i, val) in enumerate(final_results)
-            if val is plasma.ObjectNotAvailable
-        }
-
-        if len(unready_ids) > 0:
-            with self.state_lock:
-                # Try reconstructing any objects we haven't gotten yet. Try to
-                # get them until at least get_timeout_milliseconds
-                # milliseconds passes, then repeat.
-                while len(unready_ids) > 0:
-                    object_ids_to_fetch = [
-                        plasma.ObjectID(unready_id)
-                        for unready_id in unready_ids.keys()
-                    ]
-                    ray_object_ids_to_fetch = [
-                        ray.ObjectID(unready_id)
-                        for unready_id in unready_ids.keys()
-                    ]
-                    fetch_request_size = (
-                        ray._config.worker_fetch_request_size())
-                    for i in range(0, len(object_ids_to_fetch),
-                                   fetch_request_size):
-                        if not self.use_raylet:
-                            for unready_id in ray_object_ids_to_fetch[i:(
-                                    i + fetch_request_size)]:
-                                (self.local_scheduler_client.
-                                 reconstruct_objects([unready_id], False))
-                            # Do another fetch for objects that aren't
-                            # available locally yet, in case they were evicted
-                            # since the last fetch. We divide the fetch into
-                            # smaller fetches so as to not block the manager
-                            # for a prolonged period of time in a single call.
-                            # This is only necessary for legacy ray since
-                            # reconstruction and fetch are implemented by
-                            # different processes.
-                            self.plasma_client.fetch(object_ids_to_fetch[i:(
-                                i + fetch_request_size)])
-                        else:
-                            self.local_scheduler_client.reconstruct_objects(
-                                ray_object_ids_to_fetch[i:(
-                                    i + fetch_request_size)], False)
-                    results = self.retrieve_and_deserialize(
-                        object_ids_to_fetch,
-                        max([
-                            ray._config.get_timeout_milliseconds(),
-                            int(0.01 * len(unready_ids))
-                        ]))
-                    # Remove any entries for objects we received during this
-                    # iteration so we don't retrieve the same object twice.
-                    for i, val in enumerate(results):
-                        if val is not plasma.ObjectNotAvailable:
-                            object_id = object_ids_to_fetch[i].binary()
-                            index = unready_ids[object_id]
-                            final_results[index] = val
-                            unready_ids.pop(object_id)
-
-                # If there were objects that we weren't able to get locally,
-                # let the local scheduler know that we're now unblocked.
-                self.local_scheduler_client.notify_unblocked()
-
-        assert len(final_results) == len(object_ids)
-        return final_results
+    def compute_put_id(self):
+        return self.local_scheduler_client.compute_put_id(
+            self.current_task_id, self.put_index, self.use_raylet)
 
     def submit_task(self,
                     function_id,
@@ -1237,97 +903,6 @@ def error_info(worker=global_worker):
     return errors
 
 
-def _initialize_serialization(driver_id, worker=global_worker):
-    """Initialize the serialization library.
-
-    This defines a custom serializer for object IDs and also tells ray to
-    serialize several exception classes that we define for error handling.
-    """
-    serialization_context = pyarrow.default_serialization_context()
-    # Tell the serialization context to use the cloudpickle version that we
-    # ship with Ray.
-    serialization_context.set_pickle(pickle.dumps, pickle.loads)
-    pyarrow.register_torch_serialization_handlers(serialization_context)
-
-    # Define a custom serializer and deserializer for handling Object IDs.
-    def object_id_custom_serializer(obj):
-        return obj.id()
-
-    def object_id_custom_deserializer(serialized_obj):
-        return ray.ObjectID(serialized_obj)
-
-    # We register this serializer on each worker instead of calling
-    # register_custom_serializer from the driver so that isinstance still
-    # works.
-    serialization_context.register_type(
-        ray.ObjectID,
-        "ray.ObjectID",
-        pickle=False,
-        custom_serializer=object_id_custom_serializer,
-        custom_deserializer=object_id_custom_deserializer)
-
-    def actor_handle_serializer(obj):
-        return obj._serialization_helper(True)
-
-    def actor_handle_deserializer(serialized_obj):
-        new_handle = ray.actor.ActorHandle.__new__(ray.actor.ActorHandle)
-        new_handle._deserialization_helper(serialized_obj, True)
-        return new_handle
-
-    # We register this serializer on each worker instead of calling
-    # register_custom_serializer from the driver so that isinstance still
-    # works.
-    serialization_context.register_type(
-        ray.actor.ActorHandle,
-        "ray.ActorHandle",
-        pickle=False,
-        custom_serializer=actor_handle_serializer,
-        custom_deserializer=actor_handle_deserializer)
-
-    worker.serialization_context_map[driver_id] = serialization_context
-
-    register_custom_serializer(
-        RayTaskError,
-        use_dict=True,
-        local=True,
-        driver_id=driver_id,
-        class_id="ray.RayTaskError")
-    register_custom_serializer(
-        RayGetError,
-        use_dict=True,
-        local=True,
-        driver_id=driver_id,
-        class_id="ray.RayGetError")
-    register_custom_serializer(
-        RayGetArgumentError,
-        use_dict=True,
-        local=True,
-        driver_id=driver_id,
-        class_id="ray.RayGetArgumentError")
-    # Tell Ray to serialize lambdas with pickle.
-    register_custom_serializer(
-        type(lambda: 0),
-        use_pickle=True,
-        local=True,
-        driver_id=driver_id,
-        class_id="lambda")
-    # Tell Ray to serialize types with pickle.
-    register_custom_serializer(
-        type(int),
-        use_pickle=True,
-        local=True,
-        driver_id=driver_id,
-        class_id="type")
-    # Tell Ray to serialize FunctionSignatures as dictionaries. This is
-    # used when passing around actor handles.
-    register_custom_serializer(
-        ray.signature.FunctionSignature,
-        use_dict=True,
-        local=True,
-        driver_id=driver_id,
-        class_id="ray.signature.FunctionSignature")
-
-
 def get_address_info_from_redis_helper(redis_address,
                                        node_ip_address,
                                        use_raylet=False):
@@ -1867,8 +1442,8 @@ def shutdown(worker=global_worker):
     disconnect(worker)
     if hasattr(worker, "local_scheduler_client"):
         del worker.local_scheduler_client
-    if hasattr(worker, "plasma_client"):
-        worker.plasma_client.disconnect()
+    if hasattr(worker, "object_store_client"):
+        worker.object_store_client.disconnect()
 
     if worker.mode in [SCRIPT_MODE, SILENT_MODE]:
         # If this is a driver, push the finish time to Redis and clean up any
@@ -2159,13 +1734,12 @@ def connect(info,
         raise Exception("This code should be unreachable.")
 
     # Create an object store client.
-    if not worker.use_raylet:
-        worker.plasma_client = thread_safe_client(
-            plasma.connect(info["store_socket_name"],
-                           info["manager_socket_name"], 64))
-    else:
-        worker.plasma_client = thread_safe_client(
-            plasma.connect(info["store_socket_name"], "", 64))
+    worker.object_store_client = object_store_client.ObjectStoreClient(worker)
+    worker.object_store_client.connect(
+        store_socket_name=info["store_socket_name"],
+        manager_socket_name=info.get("manager_socket_name"),
+        release_delay=64,
+    )
 
     if not worker.use_raylet:
         local_scheduler_socket = info["local_scheduler_socket_name"]
@@ -2306,7 +1880,6 @@ def disconnect(worker=global_worker):
     worker.connected = False
     worker.cached_functions_to_run = []
     worker.cached_remote_functions_and_actors = []
-    worker.serialization_context_map.clear()
 
 
 def _try_to_compute_deterministic_class_id(cls, depth=5):
@@ -2508,8 +2081,7 @@ def put(value, worker=global_worker):
         if worker.mode == LOCAL_MODE:
             # In LOCAL_MODE, ray.put is the identity operation.
             return value
-        object_id = worker.local_scheduler_client.compute_put_id(
-            worker.current_task_id, worker.put_index, worker.use_raylet)
+        object_id = worker.compute_put_id()
         worker.put_object(object_id, value)
         worker.put_index += 1
         return object_id
@@ -2567,37 +2139,7 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
         if worker.mode == LOCAL_MODE:
             return object_ids[:num_returns], object_ids[num_returns:]
 
-        # TODO(rkn): This is a temporary workaround for
-        # https://github.com/ray-project/ray/issues/997. However, it should be
-        # fixed in Arrow instead of here.
-        if len(object_ids) == 0:
-            return [], []
-
-        if len(object_ids) != len(set(object_ids)):
-            raise Exception("Wait requires a list of unique object IDs.")
-        if num_returns <= 0:
-            raise Exception(
-                "Invalid number of objects to return %d." % num_returns)
-        if num_returns > len(object_ids):
-            raise Exception("num_returns cannot be greater than the number "
-                            "of objects provided to ray.wait.")
-        timeout = timeout if timeout is not None else 2**30
-        if worker.use_raylet:
-            ready_ids, remaining_ids = worker.local_scheduler_client.wait(
-                object_ids, num_returns, timeout, False)
-        else:
-            object_id_strs = [
-                plasma.ObjectID(object_id.id()) for object_id in object_ids
-            ]
-            ready_ids, remaining_ids = worker.plasma_client.wait(
-                object_id_strs, timeout, num_returns)
-            ready_ids = [
-                ray.ObjectID(object_id.binary()) for object_id in ready_ids
-            ]
-            remaining_ids = [
-                ray.ObjectID(object_id.binary()) for object_id in remaining_ids
-            ]
-        return ready_ids, remaining_ids
+        return worker.wait_object(object_ids, num_returns, timeout)
 
 
 def _mode(worker=global_worker):
