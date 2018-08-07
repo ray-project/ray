@@ -3,7 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 from ray.rllib.agents.agent import Agent, with_common_config
-from ray.rllib.agents.pg.pg_policy_graph import PGPolicyGraph
 from ray.rllib.optimizers import SyncSamplesOptimizer
 from ray.rllib.utils import merge_dicts
 from ray.tune.trial import Resources
@@ -11,6 +10,8 @@ from ray.tune.trial import Resources
 DEFAULT_CONFIG = with_common_config({
     # No remote workers by default
     "num_workers": 0,
+    # Use PyTorch as backend - no LSTM support
+    "use_pytorch": False,
     # Learning rate
     "lr": 0.0004,
     # Override model config
@@ -39,10 +40,18 @@ class PGAgent(Agent):
         return Resources(cpu=1, gpu=0, extra_cpu=cf["num_workers"])
 
     def _init(self):
+        if self.config["use_pytorch"]:
+            from ray.rllib.agents.pg.pg_torch_policy_graph import \
+                PGTorchPolicyGraph
+            policy_cls = PGTorchPolicyGraph
+        else:
+            from ray.rllib.agents.pg.pg_tf_policy_graph import PGPolicyGraph
+            policy_cls = PGPolicyGraph
+
         self.local_evaluator = self.make_local_evaluator(
-            self.env_creator, PGPolicyGraph)
+            self.env_creator, policy_cls)
         self.remote_evaluators = self.make_remote_evaluators(
-            self.env_creator, PGPolicyGraph, self.config["num_workers"], {})
+            self.env_creator, policy_cls, self.config["num_workers"], {})
         self.optimizer = SyncSamplesOptimizer(self.local_evaluator,
                                               self.remote_evaluators,
                                               self.config["optimizer"])
