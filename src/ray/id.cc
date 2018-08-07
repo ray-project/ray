@@ -1,12 +1,20 @@
 #include "ray/id.h"
 
 #include <limits.h>
+
+#include <chrono>
 #include <random>
 
 #include "ray/constants.h"
 #include "ray/status.h"
 
 namespace ray {
+
+std::mt19937 RandomlySeededMersenneTwister() {
+  auto seed = std::chrono::high_resolution_clock::now().time_since_epoch().count();
+  std::mt19937 seeded_engine (seed);
+  return seeded_engine;
+}
 
 UniqueID::UniqueID(const plasma::UniqueID &from) {
   std::memcpy(&id_, from.data(), kUniqueIDSize);
@@ -20,7 +28,7 @@ UniqueID UniqueID::from_random() {
   // older versions of macOS (see https://stackoverflow.com/a/29929949)
   static std::mutex mutex;
   std::lock_guard<std::mutex> lock(mutex);
-  static std::mt19937 generator;
+  static std::mt19937 generator = RandomlySeededMersenneTwister();
   std::uniform_int_distribution<uint32_t> dist(0, std::numeric_limits<uint8_t>::max());
   for (int i = 0; i < kUniqueIDSize; i++) {
     data[i] = static_cast<uint8_t>(dist(generator));
