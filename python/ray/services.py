@@ -943,9 +943,9 @@ def start_raylet(redis_address,
             to.
         worker_path (str): The path of the script to use when the local
             scheduler starts up new workers.
-        use_valgrind (bool): True if the plasma store should be started inside
+        use_valgrind (bool): True if the raylet should be started inside
             of valgrind. If this is True, use_profiler must be False.
-        use_profiler (bool): True if the plasma store should be started inside
+        use_profiler (bool): True if the raylet should be started inside
             a profiler. If this is True, use_valgrind must be False.
         stdout_file: A file handle opened for writing to redirect stdout to. If
             no redirection should happen, then this should be None.
