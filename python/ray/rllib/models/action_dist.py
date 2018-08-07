@@ -8,9 +8,8 @@ import distutils.version
 
 from ray.rllib.utils.reshaper import Reshaper
 
-
 use_tf150_api = (distutils.version.LooseVersion(tf.VERSION) >=
-                         distutils.version.LooseVersion("1.5.0"))
+                 distutils.version.LooseVersion("1.5.0"))
 
 
 class ActionDistribution(object):
