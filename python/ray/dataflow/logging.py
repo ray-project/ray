@@ -43,8 +43,8 @@ def format_error_message(exception_message, task_exception=False):
 class LocalLogger(object):
     def __init__(self, worker):
         self.worker = worker
-        self.logger = logging.getLogger(
-            "ray_worker:" + self.worker.worker_id.hex())
+        self.logger = logging.getLogger("ray_worker:" +
+                                        self.worker.worker_id.hex())
 
         self.log_stdout_file = None
         self.log_stderr_file = None
@@ -181,12 +181,11 @@ class WorkerLogger(LocalLogger):
         """Return True if the error is for this driver and false otherwise."""
         # TODO(rkn): Should probably check that this is only called on a driver.
         # Check that the error key is formatted as in push_error_to_driver.
-        assert len(error_key) == (
-                len(ERROR_KEY_PREFIX) + ray_constants.ID_SIZE + 1
-                + ray_constants.ID_SIZE), error_key
+        assert len(error_key) == (len(ERROR_KEY_PREFIX) + ray_constants.ID_SIZE
+                                  + 1 + ray_constants.ID_SIZE), error_key
 
         driver_id = error_key[len(ERROR_KEY_PREFIX):(
-                len(ERROR_KEY_PREFIX) + ray_constants.ID_SIZE)]
+            len(ERROR_KEY_PREFIX) + ray_constants.ID_SIZE)]
         # If the driver ID in the error message is a sequence of all zeros, then
         # the message is intended for all drivers.
         return driver_id in (self.task_driver_id.id(), NIL_JOB_ID)
@@ -318,9 +317,10 @@ class WorkerLogger(LocalLogger):
     def error_info(self):
         """Return information about failed tasks."""
         if self.use_raylet:
-            return (self.global_state.error_messages(
-                job_id=self.task_driver_id) + self.global_state.error_messages(
-                job_id=ray_constants.NIL_JOB_ID))
+            return (
+                self.global_state.error_messages(job_id=self.task_driver_id) +
+                self.global_state.error_messages(
+                    job_id=ray_constants.NIL_JOB_ID))
         error_keys = self.redis_client.lrange(ERROR_KEYS, 0, -1)
         errors = []
         for error_key in error_keys:

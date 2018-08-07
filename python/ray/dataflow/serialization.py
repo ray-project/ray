@@ -7,8 +7,8 @@ import pyarrow
 
 import ray.cloudpickle as pickle
 import ray.signature as signature
-from ray.dataflow.exceptions import (
-    RayGetError, RayGetArgumentError, RayTaskError)
+from ray.dataflow.exceptions import (RayGetError, RayGetArgumentError,
+                                     RayTaskError)
 import ray.plasma
 from ray.services import logger
 from ray.utils import random_string
@@ -134,10 +134,9 @@ class SerializationContextMap(object):
                                "{} by expanding them as dictionaries "
                                "of their fields. This behavior may "
                                "be incorrect in some cases.".format(
-                type(example_object)))
+                                   type(example_object)))
             logger.warning(warning_message)
-        except (RayNotDictionarySerializable,
-                CloudPickleError,
+        except (RayNotDictionarySerializable, CloudPickleError,
                 pickle.pickle.PicklingError, Exception):
             # We also handle generic exceptions here because
             # cloudpickle can fail with many different types of errors.
@@ -147,19 +146,15 @@ class SerializationContextMap(object):
                 warning_message = ("WARNING: Falling back to "
                                    "serializing objects of type {} by "
                                    "using pickle. This may be "
-                                   "inefficient.".format(
-                    type(example_object)))
+                                   "inefficient.".format(type(example_object)))
                 logger.warning(warning_message)
             except CloudPickleError:
                 self.register_custom_serializer(
-                    type(example_object),
-                    use_pickle=True,
-                    local=True)
+                    type(example_object), use_pickle=True, local=True)
                 warning_message = ("WARNING: Pickling the class {} "
                                    "failed, so we are using pickle "
                                    "and only registering the class "
-                                   "locally.".format(
-                    type(example_object)))
+                                   "locally.".format(type(example_object)))
                 logger.warning(warning_message)
 
     def get_serialization_context(self, driver_id):
@@ -176,7 +171,8 @@ class SerializationContextMap(object):
             self._initialize_serialization(driver_id)
         return self.serialization_context_map[driver_id]
 
-    def register_custom_serializer(self, cls,
+    def register_custom_serializer(self,
+                                   cls,
                                    use_pickle=False,
                                    use_dict=False,
                                    serializer=None,
@@ -261,7 +257,7 @@ class SerializationContextMap(object):
 
             serialization_context = worker_info[
                 "worker"].get_serialization_context(
-                ray.ObjectID(driver_id_bytes))
+                    ray.ObjectID(driver_id_bytes))
             serialization_context.register_type(
                 cls,
                 class_id,

@@ -129,13 +129,11 @@ class Driver(object):
         """For backward compatibility"""
         return self.object_store_client.get_serialization_context(driver_id)
 
-    def run_function_on_all_workers(
-            self,
-            function,
-            run_on_other_drivers=False):
+    def run_function_on_all_workers(self, function,
+                                    run_on_other_drivers=False):
         """For backward compatibility"""
-        self.distributor.run_function_on_all_workers(
-            function, run_on_other_drivers)
+        self.distributor.run_function_on_all_workers(function,
+                                                     run_on_other_drivers)
 
     @property
     def plasma_client(self):
@@ -265,8 +263,8 @@ class Driver(object):
         return self.object_store_client.get_object(object_ids)
 
     def wait_object(self, object_ids, num_returns, timeout):
-        return self.object_store_client.wait_object(
-            object_ids, num_returns, timeout)
+        return self.object_store_client.wait_object(object_ids, num_returns,
+                                                    timeout)
 
     def compute_put_id(self):
         return self.local_scheduler_client.compute_put_id(
@@ -392,6 +390,7 @@ class Worker(Driver):
     """This class represents a worker-like worker which keeps polling
     tasks and execute them.
     """
+
     def __init__(self):
         super(Worker, self).__init__()
 
@@ -512,8 +511,8 @@ class Worker(Driver):
                     outputs = function_executor(*arguments)
                 else:
                     actor = self.distributor.actors[task.actor_id().id()]
-                    outputs = function_executor(
-                        dummy_return_id, actor, *arguments)
+                    outputs = function_executor(dummy_return_id, actor,
+                                                *arguments)
         except Exception as e:
             # Determine whether the exception occured during a task, not an
             # actor method.
@@ -1355,7 +1354,6 @@ def custom_excepthook(type, value, tb):
 sys.excepthook = custom_excepthook
 
 
-
 def connect(info,
             object_id_seed=None,
             mode=WORKER_MODE,
@@ -1414,8 +1412,8 @@ def connect(info,
             "plasma_manager_socket": info.get("manager_socket_name"),
             "local_scheduler_socket": info.get("local_scheduler_socket_name"),
             "raylet_socket": info.get("raylet_socket_name"),
-            "name": (main.__file__ if hasattr(main, "__file__") else
-                     "INTERACTIVE MODE")
+            "name": (main.__file__
+                     if hasattr(main, "__file__") else "INTERACTIVE MODE")
         }
         worker.redis_client.hmset(b"Drivers:" + worker.worker_id, driver_info)
         if not worker.redis_client.exists("webui"):
@@ -1585,8 +1583,7 @@ def register_custom_serializer(cls,
         deserializer=deserializer,
         local=local,
         driver_id=driver_id,
-        class_id=class_id
-    )
+        class_id=class_id)
 
 
 def disconnect(worker=global_worker):
@@ -1713,8 +1710,7 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
         if worker.mode == LOCAL_MODE:
             return object_ids[:num_returns], object_ids[num_returns:]
 
-        return worker.wait_object(
-            object_ids, num_returns, timeout)
+        return worker.wait_object(object_ids, num_returns, timeout)
 
 
 def _mode(worker=global_worker):

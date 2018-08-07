@@ -143,14 +143,15 @@ class Distributor(execution_info.ExecutionInfo):
         utils.check_oversized_pickle(pickled_function, function_name,
                                      "remote function", self.worker)
 
-        self._push_exports(key, {
-            "driver_id": self.task_driver_id.id(),
-            "function_id": function_id.id(),
-            "name": function_name,
-            "module": function.__module__,
-            "function": pickled_function,
-            "max_calls": max_calls
-        })
+        self._push_exports(
+            key, {
+                "driver_id": self.task_driver_id.id(),
+                "function_id": function_id.id(),
+                "name": function_name,
+                "module": function.__module__,
+                "function": pickled_function,
+                "max_calls": max_calls
+            })
 
     def run_function_on_all_workers(self, function,
                                     run_on_other_drivers=False):
@@ -197,12 +198,13 @@ class Distributor(execution_info.ExecutionInfo):
                                          "function", self.worker)
 
             # Run the function on all workers.
-            self._push_exports(key, {
-                "driver_id": self.task_driver_id.id(),
-                "function_id": function_to_run_id,
-                "function": pickled_function,
-                "run_on_other_drivers": run_on_other_drivers
-            })
+            self._push_exports(
+                key, {
+                    "driver_id": self.task_driver_id.id(),
+                    "function_id": function_to_run_id,
+                    "function": pickled_function,
+                    "run_on_other_drivers": run_on_other_drivers
+                })
             # TODO(rkn): If the worker fails after it calls setnx and before it
             # successfully completes the hmset and rpush, then the program will
             # most likely hang. This could be fixed by making these three
@@ -213,7 +215,7 @@ class Distributor(execution_info.ExecutionInfo):
         """Run on arbitrary function on the worker."""
         (driver_id, serialized_function,
          run_on_other_drivers) = self.redis_client.hmget(
-            key, ["driver_id", "function", "run_on_other_drivers"])
+             key, ["driver_id", "function", "run_on_other_drivers"])
 
         if (run_on_other_drivers == "False" and self.worker.is_driver
                 and driver_id != self.task_driver_id.id()):
@@ -241,9 +243,9 @@ class Distributor(execution_info.ExecutionInfo):
         (driver_id, function_id_str, function_name, serialized_function,
          num_return_vals, module, resources,
          max_calls) = self.redis_client.hmget(key, [
-            "driver_id", "function_id", "name", "function", "num_return_vals",
-            "module", "resources", "max_calls"
-        ])
+             "driver_id", "function_id", "name", "function", "num_return_vals",
+             "module", "resources", "max_calls"
+         ])
         function_id = ray.ObjectID(function_id_str)
         function_name = utils.decode(function_name)
         max_calls = int(max_calls)
@@ -259,8 +261,7 @@ class Distributor(execution_info.ExecutionInfo):
             function_id=function_id,
             function=f,
             function_name=function_name,
-            max_calls=max_calls
-        )
+            max_calls=max_calls)
 
         try:
             function = pickle.loads(serialized_function)
@@ -273,7 +274,8 @@ class Distributor(execution_info.ExecutionInfo):
                 data={
                     "function_id": function_id.id(),
                     "function_name": function_name
-                }, format_exc=True)
+                },
+                format_exc=True)
         else:
             # TODO(rkn): Why is the below line necessary?
             function.__module__ = module
@@ -290,8 +292,8 @@ class Distributor(execution_info.ExecutionInfo):
                                     self.worker_id)
 
     def append_cached_remote_function(self, remote_function):
-        self.cached_remote_functions_and_actors.append(
-            (CACHED_REMOTE_FUNCTION, remote_function))
+        self.cached_remote_functions_and_actors.append((CACHED_REMOTE_FUNCTION,
+                                                        remote_function))
 
 
 class DistributorWithActor(Distributor, execution_info.ActorInfo):
@@ -419,10 +421,10 @@ class DistributorWithActor(Distributor, execution_info.ActorInfo):
         actor_id_str = self.actor_id
         (driver_id, class_id, class_name, module, pickled_class,
          checkpoint_interval, actor_method_names) = self.redis_client.hmget(
-            actor_class_key, [
-                "driver_id", "class_id", "class_name", "module", "class",
-                "checkpoint_interval", "actor_method_names"
-            ])
+             actor_class_key, [
+                 "driver_id", "class_id", "class_name", "module", "class",
+                 "checkpoint_interval", "actor_method_names"
+             ])
 
         class_name = utils.decode(class_name)
         module = utils.decode(module)
@@ -470,7 +472,8 @@ class DistributorWithActor(Distributor, execution_info.ActorInfo):
             self.worker.logger.push_exception_to_driver(
                 ray_constants.REGISTER_ACTOR_PUSH_ERROR,
                 driver_id=driver_id,
-                data={"actor_id": actor_id_str}, format_exc=True)
+                data={"actor_id": actor_id_str},
+                format_exc=True)
             # TODO(rkn): In the future, it might make sense to have the worker exit
             # here. However, currently that would lead to hanging if someone calls
             # ray.get on a method invoked on the actor.

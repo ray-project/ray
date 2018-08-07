@@ -68,7 +68,8 @@ class ExecutionInfo(object):
         self.function_execution_info[driver_id][function_id] = (
             FunctionExecutionInfo(
                 function=function,
-                function_name=function_name, max_calls=max_calls))
+                function_name=function_name,
+                max_calls=max_calls))
 
         if reset_execution_count:
             self.num_task_executions[driver_id][function_id] = 0
@@ -204,10 +205,11 @@ class ActorInfo(object):
             actor_id)
         # Save the checkpoint in Redis. TODO(rkn): Checkpoints
         # should not be stored in Redis. Fix this.
-        self.set_actor_checkpoint(self.actor_id,
-                                  checkpoint_index=self.actor_task_counter,
-                                  checkpoint=checkpoint,
-                                  frontier=frontier)
+        self.set_actor_checkpoint(
+            self.actor_id,
+            checkpoint_index=self.actor_task_counter,
+            checkpoint=checkpoint,
+            frontier=frontier)
 
     def set_checkpoint_interval(self, interval):
         self.actor_checkpoint_interval = int(interval)
@@ -229,7 +231,8 @@ class ActorInfo(object):
                 data={
                     "actor_class": actor.__class__.__name__,
                     "function_name": actor.__ray_checkpoint__.__name__
-                }, format_exc=True)
+                },
+                format_exc=True)
 
     def restore_and_log_checkpoint(self, actor):
         """Restore an actor from a checkpoint and log any errors.
@@ -248,12 +251,12 @@ class ActorInfo(object):
                 data={
                     "actor_class": actor.__class__.__name__,
                     "function_name": actor.__ray_checkpoint_restore__.__name__
-                }, format_exc=True)
+                },
+                format_exc=True)
 
         return checkpoint_resumed
 
-    def make_actor_method_executor(self, method_name, method,
-                                   actor_imported):
+    def make_actor_method_executor(self, method_name, method, actor_imported):
         """Make an executor that wraps a user-defined actor method.
 
         The wrapped method updates the worker's internal state and performs any
@@ -293,9 +296,8 @@ class ActorInfo(object):
             # We should checkpoint the actor if user checkpointing is on, we've
             # executed checkpoint_interval tasks since the last checkpoint, and the
             # method we're about to execute is not a checkpoint.
-            save_checkpoint = (actor_imported and
-                               self.on_checkpoint() and
-                               method_name != "__ray_checkpoint__")
+            save_checkpoint = (actor_imported and self.on_checkpoint()
+                               and method_name != "__ray_checkpoint__")
 
             # Execute the assigned method and save a checkpoint if necessary.
             try:

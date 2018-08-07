@@ -1,5 +1,6 @@
 import colorama
 
+
 class RayTaskError(Exception):
     """An object used internally to represent a task that threw an exception.
 
