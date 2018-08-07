@@ -38,7 +38,7 @@ DEFAULT_CONFIG = with_common_config({
     # Learning params.
     "grad_clip": 40.0,
     # either "adam" or "rmsprop"
-    "opt_type": "rmsprop",
+    "opt_type": "adam",
     "lr": 0.0005,
     # rmsprop considered
     "decay": 0.99,
