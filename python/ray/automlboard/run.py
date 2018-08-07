@@ -16,12 +16,13 @@ def run_board(args):
     service = CollectorService(
         args.logdir,
         args.reload_interval,
+        share_mode=args.share_mode,
         standalone=False,
         log_level=args.log_level)
     service.run()
 
     # frontend service
-    print("try to start automlboard on port %s" % args.port)
+    print("try to start automlboard on port %s\n" % args.port)
     command = [
         'manage.py', 'runserver',
         '0.0.0.0:%s' % args.port, '--noreload'
@@ -50,9 +51,8 @@ def init_config(args):
             os.environ["AUTOMLBOARD_DB_HOST"] = match.group(4)
             os.environ["AUTOMLBOARD_DB_PORT"] = match.group(5)
             os.environ["AUTOMLBOARD_DB_NAME"] = match.group(6)
-            print("Using %s as the database backend." %
-                  os.environ["AUTOMLBOARD_DB_ENGINE"])
-        except StandardError, e:
+            print("Using %s as the database backend." % match.group(1))
+        except StandardError as e:
             raise DatabaseError(e)
     else:
         print(
@@ -93,6 +93,10 @@ if __name__ == "__main__":
                         default="INFO",
                         help="Set the logging level, "
                              "(default: %(default)s)")
+    parser.add_argument("--share_mode",
+                        action="store_true",
+                        help="parse logdir as the shared parent directory "
+                             "of all jobs.")
     cmd_args = parser.parse_args()
 
     run_board(cmd_args)

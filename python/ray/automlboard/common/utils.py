@@ -22,7 +22,7 @@ def dump_json(json_info, json_file, overwrite=True):
     try:
         with open(json_file, mode) as f:
             f.write(json.dumps(json_info))
-    except StandardError, e:
+    except StandardError as e:
         logging.error(e.message)
 
 
@@ -48,7 +48,7 @@ def parse_json(json_file):
             if isinstance(json_info, unicode):
                 json_info = eval(str(json_info))
             return json_info
-    except StandardError, e:
+    except StandardError as e:
         logging.error(e.message)
         return None
 
@@ -84,7 +84,7 @@ def parse_multiple_json(json_file, offset=None):
                     json_info = eval(str(json_info))
                 json_info_list.append(json_info)
                 offset += len(line)
-    except StandardError, e:
+    except StandardError as e:
         logging.error(e.message)
 
     return json_info_list, offset

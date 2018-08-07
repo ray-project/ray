@@ -31,6 +31,7 @@ class CollectorService(object):
     def __init__(self,
                  log_dir=DEFAULT_LOGDIR,
                  reload_interval=30,
+                 share_mode=False,
                  standalone=True,
                  log_level="INFO"):
         """
@@ -39,13 +40,19 @@ class CollectorService(object):
         Args
             log_dir: directory of the logs about trials' information
             reload_interval: sleep time period after each polling round
+            share_mode: take logdir as the common parent directory
+                        if set, otherwise take logdir as the result
+                        directory of a single job.
             standalone: the service will not stop and if True
             log_level: level of logging
         """
         self.init_logger(log_level)
+        self.share_mode = share_mode
         self.standalone = standalone
         self.collector = Collector(
-            reload_interval=reload_interval, logdir=log_dir)
+            reload_interval=reload_interval,
+            logdir=log_dir,
+            share_mode=share_mode)
 
     def run(self):
         self.collector.start()
@@ -76,7 +83,7 @@ class Collector(Thread):
     Worker thread for collector service.
     """
 
-    def __init__(self, reload_interval, logdir):
+    def __init__(self, reload_interval, logdir, share_mode=False):
         """
         Initialize collector worker thread.
 
@@ -85,11 +92,15 @@ class Collector(Thread):
                              of polling.
             logdir: directory path to save the status information of
                     jobs and trials.
+            share_mode: take logdir as the common parent directory
+                        if set, otherwise take logdir as the result
+                        directory of a single job.
         """
         super(Collector, self).__init__()
         self._is_finished = False
         self._reload_interval = reload_interval
         self._logdir = logdir
+        self._share_mode = share_mode
 
     def run(self):
         """
@@ -97,22 +108,46 @@ class Collector(Thread):
         traverse the results log directory and reload trial information
         from the status files.
         """
-        if not os.path.exists(self._logdir):
-            raise CollectorError(
-                "status directory %s not exists" % self._logdir)
+        self.initialize()
 
-        logging.info("collector started to run.")
-
+        self.do_collect()
         while not self._is_finished:
             time.sleep(self._reload_interval)
-            job_dirs = os.listdir(self._logdir)
-            for job_dir in job_dirs:
-                self.sync_job_info(job_dir)
+            self.do_collect()
 
         logging.info("collector stopped.")
 
     def stop(self):
         self._is_finished = True
+
+    def initialize(self):
+        """
+        Initialize collector worker thread, Log path will be checked first.
+        DB backend will be cleared unless running in share mode.
+        """
+        if not os.path.exists(self._logdir):
+            raise CollectorError(
+                "log directory %s not exists" % self._logdir)
+        if self._share_mode:
+            logging.info("collector started to run in share mode, "
+                         "taking %s as parent directory for all job logs." %
+                         self._logdir)
+        else:
+            logging.info("collector started to run, "
+                         "taking %s as directory of the job log." %
+                         self._logdir)
+
+    def do_collect(self):
+        if self._share_mode:
+            sub_dirs = os.listdir(self._logdir)
+            job_names = filter(
+                lambda d: os.path.isdir(os.path.join(self._logdir, d)),
+                sub_dirs)
+            for job_name in job_names:
+                self.sync_job_info(job_name)
+        else:
+            job_name = self._logdir.split('/')[-1]
+            self.sync_job_info(job_name)
 
     def sync_job_info(self, job_name):
         """
@@ -124,7 +159,10 @@ class Collector(Thread):
         Args:
             job_name(str)
         """
-        job_path = os.path.join(self._logdir, job_name)
+        if self._share_mode:
+            job_path = os.path.join(self._logdir, job_name)
+        else:
+            job_path = self._logdir
 
         expr_dirs = filter(lambda d: os.path.isdir(os.path.join(job_path, d)),
                            os.listdir(job_path))
