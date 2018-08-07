@@ -76,10 +76,6 @@ class Distributor(execution_info.ExecutionInfo):
                 and self.cached_remote_functions_and_actors is not None)
 
     @property
-    def redis_client(self):
-        return self.worker.redis_client
-
-    @property
     def mode(self):
         return self.worker.mode
 
@@ -96,47 +92,12 @@ class Distributor(execution_info.ExecutionInfo):
         return self.worker.actor_id
 
     @property
+    def redis_client(self):
+        return self.worker.redis_client
+
+    @property
     def task_driver_id(self):
         return self.worker.task_driver_id
-
-    def wait_for_function(self, function_id, driver_id, timeout=10):
-        """Wait until the function to be executed is present on this worker.
-
-        This method will simply loop until the import thread has imported the
-        relevant function. If we spend too long in this loop, that may indicate
-        a problem somewhere and we will push an error message to the user.
-
-        If this worker is an actor, then this will wait until the actor has
-        been defined.
-
-        Args:
-            function_id: The ID of the function that we want to execute.
-            driver_id (str): The ID of the driver to push the error message to
-                if this times out.
-        """
-        start_time = time.time()
-        # Only send the warning once.
-        warning_sent = False
-        while True:
-            with self.lock:
-                if (self.actor_id == NIL_ACTOR_ID
-                        and self.has_function_id(driver_id, function_id)):
-                    break
-                elif (self.actor_id != NIL_ACTOR_ID
-                      and self.actor_id in self.actors):
-                    break
-                if time.time() - start_time > timeout:
-                    warning_message = ("This worker was asked to execute a "
-                                       "function that it does not have "
-                                       "registered. You may have to restart "
-                                       "Ray.")
-                    if not warning_sent:
-                        self.worker.logger.push_error_to_driver(
-                            ray_constants.WAIT_FOR_FUNCTION_PUSH_ERROR,
-                            warning_message,
-                            driver_id=driver_id)
-                    warning_sent = True
-            time.sleep(self.polling_interval)
 
     def _push_exports(self, key, info):
         self.redis_client.hmset(key, info)
@@ -333,7 +294,7 @@ class Distributor(execution_info.ExecutionInfo):
             (CACHED_REMOTE_FUNCTION, remote_function))
 
 
-class DistributorWithActor(Distributor):
+class DistributorWithActor(Distributor, execution_info.ActorInfo):
     """A class that controls actor import & export.
 
     This class is a dual version of `Distributor`.
@@ -341,6 +302,45 @@ class DistributorWithActor(Distributor):
 
     def append_cached_actor(self, actor):
         self.cached_remote_functions_and_actors.append((CACHED_ACTOR, actor))
+
+    def wait_for_function(self, function_id, driver_id, timeout=10):
+        """Wait until the function to be executed is present on this worker.
+
+        This method will simply loop until the import thread has imported the
+        relevant function. If we spend too long in this loop, that may indicate
+        a problem somewhere and we will push an error message to the user.
+
+        If this worker is an actor, then this will wait until the actor has
+        been defined.
+
+        Args:
+            function_id: The ID of the function that we want to execute.
+            driver_id (str): The ID of the driver to push the error message to
+                if this times out.
+        """
+        start_time = time.time()
+        # Only send the warning once.
+        warning_sent = False
+        while True:
+            with self.lock:
+                if (self.actor_id == NIL_ACTOR_ID
+                        and self.has_function_id(driver_id, function_id)):
+                    break
+                elif (self.actor_id != NIL_ACTOR_ID
+                      and self.actor_id in self.actors):
+                    break
+                if time.time() - start_time > timeout:
+                    warning_message = ("This worker was asked to execute a "
+                                       "function that it does not have "
+                                       "registered. You may have to restart "
+                                       "Ray.")
+                    if not warning_sent:
+                        self.worker.logger.push_error_to_driver(
+                            ray_constants.WAIT_FOR_FUNCTION_PUSH_ERROR,
+                            warning_message,
+                            driver_id=driver_id)
+                    warning_sent = True
+            time.sleep(self.polling_interval)
 
     def wait_for_actor_class(self, key):
         """Wait for the actor class key to have been imported by the import
@@ -412,9 +412,6 @@ class DistributorWithActor(Distributor):
             actor_class_key: The key in Redis to use to fetch the actor.
         """
 
-        # TODO(suquark): How to resolve circular reference?
-        import ray.actor
-
         actor_id_str = self.actor_id
         (driver_id, class_id, class_name, module, pickled_class,
          checkpoint_interval, actor_method_names) = self.redis_client.hmget(
@@ -435,7 +432,7 @@ class DistributorWithActor(Distributor):
             pass
 
         self.actors[actor_id_str] = TemporaryActor()
-        self.worker.actor_checkpoint_interval = checkpoint_interval
+        self.set_checkpoint_interval(checkpoint_interval)
 
         def temporary_actor_method(*xs):
             raise Exception(
@@ -444,10 +441,9 @@ class DistributorWithActor(Distributor):
 
         # Register the actor method executors.
         for actor_method_name in actor_method_names:
-            function_id = ray.actor.compute_actor_method_function_id(
+            function_id = utils.compute_actor_method_function_id(
                 class_name, actor_method_name)
-            temporary_executor = ray.actor.make_actor_method_executor(
-                self.worker,
+            temporary_executor = self.make_actor_method_executor(
                 actor_method_name,
                 temporary_actor_method,
                 actor_imported=False)
@@ -461,7 +457,7 @@ class DistributorWithActor(Distributor):
 
         try:
             unpickled_class = pickle.loads(pickled_class)
-            self.worker.actor_class = unpickled_class
+            self.actor_class = unpickled_class
         except Exception:
             # If an exception was thrown when the actor was imported, we record the
             # traceback and notify the scheduler of the failure.
@@ -483,11 +479,10 @@ class DistributorWithActor(Distributor):
             actor_methods = utils.get_methods(unpickled_class)
 
             for actor_method_name, actor_method in actor_methods:
-                function_id = ray.actor.compute_actor_method_function_id(
+                function_id = utils.compute_actor_method_function_id(
                     class_name, actor_method_name)
-                executor = ray.actor.make_actor_method_executor(
-                    self.worker, actor_method_name, actor_method,
-                    actor_imported=True)
+                executor = self.make_actor_method_executor(
+                    actor_method_name, actor_method, actor_imported=True)
 
                 self.add_function_info(
                     driver_id,

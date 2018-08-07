@@ -110,7 +110,6 @@ class Driver(object):
         # All workers start out as non-actors.
         # A worker can be turned into an actor after it is created.
         self.actor_id = NIL_ACTOR_ID
-        self.actor_task_counter = 0
 
         # When the worker is constructed. Record the original value of the
         # CUDA_VISIBLE_DEVICES environment variable.
@@ -142,6 +141,11 @@ class Driver(object):
     def plasma_client(self):
         """For backward compatibility"""
         return self.object_store_client.plasma_client
+
+    @property
+    def actors(self):
+        """For backward compatibility"""
+        return self.distributor.actors
 
     def check_connected(self):
         """Check if the worker is connected.

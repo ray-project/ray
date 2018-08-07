@@ -42,10 +42,33 @@ def is_cython(obj):
 
 def get_methods(cls):
     def pred(x):
-        return (inspect.isfunction(x) or inspect.ismethod(x)
-                or is_cython(x))
+        return inspect.isfunction(x) or inspect.ismethod(x) or is_cython(x)
 
     return inspect.getmembers(cls, predicate=pred)
+
+
+def is_classmethod(f):
+    """Returns whether the given method is a classmethod."""
+
+    return hasattr(f, "__self__") and f.__self__ is not None
+
+
+def compute_actor_method_function_id(class_name, attr):
+    """Get the function ID corresponding to an actor method.
+
+    Args:
+        class_name (str): The class name of the actor.
+        attr (str): The attribute name of the method.
+
+    Returns:
+        Function ID corresponding to the method.
+    """
+    function_id_hash = hashlib.sha1()
+    function_id_hash.update(class_name.encode("ascii"))
+    function_id_hash.update(attr.encode("ascii"))
+    function_id = function_id_hash.digest()
+    assert len(function_id) == ray_constants.ID_SIZE
+    return ray.ObjectID(function_id)
 
 
 def random_string():
