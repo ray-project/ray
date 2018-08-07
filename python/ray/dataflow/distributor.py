@@ -300,6 +300,10 @@ class DistributorWithActor(Distributor, execution_info.ActorInfo):
     This class is a dual version of `Distributor`.
     """
 
+    def __init__(self, worker):
+        super(DistributorWithActor, self).__init__(worker)
+        execution_info.ActorInfo.__init__(self, worker)
+
     def append_cached_actor(self, actor):
         self.cached_remote_functions_and_actors.append((CACHED_ACTOR, actor))
 
