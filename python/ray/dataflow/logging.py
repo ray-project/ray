@@ -70,6 +70,10 @@ class LocalLogger(object):
     def redis_client(self):
         return self.worker.redis_client
 
+    @property
+    def local_scheduler_client(self):
+        return self.worker.local_scheduler_client
+
     def redirect_logging_output(self):
         # TODO(suquark): Could we just redirect output of logger instead of
         # the standard I/O?
