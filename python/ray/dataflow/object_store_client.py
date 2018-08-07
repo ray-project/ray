@@ -55,7 +55,8 @@ class ObjectStoreClient(object):
                 plasma.connect(store_socket_name, "", release_delay))
 
     def disconnect(self):
-        self.plasma_client.disconnect()
+        if hasattr(self, 'plasma_client'):
+            self.plasma_client.disconnect()
 
     def get_serialization_context(self, driver_id):
         """Get the SerializationContext of the driver that this worker is processing.
