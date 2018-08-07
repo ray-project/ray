@@ -138,6 +138,9 @@ build
 .idea/**/libraries
 .idea
 
+# visual studio
+*.pyproj
+
 # Website
 /site/Gemfile.lock
 /site/.sass-cache
