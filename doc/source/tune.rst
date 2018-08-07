@@ -55,7 +55,7 @@ For the function you wish to tune, add a two-line modification (note that we use
             accuracy = eval_accuracy(...)
             reporter(timesteps_total=idx, mean_accuracy=accuracy) # report metrics
 
-This PyTorch script runs a small grid search over the ``train_func`` function using Ray Tune, reporting status on the command line until the stopping condition of ``mean_accuracy >= 99`` is reached (for metrics like `loss` that decrease over time, specify `neg_mean_loss <https://github.com/ray-project/ray/blob/master/python/ray/tune/result.py#L40>`__ as a condition instead):
+This PyTorch script runs a small grid search over the ``train_func`` function using Ray Tune, reporting status on the command line until the stopping condition of ``mean_accuracy >= 99`` is reached:
 
 ::
 
@@ -70,7 +70,7 @@ This PyTorch script runs a small grid search over the ``train_func`` function us
      - train_func_4_lr=0.4,momentum=2:  RUNNING [pid=6800], 209 s, 41204 ts, 70.1 acc
      - train_func_5_lr=0.6,momentum=2:  TERMINATED [pid=6809], 10 s, 2164 ts, 100 acc
 
-In order to report incremental progress, ``train_func`` periodically calls the ``reporter`` function passed in by Ray Tune to return the current timestep and other metrics as defined in `ray.tune.result.TrainingResult <https://github.com/ray-project/ray/blob/master/python/ray/tune/result.py>`__. Incremental results will be synced to local disk on the head node of the cluster.
+In order to report incremental progress, ``train_func`` periodically calls the ``reporter`` function passed in by Ray Tune to return the current timestep and other metrics. Incremental results will be synced to local disk on the head node of the cluster.
 
 `tune.run_experiments <tune.html#ray.tune.run_experiments>`__ returns a list of Trial objects which you can inspect results of via ``trial.last_result``.
 
