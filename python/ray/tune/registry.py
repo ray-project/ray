@@ -28,12 +28,11 @@ def register_trainable(name, trainable):
 
     from ray.tune.trainable import Trainable, wrap_function
 
+    if callable(trainable):
+        trainable = wrap_function(trainable)
     if not issubclass(trainable, Trainable):
-        if callable(trainable):
-            trainable = wrap_function(trainable)
-        else:
-            raise TypeError("Second argument must be convertable to Trainable",
-                            trainable)
+        raise TypeError("Second argument must be convertable to Trainable",
+                        trainable)
     _global_registry.register(TRAINABLE_CLASS, name, trainable)
 
 
