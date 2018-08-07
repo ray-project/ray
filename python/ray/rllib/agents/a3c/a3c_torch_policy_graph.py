@@ -33,7 +33,7 @@ class A3CLoss(nn.Module):
         pi_err = -advantages.dot(action_log_probs.reshape(-1))
 
         # Compute value loss
-        values = self.policy_model.value_branch(last_hidden)
+        values = self.policy_model.value_branch(last_hidden).squeeze(1)
         value_err = F.mse_loss(values.reshape(-1), value_targets)
 
         # Compute overall loss
@@ -60,7 +60,7 @@ class A3CTorchPolicyGraph(TorchPolicyGraph):
 
         # Add value function branch
         value_branch = SlimFC(
-            in_size=model.last_layer_size,
+            in_size=self.model.last_layer_size,
             out_size=1,
             initializer=normc_initializer(1.0),
             activation_fn=None)
@@ -80,7 +80,7 @@ class A3CTorchPolicyGraph(TorchPolicyGraph):
             loss_inputs=["obs", "actions", "advantages", "value_targets"])
 
     def extra_action_out(self, model_out):
-        return {"vf_preds": var_to_np(model_out[1])}
+        return {"vf_preds": var_to_np(self.model.value_branch(model_out[1]).squeeze(1))}
 
     def optimizer(self):
         return torch.optim.Adam(self.model.parameters(), lr=self.config["lr"])
