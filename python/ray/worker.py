@@ -187,6 +187,11 @@ class Worker(object):
         return self.object_store_client.get_serialization_context(driver_id)
 
     @property
+    def plasma_client(self):
+        """For backward compatibility"""
+        return self.object_store_client.plasma_client
+
+    @property
     def is_driver(self):
         return self.mode in [SCRIPT_MODE, SILENT_MODE]
 
