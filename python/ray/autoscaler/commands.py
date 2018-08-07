@@ -33,7 +33,7 @@ def create_or_update_cluster(config_file, override_min_workers,
     if override_max_workers is not None:
         config["max_workers"] = override_max_workers
     config = _bootstrap_config(config)
-    get_or_create_head_node(config, no_restart, yes)
+    get_or_create_head_node(config, config_file, no_restart, yes)
 
 
 def _bootstrap_config(config):
@@ -74,7 +74,7 @@ def teardown_cluster(config_file, yes, workers_only):
         nodes = provider.nodes({TAG_RAY_NODE_TYPE: "worker"})
 
 
-def get_or_create_head_node(config, no_restart, yes):
+def get_or_create_head_node(config, config_file, no_restart, yes):
     """Create the cluster head node, which in turn creates the workers."""
 
     provider = get_node_provider(config["provider"], config["cluster_name"])
@@ -173,10 +173,7 @@ def get_or_create_head_node(config, no_restart, yes):
             monitor_str = "docker exec {} /bin/sh -c {}".format(
                 config["docker"]["container_name"], quote(monitor_str))
     print("To monitor auto-scaling activity, you can run:\n\n"
-          "  ssh -i {} {}@{} {}\n".format(config["auth"]["ssh_private_key"],
-                                          config["auth"]["ssh_user"],
-                                          provider.external_ip(head_node),
-                                          quote(monitor_str)))
+          " ray exec {} {}\n".format(config_file, quote(monitor_str)))
     print("To login to the cluster, run:\n\n"
           "  ssh -i {} {}@{}\n".format(config["auth"]["ssh_private_key"],
                                        config["auth"]["ssh_user"],
@@ -194,7 +191,7 @@ def exec_cluster(config_file, cmd, screen, stop, start):
 
     config = yaml.load(open(config_file).read())
     config = _bootstrap_config(config)
-    head_node = _get_head_node(config, create_if_needed=start)
+    head_node = _get_head_node(config, config_file, create_if_needed=start)
     updater = NodeUpdaterProcess(
         head_node,
         config["provider"],
@@ -232,11 +229,11 @@ def get_head_node_ip(config_file):
 
     config = yaml.load(open(config_file).read())
     provider = get_node_provider(config["provider"], config["cluster_name"])
-    head_node = _get_head_node(config)
+    head_node = _get_head_node(config, config_file)
     return provider.external_ip(head_node)
 
 
-def _get_head_node(config, create_if_needed=False):
+def _get_head_node(config, config_file, create_if_needed=False):
     provider = get_node_provider(config["provider"], config["cluster_name"])
     head_node_tags = {
         TAG_RAY_NODE_TYPE: "head",
@@ -246,8 +243,9 @@ def _get_head_node(config, create_if_needed=False):
         head_node = nodes[0]
         return head_node
     elif create_if_needed:
-        get_or_create_head_node(config, no_restart=False, yes=True)
-        return _get_head_node(config, create_if_needed=False)
+        get_or_create_head_node(
+            config, config_file, no_restart=False, yes=True)
+        return _get_head_node(config, config_file, create_if_needed=False)
     else:
         print("Head node of cluster ({}) not found!".format(
             config["cluster_name"]))
