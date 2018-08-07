@@ -16,7 +16,7 @@ namespace raylet {
 Monitor::Monitor(boost::asio::io_service &io_service, const std::string &redis_address,
                  int redis_port)
     : gcs_client_(),
-      num_heartbeats_timeout_(RayConfig::instance().num_hearbeats_timeout()),
+      num_heartbeats_timeout_(RayConfig::instance().num_heartbeats_timeout()),
       heartbeat_timer_(io_service) {
   RAY_CHECK_OK(gcs_client_.Connect(redis_address, redis_port, /*sharding=*/true));
   RAY_CHECK_OK(gcs_client_.Attach(io_service));
