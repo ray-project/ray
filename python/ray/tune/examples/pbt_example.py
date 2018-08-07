@@ -11,8 +11,7 @@ import random
 import time
 
 import ray
-from ray.tune import Trainable, TrainingResult, register_trainable, \
-    run_experiments
+from ray.tune import Trainable, register_trainable, run_experiments
 from ray.tune.pbt import PopulationBasedTraining
 
 
@@ -35,9 +34,8 @@ class MyTrainableClass(Trainable):
         self.current_value += random.gauss(self.config["factor_2"], 1.0)
 
         # Here we use `episode_reward_mean`, but you can also report other
-        # objectives such as loss or accuracy (see tune/result.py).
-        return TrainingResult(
-            episode_reward_mean=self.current_value, timesteps_this_iter=1)
+        # objectives such as loss or accuracy.
+        return {"episode_reward_mean": self.current_value}
 
     def _save(self, checkpoint_dir):
         path = os.path.join(checkpoint_dir, "checkpoint")

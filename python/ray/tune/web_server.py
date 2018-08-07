@@ -7,7 +7,7 @@ import sys
 import threading
 
 from ray.tune.error import TuneError, TuneManagerError
-from ray.tune.variant_generator import generate_trials
+from ray.tune.suggest import BasicVariantGenerator
 
 if sys.version_info[0] == 2:
     from SimpleHTTPServer import SimpleHTTPRequestHandler
@@ -87,7 +87,7 @@ def RunnerHandler(runner):
 
         def trial_info(self, trial):
             if trial.last_result:
-                result = trial.last_result._asdict()
+                result = trial.last_result.copy()
             else:
                 result = None
             info_dict = {
@@ -124,7 +124,8 @@ def RunnerHandler(runner):
                 elif command == TuneClient.ADD:
                     name = args["name"]
                     spec = args["spec"]
-                    for trial in generate_trials(spec, name):
+                    trial_generator = BasicVariantGenerator({name: spec})
+                    for trial in trial_generator.next_trials():
                         runner.add_trial(trial)
                 else:
                     raise TuneManagerError("Unknown command.")

@@ -928,6 +928,8 @@ def start_raylet(redis_address,
                  worker_path,
                  resources=None,
                  num_workers=0,
+                 use_valgrind=False,
+                 use_profiler=False,
                  stdout_file=None,
                  stderr_file=None,
                  cleanup=True):
@@ -941,6 +943,10 @@ def start_raylet(redis_address,
             to.
         worker_path (str): The path of the script to use when the local
             scheduler starts up new workers.
+        use_valgrind (bool): True if the raylet should be started inside
+            of valgrind. If this is True, use_profiler must be False.
+        use_profiler (bool): True if the raylet should be started inside
+            a profiler. If this is True, use_valgrind must be False.
         stdout_file: A file handle opened for writing to redirect stdout to. If
             no redirection should happen, then this should be None.
         stderr_file: A file handle opened for writing to redirect stderr to. If
@@ -952,6 +958,9 @@ def start_raylet(redis_address,
     Returns:
         The raylet socket name.
     """
+    if use_valgrind and use_profiler:
+        raise Exception("Cannot use valgrind and profiler at the same time.")
+
     static_resources = check_and_update_resources(resources, True)
 
     # Format the resource argument in a form like 'CPU,1.0,GPU,0,Custom,3'.
@@ -984,7 +993,23 @@ def start_raylet(redis_address,
         start_worker_command,
         resource_argument,
     ]
-    pid = subprocess.Popen(command, stdout=stdout_file, stderr=stderr_file)
+
+    if use_valgrind:
+        pid = subprocess.Popen(
+            [
+                "valgrind", "--track-origins=yes", "--leak-check=full",
+                "--show-leak-kinds=all", "--leak-check-heuristics=stdstring",
+                "--error-exitcode=1"
+            ] + command,
+            stdout=stdout_file,
+            stderr=stderr_file)
+    elif use_profiler:
+        pid = subprocess.Popen(
+            ["valgrind", "--tool=callgrind"] + command,
+            stdout=stdout_file,
+            stderr=stderr_file)
+    else:
+        pid = subprocess.Popen(command, stdout=stdout_file, stderr=stderr_file)
 
     if cleanup:
         all_processes[PROCESS_TYPE_RAYLET].append(pid)
