@@ -52,7 +52,6 @@ For the function you wish to tune, pass in a ``reporter`` object:
             accuracy = model.fit(data, target)
             reporter(timesteps_total=idx, mean_accuracy=accuracy) # report metrics
 
-
 **Finally**, configure your search and execute it on your Ray cluster:
 
 .. code-block:: python

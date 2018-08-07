@@ -303,11 +303,14 @@ Status RedisContext::RunAsync(const std::string &command, const UniqueID &id,
 
 Status RedisContext::SubscribeAsync(const ClientID &client_id,
                                     const TablePubsub pubsub_channel,
-                                    const RedisCallback &redisCallback) {
+                                    const RedisCallback &redisCallback,
+                                    int64_t *out_callback_index) {
   RAY_CHECK(pubsub_channel != TablePubsub::NO_PUBLISH)
       << "Client requested subscribe on a table that does not support pubsub";
 
   int64_t callback_index = RedisCallbackManager::instance().add(redisCallback);
+  RAY_CHECK(out_callback_index != nullptr);
+  *out_callback_index = callback_index;
   int status = 0;
   if (client_id.is_nil()) {
     // Subscribe to all messages.
