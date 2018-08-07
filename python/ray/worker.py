@@ -186,6 +186,22 @@ class Worker(object):
         """For backward compatibility"""
         return self.object_store_client.get_serialization_context(driver_id)
 
+    @property
+    def is_driver(self):
+        return self.mode in [SCRIPT_MODE, SILENT_MODE]
+
+    @property
+    def is_real_driver(self):
+        return self.mode == SCRIPT_MODE
+
+    @property
+    def is_worker(self):
+        return self.mode == WORKER_MODE
+
+    @property
+    def is_local(self):
+        return self.mode == LOCAL_MODE
+
     def put_object(self, object_id, value):
         return self.object_store_client.put_object(object_id, value)
 
