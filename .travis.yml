@@ -52,8 +52,8 @@ matrix:
         - pip install yapf
         - sphinx-build -W -b html -d _build/doctrees source _build/html
         - cd ..
-        # Run Python linting.
-        - flake8 --exclude=python/ray/core/src/common/flatbuffers_ep-prefix/,python/ray/core/generated/,src/common/format/,doc/source/conf.py,python/ray/cloudpickle/
+        # Run Python linting, ignore dict vs {}
+        - flake8 --exclude=python/ray/core/src/common/flatbuffers_ep-prefix/,python/ray/core/generated/,src/common/format/,doc/source/conf.py,python/ray/cloudpickle/ --ignore=C408
         - .travis/yapf.sh --all
 
     - os: linux
