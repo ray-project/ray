@@ -6,7 +6,6 @@ import numpy as np
 import collections
 
 import ray
-from ray.tune.result import TrainingResult
 
 
 def collect_metrics(local_evaluator, remote_evaluators=[]):
@@ -38,7 +37,7 @@ def collect_metrics(local_evaluator, remote_evaluators=[]):
     for policy_id, rewards in policy_rewards.copy().items():
         policy_rewards[policy_id] = np.mean(rewards)
 
-    return TrainingResult(
+    return dict(
         episode_reward_max=max_reward,
         episode_reward_min=min_reward,
         episode_reward_mean=avg_reward,

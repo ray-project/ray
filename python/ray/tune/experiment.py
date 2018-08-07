@@ -16,8 +16,8 @@ class Experiment(object):
             user-defined trainable function or class
             registered in the tune registry.
         stop (dict): The stopping criteria. The keys may be any field in
-            TrainingResult, whichever is reached first.  Defaults to
-            empty dict.
+            the return result of 'train()', whichever is reached first.
+            Defaults to empty dict.
         config (dict): Algorithm-specific configuration
             (e.g. env, hyperparams). Defaults to empty dict.
         trial_resources (dict): Machine resources to allocate per trial,

@@ -103,11 +103,11 @@ class PopulationBasedTraining(FIFOScheduler):
     population.
 
     Args:
-        time_attr (str): The TrainingResult attr to use for comparing time.
+        time_attr (str): The training result attr to use for comparing time.
             Note that you can pass in something non-temporal such as
             `training_iteration` as a measure of progress, the only requirement
             is that the attribute should increase monotonically.
-        reward_attr (str): The TrainingResult objective value attribute. As
+        reward_attr (str): The training result objective value attribute. As
             with `time_attr`, this may refer to any objective value. Stopping
             procedures will use this attribute.
         perturbation_interval (float): Models will be considered for
@@ -175,13 +175,13 @@ class PopulationBasedTraining(FIFOScheduler):
         self._trial_state[trial] = PBTTrialState(trial)
 
     def on_trial_result(self, trial_runner, trial, result):
-        time = getattr(result, self._time_attr)
+        time = result[self._time_attr]
         state = self._trial_state[trial]
 
         if time - state.last_perturbation_time < self._perturbation_interval:
             return TrialScheduler.CONTINUE  # avoid checkpoint overhead
 
-        score = getattr(result, self._reward_attr)
+        score = result[self._reward_attr]
         state.last_score = score
         state.last_perturbation_time = time
         lower_quantile, upper_quantile = self._quantiles()
