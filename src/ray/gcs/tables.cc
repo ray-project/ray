@@ -136,16 +136,12 @@ Status Log<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
     // more subscription messages.
     return false;
   };
-<<<<<<< HEAD
   subscribe_callback_index_ = 1;
   for (auto &context : shard_contexts_) {
-    RAY_RETURN_NOT_OK(context->SubscribeAsync(client_id, pubsub_channel_, callback));
+    RAY_RETURN_NOT_OK(context->SubscribeAsync(client_id, pubsub_channel_,
+      callback, &subscribe_callback_index_));
   }
   return Status::OK();
-=======
-  return context_->SubscribeAsync(client_id, pubsub_channel_, std::move(callback),
-                                  &subscribe_callback_index_);
->>>>>>> 25f0094ee4c20be3628d376cdad98fd9acf5134a
 }
 
 template <typename ID, typename Data>

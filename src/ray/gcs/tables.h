@@ -370,8 +370,9 @@ class TaskReconstructionLog : public Log<TaskID, TaskReconstructionData> {
 
 class TaskLeaseTable : public Table<TaskID, TaskLeaseData> {
  public:
-  TaskLeaseTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client)
-      : Table(context, client) {
+  TaskLeaseTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
+        AsyncGcsClient *client)
+      : Table(contexts, client) {
     pubsub_channel_ = TablePubsub::TASK_LEASE;
     prefix_ = TablePrefix::TASK_LEASE;
   }
