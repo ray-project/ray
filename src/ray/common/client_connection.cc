@@ -84,7 +84,7 @@ ray::Status ServerConnection<T>::WriteMessage(int64_t type, int64_t length,
   boost::system::error_code error;
   WriteBuffer(message_buffers, error);
   if (error) {
-    return ray::Status::IOError(error.message());
+    return ray::Status::IOError("Failed to write message to the socket");
   } else {
     return ray::Status::OK();
   }
