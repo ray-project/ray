@@ -3,6 +3,7 @@
 #include <limits.h>
 
 #include <chrono>
+#include <mutex>
 #include <random>
 
 #include "ray/constants.h"
