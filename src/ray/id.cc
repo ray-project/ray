@@ -12,7 +12,7 @@ namespace ray {
 
 std::mt19937 RandomlySeededMersenneTwister() {
   auto seed = std::chrono::high_resolution_clock::now().time_since_epoch().count();
-  std::mt19937 seeded_engine (seed);
+  std::mt19937 seeded_engine(seed);
   return seeded_engine;
 }
 
