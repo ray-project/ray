@@ -407,7 +407,8 @@ class TestMultiAgentEnv(unittest.TestCase):
                 ev.foreach_policy(
                     lambda p, _: p.update_target()
                     if isinstance(p, DQNPolicyGraph) else None)
-                print("Iter {}, rew {}".format(i, result["policy_reward_mean"]))
+                print("Iter {}, rew {}".format(i,
+                                               result["policy_reward_mean"]))
                 print("Total reward", result["episode_reward_mean"])
             if result["episode_reward_mean"] >= 25 * n:
                 return
@@ -442,7 +443,8 @@ class TestMultiAgentEnv(unittest.TestCase):
         for i in range(100):
             optimizer.step()
             result = collect_metrics(ev)
-            print("Iteration {}, rew {}".format(i, result["policy_reward_mean"]))
+            print("Iteration {}, rew {}".format(i,
+                                                result["policy_reward_mean"]))
             print("Total reward", result["episode_reward_mean"])
             if result["episode_reward_mean"] >= 25 * n:
                 return

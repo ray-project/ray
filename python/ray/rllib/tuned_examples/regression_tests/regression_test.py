@@ -28,7 +28,9 @@ def _evaulate_config(filename):
     results = defaultdict(list)
     for t in trials:
         results["time_total_s"] += [t.last_result["time_total_s"]]
-        results["episode_reward_mean"] += [t.last_result["episode_reward_mean"]]
+        results["episode_reward_mean"] += [
+            t.last_result["episode_reward_mean"]
+        ]
         results["training_iteration"] += [t.last_result["training_iteration"]]
 
     return {k: np.median(v) for k, v in results.items()}
