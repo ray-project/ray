@@ -1,3 +1,4 @@
+import logging
 import sys
 import threading
 import time
@@ -8,7 +9,6 @@ import redis
 import ray.gcs_utils
 import ray.local_scheduler
 import ray.ray_constants as ray_constants
-from ray.services import logger
 import ray.services as services
 
 from ray.utils import _random_string
@@ -43,8 +43,19 @@ def format_error_message(exception_message, task_exception=False):
 class LocalLogger(object):
     def __init__(self, worker):
         self.worker = worker
+        self.logger = logging.getLogger(
+            "ray_worker:" + self.worker.worker_id.hex())
+
         self.log_stdout_file = None
         self.log_stderr_file = None
+
+    def adjust_logger(self, level=logging.INFO, stream=None):
+        self.logger.setLevel(level)
+        if stream is None:
+            stream = sys.stderr
+        ch = logging.StreamHandler(stream)
+        ch.setLevel(level)
+        self.logger.addHandler(ch)
 
     @property
     def redirected(self):
@@ -215,10 +226,10 @@ class WorkerLogger(LocalLogger):
                 self.task_driver_id)
             for error_message in error_messages:
                 if error_message not in old_error_messages:
-                    logger.error(error_message)
+                    self.logger.error(error_message)
                     old_error_messages.add(error_message)
                 else:
-                    logger.error("Suppressing duplicate error message.")
+                    self.logger.error("Suppressing duplicate error message.")
 
         try:
             for msg in self.error_message_pubsub_client.listen():
@@ -236,10 +247,10 @@ class WorkerLogger(LocalLogger):
                 error_message = ray.utils.decode(error_data.ErrorMessage())
 
                 if error_message not in old_error_messages:
-                    logger.error(error_message)
+                    self.logger.error(error_message)
                     old_error_messages.add(error_message)
                 else:
-                    logger.error("Suppressing duplicate error message.")
+                    self.logger.error("Suppressing duplicate error message.")
 
         except redis.ConnectionError:
             # When Redis terminates the listen call will throw a ConnectionError,
@@ -277,10 +288,11 @@ class WorkerLogger(LocalLogger):
                     error_message = ray.utils.decode(
                         self.redis_client.hget(error_key, "message"))
                     if error_message not in old_error_messages:
-                        logger.error(error_message)
+                        self.logger.error(error_message)
                         old_error_messages.add(error_message)
                     else:
-                        logger.error("Suppressing duplicate error message.")
+                        self.logger.error(
+                            "Suppressing duplicate error message.")
                 num_errors_received += 1
 
         try:
@@ -292,10 +304,10 @@ class WorkerLogger(LocalLogger):
                             error_message = ray.utils.decode(
                                 self.redis_client.hget(error_key, "message"))
                             if error_message not in old_error_messages:
-                                logger.error(error_message)
+                                self.logger.error(error_message)
                                 old_error_messages.add(error_message)
                             else:
-                                logger.error(
+                                self.logger.error(
                                     "Suppressing duplicate error message.")
                         num_errors_received += 1
         except redis.ConnectionError:
