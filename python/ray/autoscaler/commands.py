@@ -182,7 +182,7 @@ def get_or_create_head_node(
             monitor_str = "docker exec {} /bin/sh -c {}".format(
                 config["docker"]["container_name"], quote(monitor_str))
     print("To monitor auto-scaling activity, you can run:\n\n"
-          " ray exec {} {}\n".format(config_file, quote(monitor_str)))
+          "  ray exec {} {}\n".format(config_file, quote(monitor_str)))
     print("To login to the cluster, run:\n\n"
           "  ssh -i {} {}@{}\n".format(config["auth"]["ssh_private_key"],
                                        config["auth"]["ssh_user"],
