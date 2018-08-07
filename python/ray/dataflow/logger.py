@@ -11,7 +11,7 @@ import ray.local_scheduler
 import ray.ray_constants as ray_constants
 import ray.services as services
 
-from ray.utils import _random_string
+from ray.utils import _random_string, binary_to_hex
 
 ERROR_KEY_PREFIX = b"Error:"
 ERROR_KEYS = "ErrorKeys"
@@ -44,7 +44,7 @@ class LocalLogger(object):
     def __init__(self, worker):
         self.worker = worker
         self.logger = logging.getLogger("ray_worker:" +
-                                        self.worker.worker_id.hex())
+                                        binary_to_hex(self.worker.worker_id))
 
         self.log_stdout_file = None
         self.log_stderr_file = None
