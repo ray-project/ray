@@ -217,10 +217,11 @@ class Agent(Trainable):
 
         Arguments:
             observation (obj): observation from the environment.
-            state (list): RNN hidden state, if any. If state is not None, 
-                          then all of compute_single_action(...) is returned 
-                          (computed action, rnn state, logits dictionary). Otherwise 
-                          compute_single_action(...)[0] is returned (computed action).
+            state (list): RNN hidden state, if any. If state is not None,
+                          then all of compute_single_action(...) is returned
+                          (computed action, rnn state, logits dictionary).
+                          Otherwise compute_single_action(...)[0] is
+                          returned (computed action).
             policy_id (str): policy to query (only applies to multi-agent).
         """
 
