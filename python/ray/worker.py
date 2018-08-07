@@ -16,7 +16,6 @@ import time
 import traceback
 
 # Ray modules
-import pyarrow
 import ray.cloudpickle as pickle
 from ray.dataflow.exceptions import (RayTaskError, RayGetArgumentError,
                                      RayGetError)
@@ -182,6 +181,10 @@ class Worker(object):
                 SILENT_MODE.
         """
         self.mode = mode
+
+    def get_serialization_context(self, driver_id):
+        """For backward compatibility"""
+        return self.object_store_client.get_serialization_context(driver_id)
 
     def put_object(self, object_id, value):
         return self.object_store_client.put_object(object_id, value)
@@ -877,97 +880,6 @@ def error_info(worker=global_worker):
             errors.append(error_contents)
 
     return errors
-
-
-def _initialize_serialization(driver_id, worker=global_worker):
-    """Initialize the serialization library.
-
-    This defines a custom serializer for object IDs and also tells ray to
-    serialize several exception classes that we define for error handling.
-    """
-    serialization_context = pyarrow.default_serialization_context()
-    # Tell the serialization context to use the cloudpickle version that we
-    # ship with Ray.
-    serialization_context.set_pickle(pickle.dumps, pickle.loads)
-    pyarrow.register_torch_serialization_handlers(serialization_context)
-
-    # Define a custom serializer and deserializer for handling Object IDs.
-    def object_id_custom_serializer(obj):
-        return obj.id()
-
-    def object_id_custom_deserializer(serialized_obj):
-        return ray.ObjectID(serialized_obj)
-
-    # We register this serializer on each worker instead of calling
-    # register_custom_serializer from the driver so that isinstance still
-    # works.
-    serialization_context.register_type(
-        ray.ObjectID,
-        "ray.ObjectID",
-        pickle=False,
-        custom_serializer=object_id_custom_serializer,
-        custom_deserializer=object_id_custom_deserializer)
-
-    def actor_handle_serializer(obj):
-        return obj._serialization_helper(True)
-
-    def actor_handle_deserializer(serialized_obj):
-        new_handle = ray.actor.ActorHandle.__new__(ray.actor.ActorHandle)
-        new_handle._deserialization_helper(serialized_obj, True)
-        return new_handle
-
-    # We register this serializer on each worker instead of calling
-    # register_custom_serializer from the driver so that isinstance still
-    # works.
-    serialization_context.register_type(
-        ray.actor.ActorHandle,
-        "ray.ActorHandle",
-        pickle=False,
-        custom_serializer=actor_handle_serializer,
-        custom_deserializer=actor_handle_deserializer)
-
-    worker.serialization_context_map[driver_id] = serialization_context
-
-    register_custom_serializer(
-        RayTaskError,
-        use_dict=True,
-        local=True,
-        driver_id=driver_id,
-        class_id="ray.RayTaskError")
-    register_custom_serializer(
-        RayGetError,
-        use_dict=True,
-        local=True,
-        driver_id=driver_id,
-        class_id="ray.RayGetError")
-    register_custom_serializer(
-        RayGetArgumentError,
-        use_dict=True,
-        local=True,
-        driver_id=driver_id,
-        class_id="ray.RayGetArgumentError")
-    # Tell Ray to serialize lambdas with pickle.
-    register_custom_serializer(
-        type(lambda: 0),
-        use_pickle=True,
-        local=True,
-        driver_id=driver_id,
-        class_id="lambda")
-    # Tell Ray to serialize types with pickle.
-    register_custom_serializer(
-        type(int),
-        use_pickle=True,
-        local=True,
-        driver_id=driver_id,
-        class_id="type")
-    # Tell Ray to serialize FunctionSignatures as dictionaries. This is
-    # used when passing around actor handles.
-    register_custom_serializer(
-        ray.signature.FunctionSignature,
-        use_dict=True,
-        local=True,
-        driver_id=driver_id,
-        class_id="ray.signature.FunctionSignature")
 
 
 def get_address_info_from_redis_helper(redis_address,
@@ -1947,7 +1859,6 @@ def disconnect(worker=global_worker):
     worker.connected = False
     worker.cached_functions_to_run = []
     worker.cached_remote_functions_and_actors = []
-    worker.serialization_context_map.clear()
 
 
 def _try_to_compute_deterministic_class_id(cls, depth=5):

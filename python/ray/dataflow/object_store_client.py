@@ -8,10 +8,12 @@ import pyarrow
 import pyarrow.plasma as plasma
 # TODO: Cleanup imports after implement `serialization` module.
 import ray.cloudpickle as pickle
-from ray.dataflow.exceptions import RayTaskError
+from ray.dataflow.exceptions import (RayTaskError, RayGetArgumentError,
+                                     RayGetError)
 import ray.plasma
 from ray.serialization import CloudPickleError, RayNotDictionarySerializable
 from ray.services import logger
+import ray.signature
 import ray.ray_constants as ray_constants
 from ray.utils import thread_safe_client
 import ray.worker
@@ -58,6 +60,7 @@ class ObjectStoreClient(object):
     def disconnect(self):
         if hasattr(self, 'plasma_client'):
             self.plasma_client.disconnect()
+        self.serialization_context_map.clear()
 
     def get_serialization_context(self, driver_id):
         """Get the SerializationContext of the driver that this worker is processing.
@@ -73,8 +76,98 @@ class ObjectStoreClient(object):
         # TODO: `serialization` module should have a class maintaining
         # serialization context info.
         if driver_id not in self.serialization_context_map:
-            ray.worker._initialize_serialization(driver_id)
+            self._initialize_serialization(driver_id)
         return self.serialization_context_map[driver_id]
+
+    def _initialize_serialization(self, driver_id):
+        """Initialize the serialization library.
+
+        This defines a custom serializer for object IDs and also tells ray to
+        serialize several exception classes that we define for error handling.
+        """
+        serialization_context = pyarrow.default_serialization_context()
+        # Tell the serialization context to use the cloudpickle version that we
+        # ship with Ray.
+        serialization_context.set_pickle(pickle.dumps, pickle.loads)
+        pyarrow.register_torch_serialization_handlers(serialization_context)
+
+        # Define a custom serializer and deserializer for handling Object IDs.
+        def object_id_custom_serializer(obj):
+            return obj.id()
+
+        def object_id_custom_deserializer(serialized_obj):
+            return ray.ObjectID(serialized_obj)
+
+        # We register this serializer on each worker instead of calling
+        # register_custom_serializer from the driver so that isinstance still
+        # works.
+        serialization_context.register_type(
+            ray.ObjectID,
+            "ray.ObjectID",
+            pickle=False,
+            custom_serializer=object_id_custom_serializer,
+            custom_deserializer=object_id_custom_deserializer)
+
+        def actor_handle_serializer(obj):
+            return obj._serialization_helper(True)
+
+        def actor_handle_deserializer(serialized_obj):
+            new_handle = ray.actor.ActorHandle.__new__(ray.actor.ActorHandle)
+            new_handle._deserialization_helper(serialized_obj, True)
+            return new_handle
+
+        # We register this serializer on each worker instead of calling
+        # register_custom_serializer from the driver so that isinstance still
+        # works.
+        serialization_context.register_type(
+            ray.actor.ActorHandle,
+            "ray.ActorHandle",
+            pickle=False,
+            custom_serializer=actor_handle_serializer,
+            custom_deserializer=actor_handle_deserializer)
+
+        self.serialization_context_map[driver_id] = serialization_context
+
+        ray.worker.register_custom_serializer(
+            RayTaskError,
+            use_dict=True,
+            local=True,
+            driver_id=driver_id,
+            class_id="ray.RayTaskError")
+        ray.worker.register_custom_serializer(
+            RayGetError,
+            use_dict=True,
+            local=True,
+            driver_id=driver_id,
+            class_id="ray.RayGetError")
+        ray.worker.register_custom_serializer(
+            RayGetArgumentError,
+            use_dict=True,
+            local=True,
+            driver_id=driver_id,
+            class_id="ray.RayGetArgumentError")
+        # Tell Ray to serialize lambdas with pickle.
+        ray.worker.register_custom_serializer(
+            type(lambda: 0),
+            use_pickle=True,
+            local=True,
+            driver_id=driver_id,
+            class_id="lambda")
+        # Tell Ray to serialize types with pickle.
+        ray.worker.register_custom_serializer(
+            type(int),
+            use_pickle=True,
+            local=True,
+            driver_id=driver_id,
+            class_id="type")
+        # Tell Ray to serialize FunctionSignatures as dictionaries. This is
+        # used when passing around actor handles.
+        ray.worker.register_custom_serializer(
+            ray.signature.FunctionSignature,
+            use_dict=True,
+            local=True,
+            driver_id=driver_id,
+            class_id="ray.signature.FunctionSignature")
 
     def clear(self):
         self.serialization_context_map.clear()
