@@ -136,8 +136,8 @@ Status Log<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
     // more subscription messages.
     return false;
   };
-  subscribe_callback_index_ = 1;
-  return context_->SubscribeAsync(client_id, pubsub_channel_, std::move(callback));
+  return context_->SubscribeAsync(client_id, pubsub_channel_, std::move(callback),
+                                  &subscribe_callback_index_);
 }
 
 template <typename ID, typename Data>

@@ -16,7 +16,8 @@ from ray.tune.logger import NoopLogger, UnifiedLogger, pretty_print
 # need because there are cyclic imports that may cause specific names to not
 # have been defined yet. See https://github.com/ray-project/ray/issues/1716.
 import ray.tune.registry
-from ray.tune.result import TrainingResult, DEFAULT_RESULTS_DIR
+from ray.tune.result import (DEFAULT_RESULTS_DIR, DONE, HOSTNAME, PID,
+                             TIME_TOTAL_S, TRAINING_ITERATION)
 from ray.utils import random_string, binary_to_hex
 
 DEBUG_PRINT_INTERVAL = 5
@@ -100,13 +101,6 @@ class Trial(object):
             from ray import rllib  # noqa: F401
             if not has_trainable(trainable_name):
                 raise TuneError("Unknown trainable: " + trainable_name)
-
-        if stopping_criterion:
-            for k in stopping_criterion:
-                if k not in TrainingResult._fields:
-                    raise TuneError(
-                        "Stopping condition key `{}` must be one of {}".format(
-                            k, TrainingResult._fields))
 
         # Trial config
         self.trainable_name = trainable_name
@@ -237,11 +231,13 @@ class Trial(object):
     def should_stop(self, result):
         """Whether the given result meets this trial's stopping criteria."""
 
-        if result.done:
+        if result.get(DONE):
             return True
 
         for criteria, stop_value in self.stopping_criterion.items():
-            if getattr(result, criteria) >= stop_value:
+            if criteria not in result:
+                raise TuneError("Stopping Criteria not provided in result.")
+            if result[criteria] >= stop_value:
                 return True
 
         return False
@@ -252,7 +248,7 @@ class Trial(object):
         if not self.checkpoint_freq:
             return False
 
-        return self.last_result.training_iteration % self.checkpoint_freq == 0
+        return self.last_result[TRAINING_ITERATION] % self.checkpoint_freq == 0
 
     def progress_string(self):
         """Returns a progress message for printing out to the console."""
@@ -269,23 +265,23 @@ class Trial(object):
         pieces = [
             '{} [{}]'.format(
                 self._status_string(),
-                location_string(self.last_result.hostname,
-                                self.last_result.pid)),
-            '{} s'.format(int(self.last_result.time_total_s)), '{} ts'.format(
-                int(self.last_result.timesteps_total))
+                location_string(
+                    self.last_result.get(HOSTNAME),
+                    self.last_result.get(PID))),
+            '{} s'.format(int(self.last_result.get(TIME_TOTAL_S))),
         ]
 
-        if self.last_result.episode_reward_mean is not None:
+        if self.last_result.get("episode_reward_mean") is not None:
             pieces.append('{} rew'.format(
-                format(self.last_result.episode_reward_mean, '.3g')))
+                format(self.last_result["episode_reward_mean"], '.3g')))
 
-        if self.last_result.mean_loss is not None:
+        if self.last_result.get("mean_loss") is not None:
             pieces.append('{} loss'.format(
-                format(self.last_result.mean_loss, '.3g')))
+                format(self.last_result["mean_loss"], '.3g')))
 
-        if self.last_result.mean_accuracy is not None:
+        if self.last_result.get("mean_accuracy") is not None:
             pieces.append('{} acc'.format(
-                format(self.last_result.mean_accuracy, '.3g')))
+                format(self.last_result["mean_accuracy"], '.3g')))
 
         return ', '.join(pieces)
 
@@ -350,10 +346,10 @@ class Trial(object):
 
     def update_last_result(self, result, terminate=False):
         if terminate:
-            result = result._replace(done=True)
+            result.update(done=True)
         if self.verbose and (terminate or time.time() - self.last_debug >
                              DEBUG_PRINT_INTERVAL):
-            print("TrainingResult for {}:".format(self))
+            print("Result for {}:".format(self))
             print("  {}".format(pretty_print(result).replace("\n", "\n  ")))
             self.last_debug = time.time()
         self.last_result = result

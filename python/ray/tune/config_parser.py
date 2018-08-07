@@ -70,9 +70,9 @@ def make_parser(parser_creator=None, **kwargs):
         default="{}",
         type=json.loads,
         help="The stopping criteria, specified in JSON. The keys may be any "
-        "field in TrainingResult, e.g. "
-        "'{\"time_total_s\": 600, \"timesteps_total\": 100000}' to stop "
-        "after 600 seconds or 100k timesteps, whichever is reached first.")
+        "field returned by 'train()' e.g. "
+        "'{\"time_total_s\": 600, \"training_iteration\": 100000}' to stop "
+        "after 600 seconds or 100k iterations, whichever is reached first.")
     parser.add_argument(
         "--config",
         default="{}",
