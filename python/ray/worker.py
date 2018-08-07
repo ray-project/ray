@@ -375,6 +375,14 @@ class Driver(object):
 
             return task.returns()
 
+    def terminate(self):
+        if self.mode != LOCAL_MODE:
+            # Disconnect the worker from the local scheduler. The point of
+            # this is so that when the worker kills itself below, the local
+            # scheduler won't push an error message to the driver.
+            self.local_scheduler_client.disconnect()
+            os._exit(0)
+
 
 class Worker(Driver):
     """This class represents a worker-like worker which keeps polling
@@ -619,8 +627,7 @@ class Worker(Driver):
         self.distributor.increase_function_call_count(driver_id, function_id)
 
         if self.distributor.has_reached_max_executions(driver_id, function_id):
-            self.local_scheduler_client.disconnect()
-            os._exit(0)
+            self.terminate()
 
     def _get_next_task_from_local_scheduler(self):
         """Get the next task from the local scheduler.
