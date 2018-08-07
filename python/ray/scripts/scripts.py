@@ -469,7 +469,10 @@ def attach(cluster_config_file, start, cluster_name):
     type=str,
     help=("Override the configured cluster name."))
 def exec_cmd(cluster_config_file, cmd, screen, stop, start, cluster_name):
-    exec_cluster(cluster_config_file, cmd, screen, stop, start, cluster_name)
+    try:
+        exec_cluster(cluster_config_file, cmd, screen, stop, start, cluster_name)
+    except subprocess.CalledProcessError:
+        print("Call terminated or failed!")
 
 
 @click.command()
