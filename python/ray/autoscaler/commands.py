@@ -24,7 +24,7 @@ from ray.autoscaler.updater import NodeUpdaterProcess
 
 
 def create_or_update_cluster(config_file, override_min_workers,
-                             override_max_workers, no_restart, 
+                             override_max_workers, no_restart,
                              restart_only, yes, override_cluster_name):
     """Create or updates an autoscaling Ray cluster from a config json."""
 
