@@ -17,10 +17,10 @@ import traceback
 
 # Ray modules
 import pyarrow
-import pyarrow.plasma as plasma
 import ray.cloudpickle as pickle
 from ray.dataflow.exceptions import (RayTaskError, RayGetArgumentError,
                                      RayGetError)
+import ray.dataflow.object_store_client as object_store_client
 import ray.experimental.state as state
 import ray.gcs_utils
 import ray.remote_function
@@ -183,6 +183,20 @@ class Worker(object):
                 SILENT_MODE.
         """
         self.mode = mode
+
+    def put_object(self, object_id, value):
+        return self.object_store_client.put_object(object_id, value)
+
+    def get_object(self, object_ids):
+        return self.object_store_client.get_object(object_ids)
+
+    def wait_object(self, object_ids, num_returns, timeout):
+        return self.object_store_client.wait_object(object_ids, num_returns,
+                                                    timeout)
+
+    def compute_put_id(self):
+        return self.local_scheduler_client.compute_put_id(
+            self.current_task_id, self.put_index, self.use_raylet)
 
     def submit_task(self,
                     function_id,
@@ -1496,8 +1510,8 @@ def shutdown(worker=global_worker):
     disconnect(worker)
     if hasattr(worker, "local_scheduler_client"):
         del worker.local_scheduler_client
-    if hasattr(worker, "plasma_client"):
-        worker.plasma_client.disconnect()
+    if hasattr(worker, "object_store_client"):
+        worker.object_store_client.disconnect()
 
     if worker.mode in [SCRIPT_MODE, SILENT_MODE]:
         # If this is a driver, push the finish time to Redis and clean up any
@@ -1788,13 +1802,12 @@ def connect(info,
         raise Exception("This code should be unreachable.")
 
     # Create an object store client.
-    if not worker.use_raylet:
-        worker.plasma_client = thread_safe_client(
-            plasma.connect(info["store_socket_name"],
-                           info["manager_socket_name"], 64))
-    else:
-        worker.plasma_client = thread_safe_client(
-            plasma.connect(info["store_socket_name"], "", 64))
+    worker.object_store_client = object_store_client.ObjectStoreClient(worker)
+    worker.object_store_client.connect(
+        store_socket_name=info["store_socket_name"],
+        manager_socket_name=info.get("manager_socket_name"),
+        release_delay=64,
+    )
 
     if not worker.use_raylet:
         local_scheduler_socket = info["local_scheduler_socket_name"]
@@ -2137,8 +2150,7 @@ def put(value, worker=global_worker):
         if worker.mode == LOCAL_MODE:
             # In LOCAL_MODE, ray.put is the identity operation.
             return value
-        object_id = worker.local_scheduler_client.compute_put_id(
-            worker.current_task_id, worker.put_index, worker.use_raylet)
+        object_id = worker.compute_put_id()
         worker.put_object(object_id, value)
         worker.put_index += 1
         return object_id
@@ -2196,37 +2208,7 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
         if worker.mode == LOCAL_MODE:
             return object_ids[:num_returns], object_ids[num_returns:]
 
-        # TODO(rkn): This is a temporary workaround for
-        # https://github.com/ray-project/ray/issues/997. However, it should be
-        # fixed in Arrow instead of here.
-        if len(object_ids) == 0:
-            return [], []
-
-        if len(object_ids) != len(set(object_ids)):
-            raise Exception("Wait requires a list of unique object IDs.")
-        if num_returns <= 0:
-            raise Exception(
-                "Invalid number of objects to return %d." % num_returns)
-        if num_returns > len(object_ids):
-            raise Exception("num_returns cannot be greater than the number "
-                            "of objects provided to ray.wait.")
-        timeout = timeout if timeout is not None else 2**30
-        if worker.use_raylet:
-            ready_ids, remaining_ids = worker.local_scheduler_client.wait(
-                object_ids, num_returns, timeout, False)
-        else:
-            object_id_strs = [
-                plasma.ObjectID(object_id.id()) for object_id in object_ids
-            ]
-            ready_ids, remaining_ids = worker.plasma_client.wait(
-                object_id_strs, timeout, num_returns)
-            ready_ids = [
-                ray.ObjectID(object_id.binary()) for object_id in ready_ids
-            ]
-            remaining_ids = [
-                ray.ObjectID(object_id.binary()) for object_id in remaining_ids
-            ]
-        return ready_ids, remaining_ids
+        return worker.wait_object(object_ids, num_returns, timeout)
 
 
 def _mode(worker=global_worker):
