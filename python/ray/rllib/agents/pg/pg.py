@@ -50,5 +50,7 @@ class PGAgent(Agent):
     def _train(self):
         prev_steps = self.optimizer.num_steps_sampled
         self.optimizer.step()
-        return self.optimizer.collect_metrics()._replace(
-            timesteps_this_iter=self.optimizer.num_steps_sampled - prev_steps)
+        result = self.optimizer.collect_metrics()
+        result.update(timesteps_this_iter=self.optimizer.num_steps_sampled -
+                      prev_steps)
+        return result

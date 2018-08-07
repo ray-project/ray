@@ -9,6 +9,7 @@ import time
 import traceback
 
 from ray.tune import TuneError
+from ray.tune.result import TIME_THIS_ITER_S
 from ray.tune.web_server import TuneServer
 from ray.tune.trial import Trial, Resources
 from ray.tune.trial_scheduler import FIFOScheduler, TrialScheduler
@@ -262,7 +263,7 @@ class TrialRunner(object):
         trial = self._running.pop(result_id)
         try:
             result = ray.get(result_id)
-            self._total_time += result.time_this_iter_s
+            self._total_time += result[TIME_THIS_ITER_S]
 
             if trial.should_stop(result):
                 # Hook into scheduler
