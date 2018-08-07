@@ -18,7 +18,7 @@ class PGLoss(nn.Module):
         self.policy_model = policy_model
 
     def forward(self, observations, actions, advantages):
-        logits, values = self.policy_model(observations)
+        logits, _ = self.policy_model(observations)
         log_probs = F.log_softmax(logits, dim=1)
         probs = F.softmax(logits, dim=1)
         action_log_probs = log_probs.gather(1, actions.view(-1, 1))
@@ -26,7 +26,7 @@ class PGLoss(nn.Module):
         return pi_err
 
 
-class PGPolicyGraph(TorchPolicyGraph):
+class PGTorchPolicyGraph(TorchPolicyGraph):
     """A simple, non-recurrent PyTorch policy example."""
 
     def __init__(self, obs_space, action_space, config):

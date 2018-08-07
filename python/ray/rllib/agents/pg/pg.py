@@ -41,10 +41,11 @@ class PGAgent(Agent):
 
     def _init(self):
         if self.config["use_pytorch"]:
-            from ray.rllib.agents.pg.pg.pg_torch_policy_graph import PGPolicyGraph
-            policy_cls = PGPolicyGraph
+            from ray.rllib.agents.pg.pg_torch_policy_graph import \
+                PGTorchPolicyGraph
+            policy_cls = PGTorchPolicyGraph
         else:
-            from ray.rllib.agents.pg.pg.pg_tf_policy_graph import PGPolicyGraph
+            from ray.rllib.agents.pg.pg_tf_policy_graph import PGPolicyGraph
             policy_cls = PGPolicyGraph
 
         self.local_evaluator = self.make_local_evaluator(

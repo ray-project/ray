@@ -8,7 +8,7 @@ import torch.nn as nn
 
 
 class FullyConnectedNetwork(Model):
-    """TODO(rliaw): Logits, Value should both be contained here"""
+    """Generic fully connected network, pytorch backend."""
 
     def _build_layers(self, inputs, num_outputs, options):
         assert type(inputs) is int
@@ -33,17 +33,13 @@ class FullyConnectedNetwork(Model):
             last_layer_size = size
 
         self.hidden_layers = nn.Sequential(*layers)
-
-        self.logits = SlimFC(
+        self.output = SlimFC(
             in_size=last_layer_size,
             out_size=num_outputs,
             initializer=normc_initializer(0.01),
             activation_fn=None)
-        self.value_branch = SlimFC(
-            in_size=last_layer_size,
-            out_size=1,
-            initializer=normc_initializer(1.0),
-            activation_fn=None)
+        self.last_layer_size = last_layer_size
+
 
     def forward(self, obs):
         """ Internal method - pass in torch tensors, not numpy arrays
@@ -52,9 +48,8 @@ class FullyConnectedNetwork(Model):
             obs: observations and features
 
         Return:
-            logits: logits to be sampled from for each state
-            value: value function for each state"""
-        res = self.hidden_layers(obs)
-        logits = self.logits(res)
-        value = self.value_branch(res).squeeze(1)
-        return logits, value
+            output: result of a forward pass of obs through the model
+            last_hidden_activations: activations after the last hidden layer"""
+
+        last_hidden_activations = self.hidden_layers(obs)
+        return self.output(last_hidden_activations), last_hidden_activations

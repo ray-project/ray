@@ -11,6 +11,8 @@ from ray.rllib.models.pytorch.misc import var_to_np
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.evaluation.postprocessing import compute_advantages
 from ray.rllib.evaluation.torch_policy_graph import TorchPolicyGraph
+from ray.rllib.models.pytorch.model import SlimFC
+from ray.rllib.models.pytorch.misc import normc_initializer
 
 
 class A3CLoss(nn.Module):
@@ -21,13 +23,20 @@ class A3CLoss(nn.Module):
         self.entropy_coeff = entropy_coeff
 
     def forward(self, observations, actions, advantages, value_targets):
-        logits, values = self.policy_model(observations)
+        logits, last_hidden = self.policy_model(observations)
+
+        # Compute policy loss
         log_probs = F.log_softmax(logits, dim=1)
         probs = F.softmax(logits, dim=1)
         action_log_probs = log_probs.gather(1, actions.view(-1, 1))
         entropy = -(log_probs * probs).sum(-1).sum()
         pi_err = -advantages.dot(action_log_probs.reshape(-1))
+
+        # Compute value loss
+        values = self.policy_model.value_branch(last_hidden)
         value_err = F.mse_loss(values.reshape(-1), value_targets)
+
+        # Compute overall loss
         overall_err = sum([
             pi_err,
             self.vf_loss_coeff * value_err,
@@ -42,12 +51,26 @@ class A3CTorchPolicyGraph(TorchPolicyGraph):
     def __init__(self, obs_space, action_space, config):
         config = dict(ray.rllib.agents.a3c.a3c.DEFAULT_CONFIG, **config)
         self.config = config
+
+        # Set up policy
         _, self.logit_dim = ModelCatalog.get_action_dist(
             action_space, self.config["model"])
         self.model = ModelCatalog.get_torch_model(
             obs_space.shape, self.logit_dim, self.config["model"])
+
+        # Add value function branch
+        value_branch = SlimFC(
+            in_size=model.last_layer_size,
+            out_size=1,
+            initializer=normc_initializer(1.0),
+            activation_fn=None)
+        self.model.add_module('value_branch', value_branch)
+
+        # A3C loss
         loss = A3CLoss(self.model, self.config["vf_loss_coeff"],
                        self.config["entropy_coeff"])
+
+        # Initialize A3C policy graph
         TorchPolicyGraph.__init__(
             self,
             obs_space,
