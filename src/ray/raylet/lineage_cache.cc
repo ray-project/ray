@@ -274,12 +274,13 @@ Lineage LineageCache::GetUncommittedLineage(const TaskID &task_id,
   Lineage uncommitted_lineage;
   // Add all uncommitted ancestors from the lineage cache to the uncommitted
   // lineage of the requested task.
-  MergeLineageHelper(task_id, lineage_, uncommitted_lineage,
-                     [&](const LineageEntry &entry) {
-                       // The stopping condition for recursion is that the entry has
-                       // been committed to the GCS or has already been forwarded.
-                       return entry.WasExplicitlyForwarded(node_id);
-                     });
+  MergeLineageHelper(
+      task_id, lineage_, uncommitted_lineage, [&](const LineageEntry &entry) {
+        // The stopping condition for recursion is that the entry has
+        // been committed to the GCS or has already been forwarded.
+        // The lineage always includes the requested task id.
+        return entry.WasExplicitlyForwarded(node_id) && !(entry.GetEntryId() == task_id);
+      });
   return uncommitted_lineage;
 }
 
