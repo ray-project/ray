@@ -3,7 +3,9 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
+import hashlib
 import json
+import os
 import tempfile
 import time
 import sys
@@ -24,8 +26,8 @@ from ray.autoscaler.updater import NodeUpdaterProcess
 
 
 def create_or_update_cluster(config_file, override_min_workers,
-                             override_max_workers, no_restart,
-                             restart_only, yes, override_cluster_name):
+                             override_max_workers, no_restart, restart_only,
+                             yes, override_cluster_name):
     """Create or updates an autoscaling Ray cluster from a config json."""
 
     config = yaml.load(open(config_file).read())
@@ -36,11 +38,17 @@ def create_or_update_cluster(config_file, override_min_workers,
     if override_cluster_name is not None:
         config["cluster_name"] = override_cluster_name
     config = _bootstrap_config(config)
-    get_or_create_head_node(
-        config, config_file, no_restart, restart_only, yes)
+    get_or_create_head_node(config, config_file, no_restart, restart_only, yes)
 
 
 def _bootstrap_config(config):
+    hasher = hashlib.sha1()
+    hasher.update(json.dumps([config], sort_keys=True).encode("utf-8"))
+    cache_key = os.path.join(tempfile.gettempdir(),
+                             "ray-config-{}".format(hasher.hexdigest()))
+    if os.path.exists(cache_key):
+        print("Cached settings:", cache_key)
+        return json.loads(open(cache_key).read())
     validate_config(config)
     config = fillout_defaults(config)
 
@@ -50,7 +58,10 @@ def _bootstrap_config(config):
             config["provider"]))
 
     bootstrap_config, _ = importer()
-    return bootstrap_config(config)
+    resolved_config = bootstrap_config(config)
+    with open(cache_key, "w") as f:
+        f.write(json.dumps(resolved_config))
+    return resolved_config
 
 
 def teardown_cluster(config_file, yes, workers_only, override_cluster_name):
@@ -80,8 +91,8 @@ def teardown_cluster(config_file, yes, workers_only, override_cluster_name):
         nodes = provider.nodes({TAG_RAY_NODE_TYPE: "worker"})
 
 
-def get_or_create_head_node(
-        config, config_file, no_restart, restart_only, yes):
+def get_or_create_head_node(config, config_file, no_restart, restart_only,
+                            yes):
     """Create the cluster head node, which in turn creates the workers."""
 
     provider = get_node_provider(config["provider"], config["cluster_name"])
@@ -258,7 +269,11 @@ def _get_head_node(config, config_file, create_if_needed=False):
         return head_node
     elif create_if_needed:
         get_or_create_head_node(
-            config, config_file, no_restart=False, yes=True)
+            config,
+            config_file,
+            restart_only=False,
+            no_restart=False,
+            yes=True)
         return _get_head_node(config, config_file, create_if_needed=False)
     else:
         print("Head node of cluster ({}) not found!".format(
