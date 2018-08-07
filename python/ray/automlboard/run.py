@@ -42,8 +42,7 @@ def init_config(args):
 
     if args.db:
         try:
-            db_address_reg = re.compile(
-                r"(.*)://(.*):(.*)@(.*):(.*)/(.*)")
+            db_address_reg = re.compile(r"(.*)://(.*):(.*)@(.*):(.*)/(.*)")
             match = re.match(db_address_reg, args.db_address)
             os.environ["AUTOMLBOARD_DB_ENGINE"] = match.group(1)
             os.environ["AUTOMLBOARD_DB_USER"] = match.group(2)
@@ -58,8 +57,7 @@ def init_config(args):
     else:
         print(
             "Using sqlite3 as the database backend, "
-            "information will be stored in automlboard.db"
-        )
+            "information will be stored in automlboard.db")
 
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "frontend.settings")
     django.setup()
@@ -69,20 +67,30 @@ def init_config(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--logdir", type=str, required=True,
+    parser.add_argument("--logdir",
+                        type=str,
+                        required=True,
                         help="Directory where AutoML Board will "
                              "look to find tuning logs it can display")
-    parser.add_argument("--port", type=int, default=8008,
+    parser.add_argument("--port",
+                        type=int,
+                        default=8008,
                         help="What port to serve AutoMLBoard on, "
                              "(default: %(default)s)")
-    parser.add_argument("--db", type=str, default=None,
+    parser.add_argument("--db",
+                        type=str,
+                        default=None,
                         help="Set SQL database URI in "
                              "schema://user:password@host:port/database, "
                              "(default: sqlite3)"),
-    parser.add_argument("--reload_interval", type=int, default=5,
+    parser.add_argument("--reload_interval",
+                        type=int,
+                        default=5,
                         help="How often the backend should load more data, "
                              "(default: %(default)s)")
-    parser.add_argument("--log_level", type=str, default="INFO",
+    parser.add_argument("--log_level",
+                        type=str,
+                        default="INFO",
                         help="Set the logging level, "
                              "(default: %(default)s)")
     cmd_args = parser.parse_args()

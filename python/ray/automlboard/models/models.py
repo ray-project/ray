@@ -35,8 +35,7 @@ class JobRecord(models.Model):
             failed_trials=json_info["failed_trials"],
             running_trials=json_info["running_trials"],
             total_trials=json_info["total_trials"],
-            progress=json_info["progress"]
-        )
+            progress=json_info["progress"])
 
     def is_finished(self):
         return self.end_time is not None
@@ -65,8 +64,7 @@ class TrialRecord(models.Model):
             job_id=json_info["job_id"],
             trial_status=json_info["status"],
             start_time=json_info["start_time"],
-            params=json_info["params"]
-        )
+            params=json_info["params"])
 
 
 class ResultRecord(models.Model):
@@ -79,8 +77,7 @@ class ResultRecord(models.Model):
     info = models.CharField(max_length=256, blank=True, null=True)
     episode_reward_mean = models.CharField(
         max_length=30, blank=True, null=True)
-    episode_len_mean = models.CharField(
-        max_length=30, blank=True, null=True)
+    episode_len_mean = models.CharField(max_length=30, blank=True, null=True)
     episodes_total = models.CharField(max_length=30, blank=True, null=True)
     mean_accuracy = models.FloatField(blank=True, null=True)
     mean_validation_accuracy = models.FloatField(blank=True, null=True)

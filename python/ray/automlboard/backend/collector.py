@@ -66,9 +66,8 @@ class CollectorService(object):
         logging.getLogger().handlers = []
         log_format = '[%(asctime)s %(levelname)s] %(filename)s:' \
                      '%(funcName)s:%(lineno)d  %(message)s'
-        logging.basicConfig(stream=sys.stdout,
-                            format=log_format,
-                            level=log_level)
+        logging.basicConfig(
+            stream=sys.stdout, format=log_format, level=log_level)
         return log_level
 
 
@@ -301,7 +300,8 @@ class Collector(Thread):
             "end_time": None,
             "progress_offset": 0,
             "result_offset": 0,
-            "params": params}
+            "params": params
+        }
         meta_file = os.path.join(expr_dir, EXPR_META_FILE)
         dump_json(meta, meta_file)
         return meta

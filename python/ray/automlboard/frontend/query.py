@@ -55,8 +55,7 @@ def query_job(request):
             "progress": job.progress
         }
         resp = json.dumps(result)
-    return HttpResponse(resp,
-                        content_type='application/json;charset=utf-8')
+    return HttpResponse(resp, content_type='application/json;charset=utf-8')
 
 
 def query_trial(request):
@@ -95,5 +94,4 @@ def query_trial(request):
             "params": trial.params
         }
         resp = json.dumps(result)
-    return HttpResponse(resp,
-                        content_type='application/json;charset=utf-8')
+    return HttpResponse(resp, content_type='application/json;charset=utf-8')

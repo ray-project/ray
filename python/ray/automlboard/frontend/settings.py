@@ -15,8 +15,7 @@ import os
 
 # Build paths inside the project like this:
 # os.path.join(BASE_DIR, ...)
-BASE_DIR = os.path.dirname(
-    os.path.dirname(os.path.abspath(__file__)))
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 # Quick-start development settings - unsuitable for production
@@ -29,7 +28,6 @@ SECRET_KEY = 'tktks103=$7a#5axn)52&b87!#w_qm(%*72^@hsq!nur%dtk4b'
 DEBUG = True
 
 ALLOWED_HOSTS = ['*']
-
 
 # Application definition
 
@@ -73,7 +71,6 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'frontend.wsgi.application'
 
-
 DB_ENGINE_NAME_MAP = {
     "mysql": "django.db.backends.mysql",
     "sqllite": "django.db.backends.sqlite3"
@@ -82,7 +79,6 @@ DB_ENGINE_NAME_MAP = {
 
 def lookup_db_engine(name):
     return DB_ENGINE_NAME_MAP.get(name, DB_ENGINE_NAME_MAP["sqllite"])
-
 
 # Database
 # https://docs.djangoproject.com/en/1.11/ref/settings/#databases
@@ -96,8 +92,7 @@ if not os.environ.get("AUTOMLBOARD_DB_ENGINE", None):
 else:
     DATABASES = {
         'default': {
-            'ENGINE': lookup_db_engine(
-                os.environ["AUTOMLBOARD_DB_ENGINE"]),
+            'ENGINE': lookup_db_engine(os.environ["AUTOMLBOARD_DB_ENGINE"]),
             'NAME': os.environ["AUTOMLBOARD_DB_NAME"],
             'USER': os.environ["AUTOMLBOARD_DB_USER"],
             "PASSWORD": os.environ["AUTOMLBOARD_DB_PASSWORD"],
@@ -105,7 +100,6 @@ else:
             "PORT": os.environ["AUTOMLBOARD_DB_PORT"]
         }
     }
-
 
 # Password validation
 # https://docs.djangoproject.com/en/1.11/ref/settings/#auth-password-validators
@@ -127,7 +121,6 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
-
 # Internationalization
 # https://docs.djangoproject.com/en/1.11/topics/i18n/
 
@@ -141,7 +134,6 @@ USE_L10N = True
 
 USE_TZ = False
 
-
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/1.11/howto/static-files/
 
@@ -152,6 +144,6 @@ STATICFILES_DIRS = (
 
 # automlboard settings
 AUTOMLBOARD_LOG_DIR = os.environ.get("AUTOMLBOARD_LOGDIR", None)
-AUTOMLBOARD_RELOAD_INTERVAL = os.environ.get(
-    "AUTOMLBOARD_RELOAD_INTERVAL", None)
+AUTOMLBOARD_RELOAD_INTERVAL = os.environ.get("AUTOMLBOARD_RELOAD_INTERVAL",
+                                             None)
 AUTOMLBOARD_LOG_LEVEL = os.environ.get("AUTOMLBOARD_LOGLEVEL", None)

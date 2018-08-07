@@ -16,8 +16,7 @@ def job(request):
     recent_trials = TrialRecord.objects \
         .filter(job_id=job_id) \
         .order_by('-start_time')
-    context = {'job_id': job_id,
-               'recent_trials': recent_trials}
+    context = {'job_id': job_id, 'recent_trials': recent_trials}
     return render(request, 'job.html', context)
 
 
@@ -27,7 +26,9 @@ def trial(request):
     recent_results = ResultRecord.objects \
         .filter(trial_id=trial_id) \
         .order_by('-date')[0:2000]
-    context = {'job_id': job_id,
-               'trial_id': trial_id,
-               'recent_results': recent_results}
+    context = {
+        'job_id': job_id,
+        'trial_id': trial_id,
+        'recent_results': recent_results
+    }
     return render(request, 'trial.html', context)
