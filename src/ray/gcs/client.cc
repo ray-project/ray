@@ -71,6 +71,7 @@ namespace gcs {
 
 AsyncGcsClient::AsyncGcsClient(const ClientID &client_id, CommandType command_type) {
   primary_context_ = std::make_shared<RedisContext>();
+  
   std::vector<std::shared_ptr<RedisContext>> tmp_primary;
   tmp_primary.push_back(primary_context_);
   client_table_.reset(new ClientTable(tmp_primary, this, client_id));
@@ -83,6 +84,7 @@ AsyncGcsClient::AsyncGcsClient(const ClientID &client_id, CommandType command_ty
   task_table_.reset(new TaskTable(shard_contexts_, this, command_type));
   raylet_task_table_.reset(new raylet::TaskTable(shard_contexts_, this, command_type));
   task_reconstruction_log_.reset(new TaskReconstructionLog(shard_contexts_, this));
+  task_lease_table_.reset(new TaskLeaseTable(shard_contexts_, this));
   heartbeat_table_.reset(new HeartbeatTable(shard_contexts_, this));
   profile_table_.reset(new ProfileTable(shard_contexts_, this));
   command_type_ = command_type;
@@ -180,6 +182,8 @@ ActorTable &AsyncGcsClient::actor_table() { return *actor_table_; }
 TaskReconstructionLog &AsyncGcsClient::task_reconstruction_log() {
   return *task_reconstruction_log_;
 }
+
+TaskLeaseTable &AsyncGcsClient::task_lease_table() { return *task_lease_table_; }
 
 ClientTable &AsyncGcsClient::client_table() { return *client_table_; }
 

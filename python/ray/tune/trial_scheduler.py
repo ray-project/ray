@@ -3,7 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 from ray.tune.trial import Trial
-from ray.tune.variant_generator import generate_trials
 
 
 class TrialScheduler(object):
@@ -47,21 +46,6 @@ class TrialScheduler(object):
         call `on_trial_complete`."""
 
         raise NotImplementedError
-
-    def add_experiment(self, experiment, trial_runner):
-        """Adds an experiment to the scheduler.
-
-        The scheduler is responsible for adding the trials of the experiment
-        to the runner, which can be done immediately (if there are a finite
-        set of trials), or over time (if there is an infinite stream of trials
-        or if the scheduler is iterative in nature).
-        """
-        generator = generate_trials(experiment.spec, experiment.name)
-        while True:
-            try:
-                trial_runner.add_trial(next(generator))
-            except StopIteration:
-                break
 
     def choose_trial_to_run(self, trial_runner):
         """Called to choose a new trial to run.

@@ -19,7 +19,7 @@ public class RayConnector {
       m.setAccessible(false);
       return api;
     } catch (ReflectiveOperationException | IllegalArgumentException | SecurityException e) {
-      RayLog.core.error("Load " + className + " class failed.", e);
+      RayLog.core.error("Load {} class failed.", className, e);
       throw new Error("RayApi is not successfully initiated.");
     }
   }

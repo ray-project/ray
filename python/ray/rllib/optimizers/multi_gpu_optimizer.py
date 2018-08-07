@@ -35,16 +35,16 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
               sgd_stepsize=5e-5,
               num_sgd_iter=10,
               timesteps_per_batch=1024,
+              num_gpus=0,
               standardize_fields=[]):
         self.batch_size = sgd_batch_size
         self.sgd_stepsize = sgd_stepsize
         self.num_sgd_iter = num_sgd_iter
         self.timesteps_per_batch = timesteps_per_batch
-        gpu_ids = ray.get_gpu_ids()
-        if not gpu_ids:
+        if not num_gpus:
             self.devices = ["/cpu:0"]
         else:
-            self.devices = ["/gpu:{}".format(i) for i in range(len(gpu_ids))]
+            self.devices = ["/gpu:{}".format(i) for i in range(num_gpus)]
         self.batch_size = int(sgd_batch_size / len(self.devices)) * len(
             self.devices)
         assert self.batch_size % len(self.devices) == 0

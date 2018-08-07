@@ -136,11 +136,16 @@ Status Log<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
     // more subscription messages.
     return false;
   };
+<<<<<<< HEAD
   subscribe_callback_index_ = 1;
   for (auto &context : shard_contexts_) {
     RAY_RETURN_NOT_OK(context->SubscribeAsync(client_id, pubsub_channel_, callback));
   }
   return Status::OK();
+=======
+  return context_->SubscribeAsync(client_id, pubsub_channel_, std::move(callback),
+                                  &subscribe_callback_index_);
+>>>>>>> 25f0094ee4c20be3628d376cdad98fd9acf5134a
 }
 
 template <typename ID, typename Data>
@@ -327,10 +332,12 @@ void ClientTable::HandleNotification(AsyncGcsClient *client,
       if (client_added_callback_ != nullptr) {
         client_added_callback_(client, client_id, data);
       }
+      RAY_CHECK(removed_clients_.find(client_id) == removed_clients_.end());
     } else {
       if (client_removed_callback_ != nullptr) {
         client_removed_callback_(client, client_id, data);
       }
+      removed_clients_.insert(client_id);
     }
   }
 }
@@ -341,9 +348,13 @@ void ClientTable::HandleConnected(AsyncGcsClient *client, const ClientTableDataT
                                                << client_id_;
 }
 
-const ClientID &ClientTable::GetLocalClientId() { return client_id_; }
+const ClientID &ClientTable::GetLocalClientId() const { return client_id_; }
 
-const ClientTableDataT &ClientTable::GetLocalClient() { return local_client_; }
+const ClientTableDataT &ClientTable::GetLocalClient() const { return local_client_; }
+
+bool ClientTable::IsRemoved(const ClientID &client_id) const {
+  return removed_clients_.count(client_id) == 1;
+}
 
 Status ClientTable::Connect(const ClientTableDataT &local_client) {
   RAY_CHECK(!disconnected_) << "Tried to reconnect a disconnected client.";
@@ -403,7 +414,7 @@ ray::Status ClientTable::MarkDisconnected(const ClientID &dead_client_id) {
   return Append(JobID::nil(), client_log_key_, data, nullptr);
 }
 
-const ClientTableDataT &ClientTable::GetClient(const ClientID &client_id) {
+const ClientTableDataT &ClientTable::GetClient(const ClientID &client_id) const {
   RAY_CHECK(!client_id.is_nil());
   auto entry = client_cache_.find(client_id);
   if (entry != client_cache_.end()) {
@@ -411,7 +422,7 @@ const ClientTableDataT &ClientTable::GetClient(const ClientID &client_id) {
   } else {
     // If the requested client was not found, return a reference to the nil
     // client entry.
-    return client_cache_[ClientID::nil()];
+    return client_cache_.at(ClientID::nil());
   }
 }
 
@@ -421,6 +432,7 @@ template class Table<TaskID, ray::protocol::Task>;
 template class Table<TaskID, TaskTableData>;
 template class Log<ActorID, ActorTableData>;
 template class Log<TaskID, TaskReconstructionData>;
+template class Table<TaskID, TaskLeaseData>;
 template class Table<ClientID, HeartbeatTableData>;
 template class Log<JobID, ErrorTableData>;
 template class Log<UniqueID, ClientTableData>;

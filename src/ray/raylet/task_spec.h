@@ -109,6 +109,12 @@ class TaskSpecification {
                     int64_t num_returns,
                     const std::unordered_map<std::string, double> &required_resources);
 
+  /// Deserialize a task specification from a flatbuffer's string data.
+  ///
+  /// \param string The string data for a serialized task specification
+  /// flatbuffer.
+  TaskSpecification(const std::string &string);
+
   ~TaskSpecification() {}
 
   /// Serialize the TaskSpecification to a flatbuffer.

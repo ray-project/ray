@@ -5,7 +5,6 @@
 //       gen_local_scheduler_fbs from src/ray/CMakeLists.txt.
 #include "local_scheduler/format/local_scheduler_generated.h"
 #include "ray/raylet/format/node_manager_generated.h"
-#include "ray/util/util.h"
 
 namespace {
 
@@ -91,8 +90,16 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
                    config.worker_command),
       local_queues_(SchedulingQueue()),
       scheduling_policy_(local_queues_),
-      reconstruction_policy_([this](const TaskID &task_id) { ResubmitTask(task_id); }),
-      task_dependency_manager_(object_manager),
+      reconstruction_policy_(
+          io_service_, [this](const TaskID &task_id) { ResubmitTask(task_id); },
+          RayConfig::instance().initial_reconstruction_timeout_milliseconds(),
+          gcs_client_->client_table().GetLocalClientId(), gcs_client->task_lease_table(),
+          std::make_shared<ObjectDirectory>(gcs_client)),
+      task_dependency_manager_(
+          object_manager, reconstruction_policy_, io_service,
+          gcs_client_->client_table().GetLocalClientId(),
+          RayConfig::instance().initial_reconstruction_timeout_milliseconds(),
+          gcs_client->task_lease_table()),
       lineage_cache_(gcs_client_->client_table().GetLocalClientId(),
                      gcs_client->raylet_task_table(), gcs_client->raylet_task_table(),
                      config.max_lineage_size),
@@ -129,6 +136,30 @@ ray::Status NodeManager::RegisterGcs() {
   RAY_RETURN_NOT_OK(gcs_client_->raylet_task_table().Subscribe(
       JobID::nil(), gcs_client_->client_table().GetLocalClientId(),
       task_committed_callback, nullptr, nullptr));
+
+  const auto task_lease_notification_callback = [this](gcs::AsyncGcsClient *client,
+                                                       const TaskID &task_id,
+                                                       const TaskLeaseDataT &task_lease) {
+    const ClientID node_manager_id = ClientID::from_binary(task_lease.node_manager_id);
+    if (gcs_client_->client_table().IsRemoved(node_manager_id)) {
+      // The node manager that added the task lease is already removed. The
+      // lease is considered inactive.
+      reconstruction_policy_.HandleTaskLeaseNotification(task_id, 0);
+    } else {
+      // NOTE(swang): The task_lease.timeout is an overestimate of the lease's
+      // expiration period since the entry may have been in the GCS for some
+      // time already. For a more accurate estimate, the age of the entry in
+      // the GCS should be subtracted from task_lease.timeout.
+      reconstruction_policy_.HandleTaskLeaseNotification(task_id, task_lease.timeout);
+    }
+  };
+  const auto task_lease_empty_callback = [this](gcs::AsyncGcsClient *client,
+                                                const TaskID &task_id) {
+    reconstruction_policy_.HandleTaskLeaseNotification(task_id, 0);
+  };
+  RAY_RETURN_NOT_OK(gcs_client_->task_lease_table().Subscribe(
+      JobID::nil(), gcs_client_->client_table().GetLocalClientId(),
+      task_lease_notification_callback, task_lease_empty_callback, nullptr));
 
   // Register a callback for actor creation notifications.
   auto actor_creation_callback = [this](
@@ -212,14 +243,6 @@ void NodeManager::Heartbeat() {
 void NodeManager::ClientAdded(const ClientTableDataT &client_data) {
   ClientID client_id = ClientID::from_binary(client_data.client_id);
 
-  // Make sure the client hasn't already been removed.
-  if (removed_clients_.find(client_id) != removed_clients_.end()) {
-    // This client has already been removed, so don't do anything.
-    RAY_LOG(INFO) << "The client " << client_id << " has already been removed, so it "
-                  << "can't be added. This is very unusual.";
-    return;
-  }
-
   RAY_LOG(DEBUG) << "[ClientAdded] received callback from client id " << client_id;
   if (client_id == gcs_client_->client_table().GetLocalClientId()) {
     // We got a notification for ourselves, so we are connected to the GCS now.
@@ -258,16 +281,10 @@ void NodeManager::ClientAdded(const ClientTableDataT &client_data) {
 }
 
 void NodeManager::ClientRemoved(const ClientTableDataT &client_data) {
+  // TODO(swang): If we receive a notification for our own death, clean up and
+  // exit immediately.
   const ClientID client_id = ClientID::from_binary(client_data.client_id);
   RAY_LOG(DEBUG) << "[ClientRemoved] received callback from client id " << client_id;
-
-  // If the client has already been removed, don't do anything.
-  if (removed_clients_.find(client_id) != removed_clients_.end()) {
-    RAY_LOG(INFO) << "The client " << client_id << " has already been removed. This "
-                  << "should be very unusual.";
-    return;
-  }
-  removed_clients_.insert(client_id);
 
   RAY_CHECK(client_id != gcs_client_->client_table().GetLocalClientId())
       << "Exiting because this node manager has mistakenly been marked dead by the "
@@ -341,7 +358,8 @@ void NodeManager::HandleActorCreation(const ActorID &actor_id,
   } else {
     // The actor's location is now known. Dequeue any methods that were
     // submitted before the actor's location was known.
-    const auto &methods = local_queues_.GetUncreatedActorMethods();
+    // (See design_docs/task_states.rst for the state transition diagram.)
+    const auto &methods = local_queues_.GetMethodsWaitingForActorCreation();
     std::unordered_set<TaskID> created_actor_method_ids;
     for (const auto &method : methods) {
       if (method.GetTaskSpecification().ActorId() == actor_id) {
@@ -377,7 +395,8 @@ void NodeManager::CleanUpTasksForDeadActor(const ActorID &actor_id) {
   // SchedulingQueue API.
   std::unordered_set<TaskID> tasks_to_remove;
 
-  GetActorTasksFromList(actor_id, local_queues_.GetUncreatedActorMethods(),
+  // (See design_docs/task_states.rst for the state transition diagram.)
+  GetActorTasksFromList(actor_id, local_queues_.GetMethodsWaitingForActorCreation(),
                         tasks_to_remove);
   GetActorTasksFromList(actor_id, local_queues_.GetWaitingTasks(), tasks_to_remove);
   GetActorTasksFromList(actor_id, local_queues_.GetPlaceableTasks(), tasks_to_remove);
@@ -400,6 +419,7 @@ void NodeManager::ProcessNewClient(LocalClientConnection &client) {
 
 void NodeManager::DispatchTasks() {
   // Work with a copy of scheduled tasks.
+  // (See design_docs/task_states.rst for the state transition diagram.)
   auto scheduled_tasks = local_queues_.GetReadyTasks();
   // Return if there are no tasks to schedule.
   if (scheduled_tasks.empty()) {
@@ -415,6 +435,7 @@ void NodeManager::DispatchTasks() {
     }
     // We have enough resources for this task. Assign task.
     // TODO(atumanov): perform the task state/queue transition inside AssignTask.
+    // (See design_docs/task_states.rst for the state transition diagram.)
     auto dispatched_task = local_queues_.RemoveTask(task.GetTaskSpecification().TaskId());
     AssignTask(dispatched_task);
   }
@@ -461,6 +482,7 @@ void NodeManager::ProcessClientMessage(
       // The client is a worker. Handle the case where the worker is killed
       // while executing a task. Clean up the assigned task's resources, push
       // an error to the driver.
+      // (See design_docs/task_states.rst for the state transition diagram.)
       const TaskID &task_id = worker->GetAssignedTaskId();
       if (!task_id.is_nil()) {
         auto const &running_tasks = local_queues_.GetRunningTasks();
@@ -713,6 +735,7 @@ void NodeManager::ScheduleTasks() {
       local_task_ids.insert(task_id);
     } else {
       // TODO(atumanov): need a better interface for task exit on forward.
+      // (See design_docs/task_states.rst for the state transition diagram.)
       const auto task = local_queues_.RemoveTask(task_id);
       // Attempt to forward the task. If this fails to forward the task,
       // the task will be resubmit locally.
@@ -726,6 +749,14 @@ void NodeManager::ScheduleTasks() {
     for (const auto &t : tasks) {
       EnqueuePlaceableTask(t);
     }
+  }
+
+  // All remaining placeable tasks should be registered with the task dependency
+  // manager. TaskDependencyManager::TaskPending() is assumed to be idempotent.
+  // TODO(atumanov): evaluate performance implications of registering all new tasks on
+  // submission vs. registering remaining queued placeable tasks here.
+  for (const auto &task : local_queues_.GetPlaceableTasks()) {
+    task_dependency_manager_.TaskPending(task);
   }
 }
 
@@ -761,10 +792,6 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
                              bool forwarded) {
   // Add the task and its uncommitted lineage to the lineage cache.
   lineage_cache_.AddWaitingTask(task, uncommitted_lineage);
-  // Mark the task as pending. Once the task has finished execution, or once it
-  // has been forwarded to another node, the task must be marked as canceled in
-  // the TaskDependencyManager.
-  task_dependency_manager_.TaskPending(task);
 
   const TaskSpecification &spec = task.GetTaskSpecification();
   if (spec.IsActorTask()) {
@@ -785,7 +812,7 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
       } else {
         // The actor is remote. Forward the task to the node manager that owns
         // the actor.
-        if (removed_clients_.find(node_manager_id) != removed_clients_.end()) {
+        if (gcs_client_->client_table().IsRemoved(node_manager_id)) {
           // The remote node manager is dead, so handle the fact that this actor
           // is also dead.
           TreatTaskAsFailed(spec);
@@ -816,7 +843,12 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
       RAY_CHECK_OK(gcs_client_->actor_table().Lookup(JobID::nil(), spec.ActorId(),
                                                      lookup_callback));
       // Keep the task queued until we discover the actor's location.
-      local_queues_.QueueUncreatedActorMethods({task});
+      // (See design_docs/task_states.rst for the state transition diagram.)
+      local_queues_.QueueMethodsWaitingForActorCreation({task});
+      // Mark the task as pending. It will be canceled once we discover the
+      // actor's location and either execute the task ourselves or forward it
+      // to another node.
+      task_dependency_manager_.TaskPending(task);
     }
   } else {
     // This is a non-actor task. Queue the task for a placement decision or for dispatch
@@ -825,6 +857,7 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
       // Check for local dependencies and enqueue as waiting or ready for dispatch.
       EnqueuePlaceableTask(task);
     } else {
+      // (See design_docs/task_states.rst for the state transition diagram.)
       local_queues_.QueuePlaceableTasks({task});
       ScheduleTasks();
     }
@@ -840,6 +873,7 @@ void NodeManager::HandleWorkerBlocked(std::shared_ptr<Worker> worker) {
   // it acquired for its assigned task while it is blocked. The resources will
   // be acquired again once the worker is unblocked.
   RAY_CHECK(!worker->GetAssignedTaskId().is_nil());
+  // (See design_docs/task_states.rst for the state transition diagram.)
   const auto task = local_queues_.RemoveTask(worker->GetAssignedTaskId());
   // Get the CPU resources required by the running task.
   const auto required_resources = task.GetTaskSpecification().GetRequiredResources();
@@ -868,6 +902,7 @@ void NodeManager::HandleWorkerUnblocked(std::shared_ptr<Worker> worker) {
     return;
   }
 
+  // (See design_docs/task_states.rst for the state transition diagram.)
   const auto task = local_queues_.RemoveTask(worker->GetAssignedTaskId());
   // Get the CPU resources required by the running task.
   const auto required_resources = task.GetTaskSpecification().GetRequiredResources();
@@ -899,24 +934,16 @@ void NodeManager::HandleWorkerUnblocked(std::shared_ptr<Worker> worker) {
   }
 
   // Mark the task as running again.
+  // (See design_docs/task_states.rst for the state transition diagram.)
   local_queues_.QueueRunningTasks({task});
   worker->MarkUnblocked();
 }
 
-void NodeManager::HandleRemoteDependencyRequired(const ObjectID &dependency_id) {
-  // Try to fetch the object from the object manager.
-  RAY_CHECK_OK(object_manager_.Pull(dependency_id));
-  // TODO(swang): Request reconstruction of the object, possibly after a
-  // timeout.
-}
-
-void NodeManager::HandleRemoteDependencyCanceled(const ObjectID &dependency_id) {
-  // Cancel the fetch request from the object manager.
-  RAY_CHECK_OK(object_manager_.Cancel(dependency_id));
-  // TODO(swang): Cancel reconstruction of the object.
-}
-
 void NodeManager::EnqueuePlaceableTask(const Task &task) {
+  // Mark the task as pending. Once the task has finished execution, or once it
+  // has been forwarded to another node, the task must be marked as canceled in
+  // the TaskDependencyManager.
+  task_dependency_manager_.TaskPending(task);
   // TODO(atumanov): add task lookup hashmap and change EnqueuePlaceableTask to take
   // a vector of TaskIDs. Trigger MoveTask internally.
   // Subscribe to the task's dependencies.
@@ -924,6 +951,7 @@ void NodeManager::EnqueuePlaceableTask(const Task &task) {
       task.GetTaskSpecification().TaskId(), task.GetDependencies());
   // Enqueue the task. If all dependencies are available, then the task is queued
   // in the READY state, else the WAITING state.
+  // (See design_docs/task_states.rst for the state transition diagram.)
   if (args_ready) {
     local_queues_.QueueReadyTasks({task});
     // Try to dispatch the newly ready task.
@@ -955,6 +983,7 @@ void NodeManager::AssignTask(Task &task) {
     }
     // Queue this task for future assignment. The task will be assigned to a
     // worker once one becomes available.
+    // (See design_docs/task_states.rst for the state transition diagram.)
     local_queues_.QueueReadyTasks(std::vector<Task>({task}));
     return;
   }
@@ -1014,6 +1043,7 @@ void NodeManager::AssignTask(Task &task) {
     // We started running the task, so the task is ready to write to GCS.
     lineage_cache_.AddReadyTask(task);
     // Mark the task as running.
+    // (See design_docs/task_states.rst for the state transition diagram.)
     local_queues_.QueueRunningTasks(std::vector<Task>({task}));
     // Notify the task dependency manager that we no longer need this task's
     // object dependencies.
@@ -1026,6 +1056,7 @@ void NodeManager::AssignTask(Task &task) {
                          nullptr);
     // Queue this task for future assignment. The task will be assigned to a
     // worker once one becomes available.
+    // (See design_docs/task_states.rst for the state transition diagram.)
     local_queues_.QueueReadyTasks(std::vector<Task>({task}));
   }
 }
@@ -1033,6 +1064,8 @@ void NodeManager::AssignTask(Task &task) {
 void NodeManager::FinishAssignedTask(Worker &worker) {
   TaskID task_id = worker.GetAssignedTaskId();
   RAY_LOG(DEBUG) << "Finished task " << task_id;
+
+  // (See design_docs/task_states.rst for the state transition diagram.)
   const auto task = local_queues_.RemoveTask(task_id);
 
   if (task.GetTaskSpecification().IsActorCreationTask()) {
@@ -1084,7 +1117,7 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
 }
 
 void NodeManager::ResubmitTask(const TaskID &task_id) {
-  throw std::runtime_error("Method not implemented");
+  RAY_LOG(WARNING) << "Task re-execution is not currently implemented";
 }
 
 void NodeManager::HandleObjectLocal(const ObjectID &object_id) {
@@ -1096,6 +1129,7 @@ void NodeManager::HandleObjectLocal(const ObjectID &object_id) {
     std::unordered_set<TaskID> ready_task_id_set(ready_task_ids.begin(),
                                                  ready_task_ids.end());
     // Transition tasks from waiting to scheduled.
+    // (See design_docs/task_states.rst for the state transition diagram.)
     local_queues_.MoveTasks(ready_task_id_set, TaskState::WAITING, TaskState::READY);
     // New scheduled tasks appeared in the queue, try to dispatch them.
     DispatchTasks();
