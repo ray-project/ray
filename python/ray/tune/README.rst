@@ -14,7 +14,7 @@ and compiles them into a number of `Trial` objects. It schedules trials on the R
 
 This is implemented as follows:
 
--  `variant_generator.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/variant_generator.py>`__
+-  `variant_generator.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/suggest/variant_generator.py>`__
    parses the config and generates the trial variants.
 
 -  `trial.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/trial.py>`__ manages the lifecycle

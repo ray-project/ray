@@ -5,7 +5,6 @@
 //       gen_local_scheduler_fbs from src/ray/CMakeLists.txt.
 #include "local_scheduler/format/local_scheduler_generated.h"
 #include "ray/raylet/format/node_manager_generated.h"
-#include "ray/util/util.h"
 
 namespace {
 
@@ -91,8 +90,16 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
                    config.worker_command),
       local_queues_(SchedulingQueue()),
       scheduling_policy_(local_queues_),
-      reconstruction_policy_([this](const TaskID &task_id) { ResubmitTask(task_id); }),
-      task_dependency_manager_(object_manager),
+      reconstruction_policy_(
+          io_service_, [this](const TaskID &task_id) { ResubmitTask(task_id); },
+          RayConfig::instance().initial_reconstruction_timeout_milliseconds(),
+          gcs_client_->client_table().GetLocalClientId(), gcs_client->task_lease_table(),
+          std::make_shared<ObjectDirectory>(gcs_client)),
+      task_dependency_manager_(
+          object_manager, reconstruction_policy_, io_service,
+          gcs_client_->client_table().GetLocalClientId(),
+          RayConfig::instance().initial_reconstruction_timeout_milliseconds(),
+          gcs_client->task_lease_table()),
       lineage_cache_(gcs_client_->client_table().GetLocalClientId(),
                      gcs_client->raylet_task_table(), gcs_client->raylet_task_table(),
                      config.max_lineage_size),
@@ -129,6 +136,30 @@ ray::Status NodeManager::RegisterGcs() {
   RAY_RETURN_NOT_OK(gcs_client_->raylet_task_table().Subscribe(
       JobID::nil(), gcs_client_->client_table().GetLocalClientId(),
       task_committed_callback, nullptr, nullptr));
+
+  const auto task_lease_notification_callback = [this](gcs::AsyncGcsClient *client,
+                                                       const TaskID &task_id,
+                                                       const TaskLeaseDataT &task_lease) {
+    const ClientID node_manager_id = ClientID::from_binary(task_lease.node_manager_id);
+    if (gcs_client_->client_table().IsRemoved(node_manager_id)) {
+      // The node manager that added the task lease is already removed. The
+      // lease is considered inactive.
+      reconstruction_policy_.HandleTaskLeaseNotification(task_id, 0);
+    } else {
+      // NOTE(swang): The task_lease.timeout is an overestimate of the lease's
+      // expiration period since the entry may have been in the GCS for some
+      // time already. For a more accurate estimate, the age of the entry in
+      // the GCS should be subtracted from task_lease.timeout.
+      reconstruction_policy_.HandleTaskLeaseNotification(task_id, task_lease.timeout);
+    }
+  };
+  const auto task_lease_empty_callback = [this](gcs::AsyncGcsClient *client,
+                                                const TaskID &task_id) {
+    reconstruction_policy_.HandleTaskLeaseNotification(task_id, 0);
+  };
+  RAY_RETURN_NOT_OK(gcs_client_->task_lease_table().Subscribe(
+      JobID::nil(), gcs_client_->client_table().GetLocalClientId(),
+      task_lease_notification_callback, task_lease_empty_callback, nullptr));
 
   // Register a callback for actor creation notifications.
   auto actor_creation_callback = [this](
@@ -212,14 +243,6 @@ void NodeManager::Heartbeat() {
 void NodeManager::ClientAdded(const ClientTableDataT &client_data) {
   ClientID client_id = ClientID::from_binary(client_data.client_id);
 
-  // Make sure the client hasn't already been removed.
-  if (removed_clients_.find(client_id) != removed_clients_.end()) {
-    // This client has already been removed, so don't do anything.
-    RAY_LOG(INFO) << "The client " << client_id << " has already been removed, so it "
-                  << "can't be added. This is very unusual.";
-    return;
-  }
-
   RAY_LOG(DEBUG) << "[ClientAdded] received callback from client id " << client_id;
   if (client_id == gcs_client_->client_table().GetLocalClientId()) {
     // We got a notification for ourselves, so we are connected to the GCS now.
@@ -258,16 +281,10 @@ void NodeManager::ClientAdded(const ClientTableDataT &client_data) {
 }
 
 void NodeManager::ClientRemoved(const ClientTableDataT &client_data) {
+  // TODO(swang): If we receive a notification for our own death, clean up and
+  // exit immediately.
   const ClientID client_id = ClientID::from_binary(client_data.client_id);
   RAY_LOG(DEBUG) << "[ClientRemoved] received callback from client id " << client_id;
-
-  // If the client has already been removed, don't do anything.
-  if (removed_clients_.find(client_id) != removed_clients_.end()) {
-    RAY_LOG(INFO) << "The client " << client_id << " has already been removed. This "
-                  << "should be very unusual.";
-    return;
-  }
-  removed_clients_.insert(client_id);
 
   RAY_CHECK(client_id != gcs_client_->client_table().GetLocalClientId())
       << "Exiting because this node manager has mistakenly been marked dead by the "
@@ -767,10 +784,6 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
                              bool forwarded) {
   // Add the task and its uncommitted lineage to the lineage cache.
   lineage_cache_.AddWaitingTask(task, uncommitted_lineage);
-  // Mark the task as pending. Once the task has finished execution, or once it
-  // has been forwarded to another node, the task must be marked as canceled in
-  // the TaskDependencyManager.
-  task_dependency_manager_.TaskPending(task);
 
   const TaskSpecification &spec = task.GetTaskSpecification();
   if (spec.IsActorTask()) {
@@ -791,7 +804,7 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
       } else {
         // The actor is remote. Forward the task to the node manager that owns
         // the actor.
-        if (removed_clients_.find(node_manager_id) != removed_clients_.end()) {
+        if (gcs_client_->client_table().IsRemoved(node_manager_id)) {
           // The remote node manager is dead, so handle the fact that this actor
           // is also dead.
           TreatTaskAsFailed(spec);
@@ -824,6 +837,10 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
       // Keep the task queued until we discover the actor's location.
       // (See design_docs/task_states.rst for the state transition diagram.)
       local_queues_.QueueMethodsWaitingForActorCreation({task});
+      // Mark the task as pending. It will be canceled once we discover the
+      // actor's location and either execute the task ourselves or forward it
+      // to another node.
+      task_dependency_manager_.TaskPending(task);
     }
   } else {
     // This is a non-actor task. Queue the task for a placement decision or for dispatch
@@ -914,20 +931,11 @@ void NodeManager::HandleWorkerUnblocked(std::shared_ptr<Worker> worker) {
   worker->MarkUnblocked();
 }
 
-void NodeManager::HandleRemoteDependencyRequired(const ObjectID &dependency_id) {
-  // Try to fetch the object from the object manager.
-  RAY_CHECK_OK(object_manager_.Pull(dependency_id));
-  // TODO(swang): Request reconstruction of the object, possibly after a
-  // timeout.
-}
-
-void NodeManager::HandleRemoteDependencyCanceled(const ObjectID &dependency_id) {
-  // Cancel the fetch request from the object manager.
-  RAY_CHECK_OK(object_manager_.Cancel(dependency_id));
-  // TODO(swang): Cancel reconstruction of the object.
-}
-
 void NodeManager::EnqueuePlaceableTask(const Task &task) {
+  // Mark the task as pending. Once the task has finished execution, or once it
+  // has been forwarded to another node, the task must be marked as canceled in
+  // the TaskDependencyManager.
+  task_dependency_manager_.TaskPending(task);
   // TODO(atumanov): add task lookup hashmap and change EnqueuePlaceableTask to take
   // a vector of TaskIDs. Trigger MoveTask internally.
   // Subscribe to the task's dependencies.
@@ -1101,7 +1109,7 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
 }
 
 void NodeManager::ResubmitTask(const TaskID &task_id) {
-  throw std::runtime_error("Method not implemented");
+  RAY_LOG(WARNING) << "Task re-execution is not currently implemented";
 }
 
 void NodeManager::HandleObjectLocal(const ObjectID &object_id) {

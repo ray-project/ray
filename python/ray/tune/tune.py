@@ -3,18 +3,15 @@ from __future__ import division
 from __future__ import print_function
 
 import time
-from itertools import chain
 
 from ray.tune.error import TuneError
-from ray.tune.suggest import SearchAlgorithm
+from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.trial import Trial, DEBUG_PRINT_INTERVAL
 from ray.tune.log_sync import wait_for_log_sync
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.schedulers import (HyperBandScheduler, AsyncHyperBandScheduler,
                                  FIFOScheduler, MedianStoppingRule)
 from ray.tune.web_server import TuneServer
-from ray.tune.variant_generator import generate_trials
-from ray.tune.experiment import Experiment
 
 _SCHEDULERS = {
     "FIFO": FIFOScheduler,
@@ -32,7 +29,7 @@ def _make_scheduler(args):
             args.scheduler, _SCHEDULERS.keys()))
 
 
-def run_experiments(experiments,
+def run_experiments(experiments=None,
                     search_alg=None,
                     scheduler=None,
                     with_server=False,
@@ -44,7 +41,7 @@ def run_experiments(experiments,
     Args:
         experiments (Experiment | list | dict): Experiments to run.
         search_alg (SearchAlgorithm): Search Algorithm. Defaults to
-            SearchAlgorithm.
+            BasicVariantGenerator.
         scheduler (TrialScheduler): Scheduler for executing
             the experiment. Choose among FIFO (default), MedianStopping,
             AsyncHyperBand, and HyperBand.
@@ -64,33 +61,13 @@ def run_experiments(experiments,
         scheduler = FIFOScheduler()
 
     if search_alg is None:
-        search_alg = SearchAlgorithm()
-
-    exp_list = experiments
-    if isinstance(experiments, Experiment):
-        exp_list = [experiments]
-    elif type(experiments) is dict:
-        exp_list = [
-            Experiment.from_json(name, spec)
-            for name, spec in experiments.items()
-        ]
-
-    if (type(exp_list) is list
-            and all(isinstance(exp, Experiment) for exp in exp_list)):
-        if len(exp_list) > 1:
-            print("Warning: All experiments will be"
-                  " using the same Search Algorithm.")
-        trial_generator = chain.from_iterable([
-            generate_trials(exp.spec, exp.name, search_alg=search_alg)
-            for exp in exp_list
-        ])
-    else:
-        raise TuneError("Invalid argument: {}".format(experiments))
+        assert experiments is not None, "Experiments need to be specified" \
+            "if search_alg is not provided."
+        search_alg = BasicVariantGenerator(experiments)
 
     runner = TrialRunner(
-        trial_generator,
+        search_alg,
         scheduler=scheduler,
-        search_alg=search_alg,
         launch_web_server=with_server,
         server_port=server_port,
         verbose=verbose,

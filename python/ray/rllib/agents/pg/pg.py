@@ -5,6 +5,7 @@ from __future__ import print_function
 from ray.rllib.agents.agent import Agent, with_common_config
 from ray.rllib.agents.pg.pg_policy_graph import PGPolicyGraph
 from ray.rllib.optimizers import SyncSamplesOptimizer
+from ray.rllib.utils import merge_dicts
 from ray.tune.trial import Resources
 
 DEFAULT_CONFIG = with_common_config({
@@ -34,7 +35,7 @@ class PGAgent(Agent):
 
     @classmethod
     def default_resource_request(cls, config):
-        cf = dict(cls._default_config, **config)
+        cf = merge_dicts(cls._default_config, config)
         return Resources(cpu=1, gpu=0, extra_cpu=cf["num_workers"])
 
     def _init(self):
@@ -49,5 +50,7 @@ class PGAgent(Agent):
     def _train(self):
         prev_steps = self.optimizer.num_steps_sampled
         self.optimizer.step()
-        return self.optimizer.collect_metrics()._replace(
-            timesteps_this_iter=self.optimizer.num_steps_sampled - prev_steps)
+        result = self.optimizer.collect_metrics()
+        result.update(timesteps_this_iter=self.optimizer.num_steps_sampled -
+                      prev_steps)
+        return result

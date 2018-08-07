@@ -18,32 +18,32 @@ import ray.plasma as plasma
 from ray.plasma.utils import create_object
 from ray import services
 from ray.experimental import state
+import ray.ray_constants as ray_constants
 import pyarrow as pa
 
 USE_VALGRIND = False
 PLASMA_STORE_MEMORY = 1000000000
-ID_SIZE = 20
 NUM_CLUSTER_NODES = 2
 
-NIL_WORKER_ID = 20 * b"\xff"
-NIL_OBJECT_ID = 20 * b"\xff"
-NIL_ACTOR_ID = 20 * b"\xff"
+NIL_WORKER_ID = ray_constants.ID_SIZE * b"\xff"
+NIL_OBJECT_ID = ray_constants.ID_SIZE * b"\xff"
+NIL_ACTOR_ID = ray_constants.ID_SIZE * b"\xff"
 
 
 def random_driver_id():
-    return local_scheduler.ObjectID(np.random.bytes(ID_SIZE))
+    return local_scheduler.ObjectID(np.random.bytes(ray_constants.ID_SIZE))
 
 
 def random_task_id():
-    return local_scheduler.ObjectID(np.random.bytes(ID_SIZE))
+    return local_scheduler.ObjectID(np.random.bytes(ray_constants.ID_SIZE))
 
 
 def random_function_id():
-    return local_scheduler.ObjectID(np.random.bytes(ID_SIZE))
+    return local_scheduler.ObjectID(np.random.bytes(ray_constants.ID_SIZE))
 
 
 def random_object_id():
-    return local_scheduler.ObjectID(np.random.bytes(ID_SIZE))
+    return local_scheduler.ObjectID(np.random.bytes(ray_constants.ID_SIZE))
 
 
 def new_port():

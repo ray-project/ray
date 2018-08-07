@@ -11,7 +11,6 @@ from ray.tune.schedulers import (HyperBandScheduler, AsyncHyperBandScheduler,
                                  PopulationBasedTraining, MedianStoppingRule,
                                  TrialScheduler)
 from ray.tune.schedulers.pbt import explore
-from ray.tune.result import TrainingResult
 from ray.tune.trial import Trial, Resources
 
 from ray.rllib import _register_all
@@ -19,7 +18,7 @@ _register_all()
 
 
 def result(t, rew):
-    return TrainingResult(
+    return dict(
         time_total_s=t, episode_reward_mean=rew, training_iteration=int(t))
 
 
@@ -125,7 +124,7 @@ class EarlyStoppingSuite(unittest.TestCase):
 
     def testAlternateMetrics(self):
         def result2(t, rew):
-            return TrainingResult(training_iteration=t, neg_mean_loss=rew)
+            return dict(training_iteration=t, neg_mean_loss=rew)
 
         rule = MedianStoppingRule(
             grace_period=0,
@@ -464,7 +463,7 @@ class HyperbandSuite(unittest.TestCase):
         """Checking that alternate metrics will pass."""
 
         def result2(t, rew):
-            return TrainingResult(time_total_s=t, neg_mean_loss=rew)
+            return dict(time_total_s=t, neg_mean_loss=rew)
 
         sched = HyperBandScheduler(
             time_attr='time_total_s', reward_attr='neg_mean_loss')
@@ -854,7 +853,7 @@ class AsyncHyperBandSuite(unittest.TestCase):
 
     def testAlternateMetrics(self):
         def result2(t, rew):
-            return TrainingResult(training_iteration=t, neg_mean_loss=rew)
+            return dict(training_iteration=t, neg_mean_loss=rew)
 
         scheduler = AsyncHyperBandScheduler(
             grace_period=1,

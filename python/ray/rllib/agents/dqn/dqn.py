@@ -4,12 +4,14 @@ from __future__ import print_function
 
 import pickle
 import os
+import time
 
 import ray
 from ray.rllib import optimizers
 from ray.rllib.agents.agent import Agent, with_common_config
 from ray.rllib.agents.dqn.dqn_policy_graph import DQNPolicyGraph
 from ray.rllib.evaluation.metrics import collect_metrics
+from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.schedules import ConstantSchedule, LinearSchedule
 from ray.tune.trial import Resources
 
@@ -96,6 +98,8 @@ DEFAULT_CONFIG = with_common_config({
     "per_worker_exploration": False,
     # Whether to compute priorities on workers.
     "worker_side_prioritization": False,
+    # Prevent iterations from going lower than this time span
+    "min_iter_time_s": 1,
 })
 
 
@@ -108,7 +112,7 @@ class DQNAgent(Agent):
 
     @classmethod
     def default_resource_request(cls, config):
-        cf = dict(cls._default_config, **config)
+        cf = merge_dicts(cls._default_config, config)
         return Resources(
             cpu=1,
             gpu=cf["gpu"] and 1 or 0,
@@ -174,8 +178,10 @@ class DQNAgent(Agent):
     def _train(self):
         start_timestep = self.global_timestep
 
+        start = time.time()
         while (self.global_timestep - start_timestep <
-               self.config["timesteps_per_iteration"]):
+               self.config["timesteps_per_iteration"]
+               ) or time.time() - start < self.config["min_iter_time_s"]:
             self.optimizer.step()
             self.update_target_if_needed()
 
@@ -197,13 +203,14 @@ class DQNAgent(Agent):
             result = collect_metrics(self.local_evaluator,
                                      self.remote_evaluators)
 
-        return result._replace(
+        result.update(
             timesteps_this_iter=self.global_timestep - start_timestep,
             info=dict({
                 "min_exploration": min(exp_vals),
                 "max_exploration": max(exp_vals),
                 "num_target_updates": self.num_target_updates,
             }, **self.optimizer.stats()))
+        return result
 
     def _stop(self):
         # workaround for https://github.com/ray-project/ray/issues/1516

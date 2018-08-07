@@ -33,8 +33,9 @@ class BadPolicyGraph(PolicyGraph):
 
 
 class MockEnv(gym.Env):
-    def __init__(self, episode_length):
+    def __init__(self, episode_length, config=None):
         self.episode_length = episode_length
+        self.config = config
         self.i = 0
         self.observation_space = gym.spaces.Discrete(1)
         self.action_space = gym.spaces.Discrete(2)
@@ -123,8 +124,8 @@ class TestPolicyEvaluator(unittest.TestCase):
         ev.sample()
         ray.get(remote_ev.sample.remote())
         result = collect_metrics(ev, [remote_ev])
-        self.assertEqual(result.episodes_total, 20)
-        self.assertEqual(result.episode_reward_mean, 10)
+        self.assertEqual(result["episodes_total"], 20)
+        self.assertEqual(result["episode_reward_mean"], 10)
 
     def testAsync(self):
         ev = PolicyEvaluator(
@@ -150,7 +151,7 @@ class TestPolicyEvaluator(unittest.TestCase):
 
     def testAutoVectorization(self):
         ev = PolicyEvaluator(
-            env_creator=lambda _: MockEnv(episode_length=20),
+            env_creator=lambda cfg: MockEnv(episode_length=20, config=cfg),
             policy_graph=MockPolicyGraph,
             batch_mode="truncate_episodes",
             batch_steps=16,
@@ -159,12 +160,17 @@ class TestPolicyEvaluator(unittest.TestCase):
             batch = ev.sample()
             self.assertEqual(batch.count, 16)
         result = collect_metrics(ev, [])
-        self.assertEqual(result.episodes_total, 0)
+        self.assertEqual(result["episodes_total"], 0)
         for _ in range(8):
             batch = ev.sample()
             self.assertEqual(batch.count, 16)
         result = collect_metrics(ev, [])
-        self.assertEqual(result.episodes_total, 8)
+        self.assertEqual(result["episodes_total"], 8)
+        indices = []
+        for env in ev.async_env.vector_env.envs:
+            self.assertEqual(env.unwrapped.config.worker_index, 0)
+            indices.append(env.unwrapped.config.vector_index)
+        self.assertEqual(indices, [0, 1, 2, 3, 4, 5, 6, 7])
 
     def testBatchDivisibilityCheck(self):
         self.assertRaises(
@@ -185,10 +191,10 @@ class TestPolicyEvaluator(unittest.TestCase):
         batch = ev.sample()
         self.assertEqual(batch.count, 16)
         result = collect_metrics(ev, [])
-        self.assertEqual(result.episodes_total, 0)
+        self.assertEqual(result["episodes_total"], 0)
         batch = ev.sample()
         result = collect_metrics(ev, [])
-        self.assertEqual(result.episodes_total, 4)
+        self.assertEqual(result["episodes_total"], 4)
 
     def testVectorEnvSupport(self):
         ev = PolicyEvaluator(
@@ -200,12 +206,12 @@ class TestPolicyEvaluator(unittest.TestCase):
             batch = ev.sample()
             self.assertEqual(batch.count, 10)
         result = collect_metrics(ev, [])
-        self.assertEqual(result.episodes_total, 0)
+        self.assertEqual(result["episodes_total"], 0)
         for _ in range(8):
             batch = ev.sample()
             self.assertEqual(batch.count, 10)
         result = collect_metrics(ev, [])
-        self.assertEqual(result.episodes_total, 8)
+        self.assertEqual(result["episodes_total"], 8)
 
     def testTruncateEpisodes(self):
         ev = PolicyEvaluator(

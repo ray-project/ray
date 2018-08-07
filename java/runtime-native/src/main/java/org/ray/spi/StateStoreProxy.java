@@ -31,5 +31,7 @@ public interface StateStoreProxy {
    * getAddressInfo.
    * @return list of address information
    */
-  List<AddressInfo> getAddressInfo(final String nodeIpAddress, int numRetries);
+  List<AddressInfo> getAddressInfo(final String nodeIpAddress, 
+                                   final String redisAddress,
+                                   int numRetries);
 }

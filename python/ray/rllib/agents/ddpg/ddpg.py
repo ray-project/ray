@@ -106,6 +106,8 @@ DEFAULT_CONFIG = with_common_config({
     "per_worker_exploration": False,
     # Whether to compute priorities on workers.
     "worker_side_prioritization": False,
+    # Prevent iterations from going lower than this time span
+    "min_iter_time_s": 1,
 })
 
 

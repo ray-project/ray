@@ -15,11 +15,11 @@ class MedianStoppingRule(FIFOScheduler):
     https://research.google.com/pubs/pub46180.html
 
     Args:
-        time_attr (str): The TrainingResult attr to use for comparing time.
+        time_attr (str): The training result attr to use for comparing time.
             Note that you can pass in something non-temporal such as
             `training_iteration` as a measure of progress, the only requirement
             is that the attribute should increase monotonically.
-        reward_attr (str): The TrainingResult objective value attribute. As
+        reward_attr (str): The training result objective value attribute. As
             with `time_attr`, this may refer to any objective value that
             is supposed to increase with time.
         grace_period (float): Only stop trials at least this old in time.
@@ -62,7 +62,7 @@ class MedianStoppingRule(FIFOScheduler):
             assert not self._hard_stop
             return TrialScheduler.CONTINUE  # fall back to FIFO
 
-        time = getattr(result, self._time_attr)
+        time = result[self._time_attr]
         self._results[trial].append(result)
         median_result = self._get_median_result(time)
         best_result = self._best_result(trial)
@@ -107,10 +107,10 @@ class MedianStoppingRule(FIFOScheduler):
         # TODO(ekl) we could do interpolation to be more precise, but for now
         # assume len(results) is large and the time diffs are roughly equal
         return np.mean([
-            getattr(r, self._reward_attr) for r in results
-            if getattr(r, self._time_attr) <= t_max
+            r[self._reward_attr] for r in results
+            if r[self._time_attr] <= t_max
         ])
 
     def _best_result(self, trial):
         results = self._results[trial]
-        return max(getattr(r, self._reward_attr) for r in results)
+        return max(r[self._reward_attr] for r in results)

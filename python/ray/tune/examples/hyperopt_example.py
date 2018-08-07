@@ -1,3 +1,7 @@
+"""This test checks that HyperOpt is functional.
+
+It also checks that it is usable with a separate scheduler.
+"""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -11,12 +15,14 @@ from ray.tune.suggest import HyperOptSearch
 def easy_objective(config, reporter):
     import time
     time.sleep(0.2)
-    assert type(config["activation"]) == str
+    assert type(config["activation"]) == str, \
+        "Config is incorrect: {}".format(type(config["activation"]))
     for i in range(100):
         reporter(
             timesteps_total=i,
-            mean_loss=((config["height"] - 14)**2 + abs(config["width"] - 3)))
-        time.sleep(0.2)
+            neg_mean_loss=-(config["height"] - 14)**2 +
+            abs(config["width"] - 3))
+        time.sleep(0.02)
 
 
 if __name__ == '__main__':
@@ -40,12 +46,13 @@ if __name__ == '__main__':
     config = {
         "my_exp": {
             "run": "exp",
-            "repeat": 5 if args.smoke_test else 1000,
+            "repeat": 10 if args.smoke_test else 1000,
             "stop": {
                 "training_iteration": 100
             },
         }
     }
-    algo = HyperOptSearch(space, reward_attr="neg_mean_loss")
+    algo = HyperOptSearch(
+        config, space, max_concurrent=4, reward_attr="neg_mean_loss")
     scheduler = AsyncHyperBandScheduler(reward_attr="neg_mean_loss")
-    run_experiments(config, search_alg=algo, scheduler=scheduler)
+    run_experiments(search_alg=algo, scheduler=scheduler)

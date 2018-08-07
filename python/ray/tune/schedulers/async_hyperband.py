@@ -18,11 +18,11 @@ class AsyncHyperBandScheduler(FIFOScheduler):
     See https://openreview.net/forum?id=S1Y7OOlRZ
 
     Args:
-        time_attr (str): The TrainingResult attr to use for comparing time.
+        time_attr (str): A training result attr to use for comparing time.
             Note that you can pass in something non-temporal such as
             `training_iteration` as a measure of progress, the only requirement
             is that the attribute should increase monotonically.
-        reward_attr (str): The TrainingResult objective value attribute. As
+        reward_attr (str): The training result objective value attribute. As
             with `time_attr`, this may refer to any objective value. Stopping
             procedures will use this attribute.
         max_t (float): max time units per trial. Trials will be stopped after
@@ -72,20 +72,20 @@ class AsyncHyperBandScheduler(FIFOScheduler):
 
     def on_trial_result(self, trial_runner, trial, result):
         action = TrialScheduler.CONTINUE
-        if getattr(result, self._time_attr) >= self._max_t:
+        if result[self._time_attr] >= self._max_t:
             action = TrialScheduler.STOP
         else:
             bracket = self._trial_info[trial.trial_id]
-            action = bracket.on_result(trial, getattr(result, self._time_attr),
-                                       getattr(result, self._reward_attr))
+            action = bracket.on_result(trial, result[self._time_attr],
+                                       result[self._reward_attr])
         if action == TrialScheduler.STOP:
             self._num_stopped += 1
         return action
 
     def on_trial_complete(self, trial_runner, trial, result):
         bracket = self._trial_info[trial.trial_id]
-        bracket.on_result(trial, getattr(result, self._time_attr),
-                          getattr(result, self._reward_attr))
+        bracket.on_result(trial, result[self._time_attr],
+                          result[self._reward_attr])
         del self._trial_info[trial.trial_id]
 
     def on_trial_remove(self, trial_runner, trial):
