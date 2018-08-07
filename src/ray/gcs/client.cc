@@ -71,7 +71,7 @@ namespace gcs {
 
 AsyncGcsClient::AsyncGcsClient(const ClientID &client_id, CommandType command_type) {
   primary_context_ = std::make_shared<RedisContext>();
-  
+
   std::vector<std::shared_ptr<RedisContext>> tmp_primary;
   tmp_primary.push_back(primary_context_);
   client_table_.reset(new ClientTable(tmp_primary, this, client_id));
@@ -140,6 +140,7 @@ Status AsyncGcsClient::Connect(const std::string &address, int port, bool shardi
   heartbeat_table_->AddShards(shard_contexts_);
   // Profile table shall use context?
   profile_table_->AddShards(shard_contexts_);
+  task_lease_table_->AddShards(shard_contexts_);
 
   // TODO(swang): Call the client table's Connect() method here. To do this,
   // we need to make sure that we are attached to an event loop first. This
