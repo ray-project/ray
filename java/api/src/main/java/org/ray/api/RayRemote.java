@@ -11,13 +11,6 @@ import java.lang.annotation.Target;
 @Target({ElementType.METHOD, ElementType.TYPE})
 @Retention(RetentionPolicy.RUNTIME)
 public @interface RayRemote {
-
-  /**
-   *
-   * @return whether to use external I/O pool to execute the function.
-   */
-  boolean externalIo() default false;
-
   /**
    * This is used for default resources.
    * @return The resources of the method or actor need.

@@ -853,28 +853,31 @@ public class RunManager {
     }
   }
 
-  Map<String, Double> getResourcesFromString(String resources) {
+  private Map<String, Double> getResourcesFromString(String resources) {
     Map<String, Double> ret = new HashMap<>();
-    String[] items = resources.split(",");
-    for (String item : items) {
-      String trimItem = item.trim();
-      String[] resourcePair = trimItem.split(":");
-      assert resourcePair.length == 2;
-      ret.put(resourcePair[0], Double.valueOf(resourcePair[1]));
+    if (resources != null) {
+      String[] items = resources.split(",");
+      for (String item : items) {
+        String trimItem = item.trim();
+        String[] resourcePair = trimItem.split(":");
+        assert resourcePair.length == 2;
+        ret.put(resourcePair[0], Double.valueOf(resourcePair[1]));
+      }
     }
     return ret;
   }
 
-  String resourcesToString(Map<String, Double> resources) {
+  private String resourcesToString(Map<String, Double> resources) {
     StringBuilder builder = new StringBuilder();
-    int count = 1;
-    for (Map.Entry<String, Double> entry : resources.entrySet()) {
-      if (count != resources.size()) {
-        builder.append(entry.getKey()).append(",").append(entry.getValue()).append(",");
-      } else {
+    if (resources != null) {
+      int count = 1;
+      for (Map.Entry<String, Double> entry : resources.entrySet()) {
         builder.append(entry.getKey()).append(",").append(entry.getValue());
+        if (count != resources.size()) {
+          builder.append(",");
+        }
+        count++;
       }
-      count++;
     }
     return builder.toString();
   }

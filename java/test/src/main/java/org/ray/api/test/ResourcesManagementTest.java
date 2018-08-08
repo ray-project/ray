@@ -16,28 +16,28 @@ import java.util.concurrent.*;
 @RunWith(MyRunner.class)
 public class ResourcesManagementTest {
 
-  @RayRemote(resources = {@ResourceItem(name = "ResourceA", value = 10),
-      @ResourceItem(name = "ResourceB", value = 5)})
+  @RayRemote(resources = {@ResourceItem(name = "CPU", value = 4),
+      @ResourceItem(name = "GPU", value = 0)})
   public static Integer echo1(Integer number) {
     return number;
   }
 
-  @RayRemote(resources = {@ResourceItem(name = "ResourceA", value = 10),
-      @ResourceItem(name = "ResourceB", value = 10)})
+  @RayRemote(resources = {@ResourceItem(name = "CPU", value = 4),
+      @ResourceItem(name = "GPU", value = 2)})
   public static Integer echo2(Integer number) {
     return number;
   }
 
-  @RayRemote(resources = {@ResourceItem(name = "ResourceA", value = 8),
-      @ResourceItem(name = "ResourceB", value = 8)})
+  @RayRemote(resources = {@ResourceItem(name = "CPU", value = 2),
+      @ResourceItem(name = "GPU", value = 0)})
   public static class Echo1 {
     public Integer echo(Integer number) {
       return number;
     }
   }
 
-  @RayRemote(resources = {@ResourceItem(name = "ResourceA", value = 12),
-      @ResourceItem(name = "ResourceB", value = 6)})
+  @RayRemote(resources = {@ResourceItem(name = "CPU", value = 8),
+      @ResourceItem(name = "GPU", value = 0)})
   public static class Echo2 {
     public Integer echo(Integer number) {
       return number;
@@ -53,7 +53,7 @@ public class ResourcesManagementTest {
 
       // This is a case that can't satisfy required resources.
       final RayObject<Integer> result2 = Ray.call(ResourcesManagementTest::echo2, 200);
-      WaitResult<Integer> waitResult = Ray.wait(result2, 3 * 1000);
+      WaitResult<Integer> waitResult = Ray.wait(result2, 1000);
 
       Assert.assertEquals(0, waitResult.getReadyOnes().size());
       Assert.assertEquals(1, waitResult.getRemainOnes().size());
@@ -71,7 +71,7 @@ public class ResourcesManagementTest {
       // This is a case that can't satisfy required resources.
       RayActor<ResourcesManagementTest.Echo2> echo2 = Ray.create(Echo2.class);
       final RayObject<Integer> result2 = Ray.call(Echo2::echo, echo2, 100);
-      WaitResult<Integer> waitResult = Ray.wait(result2, 3 * 1000);
+      WaitResult<Integer> waitResult = Ray.wait(result2, 1000);
 
       Assert.assertEquals(0, waitResult.getReadyOnes().size());
       Assert.assertEquals(1, waitResult.getRemainOnes().size());
