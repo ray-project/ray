@@ -19,8 +19,7 @@ from ray.utils import (decode, binary_to_object_id, binary_to_hex,
                        hex_to_binary)
 
 # These channels must be kept up-to-date with the C++ codebase
-LOCAL_SCHEDULER_INFO_CHANNEL = b"local_schedulers"
-XRAY_HEARTBEAT_CHANNEL = b"6"
+ray.gcs_utils.LOCAL_SCHEDULER_INFO_CHANNEL = b"local_schedulers"
 
 # This mapping from integer to task state string must be kept up-to-date with
 # the scheduling_state enum in task.h.
@@ -1315,7 +1314,8 @@ class GlobalState(object):
 
         if not self.use_raylet:
             subscribe_client = self.redis_client.pubsub()
-            subscribe_client.subscribe(LOCAL_SCHEDULER_INFO_CHANNEL)
+            subscribe_client.subscribe(
+                ray.gcs_utils.LOCAL_SCHEDULER_INFO_CHANNEL)
 
             local_scheduler_ids = {
                 local_scheduler["DBClientID"]
@@ -1360,7 +1360,8 @@ class GlobalState(object):
                 for redis_client in self.redis_clients
             ]
             for subscribe_client in subscribe_clients:
-                subscribe_client.subscribe(XRAY_HEARTBEAT_CHANNEL)
+                subscribe_client.subscribe(
+                    ray.gcs_utils.XRAY_HEARTBEAT_CHANNEL)
 
             client_ids = {client["ClientID"] for client in self.client_table()}
 
@@ -1368,8 +1369,8 @@ class GlobalState(object):
                 for subscribe_client in subscribe_clients:
                     # Parse client message
                     raw_message = subscribe_client.get_message()
-                    if (raw_message is None or
-                            raw_message["channel"] != XRAY_HEARTBEAT_CHANNEL):
+                    if (raw_message is None or raw_message["channel"] !=
+                            ray.gcs_utils.XRAY_HEARTBEAT_CHANNEL):
                         continue
                     data = raw_message["data"]
                     gcs_entries = (
@@ -1405,7 +1406,6 @@ class GlobalState(object):
         total_available_resources = defaultdict(lambda: 0)
         for available_resources in available_resources_by_id.values():
             for resource_id, num_available in available_resources.items():
-                resource_id = resource_id.decode("utf-8")
                 total_available_resources[resource_id] += num_available
 
         return dict(total_available_resources)

@@ -57,6 +57,14 @@ TablePrefix_OBJECT_string = "OBJECT"
 TablePrefix_ERROR_INFO_string = "ERROR_INFO"
 TablePrefix_PROFILE_string = "PROFILE"
 
+# These channels must be kept up-to-date with common/state/redis.cc
+LOCAL_SCHEDULER_INFO_CHANNEL = b"local_schedulers"
+PLASMA_MANAGER_HEARTBEAT_CHANNEL = b"plasma_managers"
+DRIVER_DEATH_CHANNEL = b"driver_deaths"
+
+# xray heartbeats
+XRAY_HEARTBEAT_CHANNEL = str(TablePubsub.HEARTBEAT).encode("ascii")
+
 
 def construct_error_message(error_type, message, timestamp):
     """Construct a serialized ErrorTableData object.
