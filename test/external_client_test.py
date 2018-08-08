@@ -62,5 +62,30 @@ def testNumpyExternalClient(ray_start):
     np.testing.assert_array_almost_equal(ray.get(a), data)
 
 
+def testRemoteFunctionExternalClient(ray_start):
+    @ray.remote
+    def f():
+        time.sleep(1)
+        return 1
+    
+    results = ray.get([f.remote() for i in range(4)])
+    for i in range(4):
+        assert results[i] == 1
+    
+
+def testRemoteActorExternalClient(ray_start):
+    @ray.remote
+    class Counter(object):
+        def __init__(self):
+            self.value = 0
+
+        def increment(self):
+            self.value += 1
+            return self.value
+
+    a1 = Counter.remote()
+    assert a1.increment.remote() == 1
+
+
 def testMultipleObjectIDs(ray_start):
     pass
