@@ -1,12 +1,7 @@
 #include "ray/object_manager/object_manager.h"
 #include "ray/util/util.h"
+#include "common/common_protocol.h"
 
-// forward declaration.
-const std::vector<ray::ObjectID> from_flatbuf(
-    const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>> &vector);
-flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
-to_flatbuf(flatbuffers::FlatBufferBuilder &fbb,
-           const std::vector<ray::ObjectID> &object_ids);
 
 namespace asio = boost::asio;
 
@@ -768,17 +763,19 @@ void ObjectManager::ExecuteReceiveObject(const ClientID &client_id,
 
 void ObjectManager::ReceiveFreeRequest(std::shared_ptr<TcpClientConnection> &conn,
                                        const uint8_t *message) {
-  auto fr = flatbuffers::GetRoot<object_manager_protocol::FreeRequestMessage>(message);
-  std::vector<ObjectID> object_ids = from_flatbuf(*fr->object_ids());
+  auto free_request =
+      flatbuffers::GetRoot<object_manager_protocol::FreeRequestMessage>(message);
+  std::vector<ObjectID> object_ids = from_flatbuf(*free_request->object_ids());
   // This RPC should come from another Object Manager.
-  // Do not spread this request.
-  bool spread = false;
-  FreeObjects(object_ids, spread);
+  // Keep this request local.
+  bool local_only = true;
+  FreeObjects(object_ids, local_only);
 }
 
-void ObjectManager::FreeObjects(const std::vector<ObjectID> &object_ids, bool spread) {
+void ObjectManager::FreeObjects(const std::vector<ObjectID> &object_ids,
+                                bool local_only) {
   buffer_pool_.FreeObjects(object_ids);
-  if (spread) {
+  if (!local_only) {
     SpreadFreeObjectRequest(object_ids);
   }
 }
@@ -789,7 +786,7 @@ void ObjectManager::SpreadFreeObjectRequest(const std::vector<ObjectID> &object_
   flatbuffers::Offset<object_manager_protocol::FreeRequestMessage> request =
       object_manager_protocol::CreateFreeRequestMessage(fbb, to_flatbuf(fbb, object_ids));
   fbb.Finish(request);
-  auto callback = [this, &fbb](const RemoteConnectionInfo &connection_info) {
+  auto function_on_client = [this, &fbb](const RemoteConnectionInfo &connection_info) {
     ray::Status status;
     std::shared_ptr<SenderConnection> conn;
     status = connection_pool_.GetSender(ConnectionPool::ConnectionType::MESSAGE,
@@ -807,6 +804,7 @@ void ObjectManager::SpreadFreeObjectRequest(const std::vector<ObjectID> &object_
     RAY_CHECK_OK(
         connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::MESSAGE, conn));
   };
-  RAY_CHECK_OK(object_directory_->GetAllClientInfo(callback));
+  object_directory_->RunFunctionForEachClient(function_on_client);
 }
+
 }  // namespace ray

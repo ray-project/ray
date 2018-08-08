@@ -117,8 +117,8 @@ ray::Status ObjectDirectory::GetInformation(const ClientID &client_id,
   return ray::Status::OK();
 }
 
-ray::Status ObjectDirectory::GetAllClientInfo(
-    const InfoSuccessCallback &success_callback) {
+void ObjectDirectory::RunFunctionForEachClient(
+    const InfoSuccessCallback &client_function) {
   const auto &clients = gcs_client_->client_table().GetAllClients();
   for (const auto &client_pair : clients) {
     const ClientTableDataT &data = client_pair.second;
@@ -129,11 +129,10 @@ ray::Status ObjectDirectory::GetAllClientInfo(
     } else {
       const auto &info =
           RemoteConnectionInfo(client_pair.first, data.node_manager_address,
-                               (uint16_t)data.object_manager_port);
-      success_callback(info);
+                               static_cast<uint16_t>(data.object_manager_port));
+      client_function(info);
     }
   }
-  return ray::Status::OK();
 }
 
 ray::Status ObjectDirectory::SubscribeObjectLocations(const UniqueID &callback_id,

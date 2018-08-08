@@ -124,7 +124,9 @@ class ObjectBufferPool {
   void SealChunk(const ObjectID &object_id, uint64_t chunk_index);
 
   /// Free a list of objects from object store.
+  ///
   /// \param object_ids the The list of ObjectIDs to be deleted.
+  /// \return Void.
   void FreeObjects(const std::vector<ObjectID> &object_ids);
 
  private:

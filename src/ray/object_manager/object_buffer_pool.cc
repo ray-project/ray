@@ -188,7 +188,7 @@ std::vector<ObjectBufferPool::ChunkInfo> ObjectBufferPool::BuildChunks(
 void ObjectBufferPool::FreeObjects(const std::vector<ObjectID> &object_ids) {
   std::vector<plasma::ObjectID> plasma_ids;
   plasma_ids.reserve(object_ids.size());
-  for (auto &id : object_ids) {
+  for (const auto &id : object_ids) {
     plasma_ids.push_back(id.to_plasma_id());
   }
   ARROW_CHECK_OK(store_client_.Delete(plasma_ids));

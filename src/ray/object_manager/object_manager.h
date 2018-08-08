@@ -166,12 +166,9 @@ class ObjectManager : public ObjectManagerInterface {
   /// Free a list of objects from object store.
   ///
   /// \param object_ids the The list of ObjectIDs to be deleted.
-  /// \param spread Whether send this request to all the object stores.
-  void FreeObjects(const std::vector<ObjectID> &object_ids, bool spread);
-  /// Spread the Free request to all objects managers.
-  ///
-  /// \param object_ids the The list of ObjectIDs to be deleted.
-  void SpreadFreeObjectRequest(const std::vector<ObjectID> &object_ids);
+  /// \param local_only Whether keep this request with local object store
+  ///                   or send it to all the object stores.
+  void FreeObjects(const std::vector<ObjectID> &object_ids, bool local_only);
 
  private:
   friend class TestObjectManager;
@@ -223,6 +220,11 @@ class ObjectManager : public ObjectManagerInterface {
   void SubscribeRemainingWaitObjects(const UniqueID &wait_id);
   /// Completion handler for Wait.
   void WaitComplete(const UniqueID &wait_id);
+
+  /// Spread the Free request to all objects managers.
+  ///
+  /// \param object_ids the The list of ObjectIDs to be deleted.
+  void SpreadFreeObjectRequest(const std::vector<ObjectID> &object_ids);
 
   /// Handle starting, running, and stopping asio io_service.
   void StartIOService();

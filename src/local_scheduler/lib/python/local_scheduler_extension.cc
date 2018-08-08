@@ -416,13 +416,13 @@ static PyObject *PyLocalSchedulerClient_push_profile_events(PyObject *self,
 
 static PyObject *PyLocalSchedulerClient_free(PyObject *self, PyObject *args) {
   PyObject *py_object_ids;
-  PyObject *py_spread;
+  PyObject *py_local_only;
 
-  if (!PyArg_ParseTuple(args, "OO", &py_object_ids, &py_spread)) {
+  if (!PyArg_ParseTuple(args, "OO", &py_object_ids, &py_local_only)) {
     return NULL;
   }
 
-  bool spread = static_cast<bool>(PyObject_IsTrue(py_spread));
+  bool local_only = static_cast<bool>(PyObject_IsTrue(py_local_only));
 
   // Convert object ids.
   PyObject *iter = PyObject_GetIter(py_object_ids);
@@ -437,7 +437,7 @@ static PyObject *PyLocalSchedulerClient_free(PyObject *self, PyObject *args) {
       break;
     }
     if (!PyObjectToUniqueID(next, &object_id)) {
-      // Error parsing object id.
+      // Error parsing object ID.
       return NULL;
     }
     object_ids.push_back(object_id);
@@ -447,7 +447,7 @@ static PyObject *PyLocalSchedulerClient_free(PyObject *self, PyObject *args) {
   local_scheduler_free_objects_in_object_store(
       reinterpret_cast<PyLocalSchedulerClient *>(self)
           ->local_scheduler_connection,
-      object_ids, spread);
+      object_ids, local_only);
   Py_RETURN_NONE;
 }
 

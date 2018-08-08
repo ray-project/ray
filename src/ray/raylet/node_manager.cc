@@ -711,7 +711,7 @@ void NodeManager::ProcessClientMessage(
   case protocol::MessageType::FreeObjectsInObjectStoreRequest: {
     auto message = flatbuffers::GetRoot<protocol::FreeObjectsRequest>(message_data);
     std::vector<ObjectID> object_ids = from_flatbuf(*message->object_ids());
-    object_manager_.FreeObjects(object_ids, message->spread());
+    object_manager_.FreeObjects(object_ids, message->local_only());
   } break;
 
   default:
