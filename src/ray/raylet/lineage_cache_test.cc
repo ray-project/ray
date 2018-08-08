@@ -157,11 +157,10 @@ TEST_F(LineageCacheTest, TestGetUncommittedLineage) {
     task_ids2.push_back(task.GetTaskSpecification().TaskId());
   }
 
-  // Get the uncommitted lineage for the last task (the leaf) of one of the
-  // chains.
-  auto uncommitted_lineage = lineage_cache_.GetUncommittedLineage(task_ids1.back());
-  // Check that the uncommitted lineage is exactly equal to the first chain of
-  // tasks.
+  // Get the uncommitted lineage for the last task (the leaf) of one of the chains.
+  auto uncommitted_lineage =
+      lineage_cache_.GetUncommittedLineage(task_ids1.back(), ClientID::nil());
+  // Check that the uncommitted lineage is exactly equal to the first chain of tasks.
   ASSERT_EQ(task_ids1.size(), uncommitted_lineage.GetEntries().size());
   for (auto &task_id : task_ids1) {
     ASSERT_TRUE(uncommitted_lineage.GetEntry(task_id));
@@ -180,13 +179,46 @@ TEST_F(LineageCacheTest, TestGetUncommittedLineage) {
   }
 
   // Get the uncommitted lineage for the inserted task.
-  uncommitted_lineage = lineage_cache_.GetUncommittedLineage(combined_task_ids.back());
+  uncommitted_lineage =
+      lineage_cache_.GetUncommittedLineage(combined_task_ids.back(), ClientID::nil());
   // Check that the uncommitted lineage is exactly equal to the entire set of
   // tasks inserted so far.
   ASSERT_EQ(combined_task_ids.size(), uncommitted_lineage.GetEntries().size());
   for (auto &task_id : combined_task_ids) {
     ASSERT_TRUE(uncommitted_lineage.GetEntry(task_id));
   }
+}
+
+TEST_F(LineageCacheTest, TestMarkTaskAsForwarded) {
+  // Insert chain of tasks.
+  std::vector<Task> tasks;
+  auto return_values =
+      InsertTaskChain(lineage_cache_, tasks, 4, std::vector<ObjectID>(), 1);
+  std::vector<TaskID> task_ids;
+  for (const auto &task : tasks) {
+    task_ids.push_back(task.GetTaskSpecification().TaskId());
+  }
+
+  auto node_id = ClientID::from_random();
+  auto node_id2 = ClientID::from_random();
+  auto forwarded_task_id = task_ids[task_ids.size() - 2];
+  auto remaining_task_id = task_ids[task_ids.size() - 1];
+  lineage_cache_.MarkTaskAsForwarded(forwarded_task_id, node_id);
+
+  auto uncommitted_lineage =
+      lineage_cache_.GetUncommittedLineage(remaining_task_id, node_id);
+  auto uncommitted_lineage_all =
+      lineage_cache_.GetUncommittedLineage(remaining_task_id, node_id2);
+
+  ASSERT_EQ(1, uncommitted_lineage.GetEntries().size());
+  ASSERT_EQ(4, uncommitted_lineage_all.GetEntries().size());
+  ASSERT_TRUE(uncommitted_lineage.GetEntry(remaining_task_id));
+
+  // Check that lineage of requested task includes itself, regardless of whether
+  // it has been forwarded before.
+  auto uncommitted_lineage_forwarded =
+      lineage_cache_.GetUncommittedLineage(remaining_task_id, node_id);
+  ASSERT_EQ(1, uncommitted_lineage_forwarded.GetEntries().size());
 }
 
 void CheckFlush(LineageCache &lineage_cache, MockGcs &mock_gcs,
@@ -199,8 +231,7 @@ TEST_F(LineageCacheTest, TestWritebackNoneReady) {
   // Insert a chain of dependent tasks.
   size_t num_tasks_flushed = 0;
   std::vector<Task> tasks;
-  auto return_values1 =
-      InsertTaskChain(lineage_cache_, tasks, 3, std::vector<ObjectID>(), 1);
+  InsertTaskChain(lineage_cache_, tasks, 3, std::vector<ObjectID>(), 1);
 
   // Check that when no tasks have been marked as ready, we do not flush any
   // entries.
@@ -211,8 +242,7 @@ TEST_F(LineageCacheTest, TestWritebackReady) {
   // Insert a chain of dependent tasks.
   size_t num_tasks_flushed = 0;
   std::vector<Task> tasks;
-  auto return_values1 =
-      InsertTaskChain(lineage_cache_, tasks, 3, std::vector<ObjectID>(), 1);
+  InsertTaskChain(lineage_cache_, tasks, 3, std::vector<ObjectID>(), 1);
 
   // Check that after marking the first task as ready, we flush only that task.
   lineage_cache_.AddReadyTask(tasks.front());
@@ -224,8 +254,7 @@ TEST_F(LineageCacheTest, TestWritebackOrder) {
   // Insert a chain of dependent tasks.
   size_t num_tasks_flushed = 0;
   std::vector<Task> tasks;
-  auto return_values1 =
-      InsertTaskChain(lineage_cache_, tasks, 3, std::vector<ObjectID>(), 1);
+  InsertTaskChain(lineage_cache_, tasks, 3, std::vector<ObjectID>(), 1);
 
   // Mark all tasks as ready. The first task, which has no dependencies, should
   // be flushed.
@@ -288,15 +317,15 @@ TEST_F(LineageCacheTest, TestForwardTasksRoundTrip) {
   // Insert a chain of dependent tasks.
   uint64_t lineage_size = max_lineage_size_ + 1;
   std::vector<Task> tasks;
-  auto return_values1 =
-      InsertTaskChain(lineage_cache_, tasks, lineage_size, std::vector<ObjectID>(), 1);
+  InsertTaskChain(lineage_cache_, tasks, lineage_size, std::vector<ObjectID>(), 1);
 
   // Simulate removing each task, forwarding it to another node, then
   // receiving the task back again.
   for (auto it = tasks.begin(); it != tasks.end(); it++) {
     const auto task_id = it->GetTaskSpecification().TaskId();
     // Simulate removing the task and forwarding it to another node.
-    auto uncommitted_lineage = lineage_cache_.GetUncommittedLineage(task_id);
+    auto uncommitted_lineage =
+        lineage_cache_.GetUncommittedLineage(task_id, ClientID::nil());
     lineage_cache_.RemoveWaitingTask(task_id);
     // Simulate receiving the task again. Make sure we can add the task back.
     flatbuffers::FlatBufferBuilder fbb;
@@ -312,15 +341,15 @@ TEST_F(LineageCacheTest, TestForwardTask) {
   // Insert a chain of dependent tasks.
   size_t num_tasks_flushed = 0;
   std::vector<Task> tasks;
-  auto return_values1 =
-      InsertTaskChain(lineage_cache_, tasks, 3, std::vector<ObjectID>(), 1);
+  InsertTaskChain(lineage_cache_, tasks, 3, std::vector<ObjectID>(), 1);
 
   // Simulate removing the task and forwarding it to another node.
   auto it = tasks.begin() + 1;
   auto forwarded_task = *it;
   tasks.erase(it);
   auto task_id_to_remove = forwarded_task.GetTaskSpecification().TaskId();
-  auto uncommitted_lineage = lineage_cache_.GetUncommittedLineage(task_id_to_remove);
+  auto uncommitted_lineage =
+      lineage_cache_.GetUncommittedLineage(task_id_to_remove, ClientID::nil());
   lineage_cache_.RemoveWaitingTask(task_id_to_remove);
 
   // Simulate executing the remaining tasks.
@@ -366,7 +395,8 @@ TEST_F(LineageCacheTest, TestEviction) {
   // Check that the last task in the chain still has all tasks in its
   // uncommitted lineage.
   const auto last_task_id = tasks.back().GetTaskSpecification().TaskId();
-  auto uncommitted_lineage = lineage_cache_.GetUncommittedLineage(last_task_id);
+  auto uncommitted_lineage =
+      lineage_cache_.GetUncommittedLineage(last_task_id, ClientID::nil());
   ASSERT_EQ(uncommitted_lineage.GetEntries().size(), lineage_size);
 
   // Simulate executing the first task on a remote node and adding it to the
@@ -394,7 +424,8 @@ TEST_F(LineageCacheTest, TestEviction) {
   }
   // All tasks have now been flushed. Check that enough lineage has been
   // evicted that the uncommitted lineage is now less than the maximum size.
-  uncommitted_lineage = lineage_cache_.GetUncommittedLineage(last_task_id);
+  uncommitted_lineage =
+      lineage_cache_.GetUncommittedLineage(last_task_id, ClientID::nil());
   ASSERT_TRUE(uncommitted_lineage.GetEntries().size() <= max_lineage_size_);
 }
 
@@ -418,7 +449,8 @@ TEST_F(LineageCacheTest, TestOutOfOrderEviction) {
   // Check that the last task in the chain still has all tasks in its
   // uncommitted lineage.
   const auto last_task_id = tasks.back().GetTaskSpecification().TaskId();
-  auto uncommitted_lineage = lineage_cache_.GetUncommittedLineage(last_task_id);
+  auto uncommitted_lineage =
+      lineage_cache_.GetUncommittedLineage(last_task_id, ClientID::nil());
   ASSERT_EQ(uncommitted_lineage.GetEntries().size(), lineage_size);
 
   // Simulate executing the tasks at the remote node and receiving the
@@ -446,7 +478,8 @@ TEST_F(LineageCacheTest, TestOutOfOrderEviction) {
   }
   // All tasks have now been flushed. Check that enough lineage has been
   // evicted that the uncommitted lineage is now less than the maximum size.
-  uncommitted_lineage = lineage_cache_.GetUncommittedLineage(last_task_id);
+  uncommitted_lineage =
+      lineage_cache_.GetUncommittedLineage(last_task_id, ClientID::nil());
   ASSERT_TRUE(uncommitted_lineage.GetEntries().size() <= max_lineage_size_);
 }
 
@@ -479,7 +512,8 @@ TEST_F(LineageCacheTest, TestEvictionUncommittedChildren) {
   // Check that the last task in the chain still has all tasks in its
   // uncommitted lineage.
   const auto last_task_id = tasks.back().GetTaskSpecification().TaskId();
-  auto uncommitted_lineage = lineage_cache_.GetUncommittedLineage(last_task_id);
+  auto uncommitted_lineage =
+      lineage_cache_.GetUncommittedLineage(last_task_id, ClientID::nil());
   ASSERT_EQ(uncommitted_lineage.GetEntries().size(), lineage_size);
 
   // Simulate executing the last task on a remote node and adding it to the
