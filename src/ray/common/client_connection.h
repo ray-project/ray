@@ -84,7 +84,7 @@ class ClientConnection : public ServerConnection<T>,
   /// \return std::shared_ptr<ClientConnection>.
   static std::shared_ptr<ClientConnection<T>> Create(
       ClientHandler<T> &new_client_handler, MessageHandler<T> &message_handler,
-      boost::asio::basic_stream_socket<T> &&socket);
+      boost::asio::basic_stream_socket<T> &&socket, const std::string &debug_label);
 
   /// \return The ClientID of the remote client.
   const ClientID &GetClientID();
@@ -100,7 +100,8 @@ class ClientConnection : public ServerConnection<T>,
  private:
   /// A private constructor for a node client connection.
   ClientConnection(MessageHandler<T> &message_handler,
-                   boost::asio::basic_stream_socket<T> &&socket);
+                   boost::asio::basic_stream_socket<T> &&socket,
+                   const std::string &debug_label);
   /// Process an error from the last operation, then process the  message
   /// header from the client.
   void ProcessMessageHeader(const boost::system::error_code &error);
@@ -112,6 +113,8 @@ class ClientConnection : public ServerConnection<T>,
   ClientID client_id_;
   /// The handler for a message from the client.
   MessageHandler<T> message_handler_;
+  /// A label used for debug messages.
+  const std::string debug_label_;
   /// Buffers for the current message being read rom the client.
   int64_t read_version_;
   int64_t read_type_;
