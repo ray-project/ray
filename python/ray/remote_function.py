@@ -93,8 +93,7 @@ class RemoteFunction(object):
         if worker.mode in [ray.worker.SCRIPT_MODE, ray.worker.SILENT_MODE]:
             self._export()
         elif worker.mode is None:
-            worker.cached_remote_functions_and_actors.append(
-                ("remote_function", self))
+            worker.distributor.append_cached_remote_function(self)
 
     def __call__(self, *args, **kwargs):
         raise Exception("Remote functions cannot be called directly. Instead "
@@ -144,6 +143,6 @@ class RemoteFunction(object):
 
     def _export(self):
         worker = ray.worker.get_global_worker()
-        worker.export_remote_function(
+        worker.distributor.export_remote_function(
             ray.ObjectID(self._function_id), self._function_name,
             self._function, self._max_calls, self)

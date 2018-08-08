@@ -145,7 +145,7 @@ class Distributor(ExecutionInfo, TasksCache):
         # export it when connect is called. Otherwise, run the function on all
         # workers.
         if self.mode is None:
-            self.cached_functions_to_run.append(function)
+            self.append_cached_function_to_run(function)
         else:
             # Attempt to pickle the function before we need it. This could
             # fail, and it is more convenient if the failure happens before we

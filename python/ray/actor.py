@@ -320,12 +320,12 @@ def fetch_and_register_actor(actor_class_key, worker):
             actor_method_name,
             temporary_actor_method,
             actor_imported=False)
-        worker.function_execution_info[driver_id][function_id] = (
-            ray.worker.FunctionExecutionInfo(
-                function=temporary_executor,
-                function_name=actor_method_name,
-                max_calls=0))
-        worker.num_task_executions[driver_id][function_id] = 0
+        worker.distributor.add_function_info(
+            driver_id=driver_id,
+            function_id=function_id,
+            function=temporary_executor,
+            function_name=actor_method_name,
+            max_calls=0)
 
     try:
         unpickled_class = pickle.loads(pickled_class)
@@ -359,11 +359,14 @@ def fetch_and_register_actor(actor_class_key, worker):
                 class_name, actor_method_name).id()
             executor = make_actor_method_executor(
                 worker, actor_method_name, actor_method, actor_imported=True)
-            worker.function_execution_info[driver_id][function_id] = (
-                ray.worker.FunctionExecutionInfo(
-                    function=executor,
-                    function_name=actor_method_name,
-                    max_calls=0))
+            worker.distributor.add_function_info(
+                driver_id=driver_id,
+                function_id=function_id,
+                function=executor,
+                function_name=actor_method_name,
+                max_calls=0,
+                reset_execution_count=False)
+
             # We do not set worker.function_properties[driver_id][function_id]
             # because we currently do need the actor worker to submit new tasks
             # for the actor.
@@ -387,9 +390,7 @@ def export_actor_class(class_id, Class, actor_method_names,
         # This means that 'ray.init()' has not been called yet and so we must
         # cache the actor class definition and export it when 'ray.init()' is
         # called.
-        assert worker.cached_remote_functions_and_actors is not None
-        worker.cached_remote_functions_and_actors.append(
-            ("actor", (key, actor_class_info)))
+        worker.distributor.append_cached_actor(key, actor_class_info)
         # This caching code path is currently not used because we only export
         # actor class definitions lazily when we instantiate the actor for the
         # first time.

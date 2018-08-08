@@ -149,6 +149,12 @@ class Worker(object):
         """For backward compatibility"""
         return self.object_store_client.get_serialization_context(driver_id)
 
+    def run_function_on_all_workers(self, function,
+                                    run_on_other_drivers=False):
+        """For backward compatibility"""
+        self.distributor.run_function_on_all_workers(function,
+                                                     run_on_other_drivers)
+
     @property
     def plasma_client(self):
         """For backward compatibility"""
