@@ -82,6 +82,7 @@ DB_ENGINE_NAME_MAP = {
 
 
 def lookup_db_engine(name):
+    """Lookup db engine class name for engine name."""
     return DB_ENGINE_NAME_MAP.get(name, DB_ENGINE_NAME_MAP["sqllite"])
 
 
@@ -105,6 +106,30 @@ else:
             "PORT": os.environ["AUTOMLBOARD_DB_PORT"]
         }
     }
+
+# offline env, for debug
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'django.db.backends.mysql',
+#         'NAME': 'automlboard',
+#         'USER': 'root',
+#         'PASSWORD': 'root',
+#         'HOST': '10.244.0.8',
+#         'PORT': '3307',
+#     }
+# }
+
+# online env
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'django.db.backends.mysql',
+#         'NAME': 'automl_monitor',
+#         'USER': 'root',
+#         'PASSWORD': 'root',
+#         'HOST': '11.184.187.19',
+#         'PORT': '3306',
+#     }
+# }
 
 # Password validation
 # https://docs.djangoproject.com/en/1.11/ref/settings/#auth-password-validators

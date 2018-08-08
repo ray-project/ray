@@ -8,6 +8,12 @@ import re
 
 
 def run_board(args):
+    """
+    Main entry for AutoMLBoard.
+
+    Args:
+        args: args parsed from command line
+    """
     init_config(args)
 
     # backend service, should import after django settings initialized
@@ -32,7 +38,9 @@ def run_board(args):
 
 def init_config(args):
     """
-    initialize the following settings:
+    Initialize configs of the service.
+
+    Do the following things:
     1. automl board settings
     2. database settings
     3. django settings

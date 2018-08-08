@@ -9,12 +9,14 @@ from models.models import JobRecord, TrialRecord, ResultRecord
 
 
 def index(request):
+    """View for the home page."""
     recent_jobs = JobRecord.objects.order_by('-start_time')[0:100]
     context = {'recent_jobs': recent_jobs}
     return render(request, 'index.html', context)
 
 
 def job(request):
+    """View for a single job."""
     job_id = request.GET.get('job_id')
     recent_trials = TrialRecord.objects \
         .filter(job_id=job_id) \
@@ -24,6 +26,7 @@ def job(request):
 
 
 def trial(request):
+    """View for a single trial."""
     job_id = request.GET.get('job_id')
     trial_id = request.GET.get('trial_id')
     recent_results = ResultRecord.objects \

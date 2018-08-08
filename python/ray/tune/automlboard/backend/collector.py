@@ -26,8 +26,10 @@ EXPR_META_FILE = "expr_meta.json"
 
 class CollectorService(object):
     """
-    Server implementation to monitor the status directory and
-    save the information of job and trials information in db.
+    Server implementation to monitor the log directory.
+
+    The service will save the information of job and
+    trials information in db.
     """
 
     DEFAULT_LOGDIR = "./ray_results"
@@ -59,15 +61,23 @@ class CollectorService(object):
             share_mode=share_mode)
 
     def run(self):
+        """
+        Start the collector worker thread.
+
+        If running in standalone mode, the current thread will wait
+        until the collector thread ends.
+        """
         self.collector.start()
         if self.standalone:
             self.collector.join()
 
     def stop(self):
+        """Stop the collector worker thread."""
         self.collector.stop()
 
     @classmethod
     def init_logger(cls, log_level):
+        """Initialize logger settings."""
         logger = logging.getLogger("auomlboard")
         logger.setLevel(log_level)
         logging.getLogger().setLevel(logging.getLevelName(log_level))
@@ -83,9 +93,7 @@ class CollectorService(object):
 
 
 class Collector(Thread):
-    """
-    Worker thread for collector service.
-    """
+    """Worker thread for collector service."""
 
     def __init__(self, reload_interval, logdir, share_mode=False):
         """
@@ -108,25 +116,28 @@ class Collector(Thread):
 
     def run(self):
         """
-        Main event loop for collector thread. In each round the collector
-        traverse the results log directory and reload trial information
-        from the status files.
-        """
-        self.initialize()
+        Main event loop for collector thread.
 
-        self.do_collect()
+        In each round the collector traverse the results log directory
+        and reload trial information from the status files.
+        """
+        self._initialize()
+
+        self._do_collect()
         while not self._is_finished:
             time.sleep(self._reload_interval)
-            self.do_collect()
+            self._do_collect()
 
         logging.info("collector stopped.")
 
     def stop(self):
+        """Stop the main polling loop."""
         self._is_finished = True
 
-    def initialize(self):
+    def _initialize(self):
         """
         Initialize collector worker thread, Log path will be checked first.
+
         DB backend will be cleared unless running in share mode.
         """
         if not os.path.exists(self._logdir):
@@ -141,7 +152,7 @@ class Collector(Thread):
                          "taking %s as directory of the job log." %
                          self._logdir)
 
-    def do_collect(self):
+    def _do_collect(self):
         if self._share_mode:
             sub_dirs = os.listdir(self._logdir)
             job_names = filter(
@@ -155,6 +166,8 @@ class Collector(Thread):
 
     def sync_job_info(self, job_name):
         """
+        Load information of the job with the given job name.
+
         1. traverse each experiment sub-directory and sync information
            for each trial.
         2. create or update the job information, together with the job
@@ -162,6 +175,7 @@ class Collector(Thread):
 
         Args:
             job_name(str)
+
         """
         if self._share_mode:
             job_path = os.path.join(self._logdir, job_name)
@@ -187,11 +201,14 @@ class Collector(Thread):
     @classmethod
     def sync_trial_info(cls, expr_dir):
         """
+        Load information of the trial from the given experiment directory.
+
         create or update the trial information, together with the trial
         meta file.
 
         Args:
             expr_dir(str)
+
         """
         meta_file = os.path.join(expr_dir, EXPR_META_FILE)
         meta = parse_json(meta_file)
@@ -204,8 +221,9 @@ class Collector(Thread):
     @classmethod
     def _create_job_info(cls, job_dir, expr_dirs):
         """
-        create information for given job, including the meta file and
-        the information in db.
+        Create information for given job.
+
+        Including the meta file and the information in db.
 
         Args:
             job_dir(str)
@@ -220,8 +238,9 @@ class Collector(Thread):
     @classmethod
     def _update_job_info(cls, job_dir, meta):
         """
-        update information for given job, including the meta file and
-        the information in db.
+        Update information for given job.
+
+        Including the meta file and the information in db.
 
         Args:
             job_dir(str)
@@ -229,6 +248,7 @@ class Collector(Thread):
 
         Return:
             updated dict of job meta info
+
         """
         if meta["end_time"]:
             # skip finished jobs
@@ -244,11 +264,13 @@ class Collector(Thread):
     @classmethod
     def _create_trial_info(cls, expr_dir):
         """
-        create information for given trial, including the meta file and
-        the information in db.
+        Create information for given trial.
+
+        Including the meta file and the information in db.
 
         Args:
             expr_dir(str)
+
         """
         meta = cls._build_trial_meta(expr_dir)
         logging.debug("create trial for %s" % meta)
@@ -258,12 +280,14 @@ class Collector(Thread):
     @classmethod
     def _update_trial_info(cls, expr_dir, meta):
         """
-        update information for given trial, including the meta file and
-        the information in db.
+        Update information for given trial.
+
+        Including the meta file and the information in db.
 
         Args:
             expr_dir(str)
             meta(dict)
+
         """
         if meta["end_time"]:
             return
@@ -289,7 +313,7 @@ class Collector(Thread):
     @classmethod
     def _build_job_meta(cls, job_dir, total_trials):
         """
-        build meta file for job.
+        Build meta file for job.
 
         Args:
             job_dir(str)
@@ -297,6 +321,7 @@ class Collector(Thread):
 
         Return:
             a dict of job meta info
+
         """
         job_name = job_dir.split('/')[-1]
         user = os.environ.get("USER", None)
@@ -322,13 +347,14 @@ class Collector(Thread):
     @classmethod
     def _build_trial_meta(cls, expr_dir):
         """
-        build meta file for trial.
+        Build meta file for trial.
 
         Args:
             expr_dir(str)
 
         Return:
             a dict of trial meta info
+
         """
         job_id = expr_dir.split('/')[-2]
         trial_id = expr_dir[-8:]
@@ -350,9 +376,7 @@ class Collector(Thread):
 
     @classmethod
     def _get_job_progress(cls, success_trials, total_trials):
-        """
-        get the job's progress for the current round.
-        """
+        """Get the job's progress for the current round."""
         if total_trials != 0:
             progress = int((float(success_trials) / total_trials) * 100)
         else:
@@ -367,6 +391,7 @@ class Collector(Thread):
         Args:
             results(list)
             meta(dict)
+
         """
         for result in results:
             logging.debug("appending result: %s" % result)

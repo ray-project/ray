@@ -6,9 +6,8 @@ from django.db import models
 
 
 class JobRecord(models.Model):
-    """
-    Information of an AutoML Job
-    """
+    """Information of an AutoML Job."""
+
     job_id = models.CharField(max_length=50)
     name = models.CharField(max_length=20)
     user = models.CharField(max_length=20)
@@ -24,9 +23,8 @@ class JobRecord(models.Model):
 
     @classmethod
     def from_json(cls, json_info):
-        """
-        Build a Job instance from a json string.
-        """
+        """Build a Job instance from a json string."""
+
         if json_info is None:
             return None
         return JobRecord(
@@ -42,13 +40,14 @@ class JobRecord(models.Model):
             progress=json_info["progress"])
 
     def is_finished(self):
+        """Judge whether this is a record for a finished job."""
+
         return self.end_time is not None
 
 
 class TrialRecord(models.Model):
-    """
-    Information of a single AutoML trial of the job
-    """
+    """Information of a single AutoML trial of the job."""
+
     trial_id = models.CharField(max_length=50)
     job_id = models.CharField(max_length=50)
     trial_status = models.CharField(max_length=20)
@@ -58,9 +57,8 @@ class TrialRecord(models.Model):
 
     @classmethod
     def from_json(cls, json_info):
-        """
-        Build a Trial instance from a json string.
-        """
+        """Build a Trial instance from a json string."""
+
         if json_info is None:
             return None
         return TrialRecord(
@@ -72,9 +70,8 @@ class TrialRecord(models.Model):
 
 
 class ResultRecord(models.Model):
-    """
-    Information of a single result of a trial
-    """
+    """Information of a single result of a trial."""
+
     trial_id = models.CharField(max_length=50)
     timesteps_total = models.BigIntegerField(blank=True, null=True)
     done = models.CharField(max_length=30, blank=True, null=True)
@@ -100,9 +97,8 @@ class ResultRecord(models.Model):
 
     @classmethod
     def from_json(cls, json_info):
-        """
-        Build a Result instance from a json string.
-        """
+        """Build a Result instance from a json string."""
+
         if json_info is None:
             return None
         return ResultRecord(

@@ -10,13 +10,15 @@ import time
 
 def dump_json(json_info, json_file, overwrite=True):
     """
-    dumps a whole json record into the given file. Overwrite the
-    file if the overwrite flag set.
+    Dumps a whole json record into the given file.
+
+    Overwrite the file if the overwrite flag set.
 
     Args:
         json_info(dict)
         json_file(str)
         overwrite(boolean)
+
     """
     if overwrite:
         mode = 'w'
@@ -32,15 +34,18 @@ def dump_json(json_info, json_file, overwrite=True):
 
 def parse_json(json_file):
     """
-    parse a whole json record from the given file, return None if
-    the json file does not exists or exception occurs.
+    Parse a whole json record from the given file.
+
+    Return None if the json file does not exists or exception occurs.
 
     Args:
         json_file(str)
 
     Returns:
         a dict of json info
+
     """
+
     if not os.path.exists(json_file):
         return None
 
@@ -57,9 +62,11 @@ def parse_json(json_file):
 
 def parse_multiple_json(json_file, offset=None):
     """
-    parse multiple json records from the given file. Seek to the offset
-    as the start point before parsing if offset set. return empty list
-    if the json file does not exists or exception occurs.
+    Parse multiple json records from the given file.
+
+    Seek to the offset as the start point before parsing
+    if offset set. return empty list if the json file does
+    not exists or exception occurs.
 
     Args:
         json_file(str)
@@ -68,7 +75,9 @@ def parse_multiple_json(json_file, offset=None):
     Returns:
         a dict of json info
         new offset after parsing
+
     """
+
     json_info_list = []
     if not os.path.exists(json_file):
         return json_info_list
@@ -91,4 +100,6 @@ def parse_multiple_json(json_file, offset=None):
 
 
 def timestamp2date(timestamp):
+    """Convert a timestamp to date."""
+
     return time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(timestamp))
