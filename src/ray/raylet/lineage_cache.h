@@ -226,9 +226,13 @@ class LineageCache {
   /// Unsubscribe from notifications for a task. Returns whether the operation
   /// was successful (whether we were subscribed).
   bool UnsubscribeTask(const TaskID &task_id);
-  /// Count the size of unsubscribed and uncommitted lineage. The seen map
-  /// contains the keys of lineage entries counted so far, so that we don't
-  /// revisit those nodes.
+  /// Count the size of unsubscribed and uncommitted lineage of the given task
+  /// excluding the values that have already been visited.
+  ///
+  /// \param task_id The task whose lineage should be counted.
+  /// \param seen This set contains the keys of lineage entries counted so far,
+  /// so that we don't revisit those nodes.
+  /// \void The number of tasks that were counted.
   uint64_t CountUnsubscribedLineage(const TaskID &task_id,
                                     std::unordered_set<TaskID> &seen) const;
 
