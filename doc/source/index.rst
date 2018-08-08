@@ -126,6 +126,7 @@ Ray comes with libraries that accelerate deep learning and reinforcement learnin
    using-ray-on-a-cluster.rst
    using-ray-on-a-large-cluster.rst
    using-ray-and-docker-on-a-cluster.md
+   using-ray-from-outside-the-cluster.rst
 
 .. toctree::
    :maxdepth: 1

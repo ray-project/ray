@@ -1,5 +1,5 @@
-Accessing Ray clusters from an external client
-======
+Using Ray From Outside the Cluster (EXPERIMENTAL)
+=================================================
 
 Getting Started
 ---------------
