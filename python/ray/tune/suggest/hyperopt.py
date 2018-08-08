@@ -29,7 +29,7 @@ class HyperOptSearch(SuggestionAlgorithm):
             parameters generated in the variant generation process.
         max_concurrent (int): Number of maximum concurrent trials. Defaults
             to 10.
-        reward_attr (str): The TrainingResult objective value attribute.
+        reward_attr (str): The training result objective value attribute.
             This refers to an increasing value, which is internally negated
             when interacting with HyperOpt so that HyperOpt can "maximize"
             this value.
@@ -111,7 +111,7 @@ class HyperOptSearch(SuggestionAlgorithm):
         del self._live_trial_mapping[trial_id]
 
     def _to_hyperopt_result(self, result):
-        return {"loss": -getattr(result, self._reward_attr), "status": "ok"}
+        return {"loss": -result[self._reward_attr], "status": "ok"}
 
     def _get_hyperopt_trial(self, trial_id):
         if trial_id not in self._live_trial_mapping:

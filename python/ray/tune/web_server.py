@@ -87,7 +87,7 @@ def RunnerHandler(runner):
 
         def trial_info(self, trial):
             if trial.last_result:
-                result = trial.last_result._asdict()
+                result = trial.last_result.copy()
             else:
                 result = None
             info_dict = {

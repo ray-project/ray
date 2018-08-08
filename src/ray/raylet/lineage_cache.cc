@@ -23,6 +23,14 @@ void LineageEntry::ResetStatus(GcsStatus new_status) {
   status_ = new_status;
 }
 
+void LineageEntry::MarkExplicitlyForwarded(const ClientID &node_id) {
+  forwarded_to_.insert(node_id);
+}
+
+bool LineageEntry::WasExplicitlyForwarded(const ClientID &node_id) const {
+  return forwarded_to_.find(node_id) != forwarded_to_.end();
+}
+
 const TaskID LineageEntry::GetEntryId() const {
   return task_.GetTaskSpecification().TaskId();
 }
@@ -139,7 +147,7 @@ LineageCache::LineageCache(const ClientID &client_id,
 /// lineage_from. This should return true if the merge should stop.
 void MergeLineageHelper(const TaskID &task_id, const Lineage &lineage_from,
                         Lineage &lineage_to,
-                        std::function<bool(GcsStatus)> stopping_condition) {
+                        std::function<bool(const LineageEntry &)> stopping_condition) {
   // If the entry is not found in the lineage to merge, then we stop since
   // there is nothing to copy into the merged lineage.
   auto entry = lineage_from.GetEntry(task_id);
@@ -147,8 +155,7 @@ void MergeLineageHelper(const TaskID &task_id, const Lineage &lineage_from,
     return;
   }
   // Check whether we should stop at this entry in the DFS.
-  auto status = entry->GetStatus();
-  if (stopping_condition(status)) {
+  if (stopping_condition(entry.get())) {
     return;
   }
 
@@ -167,16 +174,17 @@ void MergeLineageHelper(const TaskID &task_id, const Lineage &lineage_from,
 void LineageCache::AddWaitingTask(const Task &task, const Lineage &uncommitted_lineage) {
   auto task_id = task.GetTaskSpecification().TaskId();
   // Merge the uncommitted lineage into the lineage cache.
-  MergeLineageHelper(task_id, uncommitted_lineage, lineage_, [](GcsStatus status) {
-    if (status != GcsStatus::NONE) {
-      // We received the uncommitted lineage from a remote node, so make sure
-      // that all entries in the lineage to merge have status
-      // UNCOMMITTED_REMOTE.
-      RAY_CHECK(status == GcsStatus::UNCOMMITTED_REMOTE);
-    }
-    // The only stopping condition is that an entry is not found.
-    return false;
-  });
+  MergeLineageHelper(task_id, uncommitted_lineage, lineage_,
+                     [](const LineageEntry &entry) {
+                       if (entry.GetStatus() != GcsStatus::NONE) {
+                         // We received the uncommitted lineage from a remote node, so
+                         // make sure that all entries in the lineage to merge have
+                         // status UNCOMMITTED_REMOTE.
+                         RAY_CHECK(entry.GetStatus() == GcsStatus::UNCOMMITTED_REMOTE);
+                       }
+                       // The only stopping condition is that an entry is not found.
+                       return false;
+                     });
 
   // If the task was previously remote, then we may have been subscribed to
   // it. Unsubscribe since we are now responsible for committing the task.
@@ -211,7 +219,12 @@ void LineageCache::AddReadyTask(const Task &task) {
   }
 }
 
-uint64_t LineageCache::CountUnsubscribedLineage(const TaskID &task_id) const {
+uint64_t LineageCache::CountUnsubscribedLineage(const TaskID &task_id,
+                                                std::unordered_set<TaskID> &seen) const {
+  if (seen.count(task_id) == 1) {
+    return 0;
+  }
+  seen.insert(task_id);
   if (subscribed_tasks_.count(task_id) == 1) {
     return 0;
   }
@@ -221,7 +234,7 @@ uint64_t LineageCache::CountUnsubscribedLineage(const TaskID &task_id) const {
   }
   uint64_t cnt = 1;
   for (const auto &parent_id : entry->GetParentTaskIds()) {
-    cnt += CountUnsubscribedLineage(parent_id);
+    cnt += CountUnsubscribedLineage(parent_id, seen);
   }
   return cnt;
 }
@@ -249,22 +262,32 @@ void LineageCache::RemoveWaitingTask(const TaskID &task_id) {
   // NOTE(swang): The number of entries in the uncommitted lineage also
   // includes local tasks that haven't been committed yet, not just remote
   // tasks, so this is an overestimate.
-  if (CountUnsubscribedLineage(task_id) > max_lineage_size_) {
+  std::unordered_set<TaskID> seen;
+  auto count = CountUnsubscribedLineage(task_id, seen);
+  if (count > max_lineage_size_) {
     // Since this task was in state WAITING, check that we were not
     // already subscribed to the task.
     RAY_CHECK(SubscribeTask(task_id));
   }
 }
 
-Lineage LineageCache::GetUncommittedLineage(const TaskID &task_id) const {
+void LineageCache::MarkTaskAsForwarded(const TaskID &task_id, const ClientID &node_id) {
+  RAY_CHECK(!node_id.is_nil());
+  lineage_.GetEntryMutable(task_id)->MarkExplicitlyForwarded(node_id);
+}
+
+Lineage LineageCache::GetUncommittedLineage(const TaskID &task_id,
+                                            const ClientID &node_id) const {
   Lineage uncommitted_lineage;
   // Add all uncommitted ancestors from the lineage cache to the uncommitted
   // lineage of the requested task.
-  MergeLineageHelper(task_id, lineage_, uncommitted_lineage, [](GcsStatus status) {
-    // The stopping condition for recursion is that the entry has been
-    // committed to the GCS.
-    return false;
-  });
+  MergeLineageHelper(
+      task_id, lineage_, uncommitted_lineage, [&](const LineageEntry &entry) {
+        // The stopping condition for recursion is that the entry has
+        // been committed to the GCS or has already been forwarded.
+        // The lineage always includes the requested task id.
+        return entry.WasExplicitlyForwarded(node_id) && !(entry.GetEntryId() == task_id);
+      });
   return uncommitted_lineage;
 }
 

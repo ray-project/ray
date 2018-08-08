@@ -13,7 +13,7 @@ from ray.tune import Trainable, TuneError
 from ray.tune import register_env, register_trainable, run_experiments
 from ray.tune.trial_scheduler import TrialScheduler, FIFOScheduler
 from ray.tune.registry import _global_registry, TRAINABLE_CLASS
-from ray.tune.result import DEFAULT_RESULTS_DIR, TrainingResult
+from ray.tune.result import DEFAULT_RESULTS_DIR, TIMESTEPS_TOTAL, DONE
 from ray.tune.util import pin_in_object_store, get_pinned_object
 from ray.tune.experiment import Experiment
 from ray.tune.trial import Trial, Resources
@@ -57,7 +57,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
             }
         })
         self.assertEqual(trial.status, Trial.TERMINATED)
-        self.assertEqual(trial.last_result.timesteps_total, 100)
+        self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], 100)
 
     def testRegisterEnv(self):
         register_env("foo", lambda: None)
@@ -81,7 +81,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
             }
         })
         self.assertEqual(trial.status, Trial.TERMINATED)
-        self.assertEqual(trial.last_result.timesteps_total, 200)
+        self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], 200)
 
     def testRegisterTrainable(self):
         def train(config, reporter):
@@ -105,7 +105,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
                 return Resources(cpu=config["cpu"], gpu=config["gpu"])
 
             def _train(self):
-                return TrainingResult(timesteps_this_iter=1, done=True)
+                return dict(timesteps_this_iter=1, done=True)
 
         register_trainable("B", B)
 
@@ -276,7 +276,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
         self.assertRaises(TuneError, f)
 
-    def testBadReturn(self):
+    def testBadStoppingReturn(self):
         def train(config, reporter):
             reporter()
 
@@ -286,6 +286,9 @@ class TrainableFunctionApiTest(unittest.TestCase):
             run_experiments({
                 "foo": {
                     "run": "f1",
+                    "stop": {
+                        "time": 10
+                    },
                     "config": {
                         "script_min_iter_time_s": 0,
                     },
@@ -309,7 +312,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
             }
         })
         self.assertEqual(trial.status, Trial.TERMINATED)
-        self.assertEqual(trial.last_result.timesteps_total, 100)
+        self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], 100)
 
     def testAbruptReturn(self):
         def train(config, reporter):
@@ -325,7 +328,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
             }
         })
         self.assertEqual(trial.status, Trial.TERMINATED)
-        self.assertEqual(trial.last_result.timesteps_total, 100)
+        self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], 100)
 
     def testErrorReturn(self):
         def train(config, reporter):
@@ -360,7 +363,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
             }
         })
         self.assertEqual(trial.status, Trial.TERMINATED)
-        self.assertEqual(trial.last_result.timesteps_total, 99)
+        self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], 99)
 
 
 class RunExperimentTest(unittest.TestCase):
@@ -393,7 +396,7 @@ class RunExperimentTest(unittest.TestCase):
         })
         for trial in trials:
             self.assertEqual(trial.status, Trial.TERMINATED)
-            self.assertEqual(trial.last_result.timesteps_total, 99)
+            self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], 99)
 
     def testExperiment(self):
         def train(config, reporter):
@@ -410,7 +413,7 @@ class RunExperimentTest(unittest.TestCase):
         })
         [trial] = run_experiments(exp1)
         self.assertEqual(trial.status, Trial.TERMINATED)
-        self.assertEqual(trial.last_result.timesteps_total, 99)
+        self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], 99)
 
     def testExperimentList(self):
         def train(config, reporter):
@@ -435,7 +438,7 @@ class RunExperimentTest(unittest.TestCase):
         trials = run_experiments([exp1, exp2])
         for trial in trials:
             self.assertEqual(trial.status, Trial.TERMINATED)
-            self.assertEqual(trial.last_result.timesteps_total, 99)
+            self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], 99)
 
     def testSpecifyAlgorithm(self):
         """Tests run_experiments works without specifying experiment."""
@@ -457,7 +460,7 @@ class RunExperimentTest(unittest.TestCase):
         trials = run_experiments(search_alg=alg)
         for trial in trials:
             self.assertEqual(trial.status, Trial.TERMINATED)
-            self.assertEqual(trial.last_result.timesteps_total, 99)
+            self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], 99)
 
 
 class VariantGeneratorTest(unittest.TestCase):
@@ -903,9 +906,9 @@ class TrialRunnerTest(unittest.TestCase):
         runner.step()
         self.assertEqual(trials[0].status, Trial.RUNNING)
         runner.step()
-        self.assertNotEqual(trials[0].last_result.done, True)
+        self.assertNotEqual(trials[0].last_result[DONE], True)
         runner.step()
-        self.assertEqual(trials[0].last_result.done, True)
+        self.assertEqual(trials[0].last_result[DONE], True)
 
     def testPauseThenResume(self):
         ray.init(num_cpus=1, num_gpus=1)

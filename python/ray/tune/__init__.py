@@ -6,11 +6,10 @@ from ray.tune.error import TuneError
 from ray.tune.tune import run_experiments
 from ray.tune.experiment import Experiment
 from ray.tune.registry import register_env, register_trainable
-from ray.tune.result import TrainingResult
 from ray.tune.trainable import Trainable
-from ray.tune.suggest import grid_search
+from ray.tune.suggest import grid_search, function
 
 __all__ = [
-    "Trainable", "TrainingResult", "TuneError", "grid_search", "register_env",
-    "register_trainable", "run_experiments", "Experiment"
+    "Trainable", "TuneError", "grid_search", "register_env",
+    "register_trainable", "run_experiments", "Experiment", "function"
 ]

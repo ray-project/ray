@@ -55,9 +55,6 @@ def test_submitting_tasks(ray_start_combination):
     assert ray.services.all_processes_alive()
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") == "1",
-    reason="This test does not work with xray yet.")
 def test_dependencies(ray_start_combination):
     @ray.remote
     def f(x):
@@ -81,9 +78,6 @@ def test_dependencies(ray_start_combination):
     assert ray.services.all_processes_alive()
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") == "1",
-    reason="This test does not work with xray yet.")
 def test_submitting_many_tasks(ray_start_regular):
     @ray.remote
     def f(x):

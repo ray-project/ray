@@ -43,7 +43,7 @@ class SearchAlgorithm(object):
 
         Arguments:
             trial_id: Identifier for the trial.
-            result (TrainingResult): Defaults to None. A TrainingResult will
+            result (dict): Defaults to None. A dict will
                 be provided with this notification when the trial is in
                 the RUNNING state AND either completes naturally or
                 by manual termination.

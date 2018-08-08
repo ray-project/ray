@@ -51,6 +51,16 @@ def grid_search(values):
     return {"grid_search": values}
 
 
+class function(object):
+    """Wraps `func` to make sure it is not expanded during resolution."""
+
+    def __init__(self, func):
+        self.func = func
+
+    def __call__(self, *args, **kwargs):
+        return self.func(*args, **kwargs)
+
+
 _STANDARD_IMPORTS = {
     "random": random,
     "np": numpy,
