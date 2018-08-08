@@ -201,14 +201,29 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only,
 
 
 def attach_cluster(config_file, start, override_cluster_name):
-    """Attaches to a screen for the specified cluster."""
+    """Attaches to a screen for the specified cluster.
+    
+    Arguments:
+        config_file: path to the cluster yaml
+        start: whether to start the cluster if it isn't up
+        override_cluster_name: set the name of the cluster
+    """
 
     exec_cluster(config_file, "screen -L -xRR", False, False, start,
                  override_cluster_name)
 
 
 def exec_cluster(config_file, cmd, screen, stop, start, override_cluster_name):
-    """Runs a command on the specified cluster."""
+    """Runs a command on the specified cluster.
+    
+    Arguments:
+        config_file: path to the cluster yaml
+        cmd: command to run
+        screen: whether to run in a screen
+        stop: whether to stop the cluster after command run
+        start: whether to start the cluster if it isn't up
+        override_cluster_name: set the name of the cluster
+    """
 
     config = yaml.load(open(config_file).read())
     if override_cluster_name is not None:
