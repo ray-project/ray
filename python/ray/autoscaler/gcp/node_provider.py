@@ -27,7 +27,7 @@ def raise_for_errors(results):
 
 
 def wait_for_compute_zone_operations(compute, project_name, operations, zone):
-    """Poll for compute zone operation until finished."""
+    """Poll for a set of compute zone operations until finished."""
     print("Waiting for {} operations to finish...".format(len(operations)))
 
     for _ in range(MAX_POLLS):
@@ -48,7 +48,7 @@ def wait_for_compute_zone_operations(compute, project_name, operations, zone):
 
 
 def wait_for_compute_zone_operation(compute, project_name, operation, zone):
-    """Poll for compute zone operation until finished."""
+    """Poll for a compute zone operation until finished."""
     return wait_for_compute_zone_operations(
         compute, project_name, [operation], zone)[0]
 
