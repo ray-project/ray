@@ -369,25 +369,6 @@ def fetch_and_register_actor(actor_class_key, worker):
             # for the actor.
 
 
-def publish_actor_class_to_key(key, actor_class_info, worker):
-    """Push an actor class definition to Redis.
-
-    The is factored out as a separate function because it is also called
-    on cached actor class definitions when a worker connects for the first
-    time.
-
-    Args:
-        key: The key to store the actor class info at.
-        actor_class_info: Information about the actor class.
-        worker: The worker to use to connect to Redis.
-    """
-    # We set the driver ID here because it may not have been available when the
-    # actor class was defined.
-    actor_class_info["driver_id"] = worker.task_driver_id.id()
-    worker.redis_client.hmset(key, actor_class_info)
-    worker.redis_client.rpush("Exports", key)
-
-
 def export_actor_class(class_id, Class, actor_method_names,
                        checkpoint_interval, worker):
     key = b"ActorClass:" + class_id
@@ -414,7 +395,7 @@ def export_actor_class(class_id, Class, actor_method_names,
         # first time.
         assert False, "This should be unreachable."
     else:
-        publish_actor_class_to_key(key, actor_class_info, worker)
+        worker.distributor.publish_actor_class_to_key(key, actor_class_info)
     # TODO(rkn): Currently we allow actor classes to be defined within tasks.
     # I tried to disable this, but it may be necessary because of
     # https://github.com/ray-project/ray/issues/1146.

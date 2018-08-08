@@ -9,12 +9,58 @@ FunctionExecutionInfo = collections.namedtuple(
     "FunctionExecutionInfo", ["function", "function_name", "max_calls"])
 """FunctionExecutionInfo: A named tuple storing remote function information."""
 
+CACHED_REMOTE_FUNCTION = 'remote_function'
+CACHED_ACTOR = 'actor'
+
 
 def _ensure_type(obj):
     if not isinstance(obj, ray.ObjectID):
         return ray.ObjectID(obj)
     else:
         return obj
+
+
+class TasksCache(object):
+    """A class that caches tasks.
+
+    Attributes:
+        cached_functions_to_run (List): A list of functions to run on all of
+            the workers that should be exported as soon as connect is called.
+        cached_remote_functions_and_actors: A list of information for exporting
+            remote functions and actor classes definitions that were defined
+            before the worker called connect. When the worker eventually does
+            call connect, if it is a driver, it will export these functions and
+            actors. If cached_remote_functions_and_actors is None, that means
+            that connect has been called already.
+    """
+
+    def __init__(self):
+        self.cached_functions_to_run = []
+        self.cached_remote_functions_and_actors = []
+
+    def enter_startup(self):
+        """Begin caching functions. No works will be done."""
+        self.cached_functions_to_run = []
+        self.cached_remote_functions_and_actors = []
+
+    def finish_startup(self):
+        """Finish caching functions. Start to work."""
+        self.cached_functions_to_run = None
+        self.cached_remote_functions_and_actors = None
+
+    def is_startup(self):
+        return (self.cached_functions_to_run is not None
+                and self.cached_remote_functions_and_actors is not None)
+
+    def append_cached_function_to_run(self, func):
+        self.cached_functions_to_run.append(func)
+
+    def append_cached_remote_function(self, remote_function):
+        self.cached_remote_functions_and_actors.append((CACHED_REMOTE_FUNCTION,
+                                                        remote_function))
+
+    def append_cached_actor(self, actor):
+        self.cached_remote_functions_and_actors.append((CACHED_ACTOR, actor))
 
 
 class ExecutionInfo(object):

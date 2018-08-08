@@ -1691,8 +1691,7 @@ def disconnect(worker=global_worker):
     # the remote functions will be exported. This is mostly relevant for the
     # tests.
     worker.connected = False
-    worker.cached_functions_to_run = []
-    worker.cached_remote_functions_and_actors = []
+    worker.distributor.enter_startup()
 
 
 def register_custom_serializer(cls,

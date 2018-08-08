@@ -17,7 +17,8 @@ import redis
 import ray
 from ray import profiling
 import ray.cloudpickle as pickle
-import ray.dataflow.execution_info as execution_info
+from ray.dataflow.execution_info import (ExecutionInfo, TasksCache,
+                                         CACHED_ACTOR, CACHED_REMOTE_FUNCTION)
 import ray.ray_constants as ray_constants
 import ray.utils as utils
 
@@ -28,50 +29,26 @@ EXPORTS = 'Exports'
 FUNCTIONS_TO_RUN = b'FunctionsToRun'
 REMOTE_FUNCTION = b'RemoteFunction'
 ACTOR_CLASS = b'ActorClass'
-CACHED_REMOTE_FUNCTION = 'remote_function'
-CACHED_ACTOR = 'actor'
 
 # This must match the definition of NIL_ACTOR_ID in task.h.
 NIL_ID = ray_constants.ID_SIZE * b"\xff"
 NIL_ACTOR_ID = NIL_ID
 
 
-class Distributor(execution_info.ExecutionInfo):
+class Distributor(ExecutionInfo, TasksCache):
     """A class that controls function import & export.
     Attributes:
         worker: the worker object in this process.
-        cached_functions_to_run (List): A list of functions to run on all of
-            the workers that should be exported as soon as connect is called.
-        cached_remote_functions_and_actors: A list of information for exporting
-            remote functions and actor classes definitions that were defined
-            before the worker called connect. When the worker eventually does
-            call connect, if it is a driver, it will export these functions and
-            actors. If cached_remote_functions_and_actors is None, that means
-            that connect has been called already.
+
     """
 
     def __init__(self, worker, polling_interval=0.001):
         super(Distributor, self).__init__()
-        self.worker = worker
-        self.cached_functions_to_run = []
-        self.cached_remote_functions_and_actors = []
+        TasksCache.__init__(self)
 
+        self.worker = worker
         # The interval of checking results.
         self.polling_interval = polling_interval
-
-    def enter_startup(self):
-        """Begin caching functions. No works will be done."""
-        self.cached_functions_to_run = []
-        self.cached_remote_functions_and_actors = []
-
-    def finish_startup(self):
-        """Finish caching functions. Start to work."""
-        self.cached_functions_to_run = None
-        self.cached_remote_functions_and_actors = None
-
-    def is_startup(self):
-        return (self.cached_functions_to_run is not None
-                and self.cached_remote_functions_and_actors is not None)
 
     @property
     def mode(self):
@@ -286,10 +263,6 @@ class Distributor(execution_info.ExecutionInfo):
             self.redis_client.rpush(b"FunctionTable:" + function_id.id(),
                                     self.worker_id)
 
-    def append_cached_remote_function(self, remote_function):
-        self.cached_remote_functions_and_actors.append((CACHED_REMOTE_FUNCTION,
-                                                        remote_function))
-
     def wait_for_actor_class(self, key):
         """Wait for the actor class key to have been imported by the import
         thread.
@@ -301,6 +274,28 @@ class Distributor(execution_info.ExecutionInfo):
 
         while not self.has_imported_actor(key):
             time.sleep(self.polling_interval)
+
+
+class DistributorWithActor(Distributor, TasksCache):
+    def __init__(self, worker):
+        super(DistributorWithActor, self).__init__(worker)
+        TasksCache.__init__(self)
+
+    def publish_actor_class_to_key(self, key, actor_class_info):
+        """Push an actor class definition to Redis.
+
+        The is factored out as a separate function because it is also called
+        on cached actor class definitions when a worker connects for the first
+        time.
+
+        Args:
+            key: The key to store the actor class info at.
+            actor_class_info: Information about the actor class.
+        """
+        # We set the driver ID here because it may not have been
+        # available when the actor class was defined.
+        actor_class_info["driver_id"] = self.task_driver_id.id()
+        self._push_exports(key, actor_class_info)
 
     def export_for_driver(self):
         # Add the directory containing the script that is running to the Python
@@ -332,12 +327,12 @@ class Distributor(execution_info.ExecutionInfo):
                 info._export()
             elif cached_type == CACHED_ACTOR:
                 (key, actor_class_info) = info
-                self.worker.publish_actor_class_to_key(key, actor_class_info)
+                self.publish_actor_class_to_key(key, actor_class_info)
             else:
                 assert False, "This code should be unreachable."
 
 
-class DistributorWithImportThread(Distributor):
+class DistributorWithImportThread(DistributorWithActor):
     """A thread used to import exports from the driver or other workers.
 
     Note:
