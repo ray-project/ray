@@ -53,7 +53,7 @@ SSH into the head node and then run Ray programs with ``ray.init(redis_address="
 Running commands on new and existing clusters
 ---------------------------------------------
 
-You can use ``ray exec`` to conveniently run commands on clusters.
+You can use ``ray exec`` to conveniently run commands on clusters. Note that scripts you run should connect to Ray via ``ray.init(redis_address="localhost:6379")``.
 
 .. code-block:: bash
 
