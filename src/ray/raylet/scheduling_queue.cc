@@ -223,30 +223,11 @@ void SchedulingQueue::QueueMethodsWaitingForActorCreation(
   QueueTasks(methods_waiting_for_actor_creation_, tasks);
 }
 
-bool SchedulingQueue::TaskInQueue(const TaskID &task_id) const {
-  if (methods_waiting_for_actor_creation_.TaskInQueue(task_id)) {
-    return true;
-  }
-  if (waiting_tasks_.TaskInQueue(task_id)) {
-    return true;
-  }
-  if (placeable_tasks_.TaskInQueue(task_id)) {
-    return true;
-  }
-  if (ready_tasks_.TaskInQueue(task_id)) {
-    return true;
-  }
-  if (running_tasks_.TaskInQueue(task_id)) {
-    return true;
-  }
-  if (blocked_tasks_.TaskInQueue(task_id)) {
-    return true;
-  }
-  return false;
-}
-
-bool SchedulingQueue::TaskQueue::TaskInQueue(const TaskID &task_id) const {
-  return task_map_.find(task_id) != task_map_.end();
+bool SchedulingQueue::HasTask(const TaskID &task_id) const {
+  return (methods_waiting_for_actor_creation_.HasTask(task_id) ||
+          waiting_tasks_.HasTask(task_id) || placeable_tasks_.HasTask(task_id) ||
+          ready_tasks_.HasTask(task_id) || running_tasks_.HasTask(task_id) ||
+          blocked_tasks_.HasTask(task_id));
 }
 
 void SchedulingQueue::QueueWaitingTasks(const std::vector<Task> &tasks) {

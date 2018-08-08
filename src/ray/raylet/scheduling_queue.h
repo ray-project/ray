@@ -26,11 +26,11 @@ class SchedulingQueue {
   /// SchedulingQueue destructor.
   virtual ~SchedulingQueue() {}
 
-  /// Return whether a task is in the queue.
+  /// \brief Check if the queue contains a specific task id.
   ///
-  /// \param task_id The ID of the task to check for.
-  /// \return Whether the task is in the queue.
-  bool TaskInQueue(const TaskID &task_id) const;
+  /// \param task_id The task ID for the task.
+  /// \return Whether the task_id exists in the queue.
+  bool HasTask(const TaskID &task_id) const;
 
   /// Get the queue of tasks that are destined for actors that have not yet
   /// been created.
@@ -160,12 +160,6 @@ class SchedulingQueue {
 
     /// Destructor for task queue.
     ~TaskQueue();
-
-    /// Return whether a task is in the queue.
-    ///
-    /// \param task_id The ID of the task to check for.
-    /// \return Whether the task is in the queue.
-    bool TaskInQueue(const TaskID &task_id) const;
 
     /// \brief Append a task to queue.
     ///
