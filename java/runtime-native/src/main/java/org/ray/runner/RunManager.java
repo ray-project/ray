@@ -352,13 +352,6 @@ public class RunManager {
           params.redis_address, params.node_ip_address, params.redirect, params.cleanup);
 
       Map<String, Double> staticResources = getResourcesFromString(params.static_resources);
-      if (!staticResources.containsKey("CPU")) {
-        staticResources.put("CPU", (double) params.num_cpus[0]);
-      }
-      if (!staticResources.containsKey("GPU")) {
-        staticResources.put("GPU", (double) params.num_gpus[0]);
-      }
-
       //Start raylet
       startRaylet(storeName, info, params.num_workers,
           params.working_directory + "/raylet", params.redis_address,
