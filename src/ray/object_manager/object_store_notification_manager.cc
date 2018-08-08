@@ -47,7 +47,7 @@ void ObjectStoreNotificationManager::ProcessStoreLength(
 void ObjectStoreNotificationManager::ProcessStoreNotification(
     const boost::system::error_code &error) {
   if (error) {
-    RAY_LOG(FATAL) << error.message();
+    RAY_LOG(FATAL) << strerror(error.value());
   }
 
   const auto &object_info = flatbuffers::GetRoot<ObjectInfo>(notification_.data());

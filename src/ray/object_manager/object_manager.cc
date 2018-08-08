@@ -336,7 +336,7 @@ ray::Status ObjectManager::SendObjectData(const ObjectID &object_id,
   if (ec.value() != 0) {
     // Push failed. Deal with partial objects on the receiving end.
     // TODO(hme): Try to invoke disconnect on sender connection, then remove it.
-    status = ray::Status::IOError(ec.message());
+    status = ray::Status::IOError(strerror(ec.value()));
   }
 
   // Do this regardless of whether it failed or succeeded.
@@ -644,7 +644,7 @@ void ObjectManager::ExecuteReceiveObject(const ClientID &client_id,
     boost::system::error_code ec;
     conn.ReadBuffer(buffer, ec);
     if (ec.value() != 0) {
-      RAY_LOG(ERROR) << ec.message();
+      RAY_LOG(ERROR) << strerror(ec.value());
     }
     // TODO(hme): If the object isn't local, create a pull request for this chunk.
   }
