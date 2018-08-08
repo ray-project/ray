@@ -3,8 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 import atexit
-import collections
-import hashlib
 import inspect
 import numpy as np
 import os
@@ -16,9 +14,9 @@ import time
 import traceback
 
 # Ray modules
-import ray.cloudpickle as pickle
-from ray.exceptions import (RayTaskError, RayGetArgumentError, RayGetError)
-import ray.object_store_client as object_store_client
+from ray.dataflow.exceptions import (RayTaskError, RayGetArgumentError,
+                                     RayGetError)
+import ray.dataflow.object_store_client as object_store_client
 import ray.experimental.state as state
 import ray.gcs_utils
 import ray.remote_function
@@ -32,7 +30,6 @@ from ray import import_thread
 from ray import profiling
 from ray.utils import (
     binary_to_hex,
-    check_oversized_pickle,
     is_cython,
     random_string,
     thread_safe_client,
@@ -83,14 +80,6 @@ class Worker(object):
         connected (bool): True if Ray has been started and False otherwise.
         mode: The mode of the worker. One of SCRIPT_MODE, LOCAL_MODE,
             SILENT_MODE, and WORKER_MODE.
-        cached_remote_functions_and_actors: A list of information for exporting
-            remote functions and actor classes definitions that were defined
-            before the worker called connect. When the worker eventually does
-            call connect, if it is a driver, it will export these functions and
-            actors. If cached_remote_functions_and_actors is None, that means
-            that connect has been called already.
-        cached_functions_to_run (List): A list of functions to run on all of
-            the workers that should be exported as soon as connect is called.
         profiler: the profiler used to aggregate profiling information.
         state_lock (Lock):
             Used to lock worker's non-thread-safe internal states:
@@ -300,115 +289,6 @@ class Worker(object):
             self.local_scheduler_client.submit(task)
 
             return task.returns()
-
-    def export_remote_function(self, function_id, function_name, function,
-                               max_calls, decorated_function):
-        """Export a remote function.
-
-        Args:
-            function_id: The ID of the function.
-            function_name: The name of the function.
-            function: The raw undecorated function to export.
-            max_calls: The maximum number of times a given worker can execute
-                this function before exiting.
-            decorated_function: The decorated function (this is used to enable
-                the remote function to recursively call itself).
-        """
-        if self.mode not in [SCRIPT_MODE, SILENT_MODE]:
-            raise Exception("export_remote_function can only be called on a "
-                            "driver.")
-
-        key = (b"RemoteFunction:" + self.task_driver_id.id() + b":" +
-               function_id.id())
-
-        # Work around limitations of Python pickling.
-        function_name_global_valid = function.__name__ in function.__globals__
-        function_name_global_value = function.__globals__.get(
-            function.__name__)
-        # Allow the function to reference itself as a global variable
-        if not is_cython(function):
-            function.__globals__[function.__name__] = decorated_function
-        try:
-            pickled_function = pickle.dumps(function)
-        finally:
-            # Undo our changes
-            if function_name_global_valid:
-                function.__globals__[function.__name__] = (
-                    function_name_global_value)
-            else:
-                del function.__globals__[function.__name__]
-
-        check_oversized_pickle(pickled_function, function_name,
-                               "remote function", self)
-
-        self.redis_client.hmset(
-            key, {
-                "driver_id": self.task_driver_id.id(),
-                "function_id": function_id.id(),
-                "name": function_name,
-                "module": function.__module__,
-                "function": pickled_function,
-                "max_calls": max_calls
-            })
-        self.redis_client.rpush("Exports", key)
-
-    def run_function_on_all_workers(self, function,
-                                    run_on_other_drivers=False):
-        """Run arbitrary code on all of the workers.
-
-        This function will first be run on the driver, and then it will be
-        exported to all of the workers to be run. It will also be run on any
-        new workers that register later. If ray.init has not been called yet,
-        then cache the function and export it later.
-
-        Args:
-            function (Callable): The function to run on all of the workers. It
-                should not take any arguments. If it returns anything, its
-                return values will not be used.
-            run_on_other_drivers: The boolean that indicates whether we want to
-                run this funtion on other drivers. One case is we may need to
-                share objects across drivers.
-        """
-        # If ray.init has not been called yet, then cache the function and
-        # export it when connect is called. Otherwise, run the function on all
-        # workers.
-        if self.mode is None:
-            self.cached_functions_to_run.append(function)
-        else:
-            # Attempt to pickle the function before we need it. This could
-            # fail, and it is more convenient if the failure happens before we
-            # actually run the function locally.
-            pickled_function = pickle.dumps(function)
-
-            function_to_run_id = hashlib.sha1(pickled_function).digest()
-            key = b"FunctionsToRun:" + function_to_run_id
-            # First run the function on the driver.
-            # We always run the task locally.
-            function({"worker": self})
-            # Check if the function has already been put into redis.
-            function_exported = self.redis_client.setnx(b"Lock:" + key, 1)
-            if not function_exported:
-                # In this case, the function has already been exported, so
-                # we don't need to export it again.
-                return
-
-            check_oversized_pickle(pickled_function, function.__name__,
-                                   "function", self)
-
-            # Run the function on all workers.
-            self.redis_client.hmset(
-                key, {
-                    "driver_id": self.task_driver_id.id(),
-                    "function_id": function_to_run_id,
-                    "function": pickled_function,
-                    "run_on_other_drivers": run_on_other_drivers
-                })
-            self.redis_client.rpush("Exports", key)
-            # TODO(rkn): If the worker fails after it calls setnx and before it
-            # successfully completes the hmset and rpush, then the program will
-            # most likely hang. This could be fixed by making these three
-            # operations into a transaction (or by implementing a custom
-            # command that does all three things).
 
     def _wait_for_function(self, function_id, driver_id, timeout=10):
         """Wait until the function to be executed is present on this worker.
