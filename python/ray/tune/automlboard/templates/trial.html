@@ -27,7 +27,6 @@
     <!-- local static dependency -->
     <link rel="stylesheet" type="text/css" href="/static/jquery-ui.css">
     <link rel="stylesheet" type="text/css" href="/static/bootstrap.min.css">
-    <link rel="stylesheet" type="text/css" href="/static/bootstrap.min.css">
     <link rel="stylesheet" type="text/css" href="/static/bootstrap-sortable.css">
     <link rel="stylesheet" type="text/css" href="/static/dataTables.bootstrap.min.css">
     <link rel="stylesheet" type="text/css" href="/static/monitor.css">
@@ -47,16 +46,15 @@
     <div class="container container-fluid">
         <!-- Brand and toggle get grouped for better mobile display -->
         <div class="navbar-header">
-            <!-- TODO: add a head.png as logo -->
-            <!--a class="navbar-brand" href="#" style="padding-top: 0px;">
-                <img src="/static/head.png" style="width:100px; height:50px;">
-            </a-->
+            <a class="navbar-brand" href="#" style="padding-top: 5px;">
+                <img src="/static/automlboard_logo.png" style="width:180px; height:40px;">
+            </a>
         </div>
 
         <!-- Collect the nav links, forms, and other content for toggling -->
         <div class="collapse navbar-collapse" id="bs-example-navbar-collapse-1">
             <ul class="nav navbar-nav" id="top-navbar">
-                <li><a href="/" style="color:#FFFFFF">AutoMLBoard</a></li>
+                <li><a href="/" style="color:#FFFFFF">Jobs</a></li>
                 <li><a href="/job?job_id={{ job_id }}" style="color:#FFFFFF">{{ job_id }}</a></li>
             </ul>
             <form class="navbar-form navbar-left">

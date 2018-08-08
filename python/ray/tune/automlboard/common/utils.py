@@ -1,3 +1,7 @@
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import logging
 import json
 import os
@@ -22,7 +26,7 @@ def dump_json(json_info, json_file, overwrite=True):
     try:
         with open(json_file, mode) as f:
             f.write(json.dumps(json_info))
-    except StandardError as e:
+    except BaseException as e:
         logging.error(e.message)
 
 
@@ -45,10 +49,8 @@ def parse_json(json_file):
             info_str = f.readlines()
             info_str = "".join(info_str)
             json_info = json.loads(info_str)
-            if isinstance(json_info, unicode):
-                json_info = eval(str(json_info))
             return json_info
-    except StandardError as e:
+    except BaseException as e:
         logging.error(e.message)
         return None
 
@@ -80,11 +82,9 @@ def parse_multiple_json(json_file, offset=None):
                     # Incomplete line
                     break
                 json_info = json.loads(line)
-                if isinstance(json_info, unicode):
-                    json_info = eval(str(json_info))
                 json_info_list.append(json_info)
                 offset += len(line)
-    except StandardError as e:
+    except BaseException as e:
         logging.error(e.message)
 
     return json_info_list, offset

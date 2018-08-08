@@ -52,7 +52,7 @@ def init_config(args):
             os.environ["AUTOMLBOARD_DB_PORT"] = match.group(5)
             os.environ["AUTOMLBOARD_DB_NAME"] = match.group(6)
             print("Using %s as the database backend." % match.group(1))
-        except StandardError as e:
+        except BaseException as e:
             raise DatabaseError(e)
     else:
         print(
