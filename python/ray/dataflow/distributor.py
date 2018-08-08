@@ -290,6 +290,7 @@ class Distributor(execution_info.ExecutionInfo):
 
 class DistributorWithImportThread(Distributor):
     """A thread used to import exports from the driver or other workers.
+
     Note:
     The driver also has an import thread, which is used only to
     import custom class definitions from calls to register_custom_serializer
@@ -312,27 +313,27 @@ class DistributorWithImportThread(Distributor):
         # Exports that are published after the call to
         # import_pubsub_client.subscribe and before the call to
         # import_pubsub_client.listen will still be processed in the loop.
-        import_pubsub_client.subscribe("__keyspace@0__:Exports")
+        import_pubsub_client.subscribe("__keyspace@0__:" + EXPORTS)
         # Keep track of the number of imports that we've imported.
         num_imported = 0
 
         # Get the exports that occurred before the call to subscribe.
-        with self.worker.lock:
-            export_keys = self.redis_client.lrange("Exports", 0, -1)
+        with self.lock:
+            export_keys = self.redis_client.lrange(EXPORTS, 0, -1)
             for key in export_keys:
                 num_imported += 1
                 self._process_key(key)
         try:
             for msg in import_pubsub_client.listen():
-                with self.worker.lock:
+                with self.lock:
                     if msg["type"] == "subscribe":
                         continue
                     assert msg["data"] == b"rpush"
-                    num_imports = self.redis_client.llen("Exports")
+                    num_imports = self.redis_client.llen(EXPORTS)
                     assert num_imports >= num_imported
                     for i in range(num_imported, num_imports):
                         num_imported += 1
-                        key = self.redis_client.lindex("Exports", i)
+                        key = self.redis_client.lindex(EXPORTS, i)
                         self._process_key(key)
         except redis.ConnectionError:
             # When Redis terminates the listen call will throw a
@@ -342,8 +343,8 @@ class DistributorWithImportThread(Distributor):
     def _process_key(self, key):
         """Process the given export key from redis."""
         # Handle the driver case first.
-        if self.mode != ray.WORKER_MODE:
-            if key.startswith(b"FunctionsToRun"):
+        if not self.worker.is_worker:
+            if key.startswith(FUNCTIONS_TO_RUN):
                 with profiling.profile(
                         "fetch_and_run_function", worker=self.worker):
                     self.fetch_and_execute_function_to_run(key)
@@ -351,19 +352,19 @@ class DistributorWithImportThread(Distributor):
             # the driver should import.
             return
 
-        if key.startswith(b"RemoteFunction"):
+        if key.startswith(REMOTE_FUNCTION):
             with profiling.profile(
                     "register_remote_function", worker=self.worker):
                 self.fetch_and_register_remote_function(key)
-        elif key.startswith(b"FunctionsToRun"):
+        elif key.startswith(FUNCTIONS_TO_RUN):
             with profiling.profile(
                     "fetch_and_run_function", worker=self.worker):
                 self.fetch_and_execute_function_to_run(key)
-        elif key.startswith(b"ActorClass"):
+        elif key.startswith(ACTOR_CLASS):
             # Keep track of the fact that this actor class has been
             # exported so that we know it is safe to turn this worker
             # into an actor of that class.
-            self.worker.imported_actor_classes.add(key)
+            self.add_actor_class(key)
         # TODO(rkn): We may need to bring back the case of
         # fetching actor classes here.
         else:
