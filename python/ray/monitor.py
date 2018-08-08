@@ -313,8 +313,8 @@ class Monitor(object):
         if ip:
             self.load_metrics.update(ip, static_resources, dynamic_resources)
         else:
-            print("Warning: could not find ip for client {}."
-                  .format(client_id))
+            print("Warning: could not find ip for client {} in {}."
+                  .format(client_id, self.local_scheduler_id_to_ip_map))
 
     def xray_heartbeat_handler(self, unused_channel, data):
         """Handle an xray heartbeat message from Redis."""
