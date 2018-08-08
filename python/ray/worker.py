@@ -1470,7 +1470,7 @@ def connect(info,
     # Do some basic checking to make sure we didn't call ray.init twice.
     error_message = "Perhaps you called ray.init twice by accident?"
     assert not worker.connected, error_message
-    assert worker.distributor.is_startup(), error_message
+    assert worker.distributor.cache_enabled, error_message
     # Initialize some fields.
     worker.worker_id = random_string()
 
@@ -1681,7 +1681,7 @@ def connect(info,
     if mode in [SCRIPT_MODE, SILENT_MODE]:
         worker.distributor.export_for_driver()
 
-    worker.distributor.finish_startup()
+    worker.distributor.cache_enabled = False
 
 
 def disconnect(worker=global_worker):
@@ -1691,7 +1691,7 @@ def disconnect(worker=global_worker):
     # the remote functions will be exported. This is mostly relevant for the
     # tests.
     worker.connected = False
-    worker.distributor.enter_startup()
+    worker.distributor.cache_enabled = True
 
 
 def register_custom_serializer(cls,

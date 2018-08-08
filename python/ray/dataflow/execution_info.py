@@ -35,32 +35,65 @@ class TasksCache(object):
     """
 
     def __init__(self):
+        self._enabled = True
         self.cached_functions_to_run = []
         self.cached_remote_functions_and_actors = []
 
-    def enter_startup(self):
-        """Begin caching functions. No works will be done."""
-        self.cached_functions_to_run = []
-        self.cached_remote_functions_and_actors = []
+    @property
+    def cache_enabled(self):
+        return self._enabled
 
-    def finish_startup(self):
-        """Finish caching functions. Start to work."""
-        self.cached_functions_to_run = None
-        self.cached_remote_functions_and_actors = None
-
-    def is_startup(self):
-        return (self.cached_functions_to_run is not None
-                and self.cached_remote_functions_and_actors is not None)
+    @cache_enabled.setter
+    def cache_enabled(self, v):
+        assert isinstance(v, bool)
+        if v == self._enabled:
+            return
+        elif v:
+            # Begin caching functions. No works will be done.
+            self.cached_functions_to_run = []
+            self.cached_remote_functions_and_actors = []
+        else:
+            # Finish caching functions. Start to work.
+            self.cached_functions_to_run = None
+            self.cached_remote_functions_and_actors = None
 
     def append_cached_function_to_run(self, func):
+        assert self._enabled
         self.cached_functions_to_run.append(func)
 
     def append_cached_remote_function(self, remote_function):
+        assert self._enabled
         self.cached_remote_functions_and_actors.append((CACHED_REMOTE_FUNCTION,
                                                         remote_function))
 
     def append_cached_actor(self, actor):
+        assert self._enabled
         self.cached_remote_functions_and_actors.append((CACHED_ACTOR, actor))
+
+    def visit_caches(self, function_executor, remote_function_executor,
+                     actor_executor):
+        assert self._enabled
+        if function_executor is not None:
+            for function in self.cached_functions_to_run:
+                function_executor(function)
+
+        if remote_function_executor is None and actor_executor is None:
+            return
+
+        if remote_function_executor is None:
+            remote_function_executor = lambda _: None
+        if actor_executor is None:
+            actor_executor = lambda a, b: None
+
+        # Export cached remote functions to the workers.
+        for cached_type, info in self.cached_remote_functions_and_actors:
+            if cached_type == CACHED_REMOTE_FUNCTION:
+                remote_function_executor(info)
+            elif cached_type == CACHED_ACTOR:
+                (key, actor_class_info) = info
+                actor_executor(key, actor_class_info)
+            else:
+                assert False, "This code should be unreachable."
 
 
 class ExecutionInfo(object):

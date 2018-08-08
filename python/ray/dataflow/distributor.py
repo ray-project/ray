@@ -17,8 +17,7 @@ import redis
 import ray
 from ray import profiling
 import ray.cloudpickle as pickle
-from ray.dataflow.execution_info import (ExecutionInfo, TasksCache,
-                                         CACHED_ACTOR, CACHED_REMOTE_FUNCTION)
+from ray.dataflow.execution_info import ExecutionInfo, TasksCache
 import ray.ray_constants as ray_constants
 import ray.utils as utils
 
@@ -263,6 +262,12 @@ class Distributor(ExecutionInfo, TasksCache):
             self.redis_client.rpush(b"FunctionTable:" + function_id.id(),
                                     self.worker_id)
 
+
+class DistributorWithActor(Distributor, TasksCache):
+    def __init__(self, worker):
+        super(DistributorWithActor, self).__init__(worker)
+        TasksCache.__init__(self)
+
     def wait_for_actor_class(self, key):
         """Wait for the actor class key to have been imported by the import
         thread.
@@ -274,12 +279,6 @@ class Distributor(ExecutionInfo, TasksCache):
 
         while not self.has_imported_actor(key):
             time.sleep(self.polling_interval)
-
-
-class DistributorWithActor(Distributor, TasksCache):
-    def __init__(self, worker):
-        super(DistributorWithActor, self).__init__(worker)
-        TasksCache.__init__(self)
 
     def publish_actor_class_to_key(self, key, actor_class_info):
         """Push an actor class definition to Redis.
@@ -318,18 +317,10 @@ class DistributorWithActor(Distributor, TasksCache):
         # note that the first exports to be defined on the driver will be the
         # ones defined in separate modules that are imported by the driver.
 
-        # Export cached functions_to_run.
-        for function in self.cached_functions_to_run:
-            self.run_function_on_all_workers(function)
-        # Export cached remote functions to the workers.
-        for cached_type, info in self.cached_remote_functions_and_actors:
-            if cached_type == CACHED_REMOTE_FUNCTION:
-                info._export()
-            elif cached_type == CACHED_ACTOR:
-                (key, actor_class_info) = info
-                self.publish_actor_class_to_key(key, actor_class_info)
-            else:
-                assert False, "This code should be unreachable."
+        self.visit_caches(
+            function_executor=self.run_function_on_all_workers,
+            remote_function_executor=lambda x: x._export(),
+            actor_executor=self.publish_actor_class_to_key)
 
 
 class DistributorWithImportThread(DistributorWithActor):
