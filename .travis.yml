@@ -152,6 +152,9 @@ matrix:
         - python -m pytest test/cython_test.py
         - python -m pytest test/credis_test.py
 
+        # ray external client tests
+        - python -m pytest test/external_client_test.py
+
         # ray tune tests
         - python python/ray/tune/test/dependency_test.py
         - python -m pytest python/ray/tune/test/trial_runner_test.py
