@@ -202,10 +202,10 @@ ray::Status NodeManager::RegisterGcs() {
 
 void NodeManager::Heartbeat() {
   uint64_t now_ms = current_time_ms();
-  if (now_ms - last_heartbeat_at_ms_ >
-      static_cast<uint64_t>(RayConfig::instance().num_heartbeats_timeout() *
-                            RayConfig::instance().heartbeat_timeout_milliseconds())) {
-    RAY_LOG(FATAL) << "Last heartbeat was sent too long ago";
+  uint64_t interval = now_ms - last_heartbeat_at_ms_;
+  if (interval > RayConfig::instance().num_heartbeats_warning() *
+                     RayConfig::instance().heartbeat_timeout_milliseconds()) {
+    RAY_LOG(WARNING) << "Last heartbeat was sent " << interval << " ms ago ";
   }
   last_heartbeat_at_ms_ = now_ms;
 

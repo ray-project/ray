@@ -4,6 +4,7 @@
 
 #include "common.h"
 #include "ray/raylet/format/node_manager_generated.h"
+#include "ray/util/util.h"
 
 namespace ray {
 
@@ -156,7 +157,14 @@ void ClientConnection<T>::ProcessMessage(const boost::system::error_code &error)
   if (error) {
     read_type_ = static_cast<int64_t>(protocol::MessageType::DisconnectClient);
   }
+
+  uint64_t start_ms = current_time_ms();
   message_handler_(this->shared_from_this(), read_type_, read_message_.data());
+  uint64_t interval = current_time_ms() - start_ms;
+  if (interval > RayConfig::instance().handler_warning_timeout_ms()) {
+    RAY_LOG(WARNING) << "ProcessMessage with type " << read_type_ << " took " << interval
+                     << " ms ";
+  }
 }
 
 template class ServerConnection<boost::asio::local::stream_protocol>;
