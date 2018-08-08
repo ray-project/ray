@@ -4,6 +4,7 @@
 
 #include "common.h"
 #include "ray/raylet/format/node_manager_generated.h"
+#include "ray/util/util.h"
 
 namespace ray {
 
@@ -83,11 +84,7 @@ ray::Status ServerConnection<T>::WriteMessage(int64_t type, int64_t length,
   // TODO(swang): Does this need to be an async write?
   boost::system::error_code error;
   WriteBuffer(message_buffers, error);
-  if (error) {
-    return ray::Status::IOError("Failed to write message to the socket");
-  } else {
-    return ray::Status::OK();
-  }
+  return boost_to_ray_status(error);
 }
 
 template <class T>
