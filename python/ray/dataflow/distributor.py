@@ -7,8 +7,12 @@ from __future__ import division
 from __future__ import print_function
 
 import hashlib
+import threading
+
+import redis
 
 import ray
+from ray import profiling
 import ray.cloudpickle as pickle
 import ray.dataflow.execution_info as execution_info
 import ray.ray_constants as ray_constants
@@ -282,3 +286,85 @@ class Distributor(execution_info.ExecutionInfo):
     def append_cached_remote_function(self, remote_function):
         self.cached_remote_functions_and_actors.append((CACHED_REMOTE_FUNCTION,
                                                         remote_function))
+
+
+class DistributorWithImportThread(Distributor):
+    """A thread used to import exports from the driver or other workers.
+    Note:
+    The driver also has an import thread, which is used only to
+    import custom class definitions from calls to register_custom_serializer
+    that happen under the hood on workers.
+    """
+
+    def __init__(self, worker):
+        super(DistributorWithImportThread, self).__init__(worker)
+
+    def start_import_thread(self):
+        """Start the import thread."""
+        t = threading.Thread(target=self._run)
+        # Making the thread a daemon causes it to exit
+        # when the main thread exits.
+        t.daemon = True
+        t.start()
+
+    def _run(self):
+        import_pubsub_client = self.redis_client.pubsub()
+        # Exports that are published after the call to
+        # import_pubsub_client.subscribe and before the call to
+        # import_pubsub_client.listen will still be processed in the loop.
+        import_pubsub_client.subscribe("__keyspace@0__:Exports")
+        # Keep track of the number of imports that we've imported.
+        num_imported = 0
+
+        # Get the exports that occurred before the call to subscribe.
+        with self.worker.lock:
+            export_keys = self.redis_client.lrange("Exports", 0, -1)
+            for key in export_keys:
+                num_imported += 1
+                self._process_key(key)
+        try:
+            for msg in import_pubsub_client.listen():
+                with self.worker.lock:
+                    if msg["type"] == "subscribe":
+                        continue
+                    assert msg["data"] == b"rpush"
+                    num_imports = self.redis_client.llen("Exports")
+                    assert num_imports >= num_imported
+                    for i in range(num_imported, num_imports):
+                        num_imported += 1
+                        key = self.redis_client.lindex("Exports", i)
+                        self._process_key(key)
+        except redis.ConnectionError:
+            # When Redis terminates the listen call will throw a
+            # ConnectionError, which we catch here.
+            pass
+
+    def _process_key(self, key):
+        """Process the given export key from redis."""
+        # Handle the driver case first.
+        if self.mode != ray.WORKER_MODE:
+            if key.startswith(b"FunctionsToRun"):
+                with profiling.profile(
+                        "fetch_and_run_function", worker=self.worker):
+                    self.fetch_and_execute_function_to_run(key)
+            # Return because FunctionsToRun are the only things that
+            # the driver should import.
+            return
+
+        if key.startswith(b"RemoteFunction"):
+            with profiling.profile(
+                    "register_remote_function", worker=self.worker):
+                self.fetch_and_register_remote_function(key)
+        elif key.startswith(b"FunctionsToRun"):
+            with profiling.profile(
+                    "fetch_and_run_function", worker=self.worker):
+                self.fetch_and_execute_function_to_run(key)
+        elif key.startswith(b"ActorClass"):
+            # Keep track of the fact that this actor class has been
+            # exported so that we know it is safe to turn this worker
+            # into an actor of that class.
+            self.worker.imported_actor_classes.add(key)
+        # TODO(rkn): We may need to bring back the case of
+        # fetching actor classes here.
+        else:
+            raise Exception("This code should be unreachable.")
