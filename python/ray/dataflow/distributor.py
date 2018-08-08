@@ -11,6 +11,7 @@ import os
 import sys
 import threading
 import time
+import traceback
 
 import redis
 
@@ -204,8 +205,10 @@ class Distributor(ExecutionInfo, TasksCache):
 
             # If an exception was thrown when the function was run, we record
             # the traceback and notify the scheduler of the failure.
-            self.worker.logger.push_exception_to_driver(
+            utils.push_error_to_driver(
+                self.worker,
                 ray_constants.FUNCTION_TO_RUN_PUSH_ERROR,
+                message=traceback.format_exc(),
                 driver_id=driver_id,
                 data={"name": name})
 
@@ -239,14 +242,15 @@ class Distributor(ExecutionInfo, TasksCache):
         except Exception:
             # If an exception was thrown when the remote function was imported,
             # we record the traceback and notify the scheduler of the failure.
-            self.worker.logger.push_exception_to_driver(
+            utils.push_error_to_driver(
+                self.worker,
                 ray_constants.REGISTER_REMOTE_FUNCTION_PUSH_ERROR,
+                message=utils.format_error_message(traceback.format_exc()),
                 driver_id=driver_id,
                 data={
                     "function_id": function_id.id(),
                     "function_name": function_name
-                },
-                format_exc=True)
+                })
         else:
             # TODO(rkn): Why is the below line necessary?
             function.__module__ = module
