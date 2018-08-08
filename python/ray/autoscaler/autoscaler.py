@@ -188,6 +188,8 @@ class LoadMetrics(object):
                         max_frac = frac
             nodes_used += max_frac
         idle_times = [now - t for t in self.last_used_time_by_ip.values()]
+        heartbeat_times = [
+            now - t for t in self.last_heartbeat_time_by_ip.values()]
         return {
             "ResourceUsage": ", ".join([
                 "{}/{} {}".format(
@@ -201,6 +203,10 @@ class LoadMetrics(object):
                 int(np.min(idle_times)) if idle_times else -1,
                 int(np.mean(idle_times)) if idle_times else -1,
                 int(np.max(idle_times)) if idle_times else -1),
+            "TimeSinceLastHeartbeat": "Min={} Mean={} Max={}".format(
+                int(np.min(heartbeat_times)) if heartbeat_times else -1,
+                int(np.mean(heartbeat_times)) if heartbeat_times else -1,
+                int(np.max(heartbeat_times)) if heartbeat_times else -1),
         }
 
 
