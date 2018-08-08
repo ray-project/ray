@@ -860,8 +860,22 @@ public class RunManager {
       for (String item : items) {
         String trimItem = item.trim();
         String[] resourcePair = trimItem.split(":");
-        assert resourcePair.length == 2;
-        ret.put(resourcePair[0], Double.valueOf(resourcePair[1]));
+
+        if (resourcePair.length != 2) {
+          RayLog.core.error("Static resources configure format error.");
+        }
+
+        String resourceName = resourcePair[0].trim();
+        if ("cpu".equals(resourceName)) {
+          resourceName = "CPU";
+        }
+
+        if ("gpu".equals(resourceName)) {
+          resourceName = "GPU";
+        }
+
+        final Double resourceValue = Double.valueOf(resourcePair[1].trim());
+        ret.put(resourceName, resourceValue);
       }
     }
     return ret;
