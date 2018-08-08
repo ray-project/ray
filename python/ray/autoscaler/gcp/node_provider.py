@@ -19,27 +19,54 @@ INSTANCE_NAME_MAX_LEN = 64
 INSTANCE_NAME_UUID_LEN = 8
 
 
-def wait_for_compute_zone_operation(compute, project_name, operation, zone):
-    """Poll for compute zone operation until finished."""
+def raise_for_errors(results):
+    exceptions = [
+        Exception(result["error"])
+        for result in results
+        if "error" in result
+    ]
+
+    if exceptions:
+        raise Exception(exceptions)
+
+
+def wait_for_compute_zone_operations(compute, project_name, operations, zone):
+    """Poll for a set of compute zone operations until finished."""
     logger.info("wait_for_compute_zone_operation: "
-                "Waiting for operation {} to finish...".format(
-                    operation["name"]))
+                "Waiting for {} operations to finish...".format(
+                    len(operations)))
 
     for _ in range(MAX_POLLS):
-        result = compute.zoneOperations().get(
-            project=project_name, operation=operation["name"],
-            zone=zone).execute()
-        if "error" in result:
-            raise Exception(result["error"])
+        results = [
+            compute.zoneOperations().get(
+                project=project_name, operation=operation["name"],
+                zone=zone).execute()
+            for operation in operations
+        ]
 
-        if result["status"] == "DONE":
+        raise_for_errors(results)
+
+        if all(result["status"] == "DONE" for result in results):
             logger.info("wait_for_compute_zone_operation: "
-                        "Operation {} finished.".format(operation["name"]))
-            break
+                        "All {} operations finished.".format(len(operations)))
+            return results
 
         time.sleep(POLL_INTERVAL)
 
-    return result
+    logger.info(
+        "wait_for_compute_zone_operation: "
+        "MAX_POLLS ({}) exceeded. Could not finish all the {} {}."
+        "".format(MAX_POLLS,
+                  len(operations),
+                  "operations" if len(operations) > 1 else "operation"))
+
+    return results
+
+
+def wait_for_compute_zone_operation(compute, project_name, operation, zone):
+    """Poll for a compute zone operation until finished."""
+    return wait_for_compute_zone_operations(
+        compute, project_name, [operation], zone)[0]
 
 
 class GCPNodeProvider(NodeProvider):
@@ -198,11 +225,8 @@ class GCPNodeProvider(NodeProvider):
                         })).execute() for i in range(count)
             ]
 
-            results = [
-                wait_for_compute_zone_operation(self.compute, project_id,
-                                                operation, availability_zone)
-                for operation in operations
-            ]
+            results = wait_for_compute_zone_operations(
+                self.compute, project_id, operations, availability_zone)
 
             return results
 
