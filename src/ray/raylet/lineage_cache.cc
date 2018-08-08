@@ -219,7 +219,12 @@ void LineageCache::AddReadyTask(const Task &task) {
   }
 }
 
-uint64_t LineageCache::CountUnsubscribedLineage(const TaskID &task_id) const {
+uint64_t LineageCache::CountUnsubscribedLineage(const TaskID &task_id,
+                                                std::unordered_set<TaskID> &seen) const {
+  if (seen.count(task_id) == 1) {
+    return 0;
+  }
+  seen.insert(task_id);
   if (subscribed_tasks_.count(task_id) == 1) {
     return 0;
   }
@@ -229,7 +234,7 @@ uint64_t LineageCache::CountUnsubscribedLineage(const TaskID &task_id) const {
   }
   uint64_t cnt = 1;
   for (const auto &parent_id : entry->GetParentTaskIds()) {
-    cnt += CountUnsubscribedLineage(parent_id);
+    cnt += CountUnsubscribedLineage(parent_id, seen);
   }
   return cnt;
 }
@@ -257,7 +262,9 @@ void LineageCache::RemoveWaitingTask(const TaskID &task_id) {
   // NOTE(swang): The number of entries in the uncommitted lineage also
   // includes local tasks that haven't been committed yet, not just remote
   // tasks, so this is an overestimate.
-  if (CountUnsubscribedLineage(task_id) > max_lineage_size_) {
+  std::unordered_set<TaskID> seen;
+  auto count = CountUnsubscribedLineage(task_id, seen);
+  if (count > max_lineage_size_) {
     // Since this task was in state WAITING, check that we were not
     // already subscribed to the task.
     RAY_CHECK(SubscribeTask(task_id));
