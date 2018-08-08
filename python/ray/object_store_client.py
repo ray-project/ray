@@ -6,11 +6,9 @@ import time
 
 import pyarrow
 import pyarrow.plasma as plasma
-# TODO: Cleanup imports after implement `serialization` module.
-import ray.cloudpickle as pickle
-from ray.exceptions import (RayTaskError, RayGetArgumentError, RayGetError)
+from ray.dataflow.exceptions import RayTaskError
 import ray.plasma
-from ray.serialization import CloudPickleError, RayNotDictionarySerializable
+import ray.dataflow.serialization as serialization
 from ray.services import logger
 import ray.signature
 import ray.ray_constants as ray_constants
@@ -31,8 +29,8 @@ class ObjectStoreClient(object):
         self.worker = worker
         self.memcopy_threads = memcopy_threads
         # A dictionary that maps from driver id to SerializationContext
-        # TODO: clean up the SerializationContext once the job finished.
-        self.serialization_context_map = {}
+        self.serialization_context_map = serialization.SerializationContextMap(
+            self.worker)
 
     def connect(self, store_socket_name, manager_socket_name, release_delay):
         """Create a connection to plasma client.
@@ -62,7 +60,8 @@ class ObjectStoreClient(object):
         self.serialization_context_map.clear()
 
     def get_serialization_context(self, driver_id):
-        """Get the SerializationContext of the driver that this worker is processing.
+        """Get the SerializationContext of the driver that this worker
+        is processing.
 
         Args:
             driver_id: The ID of the driver that indicates which driver to get
@@ -72,101 +71,7 @@ class ObjectStoreClient(object):
             The serialization context of the given driver.
         """
 
-        # TODO: `serialization` module should have a class maintaining
-        # serialization context info.
-        if driver_id not in self.serialization_context_map:
-            self._initialize_serialization(driver_id)
         return self.serialization_context_map[driver_id]
-
-    def _initialize_serialization(self, driver_id):
-        """Initialize the serialization library.
-
-        This defines a custom serializer for object IDs and also tells ray to
-        serialize several exception classes that we define for error handling.
-        """
-        serialization_context = pyarrow.default_serialization_context()
-        # Tell the serialization context to use the cloudpickle version that we
-        # ship with Ray.
-        serialization_context.set_pickle(pickle.dumps, pickle.loads)
-        pyarrow.register_torch_serialization_handlers(serialization_context)
-
-        # Define a custom serializer and deserializer for handling Object IDs.
-        def object_id_custom_serializer(obj):
-            return obj.id()
-
-        def object_id_custom_deserializer(serialized_obj):
-            return ray.ObjectID(serialized_obj)
-
-        # We register this serializer on each worker instead of calling
-        # register_custom_serializer from the driver so that isinstance still
-        # works.
-        serialization_context.register_type(
-            ray.ObjectID,
-            "ray.ObjectID",
-            pickle=False,
-            custom_serializer=object_id_custom_serializer,
-            custom_deserializer=object_id_custom_deserializer)
-
-        def actor_handle_serializer(obj):
-            return obj._serialization_helper(True)
-
-        def actor_handle_deserializer(serialized_obj):
-            new_handle = ray.actor.ActorHandle.__new__(ray.actor.ActorHandle)
-            new_handle._deserialization_helper(serialized_obj, True)
-            return new_handle
-
-        # We register this serializer on each worker instead of calling
-        # register_custom_serializer from the driver so that isinstance still
-        # works.
-        serialization_context.register_type(
-            ray.actor.ActorHandle,
-            "ray.ActorHandle",
-            pickle=False,
-            custom_serializer=actor_handle_serializer,
-            custom_deserializer=actor_handle_deserializer)
-
-        self.serialization_context_map[driver_id] = serialization_context
-
-        ray.worker.register_custom_serializer(
-            RayTaskError,
-            use_dict=True,
-            local=True,
-            driver_id=driver_id,
-            class_id="ray.RayTaskError")
-        ray.worker.register_custom_serializer(
-            RayGetError,
-            use_dict=True,
-            local=True,
-            driver_id=driver_id,
-            class_id="ray.RayGetError")
-        ray.worker.register_custom_serializer(
-            RayGetArgumentError,
-            use_dict=True,
-            local=True,
-            driver_id=driver_id,
-            class_id="ray.RayGetArgumentError")
-        # Tell Ray to serialize lambdas with pickle.
-        ray.worker.register_custom_serializer(
-            type(lambda: 0),
-            use_pickle=True,
-            local=True,
-            driver_id=driver_id,
-            class_id="lambda")
-        # Tell Ray to serialize types with pickle.
-        ray.worker.register_custom_serializer(
-            type(int),
-            use_pickle=True,
-            local=True,
-            driver_id=driver_id,
-            class_id="type")
-        # Tell Ray to serialize FunctionSignatures as dictionaries. This is
-        # used when passing around actor handles.
-        ray.worker.register_custom_serializer(
-            ray.signature.FunctionSignature,
-            use_dict=True,
-            local=True,
-            driver_id=driver_id,
-            class_id="ray.signature.FunctionSignature")
 
     def clear(self):
         self.serialization_context_map.clear()
@@ -230,40 +135,7 @@ class ObjectStoreClient(object):
                         self.task_driver_id))
                 break
             except pyarrow.SerializationCallbackError as e:
-                # TODO(suquark): Move these fallbacks into `serialization`
-                # module
-                example_object = e.example_object
-                try:
-                    ray.worker.register_custom_serializer(
-                        type(example_object), use_dict=True)
-                    warning_message = ("WARNING: Serializing objects of type "
-                                       "{} by expanding them as dictionaries "
-                                       "of their fields. This behavior may "
-                                       "be incorrect in some cases.".format(
-                                           type(example_object)))
-                    logger.warning(warning_message)
-                except (RayNotDictionarySerializable, CloudPickleError,
-                        pickle.pickle.PicklingError, Exception):
-                    # We also handle generic exceptions here because
-                    # cloudpickle can fail with many different types of errors.
-                    try:
-                        ray.worker.register_custom_serializer(
-                            type(example_object), use_pickle=True)
-                        warning_message = ("WARNING: Falling back to "
-                                           "serializing objects of type {} by "
-                                           "using pickle. This may be "
-                                           "inefficient.".format(
-                                               type(example_object)))
-                        logger.warning(warning_message)
-                    except CloudPickleError:
-                        ray.worker.register_custom_serializer(
-                            type(example_object), use_pickle=True, local=True)
-                        warning_message = ("WARNING: Pickling the class {} "
-                                           "failed, so we are using pickle "
-                                           "and only registering the class "
-                                           "locally.".format(
-                                               type(example_object)))
-                        logger.warning(warning_message)
+                self.serialization_context_map.fallback(e.example_object)
 
     def put_object(self, object_id, value):
         """Put value in the local object store with object id objectid.
