@@ -1,7 +1,7 @@
 Cloud Setup and Auto-Scaling
 ============================
 
-The ``ray up`` command (previously `ray create_or_update`) starts or updates an AWS or GCP Ray cluster from your personal computer. Once the cluster is up, you can then SSH into it to run Ray programs.
+The ``ray up`` command starts or updates an AWS or GCP Ray cluster from your personal computer. Once the cluster is up, you can then SSH into it to run Ray programs.
 
 Quick start (AWS)
 -----------------
