@@ -48,7 +48,7 @@ class TasksCache(object):
         assert isinstance(v, bool)
         if v == self._enabled:
             return
-        elif v:
+        if v:
             # Begin caching functions. No works will be done.
             self.cached_functions_to_run = []
             self.cached_remote_functions_and_actors = []
@@ -56,6 +56,7 @@ class TasksCache(object):
             # Finish caching functions. Start to work.
             self.cached_functions_to_run = None
             self.cached_remote_functions_and_actors = None
+        self._enabled = v
 
     def append_cached_function_to_run(self, func):
         assert self._enabled
@@ -66,9 +67,10 @@ class TasksCache(object):
         self.cached_remote_functions_and_actors.append((CACHED_REMOTE_FUNCTION,
                                                         remote_function))
 
-    def append_cached_actor(self, actor):
+    def append_cached_actor(self, key, actor_class_info):
         assert self._enabled
-        self.cached_remote_functions_and_actors.append((CACHED_ACTOR, actor))
+        self.cached_remote_functions_and_actors.append(
+            (CACHED_ACTOR, (key, actor_class_info)))
 
     def visit_caches(self, function_executor, remote_function_executor,
                      actor_executor):
