@@ -531,7 +531,7 @@ class Worker(object):
 
         # TODO(rkn): It would be preferable for actor creation tasks to share
         # more of the code path with regular task execution.
-        if (task.actor_creation_id() != ray.ObjectID(NIL_ACTOR_ID)):
+        if task.actor_creation_id() != ray.ObjectID(NIL_ACTOR_ID):
             self._become_actor(task)
             return
 
