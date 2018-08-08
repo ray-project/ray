@@ -13,6 +13,7 @@ from collections import defaultdict, namedtuple, OrderedDict
 import numpy as np
 
 import ray
+import ray.dataflow.serialization as serialization
 import ray.ray_constants as ray_constants
 import ray.test.test_utils
 
@@ -57,8 +58,8 @@ def assert_equal(obj1, obj2):
                                             obj1, obj2))
         for i in range(len(obj1)):
             assert_equal(obj1[i], obj2[i])
-    elif (ray.serialization.is_named_tuple(type(obj1))
-          or ray.serialization.is_named_tuple(type(obj2))):
+    elif (serialization.is_named_tuple(type(obj1))
+          or serialization.is_named_tuple(type(obj2))):
         assert len(obj1) == len(obj2), ("Objects {} and {} are named tuples "
                                         "with different lengths.".format(
                                             obj1, obj2))
