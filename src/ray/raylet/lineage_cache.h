@@ -234,6 +234,12 @@ class LineageCache {
   /// \return A const reference to the task data.
   const Task &GetTask(const TaskID &task_id) const;
 
+  /// Get whether the lineage cache contains the task.
+  ///
+  /// \param task_id The ID of the task to get.
+  /// \return Whether the task is in the lineage cache.
+  bool ContainsTask(const TaskID &task_id) const;
+
  private:
   /// Try to flush a task that is in UNCOMMITTED_READY state. If the task has
   /// parents that are not committed yet, then the child will be flushed once
