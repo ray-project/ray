@@ -14,10 +14,9 @@ import time
 import traceback
 
 # Ray modules
-from ray.dataflow.exceptions import (RayTaskError, RayGetArgumentError,
-                                     RayGetError)
-import ray.dataflow.distributor as distributor
-import ray.dataflow.object_store_client as object_store_client
+from ray.exceptions import (RayTaskError, RayGetArgumentError, RayGetError)
+import ray.distributor as distributor
+import ray.object_store_client as object_store_client
 import ray.experimental.state as state
 import ray.gcs_utils
 import ray.remote_function

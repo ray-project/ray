@@ -18,7 +18,7 @@ import redis
 import ray
 from ray import profiling
 import ray.cloudpickle as pickle
-from ray.dataflow.execution_info import ExecutionInfo, TasksCache
+from ray.execution_info import ExecutionInfo, TasksCache
 import ray.ray_constants as ray_constants
 import ray.utils as utils
 
