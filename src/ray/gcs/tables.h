@@ -330,7 +330,7 @@ class DriverTable : public Log<JobID, DriverTableData> {
   ///
   /// \param driver_id The driver id.
   /// \param is_dead Whether the driver is dead.
-  /// \return The return status of Log.Append.
+  /// \return The return status.
   Status AppendDriverData(const JobID &driver_id, bool is_dead);
 };
 

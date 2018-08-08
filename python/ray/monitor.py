@@ -100,7 +100,7 @@ class Monitor(object):
                     ignore_subscribe_messages=True)
                 self.shard_subscribe_clients.append(subscribe_client)
         else:
-            # We don`t need to subscribe to the shards in legacy Ray.
+            # We don't need to subscribe to the shards in legacy Ray.
             self.shard_subscribe_clients = []
         # Initialize data structures to keep track of the active database
         # clients.
@@ -527,21 +527,14 @@ class Monitor(object):
                 continue
             driver_task_id_bins.add(hex_to_binary(task_id_hex))
 
-        # Get all objects and their task ids.
-        # We want to keep the ones associated with the driver.
-        all_objects = []
+        # Get objects associated with the driver.
         object_table_objects = self.state.object_table()
+        driver_object_id_bins = set()
         for object_id, object_table_object in object_table_objects.items():
             assert len(object_table_object) > 0
-            object_id_bin = object_id.id()
             task_id_bin = ray.local_scheduler.compute_task_id(object_id).id()
-            all_objects.append((object_id_bin, task_id_bin))
-
-        # Keep objects from relevant tasks.
-        driver_object_id_bins = set()
-        for object_id, task_id in all_objects:
-            if task_id in driver_task_id_bins:
-                driver_object_id_bins.add(object_id)
+            if task_id_bin in driver_task_id_bins:
+                driver_object_id_bins.add(object_id.id())
 
         def to_shard_index(id_bin):
             return binary_to_object_id(id_bin).redis_shard_hash() % len(
