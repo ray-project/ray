@@ -12,6 +12,7 @@ import time
 import unittest
 
 import ray
+import ray.cloudpickle as pickle
 import ray.ray_constants as ray_constants
 import ray.test.test_utils
 
@@ -1898,7 +1899,7 @@ class DistributedActorHandles(unittest.TestCase):
                 pass
 
         f = Foo.remote()
-        new_f = ray.worker.pickle.loads(ray.worker.pickle.dumps(f))
+        new_f = pickle.loads(ray.worker.pickle.dumps(f))
         # Verify that we can call a method on the unpickled handle. TODO(rkn):
         # we should also test this from a different driver.
         ray.get(new_f.method.remote())
