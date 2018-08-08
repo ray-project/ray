@@ -71,10 +71,6 @@ DEFAULT_ACTOR_CREATION_CPUS_SIMPLE_CASE = 0
 DEFAULT_ACTOR_METHOD_CPUS_SPECIFIED_CASE = 0
 DEFAULT_ACTOR_CREATION_CPUS_SPECIFIED_CASE = 1
 
-FunctionExecutionInfo = collections.namedtuple(
-    "FunctionExecutionInfo", ["function", "function_name", "max_calls"])
-"""FunctionExecutionInfo: A named tuple storing remote function information."""
-
 
 class Worker(object):
     """A class used to define the control flow of a worker process.
@@ -84,10 +80,6 @@ class Worker(object):
         functions outside of this class are considered exposed.
 
     Attributes:
-        function_execution_info (Dict[str, FunctionExecutionInfo]): A
-            dictionary mapping the name of a remote function to the remote
-            function itself. This is the set of remote functions that can be
-            executed by this worker.
         connected (bool): True if Ray has been started and False otherwise.
         mode: The mode of the worker. One of SCRIPT_MODE, LOCAL_MODE,
             SILENT_MODE, and WORKER_MODE.
@@ -111,19 +103,6 @@ class Worker(object):
 
     def __init__(self):
         """Initialize a Worker object."""
-        # This field is a dictionary that maps a driver ID to a dictionary of
-        # functions (and information about those functions) that have been
-        # registered for that driver (this inner dictionary maps function IDs
-        # to a FunctionExecutionInfo object. This should only be used on
-        # workers that execute remote functions.
-        self.function_execution_info = collections.defaultdict(lambda: {})
-        # This is a dictionary mapping driver ID to a dictionary that maps
-        # remote function IDs for that driver to a counter of the number of
-        # times that remote function has been executed on this worker. The
-        # counter is incremented every time the function is executed on this
-        # worker. When the counter reaches the maximum number of executions
-        # allowed for a particular function, the worker is killed.
-        self.num_task_executions = collections.defaultdict(lambda: {})
         self.connected = False
         self.mode = None
         self.cached_remote_functions_and_actors = []
@@ -132,10 +111,6 @@ class Worker(object):
         self.make_actor = None
         self.actors = {}
         self.actor_task_counter = 0
-        # A set of all of the actor class keys that have been imported by the
-        # import thread. It is safe to convert this worker into an actor of
-        # these types.
-        self.imported_actor_classes = set()
         # When the worker is constructed. Record the original value of the
         # CUDA_VISIBLE_DEVICES environment variable.
         self.original_gpu_ids = ray.utils.get_cuda_visible_devices()
