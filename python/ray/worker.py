@@ -1880,6 +1880,54 @@ def disconnect(worker=global_worker):
     worker.cached_remote_functions_and_actors = []
 
 
+def register_custom_serializer(cls,
+                               use_pickle=False,
+                               use_dict=False,
+                               serializer=None,
+                               deserializer=None,
+                               local=False,
+                               driver_id=None,
+                               class_id=None,
+                               worker=global_worker):
+    """Enable serialization and deserialization for a particular class.
+
+    This method runs the register_class function defined below on every worker,
+    which will enable ray to properly serialize and deserialize objects of
+    this class.
+
+    Args:
+        cls (type): The class that ray should use this custom serializer for.
+        use_pickle (bool): If true, then objects of this class will be
+            serialized using pickle.
+        use_dict: If true, then objects of this class be serialized turning
+            their __dict__ fields into a dictionary. Must be False if
+            use_pickle is true.
+        serializer: The custom serializer to use. This should be provided if
+            and only if use_pickle and use_dict are False.
+        deserializer: The custom deserializer to use. This should be provided
+            if and only if use_pickle and use_dict are False.
+        local: True if the serializers should only be registered on the current
+            worker. This should usually be False.
+        driver_id: ID of the driver that we want to register the class for.
+        class_id: ID of the class that we are registering. If this is not
+            specified, we will calculate a new one inside the function.
+
+    Raises:
+        Exception: An exception is raised if pickle=False and the class cannot
+           be efficiently serialized by Ray. This can also raise an exception
+           if use_dict is true and cls is not pickleable.
+    """
+    worker.object_store_client.register_custom_serializer(
+        cls,
+        use_pickle=use_pickle,
+        use_dict=use_dict,
+        serializer=serializer,
+        deserializer=deserializer,
+        local=local,
+        driver_id=driver_id,
+        class_id=class_id)
+
+
 def get(object_ids, worker=global_worker):
     """Get a remote object or a list of remote objects from the object store.
 

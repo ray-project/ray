@@ -31,6 +31,8 @@ class ObjectStoreClient(object):
         # A dictionary that maps from driver id to SerializationContext
         self.serialization_context_map = serialization.SerializationContextMap(
             self.worker)
+        self.register_custom_serializer = (
+            self.serialization_context_map.register_custom_serializer)
 
     def connect(self, store_socket_name, manager_socket_name, release_delay):
         """Create a connection to plasma client.
