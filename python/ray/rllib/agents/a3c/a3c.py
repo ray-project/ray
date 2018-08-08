@@ -30,7 +30,8 @@ DEFAULT_CONFIG = with_common_config({
     "use_gpu_for_workers": False,
     # Whether to emit extra summary stats
     "summarize": False,
-    # Workers sample async
+    # Workers sample async. Note that this increases the effective
+    # sample_batch_size by up to 5x due to async buffering of batches.
     "sample_async": True,
     # Model and preprocessor options
     "model": {
@@ -102,8 +103,8 @@ class A3CAgent(Agent):
         FilterManager.synchronize(self.local_evaluator.filters,
                                   self.remote_evaluators)
         result = self.optimizer.collect_metrics()
-        result = result._replace(
-            timesteps_this_iter=self.optimizer.num_steps_sampled - prev_steps)
+        result.update(timesteps_this_iter=self.optimizer.num_steps_sampled -
+                      prev_steps)
         return result
 
     def _stop(self):

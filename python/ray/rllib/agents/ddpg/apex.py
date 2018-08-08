@@ -9,7 +9,7 @@ from ray.tune.trial import Resources
 APEX_DDPG_DEFAULT_CONFIG = merge_dicts(
     DDPG_CONFIG,
     {
-        "optimizer_class": "AsyncSamplesOptimizer",
+        "optimizer_class": "AsyncReplayOptimizer",
         "optimizer": merge_dicts(
             DDPG_CONFIG["optimizer"], {
                 "max_weight_sync_delay": 400,

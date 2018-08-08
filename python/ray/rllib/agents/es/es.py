@@ -300,7 +300,7 @@ class ESAgent(Agent):
             "time_elapsed": step_tend - self.tstart
         }
 
-        result = ray.tune.result.TrainingResult(
+        result = dict(
             episode_reward_mean=eval_returns.mean(),
             episode_len_mean=eval_lengths.mean(),
             timesteps_this_iter=noisy_lengths.sum(),

@@ -43,7 +43,7 @@ class ObjectBufferPool {
   /// \param release_delay The number of release calls before objects are released
   /// from the store client (FIFO).
   ObjectBufferPool(const std::string &store_socket_name, const uint64_t chunk_size,
-                   int max_chunks, const int release_delay);
+                   const int release_delay);
 
   ~ObjectBufferPool();
 
@@ -124,9 +124,6 @@ class ObjectBufferPool {
   void SealChunk(const ObjectID &object_id, uint64_t chunk_index);
 
  private:
-  /// Gets the chunk size based on data size.
-  uint64_t GetChunkSize(uint64_t data_size);
-
   /// Abort the create operation associated with an object. This destroys the buffer
   /// state, including create operations in progress for all chunks of the object.
   void AbortCreate(const ObjectID &object_id);
@@ -180,8 +177,6 @@ class ObjectBufferPool {
   std::mutex pool_mutex_;
   /// Determines the maximum chunk size to be transferred by a single thread.
   const uint64_t default_chunk_size_;
-  /// The maximum number of chunks allowed.
-  const uint64_t max_chunks_;
   /// The state of a buffer that's currently being used.
   std::unordered_map<ray::ObjectID, GetBufferState> get_buffer_state_;
   /// The state of a buffer that's currently being used.

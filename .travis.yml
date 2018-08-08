@@ -52,8 +52,8 @@ matrix:
         - pip install yapf
         - sphinx-build -W -b html -d _build/doctrees source _build/html
         - cd ..
-        # Run Python linting.
-        - flake8 --exclude=python/ray/core/src/common/flatbuffers_ep-prefix/,python/ray/core/generated/,src/common/format/,doc/source/conf.py,python/ray/cloudpickle/
+        # Run Python linting, ignore dict vs {} (C408), others are defaults
+        - flake8 --exclude=python/ray/core/src/common/flatbuffers_ep-prefix/,python/ray/core/generated/,src/common/format/,doc/source/conf.py,python/ray/cloudpickle/ --ignore=C408,E121,E123,E126,E226,E24,E704,W503,W504
         - .travis/yapf.sh --all
 
     - os: linux
@@ -156,6 +156,7 @@ matrix:
         - python python/ray/tune/test/dependency_test.py
         - python -m pytest python/ray/tune/test/trial_runner_test.py
         - python -m pytest python/ray/tune/test/trial_scheduler_test.py
+        - python -m pytest python/ray/tune/test/experiment_test.py
         - python -m pytest python/ray/tune/test/tune_server_test.py
 
         # ray rllib tests
@@ -225,6 +226,7 @@ script:
   - python python/ray/tune/test/dependency_test.py
   - python -m pytest python/ray/tune/test/trial_runner_test.py
   - python -m pytest python/ray/tune/test/trial_scheduler_test.py
+  - python -m pytest python/ray/tune/test/experiment_test.py
   - python -m pytest python/ray/tune/test/tune_server_test.py
 
   # ray rllib tests

@@ -12,7 +12,6 @@ import tensorflow as tf
 from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
 from ray.rllib.utils import deep_update
 from ray.tune.registry import ENV_CREATOR, _global_registry
-from ray.tune.result import TrainingResult
 from ray.tune.trainable import Trainable
 
 COMMON_CONFIG = {
@@ -212,16 +211,23 @@ class Agent(Trainable):
 
         raise NotImplementedError
 
-    def compute_action(self, observation, state=None):
-        """Computes an action using the current trained policy."""
+    def compute_action(self, observation, state=None, policy_id="default"):
+        """Computes an action for the specified policy.
+
+        Arguments:
+            observation (obj): observation from the environment.
+            state (list): RNN hidden state, if any.
+            policy_id (str): policy to query (only applies to multi-agent).
+        """
 
         if state is None:
             state = []
-        obs = self.local_evaluator.filters["default"](
+        filtered_obs = self.local_evaluator.filters[policy_id](
             observation, update=False)
         return self.local_evaluator.for_policy(
-            lambda p: p.compute_single_action(obs, state, is_training=False)[0]
-        )
+            lambda p: p.compute_single_action(
+                filtered_obs, state, is_training=False)[0],
+            policy_id=policy_id)
 
     def get_weights(self, policies=None):
         """Return a dictionary of policy ids to weights.
@@ -248,6 +254,7 @@ class _MockAgent(Agent):
     _default_config = {
         "mock_error": False,
         "persistent_error": False,
+        "test_variable": 1
     }
 
     def _init(self):
@@ -258,7 +265,7 @@ class _MockAgent(Agent):
         if self.config["mock_error"] and self.iteration == 1 \
                 and (self.config["persistent_error"] or not self.restored):
             raise Exception("mock error")
-        return TrainingResult(
+        return dict(
             episode_reward_mean=10,
             episode_len_mean=10,
             timesteps_this_iter=10,
@@ -302,7 +309,7 @@ class _SigmoidFakeData(_MockAgent):
         i = max(0, self.iteration - self.config["offset"])
         v = np.tanh(float(i) / self.config["width"])
         v *= self.config["height"]
-        return TrainingResult(
+        return dict(
             episode_reward_mean=v,
             episode_len_mean=v,
             timesteps_this_iter=self.config["iter_timesteps"],
@@ -322,7 +329,7 @@ class _ParameterTuningAgent(_MockAgent):
     }
 
     def _train(self):
-        return TrainingResult(
+        return dict(
             episode_reward_mean=self.config["reward_amt"] * self.iteration,
             episode_len_mean=self.config["reward_amt"],
             timesteps_this_iter=self.config["iter_timesteps"],
@@ -360,6 +367,9 @@ def get_agent_class(alg):
     elif alg == "PG":
         from ray.rllib.agents import pg
         return pg.PGAgent
+    elif alg == "IMPALA":
+        from ray.rllib.agents import impala
+        return impala.ImpalaAgent
     elif alg == "script":
         from ray.tune import script_runner
         return script_runner.ScriptRunner

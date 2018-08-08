@@ -1411,7 +1411,12 @@ def get_address_info_from_redis_helper(redis_address,
                 (client_node_ip_address == "127.0.0.1"
                  and redis_ip_address == ray.services.get_node_ip_address())):
                 raylets.append(client)
-
+        # Make sure that at least one raylet has started locally.
+        # This handles a race condition where Redis has started but
+        # the raylet has not connected.
+        if len(raylets) == 0:
+            raise Exception(
+                "Redis has started but no raylets have registered yet.")
         object_store_addresses = [
             services.ObjectStoreAddress(
                 name=ray.utils.decode(raylet.ObjectStoreSocketName()),

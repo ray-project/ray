@@ -157,8 +157,8 @@ class TestServingEnv(unittest.TestCase):
         for i in range(100):
             result = dqn.train()
             print("Iteration {}, reward {}, timesteps {}".format(
-                i, result.episode_reward_mean, result.timesteps_total))
-            if result.episode_reward_mean >= 100:
+                i, result["episode_reward_mean"], result["timesteps_total"]))
+            if result["episode_reward_mean"] >= 100:
                 return
         raise Exception("failed to improve reward")
 
@@ -168,8 +168,8 @@ class TestServingEnv(unittest.TestCase):
         for i in range(100):
             result = pg.train()
             print("Iteration {}, reward {}, timesteps {}".format(
-                i, result.episode_reward_mean, result.timesteps_total))
-            if result.episode_reward_mean >= 100:
+                i, result["episode_reward_mean"], result["timesteps_total"]))
+            if result["episode_reward_mean"] >= 100:
                 return
         raise Exception("failed to improve reward")
 
@@ -180,8 +180,8 @@ class TestServingEnv(unittest.TestCase):
         for i in range(100):
             result = pg.train()
             print("Iteration {}, reward {}, timesteps {}".format(
-                i, result.episode_reward_mean, result.timesteps_total))
-            if result.episode_reward_mean >= 100:
+                i, result["episode_reward_mean"], result["timesteps_total"]))
+            if result["episode_reward_mean"] >= 100:
                 return
         raise Exception("failed to improve reward")
 

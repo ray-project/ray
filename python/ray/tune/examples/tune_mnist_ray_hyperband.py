@@ -31,7 +31,7 @@ import time
 
 import ray
 from ray.tune import grid_search, run_experiments, register_trainable, \
-    Trainable, TrainingResult
+    Trainable
 from ray.tune.hyperband import HyperBandScheduler
 from tensorflow.examples.tutorials.mnist import input_data
 
@@ -196,8 +196,7 @@ class TrainMNIST(Trainable):
             })
 
         self.iterations += 1
-        return TrainingResult(
-            timesteps_this_iter=10, mean_accuracy=train_accuracy)
+        return {"mean_accuracy": train_accuracy}
 
     def _save(self, checkpoint_dir):
         return self.saver.save(
@@ -234,6 +233,6 @@ if __name__ == '__main__':
 
     ray.init()
     hyperband = HyperBandScheduler(
-        time_attr="timesteps_total", reward_attr="mean_accuracy", max_t=100)
+        time_attr="training_iteration", reward_attr="mean_accuracy", max_t=10)
 
     run_experiments({'mnist_hyperband_test': mnist_spec}, scheduler=hyperband)
