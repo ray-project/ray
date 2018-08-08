@@ -16,6 +16,7 @@ import traceback
 # Ray modules
 from ray.dataflow.exceptions import (RayTaskError, RayGetArgumentError,
                                      RayGetError)
+import ray.dataflow.distributor as distributor
 import ray.dataflow.object_store_client as object_store_client
 import ray.experimental.state as state
 import ray.gcs_utils
@@ -26,7 +27,6 @@ import ray.signature
 import ray.local_scheduler
 import ray.plasma
 import ray.ray_constants as ray_constants
-from ray import import_thread
 from ray import profiling
 from ray.utils import (
     binary_to_hex,
@@ -94,8 +94,6 @@ class Worker(object):
         """Initialize a Worker object."""
         self.connected = False
         self.mode = None
-        self.cached_remote_functions_and_actors = []
-        self.cached_functions_to_run = []
         self.fetch_and_register_actor = None
         self.make_actor = None
         self.actors = {}
@@ -108,6 +106,9 @@ class Worker(object):
 
         # Identity of the driver that this worker is processing.
         self.task_driver_id = None
+
+        # Other components
+        self.distributor = distributor.DistributorWithImportThread(self)
 
     def check_connected(self):
         """Check if the worker is connected.
@@ -313,8 +314,8 @@ class Worker(object):
         while True:
             with self.lock:
                 if (self.actor_id == NIL_ACTOR_ID
-                        and (function_id.id() in
-                             self.function_execution_info[driver_id])):
+                        and self.distributor.has_function_id(
+                            driver_id, function_id)):
                     break
                 elif self.actor_id != NIL_ACTOR_ID and (
                         self.actor_id in self.actors):
@@ -422,10 +423,11 @@ class Worker(object):
         return_object_ids = task.returns()
         if task.actor_id().id() != NIL_ACTOR_ID:
             dummy_return_id = return_object_ids.pop()
-        function_executor = self.function_execution_info[
-            self.task_driver_id.id()][function_id.id()].function
-        function_name = self.function_execution_info[self.task_driver_id.id()][
-            function_id.id()].function_name
+
+        function_info = self.distributor.get_function_info(
+            self.task_driver_id, function_id)
+        function_executor = function_info.function
+        function_name = function_info.function_name
 
         # Get task arguments from the object store.
         try:
@@ -478,8 +480,8 @@ class Worker(object):
 
     def _handle_process_task_failure(self, function_id, return_object_ids,
                                      error, backtrace):
-        function_name = self.function_execution_info[self.task_driver_id.id()][
-            function_id.id()].function_name
+        function_name = self.distributor.get_function_name(
+            self.task_driver_id, function_id)
         failure_object = RayTaskError(function_name, error, backtrace)
         failure_objects = [
             failure_object for _ in range(len(return_object_ids))
@@ -508,15 +510,9 @@ class Worker(object):
         self.actor_id = task.actor_creation_id().id()
         class_id = arguments[0]
 
-        key = b"ActorClass:" + class_id
+        key = distributor.ACTOR_CLASS + b':' + class_id
 
-        # Wait for the actor class key to have been imported by the import
-        # thread. TODO(rkn): It shouldn't be possible to end up in an infinite
-        # loop here, but we should push an error to the driver if too much time
-        # is spent here.
-        while key not in self.imported_actor_classes:
-            time.sleep(0.001)
-
+        self.distributor.wait_for_actor_class(key)
         with self.lock:
             self.fetch_and_register_actor(key, self)
 
@@ -547,9 +543,9 @@ class Worker(object):
         # because that may indicate that the system is hanging, and it'd be
         # good to know where the system is hanging.
         with self.lock:
+            function_name = self.distributor.get_function_name(
+                driver_id, function_id)
 
-            function_name = (self.function_execution_info[driver_id][
-                function_id.id()]).function_name
             if not self.use_raylet:
                 extra_data = {
                     "function_name": function_name,
@@ -571,12 +567,8 @@ class Worker(object):
             self.profiler.flush_profile_data()
 
         # Increase the task execution counter.
-        self.num_task_executions[driver_id][function_id.id()] += 1
-
-        reached_max_executions = (
-            self.num_task_executions[driver_id][function_id.id()] == self.
-            function_execution_info[driver_id][function_id.id()].max_calls)
-        if reached_max_executions:
+        self.distributor.increase_function_call_count(driver_id, function_id)
+        if self.distributor.has_reached_max_executions(driver_id, function_id):
             self.local_scheduler_client.disconnect()
             os._exit(0)
 
@@ -1478,8 +1470,7 @@ def connect(info,
     # Do some basic checking to make sure we didn't call ray.init twice.
     error_message = "Perhaps you called ray.init twice by accident?"
     assert not worker.connected, error_message
-    assert worker.cached_functions_to_run is not None, error_message
-    assert worker.cached_remote_functions_and_actors is not None, error_message
+    assert worker.distributor.is_startup(), error_message
     # Initialize some fields.
     worker.worker_id = random_string()
 
@@ -1663,7 +1654,7 @@ def connect(info,
         worker.current_task_id, worker.use_raylet)
 
     # Start the import thread
-    import_thread.ImportThread(worker, mode).start()
+    worker.distributor.start_import_thread()
 
     # If this is a driver running in SCRIPT_MODE, start a thread to print error
     # messages asynchronously in the background. Ideally the scheduler would
@@ -1688,40 +1679,9 @@ def connect(info,
         worker.profiler.start_flush_thread()
 
     if mode in [SCRIPT_MODE, SILENT_MODE]:
-        # Add the directory containing the script that is running to the Python
-        # paths of the workers. Also add the current directory. Note that this
-        # assumes that the directory structures on the machines in the clusters
-        # are the same.
-        script_directory = os.path.abspath(os.path.dirname(sys.argv[0]))
-        current_directory = os.path.abspath(os.path.curdir)
-        worker.run_function_on_all_workers(
-            lambda worker_info: sys.path.insert(1, script_directory))
-        worker.run_function_on_all_workers(
-            lambda worker_info: sys.path.insert(1, current_directory))
-        # TODO(rkn): Here we first export functions to run, then remote
-        # functions. The order matters. For example, one of the functions to
-        # run may set the Python path, which is needed to import a module used
-        # to define a remote function. We may want to change the order to
-        # simply be the order in which the exports were defined on the driver.
-        # In addition, we will need to retain the ability to decide what the
-        # first few exports are (mostly to set the Python path). Additionally,
-        # note that the first exports to be defined on the driver will be the
-        # ones defined in separate modules that are imported by the driver.
-        # Export cached functions_to_run.
-        for function in worker.cached_functions_to_run:
-            worker.run_function_on_all_workers(function)
-        # Export cached remote functions to the workers.
-        for cached_type, info in worker.cached_remote_functions_and_actors:
-            if cached_type == "remote_function":
-                info._export()
-            elif cached_type == "actor":
-                (key, actor_class_info) = info
-                ray.actor.publish_actor_class_to_key(key, actor_class_info,
-                                                     worker)
-            else:
-                assert False, "This code should be unreachable."
-    worker.cached_functions_to_run = None
-    worker.cached_remote_functions_and_actors = None
+        worker.distributor.export_for_driver()
+
+    worker.distributor.finish_startup()
 
 
 def disconnect(worker=global_worker):

@@ -7,7 +7,10 @@ from __future__ import division
 from __future__ import print_function
 
 import hashlib
+import os
+import sys
 import threading
+import time
 
 import redis
 
@@ -286,6 +289,52 @@ class Distributor(execution_info.ExecutionInfo):
     def append_cached_remote_function(self, remote_function):
         self.cached_remote_functions_and_actors.append((CACHED_REMOTE_FUNCTION,
                                                         remote_function))
+
+    def wait_for_actor_class(self, key):
+        """Wait for the actor class key to have been imported by the import
+        thread.
+
+        TODO(rkn): It shouldn't be possible to end up in an infinite
+        loop here, but we should push an error to the driver if too much time
+        is spent here.
+        """
+
+        while not self.has_imported_actor(key):
+            time.sleep(self.polling_interval)
+
+    def export_for_driver(self):
+        # Add the directory containing the script that is running to the Python
+        # paths of the workers. Also add the current directory. Note that this
+        # assumes that the directory structures on the machines in the clusters
+        # are the same.
+        script_directory = os.path.abspath(os.path.dirname(sys.argv[0]))
+        current_directory = os.path.abspath(os.path.curdir)
+        self.run_function_on_all_workers(
+            lambda worker_info: sys.path.insert(1, script_directory))
+        self.run_function_on_all_workers(
+            lambda worker_info: sys.path.insert(1, current_directory))
+        # TODO(rkn): Here we first export functions to run, then remote
+        # functions. The order matters. For example, one of the functions to
+        # run may set the Python path, which is needed to import a module used
+        # to define a remote function. We may want to change the order to
+        # simply be the order in which the exports were defined on the driver.
+        # In addition, we will need to retain the ability to decide what the
+        # first few exports are (mostly to set the Python path). Additionally,
+        # note that the first exports to be defined on the driver will be the
+        # ones defined in separate modules that are imported by the driver.
+
+        # Export cached functions_to_run.
+        for function in self.cached_functions_to_run:
+            self.run_function_on_all_workers(function)
+        # Export cached remote functions to the workers.
+        for cached_type, info in self.cached_remote_functions_and_actors:
+            if cached_type == CACHED_REMOTE_FUNCTION:
+                info._export()
+            elif cached_type == CACHED_ACTOR:
+                (key, actor_class_info) = info
+                self.worker.publish_actor_class_to_key(key, actor_class_info)
+            else:
+                assert False, "This code should be unreachable."
 
 
 class DistributorWithImportThread(Distributor):
