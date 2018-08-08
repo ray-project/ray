@@ -15,11 +15,7 @@ ray::Status TcpConnect(boost::asio::ip::tcp::socket &socket,
   boost::asio::ip::tcp::endpoint endpoint(ip_address, port);
   boost::system::error_code error;
   socket.connect(endpoint, error);
-  if (error) {
-    return ray::Status::IOError(error.message());
-  } else {
-    return ray::Status::OK();
-  }
+  return boost_to_ray_status(error);
 }
 
 template <class T>
