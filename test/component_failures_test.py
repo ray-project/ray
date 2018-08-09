@@ -17,6 +17,9 @@ class ComponentFailureTest(unittest.TestCase):
     # This test checks that when a worker dies in the middle of a get, the
     # plasma store and manager will not die.
     @unittest.skipIf(
+        os.environ.get('RAY_USE_XRAY', False),
+        "Workers are all started by Raylet, so cannot be killed from Python.")
+    @unittest.skipIf(
         os.environ.get('RAY_USE_NEW_GCS', False),
         "Not working with new GCS API.")
     def testDyingWorkerGet(self):
@@ -55,6 +58,9 @@ class ComponentFailureTest(unittest.TestCase):
 
     # This test checks that when a worker dies in the middle of a wait, the
     # plasma store and manager will not die.
+    @unittest.skipIf(
+        os.environ.get('RAY_USE_XRAY', False),
+        "Workers are all started by Raylet, so cannot be killed from Python.")
     @unittest.skipIf(
         os.environ.get('RAY_USE_NEW_GCS', False),
         "Not working with new GCS API.")
@@ -141,8 +147,7 @@ class ComponentFailureTest(unittest.TestCase):
             num_local_schedulers=num_local_schedulers,
             start_ray_local=True,
             num_cpus=[num_workers_per_scheduler] * num_local_schedulers,
-            redirect_output=False,
-            use_raylet=True)
+            redirect_output=True)
 
         # Submit many tasks with many dependencies.
         @ray.remote
@@ -195,6 +200,9 @@ class ComponentFailureTest(unittest.TestCase):
                       str(component.pid) + "to terminate")
                 assert not component.poll() is None
 
+    @unittest.skipIf(
+        not os.environ.get('RAY_USE_XRAY', False),
+        "Only tests Raylet failure.")
     def testRayletFailed(self):
         # Kill all local schedulers on worker nodes.
         self._testComponentFailed(ray.services.PROCESS_TYPE_RAYLET)
@@ -204,6 +212,9 @@ class ComponentFailureTest(unittest.TestCase):
         self.check_components_alive(ray.services.PROCESS_TYPE_PLASMA_STORE,
                                     True)
 
+    @unittest.skipIf(
+        os.environ.get('RAY_USE_XRAY', False),
+        "Raylet codepath does not have this component")
     @unittest.skipIf(
         os.environ.get('RAY_USE_NEW_GCS', False), "Hanging with new GCS API.")
     def testLocalSchedulerFailed(self):
@@ -219,6 +230,9 @@ class ComponentFailureTest(unittest.TestCase):
         self.check_components_alive(ray.services.PROCESS_TYPE_LOCAL_SCHEDULER,
                                     False)
 
+    @unittest.skipIf(
+        os.environ.get('RAY_USE_XRAY', False),
+        "Raylet codepath does not have this component")
     @unittest.skipIf(
         os.environ.get('RAY_USE_NEW_GCS', False), "Hanging with new GCS API.")
     def testPlasmaManagerFailed(self):
@@ -247,6 +261,8 @@ class ComponentFailureTest(unittest.TestCase):
                                     False)
         self.check_components_alive(ray.services.PROCESS_TYPE_LOCAL_SCHEDULER,
                                     False)
+        self.check_components_alive(ray.services.PROCESS_TYPE_RAYLET,
+                                    False)
 
     @unittest.skipIf(
         os.environ.get('RAY_USE_NEW_GCS', False),
@@ -254,12 +270,12 @@ class ComponentFailureTest(unittest.TestCase):
     def testDriverLivesSequential(self):
         ray.worker.init(redirect_output=True)
         all_processes = ray.services.all_processes
-        processes = [
-            all_processes[ray.services.PROCESS_TYPE_PLASMA_STORE][0],
-            all_processes[ray.services.PROCESS_TYPE_PLASMA_MANAGER][0],
-            all_processes[ray.services.PROCESS_TYPE_LOCAL_SCHEDULER][0],
-            all_processes[ray.services.PROCESS_TYPE_GLOBAL_SCHEDULER][0]
-        ]
+        processes = (all_processes[ray.services.PROCESS_TYPE_PLASMA_STORE] +
+                     all_processes[ray.services.PROCESS_TYPE_PLASMA_MANAGER] +
+                     all_processes[ray.services.PROCESS_TYPE_LOCAL_SCHEDULER] +
+                     all_processes[
+                         ray.services.PROCESS_TYPE_GLOBAL_SCHEDULER] +
+                     all_processes[ray.services.PROCESS_TYPE_RAYLET])
 
         # Kill all the components sequentially.
         for process in processes:
@@ -276,12 +292,12 @@ class ComponentFailureTest(unittest.TestCase):
     def testDriverLivesParallel(self):
         ray.worker.init(redirect_output=True)
         all_processes = ray.services.all_processes
-        processes = [
-            all_processes[ray.services.PROCESS_TYPE_PLASMA_STORE][0],
-            all_processes[ray.services.PROCESS_TYPE_PLASMA_MANAGER][0],
-            all_processes[ray.services.PROCESS_TYPE_LOCAL_SCHEDULER][0],
-            all_processes[ray.services.PROCESS_TYPE_GLOBAL_SCHEDULER][0]
-        ]
+        processes = (all_processes[ray.services.PROCESS_TYPE_PLASMA_STORE] +
+                     all_processes[ray.services.PROCESS_TYPE_PLASMA_MANAGER] +
+                     all_processes[ray.services.PROCESS_TYPE_LOCAL_SCHEDULER] +
+                     all_processes[
+                         ray.services.PROCESS_TYPE_GLOBAL_SCHEDULER] +
+                     all_processes[ray.services.PROCESS_TYPE_RAYLET])
 
         # Kill all the components in parallel.
         for process in processes:
