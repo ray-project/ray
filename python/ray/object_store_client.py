@@ -8,8 +8,7 @@ import pyarrow
 import pyarrow.plasma as plasma
 # TODO: Cleanup imports after implement `serialization` module.
 import ray.cloudpickle as pickle
-from ray.dataflow.exceptions import (RayTaskError, RayGetArgumentError,
-                                     RayGetError)
+from ray.exceptions import (RayTaskError, RayGetArgumentError, RayGetError)
 import ray.plasma
 from ray.serialization import CloudPickleError, RayNotDictionarySerializable
 from ray.services import logger

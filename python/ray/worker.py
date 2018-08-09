@@ -17,9 +17,8 @@ import traceback
 
 # Ray modules
 import ray.cloudpickle as pickle
-from ray.dataflow.exceptions import (RayTaskError, RayGetArgumentError,
-                                     RayGetError)
-import ray.dataflow.object_store_client as object_store_client
+from ray.exceptions import (RayTaskError, RayGetArgumentError, RayGetError)
+import ray.object_store_client as object_store_client
 import ray.experimental.state as state
 import ray.gcs_utils
 import ray.remote_function
