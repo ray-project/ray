@@ -1,5 +1,7 @@
 package org.ray.api;
 
+import org.ray.util.ResourceItem;
+
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;

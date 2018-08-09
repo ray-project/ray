@@ -10,7 +10,7 @@ import org.ray.api.RayObject;
 import org.ray.api.RayRemote;
 import org.ray.api.WaitResult;
 import org.ray.core.RayRuntime;
-import org.ray.api.ResourceItem;
+import org.ray.util.ResourceItem;
 
 /**
  * Resources Management Test.
