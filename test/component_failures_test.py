@@ -163,27 +163,26 @@ class ComponentFailureTest(unittest.TestCase):
         def g(*xs):
             return 1
 
-        xs = [g.remote(1)]
-        for _ in range(100):
-            xs.append(g.remote(*xs))
-            xs.append(g.remote(1))
-
         # Kill the component on all nodes except the head node as the tasks
         # execute.
         time.sleep(0.1)
         components = ray.services.all_processes[component_type]
         for process in components[1:]:
+            xs = [g.remote(1)]
+            for _ in range(100):
+                xs.append(g.remote(*xs))
+                xs.append(g.remote(1))
+
             process.terminate()
             time.sleep(1)
 
-        for process in components[1:]:
             process.kill()
             process.wait()
             assert not process.poll() is None
 
-        # Make sure that we can still get the objects after the executing tasks
-        # died.
-        ray.get(xs)
+            # Make sure that we can still get the objects after the executing
+            # tasks died.
+            ray.get(xs)
 
     def check_components_alive(self, component_type, check_component_alive):
         """Check that a given component type is alive on all worker nodes.

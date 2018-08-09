@@ -50,7 +50,7 @@ struct ObjectManagerConfig {
 class ObjectManagerInterface {
  public:
   virtual ray::Status Pull(const ObjectID &object_id) = 0;
-  virtual ray::Status Cancel(const ObjectID &object_id) = 0;
+  virtual void Cancel(const ObjectID &object_id) = 0;
   virtual ~ObjectManagerInterface(){};
 };
 
@@ -104,20 +104,22 @@ class ObjectManager : public ObjectManagerInterface {
   /// \return Void.
   void Push(const ObjectID &object_id, const ClientID &client_id);
 
-  /// Pull an object from ClientID. Returns UniqueID asociated with
-  /// an invocation of this method.
+  /// Pull an object from ClientID.
   ///
   /// \param object_id The object's object id.
   /// \return Status of whether the pull request successfully initiated.
   ray::Status Pull(const ObjectID &object_id);
 
-  /// Discover ClientID via ObjectDirectory, then pull object
-  /// from ClientID associated with ObjectID.
+  /// Try to Pull an object from one of its expected client locations. If there
+  /// are more client locations to try after this attempt, then this method
+  /// will try each of the other clients in succession, with a timeout between
+  /// each attempt. If the object is received or if the Pull is Canceled before
+  /// the timeout, then no more Pull requests for this object will be sent
+  /// to other node managers until TryPull is called again.
   ///
   /// \param object_id The object's object id.
-  /// \param client_id The remote node's client id.
   /// \return Void.
-  void Pull(const ObjectID &object_id, const ClientID &client_id);
+  void TryPull(const ObjectID &object_id);
 
   /// Add a connection to a remote object manager.
   /// This is invoked by an external server.
@@ -136,11 +138,12 @@ class ObjectManager : public ObjectManagerInterface {
   void ProcessClientMessage(std::shared_ptr<TcpClientConnection> &conn,
                             int64_t message_type, const uint8_t *message);
 
-  /// Cancels all requests (Push/Pull) associated with the given ObjectID.
+  /// Cancels all requests (Push/Pull) associated with the given ObjectID. This
+  /// method is idempotent.
   ///
   /// \param object_id The ObjectID.
-  /// \return Status of whether requests were successfully cancelled.
-  ray::Status Cancel(const ObjectID &object_id);
+  /// \return Void.
+  void Cancel(const ObjectID &object_id);
 
   /// Callback definition for wait.
   using WaitCallback = std::function<void(const std::vector<ray::ObjectID> &found,
@@ -162,6 +165,12 @@ class ObjectManager : public ObjectManagerInterface {
 
  private:
   friend class TestObjectManager;
+
+  struct PullRequest {
+    PullRequest() : retry_timer(nullptr), client_locations() {}
+    std::unique_ptr<boost::asio::deadline_timer> retry_timer;
+    std::vector<ClientID> client_locations;
+  };
 
   struct WaitState {
     WaitState(asio::io_service &service, int64_t timeout_ms, const WaitCallback &callback)
@@ -210,25 +219,18 @@ class ObjectManager : public ObjectManagerInterface {
   void RunReceiveService();
   void StopIOService();
 
-  /// Register object add with directory.
-  void NotifyDirectoryObjectAdd(const ObjectInfoT &object_info);
+  /// Handle an object being added to this node. This adds the object to the
+  /// directory, pushes the object to other nodes if necessary, and cancels any
+  /// outstanding Pull requests for the object.
+  void HandleObjectAdded(const ObjectInfoT &object_info);
 
   /// Register object remove with directory.
   void NotifyDirectoryObjectDeleted(const ObjectID &object_id);
-
-  /// Handle any push requests that were made before an object was available.
-  /// This is invoked when an "object added" notification is received from the store.
-  void HandleUnfulfilledPushRequests(const ObjectInfoT &object_info);
 
   /// Part of an asynchronous sequence of Pull methods.
   /// Uses an existing connection or creates a connection to ClientID.
   /// Executes on main_service_ thread.
   void PullEstablishConnection(const ObjectID &object_id, const ClientID &client_id);
-
-  /// Private callback implementation for success on get location. Called from
-  /// ObjectDirectory.
-  void GetLocationsSuccess(const std::vector<ray::ClientID> &client_ids,
-                           const ray::ObjectID &object_id);
 
   /// Synchronously send a pull request via remote object manager connection.
   /// Executes on main_service_ thread.
@@ -326,6 +328,8 @@ class ObjectManager : public ObjectManagerInterface {
       ObjectID,
       std::unordered_map<ClientID, std::unique_ptr<boost::asio::deadline_timer>>>
       unfulfilled_push_requests_;
+
+  std::unordered_map<ObjectID, PullRequest> pull_requests_;
 };
 
 }  // namespace ray

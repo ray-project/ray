@@ -16,7 +16,7 @@ using ::testing::_;
 class MockObjectManager : public ObjectManagerInterface {
  public:
   MOCK_METHOD1(Pull, ray::Status(const ObjectID &object_id));
-  MOCK_METHOD1(Cancel, ray::Status(const ObjectID &object_id));
+  MOCK_METHOD1(Cancel, void(const ObjectID &object_id));
 };
 
 class MockReconstructionPolicy : public ReconstructionPolicyInterface {
