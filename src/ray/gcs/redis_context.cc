@@ -135,7 +135,7 @@ RedisContext::~RedisContext() {
   }
 }
 
-Status RedisContext::Connect(const std::string &address, int port) {
+Status RedisContext::Connect(const std::string &address, int port, bool sharding) {
   int connection_attempts = 0;
   context_ = redisConnect(address.c_str(), port);
   while (context_ == nullptr || context_->err) {

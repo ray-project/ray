@@ -69,13 +69,10 @@ namespace ray {
 
 namespace gcs {
 
-AsyncGcsClient::AsyncGcsClient(const ClientID &client_id, CommandType command_type) {
+AsyncGcsClient::AsyncGcsClient(const std::string &address, int port, const ClientID &client_id, CommandType command_type) {
   primary_context_ = std::make_shared<RedisContext>();
-
-  std::vector<std::shared_ptr<RedisContext>> tmp_primary;
-  tmp_primary.push_back(primary_context_);
-  client_table_.reset(new ClientTable(tmp_primary, this, client_id));
-  error_table_.reset(new ErrorTable(tmp_primary, this));
+  client_table_.reset(new ClientTable({primary_context_}, this, client_id));
+  error_table_.reset(new ErrorTable({primary_context_}, this));
 
   // Tables below would be sharded.
   // They are created but not populated for now.
@@ -93,20 +90,25 @@ AsyncGcsClient::AsyncGcsClient(const ClientID &client_id, CommandType command_ty
 #if RAY_USE_NEW_GCS
 // Use of kChain currently only applies to Table::Add which affects only the
 // task table, and when RAY_USE_NEW_GCS is set at compile time.
-AsyncGcsClient::AsyncGcsClient(const ClientID &client_id)
-    : AsyncGcsClient(client_id, CommandType::kChain) {}
+AsyncGcsClient::AsyncGcsClient(const std::string &address, int port, const ClientID &client_id)
+    : AsyncGcsClient(address, port, client_id, CommandType::kChain) {}
 #else
-AsyncGcsClient::AsyncGcsClient(const ClientID &client_id)
-    : AsyncGcsClient(client_id, CommandType::kRegular) {}
+AsyncGcsClient::AsyncGcsClient(const std::string &address, int port, const ClientID &client_id)
+    : AsyncGcsClient(address, port, client_id, CommandType::kRegular) {}
 #endif  // RAY_USE_NEW_GCS
 
-AsyncGcsClient::AsyncGcsClient(CommandType command_type)
-    : AsyncGcsClient(ClientID::from_random(), command_type) {}
+AsyncGcsClient::AsyncGcsClient(const std::string &address, int port, CommandType command_type)
+    : AsyncGcsClient(address, port, ClientID::from_random(), command_type) {}
 
-AsyncGcsClient::AsyncGcsClient() : AsyncGcsClient(ClientID::from_random()) {}
+AsyncGcsClient::AsyncGcsClient(const std::string &address, int port) : AsyncGcsClient(address, port, ClientID::from_random()) {}
 
 Status AsyncGcsClient::Connect(const std::string &address, int port, bool sharding) {
-  RAY_RETURN_NOT_OK(primary_context_->Connect(address, port));
+  // A boolean placeholder value.
+  // Used since changing the API of Connect is breaking some tests.
+  // Would be removed soon in the future.
+  const bool DUMMY_BOOL = true;
+
+  RAY_RETURN_NOT_OK(primary_context_->Connect(address, port, DUMMY_BOOL));
   std::vector<std::string> addresses{address};
   std::vector<int> ports{port};
 
@@ -127,7 +129,7 @@ Status AsyncGcsClient::Connect(const std::string &address, int port, bool shardi
   // Call connect for all contexts. Safe to do many times.
   // Here shard_contexts_.size() == addresses.size();
   for (unsigned int i = 0; i < addresses.size(); ++i) {
-    RAY_RETURN_NOT_OK(shard_contexts_[i]->Connect(addresses[i], ports[i]));
+    RAY_RETURN_NOT_OK(shard_contexts_[i]->Connect(addresses[i], ports[i], DUMMY_BOOL));
   }
 
   // Now tables need to add shards.

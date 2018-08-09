@@ -186,8 +186,7 @@ class Log : virtual public PubsubInterface<ID> {
   }
 
  protected:
-  template <typename AnyID>
-  std::shared_ptr<RedisContext> GetRedisContext(AnyID &&id) {
+  std::shared_ptr<RedisContext> GetRedisContext(const ID &id) {
     static std::hash<ray::UniqueID> index;
     return shard_contexts_[index(id) % shard_contexts_.size()];
   }

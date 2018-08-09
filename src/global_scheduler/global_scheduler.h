@@ -51,8 +51,6 @@ typedef struct {
   event_loop *loop;
   /** The global state store database. */
   DBHandle *db;
-  /** The handle to the GCS (modern version of the above). */
-  ray::gcs::AsyncGcsClient gcs_client;
   /** A hash table mapping local scheduler ID to the local schedulers that are
    *  connected to Redis. */
   std::unordered_map<DBClientID, LocalScheduler> local_schedulers;

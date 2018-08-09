@@ -27,10 +27,10 @@ class RAY_EXPORT AsyncGcsClient {
   /// \param client_id The ID to assign to the client.
   /// \param command_type GCS command type.  If CommandType::kChain, chain-replicated
   /// versions of the tables might be used, if available.
-  AsyncGcsClient(const ClientID &client_id, CommandType command_type);
-  AsyncGcsClient(const ClientID &client_id);
-  AsyncGcsClient(CommandType command_type);
-  AsyncGcsClient();
+  AsyncGcsClient(const std::string &address, int port, const ClientID &client_id, CommandType command_type);
+  AsyncGcsClient(const std::string &address, int port, const ClientID &client_id);
+  AsyncGcsClient(const std::string &address, int port, CommandType command_type);
+  AsyncGcsClient(const std::string &address, int port);
 
   /// Connect to the GCS.
   ///
