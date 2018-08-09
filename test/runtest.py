@@ -13,7 +13,7 @@ from collections import defaultdict, namedtuple, OrderedDict
 import numpy as np
 
 import ray
-import ray.dataflow.serialization as serialization
+import ray.serialization as serialization
 import ray.ray_constants as ray_constants
 import ray.test.test_utils
 

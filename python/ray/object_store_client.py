@@ -6,9 +6,9 @@ import time
 
 import pyarrow
 import pyarrow.plasma as plasma
-from ray.dataflow.exceptions import RayTaskError
+from ray.exceptions import RayTaskError
 import ray.plasma
-import ray.dataflow.serialization as serialization
+import ray.serialization as serialization
 from ray.services import logger
 import ray.signature
 import ray.ray_constants as ray_constants

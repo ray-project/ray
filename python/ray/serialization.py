@@ -7,8 +7,7 @@ import pyarrow
 
 import ray.cloudpickle as pickle
 import ray.signature as signature
-from ray.dataflow.exceptions import (RayGetError, RayGetArgumentError,
-                                     RayTaskError)
+from ray.exceptions import (RayGetError, RayGetArgumentError, RayTaskError)
 import ray.plasma
 from ray.services import logger
 from ray.utils import random_string
