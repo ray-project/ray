@@ -317,6 +317,23 @@ class HeartbeatTable : public Table<ClientID, HeartbeatTableData> {
   virtual ~HeartbeatTable() {}
 };
 
+class DriverTable : public Log<JobID, DriverTableData> {
+ public:
+  DriverTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client)
+      : Log(context, client) {
+    pubsub_channel_ = TablePubsub::DRIVER;
+    prefix_ = TablePrefix::DRIVER;
+  };
+  virtual ~DriverTable() {}
+
+  /// Appends driver data to the driver table.
+  ///
+  /// \param driver_id The driver id.
+  /// \param is_dead Whether the driver is dead.
+  /// \return The return status.
+  Status AppendDriverData(const JobID &driver_id, bool is_dead);
+};
+
 class FunctionTable : public Table<ObjectID, FunctionTableData> {
  public:
   FunctionTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client)

@@ -25,8 +25,10 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
   RAY_CHECK(config_.max_sends > 0);
   RAY_CHECK(config_.max_receives > 0);
   main_service_ = &main_service;
-  store_notification_.SubscribeObjAdded(
-      [this](const ObjectInfoT &object_info) { NotifyDirectoryObjectAdd(object_info); });
+  store_notification_.SubscribeObjAdded([this](const ObjectInfoT &object_info) {
+    NotifyDirectoryObjectAdd(object_info);
+    HandleUnfulfilledPushRequests(object_info);
+  });
   store_notification_.SubscribeObjDeleted(
       [this](const ObjectID &oid) { NotifyDirectoryObjectDeleted(oid); });
   StartIOService();
@@ -49,8 +51,10 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
   RAY_CHECK(config_.max_receives > 0);
   // TODO(hme) Client ID is never set with this constructor.
   main_service_ = &main_service;
-  store_notification_.SubscribeObjAdded(
-      [this](const ObjectInfoT &object_info) { NotifyDirectoryObjectAdd(object_info); });
+  store_notification_.SubscribeObjAdded([this](const ObjectInfoT &object_info) {
+    NotifyDirectoryObjectAdd(object_info);
+    HandleUnfulfilledPushRequests(object_info);
+  });
   store_notification_.SubscribeObjDeleted(
       [this](const ObjectID &oid) { NotifyDirectoryObjectDeleted(oid); });
   StartIOService();
@@ -89,6 +93,10 @@ void ObjectManager::NotifyDirectoryObjectAdd(const ObjectInfoT &object_info) {
   local_objects_[object_id] = object_info;
   ray::Status status =
       object_directory_->ReportObjectAdded(object_id, client_id_, object_info);
+}
+
+void ObjectManager::HandleUnfulfilledPushRequests(const ObjectInfoT &object_info) {
+  ObjectID object_id = ObjectID::from_binary(object_info.object_id);
   // Handle the unfulfilled_push_requests_ which contains the push request that is not
   // completed due to unsatisfied local objects.
   auto iter = unfulfilled_push_requests_.find(object_id);

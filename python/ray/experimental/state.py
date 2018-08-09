@@ -169,7 +169,7 @@ class GlobalState(object):
         """
         result = []
         for client in self.redis_clients:
-            result.extend(client.keys(pattern))
+            result.extend(list(client.scan_iter(match=pattern)))
         return result
 
     def _object_table(self, object_id):

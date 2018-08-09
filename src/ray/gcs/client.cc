@@ -17,6 +17,7 @@ AsyncGcsClient::AsyncGcsClient(const ClientID &client_id, CommandType command_ty
   task_reconstruction_log_.reset(new TaskReconstructionLog(context_, this));
   task_lease_table_.reset(new TaskLeaseTable(context_, this));
   heartbeat_table_.reset(new HeartbeatTable(context_, this));
+  driver_table_.reset(new DriverTable(primary_context_, this));
   error_table_.reset(new ErrorTable(primary_context_, this));
   profile_table_.reset(new ProfileTable(context_, this));
   command_type_ = command_type;
@@ -87,6 +88,8 @@ ClassTable &AsyncGcsClient::class_table() { return *class_table_; }
 HeartbeatTable &AsyncGcsClient::heartbeat_table() { return *heartbeat_table_; }
 
 ErrorTable &AsyncGcsClient::error_table() { return *error_table_; }
+
+DriverTable &AsyncGcsClient::driver_table() { return *driver_table_; }
 
 ProfileTable &AsyncGcsClient::profile_table() { return *profile_table_; }
 
