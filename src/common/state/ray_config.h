@@ -149,10 +149,7 @@ class RayConfig {
         max_tasks_to_spillback_(10),
         actor_creation_num_spillbacks_warning_(100),
         node_manager_forward_task_retry_timeout_milliseconds_(1000),
-        // TODO: Setting this to large values results in latency, which needs to
-        // be addressed. This timeout is often on the critical path for object
-        // transfers.
-        object_manager_pull_timeout_ms_(20),
+        object_manager_pull_timeout_ms_(100),
         object_manager_push_timeout_ms_(10000),
         object_manager_default_chunk_size_(1000000),
         num_workers_per_process_(1) {}
