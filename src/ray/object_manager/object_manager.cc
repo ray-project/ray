@@ -1,7 +1,6 @@
 #include "ray/object_manager/object_manager.h"
-#include "ray/util/util.h"
 #include "common/common_protocol.h"
-
+#include "ray/util/util.h"
 
 namespace asio = boost::asio;
 

@@ -1208,101 +1208,61 @@ class APITest(unittest.TestCase):
     @unittest.skipIf(
         os.environ.get("RAY_USE_XRAY") != "1",
         "This test only works with xray.")
-    def testFreeObjects(self):
-        ray.init(num_cpus=1, use_raylet=True)
-
-        @ray.remote
-        def f():
-            return 1
-
-        @ray.remote
-        def g():
-            return 2
-
-        def create():
-            a = f.remote()
-            b = g.remote()
-            (l1, l2) = ray.wait([a, b], num_returns=2)
-            assert len(l1) == 2
-            assert len(l2) == 0
-            return (a, b)
-
-        def flush():
-            # Flush the Release History.
-            print("Start Flush!")
-            for i in range(1000):
-                f.remote()
-                g.remote()
-            print("Flush finished!")
-
-        (a, b) = create()
-        ray.internal.free([a, b])
-
-        flush()
-        (l1, l2) = ray.wait([a, b], timeout=1)
-        # The objects are deleted.
-        assert len(l1) == 0
-        assert len(l2) == 2
-
-    @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") != "1",
-        "This test only works with xray.")
     def testFreeObjectsMultiNode(self):
-        address_info = ray.worker._init(
+        ray.worker._init(
             start_ray_local=True,
-            num_local_schedulers=2,
+            num_local_schedulers=3,
             num_workers=1,
-            num_cpus=[1, 15],
-            num_gpus=[1, 0],
+            num_cpus=[100, 5, 10],
+            num_gpus=[0, 5, 1],
             use_raylet=True)
-        store_names = [
-            object_store_address.name
-            for object_store_address in address_info["object_store_addresses"]
-        ]
-        print(store_names)
 
-        @ray.remote(num_cpus=15)
-        def f_on_2():
+        @ray.remote(num_cpus=11)
+        def run_on_0():
             return ray.worker.global_worker.plasma_client.store_socket_name
 
-        @ray.remote(num_gpus=1)
-        def f_on_1():
+        @ray.remote(num_gpus=2)
+        def run_on_1():
+            return ray.worker.global_worker.plasma_client.store_socket_name
+
+        @ray.remote(num_cpus=6, num_gpus=1)
+        def run_on_2():
             return ray.worker.global_worker.plasma_client.store_socket_name
 
         def create():
-            a = f_on_1.remote()
-            b = f_on_2.remote()
-            (l1, l2) = ray.wait([a, b], num_returns=2)
-            assert len(l1) == 2
+            c = run_on_0.remote()
+            a = run_on_1.remote()
+            b = run_on_2.remote()
+            (l1, l2) = ray.wait([a, b, c], num_returns=3)
+            assert len(l1) == 3
             assert len(l2) == 0
-            return (a, b)
+            return (a, b, c)
 
         def flush():
             # Flush the Release History.
+            # Current Plasma Client Cache will maintain 64-item list.
+            # If the number changed, this will fail.
             print("Start Flush!")
-            for i in range(3000):
-                f_on_1.remote()
-                f_on_2.remote()
+            for i in range(500):
+                run_on_0.remote()
+                run_on_1.remote()
+                run_on_2.remote()
+                # Flush the driver client cache,
+                # because the driver hold the objects by `ray.get`.
+                ray.put(1)
             print("Flush finished!")
 
-        (a, b) = create()
-        print("a(%s)=%s" % (a, ray.get(a)))
-        print("b(%s)=%s" % (b, ray.get(b)))
+        (a, b, c) = create()
+        # The three objects should be generated on different object stores.
         assert ray.get(a) != ray.get(b)
-        ray.internal.free([a, b])
-        print("Local: %s" % (ray.worker.global_worker.
-                             plasma_client.store_socket_name))
-
+        assert ray.get(a) != ray.get(c)
+        assert ray.get(c) != ray.get(b)
+        ray.internal.free([a, b, c])
         flush()
-        (l1, l2) = ray.wait([a, b], timeout=1)
-        import pyarrow.plasma as plasma
-        object_id_strs = [plasma.ObjectID(a.id()), plasma.ObjectID(b.id())]
-        ray.worker.global_worker.plasma_client.delete(object_id_strs)
+        (l1, l2) = ray.wait([a, b, c], timeout=1)
         # The objects are deleted.
-        print(l1)
-        print(l2)
         assert len(l1) == 0
-        assert len(l2) == 2
+        assert len(l2) == 3
 
 
 @unittest.skipIf(
