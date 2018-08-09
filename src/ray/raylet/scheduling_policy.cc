@@ -1,5 +1,7 @@
 #include "scheduling_policy.h"
 
+#include <chrono>
+
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -7,7 +9,8 @@ namespace ray {
 namespace raylet {
 
 SchedulingPolicy::SchedulingPolicy(const SchedulingQueue &scheduling_queue)
-    : scheduling_queue_(scheduling_queue), gen_(rd_()) {}
+    : scheduling_queue_(scheduling_queue),
+      gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {}
 
 std::unordered_map<TaskID, ClientID> SchedulingPolicy::Schedule(
     const std::unordered_map<ClientID, SchedulingResources> &cluster_resources,
