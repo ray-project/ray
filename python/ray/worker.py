@@ -206,14 +206,13 @@ class Worker(object):
         return self.mode == LOCAL_MODE
 
     def put_object(self, object_id, value):
-        return self.object_store_client.put_object(object_id, value)
+        return self.object_store_client.put(object_id, value)
 
     def get_object(self, object_ids):
-        return self.object_store_client.get_object(object_ids)
+        return self.object_store_client.get(object_ids)
 
     def wait_object(self, object_ids, num_returns, timeout):
-        return self.object_store_client.wait_object(object_ids, num_returns,
-                                                    timeout)
+        return self.object_store_client.wait(object_ids, num_returns, timeout)
 
     def compute_put_id(self):
         return self.local_scheduler_client.compute_put_id(
