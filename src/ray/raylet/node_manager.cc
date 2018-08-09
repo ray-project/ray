@@ -1259,6 +1259,11 @@ void NodeManager::ForwardTaskOrResubmit(const Task &task,
   if (!ForwardTask(task, node_manager_id).ok()) {
     RAY_LOG(INFO) << "Failed to forward task " << task_id << " to node manager "
                   << node_manager_id;
+    // Mark the failed task as pending to let other raylets know that we still
+    // have the task. Once the task is successfully retried, it will be
+    // canceled. TaskDependencyManager::TaskPending() is assumed to be
+    // idempotent.
+    task_dependency_manager_.TaskPending(task);
 
     // Create a timer to resubmit the task in a little bit. TODO(rkn): Really
     // this should be a unique_ptr instead of a shared_ptr. However, it's a
