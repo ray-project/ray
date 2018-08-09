@@ -223,6 +223,13 @@ void SchedulingQueue::QueueMethodsWaitingForActorCreation(
   QueueTasks(methods_waiting_for_actor_creation_, tasks);
 }
 
+bool SchedulingQueue::HasTask(const TaskID &task_id) const {
+  return (methods_waiting_for_actor_creation_.HasTask(task_id) ||
+          waiting_tasks_.HasTask(task_id) || placeable_tasks_.HasTask(task_id) ||
+          ready_tasks_.HasTask(task_id) || running_tasks_.HasTask(task_id) ||
+          blocked_tasks_.HasTask(task_id));
+}
+
 void SchedulingQueue::QueueWaitingTasks(const std::vector<Task> &tasks) {
   QueueTasks(waiting_tasks_, tasks);
 }

@@ -824,6 +824,13 @@ void NodeManager::TreatTaskAsFailed(const TaskSpecification &spec) {
 
 void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineage,
                              bool forwarded) {
+  if (local_queues_.HasTask(task.GetTaskSpecification().TaskId())) {
+    RAY_LOG(WARNING) << "Submitted task " << task.GetTaskSpecification().TaskId()
+                     << " is already queued and will not be reconstructed. This is most "
+                        "likely due to spurious reconstruction.";
+    return;
+  }
+
   // Add the task and its uncommitted lineage to the lineage cache.
   lineage_cache_.AddWaitingTask(task, uncommitted_lineage);
 
