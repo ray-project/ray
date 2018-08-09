@@ -82,7 +82,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       object_manager_(object_manager),
       gcs_client_(gcs_client),
       heartbeat_timer_(io_service),
-      heartbeat_period_ms_(config.heartbeat_period_ms),
+      heartbeat_period_(std::chrono::milliseconds(config.heartbeat_period_ms)),
       local_resources_(config.resource_config),
       local_available_resources_(config.resource_config),
       worker_pool_(config.num_initial_workers, config.num_workers_per_process,
@@ -108,7 +108,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       remote_clients_(),
       remote_server_connections_(),
       actor_registry_() {
-  RAY_CHECK(heartbeat_period_ms_ > 0);
+  RAY_CHECK(heartbeat_period_.count() > 0);
   // Initialize the resource map with own cluster resource configuration.
   ClientID local_client_id = gcs_client_->client_table().GetLocalClientId();
   cluster_resource_map_.emplace(local_client_id,
@@ -205,6 +205,7 @@ ray::Status NodeManager::RegisterGcs() {
                                                           driver_table_handler, nullptr));
 
   // Start sending heartbeats to the GCS.
+  last_heartbeat_at_ms_ = current_time_ms();
   Heartbeat();
 
   return ray::Status::OK();
@@ -223,6 +224,14 @@ void NodeManager::HandleDriverTableUpdate(
 }
 
 void NodeManager::Heartbeat() {
+  uint64_t now_ms = current_time_ms();
+  uint64_t interval = now_ms - last_heartbeat_at_ms_;
+  if (interval > RayConfig::instance().num_heartbeats_warning() *
+                     RayConfig::instance().heartbeat_timeout_milliseconds()) {
+    RAY_LOG(WARNING) << "Last heartbeat was sent " << interval << " ms ago ";
+  }
+  last_heartbeat_at_ms_ = now_ms;
+
   RAY_LOG(DEBUG) << "[Heartbeat] sending heartbeat.";
   auto &heartbeat_table = gcs_client_->heartbeat_table();
   auto heartbeat_data = std::make_shared<HeartbeatTableDataT>();
@@ -255,8 +264,7 @@ void NodeManager::Heartbeat() {
   RAY_CHECK_OK(status);
 
   // Reset the timer.
-  auto heartbeat_period = boost::posix_time::milliseconds(heartbeat_period_ms_);
-  heartbeat_timer_.expires_from_now(heartbeat_period);
+  heartbeat_timer_.expires_from_now(heartbeat_period_);
   heartbeat_timer_.async_wait([this](const boost::system::error_code &error) {
     RAY_CHECK(!error);
     Heartbeat();

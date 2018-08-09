@@ -1,6 +1,8 @@
 #ifndef RAY_RAYLET_NODE_MANAGER_H
 #define RAY_RAYLET_NODE_MANAGER_H
 
+#include <boost/asio/steady_timer.hpp>
+
 // clang-format off
 #include "ray/raylet/task.h"
 #include "ray/object_manager/object_manager.h"
@@ -159,8 +161,13 @@ class NodeManager {
   plasma::PlasmaClient store_client_;
   /// A client connection to the GCS.
   std::shared_ptr<gcs::AsyncGcsClient> gcs_client_;
-  boost::asio::deadline_timer heartbeat_timer_;
-  uint64_t heartbeat_period_ms_;
+  /// The timer used to send heartbeats.
+  boost::asio::steady_timer heartbeat_timer_;
+  /// The period used for the heartbeat timer.
+  std::chrono::milliseconds heartbeat_period_;
+  /// The time that the last heartbeat was sent at. Used to make sure we are
+  /// keeping up with heartbeats.
+  uint64_t last_heartbeat_at_ms_;
   /// The resources local to this node.
   const SchedulingResources local_resources_;
   /// The resources (and specific resource IDs) that are currently available.
