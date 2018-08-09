@@ -750,6 +750,14 @@ void NodeManager::ScheduleTasks() {
       EnqueuePlaceableTask(t);
     }
   }
+
+  // All remaining placeable tasks should be registered with the task dependency
+  // manager. TaskDependencyManager::TaskPending() is assumed to be idempotent.
+  // TODO(atumanov): evaluate performance implications of registering all new tasks on
+  // submission vs. registering remaining queued placeable tasks here.
+  for (const auto &task : local_queues_.GetPlaceableTasks()) {
+    task_dependency_manager_.TaskPending(task);
+  }
 }
 
 void NodeManager::TreatTaskAsFailed(const TaskSpecification &spec) {
@@ -1115,8 +1123,7 @@ void NodeManager::ResubmitTask(const TaskID &task_id) {
 void NodeManager::HandleObjectLocal(const ObjectID &object_id) {
   // Notify the task dependency manager that this object is local.
   const auto ready_task_ids = task_dependency_manager_.HandleObjectLocal(object_id);
-  // Transition the tasks whose dependencies are now fulfilled to the ready
-  // state.
+  // Transition the tasks whose dependencies are now fulfilled to the ready state.
   if (ready_task_ids.size() > 0) {
     std::unordered_set<TaskID> ready_task_id_set(ready_task_ids.begin(),
                                                  ready_task_ids.end());
@@ -1189,10 +1196,11 @@ ray::Status NodeManager::ForwardTask(const Task &task, const ClientID &node_id) 
   const auto &spec = task.GetTaskSpecification();
   auto task_id = spec.TaskId();
 
-  // Get and serialize the task's uncommitted lineage.
-  auto uncommitted_lineage = lineage_cache_.GetUncommittedLineage(task_id);
+  // Get and serialize the task's unforwarded, uncommitted lineage.
+  auto uncommitted_lineage = lineage_cache_.GetUncommittedLineage(task_id, node_id);
   Task &lineage_cache_entry_task =
       uncommitted_lineage.GetEntryMutable(task_id)->TaskDataMutable();
+
   // Increment forward count for the forwarded task.
   lineage_cache_entry_task.GetTaskExecutionSpec().IncrementNumForwards();
 
@@ -1222,6 +1230,10 @@ ray::Status NodeManager::ForwardTask(const Task &task, const ClientID &node_id) 
     // lineage cache since the receiving node is now responsible for writing
     // the task to the GCS.
     lineage_cache_.RemoveWaitingTask(task_id);
+    // Mark as forwarded so that the task and its lineage is not re-forwarded
+    // in the future to the receiving node.
+    lineage_cache_.MarkTaskAsForwarded(task_id, node_id);
+
     // Notify the task dependency manager that we are no longer responsible
     // for executing this task.
     task_dependency_manager_.TaskCanceled(task_id);

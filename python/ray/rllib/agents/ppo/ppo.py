@@ -83,8 +83,10 @@ class PPOAgent(Agent):
             })
         if self.config["simple_optimizer"]:
             self.optimizer = SyncSamplesOptimizer(
-                self.local_evaluator, self.remote_evaluators,
-                {"num_sgd_iter": self.config["num_sgd_iter"]})
+                self.local_evaluator, self.remote_evaluators, {
+                    "num_sgd_iter": self.config["num_sgd_iter"],
+                    "timesteps_per_batch": self.config["timesteps_per_batch"]
+                })
         else:
             self.optimizer = LocalMultiGPUOptimizer(
                 self.local_evaluator, self.remote_evaluators, {
@@ -110,9 +112,9 @@ class PPOAgent(Agent):
         FilterManager.synchronize(self.local_evaluator.filters,
                                   self.remote_evaluators)
         res = self.optimizer.collect_metrics()
-        res = res._replace(
+        res.update(
             timesteps_this_iter=self.optimizer.num_steps_sampled - prev_steps,
-            info=dict(fetches, **res.info))
+            info=dict(fetches, **res.get("info", {})))
         return res
 
     def _stop(self):

@@ -14,9 +14,9 @@ import time
 import uuid
 
 import ray
-from ray.tune import TuneError
 from ray.tune.logger import UnifiedLogger
-from ray.tune.result import DEFAULT_RESULTS_DIR
+from ray.tune.result import (DEFAULT_RESULTS_DIR, TIME_THIS_ITER_S,
+                             TIMESTEPS_THIS_ITER, DONE, TIMESTEPS_TOTAL)
 from ray.tune.trial import Resources
 
 
@@ -102,11 +102,31 @@ class Trainable(object):
         """Runs one logical iteration of training.
 
         Subclasses should override ``_train()`` instead to return results.
-        This method auto-fills many fields, so only ``timesteps_this_iter``
-        is required to be present.
+
+        This class automatically fills the following fields in the result:
+            done (bool): training is terminated. Filled only if not provided.
+            time_this_iter_s (float): Time in seconds
+                this iteration took to run. This may be overriden in order to
+                override the system-computed time difference.
+            time_total_s (float): Accumulated time in seconds
+                for this entire experiment.
+            experiment_id (str): Unique string identifier
+                for this experiment. This id is preserved
+                across checkpoint / restore calls.
+            training_iteration (int): The index of this
+                training iteration, e.g. call to train().
+            pid (str): The pid of the training process.
+            date (str): A formatted date of
+                when the result was processed.
+            timestamp (str): A UNIX timestamp of
+                when the result was processed.
+            hostname (str): The hostname of the machine
+                hosting the training process.
+            node_ip (str): The node ip of the machine
+                hosting the training process.
 
         Returns:
-            A TrainingResult that describes training progress.
+            A dict that describes training progress.
         """
 
         if not self._initialize_ok:
@@ -115,35 +135,33 @@ class Trainable(object):
 
         start = time.time()
         result = self._train()
+        result = result.copy()
+
         self._iteration += 1
-        if result.time_this_iter_s is not None:
-            time_this_iter = result.time_this_iter_s
+
+        if result.get(TIME_THIS_ITER_S) is not None:
+            time_this_iter = result[TIME_THIS_ITER_S]
         else:
             time_this_iter = time.time() - start
-
-        if result.timesteps_this_iter is None:
-            raise TuneError("Must specify timesteps_this_iter in result",
-                            result)
-
         self._time_total += time_this_iter
-        self._timesteps_total += result.timesteps_this_iter
 
-        # Include the negative loss to use as a stopping condition
-        if result.mean_loss is not None:
-            neg_loss = -result.mean_loss
-        else:
-            neg_loss = result.neg_mean_loss
+        self._timesteps_total += result.get(TIMESTEPS_THIS_ITER, 0)
+
+        result.setdefault(DONE, False)
+        result.setdefault(TIMESTEPS_TOTAL, self._timesteps_total)
+
+        # Provides auto-filled neg_mean_loss for avoiding regressions
+        if result.get("mean_loss"):
+            result.setdefault("neg_mean_loss", -result["mean_loss"])
 
         now = datetime.today()
-        result = result._replace(
+        result.update(
             experiment_id=self._experiment_id,
             date=now.strftime("%Y-%m-%d_%H-%M-%S"),
             timestamp=int(time.mktime(now.timetuple())),
             training_iteration=self._iteration,
-            timesteps_total=self._timesteps_total,
             time_this_iter_s=time_this_iter,
             time_total_s=self._time_total,
-            neg_mean_loss=neg_loss,
             pid=os.getpid(),
             hostname=os.uname()[1],
             node_ip=self._local_ip,
@@ -247,7 +265,10 @@ class Trainable(object):
             self._stop()
 
     def _train(self):
-        """Subclasses should override this to implement train()."""
+        """Subclasses should override this to implement train().
+
+        Returns:
+            A dict that describes training progress."""
 
         raise NotImplementedError
 

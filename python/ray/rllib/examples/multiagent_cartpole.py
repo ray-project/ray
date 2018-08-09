@@ -17,10 +17,10 @@ import gym
 import random
 
 import ray
-from ray.rllib.agents.pg.pg import PGAgent
+from ray import tune
 from ray.rllib.agents.pg.pg_policy_graph import PGPolicyGraph
 from ray.rllib.test.test_multi_agent_env import MultiCartpole
-from ray.tune.logger import pretty_print
+from ray.tune import run_experiments
 from ray.tune.registry import register_env
 
 parser = argparse.ArgumentParser()
@@ -53,16 +53,19 @@ if __name__ == "__main__":
     }
     policy_ids = list(policy_graphs.keys())
 
-    agent = PGAgent(
-        env="multi_cartpole",
-        config={
-            "multiagent": {
-                "policy_graphs": policy_graphs,
-                "policy_mapping_fn": (
-                    lambda agent_id: random.choice(policy_ids)),
+    run_experiments({
+        "test": {
+            "run": "PG",
+            "env": "multi_cartpole",
+            "stop": {
+                "training_iteration": args.num_iters
             },
-        })
-
-    for i in range(args.num_iters):
-        print("== Iteration", i, "==")
-        print(pretty_print(agent.train()))
+            "config": {
+                "multiagent": {
+                    "policy_graphs": policy_graphs,
+                    "policy_mapping_fn": tune.function(
+                        lambda agent_id: random.choice(policy_ids)),
+                },
+            },
+        }
+    })

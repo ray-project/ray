@@ -203,13 +203,14 @@ class DQNAgent(Agent):
             result = collect_metrics(self.local_evaluator,
                                      self.remote_evaluators)
 
-        return result._replace(
+        result.update(
             timesteps_this_iter=self.global_timestep - start_timestep,
             info=dict({
                 "min_exploration": min(exp_vals),
                 "max_exploration": max(exp_vals),
                 "num_target_updates": self.num_target_updates,
             }, **self.optimizer.stats()))
+        return result
 
     def _stop(self):
         # workaround for https://github.com/ray-project/ray/issues/1516

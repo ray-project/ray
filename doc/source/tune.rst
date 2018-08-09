@@ -55,7 +55,7 @@ For the function you wish to tune, add a two-line modification (note that we use
             accuracy = eval_accuracy(...)
             reporter(timesteps_total=idx, mean_accuracy=accuracy) # report metrics
 
-This PyTorch script runs a small grid search over the ``train_func`` function using Ray Tune, reporting status on the command line until the stopping condition of ``mean_accuracy >= 99`` is reached (for metrics like `loss` that decrease over time, specify `neg_mean_loss <https://github.com/ray-project/ray/blob/master/python/ray/tune/result.py#L40>`__ as a condition instead):
+This PyTorch script runs a small grid search over the ``train_func`` function using Ray Tune, reporting status on the command line until the stopping condition of ``mean_accuracy >= 99`` is reached:
 
 ::
 
@@ -70,7 +70,7 @@ This PyTorch script runs a small grid search over the ``train_func`` function us
      - train_func_4_lr=0.4,momentum=2:  RUNNING [pid=6800], 209 s, 41204 ts, 70.1 acc
      - train_func_5_lr=0.6,momentum=2:  TERMINATED [pid=6809], 10 s, 2164 ts, 100 acc
 
-In order to report incremental progress, ``train_func`` periodically calls the ``reporter`` function passed in by Ray Tune to return the current timestep and other metrics as defined in `ray.tune.result.TrainingResult <https://github.com/ray-project/ray/blob/master/python/ray/tune/result.py>`__. Incremental results will be synced to local disk on the head node of the cluster.
+In order to report incremental progress, ``train_func`` periodically calls the ``reporter`` function passed in by Ray Tune to return the current timestep and other metrics. Incremental results will be synced to local disk on the head node of the cluster.
 
 `tune.run_experiments <tune.html#ray.tune.run_experiments>`__ returns a list of Trial objects which you can inspect results of via ``trial.last_result``.
 
@@ -82,7 +82,9 @@ Features
 
 Ray Tune has the following features:
 
--  Scalable implementations of search algorithms such as `Population Based Training (PBT) <pbt.html>`__, `Median Stopping Rule <hyperband.html#median-stopping-rule>`__, Model-Based Optimization (HyperOpt), and `HyperBand <hyperband.html>`__.
+-  Scalable implementations of search execution techniques such as `Population Based Training (PBT) <pbt.html>`__, `Median Stopping Rule <hyperband.html#median-stopping-rule>`__, and `HyperBand <hyperband.html>`__.
+
+-  The ability to combine search execution and search algorithms, such as Model-Based Optimization (HyperOpt) with HyperBand.
 
 -  Integration with visualization tools such as `TensorBoard <https://www.tensorflow.org/get_started/summaries_and_tensorboard>`__, `rllab's VisKit <https://media.readthedocs.org/pdf/rllab/latest/rllab.pdf>`__, and a `parallel coordinates visualization <https://en.wikipedia.org/wiki/Parallel_coordinates>`__.
 
@@ -94,7 +96,7 @@ Ray Tune has the following features:
 Concepts
 --------
 
-.. image:: tune-api.svg
+.. image:: images/tune-api.svg
 
 Ray Tune schedules a number of *trials* in a cluster. Each trial runs a user-defined Python function or class and is parameterized by a *config* variation passed to the user code.
 
@@ -115,11 +117,42 @@ Trial Schedulers
 ----------------
 
 By default, Ray Tune schedules trials in serial order with the ``FIFOScheduler`` class. However, you can also specify a custom scheduling algorithm that can early stop trials, perturb parameters, or incorporate suggestions from an external service. Currently implemented trial schedulers include
-`Population Based Training (PBT) <pbt.html>`__, `Median Stopping Rule <hyperband.html#median-stopping-rule>`__, `Model Based Optimization (HyperOpt) <#hyperopt-integration>`__, and `HyperBand <hyperband.html>`__.
+`Population Based Training (PBT) <pbt.html>`__, `Median Stopping Rule <hyperband.html#median-stopping-rule>`__, and `HyperBand <hyperband.html>`__.
 
 .. code-block:: python
 
     run_experiments({...}, scheduler=AsyncHyperBandScheduler())
+
+Search Algorithms
+-----------------
+
+Tune allows you to use different search algorithms in combination with different scheduling algorithms. Currently, Tune offers the following search algorithms:
+
+  - Grid search / Random Search
+  - Tree-structured Parzen Estimators (HyperOpt)
+
+If you are interested in implementing or contributing a new Search Algorithm, the API is straightforward:
+
+.. autoclass:: ray.tune.suggest.SearchAlgorithm
+
+
+HyperOpt Integration
+~~~~~~~~~~~~~~~~~~~~
+The ``HyperOptSearch`` is a SearchAlgorithm that is backed by HyperOpt to perform sequential model-based hyperparameter optimization.
+In order to use this search algorithm, you will need to install HyperOpt via the following command:
+
+.. code-block:: bash
+
+    $ pip install --upgrade git+git://github.com/hyperopt/hyperopt.git
+
+An example of this can be found in `hyperopt_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperopt_example.py>`__.
+
+.. note::
+
+    The HyperOptScheduler takes an *increasing* metric in the reward attribute. If trying to minimize a loss, be sure to
+    specify *mean_loss* in the function/class reporting and *reward_attr=neg_mean_loss* in the HyperOptScheduler initializer.
+
+.. autoclass:: ray.tune.suggest.HyperOptSearch
 
 
 Handling Large Datasets
@@ -148,24 +181,6 @@ You often will want to compute a large object (e.g., training data, model weight
     run_experiments(...)
 
 
-HyperOpt Integration
---------------------
-
-The ``HyperOptScheduler`` is a Trial Scheduler that is backed by HyperOpt to perform sequential model-based hyperparameter optimization.
-In order to use this scheduler, you will need to install HyperOpt via the following command:
-
-.. code-block:: bash
-
-    $ pip install --upgrade git+git://github.com/hyperopt/hyperopt.git
-
-An example of this can be found in `hyperopt_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperopt_example.py>`__.
-
-.. note::
-
-    The HyperOptScheduler takes an *increasing* metric in the reward attribute. If trying to
-    minimize a loss, be sure to specify *mean_loss* in the function/class reporting and *reward_attr=neg_mean_loss* in the HyperOptScheduler initializer.
-
-.. autoclass:: ray.tune.hpo_scheduler.HyperOptScheduler
 
 
 Visualizing Results
