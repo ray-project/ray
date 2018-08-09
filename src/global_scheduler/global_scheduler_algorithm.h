@@ -27,11 +27,15 @@ class GlobalSchedulerPolicyState {
  public:
   GlobalSchedulerPolicyState(int64_t round_robin_index)
       : round_robin_index_(round_robin_index),
-        gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {}
+        gen_(std::chrono::high_resolution_clock::now()
+                 .time_since_epoch()
+                 .count()) {}
 
   GlobalSchedulerPolicyState()
       : round_robin_index_(0),
-        gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {}
+        gen_(std::chrono::high_resolution_clock::now()
+                 .time_since_epoch()
+                 .count()) {}
 
   /// Return the policy's random number generator.
   ///
