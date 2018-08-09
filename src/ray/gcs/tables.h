@@ -176,15 +176,6 @@ class Log : virtual public PubsubInterface<ID> {
   Status CancelNotifications(const JobID &job_id, const ID &id,
                              const ClientID &client_id);
 
-  void AddShards(std::vector<std::shared_ptr<RedisContext>> &contexts) {
-    if (shard_contexts_.size() > 0) {
-      return;  // Only add shards if at the first time.
-    }
-    for (std::shared_ptr<RedisContext> context : contexts) {
-      shard_contexts_.push_back(context);
-    }
-  }
-
  protected:
   std::shared_ptr<RedisContext> GetRedisContext(const ID &id) {
     static std::hash<ray::UniqueID> index;
