@@ -11,7 +11,37 @@ from models.models import JobRecord, TrialRecord, ResultRecord
 def index(request):
     """View for the home page."""
     recent_jobs = JobRecord.objects.order_by('-start_time')[0:100]
-    context = {'recent_jobs': recent_jobs}
+    job_records = []
+    for recent_job in recent_jobs:
+        trials = TrialRecord.objects.filter(job_id=recent_job.job_id)
+        total_num = len(trials)
+        running_num = len(
+            filter(lambda t: t.trial_status == "RUNNING", trials))
+        success_num = len(
+            filter(lambda t: t.trial_status == "TERMINATED", trials))
+        failed_num = len(
+            filter(lambda t: t.trial_status == "FAILED", trials))
+
+        if total_num == 0:
+            progress = 0
+        else:
+            progress = int(float(success_num) / total_num * 100)
+
+        job_records.append({
+            "job_id": recent_job.job_id,
+            "job_name": recent_job.name,
+            "user": recent_job.user,
+            "type": recent_job.type,
+            "start_time": recent_job.start_time,
+            "end_time": recent_job.end_time,
+            "total_num": total_num,
+            "running_num": running_num,
+            "success_num": success_num,
+            "failed_num": failed_num,
+            "best_trial_id": recent_job.best_trial_id,
+            "progress": progress
+        })
+    context = {'recent_jobs': job_records}
     return render(request, 'index.html', context)
 
 

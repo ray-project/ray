@@ -95,15 +95,15 @@
             {% for job in recent_jobs %}
             <tr>
                 <td><a href="job?job_id={{ job.job_id }}">{{ job.job_id }}</a></td>
-                <td>{{ job.name }}</td>
+                <td>{{ job.job_name }}</td>
                 <td>{{ job.user }}</td>
                 <td>{{ job.type }}</td>
                 <td>{{ job.start_time }}</td>
                 <td>{{ job.end_time }}</td>
-                <td>{{ job.success_trials }} / {{ job.running_trials }} / {{ job.failed_trials }} / {{ job.total_trials }}</td>
+                <td>{{ job.success_num }} / {{ job.running_num }} / {{ job.failed_num }} / {{ job.total_num }}</td>
                 <td>{{ job.best_trial_id }}</td>
                 <td>
-                    <p>Round {{ job.current_round }}</p>
+                    <!--p>Round {{ job.current_round }}</p-->
                     <div class="progress">
                         <div class="progress-bar job-progress" role="progressbar"
                              aria-valuenow="{{ job.finish_trials }}"

@@ -9,7 +9,7 @@ import re
 
 def run_board(args):
     """
-    Main entry for AutoMLBoard.
+    Run main entry for AutoMLBoard.
 
     Args:
         args: args parsed from command line
@@ -22,7 +22,6 @@ def run_board(args):
     service = CollectorService(
         args.logdir,
         args.reload_interval,
-        share_mode=args.share_mode,
         standalone=False,
         log_level=args.log_level)
     service.run()
@@ -63,9 +62,8 @@ def init_config(args):
         except BaseException as e:
             raise DatabaseError(e)
     else:
-        print(
-            "Using sqlite3 as the database backend, "
-            "information will be stored in automlboard.db")
+        print("Using sqlite3 as the database backend, "
+              "information will be stored in automlboard.db")
 
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "frontend.settings")
     django.setup()
@@ -75,36 +73,37 @@ def init_config(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--logdir",
-                        type=str,
-                        required=True,
-                        help="Directory where AutoML Board will "
-                             "look to find tuning logs it can display")
-    parser.add_argument("--port",
-                        type=int,
-                        default=8008,
-                        help="What port to serve AutoMLBoard on, "
-                             "(default: %(default)s)")
-    parser.add_argument("--db",
-                        type=str,
-                        default=None,
-                        help="Set SQL database URI in "
-                             "schema://user:password@host:port/database, "
-                             "(default: sqlite3)"),
-    parser.add_argument("--reload_interval",
-                        type=int,
-                        default=5,
-                        help="How often the backend should load more data, "
-                             "(default: %(default)s)")
-    parser.add_argument("--log_level",
-                        type=str,
-                        default="INFO",
-                        help="Set the logging level, "
-                             "(default: %(default)s)")
-    parser.add_argument("--share_mode",
-                        action="store_true",
-                        help="parse logdir as the shared parent directory "
-                             "of all jobs.")
+    parser.add_argument(
+        "--logdir",
+        type=str,
+        required=True,
+        help="Directory where AutoML Board will "
+             "look to find tuning logs it can display")
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=8008,
+        help="What port to serve AutoMLBoard on, "
+             "(default: %(default)s)")
+    parser.add_argument(
+        "--db",
+        type=str,
+        default=None,
+        help="Set SQL database URI in "
+             "schema://user:password@host:port/database, "
+             "(default: sqlite3)"),
+    parser.add_argument(
+        "--reload_interval",
+        type=int,
+        default=5,
+        help="How often the backend should load more data, "
+             "(default: %(default)s)")
+    parser.add_argument(
+        "--log_level",
+        type=str,
+        default="INFO",
+        help="Set the logging level, "
+             "(default: %(default)s)")
     cmd_args = parser.parse_args()
 
     run_board(cmd_args)

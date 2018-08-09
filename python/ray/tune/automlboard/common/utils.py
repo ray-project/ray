@@ -10,7 +10,7 @@ import time
 
 def dump_json(json_info, json_file, overwrite=True):
     """
-    Dumps a whole json record into the given file.
+    Dump a whole json record into the given file.
 
     Overwrite the file if the overwrite flag set.
 
@@ -45,7 +45,6 @@ def parse_json(json_file):
         a dict of json info
 
     """
-
     if not os.path.exists(json_file):
         return None
 
@@ -77,7 +76,6 @@ def parse_multiple_json(json_file, offset=None):
         new offset after parsing
 
     """
-
     json_info_list = []
     if not os.path.exists(json_file):
         return json_info_list
@@ -101,5 +99,4 @@ def parse_multiple_json(json_file, offset=None):
 
 def timestamp2date(timestamp):
     """Convert a timestamp to date."""
-
     return time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(timestamp))

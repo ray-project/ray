@@ -14,17 +14,11 @@ class JobRecord(models.Model):
     type = models.CharField(max_length=20)
     start_time = models.CharField(max_length=50)
     end_time = models.CharField(max_length=50)
-    success_trials = models.BigIntegerField()
-    failed_trials = models.BigIntegerField()
-    running_trials = models.BigIntegerField()
-    total_trials = models.BigIntegerField()
     best_trial_id = models.CharField(max_length=50)
-    progress = models.BigIntegerField()
 
     @classmethod
     def from_json(cls, json_info):
         """Build a Job instance from a json string."""
-
         if json_info is None:
             return None
         return JobRecord(
@@ -32,16 +26,10 @@ class JobRecord(models.Model):
             name=json_info["job_name"],
             user=json_info["user"],
             type=json_info["type"],
-            start_time=json_info["start_time"],
-            success_trials=json_info["success_trials"],
-            failed_trials=json_info["failed_trials"],
-            running_trials=json_info["running_trials"],
-            total_trials=json_info["total_trials"],
-            progress=json_info["progress"])
+            start_time=json_info["start_time"])
 
     def is_finished(self):
         """Judge whether this is a record for a finished job."""
-
         return self.end_time is not None
 
 
@@ -58,7 +46,6 @@ class TrialRecord(models.Model):
     @classmethod
     def from_json(cls, json_info):
         """Build a Trial instance from a json string."""
-
         if json_info is None:
             return None
         return TrialRecord(
@@ -98,7 +85,6 @@ class ResultRecord(models.Model):
     @classmethod
     def from_json(cls, json_info):
         """Build a Result instance from a json string."""
-
         if json_info is None:
             return None
         return ResultRecord(

@@ -9,7 +9,8 @@
  */
 
 /**
- * TinySort is a small script that sorts HTML elements. It sorts by text- or attribute value, or by that of one of it's children.
+ * TinySort is a small script that sorts HTML elements. It sorts by text- or
+ * attribute value, or by that of one of it's children.
  * @summary A nodeElement sorting script.
  * @version 2.3.6
  * @license MIT
@@ -91,7 +92,7 @@
                   $header.addClass('nosort').removeClass('up down');
                   $header.attr('data-sortcolumn', columnIndex);
                   $header.attr('data-sortkey', columnIndex + '-' + rowIndex);
-                 });
+                });
           });
 
           // Cleanup placeholder cells
@@ -143,24 +144,25 @@
                   $cell.attr('data-value', $cell.text());
             }
           });
-            var context = lookupSortContext($this),
-                bsSort = context.bsSort;
+          var context = lookupSortContext($this), bsSort = context.bsSort;
 
-            $this.find('> thead th[data-defaultsort!="disabled"]')
-                .each(function (index) {
-                  var $header = $(this);
-                  var $sortTable = $header.closest('table.sortable');
-                  $header.data('sortTable', $sortTable);
-                  var sortKey = $header.attr('data-sortkey');
-                  var thisLastSort = applyLast ? context.lastSort : -1;
-                  bsSort[sortKey] = applyLast ? bsSort[sortKey] : $header.attr('data-defaultsort');
-                  if (bsSort[sortKey] !== undefined && (applyLast === (sortKey === thisLastSort))) {
-                      bsSort[sortKey] = bsSort[sortKey] === 'asc' ? 'desc' : 'asc';
-                      doSort($header, $sortTable);
-                  }
-                });
-          });
-    }
+          $this.find('> thead th[data-defaultsort!="disabled"]')
+            .each(function (index) {
+              var $header = $(this);
+              var $sortTable = $header.closest('table.sortable');
+              $header.data('sortTable', $sortTable);
+              var sortKey = $header.attr('data-sortkey');
+              var thisLastSort = applyLast ? context.lastSort : -1;
+              bsSort[sortKey] = applyLast ? bsSort[sortKey] :
+                                            $header.attr('data-defaultsort');
+              if (bsSort[sortKey] !== undefined &&
+                  (applyLast === (sortKey === thisLastSort))) {
+                bsSort[sortKey] = bsSort[sortKey] === 'asc' ? 'desc' : 'asc';
+                doSort($header, $sortTable);
+              }
+            });
+        });
+  }
 
   // Add click event to table header
   $document.on(
@@ -226,7 +228,7 @@
     var localSignClass = $this.attr('data-defaultsign') || signClass;
 
     // update arrow icon
-    $table.find('> thead th').each(function () {
+    $table.find('> thead th').each(function() {
       $(this).removeClass('up').removeClass('down').addClass('nosort');
     });
 
