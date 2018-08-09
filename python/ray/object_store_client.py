@@ -33,6 +33,7 @@ class ObjectStoreClient(object):
         # A dictionary that maps from driver id to SerializationContext
         # TODO: clean up the SerializationContext once the job finished.
         self.serialization_context_map = {}
+        self.plasma_client = None
 
     def connect(self, store_socket_name, manager_socket_name, release_delay):
         """Create a connection to plasma client.
@@ -57,7 +58,7 @@ class ObjectStoreClient(object):
                 plasma.connect(store_socket_name, "", release_delay))
 
     def disconnect(self):
-        if hasattr(self, 'plasma_client'):
+        if self.plasma_client is not None:
             self.plasma_client.disconnect()
         self.serialization_context_map.clear()
 
@@ -265,7 +266,7 @@ class ObjectStoreClient(object):
                                                type(example_object)))
                         logger.warning(warning_message)
 
-    def put_object(self, object_id, value):
+    def put(self, object_id, value):
         """Put value in the local object store with object id objectid.
 
         This assumes that the value for objectid has not yet been placed in the
@@ -353,7 +354,7 @@ class ObjectStoreClient(object):
                             driver_id=self.task_driver_id.id())
                     warning_sent = True
 
-    def get_object(self, object_ids):
+    def get(self, object_ids):
         """Get the value or values in the object store associated with the IDs.
 
         Return the values from the local object store for object_ids. This will
@@ -451,7 +452,7 @@ class ObjectStoreClient(object):
         assert len(final_results) == len(object_ids)
         return final_results
 
-    def wait_object(self, object_ids, num_returns=1, timeout=None):
+    def wait(self, object_ids, num_returns=1, timeout=None):
         # TODO(rkn): This is a temporary workaround for
         # https://github.com/ray-project/ray/issues/997. However, it should be
         # fixed in Arrow instead of here.
