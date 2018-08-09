@@ -1,15 +1,20 @@
 package org.ray.util;
 
+import org.ray.api.ResourceItem;
 import java.util.HashMap;
 import java.util.Map;
 
-/**
- * The utils of Resource.
- */
 public class ResourceUtil {
-  public static final String cpuLiteral = "CPU";
-  public static final String gpuLiteral = "GPU";
+  public static final String CPU_LITERAL = "CPU";
+  public static final String GPU_LITERAL = "GPU";
 
+  /**
+   * Convert the array that contains resource items to a map.
+   *
+   * @param resourceArray The resources list to be converted.
+   * @return The map whose key represents the resource name
+   * and the value represents the resource quantity.
+   */
   public static Map<String, Double> getResourcesMapFromArray(ResourceItem[] resourceArray) {
     Map<String, Double> resourceMap = new HashMap<>();
     if (resourceArray != null) {
@@ -23,6 +28,12 @@ public class ResourceUtil {
     return resourceMap;
   }
 
+  /**
+   * Convert the resources map to a format string.
+   *
+   * @param resources The resource map to be Converted.
+   * @return The format resources string, like "{CPU:4, GPU:0}".
+   */
   public static String getResourcesFromatStringFromMap(Map<String, Double> resources) {
     StringBuilder builder = new StringBuilder();
     builder.append("{");
@@ -38,6 +49,13 @@ public class ResourceUtil {
     return builder.toString();
   }
 
+  /**
+   * Convert resources map to a string that is used
+   * for the command line argument of starting raylet.
+   *
+   * @param resources The resources map to be converted.
+   * @return The starting-raylet command line argument, like "CPU,4,GPU,0".
+   */
   public static String getResourcesStringFromMap(Map<String, Double> resources) {
     StringBuilder builder = new StringBuilder();
     if (resources != null) {
@@ -53,6 +71,15 @@ public class ResourceUtil {
     return builder.toString();
   }
 
+  /**
+   * Parse the static resources configure field and convert to the resources map.
+   *
+   * @param resources The static resources string to be parsed.
+   * @return The map whose key represents the resource name
+   * and the value represents the resource quantity.
+   * @throws IllegalArgumentException If the resources string's format does match,
+   * it will throw an IllegalArgumentException.
+   */
   public static Map<String, Double> getResourcesMapFromString(String resources)
       throws IllegalArgumentException {
     Map<String, Double> ret = new HashMap<>();

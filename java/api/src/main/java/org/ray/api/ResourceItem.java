@@ -1,4 +1,4 @@
-package org.ray.util;
+package org.ray.api;
 
 public @interface ResourceItem {
   public String name() default "";

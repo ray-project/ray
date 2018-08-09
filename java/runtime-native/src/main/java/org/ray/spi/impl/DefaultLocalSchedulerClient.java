@@ -69,14 +69,14 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
     // We don't support resources management in non raylet mode.
     if (!useRaylet) {
       task.resources.clear();
-      task.resources.put(ResourceUtil.cpuLiteral, 0.0);
+      task.resources.put(ResourceUtil.CPU_LITERAL, 0.0);
     } else {
-      if (!task.resources.containsKey(ResourceUtil.cpuLiteral)) {
-        task.resources.put(ResourceUtil.cpuLiteral, 0.0);
+      if (!task.resources.containsKey(ResourceUtil.CPU_LITERAL)) {
+        task.resources.put(ResourceUtil.CPU_LITERAL, 0.0);
       }
 
-      if (!task.resources.containsKey(ResourceUtil.gpuLiteral)) {
-        task.resources.put(ResourceUtil.gpuLiteral, 0.0);
+      if (!task.resources.containsKey(ResourceUtil.GPU_LITERAL)) {
+        task.resources.put(ResourceUtil.GPU_LITERAL, 0.0);
       }
     }
 

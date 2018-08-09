@@ -10,7 +10,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
-
 import org.ray.api.UniqueID;
 import org.ray.core.model.RayParameters;
 import org.ray.core.model.RunMode;
@@ -352,20 +351,15 @@ public class RunManager {
       startObjectStore(0, info, params.working_directory + "/store",
           params.redis_address, params.node_ip_address, params.redirect, params.cleanup);
 
-      try {
-        Map<String, Double> staticResources =
-            ResourceUtil.getResourcesMapFromString(params.static_resources);
+      Map<String, Double> staticResources =
+          ResourceUtil.getResourcesMapFromString(params.static_resources);
 
-        //Start raylet
-        startRaylet(storeName, info, params.num_workers,
-            params.working_directory + "/raylet", params.redis_address,
-            params.node_ip_address, params.redirect, staticResources, params.cleanup);
+      //Start raylet
+      startRaylet(storeName, info, params.num_workers,
+          params.working_directory + "/raylet", params.redis_address,
+          params.node_ip_address, params.redirect, staticResources, params.cleanup);
 
-        runInfo.localStores.add(info);
-      } catch (IllegalArgumentException e) {
-        RayLog.core.error("Format of static resurces configure was invalid.");
-        e.printStackTrace();
-      }
+      runInfo.localStores.add(info);
     } else {
       for (int i = 0; i < params.num_local_schedulers; i++) {
         // Start object stores
