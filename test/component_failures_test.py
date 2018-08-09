@@ -200,9 +200,8 @@ class ComponentFailureTest(unittest.TestCase):
                       str(component.pid) + "to terminate")
                 assert not component.poll() is None
 
-    @unittest.skipIf(
-        not os.environ.get('RAY_USE_XRAY', False),
-        "Only tests Raylet failure.")
+    @unittest.skipIf(not os.environ.get('RAY_USE_XRAY', False),
+                     "Only tests Raylet failure.")
     def testRayletFailed(self):
         # Kill all local schedulers on worker nodes.
         self._testComponentFailed(ray.services.PROCESS_TYPE_RAYLET)
@@ -261,8 +260,7 @@ class ComponentFailureTest(unittest.TestCase):
                                     False)
         self.check_components_alive(ray.services.PROCESS_TYPE_LOCAL_SCHEDULER,
                                     False)
-        self.check_components_alive(ray.services.PROCESS_TYPE_RAYLET,
-                                    False)
+        self.check_components_alive(ray.services.PROCESS_TYPE_RAYLET, False)
 
     @unittest.skipIf(
         os.environ.get('RAY_USE_NEW_GCS', False),
@@ -273,9 +271,8 @@ class ComponentFailureTest(unittest.TestCase):
         processes = (all_processes[ray.services.PROCESS_TYPE_PLASMA_STORE] +
                      all_processes[ray.services.PROCESS_TYPE_PLASMA_MANAGER] +
                      all_processes[ray.services.PROCESS_TYPE_LOCAL_SCHEDULER] +
-                     all_processes[
-                         ray.services.PROCESS_TYPE_GLOBAL_SCHEDULER] +
-                     all_processes[ray.services.PROCESS_TYPE_RAYLET])
+                     all_processes[ray.services.PROCESS_TYPE_GLOBAL_SCHEDULER]
+                     + all_processes[ray.services.PROCESS_TYPE_RAYLET])
 
         # Kill all the components sequentially.
         for process in processes:
@@ -295,9 +292,8 @@ class ComponentFailureTest(unittest.TestCase):
         processes = (all_processes[ray.services.PROCESS_TYPE_PLASMA_STORE] +
                      all_processes[ray.services.PROCESS_TYPE_PLASMA_MANAGER] +
                      all_processes[ray.services.PROCESS_TYPE_LOCAL_SCHEDULER] +
-                     all_processes[
-                         ray.services.PROCESS_TYPE_GLOBAL_SCHEDULER] +
-                     all_processes[ray.services.PROCESS_TYPE_RAYLET])
+                     all_processes[ray.services.PROCESS_TYPE_GLOBAL_SCHEDULER]
+                     + all_processes[ray.services.PROCESS_TYPE_RAYLET])
 
         # Kill all the components in parallel.
         for process in processes:
