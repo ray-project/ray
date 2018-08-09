@@ -43,8 +43,7 @@ class ServerConnection {
   ///
   /// \param buffer The buffer.
   /// \param ec The error code object in which to store error codes.
-  void WriteBuffer(const std::vector<boost::asio::const_buffer> &buffer,
-                   boost::system::error_code &ec);
+  Status WriteBuffer(const std::vector<boost::asio::const_buffer> &buffer);
 
   /// Read a buffer from this connection.
   ///

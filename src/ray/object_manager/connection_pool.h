@@ -65,9 +65,9 @@ class ConnectionPool {
   /// \param[in] type The type of connection.
   /// \param[in] client_id The ClientID of the remote object manager.
   /// \param[out] conn An empty pointer to a shared pointer.
-  /// \return Status of invoking this method.
-  ray::Status GetSender(ConnectionType type, const ClientID &client_id,
-                        std::shared_ptr<SenderConnection> *conn);
+  /// \return Void.
+  void GetSender(ConnectionType type, const ClientID &client_id,
+                 std::shared_ptr<SenderConnection> *conn);
 
   /// Releases a sender connection, allowing it to be used by another operation.
   ///

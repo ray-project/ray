@@ -31,7 +31,7 @@ class ObjectDirectoryInterface {
 
   /// Callbacks for GetInformation.
   using InfoSuccessCallback = std::function<void(const ray::RemoteConnectionInfo &info)>;
-  using InfoFailureCallback = std::function<void(ray::Status status)>;
+  using InfoFailureCallback = std::function<void()>;
 
   virtual void RegisterBackend() = 0;
 
