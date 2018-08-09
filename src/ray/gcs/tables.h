@@ -242,7 +242,6 @@ class Table : private Log<ID, Data>,
 
   using Log<ID, Data>::RequestNotifications;
   using Log<ID, Data>::CancelNotifications;
-  using Log<ID, Data>::AddShards;
 
   /// Add an entry to the table. This overwrites any existing data at the key.
   ///
