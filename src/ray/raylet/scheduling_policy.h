@@ -38,8 +38,6 @@ class SchedulingPolicy {
  private:
   /// An immutable reference to the scheduling task queues.
   const SchedulingQueue &scheduling_queue_;
-  /// Internally maintained random number engine device.
-  std::random_device rd_;
   /// Internally maintained random number generator.
   std::mt19937_64 gen_;
 };
