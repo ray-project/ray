@@ -219,7 +219,9 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             redis_shard_ports=redis_shard_ports,
             object_store_memory=object_store_memory,
             num_workers=num_workers,
-            cleanup=False,
+            # If block is True, then clean up the child processes when this
+            # script terminates.
+            cleanup=block,
             redirect_worker_output=True,
             redirect_output=True,
             resources=resources,
@@ -290,7 +292,9 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             object_manager_ports=[object_manager_port],
             num_workers=num_workers,
             object_store_memory=object_store_memory,
-            cleanup=False,
+            # If block is True, then clean up the child processes when this
+            # script terminates.
+            cleanup=block,
             redirect_worker_output=True,
             redirect_output=True,
             resources=resources,
