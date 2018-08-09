@@ -1,4 +1,5 @@
 #include "ray/object_manager/object_manager.h"
+#include "ray/util/util.h"
 
 namespace asio = boost::asio;
 
@@ -332,11 +333,10 @@ ray::Status ObjectManager::SendObjectData(const ObjectID &object_id,
   buffer.push_back(asio::buffer(chunk_info.data, chunk_info.buffer_length));
   conn->WriteBuffer(buffer, ec);
 
-  ray::Status status = ray::Status::OK();
-  if (ec.value() != 0) {
+  ray::Status status = boost_to_ray_status(ec);
+  if (ec.value() != boost::system::errc::success) {
     // Push failed. Deal with partial objects on the receiving end.
     // TODO(hme): Try to invoke disconnect on sender connection, then remove it.
-    status = ray::Status::IOError(ec.message());
   }
 
   // Do this regardless of whether it failed or succeeded.
@@ -626,7 +626,7 @@ void ObjectManager::ExecuteReceiveObject(const ClientID &client_id,
     buffer.push_back(asio::buffer(chunk_info.data, chunk_info.buffer_length));
     boost::system::error_code ec;
     conn.ReadBuffer(buffer, ec);
-    if (ec.value() == 0) {
+    if (ec.value() == boost::system::errc::success) {
       buffer_pool_.SealChunk(object_id, chunk_index);
     } else {
       buffer_pool_.AbortCreateChunk(object_id, chunk_index);
@@ -643,8 +643,8 @@ void ObjectManager::ExecuteReceiveObject(const ClientID &client_id,
     buffer.push_back(asio::buffer(mutable_vec, buffer_length));
     boost::system::error_code ec;
     conn.ReadBuffer(buffer, ec);
-    if (ec.value() != 0) {
-      RAY_LOG(ERROR) << ec.message();
+    if (ec.value() != boost::system::errc::success) {
+      RAY_LOG(ERROR) << boost_to_ray_status(ec).ToString();
     }
     // TODO(hme): If the object isn't local, create a pull request for this chunk.
   }

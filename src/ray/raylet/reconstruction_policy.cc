@@ -160,12 +160,12 @@ void ReconstructionPolicy::Cancel(const ObjectID &object_id) {
   // If there are no more needed objects created by this task, stop listening
   // for notifications.
   if (it->second.created_objects.empty()) {
-    listening_tasks_.erase(it);
     // Cancel notifications for the task lease if we were subscribed to them.
     if (it->second.subscribed) {
       RAY_CHECK_OK(
           task_lease_pubsub_.CancelNotifications(JobID::nil(), task_id, client_id_));
     }
+    listening_tasks_.erase(it);
   }
 }
 
