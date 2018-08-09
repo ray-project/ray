@@ -154,11 +154,6 @@ class ComponentFailureTest(unittest.TestCase):
         def f(x):
             return x
 
-        x = 1
-        for _ in range(1000):
-            x = f.remote(x)
-        ray.get(x)
-
         @ray.remote
         def g(*xs):
             return 1
@@ -168,20 +163,26 @@ class ComponentFailureTest(unittest.TestCase):
         time.sleep(0.1)
         components = ray.services.all_processes[component_type]
         for process in components[1:]:
+            # Submit a round of tasks with many dependencies.
+            x = 1
+            for _ in range(1000):
+                x = f.remote(x)
+
             xs = [g.remote(1)]
             for _ in range(100):
                 xs.append(g.remote(*xs))
                 xs.append(g.remote(1))
 
+            # Kill a component on one of the nodes.
             process.terminate()
             time.sleep(1)
-
             process.kill()
             process.wait()
             assert not process.poll() is None
 
             # Make sure that we can still get the objects after the executing
             # tasks died.
+            ray.get(x)
             ray.get(xs)
 
     def check_components_alive(self, component_type, check_component_alive):
