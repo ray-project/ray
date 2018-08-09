@@ -41,7 +41,7 @@ The Ray Command Line API
    :show-nested:
 
 .. click:: ray.scripts.scripts:teardown
-   :prog: ray teardown
+   :prog: ray down
    :show-nested:
 
 .. click:: ray.scripts.scripts:exec_cmd

@@ -25,7 +25,7 @@ SSH into the head node, ``source activate tensorflow_p36``, and then run Ray pro
         --max-workers=N --no-restart
 
     # Teardown the cluster
-    $ ray teardown ray/python/ray/autoscaler/aws/example-full.yaml
+    $ ray down ray/python/ray/autoscaler/aws/example-full.yaml
 
 Quick start (GCP)
 -----------------
@@ -48,7 +48,7 @@ SSH into the head node and then run Ray programs with ``ray.init(redis_address="
         --max-workers=N --no-restart
 
     # Teardown the cluster
-    $ ray teardown ray/python/ray/autoscaler/gcp/example-full.yaml
+    $ ray down ray/python/ray/autoscaler/gcp/example-full.yaml
 
 Running commands on new and existing clusters
 ---------------------------------------------
