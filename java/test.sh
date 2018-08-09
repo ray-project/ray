@@ -1,4 +1,11 @@
 #!/usr/bin/env bash
+
+# Cause the script to exit if a single command fails.
+set -e
+
+# Show explicitly which commands are currently running.
+set -x
+
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 $ROOT_DIR/../build.sh -l java
 
