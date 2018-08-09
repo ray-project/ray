@@ -26,12 +26,12 @@ inline int64_t current_sys_time_ms() {
   return ms_since_epoch.count();
 }
 
-inline ray::Status boost_to_ray_status(const boost::system::error_code & error) {
+inline ray::Status boost_to_ray_status(const boost::system::error_code &error) {
   switch (error.value()) {
-    case boost::system::errc::success:
-      return ray::Status::OK();
-    default:
-      return ray::Status::IOError(strerror(error.value()));
+  case boost::system::errc::success:
+    return ray::Status::OK();
+  default:
+    return ray::Status::IOError(strerror(error.value()));
   }
 }
 
