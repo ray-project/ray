@@ -65,7 +65,7 @@ def init_config(args):
         print("Using sqlite3 as the database backend, "
               "information will be stored in automlboard.db")
 
-    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "frontend.settings")
+    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "settings")
     django.setup()
     command = ['manage.py', 'migrate', '--run-syncdb']
     execute_from_command_line(command)

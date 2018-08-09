@@ -18,16 +18,13 @@ import os
 
 # Build paths inside the project like this:
 # os.path.join(BASE_DIR, ...)
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# Quick-start development settings - unsuitable for production
-# https://docs.djangoproject.com/en/1.11/howto/deployment/checklist/
-
-# SECURITY WARNING: keep the secret key used in production secret!
+# You can specify your own secret key, here we just pick one randomly.
 SECRET_KEY = 'tktks103=$7a#5axn)52&b87!#w_qm(%*72^@hsq!nur%dtk4b'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = False
 
 ALLOWED_HOSTS = ['*']
 
@@ -104,30 +101,6 @@ else:
             "PORT": os.environ["AUTOMLBOARD_DB_PORT"]
         }
     }
-
-# offline env, for debug
-# DATABASES = {
-#     'default': {
-#         'ENGINE': 'django.db.backends.mysql',
-#         'NAME': 'automlboard',
-#         'USER': 'root',
-#         'PASSWORD': 'root',
-#         'HOST': '10.244.0.8',
-#         'PORT': '3307',
-#     }
-# }
-
-# online env
-# DATABASES = {
-#     'default': {
-#         'ENGINE': 'django.db.backends.mysql',
-#         'NAME': 'automl_monitor',
-#         'USER': 'root',
-#         'PASSWORD': 'root',
-#         'HOST': '11.184.187.19',
-#         'PORT': '3306',
-#     }
-# }
 
 # Password validation
 # https://docs.djangoproject.com/en/1.11/ref/settings/#auth-password-validators
