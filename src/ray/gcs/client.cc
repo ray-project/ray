@@ -71,11 +71,39 @@ namespace gcs {
 
 AsyncGcsClient::AsyncGcsClient(const std::string &address, int port, const ClientID &client_id, CommandType command_type) {
   primary_context_ = std::make_shared<RedisContext>();
+  // A boolean placeholder value.
+  // Used since changing the API of Connect is breaking some tests.
+  // Would be removed soon in the future.
+  const bool DUMMY_BOOL = true;
+  RAY_CHECK_OK(primary_context_->Connect(address, port, DUMMY_BOOL));
+
+  // Moving sharding into constructor defaultly means that sharding = true.
+  // This design decision may worth a look.
+  std::vector<std::string> addresses;
+  std::vector<int> ports;
+  GetRedisShards(primary_context_->sync_context(), &addresses, &ports);
+  if (addresses.size() == 0 || ports.size() == 0) {
+    addresses.push_back(address);
+    ports.push_back(port);
+  }
+
+  // First time connect: populate shard_contexts.
+  if (shard_contexts_.empty()) {
+    for (unsigned int i = 0; i < addresses.size(); ++i) {
+      // Slower than emplace but resource safe.
+      shard_contexts_.push_back(std::make_shared<RedisContext>());
+    }
+  }
+
+  // Call connect for all contexts. Safe to do many times.
+  // Here shard_contexts_.size() == addresses.size();
+  for (unsigned int i = 0; i < addresses.size(); ++i) {
+    RAY_CHECK_OK(shard_contexts_[i]->Connect(addresses[i], ports[i], DUMMY_BOOL));
+  }
+
   client_table_.reset(new ClientTable({primary_context_}, this, client_id));
   error_table_.reset(new ErrorTable({primary_context_}, this));
-
   // Tables below would be sharded.
-  // They are created but not populated for now.
   object_table_.reset(new ObjectTable(shard_contexts_, this, command_type));
   actor_table_.reset(new ActorTable(shard_contexts_, this));
   task_table_.reset(new TaskTable(shard_contexts_, this, command_type));
@@ -103,47 +131,6 @@ AsyncGcsClient::AsyncGcsClient(const std::string &address, int port, CommandType
 AsyncGcsClient::AsyncGcsClient(const std::string &address, int port) : AsyncGcsClient(address, port, ClientID::from_random()) {}
 
 Status AsyncGcsClient::Connect(const std::string &address, int port, bool sharding) {
-  // A boolean placeholder value.
-  // Used since changing the API of Connect is breaking some tests.
-  // Would be removed soon in the future.
-  const bool DUMMY_BOOL = true;
-
-  RAY_RETURN_NOT_OK(primary_context_->Connect(address, port, DUMMY_BOOL));
-  std::vector<std::string> addresses{address};
-  std::vector<int> ports{port};
-
-  // If sharding, use all available shards.
-  // Else, use the the same as primary.
-  if (sharding) {
-    GetRedisShards(primary_context_->sync_context(), &addresses, &ports);
-  }
-
-  // First time connect: populate shard_contexts.
-  if (shard_contexts_.empty()) {
-    for (unsigned int i = 0; i < addresses.size(); ++i) {
-      // Slower than emplace but resource safe.
-      shard_contexts_.push_back(std::make_shared<RedisContext>());
-    }
-  }
-
-  // Call connect for all contexts. Safe to do many times.
-  // Here shard_contexts_.size() == addresses.size();
-  for (unsigned int i = 0; i < addresses.size(); ++i) {
-    RAY_RETURN_NOT_OK(shard_contexts_[i]->Connect(addresses[i], ports[i], DUMMY_BOOL));
-  }
-
-  // Now tables need to add shards.
-  // These shards would be only added once.
-  object_table_->AddShards(shard_contexts_);
-  actor_table_->AddShards(shard_contexts_);
-  task_table_->AddShards(shard_contexts_);
-  raylet_task_table_->AddShards(shard_contexts_);
-  task_reconstruction_log_->AddShards(shard_contexts_);
-  heartbeat_table_->AddShards(shard_contexts_);
-  // Profile table shall use context?
-  profile_table_->AddShards(shard_contexts_);
-  task_lease_table_->AddShards(shard_contexts_);
-
   // TODO(swang): Call the client table's Connect() method here. To do this,
   // we need to make sure that we are attached to an event loop first. This
   // currently isn't possible because the aeEventLoop, which we use for
