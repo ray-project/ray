@@ -133,11 +133,6 @@ class ComponentFailureTest(unittest.TestCase):
     def _testComponentFailed(self, component_type):
         """Kill a component on all worker nodes and check workload succeeds."""
 
-        @ray.remote
-        def f(x, j):
-            time.sleep(0.2)
-            return x
-
         # Start with 4 workers and 4 cores.
         num_local_schedulers = 4
         num_workers_per_scheduler = 8
@@ -146,16 +141,27 @@ class ComponentFailureTest(unittest.TestCase):
             num_local_schedulers=num_local_schedulers,
             start_ray_local=True,
             num_cpus=[num_workers_per_scheduler] * num_local_schedulers,
-            redirect_output=True)
+            redirect_output=False,
+            use_raylet=True)
 
-        # Submit more tasks than there are workers so that all workers and
-        # cores are utilized.
-        object_ids = [
-            f.remote(i, 0)
-            for i in range(num_workers_per_scheduler * num_local_schedulers)
-        ]
-        object_ids += [f.remote(object_id, 1) for object_id in object_ids]
-        object_ids += [f.remote(object_id, 2) for object_id in object_ids]
+        # Submit many tasks with many dependencies.
+        @ray.remote
+        def f(x):
+            return x
+
+        x = 1
+        for _ in range(1000):
+            x = f.remote(x)
+        ray.get(x)
+
+        @ray.remote
+        def g(*xs):
+            return 1
+
+        xs = [g.remote(1)]
+        for _ in range(100):
+            xs.append(g.remote(*xs))
+            xs.append(g.remote(1))
 
         # Kill the component on all nodes except the head node as the tasks
         # execute.
@@ -172,10 +178,7 @@ class ComponentFailureTest(unittest.TestCase):
 
         # Make sure that we can still get the objects after the executing tasks
         # died.
-        results = ray.get(object_ids)
-        expected_results = 4 * list(
-            range(num_workers_per_scheduler * num_local_schedulers))
-        assert results == expected_results
+        ray.get(xs)
 
     def check_components_alive(self, component_type, check_component_alive):
         """Check that a given component type is alive on all worker nodes.
@@ -191,6 +194,15 @@ class ComponentFailureTest(unittest.TestCase):
                 print("done waiting for " + component_type + " with PID " +
                       str(component.pid) + "to terminate")
                 assert not component.poll() is None
+
+    def testRayletFailed(self):
+        # Kill all local schedulers on worker nodes.
+        self._testComponentFailed(ray.services.PROCESS_TYPE_RAYLET)
+
+        # The plasma stores and plasma managers should still be alive on the
+        # worker nodes.
+        self.check_components_alive(ray.services.PROCESS_TYPE_PLASMA_STORE,
+                                    True)
 
     @unittest.skipIf(
         os.environ.get('RAY_USE_NEW_GCS', False), "Hanging with new GCS API.")
