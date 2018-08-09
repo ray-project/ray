@@ -266,6 +266,10 @@ class ObjectManager : public ObjectManagerInterface {
   /// Register object remove with directory.
   void NotifyDirectoryObjectDeleted(const ObjectID &object_id);
 
+  /// Handle any push requests that were made before an object was available.
+  /// This is invoked when an "object added" notification is received from the store.
+  void HandleUnfulfilledPushRequests(const ObjectInfoT &object_info);
+
   /// Part of an asynchronous sequence of Pull methods.
   /// Uses an existing connection or creates a connection to ClientID.
   /// Executes on main_service_ thread.

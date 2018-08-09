@@ -144,6 +144,10 @@ class NodeManager {
   /// accounting, but does not write to any global accounting in the GCS.
   void HandleObjectMissing(const ObjectID &object_id);
 
+  /// Handles updates to driver table.
+  void HandleDriverTableUpdate(const ClientID &id,
+                               const std::vector<DriverTableDataT> &driver_data);
+
   boost::asio::io_service &io_service_;
   ObjectManager &object_manager_;
   /// A Plasma object store client. This is used exclusively for creating new
