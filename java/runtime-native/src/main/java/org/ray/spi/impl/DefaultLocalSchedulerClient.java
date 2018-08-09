@@ -5,13 +5,14 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import org.ray.api.UniqueID;
 import org.ray.core.RayRuntime;
 import org.ray.spi.LocalSchedulerLink;
 import org.ray.spi.model.FunctionArg;
 import org.ray.spi.model.TaskSpec;
+import org.ray.util.ResourceUtil;
 import org.ray.util.logger.RayLog;
-import java.util.Map;
 
 /**
  * JNI-based local scheduler link provider.
@@ -68,16 +69,14 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
     // We don't support resources management in non raylet mode.
     if (!useRaylet) {
       task.resources.clear();
-      task.resources.put("CPU", 0.0);
+      task.resources.put(ResourceUtil.cpuLiteral, 0.0);
     } else {
-      final String cpuLiteral = "CPU";
-      if (!task.resources.containsKey(cpuLiteral)) {
-        task.resources.put(cpuLiteral, 0.0);
+      if (!task.resources.containsKey(ResourceUtil.cpuLiteral)) {
+        task.resources.put(ResourceUtil.cpuLiteral, 0.0);
       }
 
-      final String gpuLiteral = "GPU";
-      if (!task.resources.containsKey(gpuLiteral)) {
-        task.resources.put(gpuLiteral, 0.0);
+      if (!task.resources.containsKey(ResourceUtil.gpuLiteral)) {
+        task.resources.put(ResourceUtil.gpuLiteral, 0.0);
       }
     }
 

@@ -7,7 +7,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import org.ray.api.ResourceItem;
 import org.ray.api.RayList;
 import org.ray.api.RayMap;
 import org.ray.api.RayObject;
@@ -19,6 +18,7 @@ import org.ray.core.UniqueIdHelper;
 import org.ray.core.WorkerContext;
 import org.ray.spi.model.RayInvocation;
 import org.ray.spi.model.TaskSpec;
+import org.ray.util.ResourceUtil;
 import org.ray.util.logger.RayLog;
 
 /**
@@ -110,7 +110,8 @@ public class LocalSchedulerProxy {
     task.taskId = taskId;
     task.returnIds = returnIds;
     task.cursorId = invocation.getActor() != null ? invocation.getActor().getTaskCursor() : null;
-    task.resources = getResourcesMap(invocation.getRemoteAnnotation().resources());
+    task.resources = ResourceUtil
+                         .getResourcesMapFromArray(invocation.getRemoteAnnotation().resources());
 
     //WorkerContext.onSubmitTask();
     RayLog.core.info(
@@ -119,19 +120,6 @@ public class LocalSchedulerProxy {
             .toString(returnIds) + ", currentTask " + WorkerContext.currentTask().taskId
             + " cursorId = " + task.cursorId);
     scheduler.submitTask(task);
-  }
-
-  private Map<String, Double> getResourcesMap(ResourceItem[] resourceArray) {
-    Map<String, Double> resourceMap = new HashMap<>();
-    if (resourceArray != null) {
-      for (ResourceItem item : resourceArray) {
-        if (!item.name().isEmpty()) {
-          resourceMap.put(item.name(), item.value());
-        }
-      }
-    }
-
-    return resourceMap;
   }
 
   public TaskSpec getTask() {

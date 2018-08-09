@@ -3,20 +3,21 @@ package org.ray.runner;
 import java.io.File;
 import java.io.IOException;
 import java.time.LocalDateTime;
-import java.util.List;
-import java.util.Map;
-import java.util.HashMap;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+
 import org.ray.api.UniqueID;
 import org.ray.core.model.RayParameters;
 import org.ray.core.model.RunMode;
 import org.ray.runner.RunInfo.ProcessType;
 import org.ray.spi.PathConfig;
 import org.ray.spi.model.AddressInfo;
+import org.ray.util.ResourceUtil;
 import org.ray.util.StringUtil;
 import org.ray.util.config.ConfigReader;
 import org.ray.util.logger.RayLog;
@@ -351,13 +352,20 @@ public class RunManager {
       startObjectStore(0, info, params.working_directory + "/store",
           params.redis_address, params.node_ip_address, params.redirect, params.cleanup);
 
-      Map<String, Double> staticResources = getResourcesFromString(params.static_resources);
-      //Start raylet
-      startRaylet(storeName, info, params.num_workers,
-          params.working_directory + "/raylet", params.redis_address,
-          params.node_ip_address, params.redirect, staticResources, params.cleanup);
+      try {
+        Map<String, Double> staticResources =
+            ResourceUtil.getResourcesMapFromString(params.static_resources);
 
-      runInfo.localStores.add(info);
+        //Start raylet
+        startRaylet(storeName, info, params.num_workers,
+            params.working_directory + "/raylet", params.redis_address,
+            params.node_ip_address, params.redirect, staticResources, params.cleanup);
+
+        runInfo.localStores.add(info);
+      } catch (IllegalArgumentException e) {
+        RayLog.core.error("Format of static resurces configure was invalid.");
+        e.printStackTrace();
+      }
     } else {
       for (int i = 0; i < params.num_local_schedulers; i++) {
         // Start object stores
@@ -697,7 +705,7 @@ public class RunManager {
     String gcsIp = redisAddress.substring(0, sep);
     String gcsPort = redisAddress.substring(sep + 1);
 
-    String resourceArgument = resourcesToString(staticResources);
+    String resourceArgument = ResourceUtil.getResourcesStringFromMap(staticResources);
 
     String[] cmds = new String[]{filePath, rayletSocketName, storeName, ip, gcsIp,
                                  gcsPort, "" + numWorkers, workerCmd, resourceArgument};
@@ -851,49 +859,6 @@ public class RunManager {
       info.managerRpcAddr = rpcAddr;
       return info;
     }
-  }
-
-  private Map<String, Double> getResourcesFromString(String resources) {
-    Map<String, Double> ret = new HashMap<>();
-    if (resources != null) {
-      String[] items = resources.split(",");
-      for (String item : items) {
-        String trimItem = item.trim();
-        String[] resourcePair = trimItem.split(":");
-
-        if (resourcePair.length != 2) {
-          RayLog.core.error("Static resources configure format error.");
-        }
-
-        String resourceName = resourcePair[0].trim();
-        if ("cpu".equals(resourceName)) {
-          resourceName = "CPU";
-        }
-
-        if ("gpu".equals(resourceName)) {
-          resourceName = "GPU";
-        }
-
-        final Double resourceValue = Double.valueOf(resourcePair[1].trim());
-        ret.put(resourceName, resourceValue);
-      }
-    }
-    return ret;
-  }
-
-  private String resourcesToString(Map<String, Double> resources) {
-    StringBuilder builder = new StringBuilder();
-    if (resources != null) {
-      int count = 1;
-      for (Map.Entry<String, Double> entry : resources.entrySet()) {
-        builder.append(entry.getKey()).append(",").append(entry.getValue());
-        if (count != resources.size()) {
-          builder.append(",");
-        }
-        count++;
-      }
-    }
-    return builder.toString();
   }
 
   public void startWorker(String storeName, String storeManagerName,

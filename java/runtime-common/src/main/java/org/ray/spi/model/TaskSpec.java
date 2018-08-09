@@ -1,9 +1,10 @@
 package org.ray.spi.model;
 
 import java.util.Arrays;
-import org.ray.api.UniqueID;
 import java.util.Map;
-import java.util.Iterator;
+import org.ray.api.UniqueID;
+import org.ray.util.ResourceUtil;
+
 /**
  * Represents necessary information of a task for scheduling and executing.
  */
@@ -60,7 +61,8 @@ public class TaskSpec {
     builder.append("\treturnIds: ").append(Arrays.toString(returnIds)).append("\n");
     builder.append("\tactorHandleId: ").append(actorHandleId).append("\n");
     builder.append("\tcreateActorId: ").append(createActorId).append("\n");
-    builder.append("\tresources: ").append(getResourcesString()).append("\n");
+    builder.append("\tresources: ")
+        .append(ResourceUtil.getResourcesFromatStringFromMap(resources)).append("\n");
     builder.append("\tcursorId: ").append(cursorId).append("\n");
     builder.append("\targs:\n");
     for (FunctionArg arg : args) {
@@ -68,21 +70,6 @@ public class TaskSpec {
       arg.toString(builder);
       builder.append("\n");
     }
-    return builder.toString();
-  }
-
-  private String getResourcesString() {
-    StringBuilder builder = new StringBuilder();
-    builder.append("{");
-    int count = 1;
-    for (Map.Entry<String, Double> entry : resources.entrySet()) {
-      builder.append(entry.getKey()).append(":").append(entry.getValue());
-      count++;
-      if (count != resources.size()) {
-        builder.append(", ");
-      }
-    }
-    builder.append("}");
     return builder.toString();
   }
 
