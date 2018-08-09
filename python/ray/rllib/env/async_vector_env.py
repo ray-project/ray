@@ -274,7 +274,7 @@ class _MultiAgentEnvToAsync(AsyncVectorEnv):
 
     def try_reset(self, env_id):
         obs = self.env_states[env_id].reset()
-        if obs is not None:
+        if obs is not None and env_id in self.dones:
             self.dones.remove(env_id)
         return obs
 

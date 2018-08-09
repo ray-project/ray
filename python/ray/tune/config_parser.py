@@ -4,10 +4,12 @@ from __future__ import print_function
 
 import argparse
 import json
+import os
 
 from ray.tune import TuneError
 from ray.tune.result import DEFAULT_RESULTS_DIR
-from ray.tune.trial import Resources
+from ray.tune.trial import Resources, Trial
+from ray.tune.logger import _SafeFallbackEncoder
 
 
 def json_to_resources(data):
@@ -40,10 +42,6 @@ def resources_to_json(resources):
     }
 
 
-def _tune_error(msg):
-    raise TuneError(msg)
-
-
 def make_parser(parser_creator=None, **kwargs):
     """Returns a base argument parser for the ray.tune tool.
 
@@ -72,9 +70,9 @@ def make_parser(parser_creator=None, **kwargs):
         default="{}",
         type=json.loads,
         help="The stopping criteria, specified in JSON. The keys may be any "
-        "field in TrainingResult, e.g. "
-        "'{\"time_total_s\": 600, \"timesteps_total\": 100000}' to stop "
-        "after 600 seconds or 100k timesteps, whichever is reached first.")
+        "field returned by 'train()' e.g. "
+        "'{\"time_total_s\": 600, \"training_iteration\": 100000}' to stop "
+        "after 600 seconds or 100k iterations, whichever is reached first.")
     parser.add_argument(
         "--config",
         default="{}",
@@ -137,3 +135,62 @@ def make_parser(parser_creator=None, **kwargs):
         help="If specified, restore from this checkpoint.")
 
     return parser
+
+
+def to_argv(config):
+    """Converts configuration to a command line argument format."""
+    argv = []
+    for k, v in config.items():
+        if "-" in k:
+            raise ValueError("Use '_' instead of '-' in `{}`".format(k))
+        argv.append("--{}".format(k.replace("_", "-")))
+        if isinstance(v, str):
+            argv.append(v)
+        else:
+            argv.append(json.dumps(v, cls=_SafeFallbackEncoder))
+    return argv
+
+
+def create_trial_from_spec(spec, output_path, parser, **trial_kwargs):
+    """Creates a Trial object from parsing the spec.
+
+    Arguments:
+        spec (dict): A resolved experiment specification. Arguments should
+            The args here should correspond to the command line flags
+            in ray.tune.config_parser.
+        output_path (str); A specific output path within the local_dir.
+            Typically the name of the experiment.
+        parser (ArgumentParser): An argument parser object from
+            make_parser.
+        trial_kwargs: Extra keyword arguments used in instantiating the Trial.
+
+    Returns:
+        A trial object with corresponding parameters to the specification.
+    """
+    try:
+        # Special case the `env` param for RLlib by automatically
+        # moving it into the `config` section.
+        if "env" in spec:
+            spec["config"] = spec.get("config", {})
+            spec["config"]["env"] = spec["env"]
+            del spec["env"]
+        args = parser.parse_args(to_argv(spec))
+    except SystemExit:
+        raise TuneError("Error parsing args, see above message", spec)
+    if "trial_resources" in spec:
+        trial_kwargs["resources"] = json_to_resources(spec["trial_resources"])
+    return Trial(
+        # Submitting trial via server in py2.7 creates Unicode, which does not
+        # convert to string in a straightforward manner.
+        trainable_name=spec["run"],
+        # json.load leads to str -> unicode in py2.7
+        config=spec.get("config", {}),
+        local_dir=os.path.join(args.local_dir, output_path),
+        # json.load leads to str -> unicode in py2.7
+        stopping_criterion=spec.get("stop", {}),
+        checkpoint_freq=args.checkpoint_freq,
+        # str(None) doesn't create None
+        restore_path=spec.get("restore"),
+        upload_dir=args.upload_dir,
+        max_failures=args.max_failures,
+        **trial_kwargs)

@@ -34,8 +34,8 @@ dictionary.
             "trial_resources": { "cpu": 1, "gpu": 0 },
             "stop": { "mean_accuracy": 100 },
             "config": {
-                "alpha": grid_search([0.2, 0.4, 0.6]),
-                "beta": grid_search([1, 2]),
+                "alpha": tune.grid_search([0.2, 0.4, 0.6]),
+                "beta": tune.grid_search([1, 2]),
             },
             "upload_dir": "s3://your_bucket/path",
             "local_dir": "~/ray_results",
@@ -49,7 +49,7 @@ An example of this can be found in `async_hyperband_example.py <https://github.c
 Trial Variant Generation
 ------------------------
 
-In the above example, we specified a grid search over two parameters using the ``grid_search`` helper function. Ray Tune also supports sampling parameters from user-specified lambda functions, which can be used in combination with grid search.
+In the above example, we specified a grid search over two parameters using the ``tune.grid_search`` helper function. Ray Tune also supports sampling parameters from user-specified lambda functions, which can be used in combination with grid search.
 
 The following shows grid search over two nested parameters combined with random sampling from two lambda functions. Note that the value of ``beta`` depends on the value of ``alpha``, which is represented by referencing ``spec.config.alpha`` in the lambda function. This lets you specify conditional parameter distributions.
 
@@ -59,15 +59,19 @@ The following shows grid search over two nested parameters combined with random 
         "alpha": lambda spec: np.random.uniform(100),
         "beta": lambda spec: spec.config.alpha * np.random.normal(),
         "nn_layers": [
-            grid_search([16, 64, 256]),
-            grid_search([16, 64, 256]),
+            tune.grid_search([16, 64, 256]),
+            tune.grid_search([16, 64, 256]),
         ],
     },
     "repeat": 10,
 
 By default, each random variable and grid search point is sampled once. To take multiple random samples or repeat grid search runs, add ``repeat: N`` to the experiment config. E.g. in the above, ``"repeat": 10`` repeats the 3x3 grid search 10 times, for a total of 90 trials, each with randomly sampled values of ``alpha`` and ``beta``.
 
-For more information on variant generation, see `variant_generator.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/variant_generator.py>`__.
+.. note::
+
+    Lambda functions will be evaluated during trial variant generation. If you need to pass a literal function in your config, use ``tune.function(...)`` to escape it.
+
+For more information on variant generation, see `basic_variant.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/suggest/basic_variant.py>`__.
 
 Resource Allocation
 -------------------

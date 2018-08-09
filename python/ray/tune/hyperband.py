@@ -52,11 +52,11 @@ class HyperBandScheduler(FIFOScheduler):
     See also: https://people.eecs.berkeley.edu/~kjamieson/hyperband.html
 
     Args:
-        time_attr (str): The TrainingResult attr to use for comparing time.
+        time_attr (str): The training result attr to use for comparing time.
             Note that you can pass in something non-temporal such as
             `training_iteration` as a measure of progress, the only requirement
             is that the attribute should increase monotonically.
-        reward_attr (str): The TrainingResult objective value attribute. As
+        reward_attr (str): The training result objective value attribute. As
             with `time_attr`, this may refer to any objective value. Stopping
             procedures will use this attribute.
         max_t (int): max time units per trial. Trials will be stopped after
@@ -323,8 +323,7 @@ class Bracket():
         self._r = int(min(self._r, self._max_t_attr - self._cumul_r))
         self._cumul_r += self._r
         sorted_trials = sorted(
-            self._live_trials,
-            key=lambda t: getattr(self._live_trials[t], reward_attr))
+            self._live_trials, key=lambda t: self._live_trials[t][reward_attr])
 
         good, bad = sorted_trials[-self._n:], sorted_trials[:-self._n]
         return good, bad
@@ -376,7 +375,7 @@ class Bracket():
     def _get_result_time(self, result):
         if result is None:
             return 0
-        return getattr(result, self._time_attr)
+        return result[self._time_attr]
 
     def _calculate_total_work(self, n, r, s):
         work = 0

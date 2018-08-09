@@ -12,7 +12,7 @@ import random
 import numpy as np
 
 import ray
-from ray.tune import Trainable, TrainingResult, register_trainable, \
+from ray.tune import Trainable, register_trainable, \
     run_experiments, Experiment
 from ray.tune.hyperband import HyperBandScheduler
 
@@ -33,8 +33,8 @@ class MyTrainableClass(Trainable):
         v *= self.config["height"]
 
         # Here we use `episode_reward_mean`, but you can also report other
-        # objectives such as loss or accuracy (see tune/result.py).
-        return TrainingResult(episode_reward_mean=v, timesteps_this_iter=1)
+        # objectives such as loss or accuracy.
+        return {"episode_reward_mean": v}
 
     def _save(self, checkpoint_dir):
         path = os.path.join(checkpoint_dir, "checkpoint")
@@ -57,9 +57,10 @@ if __name__ == "__main__":
     ray.init()
 
     # Hyperband early stopping, configured with `episode_reward_mean` as the
-    # objective and `timesteps_total` as the time unit.
+    # objective and `training_iteration` as the time unit,
+    # which is automatically filled by Tune.
     hyperband = HyperBandScheduler(
-        time_attr="timesteps_total",
+        time_attr="training_iteration",
         reward_attr="episode_reward_mean",
         max_t=100)
 

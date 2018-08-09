@@ -265,6 +265,21 @@ class TestMultiAgentEnv(unittest.TestCase):
         self.assertEqual(batch.policy_batches["p0"]["t"].tolist(),
                          list(range(25)) * 6)
 
+    def testMultiAgentSampleWithHorizon(self):
+        act_space = gym.spaces.Discrete(2)
+        obs_space = gym.spaces.Discrete(2)
+        ev = PolicyEvaluator(
+            env_creator=lambda _: BasicMultiAgent(5),
+            policy_graph={
+                "p0": (MockPolicyGraph, obs_space, act_space, {}),
+                "p1": (MockPolicyGraph, obs_space, act_space, {}),
+            },
+            policy_mapping_fn=lambda agent_id: "p{}".format(agent_id % 2),
+            episode_horizon=10,  # test with episode horizon set
+            batch_steps=50)
+        batch = ev.sample()
+        self.assertEqual(batch.count, 50)
+
     def testMultiAgentSampleRoundRobin(self):
         act_space = gym.spaces.Discrete(2)
         obs_space = gym.spaces.Discrete(2)
@@ -298,8 +313,8 @@ class TestMultiAgentEnv(unittest.TestCase):
         for i in range(100):
             result = pg.train()
             print("Iteration {}, reward {}, timesteps {}".format(
-                i, result.episode_reward_mean, result.timesteps_total))
-            if result.episode_reward_mean >= 50 * n:
+                i, result["episode_reward_mean"], result["timesteps_total"]))
+            if result["episode_reward_mean"] >= 50 * n:
                 return
         raise Exception("failed to improve reward")
 
@@ -334,7 +349,7 @@ class TestMultiAgentEnv(unittest.TestCase):
         for i in range(10):
             result = pg.train()
             print("Iteration {}, reward {}, timesteps {}".format(
-                i, result.episode_reward_mean, result.timesteps_total))
+                i, result["episode_reward_mean"], result["timesteps_total"]))
         self.assertTrue(
             pg.compute_action([0, 0, 0, 0], policy_id="policy_1") in [0, 1])
         self.assertTrue(
@@ -392,9 +407,10 @@ class TestMultiAgentEnv(unittest.TestCase):
                 ev.foreach_policy(
                     lambda p, _: p.update_target()
                     if isinstance(p, DQNPolicyGraph) else None)
-                print("Iter {}, rew {}".format(i, result.policy_reward_mean))
-                print("Total reward", result.episode_reward_mean)
-            if result.episode_reward_mean >= 25 * n:
+                print("Iter {}, rew {}".format(i,
+                                               result["policy_reward_mean"]))
+                print("Total reward", result["episode_reward_mean"])
+            if result["episode_reward_mean"] >= 25 * n:
                 return
         print(result)
         raise Exception("failed to improve reward")
@@ -427,9 +443,10 @@ class TestMultiAgentEnv(unittest.TestCase):
         for i in range(100):
             optimizer.step()
             result = collect_metrics(ev)
-            print("Iteration {}, rew {}".format(i, result.policy_reward_mean))
-            print("Total reward", result.episode_reward_mean)
-            if result.episode_reward_mean >= 25 * n:
+            print("Iteration {}, rew {}".format(i,
+                                                result["policy_reward_mean"]))
+            print("Total reward", result["episode_reward_mean"])
+            if result["episode_reward_mean"] >= 25 * n:
                 return
         raise Exception("failed to improve reward")
 
