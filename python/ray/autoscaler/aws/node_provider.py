@@ -166,7 +166,7 @@ class AWSNodeProvider(NodeProvider):
 
             self.tag_cache_update_event.set()
 
-    def create_node(self, node_config, tags, count):
+    def create_nodes(self, node_config, tags, count):
         tags = to_aws_format(tags)
         conf = node_config.copy()
         tag_pairs = [{

@@ -87,7 +87,7 @@ class MockProvider(NodeProvider):
     def external_ip(self, node_id):
         return self.mock_nodes[node_id].external_ip
 
-    def create_node(self, node_config, tags, count):
+    def create_nodes(self, node_config, tags, count):
         self.ready_to_create.wait()
         if self.fail_creates:
             return
@@ -281,7 +281,7 @@ class AutoscalingTest(unittest.TestCase):
         config["max_workers"] = 5
         config_path = self.write_config(config)
         self.provider = MockProvider()
-        self.provider.create_node({}, {TAG_RAY_NODE_TYPE: "worker"}, 10)
+        self.provider.create_nodes({}, {TAG_RAY_NODE_TYPE: "worker"}, 10)
         autoscaler = StandardAutoscaler(
             config_path, LoadMetrics(), max_failures=0, update_interval_s=0)
         self.waitForNodes(10)

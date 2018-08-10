@@ -33,8 +33,9 @@ def raise_for_errors(results):
 def wait_for_compute_zone_operations(compute, project_name, operations, zone):
     """Poll for a set of compute zone operations until finished."""
     logger.info("wait_for_compute_zone_operation: "
-                "Waiting for {} operations to finish...".format(
-                    len(operations)))
+                "Waiting for {} {} to finish...".format(
+                    len(operations),
+                    "operations" if len(operations) > 1 else "operation"))
 
     for _ in range(MAX_POLLS):
         results = [
@@ -188,7 +189,7 @@ class GCPNodeProvider(NodeProvider):
 
             return ip
 
-    def create_node(self, base_config, tags, count):
+    def create_nodes(self, base_config, tags, count):
         with self.lock:
             labels = tags  # gcp uses "labels" instead of aws "tags"
             project_id = self.provider_config["project_id"]

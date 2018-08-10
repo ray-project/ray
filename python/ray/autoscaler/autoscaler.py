@@ -262,11 +262,11 @@ class NodeLauncher(threading.Thread):
         self.provider = provider
         super(NodeLauncher, self).__init__(*args, **kwargs)
 
-    def _launch_node(self, config, count):
+    def _launch_nodes(self, config, count):
         tag_filters = {TAG_RAY_NODE_TYPE: "worker"}
         before = self.provider.non_terminated_nodes(tag_filters=tag_filters)
         launch_hash = hash_launch_conf(config["worker_nodes"], config["auth"])
-        self.provider.create_node(
+        self.provider.create_nodes(
             config["worker_nodes"], {
                 TAG_RAY_NODE_NAME: "ray-{}-worker".format(
                     config["cluster_name"]),
@@ -283,7 +283,7 @@ class NodeLauncher(threading.Thread):
         while True:
             config, count = self.queue.get()
             try:
-                self._launch_node(config, count)
+                self._launch_nodes(config, count)
             finally:
                 self.pending.dec(count)
 
@@ -452,7 +452,7 @@ class StandardAutoscaler(object):
             max_allowed = min(self.max_launch_batch,
                               self.max_concurrent_launches - num_pending)
             num_launches = min(max_allowed, target_workers - num_workers)
-            self.launch_new_node(num_launches)
+            self.launch_new_nodes(num_launches)
             nodes = self.workers()
             self.log_info_string(nodes)
         elif self.load_metrics.num_workers_connected() >= target_workers:
@@ -622,7 +622,7 @@ class StandardAutoscaler(object):
             return False
         return True
 
-    def launch_new_node(self, count):
+    def launch_new_nodes(self, count):
         logger.info("StandardAutoscaler: "
                     "Launching {} new nodes".format(count))
         self.num_launches_pending.inc(count)

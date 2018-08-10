@@ -124,7 +124,7 @@ class NodeProvider(object):
     operate on nodes within that namespace.
 
     Nodes may be in one of three states: {pending, running, terminated}. Nodes
-    appear immediately once started by `create_node`, and transition
+    appear immediately once started by `create_nodes`, and transition
     immediately to terminated when `terminate_node` is called.
     """
 
@@ -166,7 +166,7 @@ class NodeProvider(object):
         """Returns the internal ip (Ray ip) of the given node."""
         raise NotImplementedError
 
-    def create_node(self, node_config, tags, count):
+    def create_nodes(self, node_config, tags, count):
         """Creates a number of nodes within the namespace."""
         raise NotImplementedError
 

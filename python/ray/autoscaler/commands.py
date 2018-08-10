@@ -190,7 +190,7 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
             head_node_tags[TAG_RAY_LAUNCH_CONFIG] = launch_hash
             head_node_tags[TAG_RAY_NODE_NAME] = "ray-{}-head".format(
                 config["cluster_name"])
-            provider.create_node(config["head_node"], head_node_tags, 1)
+            provider.create_nodes(config["head_node"], head_node_tags, 1)
 
         nodes = provider.non_terminated_nodes(head_node_tags)
         assert len(nodes) == 1, "Failed to create head node."
