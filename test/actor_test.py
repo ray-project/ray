@@ -1286,16 +1286,17 @@ class ActorExceptionFailures(unittest.TestCase):
             ray.services.PROCESS_TYPE_PLASMA_STORE][1]
         process.kill()
 
-        # Submit a new actor task.
-        x_id = actor.inc.remote()
+        # Submit some new actor tasks.
+        x_ids = [actor.inc.remote() for _ in range(100)]
 
         # Make sure that getting the result raises an exception.
-        for _ in range(1000):
-            with pytest.raises(ray.worker.RayGetError):
-                # There is some small chance that ray.get will actually
-                # succeed (if the object is transferred before the raylet
-                # dies).
-                ray.get(x_id)
+        for _ in range(100):
+            for x_id in x_ids:
+                with pytest.raises(ray.worker.RayGetError):
+                    # There is some small chance that ray.get will actually
+                    # succeed (if the object is transferred before the raylet
+                    # dies).
+                    ray.get(x_id)
 
         # Make sure the process has exited.
         process.wait()
