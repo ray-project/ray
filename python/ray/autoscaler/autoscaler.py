@@ -189,7 +189,8 @@ class LoadMetrics(object):
             nodes_used += max_frac
         idle_times = [now - t for t in self.last_used_time_by_ip.values()]
         heartbeat_times = [
-            now - t for t in self.last_heartbeat_time_by_ip.values()]
+            now - t for t in self.last_heartbeat_time_by_ip.values()
+        ]
         return {
             "ResourceUsage": ", ".join([
                 "{}/{} {}".format(
