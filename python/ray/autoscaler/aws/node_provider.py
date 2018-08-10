@@ -215,11 +215,7 @@ class AWSNodeProvider(NodeProvider):
         self.ec2.create_instances(**conf)
 
     def terminate_node(self, node_id):
-        node = self._get_cached_node(node_id)
-        node.terminate()
-
-        self.tag_cache.pop(node_id, None)
-        self.tag_cache_pending.pop(node_id, None)
+        self.terminate_nodes([node_id])
 
     def terminate_nodes(self, node_ids):
         self.ec2.meta.client.terminate_instances(InstanceIds=node_ids)
