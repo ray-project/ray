@@ -251,23 +251,59 @@ class GCPNodeProvider(NodeProvider):
     def terminate_node(self, node_id):
         return self.terminate_nodes([node_id])[0]
 
-    def _get_node(self, node_id):
-        self.non_terminated_nodes({})  # Side effect: updates cache
-
+    def _get_nodes(self, node_ids):
         with self.lock:
-            if node_id in self.cached_nodes:
-                return self.cached_nodes[node_id]
+            self.non_terminated_nodes({})  # Side effect: updates cache
 
-            instance = self.compute.instances().get(
+            expected_nodes = set(node_ids)
+            found_nodes = set(self.cached_nodes.keys())
+            missing_nodes = expected_nodes - found_nodes
+
+            if not missing_nodes:
+                return [self.cached_nodes[node_id] for node_id in node_ids]
+
+            # Note: "name" is a unique id for the instance
+            instance_name_filter_expr = "(" + " OR ".join([
+                "(name = {name})".format(name=name)
+                for name in missing_nodes
+            ]) + ")"
+
+            response = self.compute.instances().list(
                 project=self.provider_config["project_id"],
                 zone=self.provider_config["availability_zone"],
-                instance=node_id,
+                filter=instance_name_filter_expr,
             ).execute()
 
-            return instance
+            fetched_nodes = response.get("items", [])
+            missing_nodes -= set(node["name"] for node in fetched_nodes)
+            assert not missing_nodes, missing_nodes
+
+            self.cached_nodes.update({
+                node["name"]: node for node in fetched_nodes
+            })
+
+            result = [self.cached_nodes[node_id] for node_id in node_ids]
+
+            return result
+
+    def _get_node(self, node_id):
+        return self._get_nodes([node_id])[0]
+
+    def _get_cached_nodes(self, node_ids):
+        nodes_by_id = {
+            node_id: self.cached_nodes.get(node_id, None)
+            for node_id in node_ids
+        }
+
+        non_cached_node_ids = [k for k, v in nodes_by_id.items() if v is None]
+
+        if non_cached_node_ids:
+            # Note: this fetches the nodes and saves them to self.cached_nodes
+            self._get_nodes(non_cached_node_ids)
+
+        result = [self.cached_nodes[node_id] for node_id in node_ids]
+
+        return result
 
     def _get_cached_node(self, node_id):
-        if node_id in self.cached_nodes:
-            return self.cached_nodes[node_id]
-
-        return self._get_node(node_id)
+        return self._get_cached_nodes([node_id])[0]
