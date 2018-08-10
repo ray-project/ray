@@ -412,8 +412,9 @@ TEST_F(LineageCacheTest, TestEviction) {
   // uncommitted lineage.
   ASSERT_EQ(uncommitted_lineage.GetEntries().size(), lineage_size);
 
-  // Simulate executing the rest of the tasks on a remote node and adding them
-  // to the GCS.
+  // Simulate executing all the rest of the tasks except the last one on a
+  // remote node and adding them to the GCS.
+  tasks.pop_back();
   for (; it != tasks.end(); it++) {
     RAY_CHECK_OK(mock_gcs_.RemoteAdd(it->GetTaskSpecification().TaskId(), task_data));
     // Check that the remote task is flushed.
@@ -425,7 +426,9 @@ TEST_F(LineageCacheTest, TestEviction) {
   // evicted that the uncommitted lineage is now less than the maximum size.
   uncommitted_lineage =
       lineage_cache_.GetUncommittedLineage(last_task_id, ClientID::nil());
-  ASSERT_TRUE(uncommitted_lineage.GetEntries().size() <= max_lineage_size_);
+  ASSERT_TRUE(uncommitted_lineage.GetEntries().size() < max_lineage_size_);
+  // The remaining task should have no uncommitted lineage.
+  ASSERT_EQ(uncommitted_lineage.GetEntries().size(), 1);
 }
 
 TEST_F(LineageCacheTest, TestOutOfOrderEviction) {
@@ -452,8 +455,10 @@ TEST_F(LineageCacheTest, TestOutOfOrderEviction) {
       lineage_cache_.GetUncommittedLineage(last_task_id, ClientID::nil());
   ASSERT_EQ(uncommitted_lineage.GetEntries().size(), lineage_size);
 
-  // Simulate executing the tasks at the remote node and receiving the
-  // notifications from the GCS in reverse order of execution.
+  // Simulate executing all the rest of the tasks except the last one at the
+  // remote node. Simulate receiving the notifications from the GCS in reverse
+  // order of execution.
+  tasks.pop_back();
   auto task_data = std::make_shared<protocol::TaskT>();
   auto it = tasks.rbegin();
   RAY_CHECK_OK(mock_gcs_.RemoteAdd(it->GetTaskSpecification().TaskId(), task_data));
@@ -479,7 +484,7 @@ TEST_F(LineageCacheTest, TestOutOfOrderEviction) {
   // evicted that the uncommitted lineage is now less than the maximum size.
   uncommitted_lineage =
       lineage_cache_.GetUncommittedLineage(last_task_id, ClientID::nil());
-  ASSERT_TRUE(uncommitted_lineage.GetEntries().size() <= max_lineage_size_);
+  ASSERT_TRUE(uncommitted_lineage.GetEntries().size() < max_lineage_size_);
 }
 
 TEST_F(LineageCacheTest, TestEvictionUncommittedChildren) {

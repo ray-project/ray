@@ -321,9 +321,16 @@ Lineage LineageCache::GetUncommittedLineage(const TaskID &task_id,
       task_id, lineage_, uncommitted_lineage, [&](const LineageEntry &entry) {
         // The stopping condition for recursion is that the entry has
         // been committed to the GCS or has already been forwarded.
-        // The lineage always includes the requested task id.
-        return entry.WasExplicitlyForwarded(node_id) && !(entry.GetEntryId() == task_id);
+        return entry.WasExplicitlyForwarded(node_id);
       });
+  // The lineage always includes the requested task id, so add the task if it
+  // wasn't already added. The requested task may not have been added if it was
+  // already explicitly forwarded to this node before.
+  if (uncommitted_lineage.GetEntries().empty()) {
+    auto entry = lineage_.GetEntry(task_id);
+    RAY_CHECK(entry);
+    RAY_CHECK(uncommitted_lineage.SetEntry(entry->TaskData(), entry->GetStatus()));
+  }
   return uncommitted_lineage;
 }
 
