@@ -117,7 +117,7 @@ void ObjectManager::HandleObjectAdded(const ObjectInfoT &object_info) {
 
   // The object is local, so we no longer need to Pull it from a remote
   // manager. Cancel any outstanding Pull requests for this object.
-  Cancel(object_id);
+  CancelPull(object_id);
 }
 
 void ObjectManager::NotifyDirectoryObjectDeleted(const ObjectID &object_id) {
@@ -148,6 +148,10 @@ ray::Status ObjectManager::Pull(const ObjectID &object_id) {
   }
 
   pull_requests_.emplace(object_id, PullRequest());
+  // Subscribe to object notifications. A notification will be received every
+  // time the set of client IDs for the object changes. Notifications will also
+  // be received if the list of locations is empty. The set of client IDs has
+  // no ordering guarantee between notifications.
   return object_directory_->SubscribeObjectLocations(
       object_directory_pull_callback_id_, object_id,
       [this](const std::vector<ClientID> &client_ids, const ObjectID &object_id) {
@@ -156,10 +160,6 @@ ray::Status ObjectManager::Pull(const ObjectID &object_id) {
         if (it == pull_requests_.end()) {
           return;
         }
-        // The timer was set if there were more clients to try. We record this
-        // now so that we can decide whether we should reset the timer when
-        // trying the new client locations.
-        bool timer_was_set = !it->second.client_locations.empty();
         // Reset the list of clients that are now expected to have the object.
         // NOTE(swang): Since we are overwriting the previous list of clients,
         // we may end up sending a duplicate request to the same client as
@@ -167,17 +167,18 @@ ray::Status ObjectManager::Pull(const ObjectID &object_id) {
         it->second.client_locations = client_ids;
         if (it->second.client_locations.empty()) {
           // The object locations are now empty, so we should wait for the next
-          // notification about a new object location.
-          if (timer_was_set) {
-            // Cancel the timer if we were waiting to try the next client.
-            RAY_CHECK(it->second.retry_timer != nullptr);
+          // notification about a new object location.  Cancel the timer until
+          // the next Pull attempt since there are no more clients to try.
+          if (it->second.retry_timer != nullptr) {
             it->second.retry_timer->cancel();
+            it->second.timer_set = false;
           }
         } else {
           // New object locations were found.
-          if (!timer_was_set) {
-            // If we're not already trying any clients, then start trying
-            // clients. If we fail to receive an object within the pull
+          if (!it->second.timer_set) {
+            // The timer was not set, which means that we weren't trying any
+            // clients. We now have some clients to try, so begin trying to
+            // Pull from one.  If we fail to receive an object within the pull
             // timeout, then this will try the rest of the clients in the list
             // in succession.
             TryPull(object_id);
@@ -235,9 +236,13 @@ void ObjectManager::TryPull(const ObjectID &object_id) {
             RAY_CHECK(error == boost::asio::error::operation_aborted);
           }
         });
+    // Record that we set the timer until the next attempt.
+    it->second.timer_set = true;
   } else {
-    // Go back to waiting for more notifications. Once we receive a new object
-    // location from the object directory, then the Pull will be retried.
+    // The timer is not reset since there are no more clients to try. Go back
+    // to waiting for more notifications. Once we receive a new object location
+    // from the object directory, then the Pull will be retried.
+    it->second.timer_set = false;
   }
 };
 
@@ -432,7 +437,7 @@ ray::Status ObjectManager::SendObjectData(const ObjectID &object_id,
   return status;
 }
 
-void ObjectManager::Cancel(const ObjectID &object_id) {
+void ObjectManager::CancelPull(const ObjectID &object_id) {
   auto it = pull_requests_.find(object_id);
   if (it == pull_requests_.end()) {
     return;

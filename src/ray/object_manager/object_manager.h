@@ -50,7 +50,7 @@ struct ObjectManagerConfig {
 class ObjectManagerInterface {
  public:
   virtual ray::Status Pull(const ObjectID &object_id) = 0;
-  virtual void Cancel(const ObjectID &object_id) = 0;
+  virtual void CancelPull(const ObjectID &object_id) = 0;
   virtual ~ObjectManagerInterface(){};
 };
 
@@ -143,7 +143,7 @@ class ObjectManager : public ObjectManagerInterface {
   ///
   /// \param object_id The ObjectID.
   /// \return Void.
-  void Cancel(const ObjectID &object_id);
+  void CancelPull(const ObjectID &object_id);
 
   /// Callback definition for wait.
   using WaitCallback = std::function<void(const std::vector<ray::ObjectID> &found,
@@ -167,8 +167,9 @@ class ObjectManager : public ObjectManagerInterface {
   friend class TestObjectManager;
 
   struct PullRequest {
-    PullRequest() : retry_timer(nullptr), client_locations() {}
+    PullRequest() : retry_timer(nullptr), timer_set(false), client_locations() {}
     std::unique_ptr<boost::asio::deadline_timer> retry_timer;
+    bool timer_set;
     std::vector<ClientID> client_locations;
   };
 
