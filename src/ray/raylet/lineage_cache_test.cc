@@ -284,7 +284,6 @@ TEST_F(LineageCacheTest, TestWritebackPartiallyReady) {
     returns.push_back(task2.GetTaskSpecification().ReturnId(i));
   }
   auto dependent_task = ExampleTask(returns, 1);
-  auto dependencies = dependent_task.GetDependencies();
 
   // Insert all tasks as waiting for execution.
   ASSERT_TRUE(lineage_cache_.AddWaitingTask(task1, Lineage()));
