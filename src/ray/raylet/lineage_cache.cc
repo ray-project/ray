@@ -43,7 +43,6 @@ const std::unordered_set<TaskID> &LineageEntry::GetParentTaskIds() const {
 
 void LineageEntry::ComputeParentTaskIds() {
   parent_task_ids_.clear();
-  std::unordered_set<TaskID> parent_ids;
   // A task's parents are the tasks that created its arguments.
   for (const auto &dependency : task_.GetDependencies()) {
     parent_task_ids_.insert(ComputeTaskId(dependency));
