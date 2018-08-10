@@ -176,14 +176,16 @@ class AWSNodeProvider(NodeProvider):
 
         non_cached_node_ids = [k for k, v in nodes_by_id.items() if v is None]
 
-        non_cached_nodes = list(self.ec2.instances.filter(
-            non_cached_node_ids))
+        if non_cached_node_ids:
+            non_cached_nodes = list(self.ec2.instances.filter(
+                InstanceIds=non_cached_node_ids))
 
-        assert len(non_cached_nodes) == len(non_cached_node_ids), (
-            "Could not find one of the instances: {}"
-            "".format(non_cached_node_ids))
+            assert len(non_cached_nodes) == len(non_cached_node_ids), (
+                "Could not find one of the instances: {}"
+                "".format(non_cached_node_ids))
 
-        nodes_by_id.update(dict(zip(non_cached_node_ids, non_cached_nodes)))
+            nodes_by_id.update(
+                dict(zip(non_cached_node_ids, non_cached_nodes)))
 
         result = [nodes_by_id[key] for key in node_ids]
 
