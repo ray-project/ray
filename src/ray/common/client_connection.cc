@@ -23,8 +23,9 @@ ServerConnection<T>::ServerConnection(boost::asio::basic_stream_socket<T> &&sock
     : socket_(std::move(socket)) {}
 
 template <class T>
-void ServerConnection<T>::WriteBuffer(
-    const std::vector<boost::asio::const_buffer> &buffer, boost::system::error_code &ec) {
+Status ServerConnection<T>::WriteBuffer(
+    const std::vector<boost::asio::const_buffer> &buffer) {
+  boost::system::error_code error;
   // Loop until all bytes are written while handling interrupts.
   // When profiling with pprof, unhandled interrupts were being sent by the profiler to
   // the raylet process, which was causing synchronous reads and writes to fail.
@@ -33,16 +34,17 @@ void ServerConnection<T>::WriteBuffer(
     uint64_t position = 0;
     while (bytes_remaining != 0) {
       size_t bytes_written =
-          socket_.write_some(boost::asio::buffer(b + position, bytes_remaining), ec);
+          socket_.write_some(boost::asio::buffer(b + position, bytes_remaining), error);
       position += bytes_written;
       bytes_remaining -= bytes_written;
-      if (ec.value() == EINTR) {
+      if (error.value() == EINTR) {
         continue;
-      } else if (ec.value() != boost::system::errc::errc_t::success) {
-        return;
+      } else if (error.value() != boost::system::errc::errc_t::success) {
+        return boost_to_ray_status(error);
       }
     }
   }
+  return ray::Status::OK();
 }
 
 template <class T>
@@ -78,9 +80,7 @@ ray::Status ServerConnection<T>::WriteMessage(int64_t type, int64_t length,
   message_buffers.push_back(boost::asio::buffer(message, length));
   // Write the message and then wait for more messages.
   // TODO(swang): Does this need to be an async write?
-  boost::system::error_code error;
-  WriteBuffer(message_buffers, error);
-  return boost_to_ray_status(error);
+  return WriteBuffer(message_buffers);
 }
 
 template <class T>

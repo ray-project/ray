@@ -107,7 +107,7 @@ ray::Status ObjectDirectory::GetInformation(const ClientID &client_id,
   const ClientTableDataT &data = gcs_client_->client_table().GetClient(client_id);
   ClientID result_client_id = ClientID::from_binary(data.client_id);
   if (result_client_id == ClientID::nil() || !data.is_insertion) {
-    fail_callback(ray::Status::RedisError("ClientID not found."));
+    fail_callback();
   } else {
     const auto &info = RemoteConnectionInfo(client_id, data.node_manager_address,
                                             (uint16_t)data.object_manager_port);
