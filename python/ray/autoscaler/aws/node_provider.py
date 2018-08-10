@@ -162,9 +162,11 @@ class AWSNodeProvider(NodeProvider):
         })
         self.ec2.create_instances(**conf)
 
+    def terminate_nodes(self, node_ids):
+        self.ec2.instances.filter(InstanceIds=node_ids).terminate()
+
     def terminate_node(self, node_id):
-        node = self._node(node_id)
-        node.terminate()
+        self.terminate_nodes([node_id])
 
     def _node(self, node_id):
         if node_id in self.cached_nodes:
