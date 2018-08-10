@@ -116,8 +116,8 @@ class ObjectManager : public ObjectManagerInterface {
   ///
   /// \param object_id The object's object id.
   /// \param client_id The remote node's client id.
-  /// \return Status of whether the pull request successfully initiated.
-  ray::Status Pull(const ObjectID &object_id, const ClientID &client_id);
+  /// \return Void.
+  void Pull(const ObjectID &object_id, const ClientID &client_id);
 
   /// Add a connection to a remote object manager.
   /// This is invoked by an external server.
@@ -273,8 +273,7 @@ class ObjectManager : public ObjectManagerInterface {
   /// Part of an asynchronous sequence of Pull methods.
   /// Uses an existing connection or creates a connection to ClientID.
   /// Executes on main_service_ thread.
-  ray::Status PullEstablishConnection(const ObjectID &object_id,
-                                      const ClientID &client_id);
+  void PullEstablishConnection(const ObjectID &object_id, const ClientID &client_id);
 
   /// Private callback implementation for success on get location. Called from
   /// ObjectDirectory.
