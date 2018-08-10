@@ -168,9 +168,26 @@ class AWSNodeProvider(NodeProvider):
     def terminate_node(self, node_id):
         self.terminate_nodes([node_id])
 
+    def _nodes(self, node_ids):
+        nodes_by_id = {
+            node_id: self.cached_nodes.get(node_id, None)
+            for node_id in node_ids
+        }
+
+        non_cached_node_ids = [k for k, v in nodes_by_id.items() if v is None]
+
+        non_cached_nodes = list(self.ec2.instances.filter(
+            non_cached_node_ids))
+
+        assert len(non_cached_nodes) == len(non_cached_node_ids), (
+            "Could not find one of the instances: {}"
+            "".format(non_cached_node_ids))
+
+        nodes_by_id.update(dict(zip(non_cached_node_ids, non_cached_nodes)))
+
+        result = [nodes_by_id[key] for key in node_ids]
+
+        return result
+
     def _node(self, node_id):
-        if node_id in self.cached_nodes:
-            return self.cached_nodes[node_id]
-        matches = list(self.ec2.instances.filter(InstanceIds=[node_id]))
-        assert len(matches) == 1, "Invalid instance id {}".format(node_id)
-        return matches[0]
+        return self._nodes([node_id])[0]
