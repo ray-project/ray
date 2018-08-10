@@ -161,6 +161,9 @@ ray::Status ObjectManager::Pull(const ObjectID &object_id) {
         // trying the new client locations.
         bool timer_was_set = !it->second.client_locations.empty();
         // Reset the list of clients that are now expected to have the object.
+        // NOTE(swang): Since we are overwriting the previous list of clients,
+        // we may end up sending a duplicate request to the same client as
+        // before.
         it->second.client_locations = client_ids;
         if (it->second.client_locations.empty()) {
           // The object locations are now empty, so we should wait for the next
