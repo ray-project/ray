@@ -219,7 +219,7 @@ class NodeLauncher(threading.Thread):
         tag_filters = {TAG_RAY_NODE_TYPE: "worker"}
         before = self.provider.nodes(tag_filters=tag_filters)
         launch_hash = hash_launch_conf(config["worker_nodes"], config["auth"])
-        self.provider.create_node(
+        self.provider.create_nodes(
             config["worker_nodes"], {
                 TAG_RAY_NODE_NAME: "ray-{}-worker".format(
                     config["cluster_name"]),

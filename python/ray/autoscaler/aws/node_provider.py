@@ -114,7 +114,7 @@ class AWSNodeProvider(NodeProvider):
             })
         node.create_tags(Tags=tag_pairs)
 
-    def create_node(self, node_config, tags, count):
+    def create_nodes(self, node_config, tags, count):
         tags = to_aws_format(tags)
         conf = node_config.copy()
         tag_pairs = [{

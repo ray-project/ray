@@ -164,7 +164,7 @@ class GCPNodeProvider(NodeProvider):
             self.internal_ip_cache[node_id] = ip
         return ip
 
-    def create_node(self, base_config, tags, count):
+    def create_nodes(self, base_config, tags, count):
         labels = tags  # gcp uses "labels" instead of aws "tags"
         project_id = self.provider_config["project_id"]
         availability_zone = self.provider_config["availability_zone"]
