@@ -323,7 +323,7 @@ Lineage LineageCache::GetUncommittedLineage(const TaskID &task_id,
         // The stopping condition for recursion is that the entry has
         // been committed to the GCS or has already been forwarded.
         // The lineage always includes the requested task id.
-        return entry.WasExplicitlyForwarded(node_id);
+        return entry.WasExplicitlyForwarded(node_id) && !(entry.GetEntryId() == task_id);
       });
   return uncommitted_lineage;
 }
