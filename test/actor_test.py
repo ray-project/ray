@@ -1259,9 +1259,7 @@ class ActorExceptionFailures(unittest.TestCase):
 
     def testExceptionRaisedWhenActorNodeDies(self):
         ray.worker._init(
-            start_ray_local=True,
-            num_local_schedulers=2,
-            num_cpus=1)
+            start_ray_local=True, num_local_schedulers=2, num_cpus=1)
 
         @ray.remote
         class Counter(object):
@@ -1287,7 +1285,6 @@ class ActorExceptionFailures(unittest.TestCase):
         process = ray.services.all_processes[
             ray.services.PROCESS_TYPE_PLASMA_STORE][1]
         process.kill()
-        process.wait()
 
         # Submit a new actor task.
         x_id = actor.inc.remote()
@@ -1295,7 +1292,13 @@ class ActorExceptionFailures(unittest.TestCase):
         # Make sure that getting the result raises an exception.
         for _ in range(1000):
             with pytest.raises(ray.worker.RayGetError):
+                # There is some small chance that ray.get will actually
+                # succeed (if the object is transferred before the raylet
+                # dies).
                 ray.get(x_id)
+
+        # Make sure the process has exited.
+        process.wait()
 
 
 @unittest.skipIf(
