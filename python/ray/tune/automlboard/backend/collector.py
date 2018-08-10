@@ -10,7 +10,7 @@ import time
 from threading import Thread
 
 from common.exception import CollectorError
-from common.utils import dump_json, parse_json
+from common.utils import parse_json
 from common.utils import parse_multiple_json, timestamp2date
 
 from models.models import JobRecord, TrialRecord, ResultRecord
@@ -50,8 +50,7 @@ class CollectorService(object):
         self.init_logger(log_level)
         self.standalone = standalone
         self.collector = Collector(
-            reload_interval=reload_interval,
-            logdir=log_dir)
+            reload_interval=reload_interval, logdir=log_dir)
 
     def run(self):
         """
@@ -133,12 +132,10 @@ class Collector(Thread):
         Records in DB backend will be cleared.
         """
         if not os.path.exists(self._logdir):
-            raise CollectorError(
-                "log directory %s not exists" % self._logdir)
+            raise CollectorError("log directory %s not exists" % self._logdir)
 
-        logging.info(
-            "collector started to run, taking %s "
-            "as parent directory for all job logs." % self._logdir)
+        logging.info("collector started to run, taking %s "
+                     "as parent directory for all job logs." % self._logdir)
 
         # clear old records
         JobRecord.objects.filter().delete()
@@ -148,8 +145,7 @@ class Collector(Thread):
     def _do_collect(self):
         sub_dirs = os.listdir(self._logdir)
         job_names = filter(
-            lambda d: os.path.isdir(os.path.join(self._logdir, d)),
-            sub_dirs)
+            lambda d: os.path.isdir(os.path.join(self._logdir, d)), sub_dirs)
         for job_name in job_names:
             self.sync_job_info(job_name)
 
@@ -168,17 +164,19 @@ class Collector(Thread):
         """
         job_path = os.path.join(self._logdir, job_name)
 
+        if job_name not in self._monitored_jobs:
+            self._create_job_info(job_path)
+            self._monitored_jobs.add(job_name)
+        else:
+            self._update_job_info(job_path)
+
         expr_dirs = filter(lambda d: os.path.isdir(os.path.join(job_path, d)),
                            os.listdir(job_path))
 
         for expr_dir_name in expr_dirs:
             self.sync_trial_info(job_path, expr_dir_name)
 
-        if job_name not in self._monitored_jobs:
-            self._create_job_info(job_path)
-            self._monitored_jobs.add(job_name)
-        else:
-            self._update_job_info(job_path)
+        self._update_job_info(job_path)
 
     def sync_trial_info(self, job_path, expr_dir_name):
         """
@@ -205,17 +203,14 @@ class Collector(Thread):
         """
         Create information for given job.
 
-        Including the meta file and the information in db.
+        Meta file will be loaded if exists, and the job information will
+        be saved in db backend.
 
         Args:
             job_dir(str)
 
         """
-        meta_file = os.path.join(job_dir, JOB_META_FILE)
-        meta = parse_json(meta_file)
-
-        if not meta:
-            meta = self._build_job_meta(job_dir)
+        meta = self._build_job_meta(job_dir)
 
         logging.info("create job: %s" % meta)
 
@@ -227,7 +222,8 @@ class Collector(Thread):
         """
         Update information for given job.
 
-        Including the meta file and the information in db.
+        Meta file will be loaded if exists, and the job information in
+        in db backend will be updated.
 
         Args:
             job_dir(str)
@@ -243,23 +239,20 @@ class Collector(Thread):
             logging.debug("update job info for %s" % meta["job_id"])
             JobRecord.objects \
                 .filter(job_id=meta["job_id"]) \
-                .update(end_time=meta["end_time"])
+                .update(end_time=timestamp2date(meta["end_time"]))
 
     def _create_trial_info(self, expr_dir):
         """
         Create information for given trial.
 
-        Including the meta file and the information in db.
+        Meta file will be loaded if exists, and the trial information
+        will be saved in db backend.
 
         Args:
             expr_dir(str)
 
         """
-        meta_file = os.path.join(expr_dir, EXPR_META_FILE)
-        meta = parse_json(meta_file)
-
-        if not meta:
-            meta = self._build_trial_meta(expr_dir)
+        meta = self._build_trial_meta(expr_dir)
 
         logging.debug("create trial for %s" % meta)
 
@@ -270,7 +263,8 @@ class Collector(Thread):
         """
         Update information for given trial.
 
-        Including the meta file and the information in db.
+        Meta file will be loaded if exists, and the trial information
+        in db backend will be updated.
 
         Args:
             expr_dir(str)
@@ -284,12 +278,19 @@ class Collector(Thread):
         self._add_results(results, trial_id)
         self._result_offsets[trial_id] = new_offset
 
-        if results and results[-1]["done"]:
-            logging.debug("update trial information for %s" % trial_id)
+        meta_file = os.path.join(expr_dir, EXPR_META_FILE)
+        meta = parse_json(meta_file)
+
+        if meta:
+            TrialRecord.objects \
+                .filter(trial_id=trial_id) \
+                .update(trial_status=meta["status"],
+                        end_time=timestamp2date(meta.get("end_time", None)))
+        elif len(results) > 0 and results[-1].get("done"):
             TrialRecord.objects \
                 .filter(trial_id=trial_id) \
                 .update(trial_status="TERMINATED",
-                        end_time=results[-1]["date"])
+                        end_time=results[-1].get("date", None))
 
     @classmethod
     def _build_job_meta(cls, job_dir):
@@ -303,17 +304,25 @@ class Collector(Thread):
             a dict of job meta info
 
         """
-        job_name = job_dir.split('/')[-1]
-        user = os.environ.get("USER", None)
-        meta = {
-            "job_id": job_name,
-            "job_name": job_name,
-            "user": user,
-            "type": "RAY TUNE",
-            "start_time": timestamp2date(os.path.getctime(job_dir)),
-            "end_time": None,
-            "best_trial_id": None,
-        }
+        meta_file = os.path.join(job_dir, JOB_META_FILE)
+        meta = parse_json(meta_file)
+
+        if not meta:
+            job_name = job_dir.split('/')[-1]
+            user = os.environ.get("USER", None)
+            meta = {
+                "job_id": job_name,
+                "job_name": job_name,
+                "user": user,
+                "type": "ray",
+                "start_time": os.path.getctime(job_dir),
+                "end_time": None,
+                "best_trial_id": None,
+            }
+
+        if meta.get("start_time", None):
+            meta["start_time"] = timestamp2date(meta["start_time"])
+
         return meta
 
     @classmethod
@@ -328,32 +337,33 @@ class Collector(Thread):
             a dict of trial meta info
 
         """
-        job_id = expr_dir.split('/')[-2]
-        trial_id = expr_dir[-8:]
-        params = parse_json(os.path.join(expr_dir, EXPR_PARARM_FILE))
-        meta = {
-            "trial_id": trial_id,
-            "job_id": job_id,
-            "status": "RUNNING",
-            "type": "RAYTUNE",
-            "start_time": timestamp2date(os.path.getctime(expr_dir)),
-            "end_time": None,
-            "progress_offset": 0,
-            "result_offset": 0,
-            "params": params
-        }
         meta_file = os.path.join(expr_dir, EXPR_META_FILE)
-        dump_json(meta, meta_file)
-        return meta
+        meta = parse_json(meta_file)
 
-    @classmethod
-    def _get_job_progress(cls, success_trials, total_trials):
-        """Get the job's progress for the current round."""
-        if total_trials != 0:
-            progress = int((float(success_trials) / total_trials) * 100)
-        else:
-            progress = 0
-        return progress
+        if not meta:
+            job_id = expr_dir.split('/')[-2]
+            trial_id = expr_dir[-8:]
+            params = parse_json(os.path.join(expr_dir, EXPR_PARARM_FILE))
+            meta = {
+                "trial_id": trial_id,
+                "job_id": job_id,
+                "status": "RUNNING",
+                "type": "RAYTUNE",
+                "end_time": None,
+                "progress_offset": 0,
+                "result_offset": 0,
+                "params": params
+            }
+
+        if not meta.get("start_time", None):
+            meta["start_time"] = timestamp2date(os.path.getctime(expr_dir))
+
+        if meta.get("end_time", None):
+            meta["end_time"] = timestamp2date(meta["end_time"])
+
+        meta["params"] = parse_json(os.path.join(expr_dir, EXPR_PARARM_FILE))
+
+        return meta
 
     @classmethod
     def _add_results(cls, results, trial_id):

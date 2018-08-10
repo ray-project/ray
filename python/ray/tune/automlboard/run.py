@@ -1,10 +1,14 @@
-from django.core.management import execute_from_command_line
-from common.exception import DatabaseError
+#!/usr/bin/env python
+# Author: Rujie Jiang rujie.jrj@antfin.com
+# Date: Tue May 15 11:46:20 2018
 
-import argparse
-import django
 import os
 import re
+import django
+import argparse
+
+from django.core.management import execute_from_command_line
+from common.exception import DatabaseError
 
 
 def run_board(args):
@@ -78,32 +82,32 @@ if __name__ == "__main__":
         type=str,
         required=True,
         help="Directory where AutoML Board will "
-             "look to find tuning logs it can display")
+        "look to find tuning logs it can display")
     parser.add_argument(
         "--port",
         type=int,
         default=8008,
         help="What port to serve AutoMLBoard on, "
-             "(default: %(default)s)")
+        "(default: %(default)s)")
     parser.add_argument(
         "--db",
         type=str,
         default=None,
         help="Set SQL database URI in "
-             "schema://user:password@host:port/database, "
-             "(default: sqlite3)"),
+        "schema://user:password@host:port/database, "
+        "(default: sqlite3)"),
     parser.add_argument(
         "--reload_interval",
         type=int,
         default=5,
         help="How often the backend should load more data, "
-             "(default: %(default)s)")
+        "(default: %(default)s)")
     parser.add_argument(
         "--log_level",
         type=str,
         default="INFO",
         help="Set the logging level, "
-             "(default: %(default)s)")
+        "(default: %(default)s)")
     cmd_args = parser.parse_args()
 
     run_board(cmd_args)

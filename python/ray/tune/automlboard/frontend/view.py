@@ -19,8 +19,7 @@ def index(request):
             filter(lambda t: t.trial_status == "RUNNING", trials))
         success_num = len(
             filter(lambda t: t.trial_status == "TERMINATED", trials))
-        failed_num = len(
-            filter(lambda t: t.trial_status == "FAILED", trials))
+        failed_num = len(filter(lambda t: t.trial_status == "FAILED", trials))
 
         if total_num == 0:
             progress = 0

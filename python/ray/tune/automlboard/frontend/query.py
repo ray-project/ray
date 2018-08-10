@@ -37,9 +37,21 @@ def query_job(request):
     }
     """
     job_id = request.GET.get('job_id')
-    jobs = JobRecord.objects \
-        .filter(job_id=job_id) \
-        .order_by('-start_time')
+    jobs = JobRecord.objects.filter(job_id=job_id)
+    trials = TrialRecord.objects.filter(job_id=job_id)
+
+    total_num = len(trials)
+    running_num = len(
+        filter(lambda t: t.trial_status == "RUNNING", trials))
+    success_num = len(
+        filter(lambda t: t.trial_status == "TERMINATED", trials))
+    failed_num = len(
+        filter(lambda t: t.trial_status == "FAILED", trials))
+    if total_num == 0:
+        progress = 0
+    else:
+        progress = int(float(success_num) / total_num * 100)
+
     if len(jobs) == 0:
         resp = "Unkonwn job id %s.\n" % job_id
     else:
@@ -51,12 +63,12 @@ def query_job(request):
             "type": job.type,
             "start_time": job.start_time,
             "end_time": job.end_time,
-            "success_trials": job.success_trials,
-            "failed_trials": job.failed_trials,
-            "running_trials": job.running_trials,
-            "total_trials": job.total_trials,
+            "success_trials": success_num,
+            "failed_trials": failed_num,
+            "running_trials": running_num,
+            "total_trials": total_num,
             "best_trial_id": job.best_trial_id,
-            "progress": job.progress
+            "progress": progress
         }
         resp = json.dumps(result)
     return HttpResponse(resp, content_type='application/json;charset=utf-8')
@@ -75,7 +87,7 @@ def query_trial(request):
     {
         "app_url": "None",
         "trial_status": "TERMINATED",
-        "metrics": "0.56",
+        "params": {'a'},
         "job_id": "asynchyperband_test",
         "end_time": "2018-07-19 20:49:44",
         "start_time": "2018-07-19 20:49:40",

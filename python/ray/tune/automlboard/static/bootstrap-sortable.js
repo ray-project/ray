@@ -147,20 +147,20 @@
           var context = lookupSortContext($this), bsSort = context.bsSort;
 
           $this.find('> thead th[data-defaultsort!="disabled"]')
-            .each(function (index) {
-              var $header = $(this);
-              var $sortTable = $header.closest('table.sortable');
-              $header.data('sortTable', $sortTable);
-              var sortKey = $header.attr('data-sortkey');
-              var thisLastSort = applyLast ? context.lastSort : -1;
-              bsSort[sortKey] = applyLast ? bsSort[sortKey] :
-                                            $header.attr('data-defaultsort');
-              if (bsSort[sortKey] !== undefined &&
-                  (applyLast === (sortKey === thisLastSort))) {
-                bsSort[sortKey] = bsSort[sortKey] === 'asc' ? 'desc' : 'asc';
-                doSort($header, $sortTable);
-              }
-            });
+              .each(function (index) {
+                var $header = $(this);
+                var $sortTable = $header.closest('table.sortable');
+                $header.data('sortTable', $sortTable);
+                var sortKey = $header.attr('data-sortkey');
+                var thisLastSort = applyLast ? context.lastSort : -1;
+                bsSort[sortKey] = applyLast ? bsSort[sortKey] :
+                                              $header.attr('data-defaultsort');
+                if (bsSort[sortKey] !== undefined &&
+                    (applyLast === (sortKey === thisLastSort))) {
+                  bsSort[sortKey] = bsSort[sortKey] === 'asc' ? 'desc' : 'asc';
+                  doSort($header, $sortTable);
+                }
+              });
         });
   }
 
