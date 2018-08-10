@@ -797,11 +797,14 @@ void ObjectManager::SpreadFreeObjectRequest(const std::vector<ObjectID> &object_
       connection_pool_.RegisterSender(ConnectionPool::ConnectionType::MESSAGE,
                                       connection_info.client_id, conn);
     }
-    RAY_CHECK_OK(conn->WriteMessage(
+    status = conn->WriteMessage(
         static_cast<int64_t>(object_manager_protocol::MessageType::FreeRequest),
-        fbb.GetSize(), fbb.GetBufferPointer()));
-    RAY_CHECK_OK(
-        connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::MESSAGE, conn));
+        fbb.GetSize(), fbb.GetBufferPointer());
+    if (status.ok()) {
+      RAY_CHECK_OK(
+          connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::MESSAGE, conn));
+    }
+    // TODO(Yuhong): Implement ConnectionPool::RemoveSender and call it in "else".
   };
   object_directory_->RunFunctionForEachClient(function_on_client);
 }
