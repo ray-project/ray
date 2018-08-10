@@ -217,7 +217,7 @@ TEST_F(LineageCacheTest, TestMarkTaskAsForwarded) {
   // Check that lineage of requested task includes itself, regardless of whether
   // it has been forwarded before.
   auto uncommitted_lineage_forwarded =
-      lineage_cache_.GetUncommittedLineage(remaining_task_id, node_id);
+      lineage_cache_.GetUncommittedLineage(forwarded_task_id, node_id);
   ASSERT_EQ(1, uncommitted_lineage_forwarded.GetEntries().size());
 }
 
