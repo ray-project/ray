@@ -46,6 +46,9 @@ def wait_for_compute_zone_operations(compute, project_name, operations, zone):
 
         time.sleep(POLL_INTERVAL)
 
+    print("MAX_POLLS ({}) exceeded. Could not finish all the operations.")
+    return results
+
 
 def wait_for_compute_zone_operation(compute, project_name, operation, zone):
     """Poll for a compute zone operation until finished."""
