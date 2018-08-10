@@ -12,7 +12,7 @@ public class ResourceUtil {
    *
    * @param resourceArray The resources list to be converted.
    * @return The map whose key represents the resource name
-   * and the value represents the resource quantity.
+   *     and the value represents the resource quantity.
    */
   public static Map<String, Double> getResourcesMapFromArray(ResourceItem[] resourceArray) {
     Map<String, Double> resourceMap = new HashMap<>();
@@ -75,9 +75,9 @@ public class ResourceUtil {
    *
    * @param resources The static resources string to be parsed.
    * @return The map whose key represents the resource name
-   * and the value represents the resource quantity.
+   *     and the value represents the resource quantity.
    * @throws IllegalArgumentException If the resources string's format does match,
-   * it will throw an IllegalArgumentException.
+   *     it will throw an IllegalArgumentException.
    */
   public static Map<String, Double> getResourcesMapFromString(String resources)
       throws IllegalArgumentException {
