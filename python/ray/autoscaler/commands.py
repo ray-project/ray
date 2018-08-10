@@ -254,12 +254,6 @@ def _exec(updater, cmd, screen, expect_error=False):
             cmd = " ".join(cmd)
         updater.ssh_cmd(
             cmd, verbose=True, allocate_tty=True, expect_error=expect_error)
-    if screen:
-        updater.ssh_cmd(
-            "screen -L -xRR",
-            verbose=False,
-            allocate_tty=True,
-            emulate_interactive=False)
 
 
 def get_head_node_ip(config_file, override_cluster_name):
