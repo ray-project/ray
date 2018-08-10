@@ -203,20 +203,25 @@ class GCPNodeProvider(NodeProvider):
 
         return results
 
-    def terminate_node(self, node_id):
+    def terminate_nodes(self, node_ids):
         project_id = self.provider_config["project_id"]
         availability_zone = self.provider_config["availability_zone"]
 
-        operation = self.compute.instances().delete(
-            project=project_id,
-            zone=availability_zone,
-            instance=node_id,
-        ).execute()
+        operations = [
+            self.compute.instances().delete(
+                project=project_id,
+                zone=availability_zone,
+                instance=node_id,
+            ).execute() for node_id in node_ids
+        ]
 
-        result = wait_for_compute_zone_operation(self.compute, project_id,
-                                                 operation, availability_zone)
+        results = wait_for_compute_zone_operations(
+            self.compute, project_id, operations, availability_zone)
 
-        return result
+        return results
+
+    def terminate_node(self, node_id):
+        return self.terminate_nodes([node_id])[0]
 
     def _node(self, node_id):
         if node_id in self.cached_nodes:
