@@ -1243,7 +1243,7 @@ class APITest(unittest.TestCase):
             # Current Plasma Client Cache will maintain 64-item list.
             # If the number changed, this will fail.
             print("Start Flush!")
-            for i in range(500):
+            for i in range(1600):
                 run_on_0.remote()
                 run_on_1.remote()
                 run_on_2.remote()

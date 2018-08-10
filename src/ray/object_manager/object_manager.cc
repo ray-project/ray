@@ -786,23 +786,20 @@ void ObjectManager::SpreadFreeObjectRequest(const std::vector<ObjectID> &object_
       object_manager_protocol::CreateFreeRequestMessage(fbb, to_flatbuf(fbb, object_ids));
   fbb.Finish(request);
   auto function_on_client = [this, &fbb](const RemoteConnectionInfo &connection_info) {
-    ray::Status status;
     std::shared_ptr<SenderConnection> conn;
-    status = connection_pool_.GetSender(ConnectionPool::ConnectionType::MESSAGE,
-                                        connection_info.client_id, &conn);
-    RAY_CHECK_OK(status);
+    connection_pool_.GetSender(ConnectionPool::ConnectionType::MESSAGE,
+                               connection_info.client_id, &conn);
     if (conn == nullptr) {
       conn = CreateSenderConnection(ConnectionPool::ConnectionType::MESSAGE,
                                     connection_info);
       connection_pool_.RegisterSender(ConnectionPool::ConnectionType::MESSAGE,
                                       connection_info.client_id, conn);
     }
-    status = conn->WriteMessage(
+    ray::Status status = conn->WriteMessage(
         static_cast<int64_t>(object_manager_protocol::MessageType::FreeRequest),
         fbb.GetSize(), fbb.GetBufferPointer());
     if (status.ok()) {
-      RAY_CHECK_OK(
-          connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::MESSAGE, conn));
+      connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::MESSAGE, conn);
     }
     // TODO(Yuhong): Implement ConnectionPool::RemoveSender and call it in "else".
   };
