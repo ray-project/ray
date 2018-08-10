@@ -58,11 +58,13 @@ class ObjectDirectoryInterface {
                                       const OnLocationsFound &callback) = 0;
 
   /// Subscribe to be notified of locations (ClientID) of the given object.
-  /// The callback will be invoked whenever locations are obtained for the
-  /// specified object. The callback provided to this method may fire immediately,
-  /// within the call to this method, if any other listener is subscribed to the same
-  /// object: This occurs when location data for the object has already been obtained.
-  ///
+  /// The callback will be invoked with the complete list of known locations
+  /// whenever the set of locations changes. The callback will also be fired if
+  /// the list of known locations is empty. The callback provided to this
+  /// method may fire immediately, within the call to this method, if any other
+  /// listener is subscribed to the same object: This occurs when location data
+  /// for the object has already been obtained.
+  //
   /// \param callback_id The id associated with the specified callback. This is
   /// needed when UnsubscribeObjectLocations is called.
   /// \param object_id The required object's ObjectID.
