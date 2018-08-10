@@ -223,14 +223,31 @@ class GCPNodeProvider(NodeProvider):
     def terminate_node(self, node_id):
         return self.terminate_nodes([node_id])[0]
 
+    def _nodes(self, node_ids):
+        nodes_by_id = {
+            node_id: self.cached_nodes.get(node_id, None)
+            for node_id in node_ids
+        }
+
+        non_cached_node_ids = [k for k, v in nodes_by_id.items() if v is None]
+
+        non_cached_nodes = [
+            self.compute.instances().get(
+                project=self.provider_config["project_id"],
+                zone=self.provider_config["availability_zone"],
+                instance=node_id,
+            ).execute() for node_id in non_cached_node_ids
+        ]
+
+        assert len(non_cached_nodes) == len(non_cached_node_ids), (
+            "Could not find one of the instances: {}"
+            "".format(non_cached_node_ids))
+
+        nodes_by_id.update(dict(zip(non_cached_node_ids, non_cached_nodes)))
+
+        result = [nodes_by_id[key] for key in node_ids]
+
+        return result
+
     def _node(self, node_id):
-        if node_id in self.cached_nodes:
-            return self.cached_nodes[node_id]
-
-        instance = self.compute.instances().get(
-            project=self.provider_config["project_id"],
-            zone=self.provider_config["availability_zone"],
-            instance=node_id,
-        ).execute()
-
-        return instance
+        return self._nodes([node_id])[0]
