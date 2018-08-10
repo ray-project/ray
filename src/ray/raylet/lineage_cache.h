@@ -97,6 +97,11 @@ class LineageEntry {
   /// TODO(swang): This is pretty ugly.
   Task &TaskDataMutable();
 
+  /// Update the task data with a new task.
+  ///
+  /// \return Void.
+  void UpdateTaskData(const Task &task);
+
  private:
   /// Compute cached parent task IDs. This task is dependent on values returned
   /// by these tasks.

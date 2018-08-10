@@ -54,6 +54,11 @@ const Task &LineageEntry::TaskData() const { return task_; }
 
 Task &LineageEntry::TaskDataMutable() { return task_; }
 
+void LineageEntry::UpdateTaskData(const Task &task) {
+  task_.CopyTaskExecutionSpec(task);
+  ComputeParentTaskIds();
+}
+
 Lineage::Lineage() {}
 
 Lineage::Lineage(const protocol::ForwardTaskRequest &task_request) {
@@ -91,7 +96,7 @@ bool Lineage::SetEntry(const Task &task, GcsStatus status) {
     if (current_entry->SetStatus(status)) {
       // SetStatus() would check if the new status is greater,
       // if it succeeds, go ahead to update the task field.
-      current_entry->TaskDataMutable().CopyTaskExecutionSpec(task);
+      current_entry->UpdateTaskData(task);
       return true;
     }
     return false;
