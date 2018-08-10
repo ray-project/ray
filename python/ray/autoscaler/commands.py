@@ -59,14 +59,15 @@ def teardown_cluster(config_file, yes):
     head_node_tags = {
         TAG_RAY_NODE_TYPE: "head",
     }
+
     for node in provider.nodes(head_node_tags):
         print("Terminating head node {}".format(node))
         provider.terminate_node(node)
+
     nodes = provider.nodes({})
     while nodes:
-        for node in nodes:
-            print("Terminating worker {}".format(node))
-            provider.terminate_node(node)
+        print("Terminating workers: {}".format(nodes))
+        provider.terminate_nodes(nodes)
         time.sleep(5)
         nodes = provider.nodes({})
 
