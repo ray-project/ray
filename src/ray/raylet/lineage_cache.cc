@@ -5,7 +5,9 @@ namespace ray {
 namespace raylet {
 
 LineageEntry::LineageEntry(const Task &task, GcsStatus status)
-    : status_(status), task_(task) {}
+    : status_(status), task_(task) {
+  ComputeParentTaskIds();
+}
 
 GcsStatus LineageEntry::GetStatus() const { return status_; }
 
@@ -35,13 +37,17 @@ const TaskID LineageEntry::GetEntryId() const {
   return task_.GetTaskSpecification().TaskId();
 }
 
-const std::unordered_set<TaskID> LineageEntry::GetParentTaskIds() const {
+const std::unordered_set<TaskID> &LineageEntry::GetParentTaskIds() const {
+  return parent_task_ids_;
+}
+
+void LineageEntry::ComputeParentTaskIds() {
+  parent_task_ids_.clear();
   std::unordered_set<TaskID> parent_ids;
   // A task's parents are the tasks that created its arguments.
   for (const auto &dependency : task_.GetDependencies()) {
-    parent_ids.insert(ComputeTaskId(dependency));
+    parent_task_ids_.insert(ComputeTaskId(dependency));
   }
-  return parent_ids;
 }
 
 const Task &LineageEntry::TaskData() const { return task_; }
@@ -159,7 +165,7 @@ void MergeLineageHelper(const TaskID &task_id, const Lineage &lineage_from,
   }
 
   // Insert a copy of the entry into lineage_to.
-  auto parent_ids = entry->GetParentTaskIds();
+  const auto &parent_ids = entry->GetParentTaskIds();
   // If the insert is successful, then continue the DFS. The insert will fail
   // if the new entry has an equal or lower GCS status than the current entry
   // in lineage_to. This also prevents us from traversing the same node twice.
@@ -312,7 +318,7 @@ Lineage LineageCache::GetUncommittedLineage(const TaskID &task_id,
         // The stopping condition for recursion is that the entry has
         // been committed to the GCS or has already been forwarded.
         // The lineage always includes the requested task id.
-        return entry.WasExplicitlyForwarded(node_id) && !(entry.GetEntryId() == task_id);
+        return entry.WasExplicitlyForwarded(node_id);
       });
   return uncommitted_lineage;
 }
