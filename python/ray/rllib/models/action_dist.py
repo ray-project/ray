@@ -4,9 +4,12 @@ from __future__ import print_function
 
 import tensorflow as tf
 import numpy as np
+<<<<<<< Updated upstream
 import distutils.version
 
 from ray.rllib.utils.reshaper import Reshaper
+=======
+>>>>>>> Stashed changes
 
 use_tf150_api = (distutils.version.LooseVersion(tf.VERSION) >=
                  distutils.version.LooseVersion("1.5.0"))
@@ -182,10 +185,10 @@ class MultiActionDistribution(ActionDistribution):
         inputs (Tensor list): A list of tensors from which to compute samples.
     """
 
-    def __init__(self, inputs, action_space, child_distributions):
-        # you actually have to instantiate the child distributions
-        self.reshaper = Reshaper(action_space.spaces)
-        split_inputs = self.reshaper.split_tensor(inputs)
+    def __init__(self, inputs, action_space, child_distributions, input_lens):
+        self.input_lens = input_lens
+        inputs = tf.reshape(inputs, [-1, sum(input_lens)])
+        split_inputs = tf.split(inputs, self.input_lens, axis=1)
         child_list = []
         for i, distribution in enumerate(child_distributions):
             child_list.append(distribution(split_inputs[i]))
@@ -193,7 +196,7 @@ class MultiActionDistribution(ActionDistribution):
 
     def logp(self, x):
         """The log-likelihood of the action distribution."""
-        split_list = self.reshaper.split_tensor(x)
+        split_list = tf.split(x, len(self.input_lens), axis=1)
         for i, distribution in enumerate(self.child_distributions):
             # Remove extra categorical dimension
             if isinstance(distribution, Categorical):
