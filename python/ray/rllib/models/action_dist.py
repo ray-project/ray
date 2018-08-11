@@ -4,12 +4,7 @@ from __future__ import print_function
 
 import tensorflow as tf
 import numpy as np
-<<<<<<< Updated upstream
 import distutils.version
-
-from ray.rllib.utils.reshaper import Reshaper
-=======
->>>>>>> Stashed changes
 
 use_tf150_api = (distutils.version.LooseVersion(tf.VERSION) >=
                  distutils.version.LooseVersion("1.5.0"))
