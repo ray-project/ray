@@ -76,7 +76,15 @@ macro(get_local_scheduler_library LANG VAR)
 endmacro()
 
 macro(set_local_scheduler_library LANG)
-  get_local_scheduler_library(${LANG} LOCAL_SCHEDULER_LIBRARY_LANG)
+  if ("${LANG}" STREQUAL "java")
+    get_local_scheduler_library(${LANG} LOCAL_SCHEDULER_LIBRARY_JAVA)
+    set(LOCAL_SCHEDULER_LIBRARY_LANG ${LOCAL_SCHEDULER_LIBRARY_JAVA})
+  elseif ("${LANG}" STREQUAL "python")
+    get_local_scheduler_library(${LANG} LOCAL_SCHEDULER_LIBRARY_PYTHON)
+    set(LOCAL_SCHEDULER_LIBRARY_LANG ${LOCAL_SCHEDULER_LIBRARY_PYTHON})
+  else()
+    message(FATAL_ERROR "Unrecognized language, use java|python. Abort.")
+  endif()
   include_directories("${CMAKE_CURRENT_LIST_DIR}/../common/lib/${LANG}/")
 
   file(GLOB LOCAL_SCHEDULER_LIBRARY_${LANG}_SRC
@@ -86,6 +94,10 @@ macro(set_local_scheduler_library LANG)
     ${LOCAL_SCHEDULER_LIBRARY_${LANG}_SRC})
 
     if(APPLE)
+      if ("${LANG}" STREQUAL "java")
+        # If "all" language is set, the suffix will be changed to ".so".
+        SET_TARGET_PROPERTIES(${LOCAL_SCHEDULER_LIBRARY_LANG} PROPERTIES SUFFIX .dylib)
+      endif()
       target_link_libraries(${LOCAL_SCHEDULER_LIBRARY_LANG} "-undefined dynamic_lookup" local_scheduler_client common ray_static ${PLASMA_STATIC_LIB} ${ARROW_STATIC_LIB} ${Boost_SYSTEM_LIBRARY})
     else(APPLE)
       target_link_libraries(${LOCAL_SCHEDULER_LIBRARY_LANG} local_scheduler_client common ray_static ${PLASMA_STATIC_LIB} ${ARROW_STATIC_LIB} ${Boost_SYSTEM_LIBRARY})

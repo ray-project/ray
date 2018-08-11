@@ -20,7 +20,7 @@ fi
 
 $ROOT_DIR/thirdparty/scripts/setup.sh $PYTHON_EXECUTABLE $LANGUAGE
 
-if [[ "$LANGUAGE" == "java" ]]; then
+if [[ "$LANGUAGE" == *"java"* ]]; then
     pushd $ROOT_DIR/thirdparty/build/arrow/java
     mvn clean install -pl plasma -am -Dmaven.test.skip
     popd

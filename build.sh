@@ -17,6 +17,7 @@ function usage()
   echo "  -l|--language python(default) "
   echo "                          build native library for python"
   echo "                java      build native library for java"
+  echo "                all       build native library for java & python"
   echo "  -p|--python             which python executable (default from which python)"
   echo
 }
@@ -54,9 +55,12 @@ while [[ $# > 0 ]]; do
       ;;
     -l|--languags)
       LANGUAGE="$2"
-      if [ "$LANGUAGE" != "python" ] && [ "$LANGUAGE" != "java" ]; then
+      if [ "$LANGUAGE" != "python" ] && [ "$LANGUAGE" != "java" ] && [ "$LANGUAGE" != "all" ]; then
         echo "Unrecognized language."
         exit -1
+      fi
+      if [ "$LANGUAGE" == "all" ]; then
+        LANGUAGE="python+java"
       fi
       shift
       ;;
@@ -98,16 +102,15 @@ cmake -DCMAKE_BUILD_TYPE=$CBUILD_TYPE \
       -DCMAKE_RAY_LANGUAGE=$LANGUAGE \
       -DRAY_USE_NEW_GCS=$RAY_USE_NEW_GCS \
       -DPYTHON_EXECUTABLE:FILEPATH=$PYTHON_EXECUTABLE $ROOT_DIR
-
 make clean
 make -j${PARALLEL}
 popd
 
 # Move stuff from Arrow to Ray.
 cp $ROOT_DIR/thirdparty/pkg/arrow/cpp/build/cpp-install/bin/plasma_store $BUILD_DIR/src/plasma/
-if [[ "$LANGUAGE" == "python" ]]; then
+if [[ "$LANGUAGE" == *"python"* ]]; then
   cp $ROOT_DIR/thirdparty/pkg/arrow/cpp/build/cpp-install/bin/plasma_store $BUILD_DIR/../python/ray/core/src/plasma/
 fi
-if [[ "$LANGUAGE" == "java" ]]; then
+if [[ "$LANGUAGE" == *"java"* ]]; then
   cp $ROOT_DIR/thirdparty/build/arrow/cpp/build/release/libplasma_java.* $BUILD_DIR/src/plasma/
 fi
