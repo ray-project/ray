@@ -82,7 +82,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       object_manager_(object_manager),
       gcs_client_(gcs_client),
       heartbeat_timer_(io_service),
-      heartbeat_period_ms_(config.heartbeat_period_ms),
+      heartbeat_period_(std::chrono::milliseconds(config.heartbeat_period_ms)),
       local_resources_(config.resource_config),
       local_available_resources_(config.resource_config),
       worker_pool_(config.num_initial_workers, config.num_workers_per_process,
@@ -91,10 +91,12 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       local_queues_(SchedulingQueue()),
       scheduling_policy_(local_queues_),
       reconstruction_policy_(
-          io_service_, [this](const TaskID &task_id) { ResubmitTask(task_id); },
+          io_service_,
+          [this](const TaskID &task_id) { HandleTaskReconstruction(task_id); },
           RayConfig::instance().initial_reconstruction_timeout_milliseconds(),
           gcs_client_->client_table().GetLocalClientId(), gcs_client->task_lease_table(),
-          std::make_shared<ObjectDirectory>(gcs_client)),
+          std::make_shared<ObjectDirectory>(gcs_client),
+          gcs_client_->task_reconstruction_log()),
       task_dependency_manager_(
           object_manager, reconstruction_policy_, io_service,
           gcs_client_->client_table().GetLocalClientId(),
@@ -106,7 +108,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       remote_clients_(),
       remote_server_connections_(),
       actor_registry_() {
-  RAY_CHECK(heartbeat_period_ms_ > 0);
+  RAY_CHECK(heartbeat_period_.count() > 0);
   // Initialize the resource map with own cluster resource configuration.
   ClientID local_client_id = gcs_client_->client_table().GetLocalClientId();
   cluster_resource_map_.emplace(local_client_id,
@@ -193,13 +195,43 @@ ray::Status NodeManager::RegisterGcs() {
         RAY_LOG(DEBUG) << "heartbeat table subscription done callback called.";
       }));
 
+  // Subscribe to driver table updates.
+  const auto driver_table_handler = [this](
+      gcs::AsyncGcsClient *client, const ClientID &client_id,
+      const std::vector<DriverTableDataT> &driver_data) {
+    HandleDriverTableUpdate(client_id, driver_data);
+  };
+  RAY_RETURN_NOT_OK(gcs_client_->driver_table().Subscribe(JobID::nil(), UniqueID::nil(),
+                                                          driver_table_handler, nullptr));
+
   // Start sending heartbeats to the GCS.
+  last_heartbeat_at_ms_ = current_time_ms();
   Heartbeat();
 
   return ray::Status::OK();
 }
 
+void NodeManager::HandleDriverTableUpdate(
+    const ClientID &id, const std::vector<DriverTableDataT> &driver_data) {
+  for (const auto &entry : driver_data) {
+    RAY_LOG(DEBUG) << "HandleDriverTableUpdate " << UniqueID::from_binary(entry.driver_id)
+                   << " " << entry.is_dead;
+    if (entry.is_dead) {
+      // TODO: Implement cleanup on driver death. For reference,
+      // see handle_driver_removed_callback in local_scheduler.cc
+    }
+  }
+}
+
 void NodeManager::Heartbeat() {
+  uint64_t now_ms = current_time_ms();
+  uint64_t interval = now_ms - last_heartbeat_at_ms_;
+  if (interval > RayConfig::instance().num_heartbeats_warning() *
+                     RayConfig::instance().heartbeat_timeout_milliseconds()) {
+    RAY_LOG(WARNING) << "Last heartbeat was sent " << interval << " ms ago ";
+  }
+  last_heartbeat_at_ms_ = now_ms;
+
   RAY_LOG(DEBUG) << "[Heartbeat] sending heartbeat.";
   auto &heartbeat_table = gcs_client_->heartbeat_table();
   auto heartbeat_data = std::make_shared<HeartbeatTableDataT>();
@@ -232,8 +264,7 @@ void NodeManager::Heartbeat() {
   RAY_CHECK_OK(status);
 
   // Reset the timer.
-  auto heartbeat_period = boost::posix_time::milliseconds(heartbeat_period_ms_);
-  heartbeat_timer_.expires_from_now(heartbeat_period);
+  heartbeat_timer_.expires_from_now(heartbeat_period_);
   heartbeat_timer_.async_wait([this](const boost::system::error_code &error) {
     RAY_CHECK(!error);
     Heartbeat();
@@ -449,6 +480,7 @@ void NodeManager::ProcessClientMessage(
   switch (static_cast<protocol::MessageType>(message_type)) {
   case protocol::MessageType::RegisterClientRequest: {
     auto message = flatbuffers::GetRoot<protocol::RegisterClientRequest>(message_data);
+    client->SetClientID(from_flatbuf(*message->client_id()));
     auto worker = std::make_shared<Worker>(message->worker_pid(), client);
     if (message->is_worker()) {
       // Register the new worker.
@@ -543,6 +575,8 @@ void NodeManager::ProcessClientMessage(
       DispatchTasks();
     } else {
       // The client is a driver.
+      RAY_CHECK_OK(gcs_client_->driver_table().AppendDriverData(client->GetClientID(),
+                                                                /*is_dead=*/true));
       const std::shared_ptr<Worker> driver = worker_pool_.GetRegisteredDriver(client);
       RAY_CHECK(driver);
       auto driver_id = driver->GetAssignedTaskId();
@@ -790,6 +824,13 @@ void NodeManager::TreatTaskAsFailed(const TaskSpecification &spec) {
 
 void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineage,
                              bool forwarded) {
+  if (local_queues_.HasTask(task.GetTaskSpecification().TaskId())) {
+    RAY_LOG(WARNING) << "Submitted task " << task.GetTaskSpecification().TaskId()
+                     << " is already queued and will not be reconstructed. This is most "
+                        "likely due to spurious reconstruction.";
+    return;
+  }
+
   // Add the task and its uncommitted lineage to the lineage cache.
   lineage_cache_.AddWaitingTask(task, uncommitted_lineage);
 
@@ -1116,15 +1157,74 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
   worker.AssignTaskId(TaskID::nil());
 }
 
-void NodeManager::ResubmitTask(const TaskID &task_id) {
-  RAY_LOG(WARNING) << "Task re-execution is not currently implemented";
+void NodeManager::HandleTaskReconstruction(const TaskID &task_id) {
+  // Retrieve the task spec in order to re-execute the task.
+  RAY_CHECK_OK(gcs_client_->raylet_task_table().Lookup(
+      JobID::nil(), task_id,
+      /*success_callback=*/
+      [this](ray::gcs::AsyncGcsClient *client, const TaskID &task_id,
+             const ray::protocol::TaskT &task_data) {
+        // The task was in the GCS task table. Use the stored task spec to
+        // re-execute the task.
+        const Task task(task_data);
+        ResubmitTask(task);
+      },
+      /*failure_callback=*/
+      [this](ray::gcs::AsyncGcsClient *client, const TaskID &task_id) {
+        // The task was not in the GCS task table. It must therefore be in the
+        // lineage cache.
+        if (!lineage_cache_.ContainsTask(task_id)) {
+          // The task was not in the lineage cache.
+          // TODO(swang): This should not ever happen, but Java TaskIDs are
+          // currently computed differently from Python TaskIDs, so
+          // reconstruction is currently broken for Java. Once the TaskID
+          // generation code matches for both frontends, we should be able to
+          // remove this warning and make it a fatal check.
+          RAY_LOG(WARNING) << "Task " << task_id << " to reconstruct was not found in "
+                                                    "the GCS or the lineage cache. This "
+                                                    "job may hang.";
+        } else {
+          // Use a copy of the cached task spec to re-execute the task.
+          const Task task = lineage_cache_.GetTask(task_id);
+          ResubmitTask(task);
+        }
+      }));
+}
+
+void NodeManager::ResubmitTask(const Task &task) {
+  // Actor reconstruction is turned off by default right now. If this is an
+  // actor task, treat the task as failed and do not resubmit it.
+  if (task.GetTaskSpecification().IsActorTask()) {
+    TreatTaskAsFailed(task.GetTaskSpecification());
+    return;
+  }
+
+  // Driver tasks cannot be reconstructed. If this is a driver task, push an
+  // error to the driver and do not resubmit it.
+  if (task.GetTaskSpecification().IsDriverTask()) {
+    // TODO(rkn): Define this constant somewhere else.
+    std::string type = "put_reconstruction";
+    std::ostringstream error_message;
+    error_message << "The task with ID " << task.GetTaskSpecification().TaskId()
+                  << " is a driver task and so the object created by ray.put "
+                  << "could not be reconstructed.";
+    RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
+        task.GetTaskSpecification().DriverId(), type, error_message.str(),
+        current_time_ms()));
+    return;
+  }
+
+  // The task may be reconstructed. Submit it with an empty lineage, since any
+  // uncommitted lineage must already be in the lineage cache. At this point,
+  // the task should not yet exist in the local scheduling queue. If it does,
+  // then this is a spurious reconstruction.
+  SubmitTask(task, Lineage());
 }
 
 void NodeManager::HandleObjectLocal(const ObjectID &object_id) {
   // Notify the task dependency manager that this object is local.
   const auto ready_task_ids = task_dependency_manager_.HandleObjectLocal(object_id);
-  // Transition the tasks whose dependencies are now fulfilled to the ready
-  // state.
+  // Transition the tasks whose dependencies are now fulfilled to the ready state.
   if (ready_task_ids.size() > 0) {
     std::unordered_set<TaskID> ready_task_id_set(ready_task_ids.begin(),
                                                  ready_task_ids.end());
@@ -1174,6 +1274,11 @@ void NodeManager::ForwardTaskOrResubmit(const Task &task,
   if (!ForwardTask(task, node_manager_id).ok()) {
     RAY_LOG(INFO) << "Failed to forward task " << task_id << " to node manager "
                   << node_manager_id;
+    // Mark the failed task as pending to let other raylets know that we still
+    // have the task. Once the task is successfully retried, it will be
+    // canceled. TaskDependencyManager::TaskPending() is assumed to be
+    // idempotent.
+    task_dependency_manager_.TaskPending(task);
 
     // Create a timer to resubmit the task in a little bit. TODO(rkn): Really
     // this should be a unique_ptr instead of a shared_ptr. However, it's a
@@ -1197,10 +1302,11 @@ ray::Status NodeManager::ForwardTask(const Task &task, const ClientID &node_id) 
   const auto &spec = task.GetTaskSpecification();
   auto task_id = spec.TaskId();
 
-  // Get and serialize the task's uncommitted lineage.
-  auto uncommitted_lineage = lineage_cache_.GetUncommittedLineage(task_id);
+  // Get and serialize the task's unforwarded, uncommitted lineage.
+  auto uncommitted_lineage = lineage_cache_.GetUncommittedLineage(task_id, node_id);
   Task &lineage_cache_entry_task =
       uncommitted_lineage.GetEntryMutable(task_id)->TaskDataMutable();
+
   // Increment forward count for the forwarded task.
   lineage_cache_entry_task.GetTaskExecutionSpec().IncrementNumForwards();
 
@@ -1230,6 +1336,10 @@ ray::Status NodeManager::ForwardTask(const Task &task, const ClientID &node_id) 
     // lineage cache since the receiving node is now responsible for writing
     // the task to the GCS.
     lineage_cache_.RemoveWaitingTask(task_id);
+    // Mark as forwarded so that the task and its lineage is not re-forwarded
+    // in the future to the receiving node.
+    lineage_cache_.MarkTaskAsForwarded(task_id, node_id);
+
     // Notify the task dependency manager that we are no longer responsible
     // for executing this task.
     task_dependency_manager_.TaskCanceled(task_id);

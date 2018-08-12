@@ -37,6 +37,13 @@ class Task {
       : task_execution_spec_(*task_flatbuffer.task_execution_spec()),
         task_spec_(*task_flatbuffer.task_specification()) {}
 
+  /// Create a task from a flatbuffer object.
+  ///
+  /// \param task_data The task flatbuffer object.
+  Task(const protocol::TaskT &task_data)
+      : task_execution_spec_(*task_data.task_execution_spec),
+        task_spec_(task_data.task_specification) {}
+
   /// Destroy the task.
   virtual ~Task() {}
 

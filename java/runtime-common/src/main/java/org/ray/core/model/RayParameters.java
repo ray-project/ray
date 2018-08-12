@@ -124,6 +124,9 @@ public class RayParameters {
   @AConfig(comment = "worker fetch request size")
   public int worker_fetch_request_size = 10000;
 
+  @AConfig(comment = "static resource list of this node")
+  public String static_resources = "";
+
   public RayParameters(ConfigReader config) {
     if (null != config) {
       String networkInterface = config.getStringValue("ray.java", "network_interface", null,

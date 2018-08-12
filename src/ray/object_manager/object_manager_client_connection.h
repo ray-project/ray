@@ -24,7 +24,8 @@ class SenderConnection : public boost::enable_shared_from_this<SenderConnection>
   /// \param client_id The ClientID of the remote node.
   /// \param ip The ip address of the remote node server.
   /// \param port The port of the remote node server.
-  /// \return A connection to the remote object manager.
+  /// \return A connection to the remote object manager. This is null if the
+  /// connection was unsuccessful.
   static std::shared_ptr<SenderConnection> Create(boost::asio::io_service &io_service,
                                                   const ClientID &client_id,
                                                   const std::string &ip, uint16_t port);
@@ -47,9 +48,8 @@ class SenderConnection : public boost::enable_shared_from_this<SenderConnection>
   ///
   /// \param buffer The buffer.
   /// \param ec The error code object in which to store error codes.
-  void WriteBuffer(const std::vector<boost::asio::const_buffer> &buffer,
-                   boost::system::error_code &ec) {
-    return conn_->WriteBuffer(buffer, ec);
+  Status WriteBuffer(const std::vector<boost::asio::const_buffer> &buffer) {
+    return conn_->WriteBuffer(buffer);
   }
 
   /// Read a buffer from this connection.

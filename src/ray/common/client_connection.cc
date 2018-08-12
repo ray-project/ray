@@ -4,6 +4,7 @@
 
 #include "common.h"
 #include "ray/raylet/format/node_manager_generated.h"
+#include "ray/util/util.h"
 
 namespace ray {
 
@@ -14,11 +15,7 @@ ray::Status TcpConnect(boost::asio::ip::tcp::socket &socket,
   boost::asio::ip::tcp::endpoint endpoint(ip_address, port);
   boost::system::error_code error;
   socket.connect(endpoint, error);
-  if (error) {
-    return ray::Status::IOError(error.message());
-  } else {
-    return ray::Status::OK();
-  }
+  return boost_to_ray_status(error);
 }
 
 template <class T>
@@ -26,8 +23,9 @@ ServerConnection<T>::ServerConnection(boost::asio::basic_stream_socket<T> &&sock
     : socket_(std::move(socket)) {}
 
 template <class T>
-void ServerConnection<T>::WriteBuffer(
-    const std::vector<boost::asio::const_buffer> &buffer, boost::system::error_code &ec) {
+Status ServerConnection<T>::WriteBuffer(
+    const std::vector<boost::asio::const_buffer> &buffer) {
+  boost::system::error_code error;
   // Loop until all bytes are written while handling interrupts.
   // When profiling with pprof, unhandled interrupts were being sent by the profiler to
   // the raylet process, which was causing synchronous reads and writes to fail.
@@ -36,16 +34,17 @@ void ServerConnection<T>::WriteBuffer(
     uint64_t position = 0;
     while (bytes_remaining != 0) {
       size_t bytes_written =
-          socket_.write_some(boost::asio::buffer(b + position, bytes_remaining), ec);
+          socket_.write_some(boost::asio::buffer(b + position, bytes_remaining), error);
       position += bytes_written;
       bytes_remaining -= bytes_written;
-      if (ec.value() == EINTR) {
+      if (error.value() == EINTR) {
         continue;
-      } else if (ec.value() != boost::system::errc::errc_t::success) {
-        return;
+      } else if (error.value() != boost::system::errc::errc_t::success) {
+        return boost_to_ray_status(error);
       }
     }
   }
+  return ray::Status::OK();
 }
 
 template <class T>
@@ -81,21 +80,15 @@ ray::Status ServerConnection<T>::WriteMessage(int64_t type, int64_t length,
   message_buffers.push_back(boost::asio::buffer(message, length));
   // Write the message and then wait for more messages.
   // TODO(swang): Does this need to be an async write?
-  boost::system::error_code error;
-  WriteBuffer(message_buffers, error);
-  if (error) {
-    return ray::Status::IOError(error.message());
-  } else {
-    return ray::Status::OK();
-  }
+  return WriteBuffer(message_buffers);
 }
 
 template <class T>
 std::shared_ptr<ClientConnection<T>> ClientConnection<T>::Create(
     ClientHandler<T> &client_handler, MessageHandler<T> &message_handler,
-    boost::asio::basic_stream_socket<T> &&socket) {
+    boost::asio::basic_stream_socket<T> &&socket, const std::string &debug_label) {
   std::shared_ptr<ClientConnection<T>> self(
-      new ClientConnection(message_handler, std::move(socket)));
+      new ClientConnection(message_handler, std::move(socket), debug_label));
   // Let our manager process our new connection.
   client_handler(*self);
   return self;
@@ -103,8 +96,11 @@ std::shared_ptr<ClientConnection<T>> ClientConnection<T>::Create(
 
 template <class T>
 ClientConnection<T>::ClientConnection(MessageHandler<T> &message_handler,
-                                      boost::asio::basic_stream_socket<T> &&socket)
-    : ServerConnection<T>(std::move(socket)), message_handler_(message_handler) {}
+                                      boost::asio::basic_stream_socket<T> &&socket,
+                                      const std::string &debug_label)
+    : ServerConnection<T>(std::move(socket)),
+      message_handler_(message_handler),
+      debug_label_(debug_label) {}
 
 template <class T>
 const ClientID &ClientConnection<T>::GetClientID() {
@@ -156,7 +152,14 @@ void ClientConnection<T>::ProcessMessage(const boost::system::error_code &error)
   if (error) {
     read_type_ = static_cast<int64_t>(protocol::MessageType::DisconnectClient);
   }
+
+  uint64_t start_ms = current_time_ms();
   message_handler_(this->shared_from_this(), read_type_, read_message_.data());
+  uint64_t interval = current_time_ms() - start_ms;
+  if (interval > RayConfig::instance().handler_warning_timeout_ms()) {
+    RAY_LOG(WARNING) << "[" << debug_label_ << "]ProcessMessage with type " << read_type_
+                     << " took " << interval << " ms ";
+  }
 }
 
 template class ServerConnection<boost::asio::local::stream_protocol>;
