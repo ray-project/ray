@@ -196,7 +196,6 @@ Finally, to view the results with a `parallel coordinates visualization <https:/
 .. image:: ray-tune-parcoords.png
 
 
-
 Client API
 ----------
 
@@ -219,3 +218,9 @@ Then, on the client side, you can use the following class. The server address de
 
 
 For an example notebook for using the Client API, see the `Client API Example <https://github.com/ray-project/ray/tree/master/python/ray/tune/TuneClient.ipynb>`__.
+
+
+Example Usages
+--------------
+
+.. TODO(rliaw).

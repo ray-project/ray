@@ -13,9 +13,9 @@ Features
 
 Tune has the following features:
 
--  **Ease of use**: go from running one experiment on a single machine to running on a large distributed cluster without changing your code.
+-  Ease of use: go from running one experiment on a single machine to running on a large distributed cluster without changing your code.
 
--  Mix and match search execution and search algorithms to accelerate your training - such as using Model-Based Optimization (HyperOpt) with HyperBand.
+-  Mix and match search execution (Trial Schedulers) and search algorithms to accelerate your training - such as using Model-Based Optimization (HyperOpt) with HyperBand.
 
 -  Scalable implementations of search execution techniques such as `Population Based Training (PBT) <pbt.html>`__, `Median Stopping Rule <hyperband.html#median-stopping-rule>`__, and `HyperBand <hyperband.html>`__.
 
@@ -98,9 +98,18 @@ Tune provides a ``run_experiments`` function that generates and runs the trials 
 .. autofunction:: ray.tune.run_experiments
 
 
+Citing Tune
+-----------
+
+If Tune helps you in your academic research, you are encouraged to cite [our paper](https://arxiv.org/abs/1807.05118). Here is an example bibtex:
+
+.. code-block:: tex
+
+    @article{liaw2018tune,
+        title={Tune: A Research Platform for Distributed Model Selection and Training},
+        author={Liaw, Richard and Liang, Eric and Nishihara, Robert and Moritz, Philipp and Gonzalez, Joseph E and Stoica, Ion},
+        journal={arXiv preprint arXiv:1807.05118},
+        year={2018}
+    }
 
 
-Examples
---------
-
-You can find a list of examples `using Tune and its various features here <https://github.com/ray-project/ray/tree/master/python/ray/tune/examples>`__, including examples using Keras, TensorFlow, and Population-Based Training.
