@@ -1213,19 +1213,19 @@ class APITest(unittest.TestCase):
             start_ray_local=True,
             num_local_schedulers=3,
             num_workers=1,
-            num_cpus=[100, 5, 10],
-            num_gpus=[0, 5, 1],
+            resources=[{"Custom0" : 1}, {"Custom1" : 1},
+                {"Custom2" : 1}],
             use_raylet=True)
 
-        @ray.remote(num_cpus=11)
+        @ray.remote(resources={"Custom0" : 1})
         def run_on_0():
             return ray.worker.global_worker.plasma_client.store_socket_name
 
-        @ray.remote(num_gpus=2)
+        @ray.remote(resources={"Custom1" : 1})
         def run_on_1():
             return ray.worker.global_worker.plasma_client.store_socket_name
 
-        @ray.remote(num_cpus=6, num_gpus=1)
+        @ray.remote(resources={"Custom2" : 1})
         def run_on_2():
             return ray.worker.global_worker.plasma_client.store_socket_name
 
@@ -1243,26 +1243,34 @@ class APITest(unittest.TestCase):
             # Current Plasma Client Cache will maintain 64-item list.
             # If the number changed, this will fail.
             print("Start Flush!")
-            for i in range(1600):
+            for i in range(128):
                 run_on_0.remote()
                 run_on_1.remote()
                 run_on_2.remote()
                 # Flush the driver client cache,
                 # because the driver hold the objects by `ray.get`.
                 ray.put(1)
+            ray.wait([run_on_0.remote(), run_on_1.remote(), run_on_2.remote()])
             print("Flush finished!")
-
-        (a, b, c) = create()
-        # The three objects should be generated on different object stores.
-        assert ray.get(a) != ray.get(b)
-        assert ray.get(a) != ray.get(c)
-        assert ray.get(c) != ray.get(b)
-        ray.internal.free([a, b, c])
-        flush()
-        (l1, l2) = ray.wait([a, b, c], timeout=1)
+        def run_one_test(local_only):
+            (a, b, c) = create()
+            print("output:%s" %((a,b,c),))
+            # The three objects should be generated on different object stores.
+            ray.wait([a, b, c], timeout=5)
+            #assert ray.get(a) != ray.get(b)
+            #assert ray.get(a) != ray.get(c)
+            #assert ray.get(c) != ray.get(b)
+            ray.internal.free([a, b, c], local_only=local_only)
+            flush()
+            return ray.wait([a, b, c], timeout=3)
+        (l1, l2) = run_one_test(False)
         # The objects are deleted.
         assert len(l1) == 0
         assert len(l2) == 3
+        (l1, l2) = run_one_test(True)
+        # The objects are deleted.
+        assert len(l1) != 0
+        assert len(l2) != 3
 
 
 @unittest.skipIf(

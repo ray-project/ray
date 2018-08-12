@@ -25,14 +25,13 @@ def free(object_ids, local_only=False, worker=None):
     Args:
         object_ids (List[ObjectID]): List of object IDs to delete.
         local_only (bool): Whether only deleting the list of objects in local
-                           object store or all object stores.
+            object store or all object stores.
     """
     if worker is None:
         worker = ray.worker.get_global_worker()
 
     if isinstance(object_ids, ray.ObjectID):
-        free([object_ids], local_only, worker)
-        return
+        object_ids = [object_ids]
 
     if not isinstance(object_ids, list):
         raise TypeError("free() expects a list of ObjectID, got {}".format(

@@ -653,8 +653,9 @@ class ClientTable : private Log<UniqueID, ClientTableData> {
 
   /// Get the information of all clients.
   ///
-  /// \return The client ID to client information map.
   /// Note: The return value contains ClientID::nil() which should be filtered.
+  ///
+  /// \return The client ID to client information map.
   const std::unordered_map<ClientID, ClientTableDataT> &GetAllClients() const;
 
  private:
