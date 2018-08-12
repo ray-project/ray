@@ -220,7 +220,9 @@ Then, on the client side, you can use the following class. The server address de
 For an example notebook for using the Client API, see the `Client API Example <https://github.com/ray-project/ray/tree/master/python/ray/tune/TuneClient.ipynb>`__.
 
 
-Example Usages
---------------
+Examples
+--------
 
 .. TODO(rliaw).
+
+You can find a comprehensive of examples `using Tune and its various features here <https://github.com/ray-project/ray/tree/master/python/ray/tune/examples>`__, including examples using Keras, TensorFlow, and Population-Based Training.

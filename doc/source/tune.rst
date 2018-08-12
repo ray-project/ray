@@ -57,19 +57,17 @@ Tune uses Ray as a backend, so we will first import and initialize Ray.
 For the function you wish to tune, pass in a ``reporter`` object:
 
 .. code-block:: python
-   :emphasize-lines: 1,11
+   :emphasize-lines: 1,9
 
     def train_func(config, reporter):  # add a reporter arg
         model = ( ... )
         optimizer = SGD(model.parameters(),
-                        lr=config["lr"],
                         momentum=config["momentum"])
         dataset = ( ... )
 
         for idx, (data, target) in enumerate(dataset):
-            # ...
             accuracy = model.fit(data, target)
-            reporter(timesteps_total=idx, mean_accuracy=accuracy) # report metrics
+            reporter(mean_accuracy=accuracy) # report metrics
 
 **Finally**, configure your search and execute it on your Ray cluster:
 
@@ -113,3 +111,13 @@ If Tune helps you in your academic research, you are encouraged to cite [our pap
     }
 
 
+Documentation Contents
+----------------------
+
+.. toctree::
+   :maxdepth: 3
+
+   tune-usage.rst
+   tune-schedulers.rst
+   tune-searchalg.rst
+   tune-package-ref.rst

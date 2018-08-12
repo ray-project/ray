@@ -3,11 +3,10 @@ Tune Package Reference
 
 ray.tune
 --------
-.. TODO(rliaw): Fix TrainingResult
 
 .. automodule:: ray.tune
     :members:
-    :exclude-members: TuneError, TrainingResult
+    :exclude-members: TuneError
 
 
 ray.tune.schedulers
