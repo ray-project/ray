@@ -109,15 +109,3 @@ If Tune helps you in your academic research, you are encouraged to cite [our pap
         journal={arXiv preprint arXiv:1807.05118},
         year={2018}
     }
-
-
-Documentation Contents
-----------------------
-
-.. toctree::
-   :maxdepth: 3
-
-   tune-usage.rst
-   tune-schedulers.rst
-   tune-searchalg.rst
-   tune-package-ref.rst
