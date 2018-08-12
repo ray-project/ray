@@ -91,9 +91,10 @@ Concepts
 
 Tune schedules a number of *trials* in a cluster. Each trial runs a user-defined Python function or class and is parameterized by a *config* variation passed to the user code.
 
-Tune provides a ``run_experiments`` function that generates and runs the trials described by the experiment specification. The trials are scheduled and managed by a *trial scheduler* that implements the search algorithm (default is FIFO).
+..TODO(rliaw): Schedulers
+..TODO(rliaw): Algorithms
 
-.. autofunction:: ray.tune.run_experiments
+Tune provides a `run_experiments  <tune-package-ref.html#ray.tune.run_experiments>`__ function that generates and runs the trials described by the experiment specification. The trials are scheduled and managed by a *trial scheduler* that implements the search algorithm (default is FIFO).
 
 
 Citing Tune

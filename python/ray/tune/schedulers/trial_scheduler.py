@@ -6,6 +6,8 @@ from ray.tune.trial import Trial
 
 
 class TrialScheduler(object):
+    """Interface for implementing a Trial Scheduler class."""
+
     CONTINUE = "CONTINUE"
     PAUSE = "PAUSE"
     STOP = "STOP"

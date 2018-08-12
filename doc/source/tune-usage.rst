@@ -1,6 +1,9 @@
 Tune User Guide
 ===============
 
+.. contents::
+    :local:
+
 
 Experiment Setup
 ----------------
@@ -23,7 +26,7 @@ a single experiment or a list of experiments to `run_experiments`, as follows:
 An example of this can be found in `hyperband_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperband_example.py>`__.
 
 Alternatively, you can pass in a Python dict. This uses the same fields as
-the `ray.tune.Experiment`, except the experiment name is the key of the top level
+the ``ray.tune.Experiment``, except the experiment name is the key of the top level
 dictionary.
 
 .. code-block:: python
@@ -73,8 +76,8 @@ By default, each random variable and grid search point is sampled once. To take 
 
 For more information on variant generation, see `basic_variant.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/suggest/basic_variant.py>`__.
 
-Resource Allocation
--------------------
+Using GPUs (Resource Allocation)
+--------------------------------
 
 Tune runs each trial as a Ray actor, allocating the specified GPU and CPU ``trial_resources`` to each actor (defaulting to 1 CPU per trial). A trial will not be scheduled unless at least that amount of resources is available in the cluster, preventing the cluster from being overloaded.
 
@@ -128,6 +131,7 @@ The class interface that must be implemented to enable checkpointing is as follo
 
 .. autoclass:: ray.tune.trainable.Trainable
     :members: _save, _restore, _train, _setup, _stop
+    :noindex:
 
 
 
