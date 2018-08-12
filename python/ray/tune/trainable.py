@@ -102,28 +102,36 @@ class Trainable(object):
         """Runs one logical iteration of training.
 
         Subclasses should override ``_train()`` instead to return results.
-
         This class automatically fills the following fields in the result:
-            done (bool): training is terminated. Filled only if not provided.
-            time_this_iter_s (float): Time in seconds
-                this iteration took to run. This may be overriden in order to
-                override the system-computed time difference.
-            time_total_s (float): Accumulated time in seconds
-                for this entire experiment.
-            experiment_id (str): Unique string identifier
-                for this experiment. This id is preserved
-                across checkpoint / restore calls.
-            training_iteration (int): The index of this
-                training iteration, e.g. call to train().
-            pid (str): The pid of the training process.
-            date (str): A formatted date of
-                when the result was processed.
-            timestamp (str): A UNIX timestamp of
-                when the result was processed.
-            hostname (str): The hostname of the machine
-                hosting the training process.
-            node_ip (str): The node ip of the machine
-                hosting the training process.
+
+            `done` (bool): training is terminated. Filled only if not provided.
+
+            `time_this_iter_s` (float): Time in seconds this iteration
+            took to run. This may be overriden in order to override the
+            system-computed time difference.
+
+            `time_total_s` (float): Accumulated time in seconds for this
+            entire experiment.
+
+            `experiment_id` (str): Unique string identifier
+            for this experiment. This id is preserved
+            across checkpoint / restore calls.
+
+            `training_iteration` (int): The index of this
+            training iteration, e.g. call to train().
+
+            `pid` (str): The pid of the training process.
+
+            `date` (str): A formatted date of when the result was processed.
+
+            `timestamp` (str): A UNIX timestamp of when the result
+            was processed.
+
+            `hostname` (str): Hostname of the machine hosting the training
+            process.
+
+            `node_ip` (str): Node ip of the machine hosting the training
+            process.
 
         Returns:
             A dict that describes training progress.
