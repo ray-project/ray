@@ -2,8 +2,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import types
+
 from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.error import TuneError
+from ray.tune.registry import register_trainable
 
 
 class Experiment(object):
@@ -49,7 +52,7 @@ class Experiment(object):
                  checkpoint_freq=0,
                  max_failures=3):
         spec = {
-            "run": run,
+            "run": self._register_if_needed(run),
             "stop": stop or {},
             "config": config or {},
             "trial_resources": trial_resources or {
@@ -80,6 +83,38 @@ class Experiment(object):
         exp.name = name
         exp.spec = spec
         return exp
+
+    def _register_if_needed(self, run_object):
+        """Registers Trainable or Function at runtime.
+
+        Assumes already registered if run_object is a string. Does not
+        register lambdas because they could be part of variant generation.
+        Also, does not inspect interface of given run_object.
+
+        Arguments:
+            run_object (str|function|class): Trainable to run. If string,
+                assumes it is an ID and does not modify it. Otherwise,
+                returns a string corresponding to the run_object name.
+
+        Returns:
+            A string representing the trainable identifier.
+        """
+
+        if isinstance(run_object, str):
+            return run_object
+        elif isinstance(run_object, types.FunctionType):
+            if run_object.__name__ == "<lambda>":
+                print("Not auto-registering lambdas - resolving as variant.")
+                return run_object
+            else:
+                name = register_trainable(run_object.__name__, run_object)
+                return name
+        elif isinstance(run_object, type):
+            name = register_trainable(run_object.__name__, run_object)
+            return name
+        else:
+            raise TuneError("Improper 'run' - not string nor trainable.")
+
 
 
 def convert_to_experiment_list(experiments):
