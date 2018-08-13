@@ -724,8 +724,8 @@ class Worker(object):
 
         Args:
             function (Callable): The function to run on all of the workers. It
-                should not take any arguments. If it returns anything, its
-                return values will not be used.
+                takes only one argument, a worker info dict. If it returns
+                anything, its return values will not be used.
             run_on_other_drivers: The boolean that indicates whether we want to
                 run this funtion on other drivers. One case is we may need to
                 share objects across drivers.
