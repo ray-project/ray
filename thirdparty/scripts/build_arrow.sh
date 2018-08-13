@@ -15,12 +15,6 @@ else
 fi
 echo "Using Python executable $PYTHON_EXECUTABLE."
 
-LANGUAGE="python"
-if [[ -n  "$2" ]]; then
-  LANGUAGE=$2
-fi
-echo "Build language is $LANGUAGE."
-
 unamestr="$(uname)"
 
 if [[ "$unamestr" == "Linux" ]]; then
@@ -46,9 +40,8 @@ fi
 TARGET_COMMIT_ID=d48dce2cfebdbd044a8260d0a77f5fe3d89a4a2d
 build_arrow() {
   echo "building arrow"
-
   # Make sure arrow will be built again when building ray for java later than python
-  if [[ "$LANGUAGE" == *"java"* ]]; then
+  if [[ "$RAY_BUILD_JAVA" == "YES" ]]; then
     rm -rf $TP_DIR/build/arrow/cpp/build/CMakeCache.txt
   fi
 
@@ -78,7 +71,7 @@ build_arrow() {
   cd build
 
   BUILD_ARROW_PLASMA_JAVA_CLIENT=off
-  if [[ "$LANGUAGE" == *"java"* ]]; then
+  if [[ "$RAY_BUILD_JAVA" == "YES" ]]; then
     BUILD_ARROW_PLASMA_JAVA_CLIENT=on
   fi
 
@@ -147,8 +140,8 @@ build_arrow() {
   popd
 }
 # Download and compile arrow if it isn't already present or the commit-id mismatches.
-if [[ "$LANGUAGE" == *"python"* && ! -d $TP_DIR/../python/ray/pyarrow_files/pyarrow ]] || \
-    [[ "$LANGUAGE" == *"java"* && ! -f $TP_DIR/build/arrow/cpp/build/release/libplasma_java.dylib ]]; then
+if [[ "$RAY_BUILD_PYTHON" == "YES" && ! -d $TP_DIR/../python/ray/pyarrow_files/pyarrow ]] || \
+    [[ "$RAY_BUILD_JAVA" == "YES" && ! -f $TP_DIR/build/arrow/cpp/build/release/libplasma_java.dylib ]]; then
   build_arrow
 else
   REBUILD=off

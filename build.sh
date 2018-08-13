@@ -33,7 +33,7 @@ else
   exit 1
 fi
 
-LANGUAGE="python"
+RAY_BUILD_PYTHON="YES"
 PYTHON_EXECUTABLE=""
 BUILD_DIR=""
 if [ "$VALGRIND" = "1" ]; then
@@ -55,15 +55,15 @@ while [[ $# > 0 ]]; do
       ;;
     -l|--languags)
       LANGUAGE="$2"
-      CMAKE_RAY_LANG_PYTHON="NO"
-      CMAKE_RAY_LANG_JAVA="NO"
+      RAY_BUILD_PYTHON="NO"
+      RAY_BUILD_JAVA="NO"
       if [[ "$LANGUAGE" == *"python"* ]]; then
-        CMAKE_RAY_LANG_PYTHON="YES"
+        RAY_BUILD_PYTHON="YES"
       fi
       if [[ "$LANGUAGE" == *"java"* ]]; then
-        CMAKE_RAY_LANG_JAVA="YES"
+        RAY_BUILD_JAVA="YES"
       fi
-      if [ "$CMAKE_RAY_LANG_PYTHON" == "NO" ] && [ "$CMAKE_RAY_LANG_PYTHON" == "NO" ]; then
+      if [ "$RAY_BUILD_PYTHON" == "NO" ] && [ "$RAY_BUILD_JAVA" == "NO" ]; then
         echo "Unrecognized language: $LANGUAGE"
         exit -1
       fi
@@ -88,7 +88,9 @@ if [[ -z  "$PYTHON_EXECUTABLE" ]]; then
 fi
 echo "Using Python executable $PYTHON_EXECUTABLE."
 
-bash $ROOT_DIR/setup_thirdparty.sh $PYTHON_EXECUTABLE $LANGUAGE
+RAY_BUILD_PYTHON=$RAY_BUILD_PYTHON \
+RAY_BUILD_JAVA=$RAY_BUILD_JAVA \
+bash $ROOT_DIR/setup_thirdparty.sh $PYTHON_EXECUTABLE
 
 # Now we build everything.
 BUILD_DIR="$ROOT_DIR/build/"
@@ -104,8 +106,8 @@ ARROW_HOME=$TP_PKG_DIR/arrow/cpp/build/cpp-install
 BOOST_ROOT=$TP_PKG_DIR/boost \
 PKG_CONFIG_PATH=$ARROW_HOME/lib/pkgconfig \
 cmake -DCMAKE_BUILD_TYPE=$CBUILD_TYPE \
-      -DCMAKE_RAY_LANG_JAVA=$CMAKE_RAY_LANG_JAVA \
-      -DCMAKE_RAY_LANG_PYTHON=$CMAKE_RAY_LANG_PYTHON \
+      -DCMAKE_RAY_LANG_JAVA=$RAY_BUILD_JAVA \
+      -DCMAKE_RAY_LANG_PYTHON=$RAY_BUILD_PYTHON \
       -DRAY_USE_NEW_GCS=$RAY_USE_NEW_GCS \
       -DPYTHON_EXECUTABLE:FILEPATH=$PYTHON_EXECUTABLE $ROOT_DIR
 
@@ -115,9 +117,9 @@ popd
 
 # Move stuff from Arrow to Ray.
 cp $ROOT_DIR/thirdparty/pkg/arrow/cpp/build/cpp-install/bin/plasma_store $BUILD_DIR/src/plasma/
-if [[ "$CMAKE_RAY_LANG_PYTHON" == "YES" ]]; then
+if [[ "$RAY_BUILD_PYTHON" == "YES" ]]; then
   cp $ROOT_DIR/thirdparty/pkg/arrow/cpp/build/cpp-install/bin/plasma_store $BUILD_DIR/../python/ray/core/src/plasma/
 fi
-if [[ "$CMAKE_RAY_LANG_JAVA" == "YES" ]]; then
+if [[ "$RAY_BUILD_JAVA" == "YES" ]]; then
   cp $ROOT_DIR/thirdparty/build/arrow/cpp/build/release/libplasma_java.* $BUILD_DIR/src/plasma/
 fi
