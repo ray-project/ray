@@ -45,10 +45,12 @@ TaskSpecification::TaskSpecification(
     const UniqueID &driver_id, const TaskID &parent_task_id, int64_t parent_counter,
     const FunctionID &function_id,
     const std::vector<std::shared_ptr<TaskArgument>> &task_arguments, int64_t num_returns,
-    const std::unordered_map<std::string, double> &required_resources)
+    const std::unordered_map<std::string, double> &required_resources,
+    const TaskLanguage &language)
     : TaskSpecification(driver_id, parent_task_id, parent_counter, ActorID::nil(),
                         ObjectID::nil(), ActorID::nil(), ActorHandleID::nil(), -1,
-                        function_id, task_arguments, num_returns, required_resources) {}
+                        function_id, task_arguments, num_returns, required_resources,
+                        language) {}
 
 TaskSpecification::TaskSpecification(
     const UniqueID &driver_id, const TaskID &parent_task_id, int64_t parent_counter,
@@ -56,7 +58,8 @@ TaskSpecification::TaskSpecification(
     const ActorID &actor_id, const ActorHandleID &actor_handle_id, int64_t actor_counter,
     const FunctionID &function_id,
     const std::vector<std::shared_ptr<TaskArgument>> &task_arguments, int64_t num_returns,
-    const std::unordered_map<std::string, double> &required_resources)
+    const std::unordered_map<std::string, double> &required_resources,
+    const TaskLanguage &language)
     : spec_() {
   flatbuffers::FlatBufferBuilder fbb;
 
@@ -94,7 +97,7 @@ TaskSpecification::TaskSpecification(
       to_flatbuf(fbb, actor_creation_dummy_object_id), to_flatbuf(fbb, actor_id),
       to_flatbuf(fbb, actor_handle_id), actor_counter, false,
       to_flatbuf(fbb, function_id), fbb.CreateVector(arguments),
-      fbb.CreateVector(returns), map_to_flatbuf(fbb, required_resources));
+      fbb.CreateVector(returns), map_to_flatbuf(fbb, required_resources), language);
   fbb.Finish(spec);
   AssignSpecification(fbb.GetBufferPointer(), fbb.GetSize());
 }
@@ -177,6 +180,11 @@ const ResourceSet TaskSpecification::GetRequiredResources() const {
 bool TaskSpecification::IsDriverTask() const {
   // Driver tasks are empty tasks that have no function ID set.
   return FunctionId().is_nil();
+}
+
+TaskLanguage TaskSpecification::Language() const {
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
+  return message->language();
 }
 
 bool TaskSpecification::IsActorCreationTask() const {

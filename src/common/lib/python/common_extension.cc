@@ -462,7 +462,8 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
     self->task_spec = new ray::raylet::TaskSpecification(
         driver_id, parent_task_id, parent_counter, actor_creation_id,
         actor_creation_dummy_object_id, actor_id, actor_handle_id,
-        actor_counter, function_id, args, num_returns, required_resources);
+        actor_counter, function_id, args, num_returns, required_resources,
+        TaskLanguage::PYTHON);
   }
 
   /* Set the task's execution dependencies. */
