@@ -1279,6 +1279,9 @@ void NodeManager::ForwardTaskOrResubmit(const Task &task,
     // canceled. TaskDependencyManager::TaskPending() is assumed to be
     // idempotent.
     task_dependency_manager_.TaskPending(task);
+    // Remove the task from the lineage cache. The task will get added back
+    // once it is resubmitted.
+    lineage_cache_.RemoveWaitingTask(task_id);
 
     // Create a timer to resubmit the task in a little bit. TODO(rkn): Really
     // this should be a unique_ptr instead of a shared_ptr. However, it's a
@@ -1293,7 +1296,7 @@ void NodeManager::ForwardTaskOrResubmit(const Task &task,
           // we only handle the timeout event.
           RAY_CHECK(!error);
           RAY_LOG(INFO) << "In ForwardTask retry callback for task " << task_id;
-          EnqueuePlaceableTask(task);
+          SubmitTask(task, Lineage());
         });
   }
 }
