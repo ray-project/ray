@@ -200,8 +200,8 @@ class ComponentFailureTest(unittest.TestCase):
             # Submit more tasks than there are workers so that all workers and
             # cores are utilized.
             object_ids = [
-                f.remote(i, 0) for i in range(
-                    num_workers_per_scheduler * num_local_schedulers)
+                f.remote(i, 0) for i in range(num_workers_per_scheduler *
+                                              num_local_schedulers)
             ]
             object_ids += [f.remote(object_id, 1) for object_id in object_ids]
             object_ids += [f.remote(object_id, 2) for object_id in object_ids]
