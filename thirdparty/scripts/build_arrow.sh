@@ -147,7 +147,7 @@ build_arrow() {
   popd
 }
 # Download and compile arrow if it isn't already present or the commit-id mismatches.
-if [[ ! -d $TP_DIR/../python/ray/pyarrow_files/pyarrow ]] || \
+if [[ "$LANGUAGE" == *"python"* && ! -d $TP_DIR/../python/ray/pyarrow_files/pyarrow ]] || \
     [[ "$LANGUAGE" == *"java"* && ! -f $TP_DIR/build/arrow/cpp/build/release/libplasma_java.dylib ]]; then
   build_arrow
 else

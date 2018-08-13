@@ -2,22 +2,6 @@ cmake_minimum_required(VERSION 3.4)
 
 project(ray)
 
-set(CMAKE_RAY_LANG_PYTHON "NO")
-set(CMAKE_RAY_LANG_JAVA "NO")
-if ("${CMAKE_RAY_LANGUAGE}" MATCHES ".*python.*" OR "${CMAKE_RAY_LANGUAGE}" MATCHES ".*java.*")
-  if ("${CMAKE_RAY_LANGUAGE}" MATCHES ".*python.*")
-    set(CMAKE_RAY_LANG_PYTHON "YES")
-  endif()
-  if ("${CMAKE_RAY_LANGUAGE}" MATCHES ".*java.*")
-    set(CMAKE_RAY_LANG_JAVA "YES")
-  endif()
-elseif ("${CMAKE_RAY_LANGUAGE}" STREQUAL "")
-  message(WARNING "Language is not set, choose Python as default.")
-  set(CMAKE_RAY_LANG_PYTHON "YES")
-else()
-  message(FATAL_ERROR "Unrecognized language, use -DCMAKE_RAY_LANGUAGE=java|python. Abort.")
-endif()
-
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/Modules")
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/scripts/thirdparty.cmake)

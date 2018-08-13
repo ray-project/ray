@@ -15,9 +15,9 @@ function usage()
   echo "  -h|--help               print the help info"
   echo "  -d|--debug              CMAKE_BUILD_TYPE=Debug (default is RelWithDebInfo)"
   echo "  -l|--language python(default) "
-  echo "                          build native library for python"
-  echo "                java      build native library for java"
-  echo "                all       build native library for java & python"
+  echo "                                  build native library for python"
+  echo "                java              build native library for java"
+  echo "                python,java       build native library for java & python"
   echo "  -p|--python             which python executable (default from which python)"
   echo
 }
@@ -55,12 +55,17 @@ while [[ $# > 0 ]]; do
       ;;
     -l|--languags)
       LANGUAGE="$2"
-      if [ "$LANGUAGE" != "python" ] && [ "$LANGUAGE" != "java" ] && [ "$LANGUAGE" != "all" ]; then
-        echo "Unrecognized language."
-        exit -1
+      CMAKE_RAY_LANG_PYTHON="NO"
+      CMAKE_RAY_LANG_JAVA="NO"
+      if [[ "$LANGUAGE" == *"python"* ]]; then
+        CMAKE_RAY_LANG_PYTHON="YES"
       fi
-      if [ "$LANGUAGE" == "all" ]; then
-        LANGUAGE="python+java"
+      if [[ "$LANGUAGE" == *"java"* ]]; then
+        CMAKE_RAY_LANG_JAVA="YES"
+      fi
+      if [ "$CMAKE_RAY_LANG_PYTHON" == "NO" ] && [ "$CMAKE_RAY_LANG_PYTHON" == "NO" ]; then
+        echo "Unrecognized language: $LANGUAGE"
+        exit -1
       fi
       shift
       ;;
@@ -99,18 +104,20 @@ ARROW_HOME=$TP_PKG_DIR/arrow/cpp/build/cpp-install
 BOOST_ROOT=$TP_PKG_DIR/boost \
 PKG_CONFIG_PATH=$ARROW_HOME/lib/pkgconfig \
 cmake -DCMAKE_BUILD_TYPE=$CBUILD_TYPE \
-      -DCMAKE_RAY_LANGUAGE=$LANGUAGE \
+      -DCMAKE_RAY_LANG_JAVA=$CMAKE_RAY_LANG_JAVA \
+      -DCMAKE_RAY_LANG_PYTHON=$CMAKE_RAY_LANG_PYTHON \
       -DRAY_USE_NEW_GCS=$RAY_USE_NEW_GCS \
       -DPYTHON_EXECUTABLE:FILEPATH=$PYTHON_EXECUTABLE $ROOT_DIR
+
 make clean
 make -j${PARALLEL}
 popd
 
 # Move stuff from Arrow to Ray.
 cp $ROOT_DIR/thirdparty/pkg/arrow/cpp/build/cpp-install/bin/plasma_store $BUILD_DIR/src/plasma/
-if [[ "$LANGUAGE" == *"python"* ]]; then
+if [[ "$CMAKE_RAY_LANG_PYTHON" == "YES" ]]; then
   cp $ROOT_DIR/thirdparty/pkg/arrow/cpp/build/cpp-install/bin/plasma_store $BUILD_DIR/../python/ray/core/src/plasma/
 fi
-if [[ "$LANGUAGE" == *"java"* ]]; then
+if [[ "$CMAKE_RAY_LANG_JAVA" == "YES" ]]; then
   cp $ROOT_DIR/thirdparty/build/arrow/cpp/build/release/libplasma_java.* $BUILD_DIR/src/plasma/
 fi
