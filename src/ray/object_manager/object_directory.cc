@@ -53,14 +53,15 @@ void ObjectDirectory::RegisterBackend() {
     std::vector<ClientID> client_id_vec =
         UpdateObjectLocations(object_id_listener_pair->second.current_object_locations,
                               location_history, gcs_client_->client_table());
-    if (!client_id_vec.empty()) {
-      // Copy the callbacks so that the callbacks can unsubscribe without interrupting
-      // looping over the callbacks.
-      auto callbacks = object_id_listener_pair->second.callbacks;
-      // Call all callbacks associated with the object id locations we have received.
-      for (const auto &callback_pair : callbacks) {
-        callback_pair.second(client_id_vec, object_id);
-      }
+    // Copy the callbacks so that the callbacks can unsubscribe without interrupting
+    // looping over the callbacks.
+    auto callbacks = object_id_listener_pair->second.callbacks;
+    // Call all callbacks associated with the object id locations we have
+    // received.  This notifies the client even if the list of locations is
+    // empty, since this may indicate that the objects have been evicted from
+    // all nodes.
+    for (const auto &callback_pair : callbacks) {
+      callback_pair.second(client_id_vec, object_id);
     }
   };
   RAY_CHECK_OK(gcs_client_->object_table().Subscribe(
@@ -131,12 +132,12 @@ ray::Status ObjectDirectory::SubscribeObjectLocations(const UniqueID &callback_i
     return ray::Status::OK();
   }
   listener_state.callbacks.emplace(callback_id, callback);
-  // Immediately notify of found object locations.
-  if (!listener_state.current_object_locations.empty()) {
-    std::vector<ClientID> client_id_vec(listener_state.current_object_locations.begin(),
-                                        listener_state.current_object_locations.end());
-    callback(client_id_vec, object_id);
-  }
+  // Immediately notify of object locations. This notifies the client even if
+  // the list of locations is empty, since this may indicate that the objects
+  // have been evicted from all nodes.
+  std::vector<ClientID> client_id_vec(listener_state.current_object_locations.begin(),
+                                      listener_state.current_object_locations.end());
+  callback(client_id_vec, object_id);
   return status;
 }
 
