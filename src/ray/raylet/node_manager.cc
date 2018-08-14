@@ -401,7 +401,11 @@ void NodeManager::HandleActorCreation(const ActorID &actor_id,
     // known.
     auto created_actor_methods = local_queues_.RemoveTasks(created_actor_method_ids);
     for (const auto &method : created_actor_methods) {
-      lineage_cache_.RemoveWaitingTask(method.GetTaskSpecification().TaskId());
+      if (!lineage_cache_.RemoveWaitingTask(method.GetTaskSpecification().TaskId())) {
+        RAY_LOG(WARNING) << "Task " << method.GetTaskSpecification().TaskId()
+                         << " already removed from the lineage cache. This is most "
+                            "likely due to reconstruction.";
+      }
       // The task's uncommitted lineage was already added to the local lineage
       // cache upon the initial submission, so it's okay to resubmit it with an
       // empty lineage this time.
@@ -824,15 +828,20 @@ void NodeManager::TreatTaskAsFailed(const TaskSpecification &spec) {
 
 void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineage,
                              bool forwarded) {
-  if (local_queues_.HasTask(task.GetTaskSpecification().TaskId())) {
-    RAY_LOG(WARNING) << "Submitted task " << task.GetTaskSpecification().TaskId()
+  const TaskID task_id = task.GetTaskSpecification().TaskId();
+  if (local_queues_.HasTask(task_id)) {
+    RAY_LOG(WARNING) << "Submitted task " << task_id
                      << " is already queued and will not be reconstructed. This is most "
                         "likely due to spurious reconstruction.";
     return;
   }
 
   // Add the task and its uncommitted lineage to the lineage cache.
-  lineage_cache_.AddWaitingTask(task, uncommitted_lineage);
+  if (!lineage_cache_.AddWaitingTask(task, uncommitted_lineage)) {
+    RAY_LOG(WARNING)
+        << "Task " << task_id
+        << " already in lineage cache. This is most likely due to reconstruction.";
+  }
 
   const TaskSpecification &spec = task.GetTaskSpecification();
   if (spec.IsActorTask()) {
@@ -1082,7 +1091,11 @@ void NodeManager::AssignTask(Task &task) {
       actor_entry->second.ExtendFrontier(spec.ActorHandleId(), spec.ActorDummyObject());
     }
     // We started running the task, so the task is ready to write to GCS.
-    lineage_cache_.AddReadyTask(task);
+    if (!lineage_cache_.AddReadyTask(task)) {
+      RAY_LOG(WARNING)
+          << "Task " << spec.TaskId()
+          << " already in lineage cache. This is most likely due to reconstruction.";
+    }
     // Mark the task as running.
     // (See design_docs/task_states.rst for the state transition diagram.)
     local_queues_.QueueRunningTasks(std::vector<Task>({task}));
@@ -1158,6 +1171,8 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
 }
 
 void NodeManager::HandleTaskReconstruction(const TaskID &task_id) {
+  RAY_LOG(INFO) << "Reconstructing task " << task_id << " on client "
+                << gcs_client_->client_table().GetLocalClientId();
   // Retrieve the task spec in order to re-execute the task.
   RAY_CHECK_OK(gcs_client_->raylet_task_table().Lookup(
       JobID::nil(), task_id,
@@ -1335,7 +1350,11 @@ ray::Status NodeManager::ForwardTask(const Task &task, const ClientID &node_id) 
     // If we were able to forward the task, remove the forwarded task from the
     // lineage cache since the receiving node is now responsible for writing
     // the task to the GCS.
-    lineage_cache_.RemoveWaitingTask(task_id);
+    if (!lineage_cache_.RemoveWaitingTask(task_id)) {
+      RAY_LOG(WARNING) << "Task " << task_id << " already removed from the lineage "
+                                                "cache. This is most likely due to "
+                                                "reconstruction.";
+    }
     // Mark as forwarded so that the task and its lineage is not re-forwarded
     // in the future to the receiving node.
     lineage_cache_.MarkTaskAsForwarded(task_id, node_id);
