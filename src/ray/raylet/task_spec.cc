@@ -46,7 +46,7 @@ TaskSpecification::TaskSpecification(
     const FunctionID &function_id,
     const std::vector<std::shared_ptr<TaskArgument>> &task_arguments, int64_t num_returns,
     const std::unordered_map<std::string, double> &required_resources,
-    const TaskLanguage &language)
+    const enum Language &language)
     : TaskSpecification(driver_id, parent_task_id, parent_counter, ActorID::nil(),
                         ObjectID::nil(), ActorID::nil(), ActorHandleID::nil(), -1,
                         function_id, task_arguments, num_returns, required_resources,
@@ -59,7 +59,7 @@ TaskSpecification::TaskSpecification(
     const FunctionID &function_id,
     const std::vector<std::shared_ptr<TaskArgument>> &task_arguments, int64_t num_returns,
     const std::unordered_map<std::string, double> &required_resources,
-    const TaskLanguage &language)
+    const enum Language &language)
     : spec_() {
   flatbuffers::FlatBufferBuilder fbb;
 
@@ -90,6 +90,17 @@ TaskSpecification::TaskSpecification(
     returns.push_back(to_flatbuf(fbb, return_id));
   }
 
+  // convert Language to TaskLanguage
+  TaskLanguage task_language = TaskLanguage::PYTHON;
+  switch (language) {
+    case Language::PYTHON:
+      task_language = TaskLanguage::PYTHON;
+    case Language::JAVA:
+      task_language = TaskLanguage::JAVA;
+    default:
+      RAY_LOG(FATAL) << "Unknown language.";
+  }
+
   // Serialize the TaskSpecification.
   auto spec = CreateTaskInfo(
       fbb, to_flatbuf(fbb, driver_id), to_flatbuf(fbb, task_id),
@@ -97,7 +108,7 @@ TaskSpecification::TaskSpecification(
       to_flatbuf(fbb, actor_creation_dummy_object_id), to_flatbuf(fbb, actor_id),
       to_flatbuf(fbb, actor_handle_id), actor_counter, false,
       to_flatbuf(fbb, function_id), fbb.CreateVector(arguments),
-      fbb.CreateVector(returns), map_to_flatbuf(fbb, required_resources), language);
+      fbb.CreateVector(returns), map_to_flatbuf(fbb, required_resources), task_language);
   fbb.Finish(spec);
   AssignSpecification(fbb.GetBufferPointer(), fbb.GetSize());
 }
@@ -182,9 +193,19 @@ bool TaskSpecification::IsDriverTask() const {
   return FunctionId().is_nil();
 }
 
-TaskLanguage TaskSpecification::Language() const {
+Language TaskSpecification::Language() const {
   auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
-  return message->language();
+  auto language = message->language();
+  switch (language) {
+    case TaskLanguage::PYTHON:
+      return Language::PYTHON;
+    case TaskLanguage::JAVA:
+      return Language::JAVA;
+    default:
+      // This shouldn't be recheable
+      RAY_LOG(FATAL) << "Unknown task language.";
+      return Language::PYTHON;
+  }
 }
 
 bool TaskSpecification::IsActorCreationTask() const {
