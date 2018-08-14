@@ -14,14 +14,10 @@ function usage()
   echo "Options:"
   echo "  -h|--help               print the help info"
   echo "  -d|--debug              CMAKE_BUILD_TYPE=Debug (default is RelWithDebInfo)"
-  echo "  -l|--language python(default) "
-  echo "                          build native library for python"
-  echo "                java      build native library for java"
-  echo "                languages a list of languages to build native libraries,"
-  echo "                          separated by commas."
-  echo "                          Supported languages include python and java."
-  echo "                          If nothing is specified,"
-  echo "                          only python library will be built."
+  echo "  -l|--language language1[,language2]"
+  echo "                          a list of languages to build native libraries."
+  echo "                          Supported languages include \"python\" and \"java\"."`
+  echo "                          If not specified, only python library will be built."
   echo "  -p|--python             which python executable (default from which python)"
   echo
 }
