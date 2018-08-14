@@ -414,18 +414,31 @@ class TrialRunner(object):
             self._return_resources(trial.resources)
 
     def _update_avail_resources(self):
-        clients = ray.global_state.client_table()
-        if ray.worker.global_worker.use_raylet:
-            # TODO(rliaw): Remove once raylet flag is swapped
-            num_cpus = sum(cl['Resources']['CPU'] for cl in clients)
-            num_gpus = sum(cl['Resources'].get('GPU', 0) for cl in clients)
+        if self._resources_initialized:
+            previous_cpu = self._avail_resources.cpu_total()
+            previous_gpu = self._avail_resources.gpu_total()
         else:
-            local_schedulers = [
-                entry for client in clients.values() for entry in client
-                if (entry['ClientType'] == 'local_scheduler'
-                    and not entry['Deleted'])
-            ]
-            num_cpus = sum(ls['CPU'] for ls in local_schedulers)
-            num_gpus = sum(ls.get('GPU', 0) for ls in local_schedulers)
+            previous_cpu = 0
+            previous_gpu = 0
+        while True:
+            clients = ray.global_state.client_table()
+            if ray.worker.global_worker.use_raylet:
+                # TODO(rliaw): Remove once raylet flag is swapped
+                num_cpus = sum(cl['Resources']['CPU'] for cl in clients)
+                num_gpus = sum(cl['Resources'].get('GPU', 0) for cl in clients)
+            else:
+                local_schedulers = [
+                    entry for client in clients.values() for entry in client
+                    if (entry['ClientType'] == 'local_scheduler'
+                        and not entry['Deleted'])
+                ]
+                num_cpus = sum(ls['CPU'] for ls in local_schedulers)
+                num_gpus = sum(ls.get('GPU', 0) for ls in local_schedulers)
+            if int(num_cpus) == previous_cpu and int(num_gpus) == previous_gpu:
+                break
+            else:
+                previous_cpu = int(num_cpus)
+                previous_gpu = int(num_gpus)
+            time.sleep(1)
         self._avail_resources = Resources(int(num_cpus), int(num_gpus))
         self._resources_initialized = True
