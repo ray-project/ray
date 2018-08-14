@@ -152,7 +152,7 @@ def ray_start_reconstruction(request):
 
     # Start the Redis global state store.
     node_ip_address = "127.0.0.1"
-    use_raylet = os.environ.get("RAY_USE_XRAY") == "1"
+    use_raylet = os.environ.get("RAY_USE_XRAY") is not None
     redis_address, redis_shards = ray.services.start_redis(
         node_ip_address, use_raylet=use_raylet)
     redis_ip_address = ray.services.get_ip_address(redis_address)
