@@ -146,7 +146,7 @@ def cli():
 @click.option(
     "--use-raylet",
     is_flag=True,
-    default=None,
+    default=True,
     help="use the raylet code path")
 def start(node_ip_address, redis_address, redis_port, num_redis_shards,
           redis_max_clients, redis_shard_ports, object_manager_port,
@@ -159,10 +159,10 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
     if redis_address is not None:
         redis_address = services.address_to_ip(redis_address)
 
-    if use_raylet is None and os.environ.get("RAY_USE_XRAY") == "1":
+    if use_raylet is True and os.environ.get("RAY_USE_XRAY") == "0":
         # This environment variable is used in our testing setup.
         print("Detected environment variable 'RAY_USE_XRAY'.")
-        use_raylet = True
+        use_raylet = False
 
     try:
         resources = json.loads(resources)

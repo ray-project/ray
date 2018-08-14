@@ -1514,7 +1514,7 @@ def _init(address_info=None,
           plasma_directory=None,
           huge_pages=False,
           include_webui=True,
-          use_raylet=None):
+          use_raylet=True):
     """Helper method to connect to an existing Ray cluster or start a new one.
 
     This method handles two cases. Either a Ray cluster already exists and we
@@ -1585,10 +1585,10 @@ def _init(address_info=None,
         raise Exception("Driver_mode must be in [ray.SCRIPT_MODE, "
                         "ray.LOCAL_MODE, ray.SILENT_MODE].")
 
-    if use_raylet is None and os.environ.get("RAY_USE_XRAY") == "1":
+    if use_raylet is True and os.environ.get("RAY_USE_XRAY") == "0":
         # This environment variable is used in our testing setup.
         logger.info("Detected environment variable 'RAY_USE_XRAY'.")
-        use_raylet = True
+        use_raylet = False
 
     # Get addresses of existing services.
     if address_info is None:
@@ -1731,7 +1731,7 @@ def init(redis_address=None,
          plasma_directory=None,
          huge_pages=False,
          include_webui=True,
-         use_raylet=None):
+         use_raylet=True):
     """Connect to an existing Ray cluster or start one and connect to it.
 
     This method handles two cases. Either a Ray cluster already exists and we
@@ -1807,10 +1807,10 @@ def init(redis_address=None,
         else:
             raise Exception("Perhaps you called ray.init twice by accident?")
 
-    if use_raylet is None and os.environ.get("RAY_USE_XRAY") == "1":
+    if use_raylet is True and os.environ.get("RAY_USE_XRAY") == "0":
         # This environment variable is used in our testing setup.
         logger.info("Detected environment variable 'RAY_USE_XRAY'.")
-        use_raylet = True
+        use_raylet = False
 
     # Convert hostnames to numerical IP address.
     if node_ip_address is not None:

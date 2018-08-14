@@ -1003,7 +1003,7 @@ class APITest(unittest.TestCase):
         assert "fake_directory" not in ray.get(get_path2.remote())
 
     @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
+        os.environ.get("RAY_USE_XRAY") is None,
         "This test does not work with xray (nor is it intended to).")
     def testLoggingAPI(self):
         self.init_ray(driver_mode=ray.SILENT_MODE)
@@ -1293,7 +1293,7 @@ class APITestSharded(APITest):
         if kwargs is None:
             kwargs = {}
         kwargs["start_ray_local"] = True
-        if os.environ.get("RAY_USE_XRAY") == "1":
+        if os.environ.get("RAY_USE_XRAY") is None:
             print("XRAY currently supports only a single Redis shard.")
             kwargs["num_redis_shards"] = 1
         else:
@@ -1673,7 +1673,7 @@ class ResourcesTest(unittest.TestCase):
         ray.get(a1.test.remote())
 
     @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
+        os.environ.get("RAY_USE_XRAY") is None,
         "This test does not work with xray yet.")
     def testZeroCPUs(self):
         ray.worker._init(
@@ -2363,7 +2363,7 @@ class GlobalStateAPI(unittest.TestCase):
         assert found_message is True
 
     @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
+        os.environ.get("RAY_USE_XRAY") is None,
         "This test does not work with xray (nor is it intended to).")
     def testTaskProfileAPI(self):
         ray.init(redirect_output=True)
@@ -2424,7 +2424,7 @@ class GlobalStateAPI(unittest.TestCase):
             assert "stdout_file" in info
 
     @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
+        os.environ.get("RAY_USE_XRAY") is None,
         "This test does not work with xray yet.")
     def testDumpTraceFile(self):
         ray.init(redirect_output=True)
@@ -2465,7 +2465,7 @@ class GlobalStateAPI(unittest.TestCase):
         # trace could be malformed).
 
     @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
+        os.environ.get("RAY_USE_XRAY") is None,
         "This test does not work with xray yet.")
     def testFlushAPI(self):
         ray.init(num_cpus=1)

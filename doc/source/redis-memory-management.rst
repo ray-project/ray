@@ -35,13 +35,11 @@ referenced in that document, pass an additional special flag,
 Running Ray applications
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-At run time the environment variables ``RAY_USE_NEW_GCS=on`` and
-``RAY_USE_XRAY=1`` are required.
+At run time the environment variable ``RAY_USE_NEW_GCS=on`` is required.
 
 .. code-block:: bash
 
   export RAY_USE_NEW_GCS=on
-  export RAY_USE_XRAY=1
   python my_ray_script.py  # Or launch python/ipython.
 
 Activate memory flushing

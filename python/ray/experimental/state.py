@@ -130,12 +130,12 @@ class GlobalState(object):
         use_raylet = self.redis_client.get("UseRaylet")
         if use_raylet is not None:
             self.use_raylet = int(use_raylet) == 1
-        elif os.environ.get("RAY_USE_XRAY") == "1":
+        elif os.environ.get("RAY_USE_XRAY") == "0":
             # This environment variable is used in our testing setup.
             print("Detected environment variable 'RAY_USE_XRAY'.")
-            self.use_raylet = True
-        else:
             self.use_raylet = False
+        else:
+            self.use_raylet = True
 
         # Get the rest of the information.
         self.redis_clients = []

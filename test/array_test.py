@@ -76,7 +76,7 @@ class DistributedArrayTest(unittest.TestCase):
             ]))
 
     @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
+        os.environ.get("RAY_USE_XRAY") is None,
         "This test does not work with xray yet.")
     def testMethods(self):
         for module in [

@@ -767,7 +767,7 @@ class ActorsWithGPUs(unittest.TestCase):
     @unittest.skipIf(
         os.environ.get('RAY_USE_NEW_GCS', False), "Crashing with new GCS API.")
     @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
+        os.environ.get("RAY_USE_XRAY") is None,
         "This test does not work with xray yet.")
     def testActorGPUs(self):
         num_local_schedulers = 3
@@ -813,7 +813,7 @@ class ActorsWithGPUs(unittest.TestCase):
         assert ready_ids == []
 
     @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
+        os.environ.get("RAY_USE_XRAY") is None,
         "This test does not work with xray yet.")
     def testActorMultipleGPUs(self):
         num_local_schedulers = 3
@@ -888,7 +888,7 @@ class ActorsWithGPUs(unittest.TestCase):
         assert ready_ids == []
 
     @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
+        os.environ.get("RAY_USE_XRAY") is None,
         "This test does not work with xray yet.")
     def testActorDifferentNumbersOfGPUs(self):
         # Test that we can create actors on two nodes that have different
@@ -933,7 +933,7 @@ class ActorsWithGPUs(unittest.TestCase):
         assert ready_ids == []
 
     @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
+        os.environ.get("RAY_USE_XRAY") is None,
         "This test does not work with xray yet.")
     def testActorMultipleGPUsFromMultipleTasks(self):
         num_local_schedulers = 10
@@ -983,7 +983,7 @@ class ActorsWithGPUs(unittest.TestCase):
 
     @unittest.skipIf(sys.version_info < (3, 0), "This test requires Python 3.")
     @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
+        os.environ.get("RAY_USE_XRAY") is None,
         "This test does not work with xray yet.")
     def testActorsAndTasksWithGPUs(self):
         num_local_schedulers = 3
@@ -1254,7 +1254,7 @@ class ActorsWithGPUs(unittest.TestCase):
 
 
 @unittest.skipIf(
-    os.environ.get("RAY_USE_XRAY") == "1",
+    os.environ.get("RAY_USE_XRAY") is None,
     "This test does not work with xray yet.")
 class ActorReconstruction(unittest.TestCase):
     def tearDown(self):
@@ -1795,7 +1795,7 @@ class DistributedActorHandles(unittest.TestCase):
         return Queue.remote()
 
     @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
+        os.environ.get("RAY_USE_XRAY") is None,
         "This test does not work with xray yet.")
     def testFork(self):
         queue = self.setup_queue_actor()
@@ -1813,7 +1813,7 @@ class DistributedActorHandles(unittest.TestCase):
             assert filtered_items == list(range(1))
 
     @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
+        os.environ.get("RAY_USE_XRAY") is None,
         "This test does not work with xray yet.")
     def testForkConsistency(self):
         queue = self.setup_queue_actor()
@@ -1951,7 +1951,7 @@ def ray_stop():
 
 
 @unittest.skipIf(
-    os.environ.get("RAY_USE_XRAY") == "1" or sys.version_info < (3, 0),
+    os.environ.get("RAY_USE_XRAY") is None or sys.version_info < (3, 0),
     "This test does not work with xray yet"
     " and is currently failing on Python 2.7.")
 def testLifetimeAndTransientResources(ray_stop):
