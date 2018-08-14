@@ -511,12 +511,11 @@ TEST_F(LineageCacheTest, TestEvictionUncommittedChildren) {
 
   // Simulate executing the last task on a remote node and adding it to the
   // GCS.
-  for (auto it = tasks.begin(); it != tasks.end(); it++) {
-    auto task_data = std::make_shared<protocol::TaskT>();
-    RAY_CHECK_OK(mock_gcs_.RemoteAdd(it->GetTaskSpecification().TaskId(), task_data));
-    // Check that the remote task is flushed.
-    num_tasks_flushed++;
-  }
+  auto task_data = std::make_shared<protocol::TaskT>();
+  auto it = tasks.rbegin();
+  RAY_CHECK_OK(mock_gcs_.RemoteAdd(it->GetTaskSpecification().TaskId(), task_data));
+  // We expect the task that was added remotely to be flushed.
+  num_tasks_flushed++;
   // Check that once the last task in the forwarded chain is flushed, all local
   // tasks are flushed, since all of their dependencies have been evicted and
   // are therefore committed in the GCS.
