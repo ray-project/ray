@@ -769,6 +769,7 @@ void ObjectManager::ReceiveFreeRequest(std::shared_ptr<TcpClientConnection> &con
   // Keep this request local.
   bool local_only = true;
   FreeObjects(object_ids, local_only);
+  conn->ProcessMessages();
 }
 
 void ObjectManager::FreeObjects(const std::vector<ObjectID> &object_ids,
