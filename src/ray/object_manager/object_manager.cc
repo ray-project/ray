@@ -34,10 +34,8 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
   RAY_CHECK(config_.max_sends > 0);
   RAY_CHECK(config_.max_receives > 0);
   main_service_ = &main_service;
-  store_notification_.SubscribeObjAdded([this](const ObjectInfoT &object_info) {
-    NotifyDirectoryObjectAdd(object_info);
-    HandleUnfulfilledPushRequests(object_info);
-  });
+  store_notification_.SubscribeObjAdded(
+      [this](const ObjectInfoT &object_info) { HandleObjectAdded(object_info); });
   store_notification_.SubscribeObjDeleted(
       [this](const ObjectID &oid) { NotifyDirectoryObjectDeleted(oid); });
   StartIOService();
@@ -60,10 +58,8 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
   RAY_CHECK(config_.max_receives > 0);
   // TODO(hme) Client ID is never set with this constructor.
   main_service_ = &main_service;
-  store_notification_.SubscribeObjAdded([this](const ObjectInfoT &object_info) {
-    NotifyDirectoryObjectAdd(object_info);
-    HandleUnfulfilledPushRequests(object_info);
-  });
+  store_notification_.SubscribeObjAdded(
+      [this](const ObjectInfoT &object_info) { HandleObjectAdded(object_info); });
   store_notification_.SubscribeObjDeleted(
       [this](const ObjectID &oid) { NotifyDirectoryObjectDeleted(oid); });
   StartIOService();
@@ -97,15 +93,13 @@ void ObjectManager::StopIOService() {
   }
 }
 
-void ObjectManager::NotifyDirectoryObjectAdd(const ObjectInfoT &object_info) {
+void ObjectManager::HandleObjectAdded(const ObjectInfoT &object_info) {
+  // Notify the object directory that the object has been added to this node.
   ObjectID object_id = ObjectID::from_binary(object_info.object_id);
   local_objects_[object_id] = object_info;
   ray::Status status =
       object_directory_->ReportObjectAdded(object_id, client_id_, object_info);
-}
 
-void ObjectManager::HandleUnfulfilledPushRequests(const ObjectInfoT &object_info) {
-  ObjectID object_id = ObjectID::from_binary(object_info.object_id);
   // Handle the unfulfilled_push_requests_ which contains the push request that is not
   // completed due to unsatisfied local objects.
   auto iter = unfulfilled_push_requests_.find(object_id);
@@ -120,6 +114,10 @@ void ObjectManager::HandleUnfulfilledPushRequests(const ObjectInfoT &object_info
     }
     unfulfilled_push_requests_.erase(iter);
   }
+
+  // The object is local, so we no longer need to Pull it from a remote
+  // manager. Cancel any outstanding Pull requests for this object.
+  CancelPull(object_id);
 }
 
 void ObjectManager::NotifyDirectoryObjectDeleted(const ObjectID &object_id) {
@@ -145,38 +143,107 @@ ray::Status ObjectManager::Pull(const ObjectID &object_id) {
     RAY_LOG(ERROR) << object_id << " attempted to pull an object that's already local.";
     return ray::Status::OK();
   }
-  ray::Status status_code = object_directory_->SubscribeObjectLocations(
+  if (pull_requests_.find(object_id) != pull_requests_.end()) {
+    return ray::Status::OK();
+  }
+
+  pull_requests_.emplace(object_id, PullRequest());
+  // Subscribe to object notifications. A notification will be received every
+  // time the set of client IDs for the object changes. Notifications will also
+  // be received if the list of locations is empty. The set of client IDs has
+  // no ordering guarantee between notifications.
+  return object_directory_->SubscribeObjectLocations(
       object_directory_pull_callback_id_, object_id,
       [this](const std::vector<ClientID> &client_ids, const ObjectID &object_id) {
-        RAY_CHECK_OK(object_directory_->UnsubscribeObjectLocations(
-            object_directory_pull_callback_id_, object_id));
-        GetLocationsSuccess(client_ids, object_id);
+        // Exit if the Pull request has already been fulfilled or canceled.
+        auto it = pull_requests_.find(object_id);
+        if (it == pull_requests_.end()) {
+          return;
+        }
+        // Reset the list of clients that are now expected to have the object.
+        // NOTE(swang): Since we are overwriting the previous list of clients,
+        // we may end up sending a duplicate request to the same client as
+        // before.
+        it->second.client_locations = client_ids;
+        if (it->second.client_locations.empty()) {
+          // The object locations are now empty, so we should wait for the next
+          // notification about a new object location.  Cancel the timer until
+          // the next Pull attempt since there are no more clients to try.
+          if (it->second.retry_timer != nullptr) {
+            it->second.retry_timer->cancel();
+            it->second.timer_set = false;
+          }
+        } else {
+          // New object locations were found.
+          if (!it->second.timer_set) {
+            // The timer was not set, which means that we weren't trying any
+            // clients. We now have some clients to try, so begin trying to
+            // Pull from one.  If we fail to receive an object within the pull
+            // timeout, then this will try the rest of the clients in the list
+            // in succession.
+            TryPull(object_id);
+          }
+        }
       });
-  return status_code;
 }
 
-void ObjectManager::GetLocationsSuccess(const std::vector<ray::ClientID> &client_ids,
-                                        const ray::ObjectID &object_id) {
-  if (local_objects_.count(object_id) == 0) {
-    // Only pull objects that aren't local.
-    RAY_CHECK(!client_ids.empty());
-    ClientID client_id = client_ids.front();
-    Pull(object_id, client_id);
-  }
-}
-
-void ObjectManager::Pull(const ObjectID &object_id, const ClientID &client_id) {
-  // Check if object is already local.
-  if (local_objects_.count(object_id) != 0) {
-    RAY_LOG(ERROR) << object_id << " attempted to pull an object that's already local.";
+void ObjectManager::TryPull(const ObjectID &object_id) {
+  auto it = pull_requests_.find(object_id);
+  if (it == pull_requests_.end()) {
     return;
   }
-  // Check if we're pulling from self.
+
+  // The timer should never fire if there are no expected client locations.
+  RAY_CHECK(!it->second.client_locations.empty());
+  RAY_CHECK(local_objects_.count(object_id) == 0);
+
+  // Get the next client to try.
+  const ClientID client_id = std::move(it->second.client_locations.back());
+  it->second.client_locations.pop_back();
   if (client_id == client_id_) {
+    // If we're trying to pull from ourselves, skip this client and try the
+    // next one.
     RAY_LOG(ERROR) << client_id_ << " attempted to pull an object from itself.";
-    return;
+    const ClientID client_id = std::move(it->second.client_locations.back());
+    it->second.client_locations.pop_back();
+    RAY_CHECK(client_id != client_id_);
   }
+
+  // Try pulling from the client.
   PullEstablishConnection(object_id, client_id);
+
+  // If there are more clients to try, try them in succession, with a timeout
+  // in between each try.
+  if (!it->second.client_locations.empty()) {
+    if (it->second.retry_timer == nullptr) {
+      // Set the timer if we haven't already.
+      it->second.retry_timer = std::unique_ptr<boost::asio::deadline_timer>(
+          new boost::asio::deadline_timer(*main_service_));
+    }
+
+    // Wait for a timeout. If we receive the object or a caller Cancels the
+    // Pull within the timeout, then nothing will happen. Otherwise, the timer
+    // will fire and the next client in the list will be tried.
+    boost::posix_time::milliseconds retry_timeout(config_.pull_timeout_ms);
+    it->second.retry_timer->expires_from_now(retry_timeout);
+    it->second.retry_timer->async_wait(
+        [this, object_id](const boost::system::error_code &error) {
+          if (!error) {
+            // Try the Pull from the next client.
+            TryPull(object_id);
+          } else {
+            // Check that the error was due to the timer being canceled.
+            RAY_CHECK(error == boost::asio::error::operation_aborted);
+          }
+        });
+    // Record that we set the timer until the next attempt.
+    it->second.timer_set = true;
+  } else {
+    // The timer is not reset since there are no more clients to try. Go back
+    // to waiting for more notifications. Once we receive a new object location
+    // from the object directory, then the Pull will be retried.
+    it->second.timer_set = false;
+  }
 };
 
 void ObjectManager::PullEstablishConnection(const ObjectID &object_id,
@@ -370,10 +437,15 @@ ray::Status ObjectManager::SendObjectData(const ObjectID &object_id,
   return status;
 }
 
-ray::Status ObjectManager::Cancel(const ObjectID &object_id) {
-  ray::Status status = object_directory_->UnsubscribeObjectLocations(
-      object_directory_pull_callback_id_, object_id);
-  return status;
+void ObjectManager::CancelPull(const ObjectID &object_id) {
+  auto it = pull_requests_.find(object_id);
+  if (it == pull_requests_.end()) {
+    return;
+  }
+
+  RAY_CHECK_OK(object_directory_->UnsubscribeObjectLocations(
+      object_directory_pull_callback_id_, object_id));
+  pull_requests_.erase(it);
 }
 
 ray::Status ObjectManager::Wait(const std::vector<ObjectID> &object_ids,
@@ -481,22 +553,26 @@ void ObjectManager::SubscribeRemainingWaitObjects(const UniqueID &wait_id) {
       RAY_CHECK_OK(object_directory_->SubscribeObjectLocations(
           wait_id, object_id, [this, wait_id](const std::vector<ClientID> &client_ids,
                                               const ObjectID &subscribe_object_id) {
-            auto object_id_wait_state = active_wait_requests_.find(wait_id);
-            // We never expect to handle a subscription notification for a wait that has
-            // already completed.
-            RAY_CHECK(object_id_wait_state != active_wait_requests_.end());
-            auto &wait_state = object_id_wait_state->second;
-            RAY_CHECK(wait_state.remaining.erase(subscribe_object_id));
-            wait_state.found.insert(subscribe_object_id);
-            wait_state.requested_objects.erase(subscribe_object_id);
-            RAY_CHECK_OK(object_directory_->UnsubscribeObjectLocations(
-                wait_id, subscribe_object_id));
-            if (wait_state.found.size() >= wait_state.num_required_objects) {
-              WaitComplete(wait_id);
+            if (!client_ids.empty()) {
+              auto object_id_wait_state = active_wait_requests_.find(wait_id);
+              // We never expect to handle a subscription notification for a wait that has
+              // already completed.
+              RAY_CHECK(object_id_wait_state != active_wait_requests_.end());
+              auto &wait_state = object_id_wait_state->second;
+              RAY_CHECK(wait_state.remaining.erase(subscribe_object_id));
+              wait_state.found.insert(subscribe_object_id);
+              wait_state.requested_objects.erase(subscribe_object_id);
+              RAY_CHECK_OK(object_directory_->UnsubscribeObjectLocations(
+                  wait_id, subscribe_object_id));
+              if (wait_state.found.size() >= wait_state.num_required_objects) {
+                WaitComplete(wait_id);
+              }
             }
           }));
     }
     if (wait_state.timeout_ms != -1) {
+      auto timeout = boost::posix_time::milliseconds(wait_state.timeout_ms);
+      wait_state.timeout_timer->expires_from_now(timeout);
       wait_state.timeout_timer->async_wait(
           [this, wait_id](const boost::system::error_code &error_code) {
             if (error_code.value() != 0) {
