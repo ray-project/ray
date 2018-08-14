@@ -46,7 +46,7 @@ TaskSpecification::TaskSpecification(
     const FunctionID &function_id,
     const std::vector<std::shared_ptr<TaskArgument>> &task_arguments, int64_t num_returns,
     const std::unordered_map<std::string, double> &required_resources,
-    const enum Language &language)
+    const Language &language)
     : TaskSpecification(driver_id, parent_task_id, parent_counter, ActorID::nil(),
                         ObjectID::nil(), ActorID::nil(), ActorHandleID::nil(), -1,
                         function_id, task_arguments, num_returns, required_resources,
@@ -59,7 +59,7 @@ TaskSpecification::TaskSpecification(
     const FunctionID &function_id,
     const std::vector<std::shared_ptr<TaskArgument>> &task_arguments, int64_t num_returns,
     const std::unordered_map<std::string, double> &required_resources,
-    const enum Language &language)
+    const Language &language)
     : spec_() {
   flatbuffers::FlatBufferBuilder fbb;
 
@@ -193,7 +193,7 @@ bool TaskSpecification::IsDriverTask() const {
   return FunctionId().is_nil();
 }
 
-Language TaskSpecification::Language() const {
+Language TaskSpecification::GetLanguage() const {
   auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
   auto language = message->language();
   switch (language) {

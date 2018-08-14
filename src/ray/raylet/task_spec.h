@@ -143,7 +143,7 @@ class TaskSpecification {
   double GetRequiredResource(const std::string &resource_name) const;
   const ResourceSet GetRequiredResources() const;
   bool IsDriverTask() const;
-  Language Language() const;
+  Language GetLanguage() const;
 
   // Methods specific to actor tasks.
   bool IsActorCreationTask() const;
