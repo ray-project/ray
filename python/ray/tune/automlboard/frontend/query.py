@@ -41,12 +41,9 @@ def query_job(request):
     trials = TrialRecord.objects.filter(job_id=job_id)
 
     total_num = len(trials)
-    running_num = len(
-        filter(lambda t: t.trial_status == "RUNNING", trials))
-    success_num = len(
-        filter(lambda t: t.trial_status == "TERMINATED", trials))
-    failed_num = len(
-        filter(lambda t: t.trial_status == "FAILED", trials))
+    running_num = len(filter(lambda t: t.trial_status == "RUNNING", trials))
+    success_num = len(filter(lambda t: t.trial_status == "TERMINATED", trials))
+    failed_num = len(filter(lambda t: t.trial_status == "FAILED", trials))
     if total_num == 0:
         progress = 0
     else:
@@ -87,7 +84,7 @@ def query_trial(request):
     {
         "app_url": "None",
         "trial_status": "TERMINATED",
-        "params": {'a'},
+        "params": {'a': 1, 'b': 2},
         "job_id": "asynchyperband_test",
         "end_time": "2018-07-19 20:49:44",
         "start_time": "2018-07-19 20:49:40",

@@ -349,6 +349,7 @@ class Collector(Thread):
                 "job_id": job_id,
                 "status": "RUNNING",
                 "type": "RAYTUNE",
+                "start_time": os.path.getctime(expr_dir),
                 "end_time": None,
                 "progress_offset": 0,
                 "result_offset": 0,
@@ -356,7 +357,10 @@ class Collector(Thread):
             }
 
         if not meta.get("start_time", None):
-            meta["start_time"] = timestamp2date(os.path.getctime(expr_dir))
+            meta["start_time"] = os.path.getctime(expr_dir)
+
+        if isinstance(meta["start_time"], float):
+            meta["start_time"] = timestamp2date(meta["start_time"])
 
         if meta.get("end_time", None):
             meta["end_time"] = timestamp2date(meta["end_time"])
