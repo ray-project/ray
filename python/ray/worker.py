@@ -1540,8 +1540,8 @@ def _init(address_info=None,
             provided if start_ray_local is True.
         num_local_schedulers (int): The number of local schedulers to start.
             This is only provided if start_ray_local is True.
-        object_store_memory: The amount of memory (in bytes) to start the
-            object store with.
+        object_store_memory: The maximum amount of memory (in bytes) to
+            allow the object store to use.
         driver_mode (bool): The mode in which to start the driver. This should
             be one of ray.SCRIPT_MODE, ray.LOCAL_MODE, and ray.SILENT_MODE.
         redirect_worker_output: True if the stdout and stderr of worker
