@@ -19,10 +19,10 @@ fi
 echo "Using Python executable $PYTHON_EXECUTABLE."
 
 if [[ "$RAY_BUILD_JAVA" == "YES" ]]; then
-echo "Build language is Java."
+echo "Java library will be built."
 fi
 if [[ "$RAY_BUILD_PYTHON" == "YES" ]]; then
-echo "Build language is Python."
+echo "Python library will be built."
 fi
 
 unamestr="$(uname)"

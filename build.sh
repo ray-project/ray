@@ -16,7 +16,7 @@ function usage()
   echo "  -d|--debug              CMAKE_BUILD_TYPE=Debug (default is RelWithDebInfo)"
   echo "  -l|--language language1[,language2]"
   echo "                          a list of languages to build native libraries."
-  echo "                          Supported languages include \"python\" and \"java\"."`
+  echo "                          Supported languages include \"python\" and \"java\"."
   echo "                          If not specified, only python library will be built."
   echo "  -p|--python             which python executable (default from which python)"
   echo
@@ -34,6 +34,7 @@ else
 fi
 
 RAY_BUILD_PYTHON="YES"
+RAY_BUILD_JAVA="NO"
 PYTHON_EXECUTABLE=""
 BUILD_DIR=""
 if [ "$VALGRIND" = "1" ]; then
