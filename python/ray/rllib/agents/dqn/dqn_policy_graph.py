@@ -18,31 +18,91 @@ Q_TARGET_SCOPE = "target_q_func"
 
 
 class QNetwork(object):
-    def __init__(self, model, num_actions, dueling=False, hiddens=[256]):
+    def __init__(self, model, num_actions, dueling=False, hiddens=[256], use_noisy=False):
         with tf.variable_scope("action_value"):
             action_out = model.last_layer
-            for hidden in hiddens:
-                action_out = layers.fully_connected(
-                    action_out, num_outputs=hidden, activation_fn=tf.nn.relu)
-            action_scores = layers.fully_connected(
-                action_out, num_outputs=num_actions, activation_fn=None)
+            for i in range(len(hiddens)):
+                if use_noisy:
+                    action_out = self.noisy_layer("hidden_%d"%i, action_out, hiddens[i])
+                else:
+                    action_out = layers.fully_connected(
+                        action_out, num_outputs=hiddens[i], activation_fn=tf.nn.relu)
+            if use_noisy:
+                action_scores = self.noisy_layer(
+                    "output", action_out, num_actions, non_linear=False)
+            else:
+                action_scores = layers.fully_connected(
+                    action_out, num_outputs=num_actions, activation_fn=None)
 
         if dueling:
             with tf.variable_scope("state_value"):
                 state_out = model.last_layer
-                for hidden in hiddens:
-                    state_out = layers.fully_connected(
-                        state_out,
-                        num_outputs=hidden,
-                        activation_fn=tf.nn.relu)
-                state_score = layers.fully_connected(
-                    state_out, num_outputs=1, activation_fn=None)
+                for i in range(len(hiddens)):
+                    if use_noisy:
+                        state_out = self.noisy_layer(
+                            "dueling_hidden_%d"%i, state_out, hiddens[i])
+                    else:
+                        state_out = layers.fully_connected(
+                            state_out,
+                            num_outputs=hiddens[i],
+                            activation_fn=tf.nn.relu)
+                if use_noisy:
+                    state_score = self.noisy_layer(
+                        "dueling_output", state_out, 1, non_linear=False)
+                else:
+                    state_score = layers.fully_connected(
+                        state_out, num_outputs=1, activation_fn=None)
             action_scores_mean = tf.reduce_mean(action_scores, 1)
             action_scores_centered = action_scores - tf.expand_dims(
                 action_scores_mean, 1)
             self.value = state_score + action_scores_centered
         else:
             self.value = action_scores
+
+    def f_epsilon(self, x):
+        return tf.sign(x) * tf.sqrt(tf.abs(x))
+
+    def noisy_layer(self, prefix, action_in, out_size, non_linear=True):
+        in_size = int(action_in.shape[1])
+
+        epsilon_in = tf.random_normal(shape=[in_size])
+        epsilon_out = tf.random_normal(shape=[out_size])
+        epsilon_in = self.f_epsilon(epsilon_in)
+        epsilon_out = self.f_epsilon(epsilon_out)
+        epsilon_w = tf.matmul(
+            a=tf.expand_dims(epsilon_in, -1),
+            b=tf.expand_dims(epsilon_out, 0))
+        epsilon_b = epsilon_out
+        sigma_w = tf.get_variable(
+            name=prefix+"_sigma_w",
+            shape=[in_size, out_size],
+            dtype=tf.float32,
+            initializer=tf.random_uniform_initializer(
+                minval=-1.0/np.sqrt(float(in_size)),
+                maxval=1.0/np.sqrt(float(in_size))))
+        sigma_b = tf.get_variable(
+            name=prefix+"_sigma_b",
+            shape=[out_size],
+            dtype=tf.float32,
+            initializer=tf.constant_initializer(0.5/np.sqrt(float(in_size))))
+
+        w = tf.get_variable(
+            name=prefix+"_fc_w",
+            shape=[in_size, out_size],
+            dtype=tf.float32,
+            initializer=layers.xavier_initializer())
+        b = tf.get_variable(
+            name=prefix+"_fc_b",
+            shape=[out_size],
+            dtype=tf.float32,
+            initializer=tf.zeros_initializer())
+
+        action_activation = tf.nn.xw_plus_b(
+            action_in, w+sigma_w*epsilon_w, b+sigma_b*epsilon_b)
+
+        if not non_linear:
+            return action_activation
+        return tf.nn.relu(action_activation)
 
 
 class QValuePolicy(object):
@@ -179,7 +239,8 @@ class DQNPolicyGraph(TFPolicyGraph):
         return QNetwork(
             ModelCatalog.get_model(obs, 1,
                                    self.config["model"]), self.num_actions,
-            self.config["dueling"], self.config["hiddens"]).value
+            self.config["dueling"], self.config["hiddens"],
+            self.config["noisy"]).value
 
     def _build_q_value_policy(self, q_values):
         return QValuePolicy(q_values, self.cur_observations, self.num_actions,
