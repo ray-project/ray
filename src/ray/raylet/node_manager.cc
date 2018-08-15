@@ -736,7 +736,7 @@ void NodeManager::ProcessNodeManagerMessage(TcpClientConnection &node_manager_cl
     Lineage uncommitted_lineage(*message);
     const Task &task = uncommitted_lineage.GetEntry(task_id)->TaskData();
     RAY_LOG(DEBUG) << "got task " << task.GetTaskSpecification().TaskId()
-                   << " spillback=" << task.GetTaskExecutionSpecReadonly().NumForwards();
+                   << " spillback=" << task.GetTaskExecutionSpec().NumForwards();
     SubmitTask(task, uncommitted_lineage, /* forwarded = */ true);
   } break;
   case protocol::MessageType::DisconnectClient: {
@@ -1085,8 +1085,7 @@ void NodeManager::AssignTask(Task &task) {
       // we may lose updates that are in flight to the task table. We only
       // guarantee deterministic reconstruction ordering for tasks whose
       // updates are reflected in the task table.
-      TaskExecutionSpecification &mutable_spec = task.GetTaskExecutionSpec();
-      mutable_spec.SetExecutionDependencies({execution_dependency});
+      task.SetExecutionDependencies({execution_dependency});
       // Extend the frontier to include the executing task.
       actor_entry->second.ExtendFrontier(spec.ActorHandleId(), spec.ActorDummyObject());
     }
@@ -1323,7 +1322,7 @@ ray::Status NodeManager::ForwardTask(const Task &task, const ClientID &node_id) 
       uncommitted_lineage.GetEntryMutable(task_id)->TaskDataMutable();
 
   // Increment forward count for the forwarded task.
-  lineage_cache_entry_task.GetTaskExecutionSpec().IncrementNumForwards();
+  lineage_cache_entry_task.IncrementNumForwards();
 
   flatbuffers::FlatBufferBuilder fbb;
   auto request = uncommitted_lineage.ToFlatbuffer(fbb, task_id);

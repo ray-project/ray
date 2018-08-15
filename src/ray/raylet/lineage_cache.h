@@ -84,14 +84,28 @@ class LineageEntry {
   /// that created its arguments.
   ///
   /// \return The IDs of the parent entries.
-  const std::unordered_set<TaskID> GetParentTaskIds() const;
+  const std::unordered_set<TaskID> &GetParentTaskIds() const;
 
   /// Get the task data.
   ///
   /// \return The task data.
   const Task &TaskData() const;
 
+  /// Get a mutable version of the task data.
+  ///
+  /// \return The task data.
+  /// TODO(swang): This is pretty ugly.
   Task &TaskDataMutable();
+
+  /// Update the task data with a new task.
+  ///
+  /// \return Void.
+  void UpdateTaskData(const Task &task);
+
+ private:
+  /// Compute cached parent task IDs. This task is dependent on values returned
+  /// by these tasks.
+  void ComputeParentTaskIds();
 
   /// The current state of this entry according to its status in the GCS.
   GcsStatus status_;
@@ -99,7 +113,9 @@ class LineageEntry {
   /// an object.
   //  const Task task_;
   Task task_;
-
+  /// A cached copy of the parent task IDs. This task is dependent on values
+  /// returned by these tasks.
+  std::unordered_set<TaskID> parent_task_ids_;
   /// IDs of node managers that this task has been explicitly forwarded to.
   std::unordered_set<ClientID> forwarded_to_;
 };
