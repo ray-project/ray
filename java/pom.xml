@@ -33,7 +33,7 @@
             <dependency>
                 <groupId>org.apache.arrow</groupId>
                 <artifactId>arrow-plasma</artifactId>
-                <version>0.10.0-SNAPSHOT</version>
+                <version>0.10.0</version>
             </dependency>
 
             <dependency>
