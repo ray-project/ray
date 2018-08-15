@@ -7,6 +7,7 @@
 #include "ray/raylet/task.h"
 #include "ray/object_manager/object_manager.h"
 #include "ray/common/client_connection.h"
+#include "ray/gcs/format/util.h"
 #include "ray/raylet/actor_registration.h"
 #include "ray/raylet/lineage_cache.h"
 #include "ray/raylet/scheduling_policy.h"
@@ -25,7 +26,7 @@ struct NodeManagerConfig {
   ResourceSet resource_config;
   int num_initial_workers;
   int num_workers_per_process;
-  std::vector<std::string> worker_command;
+  std::unordered_map<Language, std::vector<std::string>> worker_command;
   uint64_t heartbeat_period_ms;
   uint64_t max_lineage_size;
   /// The store socket name.

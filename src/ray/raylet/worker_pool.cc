@@ -7,8 +7,7 @@
 
 namespace {
 
-// A helper function to remove a worker from a list. Returns true if the worker
-// was found and removed.
+// A helper function to get a worker from a list.
 std::shared_ptr<ray::raylet::Worker> GetWorker(
     const std::list<std::shared_ptr<ray::raylet::Worker>> &worker_pool,
     const std::shared_ptr<ray::LocalClientConnection> &connection) {
@@ -41,8 +40,9 @@ namespace raylet {
 
 /// A constructor that initializes a worker pool with
 /// (num_worker_processes * num_workers_per_process) workers
-WorkerPool::WorkerPool(int num_worker_processes, int num_workers_per_process,
-                       int num_cpus, const std::vector<std::string> &worker_command)
+WorkerPool::WorkerPool(
+    int num_worker_processes, int num_workers_per_process, int num_cpus,
+    const std::unordered_map<Language, std::vector<std::string>> &worker_command)
     : num_workers_per_process_(num_workers_per_process),
       num_cpus_(num_cpus),
       worker_command_(worker_command) {
@@ -50,22 +50,28 @@ WorkerPool::WorkerPool(int num_worker_processes, int num_workers_per_process,
   // Ignore SIGCHLD signals. If we don't do this, then worker processes will
   // become zombies instead of dying gracefully.
   signal(SIGCHLD, SIG_IGN);
-  for (int i = 0; i < num_worker_processes; i++) {
+  for (const auto &entry : worker_command) {
+    // Initialize the pools for each language.
+    pools_[entry.first];
     // Force-start num_workers workers.
-    StartWorkerProcess(true);
+    for (int i = 0; i < num_worker_processes; i++) {
+      StartWorkerProcess(entry.first, true);
+    }
   }
 }
 
 WorkerPool::~WorkerPool() {
   std::unordered_set<pid_t> pids_to_kill;
-  // Kill all registered workers. NOTE(swang): This assumes that the registered
-  // workers were started by the pool.
-  for (const auto &worker : registered_workers_) {
-    pids_to_kill.insert(worker->Pid());
+  for (const auto &entry : pools_) {
+    // Kill all registered workers. NOTE(swang): This assumes that the registered
+    // workers were started by the pool.
+    for (const auto &worker : entry.second.registered_workers) {
+      pids_to_kill.insert(worker->Pid());
+    }
   }
   // Kill all the workers that have been started but not registered.
   for (const auto &entry : starting_worker_processes_) {
-    pids_to_kill.insert(entry.first);
+	pids_to_kill.insert(entry.first);
   }
   for (const auto &pid : pids_to_kill) {
     RAY_CHECK(pid > 0);
@@ -77,11 +83,12 @@ WorkerPool::~WorkerPool() {
   }
 }
 
-uint32_t WorkerPool::Size() const {
-  return static_cast<uint32_t>(actor_pool_.size() + pool_.size());
+uint32_t WorkerPool::Size(const Language &language) const {
+  const auto &pool = pools_.find(language)->second;
+  return static_cast<uint32_t>(pool.idle.size() + pool.idle_actor.size());
 }
 
-void WorkerPool::StartWorkerProcess(bool force_start) {
+void WorkerPool::StartWorkerProcess(const Language &language, bool force_start) {
   RAY_CHECK(!worker_command_.empty()) << "No worker command provided";
   // The first condition makes sure that we are always starting up to
   // num_cpus_ number of processes in parallel.
@@ -91,9 +98,10 @@ void WorkerPool::StartWorkerProcess(bool force_start) {
                    << " worker processes pending registration";
     return;
   }
+  auto &pool = GetPoolForLanguage(language);
   // Either there are no workers pending registration or the worker start is being forced.
-  RAY_LOG(DEBUG) << "starting worker, actor pool " << actor_pool_.size() << " task pool "
-                 << pool_.size();
+  RAY_LOG(DEBUG) << "starting worker, actor pool " << pool.idle_actor.size()
+                 << " task pool " << pool.idle.size();
 
   // Launch the process to create the worker.
   pid_t pid = fork();
@@ -108,7 +116,8 @@ void WorkerPool::StartWorkerProcess(bool force_start) {
 
   // Extract pointers from the worker command to pass into execvp.
   std::vector<const char *> worker_command_args;
-  for (auto const &token : worker_command_) {
+  auto command = worker_command_.find(language);
+  for (auto const &token : command->second) {
     worker_command_args.push_back(token.c_str());
   }
   worker_command_args.push_back(nullptr);
@@ -123,7 +132,8 @@ void WorkerPool::StartWorkerProcess(bool force_start) {
 void WorkerPool::RegisterWorker(std::shared_ptr<Worker> worker) {
   auto pid = worker->Pid();
   RAY_LOG(DEBUG) << "Registering worker with pid " << pid;
-  registered_workers_.push_back(std::move(worker));
+  auto &pool = GetPoolForLanguage(worker->GetLanguage());
+  pool.registered_workers.push_back(std::move(worker));
 
   auto it = starting_worker_processes_.find(pid);
   RAY_CHECK(it != starting_worker_processes_.end());
@@ -135,55 +145,80 @@ void WorkerPool::RegisterWorker(std::shared_ptr<Worker> worker) {
 
 void WorkerPool::RegisterDriver(std::shared_ptr<Worker> driver) {
   RAY_CHECK(!driver->GetAssignedTaskId().is_nil());
-  registered_drivers_.push_back(driver);
+  auto &pool = GetPoolForLanguage(driver->GetLanguage());
+  pool.registered_drivers.push_back(driver);
 }
 
 std::shared_ptr<Worker> WorkerPool::GetRegisteredWorker(
     const std::shared_ptr<LocalClientConnection> &connection) const {
-  return GetWorker(registered_workers_, connection);
+  for (const auto &entry : pools_) {
+    auto it = GetWorker(entry.second.registered_workers, connection);
+    if (it != nullptr) {
+      return it;
+    }
+  }
+  return nullptr;
 }
 
 std::shared_ptr<Worker> WorkerPool::GetRegisteredDriver(
     const std::shared_ptr<LocalClientConnection> &connection) const {
-  return GetWorker(registered_drivers_, connection);
+  for (const auto &entry : pools_){
+    auto it = GetWorker(entry.second.registered_drivers, connection);
+    if (it != nullptr) {
+      return it;
+    }
+  }
+  return nullptr;
 }
 
 void WorkerPool::PushWorker(std::shared_ptr<Worker> worker) {
   // Since the worker is now idle, unset its assigned task ID.
   RAY_CHECK(worker->GetAssignedTaskId().is_nil())
       << "Idle workers cannot have an assigned task ID";
+  auto &pool = GetPoolForLanguage(worker->GetLanguage());
   // Add the worker to the idle pool.
   if (worker->GetActorId().is_nil()) {
-    pool_.push_back(std::move(worker));
+    pool.idle.push_back(std::move(worker));
   } else {
-    actor_pool_[worker->GetActorId()] = std::move(worker);
+    pool.idle_actor[worker->GetActorId()] = std::move(worker);
   }
 }
 
-std::shared_ptr<Worker> WorkerPool::PopWorker(const ActorID &actor_id) {
+std::shared_ptr<Worker> WorkerPool::PopWorker(const TaskSpecification &task_spec) {
+  auto &pool = GetPoolForLanguage(task_spec.GetLanguage());
+  const auto &actor_id = task_spec.ActorId();
   std::shared_ptr<Worker> worker = nullptr;
   if (actor_id.is_nil()) {
-    if (!pool_.empty()) {
-      worker = std::move(pool_.back());
-      pool_.pop_back();
+    if (!pool.idle.empty()) {
+      worker = std::move(pool.idle.back());
+      pool.idle.pop_back();
     }
   } else {
-    auto actor_entry = actor_pool_.find(actor_id);
-    if (actor_entry != actor_pool_.end()) {
+    auto actor_entry = pool.idle_actor.find(actor_id);
+    if (actor_entry != pool.idle_actor.end()) {
       worker = std::move(actor_entry->second);
-      actor_pool_.erase(actor_entry);
+      pool.idle_actor.erase(actor_entry);
     }
   }
   return worker;
 }
 
 bool WorkerPool::DisconnectWorker(std::shared_ptr<Worker> worker) {
-  RAY_CHECK(RemoveWorker(registered_workers_, worker));
-  return RemoveWorker(pool_, worker);
+  auto &pool = GetPoolForLanguage(worker->GetLanguage());
+  RAY_CHECK(RemoveWorker(pool.registered_workers, worker));
+  return RemoveWorker(pool.idle, worker);
 }
 
 void WorkerPool::DisconnectDriver(std::shared_ptr<Worker> driver) {
-  RAY_CHECK(RemoveWorker(registered_drivers_, driver));
+  auto &pool = GetPoolForLanguage(driver->GetLanguage());
+  RAY_CHECK(RemoveWorker(pool.registered_drivers, driver));
+}
+
+WorkerPool::SingleLangPool &WorkerPool::GetPoolForLanguage(
+    const Language &language) {
+  auto pool = pools_.find(language);
+  RAY_CHECK(pool != pools_.end()) << "Required Language isn't supported.";
+  return pool->second;
 }
 
 }  // namespace raylet

@@ -53,7 +53,8 @@ int main(int argc, char *argv[]) {
   std::istringstream iss(worker_command);
   std::vector<std::string> results(std::istream_iterator<std::string>{iss},
                                    std::istream_iterator<std::string>());
-  node_manager_config.worker_command.swap(results);
+  // TODO haochen
+  node_manager_config.worker_command.emplace(make_pair(Language::PYTHON, results));
 
   node_manager_config.heartbeat_period_ms =
       RayConfig::instance().heartbeat_timeout_milliseconds();

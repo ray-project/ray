@@ -7,6 +7,8 @@
 #include <unordered_set>
 
 #include "ray/common/client_connection.h"
+#include "ray/gcs/format/util.h"
+#include "ray/raylet/task.h"
 #include "ray/raylet/worker.h"
 
 namespace ray {
@@ -29,8 +31,9 @@ class WorkerPool {
   /// \param num_worker_processes The number of worker processes to start.
   /// \param num_workers_per_process The number of workers per process.
   /// \param worker_command The command used to start the worker process.
-  WorkerPool(int num_worker_processes, int num_workers_per_process, int num_cpus,
-             const std::vector<std::string> &worker_command);
+  WorkerPool(
+      int num_worker_processes, int num_workers_per_process, int num_cpus,
+      const std::unordered_map<Language, std::vector<std::string>> &worker_command);
 
   /// Destructor responsible for freeing a set of workers owned by this class.
   virtual ~WorkerPool();
@@ -44,7 +47,7 @@ class WorkerPool {
   ///
   /// \param force_start Controls whether to force starting a worker regardless of any
   /// workers that have already been started but not yet registered.
-  void StartWorkerProcess(bool force_start = false);
+  void StartWorkerProcess(const Language &language, bool force_start = false);
 
   /// Register a new worker. The Worker should be added by the caller to the
   /// pool after it becomes idle (e.g., requests a work assignment).
@@ -95,13 +98,13 @@ class WorkerPool {
   /// \param actor_id The returned worker must have this actor ID.
   /// \return An idle worker with the requested actor ID. Returns nullptr if no
   /// such worker exists.
-  std::shared_ptr<Worker> PopWorker(const ActorID &actor_id);
+  std::shared_ptr<Worker> PopWorker(const TaskSpecification &task_spec);
 
   /// Return the current size of the worker pool. Counts only the workers that registered
   /// and requested a task.
   ///
   /// \return The total count of all workers (actor and non-actor) in the pool.
-  uint32_t Size() const;
+  uint32_t Size(const Language &language) const;
 
  protected:
   /// A map from the pids of starting worker processes
@@ -114,17 +117,25 @@ class WorkerPool {
   /// The number of CPUs this Raylet has available.
   int num_cpus_;
   /// The command and arguments used to start the worker.
-  std::vector<std::string> worker_command_;
-  /// The pool of idle workers.
-  std::list<std::shared_ptr<Worker>> pool_;
-  /// The pool of idle actor workers.
-  std::unordered_map<ActorID, std::shared_ptr<Worker>> actor_pool_;
-  /// All workers that have registered and are still connected, including both
-  /// idle and executing.
-  // TODO(swang): Make this a map to make GetRegisteredWorker faster.
-  std::list<std::shared_ptr<Worker>> registered_workers_;
-  /// All drivers that have registered and are still connected.
-  std::list<std::shared_ptr<Worker>> registered_drivers_;
+  std::unordered_map<Language, std::vector<std::string>> worker_command_;
+
+  struct SingleLangPool {
+    /// The pool of idle non-actor workers.
+    std::list<std::shared_ptr<Worker>> idle;
+    /// The pool of idle actor workers.
+    std::unordered_map<ActorID, std::shared_ptr<Worker>> idle_actor;
+    /// All workers that have registered and are still connected, including both
+    /// idle and executing.
+    // TODO(swang): Make this a map to make GetRegisteredWorker faster.
+    std::list<std::shared_ptr<Worker>> registered_workers;
+    /// All drivers that have registered and are still connected.
+    std::list<std::shared_ptr<Worker>> registered_drivers;
+  };
+
+  std::unordered_map<Language, SingleLangPool> pools_;
+
+  /// A helper function that gets the pool for the given language.
+  SingleLangPool& GetPoolForLanguage(const Language &language);
 };
 
 }  // namespace raylet
