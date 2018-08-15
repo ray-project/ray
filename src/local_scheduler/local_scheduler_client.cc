@@ -351,3 +351,20 @@ void local_scheduler_push_profile_events(
                     ray::protocol::MessageType::PushProfileEventsRequest),
                 fbb.GetSize(), fbb.GetBufferPointer(), &conn->write_mutex);
 }
+
+void local_scheduler_free_objects_in_object_store(
+    LocalSchedulerConnection *conn,
+    const std::vector<ray::ObjectID> &object_ids,
+    bool local_only) {
+  flatbuffers::FlatBufferBuilder fbb;
+  auto message = ray::protocol::CreateFreeObjectsRequest(
+      fbb, local_only, to_flatbuf(fbb, object_ids));
+  fbb.Finish(message);
+
+  int success = write_message(
+      conn->conn,
+      static_cast<int64_t>(
+          ray::protocol::MessageType::FreeObjectsInObjectStoreRequest),
+      fbb.GetSize(), fbb.GetBufferPointer(), &conn->write_mutex);
+  RAY_CHECK(success == 0) << "Failed to write message to raylet.";
+}

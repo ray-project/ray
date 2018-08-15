@@ -138,6 +138,8 @@ class ComponentFailureTest(unittest.TestCase):
 
     def _testComponentFailed(self, component_type):
         """Kill a component on all worker nodes and check workload succeeds."""
+        # Raylet is able to pass a harder failure test than legacy ray.
+        use_raylet = os.environ.get("RAY_USE_XRAY") == "1"
 
         # Start with 4 workers and 4 cores.
         num_local_schedulers = 4
@@ -149,41 +151,80 @@ class ComponentFailureTest(unittest.TestCase):
             num_cpus=[num_workers_per_scheduler] * num_local_schedulers,
             redirect_output=True)
 
-        # Submit many tasks with many dependencies.
-        @ray.remote
-        def f(x):
-            return x
+        if use_raylet:
+            # Submit many tasks with many dependencies.
+            @ray.remote
+            def f(x):
+                return x
 
-        x = 1
-        for _ in range(1000):
-            x = f.remote(x)
-        ray.get(x)
+            @ray.remote
+            def g(*xs):
+                return 1
 
-        @ray.remote
-        def g(*xs):
-            return 1
+            # Kill the component on all nodes except the head node as the tasks
+            # execute. Do this in a loop while submitting tasks between each
+            # component failure.
+            # NOTE(swang): Legacy ray hangs on this test if the plasma manager
+            # is killed.
+            time.sleep(0.1)
+            components = ray.services.all_processes[component_type]
+            for process in components[1:]:
+                # Submit a round of tasks with many dependencies.
+                x = 1
+                for _ in range(1000):
+                    x = f.remote(x)
 
-        xs = [g.remote(1)]
-        for _ in range(100):
-            xs.append(g.remote(*xs))
-            xs.append(g.remote(1))
+                xs = [g.remote(1)]
+                for _ in range(100):
+                    xs.append(g.remote(*xs))
+                    xs.append(g.remote(1))
 
-        # Kill the component on all nodes except the head node as the tasks
-        # execute.
-        time.sleep(0.1)
-        components = ray.services.all_processes[component_type]
-        for process in components[1:]:
-            process.terminate()
-            time.sleep(1)
+                # Kill a component on one of the nodes.
+                process.terminate()
+                time.sleep(1)
+                process.kill()
+                process.wait()
+                assert not process.poll() is None
 
-        for process in components[1:]:
-            process.kill()
-            process.wait()
-            assert not process.poll() is None
+                # Make sure that we can still get the objects after the
+                # executing tasks died.
+                ray.get(x)
+                ray.get(xs)
+        else:
 
-        # Make sure that we can still get the objects after the executing tasks
-        # died.
-        ray.get(xs)
+            @ray.remote
+            def f(x, j):
+                time.sleep(0.2)
+                return x
+
+            # Submit more tasks than there are workers so that all workers and
+            # cores are utilized.
+            object_ids = [
+                f.remote(i, 0) for i in range(num_workers_per_scheduler *
+                                              num_local_schedulers)
+            ]
+            object_ids += [f.remote(object_id, 1) for object_id in object_ids]
+            object_ids += [f.remote(object_id, 2) for object_id in object_ids]
+
+            # Kill the component on all nodes except the head node as the tasks
+            # execute.
+            time.sleep(0.1)
+            components = ray.services.all_processes[component_type]
+            for process in components[1:]:
+                process.terminate()
+                time.sleep(1)
+
+            for process in components[1:]:
+                process.kill()
+                process.wait()
+                assert not process.poll() is None
+
+            # Make sure that we can still get the objects after the executing
+            # tasks died.
+            results = ray.get(object_ids)
+            expected_results = 4 * list(
+                range(num_workers_per_scheduler * num_local_schedulers))
+            assert results == expected_results
 
     def check_components_alive(self, component_type, check_component_alive):
         """Check that a given component type is alive on all worker nodes.

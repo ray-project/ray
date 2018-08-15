@@ -50,7 +50,7 @@ struct ObjectManagerConfig {
 class ObjectManagerInterface {
  public:
   virtual ray::Status Pull(const ObjectID &object_id) = 0;
-  virtual ray::Status Cancel(const ObjectID &object_id) = 0;
+  virtual void CancelPull(const ObjectID &object_id) = 0;
   virtual ~ObjectManagerInterface(){};
 };
 
@@ -104,20 +104,22 @@ class ObjectManager : public ObjectManagerInterface {
   /// \return Void.
   void Push(const ObjectID &object_id, const ClientID &client_id);
 
-  /// Pull an object from ClientID. Returns UniqueID asociated with
-  /// an invocation of this method.
+  /// Pull an object from ClientID.
   ///
   /// \param object_id The object's object id.
   /// \return Status of whether the pull request successfully initiated.
   ray::Status Pull(const ObjectID &object_id);
 
-  /// Discover ClientID via ObjectDirectory, then pull object
-  /// from ClientID associated with ObjectID.
+  /// Try to Pull an object from one of its expected client locations. If there
+  /// are more client locations to try after this attempt, then this method
+  /// will try each of the other clients in succession, with a timeout between
+  /// each attempt. If the object is received or if the Pull is Canceled before
+  /// the timeout, then no more Pull requests for this object will be sent
+  /// to other node managers until TryPull is called again.
   ///
   /// \param object_id The object's object id.
-  /// \param client_id The remote node's client id.
   /// \return Void.
-  void Pull(const ObjectID &object_id, const ClientID &client_id);
+  void TryPull(const ObjectID &object_id);
 
   /// Add a connection to a remote object manager.
   /// This is invoked by an external server.
@@ -136,11 +138,12 @@ class ObjectManager : public ObjectManagerInterface {
   void ProcessClientMessage(std::shared_ptr<TcpClientConnection> &conn,
                             int64_t message_type, const uint8_t *message);
 
-  /// Cancels all requests (Push/Pull) associated with the given ObjectID.
+  /// Cancels all requests (Push/Pull) associated with the given ObjectID. This
+  /// method is idempotent.
   ///
   /// \param object_id The ObjectID.
-  /// \return Status of whether requests were successfully cancelled.
-  ray::Status Cancel(const ObjectID &object_id);
+  /// \return Void.
+  void CancelPull(const ObjectID &object_id);
 
   /// Callback definition for wait.
   using WaitCallback = std::function<void(const std::vector<ray::ObjectID> &found,
@@ -160,8 +163,137 @@ class ObjectManager : public ObjectManagerInterface {
                    uint64_t num_required_objects, bool wait_local,
                    const WaitCallback &callback);
 
+  /// Free a list of objects from object store.
+  ///
+  /// \param object_ids the The list of ObjectIDs to be deleted.
+  /// \param local_only Whether keep this request with local object store
+  ///                   or send it to all the object stores.
+  void FreeObjects(const std::vector<ObjectID> &object_ids, bool local_only);
+
  private:
   friend class TestObjectManager;
+
+  struct PullRequest {
+    PullRequest() : retry_timer(nullptr), timer_set(false), client_locations() {}
+    std::unique_ptr<boost::asio::deadline_timer> retry_timer;
+    bool timer_set;
+    std::vector<ClientID> client_locations;
+  };
+
+  struct WaitState {
+    WaitState(asio::io_service &service, int64_t timeout_ms, const WaitCallback &callback)
+        : timeout_ms(timeout_ms),
+          timeout_timer(std::unique_ptr<boost::asio::deadline_timer>(
+              new boost::asio::deadline_timer(
+                  service, boost::posix_time::milliseconds(timeout_ms)))),
+          callback(callback) {}
+    /// The period of time to wait before invoking the callback.
+    int64_t timeout_ms;
+    /// The timer used whenever wait_ms > 0.
+    std::unique_ptr<boost::asio::deadline_timer> timeout_timer;
+    /// The callback invoked when WaitCallback is complete.
+    WaitCallback callback;
+    /// Ordered input object_ids.
+    std::vector<ObjectID> object_id_order;
+    /// The objects that have not yet been found.
+    std::unordered_set<ObjectID> remaining;
+    /// The objects that have been found.
+    std::unordered_set<ObjectID> found;
+    /// Objects that have been requested either by Lookup or Subscribe.
+    std::unordered_set<ObjectID> requested_objects;
+    /// The number of required objects.
+    uint64_t num_required_objects;
+  };
+
+  /// Creates a wait request and adds it to active_wait_requests_.
+  ray::Status AddWaitRequest(const UniqueID &wait_id,
+                             const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
+                             uint64_t num_required_objects, bool wait_local,
+                             const WaitCallback &callback);
+
+  /// Lookup any remaining objects that are not local. This is invoked after
+  /// the wait request is created and local objects are identified.
+  ray::Status LookupRemainingWaitObjects(const UniqueID &wait_id);
+
+  /// Invoked when lookup for remaining objects has been invoked. This method subscribes
+  /// to any remaining objects if wait conditions have not yet been satisfied.
+  void SubscribeRemainingWaitObjects(const UniqueID &wait_id);
+  /// Completion handler for Wait.
+  void WaitComplete(const UniqueID &wait_id);
+
+  /// Spread the Free request to all objects managers.
+  ///
+  /// \param object_ids the The list of ObjectIDs to be deleted.
+  void SpreadFreeObjectRequest(const std::vector<ObjectID> &object_ids);
+
+  /// Handle starting, running, and stopping asio io_service.
+  void StartIOService();
+  void RunSendService();
+  void RunReceiveService();
+  void StopIOService();
+
+  /// Handle an object being added to this node. This adds the object to the
+  /// directory, pushes the object to other nodes if necessary, and cancels any
+  /// outstanding Pull requests for the object.
+  void HandleObjectAdded(const ObjectInfoT &object_info);
+
+  /// Register object remove with directory.
+  void NotifyDirectoryObjectDeleted(const ObjectID &object_id);
+
+  /// Part of an asynchronous sequence of Pull methods.
+  /// Uses an existing connection or creates a connection to ClientID.
+  /// Executes on main_service_ thread.
+  void PullEstablishConnection(const ObjectID &object_id, const ClientID &client_id);
+
+  /// Synchronously send a pull request via remote object manager connection.
+  /// Executes on main_service_ thread.
+  ray::Status PullSendRequest(const ObjectID &object_id,
+                              std::shared_ptr<SenderConnection> &conn);
+
+  std::shared_ptr<SenderConnection> CreateSenderConnection(
+      ConnectionPool::ConnectionType type, RemoteConnectionInfo info);
+
+  /// Begin executing a send.
+  /// Executes on send_service_ thread pool.
+  void ExecuteSendObject(const ClientID &client_id, const ObjectID &object_id,
+                         uint64_t data_size, uint64_t metadata_size, uint64_t chunk_index,
+                         const RemoteConnectionInfo &connection_info);
+  /// This method synchronously sends the object id and object size
+  /// to the remote object manager.
+  /// Executes on send_service_ thread pool.
+  ray::Status SendObjectHeaders(const ObjectID &object_id, uint64_t data_size,
+                                uint64_t metadata_size, uint64_t chunk_index,
+                                std::shared_ptr<SenderConnection> &conn);
+
+  /// This method initiates the actual object transfer.
+  /// Executes on send_service_ thread pool.
+  ray::Status SendObjectData(const ObjectID &object_id,
+                             const ObjectBufferPool::ChunkInfo &chunk_info,
+                             std::shared_ptr<SenderConnection> &conn);
+
+  /// Invoked when a remote object manager pushes an object to this object manager.
+  /// This will invoke the object receive on the receive_service_ thread pool.
+  void ReceivePushRequest(std::shared_ptr<TcpClientConnection> &conn,
+                          const uint8_t *message);
+  /// Execute a receive on the receive_service_ thread pool.
+  void ExecuteReceiveObject(const ClientID &client_id, const ObjectID &object_id,
+                            uint64_t data_size, uint64_t metadata_size,
+                            uint64_t chunk_index, TcpClientConnection &conn);
+
+  /// Handles receiving a pull request message.
+  void ReceivePullRequest(std::shared_ptr<TcpClientConnection> &conn,
+                          const uint8_t *message);
+  /// Handles freeing objects request.
+  void ReceiveFreeRequest(std::shared_ptr<TcpClientConnection> &conn,
+                          const uint8_t *message);
+
+  /// Handles connect message of a new client connection.
+  void ConnectClient(std::shared_ptr<TcpClientConnection> &conn, const uint8_t *message);
+  /// Handles disconnect message of an existing client connection.
+  void DisconnectClient(std::shared_ptr<TcpClientConnection> &conn,
+                        const uint8_t *message);
+  /// Handle Push task timeout.
+  void HandlePushTaskTimeout(const ObjectID &object_id, const ClientID &client_id);
 
   ClientID client_id_;
   const ObjectManagerConfig config_;
@@ -203,49 +335,8 @@ class ObjectManager : public ObjectManagerInterface {
   /// subscribe multiple times to the same object during Pull.
   UniqueID object_directory_pull_callback_id_ = UniqueID::from_random();
 
-  struct WaitState {
-    WaitState(asio::io_service &service, int64_t timeout_ms, const WaitCallback &callback)
-        : timeout_ms(timeout_ms),
-          timeout_timer(std::unique_ptr<boost::asio::deadline_timer>(
-              new boost::asio::deadline_timer(
-                  service, boost::posix_time::milliseconds(timeout_ms)))),
-          callback(callback) {}
-    /// The period of time to wait before invoking the callback.
-    int64_t timeout_ms;
-    /// The timer used whenever wait_ms > 0.
-    std::unique_ptr<boost::asio::deadline_timer> timeout_timer;
-    /// The callback invoked when WaitCallback is complete.
-    WaitCallback callback;
-    /// Ordered input object_ids.
-    std::vector<ObjectID> object_id_order;
-    /// The objects that have not yet been found.
-    std::unordered_set<ObjectID> remaining;
-    /// The objects that have been found.
-    std::unordered_set<ObjectID> found;
-    /// Objects that have been requested either by Lookup or Subscribe.
-    std::unordered_set<ObjectID> requested_objects;
-    /// The number of required objects.
-    uint64_t num_required_objects;
-  };
-
   /// A set of active wait requests.
   std::unordered_map<UniqueID, WaitState> active_wait_requests_;
-
-  /// Creates a wait request and adds it to active_wait_requests_.
-  ray::Status AddWaitRequest(const UniqueID &wait_id,
-                             const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
-                             uint64_t num_required_objects, bool wait_local,
-                             const WaitCallback &callback);
-
-  /// Lookup any remaining objects that are not local. This is invoked after
-  /// the wait request is created and local objects are identified.
-  ray::Status LookupRemainingWaitObjects(const UniqueID &wait_id);
-
-  /// Invoked when lookup for remaining objects has been invoked. This method subscribes
-  /// to any remaining objects if wait conditions have not yet been satisfied.
-  void SubscribeRemainingWaitObjects(const UniqueID &wait_id);
-  /// Completion handler for Wait.
-  void WaitComplete(const UniqueID &wait_id);
 
   /// Maintains a map of push requests that have not been fulfilled due to an object not
   /// being local. Objects are removed from this map after push_timeout_ms have elapsed.
@@ -254,78 +345,7 @@ class ObjectManager : public ObjectManagerInterface {
       std::unordered_map<ClientID, std::unique_ptr<boost::asio::deadline_timer>>>
       unfulfilled_push_requests_;
 
-  /// Handle starting, running, and stopping asio io_service.
-  void StartIOService();
-  void RunSendService();
-  void RunReceiveService();
-  void StopIOService();
-
-  /// Register object add with directory.
-  void NotifyDirectoryObjectAdd(const ObjectInfoT &object_info);
-
-  /// Register object remove with directory.
-  void NotifyDirectoryObjectDeleted(const ObjectID &object_id);
-
-  /// Handle any push requests that were made before an object was available.
-  /// This is invoked when an "object added" notification is received from the store.
-  void HandleUnfulfilledPushRequests(const ObjectInfoT &object_info);
-
-  /// Part of an asynchronous sequence of Pull methods.
-  /// Uses an existing connection or creates a connection to ClientID.
-  /// Executes on main_service_ thread.
-  void PullEstablishConnection(const ObjectID &object_id, const ClientID &client_id);
-
-  /// Private callback implementation for success on get location. Called from
-  /// ObjectDirectory.
-  void GetLocationsSuccess(const std::vector<ray::ClientID> &client_ids,
-                           const ray::ObjectID &object_id);
-
-  /// Synchronously send a pull request via remote object manager connection.
-  /// Executes on main_service_ thread.
-  ray::Status PullSendRequest(const ObjectID &object_id,
-                              std::shared_ptr<SenderConnection> &conn);
-
-  std::shared_ptr<SenderConnection> CreateSenderConnection(
-      ConnectionPool::ConnectionType type, RemoteConnectionInfo info);
-
-  /// Begin executing a send.
-  /// Executes on send_service_ thread pool.
-  void ExecuteSendObject(const ClientID &client_id, const ObjectID &object_id,
-                         uint64_t data_size, uint64_t metadata_size, uint64_t chunk_index,
-                         const RemoteConnectionInfo &connection_info);
-  /// This method synchronously sends the object id and object size
-  /// to the remote object manager.
-  /// Executes on send_service_ thread pool.
-  ray::Status SendObjectHeaders(const ObjectID &object_id, uint64_t data_size,
-                                uint64_t metadata_size, uint64_t chunk_index,
-                                std::shared_ptr<SenderConnection> &conn);
-
-  /// This method initiates the actual object transfer.
-  /// Executes on send_service_ thread pool.
-  ray::Status SendObjectData(const ObjectID &object_id,
-                             const ObjectBufferPool::ChunkInfo &chunk_info,
-                             std::shared_ptr<SenderConnection> &conn);
-
-  /// Invoked when a remote object manager pushes an object to this object manager.
-  /// This will invoke the object receive on the receive_service_ thread pool.
-  void ReceivePushRequest(std::shared_ptr<TcpClientConnection> &conn,
-                          const uint8_t *message);
-  /// Execute a receive on the receive_service_ thread pool.
-  void ExecuteReceiveObject(const ClientID &client_id, const ObjectID &object_id,
-                            uint64_t data_size, uint64_t metadata_size,
-                            uint64_t chunk_index, TcpClientConnection &conn);
-
-  /// Handles receiving a pull request message.
-  void ReceivePullRequest(std::shared_ptr<TcpClientConnection> &conn,
-                          const uint8_t *message);
-
-  /// Handles connect message of a new client connection.
-  void ConnectClient(std::shared_ptr<TcpClientConnection> &conn, const uint8_t *message);
-  /// Handles disconnect message of an existing client connection.
-  void DisconnectClient(std::shared_ptr<TcpClientConnection> &conn,
-                        const uint8_t *message);
-  /// Handle Push task timeout.
-  void HandlePushTaskTimeout(const ObjectID &object_id, const ClientID &client_id);
+  std::unordered_map<ObjectID, PullRequest> pull_requests_;
 };
 
 }  // namespace ray
