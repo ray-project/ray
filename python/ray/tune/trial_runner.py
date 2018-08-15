@@ -420,6 +420,7 @@ class TrialRunner(object):
         else:
             previous_cpu = 0
             previous_gpu = 0
+            time.sleep(1)
         while True:
             clients = ray.global_state.client_table()
             if ray.worker.global_worker.use_raylet:
