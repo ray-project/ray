@@ -103,11 +103,13 @@ class _LogSyncer(object):
             if not distutils.spawn.find_executable("rsync"):
                 print("Error: log sync requires rsync to be installed.")
                 return
+            source = '{}@{}:{}/'.format(
+                ssh_user, self.worker_ip, self.local_dir)
+            target = '{}/'.format(self.local_dir)
             worker_to_local_sync_cmd = ((
                 """rsync -avz -e "ssh -i {} -o ConnectTimeout=120s """
-                """-o StrictHostKeyChecking=no" '{}@{}:{}/' '{}/'""").format(
-                    quote(ssh_key), ssh_user, self.worker_ip,
-                    quote(self.local_dir), quote(self.local_dir)))
+                """-o StrictHostKeyChecking=no" {} {}""").format(
+                    quote(ssh_key), quote(source), quote(target)))
 
         if self.remote_dir:
             if self.remote_dir.startswith(S3_PREFIX):
