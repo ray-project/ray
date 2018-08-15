@@ -26,7 +26,8 @@ struct NodeManagerConfig {
   ResourceSet resource_config;
   int num_initial_workers;
   int num_workers_per_process;
-  std::unordered_map<Language, std::vector<std::string>> worker_command;
+  /// The commands used to start the worker process, grouped by language.
+  std::unordered_map<Language, std::vector<std::string>> worker_commands;
   uint64_t heartbeat_period_ms;
   uint64_t max_lineage_size;
   /// The store socket name.

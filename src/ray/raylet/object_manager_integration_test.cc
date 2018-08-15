@@ -44,7 +44,7 @@ class TestObjectManagerBase : public ::testing::Test {
     py_worker_command.push_back("../python/ray/workers/default_worker.py");
     py_worker_command.push_back(raylet_socket_name.c_str());
     py_worker_command.push_back(store_socket_name.c_str());
-    node_manager_config.worker_command[Language::PYTHON] = py_worker_command;
+    node_manager_config.worker_commands[Language::PYTHON] = py_worker_command;
     return node_manager_config;
   };
 

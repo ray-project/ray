@@ -60,8 +60,9 @@ class WorkerPoolTest : public ::testing::Test {
   void HandleMessage(std::shared_ptr<LocalClientConnection>, int64_t, const uint8_t *){};
 };
 
-static TaskSpecification ExampleTaskSpec(const ActorID actor_id = ActorID::nil(),
-                                         const Language &language = Language::PYTHON) {
+static inline TaskSpecification ExampleTaskSpec(
+    const ActorID actor_id = ActorID::nil(),
+    const Language &language = Language::PYTHON) {
   return TaskSpecification(UniqueID::nil(), UniqueID::nil(), 0, ActorID::nil(),
                            ObjectID::nil(), actor_id, ActorHandleID::nil(), 0,
                            FunctionID::nil(), {}, 0, {}, language);
@@ -146,7 +147,7 @@ TEST_F(WorkerPoolTest, PopWorkersOfMultipleLanguages) {
   // Create a Python Worker, and add it to the pool
   auto py_worker = CreateWorker(1234, Language::PYTHON);
   worker_pool_.PushWorker(py_worker);
-  // Check that no worker is popped if the given task is a Java task
+  // Check that no worker will be popped if the given task is a Java task
   const auto java_task_spec = ExampleTaskSpec(ActorID::nil(), Language::JAVA);
   ASSERT_EQ(worker_pool_.PopWorker(java_task_spec), nullptr);
   // Check that the worker can be popped if the given task is a Python task

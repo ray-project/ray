@@ -30,10 +30,11 @@ class WorkerPool {
   ///
   /// \param num_worker_processes The number of worker processes to start.
   /// \param num_workers_per_process The number of workers per process.
-  /// \param worker_command The command used to start the worker process.
+  /// \param worker_commands The commands used to start the worker process, grouped by
+  /// language.
   WorkerPool(
       int num_worker_processes, int num_workers_per_process, int num_cpus,
-      const std::unordered_map<Language, std::vector<std::string>> &worker_command);
+      const std::unordered_map<Language, std::vector<std::string>> &worker_commands);
 
   /// Destructor responsible for freeing a set of workers owned by this class.
   virtual ~WorkerPool();
@@ -45,6 +46,7 @@ class WorkerPool {
   /// This function will start up to num_cpus many workers in parallel
   /// if it is called multiple times.
   ///
+  /// \param language Which language this worker process should be.
   /// \param force_start Controls whether to force starting a worker regardless of any
   /// workers that have already been started but not yet registered.
   void StartWorkerProcess(const Language &language, bool force_start = false);
@@ -95,14 +97,15 @@ class WorkerPool {
   /// Pop an idle worker from the pool. The caller is responsible for pushing
   /// the worker back onto the pool once the worker has completed its work.
   ///
-  /// \param actor_id The returned worker must have this actor ID.
-  /// \return An idle worker with the requested actor ID. Returns nullptr if no
+  /// \param task_spec The returned worker must be able to execute this task.
+  /// \return An idle worker with the requested task spec. Returns nullptr if no
   /// such worker exists.
   std::shared_ptr<Worker> PopWorker(const TaskSpecification &task_spec);
 
-  /// Return the current size of the worker pool. Counts only the workers that registered
-  /// and requested a task.
+  /// Return the current size of the worker pool for the requested language. Counts only
+  /// idle workers.
   ///
+  /// \param language The requested language.
   /// \return The total count of all workers (actor and non-actor) in the pool.
   uint32_t Size(const Language &language) const;
 
@@ -114,12 +117,8 @@ class WorkerPool {
   int num_workers_per_process_;
 
  private:
-  /// The number of CPUs this Raylet has available.
-  int num_cpus_;
-  /// The command and arguments used to start the worker.
-  std::unordered_map<Language, std::vector<std::string>> worker_command_;
-
-  struct SingleLangPool {
+  /// An internal data structure that maintains the pool state per language.
+  struct Pool {
     /// The pool of idle non-actor workers.
     std::list<std::shared_ptr<Worker>> idle;
     /// The pool of idle actor workers.
@@ -132,10 +131,16 @@ class WorkerPool {
     std::list<std::shared_ptr<Worker>> registered_drivers;
   };
 
-  std::unordered_map<Language, SingleLangPool> pools_;
-
   /// A helper function that gets the pool for the given language.
-  SingleLangPool &GetPoolForLanguage(const Language &language);
+  Pool &GetPoolForLanguage(const Language &language);
+
+  /// The number of CPUs this Raylet has available.
+  int num_cpus_;
+  /// The commands and arguments used to start the worker process, grouped by language.
+  std::unordered_map<Language, std::vector<std::string>> worker_commands_;
+
+  /// Pool states per language.
+  std::unordered_map<Language, Pool> pools_;
 };
 
 }  // namespace raylet
