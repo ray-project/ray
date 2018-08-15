@@ -1304,8 +1304,9 @@ void NodeManager::ForwardTaskOrResubmit(const Task &task,
       lineage_cache_.RemoveWaitingTask(task_id);
     } else {
       // The task is not for an actor and may therefore be placed on another
-      // node immediately.
+      // node immediately. Send it to the scheduling policy to be placed again.
       local_queues_.QueuePlaceableTasks({task});
+      ScheduleTasks();
     }
   }
 }
@@ -1373,10 +1374,6 @@ ray::Status NodeManager::ForwardTask(const Task &task, const ClientID &node_id) 
         }
       }
     }
-  } else {
-    // TODO(atumanov): caller must handle ForwardTask failure.
-    RAY_LOG(WARNING) << "[NodeManager][ForwardTask] failed to forward task " << task_id
-                     << " to node " << node_id;
   }
   return status;
 }
