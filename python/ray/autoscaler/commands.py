@@ -214,6 +214,19 @@ def attach_cluster(config_file, start, override_cluster_name):
                  override_cluster_name)
 
 
+def ssh_cluster(config_file, start, override_cluster_name):
+    """SSH to the specified cluster.
+
+    Arguments:
+        config_file: path to the cluster yaml
+        start: whether to start the cluster if it isn't up
+        override_cluster_name: set the name of the cluster
+    """
+
+    exec_cluster(config_file, "bash", False, False, start,
+                 override_cluster_name)
+
+
 def exec_cluster(config_file, cmd, screen, stop, start, override_cluster_name):
     """Runs a command on the specified cluster.
 

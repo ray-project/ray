@@ -9,7 +9,7 @@ import subprocess
 
 import ray.services as services
 from ray.autoscaler.commands import (attach_cluster, exec_cluster,
-                                     create_or_update_cluster,
+                                     create_or_update_cluster, ssh_cluster,
                                      teardown_cluster, get_head_node_ip)
 import ray.utils
 
@@ -447,6 +447,22 @@ def attach(cluster_config_file, start, cluster_name):
 
 @click.command()
 @click.argument("cluster_config_file", required=True, type=str)
+@click.option(
+    "--start",
+    is_flag=True,
+    default=False,
+    help=("Start the cluster if needed."))
+@click.option(
+    "--cluster-name",
+    required=False,
+    type=str,
+    help=("Override the configured cluster name."))
+def ssh(cluster_config_file, start, cluster_name):
+    ssh_cluster(cluster_config_file, start, cluster_name)
+
+
+@click.command()
+@click.argument("cluster_config_file", required=True, type=str)
 @click.argument("cmd", required=True, type=str)
 @click.option(
     "--stop",
@@ -488,6 +504,7 @@ cli.add_command(stop)
 cli.add_command(create_or_update)
 cli.add_command(create_or_update, name="up")
 cli.add_command(attach)
+cli.add_command(ssh)
 cli.add_command(exec_cmd, name="exec")
 cli.add_command(teardown)
 cli.add_command(teardown, name="down")
