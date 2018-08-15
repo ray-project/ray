@@ -163,6 +163,13 @@ class ObjectManager : public ObjectManagerInterface {
                    uint64_t num_required_objects, bool wait_local,
                    const WaitCallback &callback);
 
+  /// Free a list of objects from object store.
+  ///
+  /// \param object_ids the The list of ObjectIDs to be deleted.
+  /// \param local_only Whether keep this request with local object store
+  ///                   or send it to all the object stores.
+  void FreeObjects(const std::vector<ObjectID> &object_ids, bool local_only);
+
  private:
   friend class TestObjectManager;
 
@@ -213,6 +220,11 @@ class ObjectManager : public ObjectManagerInterface {
   void SubscribeRemainingWaitObjects(const UniqueID &wait_id);
   /// Completion handler for Wait.
   void WaitComplete(const UniqueID &wait_id);
+
+  /// Spread the Free request to all objects managers.
+  ///
+  /// \param object_ids the The list of ObjectIDs to be deleted.
+  void SpreadFreeObjectRequest(const std::vector<ObjectID> &object_ids);
 
   /// Handle starting, running, and stopping asio io_service.
   void StartIOService();
@@ -270,6 +282,9 @@ class ObjectManager : public ObjectManagerInterface {
 
   /// Handles receiving a pull request message.
   void ReceivePullRequest(std::shared_ptr<TcpClientConnection> &conn,
+                          const uint8_t *message);
+  /// Handles freeing objects request.
+  void ReceiveFreeRequest(std::shared_ptr<TcpClientConnection> &conn,
                           const uint8_t *message);
 
   /// Handles connect message of a new client connection.
