@@ -1,5 +1,7 @@
 #include "scheduling_policy.h"
 
+#include <chrono>
+
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -7,7 +9,8 @@ namespace ray {
 namespace raylet {
 
 SchedulingPolicy::SchedulingPolicy(const SchedulingQueue &scheduling_queue)
-    : scheduling_queue_(scheduling_queue), gen_(rd_()) {}
+    : scheduling_queue_(scheduling_queue),
+      gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {}
 
 std::unordered_map<TaskID, ClientID> SchedulingPolicy::Schedule(
     const std::unordered_map<ClientID, SchedulingResources> &cluster_resources,
@@ -30,12 +33,12 @@ std::unordered_map<TaskID, ClientID> SchedulingPolicy::Schedule(
     const auto &resource_demand = t.GetTaskSpecification().GetRequiredResources();
     const TaskID &task_id = t.GetTaskSpecification().TaskId();
     RAY_LOG(DEBUG) << "[SchedulingPolicy]: task=" << task_id
-                   << " numforwards=" << t.GetTaskExecutionSpecReadonly().NumForwards()
+                   << " numforwards=" << t.GetTaskExecutionSpec().NumForwards()
                    << " resources="
                    << t.GetTaskSpecification().GetRequiredResources().ToString();
     // TODO(atumanov): replace the simple spillback policy with exponential backoff based
     // policy.
-    if (t.GetTaskExecutionSpecReadonly().NumForwards() >= 1) {
+    if (t.GetTaskExecutionSpec().NumForwards() >= 1) {
       decision[task_id] = local_client_id;
       continue;
     }

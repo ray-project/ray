@@ -87,16 +87,17 @@ class ModelCatalog(object):
         elif isinstance(action_space, gym.spaces.Discrete):
             return Categorical, action_space.n
         elif isinstance(action_space, gym.spaces.Tuple):
-            size = 0
             child_dist = []
+            input_lens = []
             for action in action_space.spaces:
                 dist, action_size = ModelCatalog.get_action_dist(action)
                 child_dist.append(dist)
-                size += action_size
+                input_lens.append(action_size)
             return partial(
                 MultiActionDistribution,
                 child_distributions=child_dist,
-                action_space=action_space), size
+                action_space=action_space,
+                input_lens=input_lens), sum(input_lens)
 
         raise NotImplementedError("Unsupported args: {} {}".format(
             action_space, dist_type))

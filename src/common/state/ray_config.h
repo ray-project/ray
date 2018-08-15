@@ -12,11 +12,17 @@ class RayConfig {
 
   int64_t ray_protocol_version() const { return ray_protocol_version_; }
 
+  uint64_t handler_warning_timeout_ms() const {
+    return handler_warning_timeout_ms_;
+  }
+
   int64_t heartbeat_timeout_milliseconds() const {
     return heartbeat_timeout_milliseconds_;
   }
 
   int64_t num_heartbeats_timeout() const { return num_heartbeats_timeout_; }
+
+  uint64_t num_heartbeats_warning() const { return num_heartbeats_warning_; }
 
   int64_t initial_reconstruction_timeout_milliseconds() const {
     return initial_reconstruction_timeout_milliseconds_;
@@ -113,8 +119,10 @@ class RayConfig {
  private:
   RayConfig()
       : ray_protocol_version_(0x0000000000000000),
+        handler_warning_timeout_ms_(100),
         heartbeat_timeout_milliseconds_(100),
         num_heartbeats_timeout_(100),
+        num_heartbeats_warning_(5),
         initial_reconstruction_timeout_milliseconds_(200),
         get_timeout_milliseconds_(1000),
         worker_get_request_size_(10000),
@@ -141,10 +149,7 @@ class RayConfig {
         max_tasks_to_spillback_(10),
         actor_creation_num_spillbacks_warning_(100),
         node_manager_forward_task_retry_timeout_milliseconds_(1000),
-        // TODO: Setting this to large values results in latency, which needs to
-        // be addressed. This timeout is often on the critical path for object
-        // transfers.
-        object_manager_pull_timeout_ms_(20),
+        object_manager_pull_timeout_ms_(100),
         object_manager_push_timeout_ms_(10000),
         object_manager_default_chunk_size_(1000000),
         num_workers_per_process_(1) {}
@@ -154,6 +159,10 @@ class RayConfig {
   /// In theory, this is used to detect Ray version mismatches.
   int64_t ray_protocol_version_;
 
+  /// The duration that a single handler on the event loop can take before a
+  /// warning is logged that the handler is taking too long.
+  uint64_t handler_warning_timeout_ms_;
+
   /// The duration between heartbeats. These are sent by the plasma manager and
   /// local scheduler.
   int64_t heartbeat_timeout_milliseconds_;
@@ -161,6 +170,10 @@ class RayConfig {
   /// heartbeat intervals, the global scheduler or monitor process will report
   /// it as dead to the db_client table.
   int64_t num_heartbeats_timeout_;
+  /// For a raylet, if the last heartbeat was sent more than this many
+  /// heartbeat periods ago, then a warning will be logged that the heartbeat
+  /// handler is drifting.
+  uint64_t num_heartbeats_warning_;
 
   /// The initial period for a task execution lease. The lease will expire this
   /// many milliseconds after the first acquisition of the lease. Nodes that
