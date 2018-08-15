@@ -11,7 +11,7 @@ from ray.rllib import _register_all
 
 from ray.tune import Trainable, TuneError
 from ray.tune import register_env, register_trainable, run_experiments
-from ray.tune.ray_trial import RayTrialExecutor
+from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.trial_scheduler import TrialScheduler, FIFOScheduler
 from ray.tune.registry import _global_registry, TRAINABLE_CLASS
 from ray.tune.result import DEFAULT_RESULTS_DIR, TIMESTEPS_TOTAL, DONE

@@ -153,7 +153,7 @@ class Trial(object):
         return binary_to_hex(random_string())[:8]
 
     def init_logger(self):
-        """Init Logger"""
+        """Init logger."""
 
         if not self.result_logger:
             if not os.path.exists(self.local_dir):
