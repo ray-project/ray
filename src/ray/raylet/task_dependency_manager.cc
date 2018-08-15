@@ -65,7 +65,7 @@ void TaskDependencyManager::HandleRemoteDependencyCanceled(const ObjectID &objec
   if (!required) {
     auto it = required_objects_.find(object_id);
     if (it != required_objects_.end()) {
-      RAY_CHECK_OK(object_manager_.Cancel(object_id));
+      object_manager_.CancelPull(object_id);
       reconstruction_policy_.Cancel(object_id);
       required_objects_.erase(it);
     }

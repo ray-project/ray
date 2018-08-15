@@ -84,14 +84,28 @@ class LineageEntry {
   /// that created its arguments.
   ///
   /// \return The IDs of the parent entries.
-  const std::unordered_set<TaskID> GetParentTaskIds() const;
+  const std::unordered_set<TaskID> &GetParentTaskIds() const;
 
   /// Get the task data.
   ///
   /// \return The task data.
   const Task &TaskData() const;
 
+  /// Get a mutable version of the task data.
+  ///
+  /// \return The task data.
+  /// TODO(swang): This is pretty ugly.
   Task &TaskDataMutable();
+
+  /// Update the task data with a new task.
+  ///
+  /// \return Void.
+  void UpdateTaskData(const Task &task);
+
+ private:
+  /// Compute cached parent task IDs. This task is dependent on values returned
+  /// by these tasks.
+  void ComputeParentTaskIds();
 
   /// The current state of this entry according to its status in the GCS.
   GcsStatus status_;
@@ -99,7 +113,9 @@ class LineageEntry {
   /// an object.
   //  const Task task_;
   Task task_;
-
+  /// A cached copy of the parent task IDs. This task is dependent on values
+  /// returned by these tasks.
+  std::unordered_set<TaskID> parent_task_ids_;
   /// IDs of node managers that this task has been explicitly forwarded to.
   std::unordered_set<ClientID> forwarded_to_;
 };
@@ -184,19 +200,30 @@ class LineageCache {
   /// \param uncommitted_lineage The task's uncommitted lineage. These are the
   /// tasks that the given task is data-dependent on, but that have not
   /// been made durable in the GCS, as far the task's submitter knows.
-  void AddWaitingTask(const Task &task, const Lineage &uncommitted_lineage);
+  /// \return Whether the task was successfully marked as waiting to be
+  /// committed. This will return false if the task is already waiting to be
+  /// committed (UNCOMMITTED_WAITING), ready to be committed
+  /// (UNCOMMITTED_READY), or committing (COMMITTING).
+  bool AddWaitingTask(const Task &task, const Lineage &uncommitted_lineage);
 
   /// Add a task that is ready for GCS writeback. This overwrites the task’s
   /// mutable fields in the execution specification.
   ///
   /// \param task The task to set as ready.
-  void AddReadyTask(const Task &task);
+  /// \return Whether the task was successfully marked as ready to be
+  /// committed. This will return false if the task is already ready to be
+  /// committed (UNCOMMITTED_READY) or committing (COMMITTING).
+  bool AddReadyTask(const Task &task);
 
   /// Remove a task that was waiting for execution. Its uncommitted lineage
   /// will remain unchanged.
   ///
   /// \param task_id The ID of the waiting task to remove.
-  void RemoveWaitingTask(const TaskID &task_id);
+  /// \return Whether the task was successfully removed. This will return false
+  /// if the task is not waiting to be committed. Then, the waiting task has
+  /// already been removed (UNCOMMITTED_REMOTE), or if it's ready to be
+  /// committed (UNCOMMITTED_READY) or committing (COMMITTING).
+  bool RemoveWaitingTask(const TaskID &task_id);
 
   /// Mark a task as having been explicitly forwarded to a node.
   /// The lineage of the task is implicitly assumed to have also been forwarded.

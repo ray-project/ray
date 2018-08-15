@@ -6,7 +6,7 @@ import tensorflow as tf
 
 from ray.rllib.models.model import Model
 from ray.rllib.models.fcnet import FullyConnectedNetwork
-from ray.rllib.models.action_dist import Reshaper
+from ray.rllib.utils.reshaper import Reshaper
 
 
 class MultiAgentFullyConnectedNetwork(Model):
