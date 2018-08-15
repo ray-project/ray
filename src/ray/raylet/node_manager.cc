@@ -485,7 +485,8 @@ void NodeManager::ProcessClientMessage(
   case protocol::MessageType::RegisterClientRequest: {
     auto message = flatbuffers::GetRoot<protocol::RegisterClientRequest>(message_data);
     client->SetClientID(from_flatbuf(*message->client_id()));
-    auto worker = std::make_shared<Worker>(message->worker_pid(), message->language(), client);
+    auto worker =
+        std::make_shared<Worker>(message->worker_pid(), message->language(), client);
     if (message->is_worker()) {
       // Register the new worker.
       worker_pool_.RegisterWorker(std::move(worker));

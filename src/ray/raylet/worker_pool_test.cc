@@ -12,7 +12,9 @@ int NUM_WORKERS_PER_PROCESS = 3;
 
 class WorkerPoolMock : public WorkerPool {
  public:
-  WorkerPoolMock() : WorkerPool(0, NUM_WORKERS_PER_PROCESS, 0, {{Language::PYTHON, {}}, {Language::JAVA, {}}}) {}
+  WorkerPoolMock()
+      : WorkerPool(0, NUM_WORKERS_PER_PROCESS, 0,
+                   {{Language::PYTHON, {}}, {Language::JAVA, {}}}) {}
 
   void StartWorkerProcess(pid_t pid, const Language &language = Language::PYTHON,
                           bool force_start = false) {
@@ -34,7 +36,8 @@ class WorkerPoolTest : public ::testing::Test {
  public:
   WorkerPoolTest() : worker_pool_(), io_service_() {}
 
-  std::shared_ptr<Worker> CreateWorker(pid_t pid, const Language &language = Language::PYTHON) {
+  std::shared_ptr<Worker> CreateWorker(pid_t pid,
+                                       const Language &language = Language::PYTHON) {
     std::function<void(LocalClientConnection &)> client_handler =
         [this](LocalClientConnection &client) { HandleNewClient(client); };
     std::function<void(std::shared_ptr<LocalClientConnection>, int64_t, const uint8_t *)>
@@ -57,10 +60,11 @@ class WorkerPoolTest : public ::testing::Test {
   void HandleMessage(std::shared_ptr<LocalClientConnection>, int64_t, const uint8_t *){};
 };
 
-static TaskSpecification ExampleTaskSpec(const ActorID actor_id = ActorID::nil(), const Language &language = Language::PYTHON) {
-  return TaskSpecification(UniqueID::nil(), UniqueID::nil(), 0, ActorID::nil(), ObjectID::nil(),
-                          actor_id, ActorHandleID::nil(), 0, FunctionID::nil(), {}, 0, {},
-                          language);
+static TaskSpecification ExampleTaskSpec(const ActorID actor_id = ActorID::nil(),
+                                         const Language &language = Language::PYTHON) {
+  return TaskSpecification(UniqueID::nil(), UniqueID::nil(), 0, ActorID::nil(),
+                           ObjectID::nil(), actor_id, ActorHandleID::nil(), 0,
+                           FunctionID::nil(), {}, 0, {}, language);
 }
 
 TEST_F(WorkerPoolTest, HandleWorkerRegistration) {
@@ -139,8 +143,21 @@ TEST_F(WorkerPoolTest, PopActorWorker) {
 }
 
 TEST_F(WorkerPoolTest, PopWorkersOfMultipleLanguages) {
+  // Create a Python Worker, and add it to the pool
+  auto py_worker = CreateWorker(1234, Language::PYTHON);
+  worker_pool_.PushWorker(py_worker);
+  // Check that no worker is popped if the given task is a Java task
+  const auto java_task_spec = ExampleTaskSpec(ActorID::nil(), Language::JAVA);
+  ASSERT_EQ(worker_pool_.PopWorker(java_task_spec), nullptr);
+  // Check that the worker can be popped if the given task is a Python task
+  const auto py_task_spec = ExampleTaskSpec(ActorID::nil(), Language::PYTHON);
+  ASSERT_NE(worker_pool_.PopWorker(py_task_spec), nullptr);
 
-
+  // Create a Java Worker, and add it to the pool
+  auto java_worker = CreateWorker(1234, Language::JAVA);
+  worker_pool_.PushWorker(java_worker);
+  // Check that the worker will be popped now for Java task
+  ASSERT_NE(worker_pool_.PopWorker(java_task_spec), nullptr);
 }
 
 }  // namespace raylet

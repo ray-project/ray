@@ -41,8 +41,7 @@ class TestObjectManagerBase : public ::testing::Test {
     // Use a default worker that can execute empty tasks with dependencies.
     std::vector<std::string> py_worker_command;
     py_worker_command.push_back("python");
-    py_worker_command.push_back(
-        "../python/ray/workers/default_worker.py");
+    py_worker_command.push_back("../python/ray/workers/default_worker.py");
     py_worker_command.push_back(raylet_socket_name.c_str());
     py_worker_command.push_back(store_socket_name.c_str());
     node_manager_config.worker_command[Language::PYTHON] = py_worker_command;

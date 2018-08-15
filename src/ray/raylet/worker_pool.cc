@@ -71,7 +71,7 @@ WorkerPool::~WorkerPool() {
   }
   // Kill all the workers that have been started but not registered.
   for (const auto &entry : starting_worker_processes_) {
-	pids_to_kill.insert(entry.first);
+    pids_to_kill.insert(entry.first);
   }
   for (const auto &pid : pids_to_kill) {
     RAY_CHECK(pid > 0);
@@ -162,7 +162,7 @@ std::shared_ptr<Worker> WorkerPool::GetRegisteredWorker(
 
 std::shared_ptr<Worker> WorkerPool::GetRegisteredDriver(
     const std::shared_ptr<LocalClientConnection> &connection) const {
-  for (const auto &entry : pools_){
+  for (const auto &entry : pools_) {
     auto it = GetWorker(entry.second.registered_drivers, connection);
     if (it != nullptr) {
       return it;
@@ -214,8 +214,7 @@ void WorkerPool::DisconnectDriver(std::shared_ptr<Worker> driver) {
   RAY_CHECK(RemoveWorker(pool.registered_drivers, driver));
 }
 
-WorkerPool::SingleLangPool &WorkerPool::GetPoolForLanguage(
-    const Language &language) {
+WorkerPool::SingleLangPool &WorkerPool::GetPoolForLanguage(const Language &language) {
   auto pool = pools_.find(language);
   RAY_CHECK(pool != pools_.end()) << "Required Language isn't supported.";
   return pool->second;

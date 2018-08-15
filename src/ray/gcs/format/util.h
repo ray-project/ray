@@ -8,14 +8,14 @@ namespace std {
 template <>
 struct hash<Language> {
   size_t operator()(const Language &language) const {
-	return std::hash<int32_t>()(static_cast<int32_t>(language));
+    return std::hash<int32_t>()(static_cast<int32_t>(language));
   }
 };
 
 template <>
 struct hash<const Language> {
   size_t operator()(const Language &language) const {
-	return std::hash<int32_t>()(static_cast<int32_t>(language));
+    return std::hash<int32_t>()(static_cast<int32_t>(language));
   }
 };
 

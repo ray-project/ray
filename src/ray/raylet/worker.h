@@ -17,7 +17,8 @@ namespace raylet {
 class Worker {
  public:
   /// A constructor that initializes a worker object.
-  Worker(pid_t pid, const Language& language, std::shared_ptr<LocalClientConnection> connection);
+  Worker(pid_t pid, const Language &language,
+         std::shared_ptr<LocalClientConnection> connection);
   /// A destructor responsible for freeing all worker state.
   ~Worker() {}
   void MarkBlocked();

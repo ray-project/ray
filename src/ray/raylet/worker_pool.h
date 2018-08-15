@@ -135,7 +135,7 @@ class WorkerPool {
   std::unordered_map<Language, SingleLangPool> pools_;
 
   /// A helper function that gets the pool for the given language.
-  SingleLangPool& GetPoolForLanguage(const Language &language);
+  SingleLangPool &GetPoolForLanguage(const Language &language);
 };
 
 }  // namespace raylet
