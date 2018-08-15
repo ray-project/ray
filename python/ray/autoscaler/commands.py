@@ -211,7 +211,7 @@ def attach_cluster(config_file, start, override_cluster_name):
     """
 
     exec_cluster(config_file, "screen -L -xRR", False, False, start,
-                 override_cluster_name)
+                 override_cluster_name, None)
 
 
 def exec_cluster(config_file, cmd, screen, stop, start, override_cluster_name, ssh_opt):

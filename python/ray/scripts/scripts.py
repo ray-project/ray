@@ -9,7 +9,7 @@ import subprocess
 
 import ray.services as services
 from ray.autoscaler.commands import (attach_cluster, exec_cluster,
-                                     create_or_update_cluster, ssh_cluster,
+                                     create_or_update_cluster,
                                      teardown_cluster, get_head_node_ip)
 import ray.utils
 
@@ -493,7 +493,6 @@ cli.add_command(stop)
 cli.add_command(create_or_update)
 cli.add_command(create_or_update, name="up")
 cli.add_command(attach)
-cli.add_command(ssh)
 cli.add_command(exec_cmd, name="exec")
 cli.add_command(teardown)
 cli.add_command(teardown, name="down")
