@@ -7,6 +7,7 @@ import hashlib
 import inspect
 import json
 import traceback
+import sys
 
 import ray.cloudpickle as pickle
 import ray.local_scheduler
