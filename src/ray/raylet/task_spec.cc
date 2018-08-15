@@ -95,10 +95,12 @@ TaskSpecification::TaskSpecification(
   switch (language) {
   case Language::PYTHON:
     task_language = TaskLanguage::PYTHON;
+    break;
   case Language::JAVA:
     task_language = TaskLanguage::JAVA;
+    break;
   default:
-    RAY_LOG(FATAL) << "Unknown language.";
+    RAY_LOG(FATAL) << "Unknown language." << static_cast<int32_t>(language);
   }
 
   // Serialize the TaskSpecification.
@@ -203,7 +205,7 @@ Language TaskSpecification::GetLanguage() const {
     return Language::JAVA;
   default:
     // This shouldn't be reachable.
-    RAY_LOG(FATAL) << "Unknown task language.";
+    RAY_LOG(FATAL) << "Unknown task language: " << static_cast<int32_t>(language);
     return Language::PYTHON;
   }
 }
