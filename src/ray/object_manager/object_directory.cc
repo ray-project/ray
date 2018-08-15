@@ -117,6 +117,24 @@ ray::Status ObjectDirectory::GetInformation(const ClientID &client_id,
   return ray::Status::OK();
 }
 
+void ObjectDirectory::RunFunctionForEachClient(
+    const InfoSuccessCallback &client_function) {
+  const auto &clients = gcs_client_->client_table().GetAllClients();
+  for (const auto &client_pair : clients) {
+    const ClientTableDataT &data = client_pair.second;
+    if (client_pair.first == ClientID::nil() ||
+        client_pair.first == gcs_client_->client_table().GetLocalClientId() ||
+        !data.is_insertion) {
+      continue;
+    } else {
+      const auto &info =
+          RemoteConnectionInfo(client_pair.first, data.node_manager_address,
+                               static_cast<uint16_t>(data.object_manager_port));
+      client_function(info);
+    }
+  }
+}
+
 ray::Status ObjectDirectory::SubscribeObjectLocations(const UniqueID &callback_id,
                                                       const ObjectID &object_id,
                                                       const OnLocationsFound &callback) {

@@ -651,6 +651,13 @@ class ClientTable : private Log<UniqueID, ClientTableData> {
   /// \return Whether the client with ID client_id is removed.
   bool IsRemoved(const ClientID &client_id) const;
 
+  /// Get the information of all clients.
+  ///
+  /// Note: The return value contains ClientID::nil() which should be filtered.
+  ///
+  /// \return The client ID to client information map.
+  const std::unordered_map<ClientID, ClientTableDataT> &GetAllClients() const;
+
  private:
   /// Handle a client table notification.
   void HandleNotification(AsyncGcsClient *client, const ClientTableDataT &notifications);
