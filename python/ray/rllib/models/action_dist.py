@@ -182,7 +182,6 @@ class MultiActionDistribution(ActionDistribution):
 
     def __init__(self, inputs, action_space, child_distributions, input_lens):
         self.input_lens = input_lens
-        inputs = tf.reshape(inputs, [-1, sum(input_lens)])
         split_inputs = tf.split(inputs, self.input_lens, axis=1)
         child_list = []
         for i, distribution in enumerate(child_distributions):
@@ -191,11 +190,18 @@ class MultiActionDistribution(ActionDistribution):
 
     def logp(self, x):
         """The log-likelihood of the action distribution."""
-        split_list = tf.split(x, len(self.input_lens), axis=1)
+        split_indices = []
+        for dist in self.child_distributions:
+            if isinstance(dist, Categorical):
+                split_indices.append(1)
+            else:
+                split_indices.append(tf.shape(dist.sample())[1])
+        split_list = tf.split(x, split_indices, axis=1)
         for i, distribution in enumerate(self.child_distributions):
             # Remove extra categorical dimension
             if isinstance(distribution, Categorical):
-                split_list[i] = tf.squeeze(split_list[i], axis=-1)
+                split_list[i] = tf.cast(
+                    tf.squeeze(split_list[i], axis=-1), tf.int32)
         log_list = np.asarray([
             distribution.logp(split_x) for distribution, split_x in zip(
                 self.child_distributions, split_list)
