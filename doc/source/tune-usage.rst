@@ -1,14 +1,27 @@
 Tune User Guide
 ===============
 
-.. contents::
-    :local:
+Tune Overview
+-------------
+
+.. image:: images/tune-api.svg
+
+Tune schedules a number of *trials* in a cluster. Each trial runs a user-defined Python function or class and is parameterized either by a *config* variation from Tune's Variant Generator or a user-specified `search algorithm <tune-searchalg.html>`__. The trials are scheduled and managed by a `trial scheduler <tune-schedulers.html>`__.
+
+Tune provides a ``run_experiments`` function that generates and runs the trials as described by the `experiment specification <tune-usage.html#experiment-configuration>`__.
+
+.. autofunction:: ray.tune.run_experiments
+    :noindex:
 
 
-Experiment Setup
-----------------
+Experiment Configuration
+------------------------
 
-There are two ways to setup an experiment - one via Python and one via JSON.
+Specifying Experiments
+~~~~~~~~~~~~~~~~~~~~~~
+
+There are two ways to specify the configuration for an experiment - one via Python and one via JSON.
+
 
 The first is to create an Experiment object. You can then pass in either
 a single experiment or a list of experiments to `run_experiments`, as follows:
@@ -21,11 +34,15 @@ a single experiment or a list of experiments to `run_experiments`, as follows:
     # Multiple experiments
     run_experiments([Experiment(...), Experiment(...), ...])
 
+    # Using a Search Algorithm
+    run_experiments(search_alg=SearchAlgorithm(Experiment(...)))
+
 .. autoclass:: ray.tune.Experiment
+    :noindex:
 
 An example of this can be found in `hyperband_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperband_example.py>`__.
 
-Alternatively, you can pass in a Python dict. This uses the same fields as
+The second is to create a JSON object/Python dict. This uses the same fields as
 the ``ray.tune.Experiment``, except the experiment name is the key of the top level
 dictionary.
 
@@ -46,15 +63,39 @@ dictionary.
         }
     })
 
+
 An example of this can be found in `async_hyperband_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/async_hyperband_example.py>`__.
 
+Config (Variant Generation)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Trial Variant Generation
-------------------------
+In the above example, we specified a grid search over two parameters using the ``tune.grid_search`` helper function. By default, Tune also supports sampling parameters from user-specified lambda functions, which can be used in combination with grid search.
 
-In the above example, we specified a grid search over two parameters using the ``tune.grid_search`` helper function. Tune also supports sampling parameters from user-specified lambda functions, which can be used in combination with grid search.
+.. note::
+    If you specify a Search Algorithm, you may not be able to use this feature.
 
 The following shows grid search over two nested parameters combined with random sampling from two lambda functions. Note that the value of ``beta`` depends on the value of ``alpha``, which is represented by referencing ``spec.config.alpha`` in the lambda function. This lets you specify conditional parameter distributions.
+
+.. code-block:: python
+
+    "config": {
+        "alpha": lambda spec: np.random.uniform(100),
+        "beta": lambda spec: spec.config.alpha * np.random.normal(),
+        "nn_layers": [
+            tune.grid_search([16, 64, 256]),
+            tune.grid_search([16, 64, 256]),
+        ],
+    }
+
+.. note::
+    Lambda functions will be evaluated during trial variant generation. If you need to pass a literal function in your config, use ``tune.function(...)`` to escape it.
+
+For more information on variant generation, see `basic_variant.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/suggest/basic_variant.py>`__.
+
+Sampling Multiple Times
+~~~~~~~~~~~~~~~~~~~~~~~
+
+By default, each random variable and grid search point is sampled once. To take multiple random samples or repeat grid search runs, add ``repeat: N`` to the experiment config.
 
 .. code-block:: python
 
@@ -68,16 +109,11 @@ The following shows grid search over two nested parameters combined with random 
     },
     "repeat": 10,
 
-By default, each random variable and grid search point is sampled once. To take multiple random samples or repeat grid search runs, add ``repeat: N`` to the experiment config. E.g. in the above, ``"repeat": 10`` repeats the 3x3 grid search 10 times, for a total of 90 trials, each with randomly sampled values of ``alpha`` and ``beta``.
+E.g. in the above, ``"repeat": 10`` repeats the 3x3 grid search 10 times, for a total of 90 trials, each with randomly sampled values of ``alpha`` and ``beta``.
 
-.. note::
-
-    Lambda functions will be evaluated during trial variant generation. If you need to pass a literal function in your config, use ``tune.function(...)`` to escape it.
-
-For more information on variant generation, see `basic_variant.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/suggest/basic_variant.py>`__.
 
 Using GPUs (Resource Allocation)
---------------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Tune runs each trial as a Ray actor, allocating the specified GPU and CPU ``trial_resources`` to each actor (defaulting to 1 CPU per trial). A trial will not be scheduled unless at least that amount of resources is available in the cluster, preventing the cluster from being overloaded.
 
@@ -88,7 +124,7 @@ If your trainable function / class creates further Ray actors or tasks that also
 
 
 Trial Checkpointing
--------------------
+~~~~~~~~~~~~~~~~~~~
 
 To enable checkpointing, you must implement a Trainable class (Trainable functions are not checkpointable, since they never return control back to their caller). The easiest way to do this is to subclass the pre-defined ``Trainable`` class and implement its ``_train``, ``_save``, and ``_restore`` abstract methods `(example) <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperband_example.py>`__: Implementing this interface is required to support resource multiplexing in schedulers such as HyperBand and PBT.
 
@@ -134,7 +170,6 @@ The class interface that must be implemented to enable checkpointing is as follo
     :noindex:
 
 
-
 Handling Large Datasets
 -----------------------
 
@@ -159,7 +194,6 @@ You often will want to compute a large object (e.g., training data, model weight
 
     register_trainable("f", f)
     run_experiments(...)
-
 
 
 Visualizing Results
@@ -226,7 +260,5 @@ For an example notebook for using the Client API, see the `Client API Example <h
 
 Examples
 --------
-
-.. TODO(rliaw).
 
 You can find a comprehensive of examples `using Tune and its various features here <https://github.com/ray-project/ray/tree/master/python/ray/tune/examples>`__, including examples using Keras, TensorFlow, and Population-Based Training.

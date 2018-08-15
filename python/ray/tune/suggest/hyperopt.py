@@ -33,6 +33,24 @@ class HyperOptSearch(SuggestionAlgorithm):
             This refers to an increasing value, which is internally negated
             when interacting with HyperOpt so that HyperOpt can "maximize"
             this value.
+
+    Example:
+        >>> space = {
+        >>>     'width': hp.uniform('width', 0, 20),
+        >>>     'height': hp.uniform('height', -100, 100),
+        >>>     'activation': hp.choice("activation", ["relu", "tanh"])
+        >>> }
+        >>> config = {
+        >>>     "my_exp": {
+        >>>         "run": "exp",
+        >>>         "repeat": 10 if args.smoke_test else 1000,
+        >>>         "stop": {
+        >>>             "training_iteration": 100
+        >>>         },
+        >>>     }
+        >>> }
+        >>> algo = HyperOptSearch(
+        >>>     config, space, max_concurrent=4, reward_attr="neg_mean_loss")
     """
 
     def __init__(self,

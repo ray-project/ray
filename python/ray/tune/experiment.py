@@ -22,8 +22,9 @@ class Experiment(object):
         stop (dict): The stopping criteria. The keys may be any field in
             the return result of 'train()', whichever is reached first.
             Defaults to empty dict.
-        config (dict): Algorithm-specific configuration
-            (e.g. env, hyperparams). Defaults to empty dict.
+        config (dict): Algorithm-specific configuration for Tune variant
+            generation (e.g. env, hyperparams). Defaults to empty dict.
+            Custom search algorithms may ignore this.
         trial_resources (dict): Machine resources to allocate per trial,
             e.g. ``{"cpu": 64, "gpu": 8}``. Note that GPUs will not be
             assigned unless you specify them here. Defaults to 1 CPU and 0

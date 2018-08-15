@@ -82,23 +82,10 @@ For the function you wish to tune, pass in a ``reporter`` object:
 Tune can be used anywhere Ray can, e.g. on your laptop with ``ray.init()`` embedded in a Python script, or in an `auto-scaling cluster <autoscaling.html>`__ for massive parallelism.
 
 
-Concepts
---------
-
-.. image:: images/tune-api.svg
-
-Tune schedules a number of *trials* in a cluster. Each trial runs a user-defined Python function or class and is parameterized by a *config* variation passed to the user code.
-
-..TODO(rliaw): Schedulers
-..TODO(rliaw): Algorithms
-
-Tune provides a `run_experiments  <tune-package-ref.html#ray.tune.run_experiments>`__ function that generates and runs the trials described by the experiment specification. The trials are scheduled and managed by a *trial scheduler* that implements the search algorithm (default is FIFO).
-
-
 Citing Tune
 -----------
 
-If Tune helps you in your academic research, you are encouraged to cite [our paper](https://arxiv.org/abs/1807.05118). Here is an example bibtex:
+If Tune helps you in your academic research, you are encouraged to cite `our paper <https://arxiv.org/abs/1807.05118>`__. Here is an example bibtex:
 
 .. code-block:: tex
 

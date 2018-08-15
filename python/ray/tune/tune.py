@@ -36,12 +36,13 @@ def run_experiments(experiments=None,
                     server_port=TuneServer.DEFAULT_PORT,
                     verbose=True,
                     queue_trials=False):
-    """Tunes experiments.
+    """Runs and blocks until all trials finish.
 
     Args:
-        experiments (Experiment | list | dict): Experiments to run.
+        experiments (Experiment | list | dict): Experiments to run. Will be
+            ignored if specifying a `search_alg`.
         search_alg (SearchAlgorithm): Search Algorithm. Defaults to
-            BasicVariantGenerator.
+            BasicVariantGenerator wrapping the `experiments` parameter.
         scheduler (TrialScheduler): Scheduler for executing
             the experiment. Choose among FIFO (default), MedianStopping,
             AsyncHyperBand, and HyperBand.
@@ -53,6 +54,17 @@ def run_experiments(experiments=None,
             not currently have enough resources to launch one. This should
             be set to True when running on an autoscaling cluster to enable
             automatic scale-up.
+
+    Examples:
+        >>> run_experiments(experiments={"experiment": {"run": my_func}})
+
+        >>> run_experiments(
+        >>>     experiments={"experiment": {"run": my_func}},
+        >>>     scheduler=MedianStoppingRule(...))
+
+        >>> run_experiments(
+        >>>     search_alg=SearchAlgorithm({"experiment": {"run": my_func}}),
+        >>>     scheduler=MedianStoppingRule(...))
 
     Returns:
         List of Trial objects, holding data for each executed trial.
