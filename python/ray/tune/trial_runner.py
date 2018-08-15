@@ -441,5 +441,6 @@ class TrialRunner(object):
                 previous_cpu = int(num_cpus)
                 previous_gpu = int(num_gpus)
             time.sleep(1)
+            print("_update_avail_resources: wait triggered")
         self._avail_resources = Resources(int(num_cpus), int(num_gpus))
         self._resources_initialized = True
