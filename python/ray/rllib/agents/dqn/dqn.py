@@ -23,6 +23,8 @@ OPTIMIZER_SHARED_CONFIGS = [
 
 DEFAULT_CONFIG = with_common_config({
     # === Model ===
+    # Whether to use noisy network
+    "noisy": False,
     # Whether to use dueling dqn
     "dueling": True,
     # Whether to use double dqn
