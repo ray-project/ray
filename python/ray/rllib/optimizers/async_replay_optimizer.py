@@ -27,7 +27,7 @@ REPLAY_QUEUE_DEPTH = 4
 LEARNER_QUEUE_MAX_SIZE = 16
 
 
-@ray.remote
+@ray.remote(num_cpus=0)
 class ReplayActor(object):
     """A replay buffer shard.
 
@@ -175,7 +175,6 @@ class AsyncReplayOptimizer(PolicyOptimizer):
             train_batch_size, prioritized_replay_alpha,
             prioritized_replay_beta, prioritized_replay_eps, clip_rewards
         ], num_replay_buffer_shards)
-        assert len(self.remote_evaluators) > 0
 
         # Stats
         self.timers = {
@@ -199,6 +198,12 @@ class AsyncReplayOptimizer(PolicyOptimizer):
 
         # Kick off async background sampling
         self.sample_tasks = TaskPool()
+        if self.remote_evaluators:
+            self.set_evaluators(self.remote_evaluators)
+
+    # For https://github.com/ray-project/ray/issues/2541 only
+    def set_evaluators(self, remote_evaluators):
+        self.remote_evaluators = remote_evaluators
         weights = self.local_evaluator.get_weights()
         for ev in self.remote_evaluators:
             ev.set_weights.remote(weights)
@@ -207,6 +212,7 @@ class AsyncReplayOptimizer(PolicyOptimizer):
                 self.sample_tasks.add(ev, ev.sample_with_count.remote())
 
     def step(self):
+        assert len(self.remote_evaluators) > 0
         start = time.time()
         sample_timesteps, train_timesteps = self._step()
         time_delta = time.time() - start
