@@ -7,6 +7,7 @@ try:  # py3
 except ImportError:  # py2
     from pipes import quote
 import os
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -188,7 +189,8 @@ class NodeUpdater(object):
                 verbose=False,
                 allocate_tty=False,
                 emulate_interactive=True,
-                expect_error=False):
+                expect_error=False,
+                ssh_opt=None):
         if verbose:
             print(
                 "NodeUpdater: running {} on {}...".format(
@@ -204,8 +206,12 @@ class NodeUpdater(object):
             call = self.process_runner.call
         else:
             call = self.process_runner.check_call
+        if ssh_opt is None:
+            ssh_opt = []
+        else:
+            ssh_opt = shlex.split(ssh_opt)
         call(
-            ssh + [
+            ssh + ssh_opt + [
                 "-o", "ConnectTimeout={}s".format(connect_timeout), "-o",
                 "StrictHostKeyChecking=no", "-i", self.ssh_private_key,
                 "{}@{}".format(self.ssh_user, self.ssh_ip), cmd

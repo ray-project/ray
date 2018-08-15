@@ -214,20 +214,7 @@ def attach_cluster(config_file, start, override_cluster_name):
                  override_cluster_name)
 
 
-def ssh_cluster(config_file, start, override_cluster_name):
-    """SSH to the specified cluster.
-
-    Arguments:
-        config_file: path to the cluster yaml
-        start: whether to start the cluster if it isn't up
-        override_cluster_name: set the name of the cluster
-    """
-
-    exec_cluster(config_file, "bash", False, False, start,
-                 override_cluster_name)
-
-
-def exec_cluster(config_file, cmd, screen, stop, start, override_cluster_name):
+def exec_cluster(config_file, cmd, screen, stop, start, override_cluster_name, ssh_opt):
     """Runs a command on the specified cluster.
 
     Arguments:
@@ -237,6 +224,7 @@ def exec_cluster(config_file, cmd, screen, stop, start, override_cluster_name):
         stop: whether to stop the cluster after command run
         start: whether to start the cluster if it isn't up
         override_cluster_name: set the name of the cluster
+        ssh_opt: extra ssh options
     """
 
     config = yaml.load(open(config_file).read())
@@ -255,10 +243,10 @@ def exec_cluster(config_file, cmd, screen, stop, start, override_cluster_name):
     if stop:
         cmd += ("; ray stop; ray teardown ~/ray_bootstrap_config.yaml --yes "
                 "--workers-only; sudo shutdown -h now")
-    _exec(updater, cmd, screen, expect_error=stop)
+    _exec(updater, cmd, screen, expect_error=stop, ssh_opt=ssh_opt)
 
 
-def _exec(updater, cmd, screen, expect_error=False):
+def _exec(updater, cmd, screen, expect_error=False, ssh_opt=None):
     if cmd:
         if screen:
             cmd = [
@@ -267,7 +255,8 @@ def _exec(updater, cmd, screen, expect_error=False):
             ]
             cmd = " ".join(cmd)
         updater.ssh_cmd(
-            cmd, verbose=True, allocate_tty=True, expect_error=expect_error)
+            cmd, verbose=True, allocate_tty=True, expect_error=expect_error,
+            ssh_opt=ssh_opt)
 
 
 def get_head_node_ip(config_file, override_cluster_name):

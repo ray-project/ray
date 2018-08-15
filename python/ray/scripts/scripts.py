@@ -447,22 +447,6 @@ def attach(cluster_config_file, start, cluster_name):
 
 @click.command()
 @click.argument("cluster_config_file", required=True, type=str)
-@click.option(
-    "--start",
-    is_flag=True,
-    default=False,
-    help=("Start the cluster if needed."))
-@click.option(
-    "--cluster-name",
-    required=False,
-    type=str,
-    help=("Override the configured cluster name."))
-def ssh(cluster_config_file, start, cluster_name):
-    ssh_cluster(cluster_config_file, start, cluster_name)
-
-
-@click.command()
-@click.argument("cluster_config_file", required=True, type=str)
 @click.argument("cmd", required=True, type=str)
 @click.option(
     "--stop",
@@ -484,8 +468,13 @@ def ssh(cluster_config_file, start, cluster_name):
     required=False,
     type=str,
     help=("Override the configured cluster name."))
-def exec_cmd(cluster_config_file, cmd, screen, stop, start, cluster_name):
-    exec_cluster(cluster_config_file, cmd, screen, stop, start, cluster_name)
+@click.option(
+    "--ssh-opt",
+    required=False,
+    type=str,
+    help=("Extra SSH options."))
+def exec_cmd(cluster_config_file, cmd, screen, stop, start, cluster_name, ssh_opt):
+    exec_cluster(cluster_config_file, cmd, screen, stop, start, cluster_name, ssh_opt)
 
 
 @click.command()
