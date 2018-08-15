@@ -93,12 +93,12 @@ TaskSpecification::TaskSpecification(
   // convert Language to TaskLanguage
   TaskLanguage task_language = TaskLanguage::PYTHON;
   switch (language) {
-    case Language::PYTHON:
-      task_language = TaskLanguage::PYTHON;
-    case Language::JAVA:
-      task_language = TaskLanguage::JAVA;
-    default:
-      RAY_LOG(FATAL) << "Unknown language.";
+  case Language::PYTHON:
+    task_language = TaskLanguage::PYTHON;
+  case Language::JAVA:
+    task_language = TaskLanguage::JAVA;
+  default:
+    RAY_LOG(FATAL) << "Unknown language.";
   }
 
   // Serialize the TaskSpecification.
@@ -197,14 +197,14 @@ Language TaskSpecification::GetLanguage() const {
   auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
   auto language = message->language();
   switch (language) {
-    case TaskLanguage::PYTHON:
-      return Language::PYTHON;
-    case TaskLanguage::JAVA:
-      return Language::JAVA;
-    default:
-      // This shouldn't be reachable.
-      RAY_LOG(FATAL) << "Unknown task language.";
-      return Language::PYTHON;
+  case TaskLanguage::PYTHON:
+    return Language::PYTHON;
+  case TaskLanguage::JAVA:
+    return Language::JAVA;
+  default:
+    // This shouldn't be reachable.
+    RAY_LOG(FATAL) << "Unknown task language.";
+    return Language::PYTHON;
   }
 }
 
