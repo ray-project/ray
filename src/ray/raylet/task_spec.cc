@@ -202,7 +202,7 @@ Language TaskSpecification::GetLanguage() const {
     case TaskLanguage::JAVA:
       return Language::JAVA;
     default:
-      // This shouldn't be recheable
+      // This shouldn't be reachable.
       RAY_LOG(FATAL) << "Unknown task language.";
       return Language::PYTHON;
   }
