@@ -1,58 +1,59 @@
 # coding: utf-8
 import os
-import tempfile
 import traceback
 
 import time
 
 import ray
-from ray.tune import TuneError
-from ray.tune.logger import NoopLogger, UnifiedLogger, pretty_print
-from ray.tune.result import DEFAULT_RESULTS_DIR
+from ray.tune.logger import NoopLogger
 
-from ray.tune.trial import Trial, register_trial_impl, Resources, date_str
+from ray.tune.trial import Trial, Resources, Checkpoint
 from ray.tune.trial_executor import TrialExecutor
 
-MAX_LEN_IDENTIFIER = 130
+class RayTrialExecutor(TrialExecutor):
+    """An implemention of TrialExecutor based on Ray."""
 
-class RayTrial(Trial):
-    def __init__(self, trainable_name,
-                 config=None,
-                 trial_id=None,
-                 local_dir=DEFAULT_RESULTS_DIR,
-                 experiment_tag="",
-                 resources=None,
-                 stopping_criterion=None,
-                 checkpoint_freq=0,
-                 restore_path=None,
-                 upload_dir=None,
-                 max_failures=0):
-        super(RayTrial, self).__init__(
-            trainable_name=trainable_name, config=config, trial_id=trial_id,
-            local_dir=local_dir, experiment_tag=experiment_tag, resources=resources,
-            stopping_criterion=stopping_criterion, checkpoint_freq=checkpoint_freq,
-            restore_path=restore_path, upload_dir=upload_dir, max_failures=max_failures
-        )
+    def __init__(self, queue_trials=False):
+        super(RayTrialExecutor, self).__init__(queue_trials)
+        self._running = {}
+        self._avail_resources = Resources(cpu=0, gpu=0)
+        self._committed_resources = Resources(cpu=0, gpu=0)
+        self._resources_initialized = False
 
-    def start(self, checkpoint_obj=None):
-        """Starts this trial.
+    def _setup_runner(self, trial):
+        cls = ray.remote(
+            num_cpus=trial.resources.cpu,
+            num_gpus=trial.resources.gpu)(trial._get_trainable_cls())
 
-        If an error is encountered when starting the trial, an exception will
-        be thrown.
+        trial.init_logger()
+        remote_logdir = trial.logdir
 
-        Args:
-            checkpoint_obj (obj): Optional checkpoint to resume from.
-        """
+        def logger_creator(config):
+            # Set the working dir in the remote process, for user file writes
+            if not os.path.exists(remote_logdir):
+                os.makedirs(remote_logdir)
+            os.chdir(remote_logdir)
+            return NoopLogger(config, remote_logdir)
 
-        self._setup_runner()
-        if checkpoint_obj:
-            self.restore_from_obj(checkpoint_obj)
-        elif self._checkpoint_path:
-            self.restore_from_path(self._checkpoint_path)
-        elif self._checkpoint_obj:
-            self.restore_from_obj(self._checkpoint_obj)
+        # Logging for trials is handled centrally by TrialRunner, so
+        # configure the remote runner to use a noop-logger.
+        return cls.remote(
+            config=trial.config, logger_creator=logger_creator)
 
-    def stop(self, error=False, error_msg=None, stop_logger=True):
+    def _add_running_trial(self, trial):
+        """get Ray future for one iteration of training"""
+
+        assert trial.status == Trial.RUNNING, trial.status
+        remote = trial.runner.train.remote()
+        self._running[remote] = trial
+
+    def _start_trial(self, trial, checkpoint=None):
+        trial.status = Trial.RUNNING
+        trial.runner = self._setup_runner(trial)
+        if self.restore(trial, checkpoint):
+            self._add_running_trial(trial)
+
+    def _stop_trial(self, trial, error=False, error_msg=None, stop_logger=True):
         """Stops this trial.
 
         Stops this trial, releasing all allocating resources. If stopping the
@@ -66,152 +67,83 @@ class RayTrial(Trial):
         """
 
         if error:
-            self.status = Trial.ERROR
+            trial.status = Trial.ERROR
         else:
-            self.status = Trial.TERMINATED
+            trial.status = Trial.TERMINATED
 
         try:
-            if error_msg and self.logdir:
-                self.num_failures += 1
-                error_file = os.path.join(self.logdir,
-                                          "error_{}.txt".format(date_str()))
-                with open(error_file, "w") as f:
-                    f.write(error_msg)
-                self.error_file = error_file
-            if self.runner:
+            trial.write_error_log(error_msg)
+            if hasattr(trial, 'runner') and trial.runner:
                 stop_tasks = []
-                stop_tasks.append(self.runner.stop.remote())
-                stop_tasks.append(self.runner.__ray_terminate__.remote())
+                stop_tasks.append(trial.runner.stop.remote())
+                stop_tasks.append(trial.runner.__ray_terminate__.remote())
                 # TODO(ekl)  seems like wait hangs when killing actors
                 _, unfinished = ray.wait(
                     stop_tasks, num_returns=2, timeout=250)
         except Exception:
             print("Error stopping runner:", traceback.format_exc())
-            self.status = Trial.ERROR
+            trial.status = Trial.ERROR
         finally:
-            self.runner = None
+            trial.runner = None
 
-        if stop_logger and self.result_logger:
-            self.result_logger.close()
-            self.result_logger = None
-
-    def train_remote(self):
-        """Returns Ray future for one iteration of training."""
-
-        assert self.status == Trial.RUNNING, self.status
-        return self.runner.train.remote()
-
-    def save_to_object(self):
-        return self.runner.save_to_object.remote()
-
-    def save_to_path(self):
-        ray.get(self.runner.save.remote())
-
-    def _setup_runner(self):
-        self.status = Trial.RUNNING
-        cls = ray.remote(
-            num_cpus=self.resources.cpu,
-            num_gpus=self.resources.gpu)(self._get_trainable_cls())
-        if not self.result_logger:
-            if not os.path.exists(self.local_dir):
-                os.makedirs(self.local_dir)
-            self.logdir = tempfile.mkdtemp(
-                prefix="{}_{}".format(
-                    str(self)[:MAX_LEN_IDENTIFIER], date_str()),
-                dir=self.local_dir)
-            self.result_logger = UnifiedLogger(self.config, self.logdir,
-                                               self.upload_dir)
-        remote_logdir = self.logdir
-
-        def logger_creator(config):
-            # Set the working dir in the remote process, for user file writes
-            if not os.path.exists(remote_logdir):
-                os.makedirs(remote_logdir)
-            os.chdir(remote_logdir)
-            return NoopLogger(config, remote_logdir)
-
-        # Logging for trials is handled centrally by TrialRunner, so
-        # configure the remote runner to use a noop-logger.
-        self.runner = cls.remote(
-            config=self.config, logger_creator=logger_creator)
-
-    def restore_from_path(self, path):
-        """Restores runner state from specified path.
-
-        Args:
-            path (str): A path where state will be restored.
-        """
-
-        if self.runner is None:
-            print("Unable to restore - no runner")
-        else:
-            try:
-                ray.get(self.runner.restore.remote(path))
-            except Exception:
-                print("Error restoring runner:", traceback.format_exc())
-                self.status = Trial.ERROR
-
-    def restore_from_obj(self, obj):
-        """Restores runner state from the specified object."""
-
-        if self.runner is None:
-            print("Unable to restore - no runner")
-        else:
-            try:
-                ray.get(self.runner.restore_from_object.remote(obj))
-            except Exception:
-                print("Error restoring runner:", traceback.format_exc())
-                self.status = Trial.ERROR
-
-register_trial_impl(RayTrial) # any call to Trial() will create RayTrial instead of Trial.
-
-class RayTrialExecutor(TrialExecutor):
-    def __init__(self, queue_trials = False):
-        super(RayTrialExecutor, self).__init__(queue_trials)
-        self._running = {}
-        self._avail_resources = Resources(cpu=0, gpu=0)
-        self._committed_resources = Resources(cpu=0, gpu=0)
-        self._resources_initialized = False
+        if stop_logger:
+            trial.close_logger()
 
     def start_trial(self, trial, checkpoint_obj=None):
+        """Starts the trial."""
+
         self._commit_resources(trial.resources)
         try:
-            trial.start(checkpoint_obj=checkpoint_obj)
-            self._running[trial.train_remote()] = trial
+            self._start_trial(trial, checkpoint_obj)
         except Exception:
             error_msg = traceback.format_exc()
             print("Error starting runner, retrying:", error_msg)
             time.sleep(2)
-            trial.stop(error=True, error_msg=error_msg)
+            self._stop_trial(trial, error=True, error_msg=error_msg)
             try:
-                trial.start()
-                self._running[trial.train_remote()] = trial
+                self._start_trial(trial)
             except Exception:
                 error_msg = traceback.format_exc()
                 print("Error starting runner, abort:", error_msg)
-                trial.stop(error=True, error_msg=error_msg)
+                self._stop_trial(trial, error=True, error_msg=error_msg)
                 # note that we don't return the resources, since they may
                 # have been lost
 
     def stop_trial(self, trial, error=False, error_msg=None, stop_logger=True):
         """Only returns resources if resources allocated."""
         prior_status = trial.status
-        trial.stop(error=error, error_msg=error_msg)
+        self._stop_trial(trial, error=error, error_msg=error_msg, stop_logger=stop_logger)
         if prior_status == Trial.RUNNING:
             self._return_resources(trial.resources)
+            out = [rid for rid, t in self._running.items() if t is trial]
+            for result_id in out:
+                self._running.pop(result_id)
 
-    def continue_trial(self, trial):
-        self._running[trial.train_remote()] = trial
+    def on_scheduler_decision(self, trial, decision):
+        """A hook called when TrialScheduler make a decision.
+
+        put trial into self._running again.
+        """
+
+        from ray.tune.trial_scheduler import TrialScheduler
+        if decision == TrialScheduler.CONTINUE:
+            self._add_running_trial(trial)
 
     def pause_trial(self, trial):
+        """Pauses the trial."""
+
         assert trial.status == Trial.RUNNING, trial.status
         super(RayTrialExecutor, self).pause_trial(trial)
-        self._return_resources(trial.resources)
+
 
     def get_running_trials(self):
+        """Returns the running trials."""
+
         return list(self._running.values())
 
     def fetch_one_result(self):
+        """Fetches one result of the running trials."""
+
         # NOTE: There should only be one...
         [result_id], _ = ray.wait(list(self._running))
         trial = self._running.pop(result_id)
@@ -261,8 +193,8 @@ class RayTrialExecutor(TrialExecutor):
 
         can_overcommit = self._queue_trials
 
-        if ((resources.cpu_total() > 0 and cpu_avail <= 0)
-            or (resources.gpu_total() > 0 and gpu_avail <= 0)):
+        if (resources.cpu_total() > 0 and cpu_avail <= 0) or \
+            (resources.gpu_total() > 0 and gpu_avail <= 0):
             can_overcommit = False  # requested resource is already saturated
 
         if can_overcommit:
@@ -277,6 +209,8 @@ class RayTrialExecutor(TrialExecutor):
         return False
 
     def debug_string(self):
+        """Returns a human readable message for printing to the console."""
+
         if self._resources_initialized:
             return "Resources requested: {}/{} CPUs, {}/{} GPUs".format(
                 self._committed_resources.cpu, self._avail_resources.cpu,
@@ -285,4 +219,36 @@ class RayTrialExecutor(TrialExecutor):
             return ""
 
     def on_step_begin(self):
+        """Before step() called, update the avaliable resources."""
+
         self._update_avail_resources()
+
+    def save(self, trial, type=Checkpoint.TYPE_PATH):
+        trial._checkpoint.type = type
+        if type == Checkpoint.TYPE_OBJECT_STORE:
+            trial._checkpoint.value = trial.runner.save_to_object.remote()
+        else:
+            trial._checkpoint.value = ray.get(trial.runner.save.remote())
+        return trial._checkpoint.value
+
+    def restore(self, trial, checkpoint=None):
+        if checkpoint is None or checkpoint.value is None:
+            checkpoint = trial._checkpoint
+        if checkpoint is None or checkpoint.value is None:
+            return True
+        if trial.runner is None:
+            print("Unable to restore - no runner")
+            trial.status = Trial.ERROR
+            return False
+        try:
+            value = checkpoint.value
+            if checkpoint.type == Checkpoint.TYPE_OBJECT_STORE:
+                assert type(value) != Checkpoint, type(value)
+                ray.get(trial.runner.restore_from_object.remote(value))
+            else:
+                ray.get(trial.runner.restore.remote(value))
+            return True
+        except Exception:
+            print("Error restoring runner:", traceback.format_exc())
+            trial.status = Trial.ERROR
+            return False

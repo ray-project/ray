@@ -2,16 +2,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import tempfile
 from collections import namedtuple
 from datetime import datetime
-import tempfile
 import time
-import traceback
 import ray
 import os
 
 from ray.tune import TuneError
-from ray.tune.logger import NoopLogger, UnifiedLogger, pretty_print
+from ray.tune.logger import pretty_print, UnifiedLogger
 # NOTE(rkn): We import ray.tune.registry here instead of importing the names we
 # need because there are cyclic imports that may cause specific names to not
 # have been defined yet. See https://github.com/ray-project/ray/issues/1716.
@@ -21,6 +20,7 @@ from ray.tune.result import (DEFAULT_RESULTS_DIR, DONE, HOSTNAME, PID,
 from ray.utils import random_string, binary_to_hex
 
 DEBUG_PRINT_INTERVAL = 5
+MAX_LEN_IDENTIFIER = 130
 
 
 def date_str():
@@ -59,6 +59,22 @@ class Resources(
 def has_trainable(trainable_name):
     return ray.tune.registry._global_registry.contains(
         ray.tune.registry.TRAINABLE_CLASS, trainable_name)
+
+
+class Checkpoint(object):
+    """Describes a checkpoint of trial state."""
+
+    TYPE_OBJECT_STORE = 'object'
+    TYPE_PATH = 'path'
+
+    def __init__(self, type, value):
+        self.type = type
+        self.value = value
+
+    @staticmethod
+    def object_store(value=None):
+        """Create a checkpoint saved in objectstore"""
+        return Checkpoint(Checkpoint.TYPE_OBJECT_STORE, value)
 
 
 class Trial(object):
@@ -109,15 +125,17 @@ class Trial(object):
             resources
             or self._get_trainable_cls().default_resource_request(self.config))
         self.stopping_criterion = stopping_criterion or {}
-        self.checkpoint_freq = checkpoint_freq
         self.upload_dir = upload_dir
         self.verbose = True
         self.max_failures = max_failures
 
         # Local trial state that is updated during the run
         self.last_result = None
-        self._checkpoint_path = restore_path
-        self._checkpoint_obj = None
+        self.checkpoint_freq = checkpoint_freq
+        # self._checkpoint_path = restore_path
+        # self._checkpoint_obj = None
+        self._checkpoint = Checkpoint(type=Checkpoint.TYPE_PATH,
+                                      value=restore_path)
         self.status = Trial.PENDING
         self.location = None
         self.logdir = None
@@ -134,6 +152,35 @@ class Trial(object):
     def generate_id(cls):
         return binary_to_hex(random_string())[:8]
 
+    def init_logger(self):
+        """Init Logger"""
+
+        if not self.result_logger:
+            if not os.path.exists(self.local_dir):
+                os.makedirs(self.local_dir)
+            self.logdir = tempfile.mkdtemp(
+                prefix="{}_{}".format(
+                    str(self)[:MAX_LEN_IDENTIFIER], date_str()),
+                dir=self.local_dir)
+            self.result_logger = UnifiedLogger(self.config, self.logdir,
+                                               self.upload_dir)
+
+    def close_logger(self):
+        """Close logger."""
+
+        if self.result_logger:
+            self.result_logger.close()
+            self.result_logger = None
+
+    def write_error_log(self, error_msg):
+        if error_msg and self.logdir:
+            self.num_failures += 1  # may be moved to outer scope?
+            error_file = os.path.join(self.logdir,
+                                      "error_{}.txt".format(date_str()))
+            with open(error_file, "w") as f:
+                f.write(error_msg)
+            self.error_file = error_file
+
     def should_stop(self, result):
         """Whether the given result meets this trial's stopping criteria."""
 
@@ -147,7 +194,6 @@ class Trial(object):
                 return True
 
         return False
-
 
     def should_checkpoint(self):
         """Whether this trial is due for checkpointing."""
@@ -199,43 +245,7 @@ class Trial(object):
             if self.error_file else "")
 
     def has_checkpoint(self):
-        return self._checkpoint_path is not None or \
-            self._checkpoint_obj is not None
-
-    def save_to_object(self):
-        """save the state of this trial to object
-
-        :return: object to store the state.
-        """
-        return None
-
-    def save_to_path(self):
-        """ save the state of trial to path
-
-        :return: path to store the state.
-        """
-        return None
-
-    def checkpoint(self, to_object_store=False):
-        """Checkpoints the state of this trial.
-
-        Args:
-            to_object_store (bool): Whether to save to the Ray object store
-                (async) vs a path on local disk (sync).
-        """
-        obj = None
-        path = None
-        if to_object_store:
-            obj = self.save_to_object()
-        else:
-            path = self.save_to_path()
-        self._checkpoint_path = path
-        self._checkpoint_obj = obj
-
-        if self.verbose:
-            print("Saved checkpoint for {} to {}".format(self, path or obj))
-
-        return path or obj
+        return self._checkpoint.value is not None
 
     def update_last_result(self, result, terminate=False):
         if terminate:
@@ -271,19 +281,3 @@ class Trial(object):
         if self.experiment_tag:
             identifier += "_" + self.experiment_tag
         return identifier
-
-    class Holder():
-        IMPL_CLS = None # refer to the subclass of Trial.
-
-    def __new__(cls, *args, **kwargs):
-        return object.__new__(Trial.Holder.IMPL_CLS)
-
-def register_trial_impl(cls):
-    """register Trial type
-
-    any call to Trial() create a cls object
-
-    Args:
-        cls: cls should be a subclass of Trial
-    """
-    Trial.Holder.IMPL_CLS = cls

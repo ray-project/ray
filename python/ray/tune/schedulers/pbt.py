@@ -7,8 +7,8 @@ import math
 import copy
 
 from ray.tune.error import TuneError
-from ray.tune.trial import Trial
-from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
+from ray.tune.trial import Trial, Checkpoint
+from ray.tune.trial_scheduler import FIFOScheduler, TrialScheduler
 from ray.tune.suggest.variant_generator import format_vars
 
 # Parameters are transferred from the top PBT_QUANTILE fraction of trials to
@@ -187,7 +187,7 @@ class PopulationBasedTraining(FIFOScheduler):
         lower_quantile, upper_quantile = self._quantiles()
 
         if trial in upper_quantile:
-            state.last_checkpoint = trial.checkpoint(to_object_store=True)
+            state.last_checkpoint = trial_runner.trial_executor.save(trial, Checkpoint.TYPE_OBJECT_STORE)
             self._num_checkpoints += 1
         else:
             state.last_checkpoint = None  # not a top trial
@@ -224,7 +224,7 @@ class PopulationBasedTraining(FIFOScheduler):
         trial.config = new_config
         trial.experiment_tag = make_experiment_tag(
             trial_state.orig_tag, new_config, self._hyperparam_mutations)
-        trial_executor.start_trial(trial, new_state.last_checkpoint)
+        trial_executor.start_trial(trial, Checkpoint.object_store(new_state.last_checkpoint))
         self._num_perturbations += 1
         # Transfer over the last perturbation time as well
         trial_state.last_perturbation_time = new_state.last_perturbation_time

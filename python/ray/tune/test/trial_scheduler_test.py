@@ -11,7 +11,9 @@ from ray.tune.schedulers import (HyperBandScheduler, AsyncHyperBandScheduler,
                                  PopulationBasedTraining, MedianStoppingRule,
                                  TrialScheduler)
 from ray.tune.schedulers.pbt import explore
-from ray.tune.trial import Trial, Resources
+from ray.tune.trial import Trial, Resources, Checkpoint
+from ray.tune.trial_executor import TrialExecutor
+from ray.tune.trial_scheduler import TrialScheduler
 
 from ray.rllib import _register_all
 _register_all()
@@ -149,11 +151,33 @@ class EarlyStoppingSuite(unittest.TestCase):
             rule.on_trial_result(None, t2, result2(6, 0)),
             TrialScheduler.CONTINUE)
 
+class _MockTrialExecutor(TrialExecutor):
+
+    def stop_trial(self, trial, error=False, error_msg=None, stop_logger=True):
+        trial.status = Trial.ERROR if error else Trial.TERMINATED
+
+    def save(self, trial, type=Checkpoint.TYPE_PATH):
+        pass
+
+    def start_trial(self, trial, checkpoint_obj=None):
+        trial.logger_running = True
+        trial.restored_checkpoint = checkpoint_obj.value
+
+    def stop_trial(self, trial, error=False, error_msg=None, stop_logger=True):
+        if stop_logger:
+            trial.logger_running = False
+
+    def restore(self, trial, checkpoint=None):
+        pass
+
+    def save(self, trial, type=Checkpoint.TYPE_PATH):
+        return trial.trainable_name
 
 class _MockTrialRunner():
     def __init__(self, scheduler):
         self._scheduler_alg = scheduler
         self.trials = []
+        self.trial_executor = _MockTrialExecutor()
 
     def process_action(self, trial, action):
         if action == TrialScheduler.CONTINUE:
@@ -161,7 +185,7 @@ class _MockTrialRunner():
         elif action == TrialScheduler.PAUSE:
             self._pause_trial(trial)
         elif action == TrialScheduler.STOP:
-            trial.stop()
+            self.trial_executor.stop_trial(trial)
 
     def stop_trial(self, trial):
         if trial.status in [Trial.ERROR, Trial.TERMINATED]:
@@ -169,7 +193,6 @@ class _MockTrialRunner():
         elif trial.status in [Trial.PENDING, Trial.PAUSED]:
             self._scheduler_alg.on_trial_remove(self, trial)
         else:
-
             self._scheduler_alg.on_trial_complete(self, trial, result(100, 10))
 
     def add_trial(self, trial):
@@ -187,6 +210,7 @@ class _MockTrialRunner():
 
     def _launch_trial(self, trial):
         trial.status = Trial.RUNNING
+
 
 
 class HyperbandSuite(unittest.TestCase):
@@ -541,18 +565,6 @@ class _MockTrial(Trial):
         self.logger_running = False
         self.restored_checkpoint = None
         self.resources = Resources(1, 0)
-
-    def checkpoint(self, to_object_store=False):
-        return self.trainable_name
-
-    def start(self, checkpoint=None):
-        self.logger_running = True
-        self.restored_checkpoint = checkpoint
-
-    def stop(self, stop_logger=False):
-        if stop_logger:
-            self.logger_running = False
-
 
 class PopulationBasedTestingSuite(unittest.TestCase):
     def setUp(self):

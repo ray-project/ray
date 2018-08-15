@@ -45,7 +45,7 @@ class TrialRunner(object):
                  server_port=TuneServer.DEFAULT_PORT,
                  verbose=True,
                  queue_trials=False,
-                 trial_executor = None):
+                 trial_executor=None):
         """Initializes a new TrialRunner.
 
         Args:
@@ -64,7 +64,8 @@ class TrialRunner(object):
         self._search_alg = search_alg
         self._scheduler_alg = scheduler or FIFOScheduler()
         self._trials = []
-        self.trial_executor = trial_executor or RayTrialExecutor(queue_trials=queue_trials)
+        self.trial_executor = trial_executor or \
+            RayTrialExecutor(queue_trials=queue_trials)
 
         # For debugging, it may be useful to halt trials after some time has
         # elapsed. TODO(ekl) consider exposing this in the API.
@@ -108,13 +109,13 @@ class TrialRunner(object):
                     if not self.has_resources(trial.resources):
                         raise TuneError(
                             ("Insufficient cluster resources to launch trial: "
-                             "trial requested {} but the cluster only has {} "
-                             "available. Pass `queue_trials=True` in "
+                             "trial requested {} but the cluster summary: {} "
+                             "Pass `queue_trials=True` in "
                              "ray.tune.run_experiments() or on the command "
                              "line to queue trials until the cluster scales "
                              "up. {}").format(
                                 trial.resources.summary_string(),
-                                self._avail_resources.summary_string(),
+                                self.trial_executor.debug_string(), # TODO
                                 trial._get_trainable_cls().resource_help(
                                     trial.config)))
                 elif trial.status == Trial.PAUSED:
@@ -229,15 +230,15 @@ class TrialRunner(object):
             trial.update_last_result(
                 result, terminate=(decision == TrialScheduler.STOP))
 
+            self.trial_executor.on_scheduler_decision(trial, decision=decision)
             if decision == TrialScheduler.CONTINUE:
                 if trial.should_checkpoint():
                     # TODO(rliaw): This is a blocking call
-                    trial.checkpoint()
-                self.trial_executor.continue_trial(trial)
+                    self.trial_executor.save(trial)
             elif decision == TrialScheduler.PAUSE:
                 self.trial_executor.pause_trial(trial)
             elif decision == TrialScheduler.STOP:
-                self._stop_trial(trial)
+                self.trial_executor.stop_trial(trial)
             else:
                 assert False, "Invalid scheduling decision: {}".format(
                     decision)
@@ -252,7 +253,7 @@ class TrialRunner(object):
                     self._scheduler_alg.on_trial_error(self, trial)
                     self._search_alg.on_trial_complete(
                         trial.trial_id, error=True)
-                    self._stop_trial(trial, error=True, error_msg=error_msg)
+                    self.trial_executor.stop_trial(trial, True, error_msg)
 
     def _try_recover(self, trial, error_msg):
         try:
@@ -261,7 +262,7 @@ class TrialRunner(object):
         except Exception:
             error_msg = traceback.format_exc()
             print("Error recovering trial from checkpoint, abort:", error_msg)
-            self._stop_trial(trial, error=True, error_msg=error_msg)
+            self.trial_executor.stop_trial(trial, True, error_msg=error_msg)
 
     def _update_trial_queue(self, blocking=False, timeout=600):
         """Adds next trials to queue if possible.
@@ -325,7 +326,4 @@ class TrialRunner(object):
                 self._search_alg.on_trial_complete(trial.trial_id, error=True)
                 error = True
 
-        self._stop_trial(trial, error=error, error_msg=error_msg)
-
-    def _stop_trial(self, trial, error=False, error_msg=None):
-        self.trial_executor.stop_trial(trial=trial, error=error, error_msg=error_msg)
+        self.trial_executor.stop_trial(trial, error=error, error_msg=error_msg)

@@ -35,7 +35,8 @@ def run_experiments(experiments=None,
                     with_server=False,
                     server_port=TuneServer.DEFAULT_PORT,
                     verbose=True,
-                    queue_trials=False):
+                    queue_trials=False,
+                    trial_executor=None):
     """Runs and blocks until all trials finish.
 
     Args:
@@ -54,6 +55,7 @@ def run_experiments(experiments=None,
             not currently have enough resources to launch one. This should
             be set to True when running on an autoscaling cluster to enable
             automatic scale-up.
+        trial_executor (TrialExecutor): used to manage the execution of trials.
 
     Examples:
         >>> experiment_spec = Experiment("experiment", my_func)
@@ -88,7 +90,8 @@ def run_experiments(experiments=None,
         launch_web_server=with_server,
         server_port=server_port,
         verbose=verbose,
-        queue_trials=queue_trials)
+        queue_trials=queue_trials,
+        trial_executor=trial_executor)
 
     print(runner.debug_string(max_debug=99999))
 

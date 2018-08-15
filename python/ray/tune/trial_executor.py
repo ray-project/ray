@@ -1,13 +1,15 @@
 # coding: utf-8
 import traceback
 
-from ray.tune.trial import Trial
+from ray.tune.trial import Trial, Checkpoint
 
 
 class TrialExecutor(object):
+    """TrialExecutor abstracts the execution of a Trial."""
+
     def __init__(self, queue_trials=False):
-        """
-        Initializes a new TrailExecutor.
+        """Initializes a new TrailExecutor.
+
         Args:
             queue_trials (bool): Whether to queue trials when the cluster does
                 not currently have enough resources to launch one. This should
@@ -18,33 +20,36 @@ class TrialExecutor(object):
 
     def has_resources(self, resources):
         """Returns whether this runner has at least the specified resources."""
-        raise NotImplementedError('subclasses of TrialExecutor must provide ant has_resources() method')
+        raise NotImplementedError('subclasses of TrialExecutor must provide '
+                                  'has_resources() method')
 
     def start_trial(self, trial, checkpoint_obj=None):
-        """ Starts the trial.
+        """Starts the trial.
 
         If an error is encountered when starting the trial, an exception will
         be thrown.
 
         """
-        raise NotImplementedError('subclasses of TrialExecutor must provide ant start_trial() method')
+        raise NotImplementedError('subclasses of TrialExecutor must provide '
+                                  'start_trial() method')
 
     def stop_trial(self, trial, error=False, error_msg=None, stop_logger=True):
-        """ Stops the trial.
+        """Stops the trial.
 
         Stops this trial, releasing all allocating resources.
-        If stopping the trial fails, the run will be marked as terminated in error, but no
-        exception will be thrown.
+        If stopping the trial fails, the run will be marked as terminated
+        in error, but no exception will be thrown.
 
         Args:
             error (bool): Whether to mark this trial as terminated in error.
             error_msg (str): Optional error message.
             stop_logger (bool): Whether to shut down the trial logger.
         """
-        raise NotImplementedError('subclasses of TrialExecutor must provide ant stop_trial() method')
+        raise NotImplementedError('subclasses of TrialExecutor must provide '
+                                  'stop_trial() method')
 
     def restart_trial(self, trial, error_msg=None):
-        """ Restarts the trial.
+        """Restarts the trial.
 
         The state of the trial should restore from the last checkpoint.
 
@@ -53,7 +58,8 @@ class TrialExecutor(object):
         """
         try:
             print("Attempting to recover trial state from last checkpoint")
-            self.stop_trial(trial, error=True, error_msg=error_msg, stop_logger=False)
+            self.stop_trial(trial, error=True, error_msg=error_msg,
+                            stop_logger=False)
             trial.result_logger.flush()
             self.start_trial(trial)
         except Exception:
@@ -61,8 +67,12 @@ class TrialExecutor(object):
             print("Error recovering trial from checkpoint, abort:", error_msg)
             self.stop_trial(trial, error=True, error_msg=error_msg)
 
-    def continue_trial(self, trial):
-        """ mark that this trial should continue to run. """
+    def on_scheduler_decision(self, trial, decision):
+        """A hook called when TrialScheduler make a decision.
+
+        Args:
+            decision (str): (CONTINUE,PAUSE,STOP) constant from TrialScheduler.
+        """
         pass
 
     def pause_trial(self, trial):
@@ -73,7 +83,7 @@ class TrialExecutor(object):
         """
         assert trial.status == Trial.RUNNING, trial.status
         try:
-            trial.checkpoint(to_object_store=True)  # save the state of trial.
+            self.save(trial, Checkpoint.TYPE_OBJECT_STORE)
             self.stop_trial(trial, stop_logger=False)
             trial.status = Trial.PAUSED
         except Exception:
@@ -86,32 +96,51 @@ class TrialExecutor(object):
         trial.status = Trial.PENDING
 
     def resume_trial(self, trial):
-        """Resume PAUSED trials. This is a blocking call."""
+        """Resumes PAUSED trials. This is a blocking call."""
         assert trial.status == Trial.PAUSED, trial.status
         self.start_trial(trial)
 
     def get_running_trials(self):
-        """Gets running trials. """
-        raise NotImplementedError('subclasses of TrialExecutor must provide ant get_running_trials() method')
+        """Returns all running trials."""
+        raise NotImplementedError('subclasses of TrialExecutor must provide '
+                                  'get_running_trials() method')
 
     def on_step_begin(self):
-        """
-        a hook before running one step of the trial event loop (Optional).
-        """
+        """A hook called before running one step of the trial event loop."""
         pass
 
     def on_step_end(self):
-        """
-        a hook after running one step of the trial event loop (Optional).
-        """
+        """A hook called after running one step of the trial event loop."""
         pass
 
     def fetch_one_result(self):
-        """fetch one result from running trials.
+        """Fetches one result from running trials.
 
         :return: a tuple of trial and its result.
         """
-        raise NotImplementedError('subclasses of TrialExecutor must provide ant fetch_one_result() method')
+        raise NotImplementedError('subclasses of TrialExecutor must provide '
+                                  'fetch_one_result() method')
 
     def debug_string(self):
+        """Returns a human readable message for printing to the console."""
         pass
+
+    def restore(self, trial, checkpoint=None):
+        """Restore the state of trial from checkpoint or trial._checkpoint.
+
+        :param trial: trial to be restored.
+        :param checkpoint (Checkpoint): checkpoint to restore from.
+        :return: False if error occurred, otherwise return True.
+        """
+        raise NotImplementedError('subclasses of TrialExecutor must provide '
+                                  'restore() method')
+
+    def save(self, trial, type=Checkpoint.TYPE_PATH):
+        """Save the state of trial.
+
+        :param trial: trial to be saved.
+        :param type: save in the object store or path.
+        :return:  object or path.
+        """
+        raise NotImplementedError('subclasses of TrialExecutor must provide '
+                                  'save() method')
