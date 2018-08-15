@@ -193,7 +193,8 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only,
             monitor_str = "docker exec {} /bin/sh -c {}".format(
                 config["docker"]["container_name"], quote(monitor_str))
     print("To monitor auto-scaling activity, you can run:\n\n"
-          "  ray exec {} {}\n".format(config_file, quote(monitor_str)))
+          "  ray exec {} {} --cluster-name={}\n".format(
+              config_file, quote(monitor_str), quote(config["cluster_name"])))
     print("To login to the cluster, run:\n\n"
           "  ssh -i {} {}@{}\n".format(config["auth"]["ssh_private_key"],
                                        config["auth"]["ssh_user"],
@@ -202,7 +203,7 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only,
 
 def attach_cluster(config_file, start, override_cluster_name):
     """Attaches to a screen for the specified cluster.
-    
+
     Arguments:
         config_file: path to the cluster yaml
         start: whether to start the cluster if it isn't up
@@ -215,7 +216,7 @@ def attach_cluster(config_file, start, override_cluster_name):
 
 def exec_cluster(config_file, cmd, screen, stop, start, override_cluster_name):
     """Runs a command on the specified cluster.
-    
+
     Arguments:
         config_file: path to the cluster yaml
         cmd: command to run
