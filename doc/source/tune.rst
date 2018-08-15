@@ -11,8 +11,6 @@ Tune is a scalable framework for hyperparameter search with a focus on deep lear
 Features
 --------
 
-Tune has the following features:
-
 -  Ease of use: go from running one experiment on a single machine to running on a large distributed cluster without changing your code.
 
 -  Mix and match search execution (Trial Schedulers) and search algorithms to accelerate your training - such as using Model-Based Optimization (HyperOpt) with HyperBand.
