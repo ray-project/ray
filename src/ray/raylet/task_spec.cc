@@ -100,7 +100,7 @@ TaskSpecification::TaskSpecification(
     task_language = TaskLanguage::JAVA;
     break;
   default:
-    RAY_LOG(FATAL) << "Unknown language." << static_cast<int32_t>(language);
+    RAY_LOG(FATAL) << "Unknown language: " << static_cast<int32_t>(language);
   }
 
   // Serialize the TaskSpecification.
