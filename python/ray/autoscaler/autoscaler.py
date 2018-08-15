@@ -188,6 +188,9 @@ class LoadMetrics(object):
                         max_frac = frac
             nodes_used += max_frac
         idle_times = [now - t for t in self.last_used_time_by_ip.values()]
+        heartbeat_times = [
+            now - t for t in self.last_heartbeat_time_by_ip.values()
+        ]
         return {
             "ResourceUsage": ", ".join([
                 "{}/{} {}".format(
@@ -201,6 +204,10 @@ class LoadMetrics(object):
                 int(np.min(idle_times)) if idle_times else -1,
                 int(np.mean(idle_times)) if idle_times else -1,
                 int(np.max(idle_times)) if idle_times else -1),
+            "TimeSinceLastHeartbeat": "Min={} Mean={} Max={}".format(
+                int(np.min(heartbeat_times)) if heartbeat_times else -1,
+                int(np.mean(heartbeat_times)) if heartbeat_times else -1,
+                int(np.max(heartbeat_times)) if heartbeat_times else -1),
         }
 
 
@@ -504,14 +511,17 @@ class StandardAutoscaler(object):
             return
         if self.files_up_to_date(node_id):
             return
-        if self.config.get("no_restart", False) and \
-                self.num_successful_updates.get(node_id, 0) > 0:
+        successful_updated = self.num_successful_updates.get(node_id, 0) > 0
+        if successful_updated and self.config.get("restart_only", False):
+            init_commands = self.config["worker_start_ray_commands"]
+        elif successful_updated and self.config.get("no_restart", False):
             init_commands = (self.config["setup_commands"] +
                              self.config["worker_setup_commands"])
         else:
             init_commands = (self.config["setup_commands"] +
                              self.config["worker_setup_commands"] +
                              self.config["worker_start_ray_commands"])
+
         updater = self.node_updater_cls(
             node_id,
             self.config["provider"],
