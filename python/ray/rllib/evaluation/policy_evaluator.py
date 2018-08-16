@@ -181,7 +181,7 @@ class PolicyEvaluator(EvaluatorInterface):
                 preprocessor_pref == "deepmind":
 
             def wrap(env):
-                return wrap_deepmind(env, dim=model_config.get("dim", 80))
+                return wrap_deepmind(env, dim=model_config.get("dim", 84))
         else:
 
             def wrap(env):

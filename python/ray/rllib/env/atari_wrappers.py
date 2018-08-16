@@ -150,7 +150,7 @@ class WarpFrame(gym.ObservationWrapper):
     def __init__(self, env, dim):
         """Warp frames to the specified size (dim x dim)."""
         gym.ObservationWrapper.__init__(self, env)
-        self.width = dim  # in rllib we use 80
+        self.width = dim  # in rllib we use 84
         self.height = dim
         self.observation_space = spaces.Box(
             low=0,
@@ -161,7 +161,7 @@ class WarpFrame(gym.ObservationWrapper):
     def observation(self, frame):
         frame = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
         frame = cv2.resize(
-            frame, (self.width, self.height), interpolation=cv2.INTER_AREA)
+            frame, (self.width, self.height), interpolation=cv2.INTER_LINEAR)
         return frame[:, :, None]
 
 
@@ -194,7 +194,7 @@ class FrameStack(gym.Wrapper):
         return np.concatenate(self.frames, axis=2)
 
 
-def wrap_deepmind(env, random_starts=True, dim=80):
+def wrap_deepmind(env, random_starts=True, dim=84):
     """Configure environment for DeepMind-style Atari.
 
     Note that we assume reward clipping is done outside the wrapper.

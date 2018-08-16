@@ -15,6 +15,6 @@ def wrap_dqn(env, options, random_starts):
     # TODO(ekl) this logic should be pushed to the catalog.
     if is_atari and "custom_preprocessor" not in options:
         return wrap_deepmind(
-            env, random_starts=random_starts, dim=options.get("dim", 80))
+            env, random_starts=random_starts, dim=options.get("dim", 84))
 
     return ModelCatalog.get_preprocessor_as_wrapper(env, options)

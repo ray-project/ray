@@ -54,7 +54,7 @@ DEFAULT_CONFIG = with_common_config({
     "model": {
         "use_lstm": False,
         "max_seq_len": 20,
-        "dim": 80,
+        "dim": 84,
     },
 })
 

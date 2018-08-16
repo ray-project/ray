@@ -44,7 +44,7 @@ DEFAULT_CONFIG = with_common_config({
         # (Image statespace) - Each pixel
         "zero_mean": False,
         # (Image statespace) - Converts image to (dim, dim, C)
-        "dim": 80,
+        "dim": 84,
         # (Image statespace) - Converts image shape to (C, dim, dim)
         "channel_major": False,
     },
