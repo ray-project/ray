@@ -47,7 +47,6 @@ def _bootstrap_config(config):
     cache_key = os.path.join(tempfile.gettempdir(),
                              "ray-config-{}".format(hasher.hexdigest()))
     if os.path.exists(cache_key):
-        print("Cached settings:", cache_key)
         return json.loads(open(cache_key).read())
     validate_config(config)
     config = fillout_defaults(config)
@@ -257,7 +256,7 @@ def _exec(updater, cmd, screen, expect_error=False, port_forward=None):
             cmd = " ".join(cmd)
         updater.ssh_cmd(
             cmd,
-            verbose=True,
+            verbose=False,
             allocate_tty=True,
             expect_error=expect_error,
             port_forward=port_forward)
