@@ -14,3 +14,5 @@ atari-apex:
         sample_batch_size: 53
         lr: .0001
         gamma: 0.99
+        optimizer:
+            num_replay_buffer_shards: 2
