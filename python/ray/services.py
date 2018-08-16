@@ -982,9 +982,6 @@ def start_raylet(redis_address,
                                    sys.executable, worker_path, node_ip_address,
                                    plasma_store_name, raylet_name, redis_address))
 
-    # Create the java command.  This is just a placeholder.
-    start_java_worker_command = ""
-
     command = [
         RAYLET_EXECUTABLE,
         raylet_name,
