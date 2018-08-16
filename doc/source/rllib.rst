@@ -42,14 +42,14 @@ Environments
 
 Algorithms
 ----------
-* `Ape-X Distributed Prioritized Experience Replay <rllib-algorithms.html#ape-x-distributed-prioritized-experience-replay>`__
-* `Asynchronous Advantage Actor-Critic <rllib-algorithms.html#asynchronous-advantage-actor-critic>`__
-* `Deep Deterministic Policy Gradients <rllib-algorithms.html#deep-deterministic-policy-gradients>`__
-* `Deep Q Networks <rllib-algorithms.html#deep-q-networks>`__
+* `Distributed Prioritized Experience Replay (Ape-X) <rllib-algorithms.html#distributed-prioritized-experience-replay-ape-x>`__
+* `Asynchronous Advantage Actor-Critic (A3C) <rllib-algorithms.html#asynchronous-advantage-actor-critic-a3c>`__
+* `Deep Deterministic Policy Gradients (DDPG) <rllib-algorithms.html#deep-deterministic-policy-gradients-ddpg>`__
+* `Deep Q Networks (DQN) <rllib-algorithms.html#deep-q-networks-dqn>`__
 * `Evolution Strategies <rllib-algorithms.html#evolution-strategies>`__
-* `Importance Weighted Actor-Learner Architecture <rllib-algorithms.html#importance-weighted-actor-learner-architecture>`__
+* `Importance Weighted Actor-Learner Architecture (IMPALA) <rllib-algorithms.html#importance-weighted-actor-learner-architecture-impala>`__
 * `Policy Gradients <rllib-algorithms.html#policy-gradients>`__
-* `Proximal Policy Optimization <rllib-algorithms.html#proximal-policy-optimization>`__
+* `Proximal Policy Optimization (PPO) <rllib-algorithms.html#proximal-policy-optimization-ppo>`__
 
 Models and Preprocessors
 ------------------------
