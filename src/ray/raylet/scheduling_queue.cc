@@ -105,6 +105,31 @@ const std::list<Task> &SchedulingQueue::GetReadyTasks() const {
   return this->ready_tasks_.GetTasks();
 }
 
+ResourceSet SchedulingQueue::GetQueueResources(const TaskQueue &task_queue) const {
+  // Iterate over all tasks of the specified queue and aggregate total resource
+  // demand in a resource set.
+  ResourceSet queue_resources;
+  for (const auto &task : task_queue.GetTasks()) {
+    queue_resources.OuterJoin(task.GetTaskSpecification().GetRequiredResources());
+  }
+  return queue_resources;
+}
+
+ResourceSet SchedulingQueue::GetReadyQueueResources() const {
+  return GetQueueResources(ready_tasks_);
+}
+
+ResourceSet SchedulingQueue::GetWaitingQueueResources() const {
+  return GetQueueResources(waiting_tasks_);
+}
+
+ResourceSet SchedulingQueue::GetResourceLoad() const {
+  ResourceSet load_resource_set;
+  load_resource_set.OuterJoin(GetReadyQueueResources());
+  //load_resource_set.OuterJoin(GetWaitingQueueResources());
+  return load_resource_set;
+}
+
 const std::list<Task> &SchedulingQueue::GetRunningTasks() const {
   return this->running_tasks_.GetTasks();
 }

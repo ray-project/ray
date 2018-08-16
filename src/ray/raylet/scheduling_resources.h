@@ -80,11 +80,13 @@ class ResourceSet {
   /// \return True, if the resource was successfully removed. False otherwise.
   bool RemoveResource(const std::string &resource_name);
 
-  /// \brief Add a set of resources to the current set of resources.
+  /// \brief Add a set of resources to the current set of resources (LEFT JOIN).
   ///
   /// \param other: The other resource set to add.
   /// \return True if the resource set was added successfully. False otherwise.
   bool AddResources(const ResourceSet &other);
+
+  void OuterJoin(const ResourceSet &other);
 
   /// \brief Subtract a set of resources from the current set of resources.
   ///
@@ -340,6 +342,17 @@ class SchedulingResources {
 
   const ResourceSet &GetTotalResources() const;
 
+  /// \brief Overwrite information about resource load with new resource load set.
+  ///
+  /// \param newset: The set of resources that replaces resource load information.
+  /// \return Void.
+  void SetLoadResources(ResourceSet &&newset);
+
+  /// \brief Request the resource load information.
+  ///
+  /// \return Immutable set of resources describing the load information.
+  const ResourceSet &GetLoadResources() const;
+
   /// \brief Release the amount of resources specified.
   ///
   /// \param resources: the amount of resources to be released.
@@ -359,7 +372,8 @@ class SchedulingResources {
   ResourceSet resources_total_;
   /// Dynamic resource capacity (e.g., dynamic_resources).
   ResourceSet resources_available_;
-  /// gpu_map - replace with ResourceMap (for generality).
+  /// Resource load.
+  ResourceSet resources_load_;
 };
 
 }  // namespace raylet

@@ -88,6 +88,7 @@ bool ResourceSet::SubtractResources(const ResourceSet &other) {
   return !oversubscribed;
 }
 
+// Perform a left join.
 bool ResourceSet::AddResources(const ResourceSet &other) {
   // Return failure if attempting to perform vector addition with unknown labels.
   // TODO(atumanov): make the implementation atomic. Currently, if false is returned
@@ -102,6 +103,21 @@ bool ResourceSet::AddResources(const ResourceSet &other) {
     }
   }
   return true;
+}
+
+// Perform an outer join.
+void ResourceSet::OuterJoin(const ResourceSet &other) {
+  for (const auto &resource_pair : other.GetResourceMap()) {
+    const std::string &resource_label = resource_pair.first;
+    const double &resource_capacity = resource_pair.second;
+    if (resource_capacity_.count(resource_label) == 0) {
+      // Add the new label if not found.
+      RAY_CHECK(AddResource(resource_label, resource_capacity));
+    } else {
+      // Increment the resource by its capacity.
+      resource_capacity_[resource_label] += resource_capacity;
+    }
+  }
 }
 
 bool ResourceSet::GetResource(const std::string &resource_name, double *value) const {
@@ -426,10 +442,10 @@ std::vector<flatbuffers::Offset<protocol::ResourceIdSetInfo>> ResourceIdSet::ToF
 /// SchedulingResources class implementation
 
 SchedulingResources::SchedulingResources()
-    : resources_total_(ResourceSet()), resources_available_(ResourceSet()) {}
+    : resources_total_(ResourceSet()), resources_available_(ResourceSet()), resources_load_(ResourceSet()) {}
 
 SchedulingResources::SchedulingResources(const ResourceSet &total)
-    : resources_total_(total), resources_available_(total) {}
+    : resources_total_(total), resources_available_(total), resources_load_(ResourceSet()) {}
 
 SchedulingResources::~SchedulingResources() {}
 
@@ -456,6 +472,15 @@ void SchedulingResources::SetAvailableResources(ResourceSet &&newset) {
 const ResourceSet &SchedulingResources::GetTotalResources() const {
   return this->resources_total_;
 }
+
+void SchedulingResources::SetLoadResources(ResourceSet &&newset) {
+  this->resources_load_ = newset;
+}
+
+const ResourceSet &SchedulingResources::GetLoadResources() const {
+  return this->resources_load_;
+}
+
 
 // Return specified resources back to SchedulingResources.
 bool SchedulingResources::Release(const ResourceSet &resources) {

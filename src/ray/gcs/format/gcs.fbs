@@ -194,6 +194,11 @@ table HeartbeatTableData {
   // Total resource capacity configured for this node manager.
   resources_total_label: [string];
   resources_total_capacity: [double];
+  // Timestamp local to the NodeManager reporting this heartbeat
+  timestamp: long;
+  // Load information. TODO(atumanov): this should supersede resources available.
+  resource_load_label: [string];
+  resource_load_capacity: [double];
 }
 
 // Data for a lease on task execution.

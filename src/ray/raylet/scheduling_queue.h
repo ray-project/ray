@@ -51,6 +51,11 @@ class SchedulingQueue {
   /// dependencies local and that are waiting to be scheduled.
   const std::list<Task> &GetPlaceableTasks() const;
 
+  /// \brief Return an aggregate resource set for all tests exerting load on this system.
+  ///
+  /// \return A resource set with aggregate information about resource load on this system.
+  ResourceSet GetResourceLoad() const;
+
   /// Get the queue of tasks in the ready state.
   ///
   /// \return A const reference to the queue of tasks ready
@@ -217,6 +222,14 @@ class SchedulingQueue {
   /// The set of currently running driver tasks. These are empty tasks that are
   /// started by a driver process on initialization.
   std::unordered_set<TaskID> driver_task_ids_;
+
+  /// \brief Return all resource demand associated with the specified task queue.
+  ///
+  /// \param task_queue The task queue for which aggregate resource demand is calculated.
+  /// \return Aggregate resource demand.
+  ResourceSet GetQueueResources(const TaskQueue &task_queue) const;
+  ResourceSet GetReadyQueueResources() const;
+  ResourceSet GetWaitingQueueResources() const;
 };
 
 }  // namespace raylet
