@@ -1290,7 +1290,7 @@ class ActorExceptionFailures(unittest.TestCase):
         x_ids = [actor.inc.remote() for _ in range(100)]
 
         # Make sure that getting the result raises an exception.
-        for _ in range(100):
+        for _ in range(10):
             for x_id in x_ids:
                 with pytest.raises(ray.worker.RayGetError):
                     # There is some small chance that ray.get will actually
