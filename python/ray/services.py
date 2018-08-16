@@ -973,14 +973,14 @@ def start_raylet(redis_address,
     gcs_ip_address, gcs_port = redis_address.split(":")
     raylet_name = "/tmp/raylet{}".format(random_name())
 
-    # Create the python command that the Raylet will use to start workers.
-    start_python_worker_command = ("{} {} "
-                                   "--node-ip-address={} "
-                                   "--object-store-name={} "
-                                   "--raylet-name={} "
-                                   "--redis-address={}".format(
-                                       sys.executable, worker_path, node_ip_address,
-                                       plasma_store_name, raylet_name, redis_address))
+    # Create the command that the Raylet will use to start workers.
+    start_worker_command = ("{} {} "
+                            "--node-ip-address={} "
+                            "--object-store-name={} "
+                            "--raylet-name={} "
+                            "--redis-address={}".format(
+                                sys.executable, worker_path, node_ip_address,
+                                plasma_store_name, raylet_name, redis_address))
 
     command = [
         RAYLET_EXECUTABLE,
@@ -991,7 +991,7 @@ def start_raylet(redis_address,
         gcs_port,
         str(num_workers),
         resource_argument,
-        start_python_worker_command,
+        start_worker_command,
         ""    # Worker command for Java, not needed for Python.
     ]
 
