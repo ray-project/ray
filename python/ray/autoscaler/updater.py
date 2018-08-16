@@ -166,21 +166,42 @@ class NodeUpdater(object):
                 if not remote_path.endswith("/"):
                     remote_path += "/"
             self.ssh_cmd("mkdir -p {}".format(os.path.dirname(remote_path)))
-            self.process_runner.check_call(
-                [
-                    "rsync", "-e", "ssh -i {} ".format(self.ssh_private_key) +
-                    "-o ConnectTimeout=120s -o StrictHostKeyChecking=no",
-                    "--delete", "-avz", "{}".format(local_path),
-                    "{}@{}:{}".format(self.ssh_user, self.ssh_ip, remote_path)
-                ],
-                stdout=self.stdout,
-                stderr=self.stderr)
+            self.rsync_up(local_path, remote_path)
 
         # Run init commands
         self.provider.set_node_tags(self.node_id,
                                     {TAG_RAY_NODE_STATUS: "setting-up"})
         for cmd in self.setup_cmds:
             self.ssh_cmd(cmd, verbose=True)
+
+    def rsync_up(self, source, target, check_error=True):
+        if check_error:
+            call = self.process_runner.call
+        else:
+            call = self.process_runner.check_call
+        call(
+            [
+                "rsync", "-e", "ssh -i {} ".format(self.ssh_private_key) +
+                "-o ConnectTimeout=120s -o StrictHostKeyChecking=no",
+                "--delete", "-avz", source, "{}@{}:{}".format(
+                    self.ssh_user, self.ssh_ip, target)
+            ],
+            stdout=self.stdout,
+            stderr=self.stderr)
+
+    def rsync_down(self, source, target, check_error=True):
+        if check_error:
+            call = self.process_runner.call
+        else:
+            call = self.process_runner.check_call
+        call(
+            [
+                "rsync", "-e", "ssh -i {} ".format(self.ssh_private_key) +
+                "-o ConnectTimeout=120s -o StrictHostKeyChecking=no", "-avz",
+                "{}@{}:{}".format(self.ssh_user, self.ssh_ip, source), target
+            ],
+            stdout=self.stdout,
+            stderr=self.stderr)
 
     def ssh_cmd(self,
                 cmd,

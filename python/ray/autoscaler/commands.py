@@ -214,7 +214,8 @@ def attach_cluster(config_file, start, override_cluster_name):
                  override_cluster_name, None)
 
 
-def exec_cluster(config_file, cmd, screen, stop, start, override_cluster_name, ssh_opt):
+def exec_cluster(config_file, cmd, screen, stop, start, override_cluster_name,
+                 ssh_opt):
     """Runs a command on the specified cluster.
 
     Arguments:
@@ -255,8 +256,42 @@ def _exec(updater, cmd, screen, expect_error=False, ssh_opt=None):
             ]
             cmd = " ".join(cmd)
         updater.ssh_cmd(
-            cmd, verbose=True, allocate_tty=True, expect_error=expect_error,
+            cmd,
+            verbose=True,
+            allocate_tty=True,
+            expect_error=expect_error,
             ssh_opt=ssh_opt)
+
+
+def rsync(config_file, source, target, override_cluster_name, down):
+    """Rsyncs files.
+
+    Arguments:
+        config_file: path to the cluster yaml
+        source: source dir
+        target: target dir
+        override_cluster_name: set the name of the cluster
+        down: whether we're syncing remote -> local
+    """
+
+    config = yaml.load(open(config_file).read())
+    if override_cluster_name is not None:
+        config["cluster_name"] = override_cluster_name
+    config = _bootstrap_config(config)
+    head_node = _get_head_node(config, config_file, create_if_needed=False)
+    updater = NodeUpdaterProcess(
+        head_node,
+        config["provider"],
+        config["auth"],
+        config["cluster_name"],
+        config["file_mounts"], [],
+        "",
+        redirect_output=False)
+    if down:
+        rsync = updater.rsync_down
+    else:
+        rsync = updater.rsync_up
+    rsync(source, target, check_error=False)
 
 
 def get_head_node_ip(config_file, override_cluster_name):
