@@ -44,7 +44,7 @@ WorkerPool::WorkerPool(
     int num_worker_processes, int num_workers_per_process, int num_cpus,
     const std::unordered_map<Language, std::vector<std::string>> &worker_commands)
     : num_workers_per_process_(num_workers_per_process),
-      num_cpus_(num_cpus),
+      num_cpus_(num_cpus) {
   RAY_CHECK(num_workers_per_process > 0) << "num_workers_per_process must be positive.";
   // Ignore SIGCHLD signals. If we don't do this, then worker processes will
   // become zombies instead of dying gracefully.
