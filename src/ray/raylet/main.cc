@@ -42,9 +42,9 @@ int main(int argc, char *argv[]) {
 
   std::string worker_command;
   if (!python_worker_command.empty()) {
-    worker_command = java_worker_command;
-  } else if (!java_worker_command.empty()) {
     worker_command = python_worker_command;
+  } else if (!java_worker_command.empty()) {
+    worker_command = java_worker_command;
   } else {
     RAY_CHECK(0)
         << "Either Python worker command or Java worker command should be provided.";
