@@ -6,6 +6,9 @@ import argparse
 import json
 import os
 
+# For compatibility under py2 to consider unicode as str
+from builtins import str
+
 from ray.tune import TuneError
 from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.trial import Resources, Trial
