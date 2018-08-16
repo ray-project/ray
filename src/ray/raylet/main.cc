@@ -53,7 +53,7 @@ int main(int argc, char *argv[]) {
   std::istringstream iss(worker_command);
   std::vector<std::string> results(std::istream_iterator<std::string>{iss},
                                    std::istream_iterator<std::string>());
-  // TODO haochen
+  // TODO
   node_manager_config.worker_commands.emplace(make_pair(Language::PYTHON, results));
 
   node_manager_config.heartbeat_period_ms =

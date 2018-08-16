@@ -39,7 +39,7 @@ namespace ray {
 namespace raylet {
 
 /// A constructor that initializes a worker pool with
-/// (num_worker_processes * num_workers_per_process) workers
+/// (num_worker_processes * num_workers_per_process) workers for each language.
 WorkerPool::WorkerPool(
     int num_worker_processes, int num_workers_per_process, int num_cpus,
     const std::unordered_map<Language, std::vector<std::string>> &worker_commands)
@@ -53,7 +53,7 @@ WorkerPool::WorkerPool(
   for (const auto &entry : worker_commands) {
     // Initialize the pools for each language.
     pools_[entry.first];
-    // Force-start num_workers workers.
+    // Force-start num_workers worker processes for each language.
     for (int i = 0; i < num_worker_processes; i++) {
       StartWorkerProcess(entry.first, true);
     }
@@ -84,12 +84,14 @@ WorkerPool::~WorkerPool() {
 }
 
 uint32_t WorkerPool::Size(const Language &language) const {
-  const auto &pool = pools_.find(language)->second;
+  const auto &pool = pools_[language];
   return static_cast<uint32_t>(pool.idle.size() + pool.idle_actor.size());
 }
 
 void WorkerPool::StartWorkerProcess(const Language &language, bool force_start) {
-  RAY_CHECK(!worker_commands_.empty()) << "No worker command provided";
+  RAY_CHECK(worker_commands_.find(language) != worker_commands_.end())
+      << "Unsupported language.";
+  RAY_CHECK(!worker_commands_[language].empty()) << "No worker command provided";
   // The first condition makes sure that we are always starting up to
   // num_cpus_ number of processes in parallel.
   if (static_cast<int>(starting_worker_processes_.size()) >= num_cpus_ && !force_start) {
@@ -116,8 +118,7 @@ void WorkerPool::StartWorkerProcess(const Language &language, bool force_start) 
 
   // Extract pointers from the worker command to pass into execvp.
   std::vector<const char *> worker_command_args;
-  auto command = worker_commands_.find(language);
-  for (auto const &token : command->second) {
+  for (auto const &token : worker_commands_[language]) {
     worker_command_args.push_back(token.c_str());
   }
   worker_command_args.push_back(nullptr);
@@ -152,9 +153,9 @@ void WorkerPool::RegisterDriver(std::shared_ptr<Worker> driver) {
 std::shared_ptr<Worker> WorkerPool::GetRegisteredWorker(
     const std::shared_ptr<LocalClientConnection> &connection) const {
   for (const auto &entry : pools_) {
-    auto it = GetWorker(entry.second.registered_workers, connection);
-    if (it != nullptr) {
-      return it;
+    auto worker = GetWorker(entry.second.registered_workers, connection);
+    if (worker != nullptr) {
+      return worker;
     }
   }
   return nullptr;
@@ -163,9 +164,9 @@ std::shared_ptr<Worker> WorkerPool::GetRegisteredWorker(
 std::shared_ptr<Worker> WorkerPool::GetRegisteredDriver(
     const std::shared_ptr<LocalClientConnection> &connection) const {
   for (const auto &entry : pools_) {
-    auto it = GetWorker(entry.second.registered_drivers, connection);
-    if (it != nullptr) {
-      return it;
+    auto driver = GetWorker(entry.second.registered_drivers, connection);
+    if (driver != nullptr) {
+      return driver;
     }
   }
   return nullptr;
@@ -214,7 +215,7 @@ void WorkerPool::DisconnectDriver(std::shared_ptr<Worker> driver) {
   RAY_CHECK(RemoveWorker(pool.registered_drivers, driver));
 }
 
-WorkerPool::Pool &WorkerPool::GetPoolForLanguage(const Language &language) {
+inline WorkerPool::Pool &WorkerPool::GetPoolForLanguage(const Language &language) {
   auto pool = pools_.find(language);
   RAY_CHECK(pool != pools_.end()) << "Required Language isn't supported.";
   return pool->second;

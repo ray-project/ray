@@ -28,7 +28,7 @@ class WorkerPool {
   /// the process should create and register the specified number of workers,
   /// and add them to the pool.
   ///
-  /// \param num_worker_processes The number of worker processes to start.
+  /// \param num_worker_processes The number of worker processes to start, per language.
   /// \param num_workers_per_process The number of workers per process.
   /// \param worker_commands The commands used to start the worker process, grouped by
   /// language.
@@ -132,7 +132,7 @@ class WorkerPool {
   };
 
   /// A helper function that gets the pool for the given language.
-  Pool &GetPoolForLanguage(const Language &language);
+  inline Pool &GetPoolForLanguage(const Language &language);
 
   /// The number of CPUs this Raylet has available.
   int num_cpus_;

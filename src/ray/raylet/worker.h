@@ -47,6 +47,7 @@ class Worker {
  private:
   /// The worker's PID.
   pid_t pid_;
+  /// The language type of this worker.
   Language language_;
   /// Connection state of a worker.
   std::shared_ptr<LocalClientConnection> connection_;
