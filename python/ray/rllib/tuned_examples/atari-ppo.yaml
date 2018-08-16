@@ -5,6 +5,7 @@ atari-ppo:
             - BeamRiderNoFrameskip-v4
             - QbertNoFrameskip-v4
             - SpaceInvadersNoFrameskip-v4 
+    run: PPO
     config:
         gamma: 0.99
         num_workers: 12
