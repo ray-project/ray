@@ -42,6 +42,11 @@ std::unordered_map<TaskID, ClientID> SchedulingPolicy::Schedule(
       decision[task_id] = local_client_id;
       continue;
     }
+    // Place actor tasks locally.
+    if (t.GetTaskSpecification().IsActorTask()) {
+      decision[task_id] = local_client_id;
+      continue;
+    }
     // Construct a set of viable node candidates and randomly pick between them.
     // Get all the client id keys and randomly pick.
     std::vector<ClientID> client_keys;
