@@ -6,9 +6,6 @@ import argparse
 import json
 import os
 
-# For compatibility under py2 to consider unicode as str
-from builtins import str
-
 from ray.tune import TuneError
 from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.trial import Resources, Trial
@@ -147,7 +144,9 @@ def to_argv(config):
         if "-" in k:
             raise ValueError("Use '_' instead of '-' in `{}`".format(k))
         argv.append("--{}".format(k.replace("_", "-")))
-        if isinstance(v, str):
+
+        # For compatibility under py2 to consider unicode as str
+        if type(v).__name__ in ['str', 'unicode']:
             argv.append(v)
         else:
             argv.append(json.dumps(v, cls=_SafeFallbackEncoder))
