@@ -91,6 +91,7 @@ TaskSpecification::TaskSpecification(
   }
 
   // convert Language to TaskLanguage
+  // TODO(raulchen): remove this once we get rid of legacy ray.
   TaskLanguage task_language = TaskLanguage::PYTHON;
   switch (language) {
   case Language::PYTHON:
@@ -197,6 +198,7 @@ bool TaskSpecification::IsDriverTask() const {
 
 Language TaskSpecification::GetLanguage() const {
   auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
+  // TODO(raulchen): remove this once we get rid of legacy ray.
   auto language = message->language();
   switch (language) {
   case TaskLanguage::PYTHON:

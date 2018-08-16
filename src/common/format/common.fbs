@@ -20,6 +20,9 @@ table ResourcePair {
   value: double;
 }
 
+// NOTE: This enum is duplicate with the `Language` enum in `gcs.fbs`,
+// because we cannot include this file in `gcs.fbs` due to cyclic dependency.
+// TODO(raulchen): remove it once we get rid of legacy ray.
 enum TaskLanguage:int {
   PYTHON = 0,
   JAVA = 1
