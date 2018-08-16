@@ -1253,6 +1253,8 @@ class ActorsWithGPUs(unittest.TestCase):
         assert remaining_ids == [x_id]
 
 
+@unittest.skipIf(
+    os.environ.get("RAY_USE_XRAY") != "1", "This test only works with xray.")
 class ActorExceptionFailures(unittest.TestCase):
     def tearDown(self):
         ray.shutdown()
