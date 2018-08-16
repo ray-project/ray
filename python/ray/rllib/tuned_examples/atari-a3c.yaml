@@ -1,4 +1,4 @@
-# Runs on a single m3.16xl node
+# Runs on a single m4.16xl node
 atari-a3c:
     env:
         grid_search:
