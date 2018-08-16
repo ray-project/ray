@@ -88,17 +88,17 @@ public class TypesTest {
     return rets;
   }
 
-  @RayRemote(externalIo = true)
+  @RayRemote
   public static Integer sayRayFuture() {
     return 123;
   }
 
-  @RayRemote(externalIo = true)
+  @RayRemote
   public static MultipleReturns2<Integer, String> sayRayFutures() {
     return new MultipleReturns2<>(123, "123");
   }
 
-  @RayRemote(externalIo = true)
+  @RayRemote
   public static Map<Integer, String> sayRayFuturesN(
       Collection<Integer/*user's custom return_id*/> userReturnIds,
       String prefix) {

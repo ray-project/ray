@@ -136,8 +136,8 @@ Status Log<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
     // more subscription messages.
     return false;
   };
-  subscribe_callback_index_ = 1;
-  return context_->SubscribeAsync(client_id, pubsub_channel_, std::move(callback));
+  return context_->SubscribeAsync(client_id, pubsub_channel_, std::move(callback),
+                                  &subscribe_callback_index_);
 }
 
 template <typename ID, typename Data>
@@ -263,6 +263,17 @@ Status ProfileTable::AddProfileEventBatch(const ProfileTableData &profile_events
                 [](ray::gcs::AsyncGcsClient *client, const JobID &id,
                    const ProfileTableDataT &data) {
                   RAY_LOG(DEBUG) << "Profile message pushed callback";
+                });
+}
+
+Status DriverTable::AppendDriverData(const JobID &driver_id, bool is_dead) {
+  auto data = std::make_shared<DriverTableDataT>();
+  data->driver_id = driver_id.binary();
+  data->is_dead = is_dead;
+  return Append(driver_id, driver_id, data,
+                [](ray::gcs::AsyncGcsClient *client, const JobID &id,
+                   const DriverTableDataT &data) {
+                  RAY_LOG(DEBUG) << "Driver entry added callback";
                 });
 }
 
@@ -415,6 +426,10 @@ const ClientTableDataT &ClientTable::GetClient(const ClientID &client_id) const 
   }
 }
 
+const std::unordered_map<ClientID, ClientTableDataT> &ClientTable::GetAllClients() const {
+  return client_cache_;
+}
+
 template class Log<ObjectID, ObjectTableData>;
 template class Log<TaskID, ray::protocol::Task>;
 template class Table<TaskID, ray::protocol::Task>;
@@ -425,6 +440,7 @@ template class Table<TaskID, TaskLeaseData>;
 template class Table<ClientID, HeartbeatTableData>;
 template class Log<JobID, ErrorTableData>;
 template class Log<UniqueID, ClientTableData>;
+template class Log<JobID, DriverTableData>;
 template class Log<UniqueID, ProfileTableData>;
 
 }  // namespace gcs

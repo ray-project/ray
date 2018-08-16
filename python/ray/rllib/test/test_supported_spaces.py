@@ -23,6 +23,10 @@ ACTION_SPACES_TO_TEST = {
         Box(0.0, 1.0, (5, ), dtype=np.float32),
         Box(0.0, 1.0, (5, ), dtype=np.float32)
     ],
+    "mixed_tuple": Tuple(
+        [Discrete(2),
+         Discrete(3),
+         Box(0.0, 1.0, (5, ), dtype=np.float32)]),
 }
 
 OBSERVATION_SPACES_TO_TEST = {

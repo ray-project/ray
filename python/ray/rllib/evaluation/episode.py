@@ -77,7 +77,13 @@ class MultiAgentEpisode(object):
         action = self._agent_to_last_action[agent_id]
         # Concatenate tuple actions
         if isinstance(action, list):
-            action = np.concatenate(action, axis=0).flatten()
+            expanded = []
+            for a in action:
+                if len(a.shape) == 1:
+                    expanded.append(np.expand_dims(a, 1))
+                else:
+                    expanded.append(a)
+            action = np.concatenate(expanded, axis=1).flatten()
         return action
 
     def rnn_state_for(self, agent_id):

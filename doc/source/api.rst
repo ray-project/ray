@@ -37,11 +37,19 @@ The Ray Command Line API
    :show-nested:
 
 .. click:: ray.scripts.scripts:create_or_update
-   :prog: ray create_or_update
+   :prog: ray up
    :show-nested:
 
 .. click:: ray.scripts.scripts:teardown
-   :prog: ray teardown
+   :prog: ray down
+   :show-nested:
+
+.. click:: ray.scripts.scripts:exec_cmd
+   :prog: ray exec
+   :show-nested:
+
+.. click:: ray.scripts.scripts:attach
+   :prog: ray attach
    :show-nested:
 
 .. click:: ray.scripts.scripts:get_head_ip

@@ -5,11 +5,13 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import org.ray.api.UniqueID;
 import org.ray.core.RayRuntime;
 import org.ray.spi.LocalSchedulerLink;
 import org.ray.spi.model.FunctionArg;
 import org.ray.spi.model.TaskSpec;
+import org.ray.util.ResourceUtil;
 import org.ray.util.logger.RayLog;
 
 /**
@@ -50,6 +52,7 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
     assert (useRaylet == true);
 
     boolean[] readys = _waitObject(client, objectIds, numReturns, timeoutMs, false);
+    assert (readys.length == objectIds.length);
 
     List<byte[]> ret = new ArrayList<>();
     for (int i = 0; i < readys.length; i++) {
@@ -58,12 +61,25 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
       }
     }
 
-    assert (ret.size() == readys.length);
-    return ret; 
+    return ret;
   }
 
   @Override
   public void submitTask(TaskSpec task) {
+    // We don't support resources management in non raylet mode.
+    if (!useRaylet) {
+      task.resources.clear();
+      task.resources.put(ResourceUtil.CPU_LITERAL, 0.0);
+    } else {
+      if (!task.resources.containsKey(ResourceUtil.CPU_LITERAL)) {
+        task.resources.put(ResourceUtil.CPU_LITERAL, 0.0);
+      }
+
+      if (!task.resources.containsKey(ResourceUtil.GPU_LITERAL)) {
+        task.resources.put(ResourceUtil.GPU_LITERAL, 0.0);
+      }
+    }
+
     ByteBuffer info = taskSpec2Info(task);
     byte[] a = null;
     if (!task.actorId.isNil()) {
@@ -220,13 +236,15 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
     // The required_resources vector indicates the quantities of the different
     // resources required by this task. The index in this vector corresponds to
     // the resource type defined in the ResourceIndex enum. For example,
-
-    int[]requiredResourcesOffsets = new int[1];
-    for (int i = 0; i < requiredResourcesOffsets.length; i++) {
-      int keyOffset = 0;
-      keyOffset = fbb.createString(ByteBuffer.wrap("CPU".getBytes()));
-      requiredResourcesOffsets[i] = ResourcePair.createResourcePair(fbb, keyOffset, 0.0);
+    int[] requiredResourcesOffsets = new int[task.resources.size()];
+    int i = 0;
+    for (Map.Entry<String, Double> entry : task.resources.entrySet()) {
+      int keyOffset = fbb.createString(ByteBuffer.wrap(entry.getKey().getBytes()));
+      requiredResourcesOffsets[i] =
+          ResourcePair.createResourcePair(fbb, keyOffset, entry.getValue());
+      i++;
     }
+
     int requiredResourcesOffset = fbb.createVectorOfTables(requiredResourcesOffsets);
 
     int root = TaskInfo.createTaskInfo(

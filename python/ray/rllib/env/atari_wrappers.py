@@ -153,7 +153,10 @@ class WarpFrame(gym.ObservationWrapper):
         self.width = dim  # in rllib we use 80
         self.height = dim
         self.observation_space = spaces.Box(
-            low=0, high=255, shape=(self.height, self.width, 1))
+            low=0,
+            high=255,
+            shape=(self.height, self.width, 1),
+            dtype=np.float32)
 
     def observation(self, frame):
         frame = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
@@ -170,7 +173,10 @@ class FrameStack(gym.Wrapper):
         self.frames = deque([], maxlen=k)
         shp = env.observation_space.shape
         self.observation_space = spaces.Box(
-            low=0, high=255, shape=(shp[0], shp[1], shp[2] * k))
+            low=0,
+            high=255,
+            shape=(shp[0], shp[1], shp[2] * k),
+            dtype=np.float32)
 
     def reset(self):
         ob = self.env.reset()

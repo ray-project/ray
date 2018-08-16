@@ -65,11 +65,14 @@ WorkerPool::~WorkerPool() {
   }
   // Kill all the workers that have been started but not registered.
   for (const auto &entry : starting_worker_processes_) {
-    pids_to_kill.insert(entry.second);
+    pids_to_kill.insert(entry.first);
   }
   for (const auto &pid : pids_to_kill) {
     RAY_CHECK(pid > 0);
     kill(pid, SIGKILL);
+  }
+  // Waiting for the workers to be killed
+  for (const auto &pid : pids_to_kill) {
     waitpid(pid, NULL, 0);
   }
 }

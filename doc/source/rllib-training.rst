@@ -36,7 +36,7 @@ The ``train.py`` script has a number of options you can show by running
 The most important options are for choosing the environment
 with ``--env`` (any OpenAI gym environment including ones registered by the user
 can be used) and for choosing the algorithm with ``--run``
-(available options are ``PPO``, ``PG``, ``A3C``, ``ES``, ``DDPG``, ``DDPG2``, ``DQN``, ``APEX``, and ``APEX_DDPG``).
+(available options are ``PPO``, ``PG``, ``A3C``, ``IMPALA``, ``ES``, ``DDPG``, ``DQN``, ``APEX``, and ``APEX_DDPG``).
 
 Specifying Parameters
 ~~~~~~~~~~~~~~~~~~~~~
@@ -98,6 +98,7 @@ Here is an example of the basic usage:
 
     import ray
     import ray.rllib.agents.ppo as ppo
+    from ray.tune.logger import pretty_print
 
     ray.init()
     config = ppo.DEFAULT_CONFIG.copy()
@@ -108,7 +109,7 @@ Here is an example of the basic usage:
     for i in range(1000):
        # Perform one iteration of training the policy with PPO
        result = agent.train()
-       print("result: {}".format(result))
+       print(pretty_print(result))
 
        if i % 100 == 0:
            checkpoint = agent.save()

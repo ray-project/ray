@@ -140,6 +140,7 @@ class TaskSpecification {
   size_t ArgValLength(int64_t arg_index) const;
   double GetRequiredResource(const std::string &resource_name) const;
   const ResourceSet GetRequiredResources() const;
+  bool IsDriverTask() const;
 
   // Methods specific to actor tasks.
   bool IsActorCreationTask() const;

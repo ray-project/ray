@@ -47,13 +47,15 @@ class MockObjectDirectory : public ObjectDirectoryInterface {
   MOCK_METHOD3(ReportObjectAdded,
                ray::Status(const ObjectID &, const ClientID &, const ObjectInfoT &));
   MOCK_METHOD2(ReportObjectRemoved, ray::Status(const ObjectID &, const ClientID &));
+  MOCK_METHOD1(RunFunctionForEachClient, void(const InfoSuccessCallback &success_cb));
 
  private:
   std::vector<std::pair<ObjectID, OnLocationsFound>> callbacks_;
   std::unordered_map<ObjectID, std::vector<ClientID>> locations_;
 };
 
-class MockGcs : public gcs::PubsubInterface<TaskID> {
+class MockGcs : public gcs::PubsubInterface<TaskID>,
+                public ray::gcs::LogInterface<TaskID, TaskReconstructionData> {
  public:
   MockGcs() : notification_callback_(nullptr), failure_callback_(nullptr){};
 
@@ -89,11 +91,40 @@ class MockGcs : public gcs::PubsubInterface<TaskID> {
     return ray::Status::OK();
   }
 
+  Status AppendAt(
+      const JobID &job_id, const TaskID &task_id,
+      std::shared_ptr<TaskReconstructionDataT> &task_data,
+      const ray::gcs::LogInterface<TaskID, TaskReconstructionData>::WriteCallback
+          &success_callback,
+      const ray::gcs::LogInterface<TaskID, TaskReconstructionData>::WriteCallback
+          &failure_callback,
+      int log_index) {
+    if (task_reconstruction_log_[task_id].size() == static_cast<size_t>(log_index)) {
+      task_reconstruction_log_[task_id].push_back(*task_data);
+      if (success_callback != nullptr) {
+        success_callback(nullptr, task_id, *task_data);
+      }
+    } else {
+      if (failure_callback != nullptr) {
+        failure_callback(nullptr, task_id, *task_data);
+      }
+    }
+    return Status::OK();
+  }
+
+  MOCK_METHOD4(
+      Append,
+      ray::Status(
+          const JobID &, const TaskID &, std::shared_ptr<TaskReconstructionDataT> &,
+          const ray::gcs::LogInterface<TaskID, TaskReconstructionData>::WriteCallback &));
+
  private:
   gcs::TaskLeaseTable::WriteCallback notification_callback_;
   gcs::TaskLeaseTable::FailureCallback failure_callback_;
   std::unordered_map<TaskID, std::shared_ptr<TaskLeaseDataT>> task_lease_table_;
   std::unordered_set<TaskID> subscribed_tasks_;
+  std::unordered_map<TaskID, std::vector<TaskReconstructionDataT>>
+      task_reconstruction_log_;
 };
 
 class ReconstructionPolicyTest : public ::testing::Test {
@@ -107,7 +138,7 @@ class ReconstructionPolicyTest : public ::testing::Test {
             io_service_,
             [this](const TaskID &task_id) { TriggerReconstruction(task_id); },
             reconstruction_timeout_ms_, ClientID::from_random(), mock_gcs_,
-            mock_object_directory_)),
+            mock_object_directory_, mock_gcs_)),
         timer_canceled_(false) {
     mock_gcs_.Subscribe(
         [this](gcs::AsyncGcsClient *client, const TaskID &task_id,
@@ -247,7 +278,7 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionSuppressed) {
 
   // Acquire the task lease for a period longer than the test period.
   auto task_lease_data = std::make_shared<TaskLeaseDataT>();
-  task_lease_data->node_manager_id = ClientID::from_random().hex();
+  task_lease_data->node_manager_id = ClientID::from_random().binary();
   task_lease_data->acquired_at = current_sys_time_ms();
   task_lease_data->timeout = 2 * test_period;
   mock_gcs_.Add(DriverID::nil(), task_id, task_lease_data);
@@ -275,7 +306,7 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionContinuallySuppressed) {
   // Send the reconstruction manager heartbeats about the object.
   SetPeriodicTimer(reconstruction_timeout_ms_ / 2, [this, task_id]() {
     auto task_lease_data = std::make_shared<TaskLeaseDataT>();
-    task_lease_data->node_manager_id = ClientID::from_random().hex();
+    task_lease_data->node_manager_id = ClientID::from_random().binary();
     task_lease_data->acquired_at = current_sys_time_ms();
     task_lease_data->timeout = reconstruction_timeout_ms_;
     mock_gcs_.Add(DriverID::nil(), task_id, task_lease_data);
@@ -317,6 +348,41 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionCanceled) {
   // Run the test again.
   Run(reconstruction_timeout_ms_ * 1.1);
   // Check that this time, reconstruction is triggered.
+  ASSERT_EQ(reconstructed_tasks_[task_id], 1);
+}
+
+TEST_F(ReconstructionPolicyTest, TestSimultaneousReconstructionSuppressed) {
+  TaskID task_id = TaskID::from_random();
+  task_id = FinishTaskId(task_id);
+  ObjectID object_id = ComputeReturnId(task_id, 1);
+
+  // Log a reconstruction attempt to simulate a different node attempting the
+  // reconstruction first. This should suppress this node's first attempt at
+  // reconstruction.
+  auto task_reconstruction_data = std::make_shared<TaskReconstructionDataT>();
+  task_reconstruction_data->node_manager_id = ClientID::from_random().binary();
+  task_reconstruction_data->num_reconstructions = 0;
+  RAY_CHECK_OK(
+      mock_gcs_.AppendAt(DriverID::nil(), task_id, task_reconstruction_data, nullptr,
+                         /*failure_callback=*/
+                         [](ray::gcs::AsyncGcsClient *client, const TaskID &task_id,
+                            const TaskReconstructionDataT &data) { ASSERT_TRUE(false); },
+                         /*log_index=*/0));
+
+  // Listen for an object.
+  reconstruction_policy_->ListenAndMaybeReconstruct(object_id);
+  // Run the test for longer than the reconstruction timeout.
+  Run(reconstruction_timeout_ms_ * 1.1);
+  // Check that reconstruction is suppressed by the reconstruction attempt
+  // logged by the other node.
+  ASSERT_TRUE(reconstructed_tasks_.empty());
+
+  // Run the test for longer than the reconstruction timeout again.
+  Run(reconstruction_timeout_ms_ * 1.1);
+  // Check that this time, reconstruction is triggered, since we did not
+  // receive a task lease notification from the other node yet and our next
+  // attempt to reconstruct adds an entry at the next index in the
+  // TaskReconstructionLog.
   ASSERT_EQ(reconstructed_tasks_[task_id], 1);
 }
 
