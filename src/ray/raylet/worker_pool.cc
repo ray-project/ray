@@ -45,15 +45,17 @@ WorkerPool::WorkerPool(
     const std::unordered_map<Language, std::vector<std::string>> &worker_commands)
     : num_workers_per_process_(num_workers_per_process),
       num_cpus_(num_cpus),
-      worker_commands_(worker_commands) {
   RAY_CHECK(num_workers_per_process > 0) << "num_workers_per_process must be positive.";
   // Ignore SIGCHLD signals. If we don't do this, then worker processes will
   // become zombies instead of dying gracefully.
   signal(SIGCHLD, SIG_IGN);
   for (const auto &entry : worker_commands) {
-    // Initialize the pools for each language.
-    pools_[entry.first];
-    // Force-start num_workers worker processes for each language.
+    // Initialize the pool state for this language.
+    auto const &pool = pools_[entry.first];
+    // Set worker command for this language.
+    pool.worker_command = entry.second;
+    RAY_CHECK(!pool.worker_command.empty()) << "Worker command must not be empty.";
+    // Force-start num_workers worker processes for this language.
     for (int i = 0; i < num_worker_processes; i++) {
       StartWorkerProcess(entry.first, true);
     }
@@ -89,9 +91,6 @@ uint32_t WorkerPool::Size(const Language &language) const {
 }
 
 void WorkerPool::StartWorkerProcess(const Language &language, bool force_start) {
-  RAY_CHECK(worker_commands_.find(language) != worker_commands_.end())
-      << "Unsupported language.";
-  RAY_CHECK(!worker_commands_[language].empty()) << "No worker command provided";
   // The first condition makes sure that we are always starting up to
   // num_cpus_ number of processes in parallel.
   if (static_cast<int>(starting_worker_processes_.size()) >= num_cpus_ && !force_start) {
@@ -118,7 +117,7 @@ void WorkerPool::StartWorkerProcess(const Language &language, bool force_start) 
 
   // Extract pointers from the worker command to pass into execvp.
   std::vector<const char *> worker_command_args;
-  for (auto const &token : worker_commands_[language]) {
+  for (auto const &token : pool.worker_command) {
     worker_command_args.push_back(token.c_str());
   }
   worker_command_args.push_back(nullptr);
