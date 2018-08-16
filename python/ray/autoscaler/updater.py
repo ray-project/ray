@@ -221,7 +221,9 @@ class NodeUpdater(object):
         if allocate_tty:
             ssh.append("-tt")
         if emulate_interactive:
-            force_interactive = "set -i || true && source ~/.bashrc && "
+            force_interactive = (
+                "set -i || true && source ~/.bashrc && "
+                "export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && ")
             cmd = "bash --login -c {}".format(quote(force_interactive + cmd))
         if expect_error:
             call = self.process_runner.call
