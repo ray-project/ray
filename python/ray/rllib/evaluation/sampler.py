@@ -249,7 +249,7 @@ def _env_runner(async_vector_env,
             if not new_episode:
                 episode.length += 1
                 episode.batch_builder.count += 1
-                episode.add_agent_rewards(rewards[env_id])
+                episode._add_agent_rewards(rewards[env_id])
 
             # Check episode termination conditions
             if dones[env_id]["__all__"] or episode.length >= horizon:
@@ -272,7 +272,7 @@ def _env_runner(async_vector_env,
                                        episode.rnn_state_for(agent_id)))
 
                 last_observation = episode.last_observation_for(agent_id)
-                episode.set_last_observation(agent_id, filtered_obs)
+                episode._set_last_observation(agent_id, filtered_obs)
 
                 # Record transition info if applicable
                 if last_observation is not None and \
@@ -316,7 +316,7 @@ def _env_runner(async_vector_env,
                         policy_id = episode.policy_for(agent_id)
                         filtered_obs = _get_or_raise(obs_filters,
                                                      policy_id)(raw_obs)
-                        episode.set_last_observation(agent_id, filtered_obs)
+                        episode._set_last_observation(agent_id, filtered_obs)
                         to_eval[policy_id].append(
                             PolicyEvalData(env_id, agent_id, filtered_obs,
                                            episode.rnn_state_for(agent_id)))
@@ -363,16 +363,16 @@ def _env_runner(async_vector_env,
                 agent_id = eval_data[i].agent_id
                 actions_to_send[env_id][agent_id] = action
                 episode = active_episodes[env_id]
-                episode.set_rnn_state(agent_id, [c[i] for c in rnn_out_cols])
-                episode.set_last_pi_info(
+                episode._set_rnn_state(agent_id, [c[i] for c in rnn_out_cols])
+                episode._set_last_pi_info(
                     agent_id, {k: v[i]
                                for k, v in pi_info_cols.items()})
                 if env_id in off_policy_actions and \
                         agent_id in off_policy_actions[env_id]:
-                    episode.set_last_action(
+                    episode._set_last_action(
                         agent_id, off_policy_actions[env_id][agent_id])
                 else:
-                    episode.set_last_action(agent_id, action)
+                    episode._set_last_action(agent_id, action)
 
         # Return computed actions to ready envs. We also send to envs that have
         # taken off-policy actions; those envs are free to ignore the action.

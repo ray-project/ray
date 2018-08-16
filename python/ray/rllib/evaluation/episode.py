@@ -99,21 +99,21 @@ class MultiAgentEpisode(object):
 
         return self._agent_to_last_pi_info[agent_id]
 
-    def add_agent_rewards(self, reward_dict):
+    def _add_agent_rewards(self, reward_dict):
         for agent_id, reward in reward_dict.items():
             if reward is not None:
                 self.agent_rewards[agent_id,
                                    self.policy_for(agent_id)] += reward
                 self.total_reward += reward
 
-    def set_rnn_state(self, agent_id, rnn_state):
+    def _set_rnn_state(self, agent_id, rnn_state):
         self._agent_to_rnn_state[agent_id] = rnn_state
 
-    def set_last_observation(self, agent_id, obs):
+    def _set_last_observation(self, agent_id, obs):
         self._agent_to_last_obs[agent_id] = obs
 
-    def set_last_action(self, agent_id, action):
+    def _set_last_action(self, agent_id, action):
         self._agent_to_last_action[agent_id] = action
 
-    def set_last_pi_info(self, agent_id, pi_info):
+    def _set_last_pi_info(self, agent_id, pi_info):
         self._agent_to_last_pi_info[agent_id] = pi_info
