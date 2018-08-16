@@ -1388,7 +1388,7 @@ void NodeManager::ForwardTaskOrResubmit(const Task &task,
       // The task is not for an actor and may therefore be placed on another
       // node immediately. Send it to the scheduling policy to be placed again.
       local_queues_.QueuePlaceableTasks({task});
-      ScheduleTasks();
+      ScheduleTasks(cluster_resource_map_);
     }
   }
 }
