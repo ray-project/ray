@@ -75,7 +75,9 @@ def run_experiments(experiments=None,
 
     Returns:
         List of Trial objects, holding data for each executed trial.
+
     """
+
     if scheduler is None:
         scheduler = FIFOScheduler()
 

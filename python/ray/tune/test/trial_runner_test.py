@@ -972,6 +972,36 @@ class TrialRunnerTest(unittest.TestCase):
         runner.step()
         self.assertEqual(trials[0].status, Trial.TERMINATED)
 
+    def testStepHook(self):
+        ray.init(num_cpus=4, num_gpus=2)
+        runner = TrialRunner(BasicVariantGenerator())
+
+        def on_step_begin(self):
+            self._update_avail_resources()
+            cnt = self.pre_step if hasattr(self, 'pre_step') else 0
+            setattr(self, 'pre_step', cnt + 1)
+
+        def on_step_end(self):
+            cnt = self.pre_step if hasattr(self, 'post_step') else 0
+            setattr(self, 'post_step', 1 + cnt)
+
+        import types
+        runner.trial_executor.on_step_begin = types.MethodType(
+            on_step_begin, runner.trial_executor)
+        runner.trial_executor.on_step_end = types.MethodType(
+             on_step_end, runner.trial_executor)
+
+        kwargs = {
+            "stopping_criterion": {
+                "training_iteration": 5
+            },
+            "resources": Resources(cpu=1, gpu=1),
+        }
+        runner.add_trial(Trial("__fake", **kwargs))
+        runner.step()
+        self.assertEqual(runner.trial_executor.pre_step, 1)
+        self.assertEqual(runner.trial_executor.post_step, 1)
+
     def testStopTrial(self):
         ray.init(num_cpus=4, num_gpus=2)
         runner = TrialRunner(BasicVariantGenerator())

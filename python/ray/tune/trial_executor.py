@@ -23,12 +23,15 @@ class TrialExecutor(object):
         raise NotImplementedError('subclasses of TrialExecutor must provide '
                                   'has_resources() method')
 
-    def start_trial(self, trial, checkpoint_obj=None):
-        """Starts the trial.
+    def start_trial(self, trial, checkpoint=None):
+        """Starts the trial restoring from checkpoint if checkpoint != None.
 
         If an error is encountered when starting the trial, an exception will
         be thrown.
 
+        Args:
+            checkpoint(Checkpoint): an Python object or path storing the state
+            of trial.
         """
         raise NotImplementedError('subclasses of TrialExecutor must provide '
                                   'start_trial() method')
@@ -116,7 +119,10 @@ class TrialExecutor(object):
     def fetch_one_result(self):
         """Fetches one result from running trials.
 
-        :return: a tuple of trial and its result.
+        It's a blocking call waits until one result is ready.
+
+        Return:
+            a tuple of trial and its result.
         """
         raise NotImplementedError('subclasses of TrialExecutor must provide '
                                   'fetch_one_result() method')
@@ -128,9 +134,14 @@ class TrialExecutor(object):
     def restore(self, trial, checkpoint=None):
         """Restore the state of trial from checkpoint or trial._checkpoint.
 
-        :param trial: trial to be restored.
-        :param checkpoint (Checkpoint): checkpoint to restore from.
-        :return: False if error occurred, otherwise return True.
+        If restoring fails, the trial status will be set to ERROR.
+
+        Args:
+            trial (Trial): trial to be restored.
+            checkpoint (Checkpoint): checkpoint to restore from.
+
+        Return:
+            False if error occurred, otherwise return True.
         """
         raise NotImplementedError('subclasses of TrialExecutor must provide '
                                   'restore() method')
@@ -138,9 +149,13 @@ class TrialExecutor(object):
     def save(self, trial, type=Checkpoint.TYPE_PATH):
         """Save the state of trial.
 
-        :param trial: trial to be saved.
-        :param type: save in the object store or path.
-        :return:  object or path.
+        Args:
+            trial (Trial): trial to be saved.
+            type (str): save in the object store or path.
+
+        Return:
+            a python object if type==Checkpoint.TYPE_OBJECT_PATH otherwise
+            path.
         """
         raise NotImplementedError('subclasses of TrialExecutor must provide '
                                   'save() method')

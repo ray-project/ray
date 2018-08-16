@@ -115,7 +115,7 @@ class TrialRunner(object):
                              "line to queue trials until the cluster scales "
                              "up. {}").format(
                                 trial.resources.summary_string(),
-                                self.trial_executor.debug_string(), # TODO
+                                self.trial_executor.debug_string(),
                                 trial._get_trainable_cls().resource_help(
                                     trial.config)))
                 elif trial.status == Trial.PAUSED:
@@ -269,11 +269,12 @@ class TrialRunner(object):
 
         Note that the timeout is currently unexposed to the user.
 
-        Arguments:
+        Args:
             blocking (bool): Blocks until either a trial is available
                 or the Runner finishes (i.e., timeout or search algorithm
                 finishes).
-            timeout (int): Seconds before blocking times out."""
+            timeout (int): Seconds before blocking times out.
+        """
         trials = self._search_alg.next_trials()
         if blocking and not trials:
             start = time.time()

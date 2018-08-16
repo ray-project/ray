@@ -1,14 +1,15 @@
 # coding: utf-8
+
 import os
+import time
 import traceback
 
-import time
-
 import ray
-from ray.tune.logger import NoopLogger
 
+from ray.tune.logger import NoopLogger
 from ray.tune.trial import Trial, Resources, Checkpoint
 from ray.tune.trial_executor import TrialExecutor
+
 
 class RayTrialExecutor(TrialExecutor):
     """An implemention of TrialExecutor based on Ray."""
@@ -41,7 +42,7 @@ class RayTrialExecutor(TrialExecutor):
             config=trial.config, logger_creator=logger_creator)
 
     def _add_running_trial(self, trial):
-        """get Ray future for one iteration of training"""
+        """Gets Ray future for one iteration of training."""
 
         assert trial.status == Trial.RUNNING, trial.status
         remote = trial.runner.train.remote()
@@ -53,7 +54,8 @@ class RayTrialExecutor(TrialExecutor):
         if self.restore(trial, checkpoint):
             self._add_running_trial(trial)
 
-    def _stop_trial(self, trial, error=False, error_msg=None, stop_logger=True):
+    def _stop_trial(self, trial, error=False, error_msg=None,
+                    stop_logger=True):
         """Stops this trial.
 
         Stops this trial, releasing all allocating resources. If stopping the
@@ -112,7 +114,8 @@ class RayTrialExecutor(TrialExecutor):
     def stop_trial(self, trial, error=False, error_msg=None, stop_logger=True):
         """Only returns resources if resources allocated."""
         prior_status = trial.status
-        self._stop_trial(trial, error=error, error_msg=error_msg, stop_logger=stop_logger)
+        self._stop_trial(trial, error=error, error_msg=error_msg,
+                         stop_logger=stop_logger)
         if prior_status == Trial.RUNNING:
             self._return_resources(trial.resources)
             out = [rid for rid, t in self._running.items() if t is trial]
@@ -134,7 +137,6 @@ class RayTrialExecutor(TrialExecutor):
 
         assert trial.status == Trial.RUNNING, trial.status
         super(RayTrialExecutor, self).pause_trial(trial)
-
 
     def get_running_trials(self):
         """Returns the running trials."""
@@ -194,7 +196,7 @@ class RayTrialExecutor(TrialExecutor):
         can_overcommit = self._queue_trials
 
         if (resources.cpu_total() > 0 and cpu_avail <= 0) or \
-            (resources.gpu_total() > 0 and gpu_avail <= 0):
+           (resources.gpu_total() > 0 and gpu_avail <= 0):
             can_overcommit = False  # requested resource is already saturated
 
         if can_overcommit:
@@ -219,7 +221,7 @@ class RayTrialExecutor(TrialExecutor):
             return ""
 
     def on_step_begin(self):
-        """Before step() called, update the avaliable resources."""
+        """Before step() called, update the available resources."""
 
         self._update_avail_resources()
 

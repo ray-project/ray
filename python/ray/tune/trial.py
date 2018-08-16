@@ -38,7 +38,9 @@ class Resources(
             launch additional Ray actors that use CPUs.
         extra_gpu (int): Extra GPUs to reserve in case the trial needs to
             launch additional Ray actors that use GPUs.
+
     """
+
     __slots__ = ()
 
     def __new__(cls, cpu, gpu, extra_cpu=0, extra_gpu=0):
@@ -64,8 +66,8 @@ def has_trainable(trainable_name):
 class Checkpoint(object):
     """Describes a checkpoint of trial state."""
 
-    TYPE_OBJECT_STORE = 'object'
-    TYPE_PATH = 'path'
+    TYPE_OBJECT_STORE = "object"
+    TYPE_PATH = "path"
 
     def __init__(self, type, value):
         self.type = type
@@ -73,7 +75,7 @@ class Checkpoint(object):
 
     @staticmethod
     def object_store(value=None):
-        """Create a checkpoint saved in objectstore"""
+        """Creates a checkpoint saved in objectstore."""
         return Checkpoint(Checkpoint.TYPE_OBJECT_STORE, value)
 
 

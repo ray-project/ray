@@ -153,17 +153,12 @@ class EarlyStoppingSuite(unittest.TestCase):
 
 class _MockTrialExecutor(TrialExecutor):
 
-    def stop_trial(self, trial, error=False, error_msg=None, stop_logger=True):
-        trial.status = Trial.ERROR if error else Trial.TERMINATED
-
-    def save(self, trial, type=Checkpoint.TYPE_PATH):
-        pass
-
     def start_trial(self, trial, checkpoint_obj=None):
         trial.logger_running = True
         trial.restored_checkpoint = checkpoint_obj.value
 
     def stop_trial(self, trial, error=False, error_msg=None, stop_logger=True):
+        trial.status = Trial.ERROR if error else Trial.TERMINATED
         if stop_logger:
             trial.logger_running = False
 
@@ -222,7 +217,7 @@ class HyperbandSuite(unittest.TestCase):
         _register_all()  # re-register the evicted objects
 
     def schedulerSetup(self, num_trials):
-        """Setup a scheduler and Runner with max Iter = 9
+        """Setup a scheduler and Runner with max Iter = 9.
 
         Bracketing is placed as follows:
         (5, 81);
@@ -238,7 +233,7 @@ class HyperbandSuite(unittest.TestCase):
         return sched, runner
 
     def default_statistics(self):
-        """Default statistics for HyperBand"""
+        """Default statistics for HyperBand."""
         sched = HyperBandScheduler()
         res = {
             str(s): {
@@ -256,8 +251,8 @@ class HyperbandSuite(unittest.TestCase):
         return int(np.ceil(n / sched._eta))
 
     def basicSetup(self):
-        """Setup and verify full band.
-        """
+        """Setup and verify full band."""
+
         stats = self.default_statistics()
         sched, _ = self.schedulerSetup(stats["max_trials"])
 
@@ -323,6 +318,7 @@ class HyperbandSuite(unittest.TestCase):
     def testSuccessiveHalving(self):
         """Setup full band, then iterate through last bracket (n=81)
         to make sure successive halving is correct."""
+
         stats = self.default_statistics()
         sched, mock_runner = self.schedulerSetup(stats["max_trials"])
         big_bracket = sched._state["bracket"]
@@ -384,6 +380,7 @@ class HyperbandSuite(unittest.TestCase):
 
     def testTrialErrored(self):
         """If a trial errored, make sure successive halving still happens"""
+
         stats = self.default_statistics()
         trial_count = stats[str(0)]["n"] + 3
         sched, mock_runner = self.schedulerSetup(trial_count)
@@ -534,7 +531,7 @@ class HyperbandSuite(unittest.TestCase):
         self.assertLess(current_length, 27)
 
     def testRemove(self):
-        """Test with 4: start 1, remove 1 pending, add 2, remove 1 pending"""
+        """Test with 4: start 1, remove 1 pending, add 2, remove 1 pending."""
         sched, runner = self.schedulerSetup(4)
         trials = sorted(list(sched._trial_info), key=lambda t: t.trial_id)
         runner._launch_trial(trials[0])
@@ -565,6 +562,7 @@ class _MockTrial(Trial):
         self.logger_running = False
         self.restored_checkpoint = None
         self.resources = Resources(1, 0)
+
 
 class PopulationBasedTestingSuite(unittest.TestCase):
     def setUp(self):
