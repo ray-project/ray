@@ -32,7 +32,7 @@ COMMON_CONFIG = {
     # Which observation filter to apply to the observation
     "observation_filter": "NoFilter",
     # Whether to use rllib or deepmind preprocessors
-    "preprocessor_pref": "rllib",
+    "preprocessor_pref": "deepmind",
     # Arguments to pass to the env creator
     "env_config": {},
     # Environment name can also be passed via config
