@@ -702,6 +702,7 @@ public class RunManager {
 
     String resourceArgument = ResourceUtil.getResourcesStringFromMap(staticResources);
 
+    // The second-last arugment is the worker command for Python, not needed for Java.
     String[] cmds = new String[]{filePath,rayletSocketName, storeName, ip, gcsIp,
                                  gcsPort, "" + numWorkers, resourceArgument,
                                  "", javaWorkerCommand};
