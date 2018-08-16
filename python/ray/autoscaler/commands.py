@@ -215,7 +215,7 @@ def attach_cluster(config_file, start, override_cluster_name):
 
 
 def exec_cluster(config_file, cmd, screen, stop, start, override_cluster_name,
-                 ssh_opt):
+                 port_forward):
     """Runs a command on the specified cluster.
 
     Arguments:
@@ -225,7 +225,7 @@ def exec_cluster(config_file, cmd, screen, stop, start, override_cluster_name,
         stop: whether to stop the cluster after command run
         start: whether to start the cluster if it isn't up
         override_cluster_name: set the name of the cluster
-        ssh_opt: extra ssh options
+        port_forward: port to forward
     """
 
     config = yaml.load(open(config_file).read())
@@ -244,10 +244,10 @@ def exec_cluster(config_file, cmd, screen, stop, start, override_cluster_name,
     if stop:
         cmd += ("; ray stop; ray teardown ~/ray_bootstrap_config.yaml --yes "
                 "--workers-only; sudo shutdown -h now")
-    _exec(updater, cmd, screen, expect_error=stop, ssh_opt=ssh_opt)
+    _exec(updater, cmd, screen, expect_error=stop, port_forward=port_forward)
 
 
-def _exec(updater, cmd, screen, expect_error=False, ssh_opt=None):
+def _exec(updater, cmd, screen, expect_error=False, port_forward=None):
     if cmd:
         if screen:
             cmd = [
@@ -260,7 +260,7 @@ def _exec(updater, cmd, screen, expect_error=False, ssh_opt=None):
             verbose=True,
             allocate_tty=True,
             expect_error=expect_error,
-            ssh_opt=ssh_opt)
+            port_forward=port_forward)
 
 
 def rsync(config_file, source, target, override_cluster_name, down):

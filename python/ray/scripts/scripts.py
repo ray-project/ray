@@ -495,11 +495,11 @@ def rsync_up(cluster_config_file, source, target, cluster_name):
     type=str,
     help=("Override the configured cluster name."))
 @click.option(
-    "--ssh-opt", required=False, type=str, help=("Extra SSH options."))
+    "--port-forward", required=False, type=int, help=("Port to forward."))
 def exec_cmd(cluster_config_file, cmd, screen, stop, start, cluster_name,
-             ssh_opt):
+             port_forward):
     exec_cluster(cluster_config_file, cmd, screen, stop, start, cluster_name,
-                 ssh_opt)
+                 port_forward)
 
 
 @click.command()

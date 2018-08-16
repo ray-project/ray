@@ -211,7 +211,7 @@ class NodeUpdater(object):
                 allocate_tty=False,
                 emulate_interactive=True,
                 expect_error=False,
-                ssh_opt=None):
+                port_forward=None):
         if verbose:
             print(
                 "NodeUpdater: running {} on {}...".format(
@@ -227,10 +227,12 @@ class NodeUpdater(object):
             call = self.process_runner.call
         else:
             call = self.process_runner.check_call
-        if ssh_opt is None:
+        if port_forward is None:
             ssh_opt = []
         else:
-            ssh_opt = shlex.split(ssh_opt)
+            ssh_opt = [
+                "-L", "{}:localhost:{}".format(port_forward, port_forward)
+            ]
         call(
             ssh + ssh_opt + [
                 "-o", "ConnectTimeout={}s".format(connect_timeout), "-o",
