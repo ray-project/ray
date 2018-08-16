@@ -151,6 +151,7 @@ class EarlyStoppingSuite(unittest.TestCase):
             rule.on_trial_result(None, t2, result2(6, 0)),
             TrialScheduler.CONTINUE)
 
+
 class _MockTrialExecutor(TrialExecutor):
 
     def start_trial(self, trial, checkpoint_obj=None):
@@ -165,8 +166,9 @@ class _MockTrialExecutor(TrialExecutor):
     def restore(self, trial, checkpoint=None):
         pass
 
-    def save(self, trial, type=Checkpoint.TYPE_PATH):
+    def save(self, trial, type=Checkpoint.DISK):
         return trial.trainable_name
+
 
 class _MockTrialRunner():
     def __init__(self, scheduler):
@@ -205,7 +207,6 @@ class _MockTrialRunner():
 
     def _launch_trial(self, trial):
         trial.status = Trial.RUNNING
-
 
 
 class HyperbandSuite(unittest.TestCase):

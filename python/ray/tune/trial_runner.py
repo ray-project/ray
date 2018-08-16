@@ -7,6 +7,7 @@ import os
 import time
 import traceback
 
+from ray.tune import TuneError
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.result import TIME_THIS_ITER_S
 from ray.tune.trial import Trial
@@ -60,6 +61,7 @@ class TrialRunner(object):
                 not currently have enough resources to launch one. This should
                 be set to True when running on an autoscaling cluster to enable
                 automatic scale-up.
+            trial_executor (TrialExecutor): Defaults to RayTrialExecutor.
         """
         self._search_alg = search_alg
         self._scheduler_alg = scheduler or FIFOScheduler()
@@ -103,7 +105,6 @@ class TrialRunner(object):
         elif self.trial_executor.get_running_trials():
             self._process_events()
         else:
-            from ray.tune import TuneError
             for trial in self._trials:
                 if trial.status == Trial.PENDING:
                     if not self.has_resources(trial.resources):
@@ -210,8 +211,10 @@ class TrialRunner(object):
         return trial
 
     def _process_events(self):
-        trial, result = self.trial_executor.fetch_one_result()
         try:
+            trial, result = self.trial_executor.fetch_one_result()
+            if result is None:
+                raise ValueError("fetch_one_result failed")
             self._total_time += result[TIME_THIS_ITER_S]
 
             if trial.should_stop(result):
@@ -316,6 +319,8 @@ class TrialRunner(object):
         elif trial.status is Trial.RUNNING:
             try:
                 _, result = self.trial_executor.fetch_one_result()
+                if result is None:
+                    raise ValueError("fetch_one_result failed")
                 trial.update_last_result(result, terminate=True)
                 self._scheduler_alg.on_trial_complete(self, trial, result)
                 self._search_alg.on_trial_complete(

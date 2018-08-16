@@ -188,7 +188,7 @@ class PopulationBasedTraining(FIFOScheduler):
 
         if trial in upper_quantile:
             state.last_checkpoint = trial_runner.trial_executor.save(
-                trial, Checkpoint.TYPE_OBJECT_STORE)
+                trial, Checkpoint.MEMORY)
             self._num_checkpoints += 1
         else:
             state.last_checkpoint = None  # not a top trial
@@ -225,7 +225,7 @@ class PopulationBasedTraining(FIFOScheduler):
         trial.config = new_config
         trial.experiment_tag = make_experiment_tag(
             trial_state.orig_tag, new_config, self._hyperparam_mutations)
-        trial_executor.start_trial(trial, Checkpoint.object_store(
+        trial_executor.start_trial(trial, Checkpoint.from_object(
             new_state.last_checkpoint))
         self._num_perturbations += 1
         # Transfer over the last perturbation time as well

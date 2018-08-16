@@ -1,4 +1,8 @@
 # coding: utf-8
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import unittest
 
 import ray
@@ -42,7 +46,7 @@ class RayTrialExecutorTest(unittest.TestCase):
         trial = Trial("__fake")
         self.trial_executor.start_trial(trial)
         self.assertEqual(Trial.RUNNING, trial.status)
-        self.trial_executor.save(trial, Checkpoint.TYPE_PATH)
+        self.trial_executor.save(trial, Checkpoint.DISK)
         self.trial_executor.restore(trial)
         self.trial_executor.stop_trial(trial)
         self.assertEqual(Trial.TERMINATED, trial.status)

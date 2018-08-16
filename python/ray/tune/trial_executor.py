@@ -8,7 +8,7 @@ class TrialExecutor(object):
     """TrialExecutor abstracts the execution of a Trial."""
 
     def __init__(self, queue_trials=False):
-        """Initializes a new TrailExecutor.
+        """Initializes a new TrialExecutor.
 
         Args:
             queue_trials (bool): Whether to queue trials when the cluster does
@@ -20,8 +20,8 @@ class TrialExecutor(object):
 
     def has_resources(self, resources):
         """Returns whether this runner has at least the specified resources."""
-        raise NotImplementedError('subclasses of TrialExecutor must provide '
-                                  'has_resources() method')
+        raise NotImplementedError("Subclasses of TrialExecutor must provide "
+                                  "has_resources() method")
 
     def start_trial(self, trial, checkpoint=None):
         """Starts the trial restoring from checkpoint if checkpoint != None.
@@ -33,8 +33,8 @@ class TrialExecutor(object):
             checkpoint(Checkpoint): an Python object or path storing the state
             of trial.
         """
-        raise NotImplementedError('subclasses of TrialExecutor must provide '
-                                  'start_trial() method')
+        raise NotImplementedError("Subclasses of TrialExecutor must provide "
+                                  "start_trial() method")
 
     def stop_trial(self, trial, error=False, error_msg=None, stop_logger=True):
         """Stops the trial.
@@ -48,8 +48,8 @@ class TrialExecutor(object):
             error_msg (str): Optional error message.
             stop_logger (bool): Whether to shut down the trial logger.
         """
-        raise NotImplementedError('subclasses of TrialExecutor must provide '
-                                  'stop_trial() method')
+        raise NotImplementedError("Subclasses of TrialExecutor must provide "
+                                  "stop_trial() method")
 
     def restart_trial(self, trial, error_msg=None):
         """Restarts the trial.
@@ -74,6 +74,7 @@ class TrialExecutor(object):
         """A hook called when TrialScheduler make a decision.
 
         Args:
+            trial (Trial): the scheduler decide whether to continue this trial.
             decision (str): (CONTINUE,PAUSE,STOP) constant from TrialScheduler.
         """
         pass
@@ -86,7 +87,7 @@ class TrialExecutor(object):
         """
         assert trial.status == Trial.RUNNING, trial.status
         try:
-            self.save(trial, Checkpoint.TYPE_OBJECT_STORE)
+            self.save(trial, Checkpoint.MEMORY)
             self.stop_trial(trial, stop_logger=False)
             trial.status = Trial.PAUSED
         except Exception:
@@ -105,8 +106,8 @@ class TrialExecutor(object):
 
     def get_running_trials(self):
         """Returns all running trials."""
-        raise NotImplementedError('subclasses of TrialExecutor must provide '
-                                  'get_running_trials() method')
+        raise NotImplementedError("Subclasses of TrialExecutor must provide "
+                                  "get_running_trials() method")
 
     def on_step_begin(self):
         """A hook called before running one step of the trial event loop."""
@@ -122,10 +123,11 @@ class TrialExecutor(object):
         It's a blocking call waits until one result is ready.
 
         Return:
-            a tuple of trial and its result.
+            a tuple of (trial, result). if fetch result failed,
+            return (trial, None) other than raise Exception.
         """
-        raise NotImplementedError('subclasses of TrialExecutor must provide '
-                                  'fetch_one_result() method')
+        raise NotImplementedError("Subclasses of TrialExecutor must provide "
+                                  "fetch_one_result() method")
 
     def debug_string(self):
         """Returns a human readable message for printing to the console."""
@@ -143,19 +145,19 @@ class TrialExecutor(object):
         Return:
             False if error occurred, otherwise return True.
         """
-        raise NotImplementedError('subclasses of TrialExecutor must provide '
-                                  'restore() method')
+        raise NotImplementedError("Subclasses of TrialExecutor must provide "
+                                  "restore() method")
 
-    def save(self, trial, type=Checkpoint.TYPE_PATH):
+    def save(self, trial, storage=Checkpoint.DISK):
         """Save the state of trial.
 
         Args:
             trial (Trial): trial to be saved.
-            type (str): save in the object store or path.
+            storage (str): save in memory or disk.
 
         Return:
-            a python object if type==Checkpoint.TYPE_OBJECT_PATH otherwise
-            path.
+            a python object if storage==Checkpoint.MEMORY otherwise
+            a path to the checkpoint.
         """
-        raise NotImplementedError('subclasses of TrialExecutor must provide '
-                                  'save() method')
+        raise NotImplementedError("Subclasses of TrialExecutor must provide "
+                                  "save() method")

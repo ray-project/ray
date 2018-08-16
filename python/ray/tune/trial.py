@@ -64,19 +64,23 @@ def has_trainable(trainable_name):
 
 
 class Checkpoint(object):
-    """Describes a checkpoint of trial state."""
+    """Describes a checkpoint of trial state.
 
-    TYPE_OBJECT_STORE = "object"
-    TYPE_PATH = "path"
+    If storage == MEMORY, value is a Python object.
+    If storage == DISK, value is a path points to the checkpoint under disk.
+    """
 
-    def __init__(self, type, value):
-        self.type = type
+    MEMORY = "memory"
+    DISK = "disk"
+
+    def __init__(self, storage, value):
+        self.storage = storage
         self.value = value
 
     @staticmethod
-    def object_store(value=None):
-        """Creates a checkpoint saved in objectstore."""
-        return Checkpoint(Checkpoint.TYPE_OBJECT_STORE, value)
+    def from_object(value=None):
+        """Creates a checkpoint from a Python object."""
+        return Checkpoint(Checkpoint.MEMORY, value)
 
 
 class Trial(object):
@@ -134,9 +138,7 @@ class Trial(object):
         # Local trial state that is updated during the run
         self.last_result = None
         self.checkpoint_freq = checkpoint_freq
-        # self._checkpoint_path = restore_path
-        # self._checkpoint_obj = None
-        self._checkpoint = Checkpoint(type=Checkpoint.TYPE_PATH,
+        self._checkpoint = Checkpoint(storage=Checkpoint.DISK,
                                       value=restore_path)
         self.status = Trial.PENDING
         self.location = None

@@ -1,11 +1,12 @@
 # coding: utf-8
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
 
 import os
 import time
 import traceback
-
 import ray
-
 from ray.tune.logger import NoopLogger
 from ray.tune.trial import Trial, Resources, Checkpoint
 from ray.tune.trial_executor import TrialExecutor
@@ -17,6 +18,10 @@ class RayTrialExecutor(TrialExecutor):
     def __init__(self, queue_trials=False):
         super(RayTrialExecutor, self).__init__(queue_trials)
         self._running = {}
+        # Since trial resume after paused should not run
+        # trial.train.remote(), thus no more new remote object id generated.
+        # so we use self._paused to store paused trials.
+        self._paused = {}
         self._avail_resources = Resources(cpu=0, gpu=0)
         self._committed_resources = Resources(cpu=0, gpu=0)
         self._resources_initialized = False
@@ -49,9 +54,17 @@ class RayTrialExecutor(TrialExecutor):
         self._running[remote] = trial
 
     def _start_trial(self, trial, checkpoint=None):
+        prior_status = trial.status
         trial.status = Trial.RUNNING
         trial.runner = self._setup_runner(trial)
-        if self.restore(trial, checkpoint):
+        if not self.restore(trial, checkpoint):
+            return
+        if prior_status == Trial.PAUSED:
+            # if prev status is PAUSED, self._paused stores its remote_id.
+            remote_id = self._find_item(self._paused, trial)[0]
+            self._paused.pop(remote_id)
+            self._running[remote_id] = trial
+        else:
             self._add_running_trial(trial)
 
     def _stop_trial(self, trial, error=False, error_msg=None,
@@ -111,6 +124,10 @@ class RayTrialExecutor(TrialExecutor):
                 # note that we don't return the resources, since they may
                 # have been lost
 
+    def _find_item(self, dict, item):
+        out = [rid for rid, t in dict.items() if t is item]
+        return out
+
     def stop_trial(self, trial, error=False, error_msg=None, stop_logger=True):
         """Only returns resources if resources allocated."""
         prior_status = trial.status
@@ -118,7 +135,7 @@ class RayTrialExecutor(TrialExecutor):
                          stop_logger=stop_logger)
         if prior_status == Trial.RUNNING:
             self._return_resources(trial.resources)
-            out = [rid for rid, t in self._running.items() if t is trial]
+            out = self._find_item(self._running, trial)
             for result_id in out:
                 self._running.pop(result_id)
 
@@ -135,7 +152,8 @@ class RayTrialExecutor(TrialExecutor):
     def pause_trial(self, trial):
         """Pauses the trial."""
 
-        assert trial.status == Trial.RUNNING, trial.status
+        remote_id = self._find_item(self._running, trial)[0]
+        self._paused[remote_id] = trial
         super(RayTrialExecutor, self).pause_trial(trial)
 
     def get_running_trials(self):
@@ -149,7 +167,12 @@ class RayTrialExecutor(TrialExecutor):
         # NOTE: There should only be one...
         [result_id], _ = ray.wait(list(self._running))
         trial = self._running.pop(result_id)
-        result = ray.get(result_id)
+        result = None
+        try:
+            result = ray.get(result_id)
+        except Exception as e:
+            print("fetch_one_result failed", e.message)
+
         return trial, result
 
     def _commit_resources(self, resources):
@@ -225,9 +248,9 @@ class RayTrialExecutor(TrialExecutor):
 
         self._update_avail_resources()
 
-    def save(self, trial, type=Checkpoint.TYPE_PATH):
-        trial._checkpoint.type = type
-        if type == Checkpoint.TYPE_OBJECT_STORE:
+    def save(self, trial, storage=Checkpoint.DISK):
+        trial._checkpoint.storage = storage
+        if storage == Checkpoint.MEMORY:
             trial._checkpoint.value = trial.runner.save_to_object.remote()
         else:
             trial._checkpoint.value = ray.get(trial.runner.save.remote())
@@ -244,7 +267,7 @@ class RayTrialExecutor(TrialExecutor):
             return False
         try:
             value = checkpoint.value
-            if checkpoint.type == Checkpoint.TYPE_OBJECT_STORE:
+            if checkpoint.storage == Checkpoint.MEMORY:
                 assert type(value) != Checkpoint, type(value)
                 ray.get(trial.runner.restore_from_object.remote(value))
             else:
