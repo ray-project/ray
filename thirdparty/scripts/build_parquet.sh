@@ -31,7 +31,8 @@ if [ ! -d $TP_DIR/build/parquet-cpp ]; then
 
     OPENSSL_ROOT_DIR=$OPENSSL_DIR \
     PATH="$BISON_DIR:$PATH" \
-    make -j4
+    #make -j4 # Parallel make might fail for low-spec machine.
+    make
 
     OPENSSL_ROOT_DIR=$OPENSSL_DIR \
     PATH="$BISON_DIR:$PATH" \
@@ -48,7 +49,8 @@ if [ ! -d $TP_DIR/build/parquet-cpp ]; then
 
     PARQUET_HOME=$TP_DIR/pkg/arrow/cpp/build/cpp-install \
     BOOST_ROOT=$TP_DIR/pkg/boost \
-    make -j4
+    #make -j4 # Parallel make might fail for low-spec machine.
+    make
     make install
   fi
 
