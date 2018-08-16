@@ -46,7 +46,8 @@ int main(int argc, char *argv[]) {
   } else if (!java_worker_command.empty()) {
     worker_command = python_worker_command;
   } else {
-    RAY_CHECK(0) << "Either Python worker command or Java worker command should be provided.";
+    RAY_CHECK(0)
+        << "Either Python worker command or Java worker command should be provided.";
   }
 
   std::istringstream iss(worker_command);
