@@ -979,8 +979,8 @@ def start_raylet(redis_address,
                                    "--object-store-name={} "
                                    "--raylet-name={} "
                                    "--redis-address={}".format(
-                                   sys.executable, worker_path, node_ip_address,
-                                   plasma_store_name, raylet_name, redis_address))
+                                       sys.executable, worker_path, node_ip_address,
+                                       plasma_store_name, raylet_name, redis_address))
 
     command = [
         RAYLET_EXECUTABLE,
