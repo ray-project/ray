@@ -9,6 +9,8 @@ atari-ppo:
     config:
         gamma: 0.99
         num_workers: 12
+        timesteps_per_batch: 20000
+        sgd_batchsize: 2000
         num_sgd_iter: 20
         num_gpus: 1
         preprocessor_pref: deepmind
