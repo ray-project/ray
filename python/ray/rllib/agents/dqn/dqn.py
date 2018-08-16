@@ -23,6 +23,12 @@ OPTIMIZER_SHARED_CONFIGS = [
 
 DEFAULT_CONFIG = with_common_config({
     # === Model ===
+    # Number of atoms for representing the distribution of return. When
+    # this is a positive integer value, distributional Q-learning is used.
+    # the discrete supports are bounded by v_min and v_max
+    "num_atoms": 1,
+    "v_min": -10.0,
+    "v_max": 10.0
     # Whether to use noisy network
     "noisy": False,
     # Whether to use dueling dqn
