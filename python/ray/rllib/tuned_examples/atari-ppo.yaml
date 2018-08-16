@@ -1,0 +1,13 @@
+atari-ppo:
+    env:
+        grid_search:
+            - BreakoutNoFrameskip-v4
+            - BeamRiderNoFrameskip-v4
+            - QbertNoFrameskip-v4
+            - SpaceInvadersNoFrameskip-v4 
+    config:
+        gamma: 0.99
+        num_workers: 12
+        num_sgd_iter: 20
+        num_gpus: 1
+        preprocessor_pref: deepmind
