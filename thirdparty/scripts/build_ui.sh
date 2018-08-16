@@ -39,7 +39,7 @@ if [[ ! -d $CATAPULT_HOME ]]; then
   # The git clone command seems to fail in Travis, so retry up to 20 times.
   for COUNT in {1..20}; do
     # Attempt to git clone catapult and break from the retry loop if it succeeds.
-    git clone https://github.com/ray-project/catapult.git $CATAPULT_HOME && break
+    git clone -q https://github.com/ray-project/catapult.git $CATAPULT_HOME && break
     # If none of the retries succeeded at getting boost, then fail.
     if [[ $COUNT == 20 ]]; then
       exit 1
