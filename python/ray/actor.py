@@ -301,7 +301,8 @@ def fetch_and_register_actor(actor_class_key, worker):
     # Convert from unicode to bytes
     if sys.version_info < (3, 0):
         actor_method_names = [
-            method_name.encode('utf-8') for method_name in actor_method_names]
+            method_name.encode('utf-8') for method_name in actor_method_names
+        ]
 
     # Create a temporary actor with some temporary methods so that if the actor
     # fails to be unpickled, the temporary actor can be used (just to produce
