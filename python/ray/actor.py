@@ -298,10 +298,11 @@ def fetch_and_register_actor(actor_class_key, worker):
     module = decode(module)
     checkpoint_interval = int(checkpoint_interval)
     actor_method_names = json.loads(decode(actor_method_names))
-    # Convert from unicode to bytes
+    # Convert from unicode to bytes. This is needed since the json
+    # module converts all byte strings to unicode.
     if sys.version_info < (3, 0):
         actor_method_names = [
-            method_name.encode('utf-8') for method_name in actor_method_names
+            method_name.encode("ascii") for method_name in actor_method_names
         ]
 
     # Create a temporary actor with some temporary methods so that if the actor
