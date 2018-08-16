@@ -1296,7 +1296,8 @@ void NodeManager::ForwardTaskOrResubmit(const Task &task,
             // Timer killing will receive the boost::asio::error::operation_aborted,
             // we only handle the timeout event.
             RAY_CHECK(!error);
-            RAY_LOG(DEBUG) << "Retrying ForwardTask for task " << task_id;
+            RAY_LOG(DEBUG) << "Resubmitting task " << task_id
+                           << " because ForwardTask failed.";
             SubmitTask(task, Lineage());
           });
       // Remove the task from the lineage cache. The task will get added back
