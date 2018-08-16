@@ -67,8 +67,11 @@ class TorchPolicyGraph(PolicyGraph):
         """Custom PyTorch optimizer to use."""
         return torch.optim.Adam(self._model.parameters())
 
-    def compute_actions(self, obs_batch, state_batches=None,
-                        is_training=False):
+    def compute_actions(self,
+                        obs_batch,
+                        state_batches=None,
+                        is_training=False,
+                        episodes=None):
         if state_batches:
             raise NotImplementedError("Torch RNN support")
         with self.lock:
