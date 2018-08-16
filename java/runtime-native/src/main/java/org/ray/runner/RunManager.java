@@ -694,8 +694,6 @@ public class RunManager {
     //Create the java worker command that the raylet will use to start workers.
     String javaWorkerCommand  = buildWorkerCommandRaylet(info.storeName, rayletSocketName,
         UniqueID.nil, "", workDir + rpcPort, ip, redisAddress);
-    // Create the python worker command, This is just a placeholder.
-    String pythonWorkerCommand = "";
 
     int sep = redisAddress.indexOf(':');
     assert (sep != -1);
@@ -704,9 +702,9 @@ public class RunManager {
 
     String resourceArgument = ResourceUtil.getResourcesStringFromMap(staticResources);
 
-    String[] cmds = new String[]{filePath, rayletSocketName, storeName, ip, gcsIp,
+    String[] cmds = new String[]{filePath,rayletSocketName, storeName, ip, gcsIp,
                                  gcsPort, "" + numWorkers, resourceArgument,
-                                 javaWorkerCommand, pythonWorkerCommand};
+                                 "", javaWorkerCommand};
 
     Process p = startProcess(cmds, null, RunInfo.ProcessType.PT_RAYLET,
         workDir + rpcPort, redisAddress, ip, redirect, cleanup);

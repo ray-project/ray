@@ -15,8 +15,8 @@ int main(int argc, char *argv[]) {
   int redis_port = std::stoi(argv[5]);
   int num_initial_workers = std::stoi(argv[6]);
   const std::string static_resource_list = std::string(argv[7]);
-  const std::string java_worker_command = std::string(argv[8]);
-  const std::string python_worker_command = std::string(argv[9]);
+  const std::string python_worker_command = std::string(argv[8]);
+  const std::string java_worker_command = std::string(argv[9]);
 
   // Configuration for the node manager.
   ray::raylet::NodeManagerConfig node_manager_config;
@@ -41,9 +41,9 @@ int main(int argc, char *argv[]) {
   // Use a default worker that can execute empty tasks with dependencies.
 
   std::string worker_command;
-  if (!java_worker_command.empty()) {
+  if (!python_worker_command.empty()) {
     worker_command = java_worker_command;
-  } else if (!python_worker_command.empty()) {
+  } else if (!java_worker_command.empty()) {
     worker_command = python_worker_command;
   }
 
