@@ -609,7 +609,7 @@ class Monitor(object):
                 elif channel == ray.gcs_utils.XRAY_HEARTBEAT_CHANNEL:
                     # Similar functionality as local scheduler info channel
                     message_handler = self.xray_heartbeat_handler
-                elif channel == XRAY_DRIVER_CHANNEL:
+                elif channel == ray.gcs_utils.XRAY_DRIVER_CHANNEL:
                     # Handles driver death.
                     message_handler = self.xray_driver_removed_handler
                 else:
@@ -671,20 +671,12 @@ class Monitor(object):
         clients and cleaning up state accordingly.
         """
         # Initialize the subscription channel.
-<<<<<<< HEAD
-        self.subscribe(DB_CLIENT_TABLE_NAME)
-        self.subscribe(LOCAL_SCHEDULER_INFO_CHANNEL)
-        self.subscribe(PLASMA_MANAGER_HEARTBEAT_CHANNEL)
-        self.subscribe(DRIVER_DEATH_CHANNEL)
-        self.subscribe(XRAY_HEARTBEAT_CHANNEL, primary=False)
-        self.subscribe(XRAY_DRIVER_CHANNEL)
-=======
         self.subscribe(ray.gcs_utils.DB_CLIENT_TABLE_NAME)
         self.subscribe(ray.gcs_utils.LOCAL_SCHEDULER_INFO_CHANNEL)
         self.subscribe(ray.gcs_utils.PLASMA_MANAGER_HEARTBEAT_CHANNEL)
         self.subscribe(ray.gcs_utils.DRIVER_DEATH_CHANNEL)
         self.subscribe(ray.gcs_utils.XRAY_HEARTBEAT_CHANNEL, primary=False)
->>>>>>> Refactor, address comments, fixes
+        self.subscribe(ray.gcs_utilsXRAY_DRIVER_CHANNEL)
 
         # Scan the database table for dead database clients. NOTE: This must be
         # called before reading any messages from the subscription channel.

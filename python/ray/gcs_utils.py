@@ -65,6 +65,9 @@ DRIVER_DEATH_CHANNEL = b"driver_deaths"
 # xray heartbeats
 XRAY_HEARTBEAT_CHANNEL = str(TablePubsub.HEARTBEAT).encode("ascii")
 
+# xray driver updates
+XRAY_DRIVER_CHANNEL = str(ray.gcs_utils.TablePubsub.DRIVER).encode("ascii")
+
 
 def construct_error_message(error_type, message, timestamp):
     """Construct a serialized ErrorTableData object.
