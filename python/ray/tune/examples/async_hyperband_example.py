@@ -47,8 +47,6 @@ class MyTrainableClass(Trainable):
             self.timestep = json.loads(f.read())["timestep"]
 
 
-register_trainable("my_class", MyTrainableClass)
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -69,7 +67,7 @@ if __name__ == "__main__":
     run_experiments(
         {
             "asynchyperband_test": {
-                "run": "my_class",
+                "run": MyTrainableClass,
                 "stop": {
                     "training_iteration": 1 if args.smoke_test else 99999
                 },

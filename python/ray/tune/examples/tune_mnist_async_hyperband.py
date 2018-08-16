@@ -218,9 +218,8 @@ if __name__ == '__main__':
         '--smoke-test', action='store_true', help='Finish quickly for testing')
     args, _ = parser.parse_known_args()
 
-    register_trainable('train_mnist', train)
     mnist_spec = {
-        'run': 'train_mnist',
+        'run': train,
         'repeat': 10,
         'stop': {
             'mean_accuracy': 0.99,

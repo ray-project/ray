@@ -54,8 +54,6 @@ class MyTrainableClass(Trainable):
             self.current_value = data["value"]
 
 
-register_trainable("my_class", MyTrainableClass)
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -79,7 +77,7 @@ if __name__ == "__main__":
     run_experiments(
         {
             "pbt_test": {
-                "run": "my_class",
+                "run": MyTrainableClass,
                 "stop": {
                     "training_iteration": 2 if args.smoke_test else 99999
                 },

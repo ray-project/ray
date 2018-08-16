@@ -179,9 +179,8 @@ if __name__ == "__main__":
         "--smoke-test", action="store_true", help="Finish quickly for testing")
     args, _ = parser.parse_known_args()
 
-    register_trainable("train_cifar10", Cifar10Model)
     train_spec = {
-        "run": "train_cifar10",
+        "run": Cifar10Model,
         "trial_resources": {
             "cpu": 1,
             "gpu": 1

@@ -13,6 +13,7 @@ Current Available Trial Schedulers:
 
 .. contents::
     :local:
+    :backlinks: none
 
 
 Population Based Training (PBT)
@@ -40,6 +41,7 @@ You can run this `toy PBT example <https://github.com/ray-project/ray/blob/maste
 .. image:: pbt.png
 
 .. autoclass:: ray.tune.schedulers.PopulationBasedTraining
+    :noindex:
 
 Asynchronous HyperBand Scheduler
 --------------------------------
@@ -60,6 +62,7 @@ The `asynchronous version of HyperBand <https://openreview.net/forum?id=S1Y7OOlR
 Compared to the original version of HyperBand, this implementation provides better parallelism and avoids straggler issues during eliminations. An example of this can be found in `async_hyperband_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/async_hyperband_example.py>`__. **We recommend using this over the standard HyperBand scheduler.**
 
 .. autoclass:: ray.tune.schedulers.AsyncHyperBandScheduler
+    :noindex:
 
 HyperBand
 ---------
@@ -108,6 +111,7 @@ An example of this can be found in `hyperband_example.py <https://github.com/ray
      - my_class_53_height=28,width=96:  RUNNING
 
 .. autoclass:: ray.tune.schedulers.HyperBandScheduler
+    :noindex:
 
 
 HyperBand Implementation Details
@@ -142,4 +146,5 @@ The Median Stopping Rule implements the simple strategy of stopping a trial if i
     run_experiments({...}, scheduler=MedianStoppingRule())
 
 .. autoclass:: ray.tune.schedulers.MedianStoppingRule
+    :noindex:
 

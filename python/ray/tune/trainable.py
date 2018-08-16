@@ -36,16 +36,14 @@ class Trainable(object):
 
     Note that, if you don't require checkpoint/restore functionality, then
     instead of implementing this class you can also get away with supplying
-    just a `my_train(config, reporter)` function and calling:
-
-    ``register_trainable("my_func", train)``
-
-    to register it for use with Tune. The function will be automatically
-    converted to this interface (sans checkpoint functionality).
+    just a ``my_train(config, reporter)`` function to the config.
+    The function will be automatically converted to this interface
+    (sans checkpoint functionality).
 
     Attributes:
         config (obj): The hyperparam configuration for this trial.
         logdir (str): Directory in which training outputs should be placed.
+            By default, this is provided by Tune.
     """
 
     def __init__(self, config=None, logger_creator=None):
