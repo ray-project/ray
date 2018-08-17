@@ -43,6 +43,8 @@ def create_or_update_cluster(config_file, override_min_workers,
 
 
 def _bootstrap_config(config):
+    config = fillout_defaults(config)
+
     hasher = hashlib.sha1()
     hasher.update(json.dumps([config], sort_keys=True).encode("utf-8"))
     cache_key = os.path.join(tempfile.gettempdir(),
@@ -50,7 +52,6 @@ def _bootstrap_config(config):
     if os.path.exists(cache_key):
         return json.loads(open(cache_key).read())
     validate_config(config)
-    config = fillout_defaults(config)
 
     importer = NODE_PROVIDERS.get(config["provider"]["type"])
     if not importer:
