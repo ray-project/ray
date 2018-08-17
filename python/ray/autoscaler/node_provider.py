@@ -27,7 +27,8 @@ def import_local():
 
 def load_local_example_config():
     import ray.autoscaler.local as ray_local
-    return os.path.join(os.path.dirname(ray_local.__file__), "example-full.yaml")
+    return os.path.join(
+        os.path.dirname(ray_local.__file__), "example-full.yaml")
 
 
 def load_aws_example_config():
