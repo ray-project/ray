@@ -124,7 +124,7 @@ Tune will run this function on a separate thread in a Ray actor process. Note th
 **Python classes** passed into Tune will need to subclass ``ray.tune.Trainable``.
 
 .. autoclass:: ray.tune.Trainable
-    :members: _save, _restore, _train, _setup, _stop
+    :members: config, logdir, _save, _restore, _train, _setup, _stop
     :noindex:
 
 
