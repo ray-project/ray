@@ -22,8 +22,6 @@ class HyperOptSearch(SuggestionAlgorithm):
     added trials will not be tracked by HyperOpt.
 
     Parameters:
-        experiments (Experiment | list | dict): Experiments to run. Will be
-            used by SuggestionAlgorithm parent class to initialize Trials.
         space (dict): HyperOpt configuration. Parameters will be sampled
             from this configuration and will be used to override
             parameters generated in the variant generation process.
@@ -48,11 +46,11 @@ class HyperOptSearch(SuggestionAlgorithm):
         >>>     }
         >>> }
         >>> algo = HyperOptSearch(
-        >>>     config, space, max_concurrent=4, reward_attr="neg_mean_loss")
+        >>>     space, max_concurrent=4, reward_attr="neg_mean_loss")
+        >>> algo.add_configurations(config)
     """
 
     def __init__(self,
-                 experiments,
                  space,
                  max_concurrent=10,
                  reward_attr="episode_reward_mean",
@@ -67,7 +65,7 @@ class HyperOptSearch(SuggestionAlgorithm):
         self._live_trial_mapping = {}
         self.rstate = np.random.RandomState()
 
-        super(HyperOptSearch, self).__init__(experiments=experiments, **kwargs)
+        super(HyperOptSearch, self).__init__(**kwargs)
 
     def _suggest(self, trial_id):
         if self._num_live_trials() >= self._max_concurrent:

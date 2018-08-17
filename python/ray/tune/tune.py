@@ -40,9 +40,9 @@ def run_experiments(experiments=None,
 
     Args:
         experiments (Experiment | list | dict): Experiments to run. Will be
-            ignored if specifying a `search_alg`.
+            passed to `search_alg` via `add_configurations`.
         search_alg (SearchAlgorithm): Search Algorithm. Defaults to
-            BasicVariantGenerator wrapping the `experiments` parameter.
+            BasicVariantGenerator.
         scheduler (TrialScheduler): Scheduler for executing
             the experiment. Choose among FIFO (default), MedianStopping,
             AsyncHyperBand, and HyperBand.
@@ -67,6 +67,7 @@ def run_experiments(experiments=None,
         >>>     scheduler=MedianStoppingRule(...))
 
         >>> run_experiments(
+        >>>     experiments=experiment_spec,
         >>>     search_alg=SearchAlgorithm(),
         >>>     scheduler=MedianStoppingRule(...))
 
@@ -77,9 +78,9 @@ def run_experiments(experiments=None,
         scheduler = FIFOScheduler()
 
     if search_alg is None:
-        assert experiments is not None, "Experiments need to be specified" \
-            "if search_alg is not provided."
-        search_alg = BasicVariantGenerator(experiments)
+        search_alg = BasicVariantGenerator()
+
+    search_alg.add_configurations(experiments)
 
     runner = TrialRunner(
         search_alg,

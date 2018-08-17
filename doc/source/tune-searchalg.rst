@@ -3,14 +3,11 @@ Tune Search Algorithms
 
 Tune provides various hyperparameter search algorithms to efficiently optimize your model. Tune allows you to use different search algorithms in combination with different trial schedulers. Tune will by default implicitly use the Variant Generation algorithm to create trials.
 
-.. important:: The `search_alg` argument in ``run_experiments`` replaces passing in the experiment configuration directly.
-
 You can utilize these search algorithms as follows:
 
 .. code-block:: python
 
-    run_experiments(search_alg=SearchAlgorithm(experiments, ... ))
-
+    run_experiments(experiments, search_alg=SearchAlgorithm(...))
 
 Currently, Tune offers the following search algorithms:
 
@@ -22,14 +19,6 @@ Variant Generation (Grid Search/Random Search)
 ----------------------------------------------
 
 By default, Tune uses the `default search space and variant generation process <tune-usage.html#tune-search-space-default>`__ to create and queue trials. This supports random search and grid search as specified by the ``config`` parameter of the Experiment.
-
-The below two lines are equivalent:
-
-.. code-block:: python
-
-    run_experiments(experiment_config, ... )
-    run_experiments(search_alg=BasicVariantGeneration(experiment_config))
-
 
 .. autoclass:: ray.tune.suggest.BasicVariantGenerator
     :show-inheritance:
@@ -50,7 +39,7 @@ This algorithm requires using the `HyperOpt search space specification <https://
 
 .. code-block:: python
 
-    run_experiments(search_alg=HyperOptSearch(experiment_config, hyperopt_space, ... ))
+    run_experiments(experiment_config, search_alg=HyperOptSearch(hyperopt_space, ... ))
 
 An example of this can be found in `hyperopt_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperopt_example.py>`__.
 
