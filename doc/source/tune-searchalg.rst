@@ -25,8 +25,6 @@ Variant Generation (Grid Search/Random Search)
 By default, Tune uses the `Variant Generation process <tune-usage.html#tune-search-space-default>`__ to create and queue trials. This supports random search and grid search as specified by the ``config`` parameter of the Experiment.
 
 .. code-block:: python
-
-
     # The below two lines are equivalent
 
     run_experiments(experiment_config, ... )
