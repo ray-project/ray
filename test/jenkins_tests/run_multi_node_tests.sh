@@ -116,23 +116,6 @@ docker run  -e "RAY_USE_XRAY=1" --rm --cpus=12 --shm-size=10G --memory=10G $DOCK
 
 docker run  -e "RAY_USE_XRAY=1" --rm --cpus=12 --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/train.py \
-<<<<<<< aaf5456b3d766f20d4b9a0b18448885f03ac28ac
-=======
-    --env PongDeterministic-v4 \
-    --run A3C \
-    --stop '{"training_iteration": 2}' \
-    --config '{"num_workers": 2, "use_pytorch": true, "model": {"use_lstm": false, "grayscale": true, "zero_mean": false, "dim": 80, "channel_major": true}}'
-
-docker run  -e "RAY_USE_XRAY=1" --rm --cpus=12 --shm-size=10G --memory=10G $DOCKER_SHA \
-    python /ray/python/ray/rllib/train.py \
-    --env CartPole-v1 \
-    --run A3C \
-    --stop '{"training_iteration": 2}' \
-    --config '{"num_workers": 2, "use_pytorch": true}'
-
-docker run  -e "RAY_USE_XRAY=1" --rm --cpus=12 --shm-size=10G --memory=10G $DOCKER_SHA \
-    python /ray/python/ray/rllib/train.py \
->>>>>>> Limit CPU utilization of jenkins tests.
     --env CartPole-v1 \
     --run A3C \
     --stop '{"training_iteration": 2}' \
