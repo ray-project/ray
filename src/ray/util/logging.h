@@ -26,21 +26,25 @@ namespace ray {
 #define RAY_FATAL 3
 
 #define RAY_LOG_INTERNAL(level) \
-  ::ray::internal::CerrLog(level) << __FILE__ << ":" << __LINE__ << ": "
+  ::ray::internal::RayLog(__FILE__, __LINE__, level)
 
 #define RAY_LOG(level) RAY_LOG_INTERNAL(RAY_##level)
 #define RAY_IGNORE_EXPR(expr) ((void) (expr));
 
-#define RAY_CHECK(condition)                             \
+#define RAY_CHECK(condition)                      \
+  (condition) ? ::ray::internal::NullLog() : ::ray::internal::RayLog( \
+      __FILE__, __LINE__, RAY_FATAL)     \
+      << " Check failed: " #condition " "
+/*#define RAY_CHECK(condition)                             \
   (condition) ? 0 : ::ray::internal::FatalLog(RAY_FATAL) \
                         << __FILE__ << ":" << __LINE__   \
-                        << " Check failed: " #condition " "
+                        << " Check failed: " #condition " "*/
 
 #ifdef NDEBUG
 
 #define RAY_DCHECK(condition) \
   RAY_IGNORE_EXPR(condition)  \
-  while (false) ::ray::internal::NullLog()
+  while (false) ::ray::internal::RayLogBase()
 
 #else
 
@@ -50,10 +54,63 @@ namespace ray {
 
 namespace internal {
 
-class NullLog {
+// To make the logging lib plugable with other logging lib and make 
+// the implementation unawared by the user, RayLog is only a declaration
+// which hide the implementation into logging.cc file.
+// In logging.cc, we can choose different log lib using different macroes.
+class RayLogBase {
  public:
+  virtual ~RayLogBase() {};
+  template<typename T>
+  RayLogBase &operator<<(const T &t) {
+    RAY_IGNORE_EXPR(t);
+    return *this;
+  }
+};
+
+class RayLog : public RayLogBase {
+ public:
+  RayLog(const char *file_name, int line_number, int severity);
+  virtual ~RayLog();
+  template<typename T>
+  RayLogBase &operator<<(const T &t) {
+    if (implement == nullptr) {
+      RAY_IGNORE_EXPR(t);
+    } else {
+      this->stream() << t;
+    }
+    return *this;
+  }
+  static void StartRayLog(const char *appName, int severity_threshold = RAY_ERROR, const char* logDir = "/tmp/");
+  static void ShutDownRayLog();
+  static void *GetImplPointer();
+  static void SetImplPointer(void *pointer);
+ private:
+  std::ostream& stream();
+  const char *file_name_;
+  int line_number_;
+  int severity_;
+  void *implement;
+  static void *static_impl;
+  static int severity_threshold_;
+};
+
+// Clang-tidy isn't smart enough to determine that DCHECK using CerrLog doesn't
+// return so we create a new class to give it a hint.
+class RayFatalLog : public RayLog {
+ public:
+  explicit RayFatalLog(const char *file_name, int line_number)  // NOLINT
+      : RayLog(file_name, line_number, RAY_FATAL) {}            // NOLINT
+  RAY_NORETURN ~RayFatalLog() {
+    std::abort();
+  }
+};
+
+class NullLog : public RayLogBase {
+ public:
+  NullLog() : RayLogBase() {}
   template <class T>
-  NullLog &operator<<(const T &t) {
+  RayLogBase &operator<<(const T &t) {
     RAY_IGNORE_EXPR(t);
     return *this;
   }
@@ -69,15 +126,15 @@ class CerrLog {
     if (has_logged_) {
       std::cerr << std::endl;
     }
-    // This code is duplicated in the FatalLog class.
     if (severity_ == RAY_FATAL) {
-#if defined(_EXECINFO_H) || !defined(_WIN32)
-      void *buffer[255];
-      const int calls = backtrace(buffer, sizeof(buffer) / sizeof(void *));
-      backtrace_symbols_fd(buffer, calls, 1);
-#endif
+      PrintBackTrace();
       std::abort();
     }
+  }
+
+  std::ostream &stream() {
+    has_logged_ = true;
+    return std::cerr;
   }
 
   template <class T>
@@ -92,6 +149,13 @@ class CerrLog {
  protected:
   const int severity_;
   bool has_logged_;
+  void PrintBackTrace() {
+#if defined(_EXECINFO_H) || !defined(_WIN32)
+    void *buffer[255];
+    const int calls = backtrace(buffer, sizeof(buffer) / sizeof(void *));
+    backtrace_symbols_fd(buffer, calls, 1);
+#endif
+  }
 };
 
 // Clang-tidy isn't smart enough to determine that DCHECK using CerrLog doesn't
@@ -104,11 +168,7 @@ class FatalLog : public CerrLog {
   RAY_NORETURN ~FatalLog() {
     if (has_logged_) {
       std::cerr << std::endl;
-#if defined(_EXECINFO_H) || !defined(_WIN32)
-      void *buffer[255];
-      const int calls = backtrace(buffer, sizeof(buffer) / sizeof(void *));
-      backtrace_symbols_fd(buffer, calls, 1);
-#endif
+      PrintBackTrace();
     }
     std::abort();
   }

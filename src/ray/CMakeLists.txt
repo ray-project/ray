@@ -36,6 +36,7 @@ set(RAY_SRCS
   gcs/task_table.cc
   gcs/redis_context.cc
   gcs/asio.cc
+  util/logging.cc
   common/client_connection.cc
   object_manager/object_manager_client_connection.cc
   object_manager/connection_pool.cc
@@ -61,6 +62,20 @@ set(RAY_SRCS
   raylet/raylet.cc
 )
 
+set(RAY_LIB_STATIC_LINK_LIBS ${PLASMA_STATIC_LIB} ${ARROW_STATIC_LIB})
+set(RAY_LIB_DEPENDENCIES gen_gcs_fbs gen_object_manager_fbs gen_node_manager_fbs gen_local_scheduler_fbs ${COMMON_FBS_OUTPUT_FILES})
+
+if(RAY_USE_GLOG)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DRAY_USE_GLOG")
+  set(RAY_LIB_STATIC_LINK_LIBS ${RAY_LIB_STATIC_LINK_LIBS} ${GLOG_STATIC_LIB})
+  set(RAY_LIB_DEPENDENCIES ${RAY_LIB_DEPENDENCIES} glog)
+endif()
+if(RAY_USE_LOG4CPLUS)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DRAY_USE_LOG4CPLUS")
+  set(RAY_LIB_STATIC_LINK_LIBS ${RAY_LIB_STATIC_LINK_LIBS} ${LOG4CPLUS_STATIC_LIB})
+  set(RAY_LIB_DEPENDENCIES ${RAY_LIB_DEPENDENCIES} log4cplus)
+endif()
+
 install(FILES
   api.h
   id.h
@@ -79,6 +94,6 @@ ADD_RAY_LIB(ray
   SOURCES ${RAY_SRCS} ${AE_SRCS} ${HIREDIS_SRCS} ${UTIL_SRCS}
     # TODO: When raylet replaces the old backend, please remove the dependency gen_local_scheduler_fbs.
     # TODO: When remove the included Task.h from table.h, please remove the dependency gen_common_python_fbs.
-    DEPENDENCIES gen_gcs_fbs gen_object_manager_fbs gen_node_manager_fbs gen_local_scheduler_fbs ${COMMON_FBS_OUTPUT_FILES}
+    DEPENDENCIES ${RAY_LIB_DEPENDENCIES}
     SHARED_LINK_LIBS ""
-    STATIC_LINK_LIBS ${PLASMA_STATIC_LIB} ${ARROW_STATIC_LIB})
+    STATIC_LINK_LIBS ${RAY_LIB_STATIC_LINK_LIBS})
