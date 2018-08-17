@@ -1,17 +1,17 @@
 Tune Search Algorithms
 ======================
 
-Tune allows you to use different search algorithms in combination with different trial schedulers. Tune will by default implicitly use the Variant Generation algorithm to create trials.
+Tune provides various hyperparameter search algorithms to efficiently optimize your model. Tune allows you to use different search algorithms in combination with different trial schedulers. Tune will by default implicitly use the Variant Generation algorithm to create trials.
 
-Note that if you **explicitly** specify a Search Algorithm, you will need to pass in the experiment configuration into the Search Algorithm initializer. You can utilize these search algorithms as follows:
+.. important:: If you **explicitly** specify a Search Algorithm, you will need to pass in the experiment configuration into the Search Algorithm initializer.
+
+You can utilize these search algorithms as follows:
 
 .. code-block:: python
 
     run_experiments(search_alg=SearchAlgorithm(experiments, ... ))
 
 
-Search Algorithms
------------------
 Currently, Tune offers the following search algorithms:
 
 .. contents::
@@ -20,7 +20,7 @@ Currently, Tune offers the following search algorithms:
 
 
 Variant Generation (Grid Search/Random Search)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+----------------------------------------------
 
 By default, Tune uses the `Variant Generation process <tune-usage.html#tune-search-space-default>`__ to create and queue trials. This supports random search and grid search as specified by the ``config`` parameter of the Experiment.
 
@@ -39,7 +39,7 @@ By default, Tune uses the `Variant Generation process <tune-usage.html#tune-sear
 
 
 HyperOpt Search (Tree-structured Parzen Estimators)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+---------------------------------------------------
 
 The ``HyperOptSearch`` is a SearchAlgorithm that is backed by `HyperOpt <http://hyperopt.github.io/hyperopt>`__ to perform sequential model-based hyperparameter optimization.
 In order to use this search algorithm, you will need to install HyperOpt via the following command:
@@ -55,9 +55,6 @@ This algorithm would require using the HyperOpt default search space. You can us
     run_experiments(search_alg=HyperOptSearch(experiment_config, hyperopt_space, ... ))
 
 An example of this can be found in `hyperopt_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperopt_example.py>`__.
-
-.. note::
-    The HyperOptScheduler takes an *increasing* metric in the reward attribute.
 
 .. autoclass:: ray.tune.suggest.HyperOptSearch
     :show-inheritance:
