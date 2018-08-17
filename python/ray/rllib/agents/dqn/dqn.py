@@ -18,7 +18,7 @@ from ray.tune.trial import Resources
 OPTIMIZER_SHARED_CONFIGS = [
     "buffer_size", "prioritized_replay", "prioritized_replay_alpha",
     "prioritized_replay_beta", "prioritized_replay_eps", "sample_batch_size",
-    "train_batch_size", "learning_starts", "clip_rewards"
+    "train_batch_size", "learning_starts"
 ]
 
 DEFAULT_CONFIG = with_common_config({
@@ -61,8 +61,6 @@ DEFAULT_CONFIG = with_common_config({
     "prioritized_replay_beta": 0.4,
     # Epsilon to add to the TD errors when updating priorities.
     "prioritized_replay_eps": 1e-6,
-    # Whether to clip rewards to [-1, 1] prior to adding to the replay buffer.
-    "clip_rewards": True,
     # Whether to LZ4 compress observations
     "compress_observations": True,
 

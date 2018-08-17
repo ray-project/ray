@@ -34,6 +34,7 @@ class SyncSampler(object):
                  policies,
                  policy_mapping_fn,
                  obs_filters,
+                 clip_rewards,
                  num_local_steps,
                  horizon=None,
                  pack=False,
@@ -46,8 +47,8 @@ class SyncSampler(object):
         self._obs_filters = obs_filters
         self.rollout_provider = _env_runner(
             self.async_vector_env, self.policies, self.policy_mapping_fn,
-            self.num_local_steps, self.horizon, self._obs_filters, pack,
-            tf_sess)
+            self.num_local_steps, self.horizon, self._obs_filters,
+            clip_rewards, pack, tf_sess)
         self.metrics_queue = queue.Queue()
 
     def get_data(self):
@@ -79,6 +80,7 @@ class AsyncSampler(threading.Thread):
                  policies,
                  policy_mapping_fn,
                  obs_filters,
+                 clip_rewards,
                  num_local_steps,
                  horizon=None,
                  pack=False,
@@ -95,6 +97,7 @@ class AsyncSampler(threading.Thread):
         self.policies = policies
         self.policy_mapping_fn = policy_mapping_fn
         self._obs_filters = obs_filters
+        self.clip_rewards = clip_rewards
         self.daemon = True
         self.pack = pack
         self.tf_sess = tf_sess
@@ -109,8 +112,8 @@ class AsyncSampler(threading.Thread):
     def _run(self):
         rollout_provider = _env_runner(
             self.async_vector_env, self.policies, self.policy_mapping_fn,
-            self.num_local_steps, self.horizon, self._obs_filters, self.pack,
-            self.tf_sess)
+            self.num_local_steps, self.horizon, self._obs_filters,
+            self.clip_rewards, self.pack, self.tf_sess)
         while True:
             # The timeout variable exists because apparently, if one worker
             # dies, the other workers won't die with it, unless the timeout is
@@ -160,6 +163,7 @@ def _env_runner(async_vector_env,
                 num_local_steps,
                 horizon,
                 obs_filters,
+                clip_rewards,
                 pack,
                 tf_sess=None):
     """This implements the common experience collection logic.
@@ -175,6 +179,7 @@ def _env_runner(async_vector_env,
         horizon (int): Horizon of the episode.
         obs_filters (dict): Map of policy id to filter used to process
             observations for the policy.
+        clip_rewards (bool): Whether to clip rewards before postprocessing.
         pack (bool): Whether to pack multiple episodes into each batch. This
             guarantees batches will be exactly `num_local_steps` in size.
         tf_sess (Session|None): Optional tensorflow session to use for batching
@@ -201,7 +206,7 @@ def _env_runner(async_vector_env,
         if batch_builder_pool:
             return batch_builder_pool.pop()
         else:
-            return MultiAgentSampleBatchBuilder(policies)
+            return MultiAgentSampleBatchBuilder(policies, clip_rewards)
 
     def new_episode():
         return _MultiAgentEpisode(policies, policy_mapping_fn,

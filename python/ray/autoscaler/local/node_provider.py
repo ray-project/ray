@@ -30,7 +30,8 @@ class ClusterState(object):
                         "state": "terminated",
                     }
                 else:
-                    assert workers[worker_ip][TAG_RAY_NODE_TYPE] == "worker"
+                    assert workers[worker_ip]["tags"][
+                        TAG_RAY_NODE_TYPE] == "worker"
             if provider_config["head_ip"] not in workers:
                 workers[provider_config["head_ip"]] = {
                     "tags": {
@@ -39,7 +40,6 @@ class ClusterState(object):
                     "state": "terminated",
                 }
             else:
-                print(workers)
                 assert workers[provider_config["head_ip"]]["tags"][
                     TAG_RAY_NODE_TYPE] == "head"
             assert len(workers) == len(provider_config["worker_ips"]) + 1

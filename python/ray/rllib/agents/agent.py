@@ -31,6 +31,8 @@ COMMON_CONFIG = {
     "sample_async": False,
     # Which observation filter to apply to the observation
     "observation_filter": "NoFilter",
+    # Whether to clip rewards prior to experience postprocessing
+    "clip_rewards": True,
     # Whether to use rllib or deepmind preprocessors
     "preprocessor_pref": "deepmind",
     # Arguments to pass to the env creator
@@ -136,6 +138,7 @@ class Agent(Trainable):
             compress_observations=config["compress_observations"],
             num_envs=config["num_envs_per_worker"],
             observation_filter=config["observation_filter"],
+            clip_rewards=config["clip_rewards"],
             env_config=config["env_config"],
             model_config=config["model"],
             policy_config=config,

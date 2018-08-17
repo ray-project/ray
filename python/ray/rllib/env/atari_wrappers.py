@@ -217,6 +217,6 @@ def wrap_deepmind(env, dim=84):
         env = FireResetEnv(env)
     env = WarpFrame(env, dim)
     # env = ScaledFloatFrame(env)  # TODO: use for dqn?
-    # env = ClipRewardEnv(env)  # reward clipping is handled by DQN replay
+    # env = ClipRewardEnv(env)  # reward clipping is handled by policy eval
     env = FrameStack(env, 4)
     return env
