@@ -109,6 +109,11 @@ class HyperOptSearch(SuggestionAlgorithm):
                           result=None,
                           error=False,
                           early_terminated=False):
+        """Passes the result to HyperOpt unless early terminated or errored.
+
+        The result is internally negated when interacting with HyperOpt
+        so that HyperOpt can "maximize" this value, as it minimizes on default.
+        """
         ho_trial = self._get_hyperopt_trial(trial_id)
         if ho_trial is None:
             return
