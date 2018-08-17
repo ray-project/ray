@@ -31,6 +31,9 @@ public class RunManager {
 
   public static final int INT16_MAX = 32767;
 
+  private static final DateTimeFormatter DATE_TIME_FORMATTER =
+      DateTimeFormatter.ofPattern("Y-m-d_H-M-S");
+
   private RayParameters params;
 
   private PathConfig paths;
@@ -41,7 +44,6 @@ public class RunManager {
 
   private Random random = new Random();
 
-  private DateTimeFormatter logFileDateTimeFormatter = DateTimeFormatter.ofPattern("Y-m-d_H-M-S");
 
   public RunManager(RayParameters params, PathConfig paths, ConfigReader configReader) {
     this.params = params;
@@ -137,7 +139,7 @@ public class RunManager {
 
     String cmd = buildJavaProcessCommand(pt, mainClass, additonalClassPaths, additionalConfigs,
         additionalJvmArgs, ip, redisAddr, agentlibAddr);
-    return startProcess(cmd.split(" "), null, pt, null, redisAddr, ip, redirect, cleanup);
+    return startProcess(cmd.split(" "), "", pt, null, redisAddr, ip, redirect, cleanup);
   }
 
   private String buildJavaProcessCommand(
@@ -187,7 +189,7 @@ public class RunManager {
 
     if (redirect) {
       int logId = random.nextInt(10000);
-      String date = logFileDateTimeFormatter.format(LocalDateTime.now());
+      String date = DATE_TIME_FORMATTER.format(LocalDateTime.now());
       String stdout = String.format("%s/%s-%s-%05d.out", params.log_dir, name, date, logId);
       String stderr = String.format("%s/%s-%s-%05d.err", params.log_dir, name, date, logId);
       builder.redirectOutput(new File(stdout));
