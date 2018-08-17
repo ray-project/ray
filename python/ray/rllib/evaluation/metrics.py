@@ -6,6 +6,7 @@ import numpy as np
 import collections
 
 import ray
+from ray.rllib.evaluation.sample_batch import DEFAULT_POLICY_ID
 
 
 def collect_metrics(local_evaluator, remote_evaluators=[]):
@@ -35,7 +36,8 @@ def collect_metrics(local_evaluator, remote_evaluators=[]):
     avg_length = np.mean(episode_lengths)
 
     for policy_id, rewards in policy_rewards.copy().items():
-        policy_rewards[policy_id] = np.mean(rewards)
+        if policy_id != DEFAULT_POLICY_ID:
+            policy_rewards[policy_id] = np.mean(rewards)
 
     return dict(
         episode_reward_max=max_reward,
