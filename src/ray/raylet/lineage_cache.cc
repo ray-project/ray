@@ -194,6 +194,7 @@ void LineageCache::AddUncommittedLineage(const TaskID &task_id,
   // if the new entry has an equal or lower GCS status than the current entry
   // in lineage_to. This also prevents us from traversing the same node twice.
   if (lineage_.SetEntry(entry->TaskData(), entry->GetStatus())) {
+    SubscribeTask(task_id);
     for (const auto &parent_id : parent_ids) {
       children_[parent_id].insert(task_id);
       AddUncommittedLineage(parent_id, uncommitted_lineage);
@@ -205,25 +206,17 @@ bool LineageCache::AddWaitingTask(const Task &task, const Lineage &uncommitted_l
   auto task_id = task.GetTaskSpecification().TaskId();
   RAY_LOG(DEBUG) << "add waiting task " << task_id << " on " << client_id_;
 
-  auto entry = lineage_.GetEntry(task_id);
-  if (entry) {
-    if (entry->GetStatus() == GcsStatus::UNCOMMITTED_REMOTE) {
-      // The task was previously remote, so we may have been subscribed to it.
-      // Unsubscribe since we are now responsible for committing the task.
-      UnsubscribeTask(task_id);
-    }
-  }
-
   // Merge the uncommitted lineage into the lineage cache.
   AddUncommittedLineage(task_id, uncommitted_lineage);
 
   // Add the submitted task to the lineage cache as UNCOMMITTED_WAITING. It
   // should be marked as UNCOMMITTED_READY once the task starts execution.
   auto added = lineage_.SetEntry(task, GcsStatus::UNCOMMITTED_WAITING);
-  entry = lineage_.GetEntry(task_id);
+  auto entry = lineage_.GetEntry(task_id);
   for (const auto &parent_id : entry->GetParentTaskIds()) {
     children_[parent_id].insert(task_id);
   }
+  UnsubscribeTask(task_id);
   return added;
 }
 

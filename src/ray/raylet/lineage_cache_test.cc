@@ -302,6 +302,46 @@ TEST_F(LineageCacheTest, TestWritebackPartiallyReady) {
   ASSERT_EQ(lineage_cache_.NumEntries(), 0);
 }
 
+TEST_F(LineageCacheTest, TestEvictUncommittedLineage) {
+  // Create two independent tasks, task1 and task2, and a dependent task
+  // that depends on both tasks.
+  size_t num_tasks_flushed = 0;
+  auto task1 = ExampleTask({}, 1);
+  auto task2 = ExampleTask({task1.GetTaskSpecification().ReturnId(0)}, 1);
+  auto task3 = ExampleTask({task2.GetTaskSpecification().ReturnId(0)}, 1);
+
+  Lineage uncommitted_lineage;
+  uncommitted_lineage.SetEntry(task1, GcsStatus::UNCOMMITTED_REMOTE);
+  uncommitted_lineage.SetEntry(task2, GcsStatus::UNCOMMITTED_REMOTE);
+  uncommitted_lineage.SetEntry(task3, GcsStatus::UNCOMMITTED_REMOTE);
+  ASSERT_TRUE(lineage_cache_.AddWaitingTask(task3, uncommitted_lineage));
+  ASSERT_EQ(lineage_cache_.NumEntries(), 3);
+
+  // Flush one of the independent tasks.
+  ASSERT_TRUE(lineage_cache_.AddReadyTask(task3));
+  num_tasks_flushed++;
+  CheckFlush(lineage_cache_, mock_gcs_, num_tasks_flushed);
+  // Flush acknowledgements. The lineage cache should receive the commit for
+  // the first task.
+  mock_gcs_.Flush();
+  ASSERT_EQ(lineage_cache_.GetUncommittedLineage(task3.GetTaskSpecification().TaskId(), ClientID::nil()).GetEntries().size(), 3);
+  ASSERT_EQ(lineage_cache_.NumEntries(), 3);
+
+  // Simulate executing the task on a remote node and adding it to the GCS.
+  auto task_data = std::make_shared<protocol::TaskT>();
+  RAY_CHECK_OK(
+      mock_gcs_.RemoteAdd(task2.GetTaskSpecification().TaskId(), task_data));
+  mock_gcs_.Flush();
+  ASSERT_EQ(lineage_cache_.GetUncommittedLineage(task3.GetTaskSpecification().TaskId(), ClientID::nil()).GetEntries().size(), 3);
+  ASSERT_EQ(lineage_cache_.NumEntries(), 3);
+
+  // Simulate executing the task on a remote node and adding it to the GCS.
+  RAY_CHECK_OK(
+      mock_gcs_.RemoteAdd(task1.GetTaskSpecification().TaskId(), task_data));
+  mock_gcs_.Flush();
+  ASSERT_EQ(lineage_cache_.NumEntries(), 0);
+}
+
 TEST_F(LineageCacheTest, TestForwardTasksRoundTrip) {
   // Insert a chain of dependent tasks.
   uint64_t lineage_size = max_lineage_size_ + 1;
