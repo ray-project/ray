@@ -724,8 +724,8 @@ class Worker(object):
 
         Args:
             function (Callable): The function to run on all of the workers. It
-                should not take any arguments. If it returns anything, its
-                return values will not be used.
+                takes only one argument, a worker info dict. If it returns
+                anything, its return values will not be used.
             run_on_other_drivers: The boolean that indicates whether we want to
                 run this funtion on other drivers. One case is we may need to
                 share objects across drivers.
@@ -1540,8 +1540,8 @@ def _init(address_info=None,
             provided if start_ray_local is True.
         num_local_schedulers (int): The number of local schedulers to start.
             This is only provided if start_ray_local is True.
-        object_store_memory: The amount of memory (in bytes) to start the
-            object store with.
+        object_store_memory: The maximum amount of memory (in bytes) to
+            allow the object store to use.
         driver_mode (bool): The mode in which to start the driver. This should
             be one of ray.SCRIPT_MODE, ray.LOCAL_MODE, and ray.SILENT_MODE.
         redirect_worker_output: True if the stdout and stderr of worker

@@ -16,7 +16,7 @@ using ::testing::_;
 class MockObjectManager : public ObjectManagerInterface {
  public:
   MOCK_METHOD1(Pull, ray::Status(const ObjectID &object_id));
-  MOCK_METHOD1(Cancel, ray::Status(const ObjectID &object_id));
+  MOCK_METHOD1(CancelPull, void(const ObjectID &object_id));
 };
 
 class MockReconstructionPolicy : public ReconstructionPolicyInterface {
@@ -119,7 +119,7 @@ TEST_F(TaskDependencyManagerTest, TestSimpleTask) {
 
   // All arguments should be canceled as they become available locally.
   for (const auto &argument_id : arguments) {
-    EXPECT_CALL(object_manager_mock_, Cancel(argument_id));
+    EXPECT_CALL(object_manager_mock_, CancelPull(argument_id));
     EXPECT_CALL(reconstruction_policy_mock_, Cancel(argument_id));
   }
   // For each argument except the last, tell the task dependency manager that
@@ -156,7 +156,7 @@ TEST_F(TaskDependencyManagerTest, TestDuplicateSubscribe) {
 
   // All arguments should be canceled as they become available locally.
   for (const auto &argument_id : arguments) {
-    EXPECT_CALL(object_manager_mock_, Cancel(argument_id));
+    EXPECT_CALL(object_manager_mock_, CancelPull(argument_id));
     EXPECT_CALL(reconstruction_policy_mock_, Cancel(argument_id));
   }
   // For each argument except the last, tell the task dependency manager that
@@ -191,7 +191,7 @@ TEST_F(TaskDependencyManagerTest, TestMultipleTasks) {
   }
 
   // Tell the task dependency manager that the object is local.
-  EXPECT_CALL(object_manager_mock_, Cancel(argument_id));
+  EXPECT_CALL(object_manager_mock_, CancelPull(argument_id));
   EXPECT_CALL(reconstruction_policy_mock_, Cancel(argument_id));
   auto ready_task_ids = task_dependency_manager_.HandleObjectLocal(argument_id);
   // Check that all tasks are now ready to run.
@@ -213,11 +213,11 @@ TEST_F(TaskDependencyManagerTest, TestTaskChain) {
   // locally queued task.
   EXPECT_CALL(object_manager_mock_, Pull(_)).Times(0);
   EXPECT_CALL(reconstruction_policy_mock_, ListenAndMaybeReconstruct(_)).Times(0);
-  EXPECT_CALL(object_manager_mock_, Cancel(_)).Times(0);
+  EXPECT_CALL(object_manager_mock_, CancelPull(_)).Times(0);
   EXPECT_CALL(reconstruction_policy_mock_, Cancel(_)).Times(0);
   for (const auto &task : tasks) {
     // Subscribe to each of the tasks' arguments.
-    auto arguments = task.GetDependencies();
+    const auto &arguments = task.GetDependencies();
     bool ready = task_dependency_manager_.SubscribeDependencies(
         task.GetTaskSpecification().TaskId(), arguments);
     if (i < num_ready_tasks) {
@@ -279,7 +279,7 @@ TEST_F(TaskDependencyManagerTest, TestDependentPut) {
 
   // The put object should be considered local as soon as the task that creates
   // it is pending execution.
-  EXPECT_CALL(object_manager_mock_, Cancel(put_id));
+  EXPECT_CALL(object_manager_mock_, CancelPull(put_id));
   EXPECT_CALL(reconstruction_policy_mock_, Cancel(put_id));
   EXPECT_CALL(gcs_mock_, Add(_, task1.GetTaskSpecification().TaskId(), _, _));
   task_dependency_manager_.TaskPending(task1);
@@ -291,7 +291,7 @@ TEST_F(TaskDependencyManagerTest, TestTaskForwarding) {
   auto tasks = MakeTaskChain(num_tasks, {}, 1);
   for (const auto &task : tasks) {
     // Subscribe to each of the tasks' arguments.
-    auto arguments = task.GetDependencies();
+    const auto &arguments = task.GetDependencies();
     static_cast<void>(task_dependency_manager_.SubscribeDependencies(
         task.GetTaskSpecification().TaskId(), arguments));
     EXPECT_CALL(gcs_mock_, Add(_, task.GetTaskSpecification().TaskId(), _, _));
@@ -312,7 +312,7 @@ TEST_F(TaskDependencyManagerTest, TestTaskForwarding) {
 
   // Simulate the task executing on a remote node and its return value
   // appearing locally.
-  EXPECT_CALL(object_manager_mock_, Cancel(return_id));
+  EXPECT_CALL(object_manager_mock_, CancelPull(return_id));
   EXPECT_CALL(reconstruction_policy_mock_, Cancel(return_id));
   auto ready_tasks = task_dependency_manager_.HandleObjectLocal(return_id);
   // Check that the task that we kept is now ready to run.
@@ -341,7 +341,7 @@ TEST_F(TaskDependencyManagerTest, TestEviction) {
   // Tell the task dependency manager that each of the arguments is now
   // available.
   for (const auto &argument_id : arguments) {
-    EXPECT_CALL(object_manager_mock_, Cancel(argument_id));
+    EXPECT_CALL(object_manager_mock_, CancelPull(argument_id));
     EXPECT_CALL(reconstruction_policy_mock_, Cancel(argument_id));
   }
   for (size_t i = 0; i < arguments.size(); i++) {
@@ -379,7 +379,7 @@ TEST_F(TaskDependencyManagerTest, TestEviction) {
   // Tell the task dependency manager that each of the arguments is available
   // again.
   for (const auto &argument_id : arguments) {
-    EXPECT_CALL(object_manager_mock_, Cancel(argument_id));
+    EXPECT_CALL(object_manager_mock_, CancelPull(argument_id));
     EXPECT_CALL(reconstruction_policy_mock_, Cancel(argument_id));
   }
   for (size_t i = 0; i < arguments.size(); i++) {

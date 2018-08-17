@@ -41,11 +41,18 @@ class MonitorTest(unittest.TestCase):
             if (0, 1) != summary_start[:2]:
                 success.value = False
 
+            max_attempts_before_failing = 100
+
             # Two new objects.
             ray.get(ray.put(1111))
             ray.get(ray.put(1111))
-            if (2, 1, summary_start[2]) != StateSummary():
-                success.value = False
+            attempts = 0
+            while (2, 1, summary_start[2]) != StateSummary():
+                time.sleep(0.1)
+                attempts += 1
+                if attempts == max_attempts_before_failing:
+                    success.value = False
+                    break
 
             @ray.remote
             def f():
@@ -53,12 +60,22 @@ class MonitorTest(unittest.TestCase):
                 return 1111  # A returned object as well.
 
             # 1 new function.
-            if (2, 1, summary_start[2] + 1) != StateSummary():
-                success.value = False
+            attempts = 0
+            while (2, 1, summary_start[2] + 1) != StateSummary():
+                time.sleep(0.1)
+                attempts += 1
+                if attempts == max_attempts_before_failing:
+                    success.value = False
+                    break
 
             ray.get(f.remote())
-            if (4, 2, summary_start[2] + 1) != StateSummary():
-                success.value = False
+            attempts = 0
+            while (4, 2, summary_start[2] + 1) != StateSummary():
+                time.sleep(0.1)
+                attempts += 1
+                if attempts == max_attempts_before_failing:
+                    success.value = False
+                    break
 
             ray.shutdown()
 
@@ -67,7 +84,7 @@ class MonitorTest(unittest.TestCase):
         driver.start()
         # Wait for client to exit.
         driver.join()
-        time.sleep(5)
+        time.sleep(3)
 
         # Just make sure Driver() is run and succeeded. Note(rkn), if the below
         # assertion starts failing, then the issue may be that the summary
@@ -85,13 +102,16 @@ class MonitorTest(unittest.TestCase):
         subprocess.Popen(["ray", "stop"]).wait()
 
     @unittest.skipIf(
-        os.environ.get('RAY_USE_NEW_GCS', False),
+        os.environ.get("RAY_USE_NEW_GCS", False),
         "Failing with the new GCS API.")
     def testCleanupOnDriverExitSingleRedisShard(self):
         self._testCleanupOnDriverExit(num_redis_shards=1)
 
     @unittest.skipIf(
-        os.environ.get('RAY_USE_NEW_GCS', False),
+        os.environ.get("RAY_USE_XRAY") == "1",
+        "This test does not work with xray yet.")
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_NEW_GCS", False),
         "Hanging with the new GCS API.")
     def testCleanupOnDriverExitManyRedisShards(self):
         self._testCleanupOnDriverExit(num_redis_shards=5)

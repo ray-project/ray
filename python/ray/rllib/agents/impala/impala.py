@@ -37,7 +37,14 @@ DEFAULT_CONFIG = with_common_config({
 
     # Learning params.
     "grad_clip": 40.0,
-    "lr": 0.0001,
+    # either "adam" or "rmsprop"
+    "opt_type": "adam",
+    "lr": 0.0005,
+    # rmsprop considered
+    "decay": 0.99,
+    "momentum": 0.0,
+    "epsilon": 0.1,
+    # balancing the three losses
     "vf_loss_coeff": 0.5,
     "entropy_coeff": -0.01,
 

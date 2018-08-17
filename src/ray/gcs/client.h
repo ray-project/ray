@@ -60,6 +60,7 @@ class RAY_EXPORT AsyncGcsClient {
   ClientTable &client_table();
   HeartbeatTable &heartbeat_table();
   ErrorTable &error_table();
+  DriverTable &driver_table();
   ProfileTable &profile_table();
 
   // We also need something to export generic code to run on workers from the
@@ -92,6 +93,7 @@ class RAY_EXPORT AsyncGcsClient {
   std::vector<std::unique_ptr<RedisAsioClient>> shard_asio_subscribe_clients_;
   // The following context writes everything to the primary shard
   std::shared_ptr<RedisContext> primary_context_;
+  std::unique_ptr<DriverTable> driver_table_;
   std::unique_ptr<RedisAsioClient> asio_async_auxiliary_client_;
   std::unique_ptr<RedisAsioClient> asio_subscribe_auxiliary_client_;
   CommandType command_type_;

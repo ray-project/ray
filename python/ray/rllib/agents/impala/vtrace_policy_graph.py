@@ -184,7 +184,12 @@ class VTracePolicyGraph(TFPolicyGraph):
         self.sess.run(tf.global_variables_initializer())
 
     def optimizer(self):
-        return tf.train.AdamOptimizer(self.config["lr"])
+        if self.config["opt_type"] == "adam":
+            return tf.train.AdamOptimizer(self.config["lr"])
+        else:
+            return tf.train.RMSPropOptimizer(
+                self.config["lr"], self.config["decay"],
+                self.config["momentum"], self.config["epsilon"])
 
     def gradients(self, optimizer):
         grads = tf.gradients(self.loss.total_loss, self.var_list)

@@ -16,6 +16,7 @@ import org.ray.core.model.RunMode;
 import org.ray.runner.RunInfo.ProcessType;
 import org.ray.spi.PathConfig;
 import org.ray.spi.model.AddressInfo;
+import org.ray.util.ResourceUtil;
 import org.ray.util.StringUtil;
 import org.ray.util.config.ConfigReader;
 import org.ray.util.logger.RayLog;
@@ -350,10 +351,13 @@ public class RunManager {
       startObjectStore(0, info, params.working_directory + "/store",
           params.redis_address, params.node_ip_address, params.redirect, params.cleanup);
 
+      Map<String, Double> staticResources =
+          ResourceUtil.getResourcesMapFromString(params.static_resources);
+
       //Start raylet
-      startRaylet(storeName, info, params.num_cpus[0],params.num_gpus[0],
-          params.num_workers,params.working_directory + "/raylet",
-          params.redis_address, params.node_ip_address, params.redirect, params.cleanup);
+      startRaylet(storeName, info, params.num_workers,
+          params.working_directory + "/raylet", params.redis_address,
+          params.node_ip_address, params.redirect, staticResources, params.cleanup);
 
       runInfo.localStores.add(info);
     } else {
@@ -677,10 +681,9 @@ public class RunManager {
     }
   }
 
-  private void startRaylet(String storeName, AddressInfo info, int numCpus,
-                           int numGpus, int numWorkers, String workDir,
-                           String redisAddress, String ip, boolean redirect,
-                           boolean cleanup) {
+  private void startRaylet(String storeName, AddressInfo info, int numWorkers,
+                           String workDir, String redisAddress, String ip, boolean redirect,
+                           Map<String, Double> staticResources, boolean cleanup) {
 
     int rpcPort = params.raylet_port;
     String rayletSocketName = "/tmp/raylet" + rpcPort;
@@ -695,8 +698,8 @@ public class RunManager {
     assert (sep != -1);
     String gcsIp = redisAddress.substring(0, sep);
     String gcsPort = redisAddress.substring(sep + 1);
-    
-    String resourceArgument = "GPU," + numGpus + ",CPU," + numCpus;
+
+    String resourceArgument = ResourceUtil.getResourcesStringFromMap(staticResources);
 
     String[] cmds = new String[]{filePath, rayletSocketName, storeName, ip, gcsIp,
                                  gcsPort, "" + numWorkers, workerCmd, resourceArgument};

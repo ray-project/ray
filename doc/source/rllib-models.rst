@@ -125,3 +125,24 @@ Then, you can create an agent with your custom policy graph by:
     agent = DDPGAgent(...)
 
 That's it. In this example we overrode existing methods of the existing DDPG policy graph, i.e., `_build_q_network`, `_build_p_network`, `_build_action_network`, `_build_actor_critic_loss`, but you can also replace the entire graph class entirely.
+
+Model-Based Rollouts
+--------------------
+
+With a custom policy graph, you can also perform model-based rollouts and optionally incorporate the results of those rollouts as training data. For example, suppose you wanted to extend PGPolicyGraph for model-based rollouts. This involves overriding the ``compute_actions`` method of that policy graph:
+
+.. code-block:: python
+
+        class ModelBasedPolicyGraph(PGPolicyGraph):
+             def compute_actions(self,
+                                 obs_batch,
+                                 state_batches,
+                                 is_training=False,
+                                 episodes=None):
+                # compute a batch of actions based on the current obs_batch
+                # and state of each episode (i.e., for multiagent). You can do
+                # whatever is needed here, e.g., MCTS rollouts.
+                return action_batch
+
+
+If you want take this rollouts data and append it to the sample batch, use the ``add_extra_batch()`` method of the `episode objects <https://github.com/ray-project/ray/blob/master/python/ray/rllib/evaluation/episode.py>`__ passed in. For an example of this, see the ``testReturningModelBasedRolloutsData`` `unit test <https://github.com/ray-project/ray/blob/master/python/ray/rllib/test/test_multi_agent_env.py>`__.

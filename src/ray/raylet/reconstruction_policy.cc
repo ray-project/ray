@@ -9,13 +9,15 @@ ReconstructionPolicy::ReconstructionPolicy(
     std::function<void(const TaskID &)> reconstruction_handler,
     int64_t initial_reconstruction_timeout_ms, const ClientID &client_id,
     gcs::PubsubInterface<TaskID> &task_lease_pubsub,
-    std::shared_ptr<ObjectDirectoryInterface> object_directory)
+    std::shared_ptr<ObjectDirectoryInterface> object_directory,
+    gcs::LogInterface<TaskID, TaskReconstructionData> &task_reconstruction_log)
     : io_service_(io_service),
       reconstruction_handler_(reconstruction_handler),
       initial_reconstruction_timeout_ms_(initial_reconstruction_timeout_ms),
       client_id_(client_id),
       task_lease_pubsub_(task_lease_pubsub),
-      object_directory_(std::move(object_directory)) {}
+      object_directory_(std::move(object_directory)),
+      task_reconstruction_log_(task_reconstruction_log) {}
 
 void ReconstructionPolicy::SetTaskTimeout(
     std::unordered_map<TaskID, ReconstructionTask>::iterator task_it,
@@ -59,6 +61,23 @@ void ReconstructionPolicy::SetTaskTimeout(
       });
 }
 
+void ReconstructionPolicy::HandleReconstructionLogAppend(const TaskID &task_id,
+                                                         bool success) {
+  auto it = listening_tasks_.find(task_id);
+  if (it == listening_tasks_.end()) {
+    return;
+  }
+
+  // Reset the timer to wait for task lease notifications again. NOTE(swang):
+  // The timer should already be set here, but we extend it to give some time
+  // for the reconstructed task to propagate notifications.
+  SetTaskTimeout(it, initial_reconstruction_timeout_ms_);
+
+  if (success) {
+    reconstruction_handler_(task_id);
+  }
+}
+
 void ReconstructionPolicy::AttemptReconstruction(const TaskID &task_id,
                                                  const ObjectID &required_object_id,
                                                  int reconstruction_attempt) {
@@ -81,17 +100,32 @@ void ReconstructionPolicy::AttemptReconstruction(const TaskID &task_id,
     // reconstruction_attempt many times.
     return;
   }
-  // Increment the number of times reconstruction has been attempted. This is
-  // used to suppress duplicate reconstructions of the same task.
-  it->second.reconstruction_attempt++;
 
-  // Reset the timer to wait for task lease notifications again. NOTE(swang):
-  // The timer should already be set here, but we extend it to give some time
-  // for the reconstructed task to propagate notifications.
-  SetTaskTimeout(it, initial_reconstruction_timeout_ms_);
-  // TODO(swang): Suppress simultaneous attempts to reconstruct the task using
-  // the task reconstruction log.
-  reconstruction_handler_(task_id);
+  // Attempt to reconstruct the task by inserting an entry into the task
+  // reconstruction log. This will fail if another node has already inserted
+  // an entry for this reconstruction.
+  auto reconstruction_entry = std::make_shared<TaskReconstructionDataT>();
+  reconstruction_entry->num_reconstructions = reconstruction_attempt;
+  reconstruction_entry->node_manager_id = client_id_.binary();
+  RAY_CHECK_OK(task_reconstruction_log_.AppendAt(
+      JobID::nil(), task_id, reconstruction_entry,
+      /*success_callback=*/
+      [this](gcs::AsyncGcsClient *client, const TaskID &task_id,
+             const TaskReconstructionDataT &data) {
+        HandleReconstructionLogAppend(task_id, /*success=*/true);
+      },
+      /*failure_callback=*/
+      [this](gcs::AsyncGcsClient *client, const TaskID &task_id,
+             const TaskReconstructionDataT &data) {
+        HandleReconstructionLogAppend(task_id, /*success=*/false);
+      },
+      reconstruction_attempt));
+
+  // Increment the number of times reconstruction has been attempted. This is
+  // used to suppress duplicate reconstructions of the same task. If
+  // reconstruction is attempted again, the next attempt will try to insert a
+  // task reconstruction entry at the next index in the log.
+  it->second.reconstruction_attempt++;
 }
 
 void ReconstructionPolicy::HandleTaskLeaseExpired(const TaskID &task_id) {
@@ -160,12 +194,12 @@ void ReconstructionPolicy::Cancel(const ObjectID &object_id) {
   // If there are no more needed objects created by this task, stop listening
   // for notifications.
   if (it->second.created_objects.empty()) {
-    listening_tasks_.erase(it);
     // Cancel notifications for the task lease if we were subscribed to them.
     if (it->second.subscribed) {
       RAY_CHECK_OK(
           task_lease_pubsub_.CancelNotifications(JobID::nil(), task_id, client_id_));
     }
+    listening_tasks_.erase(it);
   }
 }
 

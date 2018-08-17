@@ -103,6 +103,7 @@ AsyncGcsClient::AsyncGcsClient(const std::string &address, int port, const Clien
 
   client_table_.reset(new ClientTable({primary_context_}, this, client_id));
   error_table_.reset(new ErrorTable({primary_context_}, this));
+  driver_table_.reset(new DriverTable({primary_context_}, this));
   // Tables below would be sharded.
   object_table_.reset(new ObjectTable(shard_contexts_, this, command_type));
   actor_table_.reset(new ActorTable(shard_contexts_, this));
@@ -184,6 +185,8 @@ ClassTable &AsyncGcsClient::class_table() { return *class_table_; }
 HeartbeatTable &AsyncGcsClient::heartbeat_table() { return *heartbeat_table_; }
 
 ErrorTable &AsyncGcsClient::error_table() { return *error_table_; }
+
+DriverTable &AsyncGcsClient::driver_table() { return *driver_table_; }
 
 ProfileTable &AsyncGcsClient::profile_table() { return *profile_table_; }
 

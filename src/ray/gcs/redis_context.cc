@@ -224,6 +224,24 @@ Status RedisContext::RunAsync(const std::string &command, const UniqueID &id,
   return Status::OK();
 }
 
+Status RedisContext::RunArgvAsync(const std::vector<std::string> &args) {
+  // Build the arguments.
+  std::vector<const char *> argv;
+  std::vector<size_t> argc;
+  for (size_t i = 0; i < args.size(); ++i) {
+    argv.push_back(args[i].data());
+    argc.push_back(args[i].size());
+  }
+  // Run the Redis command.
+  int status;
+  status = redisAsyncCommandArgv(async_context_, nullptr, nullptr, args.size(),
+                                 argv.data(), argc.data());
+  if (status == REDIS_ERR) {
+    return Status::RedisError(std::string(async_context_->errstr));
+  }
+  return Status::OK();
+}
+
 Status RedisContext::SubscribeAsync(const ClientID &client_id,
                                     const TablePubsub pubsub_channel,
                                     const RedisCallback &redisCallback,

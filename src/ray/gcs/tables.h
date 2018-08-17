@@ -50,6 +50,20 @@ class PubsubInterface {
   virtual ~PubsubInterface(){};
 };
 
+template <typename ID, typename Data>
+class LogInterface {
+ public:
+  using DataT = typename Data::NativeTableType;
+  using WriteCallback =
+      std::function<void(AsyncGcsClient *client, const ID &id, const DataT &data)>;
+  virtual Status Append(const JobID &job_id, const ID &id, std::shared_ptr<DataT> &data,
+                        const WriteCallback &done) = 0;
+  virtual Status AppendAt(const JobID &job_id, const ID &task_id,
+                          std::shared_ptr<DataT> &data, const WriteCallback &done,
+                          const WriteCallback &failure, int log_length) = 0;
+  virtual ~LogInterface(){};
+};
+
 /// \class Log
 ///
 /// A GCS table where every entry is an append-only log. This class is not
@@ -63,14 +77,13 @@ class PubsubInterface {
 ///   ClientTable: Stores a log of which GCS clients have been added or deleted
 ///                from the system.
 template <typename ID, typename Data>
-class Log : virtual public PubsubInterface<ID> {
+class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
  public:
   using DataT = typename Data::NativeTableType;
   using Callback = std::function<void(AsyncGcsClient *client, const ID &id,
                                       const std::vector<DataT> &data)>;
   /// The callback to call when a write to a key succeeds.
-  using WriteCallback =
-      std::function<void(AsyncGcsClient *client, const ID &id, const DataT &data)>;
+  using WriteCallback = typename LogInterface<ID, Data>::WriteCallback;
   /// The callback to call when a SUBSCRIBE call completes and we are ready to
   /// request and receive notifications.
   using SubscriptionCallback = std::function<void(AsyncGcsClient *client)>;
@@ -325,6 +338,23 @@ class HeartbeatTable : public Table<ClientID, HeartbeatTableData> {
   virtual ~HeartbeatTable() {}
 };
 
+class DriverTable : public Log<JobID, DriverTableData> {
+ public:
+  DriverTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client)
+      : Log(context, client) {
+    pubsub_channel_ = TablePubsub::DRIVER;
+    prefix_ = TablePrefix::DRIVER;
+  };
+  virtual ~DriverTable() {}
+
+  /// Appends driver data to the driver table.
+  ///
+  /// \param driver_id The driver id.
+  /// \param is_dead Whether the driver is dead.
+  /// \return The return status.
+  Status AppendDriverData(const JobID &driver_id, bool is_dead);
+};
+
 class FunctionTable : public Table<ObjectID, FunctionTableData> {
  public:
   FunctionTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
@@ -364,6 +394,21 @@ class TaskLeaseTable : public Table<TaskID, TaskLeaseData> {
       : Table(contexts, client) {
     pubsub_channel_ = TablePubsub::TASK_LEASE;
     prefix_ = TablePrefix::TASK_LEASE;
+  }
+
+  Status Add(const JobID &job_id, const TaskID &id, std::shared_ptr<TaskLeaseDataT> &data,
+             const WriteCallback &done) override {
+    RAY_RETURN_NOT_OK((Table<TaskID, TaskLeaseData>::Add(job_id, id, data, done)));
+    // Mark the entry for expiration in Redis. It's okay if this command fails
+    // since the lease entry itself contains the expiration period. In the
+    // worst case, if the command fails, then a client that looks up the lease
+    // entry will overestimate the expiration time.
+    // TODO(swang): Use a common helper function to format the key instead of
+    // hardcoding it to match the Redis module.
+    std::vector<std::string> args = {"PEXPIRE",
+                                     EnumNameTablePrefix(prefix_) + id.binary(),
+                                     std::to_string(data->timeout)};
+    return context_->RunArgvAsync(args);
   }
 };
 
@@ -622,6 +667,13 @@ class ClientTable : private Log<UniqueID, ClientTableData> {
   /// \param client_id The ID of the client to check.
   /// \return Whether the client with ID client_id is removed.
   bool IsRemoved(const ClientID &client_id) const;
+
+  /// Get the information of all clients.
+  ///
+  /// Note: The return value contains ClientID::nil() which should be filtered.
+  ///
+  /// \return The client ID to client information map.
+  const std::unordered_map<ClientID, ClientTableDataT> &GetAllClients() const;
 
  private:
   /// Handle a client table notification.

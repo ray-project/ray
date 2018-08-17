@@ -40,7 +40,7 @@ class RedisCallbackManager {
  private:
   RedisCallbackManager() : num_callbacks_(0){};
 
-  ~RedisCallbackManager() { printf("shut down callback manager\n"); }
+  ~RedisCallbackManager() {}
 
   int64_t num_callbacks_ = 0;
   std::unordered_map<int64_t, RedisCallback> callbacks_;
@@ -72,6 +72,12 @@ class RedisContext {
                   int64_t length, const TablePrefix prefix,
                   const TablePubsub pubsub_channel, RedisCallback redisCallback,
                   int log_length = -1);
+
+  /// Run an arbitrary Redis command without a callback.
+  ///
+  /// \param args The vector of command args to pass to Redis.
+  /// \return Status.
+  Status RunArgvAsync(const std::vector<std::string> &args);
 
   /// Subscribe to a specific Pub-Sub channel.
   ///

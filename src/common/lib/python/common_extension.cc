@@ -907,3 +907,12 @@ PyObject *check_simple_value(PyObject *self, PyObject *args) {
   }
   Py_RETURN_FALSE;
 }
+
+PyObject *compute_task_id(PyObject *self, PyObject *args) {
+  ObjectID object_id;
+  if (!PyArg_ParseTuple(args, "O&", &PyObjectToUniqueID, &object_id)) {
+    return NULL;
+  }
+  TaskID task_id = ray::ComputeTaskId(object_id);
+  return PyObjectID_make(task_id);
+}
