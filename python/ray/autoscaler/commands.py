@@ -193,7 +193,7 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
             monitor_str = "docker exec {} /bin/sh -c {}".format(
                 config["docker"]["container_name"], quote(monitor_str))
     if override_cluster_name:
-        modifiers = "--cluster-name={}".format(quote(override_cluster_name))
+        modifiers = " --cluster-name={}".format(quote(override_cluster_name))
     else:
         modifiers = ""
     print("To monitor auto-scaling activity, you can run:\n\n"
