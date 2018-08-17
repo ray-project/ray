@@ -14,15 +14,14 @@ You can utilize these search algorithms as follows:
 
 Currently, Tune offers the following search algorithms:
 
-.. contents::
-    :local:
-    :backlinks: none
+- `Grid Search and Random Search <tune-searchalg.html#variant-generation-grid-search-random-search>`__
+- `HyperOpt <tune-searchalg.html#hyperopt-search-tree-structured-parzen-estimators>`__
 
 
 Variant Generation (Grid Search/Random Search)
 ----------------------------------------------
 
-By default, Tune uses the `Variant Generation process <tune-usage.html#tune-search-space-default>`__ to create and queue trials. This supports random search and grid search as specified by the ``config`` parameter of the Experiment.
+By default, Tune uses the `default search space and variant generation process <tune-usage.html#tune-search-space-default>`__ to create and queue trials. This supports random search and grid search as specified by the ``config`` parameter of the Experiment.
 
 The below two lines are equivalent:
 
