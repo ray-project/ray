@@ -1,6 +1,16 @@
 Tune User Guide
 ===============
 
+Start by installing, importing, and initializing Ray.
+
+.. code-block:: python
+
+    import ray
+    import ray.tune as tune
+
+    ray.init()
+
+
 Tune Overview
 -------------
 
