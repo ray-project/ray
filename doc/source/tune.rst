@@ -11,20 +11,23 @@ Tune is a scalable framework for hyperparameter search with a focus on deep lear
 Features
 --------
 
--  Ease of use: go from running one experiment on a single machine to running on a large distributed cluster without changing your code.
+*  Ease of use: go from running one experiment on a single machine to running on a large distributed cluster without changing your code.
 
--  Mix and match search execution (Trial Schedulers) and search algorithms to accelerate your training - such as using Model-Based Optimization (HyperOpt) with HyperBand.
+*  Mix and match search execution (Trial Schedulers) and search algorithms to accelerate your training - such as using Model-Based Optimization (HyperOpt) with HyperBand.
 
--  Scalable implementations of search execution techniques such as:
-    - `Population Based Training (PBT) <pbt.html>`__
-    - `Median Stopping Rule <hyperband.html#median-stopping-rule>`__
-    - `HyperBand <hyperband.html>`__.
+*  Integration with visualization tools such as `TensorBoard <https://www.tensorflow.org/get_started/summaries_and_tensorboard>`__, `rllab's VisKit <https://media.readthedocs.org/pdf/rllab/latest/rllab.pdf>`__, and a `parallel coordinates visualization <https://en.wikipedia.org/wiki/Parallel_coordinates>`__.
 
--  Integration with visualization tools such as `TensorBoard <https://www.tensorflow.org/get_started/summaries_and_tensorboard>`__, `rllab's VisKit <https://media.readthedocs.org/pdf/rllab/latest/rllab.pdf>`__, and a `parallel coordinates visualization <https://en.wikipedia.org/wiki/Parallel_coordinates>`__.
+*  Flexible trial variant generation, including grid search, random search, and conditional parameter distributions.
 
--  Flexible trial variant generation, including grid search, random search, and conditional parameter distributions.
+*  Resource-aware scheduling, including support for concurrent runs of algorithms that may themselves be parallel and distributed and support for trials with varying GPU requirements.
 
--  Resource-aware scheduling, including support for concurrent runs of algorithms that may themselves be parallel and distributed and support for trials with varying GPU requirements.
+*  Scalable hyperparameter optimization and model search techniques such as:
+
+   -  `Population Based Training (PBT) <tune-schedulers.html#population-based-training-pbt>`__
+
+   -  `Median Stopping Rule <tune-schedulers.html#median-stopping-rule>`__
+
+   -  `HyperBand <tune-schedulers.html#asynchronous-hyperband>`__
 
 
 Getting Started
