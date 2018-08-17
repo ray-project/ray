@@ -18,9 +18,6 @@ import ray.ray_constants as ray_constants
 from ray.utils import (decode, binary_to_object_id, binary_to_hex,
                        hex_to_binary)
 
-# These channels must be kept up-to-date with the C++ codebase
-ray.gcs_utils.LOCAL_SCHEDULER_INFO_CHANNEL = b"local_schedulers"
-
 # This mapping from integer to task state string must be kept up-to-date with
 # the scheduling_state enum in task.h.
 TASK_STATUS_WAITING = 1
