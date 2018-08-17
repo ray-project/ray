@@ -157,6 +157,7 @@ class _MockTrialExecutor(TrialExecutor):
     def start_trial(self, trial, checkpoint_obj=None):
         trial.logger_running = True
         trial.restored_checkpoint = checkpoint_obj.value
+        trial.status = Trial.RUNNING
 
     def stop_trial(self, trial, error=False, error_msg=None, stop_logger=True):
         trial.status = Trial.ERROR if error else Trial.TERMINATED

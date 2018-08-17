@@ -233,11 +233,11 @@ class TrialRunner(object):
             trial.update_last_result(
                 result, terminate=(decision == TrialScheduler.STOP))
 
-            self.trial_executor.on_scheduler_decision(trial, decision=decision)
             if decision == TrialScheduler.CONTINUE:
                 if trial.should_checkpoint():
                     # TODO(rliaw): This is a blocking call
                     self.trial_executor.save(trial)
+                self.trial_executor.continue_training(trial)
             elif decision == TrialScheduler.PAUSE:
                 self.trial_executor.pause_trial(trial)
             elif decision == TrialScheduler.STOP:

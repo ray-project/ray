@@ -5,7 +5,9 @@ from ray.tune.trial import Trial, Checkpoint
 
 
 class TrialExecutor(object):
-    """TrialExecutor abstracts the execution of a Trial."""
+    """Manages platform-specific details such as resource handling
+    and starting/stopping trials.
+    """
 
     def __init__(self, queue_trials=False):
         """Initializes a new TrialExecutor.
@@ -30,7 +32,7 @@ class TrialExecutor(object):
         be thrown.
 
         Args:
-            checkpoint(Checkpoint): an Python object or path storing the state
+            checkpoint(Checkpoint): A Python object or path storing the state
             of trial.
         """
         raise NotImplementedError("Subclasses of TrialExecutor must provide "
@@ -70,13 +72,8 @@ class TrialExecutor(object):
             print("Error recovering trial from checkpoint, abort:", error_msg)
             self.stop_trial(trial, error=True, error_msg=error_msg)
 
-    def on_scheduler_decision(self, trial, decision):
-        """A hook called when TrialScheduler make a decision.
-
-        Args:
-            trial (Trial): the scheduler decide whether to continue this trial.
-            decision (str): (CONTINUE,PAUSE,STOP) constant from TrialScheduler.
-        """
+    def continue_training(self, trial):
+        """Continues the training of this trial."""
         pass
 
     def pause_trial(self, trial):
@@ -101,6 +98,7 @@ class TrialExecutor(object):
 
     def resume_trial(self, trial):
         """Resumes PAUSED trials. This is a blocking call."""
+
         assert trial.status == Trial.PAUSED, trial.status
         self.start_trial(trial)
 
@@ -123,7 +121,7 @@ class TrialExecutor(object):
         It's a blocking call waits until one result is ready.
 
         Return:
-            a tuple of (trial, result). if fetch result failed,
+            A tuple of (trial, result). If fetch result failed,
             return (trial, None) other than raise Exception.
         """
         raise NotImplementedError("Subclasses of TrialExecutor must provide "
@@ -134,13 +132,14 @@ class TrialExecutor(object):
         pass
 
     def restore(self, trial, checkpoint=None):
-        """Restore the state of trial from checkpoint or trial._checkpoint.
+        """Restores training state from a checkpoint.
 
+        If checkpoint is None, try to restore from trial._checkpoint.
         If restoring fails, the trial status will be set to ERROR.
 
         Args:
-            trial (Trial): trial to be restored.
-            checkpoint (Checkpoint): checkpoint to restore from.
+            trial (Trial): Trial to be restored.
+            checkpoint (Checkpoint): Checkpoint to restore from.
 
         Return:
             False if error occurred, otherwise return True.
@@ -149,14 +148,14 @@ class TrialExecutor(object):
                                   "restore() method")
 
     def save(self, trial, storage=Checkpoint.DISK):
-        """Save the state of trial.
+        """Saves training state of this trial to a checkpoint.
 
         Args:
-            trial (Trial): trial to be saved.
-            storage (str): save in memory or disk.
+            trial (Trial): The state of this trial to be saved.
+            storage (str): Where to store the checkpoint. Defaults to DISK.
 
         Return:
-            a python object if storage==Checkpoint.MEMORY otherwise
+            A Python object if storage==Checkpoint.MEMORY otherwise
             a path to the checkpoint.
         """
         raise NotImplementedError("Subclasses of TrialExecutor must provide "

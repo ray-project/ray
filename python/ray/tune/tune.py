@@ -55,7 +55,7 @@ def run_experiments(experiments=None,
             not currently have enough resources to launch one. This should
             be set to True when running on an autoscaling cluster to enable
             automatic scale-up.
-        trial_executor (TrialExecutor): used to manage the execution of trials.
+        trial_executor (TrialExecutor): Manage the execution of trials.
 
     Examples:
         >>> experiment_spec = Experiment("experiment", my_func)

@@ -59,4 +59,3 @@ class ExperimentTest(unittest.TestCase):
 
     def testConvertExperimentIncorrect(self):
         self.assertRaises(TuneError, lambda: convert_to_experiment_list("hi"))
-

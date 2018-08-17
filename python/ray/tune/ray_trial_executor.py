@@ -17,10 +17,10 @@ class RayTrialExecutor(TrialExecutor):
 
     def __init__(self, queue_trials=False):
         super(RayTrialExecutor, self).__init__(queue_trials)
-        self._running = {}
+        self._running = {}  # TODO
         # Since trial resume after paused should not run
         # trial.train.remote(), thus no more new remote object id generated.
-        # so we use self._paused to store paused trials.
+        # We use self._paused to store paused trials here.
         self._paused = {}
         self._avail_resources = Resources(cpu=0, gpu=0)
         self._committed_resources = Resources(cpu=0, gpu=0)
@@ -60,7 +60,7 @@ class RayTrialExecutor(TrialExecutor):
         if not self.restore(trial, checkpoint):
             return
         if prior_status == Trial.PAUSED:
-            # if prev status is PAUSED, self._paused stores its remote_id.
+            # If prev status is PAUSED, self._paused stores its remote_id.
             remote_id = self._find_item(self._paused, trial)[0]
             self._paused.pop(remote_id)
             self._running[remote_id] = trial
@@ -124,8 +124,8 @@ class RayTrialExecutor(TrialExecutor):
                 # note that we don't return the resources, since they may
                 # have been lost
 
-    def _find_item(self, dict, item):
-        out = [rid for rid, t in dict.items() if t is item]
+    def _find_item(self, dictionary, item):
+        out = [rid for rid, t in dictionary.items() if t is item]
         return out
 
     def stop_trial(self, trial, error=False, error_msg=None, stop_logger=True):
@@ -139,15 +139,10 @@ class RayTrialExecutor(TrialExecutor):
             for result_id in out:
                 self._running.pop(result_id)
 
-    def on_scheduler_decision(self, trial, decision):
-        """A hook called when TrialScheduler make a decision.
+    def continue_training(self, trial):
+        """Continues the training of this trial."""
 
-        put trial into self._running again.
-        """
-
-        from ray.tune.trial_scheduler import TrialScheduler
-        if decision == TrialScheduler.CONTINUE:
-            self._add_running_trial(trial)
+        self._add_running_trial(trial)
 
     def pause_trial(self, trial):
         """Pauses the trial."""
@@ -164,7 +159,6 @@ class RayTrialExecutor(TrialExecutor):
     def fetch_one_result(self):
         """Fetches one result of the running trials."""
 
-        # NOTE: There should only be one...
         [result_id], _ = ray.wait(list(self._running))
         trial = self._running.pop(result_id)
         result = None
@@ -249,6 +243,7 @@ class RayTrialExecutor(TrialExecutor):
         self._update_avail_resources()
 
     def save(self, trial, storage=Checkpoint.DISK):
+        """Saves the trial's state to a checkpoint."""
         trial._checkpoint.storage = storage
         if storage == Checkpoint.MEMORY:
             trial._checkpoint.value = trial.runner.save_to_object.remote()
@@ -257,6 +252,7 @@ class RayTrialExecutor(TrialExecutor):
         return trial._checkpoint.value
 
     def restore(self, trial, checkpoint=None):
+        """Restores training state from a given model checkpoint."""
         if checkpoint is None or checkpoint.value is None:
             checkpoint = trial._checkpoint
         if checkpoint is None or checkpoint.value is None:
