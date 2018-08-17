@@ -1278,7 +1278,7 @@ class GlobalState(object):
             A dictionary mapping resource name to the total quantity of that
                 resource in the cluster.
         """
-        resources = defaultdict(lambda: 0)
+        resources = defaultdict(int)
         if not self.use_raylet:
             local_schedulers = self.local_schedulers()
 
@@ -1400,7 +1400,7 @@ class GlobalState(object):
                         del available_resources_by_id[client_id]
 
         # Calculate total available resources
-        total_available_resources = defaultdict(lambda: 0)
+        total_available_resources = defaultdict(int)
         for available_resources in available_resources_by_id.values():
             for resource_id, num_available in available_resources.items():
                 total_available_resources[resource_id] += num_available
