@@ -28,14 +28,14 @@ LocalSchedulerConnection *LocalSchedulerConnection_init(
    * worker, we will get killed. */
   flatbuffers::FlatBufferBuilder fbb;
   if (use_raylet) {
-    auto message = ray::local_scheduler::protocol::CreateRegisterClientRequest(
-        fbb, is_worker, to_flatbuf(fbb, client_id), getpid(),
-        to_flatbuf(fbb, driver_id));
-    fbb.Finish(message);
-  } else {
     auto message = ray::protocol::CreateRegisterClientRequest(
         fbb, is_worker, to_flatbuf(fbb, client_id), getpid(),
         to_flatbuf(fbb, driver_id), language);
+    fbb.Finish(message);
+  } else {
+    auto message = ray::local_scheduler::protocol::CreateRegisterClientRequest(
+        fbb, is_worker, to_flatbuf(fbb, client_id), getpid(),
+        to_flatbuf(fbb, driver_id));
     fbb.Finish(message);
   }
   /* Register the process ID with the local scheduler. */
