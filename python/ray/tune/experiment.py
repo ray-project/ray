@@ -128,10 +128,12 @@ class Experiment(object):
                 print("Not auto-registering lambdas - resolving as variant.")
                 return run_object
             else:
-                name = register_trainable(run_object.__name__, run_object)
+                name = run_object.__name__
+                register_trainable(name, run_object)
                 return name
         elif isinstance(run_object, type):
-            name = register_trainable(run_object.__name__, run_object)
+            name = run_object.__name__
+            register_trainable(name, run_object)
             return name
         else:
             raise TuneError("Improper 'run' - not string nor trainable.")
