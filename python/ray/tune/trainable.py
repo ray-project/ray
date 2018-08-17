@@ -288,7 +288,11 @@ class Trainable(object):
         raise NotImplementedError
 
     def _setup(self):
-        """Subclasses should override this for custom initialization."""
+        """Subclasses should override this for custom initialization.
+
+        Subclasses can access the hyperparameter configuration via
+        ``self.config``.
+        """
         pass
 
     def _stop(self):
