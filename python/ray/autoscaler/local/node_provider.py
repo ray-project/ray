@@ -24,19 +24,24 @@ class ClusterState(object):
             for worker_ip in provider_config["worker_ips"]:
                 if worker_ip not in workers:
                     workers[worker_ip] = {
-                        "tags": {TAG_RAY_NODE_TYPE: "worker"},
+                        "tags": {
+                            TAG_RAY_NODE_TYPE: "worker"
+                        },
                         "state": "terminated",
                     }
                 else:
                     assert workers[worker_ip][TAG_RAY_NODE_TYPE] == "worker"
             if provider_config["head_ip"] not in workers:
                 workers[provider_config["head_ip"]] = {
-                    "tags": {TAG_RAY_NODE_TYPE: "head"},
+                    "tags": {
+                        TAG_RAY_NODE_TYPE: "head"
+                    },
                     "state": "terminated",
                 }
             else:
                 print(workers)
-                assert workers[provider_config["head_ip"]]["tags"][TAG_RAY_NODE_TYPE] == "head"
+                assert workers[provider_config["head_ip"]]["tags"][
+                    TAG_RAY_NODE_TYPE] == "head"
             assert len(workers) == len(provider_config["worker_ips"]) + 1
             with open(self.save_path, "w") as f:
                 print("Writing cluster state", workers)
@@ -62,10 +67,9 @@ class ClusterState(object):
 class LocalNodeProvider(NodeProvider):
     def __init__(self, provider_config, cluster_name):
         NodeProvider.__init__(self, provider_config, cluster_name)
-        self.state = ClusterState(
-            "/tmp/cluster-{}.lock".format(cluster_name),
-            "/tmp/cluster-{}.state".format(cluster_name),
-            provider_config)
+        self.state = ClusterState("/tmp/cluster-{}.lock".format(cluster_name),
+                                  "/tmp/cluster-{}.state".format(cluster_name),
+                                  provider_config)
 
     def nodes(self, tag_filters):
         workers = self.state.get()
