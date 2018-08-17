@@ -137,7 +137,6 @@ class Experiment(object):
             raise TuneError("Improper 'run' - not string nor trainable.")
 
 
-
 def convert_to_experiment_list(experiments):
     """Produces a list of Experiment objects.
 

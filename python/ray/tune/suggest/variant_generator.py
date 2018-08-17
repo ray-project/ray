@@ -6,7 +6,6 @@ import copy
 import numpy
 import random
 import types
-import inspect
 
 from ray.tune import TuneError
 

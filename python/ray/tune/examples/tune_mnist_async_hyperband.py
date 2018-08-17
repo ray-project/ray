@@ -33,7 +33,7 @@ import tempfile
 import time
 
 import ray
-from ray.tune import grid_search, run_experiments, register_trainable
+from ray.tune import grid_search, run_experiments
 
 from tensorflow.examples.tutorials.mnist import input_data
 

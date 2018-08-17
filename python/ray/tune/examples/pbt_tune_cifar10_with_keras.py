@@ -24,7 +24,6 @@ from tensorflow.python.keras.preprocessing.image import ImageDataGenerator
 
 import ray
 from ray.tune import grid_search, run_experiments
-from ray.tune import register_trainable
 from ray.tune import Trainable
 from ray.tune.schedulers import PopulationBasedTraining
 

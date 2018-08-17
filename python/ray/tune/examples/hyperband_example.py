@@ -12,8 +12,7 @@ import random
 import numpy as np
 
 import ray
-from ray.tune import Trainable, register_trainable, \
-    run_experiments, Experiment
+from ray.tune import Trainable, run_experiments, Experiment
 from ray.tune.schedulers import HyperBandScheduler
 
 

@@ -11,7 +11,7 @@ import random
 import time
 
 import ray
-from ray.tune import Trainable, register_trainable, run_experiments
+from ray.tune import Trainable, run_experiments
 from ray.tune.schedulers import PopulationBasedTraining
 
 
