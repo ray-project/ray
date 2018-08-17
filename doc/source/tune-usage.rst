@@ -1,16 +1,6 @@
 Tune User Guide
 ===============
 
-Start by installing, importing, and initializing Ray.
-
-.. code-block:: python
-
-    import ray
-    import ray.tune as tune
-
-    ray.init()
-
-
 Tune Overview
 -------------
 
@@ -21,6 +11,16 @@ Tune schedules a number of *trials* in a cluster. Each trial runs a user-defined
 More information about Tune's `search algorithms can be found here <tune-searchalg.html>`__.
 
 More information about Tune's `trial schedulers can be found here <tune-schedulers.html>`__.
+
+
+Start by installing, importing, and initializing Ray.
+
+.. code-block:: python
+
+    import ray
+    import ray.tune as tune
+
+    ray.init()
 
 Tune provides a ``run_experiments`` function that generates and runs the trials as described by the `experiment specification <tune-usage.html#experiment-configuration>`__.
 
