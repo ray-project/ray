@@ -338,3 +338,16 @@ Examples
 --------
 
 You can find a comprehensive of examples `using Tune and its various features here <https://github.com/ray-project/ray/tree/master/python/ray/tune/examples>`__, including examples using Keras, TensorFlow, and Population-Based Training.
+
+
+Further Questions or Issues?
+----------------------------
+
+You can post questions or issues or feedback through the following channels:
+
+1. `Our Mailing List`_: For discussions about development, questions about
+   usage, or any general questions and feedback.
+2. `GitHub Issues`_: For bug reports and feature requests.
+
+.. _`Our Mailing List`: https://groups.google.com/forum/#!forum/ray-dev
+.. _`GitHub Issues`: https://github.com/ray-project/ray/issues
