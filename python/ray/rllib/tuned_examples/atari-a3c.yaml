@@ -9,7 +9,6 @@ atari-a3c:
     run: A3C
     config:
         num_workers: 12
-        sample_batch_size: 100  # 20 * num_envs_per_worker
-        num_envs_per_worker: 5
+        sample_batch_size: 20
         optimizer:
             grads_per_step: 1000
