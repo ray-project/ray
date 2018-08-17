@@ -1405,6 +1405,7 @@ class GlobalState(object):
         total_available_resources = defaultdict(int)
         for available_resources in available_resources_by_id.values():
             for resource_id, num_available in available_resources.items():
+                resource_id = resource_id.decode("utf-8")
                 total_available_resources[resource_id] += num_available
 
         return dict(total_available_resources)
