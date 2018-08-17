@@ -75,6 +75,8 @@ class LocalNodeProvider(NodeProvider):
         workers = self.state.get()
         matching_ips = []
         for worker_ip, info in workers.items():
+            if info["state"] == "terminated":
+                continue
             ok = True
             for k, v in tag_filters.items():
                 if info["tags"].get(k) != v:
