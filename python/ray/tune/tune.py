@@ -56,14 +56,18 @@ def run_experiments(experiments=None,
             automatic scale-up.
 
     Examples:
-        >>> run_experiments(experiments={"experiment": {"run": my_func}})
+        >>> experiment_spec = Experiment("experiment", my_func)
+        >>> run_experiments(experiments=experiment_spec)
+
+        >>> experiment_spec = {"experiment": {"run": my_func}}
+        >>> run_experiments(experiments=experiment_spec)
 
         >>> run_experiments(
-        >>>     experiments={"experiment": {"run": my_func}},
+        >>>     experiments=experiment_spec,
         >>>     scheduler=MedianStoppingRule(...))
 
         >>> run_experiments(
-        >>>     search_alg=SearchAlgorithm({"experiment": {"run": my_func}}),
+        >>>     search_alg=SearchAlgorithm(),
         >>>     scheduler=MedianStoppingRule(...))
 
     Returns:

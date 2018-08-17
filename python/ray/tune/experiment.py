@@ -39,6 +39,26 @@ class Experiment(object):
         max_failures (int): Try to recover a trial from its last
             checkpoint at least this many times. Only applies if
             checkpointing is enabled. Defaults to 3.
+
+    Examples:
+        >>> experiment_spec = Experiment(
+        >>>     "my_experiment_name",
+        >>>     my_func,
+        >>>     stop={"mean_accuracy": 100},
+        >>>     config={
+        >>>         "alpha": tune.grid_search([0.2, 0.4, 0.6]),
+        >>>         "beta": tune.grid_search([1, 2]),
+        >>>     },
+        >>>     trial_resources={
+        >>>         "cpu": 1,
+        >>>         "gpu": 0
+        >>>     },
+        >>>     repeat=10,
+        >>>     local_dir="~/ray_results",
+        >>>     upload_dir="s3://your_bucket/path",
+        >>>     checkpoint_freq=10,
+        >>>     max_failures=2)
+
     """
 
     def __init__(self,

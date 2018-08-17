@@ -32,57 +32,44 @@ This function will report status on the command line until all Trials stop:
      - train_func_4_lr=0.4,momentum=2:  RUNNING [pid=6800], 209 s, 41204 ts, 70.1 acc
      - train_func_5_lr=0.6,momentum=2:  TERMINATED [pid=6809], 10 s, 2164 ts, 100 acc
 
+
 Experiment Configuration
 ------------------------
-
-.. contents::
-    :local:
-    :backlinks: none
 
 Specifying Experiments
 ~~~~~~~~~~~~~~~~~~~~~~
 
 There are two ways to specify the configuration for an experiment - one via Python and one via JSON.
 
-The first way to specify a configuration is to create an Experiment object. You can then pass in either
-a single experiment or a list of experiments to `run_experiments`, as follows:
-
-.. code-block:: python
-
-    # Single experiment
-    run_experiments(Experiment(...))
-
-    # Multiple experiments
-    run_experiments([Experiment(...), Experiment(...), ...])
-
-    # Using a Search Algorithm
-    run_experiments(search_alg=SearchAlgorithm(Experiment(...)))
+**Using Python**: specify a configuration is to create an Experiment object.
 
 .. autoclass:: ray.tune.Experiment
     :noindex:
 
 An example of this can be found in `hyperband_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperband_example.py>`__.
 
-The second way to specify a configuration is to create a JSON object/Python dict. This uses the same fields as
-the ``ray.tune.Experiment``, except the experiment name is the key of the top level
-dictionary.
+**Using JSON/Dict**: This uses the same fields as the ``ray.tune.Experiment``, except the experiment name is the key of the top level
+dictionary. Tune will convert the dict into an ``ray.tune.Experiment`` object.
 
 .. code-block:: python
 
-    run_experiments({
+    experiment_spec = {
         "my_experiment_name": {
             "run": my_func,
-            "trial_resources": { "cpu": 1, "gpu": 0 },
             "stop": { "mean_accuracy": 100 },
             "config": {
                 "alpha": tune.grid_search([0.2, 0.4, 0.6]),
                 "beta": tune.grid_search([1, 2]),
             },
-            "upload_dir": "s3://your_bucket/path",
+            "trial_resources": { "cpu": 1, "gpu": 0 },
+            "repeat": 10,
             "local_dir": "~/ray_results",
+            "upload_dir": "s3://your_bucket/path",
+            "checkpoint_freq": 10,
             "max_failures": 2
         }
-    })
+    }
+    run_experiments(experiment_spec)
 
 
 An example of this can be found in `async_hyperband_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/async_hyperband_example.py>`__.
@@ -93,14 +80,18 @@ Model API
 You can either pass in a Python function or Python class for model training as follows, each requiring a specific signature/interface:
 
 .. code-block:: python
+   :emphasize-lines: 3,8
 
-    run_experiments({
+    experiment_spec = {
         "my_experiment_name": {
             "run": my_trainable
         }
-    })
+    }
+
     # or with the Experiment API
-    run_experiments(Experiment("my_experiment_name", my_trainable))
+    experiment_spec = Experiment("my_experiment_name", my_trainable)
+
+    run_experiments(experiments=experiment_spec)
 
 
 **Python functions** will need to have the following signature:
@@ -131,22 +122,28 @@ Tune Search Space (Default)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. warning::
-    If you specify a Search Algorithm, you may not be able to use this feature, as they may require a different search space declaration.
+    If you specify a Search Algorithm, you may not be able to use this feature, as the algorithm may require a different search space declaration.
 
-In the above example, we specified a grid search over two parameters using the ``tune.grid_search`` helper function. By default, Tune also supports sampling parameters from user-specified lambda functions, which can be used in combination with grid search.
+You can use ``tune.grid_search`` to specify an axis of a grid search. By default, Tune also supports sampling parameters from user-specified lambda functions, which can be used in combination with grid search.
 
-The following shows grid search over two nested parameters combined with random sampling from two lambda functions. Note that the value of ``beta`` depends on the value of ``alpha``, which is represented by referencing ``spec.config.alpha`` in the lambda function. This lets you specify conditional parameter distributions.
+The following shows grid search over two nested parameters combined with random sampling from two lambda functions, generating 9 different trials. Note that the value of ``beta`` depends on the value of ``alpha``, which is represented by referencing ``spec.config.alpha`` in the lambda function. This lets you specify conditional parameter distributions.
 
 .. code-block:: python
+   :emphasize-lines: 4-11
 
-    "config": {
-        "alpha": lambda spec: np.random.uniform(100),
-        "beta": lambda spec: spec.config.alpha * np.random.normal(),
-        "nn_layers": [
-            tune.grid_search([16, 64, 256]),
-            tune.grid_search([16, 64, 256]),
-        ],
-    }
+    run_experiments({
+        "my_experiment_name": {
+            "run": my_trainable,
+            "config": {
+                "alpha": lambda spec: np.random.uniform(100),
+                "beta": lambda spec: spec.config.alpha * np.random.normal(),
+                "nn_layers": [
+                    tune.grid_search([16, 64, 256]),
+                    tune.grid_search([16, 64, 256]),
+                ],
+            }
+        }
+    })
 
 .. note::
     Lambda functions will be evaluated during trial variant generation. If you need to pass a literal function in your config, use ``tune.function(...)`` to escape it.
@@ -159,16 +156,22 @@ Sampling Multiple Times
 By default, each random variable and grid search point is sampled once. To take multiple random samples or repeat grid search runs, add ``repeat: N`` to the experiment config.
 
 .. code-block:: python
+   :emphasize-lines: 12
 
-    "config": {
-        "alpha": lambda spec: np.random.uniform(100),
-        "beta": lambda spec: spec.config.alpha * np.random.normal(),
-        "nn_layers": [
-            tune.grid_search([16, 64, 256]),
-            tune.grid_search([16, 64, 256]),
-        ],
-    },
-    "repeat": 10,
+    run_experiments({
+        "my_experiment_name": {
+            "run": my_trainable,
+            "config": {
+                "alpha": lambda spec: np.random.uniform(100),
+                "beta": lambda spec: spec.config.alpha * np.random.normal(),
+                "nn_layers": [
+                    tune.grid_search([16, 64, 256]),
+                    tune.grid_search([16, 64, 256]),
+                ],
+            },
+            "repeat": 10
+        }
+    })
 
 E.g. in the above, ``"repeat": 10`` repeats the 3x3 grid search 10 times, for a total of 90 trials, each with randomly sampled values of ``alpha`` and ``beta``.
 
@@ -176,18 +179,32 @@ E.g. in the above, ``"repeat": 10`` repeats the 3x3 grid search 10 times, for a 
 Using GPUs (Resource Allocation)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Tune runs each trial as a Ray actor, allocating the specified GPU and CPU ``trial_resources`` to each actor (defaulting to 1 CPU per trial). A trial will not be scheduled unless at least that amount of resources is available in the cluster, preventing the cluster from being overloaded.
+Tune will allocate the specified GPU and CPU ``trial_resources`` to each individual trial (defaulting to 1 CPU per trial). Under the hood, Tune runs each trial as a Ray actor, using Ray's resource handling to allocate resources and place actors. A trial will not be scheduled unless at least that amount of resources is available in the cluster, preventing the cluster from being overloaded.
 
 If GPU resources are not requested, the ``CUDA_VISIBLE_DEVICES`` environment variable will be set as empty, disallowing GPU access.
 Otherwise, it will be set to the GPUs in the list (this is managed by Ray).
 
 If your trainable function / class creates further Ray actors or tasks that also consume CPU / GPU resources, you will also want to set ``extra_cpu`` or ``extra_gpu`` to reserve extra resource slots for the actors you will create. For example, if a trainable class requires 1 GPU itself, but will launch 4 actors each using another GPU, then it should set ``"gpu": 1, "extra_gpu": 4``.
 
+.. code-block:: python
+   :emphasize-lines: 4-8
+
+    run_experiments({
+        "my_experiment_name": {
+            "run": my_trainable,
+            "trial_resources": {
+                "cpu": 1,
+                "gpu": 1,
+                "extra_gpu": 4
+            }
+        }
+    })
+
 
 Trial Checkpointing
 ~~~~~~~~~~~~~~~~~~~
 
-To enable checkpointing, you must implement a `Trainable class <tune-usage.html#model-api>`__ (Trainable functions are not checkpointable, since they never return control back to their caller). The easiest way to do this is to subclass the pre-defined ``Trainable`` class and implement its ``_train``, ``_save``, and ``_restore`` abstract methods `(example) <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperband_example.py>`__. Implementing this interface is required to support resource multiplexing in schedulers such as HyperBand and PBT.
+To enable checkpointing, you must implement a `Trainable class <tune-usage.html#model-api>`__ (Trainable functions are not checkpointable, since they never return control back to their caller). The easiest way to do this is to subclass the pre-defined ``Trainable`` class and implement its ``_train``, ``_save``, and ``_restore`` abstract methods `(example) <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperband_example.py>`__. Implementing this interface is required to support resource multiplexing in  Trial Schedulers such as HyperBand and PBT.
 
 For TensorFlow model training, this would look something like this `(full tensorflow example) <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/tune_mnist_ray_hyperband.py>`__:
 
@@ -215,10 +232,11 @@ For TensorFlow model training, this would look something like this `(full tensor
 Additionally, checkpointing can be used to provide fault-tolerance for experiments. This can be enabled by setting ``checkpoint_freq: N`` and ``max_failures: M`` to checkpoint trials every *N* iterations and recover from up to *M* crashes per trial, e.g.:
 
 .. code-block:: python
+   :emphasize-lines: 4,5
 
     run_experiments({
-        "my_experiment": {
-            ...
+        "my_experiment_name": {
+            "run": my_trainable
             "checkpoint_freq": 10,
             "max_failures": 5,
         },
@@ -247,7 +265,11 @@ You often will want to compute a large object (e.g., training data, model weight
         X = get_pinned_object(X_id)
         # use X
 
-    run_experiments(...)
+    run_experiments({
+        "my_experiment_name": {
+            "run": f
+        }
+    })
 
 
 Logging and Visualizing Results

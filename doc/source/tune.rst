@@ -15,7 +15,10 @@ Features
 
 -  Mix and match search execution (Trial Schedulers) and search algorithms to accelerate your training - such as using Model-Based Optimization (HyperOpt) with HyperBand.
 
--  Scalable implementations of search execution techniques such as `Population Based Training (PBT) <pbt.html>`__, `Median Stopping Rule <hyperband.html#median-stopping-rule>`__, and `HyperBand <hyperband.html>`__.
+-  Scalable implementations of search execution techniques such as:
+    - `Population Based Training (PBT) <pbt.html>`__
+    - `Median Stopping Rule <hyperband.html#median-stopping-rule>`__
+    - `HyperBand <hyperband.html>`__.
 
 -  Integration with visualization tools such as `TensorBoard <https://www.tensorflow.org/get_started/summaries_and_tensorboard>`__, `rllab's VisKit <https://media.readthedocs.org/pdf/rllab/latest/rllab.pdf>`__, and a `parallel coordinates visualization <https://en.wikipedia.org/wiki/Parallel_coordinates>`__.
 
