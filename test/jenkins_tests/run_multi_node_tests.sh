@@ -16,7 +16,14 @@ docker run  -e "RAY_USE_XRAY=1" --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     --env PongDeterministic-v0 \
     --run A3C \
     --stop '{"training_iteration": 2}' \
-    --config '{"num_workers": 16}'
+    --config '{"num_workers": 2}'
+
+docker run  -e "RAY_USE_XRAY=1" --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/rllib/train.py \
+    --env PongDeterministic-v0 \
+    --run A2C \
+    --stop '{"training_iteration": 2}' \
+    --config '{"num_workers": 2}'
 
 docker run  -e "RAY_USE_XRAY=1" --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/train.py \

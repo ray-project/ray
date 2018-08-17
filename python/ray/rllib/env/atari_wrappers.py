@@ -216,7 +216,7 @@ def wrap_deepmind(env, dim=84):
     if 'FIRE' in env.unwrapped.get_action_meanings():
         env = FireResetEnv(env)
     env = WarpFrame(env, dim)
-    env = ScaledFloatFrame(env)
+    # env = ScaledFloatFrame(env)  # TODO: use for dqn?
     # env = ClipRewardEnv(env)  # reward clipping is handled by DQN replay
     env = FrameStack(env, 4)
     return env
