@@ -7,6 +7,7 @@ Tune: Scalable Hyperparameter Search
 
 Tune is a scalable framework for hyperparameter search with a focus on deep learning and deep reinforcement learning. You can find the code for Tune `here on GitHub <https://github.com/ray-project/ray/tree/master/python/ray/tune>`__.
 
+Take a look at `the User Guide <tune-usage.html>`__ for a comprehensive overview on how to use Tune's features.
 
 Features
 --------
@@ -86,8 +87,6 @@ For the function you wish to tune, pass in a ``reporter`` object:
     })
 
 Tune can be used anywhere Ray can, e.g. on your laptop with ``ray.init()`` embedded in a Python script, or in an `auto-scaling cluster <autoscaling.html>`__ for massive parallelism.
-
-Take a look at `the User Guide <tune-usage.html>`__ for a comprehensive overview of Tune's features.
 
 Citing Tune
 -----------
