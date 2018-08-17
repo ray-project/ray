@@ -1013,6 +1013,12 @@ void NodeManager::HandleWorkerBlocked(std::shared_ptr<Worker> worker) {
 
   // Try to dispatch more tasks since the blocked worker released some
   // resources.
+  const ClientID &local_client_id = gcs_client_->client_table().GetLocalClientId();
+  cluster_resource_map_[local_client_id].SetLoadResources(local_queues_.GetResourceLoad());
+  std::unordered_map<ClientID, SchedulingResources>
+      local_resource_map({{local_client_id, cluster_resource_map_[local_client_id]}});
+  // Invoke the scheduling policy only on local resources.
+  ScheduleTasks(local_resource_map);
   DispatchTasks();
 }
 
