@@ -106,10 +106,12 @@ class LocalNodeProvider(NodeProvider):
             self.state.put(node_id, info)
 
     def create_node(self, node_config, tags, count):
+        node_type = tags[TAG_RAY_NODE_TYPE]
         with self.state.file_lock:
             workers = self.state.get()
             for node_id, info in workers.items():
-                if info["state"] == "terminated":
+                if (info["state"] == "terminated"
+                        and info["tags"][TAG_RAY_NODE_TYPE] == node_type):
                     info["tags"] = tags
                     info["state"] = "running"
                     self.state.put(node_id, info)
