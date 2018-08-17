@@ -28,6 +28,13 @@ NIL_ID = b"\xff" * ray_constants.ID_SIZE
 # common/task.h
 TASK_STATUS_LOST = 32
 
+# common/redis_module/ray_redis_module.cc
+OBJECT_INFO_PREFIX = b"OI:"
+OBJECT_LOCATION_PREFIX = b"OL:"
+TASK_TABLE_PREFIX = b"TT:"
+DB_CLIENT_PREFIX = b"CL:"
+DB_CLIENT_TABLE_NAME = b"db_clients"
+
 # local_scheduler/local_scheduler.h
 LOCAL_SCHEDULER_CLIENT_TYPE = b"local_scheduler"
 
@@ -357,8 +364,7 @@ class Monitor(object):
 
         # Scan the task table & filter to get the list of tasks belong to this
         # driver.  Use a cursor in order not to block the redis shards.
-        for key in redis.scan_iter(match=ray.gcs_utils.TASK_TABLE_PREFIX +
-                                   b"*"):
+        for key in redis.scan_iter(match=TASK_TABLE_PREFIX + b"*"):
             entry = redis.hgetall(key)
             task_info = ray.gcs_utils.TaskInfo.GetRootAsTaskInfo(
                 entry[b"TaskSpec"], 0)
@@ -377,12 +383,11 @@ class Monitor(object):
 
         # Also record all the ray.put()'d objects.
         put_objects = []
-        for key in redis.scan_iter(match=ray.gcs_utils.OBJECT_INFO_PREFIX +
-                                   b"*"):
+        for key in redis.scan_iter(match=OBJECT_INFO_PREFIX + b"*"):
             entry = redis.hgetall(key)
             if entry[b"is_put"] == "0":
                 continue
-            object_id = key.split(ray.gcs_utils.OBJECT_INFO_PREFIX)[1]
+            object_id = key.split(OBJECT_INFO_PREFIX)[1]
             task_id = entry[b"task"]
             put_objects.append((object_id, task_id))
 
@@ -395,23 +400,18 @@ class Monitor(object):
         object_ids_infos = set()
         for object_id in object_ids:
             # OL.
-            obj_loc = redis.zrange(
-                ray.gcs_utils.OBJECT_LOCATION_PREFIX + object_id, 0, -1)
+            obj_loc = redis.zrange(OBJECT_LOCATION_PREFIX + object_id, 0, -1)
             if obj_loc:
                 object_ids_locs.add(object_id)
             # OI.
-            obj_info = redis.hgetall(ray.gcs_utils.OBJECT_INFO_PREFIX +
-                                     object_id)
+            obj_info = redis.hgetall(OBJECT_INFO_PREFIX + object_id)
             if obj_info:
                 object_ids_infos.add(object_id)
 
         # Form the redis keys to delete.
-        keys = [ray.gcs_utils.TASK_TABLE_PREFIX + k for k in task_ids]
-        keys.extend([
-            ray.gcs_utils.OBJECT_LOCATION_PREFIX + k for k in object_ids_locs
-        ])
-        keys.extend(
-            [ray.gcs_utils.OBJECT_INFO_PREFIX + k for k in object_ids_infos])
+        keys = [TASK_TABLE_PREFIX + k for k in task_ids]
+        keys.extend([OBJECT_LOCATION_PREFIX + k for k in object_ids_locs])
+        keys.extend([OBJECT_INFO_PREFIX + k for k in object_ids_infos])
 
         if not keys:
             return
@@ -599,7 +599,7 @@ class Monitor(object):
                 elif channel == ray.gcs_utils.LOCAL_SCHEDULER_INFO_CHANNEL:
                     # The message was a heartbeat from a local scheduler
                     message_handler = self.local_scheduler_info_handler
-                elif channel == ray.gcs_utils.DB_CLIENT_TABLE_NAME:
+                elif channel == DB_CLIENT_TABLE_NAME:
                     # The message was a notification from the db_client table.
                     message_handler = self.db_client_notification_handler
                 elif channel == ray.gcs_utils.DRIVER_DEATH_CHANNEL:
@@ -671,12 +671,12 @@ class Monitor(object):
         clients and cleaning up state accordingly.
         """
         # Initialize the subscription channel.
-        self.subscribe(ray.gcs_utils.DB_CLIENT_TABLE_NAME)
+        self.subscribe(DB_CLIENT_TABLE_NAME)
         self.subscribe(ray.gcs_utils.LOCAL_SCHEDULER_INFO_CHANNEL)
         self.subscribe(ray.gcs_utils.PLASMA_MANAGER_HEARTBEAT_CHANNEL)
         self.subscribe(ray.gcs_utils.DRIVER_DEATH_CHANNEL)
         self.subscribe(ray.gcs_utils.XRAY_HEARTBEAT_CHANNEL, primary=False)
-        self.subscribe(ray.gcs_utilsXRAY_DRIVER_CHANNEL)
+        self.subscribe(ray.gcs_utils.XRAY_DRIVER_CHANNEL)
 
         # Scan the database table for dead database clients. NOTE: This must be
         # called before reading any messages from the subscription channel.

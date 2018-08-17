@@ -49,15 +49,8 @@ OBJECT_INFO_PREFIX = "OI:"
 OBJECT_LOCATION_PREFIX = "OL:"
 FUNCTION_PREFIX = "RemoteFunction:"
 
-# These prefixes must be kept up-to-date with the TablePrefix enum in gcs.fbs.
-# TODO(rkn): We should use scoped enums, in which case we should be able to
-# just access the flatbuffer generated values.
-TablePrefix_RAYLET_TASK_string = "RAYLET_TASK"
-TablePrefix_OBJECT_string = "OBJECT"
-TablePrefix_ERROR_INFO_string = "ERROR_INFO"
-TablePrefix_PROFILE_string = "PROFILE"
-
-# These channels must be kept up-to-date with common/state/redis.cc
+# These prefixes must be kept up-to-date with the definitions in
+# common/state/redis.cc
 LOCAL_SCHEDULER_INFO_CHANNEL = b"local_schedulers"
 PLASMA_MANAGER_HEARTBEAT_CHANNEL = b"plasma_managers"
 DRIVER_DEATH_CHANNEL = b"driver_deaths"
@@ -67,6 +60,14 @@ XRAY_HEARTBEAT_CHANNEL = str(TablePubsub.HEARTBEAT).encode("ascii")
 
 # xray driver updates
 XRAY_DRIVER_CHANNEL = str(TablePubsub.DRIVER).encode("ascii")
+
+# These prefixes must be kept up-to-date with the TablePrefix enum in gcs.fbs.
+# TODO(rkn): We should use scoped enums, in which case we should be able to
+# just access the flatbuffer generated values.
+TablePrefix_RAYLET_TASK_string = "RAYLET_TASK"
+TablePrefix_OBJECT_string = "OBJECT"
+TablePrefix_ERROR_INFO_string = "ERROR_INFO"
+TablePrefix_PROFILE_string = "PROFILE"
 
 
 def construct_error_message(error_type, message, timestamp):
