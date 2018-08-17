@@ -5,24 +5,16 @@ Tune: Scalable Hyperparameter Search
     :scale: 30%
     :align: center
 
-Tune is a scalable framework for hyperparameter search with a focus on deep learning and deep reinforcement learning. You can find the code for Tune `here on GitHub <https://github.com/ray-project/ray/tree/master/python/ray/tune>`__.
+Tune is a scalable framework for hyperparameter search with a focus on deep learning and deep reinforcement learning.
 
-Take a look at `the User Guide <tune-usage.html>`__ for a comprehensive overview on how to use Tune's features.
+You can find the code for Tune `here on GitHub <https://github.com/ray-project/ray/tree/master/python/ray/tune>`__.
 
 Features
 --------
 
-*  Ease of use: go from running one experiment on a single machine to running on a large distributed cluster without changing your code.
+*  Supports any deep learning framework, including PyTorch, Tensorflow, and Keras.
 
-*  Mix and match search execution (Trial Schedulers) and search algorithms to accelerate your training - such as using Model-Based Optimization (HyperOpt) with HyperBand.
-
-*  Integration with visualization tools such as `TensorBoard <https://www.tensorflow.org/get_started/summaries_and_tensorboard>`__, `rllab's VisKit <https://media.readthedocs.org/pdf/rllab/latest/rllab.pdf>`__, and a `parallel coordinates visualization <https://en.wikipedia.org/wiki/Parallel_coordinates>`__.
-
-*  Flexible trial variant generation, including grid search, random search, and conditional parameter distributions.
-
-*  Resource-aware scheduling, including support for concurrent runs of algorithms that may themselves be parallel and distributed and support for trials with varying GPU requirements.
-
-*  Scalable hyperparameter optimization and model search techniques such as:
+*  Choose among scalable hyperparameter and model search techniques such as:
 
    -  `Population Based Training (PBT) <tune-schedulers.html#population-based-training-pbt>`__
 
@@ -30,6 +22,15 @@ Features
 
    -  `HyperBand <tune-schedulers.html#asynchronous-hyperband>`__
 
+*  Mix and match different hyperparameter optimization approaches - such as using `HyperOpt with HyperBand`_.
+
+*  Visualize results with `TensorBoard <https://www.tensorflow.org/get_started/summaries_and_tensorboard>`__, `parallel coordinates (Plot.ly) <https://plot.ly/python/parallel-coordinates-plot/>`__, and `rllab's VisKit <https://media.readthedocs.org/pdf/rllab/latest/rllab.pdf>`__.
+
+*  Go from running one experiment on a single machine to running on a large distributed cluster without changing your code.
+
+*  Parallelize training for models with GPU requirements or algorithms that may themselves be parallel and distributed, using Tune's `resource-aware scheduling <tune-usage.html#using-gpus-resource-allocation>`__,
+
+Take a look at `the User Guide <tune-usage.html>`__ for a comprehensive overview on how to use Tune's features.
 
 Getting Started
 ---------------
@@ -101,3 +102,6 @@ If Tune helps you in your academic research, you are encouraged to cite `our pap
         journal={arXiv preprint arXiv:1807.05118},
         year={2018}
     }
+
+
+.. _HyperOpt with HyperBand: https://github.com/ray-project/ray/blob/aaf5456b3d766f20d4b9a0b18448885f03ac28ac/python/ray/tune/examples/hyperopt_example.py

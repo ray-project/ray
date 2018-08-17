@@ -46,7 +46,7 @@ In order to use this search algorithm, you will need to install HyperOpt via the
 
     $ pip install --upgrade git+git://github.com/hyperopt/hyperopt.git
 
-This algorithm would require using the HyperOpt default search space. You can use HyperOptSearch like follows:
+This algorithm requires using the `HyperOpt search space specification <https://github.com/hyperopt/hyperopt/wiki/FMin>`__. You can use HyperOptSearch like follows:
 
 .. code-block:: python
 
