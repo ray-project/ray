@@ -108,7 +108,7 @@ You can either pass in a Python function or Python class for model training as f
 
 Tune will run this function on a separate thread in a Ray actor process. Note that trainable functions are not checkpointable, since they never return control back to their caller. See `Trial Checkpointing for more details <tune-usage.html#trial-checkpointing>`__.
 
-.. attention::
+.. note::
     If you have a lambda function that you want to train, you will need to first register the function: ``tune.register_trainable("lambda_id", lambda x: ...)``. You can then use ``lambda_id`` in place of ``my_trainable``.
 
 **Python classes** passed into Tune will need to subclass ``ray.tune.Trainable``.
