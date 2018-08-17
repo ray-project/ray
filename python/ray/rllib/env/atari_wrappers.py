@@ -189,6 +189,18 @@ class FrameStack(gym.Wrapper):
         return np.concatenate(self.frames, axis=2)
 
 
+class ScaledFloatFrame(gym.ObservationWrapper):
+    def __init__(self, env):
+        gym.ObservationWrapper.__init__(self, env)
+        self.observation_space = gym.spaces.Box(
+            low=0, high=1, shape=env.observation_space.shape, dtype=np.float32)
+
+    def observation(self, observation):
+        # careful! This undoes the memory optimization, use
+        # with smaller replay buffers only.
+        return np.array(observation).astype(np.float32) / 255.0
+
+
 def wrap_deepmind(env, dim=84):
     """Configure environment for DeepMind-style Atari.
 
@@ -204,6 +216,7 @@ def wrap_deepmind(env, dim=84):
     if 'FIRE' in env.unwrapped.get_action_meanings():
         env = FireResetEnv(env)
     env = WarpFrame(env, dim)
+    env = ScaledFloatFrame(env)
     # env = ClipRewardEnv(env)  # reward clipping is handled by DQN replay
     env = FrameStack(env, 4)
     return env
