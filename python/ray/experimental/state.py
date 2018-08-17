@@ -1382,8 +1382,9 @@ class GlobalState(object):
                     num_resources = message.ResourcesAvailableLabelLength()
                     dynamic_resources = {}
                     for i in range(num_resources):
-                        dyn = message.ResourcesAvailableLabel(i)
-                        dynamic_resources[dyn] = (
+                        resource_id = message.ResourcesAvailableLabel(i)
+                        resource_str = resource_id.decode("utf-8")
+                        dynamic_resources[resource_str] = (
                             message.ResourcesAvailableCapacity(i))
 
                     # Update available resources for this client
@@ -1405,7 +1406,6 @@ class GlobalState(object):
         total_available_resources = defaultdict(int)
         for available_resources in available_resources_by_id.values():
             for resource_id, num_available in available_resources.items():
-                resource_id = resource_id.decode("utf-8")
                 total_available_resources[resource_id] += num_available
 
         return dict(total_available_resources)
