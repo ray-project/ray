@@ -120,7 +120,7 @@ class WorkerPool {
   /// An internal data structure that maintains the pool state per language.
   struct State {
     /// The commands and arguments used to start the worker process
-    std::vector<std::string>> worker_command;
+    std::vector<std::string> worker_command;
     /// The pool of idle non-actor workers.
     std::list<std::shared_ptr<Worker>> idle;
     /// The pool of idle actor workers.
@@ -140,7 +140,7 @@ class WorkerPool {
   int num_cpus_;
 
   /// Pool states per language.
-  std::unordered_map<Language, State> state_per_lang_;
+  std::unordered_map<Language, State> states_by_lang_;
 };
 
 }  // namespace raylet

@@ -50,7 +50,7 @@ WorkerPool::WorkerPool(
   signal(SIGCHLD, SIG_IGN);
   for (const auto &entry : worker_commands) {
     // Initialize the pool state for this language.
-    auto const &state = state_by_lang_[entry.first];
+    auto &state = states_by_lang_[entry.first];
     // Set worker command for this language.
     state.worker_command = entry.second;
     RAY_CHECK(!state.worker_command.empty()) << "Worker command must not be empty.";
@@ -63,7 +63,7 @@ WorkerPool::WorkerPool(
 
 WorkerPool::~WorkerPool() {
   std::unordered_set<pid_t> pids_to_kill;
-  for (const auto &entry : state_by_lang_) {
+  for (const auto &entry : states_by_lang_) {
     // Kill all registered workers. NOTE(swang): This assumes that the registered
     // workers were started by the pool.
     for (const auto &worker : entry.second.registered_workers) {
@@ -85,8 +85,13 @@ WorkerPool::~WorkerPool() {
 }
 
 uint32_t WorkerPool::Size(const Language &language) const {
-  const auto &state = state_by_lang_[language];
-  return static_cast<uint32_t>(state.idle.size() + state.idle_actor.size());
+  const auto state = states_by_lang_.find(language);
+  if (state == states_by_lang_.end()) {
+    return 0;
+  } else {
+    return static_cast<uint32_t>(state->second.idle.size() +
+                                 state->second.idle_actor.size());
+  }
 }
 
 void WorkerPool::StartWorkerProcess(const Language &language, bool force_start) {
@@ -151,7 +156,7 @@ void WorkerPool::RegisterDriver(std::shared_ptr<Worker> driver) {
 
 std::shared_ptr<Worker> WorkerPool::GetRegisteredWorker(
     const std::shared_ptr<LocalClientConnection> &connection) const {
-  for (const auto &entry : state_by_lang_) {
+  for (const auto &entry : states_by_lang_) {
     auto worker = GetWorker(entry.second.registered_workers, connection);
     if (worker != nullptr) {
       return worker;
@@ -162,7 +167,7 @@ std::shared_ptr<Worker> WorkerPool::GetRegisteredWorker(
 
 std::shared_ptr<Worker> WorkerPool::GetRegisteredDriver(
     const std::shared_ptr<LocalClientConnection> &connection) const {
-  for (const auto &entry : state_by_lang_) {
+  for (const auto &entry : states_by_lang_) {
     auto driver = GetWorker(entry.second.registered_drivers, connection);
     if (driver != nullptr) {
       return driver;
@@ -215,8 +220,8 @@ void WorkerPool::DisconnectDriver(std::shared_ptr<Worker> driver) {
 }
 
 inline WorkerPool::State &WorkerPool::GetStateForLanguage(const Language &language) {
-  auto state = state_by_lang_.find(language);
-  RAY_CHECK(state != state_by_lang_.end()) << "Required Language isn't supported.";
+  auto state = states_by_lang_.find(language);
+  RAY_CHECK(state != states_by_lang_.end()) << "Required Language isn't supported.";
   return state->second;
 }
 
