@@ -44,7 +44,7 @@ class Trainable(object):
     def __init__(self, config=None, logger_creator=None):
         """Initialize an Trainable.
 
-        Sets up logging and points `self.logdir` to a directory in which
+        Sets up logging and points ``self.logdir`` to a directory in which
         training outputs should be placed.
 
         Subclasses should prefer defining ``_setup()`` instead of overriding
@@ -52,7 +52,7 @@ class Trainable(object):
 
         Args:
             config (dict): Trainable-specific configuration data. By default
-                will be saved as `self.config`.
+                will be saved as ``self.config``.
             logger_creator (func): Function that creates a ray.tune.Logger
                 object. If unspecified, a default logger is created.
         """

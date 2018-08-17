@@ -3,7 +3,7 @@ Tune Search Algorithms
 
 Tune provides various hyperparameter search algorithms to efficiently optimize your model. Tune allows you to use different search algorithms in combination with different trial schedulers. Tune will by default implicitly use the Variant Generation algorithm to create trials.
 
-.. important:: If you **explicitly** specify a Search Algorithm, you will need to pass in the experiment configuration into the Search Algorithm initializer.
+.. important:: The `search_alg` argument in ``run_experiments`` replaces passing in the experiment configuration directly.
 
 You can utilize these search algorithms as follows:
 

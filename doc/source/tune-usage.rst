@@ -131,8 +131,6 @@ Tune will run this function on a separate thread in a Ray actor process. Note th
 Tune Search Space (Default)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. warning::
-    If you specify a Search Algorithm, you may not be able to use this feature, as the algorithm may require a different search space declaration.
 
 You can use ``tune.grid_search`` to specify an axis of a grid search. By default, Tune also supports sampling parameters from user-specified lambda functions, which can be used independently or in combination with grid search.
 
@@ -155,8 +153,12 @@ The following shows grid search over two nested parameters combined with random 
         }
     })
 
+
 .. note::
     Lambda functions will be evaluated during trial variant generation. If you need to pass a literal function in your config, use ``tune.function(...)`` to escape it.
+
+.. warning::
+    If you specify a Search Algorithm, you may not be able to use this feature, as the algorithm may require a different search space declaration.
 
 For more information on variant generation, see `basic_variant.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/suggest/basic_variant.py>`__.
 
