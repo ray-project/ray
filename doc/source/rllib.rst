@@ -43,7 +43,7 @@ Environments
 Algorithms
 ----------
 * `Ape-X Distributed Prioritized Experience Replay <rllib-algorithms.html#distributed-prioritized-experience-replay-ape-x>`__
-* `Asynchronous Advantage Actor-Critic (A2C, A3C) <rllib-algorithms.html#asynchronous-advantage-actor-critic-a3c>`__
+* `Advantage Actor-Critic (A2C, A3C) <rllib-algorithms.html#advantage-actor-critic-a2c-a3c>`__
 * `Deep Deterministic Policy Gradients (DDPG) <rllib-algorithms.html#deep-deterministic-policy-gradients-ddpg>`__
 * `Deep Q Networks (DQN) <rllib-algorithms.html#deep-q-networks-dqn>`__
 * `Evolution Strategies <rllib-algorithms.html#evolution-strategies>`__

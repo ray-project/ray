@@ -9,8 +9,11 @@ from ray.rllib.utils import merge_dicts
 A2C_DEFAULT_CONFIG = merge_dicts(
     A3C_CONFIG,
     {
-        "sample_batch_size": 200,
+        "sample_batch_size": 100,
         "min_iter_time_s": 10,
+        "optimizer": {
+            "timesteps_per_batch": 1000,
+        },
     },
 )
 
