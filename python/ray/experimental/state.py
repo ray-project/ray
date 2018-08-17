@@ -7,6 +7,7 @@ import copy
 from collections import defaultdict
 import heapq
 import json
+import numbers
 import os
 import redis
 import sys
@@ -1325,7 +1326,8 @@ class GlobalState(object):
                     continue
                 data = raw_message["data"]
                 # Ignore subscribtion success message from Redis
-                if isinstance(data, int):
+                # This is a long in python 2 and an int in python 3
+                if isinstance(data, numbers.Number):
                     continue
                 message = (ray.gcs_utils.LocalSchedulerInfoMessage.
                            GetRootAsLocalSchedulerInfoMessage(data, 0))
