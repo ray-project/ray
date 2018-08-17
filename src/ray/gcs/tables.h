@@ -340,8 +340,8 @@ class HeartbeatTable : public Table<ClientID, HeartbeatTableData> {
 
 class DriverTable : public Log<JobID, DriverTableData> {
  public:
-  DriverTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client)
-      : Log(context, client) {
+  DriverTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,, AsyncGcsClient *client)
+      : Log(contexts, client) {
     pubsub_channel_ = TablePubsub::DRIVER;
     prefix_ = TablePrefix::DRIVER;
   };
