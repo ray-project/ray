@@ -6,7 +6,7 @@
 
 #ifndef RAYLET_TEST
 int main(int argc, char *argv[]) {
-  RAY_CHECK(argc == 9);
+  RAY_CHECK(argc == 10);
 
   const std::string raylet_socket_name = std::string(argv[1]);
   const std::string store_socket_name = std::string(argv[2]);
@@ -14,8 +14,9 @@ int main(int argc, char *argv[]) {
   const std::string redis_address = std::string(argv[4]);
   int redis_port = std::stoi(argv[5]);
   int num_initial_workers = std::stoi(argv[6]);
-  const std::string worker_command = std::string(argv[7]);
-  const std::string static_resource_list = std::string(argv[8]);
+  const std::string static_resource_list = std::string(argv[7]);
+  const std::string python_worker_command = std::string(argv[8]);
+  const std::string java_worker_command = std::string(argv[9]);
 
   // Configuration for the node manager.
   ray::raylet::NodeManagerConfig node_manager_config;
@@ -38,6 +39,16 @@ int main(int argc, char *argv[]) {
   node_manager_config.num_workers_per_process =
       RayConfig::instance().num_workers_per_process();
   // Use a default worker that can execute empty tasks with dependencies.
+
+  std::string worker_command;
+  if (!python_worker_command.empty()) {
+    worker_command = python_worker_command;
+  } else if (!java_worker_command.empty()) {
+    worker_command = java_worker_command;
+  } else {
+    RAY_CHECK(0)
+        << "Either Python worker command or Java worker command should be provided.";
+  }
 
   std::istringstream iss(worker_command);
   std::vector<std::string> results(std::istream_iterator<std::string>{iss},
