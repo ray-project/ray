@@ -40,7 +40,7 @@ View the `codebase on GitHub`_.
 
 Ray comes with libraries that accelerate deep learning and reinforcement learning development:
 
-- `Tune`_: Distributed Hyperparameter Search
+- `Tune`_: Scalable Hyperparameter Search
 - `RLlib`_: Scalable Reinforcement Learning
 
 .. _`Tune`: tune.html
