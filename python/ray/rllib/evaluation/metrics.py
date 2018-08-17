@@ -25,7 +25,8 @@ def collect_metrics(local_evaluator, remote_evaluators=[]):
             episode_lengths.append(episode.episode_length)
             episode_rewards.append(episode.episode_reward)
             for (_, policy_id), reward in episode.agent_rewards.items():
-                policy_rewards[policy_id].append(reward)
+                if policy_id != DEFAULT_POLICY_ID:
+                    policy_rewards[policy_id].append(reward)
     if episode_rewards:
         min_reward = min(episode_rewards)
         max_reward = max(episode_rewards)
@@ -36,8 +37,7 @@ def collect_metrics(local_evaluator, remote_evaluators=[]):
     avg_length = np.mean(episode_lengths)
 
     for policy_id, rewards in policy_rewards.copy().items():
-        if policy_id != DEFAULT_POLICY_ID:
-            policy_rewards[policy_id] = np.mean(rewards)
+        policy_rewards[policy_id] = np.mean(rewards)
 
     return dict(
         episode_reward_max=max_reward,
