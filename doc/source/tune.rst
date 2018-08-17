@@ -26,7 +26,7 @@ Features
 
 *  Visualize results with `TensorBoard <https://www.tensorflow.org/get_started/summaries_and_tensorboard>`__, `parallel coordinates (Plot.ly) <https://plot.ly/python/parallel-coordinates-plot/>`__, and `rllab's VisKit <https://media.readthedocs.org/pdf/rllab/latest/rllab.pdf>`__.
 
-*  Go from running one experiment on a single machine to running on a large distributed cluster without changing your code.
+*  Scale to running on a large distributed cluster without changing your code.
 
 *  Parallelize training for models with GPU requirements or algorithms that may themselves be parallel and distributed, using Tune's `resource-aware scheduling <tune-usage.html#using-gpus-resource-allocation>`__,
 
