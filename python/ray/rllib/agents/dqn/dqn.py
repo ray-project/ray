@@ -137,14 +137,27 @@ class DQNAgent(Agent):
 
         self.local_evaluator = self.make_local_evaluator(
             self.env_creator, self._policy_graph)
-        self.remote_evaluators = self.make_remote_evaluators(
-            self.env_creator, self._policy_graph, self.config["num_workers"], {
-                "num_cpus": self.config["num_cpus_per_worker"],
-                "num_gpus": self.config["num_gpus_per_worker"]
-            })
+
+        def create_remote_evaluators():
+            return self.make_remote_evaluators(
+                self.env_creator, self._policy_graph,
+                self.config["num_workers"], {
+                    "num_cpus": self.config["num_cpus_per_worker"],
+                    "num_gpus": self.config["num_gpus_per_worker"]
+                })
+
+        if self.config["optimizer_class"] != "AsyncReplayOptimizer":
+            self.remote_evaluators = create_remote_evaluators()
+        else:
+            # Hack to workaround https://github.com/ray-project/ray/issues/2541
+            self.remote_evaluators = None
         self.optimizer = getattr(optimizers, self.config["optimizer_class"])(
             self.local_evaluator, self.remote_evaluators,
             self.config["optimizer"])
+        # Create the remote evaluators *after* the replay actors
+        if self.remote_evaluators is None:
+            self.remote_evaluators = create_remote_evaluators()
+            self.optimizer.set_evaluators(self.remote_evaluators)
 
         self.last_target_update_ts = 0
         self.num_target_updates = 0
