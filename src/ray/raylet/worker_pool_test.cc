@@ -14,7 +14,8 @@ class WorkerPoolMock : public WorkerPool {
  public:
   WorkerPoolMock()
       : WorkerPool(0, NUM_WORKERS_PER_PROCESS, 0,
-                   {{Language::PYTHON, {}}, {Language::JAVA, {}}}) {}
+                   {{Language::PYTHON, {"dummy_py_worker_command"}},
+                    {Language::JAVA, {"dummy_java_worker_command"}}}) {}
 
   void StartWorkerProcess(pid_t pid, const Language &language = Language::PYTHON,
                           bool force_start = false) {
