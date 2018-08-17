@@ -39,21 +39,20 @@ class Trainable(object):
     just a ``my_train(config, reporter)`` function to the config.
     The function will be automatically converted to this interface
     (sans checkpoint functionality).
-
-    Attributes:
-        config (obj): The hyperparam configuration for this trial.
-        logdir (str): Directory in which training outputs should be placed.
-            By default, this is provided by Tune.
     """
 
     def __init__(self, config=None, logger_creator=None):
         """Initialize an Trainable.
 
+        Sets up logging and points `self.logdir` to a directory in which
+        training outputs should be placed.
+
         Subclasses should prefer defining ``_setup()`` instead of overriding
         ``__init__()`` directly.
 
         Args:
-            config (dict): Trainable-specific configuration data.
+            config (dict): Trainable-specific configuration data. By default
+                will be saved as `self.config`.
             logger_creator (func): Function that creates a ray.tune.Logger
                 object. If unspecified, a default logger is created.
         """
