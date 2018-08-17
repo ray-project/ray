@@ -6,6 +6,7 @@ atari-a3c:
             - BeamRiderNoFrameskip-v4
             - QbertNoFrameskip-v4
             - SpaceInvadersNoFrameskip-v4 
+            - PongNoFrameskip-v4 
     run: A3C
     config:
         num_workers: 12
