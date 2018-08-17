@@ -13,3 +13,4 @@ atari-a3c:
         sample_batch_size: 20
         optimizer:
             grads_per_step: 1000
+        summarize: true
