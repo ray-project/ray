@@ -28,5 +28,3 @@ pong-a3c:
                 [32, [3, 3], 2],
                 [32, [3, 3], 2],
             ]
-        optimizer:
-            grads_per_step: 1000
