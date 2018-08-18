@@ -9,7 +9,7 @@ import subprocess
 
 import ray.services as services
 from ray.autoscaler.commands import (attach_cluster, exec_cluster,
-                                     create_or_update_cluster, rsync,
+                                     create_or_update_cluster,
                                      teardown_cluster, get_head_node_ip)
 import ray.utils
 
@@ -447,32 +447,6 @@ def attach(cluster_config_file, start, cluster_name):
 
 @click.command()
 @click.argument("cluster_config_file", required=True, type=str)
-@click.argument("source", required=True, type=str)
-@click.argument("target", required=True, type=str)
-@click.option(
-    "--cluster-name",
-    required=False,
-    type=str,
-    help=("Override the configured cluster name."))
-def rsync_down(cluster_config_file, source, target, cluster_name):
-    rsync(cluster_config_file, source, target, cluster_name, down=True)
-
-
-@click.command()
-@click.argument("cluster_config_file", required=True, type=str)
-@click.argument("source", required=True, type=str)
-@click.argument("target", required=True, type=str)
-@click.option(
-    "--cluster-name",
-    required=False,
-    type=str,
-    help=("Override the configured cluster name."))
-def rsync_up(cluster_config_file, source, target, cluster_name):
-    rsync(cluster_config_file, source, target, cluster_name, down=False)
-
-
-@click.command()
-@click.argument("cluster_config_file", required=True, type=str)
 @click.argument("cmd", required=True, type=str)
 @click.option(
     "--stop",
@@ -494,12 +468,8 @@ def rsync_up(cluster_config_file, source, target, cluster_name):
     required=False,
     type=str,
     help=("Override the configured cluster name."))
-@click.option(
-    "--port-forward", required=False, type=int, help=("Port to forward."))
-def exec_cmd(cluster_config_file, cmd, screen, stop, start, cluster_name,
-             port_forward):
-    exec_cluster(cluster_config_file, cmd, screen, stop, start, cluster_name,
-                 port_forward)
+def exec_cmd(cluster_config_file, cmd, screen, stop, start, cluster_name):
+    exec_cluster(cluster_config_file, cmd, screen, stop, start, cluster_name)
 
 
 @click.command()
@@ -519,8 +489,6 @@ cli.add_command(create_or_update)
 cli.add_command(create_or_update, name="up")
 cli.add_command(attach)
 cli.add_command(exec_cmd, name="exec")
-cli.add_command(rsync_down)
-cli.add_command(rsync_up)
 cli.add_command(teardown)
 cli.add_command(teardown, name="down")
 cli.add_command(get_head_ip)
