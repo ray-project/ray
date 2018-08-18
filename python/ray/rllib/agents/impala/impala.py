@@ -11,7 +11,7 @@ from ray.rllib.agents.a3c.a3c_tf_policy_graph import A3CPolicyGraph
 from ray.rllib.agents.impala.vtrace_policy_graph import VTracePolicyGraph
 from ray.rllib.agents.agent import Agent, with_common_config
 from ray.rllib.optimizers import AsyncSamplesOptimizer
-from ray.rllib.utils import FilterManager
+from ray.rllib.utils import FilterManager, merge_dicts
 from ray.tune.trial import Resources
 
 OPTIMIZER_SHARED_CONFIGS = [
@@ -88,7 +88,17 @@ class ImpalaAgent(Agent):
         else:
             policy_cls = A3CPolicyGraph
         self.local_evaluator = self.make_local_evaluator(
-            self.env_creator, policy_cls)
+            self.env_creator, policy_cls,
+            # important: increase the number of cpu threads for multi-gpu
+            merge_dicts(
+                self.config, {
+                    "tf_session_args": {
+                        "intra_op_parallelism_threads": max(
+                            1, self.config["num_gpus"]),
+                        "inter_op_parallelism_threads": max(
+                            1, self.config["num_gpus"]),
+                    },
+                }))
         self.remote_evaluators = self.make_remote_evaluators(
             self.env_creator, policy_cls, self.config["num_workers"],
             {"num_cpus": 1})
