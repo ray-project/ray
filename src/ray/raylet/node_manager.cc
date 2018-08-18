@@ -253,7 +253,7 @@ void NodeManager::Heartbeat() {
     heartbeat_data->resources_total_capacity.push_back(resource_pair.second);
   }
   // TODO(atumanov): extract resource load information from the SchedulingQueues class.
-  local_resources.SetLoadResources(this->local_queues_.GetResourceLoad());
+  local_resources.SetLoadResources(local_queues_.GetResourceLoad());
   for (const auto &resource_pair : local_resources.GetLoadResources().GetResourceMap()) {
     heartbeat_data->resource_load_label.push_back(resource_pair.first);
     heartbeat_data->resource_load_capacity.push_back(resource_pair.second);
