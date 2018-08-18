@@ -7,7 +7,6 @@ try:  # py3
 except ImportError:  # py2
     from pipes import quote
 import os
-import shlex
 import subprocess
 import sys
 import tempfile
