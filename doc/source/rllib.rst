@@ -58,6 +58,7 @@ Models and Preprocessors
 * `Custom Models <rllib-models.html#custom-models>`__
 * `Custom Preprocessors <rllib-models.html#custom-preprocessors>`__
 * `Customizing Policy Graphs <rllib-models.html#customizing-policy-graphs>`__
+* `Model-Based Rollouts <rllib-models.html#model-based-rollouts>`__
 
 RLlib Concepts
 --------------

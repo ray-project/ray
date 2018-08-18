@@ -89,11 +89,21 @@ You can use ``ray attach`` to attach to an interactive console on the cluster.
 Port-forwarding applications
 ----------------------------
 
-To run connect to applications running on the cluster (e.g. Jupyter notebook) using a web browser, you can forward the port to your local machine using SSH:
+To run connect to applications running on the cluster (e.g. Jupyter notebook) using a web browser, you can use the port-forward option for ``ray exec``:
 
 .. code-block:: bash
 
-    $ ssh -L 8899:localhost:8899 -i <key> <user>@<addr> 'source ~/anaconda3/bin/activate tensorflow_p36 && jupyter notebook --port=8899'
+    $ ray exec cluster.yaml --port-forward=8899 'source ~/anaconda3/bin/activate tensorflow_p36 && jupyter notebook --port=8899'
+
+Manually synchronizing files
+----------------------------
+
+To download or upload files to the cluster head node, use ``ray rsync_down`` or ``ray rsync_up``:
+
+.. code-block:: bash
+
+    $ ray rsync_down cluster.yaml '/path/on/cluster' '/local/path'
+    $ ray rsync_up cluster.yaml '/local/path' '/path/on/cluster'
 
 Updating your cluster
 ---------------------

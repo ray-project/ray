@@ -990,8 +990,9 @@ def start_raylet(redis_address,
         gcs_ip_address,
         gcs_port,
         str(num_workers),
-        start_worker_command,
         resource_argument,
+        start_worker_command,
+        "",  # Worker command for Java, not needed for Python.
     ]
 
     if use_valgrind:
