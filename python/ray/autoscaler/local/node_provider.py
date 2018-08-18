@@ -5,6 +5,7 @@ from __future__ import print_function
 from filelock import FileLock
 import json
 import os
+import socket
 
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_TYPE
