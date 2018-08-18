@@ -9,6 +9,7 @@ import hashlib
 import inspect
 import numpy as np
 import os
+import random
 import redis
 import signal
 import sys
@@ -1799,6 +1800,10 @@ def init(redis_address=None,
         Exception: An exception is raised if an inappropriate combination of
             arguments is passed in.
     """
+
+    from datetime import datetime
+    random.seed(datetime.now())
+
     if global_worker.connected:
         if ignore_reinit_error:
             logger.error("Calling ray.init() again after it has already been "
