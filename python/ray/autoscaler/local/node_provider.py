@@ -50,7 +50,6 @@ class ClusterState(object):
     def get(self):
         with self.file_lock:
             workers = json.loads(open(self.save_path).read())
-            print("Loaded cluster state", workers)
             return workers
 
     def put(self, worker_id, info):
@@ -96,10 +95,10 @@ class LocalNodeProvider(NodeProvider):
         return self.state.get()[node_id]["tags"]
 
     def external_ip(self, node_id):
-        return node_id
+        return socket.gethostbyname(node_id)
 
     def internal_ip(self, node_id):
-        return node_id
+        return socket.gethostbyname(node_id)
 
     def set_node_tags(self, node_id, tags):
         with self.state.file_lock:
