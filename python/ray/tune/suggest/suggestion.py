@@ -2,7 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from itertools import chain
+import itertools
 import copy
 
 from ray.tune.error import TuneError

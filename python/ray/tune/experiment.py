@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import copy
 import types
 
 from ray.tune.result import DEFAULT_RESULTS_DIR
@@ -100,9 +101,10 @@ class Experiment(object):
         """
         if "run" not in spec:
             raise TuneError("No trainable specified!")
-        exp = cls(name, spec["run"])
-        exp.name = name
-        exp.spec = spec
+        spec = copy.deepcopy(spec)
+
+        run_value = spec.pop("run")
+        exp = cls(name, run_value, **spec)
         return exp
 
     def _register_if_needed(self, run_object):

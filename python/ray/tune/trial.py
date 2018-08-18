@@ -95,7 +95,6 @@ class Trial(object):
         The args here take the same meaning as the command line flags defined
         in ray.tune.config_parser.
         """
-
         if not has_trainable(trainable_name):
             # Make sure rllib agents are registered
             from ray import rllib  # noqa: F401

@@ -11,7 +11,7 @@ from ray.rllib import _register_all
 
 from ray.tune import Trainable, TuneError
 from ray.tune import register_env, register_trainable, run_experiments
-from ray.tune.trial_scheduler import TrialScheduler, FIFOScheduler
+from ray.tune.schedulers import TrialScheduler, FIFOScheduler
 from ray.tune.registry import _global_registry, TRAINABLE_CLASS
 from ray.tune.result import DEFAULT_RESULTS_DIR, TIMESTEPS_TOTAL, DONE
 from ray.tune.util import pin_in_object_store, get_pinned_object
@@ -449,7 +449,8 @@ class RunExperimentTest(unittest.TestCase):
 
         register_trainable("f1", train)
 
-        alg = BasicVariantGenerator({
+        alg = BasicVariantGenerator()
+        alg.add_configurations({
             "foo": {
                 "run": "f1",
                 "config": {
@@ -461,6 +462,30 @@ class RunExperimentTest(unittest.TestCase):
         for trial in trials:
             self.assertEqual(trial.status, Trial.TERMINATED)
             self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], 99)
+
+    def testAutoregisterTrainable(self):
+        def train(config, reporter):
+            for i in range(100):
+                reporter(timesteps_total=i)
+
+        class B(Trainable):
+            def _train(self):
+                return dict(timesteps_this_iter=1, done=True)
+
+        register_trainable("f1", train)
+        trials = run_experiments({
+            "foo": {
+                "run": train,
+                "config": {
+                    "script_min_iter_time_s": 0
+                }
+            },
+            "bar": {
+                "run": B
+            }
+        })
+        for trial in trials:
+            self.assertEqual(trial.status, Trial.TERMINATED)
 
 
 class VariantGeneratorTest(unittest.TestCase):
