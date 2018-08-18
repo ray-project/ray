@@ -41,6 +41,7 @@ class LearnerThread(threading.Thread):
         self.outqueue = queue.Queue()
         self.queue_timer = TimerStat()
         self.grad_timer = TimerStat()
+        self.load_timer = TimerStat()
         self.daemon = True
         self.weights_updated = False
         self.stats = {}
@@ -107,7 +108,6 @@ class TFMultiGPULearner(LearnerThread):
                 self.sess = self.local_evaluator.tf_sess
                 self.sess.run(tf.global_variables_initializer())
 
-        self.load_timer = TimerStat()
         self.replay_batch_slots = replay_batch_slots
         self.replay_buffer = []
 
@@ -257,6 +257,8 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
         }
         timing["learner_grad_time_ms"] = round(
             1000 * self.learner.grad_timer.mean, 3)
+        timing["learner_load_time_ms"] = round(
+            1000 * self.learner.load_timer.mean, 3)
         timing["learner_dequeue_time_ms"] = round(
             1000 * self.learner.queue_timer.mean, 3)
         stats = {
