@@ -43,6 +43,7 @@ class SyncSamplesOptimizer(PolicyOptimizer):
                 else:
                     samples.append(self.local_evaluator.sample())
             samples = SampleBatch.concat_samples(samples)
+            self.sample_timer.push_units_processed(samples.count)
 
         with self.grad_timer:
             for i in range(self.num_sgd_iter):
