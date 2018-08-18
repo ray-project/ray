@@ -15,8 +15,11 @@ from ray.rllib.utils import FilterManager
 from ray.tune.trial import Resources
 
 OPTIMIZER_SHARED_CONFIGS = [
+    "lr",
+    "num_gpus",
     "sample_batch_size",
     "train_batch_size",
+    "replay_batch_slots",
 ]
 
 DEFAULT_CONFIG = with_common_config({
@@ -30,10 +33,11 @@ DEFAULT_CONFIG = with_common_config({
     "train_batch_size": 500,
     "min_iter_time_s": 10,
     "summarize": False,
-    "gpu": True,
+    "num_gpus": 1,
     "num_workers": 2,
     "num_cpus_per_worker": 1,
     "num_gpus_per_worker": 0,
+    "replay_batch_slots": 0,  # TODO only applies if num_gpus > 1?
 
     # Learning params.
     "grad_clip": 40.0,
@@ -70,7 +74,7 @@ class ImpalaAgent(Agent):
         cf = dict(cls._default_config, **config)
         return Resources(
             cpu=1,
-            gpu=cf["gpu"] and 1 or 0,
+            gpu=cf["num_gpus"],
             extra_cpu=cf["num_cpus_per_worker"] * cf["num_workers"],
             extra_gpu=cf["num_gpus_per_worker"] * cf["num_workers"])
 

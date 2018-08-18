@@ -83,42 +83,60 @@ class VTraceLoss(object):
 
 
 class VTracePolicyGraph(TFPolicyGraph):
-    def __init__(self, observation_space, action_space, config):
+    def __init__(self,
+                 observation_space,
+                 action_space,
+                 config,
+                 existing_inputs=None):
+
         config = dict(ray.rllib.agents.a3c.a3c.DEFAULT_CONFIG, **config)
         assert config["batch_mode"] == "truncate_episodes", \
             "Must use `truncate_episodes` batch mode with V-trace."
         self.config = config
         self.sess = tf.get_default_session()
 
+        # Create input placeholders
+        if existing_inputs:
+            actions, dones, behaviour_logits, rewards, observations = \
+                existing_inputs[:5]
+            existing_state_in = existing_inputs[5:-1]
+            existing_seq_lens = existing_inputs[-1]
+        else:
+            if isinstance(action_space, gym.spaces.Box):
+                ac_size = action_space.shape[0]
+                actions = tf.placeholder(
+                    tf.float32, [None, ac_size], name="ac")
+            elif isinstance(action_space, gym.spaces.Discrete):
+                ac_size = action_space.n
+                actions = tf.placeholder(tf.int64, [None], name="ac")
+            else:
+                raise UnsupportedSpaceException(
+                    "Action space {} is not supported for IMPALA.".format(
+                        action_space))
+            dones = tf.placeholder(tf.bool, [None], name="dones")
+            rewards = tf.placeholder(tf.float32, [None], name="rewards")
+            behaviour_logits = tf.placeholder(
+                tf.float32, [None, ac_size], name="behaviour_logits")
+            observations = tf.placeholder(
+                tf.float32, [None] + list(observation_space.shape))
+            existing_state_in = None
+            existing_seq_lens = None
+
         # Setup the policy
-        self.observations = tf.placeholder(
-            tf.float32, [None] + list(observation_space.shape))
         dist_class, logit_dim = ModelCatalog.get_action_dist(
             action_space, self.config["model"])
-        self.model = ModelCatalog.get_model(self.observations, logit_dim,
-                                            self.config["model"])
+        self.model = ModelCatalog.get_model(
+            observations,
+            logit_dim,
+            self.config["model"],
+            state_in=existing_state_in,
+            seq_lens=existing_seq_lens)
         action_dist = dist_class(self.model.outputs)
         values = tf.reshape(
             linear(self.model.last_layer, 1, "value", normc_initializer(1.0)),
             [-1])
         self.var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
                                           tf.get_variable_scope().name)
-
-        # Setup the policy loss
-        if isinstance(action_space, gym.spaces.Box):
-            ac_size = action_space.shape[0]
-            actions = tf.placeholder(tf.float32, [None, ac_size], name="ac")
-        elif isinstance(action_space, gym.spaces.Discrete):
-            ac_size = action_space.n
-            actions = tf.placeholder(tf.int64, [None], name="ac")
-        else:
-            raise UnsupportedSpaceException(
-                "Action space {} is not supported for IMPALA.".format(
-                    action_space))
-        dones = tf.placeholder(tf.bool, [None], name="dones")
-        rewards = tf.placeholder(tf.float32, [None], name="rewards")
-        behaviour_logits = tf.placeholder(
-            tf.float32, [None, ac_size], name="behaviour_logits")
 
         def to_batches(tensor):
             if self.config["model"]["use_lstm"]:
@@ -165,14 +183,14 @@ class VTracePolicyGraph(TFPolicyGraph):
             ("dones", dones),
             ("behaviour_logits", behaviour_logits),
             ("rewards", rewards),
-            ("obs", self.observations),
+            ("obs", observations),
         ]
         TFPolicyGraph.__init__(
             self,
             observation_space,
             action_space,
             self.sess,
-            obs_input=self.observations,
+            obs_input=observations,
             action_sampler=action_dist.sample(),
             loss=self.loss.total_loss,
             loss_inputs=loss_in,
@@ -220,3 +238,10 @@ class VTracePolicyGraph(TFPolicyGraph):
 
     def get_initial_state(self):
         return self.model.state_init
+
+    def copy(self, existing_inputs):
+        return VTracePolicyGraph(
+            self.observation_space,
+            self.action_space,
+            self.config,
+            existing_inputs=existing_inputs)

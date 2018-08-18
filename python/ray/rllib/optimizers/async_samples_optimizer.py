@@ -6,12 +6,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+import random
 import time
 import threading
 
 from six.moves import queue
 
 import ray
+from ray.rllib.optimizers.multi_gpu_impl import LocalSyncParallelOptimizer
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.utils.actors import TaskPool
 from ray.rllib.utils.timer import TimerStat
@@ -39,7 +42,7 @@ class LearnerThread(threading.Thread):
         self.queue_timer = TimerStat()
         self.grad_timer = TimerStat()
         self.daemon = True
-        self.weights_updated = 0
+        self.weights_updated = False
         self.stats = {}
 
     def run(self):
@@ -48,15 +51,99 @@ class LearnerThread(threading.Thread):
 
     def step(self):
         with self.queue_timer:
-            ra, batch = self.inqueue.get()
+            batch = self.inqueue.get()
 
-        if batch is not None:
-            with self.grad_timer:
-                fetches = self.local_evaluator.compute_apply(batch)
-                self.weights_updated += 1
-                if "stats" in fetches:
-                    self.stats = fetches["stats"]
-            self.outqueue.put(batch.count)
+        with self.grad_timer:
+            fetches = self.local_evaluator.compute_apply(batch)
+            self.weights_updated = True
+            if "stats" in fetches:
+                self.stats = fetches["stats"]
+
+        self.outqueue.put(batch.count)
+        self.learner_queue_size.push(self.inqueue.qsize())
+
+
+class TFMultiGPULearner(LearnerThread):
+    def __init__(self,
+                 local_evaluator,
+                 num_gpus=2,
+                 lr=0.0005,
+                 train_batch_size=500,
+                 replay_batch_slots=0):
+        import tensorflow as tf
+
+        LearnerThread.__init__(self, local_evaluator)
+        self.lr = lr
+        self.train_batch_size = train_batch_size
+        if not num_gpus:
+            self.devices = ["/cpu:0"]
+        else:
+            self.devices = ["/gpu:{}".format(i) for i in range(num_gpus)]
+            print("TFMultiGPULearner devices", self.devices)
+        assert self.train_batch_size % len(self.devices) == 0
+        assert self.train_batch_size >= len(self.devices), "batch too small"
+        self.per_device_batch_size = int(
+            self.train_batch_size / len(self.devices))
+        self.policy = self.local_evaluator.policy_map["default"]
+
+        # per-GPU graph copies created below must share vars with the policy
+        # reuse is set to AUTO_REUSE because Adam nodes are created after
+        # all of the device copies are created.
+        with self.local_evaluator.tf_sess.graph.as_default():
+            with self.local_evaluator.tf_sess.as_default():
+                with tf.variable_scope("default", reuse=tf.AUTO_REUSE):
+                    if self.policy._state_inputs:
+                        rnn_inputs = self.policy._state_inputs + [
+                            self.policy._seq_lens
+                        ]
+                    else:
+                        rnn_inputs = []
+                    self.par_opt = LocalSyncParallelOptimizer(
+                        tf.train.AdamOptimizer(self.lr), self.devices,
+                        [v for _, v in self.policy.loss_inputs()], rnn_inputs,
+                        self.per_device_batch_size, self.policy.copy,
+                        os.getcwd())
+
+                self.sess = self.local_evaluator.tf_sess
+                self.sess.run(tf.global_variables_initializer())
+
+        self.load_timer = TimerStat()
+        self.replay_batch_slots = replay_batch_slots
+        self.replay_buffer = []
+
+    def step(self):
+        with self.queue_timer:
+            if (self.inqueue.empty() and self.replay_batch_slots > 0
+                    and self.replay_buffer):
+                batch = random.choice(self.replay_buffer)
+            else:
+                batch = self.inqueue.get()
+                if self.replay_batch_slots > 0:
+                    self.replay_buffer.append(batch)
+                    if len(self.replay_buffer) > self.replay_batch_slots:
+                        self.replay_buffer.pop(0)
+            assert batch.count == self.train_batch_size
+
+        with self.load_timer:
+            tuples = self.policy._get_loss_inputs_dict(batch)
+            data_keys = [ph for _, ph in self.policy.loss_inputs()]
+            if self.policy._state_inputs:
+                state_keys = (
+                    self.policy._state_inputs + [self.policy._seq_lens])
+            else:
+                state_keys = []
+            tuples_per_device = self.par_opt.load_data(
+                self.sess, [tuples[k] for k in data_keys],
+                [tuples[k] for k in state_keys])
+            assert int(tuples_per_device) == int(self.per_device_batch_size)
+
+        with self.grad_timer:
+            fetches = self.par_opt.optimize(self.sess, 0)
+            self.weights_updated = True
+            if "stats" in fetches:
+                self.stats = fetches["stats"]
+
+        self.outqueue.put(batch.count)
         self.learner_queue_size.push(self.inqueue.qsize())
 
 
@@ -67,13 +154,29 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
     and remote evaluators (IMPALA actors).
     """
 
-    def _init(self, train_batch_size=512, sample_batch_size=50, debug=False):
-
+    def _init(self,
+              train_batch_size=500,
+              sample_batch_size=50,
+              num_gpus=0,
+              lr=0.0005,
+              debug=False,
+              replay_batch_slots=0):
         self.debug = debug
         self.learning_started = False
         self.train_batch_size = train_batch_size
 
-        self.learner = LearnerThread(self.local_evaluator)
+        if num_gpus > 1:
+            if train_batch_size // num_gpus % sample_batch_size != 0:
+                raise ValueError(
+                    "Sample batches must evenly divide across GPUs.")
+            self.learner = TFMultiGPULearner(
+                self.local_evaluator,
+                lr=lr,
+                num_gpus=num_gpus,
+                train_batch_size=train_batch_size,
+                replay_batch_slots=replay_batch_slots)
+        else:
+            self.learner = LearnerThread(self.local_evaluator)
         self.learner.start()
 
         assert len(self.remote_evaluators) > 0
@@ -126,7 +229,7 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
                     train_batch = self.batch_buffer[0].concat_samples(
                         self.batch_buffer)
                     with self.timers["enqueue"]:
-                        self.learner.inqueue.put((ev, train_batch))
+                        self.learner.inqueue.put(train_batch)
                     self.batch_buffer = []
 
                 # Note that it's important to pull new weights once
