@@ -38,19 +38,20 @@ def create_or_update_cluster(config_file, override_min_workers,
     if override_cluster_name is not None:
         config["cluster_name"] = override_cluster_name
     config = _bootstrap_config(config)
-    get_or_create_head_node(config, config_file, no_restart, restart_only, yes)
+    get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
+                            override_cluster_name)
 
 
 def _bootstrap_config(config):
+    config = fillout_defaults(config)
+
     hasher = hashlib.sha1()
     hasher.update(json.dumps([config], sort_keys=True).encode("utf-8"))
     cache_key = os.path.join(tempfile.gettempdir(),
                              "ray-config-{}".format(hasher.hexdigest()))
     if os.path.exists(cache_key):
-        print("Cached settings:", cache_key)
         return json.loads(open(cache_key).read())
     validate_config(config)
-    config = fillout_defaults(config)
 
     importer = NODE_PROVIDERS.get(config["provider"]["type"])
     if not importer:
@@ -91,8 +92,8 @@ def teardown_cluster(config_file, yes, workers_only, override_cluster_name):
         nodes = provider.nodes({TAG_RAY_NODE_TYPE: "worker"})
 
 
-def get_or_create_head_node(config, config_file, no_restart, restart_only,
-                            yes):
+def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
+                            override_cluster_name):
     """Create the cluster head node, which in turn creates the workers."""
 
     provider = get_node_provider(config["provider"], config["cluster_name"])
@@ -192,10 +193,16 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only,
                 and "--autoscaling-config" in s):
             monitor_str = "docker exec {} /bin/sh -c {}".format(
                 config["docker"]["container_name"], quote(monitor_str))
+    if override_cluster_name:
+        modifiers = " --cluster-name={}".format(quote(override_cluster_name))
+    else:
+        modifiers = ""
     print("To monitor auto-scaling activity, you can run:\n\n"
-          "  ray exec {} {} --cluster-name={}\n".format(
-              config_file, quote(monitor_str), quote(config["cluster_name"])))
-    print("To login to the cluster, run:\n\n"
+          "  ray exec {} {}{}\n".format(config_file, quote(monitor_str),
+                                        modifiers))
+    print("To open a console on the cluster:\n\n"
+          "  ray attach {}{}\n".format(config_file, modifiers))
+    print("To ssh manually to the cluster, run:\n\n"
           "  ssh -i {} {}@{}\n".format(config["auth"]["ssh_private_key"],
                                        config["auth"]["ssh_user"],
                                        provider.external_ip(head_node)))
@@ -211,10 +218,11 @@ def attach_cluster(config_file, start, override_cluster_name):
     """
 
     exec_cluster(config_file, "screen -L -xRR", False, False, start,
-                 override_cluster_name)
+                 override_cluster_name, None)
 
 
-def exec_cluster(config_file, cmd, screen, stop, start, override_cluster_name):
+def exec_cluster(config_file, cmd, screen, stop, start, override_cluster_name,
+                 port_forward):
     """Runs a command on the specified cluster.
 
     Arguments:
@@ -224,13 +232,15 @@ def exec_cluster(config_file, cmd, screen, stop, start, override_cluster_name):
         stop: whether to stop the cluster after command run
         start: whether to start the cluster if it isn't up
         override_cluster_name: set the name of the cluster
+        port_forward: port to forward
     """
 
     config = yaml.load(open(config_file).read())
     if override_cluster_name is not None:
         config["cluster_name"] = override_cluster_name
     config = _bootstrap_config(config)
-    head_node = _get_head_node(config, config_file, create_if_needed=start)
+    head_node = _get_head_node(
+        config, config_file, override_cluster_name, create_if_needed=start)
     updater = NodeUpdaterProcess(
         head_node,
         config["provider"],
@@ -242,10 +252,10 @@ def exec_cluster(config_file, cmd, screen, stop, start, override_cluster_name):
     if stop:
         cmd += ("; ray stop; ray teardown ~/ray_bootstrap_config.yaml --yes "
                 "--workers-only; sudo shutdown -h now")
-    _exec(updater, cmd, screen, expect_error=stop)
+    _exec(updater, cmd, screen, expect_error=stop, port_forward=port_forward)
 
 
-def _exec(updater, cmd, screen, expect_error=False):
+def _exec(updater, cmd, screen, expect_error=False, port_forward=None):
     if cmd:
         if screen:
             cmd = [
@@ -254,7 +264,43 @@ def _exec(updater, cmd, screen, expect_error=False):
             ]
             cmd = " ".join(cmd)
         updater.ssh_cmd(
-            cmd, verbose=True, allocate_tty=True, expect_error=expect_error)
+            cmd,
+            verbose=False,
+            allocate_tty=True,
+            expect_error=expect_error,
+            port_forward=port_forward)
+
+
+def rsync(config_file, source, target, override_cluster_name, down):
+    """Rsyncs files.
+
+    Arguments:
+        config_file: path to the cluster yaml
+        source: source dir
+        target: target dir
+        override_cluster_name: set the name of the cluster
+        down: whether we're syncing remote -> local
+    """
+
+    config = yaml.load(open(config_file).read())
+    if override_cluster_name is not None:
+        config["cluster_name"] = override_cluster_name
+    config = _bootstrap_config(config)
+    head_node = _get_head_node(
+        config, config_file, override_cluster_name, create_if_needed=False)
+    updater = NodeUpdaterProcess(
+        head_node,
+        config["provider"],
+        config["auth"],
+        config["cluster_name"],
+        config["file_mounts"], [],
+        "",
+        redirect_output=False)
+    if down:
+        rsync = updater.rsync_down
+    else:
+        rsync = updater.rsync_up
+    rsync(source, target, check_error=False)
 
 
 def get_head_node_ip(config_file, override_cluster_name):
@@ -264,11 +310,14 @@ def get_head_node_ip(config_file, override_cluster_name):
     if override_cluster_name is not None:
         config["cluster_name"] = override_cluster_name
     provider = get_node_provider(config["provider"], config["cluster_name"])
-    head_node = _get_head_node(config, config_file)
+    head_node = _get_head_node(config, config_file, override_cluster_name)
     return provider.external_ip(head_node)
 
 
-def _get_head_node(config, config_file, create_if_needed=False):
+def _get_head_node(config,
+                   config_file,
+                   override_cluster_name,
+                   create_if_needed=False):
     provider = get_node_provider(config["provider"], config["cluster_name"])
     head_node_tags = {
         TAG_RAY_NODE_TYPE: "head",
@@ -283,7 +332,8 @@ def _get_head_node(config, config_file, create_if_needed=False):
             config_file,
             restart_only=False,
             no_restart=False,
-            yes=True)
+            yes=True,
+            override_cluster_name=override_cluster_name)
         return _get_head_node(config, config_file, create_if_needed=False)
     else:
         print("Head node of cluster ({}) not found!".format(
