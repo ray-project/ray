@@ -31,8 +31,10 @@ COMMON_CONFIG = {
     "sample_async": False,
     # Which observation filter to apply to the observation
     "observation_filter": "NoFilter",
+    # Whether to clip rewards prior to experience postprocessing
+    "clip_rewards": True,
     # Whether to use rllib or deepmind preprocessors
-    "preprocessor_pref": "rllib",
+    "preprocessor_pref": "deepmind",
     # Arguments to pass to the env creator
     "env_config": {},
     # Environment name can also be passed via config
@@ -136,6 +138,7 @@ class Agent(Trainable):
             compress_observations=config["compress_observations"],
             num_envs=config["num_envs_per_worker"],
             observation_filter=config["observation_filter"],
+            clip_rewards=config["clip_rewards"],
             env_config=config["env_config"],
             model_config=config["model"],
             policy_config=config,
@@ -370,6 +373,9 @@ def get_agent_class(alg):
     elif alg == "A3C":
         from ray.rllib.agents import a3c
         return a3c.A3CAgent
+    elif alg == "A2C":
+        from ray.rllib.agents import a3c
+        return a3c.A2CAgent
     elif alg == "BC":
         from ray.rllib.agents import bc
         return bc.BCAgent

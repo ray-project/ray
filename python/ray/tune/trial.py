@@ -271,6 +271,9 @@ class Trial(object):
             '{} s'.format(int(self.last_result.get(TIME_TOTAL_S))),
         ]
 
+        if self.last_result.get("timesteps_total") is not None:
+            pieces.append('{} ts'.format(self.last_result["timesteps_total"]))
+
         if self.last_result.get("episode_reward_mean") is not None:
             pieces.append('{} rew'.format(
                 format(self.last_result["episode_reward_mean"], '.3g')))
