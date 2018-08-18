@@ -16,6 +16,7 @@ from ray.tune.trial import Resources
 
 OPTIMIZER_SHARED_CONFIGS = [
     "lr",
+    "num_envs_per_worker",
     "num_gpus",
     "sample_batch_size",
     "train_batch_size",

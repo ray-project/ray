@@ -157,6 +157,7 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
     def _init(self,
               train_batch_size=500,
               sample_batch_size=50,
+              num_envs_per_worker=1,
               num_gpus=0,
               lr=0.0005,
               debug=False,
@@ -166,7 +167,8 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
         self.train_batch_size = train_batch_size
 
         if num_gpus > 1:
-            if train_batch_size // num_gpus % sample_batch_size != 0:
+            if train_batch_size // num_gpus % (
+                    sample_batch_size // num_envs_per_worker) != 0:
                 raise ValueError(
                     "Sample batches must evenly divide across GPUs.")
             self.learner = TFMultiGPULearner(
