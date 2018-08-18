@@ -64,5 +64,7 @@ class SyncSamplesOptimizer(PolicyOptimizer):
                                         3),
                 "opt_peak_throughput": round(self.grad_timer.mean_throughput,
                                              3),
+                "sample_peak_throughput": round(
+                    self.sample_timer.mean_throughput, 3),
                 "opt_samples": round(self.grad_timer.mean_units_processed, 3),
             })
