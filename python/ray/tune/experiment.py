@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
+import six
 import types
 
 from ray.tune.result import DEFAULT_RESULTS_DIR
@@ -117,7 +118,7 @@ class Experiment(object):
         try:
             exp = cls(name, run_value, **spec)
         except TypeError:
-            raise TuneError("Improper argument passed via JSON.")
+            raise TuneError("Improper argument from JSON: {}.".format(spec))
         return exp
 
     def _register_if_needed(self, run_object):
@@ -136,7 +137,7 @@ class Experiment(object):
             A string representing the trainable identifier.
         """
 
-        if isinstance(run_object, str):
+        if isinstance(run_object, six.string_types):
             return run_object
         elif isinstance(run_object, types.FunctionType):
             if run_object.__name__ == "<lambda>":
