@@ -40,6 +40,9 @@ class Experiment(object):
         max_failures (int): Try to recover a trial from its last
             checkpoint at least this many times. Only applies if
             checkpointing is enabled. Defaults to 3.
+        restore (str): Path to checkpoint. Only makes sense to set if
+            running 1 trial. Defaults to None.
+
 
     Examples:
         >>> experiment_spec = Experiment(
@@ -72,7 +75,8 @@ class Experiment(object):
                  local_dir=None,
                  upload_dir="",
                  checkpoint_freq=0,
-                 max_failures=3):
+                 max_failures=3,
+                 restore=None):
         spec = {
             "run": self._register_if_needed(run),
             "stop": stop or {},
@@ -85,7 +89,8 @@ class Experiment(object):
             "local_dir": local_dir or DEFAULT_RESULTS_DIR,
             "upload_dir": upload_dir,
             "checkpoint_freq": checkpoint_freq,
-            "max_failures": max_failures
+            "max_failures": max_failures,
+            "restore": restore
         }
 
         self.name = name
