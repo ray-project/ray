@@ -46,8 +46,8 @@ public class RayParameters {
   @AConfig(comment = "driver ID when the worker is served as a driver")
   public UniqueID driver_id = UniqueID.nil;
 
-  @AConfig(comment = "working directory")
-  public String working_directory = "./run";
+  @AConfig(comment = "logging directory")
+  public String log_dir = "/tmp/raylogs";
 
   @AConfig(comment = "primary redis port")
   public int redis_port = 34222;
