@@ -334,7 +334,8 @@ def _get_head_node(config,
             no_restart=False,
             yes=True,
             override_cluster_name=override_cluster_name)
-        return _get_head_node(config, config_file, create_if_needed=False)
+        return _get_head_node(
+            config, config_file, override_cluster_name, create_if_needed=False)
     else:
         print("Head node of cluster ({}) not found!".format(
             config["cluster_name"]))

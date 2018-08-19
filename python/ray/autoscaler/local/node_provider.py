@@ -8,7 +8,7 @@ import os
 import socket
 
 from ray.autoscaler.node_provider import NodeProvider
-from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_TYPE
+from ray.autoscaler.tags import TAG_RAY_NODE_TYPE
 
 
 class ClusterState(object):
