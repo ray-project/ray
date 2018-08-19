@@ -91,7 +91,7 @@ class LocalSyncParallelOptimizer(object):
             clipped = []
             for grad, _ in avg:
                 clipped.append(grad)
-            clipped = tf.clip_by_global_norm(clipped, grad_norm_clipping)
+            clipped, _ = tf.clip_by_global_norm(clipped, grad_norm_clipping)
             for i, (grad, var) in enumerate(avg):
                 avg[i] = (clipped[i], var)
         self._train_op = self.optimizer.apply_gradients(avg)
