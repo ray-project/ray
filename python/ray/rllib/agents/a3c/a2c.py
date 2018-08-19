@@ -16,6 +16,9 @@ A2C_DEFAULT_CONFIG = merge_dicts(
         "optimizer": {
             "timesteps_per_batch": 200,
         },
+        "observation_filter": "MeanStdFilter",
+        "summarize": True,
+        "sample_async": False,
     },
 )
 

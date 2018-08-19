@@ -9,6 +9,7 @@ import gym
 
 import ray
 from ray.rllib.utils.error import UnsupportedSpaceException
+from ray.rllib.utils.explained_variance import explained_variance
 from ray.rllib.evaluation.postprocessing import compute_advantages
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 from ray.rllib.models.misc import linear, normc_initializer
@@ -27,11 +28,11 @@ class A3CLoss(object):
         log_prob = action_dist.logp(actions)
 
         # The "policy gradients" loss
-        self.pi_loss = -tf.reduce_sum(log_prob * advantages)
+        self.pi_loss = -tf.reduce_mean(log_prob * advantages)
 
         delta = vf - v_target
-        self.vf_loss = 0.5 * tf.reduce_sum(tf.square(delta))
-        self.entropy = tf.reduce_sum(action_dist.entropy())
+        self.vf_loss = 0.5 * tf.reduce_mean(tf.square(delta))
+        self.entropy = tf.reduce_mean(action_dist.entropy())
         self.total_loss = (self.pi_loss + self.vf_loss * vf_loss_coeff +
                            self.entropy * entropy_coeff)
 
@@ -67,8 +68,8 @@ class A3CPolicyGraph(TFPolicyGraph):
                 "Action space {} is not supported for A3C.".format(
                     action_space))
         advantages = tf.placeholder(tf.float32, [None], name="advantages")
-        v_target = tf.placeholder(tf.float32, [None], name="v_target")
-        self.loss = A3CLoss(action_dist, actions, advantages, v_target,
+        self.v_target = tf.placeholder(tf.float32, [None], name="v_target")
+        self.loss = A3CLoss(action_dist, actions, advantages, self.v_target,
                             self.vf, self.config["vf_loss_coeff"],
                             self.config["entropy_coeff"])
 
@@ -77,7 +78,7 @@ class A3CPolicyGraph(TFPolicyGraph):
             ("obs", self.observations),
             ("actions", actions),
             ("advantages", advantages),
-            ("value_targets", v_target),
+            ("value_targets", self.v_target),
         ]
         TFPolicyGraph.__init__(
             self,
@@ -121,10 +122,12 @@ class A3CPolicyGraph(TFPolicyGraph):
             return {
                 "stats": {
                     "policy_loss": self.loss.pi_loss,
-                    "value_loss": self.loss.vf_loss,
-                    "entropy": self.loss.entropy,
+                    "policy_entropy": self.loss.entropy,
                     "grad_gnorm": tf.global_norm(self._grads),
                     "var_gnorm": tf.global_norm(self.var_list),
+                    "vf_loss": self.loss.vf_loss,
+                    "vf_explained_var": explained_variance(
+                        self.v_target, self.vf),
                 },
             }
         else:
