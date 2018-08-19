@@ -9,6 +9,7 @@ from ray.rllib.evaluation.postprocessing import compute_advantages
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.misc import linear, normc_initializer
+from ray.rllib.utils.explained_variance import explained_variance
 
 
 class PPOLoss(object):
@@ -107,7 +108,7 @@ class PPOPolicyGraph(TFPolicyGraph):
         dist_cls, logit_dim = ModelCatalog.get_action_dist(action_space)
 
         if existing_inputs:
-            obs_ph, value_targets_ph, adv_ph, act_ph, \
+            obs_ph, self.value_targets_ph, adv_ph, act_ph, \
                 logits_ph, vf_preds_ph = existing_inputs[:6]
             existing_state_in = existing_inputs[6:-1]
             existing_seq_lens = existing_inputs[-1]
@@ -123,14 +124,14 @@ class PPOPolicyGraph(TFPolicyGraph):
                 tf.float32, name="logits", shape=(None, logit_dim))
             vf_preds_ph = tf.placeholder(
                 tf.float32, name="vf_preds", shape=(None, ))
-            value_targets_ph = tf.placeholder(
+            self.value_targets_ph = tf.placeholder(
                 tf.float32, name="value_targets", shape=(None, ))
             existing_state_in = None
             existing_seq_lens = None
 
         self.loss_in = [
             ("obs", obs_ph),
-            ("value_targets", value_targets_ph),
+            ("value_targets", self.value_targets_ph),
             ("advantages", adv_ph),
             ("actions", act_ph),
             ("logits", logits_ph),
@@ -156,15 +157,15 @@ class PPOPolicyGraph(TFPolicyGraph):
         self.sampler = curr_action_dist.sample()
         if self.config["use_gae"]:
             with tf.variable_scope("value_function"):
-                self.value_function = linear(
-                    self.model.last_layer, 1, "value", normc_initializer(1.0))
+                self.value_function = linear(self.model.last_layer, 1, "value",
+                                             normc_initializer(1.0))
             self.value_function = tf.reshape(self.value_function, [-1])
         else:
             self.value_function = tf.zeros(shape=tf.shape(obs_ph)[:1])
 
         self.loss_obj = PPOLoss(
             action_space,
-            value_targets_ph,
+            self.value_targets_ph,
             adv_ph,
             act_ph,
             logits_ph,
@@ -209,6 +210,8 @@ class PPOPolicyGraph(TFPolicyGraph):
             "total_loss": self.loss_obj.loss,
             "policy_loss": self.loss_obj.mean_policy_loss,
             "vf_loss": self.loss_obj.mean_vf_loss,
+            "vf_explained_var": explained_variance(self.value_targets_ph,
+                                                   self.value_function),
             "kl": self.loss_obj.mean_kl,
             "entropy": self.loss_obj.mean_entropy
         }
