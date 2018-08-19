@@ -29,7 +29,7 @@ class Experiment(object):
         trial_resources (dict): Machine resources to allocate per trial,
             e.g. ``{"cpu": 64, "gpu": 8}``. Note that GPUs will not be
             assigned unless you specify them here. Defaults to 1 CPU and 0
-            GPUs.
+            GPUs in ``Trainable.default_resource_request()``.
         repeat (int): Number of times to repeat each trial. Defaults to 1.
         local_dir (str): Local dir to save training results to.
             Defaults to ``~/ray_results``.
@@ -81,10 +81,7 @@ class Experiment(object):
             "run": self._register_if_needed(run),
             "stop": stop or {},
             "config": config or {},
-            "trial_resources": trial_resources or {
-                "cpu": 1,
-                "gpu": 0
-            },
+            "trial_resources": trial_resources,
             "repeat": repeat,
             "local_dir": local_dir or DEFAULT_RESULTS_DIR,
             "upload_dir": upload_dir,
@@ -106,10 +103,21 @@ class Experiment(object):
         """
         if "run" not in spec:
             raise TuneError("No trainable specified!")
+
+        # Special case the `env` param for RLlib by automatically
+        # moving it into the `config` section.
+        if "env" in spec:
+            spec["config"] = spec.get("config", {})
+            spec["config"]["env"] = spec["env"]
+            del spec["env"]
+
         spec = copy.deepcopy(spec)
 
         run_value = spec.pop("run")
-        exp = cls(name, run_value, **spec)
+        try:
+            exp = cls(name, run_value, **spec)
+        except TypeError:
+            raise TuneError("Improper argument passed via JSON.")
         return exp
 
     def _register_if_needed(self, run_object):
