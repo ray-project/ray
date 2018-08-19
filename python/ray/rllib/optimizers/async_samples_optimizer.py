@@ -20,7 +20,6 @@ from ray.rllib.utils.actors import TaskPool
 from ray.rllib.utils.timer import TimerStat
 from ray.rllib.utils.window_stat import WindowStat
 
-SAMPLE_QUEUE_DEPTH = 2
 LEARNER_QUEUE_MAX_SIZE = 16
 NUM_DATA_LOAD_THREADS = 16
 
@@ -209,7 +208,8 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
               debug=False,
               grad_clip=40,
               replay_batch_slots=0,
-              gpu_queue_size=1):
+              gpu_queue_size=1,
+              sample_queue_depth=2):
         self.debug = debug
         self.learning_started = False
         self.train_batch_size = train_batch_size
@@ -247,7 +247,7 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
         weights = self.local_evaluator.get_weights()
         for ev in self.remote_evaluators:
             ev.set_weights.remote(weights)
-            for _ in range(SAMPLE_QUEUE_DEPTH):
+            for _ in range(sample_queue_depth):
                 self.sample_tasks.add(ev, ev.sample.remote())
 
         self.batch_buffer = []

@@ -23,6 +23,7 @@ OPTIMIZER_SHARED_CONFIGS = [
     "replay_batch_slots",
     "gpu_queue_size",
     "grad_clip",
+    "sample_queue_depth",
 ]
 
 DEFAULT_CONFIG = with_common_config({
@@ -42,6 +43,7 @@ DEFAULT_CONFIG = with_common_config({
     "num_gpus_per_worker": 0,
     "replay_batch_slots": 0,
     "gpu_queue_size": 1,
+    "sample_queue_depth": 2,
 
     # Learning params.
     "grad_clip": 40.0,
