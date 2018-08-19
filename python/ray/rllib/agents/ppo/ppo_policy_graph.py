@@ -8,6 +8,7 @@ import ray
 from ray.rllib.evaluation.postprocessing import compute_advantages
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 from ray.rllib.models.catalog import ModelCatalog
+from ray.rllib.models.misc import linear, normc_initializer
 
 
 class PPOLoss(object):
@@ -154,15 +155,9 @@ class PPOPolicyGraph(TFPolicyGraph):
         curr_action_dist = dist_cls(self.logits)
         self.sampler = curr_action_dist.sample()
         if self.config["use_gae"]:
-            vf_config = self.config["model"].copy()
-            # Do not split the last layer of the value function into
-            # mean parameters and standard deviation parameters and
-            # do not make the standard deviations free variables.
-            vf_config["free_log_std"] = False
-            vf_config["use_lstm"] = False
             with tf.variable_scope("value_function"):
-                self.value_function = ModelCatalog.get_model(
-                    obs_ph, 1, vf_config).outputs
+                self.value_function = linear(
+                    self.model.last_layer, 1, "value", normc_initializer(1.0))
             self.value_function = tf.reshape(self.value_function, [-1])
         else:
             self.value_function = tf.zeros(shape=tf.shape(obs_ph)[:1])
