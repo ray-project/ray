@@ -105,4 +105,4 @@ If Tune helps you in your academic research, you are encouraged to cite `our pap
     }
 
 
-.. _HyperOpt with HyperBand: https://github.com/ray-project/ray/blob/aaf5456b3d766f20d4b9a0b18448885f03ac28ac/python/ray/tune/examples/hyperopt_example.py
+.. _HyperOpt with HyperBand: https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperopt_example.py
