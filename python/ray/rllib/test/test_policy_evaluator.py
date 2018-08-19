@@ -17,7 +17,11 @@ from ray.tune.registry import register_env
 
 
 class MockPolicyGraph(PolicyGraph):
-    def compute_actions(self, obs_batch, state_batches, is_training=False):
+    def compute_actions(self,
+                        obs_batch,
+                        state_batches,
+                        is_training=False,
+                        episodes=None):
         return [0] * len(obs_batch), [], {}
 
     def postprocess_trajectory(self, batch, other_agent_batches=None):
@@ -25,7 +29,11 @@ class MockPolicyGraph(PolicyGraph):
 
 
 class BadPolicyGraph(PolicyGraph):
-    def compute_actions(self, obs_batch, state_batches, is_training=False):
+    def compute_actions(self,
+                        obs_batch,
+                        state_batches,
+                        is_training=False,
+                        episodes=None):
         raise Exception("intentional error")
 
     def postprocess_trajectory(self, batch, other_agent_batches=None):

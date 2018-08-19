@@ -181,19 +181,34 @@ class NodeUpdater(object):
         for cmd in self.setup_cmds:
             self.ssh_cmd(cmd, verbose=True)
 
-    def ssh_cmd(self, cmd, connect_timeout=120, redirect=None, verbose=False):
+    def ssh_cmd(self,
+                cmd,
+                connect_timeout=120,
+                redirect=None,
+                verbose=False,
+                allocate_tty=False,
+                emulate_interactive=True,
+                expect_error=False):
         if verbose:
             print(
                 "NodeUpdater: running {} on {}...".format(
                     pretty_cmd(cmd), self.ssh_ip),
                 file=self.stdout)
-        force_interactive = "set -i || true && source ~/.bashrc && "
-        self.process_runner.check_call(
-            [
-                "ssh", "-o", "ConnectTimeout={}s".format(connect_timeout),
-                "-o", "StrictHostKeyChecking=no", "-i", self.ssh_private_key,
-                "{}@{}".format(self.ssh_user, self.ssh_ip),
-                "bash --login -c {}".format(quote(force_interactive + cmd))
+        ssh = ["ssh"]
+        if allocate_tty:
+            ssh.append("-tt")
+        if emulate_interactive:
+            force_interactive = "set -i || true && source ~/.bashrc && "
+            cmd = "bash --login -c {}".format(quote(force_interactive + cmd))
+        if expect_error:
+            call = self.process_runner.call
+        else:
+            call = self.process_runner.check_call
+        call(
+            ssh + [
+                "-o", "ConnectTimeout={}s".format(connect_timeout), "-o",
+                "StrictHostKeyChecking=no", "-i", self.ssh_private_key,
+                "{}@{}".format(self.ssh_user, self.ssh_ip), cmd
             ],
             stdout=redirect or self.stdout,
             stderr=redirect or self.stderr)

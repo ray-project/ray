@@ -9,7 +9,6 @@ import traceback
 from ray.tune import TuneError
 from ray.tune.trainable import Trainable
 from ray.tune.result import TIMESTEPS_TOTAL
-from ray.tune.util import _serve_get_pin_requests
 
 
 class StatusReporter(object):
@@ -113,7 +112,6 @@ class FunctionRunner(Trainable):
                             self._default_config["script_min_iter_time_s"]))
         result = self._status_reporter._get_and_clear_status()
         while result is None:
-            _serve_get_pin_requests()
             time.sleep(1)
             result = self._status_reporter._get_and_clear_status()
 

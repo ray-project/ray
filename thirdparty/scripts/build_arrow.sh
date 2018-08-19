@@ -46,7 +46,7 @@ build_arrow() {
   fi
 
   if [[ ! -d $TP_DIR/build/arrow ]]; then
-    git clone https://github.com/apache/arrow.git "$TP_DIR/build/arrow"
+    git clone -q https://github.com/apache/arrow.git "$TP_DIR/build/arrow"
   fi
 
   if ! [ -x "$(command -v bison)" ]; then
