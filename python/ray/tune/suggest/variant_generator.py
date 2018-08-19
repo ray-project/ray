@@ -46,7 +46,11 @@ def generate_variants(unresolved_spec):
 
 
 def grid_search(values):
-    """Convenience method for specifying grid search over a value."""
+    """Convenience method for specifying grid search over a value.
+
+    Arguments:
+        values: An iterable whose parameters will be gridded.
+    """
 
     return {"grid_search": values}
 
