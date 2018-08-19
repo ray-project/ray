@@ -139,7 +139,7 @@ public class RunManager {
 
     String cmd = buildJavaProcessCommand(pt, mainClass, additonalClassPaths, additionalConfigs,
         additionalJvmArgs, ip, redisAddr, agentlibAddr);
-    return startProcess(cmd.split(" "), "", pt, null, redisAddr, ip, redirect, cleanup);
+    return startProcess(cmd.split(" "), null, pt, "", redisAddr, ip, redirect, cleanup);
   }
 
   private String buildJavaProcessCommand(
