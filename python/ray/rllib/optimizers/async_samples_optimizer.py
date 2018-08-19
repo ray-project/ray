@@ -126,8 +126,8 @@ class TFMultiGPULearner(LearnerThread):
         self.ready_optimizers = queue.Queue()
         for opt in self.par_opt:
             self.idle_optimizers.put(opt)
-        for _ in range(NUM_DATA_LOAD_THREADS):
-            self.loader_thread = _LoaderThread(self)
+        for i in range(NUM_DATA_LOAD_THREADS):
+            self.loader_thread = _LoaderThread(self, share_stats=(i == 0))
             self.loader_thread.start()
 
     def step(self):
@@ -147,10 +147,16 @@ class TFMultiGPULearner(LearnerThread):
 
 
 class _LoaderThread(threading.Thread):
-    def __init__(self, learner):
+    def __init__(self, learner, share_stats):
         threading.Thread.__init__(self)
         self.learner = learner
         self.daemon = True
+        if share_stats:
+            self.queue_timer = learner.queue_timer
+            self.load_timer = learner.load_timer
+        else:
+            self.queue_timer = TimerStat()
+            self.load_timer = TimerStat()
 
     def run(self):
         while True:
@@ -158,7 +164,7 @@ class _LoaderThread(threading.Thread):
 
     def step(self):
         l = self.learner
-        with l.queue_timer:
+        with self.queue_timer:
             if (l.inqueue.empty() and l.replay_batch_slots > 0
                     and l.replay_buffer):
                 batch = random.choice(l.replay_buffer)
@@ -172,7 +178,7 @@ class _LoaderThread(threading.Thread):
 
         opt = l.idle_optimizers.get()
 
-        with l.load_timer:
+        with self.load_timer:
             tuples = l.policy._get_loss_inputs_dict(batch)
             data_keys = [ph for _, ph in l.policy.loss_inputs()]
             if l.policy._state_inputs:
