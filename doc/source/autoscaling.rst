@@ -89,7 +89,7 @@ You can use ``ray attach`` to attach to an interactive console on the cluster.
 Port-forwarding applications
 ----------------------------
 
-To run connect to applications running on the cluster (e.g. Jupyter notebook) using a web browser, you can use the port-forward option for ``ray exec``:
+To run connect to applications running on the cluster (e.g. Jupyter notebook) using a web browser, you can use the port-forward option for ``ray exec``. The local port opened is the same as the remote port:
 
 .. code-block:: bash
 
