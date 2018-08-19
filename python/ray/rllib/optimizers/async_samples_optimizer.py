@@ -70,7 +70,8 @@ class TFMultiGPULearner(LearnerThread):
                  num_gpus=2,
                  lr=0.0005,
                  train_batch_size=500,
-                 replay_batch_slots=0):
+                 replay_batch_slots=0,
+                 grad_clip=40):
         import tensorflow as tf
 
         LearnerThread.__init__(self, local_evaluator)
@@ -103,7 +104,7 @@ class TFMultiGPULearner(LearnerThread):
                         tf.train.AdamOptimizer(self.lr), self.devices,
                         [v for _, v in self.policy.loss_inputs()], rnn_inputs,
                         self.per_device_batch_size, self.policy.copy,
-                        os.getcwd())
+                        os.getcwd(), grad_norm_clipping=grad_clip)
 
                 self.sess = self.local_evaluator.tf_sess
                 self.sess.run(tf.global_variables_initializer())
@@ -161,6 +162,7 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
               num_gpus=0,
               lr=0.0005,
               debug=False,
+              grad_clip=40,
               replay_batch_slots=0):
         self.debug = debug
         self.learning_started = False
@@ -176,7 +178,8 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
                 lr=lr,
                 num_gpus=num_gpus,
                 train_batch_size=train_batch_size,
-                replay_batch_slots=replay_batch_slots)
+                replay_batch_slots=replay_batch_slots,
+                grad_clip=grad_clip)
         else:
             self.learner = LearnerThread(self.local_evaluator)
         self.learner.start()

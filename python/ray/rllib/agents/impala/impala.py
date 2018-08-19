@@ -21,6 +21,7 @@ OPTIMIZER_SHARED_CONFIGS = [
     "sample_batch_size",
     "train_batch_size",
     "replay_batch_slots",
+    "grad_clip",
 ]
 
 DEFAULT_CONFIG = with_common_config({
@@ -89,14 +90,12 @@ class ImpalaAgent(Agent):
             policy_cls = A3CPolicyGraph
         self.local_evaluator = self.make_local_evaluator(
             self.env_creator, policy_cls,
-            # important: increase the number of cpu threads for multi-gpu
+            # important: allow more cpu threads for multi-gpu
             merge_dicts(
                 self.config, {
                     "tf_session_args": {
-                        "intra_op_parallelism_threads": max(
-                            1, self.config["num_gpus"]),
-                        "inter_op_parallelism_threads": max(
-                            1, self.config["num_gpus"]),
+                        "intra_op_parallelism_threads": None,
+                        "inter_op_parallelism_threads": None,
                     },
                 }))
         self.remote_evaluators = self.make_remote_evaluators(
