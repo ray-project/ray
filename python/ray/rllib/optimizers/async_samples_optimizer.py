@@ -22,7 +22,7 @@ from ray.rllib.utils.window_stat import WindowStat
 
 SAMPLE_QUEUE_DEPTH = 2
 LEARNER_QUEUE_MAX_SIZE = 16
-NUM_DATA_LOAD_THREADS = 4
+NUM_DATA_LOAD_THREADS = 16
 
 
 class LearnerThread(threading.Thread):
