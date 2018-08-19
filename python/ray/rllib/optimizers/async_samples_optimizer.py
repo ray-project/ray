@@ -42,6 +42,7 @@ class LearnerThread(threading.Thread):
         self.queue_timer = TimerStat()
         self.grad_timer = TimerStat()
         self.load_timer = TimerStat()
+        self.load_wait_timer = TimerStat()
         self.daemon = True
         self.weights_updated = False
         self.stats = {}
@@ -71,7 +72,8 @@ class TFMultiGPULearner(LearnerThread):
                  lr=0.0005,
                  train_batch_size=500,
                  replay_batch_slots=0,
-                 grad_clip=40):
+                 grad_clip=40,
+                 gpu_queue_size=5):
         import tensorflow as tf
 
         LearnerThread.__init__(self, local_evaluator)
@@ -91,6 +93,7 @@ class TFMultiGPULearner(LearnerThread):
         # per-GPU graph copies created below must share vars with the policy
         # reuse is set to AUTO_REUSE because Adam nodes are created after
         # all of the device copies are created.
+        self.par_opt = []
         with self.local_evaluator.tf_sess.graph.as_default():
             with self.local_evaluator.tf_sess.as_default():
                 with tf.variable_scope("default", reuse=tf.AUTO_REUSE):
@@ -100,52 +103,86 @@ class TFMultiGPULearner(LearnerThread):
                         ]
                     else:
                         rnn_inputs = []
-                    self.par_opt = LocalSyncParallelOptimizer(
-                        tf.train.AdamOptimizer(self.lr), self.devices,
-                        [v for _, v in self.policy.loss_inputs()], rnn_inputs,
-                        self.per_device_batch_size, self.policy.copy,
-                        os.getcwd(), grad_norm_clipping=grad_clip)
+                    adam = tf.train.AdamOptimizer(self.lr)
+                    for _ in range(gpu_queue_size):
+                        self.par_opt.append(
+                            LocalSyncParallelOptimizer(
+                                adam,
+                                self.devices,
+                                [v for _, v in self.policy.loss_inputs()],
+                                rnn_inputs,
+                                self.per_device_batch_size,
+                                self.policy.copy,
+                                os.getcwd(),
+                                grad_norm_clipping=grad_clip))
 
                 self.sess = self.local_evaluator.tf_sess
                 self.sess.run(tf.global_variables_initializer())
 
         self.replay_batch_slots = replay_batch_slots
         self.replay_buffer = []
+        self.idle_optimizers = queue.Queue()
+        self.ready_optimizers = queue.Queue()
+        self.loader_thread = _LoaderThread(self)
+        for opt in self.par_opt:
+            self.idle_optimizers.put(opt)
+        self.loader_thread.start()
 
     def step(self):
-        with self.queue_timer:
-            if (self.inqueue.empty() and self.replay_batch_slots > 0
-                    and self.replay_buffer):
-                batch = random.choice(self.replay_buffer)
-            else:
-                batch = self.inqueue.get()
-                if self.replay_batch_slots > 0:
-                    self.replay_buffer.append(batch)
-                    if len(self.replay_buffer) > self.replay_batch_slots:
-                        self.replay_buffer.pop(0)
-            assert batch.count == self.train_batch_size
-
-        with self.load_timer:
-            tuples = self.policy._get_loss_inputs_dict(batch)
-            data_keys = [ph for _, ph in self.policy.loss_inputs()]
-            if self.policy._state_inputs:
-                state_keys = (
-                    self.policy._state_inputs + [self.policy._seq_lens])
-            else:
-                state_keys = []
-            tuples_per_device = self.par_opt.load_data(
-                self.sess, [tuples[k] for k in data_keys],
-                [tuples[k] for k in state_keys])
-            assert int(tuples_per_device) == int(self.per_device_batch_size)
+        assert self.loader_thread.is_alive()
+        with self.load_wait_timer:
+            opt = self.ready_optimizers.get()
 
         with self.grad_timer:
-            fetches = self.par_opt.optimize(self.sess, 0)
+            fetches = opt.optimize(self.sess, 0)
             self.weights_updated = True
             if "stats" in fetches:
                 self.stats = fetches["stats"]
 
-        self.outqueue.put(batch.count)
+        self.idle_optimizers.put(opt)
+        self.outqueue.put(self.train_batch_size)
         self.learner_queue_size.push(self.inqueue.qsize())
+
+
+class _LoaderThread(threading.Thread):
+    def __init__(self, learner):
+        threading.Thread.__init__(self)
+        self.learner = learner
+        self.daemon = True
+
+    def run(self):
+        while True:
+            self.step()
+
+    def step(self):
+        l = self.learner
+        with l.queue_timer:
+            if (l.inqueue.empty() and l.replay_batch_slots > 0
+                    and l.replay_buffer):
+                batch = random.choice(l.replay_buffer)
+            else:
+                batch = l.inqueue.get()
+                if l.replay_batch_slots > 0:
+                    l.replay_buffer.append(batch)
+                    if len(l.replay_buffer) > l.replay_batch_slots:
+                        l.replay_buffer.pop(0)
+            assert batch.count == l.train_batch_size
+
+        opt = l.idle_optimizers.get()
+
+        with l.load_timer:
+            tuples = l.policy._get_loss_inputs_dict(batch)
+            data_keys = [ph for _, ph in l.policy.loss_inputs()]
+            if l.policy._state_inputs:
+                state_keys = l.policy._state_inputs + [l.policy._seq_lens]
+            else:
+                state_keys = []
+            tuples_per_device = opt.load_data(l.sess,
+                                              [tuples[k] for k in data_keys],
+                                              [tuples[k] for k in state_keys])
+            assert int(tuples_per_device) == int(l.per_device_batch_size)
+
+        l.ready_optimizers.put(opt)
 
 
 class AsyncSamplesOptimizer(PolicyOptimizer):
@@ -163,7 +200,8 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
               lr=0.0005,
               debug=False,
               grad_clip=40,
-              replay_batch_slots=0):
+              replay_batch_slots=0,
+              gpu_queue_size=1):
         self.debug = debug
         self.learning_started = False
         self.train_batch_size = train_batch_size
@@ -179,7 +217,8 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
                 num_gpus=num_gpus,
                 train_batch_size=train_batch_size,
                 replay_batch_slots=replay_batch_slots,
-                grad_clip=grad_clip)
+                grad_clip=grad_clip,
+                gpu_queue_size=gpu_queue_size)
         else:
             self.learner = LearnerThread(self.local_evaluator)
         self.learner.start()
@@ -264,6 +303,8 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
             1000 * self.learner.grad_timer.mean, 3)
         timing["learner_load_time_ms"] = round(
             1000 * self.learner.load_timer.mean, 3)
+        timing["learner_load_wait_time_ms"] = round(
+            1000 * self.learner.load_wait_timer.mean, 3)
         timing["learner_dequeue_time_ms"] = round(
             1000 * self.learner.queue_timer.mean, 3)
         stats = {

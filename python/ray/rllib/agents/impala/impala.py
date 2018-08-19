@@ -21,6 +21,7 @@ OPTIMIZER_SHARED_CONFIGS = [
     "sample_batch_size",
     "train_batch_size",
     "replay_batch_slots",
+    "gpu_queue_size",
     "grad_clip",
 ]
 
@@ -40,6 +41,7 @@ DEFAULT_CONFIG = with_common_config({
     "num_cpus_per_worker": 1,
     "num_gpus_per_worker": 0,
     "replay_batch_slots": 0,  # TODO only applies if num_gpus > 1?
+    "gpu_queue_size": 1,  # increases GPU mem usage by this factor
 
     # Learning params.
     "grad_clip": 40.0,
@@ -89,7 +91,8 @@ class ImpalaAgent(Agent):
         else:
             policy_cls = A3CPolicyGraph
         self.local_evaluator = self.make_local_evaluator(
-            self.env_creator, policy_cls,
+            self.env_creator,
+            policy_cls,
             # important: allow more cpu threads for multi-gpu
             merge_dicts(
                 self.config, {
