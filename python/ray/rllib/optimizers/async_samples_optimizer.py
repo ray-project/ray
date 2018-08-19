@@ -214,7 +214,7 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
         self.learning_started = False
         self.train_batch_size = train_batch_size
 
-        if num_gpus > 1:
+        if num_gpus > 1 or gpu_queue_size > 1 or replay_batch_slots > 0:
             if train_batch_size // num_gpus % (
                     sample_batch_size // num_envs_per_worker) != 0:
                 raise ValueError(

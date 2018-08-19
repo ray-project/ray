@@ -40,8 +40,8 @@ DEFAULT_CONFIG = with_common_config({
     "num_workers": 2,
     "num_cpus_per_worker": 1,
     "num_gpus_per_worker": 0,
-    "replay_batch_slots": 0,  # TODO only applies if num_gpus > 1?
-    "gpu_queue_size": 1,  # increases GPU mem usage by this factor
+    "replay_batch_slots": 0,
+    "gpu_queue_size": 1,
 
     # Learning params.
     "grad_clip": 40.0,
