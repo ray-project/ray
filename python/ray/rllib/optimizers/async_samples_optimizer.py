@@ -22,6 +22,7 @@ from ray.rllib.utils.window_stat import WindowStat
 
 SAMPLE_QUEUE_DEPTH = 2
 LEARNER_QUEUE_MAX_SIZE = 16
+NUM_DATA_LOAD_THREADS = 4
 
 
 class LearnerThread(threading.Thread):
@@ -73,7 +74,7 @@ class TFMultiGPULearner(LearnerThread):
                  train_batch_size=500,
                  replay_batch_slots=0,
                  grad_clip=40,
-                 gpu_queue_size=5):
+                 gpu_queue_size=1):
         import tensorflow as tf
 
         LearnerThread.__init__(self, local_evaluator)
@@ -123,10 +124,11 @@ class TFMultiGPULearner(LearnerThread):
         self.replay_buffer = []
         self.idle_optimizers = queue.Queue()
         self.ready_optimizers = queue.Queue()
-        self.loader_thread = _LoaderThread(self)
         for opt in self.par_opt:
             self.idle_optimizers.put(opt)
-        self.loader_thread.start()
+        for _ in range(NUM_DATA_LOAD_THREADS):
+            self.loader_thread = _LoaderThread(self)
+            self.loader_thread.start()
 
     def step(self):
         assert self.loader_thread.is_alive()
