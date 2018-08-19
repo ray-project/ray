@@ -7,12 +7,11 @@ import unittest
 import numpy as np
 
 import ray
-from ray.tune.hyperband import HyperBandScheduler
-from ray.tune.async_hyperband import AsyncHyperBandScheduler
-from ray.tune.pbt import PopulationBasedTraining, explore
-from ray.tune.median_stopping_rule import MedianStoppingRule
+from ray.tune.schedulers import (HyperBandScheduler, AsyncHyperBandScheduler,
+                                 PopulationBasedTraining, MedianStoppingRule,
+                                 TrialScheduler)
+from ray.tune.schedulers.pbt import explore
 from ray.tune.trial import Trial, Resources
-from ray.tune.trial_scheduler import TrialScheduler
 
 from ray.rllib import _register_all
 _register_all()

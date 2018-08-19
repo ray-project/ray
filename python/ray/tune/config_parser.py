@@ -171,12 +171,6 @@ def create_trial_from_spec(spec, output_path, parser, **trial_kwargs):
         A trial object with corresponding parameters to the specification.
     """
     try:
-        # Special case the `env` param for RLlib by automatically
-        # moving it into the `config` section.
-        if "env" in spec:
-            spec["config"] = spec.get("config", {})
-            spec["config"]["env"] = spec["env"]
-            del spec["env"]
         args = parser.parse_args(to_argv(spec))
     except SystemExit:
         raise TuneError("Error parsing args, see above message", spec)

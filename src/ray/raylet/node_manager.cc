@@ -401,7 +401,11 @@ void NodeManager::HandleActorCreation(const ActorID &actor_id,
     // known.
     auto created_actor_methods = local_queues_.RemoveTasks(created_actor_method_ids);
     for (const auto &method : created_actor_methods) {
-      lineage_cache_.RemoveWaitingTask(method.GetTaskSpecification().TaskId());
+      if (!lineage_cache_.RemoveWaitingTask(method.GetTaskSpecification().TaskId())) {
+        RAY_LOG(WARNING) << "Task " << method.GetTaskSpecification().TaskId()
+                         << " already removed from the lineage cache. This is most "
+                            "likely due to reconstruction.";
+      }
       // The task's uncommitted lineage was already added to the local lineage
       // cache upon the initial submission, so it's okay to resubmit it with an
       // empty lineage this time.
@@ -708,6 +712,11 @@ void NodeManager::ProcessClientMessage(
 
     RAY_CHECK_OK(gcs_client_->profile_table().AddProfileEventBatch(*message));
   } break;
+  case protocol::MessageType::FreeObjectsInObjectStoreRequest: {
+    auto message = flatbuffers::GetRoot<protocol::FreeObjectsRequest>(message_data);
+    std::vector<ObjectID> object_ids = from_flatbuf(*message->object_ids());
+    object_manager_.FreeObjects(object_ids, message->local_only());
+  } break;
 
   default:
     RAY_LOG(FATAL) << "Received unexpected message type " << message_type;
@@ -732,7 +741,7 @@ void NodeManager::ProcessNodeManagerMessage(TcpClientConnection &node_manager_cl
     Lineage uncommitted_lineage(*message);
     const Task &task = uncommitted_lineage.GetEntry(task_id)->TaskData();
     RAY_LOG(DEBUG) << "got task " << task.GetTaskSpecification().TaskId()
-                   << " spillback=" << task.GetTaskExecutionSpecReadonly().NumForwards();
+                   << " spillback=" << task.GetTaskExecutionSpec().NumForwards();
     SubmitTask(task, uncommitted_lineage, /* forwarded = */ true);
   } break;
   case protocol::MessageType::DisconnectClient: {
@@ -824,15 +833,20 @@ void NodeManager::TreatTaskAsFailed(const TaskSpecification &spec) {
 
 void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineage,
                              bool forwarded) {
-  if (local_queues_.HasTask(task.GetTaskSpecification().TaskId())) {
-    RAY_LOG(WARNING) << "Submitted task " << task.GetTaskSpecification().TaskId()
+  const TaskID task_id = task.GetTaskSpecification().TaskId();
+  if (local_queues_.HasTask(task_id)) {
+    RAY_LOG(WARNING) << "Submitted task " << task_id
                      << " is already queued and will not be reconstructed. This is most "
                         "likely due to spurious reconstruction.";
     return;
   }
 
   // Add the task and its uncommitted lineage to the lineage cache.
-  lineage_cache_.AddWaitingTask(task, uncommitted_lineage);
+  if (!lineage_cache_.AddWaitingTask(task, uncommitted_lineage)) {
+    RAY_LOG(WARNING)
+        << "Task " << task_id
+        << " already in lineage cache. This is most likely due to reconstruction.";
+  }
 
   const TaskSpecification &spec = task.GetTaskSpecification();
   if (spec.IsActorTask()) {
@@ -1076,13 +1090,16 @@ void NodeManager::AssignTask(Task &task) {
       // we may lose updates that are in flight to the task table. We only
       // guarantee deterministic reconstruction ordering for tasks whose
       // updates are reflected in the task table.
-      TaskExecutionSpecification &mutable_spec = task.GetTaskExecutionSpec();
-      mutable_spec.SetExecutionDependencies({execution_dependency});
+      task.SetExecutionDependencies({execution_dependency});
       // Extend the frontier to include the executing task.
       actor_entry->second.ExtendFrontier(spec.ActorHandleId(), spec.ActorDummyObject());
     }
     // We started running the task, so the task is ready to write to GCS.
-    lineage_cache_.AddReadyTask(task);
+    if (!lineage_cache_.AddReadyTask(task)) {
+      RAY_LOG(WARNING)
+          << "Task " << spec.TaskId()
+          << " already in lineage cache. This is most likely due to reconstruction.";
+    }
     // Mark the task as running.
     // (See design_docs/task_states.rst for the state transition diagram.)
     local_queues_.QueueRunningTasks(std::vector<Task>({task}));
@@ -1158,6 +1175,8 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
 }
 
 void NodeManager::HandleTaskReconstruction(const TaskID &task_id) {
+  RAY_LOG(INFO) << "Reconstructing task " << task_id << " on client "
+                << gcs_client_->client_table().GetLocalClientId();
   // Retrieve the task spec in order to re-execute the task.
   RAY_CHECK_OK(gcs_client_->raylet_task_table().Lookup(
       JobID::nil(), task_id,
@@ -1275,26 +1294,40 @@ void NodeManager::ForwardTaskOrResubmit(const Task &task,
     RAY_LOG(INFO) << "Failed to forward task " << task_id << " to node manager "
                   << node_manager_id;
     // Mark the failed task as pending to let other raylets know that we still
-    // have the task. Once the task is successfully retried, it will be
-    // canceled. TaskDependencyManager::TaskPending() is assumed to be
+    // have the task. TaskDependencyManager::TaskPending() is assumed to be
     // idempotent.
     task_dependency_manager_.TaskPending(task);
 
-    // Create a timer to resubmit the task in a little bit. TODO(rkn): Really
-    // this should be a unique_ptr instead of a shared_ptr. However, it's a
-    // little harder to move unique_ptrs into lambdas.
-    auto retry_timer = std::make_shared<boost::asio::deadline_timer>(io_service_);
-    auto retry_duration = boost::posix_time::milliseconds(
-        RayConfig::instance().node_manager_forward_task_retry_timeout_milliseconds());
-    retry_timer->expires_from_now(retry_duration);
-    retry_timer->async_wait(
-        [this, task, task_id, retry_timer](const boost::system::error_code &error) {
-          // Timer killing will receive the boost::asio::error::operation_aborted,
-          // we only handle the timeout event.
-          RAY_CHECK(!error);
-          RAY_LOG(INFO) << "In ForwardTask retry callback for task " << task_id;
-          EnqueuePlaceableTask(task);
-        });
+    // Actor tasks can only be executed at the actor's location, so they are
+    // retried after a timeout. All other tasks that fail to be forwarded are
+    // deemed to be placeable again.
+    if (task.GetTaskSpecification().IsActorTask()) {
+      // The task is for an actor on another node.  Create a timer to resubmit
+      // the task in a little bit. TODO(rkn): Really this should be a
+      // unique_ptr instead of a shared_ptr. However, it's a little harder to
+      // move unique_ptrs into lambdas.
+      auto retry_timer = std::make_shared<boost::asio::deadline_timer>(io_service_);
+      auto retry_duration = boost::posix_time::milliseconds(
+          RayConfig::instance().node_manager_forward_task_retry_timeout_milliseconds());
+      retry_timer->expires_from_now(retry_duration);
+      retry_timer->async_wait(
+          [this, task, task_id, retry_timer](const boost::system::error_code &error) {
+            // Timer killing will receive the boost::asio::error::operation_aborted,
+            // we only handle the timeout event.
+            RAY_CHECK(!error);
+            RAY_LOG(DEBUG) << "Resubmitting task " << task_id
+                           << " because ForwardTask failed.";
+            SubmitTask(task, Lineage());
+          });
+      // Remove the task from the lineage cache. The task will get added back
+      // once it is resubmitted.
+      lineage_cache_.RemoveWaitingTask(task_id);
+    } else {
+      // The task is not for an actor and may therefore be placed on another
+      // node immediately. Send it to the scheduling policy to be placed again.
+      local_queues_.QueuePlaceableTasks({task});
+      ScheduleTasks();
+    }
   }
 }
 
@@ -1308,7 +1341,7 @@ ray::Status NodeManager::ForwardTask(const Task &task, const ClientID &node_id) 
       uncommitted_lineage.GetEntryMutable(task_id)->TaskDataMutable();
 
   // Increment forward count for the forwarded task.
-  lineage_cache_entry_task.GetTaskExecutionSpec().IncrementNumForwards();
+  lineage_cache_entry_task.IncrementNumForwards();
 
   flatbuffers::FlatBufferBuilder fbb;
   auto request = uncommitted_lineage.ToFlatbuffer(fbb, task_id);
@@ -1335,7 +1368,11 @@ ray::Status NodeManager::ForwardTask(const Task &task, const ClientID &node_id) 
     // If we were able to forward the task, remove the forwarded task from the
     // lineage cache since the receiving node is now responsible for writing
     // the task to the GCS.
-    lineage_cache_.RemoveWaitingTask(task_id);
+    if (!lineage_cache_.RemoveWaitingTask(task_id)) {
+      RAY_LOG(WARNING) << "Task " << task_id << " already removed from the lineage "
+                                                "cache. This is most likely due to "
+                                                "reconstruction.";
+    }
     // Mark as forwarded so that the task and its lineage is not re-forwarded
     // in the future to the receiving node.
     lineage_cache_.MarkTaskAsForwarded(task_id, node_id);
@@ -1361,10 +1398,6 @@ ray::Status NodeManager::ForwardTask(const Task &task, const ClientID &node_id) 
         }
       }
     }
-  } else {
-    // TODO(atumanov): caller must handle ForwardTask failure.
-    RAY_LOG(WARNING) << "[NodeManager][ForwardTask] failed to forward task " << task_id
-                     << " to node " << node_id;
   }
   return status;
 }

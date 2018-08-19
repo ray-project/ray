@@ -8,7 +8,7 @@ from __future__ import print_function
 
 import ray
 from ray.tune import run_experiments, register_trainable
-from ray.tune.async_hyperband import AsyncHyperBandScheduler
+from ray.tune.schedulers import AsyncHyperBandScheduler
 from ray.tune.suggest import HyperOptSearch
 
 
@@ -52,7 +52,6 @@ if __name__ == '__main__':
             },
         }
     }
-    algo = HyperOptSearch(
-        config, space, max_concurrent=4, reward_attr="neg_mean_loss")
+    algo = HyperOptSearch(space, max_concurrent=4, reward_attr="neg_mean_loss")
     scheduler = AsyncHyperBandScheduler(reward_attr="neg_mean_loss")
-    run_experiments(search_alg=algo, scheduler=scheduler)
+    run_experiments(config, search_alg=algo, scheduler=scheduler)

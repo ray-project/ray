@@ -2,7 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from itertools import chain
+import itertools
 import copy
 
 from ray.tune.error import TuneError
@@ -24,25 +24,34 @@ class SuggestionAlgorithm(SearchAlgorithm):
     subsequent notifications.
 
     Example:
-        >>> suggester = SuggestionAlgorithm({ ... })
+        >>> suggester = SuggestionAlgorithm()
+        >>> suggester.add_configurations({ ... })
         >>> new_parameters = suggester._suggest()
         >>> suggester.on_trial_complete(trial_id, result)
         >>> better_parameters = suggester._suggest()
     """
 
-    def __init__(self, experiments=None):
+    def __init__(self):
         """Constructs a generator given experiment specifications.
 
         Arguments:
             experiments (Experiment | list | dict): Experiments to run.
         """
-        experiment_list = convert_to_experiment_list(experiments)
         self._parser = make_parser()
-        self._trial_generator = chain.from_iterable([
-            self._generate_trials(experiment.spec, experiment.name)
-            for experiment in experiment_list
-        ])
+        self._trial_generator = []
         self._finished = False
+
+    def add_configurations(self, experiments):
+        """Chains generator given experiment specifications.
+
+        Arguments:
+            experiments (Experiment | list | dict): Experiments to run.
+        """
+        experiment_list = convert_to_experiment_list(experiments)
+        for experiment in experiment_list:
+            self._trial_generator = itertools.chain(
+                self._trial_generator,
+                self._generate_trials(experiment.spec, experiment.name))
 
     def next_trials(self):
         """Provides a batch of Trial objects to be queued into the TrialRunner.
@@ -104,7 +113,8 @@ class SuggestionAlgorithm(SearchAlgorithm):
                 TrialRunner from querying.
 
         Example:
-            >>> suggester = SuggestionAlgorithm({ ... }, max_concurrent=1)
+            >>> suggester = SuggestionAlgorithm(max_concurrent=1)
+            >>> suggester.add_configurations({ ... })
             >>> parameters_1 = suggester._suggest()
             >>> parameters_2 = suggester._suggest()
             >>> parameters_2 is None
@@ -116,12 +126,12 @@ class SuggestionAlgorithm(SearchAlgorithm):
 
 
 class _MockSuggestionAlgorithm(SuggestionAlgorithm):
-    def __init__(self, experiments, max_concurrent=2, **kwargs):
+    def __init__(self, max_concurrent=2, **kwargs):
         self._max_concurrent = max_concurrent
         self.live_trials = {}
         self.counter = {"result": 0, "complete": 0}
         self.stall = False
-        super(_MockSuggestionAlgorithm, self).__init__(experiments, **kwargs)
+        super(_MockSuggestionAlgorithm, self).__init__(**kwargs)
 
     def _suggest(self, trial_id):
         if len(self.live_trials) < self._max_concurrent and not self.stall:
