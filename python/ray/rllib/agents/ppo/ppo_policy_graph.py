@@ -175,7 +175,7 @@ class PPOPolicyGraph(TFPolicyGraph):
             self.kl_coeff,
             entropy_coeff=self.config["entropy_coeff"],
             clip_param=self.config["clip_param"],
-            vf_loss_coeff=self.config["kl_target"],
+            vf_loss_coeff=self.config["vf_loss_coeff"],
             use_gae=self.config["use_gae"])
 
         TFPolicyGraph.__init__(
