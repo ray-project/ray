@@ -5,7 +5,7 @@ from __future__ import print_function
 import collections
 import numpy as np
 
-from ray.tune.trial_scheduler import FIFOScheduler, TrialScheduler
+from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
 from ray.tune.trial import Trial
 
 
@@ -38,7 +38,7 @@ class HyperBandScheduler(FIFOScheduler):
     algorithm. It divides trials into brackets of varying sizes, and
     periodically early stops low-performing trials within each bracket.
 
-    To use this implementation of HyperBand with Ray Tune, all you need
+    To use this implementation of HyperBand with Tune, all you need
     to do is specify the max length of time a trial can run `max_t`, the time
     units `time_attr`, and the name of the reported objective value
     `reward_attr`. We automatically determine reasonable values for the other

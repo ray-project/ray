@@ -36,26 +36,23 @@ class Trainable(object):
 
     Note that, if you don't require checkpoint/restore functionality, then
     instead of implementing this class you can also get away with supplying
-    just a `my_train(config, reporter)` function and calling:
-
-    ``register_trainable("my_func", train)``
-
-    to register it for use with Tune. The function will be automatically
-    converted to this interface (sans checkpoint functionality).
-
-    Attributes:
-        config (obj): The hyperparam configuration for this trial.
-        logdir (str): Directory in which training outputs should be placed.
+    just a ``my_train(config, reporter)`` function to the config.
+    The function will be automatically converted to this interface
+    (sans checkpoint functionality).
     """
 
     def __init__(self, config=None, logger_creator=None):
         """Initialize an Trainable.
 
+        Sets up logging and points ``self.logdir`` to a directory in which
+        training outputs should be placed.
+
         Subclasses should prefer defining ``_setup()`` instead of overriding
         ``__init__()`` directly.
 
         Args:
-            config (dict): Trainable-specific configuration data.
+            config (dict): Trainable-specific configuration data. By default
+                will be saved as ``self.config``.
             logger_creator (func): Function that creates a ray.tune.Logger
                 object. If unspecified, a default logger is created.
         """
@@ -102,28 +99,36 @@ class Trainable(object):
         """Runs one logical iteration of training.
 
         Subclasses should override ``_train()`` instead to return results.
-
         This class automatically fills the following fields in the result:
-            done (bool): training is terminated. Filled only if not provided.
-            time_this_iter_s (float): Time in seconds
-                this iteration took to run. This may be overriden in order to
-                override the system-computed time difference.
-            time_total_s (float): Accumulated time in seconds
-                for this entire experiment.
-            experiment_id (str): Unique string identifier
-                for this experiment. This id is preserved
-                across checkpoint / restore calls.
-            training_iteration (int): The index of this
-                training iteration, e.g. call to train().
-            pid (str): The pid of the training process.
-            date (str): A formatted date of
-                when the result was processed.
-            timestamp (str): A UNIX timestamp of
-                when the result was processed.
-            hostname (str): The hostname of the machine
-                hosting the training process.
-            node_ip (str): The node ip of the machine
-                hosting the training process.
+
+            `done` (bool): training is terminated. Filled only if not provided.
+
+            `time_this_iter_s` (float): Time in seconds this iteration
+            took to run. This may be overriden in order to override the
+            system-computed time difference.
+
+            `time_total_s` (float): Accumulated time in seconds for this
+            entire experiment.
+
+            `experiment_id` (str): Unique string identifier
+            for this experiment. This id is preserved
+            across checkpoint / restore calls.
+
+            `training_iteration` (int): The index of this
+            training iteration, e.g. call to train().
+
+            `pid` (str): The pid of the training process.
+
+            `date` (str): A formatted date of when the result was processed.
+
+            `timestamp` (str): A UNIX timestamp of when the result
+            was processed.
+
+            `hostname` (str): Hostname of the machine hosting the training
+            process.
+
+            `node_ip` (str): Node ip of the machine hosting the training
+            process.
 
         Returns:
             A dict that describes training progress.
@@ -283,7 +288,11 @@ class Trainable(object):
         raise NotImplementedError
 
     def _setup(self):
-        """Subclasses should override this for custom initialization."""
+        """Subclasses should override this for custom initialization.
+
+        Subclasses can access the hyperparameter configuration via
+        ``self.config``.
+        """
         pass
 
     def _stop(self):

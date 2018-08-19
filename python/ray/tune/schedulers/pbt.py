@@ -8,7 +8,7 @@ import copy
 
 from ray.tune.error import TuneError
 from ray.tune.trial import Trial
-from ray.tune.trial_scheduler import FIFOScheduler, TrialScheduler
+from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
 from ray.tune.suggest.variant_generator import format_vars
 
 # Parameters are transferred from the top PBT_QUANTILE fraction of trials to
@@ -97,7 +97,7 @@ class PopulationBasedTraining(FIFOScheduler):
     during training time. This enables very fast hyperparameter discovery and
     also automatically discovers good annealing schedules.
 
-    This Ray Tune PBT implementation considers all trials added as part of the
+    This Tune PBT implementation considers all trials added as part of the
     PBT population. If the number of trials exceeds the cluster capacity,
     they will be time-multiplexed as to balance training progress across the
     population.
