@@ -1,0 +1,19 @@
+# Runs on a single m4.16xl node
+atari-a3c-vtrace:
+    env:
+        grid_search:
+            - BreakoutNoFrameskip-v4
+            - BeamRiderNoFrameskip-v4
+            - QbertNoFrameskip-v4
+            - SpaceInvadersNoFrameskip-v4 
+    run: A3C
+    config:
+        vtrace: true
+        num_workers: 16
+        sample_batch_size: 20
+        optimizer:
+            grads_per_step: 1000
+        lr_schedule: [
+            [0, 0.0005],
+            [20000000, 0.000000000001],
+        ]
