@@ -110,7 +110,7 @@ ResourceSet SchedulingQueue::GetQueueResources(const TaskQueue &task_queue) cons
   // demand in a resource set.
   ResourceSet queue_resources;
   for (const auto &task : task_queue.GetTasks()) {
-    queue_resources.OuterJoin(task.GetTaskSpecification().GetRequiredResources());
+    queue_resources.AddResources(task.GetTaskSpecification().GetRequiredResources());
   }
   return queue_resources;
 }
@@ -125,8 +125,8 @@ ResourceSet SchedulingQueue::GetWaitingQueueResources() const {
 
 ResourceSet SchedulingQueue::GetResourceLoad() const {
   ResourceSet load_resource_set;
-  load_resource_set.OuterJoin(GetReadyQueueResources());
-  //load_resource_set.OuterJoin(GetWaitingQueueResources());
+  load_resource_set.AddResources(GetReadyQueueResources());
+  // TODO(atumanov): consider other types of tasks as part of load.
   return load_resource_set;
 }
 

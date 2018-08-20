@@ -47,7 +47,7 @@ std::unordered_map<TaskID, ClientID> SchedulingPolicy::Schedule(
       ClientID node_client_id = client_resource_pair.first;
       const auto &node_resources = client_resource_pair.second;
       ResourceSet available_node_resources = ResourceSet(node_resources.GetAvailableResources());
-      available_node_resources.SubtractResources(node_resources.GetLoadResources());
+      available_node_resources.SubtractResourcesStrict(node_resources.GetLoadResources());
       RAY_LOG(DEBUG) << "client_id " << node_client_id
                      << " avail: " << node_resources.GetAvailableResources().ToString()
                      << " load: "  << node_resources.GetLoadResources().ToString()
@@ -70,7 +70,7 @@ std::unordered_map<TaskID, ClientID> SchedulingPolicy::Schedule(
       // Update dst_client_id's load to keep track of remote task load until
       // the next heartbeat.
       ResourceSet new_load(cluster_resources[dst_client_id].GetLoadResources());
-      new_load.OuterJoin(resource_demand);
+      new_load.AddResources(resource_demand);
       cluster_resources[dst_client_id].SetLoadResources(std::move(new_load));
       RAY_LOG(DEBUG) << "[SchedulingPolicy] idx=" << client_key_index << " " << task_id
                      << " --> " << client_keys[client_key_index];

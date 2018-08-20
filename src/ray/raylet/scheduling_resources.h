@@ -80,20 +80,27 @@ class ResourceSet {
   /// \return True, if the resource was successfully removed. False otherwise.
   bool RemoveResource(const std::string &resource_name);
 
-  /// \brief Add a set of resources to the current set of resources (LEFT JOIN).
+  /// \brief Add a set of resources to the current set of resources only if the resource
+  /// labels match.
   ///
   /// \param other: The other resource set to add.
   /// \return True if the resource set was added successfully. False otherwise.
-  bool AddResources(const ResourceSet &other);
+  bool AddResourcesStrict(const ResourceSet &other);
 
-  void OuterJoin(const ResourceSet &other);
 
-  /// \brief Subtract a set of resources from the current set of resources.
+  /// \brief Aggregate resources from the other set into this set, adding any missing
+  /// resource labels to this set.
+  ///
+  /// \param other: The other resource set to add.
+  void AddResources(const ResourceSet &other);
+
+  /// \brief Subtract a set of resources from the current set of resources, only if
+  /// resource labels match.
   ///
   /// \param other: The resource set to subtract from the current resource set.
   /// \return True if the resource set was subtracted successfully.
   /// False otherwise.
-  bool SubtractResources(const ResourceSet &other);
+  bool SubtractResourcesStrict(const ResourceSet &other);
 
   /// Return the capacity value associated with the specified resource.
   ///
