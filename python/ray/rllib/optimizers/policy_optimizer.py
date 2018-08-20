@@ -81,7 +81,7 @@ class PolicyOptimizer(object):
             "num_steps_sampled": self.num_steps_sampled,
         }
 
-    def collect_metrics(self, min_history=10):
+    def collect_metrics(self, min_history=100):
         """Returns evaluator and optimizer stats.
 
         Returns:
