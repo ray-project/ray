@@ -292,6 +292,7 @@ class PolicyEvaluator(EvaluatorInterface):
             batch = self.sampler.get_data()
             steps_so_far += batch.count
             batches.append(batch)
+        batches.extend(self.sampler.get_extra_batches())
         batch = batches[0].concat_samples(batches)
 
         if self.compress_observations:

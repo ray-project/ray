@@ -198,11 +198,12 @@ public class RunManager {
     }
 
     int processIndex = runInfo.allProcesses.get(type.ordinal()).size();
+
     ProcessBuilder builder;
-    List<String> newCmd = Arrays.stream(cmd).filter(s -> s.length() > 0)
-        .collect(Collectors.toList());
-    builder = new ProcessBuilder(newCmd);
+    List<String> newCommand = Arrays.asList(cmd);
+    builder = new ProcessBuilder(newCommand);
     builder.directory(new File(workDir));
+
     if (redirect) {
       String stdoutFile;
       String stderrFile;
@@ -689,10 +690,10 @@ public class RunManager {
     String rayletSocketName = "/tmp/raylet" + rpcPort;
 
     String filePath = paths.raylet;
-    
-    String workerCmd = null;
-    workerCmd = buildWorkerCommandRaylet(info.storeName, rayletSocketName, UniqueID.nil,
-            "", workDir + rpcPort, ip, redisAddress);
+
+    //Create the worker command that the raylet will use to start workers.
+    String workerCommand  = buildWorkerCommandRaylet(info.storeName, rayletSocketName,
+        UniqueID.nil, "", workDir + rpcPort, ip, redisAddress);
 
     int sep = redisAddress.indexOf(':');
     assert (sep != -1);
@@ -701,8 +702,10 @@ public class RunManager {
 
     String resourceArgument = ResourceUtil.getResourcesStringFromMap(staticResources);
 
-    String[] cmds = new String[]{filePath, rayletSocketName, storeName, ip, gcsIp,
-                                 gcsPort, "" + numWorkers, workerCmd, resourceArgument};
+    // The second-last arugment is the worker command for Python, not needed for Java.
+    String[] cmds = new String[]{filePath,rayletSocketName, storeName, ip, gcsIp,
+                                 gcsPort, "" + numWorkers, resourceArgument,
+                                 "", workerCommand};
 
     Process p = startProcess(cmds, null, RunInfo.ProcessType.PT_RAYLET,
         workDir + rpcPort, redisAddress, ip, redirect, cleanup);

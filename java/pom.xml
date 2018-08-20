@@ -33,7 +33,7 @@
             <dependency>
                 <groupId>org.apache.arrow</groupId>
                 <artifactId>arrow-plasma</artifactId>
-                <version>0.10.0-SNAPSHOT</version>
+                <version>0.10.0</version>
             </dependency>
 
             <dependency>
@@ -128,13 +128,6 @@
                 <groupId>org.slf4j</groupId>
                 <artifactId>slf4j-log4j12</artifactId>
                 <version>${slf4j.version}</version>
-            </dependency>
-
-            <!-- https://mvnrepository.com/artifact/com.github.davidmoten/flatbuffers-java -->
-            <dependency>
-                <groupId>com.github.davidmoten</groupId>
-                <artifactId>flatbuffers-java</artifactId>
-                <version>1.7.0.1</version>
             </dependency>
 
             <!-- https://mvnrepository.com/artifact/com.beust/jcommander -->

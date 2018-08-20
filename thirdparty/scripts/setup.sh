@@ -18,11 +18,12 @@ else
 fi
 echo "Using Python executable $PYTHON_EXECUTABLE."
 
-LANGUAGE="python"
-if [[ -n  "$2" ]]; then
-  LANGUAGE=$2
+if [[ "$RAY_BUILD_JAVA" == "YES" ]]; then
+echo "Java library will be built."
 fi
-echo "Build language is $LANGUAGE."
+if [[ "$RAY_BUILD_PYTHON" == "YES" ]]; then
+echo "Python library will be built."
+fi
 
 unamestr="$(uname)"
 
@@ -52,7 +53,9 @@ fi
 ##############################################
 # arrow
 ##############################################
-bash "$TP_SCRIPT_DIR/build_arrow.sh" $PYTHON_EXECUTABLE $LANGUAGE
+RAY_BUILD_PYTHON=$RAY_BUILD_PYTHON \
+RAY_BUILD_JAVA=$RAY_BUILD_JAVA \
+bash "$TP_SCRIPT_DIR/build_arrow.sh" $PYTHON_EXECUTABLE
 
 ##############################################
 # parquet (skipped as it is inlined in build_arrow.sh)

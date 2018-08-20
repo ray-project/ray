@@ -426,6 +426,10 @@ const ClientTableDataT &ClientTable::GetClient(const ClientID &client_id) const 
   }
 }
 
+const std::unordered_map<ClientID, ClientTableDataT> &ClientTable::GetAllClients() const {
+  return client_cache_;
+}
+
 template class Log<ObjectID, ObjectTableData>;
 template class Log<TaskID, ray::protocol::Task>;
 template class Table<TaskID, ray::protocol::Task>;

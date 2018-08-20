@@ -33,12 +33,12 @@ std::unordered_map<TaskID, ClientID> SchedulingPolicy::Schedule(
     const auto &resource_demand = t.GetTaskSpecification().GetRequiredResources();
     const TaskID &task_id = t.GetTaskSpecification().TaskId();
     RAY_LOG(DEBUG) << "[SchedulingPolicy]: task=" << task_id
-                   << " numforwards=" << t.GetTaskExecutionSpecReadonly().NumForwards()
+                   << " numforwards=" << t.GetTaskExecutionSpec().NumForwards()
                    << " resources="
                    << t.GetTaskSpecification().GetRequiredResources().ToString();
     // TODO(atumanov): replace the simple spillback policy with exponential backoff based
     // policy.
-    if (t.GetTaskExecutionSpecReadonly().NumForwards() >= 1) {
+    if (t.GetTaskExecutionSpec().NumForwards() >= 1) {
       decision[task_id] = local_client_id;
       continue;
     }

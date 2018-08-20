@@ -3,7 +3,9 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
+import hashlib
 import json
+import os
 import tempfile
 import time
 import sys
@@ -24,17 +26,31 @@ from ray.autoscaler.updater import NodeUpdaterProcess
 
 
 def create_or_update_cluster(config_file, override_min_workers,
-                             override_max_workers, no_restart, yes):
+                             override_max_workers, no_restart, restart_only,
+                             yes, override_cluster_name):
     """Create or updates an autoscaling Ray cluster from a config json."""
 
     config = yaml.load(open(config_file).read())
-    validate_config(config)
-    config = fillout_defaults(config)
-
     if override_min_workers is not None:
         config["min_workers"] = override_min_workers
     if override_max_workers is not None:
         config["max_workers"] = override_max_workers
+    if override_cluster_name is not None:
+        config["cluster_name"] = override_cluster_name
+    config = _bootstrap_config(config)
+    get_or_create_head_node(config, config_file, no_restart, restart_only, yes)
+
+
+def _bootstrap_config(config):
+    hasher = hashlib.sha1()
+    hasher.update(json.dumps([config], sort_keys=True).encode("utf-8"))
+    cache_key = os.path.join(tempfile.gettempdir(),
+                             "ray-config-{}".format(hasher.hexdigest()))
+    if os.path.exists(cache_key):
+        print("Cached settings:", cache_key)
+        return json.loads(open(cache_key).read())
+    validate_config(config)
+    config = fillout_defaults(config)
 
     importer = NODE_PROVIDERS.get(config["provider"]["type"])
     if not importer:
@@ -42,36 +58,41 @@ def create_or_update_cluster(config_file, override_min_workers,
             config["provider"]))
 
     bootstrap_config, _ = importer()
-    config = bootstrap_config(config)
-    get_or_create_head_node(config, no_restart, yes)
+    resolved_config = bootstrap_config(config)
+    with open(cache_key, "w") as f:
+        f.write(json.dumps(resolved_config))
+    return resolved_config
 
 
-def teardown_cluster(config_file, yes):
+def teardown_cluster(config_file, yes, workers_only, override_cluster_name):
     """Destroys all nodes of a Ray cluster described by a config json."""
 
     config = yaml.load(open(config_file).read())
+    if override_cluster_name is not None:
+        config["cluster_name"] = override_cluster_name
     validate_config(config)
     config = fillout_defaults(config)
 
     confirm("This will destroy your cluster", yes)
 
     provider = get_node_provider(config["provider"], config["cluster_name"])
-    head_node_tags = {
-        TAG_RAY_NODE_TYPE: "head",
-    }
-    for node in provider.nodes(head_node_tags):
-        print("Terminating head node {}".format(node))
-        provider.terminate_node(node)
-    nodes = provider.nodes({})
+
+    if not workers_only:
+        for node in provider.nodes({TAG_RAY_NODE_TYPE: "head"}):
+            print("Terminating head node {}".format(node))
+            provider.terminate_node(node)
+
+    nodes = provider.nodes({TAG_RAY_NODE_TYPE: "worker"})
     while nodes:
         for node in nodes:
             print("Terminating worker {}".format(node))
             provider.terminate_node(node)
         time.sleep(5)
-        nodes = provider.nodes({})
+        nodes = provider.nodes({TAG_RAY_NODE_TYPE: "worker"})
 
 
-def get_or_create_head_node(config, no_restart, yes):
+def get_or_create_head_node(config, config_file, no_restart, restart_only,
+                            yes):
     """Create the cluster head node, which in turn creates the workers."""
 
     provider = get_node_provider(config["provider"], config["cluster_name"])
@@ -133,7 +154,9 @@ def get_or_create_head_node(config, no_restart, yes):
         "~/ray_bootstrap_config.yaml": remote_config_file.name
     })
 
-    if no_restart:
+    if restart_only:
+        init_commands = config["head_start_ray_commands"]
+    elif no_restart:
         init_commands = (
             config["setup_commands"] + config["head_setup_commands"])
     else:
@@ -170,20 +193,82 @@ def get_or_create_head_node(config, no_restart, yes):
             monitor_str = "docker exec {} /bin/sh -c {}".format(
                 config["docker"]["container_name"], quote(monitor_str))
     print("To monitor auto-scaling activity, you can run:\n\n"
-          "  ssh -i {} {}@{} {}\n".format(config["auth"]["ssh_private_key"],
-                                          config["auth"]["ssh_user"],
-                                          provider.external_ip(head_node),
-                                          quote(monitor_str)))
+          "  ray exec {} {} --cluster-name={}\n".format(
+              config_file, quote(monitor_str), quote(config["cluster_name"])))
     print("To login to the cluster, run:\n\n"
           "  ssh -i {} {}@{}\n".format(config["auth"]["ssh_private_key"],
                                        config["auth"]["ssh_user"],
                                        provider.external_ip(head_node)))
 
 
-def get_head_node_ip(config_file):
+def attach_cluster(config_file, start, override_cluster_name):
+    """Attaches to a screen for the specified cluster.
+
+    Arguments:
+        config_file: path to the cluster yaml
+        start: whether to start the cluster if it isn't up
+        override_cluster_name: set the name of the cluster
+    """
+
+    exec_cluster(config_file, "screen -L -xRR", False, False, start,
+                 override_cluster_name)
+
+
+def exec_cluster(config_file, cmd, screen, stop, start, override_cluster_name):
+    """Runs a command on the specified cluster.
+
+    Arguments:
+        config_file: path to the cluster yaml
+        cmd: command to run
+        screen: whether to run in a screen
+        stop: whether to stop the cluster after command run
+        start: whether to start the cluster if it isn't up
+        override_cluster_name: set the name of the cluster
+    """
+
+    config = yaml.load(open(config_file).read())
+    if override_cluster_name is not None:
+        config["cluster_name"] = override_cluster_name
+    config = _bootstrap_config(config)
+    head_node = _get_head_node(config, config_file, create_if_needed=start)
+    updater = NodeUpdaterProcess(
+        head_node,
+        config["provider"],
+        config["auth"],
+        config["cluster_name"],
+        config["file_mounts"], [],
+        "",
+        redirect_output=False)
+    if stop:
+        cmd += ("; ray stop; ray teardown ~/ray_bootstrap_config.yaml --yes "
+                "--workers-only; sudo shutdown -h now")
+    _exec(updater, cmd, screen, expect_error=stop)
+
+
+def _exec(updater, cmd, screen, expect_error=False):
+    if cmd:
+        if screen:
+            cmd = [
+                "screen", "-L", "-dm", "bash", "-c",
+                quote(cmd + "; exec bash")
+            ]
+            cmd = " ".join(cmd)
+        updater.ssh_cmd(
+            cmd, verbose=True, allocate_tty=True, expect_error=expect_error)
+
+
+def get_head_node_ip(config_file, override_cluster_name):
     """Returns head node IP for given configuration file if exists."""
 
     config = yaml.load(open(config_file).read())
+    if override_cluster_name is not None:
+        config["cluster_name"] = override_cluster_name
+    provider = get_node_provider(config["provider"], config["cluster_name"])
+    head_node = _get_head_node(config, config_file)
+    return provider.external_ip(head_node)
+
+
+def _get_head_node(config, config_file, create_if_needed=False):
     provider = get_node_provider(config["provider"], config["cluster_name"])
     head_node_tags = {
         TAG_RAY_NODE_TYPE: "head",
@@ -191,7 +276,15 @@ def get_head_node_ip(config_file):
     nodes = provider.nodes(head_node_tags)
     if len(nodes) > 0:
         head_node = nodes[0]
-        return provider.external_ip(head_node)
+        return head_node
+    elif create_if_needed:
+        get_or_create_head_node(
+            config,
+            config_file,
+            restart_only=False,
+            no_restart=False,
+            yes=True)
+        return _get_head_node(config, config_file, create_if_needed=False)
     else:
         print("Head node of cluster ({}) not found!".format(
             config["cluster_name"]))

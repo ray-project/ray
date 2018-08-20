@@ -1,9 +1,9 @@
-Using Ray on a Cluster
-======================
+Manual Cluster Setup
+====================
 
 .. note::
 
-    If you're using AWS you can use the automated `setup commands <http://ray.readthedocs.io/en/latest/autoscaling.html>`__.
+    If you're using AWS or GCP you should use the automated `setup commands <http://ray.readthedocs.io/en/latest/autoscaling.html>`__.
 
 The instructions in this document work well for small clusters. For larger
 clusters, follow the instructions for `managing a cluster with parallel ssh`_.

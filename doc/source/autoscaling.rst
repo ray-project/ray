@@ -1,7 +1,7 @@
 Cloud Setup and Auto-Scaling
 ============================
 
-The ``ray create_or_update`` command starts an AWS or GCP Ray cluster from your personal computer. Once the cluster is up, you can then SSH into it to run Ray programs.
+The ``ray up`` command starts or updates an AWS or GCP Ray cluster from your personal computer. Once the cluster is up, you can then SSH into it to run Ray programs.
 
 Quick start (AWS)
 -----------------
@@ -18,14 +18,14 @@ SSH into the head node, ``source activate tensorflow_p36``, and then run Ray pro
 
     # Create or update the cluster. When the command finishes, it will print
     # out the command that can be used to SSH into the cluster head node.
-    $ ray create_or_update ray/python/ray/autoscaler/aws/example-full.yaml
+    $ ray up ray/python/ray/autoscaler/aws/example-full.yaml
 
     # Reconfigure autoscaling behavior without interrupting running jobs
-    $ ray create_or_update ray/python/ray/autoscaler/aws/example-full.yaml \
+    $ ray up ray/python/ray/autoscaler/aws/example-full.yaml \
         --max-workers=N --no-restart
 
     # Teardown the cluster
-    $ ray teardown ray/python/ray/autoscaler/aws/example-full.yaml
+    $ ray down ray/python/ray/autoscaler/aws/example-full.yaml
 
 Quick start (GCP)
 -----------------
@@ -41,14 +41,50 @@ SSH into the head node and then run Ray programs with ``ray.init(redis_address="
 
     # Create or update the cluster. When the command finishes, it will print
     # out the command that can be used to SSH into the cluster head node.
-    $ ray create_or_update ray/python/ray/autoscaler/gcp/example-full.yaml
+    $ ray up ray/python/ray/autoscaler/gcp/example-full.yaml
 
     # Reconfigure autoscaling behavior without interrupting running jobs
-    $ ray create_or_update ray/python/ray/autoscaler/gcp/example-full.yaml \
+    $ ray up ray/python/ray/autoscaler/gcp/example-full.yaml \
         --max-workers=N --no-restart
 
     # Teardown the cluster
-    $ ray teardown ray/python/ray/autoscaler/gcp/example-full.yaml
+    $ ray down ray/python/ray/autoscaler/gcp/example-full.yaml
+
+Running commands on new and existing clusters
+---------------------------------------------
+
+You can use ``ray exec`` to conveniently run commands on clusters. Note that scripts you run should connect to Ray via ``ray.init(redis_address="localhost:6379")``.
+
+.. code-block:: bash
+
+    # Run a command on the cluster
+    $ ray exec cluster.yaml 'echo "hello world"'
+
+    # Run a command on the cluster, starting it if needed
+    $ ray exec cluster.yaml 'echo "hello world"' --start
+
+    # Run a command on the cluster, stopping the cluster after it finishes
+    $ ray exec cluster.yaml 'echo "hello world"' --stop
+
+    # Run a command on a new cluster called 'experiment-1', stopping it after
+    $ ray exec cluster.yaml 'echo "hello world"' \
+        --start --stop --cluster-name experiment-1
+
+    # Run a command in a screen (experimental)
+    $ ray exec cluster.yaml 'echo "hello world"' --screen
+
+Attaching to the cluster
+------------------------
+
+You can use ``ray attach`` to attach to an interactive console on the cluster.
+
+.. code-block:: bash
+
+    # Open a screen on the cluster
+    $ ray attach cluster.yaml
+
+    # Open a screen on a new cluster called 'session-1'
+    $ ray attach cluster.yaml --start --cluster-name=session-1
 
 Port-forwarding applications
 ----------------------------
@@ -62,9 +98,9 @@ To run connect to applications running on the cluster (e.g. Jupyter notebook) us
 Updating your cluster
 ---------------------
 
-When you run ``ray create_or_update`` with an existing cluster, the command checks if the local configuration differs from the applied configuration of the cluster. This includes any changes to synced files specified in the ``file_mounts`` section of the config. If so, the new files and config will be uploaded to the cluster. Following that, Ray services will be restarted.
+When you run ``ray up`` with an existing cluster, the command checks if the local configuration differs from the applied configuration of the cluster. This includes any changes to synced files specified in the ``file_mounts`` section of the config. If so, the new files and config will be uploaded to the cluster. Following that, Ray services will be restarted.
 
-You can also run ``ray create_or_update`` to restart a cluster if it seems to be in a bad state (this will restart all Ray services even if there are no config changes).
+You can also run ``ray up`` to restart a cluster if it seems to be in a bad state (this will restart all Ray services even if there are no config changes).
 
 If you don't want the update to restart services (e.g. because the changes don't require a restart), pass ``--no-restart`` to the update call.
 
@@ -115,11 +151,11 @@ A common use case is syncing a particular local git branch to all workers of the
         - test -e <REPO_NAME> || git clone https://github.com/<REPO_ORG>/<REPO_NAME>.git
         - cd <REPO_NAME> && git fetch && git checkout `cat /tmp/current_branch_sha`
 
-This tells ``ray create_or_update`` to sync the current git branch SHA from your personal computer to a temporary file on the cluster (assuming you've pushed the branch head already). Then, the setup commands read that file to figure out which SHA they should checkout on the nodes. Note that each command runs in its own session. The final workflow to update the cluster then becomes just this:
+This tells ``ray up`` to sync the current git branch SHA from your personal computer to a temporary file on the cluster (assuming you've pushed the branch head already). Then, the setup commands read that file to figure out which SHA they should checkout on the nodes. Note that each command runs in its own session. The final workflow to update the cluster then becomes just this:
 
 1. Make local changes to a git branch
 2. Commit the changes with ``git commit`` and ``git push``
-3. Update files on your Ray cluster with ``ray create_or_update``
+3. Update files on your Ray cluster with ``ray up``
 
 Common cluster configurations
 -----------------------------
@@ -174,7 +210,7 @@ with GPU worker nodes instead.
 
 .. code-block:: yaml
 
-    min_workers: 0
+    min_workers: 1  # must have at least 1 GPU worker (issue #2106)
     max_workers: 10
     head_node:
         InstanceType: m4.large

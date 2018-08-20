@@ -98,6 +98,7 @@ Here is an example of the basic usage:
 
     import ray
     import ray.rllib.agents.ppo as ppo
+    from ray.tune.logger import pretty_print
 
     ray.init()
     config = ppo.DEFAULT_CONFIG.copy()
@@ -108,7 +109,7 @@ Here is an example of the basic usage:
     for i in range(1000):
        # Perform one iteration of training the policy with PPO
        result = agent.train()
-       print("result: {}".format(result))
+       print(pretty_print(result))
 
        if i % 100 == 0:
            checkpoint = agent.save()

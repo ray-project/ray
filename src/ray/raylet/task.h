@@ -28,21 +28,22 @@ class Task {
   /// are determined at task submission time.
   Task(const TaskExecutionSpecification &execution_spec,
        const TaskSpecification &task_spec)
-      : task_execution_spec_(execution_spec), task_spec_(task_spec) {}
+      : task_execution_spec_(execution_spec), task_spec_(task_spec) {
+    ComputeDependencies();
+  }
 
   /// Create a task from a serialized flatbuffer.
   ///
   /// \param task_flatbuffer The serialized task.
   Task(const protocol::Task &task_flatbuffer)
-      : task_execution_spec_(*task_flatbuffer.task_execution_spec()),
-        task_spec_(*task_flatbuffer.task_specification()) {}
+      : Task(*task_flatbuffer.task_execution_spec(),
+             *task_flatbuffer.task_specification()) {}
 
   /// Create a task from a flatbuffer object.
   ///
   /// \param task_data The task flatbuffer object.
   Task(const protocol::TaskT &task_data)
-      : task_execution_spec_(*task_data.task_execution_spec),
-        task_spec_(task_data.task_specification) {}
+      : Task(*task_data.task_execution_spec, task_data.task_specification) {}
 
   /// Destroy the task.
   virtual ~Task() {}
@@ -54,37 +55,38 @@ class Task {
   flatbuffers::Offset<protocol::Task> ToFlatbuffer(
       flatbuffers::FlatBufferBuilder &fbb) const;
 
-  /// Get the execution specification for the task.
+  /// Get the mutable specification for the task. This specification may be
+  /// updated at runtime.
   ///
   /// \return The mutable specification for the task.
-  TaskExecutionSpecification &GetTaskExecutionSpec();
-
-  const TaskExecutionSpecification &GetTaskExecutionSpecReadonly() const;
+  const TaskExecutionSpecification &GetTaskExecutionSpec() const;
 
   /// Get the immutable specification for the task.
   ///
   /// \return The immutable specification for the task.
   const TaskSpecification &GetTaskSpecification() const;
 
+  /// Set the task's execution dependencies.
+  ///
+  /// \param dependencies The value to set the execution dependencies to.
+  void SetExecutionDependencies(const std::vector<ObjectID> &dependencies);
+
+  /// Increment the number of times this task has been forwarded.
+  void IncrementNumForwards();
+
   /// Get the task's object dependencies. This comprises the immutable task
   /// arguments and the mutable execution dependencies.
   ///
   /// \return The object dependencies.
-  /// TODO(atumanov): consider returning a constant reference.
-  const std::vector<ObjectID> GetDependencies() const;
-
-  /// Compute whether the task is dependent on an object ID.
-  ///
-  /// \param object_id The object ID that the task may be dependent on.
-  /// \return Returns true if the task is dependent on the given object ID and
-  /// false otherwise.
-  bool DependsOn(const ObjectID &object_id) const;
+  const std::vector<ObjectID> &GetDependencies() const;
 
   /// Update the dynamic/mutable information for this task.
   /// \param task Task structure with updated dynamic information.
   void CopyTaskExecutionSpec(const Task &task);
 
  private:
+  void ComputeDependencies();
+
   /// Task execution specification, consisting of all dynamic/mutable
   /// information about this task determined at execution time..
   TaskExecutionSpecification task_execution_spec_;
@@ -92,6 +94,10 @@ class Task {
   /// task determined at submission time. Includes resource demand, object
   /// dependencies, etc.
   TaskSpecification task_spec_;
+  /// A cached copy of the task's object dependencies, including arguments from
+  /// the TaskSpecification and execution dependencies from the
+  /// TaskExecutionSpecification.
+  std::vector<ObjectID> dependencies_;
 };
 
 }  // namespace raylet

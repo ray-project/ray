@@ -47,6 +47,7 @@ class MockObjectDirectory : public ObjectDirectoryInterface {
   MOCK_METHOD3(ReportObjectAdded,
                ray::Status(const ObjectID &, const ClientID &, const ObjectInfoT &));
   MOCK_METHOD2(ReportObjectRemoved, ray::Status(const ObjectID &, const ClientID &));
+  MOCK_METHOD1(RunFunctionForEachClient, void(const InfoSuccessCallback &success_cb));
 
  private:
   std::vector<std::pair<ObjectID, OnLocationsFound>> callbacks_;
