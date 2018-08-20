@@ -4,8 +4,7 @@ atari-a2c:
             - BeamRiderNoFrameskip-v4
     run: A2C
     config:
-        num_workers: 1
-        sample_batch_size: 80  # 5 * 16
-        num_envs_per_worker: 16
+        num_workers: 16
+        sample_batch_size: 5
         lr: .0007
         grad_clip: 1
