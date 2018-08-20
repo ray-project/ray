@@ -121,7 +121,8 @@ class A3CPolicyGraph(TFPolicyGraph):
         return vf[0]
 
     def optimizer(self):
-        return tf.train.AdamOptimizer(self.config["lr"])
+        return tf.train.RMSPropOptimizer(
+            self.config["lr"], decay=0.99, epsilon=1e-5)
 
     def gradients(self, optimizer):
         grads = tf.gradients(self.loss.total_loss, self.var_list)

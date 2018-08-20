@@ -497,7 +497,7 @@ def _validate_and_canonicalize(policy_graph, env):
 
 
 def _monitor(env, path):
-    return gym.wrappers.Monitor(env, path, force=True)
+    return gym.wrappers.Monitor(env, path, resume=True)
 
 
 def _has_tensorflow_graph(policy_dict):
