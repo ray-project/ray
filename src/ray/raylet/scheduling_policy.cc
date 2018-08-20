@@ -48,10 +48,10 @@ std::unordered_map<TaskID, ClientID> SchedulingPolicy::Schedule(
       const auto &node_resources = client_resource_pair.second;
       ResourceSet available_node_resources = ResourceSet(node_resources.GetAvailableResources());
       available_node_resources.SubtractResources(node_resources.GetLoadResources());
-      RAY_LOG(INFO) << "client_id " << node_client_id
-                    << " avail: " << node_resources.GetAvailableResources().ToString()
-                    << " load: "  << node_resources.GetLoadResources().ToString()
-                    << " avail-load: " << available_node_resources.ToString();
+      RAY_LOG(DEBUG) << "client_id " << node_client_id
+                     << " avail: " << node_resources.GetAvailableResources().ToString()
+                     << " load: "  << node_resources.GetLoadResources().ToString()
+                     << " avail-load: " << available_node_resources.ToString();
 
       if (resource_demand.IsSubset(available_node_resources)) {
         // This node is a feasible candidate.

@@ -259,8 +259,8 @@ void NodeManager::Heartbeat() {
     heartbeat_data->resource_load_capacity.push_back(resource_pair.second);
   }
   if (++counter % 10 == 0) {
-    RAY_LOG(INFO) << "[Heartbeat]"
-                  << " load " << local_resources.GetLoadResources().ToString();
+    RAY_LOG(DEBUG) << "[Heartbeat]"
+                   << " load " << local_resources.GetLoadResources().ToString();
   }
 
   ray::Status status = heartbeat_table.Add(
