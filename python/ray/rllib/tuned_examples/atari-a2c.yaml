@@ -8,3 +8,4 @@ atari-a2c:
         sample_batch_size: 5
         lr: .0007
         grad_clip: 1
+        gpu: true
