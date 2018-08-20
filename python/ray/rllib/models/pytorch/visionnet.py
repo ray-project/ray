@@ -21,7 +21,7 @@ class VisionNetwork(Model):
         filters = options.get("conv_filters", [
             [16, [8, 8], 4],
             [32, [4, 4], 2],
-            [512, [10, 10], 1],
+            [512, [11, 11], 1],
         ])
         layers = []
         in_channels, in_size = inputs[0], inputs[1:]
