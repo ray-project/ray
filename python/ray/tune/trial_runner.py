@@ -211,8 +211,8 @@ class TrialRunner(object):
         return trial
 
     def _process_events(self):
+        trial, result = self.trial_executor.fetch_one_result()
         try:
-            trial, result = self.trial_executor.fetch_one_result()
             if result is None:
                 raise ValueError("fetch_one_result failed")
             self._total_time += result[TIME_THIS_ITER_S]
