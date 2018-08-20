@@ -15,6 +15,7 @@ from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.misc import linear, normc_initializer
 from ray.rllib.utils.error import UnsupportedSpaceException
+from ray.rllib.utils.explained_variance import explained_variance
 
 
 class VTraceLoss(object):
@@ -54,7 +55,7 @@ class VTraceLoss(object):
 
         # Compute vtrace on the CPU for better perf.
         with tf.device("/cpu:0"):
-            vtrace_returns = vtrace.from_logits(
+            self.vtrace_returns = vtrace.from_logits(
                 behaviour_policy_logits=behaviour_logits,
                 target_policy_logits=target_logits,
                 actions=tf.cast(actions, tf.int32),
@@ -68,10 +69,10 @@ class VTraceLoss(object):
 
         # The policy gradients loss
         self.pi_loss = -tf.reduce_sum(
-            actions_logp * vtrace_returns.pg_advantages)
+            actions_logp * self.vtrace_returns.pg_advantages)
 
         # The baseline loss
-        delta = values - vtrace_returns.vs
+        delta = values - self.vtrace_returns.vs
         self.vf_loss = 0.5 * tf.reduce_sum(tf.square(delta))
 
         # The entropy loss
@@ -178,6 +179,18 @@ class VTracePolicyGraph(TFPolicyGraph):
 
         self.sess.run(tf.global_variables_initializer())
 
+        self.stats_fetches = {
+            "stats": {
+                "policy_loss": self.loss.pi_loss,
+                "entropy": self.loss.entropy,
+                "grad_gnorm": tf.global_norm(self._grads),
+                "var_gnorm": tf.global_norm(self.var_list),
+                "vf_loss": self.loss.vf_loss,
+                "vf_explained_var": explained_variance(
+                    self.loss.vtrace_returns.vs, values),
+            },
+        }
+
     def optimizer(self):
         if self.config["opt_type"] == "adam":
             return tf.train.AdamOptimizer(self.config["lr"])
@@ -196,18 +209,7 @@ class VTracePolicyGraph(TFPolicyGraph):
         return {"behaviour_logits": self.model.outputs}
 
     def extra_compute_grad_fetches(self):
-        if self.config.get("summarize"):
-            return {
-                "stats": {
-                    "policy_loss": self.loss.pi_loss,
-                    "value_loss": self.loss.vf_loss,
-                    "entropy": self.loss.entropy,
-                    "grad_gnorm": tf.global_norm(self._grads),
-                    "var_gnorm": tf.global_norm(self.var_list),
-                },
-            }
-        else:
-            return {}
+        return self.stats_fetches
 
     def postprocess_trajectory(self, sample_batch, other_agent_batches=None):
         del sample_batch.data["new_obs"]  # not used, so save some bandwidth

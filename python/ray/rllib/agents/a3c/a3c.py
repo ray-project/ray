@@ -29,8 +29,6 @@ DEFAULT_CONFIG = with_common_config({
     "entropy_coeff": -0.01,
     # Whether to place workers on GPUs
     "use_gpu_for_workers": False,
-    # Whether to emit extra summary stats
-    "summarize": False,
     # Min time per iteration
     "min_iter_time_s": 5,
     # Workers sample async. Note that this increases the effective

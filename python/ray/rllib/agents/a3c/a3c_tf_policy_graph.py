@@ -94,20 +94,17 @@ class A3CPolicyGraph(TFPolicyGraph):
             seq_lens=self.model.seq_lens,
             max_seq_len=self.config["model"]["max_seq_len"])
 
-        if self.config.get("summarize"):
-            self.extra_fetches = {
-                "stats": {
-                    "policy_loss": self.loss.pi_loss,
-                    "policy_entropy": self.loss.entropy,
-                    "grad_gnorm": tf.global_norm(self._grads),
-                    "var_gnorm": tf.global_norm(self.var_list),
-                    "vf_loss": self.loss.vf_loss,
-                    "vf_explained_var": explained_variance(
-                        self.v_target, self.vf),
-                },
-            }
-        else:
-            self.extra_fetches = {}
+        self.stats_fetches = {
+            "stats": {
+                "policy_loss": self.loss.pi_loss,
+                "policy_entropy": self.loss.entropy,
+                "grad_gnorm": tf.global_norm(self._grads),
+                "var_gnorm": tf.global_norm(self.var_list),
+                "vf_loss": self.loss.vf_loss,
+                "vf_explained_var": explained_variance(
+                    self.v_target, self.vf),
+            },
+        }
 
         self.sess.run(tf.global_variables_initializer())
 
@@ -133,7 +130,7 @@ class A3CPolicyGraph(TFPolicyGraph):
         return clipped_grads
 
     def extra_compute_grad_fetches(self):
-        return self.extra_fetches
+        return self.stats_fetches
 
     def get_initial_state(self):
         return self.model.state_init
