@@ -57,9 +57,8 @@ class A3CPolicyGraph(TFPolicyGraph):
             vf_config["free_log_std"] = False
             vf_config["use_lstm"] = False
             self.vf = tf.reshape(
-                ModelCatalog.get_model(
-                    self.observations, 1, vf_config).outputs,
-                [-1])
+                ModelCatalog.get_model(self.observations, 1,
+                                       vf_config).outputs, [-1])
         self.var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
                                           tf.get_variable_scope().name)
 
@@ -107,8 +106,7 @@ class A3CPolicyGraph(TFPolicyGraph):
                 "grad_gnorm": tf.global_norm(self._grads),
                 "var_gnorm": tf.global_norm(self.var_list),
                 "vf_loss": self.loss.vf_loss,
-                "vf_explained_var": explained_variance(
-                    self.v_target, self.vf),
+                "vf_explained_var": explained_variance(self.v_target, self.vf),
             },
         }
 

@@ -2,9 +2,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
+
 import ray
 from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
-from ray.rllib.evaluation.metrics import collect_metrics
+from ray.rllib.evaluation.metrics import collect_episodes, summarize_episodes
 from ray.rllib.evaluation.sample_batch import MultiAgentBatch
 
 
@@ -45,6 +47,7 @@ class PolicyOptimizer(object):
         """
         self.local_evaluator = local_evaluator
         self.remote_evaluators = remote_evaluators or []
+        self.episode_history = []
         self.config = config or {}
         self._init(**self.config)
 
@@ -78,14 +81,23 @@ class PolicyOptimizer(object):
             "num_steps_sampled": self.num_steps_sampled,
         }
 
-    def collect_metrics(self):
+    def collect_metrics(self, min_history=10):
         """Returns evaluator and optimizer stats.
 
         Returns:
             res (dict): A training result dict from evaluator metrics with
                 `info` replaced with stats from self.
         """
-        res = collect_metrics(self.local_evaluator, self.remote_evaluators)
+        episodes = collect_episodes(self.local_evaluator,
+                                    self.remote_evaluators)
+        orig_episodes = list(episodes)
+        missing = min_history - len(episodes)
+        if missing > 0:
+            episodes.extend(self.episode_history[-missing:])
+            assert len(episodes) <= min_history
+        self.episode_history.extend(orig_episodes)
+        self.episode_history = self.episode_history[-min_history:]
+        res = summarize_episodes(episodes)
         res.update(info=self.stats())
         return res
 

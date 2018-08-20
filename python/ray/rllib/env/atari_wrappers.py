@@ -10,6 +10,83 @@ def is_atari(env):
     return hasattr(env, "unwrapped") and hasattr(env.unwrapped, "ale")
 
 
+def get_wrapper_by_name(env, cls):
+    """Given an a gym environment possibly wrapped multiple times, returns a wrapper
+    of class named classname or raises ValueError if no such wrapper was applied
+
+    Parameters
+    ----------
+    env: gym.Env of gym.Wrapper
+        gym environment
+    classname: str
+        name of the wrapper
+
+    Returns
+    -------
+    wrapper: gym.Wrapper
+        wrapper named classname
+    """
+    currentenv = env
+    while True:
+        if isinstance(currentenv, cls):
+            return currentenv
+        elif isinstance(currentenv, gym.Wrapper):
+            currentenv = currentenv.env
+        else:
+            raise ValueError("Couldn't find wrapper named %s" % cls)
+
+
+class MonitorEnv(gym.Wrapper):
+    def __init__(self, env=None):
+        """
+        """
+        super().__init__(env)
+        self._current_reward = None
+        self._num_steps = None
+        self._total_steps = None
+        self._episode_rewards = []
+        self._episode_lengths = []
+        self._num_episodes = 0
+        self._num_returned = 0
+
+    def reset(self, **kwargs):
+        obs = self.env.reset(**kwargs)
+
+        if self._total_steps is None:
+            self._total_steps = sum(self._episode_lengths)
+
+        if self._current_reward is not None:
+            self._episode_rewards.append(self._current_reward)
+            self._episode_lengths.append(self._num_steps)
+            self._num_episodes += 1
+
+        self._current_reward = 0
+        self._num_steps = 0
+
+        return obs
+
+    def step(self, action):
+        obs, rew, done, info = self.env.step(action)
+        self._current_reward += rew
+        self._num_steps += 1
+        self._total_steps += 1
+        return (obs, rew, done, info)
+
+    def get_episode_rewards(self):
+        return self._episode_rewards
+
+    def get_episode_lengths(self):
+        return self._episode_lengths
+
+    def get_total_steps(self):
+        return self._total_steps
+
+    def next_episode_results(self):
+        for i in range(self._num_returned, len(self._episode_rewards)):
+            yield (self._episode_rewards[i], self._episode_lengths[i])
+        self._num_returned = len(self._episode_rewards)
+
+
 class NoopResetEnv(gym.Wrapper):
     def __init__(self, env, noop_max=30):
         """Sample initial states by taking random number of no-ops on reset.
@@ -209,6 +286,7 @@ def wrap_deepmind(env, dim=84):
     Args:
         dim (int): Dimension to resize observations to (dim x dim).
     """
+    env = MonitorEnv(env)
     env = NoopResetEnv(env, noop_max=30)
     if 'NoFrameskip' in env.spec.id:
         env = MaxAndSkipEnv(env, skip=4)

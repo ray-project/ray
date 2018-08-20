@@ -10,3 +10,4 @@ atari-a2c:
         grad_clip: 1
         gpu: true
         monitor: true
+        lambda: 0.98

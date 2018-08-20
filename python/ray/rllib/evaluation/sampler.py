@@ -11,6 +11,7 @@ from ray.rllib.evaluation.sample_batch import MultiAgentSampleBatchBuilder, \
     MultiAgentBatch
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 from ray.rllib.env.async_vector_env import AsyncVectorEnv
+from ray.rllib.env.atari_wrappers import get_wrapper_by_name, MonitorEnv
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 
 RolloutMetrics = namedtuple(
@@ -214,7 +215,8 @@ def _env_runner(async_vector_env,
 
     try:
         if not horizon:
-            horizon = async_vector_env.get_unwrapped().spec.max_episode_steps
+            horizon = (
+                async_vector_env.get_unwrapped()[0].spec.max_episode_steps)
     except Exception:
         print("Warning, no horizon specified, assuming infinite")
     if not horizon:
@@ -259,8 +261,13 @@ def _env_runner(async_vector_env,
             # Check episode termination conditions
             if dones[env_id]["__all__"] or episode.length >= horizon:
                 all_done = True
-                yield RolloutMetrics(episode.length, episode.total_reward,
-                                     dict(episode.agent_rewards))
+                atari_metrics = _fetch_atari_metrics(async_vector_env)
+                if atari_metrics is not None:
+                    for m in atari_metrics:
+                        yield m
+                else:
+                    yield RolloutMetrics(episode.length, episode.total_reward,
+                                         dict(episode.agent_rewards))
             else:
                 all_done = False
                 # At least send an empty dict if not done
@@ -382,6 +389,23 @@ def _env_runner(async_vector_env,
         # Return computed actions to ready envs. We also send to envs that have
         # taken off-policy actions; those envs are free to ignore the action.
         async_vector_env.send_actions(dict(actions_to_send))
+
+
+def _fetch_atari_metrics(async_vector_env):
+    """Atari games have multiple logical episodes, one per life.
+
+    However for metrics reporting we count full episodes all lives included.
+    """
+    unwrapped = async_vector_env.get_unwrapped()
+    if not unwrapped:
+        return None
+    for u in unwrapped:
+        monitor = get_wrapper_by_name(u, MonitorEnv)
+        if monitor:
+            for eps_rew, eps_len in monitor.next_episode_results():
+                yield RolloutMetrics(eps_len, eps_rew, {})
+        else:
+            return None
 
 
 def _to_column_format(rnn_state_rows):
