@@ -119,10 +119,6 @@ ResourceSet SchedulingQueue::GetReadyQueueResources() const {
   return GetQueueResources(ready_tasks_);
 }
 
-ResourceSet SchedulingQueue::GetWaitingQueueResources() const {
-  return GetQueueResources(waiting_tasks_);
-}
-
 ResourceSet SchedulingQueue::GetResourceLoad() const {
   ResourceSet load_resource_set;
   load_resource_set.AddResources(GetReadyQueueResources());

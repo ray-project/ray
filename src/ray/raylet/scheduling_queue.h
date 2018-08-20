@@ -51,9 +51,10 @@ class SchedulingQueue {
   /// dependencies local and that are waiting to be scheduled.
   const std::list<Task> &GetPlaceableTasks() const;
 
-  /// \brief Return an aggregate resource set for all tests exerting load on this system.
+  /// \brief Return an aggregate resource set for all tasks exerting load on this raylet.
   ///
-  /// \return A resource set with aggregate information about resource load on this system.
+  /// \return A resource set with aggregate resource information about resource load on
+  /// this raylet.
   ResourceSet GetResourceLoad() const;
 
   /// Get the queue of tasks in the ready state.
@@ -158,6 +159,11 @@ class SchedulingQueue {
   /// \param filter_state The task state to filter out.
   void FilterState(std::unordered_set<TaskID> &task_ids, TaskState filter_state) const;
 
+  /// \brief Return all resource demand associated with the ready queue.
+  ///
+  /// \return Aggregate resource demand from ready tasks.
+  ResourceSet GetReadyQueueResources() const;
+
   class TaskQueue {
    public:
     /// Creating a task queue.
@@ -228,8 +234,6 @@ class SchedulingQueue {
   /// \param task_queue The task queue for which aggregate resource demand is calculated.
   /// \return Aggregate resource demand.
   ResourceSet GetQueueResources(const TaskQueue &task_queue) const;
-  ResourceSet GetReadyQueueResources() const;
-  ResourceSet GetWaitingQueueResources() const;
 };
 
 }  // namespace raylet

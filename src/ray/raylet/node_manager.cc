@@ -374,20 +374,13 @@ void NodeManager::HeartbeatAdded(gcs::AsyncGcsClient *client, const ClientID &cl
   // TODO(atumanov): assert that the load is a non-empty ResourceSet.
   RAY_LOG(DEBUG) << "[HeartbeatAdded]: received load: "
                 << remote_load.ToString();
-  remote_resources.SetAvailableResources(
-      ResourceSet(heartbeat_data.resources_available_label,
-                  heartbeat_data.resources_available_capacity));
+  remote_resources.SetAvailableResources(std::move(remote_available));
   // Extract the load information and save it locally.
-  remote_resources.SetLoadResources(
-      ResourceSet(heartbeat_data.resource_load_label,
-                  heartbeat_data.resource_load_capacity));
-  RAY_CHECK(
-      cluster_resource_map_[client_id].GetAvailableResources() == remote_available);
-  RAY_CHECK(
-      cluster_resource_map_[client_id].GetLoadResources() == remote_load);
-
+  remote_resources.SetLoadResources(std::move(remote_load));
 
   // Construct cluster resources for the heartbeating client_id & call scheduling policy.
+  // The scheduling policy will only consider the resources of the heartbeating client_id
+  // for task placement.
   std::unordered_map<ClientID, SchedulingResources>
       remote_resource_map({{client_id, remote_resources}});
   RAY_LOG(DEBUG) << "[HeartbeatAdded]: remote resources available before: "
