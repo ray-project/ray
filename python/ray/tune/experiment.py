@@ -5,6 +5,7 @@ from __future__ import print_function
 import copy
 import six
 import types
+import warnings
 
 from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.error import TuneError
@@ -72,7 +73,8 @@ class Experiment(object):
                  stop=None,
                  config=None,
                  trial_resources=None,
-                 repeat=1,
+                 repeat=0,
+                 total_samples=1,
                  local_dir=None,
                  upload_dir="",
                  checkpoint_freq=0,
@@ -83,7 +85,8 @@ class Experiment(object):
             "stop": stop or {},
             "config": config or {},
             "trial_resources": trial_resources,
-            "repeat": repeat,
+            "repeat": repeat or total_samples,
+            "total_samples": repeat or total_samples,
             "local_dir": local_dir or DEFAULT_RESULTS_DIR,
             "upload_dir": upload_dir,
             "checkpoint_freq": checkpoint_freq,
@@ -104,6 +107,15 @@ class Experiment(object):
         """
         if "run" not in spec:
             raise TuneError("No trainable specified!")
+
+        if "repeat" in spec and "total_samples" not in spec:
+            warnings.warn("repeat is deprecated, use total_samples instead")
+            spec["total_samples"] = spec["repeat"]
+        
+        if "grid_search" in spec or "config" in spec and "grid_search" in spec["config"]:
+            if "repeat" in spec:
+                del spec["repeat"]
+            del spec["total_samples"]
 
         # Special case the `env` param for RLlib by automatically
         # moving it into the `config` section.
