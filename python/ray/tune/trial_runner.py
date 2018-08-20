@@ -11,7 +11,7 @@ from ray.tune import TuneError
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.result import TIME_THIS_ITER_S
 from ray.tune.trial import Trial
-from ray.tune.trial_scheduler import FIFOScheduler, TrialScheduler
+from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.web_server import TuneServer
 
 MAX_DEBUG_TRIALS = 20

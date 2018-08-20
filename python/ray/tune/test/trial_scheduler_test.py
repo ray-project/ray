@@ -13,7 +13,7 @@ from ray.tune.schedulers import (HyperBandScheduler, AsyncHyperBandScheduler,
 from ray.tune.schedulers.pbt import explore
 from ray.tune.trial import Trial, Resources, Checkpoint
 from ray.tune.trial_executor import TrialExecutor
-from ray.tune.trial_scheduler import TrialScheduler
+from ray.tune.schedulers import TrialScheduler
 
 from ray.rllib import _register_all
 _register_all()
