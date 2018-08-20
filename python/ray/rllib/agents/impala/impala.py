@@ -39,6 +39,7 @@ DEFAULT_CONFIG = with_common_config({
     # either "adam" or "rmsprop"
     "opt_type": "adam",
     "lr": 0.0005,
+    "lr_schedule": None,
     # rmsprop considered
     "decay": 0.99,
     "momentum": 0.0,
@@ -97,6 +98,7 @@ class ImpalaAgent(Agent):
         FilterManager.synchronize(self.local_evaluator.filters,
                                   self.remote_evaluators)
         result = self.optimizer.collect_metrics()
+
         result.update(timesteps_this_iter=self.optimizer.num_steps_sampled -
                       prev_steps)
         return result

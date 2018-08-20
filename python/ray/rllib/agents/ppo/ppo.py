@@ -91,7 +91,6 @@ class PPOAgent(Agent):
             self.optimizer = LocalMultiGPUOptimizer(
                 self.local_evaluator, self.remote_evaluators, {
                     "sgd_batch_size": self.config["sgd_batchsize"],
-                    "sgd_stepsize": self.config["sgd_stepsize"],
                     "num_sgd_iter": self.config["num_sgd_iter"],
                     "num_gpus": self.config["num_gpus"],
                     "timesteps_per_batch": self.config["timesteps_per_batch"],

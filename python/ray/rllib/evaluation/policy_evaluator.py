@@ -461,6 +461,9 @@ class PolicyEvaluator(EvaluatorInterface):
         for pid, state in objs["state"].items():
             self.policy_map[pid].set_state(state)
 
+    def set_global_vars(self, global_vars):
+        self.foreach_policy(lambda p, _: p.on_global_var_update(global_vars))
+
 
 def _validate_and_canonicalize(policy_graph, env):
     if isinstance(policy_graph, dict):

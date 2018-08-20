@@ -167,9 +167,23 @@ class Agent(Trainable):
 
         config = config or {}
 
+        # Vars to synchronize to evaluators on each train call
+        self.global_vars = {"timestep": 0}
+
         # Agents allow env ids to be passed directly to the constructor.
         self._env_id = env or config.get("env")
         Trainable.__init__(self, config, logger_creator)
+
+    def train(self):
+        """Overrides super.train to synchronize global vars."""
+
+        self.global_vars["timestep"] = self.optimizer.num_steps_sampled
+        if isinstance(self.local_evaluator, PolicyEvaluator):
+            self.local_evaluator.set_global_vars(self.global_vars)
+            for ev in self.remote_evaluators:
+                ev.set_global_vars.remote(self.global_vars)
+
+        return Trainable.train(self)
 
     def _setup(self):
         env = self._env_id

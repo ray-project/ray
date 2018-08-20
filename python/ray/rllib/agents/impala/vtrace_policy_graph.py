@@ -16,6 +16,7 @@ from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.misc import linear, normc_initializer
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.explained_variance import explained_variance
+from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
 
 
 class VTraceLoss(object):
@@ -90,6 +91,7 @@ class VTracePolicyGraph(TFPolicyGraph):
             "Must use `truncate_episodes` batch mode with V-trace."
         self.config = config
         self.sess = tf.get_default_session()
+        self.cur_lr = tf.Variable(config["lr"])
 
         # Setup the policy
         self.observations = tf.placeholder(
@@ -181,6 +183,7 @@ class VTracePolicyGraph(TFPolicyGraph):
 
         self.stats_fetches = {
             "stats": {
+                "cur_lr": tf.cast(self.cur_lr, tf.float64),
                 "policy_loss": self.loss.pi_loss,
                 "entropy": self.loss.entropy,
                 "grad_gnorm": tf.global_norm(self._grads),
@@ -192,13 +195,21 @@ class VTracePolicyGraph(TFPolicyGraph):
             },
         }
 
+        if self.config["lr_schedule"] is None:
+            lr = ConstantSchedule(self.config["lr"])
+        elif isinstance(self.config["lr_schedule"], list):
+            lr = PiecewiseSchedule(
+                self.config["lr_schedule"],
+                outside_value=self.config["lr_schedule"][-1][-1])
+        self.lr_schedule = lr
+
     def optimizer(self):
         if self.config["opt_type"] == "adam":
-            return tf.train.AdamOptimizer(self.config["lr"])
+            return tf.train.AdamOptimizer(self.cur_lr)
         else:
-            return tf.train.RMSPropOptimizer(
-                self.config["lr"], self.config["decay"],
-                self.config["momentum"], self.config["epsilon"])
+            return tf.train.RMSPropOptimizer(self.cur_lr, self.config["decay"],
+                                             self.config["momentum"],
+                                             self.config["epsilon"])
 
     def gradients(self, optimizer):
         grads = tf.gradients(self.loss.total_loss, self.var_list)
@@ -218,3 +229,7 @@ class VTracePolicyGraph(TFPolicyGraph):
 
     def get_initial_state(self):
         return self.model.state_init
+
+    def on_global_var_update(self, global_vars):
+        self.cur_lr.load(
+            self.lr_schedule.value(global_vars["timestep"]), session=self.sess)
