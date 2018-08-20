@@ -9,3 +9,4 @@ atari-a2c:
         lr: .0007
         grad_clip: 1
         gpu: true
+        monitor: true

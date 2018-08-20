@@ -61,6 +61,8 @@ COMMON_CONFIG = {
     },
     # Whether to LZ4 compress observations
     "compress_observations": False,
+    # Whether to write episode stats and videos to the agent log dir
+    "monitor": False,
 
     # === Multiagent ===
     "multiagent": {
@@ -142,7 +144,8 @@ class Agent(Trainable):
             env_config=config["env_config"],
             model_config=config["model"],
             policy_config=config,
-            worker_index=worker_index)
+            worker_index=worker_index,
+            monitor_path=self.logdir if config["monitor"] else None)
 
     @classmethod
     def resource_help(cls, config):

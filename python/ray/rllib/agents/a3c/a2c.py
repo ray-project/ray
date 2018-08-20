@@ -13,7 +13,6 @@ A2C_DEFAULT_CONFIG = merge_dicts(
         "gpu": False,
         "sample_batch_size": 20,
         "min_iter_time_s": 10,
-        "observation_filter": "MeanStdFilter",
         "sample_async": False,
     },
 )
