@@ -399,13 +399,14 @@ def _fetch_atari_metrics(async_vector_env):
     unwrapped = async_vector_env.get_unwrapped()
     if not unwrapped:
         return None
+    atari_out = []
     for u in unwrapped:
         monitor = get_wrapper_by_name(u, MonitorEnv)
-        if monitor:
-            for eps_rew, eps_len in monitor.next_episode_results():
-                yield RolloutMetrics(eps_len, eps_rew, {})
-        else:
+        if not monitor:
             return None
+        for eps_rew, eps_len in monitor.next_episode_results():
+            atari_out.append(RolloutMetrics(eps_len, eps_rew, {}))
+    return atari_out
 
 
 def _to_column_format(rnn_state_rows):
