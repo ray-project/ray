@@ -33,7 +33,7 @@ def get_wrapper_by_name(env, cls):
         elif isinstance(currentenv, gym.Wrapper):
             currentenv = currentenv.env
         else:
-            raise ValueError("Couldn't find wrapper named %s" % cls)
+            return None
 
 
 class MonitorEnv(gym.Wrapper):

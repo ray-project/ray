@@ -187,7 +187,8 @@ class VTracePolicyGraph(TFPolicyGraph):
                 "var_gnorm": tf.global_norm(self.var_list),
                 "vf_loss": self.loss.vf_loss,
                 "vf_explained_var": explained_variance(
-                    self.loss.vtrace_returns.vs, values),
+                    tf.reshape(self.loss.vtrace_returns.vs, [-1]),
+                    tf.reshape(to_batches(values)[:-1], [-1])),
             },
         }
 
