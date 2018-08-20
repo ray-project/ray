@@ -6,6 +6,7 @@ import numpy as np
 import collections
 
 import ray
+from ray.rllib.evaluation.sample_batch import DEFAULT_POLICY_ID
 
 
 def collect_metrics(local_evaluator, remote_evaluators=[]):
@@ -24,7 +25,8 @@ def collect_metrics(local_evaluator, remote_evaluators=[]):
             episode_lengths.append(episode.episode_length)
             episode_rewards.append(episode.episode_reward)
             for (_, policy_id), reward in episode.agent_rewards.items():
-                policy_rewards[policy_id].append(reward)
+                if policy_id != DEFAULT_POLICY_ID:
+                    policy_rewards[policy_id].append(reward)
     if episode_rewards:
         min_reward = min(episode_rewards)
         max_reward = max(episode_rewards)

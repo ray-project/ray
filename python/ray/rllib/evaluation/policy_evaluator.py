@@ -91,11 +91,12 @@ class PolicyEvaluator(EvaluatorInterface):
                  batch_steps=100,
                  batch_mode="truncate_episodes",
                  episode_horizon=None,
-                 preprocessor_pref="rllib",
+                 preprocessor_pref="deepmind",
                  sample_async=False,
                  compress_observations=False,
                  num_envs=1,
                  observation_filter="NoFilter",
+                 clip_rewards=False,
                  env_config=None,
                  model_config=None,
                  policy_config=None,
@@ -147,6 +148,8 @@ class PolicyEvaluator(EvaluatorInterface):
                 and vectorize the computation of actions. This has no effect if
                 if the env already implements VectorEnv.
             observation_filter (str): Name of observation filter to use.
+            clip_rewards (bool): Whether to clip rewards to [-1, 1] prior to
+                experience postprocessing.
             env_config (dict): Config to pass to the env creator.
             model_config (dict): Config to use when creating the policy model.
             policy_config (dict): Config to pass to the policy. In the
@@ -181,7 +184,7 @@ class PolicyEvaluator(EvaluatorInterface):
                 preprocessor_pref == "deepmind":
 
             def wrap(env):
-                return wrap_deepmind(env, dim=model_config.get("dim", 80))
+                return wrap_deepmind(env, dim=model_config.get("dim", 84))
         else:
 
             def wrap(env):
@@ -245,6 +248,7 @@ class PolicyEvaluator(EvaluatorInterface):
                 self.policy_map,
                 policy_mapping_fn,
                 self.filters,
+                clip_rewards,
                 batch_steps,
                 horizon=episode_horizon,
                 pack=pack_episodes,
@@ -256,6 +260,7 @@ class PolicyEvaluator(EvaluatorInterface):
                 self.policy_map,
                 policy_mapping_fn,
                 self.filters,
+                clip_rewards,
                 batch_steps,
                 horizon=episode_horizon,
                 pack=pack_episodes,

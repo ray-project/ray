@@ -31,8 +31,7 @@ class SyncReplayOptimizer(PolicyOptimizer):
               prioritized_replay_beta=0.4,
               prioritized_replay_eps=1e-6,
               train_batch_size=32,
-              sample_batch_size=4,
-              clip_rewards=True):
+              sample_batch_size=4):
 
         self.replay_starts = learning_starts
         self.prioritized_replay_beta = prioritized_replay_beta
@@ -51,13 +50,11 @@ class SyncReplayOptimizer(PolicyOptimizer):
 
             def new_buffer():
                 return PrioritizedReplayBuffer(
-                    buffer_size,
-                    alpha=prioritized_replay_alpha,
-                    clip_rewards=clip_rewards)
+                    buffer_size, alpha=prioritized_replay_alpha)
         else:
 
             def new_buffer():
-                return ReplayBuffer(buffer_size, clip_rewards)
+                return ReplayBuffer(buffer_size)
 
         self.replay_buffers = collections.defaultdict(new_buffer)
 
