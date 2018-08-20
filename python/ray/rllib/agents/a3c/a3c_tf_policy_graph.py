@@ -51,14 +51,9 @@ class A3CPolicyGraph(TFPolicyGraph):
         self.model = ModelCatalog.get_model(self.observations, logit_dim,
                                             self.config["model"])
         action_dist = dist_class(self.model.outputs)
-
-        with tf.variable_scope("value_function"):
-            vf_config = self.config["model"].copy()
-            vf_config["free_log_std"] = False
-            vf_config["use_lstm"] = False
-            self.vf = tf.reshape(
-                ModelCatalog.get_model(self.observations, 1,
-                                       vf_config).outputs, [-1])
+        self.vf = tf.reshape(
+            linear(self.model.last_layer, 1, "value", normc_initializer(1.0)),
+            [-1])
         self.var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
                                           tf.get_variable_scope().name)
 
@@ -125,8 +120,7 @@ class A3CPolicyGraph(TFPolicyGraph):
         return vf[0]
 
     def optimizer(self):
-        return tf.train.RMSPropOptimizer(
-            self.config["lr"], decay=0.99, epsilon=1e-5)
+        return tf.train.AdamOptimizer(self.config["lr"])
 
     def gradients(self, optimizer):
         grads = tf.gradients(self.loss.total_loss, self.var_list)
