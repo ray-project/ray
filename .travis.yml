@@ -158,6 +158,7 @@ matrix:
         - python -m pytest python/ray/tune/test/trial_scheduler_test.py
         - python -m pytest python/ray/tune/test/experiment_test.py
         - python -m pytest python/ray/tune/test/tune_server_test.py
+        - python -m pytest python/ray/tune/test/ray_trial_executor_test.py
 
         # ray rllib tests
         - python -m pytest python/ray/rllib/test/test_catalog.py

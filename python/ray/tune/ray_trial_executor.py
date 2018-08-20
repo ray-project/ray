@@ -46,8 +46,8 @@ class RayTrialExecutor(TrialExecutor):
         return cls.remote(
             config=trial.config, logger_creator=logger_creator)
 
-    def _add_running_trial(self, trial):
-        """Gets Ray future for one iteration of training."""
+    def _train(self, trial):
+        """Start one iteration of training and save remote id."""
 
         assert trial.status == Trial.RUNNING, trial.status
         remote = trial.runner.train.remote()
@@ -65,7 +65,7 @@ class RayTrialExecutor(TrialExecutor):
             self._paused.pop(remote_id)
             self._running[remote_id] = trial
         else:
-            self._add_running_trial(trial)
+            self._train(trial)
 
     def _stop_trial(self, trial, error=False, error_msg=None,
                     stop_logger=True):
@@ -142,7 +142,7 @@ class RayTrialExecutor(TrialExecutor):
     def continue_training(self, trial):
         """Continues the training of this trial."""
 
-        self._add_running_trial(trial)
+        self._train(trial)
 
     def pause_trial(self, trial):
         """Pauses the trial."""
