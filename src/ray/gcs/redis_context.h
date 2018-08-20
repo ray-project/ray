@@ -40,7 +40,7 @@ class RedisCallbackManager {
  private:
   RedisCallbackManager() : num_callbacks_(0){};
 
-  ~RedisCallbackManager() { printf("shut down callback manager\n"); }
+  ~RedisCallbackManager() {}
 
   int64_t num_callbacks_ = 0;
   std::unordered_map<int64_t, RedisCallback> callbacks_;

@@ -253,7 +253,7 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
         actorCreateIdOffset, actorCreateDummyIdOffset,
         actorIdOffset, actorHandleIdOffset, actorCounter,
         false, functionIdOffset,
-        argsOffset, returnsOffset, requiredResourcesOffset);
+        argsOffset, returnsOffset, requiredResourcesOffset, TaskLanguage.JAVA);
 
     fbb.finish(root);
     ByteBuffer buffer = fbb.dataBuffer();

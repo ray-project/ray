@@ -16,6 +16,14 @@ class SearchAlgorithm(object):
     See also: `ray.tune.suggest.BasicVariantGenerator`.
     """
 
+    def add_configurations(self, experiments):
+        """Tracks given experiment specifications.
+
+        Arguments:
+            experiments (Experiment | list | dict): Experiments to run.
+        """
+        raise NotImplementedError
+
     def next_trials(self):
         """Provides Trial objects to be queued into the TrialRunner.
 

@@ -6,6 +6,9 @@ import argparse
 import json
 import os
 
+# For compatibility under py2 to consider unicode as str
+from six import string_types
+
 from ray.tune import TuneError
 from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.trial import Resources, Trial
@@ -15,7 +18,7 @@ from ray.tune.logger import _SafeFallbackEncoder
 def json_to_resources(data):
     if data is None or data == "null":
         return None
-    if type(data) is str:
+    if isinstance(data, string_types):
         data = json.loads(data)
     for k in data:
         if k in ["driver_cpu_limit", "driver_gpu_limit"]:
@@ -144,7 +147,7 @@ def to_argv(config):
         if "-" in k:
             raise ValueError("Use '_' instead of '-' in `{}`".format(k))
         argv.append("--{}".format(k.replace("_", "-")))
-        if isinstance(v, str):
+        if isinstance(v, string_types):
             argv.append(v)
         else:
             argv.append(json.dumps(v, cls=_SafeFallbackEncoder))
@@ -168,12 +171,6 @@ def create_trial_from_spec(spec, output_path, parser, **trial_kwargs):
         A trial object with corresponding parameters to the specification.
     """
     try:
-        # Special case the `env` param for RLlib by automatically
-        # moving it into the `config` section.
-        if "env" in spec:
-            spec["config"] = spec.get("config", {})
-            spec["config"]["env"] = spec["env"]
-            del spec["env"]
         args = parser.parse_args(to_argv(spec))
     except SystemExit:
         raise TuneError("Error parsing args, see above message", spec)
