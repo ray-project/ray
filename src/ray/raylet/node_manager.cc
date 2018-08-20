@@ -748,6 +748,8 @@ void NodeManager::ProcessNodeManagerMessage(TcpClientConnection &node_manager_cl
     // TODO(rkn): We need to do some cleanup here.
     RAY_LOG(DEBUG) << "Received disconnect message from remote node manager. "
                    << "We need to do some cleanup here.";
+    // Do not process any more messages from this node manager.
+    return;
   } break;
   default:
     RAY_LOG(FATAL) << "Received unexpected message type " << message_type;
