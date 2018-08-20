@@ -988,6 +988,7 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
       const ClientID &local_client_id = gcs_client_->client_table().GetLocalClientId();
       cluster_resource_map_[local_client_id].SetLoadResources(local_queues_.GetResourceLoad());
       ScheduleTasks(cluster_resource_map_);
+      DispatchTasks();
     }
   }
 }
