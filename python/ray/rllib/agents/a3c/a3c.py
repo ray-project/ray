@@ -13,6 +13,8 @@ from ray.rllib.utils import FilterManager, merge_dicts
 from ray.tune.trial import Resources
 
 DEFAULT_CONFIG = with_common_config({
+    # Whether to use V-trace correction
+    "vtrace": False,
     # Size of rollout batch
     "sample_batch_size": 10,
     # Use PyTorch as backend - no LSTM support
@@ -76,7 +78,11 @@ class A3CAgent(Agent):
             extra_gpu=cf["use_gpu_for_workers"] and cf["num_workers"] or 0)
 
     def _init(self):
-        if self.config["use_pytorch"]:
+        if self.config["vtrace"]:
+            from ray.rllib.agents.impala.vtrace_policy_graph import \
+                VTracePolicyGraph
+            policy_cls = VTracePolicyGraph
+        elif self.config["use_pytorch"]:
             from ray.rllib.agents.a3c.a3c_torch_policy_graph import \
                 A3CTorchPolicyGraph
             policy_cls = A3CTorchPolicyGraph

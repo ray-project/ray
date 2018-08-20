@@ -86,7 +86,7 @@ class VTraceLoss(object):
 
 class VTracePolicyGraph(TFPolicyGraph):
     def __init__(self, observation_space, action_space, config):
-        config = dict(ray.rllib.agents.a3c.a3c.DEFAULT_CONFIG, **config)
+        config = dict(ray.rllib.agents.impala.impala.DEFAULT_CONFIG, **config)
         assert config["batch_mode"] == "truncate_episodes", \
             "Must use `truncate_episodes` batch mode with V-trace."
         self.config = config
