@@ -22,14 +22,13 @@ public class RayLog {
   public static Logger rapp;
 
   /**
-   * it must be called before using Ray loggers,
-   *  or the dynamic update does not work.
-   * @param workingDir store the logs under params.working_directory
+   * Initialize loggers
+   * @param logDir directory of the log files.
    */
-  public static void init(String workingDir) {
+  public static void init(String logDir) {
     String loggingPath = System.getProperty("logging.path");
     if (loggingPath == null) {
-      System.setProperty("logging.path", workingDir + "/logs");
+      System.setProperty("logging.path", logDir);
     }
     String loggingFileName = System.getProperty("logging.file.name");
     if (loggingFileName != null && loggingFileName.contains("*pid_suffix*")) {

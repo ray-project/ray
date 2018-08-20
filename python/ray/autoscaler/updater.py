@@ -165,21 +165,42 @@ class NodeUpdater(object):
                 if not remote_path.endswith("/"):
                     remote_path += "/"
             self.ssh_cmd("mkdir -p {}".format(os.path.dirname(remote_path)))
-            self.process_runner.check_call(
-                [
-                    "rsync", "-e", "ssh -i {} ".format(self.ssh_private_key) +
-                    "-o ConnectTimeout=120s -o StrictHostKeyChecking=no",
-                    "--delete", "-avz", "{}".format(local_path),
-                    "{}@{}:{}".format(self.ssh_user, self.ssh_ip, remote_path)
-                ],
-                stdout=self.stdout,
-                stderr=self.stderr)
+            self.rsync_up(local_path, remote_path)
 
         # Run init commands
         self.provider.set_node_tags(self.node_id,
                                     {TAG_RAY_NODE_STATUS: "setting-up"})
         for cmd in self.setup_cmds:
             self.ssh_cmd(cmd, verbose=True)
+
+    def rsync_up(self, source, target, check_error=True):
+        if check_error:
+            call = self.process_runner.call
+        else:
+            call = self.process_runner.check_call
+        call(
+            [
+                "rsync", "-e", "ssh -i {} ".format(self.ssh_private_key) +
+                "-o ConnectTimeout=120s -o StrictHostKeyChecking=no",
+                "--delete", "-avz", source, "{}@{}:{}".format(
+                    self.ssh_user, self.ssh_ip, target)
+            ],
+            stdout=self.stdout,
+            stderr=self.stderr)
+
+    def rsync_down(self, source, target, check_error=True):
+        if check_error:
+            call = self.process_runner.call
+        else:
+            call = self.process_runner.check_call
+        call(
+            [
+                "rsync", "-e", "ssh -i {} ".format(self.ssh_private_key) +
+                "-o ConnectTimeout=120s -o StrictHostKeyChecking=no", "-avz",
+                "{}@{}:{}".format(self.ssh_user, self.ssh_ip, source), target
+            ],
+            stdout=self.stdout,
+            stderr=self.stderr)
 
     def ssh_cmd(self,
                 cmd,
@@ -188,7 +209,8 @@ class NodeUpdater(object):
                 verbose=False,
                 allocate_tty=False,
                 emulate_interactive=True,
-                expect_error=False):
+                expect_error=False,
+                port_forward=None):
         if verbose:
             print(
                 "NodeUpdater: running {} on {}...".format(
@@ -198,14 +220,22 @@ class NodeUpdater(object):
         if allocate_tty:
             ssh.append("-tt")
         if emulate_interactive:
-            force_interactive = "set -i || true && source ~/.bashrc && "
+            force_interactive = (
+                "set -i || true && source ~/.bashrc && "
+                "export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && ")
             cmd = "bash --login -c {}".format(quote(force_interactive + cmd))
         if expect_error:
             call = self.process_runner.call
         else:
             call = self.process_runner.check_call
+        if port_forward is None:
+            ssh_opt = []
+        else:
+            ssh_opt = [
+                "-L", "{}:localhost:{}".format(port_forward, port_forward)
+            ]
         call(
-            ssh + [
+            ssh + ssh_opt + [
                 "-o", "ConnectTimeout={}s".format(connect_timeout), "-o",
                 "StrictHostKeyChecking=no", "-i", self.ssh_private_key,
                 "{}@{}".format(self.ssh_user, self.ssh_ip), cmd
