@@ -40,7 +40,7 @@ class MonitorEnv(gym.Wrapper):
     def __init__(self, env=None):
         """
         """
-        super().__init__(env)
+        gym.Wrapper.__init__(self, env)
         self._current_reward = None
         self._num_steps = None
         self._total_steps = None
