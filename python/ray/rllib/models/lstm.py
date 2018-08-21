@@ -137,15 +137,10 @@ class LSTM(Model):
 
     def _build_layers(self, inputs, num_outputs, options):
         cell_size = options.get("lstm_cell_size", 256)
-        use_tf100_api = (distutils.version.LooseVersion(tf.VERSION) >=
-                         distutils.version.LooseVersion("1.0.0"))
         last_layer = add_time_dimension(inputs, self.seq_lens)
 
         # Setup the LSTM cell
-        if use_tf100_api:
-            lstm = rnn.BasicLSTMCell(cell_size, state_is_tuple=True)
-        else:
-            lstm = rnn.rnn_cell.BasicLSTMCell(cell_size, state_is_tuple=True)
+        lstm = rnn.BasicLSTMCell(cell_size, state_is_tuple=True)
         self.state_init = [
             np.zeros(lstm.state_size.c, np.float32),
             np.zeros(lstm.state_size.h, np.float32)
@@ -162,10 +157,7 @@ class LSTM(Model):
             self.state_in = [c_in, h_in]
 
         # Setup LSTM outputs
-        if use_tf100_api:
-            state_in = rnn.LSTMStateTuple(c_in, h_in)
-        else:
-            state_in = rnn.rnn_cell.LSTMStateTuple(c_in, h_in)
+        state_in = rnn.LSTMStateTuple(c_in, h_in)
         lstm_out, lstm_state = tf.nn.dynamic_rnn(
             lstm,
             last_layer,
