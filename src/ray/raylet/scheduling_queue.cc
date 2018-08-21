@@ -285,6 +285,18 @@ const std::unordered_set<TaskID> &SchedulingQueue::GetDriverTaskIds() const {
   return driver_task_ids_;
 }
 
+const std::string SchedulingQueue::ToString() const {
+  std::string result;
+  result += "methods_waiting_for_actor_creation_ size is " +
+            std::to_string(methods_waiting_for_actor_creation_.GetTasks().size()) + "\n";
+  result += "waiting_tasks_ size is " + std::to_string(waiting_tasks_.GetTasks().size()) + "\n";
+  result += "placeable_tasks_ size is " + std::to_string(placeable_tasks_.GetTasks().size()) + "\n";
+  result += "ready_tasks_ size is " + std::to_string(ready_tasks_.GetTasks().size()) + "\n";
+  result += "running_tasks_ size is " + std::to_string(running_tasks_.GetTasks().size()) + "\n";
+  result += "blocked_tasks_ size is " + std::to_string(blocked_tasks_.GetTasks().size()) + "\n";
+  return result;
+}
+
 }  // namespace raylet
 
 }  // namespace ray

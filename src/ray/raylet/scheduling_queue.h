@@ -164,6 +164,13 @@ class SchedulingQueue {
   /// \return Aggregate resource demand from ready tasks.
   ResourceSet GetReadyQueueResources() const;
 
+  /// Return a human-readable string indicating the number of tasks in each
+  /// queue.
+  ///
+  /// \return A string that can be used to display the contents of the queues
+  /// for debugging purposes.
+  const std::string ToString() const;
+
   class TaskQueue {
    public:
     /// Creating a task queue.
