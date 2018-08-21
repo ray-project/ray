@@ -66,7 +66,7 @@ class LinearPolicy(object):
                               in self.variables.variables.items())
         self.sess.run(tf.global_variables_initializer())
 
-    def compute(self, observation, add_noise=False, update=True):
+    def compute(self, observation, add_noise=False, update=False):
         observation = self.preprocessor.transform(observation)
         observation = self.observation_filter(observation[None], update=update)
         action = self.sess.run(self.sampler,

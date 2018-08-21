@@ -83,7 +83,7 @@ class Worker(object):
         self.preprocessor = models.ModelCatalog.get_preprocessor(self.env)
 
         self.sess = utils.make_session(single_threaded=True)
-        if config["policy_type"] == "Linear":
+        if config["policy_type"] == "Linear": # FIXME(ev) this can be more elegant
             self.policy = policies.LinearPolicy(
                 self.sess, self.env.action_space, self.preprocessor,
                 config["observation_filter"], **policy_params)
@@ -285,6 +285,7 @@ class ARSAgent(Agent):
             (self.noise.get(index, self.policy.num_params)
              for index in noise_idx),
             batch_size=min(500, noisy_returns[:, 0].size))
+        g /= noise_idx.size
         assert (
             g.shape == (self.policy.num_params,) and
             g.dtype == np.float32)
@@ -359,4 +360,4 @@ class ARSAgent(Agent):
         self.timesteps_so_far = objects[2]
 
     def compute_action(self, observation):
-        return self.policy.compute(observation, update=False)[0]
+        return self.policy.compute(observation, update=False)[0] #FIXME(ev) set to false

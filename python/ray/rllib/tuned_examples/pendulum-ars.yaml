@@ -3,11 +3,12 @@ pendulum-ars:
     env: Pendulum-v0
     run: ARS
     config:
-        noise_stdev: 0.02
-        num_deltas: 100
-        deltas_used: 50
+        noise_stdev: 0.01
+        num_deltas: 12
+        deltas_used: 12
         num_workers: 2
         stepsize: 0.01
         noise_size: 250000000
-        fcnet_hiddens: [5,5]
-        policy_type: MLP
+        fcnet_hiddens: [32,32]
+        policy_type: Linear
+        eval_prob: 0.2
