@@ -28,7 +28,7 @@ DEFAULT_CONFIG = with_common_config({
     # the discrete supports are bounded by v_min and v_max
     "num_atoms": 1,
     "v_min": -10.0,
-    "v_max": 10.0
+    "v_max": 10.0,
     # Whether to use noisy network
     "noisy": False,
     # Whether to use dueling dqn
