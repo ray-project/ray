@@ -44,9 +44,8 @@ def get_level_from_string(level_string):
     level = logging.getLevelName(level_string_upper)
     if isinstance(level, str):
         default_logger.error("Unknown loggine level: {}".format(level_string))
-        default_logger.error("Will use the default logging level: {}"
-                             .format(
-                                 logging.getLevelName(default_logging_level)))
+        default_logger.error("Will use the default logging level: {}".format(
+            logging.getLevelName(default_logging_level)))
         return default_logging_level
     else:
         return level

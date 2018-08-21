@@ -181,10 +181,8 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
 
     logger = ray.logger.default_logger
     if len(logging_level) > 0:
-        logger = ray.logger.create_logger(logging_level,
-                                          logging_format,
-                                          logging_date_format,
-                                          "ray_start")
+        logger = ray.logger.create_logger(logging_level, logging_format,
+                                          logging_date_format, "ray_start")
         services.set_logger(logger)
 
     if use_raylet is None and os.environ.get("RAY_USE_XRAY") == "1":
@@ -330,10 +328,9 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             huge_pages=huge_pages,
             use_raylet=use_raylet)
         logger.info(address_info)
-        logger.info(
-            "\nStarted Ray on this node. If you wish to terminate the "
-            "processes that have been started, run\n\n"
-            "    ray stop")
+        logger.info("\nStarted Ray on this node. If you wish to terminate the "
+                    "processes that have been started, run\n\n"
+                    "    ray stop")
 
     if block:
         import time

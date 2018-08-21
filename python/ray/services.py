@@ -92,6 +92,9 @@ RAYLET_EXECUTABLE = os.path.join(
 ObjectStoreAddress = namedtuple("ObjectStoreAddress",
                                 ["name", "manager_name", "manager_port"])
 
+# Default logger.
+logger = ray.logger.default_logger
+
 
 def set_logger(input_logger):
     global logger
