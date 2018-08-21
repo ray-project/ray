@@ -6,7 +6,7 @@ import collections
 import numpy as np
 
 from ray.tune.trial import Trial
-from ray.tune.trial_scheduler import FIFOScheduler, TrialScheduler
+from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
 
 
 class MedianStoppingRule(FIFOScheduler):

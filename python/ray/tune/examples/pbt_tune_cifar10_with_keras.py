@@ -24,9 +24,8 @@ from tensorflow.python.keras.preprocessing.image import ImageDataGenerator
 
 import ray
 from ray.tune import grid_search, run_experiments
-from ray.tune import register_trainable
 from ray.tune import Trainable
-from ray.tune.pbt import PopulationBasedTraining
+from ray.tune.schedulers import PopulationBasedTraining
 
 num_classes = 10
 
@@ -179,9 +178,8 @@ if __name__ == "__main__":
         "--smoke-test", action="store_true", help="Finish quickly for testing")
     args, _ = parser.parse_known_args()
 
-    register_trainable("train_cifar10", Cifar10Model)
     train_spec = {
-        "run": "train_cifar10",
+        "run": Cifar10Model,
         "trial_resources": {
             "cpu": 1,
             "gpu": 1

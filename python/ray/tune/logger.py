@@ -9,7 +9,8 @@ import os
 import yaml
 
 from ray.tune.log_sync import get_syncer
-from ray.tune.result import NODE_IP, TRAINING_ITERATION, TIME_TOTAL_S
+from ray.tune.result import NODE_IP, TRAINING_ITERATION, TIME_TOTAL_S, \
+    TIMESTEPS_TOTAL
 
 try:
     import tensorflow as tf
@@ -132,13 +133,13 @@ class _TFLogger(Logger):
             del tmp[k]  # not useful to tf log these
         values = to_tf_values(tmp, ["ray", "tune"])
         train_stats = tf.Summary(value=values)
-        self._file_writer.add_summary(train_stats, result[TRAINING_ITERATION])
+        t = result.get(TIMESTEPS_TOTAL) or result[TRAINING_ITERATION]
+        self._file_writer.add_summary(train_stats, t)
         iteration_value = to_tf_values({
             "training_iteration": result[TRAINING_ITERATION]
         }, ["ray", "tune"])
         iteration_stats = tf.Summary(value=iteration_value)
-        self._file_writer.add_summary(iteration_stats,
-                                      result[TRAINING_ITERATION])
+        self._file_writer.add_summary(iteration_stats, t)
 
     def flush(self):
         self._file_writer.flush()

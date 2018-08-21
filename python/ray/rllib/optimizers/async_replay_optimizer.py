@@ -36,8 +36,7 @@ class ReplayActor(object):
 
     def __init__(self, num_shards, learning_starts, buffer_size,
                  train_batch_size, prioritized_replay_alpha,
-                 prioritized_replay_beta, prioritized_replay_eps,
-                 clip_rewards):
+                 prioritized_replay_beta, prioritized_replay_eps):
         self.replay_starts = learning_starts // num_shards
         self.buffer_size = buffer_size // num_shards
         self.train_batch_size = train_batch_size
@@ -45,9 +44,7 @@ class ReplayActor(object):
         self.prioritized_replay_eps = prioritized_replay_eps
 
         self.replay_buffer = PrioritizedReplayBuffer(
-            self.buffer_size,
-            alpha=prioritized_replay_alpha,
-            clip_rewards=clip_rewards)
+            self.buffer_size, alpha=prioritized_replay_alpha)
 
         # Metrics
         self.add_batch_timer = TimerStat()
@@ -158,7 +155,6 @@ class AsyncReplayOptimizer(PolicyOptimizer):
               sample_batch_size=50,
               num_replay_buffer_shards=1,
               max_weight_sync_delay=400,
-              clip_rewards=True,
               debug=False):
 
         self.debug = debug
@@ -171,9 +167,13 @@ class AsyncReplayOptimizer(PolicyOptimizer):
         self.learner.start()
 
         self.replay_actors = create_colocated(ReplayActor, [
-            num_replay_buffer_shards, learning_starts, buffer_size,
-            train_batch_size, prioritized_replay_alpha,
-            prioritized_replay_beta, prioritized_replay_eps, clip_rewards
+            num_replay_buffer_shards,
+            learning_starts,
+            buffer_size,
+            train_batch_size,
+            prioritized_replay_alpha,
+            prioritized_replay_beta,
+            prioritized_replay_eps,
         ], num_replay_buffer_shards)
 
         # Stats
