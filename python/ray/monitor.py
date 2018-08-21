@@ -16,14 +16,14 @@ from ray.autoscaler.autoscaler import LoadMetrics, StandardAutoscaler
 import ray.cloudpickle as pickle
 import ray.gcs_utils
 import ray.utils
+import ray.ray_constants as ray_constants
 from ray.services import get_ip_address, get_port
 from ray.utils import binary_to_hex, binary_to_object_id, hex_to_binary
 from ray.worker import NIL_ACTOR_ID
 
 # These variables must be kept in sync with the C codebase.
 # common/common.h
-DB_CLIENT_ID_SIZE = 20
-NIL_ID = b"\xff" * DB_CLIENT_ID_SIZE
+NIL_ID = b"\xff" * ray_constants.ID_SIZE
 
 # common/task.h
 TASK_STATUS_LOST = 32
@@ -34,7 +34,11 @@ PLASMA_MANAGER_HEARTBEAT_CHANNEL = b"plasma_managers"
 DRIVER_DEATH_CHANNEL = b"driver_deaths"
 
 # xray heartbeats
-XRAY_HEARTBEAT_CHANNEL = b"6"
+XRAY_HEARTBEAT_CHANNEL = str(
+    ray.gcs_utils.TablePubsub.HEARTBEAT).encode("ascii")
+
+# xray driver updates
+XRAY_DRIVER_CHANNEL = str(ray.gcs_utils.TablePubsub.DRIVER).encode("ascii")
 
 # common/redis_module/ray_redis_module.cc
 OBJECT_INFO_PREFIX = b"OI:"
@@ -68,8 +72,6 @@ class Monitor(object):
             not.
         subscribe_client: A pubsub client for the Redis server. This is used to
             receive notifications about failed components.
-        subscribed: A dictionary mapping channel names (str) to whether or not
-            the subscription to that channel has succeeded yet (bool).
         dead_local_schedulers: A set of the local scheduler IDs of all of the
             local schedulers that were up at one point and have died since
             then.
@@ -88,10 +90,18 @@ class Monitor(object):
         self.use_raylet = self.state.use_raylet
         self.redis = redis.StrictRedis(
             host=redis_address, port=redis_port, db=0)
-        # TODO(swang): Update pubsub client to use ray.experimental.state once
-        # subscriptions are implemented there.
-        self.subscribe_client = self.redis.pubsub()
-        self.subscribed = {}
+        # Setup subscriptions to the primary Redis server and the Redis shards.
+        self.primary_subscribe_client = self.redis.pubsub(
+            ignore_subscribe_messages=True)
+        if self.use_raylet:
+            self.shard_subscribe_clients = []
+            for redis_client in self.state.redis_clients:
+                subscribe_client = redis_client.pubsub(
+                    ignore_subscribe_messages=True)
+                self.shard_subscribe_clients.append(subscribe_client)
+        else:
+            # We don't need to subscribe to the shards in legacy Ray.
+            self.shard_subscribe_clients = []
         # Initialize data structures to keep track of the active database
         # clients.
         self.dead_local_schedulers = set()
@@ -111,26 +121,42 @@ class Monitor(object):
         self.issue_gcs_flushes = "RAY_USE_NEW_GCS" in os.environ
         self.gcs_flush_policy = None
         if self.issue_gcs_flushes:
-            # For now, we take the primary redis server to issue flushes,
-            # because task table entries are stored there under this flag.
-            try:
-                self.redis.execute_command("HEAD.FLUSH 0")
-            except redis.exceptions.ResponseError as e:
-                log.info("Turning off flushing due to exception: {}".format(
-                    str(e)))
+            # Data is stored under the first data shard, so we issue flushes to
+            # that redis server.
+            addr_port = self.redis.lrange("RedisShards", 0, -1)
+            if len(addr_port) > 1:
+                log.warning("TODO: if launching > 1 redis shard, flushing "
+                            "needs to touch shards in parallel.")
                 self.issue_gcs_flushes = False
+            else:
+                addr_port = addr_port[0].split(b":")
+                self.redis_shard = redis.StrictRedis(
+                    host=addr_port[0], port=addr_port[1])
+                try:
+                    self.redis_shard.execute_command("HEAD.FLUSH 0")
+                except redis.exceptions.ResponseError as e:
+                    log.info(
+                        "Turning off flushing due to exception: {}".format(
+                            str(e)))
+                    self.issue_gcs_flushes = False
 
-    def subscribe(self, channel):
+    def subscribe(self, channel, primary=True):
         """Subscribe to the given channel.
 
         Args:
             channel (str): The channel to subscribe to.
+            primary: If True, then we only subscribe to the primary Redis
+                shard. Otherwise we subscribe to all of the other shards but
+                not the primary.
 
         Raises:
             Exception: An exception is raised if the subscription fails.
         """
-        self.subscribe_client.subscribe(channel)
-        self.subscribed[channel] = False
+        if primary:
+            self.primary_subscribe_client.subscribe(channel)
+        else:
+            for subscribe_client in self.shard_subscribe_clients:
+                subscribe_client.subscribe(channel)
 
     def cleanup_task_table(self):
         """Clean up global state for failed local schedulers.
@@ -238,11 +264,6 @@ class Monitor(object):
                     elif client_type == PLASMA_MANAGER_CLIENT_TYPE:
                         self.dead_plasma_managers.add(db_client_id)
 
-    def subscribe_handler(self, channel, data):
-        """Handle a subscription success message from Redis."""
-        log.debug("Subscribed to {}, data was {}".format(channel, data))
-        self.subscribed[channel] = True
-
     def db_client_notification_handler(self, unused_channel, data):
         """Handle a notification from the db_client table from Redis.
 
@@ -295,8 +316,8 @@ class Monitor(object):
         if ip:
             self.load_metrics.update(ip, static_resources, dynamic_resources)
         else:
-            print("Warning: could not find ip for client {}."
-                  .format(client_id))
+            print("Warning: could not find ip for client {} in {}.".format(
+                client_id, self.local_scheduler_id_to_ip_map))
 
     def xray_heartbeat_handler(self, unused_channel, data):
         """Handle an xray heartbeat message from Redis."""
@@ -321,8 +342,8 @@ class Monitor(object):
         if ip:
             self.load_metrics.update(ip, static_resources, dynamic_resources)
         else:
-            print("Warning: could not find ip for client {}."
-                  .format(client_id))
+            print("Warning: could not find ip for client {} in {}.".format(
+                client_id, self.local_scheduler_id_to_ip_map))
 
     def plasma_manager_heartbeat_handler(self, unused_channel, data):
         """Handle a plasma manager heartbeat from Redis.
@@ -330,8 +351,8 @@ class Monitor(object):
         This resets the number of heartbeats that we've missed from this plasma
         manager.
         """
-        # The first DB_CLIENT_ID_SIZE characters are the client ID.
-        db_client_id = data[:DB_CLIENT_ID_SIZE]
+        # The first ray_constants.ID_SIZE characters are the client ID.
+        db_client_id = data[:ray_constants.ID_SIZE]
         # Reset the number of heartbeats that we've missed from this plasma
         # manager.
         self.live_plasma_managers[db_client_id] = 0
@@ -478,6 +499,87 @@ class Monitor(object):
 
         self._clean_up_entries_for_driver(driver_id)
 
+    def _xray_clean_up_entries_for_driver(self, driver_id):
+        """Remove this driver's object/task entries from redis.
+
+        Removes control-state entries of all tasks and task return
+        objects belonging to the driver.
+
+        Args:
+            driver_id: The driver id.
+        """
+
+        xray_task_table_prefix = (
+            ray.gcs_utils.TablePrefix_RAYLET_TASK_string.encode("ascii"))
+        xray_object_table_prefix = (
+            ray.gcs_utils.TablePrefix_OBJECT_string.encode("ascii"))
+
+        task_table_objects = self.state.task_table()
+        driver_id_hex = binary_to_hex(driver_id)
+        driver_task_id_bins = set()
+        for task_id_hex in task_table_objects:
+            if len(task_table_objects[task_id_hex]) == 0:
+                continue
+            task_table_object = task_table_objects[task_id_hex][0]["TaskSpec"]
+            task_driver_id_hex = task_table_object["DriverID"]
+            if driver_id_hex != task_driver_id_hex:
+                # Ignore tasks that aren't from this driver.
+                continue
+            driver_task_id_bins.add(hex_to_binary(task_id_hex))
+
+        # Get objects associated with the driver.
+        object_table_objects = self.state.object_table()
+        driver_object_id_bins = set()
+        for object_id, object_table_object in object_table_objects.items():
+            assert len(object_table_object) > 0
+            task_id_bin = ray.local_scheduler.compute_task_id(object_id).id()
+            if task_id_bin in driver_task_id_bins:
+                driver_object_id_bins.add(object_id.id())
+
+        def to_shard_index(id_bin):
+            return binary_to_object_id(id_bin).redis_shard_hash() % len(
+                self.state.redis_clients)
+
+        # Form the redis keys to delete.
+        sharded_keys = [[] for _ in range(len(self.state.redis_clients))]
+        for task_id_bin in driver_task_id_bins:
+            sharded_keys[to_shard_index(task_id_bin)].append(
+                xray_task_table_prefix + task_id_bin)
+        for object_id_bin in driver_object_id_bins:
+            sharded_keys[to_shard_index(object_id_bin)].append(
+                xray_object_table_prefix + object_id_bin)
+
+        # Remove with best effort.
+        for shard_index in range(len(sharded_keys)):
+            keys = sharded_keys[shard_index]
+            if len(keys) == 0:
+                continue
+            redis = self.state.redis_clients[shard_index]
+            num_deleted = redis.delete(*keys)
+            log.info("Removed {} dead redis entries of the driver"
+                     " from redis shard {}.".format(num_deleted, shard_index))
+            if num_deleted != len(keys):
+                log.warning("Failed to remove {} relevant redis entries"
+                            " from redis shard {}.".format(
+                                len(keys) - num_deleted, shard_index))
+
+    def xray_driver_removed_handler(self, unused_channel, data):
+        """Handle a notification that a driver has been removed.
+
+        Args:
+            unused_channel: The message channel.
+            data: The message data.
+        """
+        gcs_entries = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
+            data, 0)
+        driver_data = gcs_entries.Entries(0)
+        message = ray.gcs_utils.DriverTableData.GetRootAsDriverTableData(
+            driver_data, 0)
+        driver_id = message.DriverId()
+        log.info("XRay Driver {} has been removed.".format(
+            binary_to_hex(driver_id)))
+        self._xray_clean_up_entries_for_driver(driver_id)
+
     def process_messages(self, max_messages=10000):
         """Process all messages ready in the subscription channels.
 
@@ -488,47 +590,46 @@ class Monitor(object):
             max_messages: The maximum number of messages to process before
                 returning.
         """
-        for _ in range(max_messages):
-            message = self.subscribe_client.get_message()
-            if message is None:
-                return
+        subscribe_clients = (
+            [self.primary_subscribe_client] + self.shard_subscribe_clients)
+        for subscribe_client in subscribe_clients:
+            for _ in range(max_messages):
+                message = subscribe_client.get_message()
+                if message is None:
+                    # Continue on to the next subscribe client.
+                    break
 
-            # Parse the message.
-            channel = message["channel"]
-            data = message["data"]
+                # Parse the message.
+                channel = message["channel"]
+                data = message["data"]
 
-            # Determine the appropriate message handler.
-            message_handler = None
-            if not self.subscribed[channel]:
-                # If the data was an integer, then the message was a response
-                # to an initial subscription request.
-                message_handler = self.subscribe_handler
-            elif channel == PLASMA_MANAGER_HEARTBEAT_CHANNEL:
-                assert self.subscribed[channel]
-                # The message was a heartbeat from a plasma manager.
-                message_handler = self.plasma_manager_heartbeat_handler
-            elif channel == LOCAL_SCHEDULER_INFO_CHANNEL:
-                assert self.subscribed[channel]
-                # The message was a heartbeat from a local scheduler
-                message_handler = self.local_scheduler_info_handler
-            elif channel == DB_CLIENT_TABLE_NAME:
-                assert self.subscribed[channel]
-                # The message was a notification from the db_client table.
-                message_handler = self.db_client_notification_handler
-            elif channel == DRIVER_DEATH_CHANNEL:
-                assert self.subscribed[channel]
-                # The message was a notification that a driver was removed.
-                log.info("message-handler: driver_removed_handler")
-                message_handler = self.driver_removed_handler
-            elif channel == XRAY_HEARTBEAT_CHANNEL:
-                # Similar functionality as local scheduler info channel
-                message_handler = self.xray_heartbeat_handler
-            else:
-                raise Exception("This code should be unreachable.")
+                # Determine the appropriate message handler.
+                message_handler = None
+                if channel == PLASMA_MANAGER_HEARTBEAT_CHANNEL:
+                    # The message was a heartbeat from a plasma manager.
+                    message_handler = self.plasma_manager_heartbeat_handler
+                elif channel == LOCAL_SCHEDULER_INFO_CHANNEL:
+                    # The message was a heartbeat from a local scheduler
+                    message_handler = self.local_scheduler_info_handler
+                elif channel == DB_CLIENT_TABLE_NAME:
+                    # The message was a notification from the db_client table.
+                    message_handler = self.db_client_notification_handler
+                elif channel == DRIVER_DEATH_CHANNEL:
+                    # The message was a notification that a driver was removed.
+                    log.info("message-handler: driver_removed_handler")
+                    message_handler = self.driver_removed_handler
+                elif channel == XRAY_HEARTBEAT_CHANNEL:
+                    # Similar functionality as local scheduler info channel
+                    message_handler = self.xray_heartbeat_handler
+                elif channel == XRAY_DRIVER_CHANNEL:
+                    # Handles driver death.
+                    message_handler = self.xray_driver_removed_handler
+                else:
+                    raise Exception("This code should be unreachable.")
 
-            # Call the handler.
-            assert (message_handler is not None)
-            message_handler(channel, data)
+                # Call the handler.
+                assert (message_handler is not None)
+                message_handler(channel, data)
 
     def update_local_scheduler_map(self):
         if self.use_raylet:
@@ -562,13 +663,13 @@ class Monitor(object):
                 return
             self.gcs_flush_policy = pickle.loads(serialized)
 
-        if not self.gcs_flush_policy.should_flush(self.redis):
+        if not self.gcs_flush_policy.should_flush(self.redis_shard):
             return
 
         max_entries_to_flush = self.gcs_flush_policy.num_entries_to_flush()
-        num_flushed = self.redis.execute_command(
+        num_flushed = self.redis_shard.execute_command(
             "HEAD.FLUSH {}".format(max_entries_to_flush))
-        log.info('num_flushed {}'.format(num_flushed))
+        log.info("num_flushed {}".format(num_flushed))
 
         # This flushes event log and log files.
         ray.experimental.flush_redis_unsafe(self.redis)
@@ -586,7 +687,8 @@ class Monitor(object):
         self.subscribe(LOCAL_SCHEDULER_INFO_CHANNEL)
         self.subscribe(PLASMA_MANAGER_HEARTBEAT_CHANNEL)
         self.subscribe(DRIVER_DEATH_CHANNEL)
-        self.subscribe(XRAY_HEARTBEAT_CHANNEL)
+        self.subscribe(XRAY_HEARTBEAT_CHANNEL, primary=False)
+        self.subscribe(XRAY_DRIVER_CHANNEL)
 
         # Scan the database table for dead database clients. NOTE: This must be
         # called before reading any messages from the subscription channel.

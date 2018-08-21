@@ -1,7 +1,6 @@
 cartpole-dqn:
     env: CartPole-v0
     run: DQN
-    repeat: 3
     stop:
         episode_reward_mean: 200
         time_total_s: 600

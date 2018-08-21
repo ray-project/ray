@@ -1,7 +1,7 @@
 #ifndef PLASMA_MANAGER_H
 #define PLASMA_MANAGER_H
 
-#include <poll.h>
+#include "protocol.h"
 
 #ifndef RAY_NUM_RETRIES
 #define NUM_RETRIES 5
@@ -156,7 +156,7 @@ ClientConnection *ClientConnection_listen(event_loop *loop,
 
 /* Buffer for requests between plasma managers. */
 typedef struct PlasmaRequestBuffer {
-  int type;
+  plasma::flatbuf::MessageType type;
   ray::ObjectID object_id;
   uint8_t *data;
   int64_t data_size;

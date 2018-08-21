@@ -4,6 +4,7 @@ enum Language:int {
   JAVA = 2
 }
 
+// These indexes are mapped to strings in ray_redis_module.cc.
 enum TablePrefix:int {
   UNUSED = 0,
   TASK,
@@ -15,6 +16,9 @@ enum TablePrefix:int {
   TASK_RECONSTRUCTION,
   HEARTBEAT,
   ERROR_INFO,
+  DRIVER,
+  PROFILE,
+  TASK_LEASE,
 }
 
 // The channel that Add operations to the Table should be published on, if any.
@@ -27,6 +31,8 @@ enum TablePubsub:int {
   ACTOR,
   HEARTBEAT,
   ERROR_INFO,
+  TASK_LEASE,
+  DRIVER,
 }
 
 table GcsTableEntry {
@@ -52,7 +58,9 @@ table ObjectTableData {
 }
 
 table TaskReconstructionData {
-  num_executions: int;
+  // The number of times this task has been reconstructed so far.
+  num_reconstructions: int;
+  // The node manager that is trying to reconstruct the task.
   node_manager_id: string;
 }
 
@@ -121,6 +129,33 @@ table CustomSerializerData {
 table ConfigTableData {
 }
 
+table ProfileEvent {
+  // The type of the event.
+  event_type: string;
+  // The start time of the event.
+  start_time: double;
+  // The end time of the event. If the event is a point event, then this should
+  // be the same as the start time.
+  end_time: double;
+  // Additional data associated with the event. This data must be serialized
+  // using JSON.
+  extra_data: string;
+}
+
+table ProfileTableData {
+  // The type of the component that generated the event, e.g., worker or
+  // object_manager, or node_manager.
+  component_type: string;
+  // An identifier for the component that generated the event.
+  component_id: string;
+  // An identifier for the node that generated the event.
+  node_ip_address: string;
+  // This is a batch of profiling events. We batch these together for
+  // performance reasons because a single task may generate many events, and
+  // we don't want each event to require a GCS command.
+  profile_events: [ProfileEvent];
+}
+
 table RayResource {
   // The type of the resource.
   resource_name: string;
@@ -159,4 +194,23 @@ table HeartbeatTableData {
   // Total resource capacity configured for this node manager.
   resources_total_label: [string];
   resources_total_capacity: [double];
+}
+
+// Data for a lease on task execution.
+table TaskLeaseData {
+  // Node manager client ID.
+  node_manager_id: string;
+  // The time that the lease was last acquired at. NOTE(swang): This is the
+  // system clock time according to the node that added the entry and is not
+  // synchronized with other nodes.
+  acquired_at: long;
+  // The period that the lease is active for.
+  timeout: long;
+}
+
+table DriverTableData {
+  // The driver ID.
+  driver_id: string;
+  // Whether it's dead.
+  is_dead: bool;
 }

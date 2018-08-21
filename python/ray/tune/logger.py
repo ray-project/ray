@@ -8,8 +8,9 @@ import numpy as np
 import os
 import yaml
 
-from ray.tune.result import TrainingResult
 from ray.tune.log_sync import get_syncer
+from ray.tune.result import NODE_IP, TRAINING_ITERATION, TIME_TOTAL_S, \
+    TIMESTEPS_TOTAL
 
 try:
     import tensorflow as tf
@@ -67,7 +68,7 @@ class UnifiedLogger(Logger):
     def on_result(self, result):
         for logger in self._loggers:
             logger.on_result(result)
-        self._log_syncer.set_worker_ip(result.node_ip)
+        self._log_syncer.set_worker_ip(result.get(NODE_IP))
         self._log_syncer.sync_if_needed()
 
     def close(self):
@@ -76,6 +77,8 @@ class UnifiedLogger(Logger):
         self._log_syncer.sync_now(force=True)
 
     def flush(self):
+        for logger in self._loggers:
+            logger.flush()
         self._log_syncer.sync_now(force=True)
         self._log_syncer.wait()
 
@@ -94,7 +97,7 @@ class _JsonLogger(Logger):
         self.local_out = open(local_file, "w")
 
     def on_result(self, result):
-        json.dump(result._asdict(), self, cls=_SafeFallbackEncoder)
+        json.dump(result, self, cls=_SafeFallbackEncoder)
         self.write("\n")
 
     def write(self, b):
@@ -109,7 +112,7 @@ def to_tf_values(result, path):
     values = []
     for attr, value in result.items():
         if value is not None:
-            if type(value) in [int, float]:
+            if type(value) in [int, float, np.float32, np.float64, np.int32]:
                 values.append(
                     tf.Summary.Value(
                         tag="/".join(path + [attr]), simple_value=value))
@@ -123,14 +126,23 @@ class _TFLogger(Logger):
         self._file_writer = tf.summary.FileWriter(self.logdir)
 
     def on_result(self, result):
-        tmp = result._asdict()
+        tmp = result.copy()
         for k in [
-                "config", "pid", "timestamp", "time_total_s", "timesteps_total"
+                "config", "pid", "timestamp", TIME_TOTAL_S, TRAINING_ITERATION
         ]:
             del tmp[k]  # not useful to tf log these
         values = to_tf_values(tmp, ["ray", "tune"])
         train_stats = tf.Summary(value=values)
-        self._file_writer.add_summary(train_stats, result.timesteps_total)
+        t = result.get(TIMESTEPS_TOTAL) or result[TRAINING_ITERATION]
+        self._file_writer.add_summary(train_stats, t)
+        iteration_value = to_tf_values({
+            "training_iteration": result[TRAINING_ITERATION]
+        }, ["ray", "tune"])
+        iteration_stats = tf.Summary(value=iteration_value)
+        self._file_writer.add_summary(iteration_stats, t)
+
+    def flush(self):
+        self._file_writer.flush()
 
     def close(self):
         self._file_writer.close()
@@ -138,13 +150,16 @@ class _TFLogger(Logger):
 
 class _VisKitLogger(Logger):
     def _init(self):
+        """CSV outputted with Headers as first set of results."""
         # Note that we assume params.json was already created by JsonLogger
         self._file = open(os.path.join(self.logdir, "progress.csv"), "w")
-        self._csv_out = csv.DictWriter(self._file, TrainingResult._fields)
-        self._csv_out.writeheader()
+        self._csv_out = None
 
     def on_result(self, result):
-        self._csv_out.writerow(result._asdict())
+        if self._csv_out is None:
+            self._csv_out = csv.DictWriter(self._file, result.keys())
+            self._csv_out.writeheader()
+        self._csv_out.writerow(result.copy())
 
     def close(self):
         self._file.close()
@@ -183,9 +198,10 @@ class _SafeFallbackEncoder(json.JSONEncoder):
 
 
 def pretty_print(result):
-    result = result._replace(config=None)  # drop config from pretty print
+    result = result.copy()
+    result.update(config=None)  # drop config from pretty print
     out = {}
-    for k, v in result._asdict().items():
+    for k, v in result.items():
         if v is not None:
             out[k] = v
 

@@ -10,13 +10,16 @@ AsyncGcsClient::AsyncGcsClient(const ClientID &client_id, CommandType command_ty
   context_ = std::make_shared<RedisContext>();
   primary_context_ = std::make_shared<RedisContext>();
   client_table_.reset(new ClientTable(primary_context_, this, client_id));
-  object_table_.reset(new ObjectTable(context_, this));
+  object_table_.reset(new ObjectTable(context_, this, command_type));
   actor_table_.reset(new ActorTable(context_, this));
   task_table_.reset(new TaskTable(context_, this, command_type));
   raylet_task_table_.reset(new raylet::TaskTable(context_, this, command_type));
   task_reconstruction_log_.reset(new TaskReconstructionLog(context_, this));
+  task_lease_table_.reset(new TaskLeaseTable(context_, this));
   heartbeat_table_.reset(new HeartbeatTable(context_, this));
+  driver_table_.reset(new DriverTable(primary_context_, this));
   error_table_.reset(new ErrorTable(primary_context_, this));
+  profile_table_.reset(new ProfileTable(context_, this));
   command_type_ = command_type;
 }
 
@@ -74,6 +77,8 @@ TaskReconstructionLog &AsyncGcsClient::task_reconstruction_log() {
   return *task_reconstruction_log_;
 }
 
+TaskLeaseTable &AsyncGcsClient::task_lease_table() { return *task_lease_table_; }
+
 ClientTable &AsyncGcsClient::client_table() { return *client_table_; }
 
 FunctionTable &AsyncGcsClient::function_table() { return *function_table_; }
@@ -83,6 +88,10 @@ ClassTable &AsyncGcsClient::class_table() { return *class_table_; }
 HeartbeatTable &AsyncGcsClient::heartbeat_table() { return *heartbeat_table_; }
 
 ErrorTable &AsyncGcsClient::error_table() { return *error_table_; }
+
+DriverTable &AsyncGcsClient::driver_table() { return *driver_table_; }
+
+ProfileTable &AsyncGcsClient::profile_table() { return *profile_table_; }
 
 }  // namespace gcs
 

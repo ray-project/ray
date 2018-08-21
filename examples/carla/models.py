@@ -20,7 +20,7 @@ class CarlaModel(Model):
     further fully connected layers.
     """
 
-    def _init(self, inputs, num_outputs, options):
+    def _build_layers(self, inputs, num_outputs, options):
         # Parse options
         image_shape = options["custom_options"]["image_shape"]
         convs = options.get("conv_filters", [

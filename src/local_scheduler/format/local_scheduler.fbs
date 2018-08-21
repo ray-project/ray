@@ -79,6 +79,8 @@ table RegisterClientRequest {
   client_id: string;
   // The process ID of this worker.
   worker_pid: long;
+  // The driver ID. This is non-nil if the client is a driver.
+  driver_id: string;
 }
 
 table DisconnectClient {

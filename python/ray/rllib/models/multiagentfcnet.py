@@ -6,7 +6,7 @@ import tensorflow as tf
 
 from ray.rllib.models.model import Model
 from ray.rllib.models.fcnet import FullyConnectedNetwork
-from ray.rllib.models.action_dist import Reshaper
+from ray.rllib.utils.reshaper import Reshaper
 
 
 class MultiAgentFullyConnectedNetwork(Model):
@@ -23,7 +23,7 @@ class MultiAgentFullyConnectedNetwork(Model):
 
         custom_options = options["custom_options"]
         hiddens = custom_options.get("multiagent_fcnet_hiddens",
-                                     [[256, 256]]*1)
+                                     [[256, 256]] * 1)
 
         # check for a shared model
         shared_model = custom_options.get("multiagent_shared_model", 0)
@@ -35,8 +35,8 @@ class MultiAgentFullyConnectedNetwork(Model):
                 sub_options = options.copy()
                 sub_options.update({"fcnet_hiddens": hiddens[i]})
                 # TODO(ev) make this support arbitrary networks
-                fcnet = FullyConnectedNetwork(
-                    split_inputs[i], int(num_actions[i]), sub_options)
+                fcnet = FullyConnectedNetwork(split_inputs[i],
+                                              int(num_actions[i]), sub_options)
                 output = fcnet.outputs
                 outputs.append(output)
         overall_output = tf.concat(outputs, axis=1)

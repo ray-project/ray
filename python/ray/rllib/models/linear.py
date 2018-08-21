@@ -10,7 +10,7 @@ from ray.rllib.models.misc import normc_initializer
 
 
 class LinearNetwork(Model):
-    """Generic fully connected network."""
+    """Generic linear network."""
 
     def _build_layers(self, inputs, num_outputs, _):
 

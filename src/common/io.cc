@@ -251,7 +251,7 @@ int write_bytes(int fd, uint8_t *cursor, size_t length) {
   return 0;
 }
 
-int write_message(int fd, int64_t type, int64_t length, uint8_t *bytes) {
+int do_write_message(int fd, int64_t type, int64_t length, uint8_t *bytes) {
   int64_t version = RayConfig::instance().ray_protocol_version();
   int closed;
   closed = write_bytes(fd, (uint8_t *) &version, sizeof(version));
@@ -271,6 +271,19 @@ int write_message(int fd, int64_t type, int64_t length, uint8_t *bytes) {
     return closed;
   }
   return 0;
+}
+
+int write_message(int fd,
+                  int64_t type,
+                  int64_t length,
+                  uint8_t *bytes,
+                  std::mutex *mutex) {
+  if (mutex != NULL) {
+    std::unique_lock<std::mutex> guard(*mutex);
+    return do_write_message(fd, type, length, bytes);
+  } else {
+    return do_write_message(fd, type, length, bytes);
+  }
 }
 
 int read_bytes(int fd, uint8_t *cursor, size_t length) {
@@ -388,8 +401,8 @@ disconnected:
 
 void write_log_message(int fd, const char *message) {
   /* Account for the \0 at the end of the string. */
-  write_message(fd, static_cast<int64_t>(CommonMessageType::LOG_MESSAGE),
-                strlen(message) + 1, (uint8_t *) message);
+  do_write_message(fd, static_cast<int64_t>(CommonMessageType::LOG_MESSAGE),
+                   strlen(message) + 1, (uint8_t *) message);
 }
 
 char *read_log_message(int fd) {

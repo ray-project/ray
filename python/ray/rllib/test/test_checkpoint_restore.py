@@ -20,12 +20,24 @@ def get_mean_action(alg, obs):
 ray.init(num_cpus=10)
 
 CONFIGS = {
-    "ES": {"episodes_per_batch": 10, "timesteps_per_batch": 100,
-           "num_workers": 2},
+    "ES": {
+        "episodes_per_batch": 10,
+        "timesteps_per_batch": 100,
+        "num_workers": 2
+    },
     "DQN": {},
-    "DDPG": {"noise_scale": 0.0, "timesteps_per_iteration": 100},
-    "PPO": {"num_sgd_iter": 5, "timesteps_per_batch": 1000, "num_workers": 2},
-    "A3C": {"num_workers": 1},
+    "DDPG": {
+        "noise_scale": 0.0,
+        "timesteps_per_iteration": 100
+    },
+    "PPO": {
+        "num_sgd_iter": 5,
+        "timesteps_per_batch": 1000,
+        "num_workers": 2
+    },
+    "A3C": {
+        "num_workers": 1
+    },
 }
 
 

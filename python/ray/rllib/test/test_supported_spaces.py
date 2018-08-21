@@ -5,6 +5,7 @@ import gym
 from gym.spaces import Box, Discrete, Tuple
 from gym.envs.registration import EnvSpec
 import numpy as np
+import sys
 
 import ray
 from ray.rllib.agents.agent import get_agent_class
@@ -13,27 +14,33 @@ from ray.tune.registry import register_env
 
 ACTION_SPACES_TO_TEST = {
     "discrete": Discrete(5),
-    "vector": Box(0.0, 1.0, (5,), dtype=np.float32),
+    "vector": Box(0.0, 1.0, (5, ), dtype=np.float32),
     "simple_tuple": Tuple([
-        Box(0.0, 1.0, (5,), dtype=np.float32),
-        Box(0.0, 1.0, (5,), dtype=np.float32)]),
+        Box(0.0, 1.0, (5, ), dtype=np.float32),
+        Box(0.0, 1.0, (5, ), dtype=np.float32)
+    ]),
     "implicit_tuple": [
-        Box(0.0, 1.0, (5,), dtype=np.float32),
-        Box(0.0, 1.0, (5,), dtype=np.float32)],
+        Box(0.0, 1.0, (5, ), dtype=np.float32),
+        Box(0.0, 1.0, (5, ), dtype=np.float32)
+    ],
+    "mixed_tuple": Tuple(
+        [Discrete(2),
+         Discrete(3),
+         Box(0.0, 1.0, (5, ), dtype=np.float32)]),
 }
 
 OBSERVATION_SPACES_TO_TEST = {
     "discrete": Discrete(5),
-    "vector": Box(0.0, 1.0, (5,), dtype=np.float32),
-    "image": Box(0.0, 1.0, (80, 80, 1), dtype=np.float32),
+    "vector": Box(0.0, 1.0, (5, ), dtype=np.float32),
+    "image": Box(0.0, 1.0, (84, 84, 1), dtype=np.float32),
     "atari": Box(0.0, 1.0, (210, 160, 3), dtype=np.float32),
-    "atari_ram": Box(0.0, 1.0, (128,), dtype=np.float32),
+    "atari_ram": Box(0.0, 1.0, (128, ), dtype=np.float32),
     "simple_tuple": Tuple([
-        Box(0.0, 1.0, (5,), dtype=np.float32),
-        Box(0.0, 1.0, (5,), dtype=np.float32)]),
-    "mixed_tuple": Tuple([
-        Discrete(10),
-        Box(0.0, 1.0, (5,), dtype=np.float32)]),
+        Box(0.0, 1.0, (5, ), dtype=np.float32),
+        Box(0.0, 1.0, (5, ), dtype=np.float32)
+    ]),
+    "mixed_tuple": Tuple(
+        [Discrete(10), Box(0.0, 1.0, (5, ), dtype=np.float32)]),
 }
 
 
@@ -89,32 +96,43 @@ class ModelSupportedSpaces(unittest.TestCase):
         stats = {}
         check_support("DDPG", {"timesteps_per_iteration": 1}, stats)
         check_support("DQN", {"timesteps_per_iteration": 1}, stats)
+        check_support("A3C", {
+            "num_workers": 1,
+            "optimizer": {
+                "grads_per_step": 1
+            }
+        }, stats)
         check_support(
-            "A3C", {"num_workers": 1, "optimizer": {"grads_per_step": 1}},
-            stats)
+            "PPO", {
+                "num_workers": 1,
+                "num_sgd_iter": 1,
+                "timesteps_per_batch": 1,
+                "sgd_batchsize": 1
+            }, stats)
         check_support(
-            "PPO",
-            {"num_workers": 1, "num_sgd_iter": 1, "timesteps_per_batch": 1,
-             "sgd_batchsize": 1},
-            stats)
-        check_support(
-            "ES",
-            {"num_workers": 1, "noise_size": 10000000,
-             "episodes_per_batch": 1, "timesteps_per_batch": 1},
-            stats)
-        check_support(
-            "PG",
-            {"num_workers": 1, "optimizer": {}},
-            stats)
+            "ES", {
+                "num_workers": 1,
+                "noise_size": 10000000,
+                "episodes_per_batch": 1,
+                "timesteps_per_batch": 1
+            }, stats)
+        check_support("PG", {"num_workers": 1, "optimizer": {}}, stats)
         num_unexpected_errors = 0
         for (alg, a_name, o_name), stat in sorted(stats.items()):
             if stat not in ["ok", "unsupported"]:
                 num_unexpected_errors += 1
-            print(
-                alg, "action_space", a_name, "obs_space", o_name,
-                "result", stat)
+            print(alg, "action_space", a_name, "obs_space", o_name, "result",
+                  stat)
         self.assertEqual(num_unexpected_errors, 0)
 
 
 if __name__ == "__main__":
+    if len(sys.argv) > 1 and sys.argv[1] == "--smoke":
+        ACTION_SPACES_TO_TEST = {
+            "discrete": Discrete(5),
+        }
+        OBSERVATION_SPACES_TO_TEST = {
+            "vector": Box(0.0, 1.0, (5, ), dtype=np.float32),
+            "atari": Box(0.0, 1.0, (210, 160, 3), dtype=np.float32),
+        }
     unittest.main(verbosity=2)

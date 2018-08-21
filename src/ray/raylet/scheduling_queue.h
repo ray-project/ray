@@ -12,15 +12,12 @@ namespace ray {
 
 namespace raylet {
 
-enum TaskState { INIT, PLACEABLE, WAITING, READY, RUNNING };
+enum class TaskState { INIT, PLACEABLE, WAITING, READY, RUNNING, BLOCKED, DRIVER };
+
 /// \class SchedulingQueue
 ///
-/// Encapsulates task queues. Each queue represents a scheduling state for a
-/// task. The scheduling state is one of
-/// (1) placeable: the task is ready for a placement decision,
-/// (2) waiting: waiting for object dependencies to become locally available,
-/// (3) ready: the task is ready for local dispatch, with all arguments locally ready,
-/// (4) running: the task has been dispatched and is running on a worker.
+/// Encapsulates task queues.
+// (See design_docs/task_states.rst for the state transition diagram.)
 class SchedulingQueue {
  public:
   /// Create a scheduling queue.
@@ -29,12 +26,18 @@ class SchedulingQueue {
   /// SchedulingQueue destructor.
   virtual ~SchedulingQueue() {}
 
+  /// \brief Check if the queue contains a specific task id.
+  ///
+  /// \param task_id The task ID for the task.
+  /// \return Whether the task_id exists in the queue.
+  bool HasTask(const TaskID &task_id) const;
+
   /// Get the queue of tasks that are destined for actors that have not yet
   /// been created.
   ///
   /// \return A const reference to the queue of tasks that are destined for
   /// actors that have not yet been created.
-  const std::list<Task> &GetUncreatedActorMethods() const;
+  const std::list<Task> &GetMethodsWaitingForActorCreation() const;
 
   /// Get the queue of tasks in the waiting state.
   ///
@@ -67,17 +70,36 @@ class SchedulingQueue {
   /// at runtime.
   const std::list<Task> &GetBlockedTasks() const;
 
+  /// Get the set of driver task IDs.
+  ///
+  /// \return A const reference to the set of driver task IDs. These are empty
+  /// tasks used to represent drivers.
+  const std::unordered_set<TaskID> &GetDriverTaskIds() const;
+
   /// Remove tasks from the task queue.
   ///
   /// \param tasks The set of task IDs to remove from the queue. The
-  ///        corresponding tasks must be contained in the queue.
+  /// corresponding tasks must be contained in the queue. The IDs of removed
+  /// tasks will be erased from the set.
   /// \return A vector of the tasks that were removed.
-  std::vector<Task> RemoveTasks(std::unordered_set<TaskID> tasks);
+  std::vector<Task> RemoveTasks(std::unordered_set<TaskID> &tasks);
+
+  /// Remove a task from the task queue.
+  ///
+  /// \param task_id The task ID to remove from the queue. The corresponding
+  /// task must be contained in the queue.
+  /// \return The task that was removed.
+  Task RemoveTask(const TaskID &task_id);
+
+  /// Remove a driver task ID. This is an empty task used to represent a driver.
+  ///
+  /// \param The driver task ID to remove.
+  void RemoveDriverTaskId(const TaskID &task_id);
 
   /// Queue tasks that are destined for actors that have not yet been created.
   ///
   /// \param tasks The tasks to queue.
-  void QueueUncreatedActorMethods(const std::vector<Task> &tasks);
+  void QueueMethodsWaitingForActorCreation(const std::vector<Task> &tasks);
 
   /// Queue tasks in the waiting state. These are tasks that cannot yet be
   /// dispatched since they are blocked on a missing data dependency.
@@ -107,30 +129,94 @@ class SchedulingQueue {
   /// \param tasks The tasks to queue.
   void QueueBlockedTasks(const std::vector<Task> &tasks);
 
-  /// \brief Move the specified tasks from the source state to the destination state.
+  /// Add a driver task ID. This is an empty task used to represent a driver.
   ///
-  /// \param tasks The set of task IDs to move.
-  /// \param src_state Source state, which corresponds to one of the internal task queues.
-  /// \param dst_state Destination state, corresponding to one of the internal task
-  /// queues.
-  void MoveTasks(std::unordered_set<TaskID> tasks, TaskState src_state,
+  /// \param The driver task ID to add.
+  void AddDriverTaskId(const TaskID &task_id);
+
+  /// \brief Move the specified tasks from the source state to the destination
+  /// state.
+  ///
+  /// \param tasks The set of task IDs to move. The IDs of successfully moved
+  /// tasks will be erased from the set.
+  /// \param src_state Source state, which corresponds to one of the internal
+  /// task queues.
+  /// \param dst_state Destination state, corresponding to one of the internal
+  /// task queues.
+  void MoveTasks(std::unordered_set<TaskID> &tasks, TaskState src_state,
                  TaskState dst_state);
+
+  /// \brief Filter out task IDs based on their scheduling state.
+  ///
+  /// \param task_ids The set of task IDs to filter. All tasks that have the
+  /// given filter_state will be removed from this set.
+  /// \param filter_state The task state to filter out.
+  void FilterState(std::unordered_set<TaskID> &task_ids, TaskState filter_state) const;
+
+  class TaskQueue {
+   public:
+    /// Creating a task queue.
+    TaskQueue() {}
+
+    /// Destructor for task queue.
+    ~TaskQueue();
+
+    /// \brief Append a task to queue.
+    ///
+    /// \param task_id The task ID for the task to append.
+    /// \param task The task to append to the queue.
+    /// \return Whether the append operation succeeds.
+    bool AppendTask(const TaskID &task_id, const Task &task);
+
+    /// \brief Remove a task from queue.
+    ///
+    /// \param task_id The task ID for the task to remove from the queue.
+    /// \return Whether the removal succeeds.
+    bool RemoveTask(const TaskID &task_id);
+
+    /// \brief Remove a task from queue.
+    ///
+    /// \param task_id The task ID for the task to remove from the queue.
+    /// \param removed_tasks If the task specified by task_id is successfully
+    //  removed from the queue, the task data is appended to the vector.
+    /// \return Whether the removal succeeds.
+    bool RemoveTask(const TaskID &task_id, std::vector<Task> &removed_tasks);
+
+    /// \brief Check if the queue contains a specific task id.
+    ///
+    /// \param task_id The task ID for the task.
+    /// \return Whether the task_id exists in this queue.
+    bool HasTask(const TaskID &task_id) const;
+
+    /// \brief Remove the task list of the queue.
+    /// \return A list of tasks contained in this queue.
+    const std::list<Task> &GetTasks() const;
+
+   private:
+    // A list of tasks.
+    std::list<Task> task_list_;
+    // A hash to speed up looking up a task.
+    std::unordered_map<TaskID, std::list<Task>::iterator> task_map_;
+  };
 
  private:
   /// Tasks that are destined for actors that have not yet been created.
-  std::list<Task> uncreated_actor_methods_;
+  TaskQueue methods_waiting_for_actor_creation_;
   /// Tasks that are waiting for an object dependency to appear locally.
-  std::list<Task> waiting_tasks_;
+  TaskQueue waiting_tasks_;
   /// Tasks whose object dependencies are locally available, but that are
   /// waiting to be scheduled.
-  std::list<Task> placeable_tasks_;
+  TaskQueue placeable_tasks_;
   /// Tasks ready for dispatch, but that are waiting for a worker.
-  std::list<Task> ready_tasks_;
+  TaskQueue ready_tasks_;
   /// Tasks that are running on a worker.
-  std::list<Task> running_tasks_;
+  TaskQueue running_tasks_;
   /// Tasks that were dispatched to a worker but are blocked on a data
   /// dependency that was missing at runtime.
-  std::list<Task> blocked_tasks_;
+  TaskQueue blocked_tasks_;
+  /// The set of currently running driver tasks. These are empty tasks that are
+  /// started by a driver process on initialization.
+  std::unordered_set<TaskID> driver_task_ids_;
 };
 
 }  // namespace raylet

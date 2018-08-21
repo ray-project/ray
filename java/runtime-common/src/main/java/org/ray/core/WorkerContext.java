@@ -2,6 +2,7 @@ package org.ray.core;
 
 import org.ray.api.UniqueID;
 import org.ray.core.model.RayParameters;
+import org.ray.core.model.WorkerMode;
 import org.ray.spi.model.TaskSpec;
 
 public class WorkerContext {
@@ -35,7 +36,11 @@ public class WorkerContext {
 
     TaskSpec dummy = new TaskSpec();
     dummy.parentTaskId = UniqueID.nil;
-    dummy.taskId = UniqueID.nil;
+    if (params.worker_mode == WorkerMode.DRIVER) {
+      dummy.taskId = UniqueID.randomId();
+    } else {
+      dummy.taskId = UniqueID.nil;
+    }
     dummy.actorId = UniqueID.nil;
     dummy.driverId = params.driver_id;
     prepare(dummy, null);

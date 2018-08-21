@@ -11,10 +11,7 @@ import time
 import unittest
 
 import ray.ray_constants as ray_constants
-import ray.test.test_functions as test_functions
-
-if sys.version_info >= (3, 0):
-    from importlib import reload
+import pytest
 
 
 def relevant_errors(error_type):
@@ -32,39 +29,49 @@ def wait_for_errors(error_type, num_errors, timeout=10):
 
 class TaskStatusTest(unittest.TestCase):
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
 
     def testFailedTask(self):
-        reload(test_functions)
+        @ray.remote
+        def throw_exception_fct1():
+            raise Exception("Test function 1 intentionally failed.")
+
+        @ray.remote
+        def throw_exception_fct2():
+            raise Exception("Test function 2 intentionally failed.")
+
+        @ray.remote(num_return_vals=3)
+        def throw_exception_fct3(x):
+            raise Exception("Test function 3 intentionally failed.")
+
         ray.init(num_workers=3, driver_mode=ray.SILENT_MODE)
 
-        test_functions.throw_exception_fct1.remote()
-        test_functions.throw_exception_fct1.remote()
+        throw_exception_fct1.remote()
+        throw_exception_fct1.remote()
         wait_for_errors(ray_constants.TASK_PUSH_ERROR, 2)
-        self.assertEqual(
-            len(relevant_errors(ray_constants.TASK_PUSH_ERROR)), 2)
+        assert len(relevant_errors(ray_constants.TASK_PUSH_ERROR)) == 2
         for task in relevant_errors(ray_constants.TASK_PUSH_ERROR):
-            self.assertIn("Test function 1 intentionally failed.",
-                          task.get("message"))
+            msg = task.get("message")
+            assert "Test function 1 intentionally failed." in msg
 
-        x = test_functions.throw_exception_fct2.remote()
+        x = throw_exception_fct2.remote()
         try:
             ray.get(x)
         except Exception as e:
-            self.assertIn("Test function 2 intentionally failed.", str(e))
+            assert "Test function 2 intentionally failed." in str(e)
         else:
             # ray.get should throw an exception.
-            self.assertTrue(False)
+            assert False
 
-        x, y, z = test_functions.throw_exception_fct3.remote(1.0)
+        x, y, z = throw_exception_fct3.remote(1.0)
         for ref in [x, y, z]:
             try:
                 ray.get(ref)
             except Exception as e:
-                self.assertIn("Test function 3 intentionally failed.", str(e))
+                assert "Test function 3 intentionally failed." in str(e)
             else:
                 # ray.get should throw an exception.
-                self.assertTrue(False)
+                assert False
 
         @ray.remote
         def f():
@@ -73,10 +80,10 @@ class TaskStatusTest(unittest.TestCase):
         try:
             ray.get(f.remote())
         except Exception as e:
-            self.assertIn("This function failed.", str(e))
+            assert "This function failed." in str(e)
         else:
             # ray.get should throw an exception.
-            self.assertTrue(False)
+            assert False
 
     def testFailImportingRemoteFunction(self):
         ray.init(num_workers=2, driver_mode=ray.SILENT_MODE)
@@ -103,13 +110,14 @@ def temporary_helper_function():
             return module.temporary_python_file()
 
         wait_for_errors(ray_constants.REGISTER_REMOTE_FUNCTION_PUSH_ERROR, 2)
-        self.assertIn("No module named", ray.error_info()[0]["message"])
-        self.assertIn("No module named", ray.error_info()[1]["message"])
+        assert "No module named" in ray.error_info()[0]["message"]
+        assert "No module named" in ray.error_info()[1]["message"]
 
         # Check that if we try to call the function it throws an exception and
         # does not hang.
         for _ in range(10):
-            self.assertRaises(Exception, lambda: ray.get(g.remote()))
+            with pytest.raises(Exception):
+                ray.get(g.remote())
 
         f.close()
 
@@ -126,11 +134,10 @@ def temporary_helper_function():
         ray.worker.global_worker.run_function_on_all_workers(f)
         wait_for_errors(ray_constants.FUNCTION_TO_RUN_PUSH_ERROR, 2)
         # Check that the error message is in the task info.
-        self.assertEqual(len(ray.error_info()), 2)
-        self.assertIn("Function to run failed.",
-                      ray.error_info()[0]["message"])
-        self.assertIn("Function to run failed.",
-                      ray.error_info()[1]["message"])
+        error_info = ray.error_info()
+        assert len(error_info) == 2
+        assert "Function to run failed." in error_info[0]["message"]
+        assert "Function to run failed." in error_info[1]["message"]
 
     def testFailImportingActor(self):
         ray.init(num_workers=2, driver_mode=ray.SILENT_MODE)
@@ -161,31 +168,29 @@ def temporary_helper_function():
                 return 1
 
         # There should be no errors yet.
-        self.assertEqual(len(ray.error_info()), 0)
+        assert len(ray.error_info()) == 0
 
         # Create an actor.
         foo = Foo.remote()
 
         # Wait for the error to arrive.
         wait_for_errors(ray_constants.REGISTER_ACTOR_PUSH_ERROR, 1)
-        self.assertIn("No module named", ray.error_info()[0]["message"])
+        assert "No module named" in ray.error_info()[0]["message"]
 
         # Wait for the error from when the __init__ tries to run.
         wait_for_errors(ray_constants.TASK_PUSH_ERROR, 1)
-        self.assertIn(
-            "failed to be imported, and so cannot execute this method",
-            ray.error_info()[1]["message"])
+        assert ("failed to be imported, and so cannot execute this method" in
+                ray.error_info()[1]["message"])
 
         # Check that if we try to get the function it throws an exception and
         # does not hang.
-        with self.assertRaises(Exception):
+        with pytest.raises(Exception):
             ray.get(foo.get_val.remote())
 
         # Wait for the error from when the call to get_val.
         wait_for_errors(ray_constants.TASK_PUSH_ERROR, 2)
-        self.assertIn(
-            "failed to be imported, and so cannot execute this method",
-            ray.error_info()[2]["message"])
+        assert ("failed to be imported, and so cannot execute this method" in
+                ray.error_info()[2]["message"])
 
         f.close()
 
@@ -195,7 +200,7 @@ def temporary_helper_function():
 
 class ActorTest(unittest.TestCase):
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
 
     def testFailedActorInit(self):
         ray.init(num_workers=0, driver_mode=ray.SILENT_MODE)
@@ -218,14 +223,14 @@ class ActorTest(unittest.TestCase):
 
         # Make sure that we get errors from a failed constructor.
         wait_for_errors(ray_constants.TASK_PUSH_ERROR, 1)
-        self.assertEqual(len(ray.error_info()), 1)
-        self.assertIn(error_message1, ray.error_info()[0]["message"])
+        assert len(ray.error_info()) == 1
+        assert error_message1 in ray.error_info()[0]["message"]
 
         # Make sure that we get errors from a failed method.
         a.fail_method.remote()
         wait_for_errors(ray_constants.TASK_PUSH_ERROR, 2)
-        self.assertEqual(len(ray.error_info()), 2)
-        self.assertIn(error_message2, ray.error_info()[1]["message"])
+        assert len(ray.error_info()) == 2
+        assert error_message2 in ray.error_info()[1]["message"]
 
     def testIncorrectMethodCalls(self):
         ray.init(num_workers=0, driver_mode=ray.SILENT_MODE)
@@ -241,33 +246,33 @@ class ActorTest(unittest.TestCase):
         # Make sure that we get errors if we call the constructor incorrectly.
 
         # Create an actor with too few arguments.
-        with self.assertRaises(Exception):
+        with pytest.raises(Exception):
             a = Actor.remote()
 
         # Create an actor with too many arguments.
-        with self.assertRaises(Exception):
+        with pytest.raises(Exception):
             a = Actor.remote(1, 2)
 
         # Create an actor the correct number of arguments.
         a = Actor.remote(1)
 
         # Call a method with too few arguments.
-        with self.assertRaises(Exception):
+        with pytest.raises(Exception):
             a.get_val.remote()
 
         # Call a method with too many arguments.
-        with self.assertRaises(Exception):
+        with pytest.raises(Exception):
             a.get_val.remote(1, 2)
         # Call a method that doesn't exist.
-        with self.assertRaises(AttributeError):
+        with pytest.raises(AttributeError):
             a.nonexistent_method()
-        with self.assertRaises(AttributeError):
+        with pytest.raises(AttributeError):
             a.nonexistent_method.remote()
 
 
 class WorkerDeath(unittest.TestCase):
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
 
     def testWorkerRaisingException(self):
         ray.init(num_workers=1, driver_mode=ray.SILENT_MODE)
@@ -282,7 +287,7 @@ class WorkerDeath(unittest.TestCase):
 
         wait_for_errors(ray_constants.WORKER_CRASH_PUSH_ERROR, 1)
         wait_for_errors(ray_constants.WORKER_DIED_PUSH_ERROR, 1)
-        self.assertEqual(len(ray.error_info()), 2)
+        assert len(ray.error_info()) == 2
 
     def testWorkerDying(self):
         ray.init(num_workers=0, driver_mode=ray.SILENT_MODE)
@@ -296,13 +301,10 @@ class WorkerDeath(unittest.TestCase):
 
         wait_for_errors(ray_constants.WORKER_DIED_PUSH_ERROR, 1)
 
-        self.assertEqual(len(ray.error_info()), 1)
-        self.assertIn("died or was killed while executing",
-                      ray.error_info()[0]["message"])
+        error_info = ray.error_info()
+        assert len(error_info) == 1
+        assert "died or was killed while executing" in error_info[0]["message"]
 
-    @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
     def testActorWorkerDying(self):
         ray.init(num_workers=0, driver_mode=ray.SILENT_MODE)
 
@@ -317,13 +319,12 @@ class WorkerDeath(unittest.TestCase):
 
         a = Actor.remote()
         [obj], _ = ray.wait([a.kill.remote()], timeout=5000)
-        self.assertRaises(Exception, lambda: ray.get(obj))
-        self.assertRaises(Exception, lambda: ray.get(consume.remote(obj)))
+        with pytest.raises(Exception):
+            ray.get(obj)
+        with pytest.raises(Exception):
+            ray.get(consume.remote(obj))
         wait_for_errors(ray_constants.WORKER_DIED_PUSH_ERROR, 1)
 
-    @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
     def testActorWorkerDyingFutureTasks(self):
         ray.init(num_workers=0, driver_mode=ray.SILENT_MODE)
 
@@ -342,13 +343,11 @@ class WorkerDeath(unittest.TestCase):
         time.sleep(0.1)
         tasks2 = [a.sleep.remote() for _ in range(10)]
         for obj in tasks1 + tasks2:
-            self.assertRaises(Exception, lambda: ray.get(obj))
+            with pytest.raises(Exception):
+                ray.get(obj)
 
         wait_for_errors(ray_constants.WORKER_DIED_PUSH_ERROR, 1)
 
-    @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
     def testActorWorkerDyingNothingInProgress(self):
         ray.init(num_workers=0, driver_mode=ray.SILENT_MODE)
 
@@ -362,7 +361,8 @@ class WorkerDeath(unittest.TestCase):
         os.kill(pid, 9)
         time.sleep(0.1)
         task2 = a.getpid.remote()
-        self.assertRaises(Exception, lambda: ray.get(task2))
+        with pytest.raises(Exception):
+            ray.get(task2)
 
 
 @unittest.skipIf(
@@ -370,7 +370,7 @@ class WorkerDeath(unittest.TestCase):
     "This test does not work with xray yet.")
 class PutErrorTest(unittest.TestCase):
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
 
     def testPutError1(self):
         store_size = 10**6
@@ -467,7 +467,7 @@ class PutErrorTest(unittest.TestCase):
 
 class ConfigurationTest(unittest.TestCase):
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
 
     def testVersionMismatch(self):
         ray_version = ray.__version__
@@ -482,7 +482,7 @@ class ConfigurationTest(unittest.TestCase):
 
 class WarningTest(unittest.TestCase):
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
 
     def testExportLargeObjects(self):
         import ray.ray_constants as ray_constants

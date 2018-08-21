@@ -39,10 +39,10 @@ def linear_interpolation(l, r, alpha):
 
 
 class PiecewiseSchedule(object):
-    def __init__(
-            self, endpoints, interpolation=linear_interpolation,
-            outside_value=None):
-
+    def __init__(self,
+                 endpoints,
+                 interpolation=linear_interpolation,
+                 outside_value=None):
         """Piecewise schedule.
 
         endpoints: [(int, int)]

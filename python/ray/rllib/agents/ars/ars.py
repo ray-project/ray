@@ -38,10 +38,10 @@ DEFAULT_CONFIG = {
     'stepsize': 0.01,
     'observation_filter': "MeanStdFilter",
     'noise_size': 250000000,
-    'eval_prob': 0.03, # FIXME(ev) get rid of this
+    'eval_prob': 0.03,
     'env_config': {},
     'shift': 0,
-    'policy_type': "Linear", # FIXME(ev) policy is not linear yet
+    'policy_type': "LinearPolicy", # FIXME(ev) policy is not linear yet
     "fcnet_hiddens": [32, 32]
 }
 
@@ -83,7 +83,7 @@ class Worker(object):
         self.preprocessor = models.ModelCatalog.get_preprocessor(self.env)
 
         self.sess = utils.make_session(single_threaded=True)
-        if config["policy_type"] == "Linear": # FIXME(ev) this can be more elegant
+        if config["policy_type"] == "LinearPolicy":
             self.policy = policies.LinearPolicy(
                 self.sess, self.env.action_space, self.preprocessor,
                 config["observation_filter"], **policy_params)

@@ -4,6 +4,7 @@ import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
+import org.ray.util.ResourceItem;
 
 /**
  * a ray remote function or class (as an actor).
@@ -11,10 +12,9 @@ import java.lang.annotation.Target;
 @Target({ElementType.METHOD, ElementType.TYPE})
 @Retention(RetentionPolicy.RUNTIME)
 public @interface RayRemote {
-
   /**
-   * whether to use external I/O pool to execute the function.
+   * This is used for default resources.
+   * @return The resources of the method or actor need.
    */
-  boolean externalIo() default false;
-
+  ResourceItem[] resources() default {@ResourceItem()};
 }

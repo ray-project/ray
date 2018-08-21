@@ -8,24 +8,23 @@ import sys
 import unittest
 
 import ray.local_scheduler as local_scheduler
-
-ID_SIZE = 20
+import ray.ray_constants as ray_constants
 
 
 def random_object_id():
-    return local_scheduler.ObjectID(np.random.bytes(ID_SIZE))
+    return local_scheduler.ObjectID(np.random.bytes(ray_constants.ID_SIZE))
 
 
 def random_function_id():
-    return local_scheduler.ObjectID(np.random.bytes(ID_SIZE))
+    return local_scheduler.ObjectID(np.random.bytes(ray_constants.ID_SIZE))
 
 
 def random_driver_id():
-    return local_scheduler.ObjectID(np.random.bytes(ID_SIZE))
+    return local_scheduler.ObjectID(np.random.bytes(ray_constants.ID_SIZE))
 
 
 def random_task_id():
-    return local_scheduler.ObjectID(np.random.bytes(ID_SIZE))
+    return local_scheduler.ObjectID(np.random.bytes(ray_constants.ID_SIZE))
 
 
 BASE_SIMPLE_OBJECTS = [
@@ -110,15 +109,17 @@ class TestObjectID(unittest.TestCase):
         self.assertRaises(Exception, lambda: pickle.dumps(h))
 
     def test_equality_comparisons(self):
-        x1 = local_scheduler.ObjectID(ID_SIZE * b"a")
-        x2 = local_scheduler.ObjectID(ID_SIZE * b"a")
-        y1 = local_scheduler.ObjectID(ID_SIZE * b"b")
-        y2 = local_scheduler.ObjectID(ID_SIZE * b"b")
+        x1 = local_scheduler.ObjectID(ray_constants.ID_SIZE * b"a")
+        x2 = local_scheduler.ObjectID(ray_constants.ID_SIZE * b"a")
+        y1 = local_scheduler.ObjectID(ray_constants.ID_SIZE * b"b")
+        y2 = local_scheduler.ObjectID(ray_constants.ID_SIZE * b"b")
         self.assertEqual(x1, x2)
         self.assertEqual(y1, y2)
         self.assertNotEqual(x1, y1)
 
-        random_strings = [np.random.bytes(ID_SIZE) for _ in range(256)]
+        random_strings = [
+            np.random.bytes(ray_constants.ID_SIZE) for _ in range(256)
+        ]
         object_ids1 = [
             local_scheduler.ObjectID(random_strings[i]) for i in range(256)
         ]

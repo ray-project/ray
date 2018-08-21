@@ -1,5 +1,8 @@
 // Local scheduler protocol specification
 
+include "gcs.fbs";
+
+
 // TODO(swang): We put the flatbuffer types in a separate namespace for now to
 // avoid conflicts with legacy Ray types.
 namespace ray.protocol;
@@ -62,6 +65,11 @@ enum MessageType:int {
   // Push an error to the relevant driver. This is sent from a worker to the
   // node manager.
   PushErrorRequest,
+  // Push some profiling events to the GCS. When sending this message to the
+  // node manager, the message itself is serialized as a ProfileTableData object.
+  PushProfileEventsRequest,
+  // Free the objects in objects store.
+  FreeObjectsInObjectStoreRequest,
 }
 
 table TaskExecutionSpecification {
@@ -113,6 +121,8 @@ table RegisterClientRequest {
   client_id: string;
   // The process ID of this worker.
   worker_pid: long;
+  // The driver ID. This is non-nil if the client is a driver.
+  driver_id: string;
 }
 
 table RegisterClientReply {
@@ -168,4 +178,12 @@ table PushErrorRequest {
   error_message: string;
   // The timestamp of the error message.
   timestamp: double;
+}
+
+table FreeObjectsRequest {
+  // Whether keep this request with local object store 
+  // or send it to all the object stores.
+  local_only: bool;
+  // List of object ids we'll delete from object store.
+  object_ids: [string];
 }

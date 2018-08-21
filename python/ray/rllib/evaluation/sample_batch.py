@@ -45,7 +45,8 @@ class SampleBatchBuilder(object):
         """Returns a sample batch including all previously added values."""
 
         batch = SampleBatch(
-            {k: to_float_array(v) for k, v in self.buffers.items()})
+            {k: to_float_array(v)
+             for k, v in self.buffers.items()})
         self.buffers.clear()
         self.count = 0
         return batch
@@ -60,16 +61,20 @@ class MultiAgentSampleBatchBuilder(object):
     corresponding policy batch for the agent's policy.
     """
 
-    def __init__(self, policy_map):
+    def __init__(self, policy_map, clip_rewards):
         """Initialize a MultiAgentSampleBatchBuilder.
 
         Arguments:
             policy_map (dict): Maps policy ids to policy graph instances.
+            clip_rewards (bool): Whether to clip rewards before postprocessing.
         """
 
         self.policy_map = policy_map
+        self.clip_rewards = clip_rewards
         self.policy_builders = {
-            k: SampleBatchBuilder() for k in policy_map.keys()}
+            k: SampleBatchBuilder()
+            for k in policy_map.keys()
+        }
         self.agent_builders = {}
         self.agent_to_policy = {}
         self.count = 0  # increment this manually
@@ -110,10 +115,18 @@ class MultiAgentSampleBatchBuilder(object):
 
         # Apply postprocessor
         post_batches = {}
+        if self.clip_rewards:
+            for _, (_, pre_batch) in pre_batches.items():
+                pre_batch["rewards"] = np.sign(pre_batch["rewards"])
         for agent_id, (_, pre_batch) in pre_batches.items():
             other_batches = pre_batches.copy()
             del other_batches[agent_id]
             policy = self.policy_map[self.agent_to_policy[agent_id]]
+            if any(pre_batch["dones"][:-1]) or len(set(
+                    pre_batch["eps_id"])) > 1:
+                raise ValueError(
+                    "Batches sent to postprocessing must only contain steps "
+                    "from a single trajectory.", pre_batch)
             post_batches[agent_id] = policy.postprocess_trajectory(
                 pre_batch, other_batches)
 

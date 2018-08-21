@@ -117,7 +117,7 @@ public final class MethodId {
       cls = Class
           .forName(className, true, loader == null ? this.getClass().getClassLoader() : loader);
     } catch (Throwable e) {
-      RayLog.core.error("Cannot load class " + className, e);
+      RayLog.core.error("Cannot load class {}", className, e);
       return null;
     }
 
@@ -148,7 +148,7 @@ public final class MethodId {
 
     if (methods.size() != 1) {
       RayLog.core.error(
-          "Load method " + toString() + " failed as there are " + methods.size() + " definitions");
+          "Load method {} failed as there are {} definitions.", toString(), methods.size());
       return null;
     }
 

@@ -24,10 +24,8 @@ from tensorflow.python.keras.preprocessing.image import ImageDataGenerator
 
 import ray
 from ray.tune import grid_search, run_experiments
-from ray.tune import register_trainable
 from ray.tune import Trainable
-from ray.tune import TrainingResult
-from ray.tune.pbt import PopulationBasedTraining
+from ray.tune.schedulers import PopulationBasedTraining
 
 num_classes = 10
 
@@ -157,7 +155,7 @@ class Cifar10Model(Trainable):
 
         # loss, accuracy
         _, accuracy = self.model.evaluate(x_test, y_test, verbose=0)
-        return TrainingResult(timesteps_this_iter=10, mean_accuracy=accuracy)
+        return {"mean_accuracy": accuracy}
 
     def _save(self, checkpoint_dir):
         file_path = checkpoint_dir + "/model"
@@ -180,16 +178,15 @@ if __name__ == "__main__":
         "--smoke-test", action="store_true", help="Finish quickly for testing")
     args, _ = parser.parse_known_args()
 
-    register_trainable("train_cifar10", Cifar10Model)
     train_spec = {
-        "run": "train_cifar10",
+        "run": Cifar10Model,
         "trial_resources": {
             "cpu": 1,
             "gpu": 1
         },
         "stop": {
             "mean_accuracy": 0.80,
-            "timesteps_total": 300,
+            "training_iteration": 30,
         },
         "config": {
             "epochs": 1,
@@ -208,7 +205,7 @@ if __name__ == "__main__":
     ray.init()
 
     pbt = PopulationBasedTraining(
-        time_attr="timesteps_total",
+        time_attr="training_iteration",
         reward_attr="mean_accuracy",
         perturbation_interval=10,
         hyperparam_mutations={

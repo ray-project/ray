@@ -3,15 +3,13 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import numpy as np
 import pickle
 
 import ray
 from ray.rllib.agents import Agent, with_common_config
-from ray.rllib.agents.ppo.ppo_tf_policy import PPOTFPolicyGraph
-from ray.rllib.evaluation.metrics import collect_metrics
-from ray.rllib.utils import FilterManager
-from ray.rllib.optimizers.multi_gpu_optimizer import LocalMultiGPUOptimizer
+from ray.rllib.agents.ppo.ppo_policy_graph import PPOPolicyGraph
+from ray.rllib.utils import FilterManager, merge_dicts
+from ray.rllib.optimizers import SyncSamplesOptimizer, LocalMultiGPUOptimizer
 from ray.tune.trial import Resources
 
 DEFAULT_CONFIG = with_common_config({
@@ -28,7 +26,7 @@ DEFAULT_CONFIG = with_common_config({
     "num_sgd_iter": 30,
     # Stepsize of SGD
     "sgd_stepsize": 5e-5,
-    # Total SGD batch size across all devices for SGD
+    # Total SGD batch size across all devices for SGD (multi-gpu only)
     "sgd_batchsize": 128,
     # Coefficient of the value function loss
     "vf_loss_coeff": 1.0,
@@ -48,6 +46,15 @@ DEFAULT_CONFIG = with_common_config({
     "batch_mode": "complete_episodes",
     # Which observation filter to apply to the observation
     "observation_filter": "MeanStdFilter",
+    # Use the sync samples optimizer instead of the multi-gpu one
+    "simple_optimizer": False,
+    # Override model config
+    "model": {
+        # Whether to use LSTM model
+        "use_lstm": False,
+        # Max seq length for LSTM training.
+        "max_seq_len": 20,
+    },
 })
 
 
@@ -59,7 +66,7 @@ class PPOAgent(Agent):
 
     @classmethod
     def default_resource_request(cls, config):
-        cf = dict(cls._default_config, **config)
+        cf = merge_dicts(cls._default_config, config)
         return Resources(
             cpu=1,
             gpu=cf["num_gpus"],
@@ -68,52 +75,46 @@ class PPOAgent(Agent):
 
     def _init(self):
         self.local_evaluator = self.make_local_evaluator(
-            self.env_creator, PPOTFPolicyGraph)
+            self.env_creator, PPOPolicyGraph)
         self.remote_evaluators = self.make_remote_evaluators(
-            self.env_creator, PPOTFPolicyGraph, self.config["num_workers"],
-            {"num_cpus": self.config["num_cpus_per_worker"],
-             "num_gpus": self.config["num_gpus_per_worker"]})
-        self.optimizer = LocalMultiGPUOptimizer(
-            {"sgd_batch_size": self.config["sgd_batchsize"],
-             "sgd_stepsize": self.config["sgd_stepsize"],
-             "num_sgd_iter": self.config["num_sgd_iter"],
-             "timesteps_per_batch": self.config["timesteps_per_batch"]},
-            self.local_evaluator, self.remote_evaluators)
+            self.env_creator, PPOPolicyGraph, self.config["num_workers"], {
+                "num_cpus": self.config["num_cpus_per_worker"],
+                "num_gpus": self.config["num_gpus_per_worker"]
+            })
+        if self.config["simple_optimizer"]:
+            self.optimizer = SyncSamplesOptimizer(
+                self.local_evaluator, self.remote_evaluators, {
+                    "num_sgd_iter": self.config["num_sgd_iter"],
+                    "timesteps_per_batch": self.config["timesteps_per_batch"]
+                })
+        else:
+            self.optimizer = LocalMultiGPUOptimizer(
+                self.local_evaluator, self.remote_evaluators, {
+                    "sgd_batch_size": self.config["sgd_batchsize"],
+                    "sgd_stepsize": self.config["sgd_stepsize"],
+                    "num_sgd_iter": self.config["num_sgd_iter"],
+                    "num_gpus": self.config["num_gpus"],
+                    "timesteps_per_batch": self.config["timesteps_per_batch"],
+                    "standardize_fields": ["advantages"],
+                })
 
     def _train(self):
-        def postprocess_samples(batch):
-            # Divide by the maximum of value.std() and 1e-4
-            # to guard against the case where all values are equal
-            value = batch["advantages"]
-            standardized = (value - value.mean()) / max(1e-4, value.std())
-            batch.data["advantages"] = standardized
-            batch.shuffle()
-            dummy = np.zeros_like(batch["advantages"])
-            if not self.config["use_gae"]:
-                batch.data["value_targets"] = dummy
-                batch.data["vf_preds"] = dummy
-        extra_fetches = self.optimizer.step(postprocess_fn=postprocess_samples)
-        kl = np.array(extra_fetches["kl"]).mean(axis=1)[-1]
-        total_loss = np.array(extra_fetches["total_loss"]).mean(axis=1)[-1]
-        policy_loss = np.array(extra_fetches["policy_loss"]).mean(axis=1)[-1]
-        vf_loss = np.array(extra_fetches["vf_loss"]).mean(axis=1)[-1]
-        entropy = np.array(extra_fetches["entropy"]).mean(axis=1)[-1]
-
-        newkl = self.local_evaluator.for_policy(lambda pi: pi.update_kl(kl))
-
-        info = {
-            "kl_divergence": kl,
-            "kl_coefficient": newkl,
-            "total_loss": total_loss,
-            "policy_loss": policy_loss,
-            "vf_loss": vf_loss,
-            "entropy": entropy,
-        }
-
-        FilterManager.synchronize(
-            self.local_evaluator.filters, self.remote_evaluators)
-        res = collect_metrics(self.local_evaluator, self.remote_evaluators)
-        res = res._replace(info=info)
+        prev_steps = self.optimizer.num_steps_sampled
+        fetches = self.optimizer.step()
+        if "kl" in fetches:
+            # single-agent
+            self.local_evaluator.for_policy(
+                lambda pi: pi.update_kl(fetches["kl"]))
+        else:
+            # multi-agent
+            self.local_evaluator.foreach_trainable_policy(
+                lambda pi, pi_id: pi.update_kl(fetches[pi_id]["kl"]))
+        FilterManager.synchronize(self.local_evaluator.filters,
+                                  self.remote_evaluators)
+        res = self.optimizer.collect_metrics()
+        res.update(
+            timesteps_this_iter=self.optimizer.num_steps_sampled - prev_steps,
+            info=dict(fetches, **res.get("info", {})))
         return res
 
     def _stop(self):
@@ -126,9 +127,7 @@ class PPOAgent(Agent):
                                        "checkpoint-{}".format(self.iteration))
         agent_state = ray.get(
             [a.save.remote() for a in self.remote_evaluators])
-        extra_data = [
-            self.local_evaluator.save(),
-            agent_state]
+        extra_data = [self.local_evaluator.save(), agent_state]
         pickle.dump(extra_data, open(checkpoint_path + ".extra_data", "wb"))
         return checkpoint_path
 
@@ -137,4 +136,5 @@ class PPOAgent(Agent):
         self.local_evaluator.restore(extra_data[0])
         ray.get([
             a.restore.remote(o)
-                for (a, o) in zip(self.remote_evaluators, extra_data[1])])
+            for (a, o) in zip(self.remote_evaluators, extra_data[1])
+        ])

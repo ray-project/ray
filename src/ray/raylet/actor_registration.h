@@ -14,7 +14,8 @@ namespace raylet {
 ///
 /// Information about an actor registered in the system. This includes the
 /// actor's current node manager location, and if local, information about its
-/// current execution state, used for reconstruction purposes.
+/// current execution state, used for reconstruction purposes, and whether the
+/// actor is currently alive or not.
 class ActorRegistration {
  public:
   /// Create an actor registration.
@@ -74,10 +75,22 @@ class ActorRegistration {
   void ExtendFrontier(const ActorHandleID &handle_id,
                       const ObjectID &execution_dependency);
 
+  /// Return whether the actor is alive or not. This should only be called on
+  /// local actors.
+  ///
+  /// \return True if the local actor is alive and false if it is dead.
+  bool IsAlive() const;
+
+  /// Mark the actor as dead.
+  /// \return Void.
+  void MarkDead();
+
  private:
   /// Information from the global actor table about this actor, including the
   /// node manager location.
   ActorTableDataT actor_table_data_;
+  /// True if the actor is alive and false otherwise.
+  bool alive_;
   /// The object representing the state following the actor's most recently
   /// executed task. The next task to execute on the actor should be marked as
   /// execution-dependent on this object.

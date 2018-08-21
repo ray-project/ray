@@ -6,9 +6,7 @@ import re
 import os
 import os.path as osp
 
-
 CONFIG_DIR = osp.join(osp.dirname(osp.abspath(__file__)), "regression_tests")
-
 
 TEMPLATE = """
 class Test{name}(Regression):

@@ -6,6 +6,7 @@ import copy
 import hashlib
 import inspect
 
+import ray.ray_constants as ray_constants
 import ray.signature
 
 # Default parameters for remote functions.
@@ -37,7 +38,7 @@ def compute_function_id(function):
         pass
     # Compute the function ID.
     function_id = function_id_hash.digest()
-    assert len(function_id) == 20
+    assert len(function_id) == ray_constants.ID_SIZE
     function_id = ray.ObjectID(function_id)
 
     return function_id
@@ -114,7 +115,6 @@ class RemoteFunction(object):
         """An experimental alternate way to submit remote functions."""
         worker = ray.worker.get_global_worker()
         worker.check_connected()
-        ray.worker.check_main_thread()
         kwargs = {} if kwargs is None else kwargs
         args = ray.signature.extend_args(self._function_signature, args,
                                          kwargs)
@@ -125,8 +125,8 @@ class RemoteFunction(object):
         resources = ray.utils.resources_from_resource_arguments(
             self._num_cpus, self._num_gpus, self._resources, num_cpus,
             num_gpus, resources)
-        if worker.mode == ray.worker.PYTHON_MODE:
-            # In PYTHON_MODE, remote calls simply execute the function.
+        if worker.mode == ray.worker.LOCAL_MODE:
+            # In LOCAL_MODE, remote calls simply execute the function.
             # We copy the arguments to prevent the function call from
             # mutating them and to match the usual behavior of
             # immutable remote objects.

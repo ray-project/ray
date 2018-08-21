@@ -77,12 +77,10 @@ class build_ext(_build_ext.build_ext):
 
         # We also need to install pyarrow along with Ray, so make sure that the
         # relevant non-Python pyarrow files get copied.
-        pyarrow_files = [
-            os.path.join("ray/pyarrow_files/pyarrow", filename)
-            for filename in os.listdir("./ray/pyarrow_files/pyarrow")
-            if not os.path.isdir(
-                os.path.join("ray/pyarrow_files/pyarrow", filename))
-        ]
+        pyarrow_files = []
+        for (root, dirs, filenames) in os.walk("./ray/pyarrow_files/pyarrow"):
+            for name in filenames:
+                pyarrow_files.append(os.path.join(root, name))
 
         files_to_include = ray_files + pyarrow_files
 
@@ -125,7 +123,7 @@ class BinaryDistribution(Distribution):
 setup(
     name="ray",
     # The version string is also in __init__.py. TODO(pcm): Fix this.
-    version="0.4.0",
+    version="0.5.0",
     packages=find_packages(),
     cmdclass={"build_ext": build_ext},
     # The BinaryDistribution argument triggers build_ext.
@@ -143,9 +141,14 @@ setup(
         "six >= 1.0.0",
         "flatbuffers"
     ],
-    setup_requires=["cython >= 0.23"],
+    setup_requires=["cython >= 0.27, < 0.28"],
     extras_require=extras,
-    entry_points={"console_scripts": ["ray=ray.scripts.scripts:main"]},
+    entry_points={
+        "console_scripts": [
+            "ray=ray.scripts.scripts:main",
+            "rllib=ray.rllib.scripts:cli [rllib]"
+        ]
+    },
     include_package_data=True,
     zip_safe=False,
     license="Apache 2.0")

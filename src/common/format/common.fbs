@@ -20,6 +20,14 @@ table ResourcePair {
   value: double;
 }
 
+// NOTE: This enum is duplicate with the `Language` enum in `gcs.fbs`,
+// because we cannot include this file in `gcs.fbs` due to cyclic dependency.
+// TODO(raulchen): remove it once we get rid of legacy ray.
+enum TaskLanguage:int {
+  PYTHON = 0,
+  JAVA = 1
+}
+
 table TaskInfo {
   // ID of the driver that created this task.
   driver_id: string;
@@ -52,6 +60,8 @@ table TaskInfo {
   // The required_resources vector indicates the quantities of the different
   // resources required by this task.
   required_resources: [ResourcePair];
+  // The language that this task belongs to
+  language: TaskLanguage;
 }
 
 // Object information data structure.

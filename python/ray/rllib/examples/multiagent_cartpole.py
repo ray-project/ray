@@ -1,7 +1,6 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-
 """Simple example of setting up a multi-agent policy mapping.
 
 Control the number of agents and policies via --num-agents and --num-policies.
@@ -18,19 +17,17 @@ import gym
 import random
 
 import ray
-from ray.rllib.agents.pg.pg import PGAgent
+from ray import tune
 from ray.rllib.agents.pg.pg_policy_graph import PGPolicyGraph
 from ray.rllib.test.test_multi_agent_env import MultiCartpole
-from ray.tune.logger import pretty_print
+from ray.tune import run_experiments
 from ray.tune.registry import register_env
-
 
 parser = argparse.ArgumentParser()
 
 parser.add_argument("--num-agents", type=int, default=4)
 parser.add_argument("--num-policies", type=int, default=2)
 parser.add_argument("--num-iters", type=int, default=20)
-
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -51,20 +48,24 @@ if __name__ == "__main__":
 
     # Setup PG with an ensemble of `num_policies` different policy graphs
     policy_graphs = {
-        "policy_{}".format(i): gen_policy() for i in range(args.num_policies)
+        "policy_{}".format(i): gen_policy()
+        for i in range(args.num_policies)
     }
     policy_ids = list(policy_graphs.keys())
 
-    agent = PGAgent(
-        env="multi_cartpole",
-        config={
-            "multiagent": {
-                "policy_graphs": policy_graphs,
-                "policy_mapping_fn": (
-                    lambda agent_id: random.choice(policy_ids)),
+    run_experiments({
+        "test": {
+            "run": "PG",
+            "env": "multi_cartpole",
+            "stop": {
+                "training_iteration": args.num_iters
             },
-        })
-
-    for i in range(args.num_iters):
-        print("== Iteration", i, "==")
-        print(pretty_print(agent.train()))
+            "config": {
+                "multiagent": {
+                    "policy_graphs": policy_graphs,
+                    "policy_mapping_fn": tune.function(
+                        lambda agent_id: random.choice(policy_ids)),
+                },
+            },
+        }
+    })

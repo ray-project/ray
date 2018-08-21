@@ -1,6 +1,6 @@
 package org.ray.core;
 
-import java.io.Serializable;
+import com.google.common.collect.ImmutableList;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
@@ -29,8 +29,6 @@ import org.ray.spi.PathConfig;
 import org.ray.spi.RemoteFunctionManager;
 import org.ray.util.config.ConfigReader;
 import org.ray.util.exception.TaskExecutionException;
-import org.ray.util.logger.DynamicLog;
-import org.ray.util.logger.DynamicLogManager;
 import org.ray.util.logger.RayLog;
 
 /**
@@ -80,12 +78,11 @@ public abstract class RayRuntime implements RayApi {
         }
       }
       configReader = new ConfigReader(configPath, updateConfigStr);
-
-      String loglevel = configReader.getStringValue("ray.java", "log_level", "debug",
-          "set the log output level(debug, info, warn, error)");
-      DynamicLog.setLogLevel(loglevel);
       RayRuntime.params = new RayParameters(configReader);
-      DynamicLogManager.init(params.max_java_log_file_num, params.max_java_log_file_size);
+
+      RayLog.init(params.log_dir);
+      assert RayLog.core != null;
+
       ins = instantiate(params);
       assert (ins != null);
 
@@ -126,7 +123,13 @@ public abstract class RayRuntime implements RayApi {
 
     functions = new LocalFunctionManager(remoteLoader);
     localSchedulerProxy = new LocalSchedulerProxy(slink);
-    objectStoreProxy = new ObjectStoreProxy(plink);
+
+    if (!params.use_raylet) {
+      objectStoreProxy = new ObjectStoreProxy(plink);
+    } else {
+      objectStoreProxy = new ObjectStoreProxy(plink, slink);
+    }
+    
     worker = new Worker(localSchedulerProxy, functions);
   }
 
@@ -192,7 +195,9 @@ public abstract class RayRuntime implements RayApi {
 
   public <T, TMT> void putRaw(UniqueID taskId, UniqueID objectId, T obj, TMT metadata) {
     RayLog.core.info("Task " + taskId.toString() + " Object " + objectId.toString() + " put");
-    localSchedulerProxy.markTaskPutDependency(taskId, objectId);
+    if (!params.use_raylet) {
+      localSchedulerProxy.markTaskPutDependency(taskId, objectId);
+    }
     objectStoreProxy.put(objectId, obj, metadata);
   }
 
@@ -278,22 +283,32 @@ public abstract class RayRuntime implements RayApi {
     return worker.rpcWithReturnIndices(taskId, funcCls, lambda, returnCount, args);
   }
 
+
   private <T> List<T> doGet(List<UniqueID> objectIds, boolean isMetadata)
       throws TaskExecutionException {
     boolean wasBlocked = false;
     UniqueID taskId = getCurrentTaskId();
+
     try {
       int numObjectIds = objectIds.size();
 
       // Do an initial fetch for remote objects.
-      dividedFetch(objectIds);
+      List<List<UniqueID>> fetchBatches =
+          splitIntoBatches(objectIds, params.worker_fetch_request_size);
+      for (List<UniqueID> batch : fetchBatches) {
+        if (!params.use_raylet) {
+          objectStoreProxy.fetch(batch);
+        } else {
+          localSchedulerProxy.reconstructObjects(batch, true);
+        }
+      }
 
       // Get the objects. We initially try to get the objects immediately.
       List<Pair<T, GetStatus>> ret = objectStoreProxy
           .get(objectIds, params.default_first_check_timeout_ms, isMetadata);
       assert ret.size() == numObjectIds;
 
-      // mapping the object IDs that we haven't gotten yet to their original index in objectIds
+      // Mapping the object IDs that we haven't gotten yet to their original index in objectIds.
       Map<UniqueID, Integer> unreadys = new HashMap<>();
       for (int i = 0; i < numObjectIds; i++) {
         if (ret.get(i).getRight() != GetStatus.SUCCESS) {
@@ -305,15 +320,22 @@ public abstract class RayRuntime implements RayApi {
       // Try reconstructing any objects we haven't gotten yet. Try to get them
       // until at least PlasmaLink.GET_TIMEOUT_MS milliseconds passes, then repeat.
       while (unreadys.size() > 0) {
-        for (UniqueID id : unreadys.keySet()) {
-          localSchedulerProxy.reconstructObject(id);
-        }
-
-        // Do another fetch for objects that aren't available locally yet, in case
-        // they were evicted since the last fetch.
         List<UniqueID> unreadyList = new ArrayList<>(unreadys.keySet());
+        List<List<UniqueID>> reconstructBatches =
+            splitIntoBatches(unreadyList, params.worker_fetch_request_size);
 
-        dividedFetch(unreadyList);
+        for (List<UniqueID> batch : reconstructBatches) {
+          if (!params.use_raylet) {
+            for (UniqueID objectId : batch) {
+              localSchedulerProxy.reconstructObject(objectId, false);
+            }
+            // Do another fetch for objects that aren't available locally yet, in case
+            // they were evicted since the last fetch.
+            objectStoreProxy.fetch(batch);
+          } else {
+            localSchedulerProxy.reconstructObjects(batch, false);
+          }
+        }
 
         List<Pair<T, GetStatus>> results = objectStoreProxy
             .get(unreadyList, params.default_get_check_interval_ms, isMetadata);
@@ -333,9 +355,11 @@ public abstract class RayRuntime implements RayApi {
       RayLog.core
           .debug("Task " + taskId + " Objects " + Arrays.toString(objectIds.toArray()) + " get");
       List<T> finalRet = new ArrayList<>();
+
       for (Pair<T, GetStatus> value : ret) {
         finalRet.add(value.getLeft());
       }
+
       return finalRet;
     } catch (TaskExecutionException e) {
       RayLog.core.error("Task " + taskId + " Objects " + Arrays.toString(objectIds.toArray())
@@ -348,68 +372,30 @@ public abstract class RayRuntime implements RayApi {
         localSchedulerProxy.notifyUnblocked();
       }
     }
-
   }
 
   private <T> T doGet(UniqueID objectId, boolean isMetadata) throws TaskExecutionException {
+    ImmutableList<UniqueID> objectIds = ImmutableList.of(objectId);
+    List<T> results = doGet(objectIds, isMetadata);
 
-    boolean wasBlocked = false;
-    UniqueID taskId = getCurrentTaskId();
-    try {
-      // Do an initial fetch.
-      objectStoreProxy.fetch(objectId);
-
-      // Get the object. We initially try to get the object immediately.
-      Pair<T, GetStatus> ret = objectStoreProxy
-          .get(objectId, params.default_first_check_timeout_ms, isMetadata);
-
-      wasBlocked = (ret.getRight() != GetStatus.SUCCESS);
-
-      // Try reconstructing the object. Try to get it until at least PlasmaLink.GET_TIMEOUT_MS
-      // milliseconds passes, then repeat.
-      while (ret.getRight() != GetStatus.SUCCESS) {
-        RayLog.core.warn(
-            "Task " + taskId + " Object " + objectId.toString() + " get failed, reconstruct ...");
-        localSchedulerProxy.reconstructObject(objectId);
-
-        // Do another fetch
-        objectStoreProxy.fetch(objectId);
-
-        ret = objectStoreProxy.get(objectId, params.default_get_check_interval_ms,
-            isMetadata);//check the result every 5s, but it will return once available
-      }
-      RayLog.core.debug(
-          "Task " + taskId + " Object " + objectId.toString() + " get" + ", the result " + ret
-              .getLeft());
-      return ret.getLeft();
-    } catch (TaskExecutionException e) {
-      RayLog.core
-          .error("Task " + taskId + " Object " + objectId.toString() + " get with Exception", e);
-      throw e;
-    } finally {
-      // If the object was not able to get locally, let the local scheduler
-      // know that we're now unblocked.
-      if (wasBlocked) {
-        localSchedulerProxy.notifyUnblocked();
-      }
-    }
-
+    assert results.size() == 1;
+    return results.get(0);
   }
 
-  // We divide the fetch into smaller fetches so as to not block the manager
-  // for a prolonged period of time in a single call.
-  private void dividedFetch(List<UniqueID> objectIds) {
-    int fetchSize = objectStoreProxy.getFetchSize();
+  private List<List<UniqueID>> splitIntoBatches(List<UniqueID> objectIds, int batchSize) {
+    List<List<UniqueID>> batches = new ArrayList<>();
+    int objectsSize = objectIds.size();
 
-    int numObjectIds = objectIds.size();
-    for (int i = 0; i < numObjectIds; i += fetchSize) {
-      int endIndex = i + fetchSize;
-      if (endIndex < numObjectIds) {
-        objectStoreProxy.fetch(objectIds.subList(i, endIndex));
-      } else {
-        objectStoreProxy.fetch(objectIds.subList(i, numObjectIds));
-      }
+    for (int i = 0; i < objectsSize; i += batchSize) {
+      int endIndex = i + batchSize;
+      List<UniqueID> batchIds = (endIndex < objectsSize)
+          ? objectIds.subList(i, endIndex)
+          : objectIds.subList(i, objectsSize);
+
+      batches.add(batchIds);
     }
+
+    return batches;
   }
 
   /**

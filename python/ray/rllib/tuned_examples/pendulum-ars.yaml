@@ -10,5 +10,5 @@ pendulum-ars:
         stepsize: 0.01
         noise_size: 250000000
         fcnet_hiddens: [32,32]
-        policy_type: Linear
+        policy_type: LinearPolicy
         eval_prob: 0.2

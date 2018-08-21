@@ -6,6 +6,7 @@ import collections
 import random
 import numpy as np
 import os
+import pytest
 import sys
 import time
 import unittest
@@ -17,7 +18,7 @@ import ray.test.test_utils
 
 class ActorAPI(unittest.TestCase):
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
 
     def testKeywordArgs(self):
         ray.init(num_workers=0, driver_mode=ray.SILENT_MODE)
@@ -33,46 +34,40 @@ class ActorAPI(unittest.TestCase):
                 return self.arg0 + arg0, self.arg1 + arg1, self.arg2 + arg2
 
         actor = Actor.remote(0)
-        self.assertEqual(ray.get(actor.get_values.remote(1)), (1, 3, "ab"))
+        assert ray.get(actor.get_values.remote(1)) == (1, 3, "ab")
 
         actor = Actor.remote(1, 2)
-        self.assertEqual(ray.get(actor.get_values.remote(2, 3)), (3, 5, "ab"))
+        assert ray.get(actor.get_values.remote(2, 3)) == (3, 5, "ab")
 
         actor = Actor.remote(1, 2, "c")
-        self.assertEqual(
-            ray.get(actor.get_values.remote(2, 3, "d")), (3, 5, "cd"))
+        assert ray.get(actor.get_values.remote(2, 3, "d")) == (3, 5, "cd")
 
         actor = Actor.remote(1, arg2="c")
-        self.assertEqual(
-            ray.get(actor.get_values.remote(0, arg2="d")), (1, 3, "cd"))
-        self.assertEqual(
-            ray.get(actor.get_values.remote(0, arg2="d", arg1=0)),
-            (1, 1, "cd"))
+        assert ray.get(actor.get_values.remote(0, arg2="d")) == (1, 3, "cd")
+        assert ray.get(actor.get_values.remote(0, arg2="d", arg1=0)) == (1, 1,
+                                                                         "cd")
 
         actor = Actor.remote(1, arg2="c", arg1=2)
-        self.assertEqual(
-            ray.get(actor.get_values.remote(0, arg2="d")), (1, 4, "cd"))
-        self.assertEqual(
-            ray.get(actor.get_values.remote(0, arg2="d", arg1=0)),
-            (1, 2, "cd"))
-        self.assertEqual(
-            ray.get(actor.get_values.remote(arg2="d", arg1=0, arg0=2)),
-            (3, 2, "cd"))
+        assert ray.get(actor.get_values.remote(0, arg2="d")) == (1, 4, "cd")
+        assert ray.get(actor.get_values.remote(0, arg2="d", arg1=0)) == (1, 2,
+                                                                         "cd")
+        assert ray.get(actor.get_values.remote(arg2="d", arg1=0,
+                                               arg0=2)) == (3, 2, "cd")
 
         # Make sure we get an exception if the constructor is called
         # incorrectly.
-        with self.assertRaises(Exception):
+        with pytest.raises(Exception):
             actor = Actor.remote()
 
-        with self.assertRaises(Exception):
+        with pytest.raises(Exception):
             actor = Actor.remote(0, 1, 2, arg3=3)
 
-        with self.assertRaises(Exception):
+        with pytest.raises(Exception):
             actor = Actor.remote(0, arg0=1)
 
         # Make sure we get an exception if the method is called incorrectly.
         actor = Actor.remote(1)
-        with self.assertRaises(Exception):
+        with pytest.raises(Exception):
             ray.get(actor.get_values.remote())
 
     def testVariableNumberOfArgs(self):
@@ -89,21 +84,18 @@ class ActorAPI(unittest.TestCase):
                 return self.arg0 + arg0, self.arg1 + arg1, self.args, args
 
         actor = Actor.remote(0)
-        self.assertEqual(ray.get(actor.get_values.remote(1)), (1, 3, (), ()))
+        assert ray.get(actor.get_values.remote(1)) == (1, 3, (), ())
 
         actor = Actor.remote(1, 2)
-        self.assertEqual(
-            ray.get(actor.get_values.remote(2, 3)), (3, 5, (), ()))
+        assert ray.get(actor.get_values.remote(2, 3)) == (3, 5, (), ())
 
         actor = Actor.remote(1, 2, "c")
-        self.assertEqual(
-            ray.get(actor.get_values.remote(2, 3, "d")), (3, 5, ("c", ),
-                                                          ("d", )))
+        assert ray.get(actor.get_values.remote(2, 3, "d")) == (3, 5, ("c", ),
+                                                               ("d", ))
 
         actor = Actor.remote(1, 2, "a", "b", "c", "d")
-        self.assertEqual(
-            ray.get(actor.get_values.remote(2, 3, 1, 2, 3, 4)),
-            (3, 5, ("a", "b", "c", "d"), (1, 2, 3, 4)))
+        assert ray.get(actor.get_values.remote(
+            2, 3, 1, 2, 3, 4)) == (3, 5, ("a", "b", "c", "d"), (1, 2, 3, 4))
 
         @ray.remote
         class Actor(object):
@@ -114,11 +106,11 @@ class ActorAPI(unittest.TestCase):
                 return self.args, args
 
         a = Actor.remote()
-        self.assertEqual(ray.get(a.get_values.remote()), ((), ()))
+        assert ray.get(a.get_values.remote()) == ((), ())
         a = Actor.remote(1)
-        self.assertEqual(ray.get(a.get_values.remote(2)), ((1, ), (2, )))
+        assert ray.get(a.get_values.remote(2)) == ((1, ), (2, ))
         a = Actor.remote(1, 2)
-        self.assertEqual(ray.get(a.get_values.remote(3, 4)), ((1, 2), (3, 4)))
+        assert ray.get(a.get_values.remote(3, 4)) == ((1, 2), (3, 4))
 
     def testNoArgs(self):
         ray.init(num_workers=0)
@@ -132,7 +124,7 @@ class ActorAPI(unittest.TestCase):
                 pass
 
         actor = Actor.remote()
-        self.assertEqual(ray.get(actor.get_values.remote()), None)
+        assert ray.get(actor.get_values.remote()) is None
 
     def testNoConstructor(self):
         # If no __init__ method is provided, that should not be a problem.
@@ -144,7 +136,7 @@ class ActorAPI(unittest.TestCase):
                 pass
 
         actor = Actor.remote()
-        self.assertEqual(ray.get(actor.get_values.remote()), None)
+        assert ray.get(actor.get_values.remote()) is None
 
     def testCustomClasses(self):
         ray.init(num_workers=0)
@@ -167,12 +159,12 @@ class ActorAPI(unittest.TestCase):
 
         actor = Actor.remote(Foo(2))
         results1 = ray.get(actor.get_values1.remote())
-        self.assertEqual(results1[0].x, 1)
-        self.assertEqual(results1[1].x, 2)
+        assert results1[0].x == 1
+        assert results1[1].x == 2
         results2 = ray.get(actor.get_values2.remote(Foo(3)))
-        self.assertEqual(results2[0].x, 1)
-        self.assertEqual(results2[1].x, 2)
-        self.assertEqual(results2[2].x, 3)
+        assert results2[0].x == 1
+        assert results2[1].x == 2
+        assert results2[2].x == 3
 
     def testCachingActors(self):
         # Test defining actors before ray.init() has been called.
@@ -187,20 +179,20 @@ class ActorAPI(unittest.TestCase):
 
         # Check that we can't actually create actors before ray.init() has been
         # called.
-        with self.assertRaises(Exception):
+        with pytest.raises(Exception):
             f = Foo.remote()
 
         ray.init(num_workers=0)
 
         f = Foo.remote()
 
-        self.assertEqual(ray.get(f.get_val.remote()), 3)
+        assert ray.get(f.get_val.remote()) == 3
 
     def testDecoratorArgs(self):
         ray.init(num_workers=0, driver_mode=ray.SILENT_MODE)
 
         # This is an invalid way of using the actor decorator.
-        with self.assertRaises(Exception):
+        with pytest.raises(Exception):
 
             @ray.remote()
             class Actor(object):
@@ -208,7 +200,7 @@ class ActorAPI(unittest.TestCase):
                     pass
 
         # This is an invalid way of using the actor decorator.
-        with self.assertRaises(Exception):
+        with pytest.raises(Exception):
 
             @ray.remote(invalid_kwarg=0)  # noqa: F811
             class Actor(object):
@@ -216,7 +208,7 @@ class ActorAPI(unittest.TestCase):
                     pass
 
         # This is an invalid way of using the actor decorator.
-        with self.assertRaises(Exception):
+        with pytest.raises(Exception):
 
             @ray.remote(num_cpus=0, invalid_kwarg=0)  # noqa: F811
             class Actor(object):
@@ -258,7 +250,7 @@ class ActorAPI(unittest.TestCase):
         random.seed(1234)
         f2 = Foo.remote()
 
-        self.assertNotEqual(f1._ray_actor_id.id(), f2._ray_actor_id.id())
+        assert f1._ray_actor_id.id() != f2._ray_actor_id.id()
 
     def testActorClassName(self):
         ray.init(num_workers=0)
@@ -272,10 +264,10 @@ class ActorAPI(unittest.TestCase):
 
         r = ray.worker.global_worker.redis_client
         actor_keys = r.keys("ActorClass*")
-        self.assertEqual(len(actor_keys), 1)
+        assert len(actor_keys) == 1
         actor_class_info = r.hgetall(actor_keys[0])
-        self.assertEqual(actor_class_info[b"class_name"], b"Foo")
-        self.assertEqual(actor_class_info[b"module"], b"__main__")
+        assert actor_class_info[b"class_name"] == b"Foo"
+        assert actor_class_info[b"module"] == b"actor_test"
 
     def testMultipleReturnValues(self):
         ray.init(num_workers=0)
@@ -300,21 +292,21 @@ class ActorAPI(unittest.TestCase):
         f = Foo.remote()
 
         id0 = f.method0.remote()
-        self.assertEqual(ray.get(id0), 1)
+        assert ray.get(id0) == 1
 
         id1 = f.method1.remote()
-        self.assertEqual(ray.get(id1), 1)
+        assert ray.get(id1) == 1
 
         id2a, id2b = f.method2.remote()
-        self.assertEqual(ray.get([id2a, id2b]), [1, 2])
+        assert ray.get([id2a, id2b]) == [1, 2]
 
         id3a, id3b, id3c = f.method3.remote()
-        self.assertEqual(ray.get([id3a, id3b, id3c]), [1, 2, 3])
+        assert ray.get([id3a, id3b, id3c]) == [1, 2, 3]
 
 
 class ActorMethods(unittest.TestCase):
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
 
     def testDefineActor(self):
         ray.init()
@@ -328,10 +320,10 @@ class ActorMethods(unittest.TestCase):
                 return self.x + y
 
         t = Test.remote(2)
-        self.assertEqual(ray.get(t.f.remote(1)), 3)
+        assert ray.get(t.f.remote(1)) == 3
 
         # Make sure that calling an actor method directly raises an exception.
-        with self.assertRaises(Exception):
+        with pytest.raises(Exception):
             t.f(1)
 
     def testActorDeletion(self):
@@ -364,7 +356,7 @@ class ActorMethods(unittest.TestCase):
         # Make sure that if we create an actor and call a method on it
         # immediately, the actor doesn't get killed before the method is
         # called.
-        self.assertEqual(ray.get(Actor.remote().method.remote()), 1)
+        assert ray.get(Actor.remote().method.remote()) == 1
 
     def testActorDeletionWithGPUs(self):
         ray.init(num_workers=0, num_gpus=1)
@@ -399,12 +391,12 @@ class ActorMethods(unittest.TestCase):
 
         c1 = Counter.remote()
         c1.increase.remote()
-        self.assertEqual(ray.get(c1.value.remote()), 1)
+        assert ray.get(c1.value.remote()) == 1
 
         c2 = Counter.remote()
         c2.increase.remote()
         c2.increase.remote()
-        self.assertEqual(ray.get(c2.value.remote()), 2)
+        assert ray.get(c2.value.remote()) == 2
 
     def testActorClassMethods(self):
         ray.init()
@@ -428,9 +420,9 @@ class ActorMethods(unittest.TestCase):
                 return value
 
         a = Foo.as_remote().remote()
-        self.assertEqual(ray.get(a.echo.remote(2)), 2)
-        self.assertEqual(ray.get(a.f.remote()), 2)
-        self.assertEqual(ray.get(a.g.remote(2)), 4)
+        assert ray.get(a.echo.remote(2)) == 2
+        assert ray.get(a.f.remote()) == 2
+        assert ray.get(a.g.remote(2)) == 4
 
     def testMultipleActors(self):
         # Create a bunch of actors and call a bunch of methods on all of them.
@@ -460,9 +452,8 @@ class ActorMethods(unittest.TestCase):
             ]
         result_values = ray.get(results)
         for i in range(num_actors):
-            self.assertEqual(
-                result_values[(num_increases * i):(num_increases * (i + 1))],
-                list(range(i + 1, num_increases + i + 1)))
+            v = result_values[(num_increases * i):(num_increases * (i + 1))]
+            assert v == list(range(i + 1, num_increases + i + 1))
 
         # Reset the actor values.
         [actor.reset.remote() for actor in actors]
@@ -473,18 +464,17 @@ class ActorMethods(unittest.TestCase):
             results += [actor.increase.remote() for actor in actors]
         result_values = ray.get(results)
         for j in range(num_increases):
-            self.assertEqual(
-                result_values[(num_actors * j):(num_actors * (j + 1))],
-                num_actors * [j + 1])
+            v = result_values[(num_actors * j):(num_actors * (j + 1))]
+            assert v == num_actors * [j + 1]
 
 
 class ActorNesting(unittest.TestCase):
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
 
     def testRemoteFunctionWithinActor(self):
         # Make sure we can use remote funtions within actors.
-        ray.init(num_cpus=100)
+        ray.init(num_cpus=10)
 
         # Create some values to close over.
         val1 = 1
@@ -520,16 +510,15 @@ class ActorNesting(unittest.TestCase):
 
         actor = Actor.remote(1)
         values = ray.get(actor.get_values.remote())
-        self.assertEqual(values[0], 1)
-        self.assertEqual(values[1], val2)
-        self.assertEqual(ray.get(values[2]), list(range(1, 6)))
-        self.assertEqual(values[3], list(range(1, 6)))
+        assert values[0] == 1
+        assert values[1] == val2
+        assert ray.get(values[2]) == list(range(1, 6))
+        assert values[3] == list(range(1, 6))
 
-        self.assertEqual(ray.get(ray.get(actor.f.remote())), list(range(1, 6)))
-        self.assertEqual(ray.get(actor.g.remote()), list(range(1, 6)))
-        self.assertEqual(
-            ray.get(actor.h.remote([f.remote(i) for i in range(5)])),
-            list(range(1, 6)))
+        assert ray.get(ray.get(actor.f.remote())) == list(range(1, 6))
+        assert ray.get(actor.g.remote()) == list(range(1, 6))
+        assert ray.get(actor.h.remote(
+            [f.remote(i) for i in range(5)])) == list(range(1, 6))
 
     def testDefineActorWithinActor(self):
         # Make sure we can use remote funtions within actors.
@@ -556,7 +545,7 @@ class ActorNesting(unittest.TestCase):
                 return self.x, ray.get(self.actor2.get_value.remote())
 
         actor1 = Actor1.remote(3)
-        self.assertEqual(ray.get(actor1.get_values.remote(5)), (3, 5))
+        assert ray.get(actor1.get_values.remote(5)) == (3, 5)
 
     def testUseActorWithinActor(self):
         # Make sure we can use actors within actors.
@@ -580,7 +569,7 @@ class ActorNesting(unittest.TestCase):
                 return self.x, ray.get(self.actor1.get_val.remote())
 
         actor2 = Actor2.remote(3, 4)
-        self.assertEqual(ray.get(actor2.get_values.remote(5)), (3, 4))
+        assert ray.get(actor2.get_values.remote(5)) == (3, 4)
 
     def testDefineActorWithinRemoteFunction(self):
         # Make sure we can define and actors within remote funtions.
@@ -599,10 +588,9 @@ class ActorNesting(unittest.TestCase):
             actor = Actor1.remote(x)
             return ray.get([actor.get_value.remote() for _ in range(n)])
 
-        self.assertEqual(ray.get(f.remote(3, 1)), [3])
-        self.assertEqual(
-            ray.get([f.remote(i, 20) for i in range(10)]),
-            [20 * [i] for i in range(10)])
+        assert ray.get(f.remote(3, 1)) == [3]
+        assert ray.get([f.remote(i, 20)
+                        for i in range(10)]) == [20 * [i] for i in range(10)]
 
     def testUseActorWithinRemoteFunction(self):
         # Make sure we can create and use actors within remote funtions.
@@ -621,7 +609,7 @@ class ActorNesting(unittest.TestCase):
             actor = Actor1.remote(x)
             return ray.get(actor.get_values.remote())
 
-        self.assertEqual(ray.get(f.remote(3)), 3)
+        assert ray.get(f.remote(3)) == 3
 
     def testActorImportCounter(self):
         # This is mostly a test of the export counters to make sure that when
@@ -651,12 +639,12 @@ class ActorNesting(unittest.TestCase):
             actor = Actor.remote()
             return ray.get(actor.get_val.remote())
 
-        self.assertEqual(ray.get(g.remote()), num_remote_functions - 1)
+        assert ray.get(g.remote()) == num_remote_functions - 1
 
 
 class ActorInheritance(unittest.TestCase):
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
 
     def testInheritActorFromClass(self):
         # Make sure we can define an actor by inheriting from a regular class.
@@ -682,13 +670,13 @@ class ActorInheritance(unittest.TestCase):
                 return self.f()
 
         actor = Actor.remote(1)
-        self.assertEqual(ray.get(actor.get_value.remote()), 1)
-        self.assertEqual(ray.get(actor.g.remote(5)), 6)
+        assert ray.get(actor.get_value.remote()) == 1
+        assert ray.get(actor.g.remote(5)) == 6
 
 
 class ActorSchedulingProperties(unittest.TestCase):
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
 
     def testRemoteFunctionsNotScheduledOnActors(self):
         # Make sure that regular remote functions are not scheduled on actors.
@@ -710,12 +698,12 @@ class ActorSchedulingProperties(unittest.TestCase):
             return ray.worker.global_worker.worker_id
 
         resulting_ids = ray.get([f.remote() for _ in range(100)])
-        self.assertNotIn(actor_id, resulting_ids)
+        assert actor_id not in resulting_ids
 
 
 class ActorsOnMultipleNodes(unittest.TestCase):
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
 
     def testActorsOnNodesWithNoCPUs(self):
         ray.init(num_cpus=0)
@@ -727,7 +715,7 @@ class ActorsOnMultipleNodes(unittest.TestCase):
 
         f = Foo.remote()
         ready_ids, _ = ray.wait([f.method.remote()], timeout=100)
-        self.assertEquals(ready_ids, [])
+        assert ready_ids == []
 
     def testActorLoadBalancing(self):
         num_local_schedulers = 3
@@ -762,7 +750,7 @@ class ActorsOnMultipleNodes(unittest.TestCase):
                     and all(count >= minimum_count for count in counts)):
                 break
             attempts += 1
-        self.assertLess(attempts, num_attempts)
+        assert attempts < num_attempts
 
         # Make sure we can get the results of a bunch of tasks.
         results = []
@@ -774,7 +762,7 @@ class ActorsOnMultipleNodes(unittest.TestCase):
 
 class ActorsWithGPUs(unittest.TestCase):
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
 
     @unittest.skipIf(
         os.environ.get('RAY_USE_NEW_GCS', False), "Crashing with new GCS API.")
@@ -811,19 +799,18 @@ class ActorsWithGPUs(unittest.TestCase):
         locations_and_ids = ray.get(
             [actor.get_location_and_ids.remote() for actor in actors])
         node_names = {location for location, gpu_id in locations_and_ids}
-        self.assertEqual(len(node_names), num_local_schedulers)
+        assert len(node_names) == num_local_schedulers
         location_actor_combinations = []
         for node_name in node_names:
             for gpu_id in range(num_gpus_per_scheduler):
                 location_actor_combinations.append((node_name, (gpu_id, )))
-        self.assertEqual(
-            set(locations_and_ids), set(location_actor_combinations))
+        assert set(locations_and_ids) == set(location_actor_combinations)
 
         # Creating a new actor should fail because all of the GPUs are being
         # used.
         a = Actor1.remote()
         ready_ids, _ = ray.wait([a.get_location_and_ids.remote()], timeout=10)
-        self.assertEqual(ready_ids, [])
+        assert ready_ids == []
 
     @unittest.skipIf(
         os.environ.get("RAY_USE_XRAY") == "1",
@@ -855,20 +842,20 @@ class ActorsWithGPUs(unittest.TestCase):
         locations_and_ids = ray.get(
             [actor.get_location_and_ids.remote() for actor in actors1])
         node_names = {location for location, gpu_id in locations_and_ids}
-        self.assertEqual(len(node_names), num_local_schedulers)
+        assert len(node_names) == num_local_schedulers
 
         # Keep track of which GPU IDs are being used for each location.
         gpus_in_use = {node_name: [] for node_name in node_names}
         for location, gpu_ids in locations_and_ids:
             gpus_in_use[location].extend(gpu_ids)
         for node_name in node_names:
-            self.assertEqual(len(set(gpus_in_use[node_name])), 4)
+            assert len(set(gpus_in_use[node_name])) == 4
 
         # Creating a new actor should fail because all of the GPUs are being
         # used.
         a = Actor1.remote()
         ready_ids, _ = ray.wait([a.get_location_and_ids.remote()], timeout=10)
-        self.assertEqual(ready_ids, [])
+        assert ready_ids == []
 
         # We should be able to create more actors that use only a single GPU.
         @ray.remote(num_gpus=1)
@@ -886,20 +873,19 @@ class ActorsWithGPUs(unittest.TestCase):
         # Make sure that no two actors are assigned to the same GPU.
         locations_and_ids = ray.get(
             [actor.get_location_and_ids.remote() for actor in actors2])
-        self.assertEqual(node_names,
-                         {location
-                          for location, gpu_id in locations_and_ids})
+        names = {location for location, gpu_id in locations_and_ids}
+        assert node_names == names
         for location, gpu_ids in locations_and_ids:
             gpus_in_use[location].extend(gpu_ids)
         for node_name in node_names:
-            self.assertEqual(len(gpus_in_use[node_name]), 5)
-            self.assertEqual(set(gpus_in_use[node_name]), set(range(5)))
+            assert len(gpus_in_use[node_name]) == 5
+            assert set(gpus_in_use[node_name]) == set(range(5))
 
         # Creating a new actor should fail because all of the GPUs are being
         # used.
         a = Actor2.remote()
         ready_ids, _ = ray.wait([a.get_location_and_ids.remote()], timeout=10)
-        self.assertEqual(ready_ids, [])
+        assert ready_ids == []
 
     @unittest.skipIf(
         os.environ.get("RAY_USE_XRAY") == "1",
@@ -930,22 +916,21 @@ class ActorsWithGPUs(unittest.TestCase):
         locations_and_ids = ray.get(
             [actor.get_location_and_ids.remote() for actor in actors])
         node_names = {location for location, gpu_id in locations_and_ids}
-        self.assertEqual(len(node_names), 2)
+        assert len(node_names) == 2
         for node_name in node_names:
             node_gpu_ids = [
                 gpu_id for location, gpu_id in locations_and_ids
                 if location == node_name
             ]
-            self.assertIn(len(node_gpu_ids), [5, 10])
-            self.assertEqual(
-                set(node_gpu_ids), {(i, )
-                                    for i in range(len(node_gpu_ids))})
+            assert len(node_gpu_ids) in [5, 10]
+            assert set(node_gpu_ids) == {(i, )
+                                         for i in range(len(node_gpu_ids))}
 
         # Creating a new actor should fail because all of the GPUs are being
         # used.
         a = Actor1.remote()
         ready_ids, _ = ray.wait([a.get_location_and_ids.remote()], timeout=10)
-        self.assertEqual(ready_ids, [])
+        assert ready_ids == []
 
     @unittest.skipIf(
         os.environ.get("RAY_USE_XRAY") == "1",
@@ -994,7 +979,7 @@ class ActorsWithGPUs(unittest.TestCase):
         # All the GPUs should be used up now.
         a = Actor.remote()
         ready_ids, _ = ray.wait([a.get_location_and_ids.remote()], timeout=10)
-        self.assertEqual(ready_ids, [])
+        assert ready_ids == []
 
     @unittest.skipIf(sys.version_info < (3, 0), "This test requires Python 3.")
     @unittest.skipIf(
@@ -1017,8 +1002,8 @@ class ActorsWithGPUs(unittest.TestCase):
                     second_interval = list_of_intervals[j]
                     # Check that list_of_intervals[i] and list_of_intervals[j]
                     # don't overlap.
-                    self.assertLess(first_interval[0], first_interval[1])
-                    self.assertLess(second_interval[0], second_interval[1])
+                    assert first_interval[0] < first_interval[1]
+                    assert second_interval[0] < second_interval[1]
                     intervals_nonoverlapping = (
                         first_interval[1] <= second_interval[0]
                         or second_interval[1] <= first_interval[0])
@@ -1084,9 +1069,8 @@ class ActorsWithGPUs(unittest.TestCase):
         # Run a bunch of GPU tasks.
         locations_to_intervals = locations_to_intervals_for_many_tasks()
         # Make sure that all GPUs were used.
-        self.assertEqual(
-            len(locations_to_intervals),
-            num_local_schedulers * num_gpus_per_scheduler)
+        assert (len(locations_to_intervals) == num_local_schedulers *
+                num_gpus_per_scheduler)
         # For each GPU, verify that the set of tasks that used this specific
         # GPU did not overlap in time.
         for locations in locations_to_intervals:
@@ -1098,20 +1082,19 @@ class ActorsWithGPUs(unittest.TestCase):
         actor_location = (actor_location[0], actor_location[1][0])
         # This check makes sure that actor_location is formatted the same way
         # that the keys of locations_to_intervals are formatted.
-        self.assertIn(actor_location, locations_to_intervals)
+        assert actor_location in locations_to_intervals
 
         # Run a bunch of GPU tasks.
         locations_to_intervals = locations_to_intervals_for_many_tasks()
         # Make sure that all but one of the GPUs were used.
-        self.assertEqual(
-            len(locations_to_intervals),
-            num_local_schedulers * num_gpus_per_scheduler - 1)
+        assert (len(locations_to_intervals) ==
+                num_local_schedulers * num_gpus_per_scheduler - 1)
         # For each GPU, verify that the set of tasks that used this specific
         # GPU did not overlap in time.
         for locations in locations_to_intervals:
             check_intervals_non_overlapping(locations_to_intervals[locations])
         # Make sure that the actor's GPU was not used.
-        self.assertNotIn(actor_location, locations_to_intervals)
+        assert actor_location not in locations_to_intervals
 
         # Create several more actors that use GPUs.
         actors = [Actor1.remote() for _ in range(3)]
@@ -1121,17 +1104,16 @@ class ActorsWithGPUs(unittest.TestCase):
         # Run a bunch of GPU tasks.
         locations_to_intervals = locations_to_intervals_for_many_tasks()
         # Make sure that all but 11 of the GPUs were used.
-        self.assertEqual(
-            len(locations_to_intervals),
-            num_local_schedulers * num_gpus_per_scheduler - 1 - 3)
+        assert (len(locations_to_intervals) ==
+                num_local_schedulers * num_gpus_per_scheduler - 1 - 3)
         # For each GPU, verify that the set of tasks that used this specific
         # GPU did not overlap in time.
         for locations in locations_to_intervals:
             check_intervals_non_overlapping(locations_to_intervals[locations])
         # Make sure that the GPUs were not used.
-        self.assertNotIn(actor_location, locations_to_intervals)
+        assert actor_location not in locations_to_intervals
         for location in actor_locations:
-            self.assertNotIn(location, locations_to_intervals)
+            assert location not in locations_to_intervals
 
         # Create more actors to fill up all the GPUs.
         more_actors = [
@@ -1145,7 +1127,7 @@ class ActorsWithGPUs(unittest.TestCase):
         # Now if we run some GPU tasks, they should not be scheduled.
         results = [f1.remote() for _ in range(30)]
         ready_ids, remaining_ids = ray.wait(results, timeout=1000)
-        self.assertEqual(len(ready_ids), 0)
+        assert len(ready_ids) == 0
 
     def testActorsAndTasksWithGPUsVersionTwo(self):
         # Create tasks and actors that both use GPUs and make sure that they
@@ -1180,7 +1162,7 @@ class ActorsWithGPUs(unittest.TestCase):
             actors.append(a)
 
         gpu_ids = ray.get(results)
-        self.assertEqual(set(gpu_ids), set(range(10)))
+        assert set(gpu_ids) == set(range(10))
 
     @unittest.skipIf(sys.version_info < (3, 0), "This test requires Python 3.")
     def testActorsAndTaskResourceBookkeeping(self):
@@ -1215,9 +1197,9 @@ class ActorsWithGPUs(unittest.TestCase):
         intervals = ray.get(interval_ids)
         intervals.sort(key=lambda x: x[0])
         for interval1, interval2 in zip(intervals[:-1], intervals[1:]):
-            self.assertLess(interval1[0], interval1[1])
-            self.assertLess(interval1[1], interval2[0])
-            self.assertLess(interval2[0], interval2[1])
+            assert interval1[0] < interval1[1]
+            assert interval1[1] < interval2[0]
+            assert interval2[0] < interval2[1]
 
     def testBlockingActorTask(self):
         ray.init(num_cpus=1, num_gpus=1)
@@ -1252,8 +1234,8 @@ class ActorsWithGPUs(unittest.TestCase):
         actor = CPUFoo.remote()
         x_id = actor.blocking_method.remote()
         ready_ids, remaining_ids = ray.wait([x_id], timeout=1000)
-        self.assertEqual(ready_ids, [])
-        self.assertEqual(remaining_ids, [x_id])
+        assert ready_ids == []
+        assert remaining_ids == [x_id]
 
         @ray.remote(num_gpus=1)
         class GPUFoo(object):
@@ -1267,8 +1249,59 @@ class ActorsWithGPUs(unittest.TestCase):
         actor = GPUFoo.remote()
         x_id = actor.blocking_method.remote()
         ready_ids, remaining_ids = ray.wait([x_id], timeout=1000)
-        self.assertEqual(ready_ids, [])
-        self.assertEqual(remaining_ids, [x_id])
+        assert ready_ids == []
+        assert remaining_ids == [x_id]
+
+
+@unittest.skipIf(
+    os.environ.get("RAY_USE_XRAY") != "1", "This test only works with xray.")
+class ActorExceptionFailures(unittest.TestCase):
+    def tearDown(self):
+        ray.shutdown()
+
+    def testExceptionRaisedWhenActorNodeDies(self):
+        ray.worker._init(
+            start_ray_local=True, num_local_schedulers=2, num_cpus=1)
+
+        @ray.remote
+        class Counter(object):
+            def __init__(self):
+                self.x = 0
+
+            def local_plasma(self):
+                return ray.worker.global_worker.plasma_client.store_socket_name
+
+            def inc(self):
+                self.x += 1
+                return self.x
+
+        local_plasma = ray.worker.global_worker.plasma_client.store_socket_name
+
+        # Create an actor that is not on the local scheduler.
+        actor = Counter.remote()
+        while ray.get(actor.local_plasma.remote()) == local_plasma:
+            actor = Counter.remote()
+
+        # Kill the second plasma store to get rid of the cached objects and
+        # trigger the corresponding local scheduler to exit.
+        process = ray.services.all_processes[
+            ray.services.PROCESS_TYPE_PLASMA_STORE][1]
+        process.kill()
+
+        # Submit some new actor tasks.
+        x_ids = [actor.inc.remote() for _ in range(100)]
+
+        # Make sure that getting the result raises an exception.
+        for _ in range(10):
+            for x_id in x_ids:
+                with pytest.raises(ray.worker.RayGetError):
+                    # There is some small chance that ray.get will actually
+                    # succeed (if the object is transferred before the raylet
+                    # dies).
+                    ray.get(x_id)
+
+        # Make sure the process has exited.
+        process.wait()
 
 
 @unittest.skipIf(
@@ -1276,7 +1309,7 @@ class ActorsWithGPUs(unittest.TestCase):
     "This test does not work with xray yet.")
 class ActorReconstruction(unittest.TestCase):
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
 
     @unittest.skipIf(
         os.environ.get('RAY_USE_NEW_GCS', False), "Hanging with new GCS API.")
@@ -1321,7 +1354,7 @@ class ActorReconstruction(unittest.TestCase):
         # Get all of the results
         results = ray.get(ids)
 
-        self.assertEqual(results, list(range(1, 1 + len(results))))
+        assert results == list(range(1, 1 + len(results)))
 
     @unittest.skipIf(
         os.environ.get('RAY_USE_NEW_GCS', False), "Hanging with new GCS API.")
@@ -1387,10 +1420,8 @@ class ActorReconstruction(unittest.TestCase):
 
         # Get the results and check that they have the correct values.
         for _, result_id_list in result_ids.items():
-            self.assertEqual(
-                ray.get(result_id_list), list(
-                    range(1,
-                          len(result_id_list) + 1)))
+            results = list(range(1, len(result_id_list) + 1))
+            assert ray.get(result_id_list) == results
 
     def setup_counter_actor(self,
                             test_checkpoint=False,
@@ -1471,16 +1502,16 @@ class ActorReconstruction(unittest.TestCase):
         process.wait()
 
         # Check that the actor restored from a checkpoint.
-        self.assertTrue(ray.get(actor.test_restore.remote()))
+        assert ray.get(actor.test_restore.remote())
         # Check that we can submit another call on the actor and get the
         # correct counter result.
         x = ray.get(actor.inc.remote())
-        self.assertEqual(x, 101)
+        assert x == 101
         # Check that the number of inc calls since actor initialization is less
         # than the counter value, since the actor initialized from a
         # checkpoint.
         num_inc_calls = ray.get(actor.get_num_inc_calls.remote())
-        self.assertLess(num_inc_calls, x)
+        assert num_inc_calls < x
 
     @unittest.skipIf(
         os.environ.get('RAY_USE_NEW_GCS', False), "Hanging with new GCS API.")
@@ -1497,16 +1528,16 @@ class ActorReconstruction(unittest.TestCase):
         process.wait()
 
         # Check that the actor restored from a checkpoint.
-        self.assertTrue(ray.get(actor.test_restore.remote()))
+        assert ray.get(actor.test_restore.remote())
         # Check that the number of inc calls since actor initialization is
         # exactly zero, since there could not have been another inc call since
         # the remote checkpoint.
         num_inc_calls = ray.get(actor.get_num_inc_calls.remote())
-        self.assertEqual(num_inc_calls, 0)
+        assert num_inc_calls == 0
         # Check that we can submit another call on the actor and get the
         # correct counter result.
         x = ray.get(actor.inc.remote())
-        self.assertEqual(x, 101)
+        assert x == 101
 
     @unittest.skipIf(
         os.environ.get('RAY_USE_NEW_GCS', False), "Hanging with new GCS API.")
@@ -1522,17 +1553,17 @@ class ActorReconstruction(unittest.TestCase):
         process.wait()
 
         # Check that the actor restored from a checkpoint.
-        self.assertTrue(ray.get(actor.test_restore.remote()))
+        assert ray.get(actor.test_restore.remote())
         # Check that we can submit another call on the actor and get the
         # correct counter result.
         x = ray.get(actor.inc.remote())
-        self.assertEqual(x, 101)
+        assert x == 101
         # Check that the number of inc calls since actor initialization is less
         # than the counter value, since the actor initialized from a
         # checkpoint.
         num_inc_calls = ray.get(actor.get_num_inc_calls.remote())
-        self.assertLess(num_inc_calls, x)
-        self.assertLess(5, num_inc_calls)
+        assert num_inc_calls < x
+        assert 5 < num_inc_calls
 
     @unittest.skipIf(
         os.environ.get('RAY_USE_NEW_GCS', False), "Hanging with new GCS API.")
@@ -1551,18 +1582,17 @@ class ActorReconstruction(unittest.TestCase):
         # Check that we can submit another call on the actor and get the
         # correct counter result.
         x = ray.get(actor.inc.remote())
-        self.assertEqual(x, 101)
+        assert x == 101
         # Check that the number of inc calls since actor initialization is
         # equal to the counter value, since the actor did not initialize from a
         # checkpoint.
         num_inc_calls = ray.get(actor.get_num_inc_calls.remote())
-        self.assertEqual(num_inc_calls, x)
+        assert num_inc_calls == x
         # Check that errors were raised when trying to save the checkpoint.
         errors = ray.error_info()
-        self.assertLess(0, len(errors))
+        assert 0 < len(errors)
         for error in errors:
-            self.assertEqual(error["type"],
-                             ray_constants.CHECKPOINT_PUSH_ERROR)
+            assert error["type"] == ray_constants.CHECKPOINT_PUSH_ERROR
 
     @unittest.skipIf(
         os.environ.get('RAY_USE_NEW_GCS', False), "Hanging with new GCS API.")
@@ -1581,19 +1611,18 @@ class ActorReconstruction(unittest.TestCase):
         # Check that we can submit another call on the actor and get the
         # correct counter result.
         x = ray.get(actor.inc.remote())
-        self.assertEqual(x, 101)
+        assert x == 101
         # Check that the number of inc calls since actor initialization is
         # equal to the counter value, since the actor did not initialize from a
         # checkpoint.
         num_inc_calls = ray.get(actor.get_num_inc_calls.remote())
-        self.assertEqual(num_inc_calls, x)
+        assert num_inc_calls == x
         # Check that an error was raised when trying to resume from the
         # checkpoint.
         errors = ray.error_info()
-        self.assertEqual(len(errors), 1)
+        assert len(errors) == 1
         for error in errors:
-            self.assertEqual(error["type"],
-                             ray_constants.CHECKPOINT_PUSH_ERROR)
+            assert error["type"] == ray_constants.CHECKPOINT_PUSH_ERROR
 
     @unittest.skip("Fork/join consistency not yet implemented.")
     def testDistributedHandle(self):
@@ -1625,11 +1654,11 @@ class ActorReconstruction(unittest.TestCase):
         process.wait()
 
         # Check that the actor did not restore from a checkpoint.
-        self.assertFalse(ray.get(counter.test_restore.remote()))
+        assert not ray.get(counter.test_restore.remote())
         # Check that we can submit another call on the actor and get the
         # correct counter result.
         x = ray.get(counter.inc.remote())
-        self.assertEqual(x, count + 1)
+        assert x == count + 1
 
     @unittest.skipIf(
         os.environ.get('RAY_USE_NEW_GCS', False), "Hanging with new GCS API.")
@@ -1663,16 +1692,16 @@ class ActorReconstruction(unittest.TestCase):
         process.wait()
 
         # Check that the actor restored from a checkpoint.
-        self.assertTrue(ray.get(counter.test_restore.remote()))
+        assert ray.get(counter.test_restore.remote())
         # Check that the number of inc calls since actor initialization is
         # exactly zero, since there could not have been another inc call since
         # the remote checkpoint.
         num_inc_calls = ray.get(counter.get_num_inc_calls.remote())
-        self.assertEqual(num_inc_calls, 0)
+        assert num_inc_calls == 0
         # Check that we can submit another call on the actor and get the
         # correct counter result.
         x = ray.get(counter.inc.remote())
-        self.assertEqual(x, count + 1)
+        assert x == count + 1
 
     @unittest.skip("Fork/join consistency not yet implemented.")
     def testCheckpointDistributedHandle(self):
@@ -1704,11 +1733,11 @@ class ActorReconstruction(unittest.TestCase):
         process.wait()
 
         # Check that the actor restored from a checkpoint.
-        self.assertTrue(ray.get(counter.test_restore.remote()))
+        assert ray.get(counter.test_restore.remote())
         # Check that we can submit another call on the actor and get the
         # correct counter result.
         x = ray.get(counter.inc.remote())
-        self.assertEqual(x, count + 1)
+        assert x == count + 1
 
     def _testNondeterministicReconstruction(
             self, num_forks, num_items_per_fork, num_forks_to_wait):
@@ -1778,11 +1807,10 @@ class ActorReconstruction(unittest.TestCase):
         ray.get(enqueue_tasks)
         reconstructed_queue = ray.get(actor.read.remote())
         # Make sure the final queue has all items from all forks.
-        self.assertEqual(
-            len(reconstructed_queue), num_forks * num_items_per_fork)
+        assert len(reconstructed_queue) == num_forks * num_items_per_fork
         # Make sure that the prefix of the final queue matches the queue from
         # the initial execution.
-        self.assertEqual(queue, reconstructed_queue[:len(queue)])
+        assert queue == reconstructed_queue[:len(queue)]
 
     @unittest.skipIf(
         os.environ.get('RAY_USE_NEW_GCS', False),
@@ -1799,7 +1827,7 @@ class ActorReconstruction(unittest.TestCase):
 
 class DistributedActorHandles(unittest.TestCase):
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
 
     def setup_queue_actor(self):
         ray.init()
@@ -1833,7 +1861,7 @@ class DistributedActorHandles(unittest.TestCase):
         items = ray.get(queue.read.remote())
         for i in range(num_iters):
             filtered_items = [item[1] for item in items if item[0] == i]
-            self.assertEqual(filtered_items, list(range(1)))
+            assert filtered_items == list(range(1))
 
     @unittest.skipIf(
         os.environ.get("RAY_USE_XRAY") == "1",
@@ -1857,7 +1885,7 @@ class DistributedActorHandles(unittest.TestCase):
         items = ray.get(queue.read.remote())
         for i in range(num_forks):
             filtered_items = [item[1] for item in items if item[0] == i]
-            self.assertEqual(filtered_items, list(range(num_items_per_fork)))
+            assert filtered_items == list(range(num_items_per_fork))
 
     @unittest.skip("Garbage collection for distributed actor handles not "
                    "implemented.")
@@ -1906,7 +1934,7 @@ class DistributedActorHandles(unittest.TestCase):
         assert ray.get(counter.inc.remote()) == 2
         assert ray.get(new_counter.inc.remote()) == 3
 
-        with self.assertRaises(Exception):
+        with pytest.raises(Exception):
             ray.get(f.remote())
 
         # The below test works, but do we want to disallow this usage?
@@ -1944,141 +1972,148 @@ class DistributedActorHandles(unittest.TestCase):
         ray.experimental.register_actor("f1", f1)
         # Test getting f.
         f2 = ray.experimental.get_actor("f1")
-        self.assertEqual(f1._actor_id, f2._actor_id)
+        assert f1._actor_id == f2._actor_id
 
         # Test same name register shall raise error.
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             ray.experimental.register_actor("f1", f2)
 
         # Test register with wrong object type.
-        with self.assertRaises(TypeError):
+        with pytest.raises(TypeError):
             ray.experimental.register_actor("f3", 1)
 
         # Test getting a nonexistent actor.
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             ray.experimental.get_actor("nonexistent")
 
         # Test method
-        self.assertEqual(ray.get(f1.method.remote()), 1)
-        self.assertEqual(ray.get(f2.method.remote()), 2)
-        self.assertEqual(ray.get(f1.method.remote()), 3)
-        self.assertEqual(ray.get(f2.method.remote()), 4)
+        assert ray.get(f1.method.remote()) == 1
+        assert ray.get(f2.method.remote()) == 2
+        assert ray.get(f1.method.remote()) == 3
+        assert ray.get(f2.method.remote()) == 4
 
 
-class ActorPlacementAndResources(unittest.TestCase):
-    def tearDown(self):
-        ray.worker.cleanup()
+@pytest.fixture
+def ray_stop():
+    # The initialization code depends on the test that is run.
+    yield None
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
 
-    @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
-    def testLifetimeAndTransientResources(self):
-        ray.init(num_cpus=1)
 
-        # This actor acquires resources only when running methods.
-        @ray.remote
-        class Actor1(object):
-            def method(self):
-                pass
+@unittest.skipIf(
+    os.environ.get("RAY_USE_XRAY") == "1" or sys.version_info < (3, 0),
+    "This test does not work with xray yet"
+    " and is currently failing on Python 2.7.")
+def testLifetimeAndTransientResources(ray_stop):
+    ray.init(num_cpus=1)
 
-        # This actor acquires resources for its lifetime.
-        @ray.remote(num_cpus=1)
-        class Actor2(object):
-            def method(self):
-                pass
+    # This actor acquires resources only when running methods.
+    @ray.remote
+    class Actor1(object):
+        def method(self):
+            pass
 
-        actor1s = [Actor1.remote() for _ in range(10)]
-        ray.get([a.method.remote() for a in actor1s])
+    # This actor acquires resources for its lifetime.
+    @ray.remote(num_cpus=1)
+    class Actor2(object):
+        def method(self):
+            pass
 
-        actor2s = [Actor2.remote() for _ in range(2)]
-        results = [a.method.remote() for a in actor2s]
-        ready_ids, remaining_ids = ray.wait(
-            results, num_returns=len(results), timeout=1000)
-        self.assertEqual(len(ready_ids), 1)
+    actor1s = [Actor1.remote() for _ in range(10)]
+    ray.get([a.method.remote() for a in actor1s])
 
-    def testCustomLabelPlacement(self):
-        ray.worker._init(
-            start_ray_local=True,
-            num_local_schedulers=2,
-            num_workers=0,
-            resources=[{
-                "CustomResource1": 2
-            }, {
-                "CustomResource2": 2
-            }])
+    actor2s = [Actor2.remote() for _ in range(2)]
+    results = [a.method.remote() for a in actor2s]
+    ready_ids, remaining_ids = ray.wait(
+        results, num_returns=len(results), timeout=1000)
+    assert len(ready_ids) == 1
 
-        @ray.remote(resources={"CustomResource1": 1})
-        class ResourceActor1(object):
-            def get_location(self):
-                return ray.worker.global_worker.plasma_client.store_socket_name
 
-        @ray.remote(resources={"CustomResource2": 1})
-        class ResourceActor2(object):
-            def get_location(self):
-                return ray.worker.global_worker.plasma_client.store_socket_name
+def testCustomLabelPlacement(ray_stop):
+    ray.worker._init(
+        start_ray_local=True,
+        num_local_schedulers=2,
+        num_workers=0,
+        resources=[{
+            "CustomResource1": 2
+        }, {
+            "CustomResource2": 2
+        }])
 
-        local_plasma = ray.worker.global_worker.plasma_client.store_socket_name
+    @ray.remote(resources={"CustomResource1": 1})
+    class ResourceActor1(object):
+        def get_location(self):
+            return ray.worker.global_worker.plasma_client.store_socket_name
 
-        # Create some actors.
-        actors1 = [ResourceActor1.remote() for _ in range(2)]
-        actors2 = [ResourceActor2.remote() for _ in range(2)]
-        locations1 = ray.get([a.get_location.remote() for a in actors1])
-        locations2 = ray.get([a.get_location.remote() for a in actors2])
-        for location in locations1:
-            self.assertEqual(location, local_plasma)
-        for location in locations2:
-            self.assertNotEqual(location, local_plasma)
+    @ray.remote(resources={"CustomResource2": 1})
+    class ResourceActor2(object):
+        def get_location(self):
+            return ray.worker.global_worker.plasma_client.store_socket_name
 
-    def testCreatingMoreActorsThanResources(self):
-        ray.init(
-            num_workers=0,
-            num_cpus=10,
-            num_gpus=2,
-            resources={"CustomResource1": 1})
+    local_plasma = ray.worker.global_worker.plasma_client.store_socket_name
 
-        @ray.remote(num_gpus=1)
-        class ResourceActor1(object):
-            def method(self):
-                return ray.get_gpu_ids()[0]
+    # Create some actors.
+    actors1 = [ResourceActor1.remote() for _ in range(2)]
+    actors2 = [ResourceActor2.remote() for _ in range(2)]
+    locations1 = ray.get([a.get_location.remote() for a in actors1])
+    locations2 = ray.get([a.get_location.remote() for a in actors2])
+    for location in locations1:
+        assert location == local_plasma
+    for location in locations2:
+        assert location != local_plasma
 
-        @ray.remote(resources={"CustomResource1": 1})
-        class ResourceActor2(object):
-            def method(self):
-                pass
 
-        # Make sure the first two actors get created and the third one does
-        # not.
-        actor1 = ResourceActor1.remote()
-        result1 = actor1.method.remote()
-        ray.wait([result1])
-        actor2 = ResourceActor1.remote()
-        result2 = actor2.method.remote()
-        ray.wait([result2])
-        actor3 = ResourceActor1.remote()
-        result3 = actor3.method.remote()
-        ready_ids, _ = ray.wait([result3], timeout=200)
-        self.assertEqual(len(ready_ids), 0)
+def testCreatingMoreActorsThanResources(ray_stop):
+    ray.init(
+        num_workers=0,
+        num_cpus=10,
+        num_gpus=2,
+        resources={"CustomResource1": 1})
 
-        # By deleting actor1, we free up resources to create actor3.
-        del actor1
+    @ray.remote(num_gpus=1)
+    class ResourceActor1(object):
+        def method(self):
+            return ray.get_gpu_ids()[0]
 
-        results = ray.get([result1, result2, result3])
-        self.assertEqual(results[0], results[2])
-        self.assertEqual(set(results), {0, 1})
+    @ray.remote(resources={"CustomResource1": 1})
+    class ResourceActor2(object):
+        def method(self):
+            pass
 
-        # Make sure that when one actor goes out of scope a new actor is
-        # created because some resources have been freed up.
-        results = []
-        for _ in range(3):
-            actor = ResourceActor2.remote()
-            object_id = actor.method.remote()
-            results.append(object_id)
-            # Wait for the task to execute. We do this because otherwise it may
-            # be possible for the __ray_terminate__ task to execute before the
-            # method.
-            ray.wait([object_id])
+    # Make sure the first two actors get created and the third one does
+    # not.
+    actor1 = ResourceActor1.remote()
+    result1 = actor1.method.remote()
+    ray.wait([result1])
+    actor2 = ResourceActor1.remote()
+    result2 = actor2.method.remote()
+    ray.wait([result2])
+    actor3 = ResourceActor1.remote()
+    result3 = actor3.method.remote()
+    ready_ids, _ = ray.wait([result3], timeout=200)
+    assert len(ready_ids) == 0
 
-        ray.get(results)
+    # By deleting actor1, we free up resources to create actor3.
+    del actor1
+
+    results = ray.get([result1, result2, result3])
+    assert results[0] == results[2]
+    assert set(results) == {0, 1}
+
+    # Make sure that when one actor goes out of scope a new actor is
+    # created because some resources have been freed up.
+    results = []
+    for _ in range(3):
+        actor = ResourceActor2.remote()
+        object_id = actor.method.remote()
+        results.append(object_id)
+        # Wait for the task to execute. We do this because otherwise it may
+        # be possible for the __ray_terminate__ task to execute before the
+        # method.
+        ray.wait([object_id])
+
+    ray.get(results)
 
 
 if __name__ == "__main__":

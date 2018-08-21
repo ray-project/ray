@@ -10,8 +10,8 @@ public class Sha1Digestor {
     try {
       return MessageDigest.getInstance("SHA1");
     } catch (Exception e) {
-      RayLog.core.error("cannot get SHA1 MessageDigest", e);
-      throw new RuntimeException("cannot get SHA1 digest", e);
+      RayLog.core.error("Cannot get SHA1 MessageDigest", e);
+      throw new RuntimeException("Cannot get SHA1 digest", e);
     }
   });
 

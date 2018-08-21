@@ -7,7 +7,6 @@ import collections
 import colorama
 import hashlib
 import inspect
-import json
 import numpy as np
 import os
 import redis
@@ -31,33 +30,31 @@ import ray.signature
 import ray.local_scheduler
 import ray.plasma
 import ray.ray_constants as ray_constants
+from ray import import_thread
+from ray import profiling
 from ray.utils import (
     binary_to_hex,
     check_oversized_pickle,
     is_cython,
     random_string,
+    thread_safe_client,
 )
 
 SCRIPT_MODE = 0
 WORKER_MODE = 1
-PYTHON_MODE = 2
+LOCAL_MODE = 2
 SILENT_MODE = 3
-
-LOG_POINT = 0
-LOG_SPAN_START = 1
-LOG_SPAN_END = 2
+PYTHON_MODE = 4
 
 ERROR_KEY_PREFIX = b"Error:"
-DRIVER_ID_LENGTH = 20
-ERROR_ID_LENGTH = 20
 
 # This must match the definition of NIL_ACTOR_ID in task.h.
-NIL_ID = 20 * b"\xff"
+NIL_ID = ray_constants.ID_SIZE * b"\xff"
 NIL_LOCAL_SCHEDULER_ID = NIL_ID
 NIL_FUNCTION_ID = NIL_ID
 NIL_ACTOR_ID = NIL_ID
 NIL_ACTOR_HANDLE_ID = NIL_ID
-NIL_CLIENT_ID = 20 * b"\xff"
+NIL_CLIENT_ID = ray_constants.ID_SIZE * b"\xff"
 
 # This must be kept in sync with the `error_types` array in
 # common/state/error_table.h.
@@ -192,7 +189,7 @@ class Worker(object):
             function itself. This is the set of remote functions that can be
             executed by this worker.
         connected (bool): True if Ray has been started and False otherwise.
-        mode: The mode of the worker. One of SCRIPT_MODE, PYTHON_MODE,
+        mode: The mode of the worker. One of SCRIPT_MODE, LOCAL_MODE,
             SILENT_MODE, and WORKER_MODE.
         cached_remote_functions_and_actors: A list of information for exporting
             remote functions and actor classes definitions that were defined
@@ -202,6 +199,14 @@ class Worker(object):
             that connect has been called already.
         cached_functions_to_run (List): A list of functions to run on all of
             the workers that should be exported as soon as connect is called.
+        profiler: the profiler used to aggregate profiling information.
+        state_lock (Lock):
+            Used to lock worker's non-thread-safe internal states:
+            1) task_index increment: make sure we generate unique task ids;
+            2) Object reconstruction: because the node manager will
+            recycle/return the worker's resources before/after reconstruction,
+            it's unsafe for multiple threads to call object
+            reconstruction simultaneously.
     """
 
     def __init__(self):
@@ -237,6 +242,27 @@ class Worker(object):
         # When the worker is constructed. Record the original value of the
         # CUDA_VISIBLE_DEVICES environment variable.
         self.original_gpu_ids = ray.utils.get_cuda_visible_devices()
+        self.profiler = profiling.Profiler(self)
+        self.state_lock = threading.Lock()
+        # A dictionary that maps from driver id to SerializationContext
+        # TODO: clean up the SerializationContext once the job finished.
+        self.serialization_context_map = {}
+        # Identity of the driver that this worker is processing.
+        self.task_driver_id = None
+
+    def get_serialization_context(self, driver_id):
+        """Get the SerializationContext of the driver that this worker is processing.
+
+        Args:
+            driver_id: The ID of the driver that indicates which driver to get
+                the serialization context for.
+
+        Returns:
+            The serialization context of the given driver.
+        """
+        if driver_id not in self.serialization_context_map:
+            _initialize_serialization(driver_id)
+        return self.serialization_context_map[driver_id]
 
     def check_connected(self):
         """Check if the worker is connected.
@@ -258,7 +284,7 @@ class Worker(object):
         The mode WORKER_MODE should be used if this Worker is not a driver. It
         will not print information about tasks.
 
-        The mode PYTHON_MODE should be used if this Worker is a driver and if
+        The mode LOCAL_MODE should be used if this Worker is a driver and if
         you want to run the driver in a manner equivalent to serial Python for
         debugging purposes. It will not send remote function calls to the
         scheduler and will insead execute them in a blocking fashion.
@@ -268,7 +294,7 @@ class Worker(object):
         intentionally fail.
 
         Args:
-            mode: One of SCRIPT_MODE, WORKER_MODE, PYTHON_MODE, and
+            mode: One of SCRIPT_MODE, WORKER_MODE, LOCAL_MODE, and
                 SILENT_MODE.
         """
         self.mode = mode
@@ -300,7 +326,8 @@ class Worker(object):
                     value,
                     object_id=pyarrow.plasma.ObjectID(object_id.id()),
                     memcopy_threads=self.memcopy_threads,
-                    serialization_context=self.serialization_context)
+                    serialization_context=self.get_serialization_context(
+                        self.task_driver_id))
                 break
             except pyarrow.SerializationCallbackError as e:
                 try:
@@ -366,7 +393,7 @@ class Worker(object):
         # Serialize and put the object in the object store.
         try:
             self.store_and_register(object_id, value)
-        except pyarrow.PlasmaObjectExists as e:
+        except pyarrow.PlasmaObjectExists:
             # The object already exists in the object store, so there is no
             # need to add it again. TODO(rkn): We need to compare the hashes
             # and make sure that the objects are in fact the same. We also
@@ -392,9 +419,10 @@ class Worker(object):
                     results += self.plasma_client.get(
                         object_ids[i:(
                             i + ray._config.worker_get_request_size())],
-                        timeout, self.serialization_context)
+                        timeout,
+                        self.get_serialization_context(self.task_driver_id))
                 return results
-            except pyarrow.lib.ArrowInvalid as e:
+            except pyarrow.lib.ArrowInvalid:
                 # TODO(ekl): the local scheduler could include relevant
                 # metadata in the task kill case for a better error message
                 invalid_error = RayTaskError(
@@ -402,7 +430,7 @@ class Worker(object):
                     "Invalid return value: likely worker died or was killed "
                     "while executing the task.")
                 return [invalid_error] * len(object_ids)
-            except pyarrow.DeserializationCallbackError as e:
+            except pyarrow.DeserializationCallbackError:
                 # Wait a little bit for the import thread to import the class.
                 # If we currently have the worker lock, we need to release it
                 # so that the import thread can acquire it.
@@ -467,51 +495,62 @@ class Worker(object):
             for (i, val) in enumerate(final_results)
             if val is plasma.ObjectNotAvailable
         }
-        was_blocked = (len(unready_ids) > 0)
-        # Try reconstructing any objects we haven't gotten yet. Try to get them
-        # until at least get_timeout_milliseconds milliseconds passes, then
-        # repeat.
-        while len(unready_ids) > 0:
-            for unready_id in unready_ids:
-                self.local_scheduler_client.reconstruct_objects(
-                    [ray.ObjectID(unready_id)], False)
-            # Do another fetch for objects that aren't available locally yet,
-            # in case they were evicted since the last fetch. We divide the
-            # fetch into smaller fetches so as to not block the manager for a
-            # prolonged period of time in a single call.
-            object_ids_to_fetch = list(
-                map(plasma.ObjectID, unready_ids.keys()))
-            ray_object_ids_to_fetch = list(
-                map(ray.ObjectID, unready_ids.keys()))
-            for i in range(0, len(object_ids_to_fetch),
-                           ray._config.worker_fetch_request_size()):
-                if not self.use_raylet:
-                    self.plasma_client.fetch(object_ids_to_fetch[i:(
-                        i + ray._config.worker_fetch_request_size())])
-                else:
-                    self.local_scheduler_client.reconstruct_objects(
-                        ray_object_ids_to_fetch[i:(
-                            i + ray._config.worker_fetch_request_size())],
-                        True)
-            results = self.retrieve_and_deserialize(
-                object_ids_to_fetch,
-                max([
-                    ray._config.get_timeout_milliseconds(),
-                    int(0.01 * len(unready_ids))
-                ]))
-            # Remove any entries for objects we received during this iteration
-            # so we don't retrieve the same object twice.
-            for i, val in enumerate(results):
-                if val is not plasma.ObjectNotAvailable:
-                    object_id = object_ids_to_fetch[i].binary()
-                    index = unready_ids[object_id]
-                    final_results[index] = val
-                    unready_ids.pop(object_id)
 
-        # If there were objects that we weren't able to get locally, let the
-        # local scheduler know that we're now unblocked.
-        if was_blocked:
-            self.local_scheduler_client.notify_unblocked()
+        if len(unready_ids) > 0:
+            with self.state_lock:
+                # Try reconstructing any objects we haven't gotten yet. Try to
+                # get them until at least get_timeout_milliseconds
+                # milliseconds passes, then repeat.
+                while len(unready_ids) > 0:
+                    object_ids_to_fetch = [
+                        plasma.ObjectID(unready_id)
+                        for unready_id in unready_ids.keys()
+                    ]
+                    ray_object_ids_to_fetch = [
+                        ray.ObjectID(unready_id)
+                        for unready_id in unready_ids.keys()
+                    ]
+                    fetch_request_size = (
+                        ray._config.worker_fetch_request_size())
+                    for i in range(0, len(object_ids_to_fetch),
+                                   fetch_request_size):
+                        if not self.use_raylet:
+                            for unready_id in ray_object_ids_to_fetch[i:(
+                                    i + fetch_request_size)]:
+                                (self.local_scheduler_client.
+                                 reconstruct_objects([unready_id], False))
+                            # Do another fetch for objects that aren't
+                            # available locally yet, in case they were evicted
+                            # since the last fetch. We divide the fetch into
+                            # smaller fetches so as to not block the manager
+                            # for a prolonged period of time in a single call.
+                            # This is only necessary for legacy ray since
+                            # reconstruction and fetch are implemented by
+                            # different processes.
+                            self.plasma_client.fetch(object_ids_to_fetch[i:(
+                                i + fetch_request_size)])
+                        else:
+                            self.local_scheduler_client.reconstruct_objects(
+                                ray_object_ids_to_fetch[i:(
+                                    i + fetch_request_size)], False)
+                    results = self.retrieve_and_deserialize(
+                        object_ids_to_fetch,
+                        max([
+                            ray._config.get_timeout_milliseconds(),
+                            int(0.01 * len(unready_ids))
+                        ]))
+                    # Remove any entries for objects we received during this
+                    # iteration so we don't retrieve the same object twice.
+                    for i, val in enumerate(results):
+                        if val is not plasma.ObjectNotAvailable:
+                            object_id = object_ids_to_fetch[i].binary()
+                            index = unready_ids[object_id]
+                            final_results[index] = val
+                            unready_ids.pop(object_id)
+
+                # If there were objects that we weren't able to get locally,
+                # let the local scheduler know that we're now unblocked.
+                self.local_scheduler_client.notify_unblocked()
 
         assert len(final_results) == len(object_ids)
         return final_results
@@ -539,7 +578,7 @@ class Worker(object):
             function_id: The ID of the function to execute.
             args: The arguments to pass into the function. Arguments can be
                 object IDs or they can be values. If they are values, they must
-                be serializable objecs.
+                be serializable objects.
             actor_id: The ID of the actor that this task is for.
             actor_counter: The counter of the actor task.
             is_actor_checkpoint_method: True if this is an actor checkpoint
@@ -562,8 +601,7 @@ class Worker(object):
         Returns:
             The return object IDs for this task.
         """
-        with log_span("ray:submit_task", worker=self):
-            check_main_thread()
+        with profiling.profile("submit_task", worker=self):
             if actor_id is None:
                 assert actor_handle_id is None
                 actor_id = ray.ObjectID(NIL_ACTOR_ID)
@@ -607,17 +645,19 @@ class Worker(object):
                     raise ValueError(
                         "Resource quantities must all be whole numbers.")
 
+            with self.state_lock:
+                # Increment the worker's task index to track how many tasks
+                # have been submitted by the current task so far.
+                task_index = self.task_index
+                self.task_index += 1
             # Submit the task to local scheduler.
             task = ray.local_scheduler.Task(
                 driver_id, ray.ObjectID(
                     function_id.id()), args_for_local_scheduler,
-                num_return_vals, self.current_task_id, self.task_index,
+                num_return_vals, self.current_task_id, task_index,
                 actor_creation_id, actor_creation_dummy_object_id, actor_id,
                 actor_handle_id, actor_counter, is_actor_checkpoint_method,
                 execution_dependencies, resources, self.use_raylet)
-            # Increment the worker's task index to track how many tasks have
-            # been submitted by the current task so far.
-            self.task_index += 1
             self.local_scheduler_client.submit(task)
 
             return task.returns()
@@ -635,7 +675,6 @@ class Worker(object):
             decorated_function: The decorated function (this is used to enable
                 the remote function to recursively call itself).
         """
-        check_main_thread()
         if self.mode not in [SCRIPT_MODE, SILENT_MODE]:
             raise Exception("export_remote_function can only be called on a "
                             "driver.")
@@ -674,7 +713,8 @@ class Worker(object):
             })
         self.redis_client.rpush("Exports", key)
 
-    def run_function_on_all_workers(self, function):
+    def run_function_on_all_workers(self, function,
+                                    run_on_other_drivers=False):
         """Run arbitrary code on all of the workers.
 
         This function will first be run on the driver, and then it will be
@@ -684,10 +724,12 @@ class Worker(object):
 
         Args:
             function (Callable): The function to run on all of the workers. It
-                should not take any arguments. If it returns anything, its
-                return values will not be used.
+                takes only one argument, a worker info dict. If it returns
+                anything, its return values will not be used.
+            run_on_other_drivers: The boolean that indicates whether we want to
+                run this funtion on other drivers. One case is we may need to
+                share objects across drivers.
         """
-        check_main_thread()
         # If ray.init has not been called yet, then cache the function and
         # export it when connect is called. Otherwise, run the function on all
         # workers.
@@ -719,7 +761,8 @@ class Worker(object):
                 key, {
                     "driver_id": self.task_driver_id.id(),
                     "function_id": function_to_run_id,
-                    "function": pickled_function
+                    "function": pickled_function,
+                    "run_on_other_drivers": run_on_other_drivers
                 })
             self.redis_client.rpush("Exports", key)
             # TODO(rkn): If the worker fails after it calls setnx and before it
@@ -739,8 +782,6 @@ class Worker(object):
         been defined.
 
         Args:
-            is_actor (bool): True if this worker is an actor, and false
-                otherwise.
             function_id (str): The ID of the function that we want to execute.
             driver_id (str): The ID of the driver to push the error message to
                 if this times out.
@@ -775,7 +816,7 @@ class Worker(object):
         """Retrieve the arguments for the remote function.
 
         This retrieves the values for the arguments to the remote function that
-        were passed in as object IDs. Argumens that were passed by value are
+        were passed in as object IDs. Arguments that were passed by value are
         not changed. This is called by the worker that is executing the remote
         function.
 
@@ -867,7 +908,7 @@ class Worker(object):
 
         # Get task arguments from the object store.
         try:
-            with log_span("ray:task:get_arguments", worker=self):
+            with profiling.profile("task:deserialize_arguments", worker=self):
                 arguments = self._get_arguments_for_execution(
                     function_name, args)
         except (RayGetError, RayGetArgumentError) as e:
@@ -882,7 +923,7 @@ class Worker(object):
 
         # Execute the task.
         try:
-            with log_span("ray:task:execute", worker=self):
+            with profiling.profile("task:execute", worker=self):
                 if task.actor_id().id() == NIL_ACTOR_ID:
                     outputs = function_executor(*arguments)
                 else:
@@ -901,7 +942,7 @@ class Worker(object):
 
         # Store the outputs in the local object store.
         try:
-            with log_span("ray:task:store_outputs", worker=self):
+            with profiling.profile("task:store_outputs", worker=self):
                 # If this is an actor task, then the last object ID returned by
                 # the task is a dummy output, not returned by the function
                 # itself. Decrement to get the correct number of return values.
@@ -976,7 +1017,7 @@ class Worker(object):
         # Wait until the function to be executed has actually been registered
         # on this worker. We will push warnings to the user if we spend too
         # long in this loop.
-        with log_span("ray:wait_for_function", worker=self):
+        with profiling.profile("wait_for_function", worker=self):
             self._wait_for_function(function_id, driver_id)
 
         # Execute the task.
@@ -984,22 +1025,29 @@ class Worker(object):
         # warning to the user if we are waiting too long to acquire the lock
         # because that may indicate that the system is hanging, and it'd be
         # good to know where the system is hanging.
-        log(event_type="ray:acquire_lock", kind=LOG_SPAN_START, worker=self)
         with self.lock:
-            log(event_type="ray:acquire_lock", kind=LOG_SPAN_END, worker=self)
 
             function_name = (self.function_execution_info[driver_id][
                 function_id.id()]).function_name
-            contents = {
-                "function_name": function_name,
-                "task_id": task.task_id().hex(),
-                "worker_id": binary_to_hex(self.worker_id)
-            }
-            with log_span("ray:task", contents=contents, worker=self):
+            if not self.use_raylet:
+                extra_data = {
+                    "function_name": function_name,
+                    "task_id": task.task_id().hex(),
+                    "worker_id": binary_to_hex(self.worker_id)
+                }
+            else:
+                extra_data = {
+                    "name": function_name,
+                    "task_id": task.task_id().hex()
+                }
+            with profiling.profile("task", extra_data=extra_data, worker=self):
                 self._process_task(task)
 
-        # Push all of the log events to the global state store.
-        flush_log()
+        # In the non-raylet code path, push all of the log events to the global
+        # state store. In the raylet code path, this is done periodically in a
+        # background thread.
+        if not self.use_raylet:
+            self.profiler.flush_profile_data()
 
         # Increase the task execution counter.
         self.num_task_executions[driver_id][function_id.id()] += 1
@@ -1017,7 +1065,7 @@ class Worker(object):
         Returns:
             A task from the local scheduler.
         """
-        with log_span("ray:get_task", worker=self):
+        with profiling.profile("get_task", worker=self):
             task = self.local_scheduler_client.get_task()
 
         # Automatically restrict the GPUs available to this task.
@@ -1029,12 +1077,11 @@ class Worker(object):
         """The main loop a worker runs to receive and execute tasks."""
 
         def exit(signum, frame):
-            cleanup(worker=self)
+            shutdown(worker=self)
             sys.exit(0)
 
         signal.signal(signal.SIGTERM, exit)
 
-        check_main_thread()
         while True:
             task = self._get_next_task_from_local_scheduler()
             self._wait_for_and_process_task(task)
@@ -1051,7 +1098,7 @@ def get_gpu_ids():
     Returns:
         A list of GPU IDs.
     """
-    if _mode() == PYTHON_MODE:
+    if _mode() == LOCAL_MODE:
         raise Exception("ray.get_gpu_ids() currently does not work in PYTHON "
                         "MODE.")
 
@@ -1076,16 +1123,18 @@ def get_gpu_ids():
 def get_resource_ids():
     """Get the IDs of the resources that are available to the worker.
 
+    This function is only supported in the raylet code path.
+
     Returns:
         A dictionary mapping the name of a resource to a list of pairs, where
-            each pair consists of the ID of a resource and the fraction of that
-            resource reserved for this worker.
+        each pair consists of the ID of a resource and the fraction of that
+        resource reserved for this worker.
     """
     if not global_worker.use_raylet:
         raise Exception("ray.get_resource_ids() is only supported in the "
                         "raylet code path.")
 
-    if _mode() == PYTHON_MODE:
+    if _mode() == LOCAL_MODE:
         raise Exception(
             "ray.get_resource_ids() currently does not work in PYTHON "
             "MODE.")
@@ -1103,7 +1152,7 @@ def _webui_url_helper(client):
         The URL of the web UI as a string.
     """
     result = client.hmget("webui", "url")[0]
-    return result.decode("ascii") if result is not None else result
+    return ray.utils.decode(result) if result is not None else result
 
 
 def get_webui_url():
@@ -1114,7 +1163,7 @@ def get_webui_url():
     Returns:
         The URL of the web UI as a string.
     """
-    if _mode() == PYTHON_MODE:
+    if _mode() == LOCAL_MODE:
         raise Exception("ray.get_webui_url() currently does not work in "
                         "PYTHON MODE.")
     return _webui_url_helper(global_worker.redis_client)
@@ -1132,20 +1181,6 @@ global_state = state.GlobalState()
 
 class RayConnectionError(Exception):
     pass
-
-
-def check_main_thread():
-    """Check that we are currently on the main thread.
-
-    Raises:
-        Exception: An exception is raised if this is called on a thread other
-            than the main thread.
-    """
-    if threading.current_thread().getName() != "MainThread":
-        raise Exception("The Ray methods are not thread safe and must be "
-                        "called from the main thread. This method was called "
-                        "from thread {}."
-                        .format(threading.current_thread().getName()))
 
 
 def print_failed_task(task_status):
@@ -1168,13 +1203,13 @@ def error_applies_to_driver(error_key, worker=global_worker):
     """Return True if the error is for this driver and false otherwise."""
     # TODO(rkn): Should probably check that this is only called on a driver.
     # Check that the error key is formatted as in push_error_to_driver.
-    assert len(error_key) == (len(ERROR_KEY_PREFIX) + DRIVER_ID_LENGTH + 1 +
-                              ERROR_ID_LENGTH), error_key
+    assert len(error_key) == (len(ERROR_KEY_PREFIX) + ray_constants.ID_SIZE + 1
+                              + ray_constants.ID_SIZE), error_key
     # If the driver ID in the error message is a sequence of all zeros, then
     # the message is intended for all drivers.
-    generic_driver_id = DRIVER_ID_LENGTH * b"\x00"
+    generic_driver_id = ray_constants.ID_SIZE * b"\x00"
     driver_id = error_key[len(ERROR_KEY_PREFIX):(
-        len(ERROR_KEY_PREFIX) + DRIVER_ID_LENGTH)]
+        len(ERROR_KEY_PREFIX) + ray_constants.ID_SIZE)]
     return (driver_id == worker.task_driver_id.id()
             or driver_id == generic_driver_id)
 
@@ -1182,38 +1217,35 @@ def error_applies_to_driver(error_key, worker=global_worker):
 def error_info(worker=global_worker):
     """Return information about failed tasks."""
     worker.check_connected()
-    check_main_thread()
-
     if worker.use_raylet:
         return (global_state.error_messages(job_id=worker.task_driver_id) +
                 global_state.error_messages(job_id=ray_constants.NIL_JOB_ID))
-
     error_keys = worker.redis_client.lrange("ErrorKeys", 0, -1)
     errors = []
     for error_key in error_keys:
         if error_applies_to_driver(error_key, worker=worker):
             error_contents = worker.redis_client.hgetall(error_key)
             error_contents = {
-                "type": error_contents[b"type"].decode("ascii"),
-                "message": error_contents[b"message"].decode("ascii"),
-                "data": error_contents[b"data"].decode("ascii")
+                "type": ray.utils.decode(error_contents[b"type"]),
+                "message": ray.utils.decode(error_contents[b"message"]),
+                "data": ray.utils.decode(error_contents[b"data"])
             }
             errors.append(error_contents)
 
     return errors
 
 
-def _initialize_serialization(worker=global_worker):
+def _initialize_serialization(driver_id, worker=global_worker):
     """Initialize the serialization library.
 
     This defines a custom serializer for object IDs and also tells ray to
     serialize several exception classes that we define for error handling.
     """
-    worker.serialization_context = pyarrow.default_serialization_context()
+    serialization_context = pyarrow.default_serialization_context()
     # Tell the serialization context to use the cloudpickle version that we
     # ship with Ray.
-    worker.serialization_context.set_pickle(pickle.dumps, pickle.loads)
-    pyarrow.register_torch_serialization_handlers(worker.serialization_context)
+    serialization_context.set_pickle(pickle.dumps, pickle.loads)
+    pyarrow.register_torch_serialization_handlers(serialization_context)
 
     # Define a custom serializer and deserializer for handling Object IDs.
     def object_id_custom_serializer(obj):
@@ -1225,7 +1257,7 @@ def _initialize_serialization(worker=global_worker):
     # We register this serializer on each worker instead of calling
     # register_custom_serializer from the driver so that isinstance still
     # works.
-    worker.serialization_context.register_type(
+    serialization_context.register_type(
         ray.ObjectID,
         "ray.ObjectID",
         pickle=False,
@@ -1243,28 +1275,55 @@ def _initialize_serialization(worker=global_worker):
     # We register this serializer on each worker instead of calling
     # register_custom_serializer from the driver so that isinstance still
     # works.
-    worker.serialization_context.register_type(
+    serialization_context.register_type(
         ray.actor.ActorHandle,
         "ray.ActorHandle",
         pickle=False,
         custom_serializer=actor_handle_serializer,
         custom_deserializer=actor_handle_deserializer)
 
-    if worker.mode in [SCRIPT_MODE, SILENT_MODE]:
-        # These should only be called on the driver because
-        # register_custom_serializer will export the class to all of the
-        # workers.
-        register_custom_serializer(RayTaskError, use_dict=True)
-        register_custom_serializer(RayGetError, use_dict=True)
-        register_custom_serializer(RayGetArgumentError, use_dict=True)
-        # Tell Ray to serialize lambdas with pickle.
-        register_custom_serializer(type(lambda: 0), use_pickle=True)
-        # Tell Ray to serialize types with pickle.
-        register_custom_serializer(type(int), use_pickle=True)
-        # Tell Ray to serialize FunctionSignatures as dictionaries. This is
-        # used when passing around actor handles.
-        register_custom_serializer(
-            ray.signature.FunctionSignature, use_dict=True)
+    worker.serialization_context_map[driver_id] = serialization_context
+
+    register_custom_serializer(
+        RayTaskError,
+        use_dict=True,
+        local=True,
+        driver_id=driver_id,
+        class_id="ray.RayTaskError")
+    register_custom_serializer(
+        RayGetError,
+        use_dict=True,
+        local=True,
+        driver_id=driver_id,
+        class_id="ray.RayGetError")
+    register_custom_serializer(
+        RayGetArgumentError,
+        use_dict=True,
+        local=True,
+        driver_id=driver_id,
+        class_id="ray.RayGetArgumentError")
+    # Tell Ray to serialize lambdas with pickle.
+    register_custom_serializer(
+        type(lambda: 0),
+        use_pickle=True,
+        local=True,
+        driver_id=driver_id,
+        class_id="lambda")
+    # Tell Ray to serialize types with pickle.
+    register_custom_serializer(
+        type(int),
+        use_pickle=True,
+        local=True,
+        driver_id=driver_id,
+        class_id="type")
+    # Tell Ray to serialize FunctionSignatures as dictionaries. This is
+    # used when passing around actor handles.
+    register_custom_serializer(
+        ray.signature.FunctionSignature,
+        use_dict=True,
+        local=True,
+        driver_id=driver_id,
+        class_id="ray.signature.FunctionSignature")
 
 
 def get_address_info_from_redis_helper(redis_address,
@@ -1296,13 +1355,14 @@ def get_address_info_from_redis_helper(redis_address,
             assert b"ray_client_id" in info
             assert b"node_ip_address" in info
             assert b"client_type" in info
-            client_node_ip_address = info[b"node_ip_address"].decode("ascii")
+            client_node_ip_address = ray.utils.decode(info[b"node_ip_address"])
             if (client_node_ip_address == node_ip_address or
                 (client_node_ip_address == "127.0.0.1"
                  and redis_ip_address == ray.services.get_node_ip_address())):
-                if info[b"client_type"].decode("ascii") == "plasma_manager":
+                if ray.utils.decode(info[b"client_type"]) == "plasma_manager":
                     plasma_managers.append(info)
-                elif info[b"client_type"].decode("ascii") == "local_scheduler":
+                elif (ray.utils.decode(
+                        info[b"client_type"]) == "local_scheduler"):
                     local_schedulers.append(info)
         # Make sure that we got at least one plasma manager and local
         # scheduler.
@@ -1311,16 +1371,16 @@ def get_address_info_from_redis_helper(redis_address,
         # Build the address information.
         object_store_addresses = []
         for manager in plasma_managers:
-            address = manager[b"manager_address"].decode("ascii")
+            address = ray.utils.decode(manager[b"manager_address"])
             port = services.get_port(address)
             object_store_addresses.append(
                 services.ObjectStoreAddress(
-                    name=manager[b"store_socket_name"].decode("ascii"),
-                    manager_name=manager[b"manager_socket_name"].decode(
-                        "ascii"),
+                    name=ray.utils.decode(manager[b"store_socket_name"]),
+                    manager_name=ray.utils.decode(
+                        manager[b"manager_socket_name"]),
                     manager_port=port))
         scheduler_names = [
-            scheduler[b"local_scheduler_socket_name"].decode("ascii")
+            ray.utils.decode(scheduler[b"local_scheduler_socket_name"])
             for scheduler in local_schedulers
         ]
         client_info = {
@@ -1343,21 +1403,26 @@ def get_address_info_from_redis_helper(redis_address,
         for client_message in clients:
             client = ray.gcs_utils.ClientTableData.GetRootAsClientTableData(
                 client_message, 0)
-            client_node_ip_address = client.NodeManagerAddress().decode(
-                "ascii")
+            client_node_ip_address = ray.utils.decode(
+                client.NodeManagerAddress())
             if (client_node_ip_address == node_ip_address or
                 (client_node_ip_address == "127.0.0.1"
                  and redis_ip_address == ray.services.get_node_ip_address())):
                 raylets.append(client)
-
+        # Make sure that at least one raylet has started locally.
+        # This handles a race condition where Redis has started but
+        # the raylet has not connected.
+        if len(raylets) == 0:
+            raise Exception(
+                "Redis has started but no raylets have registered yet.")
         object_store_addresses = [
             services.ObjectStoreAddress(
-                name=raylet.ObjectStoreSocketName().decode("ascii"),
+                name=ray.utils.decode(raylet.ObjectStoreSocketName()),
                 manager_name=None,
                 manager_port=None) for raylet in raylets
         ]
         raylet_socket_names = [
-            raylet.RayletSocketName().decode("ascii") for raylet in raylets
+            ray.utils.decode(raylet.RayletSocketName()) for raylet in raylets
         ]
         return {
             "node_ip_address": node_ip_address,
@@ -1378,7 +1443,7 @@ def get_address_info_from_redis(redis_address,
         try:
             return get_address_info_from_redis_helper(
                 redis_address, node_ip_address, use_raylet=use_raylet)
-        except Exception as e:
+        except Exception:
             if counter == num_retries:
                 raise
             # Some of the information may not be in Redis yet, so wait a little
@@ -1473,10 +1538,10 @@ def _init(address_info=None,
             provided if start_ray_local is True.
         num_local_schedulers (int): The number of local schedulers to start.
             This is only provided if start_ray_local is True.
-        object_store_memory: The amount of memory (in bytes) to start the
-            object store with.
+        object_store_memory: The maximum amount of memory (in bytes) to
+            allow the object store to use.
         driver_mode (bool): The mode in which to start the driver. This should
-            be one of ray.SCRIPT_MODE, ray.PYTHON_MODE, and ray.SILENT_MODE.
+            be one of ray.SCRIPT_MODE, ray.LOCAL_MODE, and ray.SILENT_MODE.
         redirect_worker_output: True if the stdout and stderr of worker
             processes should be redirected to files.
         redirect_output (bool): True if stdout and stderr for non-worker
@@ -1502,8 +1567,7 @@ def _init(address_info=None,
             Store with hugetlbfs support. Requires plasma_directory.
         include_webui: Boolean flag indicating whether to start the web
             UI, which is a Jupyter notebook.
-        use_raylet: True if the new raylet code path should be used. This is
-            not supported yet.
+        use_raylet: True if the new raylet code path should be used.
 
     Returns:
         Address information about the started processes.
@@ -1512,10 +1576,12 @@ def _init(address_info=None,
         Exception: An exception is raised if an inappropriate combination of
             arguments is passed in.
     """
-    check_main_thread()
-    if driver_mode not in [SCRIPT_MODE, PYTHON_MODE, SILENT_MODE]:
+    if driver_mode == PYTHON_MODE:
+        raise Exception("ray.PYTHON_MODE has been renamed to ray.LOCAL_MODE. "
+                        "Please use ray.LOCAL_MODE.")
+    if driver_mode not in [SCRIPT_MODE, LOCAL_MODE, SILENT_MODE]:
         raise Exception("Driver_mode must be in [ray.SCRIPT_MODE, "
-                        "ray.PYTHON_MODE, ray.SILENT_MODE].")
+                        "ray.LOCAL_MODE, ray.SILENT_MODE].")
 
     if use_raylet is None and os.environ.get("RAY_USE_XRAY") == "1":
         # This environment variable is used in our testing setup.
@@ -1531,8 +1597,8 @@ def _init(address_info=None,
     redis_address = address_info.get("redis_address")
 
     # Start any services that do not yet exist.
-    if driver_mode == PYTHON_MODE:
-        # If starting Ray in PYTHON_MODE, don't start any other processes.
+    if driver_mode == LOCAL_MODE:
+        # If starting Ray in LOCAL_MODE, don't start any other processes.
         pass
     elif start_ray_local:
         # In this case, we launch a scheduler, a new object store, and some
@@ -1557,8 +1623,8 @@ def _init(address_info=None,
             num_cpus, num_gpus, resources, num_local_schedulers)
 
         # Start the scheduler, object store, and some workers. These will be
-        # killed by the call to cleanup(), which happens when the Python script
-        # exits.
+        # killed by the call to shutdown(), which happens when the Python
+        # script exits.
         address_info = services.start_ray_head(
             address_info=address_info,
             node_ip_address=node_ip_address,
@@ -1616,9 +1682,9 @@ def _init(address_info=None,
 
     # Connect this driver to Redis, the object store, and the local scheduler.
     # Choose the first object store and local scheduler if there are multiple.
-    # The corresponding call to disconnect will happen in the call to cleanup()
-    # when the Python script exits.
-    if driver_mode == PYTHON_MODE:
+    # The corresponding call to disconnect will happen in the call to
+    # shutdown() when the Python script exits.
+    if driver_mode == LOCAL_MODE:
         driver_address_info = {}
     else:
         driver_address_info = {
@@ -1646,22 +1712,24 @@ def _init(address_info=None,
 
 
 def init(redis_address=None,
+         num_cpus=None,
+         num_gpus=None,
+         resources=None,
+         object_store_memory=None,
          node_ip_address=None,
          object_id_seed=None,
          num_workers=None,
          driver_mode=SCRIPT_MODE,
          redirect_worker_output=False,
          redirect_output=True,
-         num_cpus=None,
-         num_gpus=None,
-         resources=None,
+         ignore_reinit_error=False,
          num_custom_resource=None,
          num_redis_shards=None,
          redis_max_clients=None,
+         redis_protected_mode=True,
          plasma_directory=None,
          huge_pages=False,
          include_webui=True,
-         object_store_memory=None,
          use_raylet=None):
     """Connect to an existing Ray cluster or start one and connect to it.
 
@@ -1669,13 +1737,34 @@ def init(redis_address=None,
     just attach this driver to it, or we start all of the processes associated
     with a Ray cluster and attach to the newly started cluster.
 
+    To start Ray and all of the relevant processes, use this as follows:
+
+    .. code-block:: python
+
+        ray.init()
+
+    To connect to an existing Ray cluster, use this as follows (substituting
+    in the appropriate address):
+
+    .. code-block:: python
+
+        ray.init(redis_address="123.45.67.89:6379")
+
     Args:
-        node_ip_address (str): The IP address of the node that we are on.
         redis_address (str): The address of the Redis server to connect to. If
             this address is not provided, then this command will start Redis, a
             global scheduler, a local scheduler, a plasma store, a plasma
             manager, and some workers. It will also kill these processes when
             Python exits.
+        num_cpus (int): Number of cpus the user wishes all local schedulers to
+            be configured with.
+        num_gpus (int): Number of gpus the user wishes all local schedulers to
+            be configured with.
+        resources: A dictionary mapping the name of a resource to the quantity
+            of that resource available.
+        object_store_memory: The amount of memory (in bytes) to start the
+            object store with.
+        node_ip_address (str): The IP address of the node that we are on.
         object_id_seed (int): Used to seed the deterministic generation of
             object IDs. The same value can be used across multiple runs of the
             same job in order to generate the object IDs in a consistent
@@ -1683,17 +1772,13 @@ def init(redis_address=None,
         num_workers (int): The number of workers to start. This is only
             provided if redis_address is not provided.
         driver_mode (bool): The mode in which to start the driver. This should
-            be one of ray.SCRIPT_MODE, ray.PYTHON_MODE, and ray.SILENT_MODE.
+            be one of ray.SCRIPT_MODE, ray.LOCAL_MODE, and ray.SILENT_MODE.
         redirect_worker_output: True if the stdout and stderr of worker
             processes should be redirected to files.
         redirect_output (bool): True if stdout and stderr for non-worker
             processes should be redirected to files and false otherwise.
-        num_cpus (int): Number of cpus the user wishes all local schedulers to
-            be configured with.
-        num_gpus (int): Number of gpus the user wishes all local schedulers to
-            be configured with.
-        resources: A dictionary mapping the name of a resource to the quantity
-            of that resource available.
+        ignore_reinit_error: True if we should suppress errors from calling
+            ray.init() a second time.
         num_redis_shards: The number of Redis shards to start in addition to
             the primary Redis shard.
         redis_max_clients: If provided, attempt to configure Redis with this
@@ -1704,11 +1789,7 @@ def init(redis_address=None,
             Store with hugetlbfs support. Requires plasma_directory.
         include_webui: Boolean flag indicating whether to start the web
             UI, which is a Jupyter notebook.
-        object_store_memory: The amount of memory (in bytes) to start the
-            object store with.
-        use_raylet: True if the new raylet code path should be used. This is
-            not supported yet.
-
+        use_raylet: True if the new raylet code path should be used.
 
     Returns:
         Address information about the started processes.
@@ -1717,6 +1798,14 @@ def init(redis_address=None,
         Exception: An exception is raised if an inappropriate combination of
             arguments is passed in.
     """
+    if global_worker.connected:
+        if ignore_reinit_error:
+            logger.error("Calling ray.init() again after it has already been "
+                         "called.")
+            return
+        else:
+            raise Exception("Perhaps you called ray.init twice by accident?")
+
     if use_raylet is None and os.environ.get("RAY_USE_XRAY") == "1":
         # This environment variable is used in our testing setup.
         logger.info("Detected environment variable 'RAY_USE_XRAY'.")
@@ -1756,12 +1845,23 @@ _post_init_hooks = []
 
 
 def cleanup(worker=global_worker):
-    """Disconnect the worker, and terminate any processes started in init.
+    raise DeprecationWarning(
+        "The function ray.worker.cleanup() has been deprecated. Instead, "
+        "please call ray.shutdown().")
+
+
+def shutdown(worker=global_worker):
+    """Disconnect the worker, and terminate processes started by ray.init().
 
     This will automatically run at the end when a Python process that uses Ray
-    exits. It is ok to run this twice in a row. Note that we manually call
-    services.cleanup() in the tests because we need to start and stop many
-    clusters in the tests, but the import and exit only happen once.
+    exits. It is ok to run this twice in a row. The primary use case for this
+    function is to cleanup state between tests.
+
+    Note that this will clear any remote function definitions, actor
+    definitions, and existing actors, so if you wish to use any previously
+    defined remote functions or actors after calling ray.shutdown(), then you
+    need to redefine them. If they were defined in an imported module, then you
+    will need to reload the module.
     """
     disconnect(worker)
     if hasattr(worker, "local_scheduler_client"):
@@ -1787,7 +1887,7 @@ def cleanup(worker=global_worker):
     worker.set_mode(None)
 
 
-atexit.register(cleanup)
+atexit.register(shutdown)
 
 # Define a custom excepthook so that if the driver exits with an exception, we
 # can push that exception to Redis.
@@ -1853,12 +1953,12 @@ def print_error_messages_raylet(worker):
             assert gcs_entry.EntriesLength() == 1
             error_data = ray.gcs_utils.ErrorTableData.GetRootAsErrorTableData(
                 gcs_entry.Entries(0), 0)
-            NIL_JOB_ID = 20 * b"\x00"
+            NIL_JOB_ID = ray_constants.ID_SIZE * b"\x00"
             job_id = error_data.JobId()
             if job_id not in [worker.task_driver_id.id(), NIL_JOB_ID]:
                 continue
 
-            error_message = error_data.ErrorMessage().decode("ascii")
+            error_message = ray.utils.decode(error_data.ErrorMessage())
 
             if error_message not in old_error_messages:
                 logger.error(error_message)
@@ -1900,8 +2000,8 @@ def print_error_messages(worker):
         error_keys = worker.redis_client.lrange("ErrorKeys", 0, -1)
         for error_key in error_keys:
             if error_applies_to_driver(error_key, worker=worker):
-                error_message = worker.redis_client.hget(
-                    error_key, "message").decode("ascii")
+                error_message = ray.utils.decode(
+                    worker.redis_client.hget(error_key, "message"))
                 if error_message not in old_error_messages:
                     logger.error(error_message)
                     old_error_messages.add(error_message)
@@ -1915,8 +2015,8 @@ def print_error_messages(worker):
                 for error_key in worker.redis_client.lrange(
                         "ErrorKeys", num_errors_received, -1):
                     if error_applies_to_driver(error_key, worker=worker):
-                        error_message = worker.redis_client.hget(
-                            error_key, "message").decode("ascii")
+                        error_message = ray.utils.decode(
+                            worker.redis_client.hget(error_key, "message"))
                         if error_message not in old_error_messages:
                             logger.error(error_message)
                             old_error_messages.add(error_message)
@@ -1924,174 +2024,6 @@ def print_error_messages(worker):
                             logger.error(
                                 "Suppressing duplicate error message.")
                     num_errors_received += 1
-    except redis.ConnectionError:
-        # When Redis terminates the listen call will throw a ConnectionError,
-        # which we catch here.
-        pass
-
-
-def fetch_and_register_remote_function(key, worker=global_worker):
-    """Import a remote function."""
-    (driver_id, function_id_str, function_name, serialized_function,
-     num_return_vals, module, resources,
-     max_calls) = worker.redis_client.hmget(key, [
-         "driver_id", "function_id", "name", "function", "num_return_vals",
-         "module", "resources", "max_calls"
-     ])
-    function_id = ray.ObjectID(function_id_str)
-    function_name = function_name.decode("ascii")
-    max_calls = int(max_calls)
-    module = module.decode("ascii")
-
-    # This is a placeholder in case the function can't be unpickled. This will
-    # be overwritten if the function is successfully registered.
-    def f():
-        raise Exception("This function was not imported properly.")
-
-    worker.function_execution_info[driver_id][function_id.id()] = (
-        FunctionExecutionInfo(
-            function=f, function_name=function_name, max_calls=max_calls))
-    worker.num_task_executions[driver_id][function_id.id()] = 0
-
-    try:
-        function = pickle.loads(serialized_function)
-    except Exception:
-        # If an exception was thrown when the remote function was imported, we
-        # record the traceback and notify the scheduler of the failure.
-        traceback_str = ray.utils.format_error_message(traceback.format_exc())
-        # Log the error message.
-        ray.utils.push_error_to_driver(
-            worker,
-            ray_constants.REGISTER_REMOTE_FUNCTION_PUSH_ERROR,
-            traceback_str,
-            driver_id=driver_id,
-            data={
-                "function_id": function_id.id(),
-                "function_name": function_name
-            })
-    else:
-        # TODO(rkn): Why is the below line necessary?
-        function.__module__ = module
-        worker.function_execution_info[driver_id][function_id.id()] = (
-            FunctionExecutionInfo(
-                function=function,
-                function_name=function_name,
-                max_calls=max_calls))
-        # Add the function to the function table.
-        worker.redis_client.rpush(b"FunctionTable:" + function_id.id(),
-                                  worker.worker_id)
-
-
-def fetch_and_execute_function_to_run(key, worker=global_worker):
-    """Run on arbitrary function on the worker."""
-    driver_id, serialized_function = worker.redis_client.hmget(
-        key, ["driver_id", "function"])
-
-    if (worker.mode in [SCRIPT_MODE, SILENT_MODE]
-            and driver_id != worker.task_driver_id.id()):
-        # This export was from a different driver and there's no need for this
-        # driver to import it.
-        return
-
-    try:
-        # Deserialize the function.
-        function = pickle.loads(serialized_function)
-        # Run the function.
-        function({"worker": worker})
-    except Exception:
-        # If an exception was thrown when the function was run, we record the
-        # traceback and notify the scheduler of the failure.
-        traceback_str = traceback.format_exc()
-        # Log the error message.
-        name = function.__name__ if ("function" in locals()
-                                     and hasattr(function, "__name__")) else ""
-        ray.utils.push_error_to_driver(
-            worker,
-            ray_constants.FUNCTION_TO_RUN_PUSH_ERROR,
-            traceback_str,
-            driver_id=driver_id,
-            data={"name": name})
-
-
-def import_thread(worker, mode):
-    worker.import_pubsub_client = worker.redis_client.pubsub()
-    # Exports that are published after the call to
-    # import_pubsub_client.subscribe and before the call to
-    # import_pubsub_client.listen will still be processed in the loop.
-    worker.import_pubsub_client.subscribe("__keyspace@0__:Exports")
-    # Keep track of the number of imports that we've imported.
-    num_imported = 0
-
-    # Get the exports that occurred before the call to subscribe.
-    with worker.lock:
-        export_keys = worker.redis_client.lrange("Exports", 0, -1)
-        for key in export_keys:
-            num_imported += 1
-
-            # Handle the driver case first.
-            if mode != WORKER_MODE:
-                if key.startswith(b"FunctionsToRun"):
-                    fetch_and_execute_function_to_run(key, worker=worker)
-                # Continue because FunctionsToRun are the only things that the
-                # driver should import.
-                continue
-
-            if key.startswith(b"RemoteFunction"):
-                fetch_and_register_remote_function(key, worker=worker)
-            elif key.startswith(b"FunctionsToRun"):
-                fetch_and_execute_function_to_run(key, worker=worker)
-            elif key.startswith(b"ActorClass"):
-                # Keep track of the fact that this actor class has been
-                # exported so that we know it is safe to turn this worker into
-                # an actor of that class.
-                worker.imported_actor_classes.add(key)
-            else:
-                raise Exception("This code should be unreachable.")
-
-    try:
-        for msg in worker.import_pubsub_client.listen():
-            with worker.lock:
-                if msg["type"] == "subscribe":
-                    continue
-                assert msg["data"] == b"rpush"
-                num_imports = worker.redis_client.llen("Exports")
-                assert num_imports >= num_imported
-                for i in range(num_imported, num_imports):
-                    num_imported += 1
-                    key = worker.redis_client.lindex("Exports", i)
-
-                    # Handle the driver case first.
-                    if mode != WORKER_MODE:
-                        if key.startswith(b"FunctionsToRun"):
-                            with log_span(
-                                    "ray:import_function_to_run",
-                                    worker=worker):
-                                fetch_and_execute_function_to_run(
-                                    key, worker=worker)
-                        # Continue because FunctionsToRun are the only things
-                        # that the driver should import.
-                        continue
-
-                    if key.startswith(b"RemoteFunction"):
-                        with log_span(
-                                "ray:import_remote_function", worker=worker):
-                            fetch_and_register_remote_function(
-                                key, worker=worker)
-                    elif key.startswith(b"FunctionsToRun"):
-                        with log_span(
-                                "ray:import_function_to_run", worker=worker):
-                            fetch_and_execute_function_to_run(
-                                key, worker=worker)
-                    elif key.startswith(b"ActorClass"):
-                        # Keep track of the fact that this actor class has been
-                        # exported so that we know it is safe to turn this
-                        # worker into an actor of that class.
-                        worker.imported_actor_classes.add(key)
-
-                    # TODO(rkn): We may need to bring back the case of fetching
-                    # actor classes here.
-                    else:
-                        raise Exception("This code should be unreachable.")
     except redis.ConnectionError:
         # When Redis terminates the listen call will throw a ConnectionError,
         # which we catch here.
@@ -2111,11 +2043,9 @@ def connect(info,
         object_id_seed: A seed to use to make the generation of object IDs
             deterministic.
         mode: The mode of the worker. One of SCRIPT_MODE, WORKER_MODE,
-            PYTHON_MODE, and SILENT_MODE.
-        use_raylet: True if the new raylet code path should be used. This is
-            not supported yet.
+            LOCAL_MODE, and SILENT_MODE.
+        use_raylet: True if the new raylet code path should be used.
     """
-    check_main_thread()
     # Do some basic checking to make sure we didn't call ray.init twice.
     error_message = "Perhaps you called ray.init twice by accident?"
     assert not worker.connected, error_message
@@ -2138,14 +2068,9 @@ def connect(info,
     worker.set_mode(mode)
     worker.use_raylet = use_raylet
 
-    # The worker.events field is used to aggregate logging information and
-    # display it in the web UI. Note that Python lists protected by the GIL,
-    # which is important because we will append to this field from multiple
-    # threads.
-    worker.events = []
-    # If running Ray in PYTHON_MODE, there is no need to create call
+    # If running Ray in LOCAL_MODE, there is no need to create call
     # create_worker or to start the worker service.
-    if mode == PYTHON_MODE:
+    if mode == LOCAL_MODE:
         return
     # Set the node IP address.
     worker.node_ip_address = info["node_ip_address"]
@@ -2153,8 +2078,8 @@ def connect(info,
 
     # Create a Redis client.
     redis_ip_address, redis_port = info["redis_address"].split(":")
-    worker.redis_client = redis.StrictRedis(
-        host=redis_ip_address, port=int(redis_port))
+    worker.redis_client = thread_safe_client(
+        redis.StrictRedis(host=redis_ip_address, port=int(redis_port)))
 
     # For driver's check that the version information matches the version
     # information that the Ray cluster was started with.
@@ -2234,19 +2159,17 @@ def connect(info,
 
     # Create an object store client.
     if not worker.use_raylet:
-        worker.plasma_client = plasma.connect(info["store_socket_name"],
-                                              info["manager_socket_name"], 64)
+        worker.plasma_client = thread_safe_client(
+            plasma.connect(info["store_socket_name"],
+                           info["manager_socket_name"], 64))
     else:
-        worker.plasma_client = plasma.connect(info["store_socket_name"], "",
-                                              64)
+        worker.plasma_client = thread_safe_client(
+            plasma.connect(info["store_socket_name"], "", 64))
 
     if not worker.use_raylet:
         local_scheduler_socket = info["local_scheduler_socket_name"]
     else:
         local_scheduler_socket = info["raylet_socket_name"]
-
-    worker.local_scheduler_client = ray.local_scheduler.LocalSchedulerClient(
-        local_scheduler_socket, worker.worker_id, is_worker, worker.use_raylet)
 
     # If this is a driver, set the current task ID, the task driver ID, and set
     # the task index to 0.
@@ -2261,7 +2184,8 @@ def connect(info,
         else:
             # Try to use true randomness.
             np.random.seed(None)
-        worker.current_task_id = ray.ObjectID(np.random.bytes(20))
+        worker.current_task_id = ray.ObjectID(
+            np.random.bytes(ray_constants.ID_SIZE))
         # Reset the state of the numpy random number generator.
         np.random.set_state(numpy_state)
         # Set other fields needed for computing task IDs.
@@ -2302,19 +2226,16 @@ def connect(info,
         # Set the driver's current task ID to the task ID assigned to the
         # driver task.
         worker.current_task_id = driver_task.task_id()
+    else:
+        # A non-driver worker begins without an assigned task.
+        worker.current_task_id = ray.ObjectID(NIL_ID)
 
-    # Initialize the serialization library. This registers some classes, and so
-    # it must be run before we export all of the cached remote functions.
-    _initialize_serialization()
+    worker.local_scheduler_client = ray.local_scheduler.LocalSchedulerClient(
+        local_scheduler_socket, worker.worker_id, is_worker,
+        worker.current_task_id, worker.use_raylet)
 
-    # Start a thread to import exports from the driver or from other workers.
-    # Note that the driver also has an import thread, which is used only to
-    # import custom class definitions from calls to register_custom_serializer
-    # that happen under the hood on workers.
-    t = threading.Thread(target=import_thread, args=(worker, mode))
-    # Making the thread a daemon causes it to exit when the main thread exits.
-    t.daemon = True
-    t.start()
+    # Start the import thread
+    import_thread.ImportThread(worker, mode).start()
 
     # If this is a driver running in SCRIPT_MODE, start a thread to print error
     # messages asynchronously in the background. Ideally the scheduler would
@@ -2332,6 +2253,11 @@ def connect(info,
         # exits.
         t.daemon = True
         t.start()
+
+    # If we are using the raylet code path and we are not in local mode, start
+    # a background thread to periodically flush profiling data to the GCS.
+    if mode != LOCAL_MODE and worker.use_raylet:
+        worker.profiler.start_flush_thread()
 
     if mode in [SCRIPT_MODE, SILENT_MODE]:
         # Add the directory containing the script that is running to the Python
@@ -2379,7 +2305,7 @@ def disconnect(worker=global_worker):
     worker.connected = False
     worker.cached_functions_to_run = []
     worker.cached_remote_functions_and_actors = []
-    worker.serialization_context = pyarrow.SerializationContext()
+    worker.serialization_context_map.clear()
 
 
 def _try_to_compute_deterministic_class_id(cls, depth=5):
@@ -2430,6 +2356,8 @@ def register_custom_serializer(cls,
                                serializer=None,
                                deserializer=None,
                                local=False,
+                               driver_id=None,
+                               class_id=None,
                                worker=global_worker):
     """Enable serialization and deserialization for a particular class.
 
@@ -2438,7 +2366,7 @@ def register_custom_serializer(cls,
     this class.
 
     Args:
-        cls (type): The class that ray should serialize.
+        cls (type): The class that ray should use this custom serializer for.
         use_pickle (bool): If true, then objects of this class will be
             serialized using pickle.
         use_dict: If true, then objects of this class be serialized turning
@@ -2450,6 +2378,9 @@ def register_custom_serializer(cls,
             if and only if use_pickle and use_dict are False.
         local: True if the serializers should only be registered on the current
             worker. This should usually be False.
+        driver_id: ID of the driver that we want to register the class for.
+        class_id: ID of the class that we are registering. If this is not
+            specified, we will calculate a new one inside the function.
 
     Raises:
         Exception: An exception is raised if pickle=False and the class cannot
@@ -2469,25 +2400,32 @@ def register_custom_serializer(cls,
         # Raise an exception if cls cannot be serialized efficiently by Ray.
         serialization.check_serializable(cls)
 
-    if not local:
-        # In this case, the class ID will be used to deduplicate the class
-        # across workers. Note that cloudpickle unfortunately does not produce
-        # deterministic strings, so these IDs could be different on different
-        # workers. We could use something weaker like cls.__name__, however
-        # that would run the risk of having collisions. TODO(rkn): We should
-        # improve this.
-        try:
-            # Attempt to produce a class ID that will be the same on each
-            # worker. However, determinism is not guaranteed, and the result
-            # may be different on different workers.
-            class_id = _try_to_compute_deterministic_class_id(cls)
-        except Exception as e:
-            raise serialization.CloudPickleError("Failed to pickle class "
-                                                 "'{}'".format(cls))
+    if class_id is None:
+        if not local:
+            # In this case, the class ID will be used to deduplicate the class
+            # across workers. Note that cloudpickle unfortunately does not
+            # produce deterministic strings, so these IDs could be different
+            # on different workers. We could use something weaker like
+            # cls.__name__, however that would run the risk of having
+            # collisions.
+            # TODO(rkn): We should improve this.
+            try:
+                # Attempt to produce a class ID that will be the same on each
+                # worker. However, determinism is not guaranteed, and the
+                # result may be different on different workers.
+                class_id = _try_to_compute_deterministic_class_id(cls)
+            except Exception as e:
+                raise serialization.CloudPickleError("Failed to pickle class "
+                                                     "'{}'".format(cls))
+        else:
+            # In this case, the class ID only needs to be meaningful on this
+            # worker and not across workers.
+            class_id = random_string()
+
+    if driver_id is None:
+        driver_id_bytes = worker.task_driver_id.id()
     else:
-        # In this case, the class ID only needs to be meaningful on this worker
-        # and not across workers.
-        class_id = random_string()
+        driver_id_bytes = driver_id.id()
 
     def register_class_for_serialization(worker_info):
         # TODO(rkn): We need to be more thoughtful about what to do if custom
@@ -2495,7 +2433,10 @@ def register_custom_serializer(cls,
         # we may want to use the last user-defined serializers and ignore
         # subsequent calls to register_custom_serializer that were made by the
         # system.
-        worker_info["worker"].serialization_context.register_type(
+
+        serialization_context = worker_info[
+            "worker"].get_serialization_context(ray.ObjectID(driver_id_bytes))
+        serialization_context.register_type(
             cls,
             class_id,
             pickle=use_pickle,
@@ -2508,90 +2449,6 @@ def register_custom_serializer(cls,
         # Since we are pickling objects of this class, we don't actually need
         # to ship the class definition.
         register_class_for_serialization({"worker": worker})
-
-
-class RayLogSpan(object):
-    """An object used to enable logging a span of events with a with statement.
-
-    Attributes:
-        event_type (str): The type of the event being logged.
-        contents: Additional information to log.
-    """
-
-    def __init__(self, event_type, contents=None, worker=global_worker):
-        """Initialize a RayLogSpan object."""
-        self.event_type = event_type
-        self.contents = contents
-        self.worker = worker
-
-    def __enter__(self):
-        """Log the beginning of a span event."""
-        log(event_type=self.event_type,
-            contents=self.contents,
-            kind=LOG_SPAN_START,
-            worker=self.worker)
-
-    def __exit__(self, type, value, tb):
-        """Log the end of a span event. Log any exception that occurred."""
-        if type is None:
-            log(event_type=self.event_type,
-                kind=LOG_SPAN_END,
-                worker=self.worker)
-        else:
-            log(event_type=self.event_type,
-                contents={
-                    "type": str(type),
-                    "value": value,
-                    "traceback": traceback.format_exc()
-                },
-                kind=LOG_SPAN_END,
-                worker=self.worker)
-
-
-def log_span(event_type, contents=None, worker=global_worker):
-    return RayLogSpan(event_type, contents=contents, worker=worker)
-
-
-def log_event(event_type, contents=None, worker=global_worker):
-    log(event_type, kind=LOG_POINT, contents=contents, worker=worker)
-
-
-def log(event_type, kind, contents=None, worker=global_worker):
-    """Log an event to the global state store.
-
-    This adds the event to a buffer of events locally. The buffer can be
-    flushed and written to the global state store by calling flush_log().
-
-    Args:
-        event_type (str): The type of the event.
-        contents: More general data to store with the event.
-        kind (int): Either LOG_POINT, LOG_SPAN_START, or LOG_SPAN_END. This is
-            LOG_POINT if the event being logged happens at a single point in
-            time. It is LOG_SPAN_START if we are starting to log a span of
-            time, and it is LOG_SPAN_END if we are finishing logging a span of
-            time.
-    """
-    # TODO(rkn): This code currently takes around half a microsecond. Since we
-    # call it tens of times per task, this adds up. We will need to redo the
-    # logging code, perhaps in C.
-    contents = {} if contents is None else contents
-    assert isinstance(contents, dict)
-    # Make sure all of the keys and values in the dictionary are strings.
-    contents = {str(k): str(v) for k, v in contents.items()}
-    # Log the event if this is a worker and not a driver, since the driver's
-    # event log never gets flushed.
-    if worker.mode == WORKER_MODE:
-        worker.events.append((time.time(), event_type, kind, contents))
-
-
-def flush_log(worker=global_worker):
-    """Send the logged worker events to the global state store."""
-    event_log_key = b"event_log:" + worker.worker_id
-    event_log_value = json.dumps(worker.events)
-    if not worker.use_raylet:
-        worker.local_scheduler_client.log_event(event_log_key, event_log_value,
-                                                time.time())
-    worker.events = []
 
 
 def get(object_ids, worker=global_worker):
@@ -2609,13 +2466,15 @@ def get(object_ids, worker=global_worker):
 
     Returns:
         A Python object or a list of Python objects.
+
+    Raises:
+        Exception: An exception is raised if the task that created the object
+            or that created one of the objects raised an exception.
     """
     worker.check_connected()
-    with log_span("ray:get", worker=worker):
-        check_main_thread()
-
-        if worker.mode == PYTHON_MODE:
-            # In PYTHON_MODE, ray.get is the identity operation (the input will
+    with profiling.profile("ray.get", worker=worker):
+        if worker.mode == LOCAL_MODE:
+            # In LOCAL_MODE, ray.get is the identity operation (the input will
             # actually be a value not an objectid).
             return object_ids
         if isinstance(object_ids, list):
@@ -2644,11 +2503,9 @@ def put(value, worker=global_worker):
         The object ID assigned to this value.
     """
     worker.check_connected()
-    with log_span("ray:put", worker=worker):
-        check_main_thread()
-
-        if worker.mode == PYTHON_MODE:
-            # In PYTHON_MODE, ray.put is the identity operation.
+    with profiling.profile("ray.put", worker=worker):
+        if worker.mode == LOCAL_MODE:
+            # In LOCAL_MODE, ray.put is the identity operation.
             return value
         object_id = worker.local_scheduler_client.compute_put_id(
             worker.current_task_id, worker.put_index, worker.use_raylet)
@@ -2663,16 +2520,17 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
     If timeout is set, the function returns either when the requested number of
     IDs are ready or when the timeout is reached, whichever occurs first. If it
     is not set, the function simply waits until that number of objects is ready
-    and returns that exact number of object_ids.
+    and returns that exact number of object IDs.
 
     This method returns two lists. The first list consists of object IDs that
-    correspond to objects that are stored in the object store. The second list
-    corresponds to the rest of the object IDs (which may or may not be ready).
+    correspond to objects that are available in the object store. The second
+    list corresponds to the rest of the object IDs (which may or may not be
+    ready).
 
-    Ordering of the input list of object IDs is preserved: if A precedes B in
-    the input list, and both are in the ready list, then A will precede B in
-    the ready list. This also holds true if A and B are both in the remaining
-    list.
+    Ordering of the input list of object IDs is preserved. That is, if A
+    precedes B in the input list, and both are in the ready list, then A will
+    precede B in the ready list. This also holds true if A and B are both in
+    the remaining list.
 
     Args:
         object_ids (List[ObjectID]): List of object IDs for objects that may or
@@ -2683,7 +2541,7 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
 
     Returns:
         A list of object IDs that are ready and a list of the remaining object
-            IDs.
+        IDs.
     """
 
     if isinstance(object_ids, ray.ObjectID):
@@ -2694,7 +2552,7 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
         raise TypeError("wait() expected a list of ObjectID, got {}".format(
             type(object_ids)))
 
-    if worker.mode != PYTHON_MODE:
+    if worker.mode != LOCAL_MODE:
         for object_id in object_ids:
             if not isinstance(object_id, ray.ObjectID):
                 raise TypeError("wait() expected a list of ObjectID, "
@@ -2702,12 +2560,10 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
                                     type(object_id)))
 
     worker.check_connected()
-    with log_span("ray:wait", worker=worker):
-        check_main_thread()
-
-        # When Ray is run in PYTHON_MODE, all functions are run immediately,
+    with profiling.profile("ray.wait", worker=worker):
+        # When Ray is run in LOCAL_MODE, all functions are run immediately,
         # so all objects in object_id are ready.
-        if worker.mode == PYTHON_MODE:
+        if worker.mode == LOCAL_MODE:
             return object_ids[:num_returns], object_ids[num_returns:]
 
         # TODO(rkn): This is a temporary workaround for
@@ -2810,6 +2666,53 @@ def make_decorator(num_return_vals=None,
 
 
 def remote(*args, **kwargs):
+    """Define a remote function or an actor class.
+
+    This can be used with no arguments to define a remote function or actor as
+    follows:
+
+    .. code-block:: python
+
+        @ray.remote
+        def f():
+            return 1
+
+        @ray.remote
+        class Foo(object):
+            def method(self):
+                return 1
+
+    It can also be used with specific keyword arguments:
+
+    * **num_return_vals:** This is only for *remote functions*. It specifies
+      the number of object IDs returned by the remote function invocation.
+    * **num_cpus:** The quantity of CPU cores to reserve for this task or for
+      the lifetime of the actor.
+    * **num_gpus:** The quantity of GPUs to reserve for this task or for the
+      lifetime of the actor.
+    * **resources:** The quantity of various custom resources to reserve for
+      this task or for the lifetime of the actor. This is a dictionary mapping
+      strings (resource names) to numbers.
+    * **max_calls:** Only for *remote functions*. This specifies the maximum
+      number of times that a given worker can execute the given remote function
+      before it must exit (this can be used to address memory leaks in
+      third-party libraries or to reclaim resources that cannot easily be
+      released, e.g., GPU memory that was acquired by TensorFlow). By
+      default this is infinite.
+
+    This can be done as follows:
+
+    .. code-block:: python
+
+        @ray.remote(num_gpus=1, max_calls=1, num_return_vals=2)
+        def f():
+            return 1, 2
+
+        @ray.remote(num_cpus=2, resources={"CustomResource": 1})
+        class Foo(object):
+            def method(self):
+                return 1
+    """
     worker = get_global_worker()
 
     if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):

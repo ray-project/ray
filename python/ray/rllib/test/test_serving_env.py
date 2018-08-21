@@ -11,9 +11,9 @@ import uuid
 import ray
 from ray.rllib.agents.dqn import DQNAgent
 from ray.rllib.agents.pg import PGAgent
-from ray.rllib.evaluation.common_policy_evaluator import CommonPolicyEvaluator
+from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
 from ray.rllib.env.serving_env import ServingEnv
-from ray.rllib.test.test_common_policy_evaluator import BadPolicyGraph, \
+from ray.rllib.test.test_policy_evaluator import BadPolicyGraph, \
     MockPolicyGraph, MockEnv
 from ray.tune.registry import register_env
 
@@ -83,8 +83,8 @@ class MultiServing(ServingEnv):
     def __init__(self, env_creator):
         self.env_creator = env_creator
         self.env = env_creator()
-        ServingEnv.__init__(
-            self, self.env.action_space, self.env.observation_space)
+        ServingEnv.__init__(self, self.env.action_space,
+                            self.env.observation_space)
 
     def run(self):
         envs = [self.env_creator() for _ in range(5)]
@@ -97,8 +97,7 @@ class MultiServing(ServingEnv):
                     eids[i] = uuid.uuid4().hex
                     self.start_episode(episode_id=eids[i])
                     cur_obs[i] = envs[i].reset()
-            actions = [
-                self.get_action(eids[i], cur_obs[i]) for i in active]
+            actions = [self.get_action(eids[i], cur_obs[i]) for i in active]
             for i, action in zip(active, actions):
                 obs, reward, done, _ = envs[i].step(action)
                 cur_obs[i] = obs
@@ -110,7 +109,7 @@ class MultiServing(ServingEnv):
 
 class TestServingEnv(unittest.TestCase):
     def testServingEnvCompleteEpisodes(self):
-        ev = CommonPolicyEvaluator(
+        ev = PolicyEvaluator(
             env_creator=lambda _: SimpleServing(MockEnv(25)),
             policy_graph=MockPolicyGraph,
             batch_steps=40,
@@ -120,7 +119,7 @@ class TestServingEnv(unittest.TestCase):
             self.assertEqual(batch.count, 50)
 
     def testServingEnvTruncateEpisodes(self):
-        ev = CommonPolicyEvaluator(
+        ev = PolicyEvaluator(
             env_creator=lambda _: SimpleServing(MockEnv(25)),
             policy_graph=MockPolicyGraph,
             batch_steps=40,
@@ -130,7 +129,7 @@ class TestServingEnv(unittest.TestCase):
             self.assertEqual(batch.count, 40)
 
     def testServingEnvOffPolicy(self):
-        ev = CommonPolicyEvaluator(
+        ev = PolicyEvaluator(
             env_creator=lambda _: SimpleOffPolicyServing(MockEnv(25), 42),
             policy_graph=MockPolicyGraph,
             batch_steps=40,
@@ -142,7 +141,7 @@ class TestServingEnv(unittest.TestCase):
             self.assertEqual(batch["actions"][-1], 42)
 
     def testServingEnvBadActions(self):
-        ev = CommonPolicyEvaluator(
+        ev = PolicyEvaluator(
             env_creator=lambda _: SimpleServing(MockEnv(25)),
             policy_graph=BadPolicyGraph,
             sample_async=True,
@@ -158,37 +157,36 @@ class TestServingEnv(unittest.TestCase):
         for i in range(100):
             result = dqn.train()
             print("Iteration {}, reward {}, timesteps {}".format(
-                i, result.episode_reward_mean, result.timesteps_total))
-            if result.episode_reward_mean >= 100:
+                i, result["episode_reward_mean"], result["timesteps_total"]))
+            if result["episode_reward_mean"] >= 100:
                 return
         raise Exception("failed to improve reward")
 
     def testTrainCartpole(self):
-        register_env(
-            "test", lambda _: SimpleServing(gym.make("CartPole-v0")))
+        register_env("test", lambda _: SimpleServing(gym.make("CartPole-v0")))
         pg = PGAgent(env="test", config={"num_workers": 0})
         for i in range(100):
             result = pg.train()
             print("Iteration {}, reward {}, timesteps {}".format(
-                i, result.episode_reward_mean, result.timesteps_total))
-            if result.episode_reward_mean >= 100:
+                i, result["episode_reward_mean"], result["timesteps_total"]))
+            if result["episode_reward_mean"] >= 100:
                 return
         raise Exception("failed to improve reward")
 
     def testTrainCartpoleMulti(self):
-        register_env(
-            "test2", lambda _: MultiServing(lambda: gym.make("CartPole-v0")))
+        register_env("test2",
+                     lambda _: MultiServing(lambda: gym.make("CartPole-v0")))
         pg = PGAgent(env="test2", config={"num_workers": 0})
         for i in range(100):
             result = pg.train()
             print("Iteration {}, reward {}, timesteps {}".format(
-                i, result.episode_reward_mean, result.timesteps_total))
-            if result.episode_reward_mean >= 100:
+                i, result["episode_reward_mean"], result["timesteps_total"]))
+            if result["episode_reward_mean"] >= 100:
                 return
         raise Exception("failed to improve reward")
 
     def testServingEnvHorizonNotSupported(self):
-        ev = CommonPolicyEvaluator(
+        ev = PolicyEvaluator(
             env_creator=lambda _: SimpleServing(MockEnv(25)),
             policy_graph=MockPolicyGraph,
             episode_horizon=20,

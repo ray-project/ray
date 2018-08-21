@@ -56,9 +56,12 @@ class RAY_EXPORT AsyncGcsClient {
   raylet::TaskTable &raylet_task_table();
   ActorTable &actor_table();
   TaskReconstructionLog &task_reconstruction_log();
+  TaskLeaseTable &task_lease_table();
   ClientTable &client_table();
   HeartbeatTable &heartbeat_table();
   ErrorTable &error_table();
+  DriverTable &driver_table();
+  ProfileTable &profile_table();
 
   // We also need something to export generic code to run on workers from the
   // driver (to set the PYTHONPATH)
@@ -79,8 +82,10 @@ class RAY_EXPORT AsyncGcsClient {
   std::unique_ptr<raylet::TaskTable> raylet_task_table_;
   std::unique_ptr<ActorTable> actor_table_;
   std::unique_ptr<TaskReconstructionLog> task_reconstruction_log_;
+  std::unique_ptr<TaskLeaseTable> task_lease_table_;
   std::unique_ptr<HeartbeatTable> heartbeat_table_;
   std::unique_ptr<ErrorTable> error_table_;
+  std::unique_ptr<ProfileTable> profile_table_;
   std::unique_ptr<ClientTable> client_table_;
   // The following contexts write to the data shard
   std::shared_ptr<RedisContext> context_;
@@ -88,6 +93,7 @@ class RAY_EXPORT AsyncGcsClient {
   std::unique_ptr<RedisAsioClient> asio_subscribe_client_;
   // The following context writes everything to the primary shard
   std::shared_ptr<RedisContext> primary_context_;
+  std::unique_ptr<DriverTable> driver_table_;
   std::unique_ptr<RedisAsioClient> asio_async_auxiliary_client_;
   std::unique_ptr<RedisAsioClient> asio_subscribe_auxiliary_client_;
   CommandType command_type_;

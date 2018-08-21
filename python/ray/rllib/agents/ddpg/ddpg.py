@@ -10,7 +10,7 @@ from ray.rllib.utils.schedules import ConstantSchedule, LinearSchedule
 OPTIMIZER_SHARED_CONFIGS = [
     "buffer_size", "prioritized_replay", "prioritized_replay_alpha",
     "prioritized_replay_beta", "prioritized_replay_eps", "sample_batch_size",
-    "train_batch_size", "learning_starts", "clip_rewards"
+    "train_batch_size", "learning_starts"
 ]
 
 DEFAULT_CONFIG = with_common_config({
@@ -61,8 +61,8 @@ DEFAULT_CONFIG = with_common_config({
     "prioritized_replay_beta": 0.4,
     # Epsilon to add to the TD errors when updating priorities.
     "prioritized_replay_eps": 1e-6,
-    # Whether to clip rewards to [-1, 1] prior to adding to the replay buffer.
-    "clip_rewards": True,
+    # Whether to LZ4 compress observations
+    "compress_observations": False,
 
     # === Optimization ===
     # Learning rate for adam optimizer
@@ -104,6 +104,8 @@ DEFAULT_CONFIG = with_common_config({
     "per_worker_exploration": False,
     # Whether to compute priorities on workers.
     "worker_side_prioritization": False,
+    # Prevent iterations from going lower than this time span
+    "min_iter_time_s": 1,
 })
 
 
@@ -118,9 +120,9 @@ class DDPGAgent(DQNAgent):
         if self.config["per_worker_exploration"]:
             assert self.config["num_workers"] > 1, \
                 "This requires multiple workers"
-            return ConstantSchedule(
-                self.config["noise_scale"] * 0.4 **
-                (1 + worker_index / float(self.config["num_workers"] - 1) * 7))
+            exponent = (
+                1 + worker_index / float(self.config["num_workers"] - 1) * 7)
+            return ConstantSchedule(self.config["noise_scale"] * 0.4**exponent)
         else:
             return LinearSchedule(
                 schedule_timesteps=int(self.config["exploration_fraction"] *

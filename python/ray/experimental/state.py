@@ -13,6 +13,7 @@ import time
 
 import ray
 import ray.gcs_utils
+import ray.ray_constants as ray_constants
 from ray.utils import (decode, binary_to_object_id, binary_to_hex,
                        hex_to_binary)
 
@@ -168,7 +169,7 @@ class GlobalState(object):
         """
         result = []
         for client in self.redis_clients:
-            result.extend(client.keys(pattern))
+            result.extend(list(client.scan_iter(match=pattern)))
         return result
 
     def _object_table(self, object_id):
@@ -357,8 +358,6 @@ class GlobalState(object):
                 task_table_message = ray.gcs_utils.Task.GetRootAsTask(
                     gcs_entries.Entries(i), 0)
 
-                task_table_message = ray.gcs_utils.Task.GetRootAsTask(
-                    gcs_entries.Entries(0), 0)
                 execution_spec = task_table_message.TaskExecutionSpec()
                 task_spec = task_table_message.TaskSpecification()
                 task_spec = ray.local_scheduler.task_from_string(task_spec)
@@ -487,11 +486,10 @@ class GlobalState(object):
                             decode(value))
                     elif client_info[b"client_type"] == b"local_scheduler":
                         # The remaining fields are resource types.
-                        client_info_parsed[field.decode("ascii")] = float(
+                        client_info_parsed[decode(field)] = float(
                             decode(value))
                     else:
-                        client_info_parsed[field.decode("ascii")] = decode(
-                            value)
+                        client_info_parsed[decode(field)] = decode(value)
 
                 node_info[node_ip_address].append(client_info_parsed)
 
@@ -499,10 +497,16 @@ class GlobalState(object):
 
         else:
             # This is the raylet code path.
-            NIL_CLIENT_ID = 20 * b"\xff"
+            NIL_CLIENT_ID = ray_constants.ID_SIZE * b"\xff"
             message = self.redis_client.execute_command(
                 "RAY.TABLE_LOOKUP", ray.gcs_utils.TablePrefix.CLIENT, "",
                 NIL_CLIENT_ID)
+
+            # Handle the case where no clients are returned. This should only
+            # occur potentially immediately after the cluster is started.
+            if message is None:
+                return []
+
             node_info = []
             gcs_entry = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
                 message, 0)
@@ -513,21 +517,19 @@ class GlobalState(object):
                         gcs_entry.Entries(i), 0))
 
                 resources = {
-                    client.ResourcesTotalLabel(i).decode("ascii"):
+                    decode(client.ResourcesTotalLabel(i)):
                     client.ResourcesTotalCapacity(i)
                     for i in range(client.ResourcesTotalLabelLength())
                 }
                 node_info.append({
                     "ClientID": ray.utils.binary_to_hex(client.ClientId()),
                     "IsInsertion": client.IsInsertion(),
-                    "NodeManagerAddress": client.NodeManagerAddress().decode(
-                        "ascii"),
+                    "NodeManagerAddress": decode(client.NodeManagerAddress()),
                     "NodeManagerPort": client.NodeManagerPort(),
                     "ObjectManagerPort": client.ObjectManagerPort(),
-                    "ObjectStoreSocketName": client.ObjectStoreSocketName()
-                    .decode("ascii"),
-                    "RayletSocketName": client.RayletSocketName().decode(
-                        "ascii"),
+                    "ObjectStoreSocketName": decode(
+                        client.ObjectStoreSocketName()),
+                    "RayletSocketName": decode(client.RayletSocketName()),
                     "Resources": resources
                 })
             return node_info
@@ -543,14 +545,14 @@ class GlobalState(object):
         ip_filename_file = {}
 
         for filename in relevant_files:
-            filename = filename.decode("ascii")
+            filename = decode(filename)
             filename_components = filename.split(":")
             ip_addr = filename_components[1]
 
             file = self.redis_client.lrange(filename, 0, -1)
             file_str = []
             for x in file:
-                y = x.decode("ascii")
+                y = decode(x)
                 file_str.append(y)
 
             if ip_addr not in ip_filename_file:
@@ -630,7 +632,7 @@ class GlobalState(object):
                         event_log_set, **params)
 
             for (event, score) in event_list:
-                event_dict = json.loads(event.decode())
+                event_dict = json.loads(decode(event))
                 task_id = ""
                 for event in event_dict:
                     if "task_id" in event[3]:
@@ -643,31 +645,29 @@ class GlobalState(object):
                 heap_size += 1
 
                 for event in event_dict:
-                    if event[1] == "ray:get_task" and event[2] == 1:
+                    if event[1] == "get_task" and event[2] == 1:
                         task_info[task_id]["get_task_start"] = event[0]
-                    if event[1] == "ray:get_task" and event[2] == 2:
+                    if event[1] == "get_task" and event[2] == 2:
                         task_info[task_id]["get_task_end"] = event[0]
-                    if (event[1] == "ray:import_remote_function"
+                    if (event[1] == "register_remote_function"
                             and event[2] == 1):
                         task_info[task_id]["import_remote_start"] = event[0]
-                    if (event[1] == "ray:import_remote_function"
+                    if (event[1] == "register_remote_function"
                             and event[2] == 2):
                         task_info[task_id]["import_remote_end"] = event[0]
-                    if event[1] == "ray:acquire_lock" and event[2] == 1:
-                        task_info[task_id]["acquire_lock_start"] = event[0]
-                    if event[1] == "ray:acquire_lock" and event[2] == 2:
-                        task_info[task_id]["acquire_lock_end"] = event[0]
-                    if event[1] == "ray:task:get_arguments" and event[2] == 1:
+                    if (event[1] == "task:deserialize_arguments"
+                            and event[2] == 1):
                         task_info[task_id]["get_arguments_start"] = event[0]
-                    if event[1] == "ray:task:get_arguments" and event[2] == 2:
+                    if (event[1] == "task:deserialize_arguments"
+                            and event[2] == 2):
                         task_info[task_id]["get_arguments_end"] = event[0]
-                    if event[1] == "ray:task:execute" and event[2] == 1:
+                    if event[1] == "task:execute" and event[2] == 1:
                         task_info[task_id]["execute_start"] = event[0]
-                    if event[1] == "ray:task:execute" and event[2] == 2:
+                    if event[1] == "task:execute" and event[2] == 2:
                         task_info[task_id]["execute_end"] = event[0]
-                    if event[1] == "ray:task:store_outputs" and event[2] == 1:
+                    if event[1] == "task:store_outputs" and event[2] == 1:
                         task_info[task_id]["store_outputs_start"] = event[0]
-                    if event[1] == "ray:task:store_outputs" and event[2] == 2:
+                    if event[1] == "task:store_outputs" and event[2] == 2:
                         task_info[task_id]["store_outputs_end"] = event[0]
                     if "worker_id" in event[3]:
                         task_info[task_id]["worker_id"] = event[3]["worker_id"]
@@ -684,6 +684,173 @@ class GlobalState(object):
             self._add_missing_timestamps(info)
 
         return task_info
+
+    def _profile_table(self, component_id):
+        """Get the profile events for a given component.
+
+        Args:
+            component_id: An identifier for a component.
+
+        Returns:
+            A list of the profile events for the specified process.
+        """
+        # TODO(rkn): This method should support limiting the number of log
+        # events and should also support returning a window of events.
+        message = self._execute_command(component_id, "RAY.TABLE_LOOKUP",
+                                        ray.gcs_utils.TablePrefix.PROFILE, "",
+                                        component_id.id())
+
+        if message is None:
+            return []
+
+        gcs_entries = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
+            message, 0)
+
+        profile_events = []
+        for i in range(gcs_entries.EntriesLength()):
+            profile_table_message = (
+                ray.gcs_utils.ProfileTableData.GetRootAsProfileTableData(
+                    gcs_entries.Entries(i), 0))
+
+            component_type = decode(profile_table_message.ComponentType())
+            component_id = binary_to_hex(profile_table_message.ComponentId())
+            node_ip_address = decode(profile_table_message.NodeIpAddress())
+
+            for j in range(profile_table_message.ProfileEventsLength()):
+                profile_event_message = profile_table_message.ProfileEvents(j)
+
+                profile_event = {
+                    "event_type": decode(profile_event_message.EventType()),
+                    "component_id": component_id,
+                    "node_ip_address": node_ip_address,
+                    "component_type": component_type,
+                    "start_time": profile_event_message.StartTime(),
+                    "end_time": profile_event_message.EndTime(),
+                    "extra_data": json.loads(
+                        decode(profile_event_message.ExtraData())),
+                }
+
+                profile_events.append(profile_event)
+
+        return profile_events
+
+    def profile_table(self):
+        if not self.use_raylet:
+            raise Exception("This method is only supported in the raylet "
+                            "code path.")
+
+        profile_table_keys = self._keys(
+            ray.gcs_utils.TablePrefix_PROFILE_string + "*")
+        component_identifiers_binary = [
+            key[len(ray.gcs_utils.TablePrefix_PROFILE_string):]
+            for key in profile_table_keys
+        ]
+
+        return {
+            binary_to_hex(component_id): self._profile_table(
+                binary_to_object_id(component_id))
+            for component_id in component_identifiers_binary
+        }
+
+    def chrome_tracing_dump(self,
+                            include_task_data=False,
+                            filename=None,
+                            open_browser=False):
+        """Return a list of profiling events that can viewed as a timeline.
+
+        To view this information as a timeline, simply dump it as a json file
+        using json.dumps, and then load go to chrome://tracing in the Chrome
+        web browser and load the dumped file. Make sure to enable "Flow events"
+        in the "View Options" menu.
+
+        Args:
+            include_task_data: If true, we will include more task metadata such
+                as the task specifications in the json.
+            filename: If a filename is provided, the timeline is dumped to that
+                file.
+            open_browser: If true, we will attempt to automatically open the
+                timeline visualization in Chrome.
+
+        Returns:
+            If filename is not provided, this returns a list of profiling
+                events. Each profile event is a dictionary.
+        """
+        # TODO(rkn): Support including the task specification data in the
+        # timeline.
+        # TODO(rkn): This should support viewing just a window of time or a
+        # limited number of events.
+
+        if include_task_data:
+            raise NotImplementedError("This flag has not been implented yet.")
+
+        if open_browser:
+            raise NotImplementedError("This flag has not been implented yet.")
+
+        profile_table = self.profile_table()
+        all_events = []
+
+        # Colors are specified at
+        # https://github.com/catapult-project/catapult/blob/master/tracing/tracing/base/color_scheme.html.  # noqa: E501
+        default_color_mapping = defaultdict(
+            lambda: "generic_work", {
+                "get_task": "cq_build_abandoned",
+                "task": "rail_response",
+                "task:deserialize_arguments": "rail_load",
+                "task:execute": "rail_animation",
+                "task:store_outputs": "rail_idle",
+                "wait_for_function": "detailed_memory_dump",
+                "ray.get": "good",
+                "ray.put": "terrible",
+                "ray.wait": "vsync_highlight_color",
+                "submit_task": "background_memory_dump",
+                "fetch_and_run_function": "detailed_memory_dump",
+                "register_remote_function": "detailed_memory_dump",
+            })
+
+        def seconds_to_microseconds(time_in_seconds):
+            time_in_microseconds = 10**6 * time_in_seconds
+            return time_in_microseconds
+
+        for component_id_hex, component_events in profile_table.items():
+            for event in component_events:
+                new_event = {
+                    # The category of the event.
+                    "cat": event["event_type"],
+                    # The string displayed on the event.
+                    "name": event["event_type"],
+                    # The identifier for the group of rows that the event
+                    # appears in.
+                    "pid": event["node_ip_address"],
+                    # The identifier for the row that the event appears in.
+                    "tid": event["component_type"] + ":" +
+                    event["component_id"],
+                    # The start time in microseconds.
+                    "ts": seconds_to_microseconds(event["start_time"]),
+                    # The duration in microseconds.
+                    "dur": seconds_to_microseconds(event["end_time"] -
+                                                   event["start_time"]),
+                    # What is this?
+                    "ph": "X",
+                    # This is the name of the color to display the box in.
+                    "cname": default_color_mapping[event["event_type"]],
+                    # The extra user-defined data.
+                    "args": event["extra_data"],
+                }
+
+                # Modify the json with the additional user-defined extra data.
+                # This can be used to add fields or override existing fields.
+                if "cname" in event["extra_data"]:
+                    new_event["cname"] = event["extra_data"]["cname"]
+                if "name" in event["extra_data"]:
+                    new_event["name"] = event["extra_data"]["name"]
+
+                all_events.append(new_event)
+
+        if filename is not None:
+            with open(filename, "w") as outfile:
+                json.dump(all_events, outfile)
+        else:
+            return all_events
 
     def dump_catapult_trace(self,
                             path,
@@ -1047,21 +1214,20 @@ class GlobalState(object):
             worker_id = binary_to_hex(worker_key[len("Workers:"):])
 
             workers_data[worker_id] = {
-                "local_scheduler_socket": (
-                    worker_info[b"local_scheduler_socket"].decode("ascii")),
-                "node_ip_address": (worker_info[b"node_ip_address"]
-                                    .decode("ascii")),
-                "plasma_manager_socket": (worker_info[b"plasma_manager_socket"]
-                                          .decode("ascii")),
-                "plasma_store_socket": (worker_info[b"plasma_store_socket"]
-                                        .decode("ascii"))
+                "local_scheduler_socket": (decode(
+                    worker_info[b"local_scheduler_socket"])),
+                "node_ip_address": decode(worker_info[b"node_ip_address"]),
+                "plasma_manager_socket": decode(
+                    worker_info[b"plasma_manager_socket"]),
+                "plasma_store_socket": decode(
+                    worker_info[b"plasma_store_socket"])
             }
             if b"stderr_file" in worker_info:
-                workers_data[worker_id]["stderr_file"] = (
-                    worker_info[b"stderr_file"].decode("ascii"))
+                workers_data[worker_id]["stderr_file"] = decode(
+                    worker_info[b"stderr_file"])
             if b"stdout_file" in worker_info:
-                workers_data[worker_id]["stdout_file"] = (
-                    worker_info[b"stdout_file"].decode("ascii"))
+                workers_data[worker_id]["stdout_file"] = decode(
+                    worker_info[b"stdout_file"])
         return workers_data
 
     def actors(self):
@@ -1070,7 +1236,7 @@ class GlobalState(object):
         for key in actor_keys:
             info = self.redis_client.hgetall(key)
             actor_id = key[len("Actor:"):]
-            assert len(actor_id) == 20
+            assert len(actor_id) == ray_constants.ID_SIZE
             actor_info[binary_to_hex(actor_id)] = {
                 "class_id": binary_to_hex(info[b"class_id"]),
                 "driver_id": binary_to_hex(info[b"driver_id"]),
@@ -1155,8 +1321,8 @@ class GlobalState(object):
             error_data = ray.gcs_utils.ErrorTableData.GetRootAsErrorTableData(
                 gcs_entries.Entries(i), 0)
             error_message = {
-                "type": error_data.Type().decode("ascii"),
-                "message": error_data.ErrorMessage().decode("ascii"),
+                "type": decode(error_data.Type()),
+                "message": decode(error_data.ErrorMessage()),
                 "timestamp": error_data.Timestamp(),
             }
             error_messages.append(error_message)

@@ -35,9 +35,9 @@ public class NetworkUtil {
           return addr.getHostAddress();
         }
       }
-      RayLog.core.warn("you may need to correctly specify [ray.java] net_interface in config");
+      RayLog.core.warn("You need to correctly specify [ray.java] net_interface in config.");
     } catch (Exception e) {
-      RayLog.core.error("Can't get our ip address, use 127.0.0.1 as default.", e);
+      RayLog.core.error("Can't get ip address, use 127.0.0.1 as default.", e);
     }
 
     return "127.0.0.1";

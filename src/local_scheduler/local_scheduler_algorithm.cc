@@ -432,7 +432,7 @@ void insert_actor_task_queue(LocalSchedulerState *state,
   if (entry.frontier_dependencies.count(task_handle_id) == 0) {
     RAY_CHECK(task_entry.ExecutionDependencies().size() == 1);
     entry.frontier_dependencies[task_handle_id] =
-        task_entry.ExecutionDependencies()[1];
+        task_entry.ExecutionDependencies()[0];
   }
 
   /* As a sanity check, the counter of the new task should be greater than the

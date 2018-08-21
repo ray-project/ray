@@ -9,9 +9,9 @@ import os
 import pickle
 
 import tensorflow as tf
-from ray.rllib.evaluation.common_policy_evaluator import CommonPolicyEvaluator
+from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
+from ray.rllib.utils import deep_update
 from ray.tune.registry import ENV_CREATOR, _global_registry
-from ray.tune.result import TrainingResult
 from ray.tune.trainable import Trainable
 
 COMMON_CONFIG = {
@@ -20,7 +20,7 @@ COMMON_CONFIG = {
     # Number of steps after which the rollout gets cut
     "horizon": None,
     # Number of environments to evaluate vectorwise per worker.
-    "num_envs": 1,
+    "num_envs_per_worker": 1,
     # Number of actors used for parallelism
     "num_workers": 2,
     # Default sample batch size
@@ -31,23 +31,46 @@ COMMON_CONFIG = {
     "sample_async": False,
     # Which observation filter to apply to the observation
     "observation_filter": "NoFilter",
+    # Whether to clip rewards prior to experience postprocessing
+    "clip_rewards": True,
     # Whether to use rllib or deepmind preprocessors
-    "preprocessor_pref": "rllib",
+    "preprocessor_pref": "deepmind",
     # Arguments to pass to the env creator
     "env_config": {},
+    # Environment name can also be passed via config
+    "env": None,
     # Arguments to pass to model
-    "model": {},
+    "model": {
+        "use_lstm": False,
+        "max_seq_len": 20,
+    },
     # Arguments to pass to the rllib optimizer
     "optimizer": {},
-    # Override default TF session args if non-empty
-    "tf_session_args": {},
+    # Configure TF for single-process operation by default
+    "tf_session_args": {
+        "intra_op_parallelism_threads": 1,
+        "inter_op_parallelism_threads": 1,
+        "gpu_options": {
+            "allow_growth": True,
+        },
+        "log_device_placement": False,
+        "device_count": {
+            "CPU": 1
+        },
+        "allow_soft_placement": True,  # required by PPO multi-gpu
+    },
     # Whether to LZ4 compress observations
     "compress_observations": False,
 
     # === Multiagent ===
     "multiagent": {
+        # Map from policy ids to tuples of (policy_graph_cls, obs_space,
+        # act_space, config). See policy_evaluator.py for more info.
         "policy_graphs": {},
+        # Function mapping agent ids to policy ids.
         "policy_mapping_fn": None,
+        # Optional whitelist of policies to train, or None for all policies.
+        "policies_to_train": None,
     },
 }
 
@@ -58,35 +81,6 @@ def with_common_config(extra_config):
     config = copy.deepcopy(COMMON_CONFIG)
     config.update(extra_config)
     return config
-
-
-def _deep_update(original, new_dict, new_keys_allowed, whitelist):
-    """Updates original dict with values from new_dict recursively.
-    If new key is introduced in new_dict, then if new_keys_allowed is not
-    True, an error will be thrown. Further, for sub-dicts, if the key is
-    in the whitelist, then new subkeys can be introduced.
-
-    Args:
-        original (dict): Dictionary with default values.
-        new_dict (dict): Dictionary with values to be updated
-        new_keys_allowed (bool): Whether new keys are allowed.
-        whitelist (list): List of keys that correspond to dict values
-            where new subkeys can be introduced. This is only at
-            the top level.
-    """
-    for k, value in new_dict.items():
-        if k not in original and k != "env":
-            if not new_keys_allowed:
-                raise Exception(
-                    "Unknown config parameter `{}` ".format(k))
-        if type(original.get(k)) is dict:
-            if k in whitelist:
-                _deep_update(original[k], value, True, [])
-            else:
-                _deep_update(original[k], value, new_keys_allowed, [])
-        else:
-            original[k] = value
-    return original
 
 
 class Agent(Trainable):
@@ -103,22 +97,24 @@ class Agent(Trainable):
 
     _allow_unknown_configs = False
     _allow_unknown_subkeys = [
-        "tf_session_args", "env_config", "model", "optimizer", "multiagent"]
+        "tf_session_args", "env_config", "model", "optimizer", "multiagent"
+    ]
 
     def make_local_evaluator(self, env_creator, policy_graph):
         """Convenience method to return configured local evaluator."""
 
-        return self._make_evaluator(
-            CommonPolicyEvaluator, env_creator, policy_graph, 0)
+        return self._make_evaluator(PolicyEvaluator, env_creator, policy_graph,
+                                    0)
 
-    def make_remote_evaluators(
-            self, env_creator, policy_graph, count, remote_args):
+    def make_remote_evaluators(self, env_creator, policy_graph, count,
+                               remote_args):
         """Convenience method to return a number of remote evaluators."""
 
-        cls = CommonPolicyEvaluator.as_remote(**remote_args).remote
+        cls = PolicyEvaluator.as_remote(**remote_args).remote
         return [
-            self._make_evaluator(cls, env_creator, policy_graph, i+1)
-            for i in range(count)]
+            self._make_evaluator(cls, env_creator, policy_graph, i + 1)
+            for i in range(count)
+        ]
 
     def _make_evaluator(self, cls, env_creator, policy_graph, worker_index):
         config = self.config
@@ -131,16 +127,18 @@ class Agent(Trainable):
             env_creator,
             self.config["multiagent"]["policy_graphs"] or policy_graph,
             policy_mapping_fn=self.config["multiagent"]["policy_mapping_fn"],
-            tf_session_creator=(
-                session_creator if config["tf_session_args"] else None),
+            policies_to_train=self.config["multiagent"]["policies_to_train"],
+            tf_session_creator=(session_creator
+                                if config["tf_session_args"] else None),
             batch_steps=config["sample_batch_size"],
             batch_mode=config["batch_mode"],
             episode_horizon=config["horizon"],
             preprocessor_pref=config["preprocessor_pref"],
             sample_async=config["sample_async"],
             compress_observations=config["compress_observations"],
-            num_envs=config["num_envs"],
+            num_envs=config["num_envs_per_worker"],
             observation_filter=config["observation_filter"],
+            clip_rewards=config["clip_rewards"],
             env_config=config["env_config"],
             model_config=config["model"],
             policy_config=config,
@@ -148,14 +146,12 @@ class Agent(Trainable):
 
     @classmethod
     def resource_help(cls, config):
-        return (
-            "\n\nYou can adjust the resource requests of RLlib agents by "
-            "setting `num_workers` and other configs. See the "
-            "DEFAULT_CONFIG defined by each agent for more info.\n\n"
-            "The config of this agent is: " + json.dumps(config))
+        return ("\n\nYou can adjust the resource requests of RLlib agents by "
+                "setting `num_workers` and other configs. See the "
+                "DEFAULT_CONFIG defined by each agent for more info.\n\n"
+                "The config of this agent is: " + json.dumps(config))
 
-    def __init__(
-            self, config=None, env=None, logger_creator=None):
+    def __init__(self, config=None, env=None, logger_creator=None):
         """Initialize an RLLib agent.
 
         Args:
@@ -186,9 +182,9 @@ class Agent(Trainable):
 
         # Merge the supplied config with the class default
         merged_config = self._default_config.copy()
-        merged_config = _deep_update(merged_config, self.config,
-                                     self._allow_unknown_configs,
-                                     self._allow_unknown_subkeys)
+        merged_config = deep_update(merged_config, self.config,
+                                    self._allow_unknown_configs,
+                                    self._allow_unknown_subkeys)
         self.config = merged_config
 
         # TODO(ekl) setting the graph is unnecessary for PyTorch agents
@@ -218,16 +214,49 @@ class Agent(Trainable):
 
         raise NotImplementedError
 
-    def compute_action(self, observation, state=None):
-        """Computes an action using the current trained policy."""
+    def compute_action(self, observation, state=None, policy_id="default"):
+        """Computes an action for the specified policy.
+
+        Arguments:
+            observation (obj): observation from the environment.
+            state (list): RNN hidden state, if any. If state is not None,
+                          then all of compute_single_action(...) is returned
+                          (computed action, rnn state, logits dictionary).
+                          Otherwise compute_single_action(...)[0] is
+                          returned (computed action).
+            policy_id (str): policy to query (only applies to multi-agent).
+        """
 
         if state is None:
             state = []
-        obs = self.local_evaluator.filters["default"](
+        filtered_obs = self.local_evaluator.filters[policy_id](
             observation, update=False)
+        if state:
+            return self.local_evaluator.for_policy(
+                lambda p: p.compute_single_action(
+                    filtered_obs, state, is_training=False),
+                policy_id=policy_id)
         return self.local_evaluator.for_policy(
-            lambda p: p.compute_single_action(
-                obs, state, is_training=False)[0])
+                lambda p: p.compute_single_action(
+                    filtered_obs, state, is_training=False)[0],
+                policy_id=policy_id)
+
+    def get_weights(self, policies=None):
+        """Return a dictionary of policy ids to weights.
+
+        Arguments:
+            policies (list): Optional list of policies to return weights for,
+                or None for all policies.
+        """
+        return self.local_evaluator.get_weights(policies)
+
+    def set_weights(self, weights):
+        """Set policy weights by policy id.
+
+        Arguments:
+            weights (dict): Map of policy ids to weights to set.
+        """
+        self.local_evaluator.set_weights(weights)
 
 
 class _MockAgent(Agent):
@@ -237,6 +266,7 @@ class _MockAgent(Agent):
     _default_config = {
         "mock_error": False,
         "persistent_error": False,
+        "test_variable": 1
     }
 
     def _init(self):
@@ -247,9 +277,11 @@ class _MockAgent(Agent):
         if self.config["mock_error"] and self.iteration == 1 \
                 and (self.config["persistent_error"] or not self.restored):
             raise Exception("mock error")
-        return TrainingResult(
-            episode_reward_mean=10, episode_len_mean=10,
-            timesteps_this_iter=10, info={})
+        return dict(
+            episode_reward_mean=10,
+            episode_len_mean=10,
+            timesteps_this_iter=10,
+            info={})
 
     def _save(self, checkpoint_dir):
         path = os.path.join(checkpoint_dir, "mock_agent.pkl")
@@ -289,10 +321,12 @@ class _SigmoidFakeData(_MockAgent):
         i = max(0, self.iteration - self.config["offset"])
         v = np.tanh(float(i) / self.config["width"])
         v *= self.config["height"]
-        return TrainingResult(
-            episode_reward_mean=v, episode_len_mean=v,
+        return dict(
+            episode_reward_mean=v,
+            episode_len_mean=v,
             timesteps_this_iter=self.config["iter_timesteps"],
-            time_this_iter_s=self.config["iter_time"], info={})
+            time_this_iter_s=self.config["iter_time"],
+            info={})
 
 
 class _ParameterTuningAgent(_MockAgent):
@@ -307,11 +341,12 @@ class _ParameterTuningAgent(_MockAgent):
     }
 
     def _train(self):
-        return TrainingResult(
+        return dict(
             episode_reward_mean=self.config["reward_amt"] * self.iteration,
             episode_len_mean=self.config["reward_amt"],
             timesteps_this_iter=self.config["iter_timesteps"],
-            time_this_iter_s=self.config["iter_time"], info={})
+            time_this_iter_s=self.config["iter_time"],
+            info={})
 
 
 def get_agent_class(alg):
@@ -341,12 +376,18 @@ def get_agent_class(alg):
     elif alg == "A3C":
         from ray.rllib.agents import a3c
         return a3c.A3CAgent
+    elif alg == "A2C":
+        from ray.rllib.agents import a3c
+        return a3c.A2CAgent
     elif alg == "BC":
         from ray.rllib.agents import bc
         return bc.BCAgent
     elif alg == "PG":
         from ray.rllib.agents import pg
         return pg.PGAgent
+    elif alg == "IMPALA":
+        from ray.rllib.agents import impala
+        return impala.ImpalaAgent
     elif alg == "script":
         from ray.tune import script_runner
         return script_runner.ScriptRunner
@@ -357,5 +398,4 @@ def get_agent_class(alg):
     elif alg == "__parameter_tuning":
         return _ParameterTuningAgent
     else:
-        raise Exception(
-            ("Unknown algorithm {}.").format(alg))
+        raise Exception(("Unknown algorithm {}.").format(alg))

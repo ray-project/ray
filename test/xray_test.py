@@ -14,7 +14,7 @@ def ray_start():
     ray.init(num_cpus=1, use_raylet=True)
     yield None
     # The code after the yield will run as teardown code.
-    ray.worker.cleanup()
+    ray.shutdown()
 
 
 def test_basic_task_api(ray_start):

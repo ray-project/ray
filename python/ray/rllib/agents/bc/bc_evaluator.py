@@ -8,14 +8,14 @@ from six.moves import queue
 import ray
 from ray.rllib.agents.bc.experience_dataset import ExperienceDataset
 from ray.rllib.agents.bc.policy import BCPolicy
-from ray.rllib.evaluation.interface import PolicyEvaluator
+from ray.rllib.evaluation.interface import EvaluatorInterface
 from ray.rllib.models import ModelCatalog
 
 
-class BCEvaluator(PolicyEvaluator):
+class BCEvaluator(EvaluatorInterface):
     def __init__(self, env_creator, config, logdir):
-        env = ModelCatalog.get_preprocessor_as_wrapper(env_creator(
-            config["env_config"]), config["model"])
+        env = ModelCatalog.get_preprocessor_as_wrapper(
+            env_creator(config["env_config"]), config["model"])
         self.dataset = ExperienceDataset(config["dataset_path"])
         self.policy = BCPolicy(env.observation_space, env.action_space, config)
         self.config = config
@@ -27,8 +27,10 @@ class BCEvaluator(PolicyEvaluator):
 
     def compute_gradients(self, samples):
         gradient, info = self.policy.compute_gradients(samples)
-        self.metrics_queue.put(
-            {"num_samples": info["num_samples"], "loss": info["loss"]})
+        self.metrics_queue.put({
+            "num_samples": info["num_samples"],
+            "loss": info["loss"]
+        })
         return gradient, {}
 
     def apply_gradients(self, grads):
@@ -42,8 +44,7 @@ class BCEvaluator(PolicyEvaluator):
 
     def save(self):
         weights = self.get_weights()
-        return pickle.dumps({
-            "weights": weights})
+        return pickle.dumps({"weights": weights})
 
     def restore(self, objs):
         objs = pickle.loads(objs)

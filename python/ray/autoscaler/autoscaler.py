@@ -65,6 +65,8 @@ CLUSTER_CONFIG_SCHEMA = {
             "module": (str,
                        OPTIONAL),  # module, if using external node provider
             "project_id": (None, OPTIONAL),  # gcp project id, if using gcp
+            "head_ip": (str, OPTIONAL),  # local cluster head node
+            "worker_ips": (list, OPTIONAL),  # local cluster worker nodes
         },
         REQUIRED),
 
@@ -188,6 +190,9 @@ class LoadMetrics(object):
                         max_frac = frac
             nodes_used += max_frac
         idle_times = [now - t for t in self.last_used_time_by_ip.values()]
+        heartbeat_times = [
+            now - t for t in self.last_heartbeat_time_by_ip.values()
+        ]
         return {
             "ResourceUsage": ", ".join([
                 "{}/{} {}".format(
@@ -201,6 +206,10 @@ class LoadMetrics(object):
                 int(np.min(idle_times)) if idle_times else -1,
                 int(np.mean(idle_times)) if idle_times else -1,
                 int(np.max(idle_times)) if idle_times else -1),
+            "TimeSinceLastHeartbeat": "Min={} Mean={} Max={}".format(
+                int(np.min(heartbeat_times)) if heartbeat_times else -1,
+                int(np.mean(heartbeat_times)) if heartbeat_times else -1,
+                int(np.max(heartbeat_times)) if heartbeat_times else -1),
         }
 
 
@@ -480,9 +489,12 @@ class StandardAutoscaler(object):
             return
         last_heartbeat_time = self.load_metrics.last_heartbeat_time_by_ip.get(
             self.provider.internal_ip(node_id), 0)
-        if time.time() - last_heartbeat_time < AUTOSCALER_HEARTBEAT_TIMEOUT_S:
+        delta = time.time() - last_heartbeat_time
+        if delta < AUTOSCALER_HEARTBEAT_TIMEOUT_S:
             return
-        print("StandardAutoscaler: Restarting Ray on {}".format(node_id))
+        print("StandardAutoscaler: No heartbeat from node "
+              "{} in {} seconds, restarting Ray to recover...".format(
+                  node_id, delta))
         updater = self.node_updater_cls(
             node_id,
             self.config["provider"],
@@ -501,14 +513,17 @@ class StandardAutoscaler(object):
             return
         if self.files_up_to_date(node_id):
             return
-        if self.config.get("no_restart", False) and \
-                self.num_successful_updates.get(node_id, 0) > 0:
+        successful_updated = self.num_successful_updates.get(node_id, 0) > 0
+        if successful_updated and self.config.get("restart_only", False):
+            init_commands = self.config["worker_start_ray_commands"]
+        elif successful_updated and self.config.get("no_restart", False):
             init_commands = (self.config["setup_commands"] +
                              self.config["worker_setup_commands"])
         else:
             init_commands = (self.config["setup_commands"] +
                              self.config["worker_setup_commands"] +
                              self.config["worker_start_ray_commands"])
+
         updater = self.node_updater_cls(
             node_id,
             self.config["provider"],
@@ -640,6 +655,7 @@ def hash_runtime_conf(file_mounts, extra_objs):
     hasher = hashlib.sha1()
 
     def add_content_hashes(path):
+        path = os.path.expanduser(path)
         if os.path.isdir(path):
             dirs = []
             for dirpath, _, filenames in os.walk(path):
@@ -649,9 +665,14 @@ def hash_runtime_conf(file_mounts, extra_objs):
                 for name in filenames:
                     hasher.update(name.encode("utf-8"))
                     with open(os.path.join(dirpath, name), "rb") as f:
-                        hasher.update(binascii.hexlify(f.read()))
+                        if os.path.getsize(os.path.join(dirpath,
+                                                        name)) < 1000000000:
+                            hasher.update(binascii.hexlify(f.read()))
+                        else:
+                            for chunk in iter(lambda: f.read(8192), b''):
+                                hasher.update(binascii.hexlify(chunk))
         else:
-            with open(os.path.expanduser(path), "rb") as f:
+            with open(path, "rb") as f:
                 hasher.update(binascii.hexlify(f.read()))
 
     hasher.update(json.dumps(sorted(file_mounts.items())).encode("utf-8"))

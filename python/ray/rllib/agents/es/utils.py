@@ -31,8 +31,9 @@ def compute_centered_ranks(x):
 def make_session(single_threaded):
     if not single_threaded:
         return tf.Session()
-    return tf.Session(config=tf.ConfigProto(inter_op_parallelism_threads=1,
-                                            intra_op_parallelism_threads=1))
+    return tf.Session(
+        config=tf.ConfigProto(
+            inter_op_parallelism_threads=1, intra_op_parallelism_threads=1))
 
 
 def itergroups(items, group_size):
@@ -50,10 +51,11 @@ def itergroups(items, group_size):
 def batched_weighted_sum(weights, vecs, batch_size):
     total = 0
     num_items_summed = 0
-    for batch_weights, batch_vecs in zip(itergroups(weights, batch_size),
-                                         itergroups(vecs, batch_size)):
+    for batch_weights, batch_vecs in zip(
+            itergroups(weights, batch_size), itergroups(vecs, batch_size)):
         assert len(batch_weights) == len(batch_vecs) <= batch_size
-        total += np.dot(np.asarray(batch_weights, dtype=np.float32),
-                        np.asarray(batch_vecs, dtype=np.float32))
+        total += np.dot(
+            np.asarray(batch_weights, dtype=np.float32),
+            np.asarray(batch_vecs, dtype=np.float32))
         num_items_summed += len(batch_weights)
     return total, num_items_summed

@@ -3,7 +3,6 @@ package org.ray.api;
 import java.util.List;
 import org.ray.api.internal.RayConnector;
 import org.ray.util.exception.TaskExecutionException;
-import org.ray.util.logger.DynamicLog;
 import org.ray.util.logger.RayLog;
 
 /**
@@ -86,8 +85,8 @@ public final class Ray extends Rpc {
       if (cls.getConstructor() == null) {
         System.err.println("class " + cls.getName()
             + " does not (actors must) have a constructor with no arguments");
-        RayLog.core.error("class " + cls.getName()
-            + " does not (actors must) have a constructor with no arguments");
+        RayLog.core.error("class {} does not (actors must) have a constructor with no arguments",
+            cls.getName());
       }
     } catch (Exception e) {
       System.exit(1);
@@ -101,12 +100,5 @@ public final class Ray extends Rpc {
    */
   static RayApi internal() {
     return impl;
-  }
-
-  /**
-   * for ray's app's log.
-   */
-  public static DynamicLog getRappLogger() {
-    return RayLog.rapp;
   }
 }

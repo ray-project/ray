@@ -174,7 +174,7 @@ class TestObjectManagerIntegration : public TestObjectManagerBase {
 
     num_expected_objects = (uint)1;
     ObjectID oid1 = WriteDataToClient(client1, data_size);
-    status = server1->object_manager_.Push(oid1, client_id_2);
+    server1->object_manager_.Push(oid1, client_id_2);
   }
 
   void TestPushComplete() {

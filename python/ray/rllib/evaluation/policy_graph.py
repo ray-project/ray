@@ -25,7 +25,7 @@ class PolicyGraph(object):
         """Initialize the graph.
 
         This is the standard constructor for policy graphs. The policy graph
-        class you pass into CommonPolicyEvaluator will be constructed with
+        class you pass into PolicyEvaluator will be constructed with
         these arguments.
 
         Args:
@@ -37,13 +37,20 @@ class PolicyGraph(object):
         self.observation_space = observation_space
         self.action_space = action_space
 
-    def compute_actions(self, obs_batch, state_batches, is_training=False):
+    def compute_actions(self,
+                        obs_batch,
+                        state_batches,
+                        is_training=False,
+                        episodes=None):
         """Compute actions for the current policy.
 
         Arguments:
             obs_batch (np.ndarray): batch of observations
             state_batches (list): list of RNN state input batches, if any
             is_training (bool): whether we are training the policy
+            episodes (list): MultiAgentEpisode for each obs in obs_batch.
+                This provides access to all of the internal episode state,
+                which may be useful for model-based or multiagent algorithms.
 
         Returns:
             actions (np.ndarray): batch of output actions, with shape like
@@ -55,13 +62,20 @@ class PolicyGraph(object):
         """
         raise NotImplementedError
 
-    def compute_single_action(self, obs, state, is_training=False):
+    def compute_single_action(self,
+                              obs,
+                              state,
+                              is_training=False,
+                              episode=None):
         """Unbatched version of compute_actions.
 
         Arguments:
             obs (obj): single observation
             state_batches (list): list of RNN state inputs, if any
             is_training (bool): whether we are training the policy
+            episode (MultiAgentEpisode): this provides access to all of the
+                internal episode state, which may be useful for model-based or
+                multiagent algorithms.
 
         Returns:
             actions (obj): single action
@@ -70,12 +84,15 @@ class PolicyGraph(object):
         """
 
         [action], state_out, info = self.compute_actions(
-            [obs], [[s] for s in state], is_training)
+            [obs], [[s] for s in state], is_training, episodes=[episode])
         return action, [s[0] for s in state_out], \
             {k: v[0] for k, v in info.items()}
 
     def postprocess_trajectory(self, sample_batch, other_agent_batches=None):
         """Implements algorithm-specific trajectory postprocessing.
+
+        This will be called on each trajectory fragment computed during policy
+        evaluation. Each fragment is guaranteed to be only from one episode.
 
         Arguments:
             sample_batch (SampleBatch): batch of experiences for the policy,
@@ -105,6 +122,22 @@ class PolicyGraph(object):
             info (dict): Extra policy-specific values
         """
         raise NotImplementedError
+
+    def compute_apply(self, samples):
+        """Fused compute gradients and apply gradients call.
+
+        Returns:
+            grad_info: dictionary of extra metadata from compute_gradients().
+            apply_info: dictionary of extra metadata from apply_gradients().
+
+        Examples:
+            >>> batch = ev.sample()
+            >>> ev.compute_apply(samples)
+        """
+
+        grads, grad_info = self.compute_gradients(samples)
+        apply_info = self.apply_gradients(grads)
+        return grad_info, apply_info
 
     def get_weights(self):
         """Returns model weights.

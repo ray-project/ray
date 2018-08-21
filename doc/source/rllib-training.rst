@@ -36,12 +36,12 @@ The ``train.py`` script has a number of options you can show by running
 The most important options are for choosing the environment
 with ``--env`` (any OpenAI gym environment including ones registered by the user
 can be used) and for choosing the algorithm with ``--run``
-(available options are ``PPO``, ``PG``, ``A3C``, ``ES``, ``DDPG``, ``DDPG2``, ``DQN``, ``APEX``, and ``APEX_DDPG``).
+(available options are ``PPO``, ``PG``, ``A2C``, ``A3C``, ``IMPALA``, ``ES``, ``DDPG``, ``DQN``, ``APEX``, and ``APEX_DDPG``).
 
 Specifying Parameters
 ~~~~~~~~~~~~~~~~~~~~~
 
-Each algorithm has specific hyperparameters that can be set with ``--config``. See the
+Each algorithm has specific hyperparameters that can be set with ``--config``, in addition to a number of `common hyperparameters <https://github.com/ray-project/ray/blob/master/python/ray/rllib/agents/agent.py>`__. See the
 `algorithms documentation <rllib-algorithms.html>`__ for more information.
 
 In an example below, we train A3C by specifying 8 workers through the config flag.
@@ -74,12 +74,18 @@ located at ``~/ray_results/default/DQN_CartPole-v0_0upjmdgr0/checkpoint-1``
 and renders its behavior in the environment specified by ``--env``.
 
 Tuned Examples
---------------
+~~~~~~~~~~~~~~
 
 Some good hyperparameters and settings are available in
 `the repository <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tuned_examples>`__
 (some of them are tuned to run on GPUs). If you find better settings or tune
 an algorithm on a different domain, consider submitting a Pull Request!
+
+You can run these with the ``train.py`` script as follows:
+
+.. code-block:: bash
+
+    python ray/python/ray/rllib/train.py -f /path/to/tuned/example.yaml
 
 Python API
 ----------
@@ -92,6 +98,7 @@ Here is an example of the basic usage:
 
     import ray
     import ray.rllib.agents.ppo as ppo
+    from ray.tune.logger import pretty_print
 
     ray.init()
     config = ppo.DEFAULT_CONFIG.copy()
@@ -102,13 +109,50 @@ Here is an example of the basic usage:
     for i in range(1000):
        # Perform one iteration of training the policy with PPO
        result = agent.train()
-       print("result: {}".format(result))
+       print(pretty_print(result))
 
        if i % 100 == 0:
            checkpoint = agent.save()
            print("checkpoint saved at", checkpoint)
 
-All RLlib agents implement the tune Trainable API, which means they support incremental training and checkpointing. This enables them to be easily used in experiments with Ray Tune.
+
+.. note::
+
+    It's recommended that you run RLlib agents with `Tune <tune.html>`__, for easy experiment management and visualization of results. Just set ``"run": AGENT_NAME, "env": ENV_NAME`` in the experiment config.
+
+All RLlib agents are compatible with the `Tune API <tune-usage.html>`__. This enables them to be easily used in experiments with `Tune <tune.html>`__. For example, the following code performs a simple hyperparam sweep of PPO:
+
+.. code-block:: python
+
+    import ray
+    import ray.tune as tune
+
+    ray.init()
+    tune.run_experiments({
+        "my_experiment": {
+            "run": "PPO",
+            "env": "CartPole-v0",
+            "stop": {"episode_reward_mean": 200},
+            "config": {
+                "num_workers": 1,
+                "sgd_stepsize": tune.grid_search([0.01, 0.001, 0.0001]),
+            },
+        },
+    })
+
+Tune will schedule the trials to run in parallel on your Ray cluster:
+
+::
+
+    == Status ==
+    Using FIFO scheduling algorithm.
+    Resources requested: 4/4 CPUs, 0/0 GPUs
+    Result logdir: /home/eric/ray_results/my_experiment
+    PENDING trials:
+     - PPO_CartPole-v0_2_sgd_stepsize=0.0001:	PENDING
+    RUNNING trials:
+     - PPO_CartPole-v0_0_sgd_stepsize=0.01:	RUNNING [pid=21940], 16 s, 4013 ts, 22 rew
+     - PPO_CartPole-v0_1_sgd_stepsize=0.001:	RUNNING [pid=21942], 27 s, 8111 ts, 54.7 rew
 
 Accessing Global State
 ~~~~~~~~~~~~~~~~~~~~~~

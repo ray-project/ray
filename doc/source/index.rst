@@ -40,11 +40,11 @@ View the `codebase on GitHub`_.
 
 Ray comes with libraries that accelerate deep learning and reinforcement learning development:
 
-- `Ray Tune`_: Hyperparameter Optimization Framework
-- `Ray RLlib`_: Scalable Reinforcement Learning
+- `Tune`_: Scalable Hyperparameter Search
+- `RLlib`_: Scalable Reinforcement Learning
 
-.. _`Ray Tune`: tune.html
-.. _`Ray RLlib`: rllib.html
+.. _`Tune`: tune.html
+.. _`RLlib`: rllib.html
 
 
 .. toctree::
@@ -67,12 +67,13 @@ Ray comes with libraries that accelerate deep learning and reinforcement learnin
 
 .. toctree::
    :maxdepth: 1
-   :caption: Ray Tune
+   :caption: Tune
 
    tune.rst
-   tune-config.rst
-   hyperband.rst
-   pbt.rst
+   tune-usage.rst
+   tune-schedulers.rst
+   tune-searchalg.rst
+   tune-package-ref.rst
 
 .. toctree::
    :maxdepth: 1
@@ -83,6 +84,7 @@ Ray comes with libraries that accelerate deep learning and reinforcement learnin
    rllib-env.rst
    rllib-algorithms.rst
    rllib-models.rst
+   rllib-concepts.rst
    rllib-package-ref.rst
 
 .. toctree::
@@ -115,6 +117,7 @@ Ray comes with libraries that accelerate deep learning and reinforcement learnin
    fault-tolerance.rst
    plasma-object-store.rst
    resources.rst
+   redis-memory-management.rst
 
 .. toctree::
    :maxdepth: 1
@@ -130,6 +133,7 @@ Ray comes with libraries that accelerate deep learning and reinforcement learnin
    :caption: Help
 
    troubleshooting.rst
+   user-profiling.rst
    development.rst
    profiling.rst
    contact.rst

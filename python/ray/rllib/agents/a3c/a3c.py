@@ -4,12 +4,12 @@ from __future__ import print_function
 
 import pickle
 import os
+import time
 
 import ray
 from ray.rllib.agents.agent import Agent, with_common_config
 from ray.rllib.optimizers import AsyncGradientsOptimizer
-from ray.rllib.utils import FilterManager
-from ray.rllib.evaluation.metrics import collect_metrics
+from ray.rllib.utils import FilterManager, merge_dicts
 from ray.tune.trial import Resources
 
 DEFAULT_CONFIG = with_common_config({
@@ -31,7 +31,10 @@ DEFAULT_CONFIG = with_common_config({
     "use_gpu_for_workers": False,
     # Whether to emit extra summary stats
     "summarize": False,
-    # Workers sample async
+    # Min time per iteration
+    "min_iter_time_s": 5,
+    # Workers sample async. Note that this increases the effective
+    # sample_batch_size by up to 5x due to async buffering of batches.
     "sample_async": True,
     # Model and preprocessor options
     "model": {
@@ -44,7 +47,7 @@ DEFAULT_CONFIG = with_common_config({
         # (Image statespace) - Each pixel
         "zero_mean": False,
         # (Image statespace) - Converts image to (dim, dim, C)
-        "dim": 80,
+        "dim": 84,
         # (Image statespace) - Converts image shape to (C, dim, dim)
         "channel_major": False,
     },
@@ -55,11 +58,6 @@ DEFAULT_CONFIG = with_common_config({
         "gpu_options": {
             "allow_growth": True,
         },
-    },
-    # Arguments to pass to the rllib optimizer
-    "optimizer": {
-        # Number of gradients applied for each `train` step
-        "grads_per_step": 100,
     },
 })
 
@@ -72,7 +70,7 @@ class A3CAgent(Agent):
 
     @classmethod
     def default_resource_request(cls, config):
-        cf = dict(cls._default_config, **config)
+        cf = merge_dicts(cls._default_config, config)
         return Resources(
             cpu=1,
             gpu=0,
@@ -81,11 +79,11 @@ class A3CAgent(Agent):
 
     def _init(self):
         if self.config["use_pytorch"]:
-            from ray.rllib.agents.a3c.a3c_torch_policy import \
+            from ray.rllib.agents.a3c.a3c_torch_policy_graph import \
                 A3CTorchPolicyGraph
             policy_cls = A3CTorchPolicyGraph
         else:
-            from ray.rllib.agents.a3c.a3c_tf_policy import A3CPolicyGraph
+            from ray.rllib.agents.a3c.a3c_tf_policy_graph import A3CPolicyGraph
             policy_cls = A3CPolicyGraph
 
         self.local_evaluator = self.make_local_evaluator(
@@ -93,17 +91,23 @@ class A3CAgent(Agent):
         self.remote_evaluators = self.make_remote_evaluators(
             self.env_creator, policy_cls, self.config["num_workers"],
             {"num_gpus": 1 if self.config["use_gpu_for_workers"] else 0})
-        self.optimizer = AsyncGradientsOptimizer(
-            self.config["optimizer"], self.local_evaluator,
-            self.remote_evaluators)
+        self.optimizer = self._make_optimizer()
+
+    def _make_optimizer(self):
+        return AsyncGradientsOptimizer(self.local_evaluator,
+                                       self.remote_evaluators,
+                                       self.config["optimizer"])
 
     def _train(self):
-        self.optimizer.step()
-        FilterManager.synchronize(
-            self.local_evaluator.filters, self.remote_evaluators)
-        result = collect_metrics(self.local_evaluator, self.remote_evaluators)
-        result = result._replace(
-            info=self.optimizer.stats())
+        prev_steps = self.optimizer.num_steps_sampled
+        start = time.time()
+        while time.time() - start < self.config["min_iter_time_s"]:
+            self.optimizer.step()
+            FilterManager.synchronize(self.local_evaluator.filters,
+                                      self.remote_evaluators)
+        result = self.optimizer.collect_metrics()
+        result.update(timesteps_this_iter=self.optimizer.num_steps_sampled -
+                      prev_steps)
         return result
 
     def _stop(self):

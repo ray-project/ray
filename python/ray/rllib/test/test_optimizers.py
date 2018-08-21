@@ -14,16 +14,15 @@ from ray.rllib.evaluation import SampleBatch
 
 class AsyncOptimizerTest(unittest.TestCase):
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
 
     def testBasic(self):
         ray.init(num_cpus=4)
         local = _MockEvaluator()
         remotes = ray.remote(_MockEvaluator)
         remote_evaluators = [remotes.remote() for i in range(5)]
-        test_optimizer = AsyncGradientsOptimizer({
-            "grads_per_step": 10
-        }, local, remote_evaluators)
+        test_optimizer = AsyncGradientsOptimizer(local, remote_evaluators,
+                                                 {"grads_per_step": 10})
         test_optimizer.step()
         self.assertTrue(all(local.get_weights() == 0))
 

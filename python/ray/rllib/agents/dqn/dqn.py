@@ -4,20 +4,22 @@ from __future__ import print_function
 
 import pickle
 import os
+import time
 
 import ray
 from ray.rllib import optimizers
 from ray.rllib.agents.agent import Agent, with_common_config
 from ray.rllib.agents.dqn.dqn_policy_graph import DQNPolicyGraph
 from ray.rllib.evaluation.metrics import collect_metrics
+from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.schedules import ConstantSchedule, LinearSchedule
 from ray.tune.trial import Resources
-
 
 OPTIMIZER_SHARED_CONFIGS = [
     "buffer_size", "prioritized_replay", "prioritized_replay_alpha",
     "prioritized_replay_beta", "prioritized_replay_eps", "sample_batch_size",
-    "train_batch_size", "learning_starts", "clip_rewards"]
+    "train_batch_size", "learning_starts"
+]
 
 DEFAULT_CONFIG = with_common_config({
     # === Model ===
@@ -59,8 +61,6 @@ DEFAULT_CONFIG = with_common_config({
     "prioritized_replay_beta": 0.4,
     # Epsilon to add to the TD errors when updating priorities.
     "prioritized_replay_eps": 1e-6,
-    # Whether to clip rewards to [-1, 1] prior to adding to the replay buffer.
-    "clip_rewards": True,
     # Whether to LZ4 compress observations
     "compress_observations": True,
 
@@ -96,6 +96,8 @@ DEFAULT_CONFIG = with_common_config({
     "per_worker_exploration": False,
     # Whether to compute priorities on workers.
     "worker_side_prioritization": False,
+    # Prevent iterations from going lower than this time span
+    "min_iter_time_s": 1,
 })
 
 
@@ -108,9 +110,10 @@ class DQNAgent(Agent):
 
     @classmethod
     def default_resource_request(cls, config):
-        cf = dict(cls._default_config, **config)
+        cf = merge_dicts(cls._default_config, config)
         return Resources(
-            cpu=1, gpu=cf["gpu"] and 1 or 0,
+            cpu=1,
+            gpu=cf["gpu"] and 1 or 0,
             extra_cpu=cf["num_cpus_per_worker"] * cf["num_workers"],
             extra_gpu=cf["num_gpus_per_worker"] * cf["num_workers"])
 
@@ -123,7 +126,8 @@ class DQNAgent(Agent):
         self.exploration0 = self._make_exploration_schedule(0)
         self.explorations = [
             self._make_exploration_schedule(i)
-            for i in range(self.config["num_workers"])]
+            for i in range(self.config["num_workers"])
+        ]
 
         for k in OPTIMIZER_SHARED_CONFIGS:
             if k not in self.config["optimizer"]:
@@ -131,13 +135,27 @@ class DQNAgent(Agent):
 
         self.local_evaluator = self.make_local_evaluator(
             self.env_creator, self._policy_graph)
-        self.remote_evaluators = self.make_remote_evaluators(
-            self.env_creator, self._policy_graph, self.config["num_workers"],
-            {"num_cpus": self.config["num_cpus_per_worker"],
-             "num_gpus": self.config["num_gpus_per_worker"]})
+
+        def create_remote_evaluators():
+            return self.make_remote_evaluators(
+                self.env_creator, self._policy_graph,
+                self.config["num_workers"], {
+                    "num_cpus": self.config["num_cpus_per_worker"],
+                    "num_gpus": self.config["num_gpus_per_worker"]
+                })
+
+        if self.config["optimizer_class"] != "AsyncReplayOptimizer":
+            self.remote_evaluators = create_remote_evaluators()
+        else:
+            # Hack to workaround https://github.com/ray-project/ray/issues/2541
+            self.remote_evaluators = None
         self.optimizer = getattr(optimizers, self.config["optimizer_class"])(
-            self.config["optimizer"], self.local_evaluator,
-            self.remote_evaluators)
+            self.local_evaluator, self.remote_evaluators,
+            self.config["optimizer"])
+        # Create the remote evaluators *after* the replay actors
+        if self.remote_evaluators is None:
+            self.remote_evaluators = create_remote_evaluators()
+            self.optimizer.set_evaluators(self.remote_evaluators)
 
         self.last_target_update_ts = 0
         self.num_target_updates = 0
@@ -147,14 +165,12 @@ class DQNAgent(Agent):
         if self.config["per_worker_exploration"]:
             assert self.config["num_workers"] > 1, \
                 "This requires multiple workers"
-            return ConstantSchedule(
-                0.4 ** (
-                    1 + worker_index / float(
-                        self.config["num_workers"] - 1) * 7))
+            exponent = (
+                1 + worker_index / float(self.config["num_workers"] - 1) * 7)
+            return ConstantSchedule(0.4**exponent)
         return LinearSchedule(
-            schedule_timesteps=int(
-                self.config["exploration_fraction"] *
-                self.config["schedule_max_timesteps"]),
+            schedule_timesteps=int(self.config["exploration_fraction"] *
+                                   self.config["schedule_max_timesteps"]),
             initial_p=1.0,
             final_p=self.config["exploration_final_eps"])
 
@@ -165,34 +181,47 @@ class DQNAgent(Agent):
     def update_target_if_needed(self):
         if self.global_timestep - self.last_target_update_ts > \
                 self.config["target_network_update_freq"]:
-            self.local_evaluator.foreach_policy(lambda p, _: p.update_target())
+            self.local_evaluator.foreach_trainable_policy(
+                lambda p, _: p.update_target())
             self.last_target_update_ts = self.global_timestep
             self.num_target_updates += 1
 
     def _train(self):
         start_timestep = self.global_timestep
 
+        start = time.time()
         while (self.global_timestep - start_timestep <
-               self.config["timesteps_per_iteration"]):
+               self.config["timesteps_per_iteration"]
+               ) or time.time() - start < self.config["min_iter_time_s"]:
             self.optimizer.step()
             self.update_target_if_needed()
 
         exp_vals = [self.exploration0.value(self.global_timestep)]
-        self.local_evaluator.foreach_policy(
+        self.local_evaluator.foreach_trainable_policy(
             lambda p, _: p.set_epsilon(exp_vals[0]))
         for i, e in enumerate(self.remote_evaluators):
             exp_val = self.explorations[i].value(self.global_timestep)
-            e.foreach_policy.remote(lambda p, _: p.set_epsilon(exp_val))
+            e.foreach_trainable_policy.remote(
+                lambda p, _: p.set_epsilon(exp_val))
             exp_vals.append(exp_val)
 
-        result = collect_metrics(
-            self.local_evaluator, self.remote_evaluators)
-        return result._replace(
+        if self.config["per_worker_exploration"]:
+            # Only collect metrics from the third of workers with lowest eps
+            result = collect_metrics(
+                self.local_evaluator,
+                self.remote_evaluators[-len(self.remote_evaluators) // 3:])
+        else:
+            result = collect_metrics(self.local_evaluator,
+                                     self.remote_evaluators)
+
+        result.update(
+            timesteps_this_iter=self.global_timestep - start_timestep,
             info=dict({
                 "min_exploration": min(exp_vals),
                 "max_exploration": max(exp_vals),
                 "num_target_updates": self.num_target_updates,
             }, **self.optimizer.stats()))
+        return result
 
     def _stop(self):
         # workaround for https://github.com/ray-project/ray/issues/1516
@@ -200,14 +229,14 @@ class DQNAgent(Agent):
             ev.__ray_terminate__.remote()
 
     def _save(self, checkpoint_dir):
-        checkpoint_path = os.path.join(
-            checkpoint_dir, "checkpoint-{}".format(self.iteration))
+        checkpoint_path = os.path.join(checkpoint_dir,
+                                       "checkpoint-{}".format(self.iteration))
         extra_data = [
             self.local_evaluator.save(),
             ray.get([e.save.remote() for e in self.remote_evaluators]),
-            self.optimizer.save(),
-            self.num_target_updates,
-            self.last_target_update_ts]
+            self.optimizer.save(), self.num_target_updates,
+            self.last_target_update_ts
+        ]
         pickle.dump(extra_data, open(checkpoint_path + ".extra_data", "wb"))
         return checkpoint_path
 
@@ -215,8 +244,9 @@ class DQNAgent(Agent):
         extra_data = pickle.load(open(checkpoint_path + ".extra_data", "rb"))
         self.local_evaluator.restore(extra_data[0])
         ray.get([
-            e.restore.remote(d) for (d, e)
-            in zip(extra_data[1], self.remote_evaluators)])
+            e.restore.remote(d)
+            for (d, e) in zip(extra_data[1], self.remote_evaluators)
+        ])
         self.optimizer.restore(extra_data[2])
         self.num_target_updates = extra_data[3]
         self.last_target_update_ts = extra_data[4]

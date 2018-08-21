@@ -5,29 +5,30 @@ from __future__ import print_function
 import os
 import unittest
 import ray
-import sys
 import time
 import numpy as np
-
-import ray.test.test_functions as test_functions
-
-if sys.version_info >= (3, 0):
-    from importlib import reload
 
 
 class MicroBenchmarkTest(unittest.TestCase):
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
 
     def testTiming(self):
-        reload(test_functions)
+        @ray.remote
+        def empty_function():
+            pass
+
+        @ray.remote
+        def trivial_function():
+            return 1
+
         ray.init(num_workers=3)
 
         # Measure the time required to submit a remote task to the scheduler.
         elapsed_times = []
         for _ in range(1000):
             start_time = time.time()
-            test_functions.empty_function.remote()
+            empty_function.remote()
             end_time = time.time()
             elapsed_times.append(end_time - start_time)
         elapsed_times = np.sort(elapsed_times)
@@ -44,7 +45,7 @@ class MicroBenchmarkTest(unittest.TestCase):
         elapsed_times = []
         for _ in range(1000):
             start_time = time.time()
-            test_functions.trivial_function.remote()
+            trivial_function.remote()
             end_time = time.time()
             elapsed_times.append(end_time - start_time)
         elapsed_times = np.sort(elapsed_times)
@@ -61,7 +62,7 @@ class MicroBenchmarkTest(unittest.TestCase):
         elapsed_times = []
         for _ in range(1000):
             start_time = time.time()
-            x = test_functions.trivial_function.remote()
+            x = trivial_function.remote()
             ray.get(x)
             end_time = time.time()
             elapsed_times.append(end_time - start_time)

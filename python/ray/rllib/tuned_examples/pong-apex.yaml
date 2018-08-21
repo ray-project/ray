@@ -7,5 +7,7 @@ pong-apex:
     config:
         target_network_update_freq: 50000
         num_workers: 32
+        ## can also enable vectorization within processes
+        # num_envs_per_worker: 4
         lr: .0001
         gamma: 0.99

@@ -8,6 +8,7 @@ namespace raylet {
 
 ActorRegistration::ActorRegistration(const ActorTableDataT &actor_table_data)
     : actor_table_data_(actor_table_data),
+      alive_(true),
       execution_dependency_(ObjectID::nil()),
       frontier_() {}
 
@@ -35,6 +36,10 @@ void ActorRegistration::ExtendFrontier(const ActorHandleID &handle_id,
   frontier_entry.execution_dependency = execution_dependency;
   execution_dependency_ = execution_dependency;
 }
+
+bool ActorRegistration::IsAlive() const { return alive_; }
+
+void ActorRegistration::MarkDead() { alive_ = false; }
 
 }  // namespace raylet
 

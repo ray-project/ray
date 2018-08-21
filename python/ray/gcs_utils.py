@@ -22,7 +22,9 @@ import ray.core.generated.ErrorTableData
 from ray.core.generated.GcsTableEntry import GcsTableEntry
 from ray.core.generated.ClientTableData import ClientTableData
 from ray.core.generated.ErrorTableData import ErrorTableData
+from ray.core.generated.ProfileTableData import ProfileTableData
 from ray.core.generated.HeartbeatTableData import HeartbeatTableData
+from ray.core.generated.DriverTableData import DriverTableData
 from ray.core.generated.ObjectTableData import ObjectTableData
 from ray.core.generated.ray.protocol.Task import Task
 
@@ -34,8 +36,8 @@ __all__ = [
     "TaskExecutionDependencies", "TaskReply", "DriverTableMessage",
     "LocalSchedulerInfoMessage", "SubscribeToDBClientTableReply", "TaskInfo",
     "GcsTableEntry", "ClientTableData", "ErrorTableData", "HeartbeatTableData",
-    "ObjectTableData", "Task", "TablePrefix", "TablePubsub",
-    "construct_error_message"
+    "DriverTableData", "ProfileTableData", "ObjectTableData", "Task",
+    "TablePrefix", "TablePubsub", "construct_error_message"
 ]
 
 # These prefixes must be kept up-to-date with the definitions in
@@ -53,6 +55,7 @@ FUNCTION_PREFIX = "RemoteFunction:"
 TablePrefix_RAYLET_TASK_string = "RAYLET_TASK"
 TablePrefix_OBJECT_string = "OBJECT"
 TablePrefix_ERROR_INFO_string = "ERROR_INFO"
+TablePrefix_PROFILE_string = "PROFILE"
 
 
 def construct_error_message(error_type, message, timestamp):

@@ -7,8 +7,8 @@ from ray.rllib.models.fcnet import FullyConnectedNetwork
 from ray.rllib.models.lstm import LSTM
 from ray.rllib.models.linear import LinearNetwork
 
-
-__all__ = ["ActionDistribution", "ActionDistribution", "Categorical",
-           "DiagGaussian", "Deterministic", "ModelCatalog", "Model",
-           "Preprocessor", "FullyConnectedNetwork", "LSTM",
-           "LinearNetwork"]
+__all__ = [
+    "ActionDistribution", "Categorical", "DiagGaussian", "Deterministic",
+    "ModelCatalog", "Model", "Preprocessor", "FullyConnectedNetwork", "LSTM",
+    "LinearNetwork"
+]

@@ -24,7 +24,7 @@ class MonitorTest(unittest.TestCase):
         ])
         lines = [m.strip() for m in stdout.split("\n")]
         init_cmd = [m for m in lines if m.startswith("ray.init")]
-        self.assertEqual(1, len(init_cmd))
+        assert 1 == len(init_cmd)
         redis_address = init_cmd[0].split("redis_address=\"")[-1][:-2]
 
         def StateSummary():
@@ -41,11 +41,18 @@ class MonitorTest(unittest.TestCase):
             if (0, 1) != summary_start[:2]:
                 success.value = False
 
+            max_attempts_before_failing = 100
+
             # Two new objects.
             ray.get(ray.put(1111))
             ray.get(ray.put(1111))
-            if (2, 1, summary_start[2]) != StateSummary():
-                success.value = False
+            attempts = 0
+            while (2, 1, summary_start[2]) != StateSummary():
+                time.sleep(0.1)
+                attempts += 1
+                if attempts == max_attempts_before_failing:
+                    success.value = False
+                    break
 
             @ray.remote
             def f():
@@ -53,45 +60,58 @@ class MonitorTest(unittest.TestCase):
                 return 1111  # A returned object as well.
 
             # 1 new function.
-            if (2, 1, summary_start[2] + 1) != StateSummary():
-                success.value = False
+            attempts = 0
+            while (2, 1, summary_start[2] + 1) != StateSummary():
+                time.sleep(0.1)
+                attempts += 1
+                if attempts == max_attempts_before_failing:
+                    success.value = False
+                    break
 
             ray.get(f.remote())
-            if (4, 2, summary_start[2] + 1) != StateSummary():
-                success.value = False
+            attempts = 0
+            while (4, 2, summary_start[2] + 1) != StateSummary():
+                time.sleep(0.1)
+                attempts += 1
+                if attempts == max_attempts_before_failing:
+                    success.value = False
+                    break
 
-            ray.worker.cleanup()
+            ray.shutdown()
 
         success = multiprocessing.Value('b', False)
         driver = multiprocessing.Process(target=Driver, args=(success, ))
         driver.start()
         # Wait for client to exit.
         driver.join()
-        time.sleep(5)
+        time.sleep(3)
 
         # Just make sure Driver() is run and succeeded. Note(rkn), if the below
         # assertion starts failing, then the issue may be that the summary
         # values computed in the Driver function are being updated slowly and
         # so the call to StateSummary() is getting outdated values. This could
         # be fixed by looping until StateSummary() returns the desired values.
-        self.assertTrue(success.value)
+        assert success.value
         # Check that objects, tasks, and functions are cleaned up.
         ray.init(redis_address=redis_address)
         # The assertion below can fail if the monitor is too slow to clean up
         # the global state.
-        self.assertEqual((0, 1), StateSummary()[:2])
+        assert (0, 1) == StateSummary()[:2]
 
-        ray.worker.cleanup()
+        ray.shutdown()
         subprocess.Popen(["ray", "stop"]).wait()
 
     @unittest.skipIf(
-        os.environ.get('RAY_USE_NEW_GCS', False),
+        os.environ.get("RAY_USE_NEW_GCS", False),
         "Failing with the new GCS API.")
     def testCleanupOnDriverExitSingleRedisShard(self):
         self._testCleanupOnDriverExit(num_redis_shards=1)
 
     @unittest.skipIf(
-        os.environ.get('RAY_USE_NEW_GCS', False),
+        os.environ.get("RAY_USE_XRAY") == "1",
+        "This test does not work with xray yet.")
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_NEW_GCS", False),
         "Hanging with the new GCS API.")
     def testCleanupOnDriverExitManyRedisShards(self):
         self._testCleanupOnDriverExit(num_redis_shards=5)

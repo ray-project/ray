@@ -15,20 +15,23 @@ import yaml
 import ray
 from ray import tune
 
-
 CONFIG_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
 def _evaulate_config(filename):
     with open(os.path.join(CONFIG_DIR, filename)) as f:
         experiments = yaml.load(f)
+        for _, config in experiments.items():
+            config["repeat"] = 3
     ray.init()
     trials = tune.run_experiments(experiments)
     results = defaultdict(list)
     for t in trials:
-        results["time_total_s"] += [t.last_result.time_total_s]
-        results["episode_reward_mean"] += [t.last_result.episode_reward_mean]
-        results["training_iteration"] += [t.last_result.training_iteration]
+        results["time_total_s"] += [t.last_result["time_total_s"]]
+        results["episode_reward_mean"] += [
+            t.last_result["episode_reward_mean"]
+        ]
+        results["training_iteration"] += [t.last_result["training_iteration"]]
 
     return {k: np.median(v) for k, v in results.items()}
 
@@ -41,7 +44,7 @@ class Regression():
         raise NotImplementedError
 
     def teardown(self, *args):
-        ray.worker.cleanup()
+        ray.shutdown()
 
     def track_time(self, result):
         return result["time_total_s"]

@@ -1,7 +1,6 @@
 cartpole-pg:
     env: CartPole-v0
     run: PG
-    repeat: 3
     stop:
         episode_reward_mean: 200
         time_total_s: 300

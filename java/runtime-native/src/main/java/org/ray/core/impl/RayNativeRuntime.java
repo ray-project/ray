@@ -25,8 +25,9 @@ import org.ray.spi.RemoteFunctionManager;
 import org.ray.spi.StateStoreProxy;
 import org.ray.spi.impl.DefaultLocalSchedulerClient;
 import org.ray.spi.impl.NativeRemoteFunctionManager;
+import org.ray.spi.impl.NonRayletStateStoreProxyImpl;
+import org.ray.spi.impl.RayletStateStoreProxyImpl;
 import org.ray.spi.impl.RedisClient;
-import org.ray.spi.impl.StateStoreProxyImpl;
 import org.ray.spi.model.AddressInfo;
 import org.ray.util.exception.TaskExecutionException;
 import org.ray.util.logger.RayLog;
@@ -62,14 +63,19 @@ public class RayNativeRuntime extends RayRuntime {
         throw new Error("Redis address must be configured under Worker mode.");
       }
       startOnebox(params, pathConfig);
-      initStateStore(params.redis_address);
+      initStateStore(params.redis_address, params.use_raylet);
     } else {
-      initStateStore(params.redis_address);
+      initStateStore(params.redis_address, params.use_raylet);
       if (!isWorker) {
-        List<AddressInfo> nodes = stateStoreProxy.getAddressInfo(params.node_ip_address, 5);
+        List<AddressInfo> nodes = stateStoreProxy.getAddressInfo(
+                            params.node_ip_address, params.redis_address, 5);
         params.object_store_name = nodes.get(0).storeName;
-        params.object_store_manager_name = nodes.get(0).managerName;
-        params.local_scheduler_name = nodes.get(0).schedulerName;
+        if (!params.use_raylet) {
+          params.object_store_manager_name = nodes.get(0).managerName;
+          params.local_scheduler_name = nodes.get(0).schedulerName;
+        } else {
+          params.raylet_socket_name = nodes.get(0).rayletSocketName;
+        }
       }
     }
 
@@ -101,22 +107,45 @@ public class RayNativeRuntime extends RayRuntime {
           .getIntegerValue("ray", "plasma_default_release_delay", 0,
               "how many release requests should be delayed in plasma client");
 
-      ObjectStoreLink plink = new PlasmaClient(params.object_store_name, params
-          .object_store_manager_name, releaseDelay);
+      if (!params.use_raylet) {
+        ObjectStoreLink plink = new PlasmaClient(params.object_store_name, 
+            params.object_store_manager_name, releaseDelay);
 
-      LocalSchedulerLink slink = new DefaultLocalSchedulerClient(
-          params.local_scheduler_name,
-          WorkerContext.currentWorkerId(),
-          UniqueID.nil,
-          isWorker,
-          0
-      );
+        LocalSchedulerLink slink = new DefaultLocalSchedulerClient(
+            params.local_scheduler_name,
+            WorkerContext.currentWorkerId(),
+            UniqueID.nil,
+            isWorker,
+            WorkerContext.currentTask().taskId,
+            0,
+            false
+        );
 
-      init(slink, plink, funcMgr, pathConfig);
+        init(slink, plink, funcMgr, pathConfig);
 
-      // register
-      registerWorker(isWorker, params.node_ip_address, params.object_store_name,
-          params.object_store_manager_name, params.local_scheduler_name);
+        // register
+        registerWorker(isWorker, params.node_ip_address, params.object_store_name,
+            params.object_store_manager_name, params.local_scheduler_name);
+      } else {
+
+        ObjectStoreLink plink = new PlasmaClient(params.object_store_name, "", releaseDelay);
+
+        LocalSchedulerLink slink = new DefaultLocalSchedulerClient(
+            params.raylet_socket_name,
+            WorkerContext.currentWorkerId(),
+            UniqueID.nil,
+            isWorker,
+            WorkerContext.currentTask().taskId,
+            0,
+            true
+        );
+
+        init(slink, plink, funcMgr, pathConfig);
+
+        // register
+        registerWorker(isWorker, params.node_ip_address, params.object_store_name,
+            params.raylet_socket_name);
+      }
     }
 
     RayLog.core.info("RayNativeRuntime start with "
@@ -151,19 +180,44 @@ public class RayNativeRuntime extends RayRuntime {
     params.object_store_name = manager.info().localStores.get(0).storeName;
     params.object_store_manager_name = manager.info().localStores.get(0).managerName;
     params.local_scheduler_name = manager.info().localStores.get(0).schedulerName;
+    params.raylet_socket_name = manager.info().localStores.get(0).rayletSocketName;
     //params.node_ip_address = NetworkUtil.getIpAddress();
   }
 
-  private void initStateStore(String redisAddress) throws Exception {
+  private void initStateStore(String redisAddress, boolean useRaylet) throws Exception {
     kvStore = new RedisClient();
     kvStore.setAddr(redisAddress);
-    stateStoreProxy = new StateStoreProxyImpl(kvStore);
+    stateStoreProxy = useRaylet
+            ? new RayletStateStoreProxyImpl(kvStore)
+            : new NonRayletStateStoreProxyImpl(kvStore);
     //stateStoreProxy.setStore(kvStore);
     stateStoreProxy.initializeGlobalState();
   }
 
   private void registerWorker(boolean isWorker, String nodeIpAddress, String storeName,
-      String managerName, String schedulerName) {
+                              String rayletSocketName) {
+    Map<String, String> workerInfo = new HashMap<>();
+    String workerId = new String(WorkerContext.currentWorkerId().getBytes());
+    if (!isWorker) {
+      workerInfo.put("node_ip_address", nodeIpAddress);
+      workerInfo.put("driver_id", workerId);
+      workerInfo.put("start_time", String.valueOf(System.currentTimeMillis()));
+      workerInfo.put("plasma_store_socket", storeName);
+      workerInfo.put("raylet_socket", rayletSocketName);
+      workerInfo.put("name", System.getProperty("user.dir"));
+      //TODO: worker.redis_client.hmset(b"Drivers:" + worker.workerId, driver_info)
+      kvStore.hmset("Drivers:" + workerId, workerInfo);
+    } else {
+      workerInfo.put("node_ip_address", nodeIpAddress);
+      workerInfo.put("plasma_store_socket", storeName);
+      workerInfo.put("raylet_socket", rayletSocketName);
+      //TODO: b"Workers:" + worker.workerId,
+      kvStore.hmset("Workers:" + workerId, workerInfo);
+    }
+  }
+
+  private void registerWorker(boolean isWorker, String nodeIpAddress, String storeName,
+                              String managerName, String schedulerName) {
     Map<String, String> workerInfo = new HashMap<>();
     String workerId = new String(WorkerContext.currentWorkerId().getBytes());
     if (!isWorker) {

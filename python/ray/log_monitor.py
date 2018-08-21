@@ -10,6 +10,7 @@ import time
 from ray.services import get_ip_address
 from ray.services import get_port
 from ray.services import logger
+import ray.utils
 
 
 class LogMonitor(object):
@@ -70,7 +71,7 @@ class LogMonitor(object):
                 if len(new_lines) > 0:
                     self.log_files[log_filename] += new_lines
                     redis_key = "LOGFILE:{}:{}".format(
-                        self.node_ip_address, log_filename.decode("ascii"))
+                        self.node_ip_address, ray.utils.decode(log_filename))
                     self.redis_client.rpush(redis_key, *new_lines)
 
             # Pass if we already failed to open the log file.

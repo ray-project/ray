@@ -3,11 +3,8 @@ from __future__ import division
 from __future__ import print_function
 
 from collections import namedtuple
-import os
 
-from tensorflow.python.client import timeline
 import tensorflow as tf
-
 
 # Variable scope in which created variables will be placed under
 TOWER_SCOPE_NAME = "tower"
@@ -34,9 +31,11 @@ class LocalSyncParallelOptimizer(object):
     Args:
         optimizer: Delegate TensorFlow optimizer object.
         devices: List of the names of TensorFlow devices to parallelize over.
-        input_placeholders: List of (name, input_placeholder)
-            for the loss function. Tensors of these shapes will be passed
-            to build_graph() in order to define the per-device loss ops.
+        input_placeholders: List of input_placeholders for the loss function.
+            Tensors of these shapes will be passed to build_graph() in order
+            to define the per-device loss ops.
+        rnn_inputs: Extra input placeholders for RNN inputs. These will have
+            shape [BATCH_SIZE // MAX_SEQ_LEN, ...].
         per_device_batch_size: Number of tuples to optimize over at a time per
             device. In each call to `optimize()`,
             `len(devices) * per_device_batch_size` tuples of data will be
@@ -47,35 +46,45 @@ class LocalSyncParallelOptimizer(object):
         grad_norm_clipping: None or int stdev to clip grad norms by
     """
 
-    def __init__(self, optimizer, devices, input_placeholders,
-                 per_device_batch_size, build_graph, logdir,
+    def __init__(self,
+                 optimizer,
+                 devices,
+                 input_placeholders,
+                 rnn_inputs,
+                 per_device_batch_size,
+                 build_graph,
+                 logdir,
                  grad_norm_clipping=None):
         # TODO(rliaw): remove logdir
         self.optimizer = optimizer
         self.devices = devices
         self.batch_size = per_device_batch_size * len(devices)
         self.per_device_batch_size = per_device_batch_size
-        self.loss_inputs = input_placeholders
+        self.loss_inputs = input_placeholders + rnn_inputs
         self.build_graph = build_graph
         self.logdir = logdir
 
         # First initialize the shared loss network
         with tf.name_scope(TOWER_SCOPE_NAME):
-            self._shared_loss = build_graph(input_placeholders)
+            self._shared_loss = build_graph(self.loss_inputs)
 
         # Then setup the per-device loss graphs that use the shared weights
-        self._batch_index = tf.placeholder(tf.int32)
+        self._batch_index = tf.placeholder(tf.int32, name="batch_index")
+
+        # When loading RNN input, we dynamically determine the max seq len
+        self._max_seq_len = tf.placeholder(tf.int32, name="max_seq_len")
+        self._loaded_max_seq_len = 1
 
         # Split on the CPU in case the data doesn't fit in GPU memory.
         with tf.device("/cpu:0"):
-            names, placeholders = zip(*input_placeholders)
             data_splits = zip(
-                *[tf.split(ph, len(devices)) for ph in placeholders])
+                *[tf.split(ph, len(devices)) for ph in self.loss_inputs])
 
         self._towers = []
         for device, device_placeholders in zip(self.devices, data_splits):
             self._towers.append(
-                self._setup_device(device, zip(names, device_placeholders)))
+                self._setup_device(device, device_placeholders,
+                                   len(input_placeholders)))
 
         avg = average_gradients([t.grads for t in self._towers])
         if grad_norm_clipping:
@@ -84,7 +93,7 @@ class LocalSyncParallelOptimizer(object):
                     avg[i] = (tf.clip_by_norm(grad, grad_norm_clipping), var)
         self._train_op = self.optimizer.apply_gradients(avg)
 
-    def load_data(self, sess, inputs, full_trace=False):
+    def load_data(self, sess, inputs, state_inputs):
         """Bulk loads the specified inputs into device memory.
 
         The shape of the inputs must conform to the shapes of the input
@@ -95,37 +104,42 @@ class LocalSyncParallelOptimizer(object):
 
         Args:
             sess: TensorFlow session.
-            inputs: List of Tensors matching the input placeholders specified
-                at construction time of this optimizer.
-            full_trace: Whether to profile data loading.
+            inputs: List of arrays matching the input placeholders, of shape
+                [BATCH_SIZE, ...].
+            state_inputs: List of RNN input arrays. These arrays have size
+                [BATCH_SIZE / MAX_SEQ_LEN, ...].
 
         Returns:
             The number of tuples loaded per device.
         """
 
         feed_dict = {}
-        assert len(self.loss_inputs) == len(inputs)
-        for (name, ph), arr in zip(self.loss_inputs, inputs):
-            truncated_arr = make_divisible_by(arr, self.batch_size)
-            feed_dict[ph] = truncated_arr
-            truncated_len = len(truncated_arr)
+        assert len(self.loss_inputs) == len(inputs + state_inputs), \
+            (self.loss_inputs, inputs, state_inputs)
 
-        if full_trace:
-            run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+        # The RNN truncation case is more complicated
+        if len(state_inputs) > 0:
+            seq_len = len(inputs[0]) // len(state_inputs[0])
+            self._loaded_max_seq_len = seq_len
+            assert len(state_inputs[0]) * seq_len == len(inputs[0])
+            # Make sure the shorter state inputs arrays are evenly divisible
+            state_inputs = [
+                make_divisible_by(arr, self.batch_size) for arr in state_inputs
+            ]
+            # Then truncate the data inputs to match
+            inputs = [arr[:len(state_inputs[0]) * seq_len] for arr in inputs]
+            assert len(state_inputs[0]) * seq_len == len(inputs[0])
+            assert len(state_inputs[0]) % self.batch_size == 0
+            for ph, arr in zip(self.loss_inputs, inputs + state_inputs):
+                feed_dict[ph] = arr
+            truncated_len = len(inputs[0])
         else:
-            run_options = tf.RunOptions(trace_level=tf.RunOptions.NO_TRACE)
-        run_metadata = tf.RunMetadata()
+            for ph, arr in zip(self.loss_inputs, inputs + state_inputs):
+                truncated_arr = make_divisible_by(arr, self.batch_size)
+                feed_dict[ph] = truncated_arr
+                truncated_len = len(truncated_arr)
 
-        sess.run(
-            [t.init_op for t in self._towers],
-            feed_dict=feed_dict,
-            options=run_options,
-            run_metadata=run_metadata)
-        if full_trace:
-            trace = timeline.Timeline(step_stats=run_metadata.step_stats)
-            trace_file = open(os.path.join(self.logdir, "timeline-load.json"),
-                              "w")
-            trace_file.write(trace.generate_chrome_trace_format())
+        sess.run([t.init_op for t in self._towers], feed_dict=feed_dict)
 
         tuples_per_device = truncated_len / len(self.devices)
         assert tuples_per_device > 0, \
@@ -136,7 +150,7 @@ class LocalSyncParallelOptimizer(object):
         assert tuples_per_device % self.per_device_batch_size == 0
         return tuples_per_device
 
-    def optimize(self, sess, batch_index, file_writer=None):
+    def optimize(self, sess, batch_index):
         """Run a single step of SGD.
 
         Runs a SGD step over a slice of the preloaded batch with size given by
@@ -151,19 +165,14 @@ class LocalSyncParallelOptimizer(object):
             batch_index: Offset into the preloaded data. This value must be
                 between `0` and `tuples_per_device`. The amount of data to
                 process is always fixed to `per_device_batch_size`.
-            file_writer: If specified, tf metrics will be written out using
-                this.
 
         Returns:
             The outputs of extra_ops evaluated over the batch.
         """
-        if file_writer:
-            run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
-        else:
-            run_options = tf.RunOptions(trace_level=tf.RunOptions.NO_TRACE)
-        run_metadata = tf.RunMetadata()
-
-        feed_dict = {self._batch_index: batch_index}
+        feed_dict = {
+            self._batch_index: batch_index,
+            self._max_seq_len: self._loaded_max_seq_len,
+        }
         for tower in self._towers:
             feed_dict.update(tower.loss_graph.extra_compute_grad_feed_dict())
             feed_dict.update(tower.loss_graph.extra_apply_grad_feed_dict())
@@ -173,21 +182,7 @@ class LocalSyncParallelOptimizer(object):
             fetches.update(tower.loss_graph.extra_compute_grad_fetches())
             fetches.update(tower.loss_graph.extra_apply_grad_fetches())
 
-        outs = sess.run(
-            fetches,
-            feed_dict=feed_dict,
-            options=run_options,
-            run_metadata=run_metadata)
-
-        if file_writer:
-            trace = timeline.Timeline(step_stats=run_metadata.step_stats)
-            trace_file = open(os.path.join(self.logdir, "timeline-sgd.json"),
-                              "w")
-            trace_file.write(trace.generate_chrome_trace_format())
-            file_writer.add_run_metadata(
-                run_metadata, "sgd_train_{}".format(batch_index))
-
-        return outs
+        return sess.run(fetches, feed_dict=feed_dict)
 
     def get_common_loss(self):
         return self._shared_loss
@@ -195,30 +190,39 @@ class LocalSyncParallelOptimizer(object):
     def get_device_losses(self):
         return [t.loss_graph for t in self._towers]
 
-    def _setup_device(self, device, device_input_placeholders):
+    def _setup_device(self, device, device_input_placeholders, num_data_in):
+        assert num_data_in <= len(device_input_placeholders)
         with tf.device(device):
             with tf.name_scope(TOWER_SCOPE_NAME):
                 device_input_batches = []
                 device_input_slices = []
-                for name, ph in device_input_placeholders:
+                for i, ph in enumerate(device_input_placeholders):
                     current_batch = tf.Variable(
-                        ph, trainable=False, validate_shape=False,
+                        ph,
+                        trainable=False,
+                        validate_shape=False,
                         collections=[])
                     device_input_batches.append(current_batch)
+                    if i < num_data_in:
+                        scale = self._max_seq_len
+                        granularity = self._max_seq_len
+                    else:
+                        scale = self._max_seq_len
+                        granularity = 1
                     current_slice = tf.slice(
                         current_batch,
-                        [self._batch_index] + [0] * len(ph.shape[1:]),
-                        ([self.per_device_batch_size] + [-1] *
-                         len(ph.shape[1:])))
+                        ([self._batch_index // scale * granularity] +
+                         [0] * len(ph.shape[1:])),
+                        ([self.per_device_batch_size // scale * granularity] +
+                         [-1] * len(ph.shape[1:])))
                     current_slice.set_shape(ph.shape)
-                    device_input_slices.append((name, current_slice))
+                    device_input_slices.append(current_slice)
                 graph_obj = self.build_graph(device_input_slices)
                 device_grads = graph_obj.gradients(self.optimizer)
             return Tower(
-                tf.group(*[batch.initializer
-                           for batch in device_input_batches]),
-                device_grads,
-                graph_obj)
+                tf.group(
+                    *[batch.initializer for batch in device_input_batches]),
+                device_grads, graph_obj)
 
 
 # Each tower is a copy of the loss graph pinned to a specific device.

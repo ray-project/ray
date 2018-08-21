@@ -27,8 +27,8 @@ class TorchPolicyGraph(PolicyGraph):
             This is necessary when using the async sampler.
     """
 
-    def __init__(
-            self, observation_space, action_space, model, loss, loss_inputs):
+    def __init__(self, observation_space, action_space, model, loss,
+                 loss_inputs):
         """Build a policy graph from policy and loss torch modules.
 
         Note that module inputs will be CPU tensors. The model and loss modules
@@ -67,8 +67,11 @@ class TorchPolicyGraph(PolicyGraph):
         """Custom PyTorch optimizer to use."""
         return torch.optim.Adam(self._model.parameters())
 
-    def compute_actions(
-            self, obs_batch, state_batches=None, is_training=False):
+    def compute_actions(self,
+                        obs_batch,
+                        state_batches=None,
+                        is_training=False,
+                        episodes=None):
         if state_batches:
             raise NotImplementedError("Torch RNN support")
         with self.lock:

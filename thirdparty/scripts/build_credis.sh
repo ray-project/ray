@@ -28,11 +28,13 @@ fi
 
 if [[ "${RAY_USE_NEW_GCS}" = "on" ]]; then
   pushd "$TP_DIR/pkg/"
-    rm -rf credis
-    git clone --recursive https://github.com/ray-project/credis
+    if [[ ! -d "credis" ]]; then
+      git clone -q --recursive https://github.com/ray-project/credis
+    fi
   popd
 
   pushd "$TP_DIR/pkg/credis"
+    git fetch origin master
     git checkout 273d667e5126c246b45f5dcf030b651a653136c3
 
     # If the above commit points to different submodules' commits than

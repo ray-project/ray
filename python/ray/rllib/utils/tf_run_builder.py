@@ -64,18 +64,19 @@ def run_timeline(sess, ops, debug_name, feed_dict={}, timeline_dir=None):
         run_metadata = tf.RunMetadata()
         start = time.time()
         fetches = sess.run(
-            ops, options=run_options, run_metadata=run_metadata,
+            ops,
+            options=run_options,
+            run_metadata=run_metadata,
             feed_dict=feed_dict)
         trace = timeline.Timeline(step_stats=run_metadata.step_stats)
         global _count
         outf = os.path.join(
-            timeline_dir,
-            "timeline-{}-{}-{}.json".format(debug_name, os.getpid(), _count))
+            timeline_dir, "timeline-{}-{}-{}.json".format(
+                debug_name, os.getpid(), _count))
         _count += 1
         trace_file = open(outf, "w")
-        print(
-            "Wrote tf timeline ({} s) to {}".format(
-                time.time() - start, os.path.abspath(outf)))
+        print("Wrote tf timeline ({} s) to {}".format(time.time() - start,
+                                                      os.path.abspath(outf)))
         trace_file.write(trace.generate_chrome_trace_format())
     else:
         fetches = sess.run(ops, feed_dict=feed_dict)

@@ -18,7 +18,7 @@ if sys.version_info >= (3, 0):
 
 class RemoteArrayTest(unittest.TestCase):
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
 
     def testMethods(self):
         for module in [
@@ -55,7 +55,7 @@ class RemoteArrayTest(unittest.TestCase):
 
 class DistributedArrayTest(unittest.TestCase):
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
 
     def testAssemble(self):
         for module in [
@@ -162,7 +162,7 @@ class DistributedArrayTest(unittest.TestCase):
             x_val = ray.get(da.assemble.remote(x))
             q_val = ray.get(da.assemble.remote(q))
             r_val = ray.get(r)
-            self.assertTrue(r_val.shape == (K, shape[1]))
+            assert r_val.shape == (K, shape[1])
             assert_equal(r_val, np.triu(r_val))
             assert_almost_equal(x_val, np.dot(q_val, r_val))
             assert_almost_equal(np.dot(q_val.T, q_val), np.eye(K))
@@ -226,8 +226,8 @@ class DistributedArrayTest(unittest.TestCase):
             a_val = ray.get(da.assemble.remote(a))
             q_val = ray.get(da.assemble.remote(q))
             r_val = ray.get(da.assemble.remote(r))
-            self.assertEqual(q_val.shape, (d1, K))
-            self.assertEqual(r_val.shape, (K, d2))
+            assert q_val.shape == (d1, K)
+            assert r_val.shape == (K, d2)
             assert_almost_equal(np.dot(q_val.T, q_val), np.eye(K))
             assert_equal(r_val, np.triu(r_val))
             assert_almost_equal(a_val, np.dot(q_val, r_val))
