@@ -81,7 +81,7 @@ class SuggestionAlgorithm(SearchAlgorithm):
         """
         if "run" not in experiment_spec:
             raise TuneError("Must specify `run` in {}".format(experiment_spec))
-        for _ in range(experiment_spec.get("repeat", 1)):
+        for _ in range(experiment_spec.get("total_samples", 1)):
             trial_id = Trial.generate_id()
             while True:
                 suggested_config = self._suggest(trial_id)

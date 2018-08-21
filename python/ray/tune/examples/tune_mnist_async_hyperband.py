@@ -220,7 +220,7 @@ if __name__ == '__main__':
 
     mnist_spec = {
         'run': train,
-        'repeat': 10,
+        'total_samples': 10,
         'stop': {
             'mean_accuracy': 0.99,
             'timesteps_total': 600,
@@ -232,7 +232,7 @@ if __name__ == '__main__':
 
     if args.smoke_test:
         mnist_spec['stop']['training_iteration'] = 2
-        mnist_spec['repeat'] = 1
+        mnist_spec['total_samples'] = 1
 
     ray.init()
 

@@ -32,7 +32,7 @@ class Experiment(object):
             e.g. ``{"cpu": 64, "gpu": 8}``. Note that GPUs will not be
             assigned unless you specify them here. Defaults to 1 CPU and 0
             GPUs in ``Trainable.default_resource_request()``.
-        repeat (int): Number of times to repeat each trial. Defaults to 1.
+        total_samples (int): Number of times to repeat each trial. Defaults to 1.
         local_dir (str): Local dir to save training results to.
             Defaults to ``~/ray_results``.
         upload_dir (str): Optional URI to sync training results
@@ -59,7 +59,7 @@ class Experiment(object):
         >>>         "cpu": 1,
         >>>         "gpu": 0
         >>>     },
-        >>>     repeat=10,
+        >>>     total_samples=10,
         >>>     local_dir="~/ray_results",
         >>>     upload_dir="s3://your_bucket/path",
         >>>     checkpoint_freq=10,
@@ -73,7 +73,6 @@ class Experiment(object):
                  stop=None,
                  config=None,
                  trial_resources=None,
-                 repeat=0,
                  total_samples=1,
                  local_dir=None,
                  upload_dir="",
@@ -85,8 +84,7 @@ class Experiment(object):
             "stop": stop or {},
             "config": config or {},
             "trial_resources": trial_resources,
-            "repeat": repeat or total_samples,
-            "total_samples": repeat or total_samples,
+            "total_samples": total_samples,
             "local_dir": local_dir or DEFAULT_RESULTS_DIR,
             "upload_dir": upload_dir,
             "checkpoint_freq": checkpoint_freq,
@@ -108,9 +106,10 @@ class Experiment(object):
         if "run" not in spec:
             raise TuneError("No trainable specified!")
 
-        if "repeat" in spec and "total_samples" not in spec:
+        if "repeat" in spec:
             warnings.warn("repeat is deprecated, use total_samples instead")
             spec["total_samples"] = spec["repeat"]
+            del spec["repeat"]
         
         if "grid_search" in spec or "config" in spec and "grid_search" in spec["config"]:
             if "repeat" in spec:

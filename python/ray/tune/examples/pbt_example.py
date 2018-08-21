@@ -81,7 +81,7 @@ if __name__ == "__main__":
                 "stop": {
                     "training_iteration": 2 if args.smoke_test else 99999
                 },
-                "repeat": 10,
+                "total_samples": 10,
                 "config": {
                     "factor_1": 4.0,
                     "factor_2": 1.0,
