@@ -63,6 +63,7 @@ class PPOAgent(Agent):
 
     _agent_name = "PPO"
     _default_config = DEFAULT_CONFIG
+    _policy_graph = PPOPolicyGraph
 
     @classmethod
     def default_resource_request(cls, config):
@@ -75,9 +76,9 @@ class PPOAgent(Agent):
 
     def _init(self):
         self.local_evaluator = self.make_local_evaluator(
-            self.env_creator, PPOPolicyGraph)
+            self.env_creator, self._policy_graph)
         self.remote_evaluators = self.make_remote_evaluators(
-            self.env_creator, PPOPolicyGraph, self.config["num_workers"], {
+            self.env_creator, self._policy_graph, self.config["num_workers"], {
                 "num_cpus": self.config["num_cpus_per_worker"],
                 "num_gpus": self.config["num_gpus_per_worker"]
             })

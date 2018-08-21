@@ -67,6 +67,7 @@ class A3CAgent(Agent):
 
     _agent_name = "A3C"
     _default_config = DEFAULT_CONFIG
+    _policy_graph = A3CPolicyGraph
 
     @classmethod
     def default_resource_request(cls, config):
@@ -84,7 +85,7 @@ class A3CAgent(Agent):
             policy_cls = A3CTorchPolicyGraph
         else:
             from ray.rllib.agents.a3c.a3c_tf_policy_graph import A3CPolicyGraph
-            policy_cls = A3CPolicyGraph
+            policy_cls = self._policy_graph
 
         self.local_evaluator = self.make_local_evaluator(
             self.env_creator, policy_cls)
