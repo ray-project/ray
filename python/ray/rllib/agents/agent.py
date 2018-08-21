@@ -10,7 +10,7 @@ import pickle
 
 import tensorflow as tf
 from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
-from ray.rllib.utils import deep_update
+from ray.rllib.utils import deep_update, merge_dicts
 from ray.tune.registry import ENV_CREATOR, _global_registry
 from ray.tune.trainable import Trainable
 
@@ -105,8 +105,16 @@ class Agent(Trainable):
     def make_local_evaluator(self, env_creator, policy_graph):
         """Convenience method to return configured local evaluator."""
 
-        return self._make_evaluator(PolicyEvaluator, env_creator, policy_graph,
-                                    0)
+        return self._make_evaluator(
+            PolicyEvaluator, env_creator, policy_graph, 0,
+            # important: allow local tf to use multiple CPUs for optimization
+            merge_dicts(
+                self.config, {
+                    "tf_session_args": {
+                        "intra_op_parallelism_threads": None,
+                        "inter_op_parallelism_threads": None,
+                    }
+                }))
 
     def make_remote_evaluators(self, env_creator, policy_graph, count,
                                remote_args):
@@ -114,13 +122,12 @@ class Agent(Trainable):
 
         cls = PolicyEvaluator.as_remote(**remote_args).remote
         return [
-            self._make_evaluator(cls, env_creator, policy_graph, i + 1)
-            for i in range(count)
+            self._make_evaluator(cls, env_creator, policy_graph, i + 1,
+                                 self.config) for i in range(count)
         ]
 
-    def _make_evaluator(self, cls, env_creator, policy_graph, worker_index):
-        config = self.config
-
+    def _make_evaluator(self, cls, env_creator, policy_graph, worker_index,
+                        config):
         def session_creator():
             return tf.Session(
                 config=tf.ConfigProto(**config["tf_session_args"]))
