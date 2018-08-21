@@ -150,11 +150,6 @@ def cli():
     default=None,
     help="use the raylet code path")
 @click.option(
-    "--quiet",
-    is_flag=True,
-    default=False,
-    help="do not print debugging startup messages")
-@click.option(
     "--no-redirect-worker-output",
     is_flag=True,
     default=False,
@@ -168,7 +163,7 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
           redis_max_clients, redis_shard_ports, object_manager_port,
           object_store_memory, num_workers, num_cpus, num_gpus, resources,
           head, no_ui, block, plasma_directory, huge_pages, autoscaling_config,
-          use_raylet, quiet, no_redirect_worker_output, no_redirect_output):
+          use_raylet, no_redirect_worker_output, no_redirect_output):
     # Convert hostnames to numerical IP address.
     if node_ip_address is not None:
         node_ip_address = services.address_to_ip(node_ip_address)
@@ -176,9 +171,8 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
         redis_address = services.address_to_ip(redis_address)
 
     if use_raylet is None and os.environ.get("RAY_USE_XRAY") == "1":
-        if not quiet:
-            # This environment variable is used in our testing setup.
-            print("Detected environment variable 'RAY_USE_XRAY'.")
+        # This environment variable is used in our testing setup.
+        print("Detected environment variable 'RAY_USE_XRAY'.")
         use_raylet = True
 
     try:
@@ -220,8 +214,7 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
         # Get the node IP address if one is not provided.
         if node_ip_address is None:
             node_ip_address = services.get_node_ip_address()
-        if not quiet:
-            print("Using IP address {} for this node.".format(node_ip_address))
+        print("Using IP address {} for this node.".format(node_ip_address))
 
         address_info = {}
         # Use the provided object manager port if there is one.
@@ -248,20 +241,19 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             huge_pages=huge_pages,
             autoscaling_config=autoscaling_config,
             use_raylet=use_raylet)
-        if not quiet:
-            print(address_info)
-            print("\nStarted Ray on this node. You can add additional nodes to "
-                  "the cluster by calling\n\n"
-                  "    ray start --redis-address {}\n\n"
-                  "from the node you wish to add. You can connect a driver to the "
-                  "cluster from Python by running\n\n"
-                  "    import ray\n"
-                  "    ray.init(redis_address=\"{}\")\n\n"
-                  "If you have trouble connecting from a different machine, check "
-                  "that your firewall is configured properly. If you wish to "
-                  "terminate the processes that have been started, run\n\n"
-                  "    ray stop".format(address_info["redis_address"],
-                                        address_info["redis_address"]))
+        print(address_info)
+        print("\nStarted Ray on this node. You can add additional nodes to "
+              "the cluster by calling\n\n"
+              "    ray start --redis-address {}\n\n"
+              "from the node you wish to add. You can connect a driver to the "
+              "cluster from Python by running\n\n"
+              "    import ray\n"
+              "    ray.init(redis_address=\"{}\")\n\n"
+              "If you have trouble connecting from a different machine, check "
+              "that your firewall is configured properly. If you wish to "
+              "terminate the processes that have been started, run\n\n"
+              "    ray stop".format(address_info["redis_address"],
+                                    address_info["redis_address"]))
     else:
         # Start Ray on a non-head node.
         if redis_port is not None:
@@ -298,8 +290,7 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
         # Get the node IP address if one is not provided.
         if node_ip_address is None:
             node_ip_address = services.get_node_ip_address(redis_address)
-        if not quiet:
-            print("Using IP address {} for this node.".format(node_ip_address))
+        print("Using IP address {} for this node.".format(node_ip_address))
         # Check that there aren't already Redis clients with the same IP
         # address connected with this Redis instance. This raises an exception
         # if the Redis server already has clients on this node.
@@ -317,11 +308,10 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             plasma_directory=plasma_directory,
             huge_pages=huge_pages,
             use_raylet=use_raylet)
-        if not quiet:
-            print(address_info)
-            print("\nStarted Ray on this node. If you wish to terminate the "
-                  "processes that have been started, run\n\n"
-                  "    ray stop")
+        print(address_info)
+        print("\nStarted Ray on this node. If you wish to terminate the "
+              "processes that have been started, run\n\n"
+              "    ray stop")
 
     if block:
         import time
