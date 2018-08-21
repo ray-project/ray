@@ -62,6 +62,7 @@ class ImpalaAgent(Agent):
 
     _agent_name = "IMPALA"
     _default_config = DEFAULT_CONFIG
+    _policy_graph = VTracePolicyGraph
 
     @classmethod
     def default_resource_request(cls, config):
@@ -77,7 +78,7 @@ class ImpalaAgent(Agent):
             if k not in self.config["optimizer"]:
                 self.config["optimizer"][k] = self.config[k]
         if self.config["vtrace"]:
-            policy_cls = VTracePolicyGraph
+            policy_cls = self._policy_graph
         else:
             policy_cls = A3CPolicyGraph
         self.local_evaluator = self.make_local_evaluator(

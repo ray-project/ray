@@ -23,6 +23,8 @@ DEFAULT_CONFIG = with_common_config({
     "grad_clip": 40.0,
     # Learning rate
     "lr": 0.0001,
+    # Learning rate schedule
+    "lr_schedule": None,
     # Value Function Loss coefficient
     "vf_loss_coeff": 0.5,
     # Entropy coefficient

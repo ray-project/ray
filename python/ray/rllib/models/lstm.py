@@ -16,7 +16,6 @@ more info.
 import numpy as np
 import tensorflow as tf
 import tensorflow.contrib.rnn as rnn
-import distutils.version
 
 from ray.rllib.models.misc import linear, normc_initializer
 from ray.rllib.models.model import Model
@@ -157,7 +156,6 @@ class LSTM(Model):
             self.state_in = [c_in, h_in]
 
         # Setup LSTM outputs
-        state_in = rnn.LSTMStateTuple(c_in, h_in)
         lstm_out, lstm_state = tf.nn.dynamic_rnn(
             lstm,
             last_layer,

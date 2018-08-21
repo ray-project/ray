@@ -190,7 +190,8 @@ class PolicyEvaluator(EvaluatorInterface):
                 env = wrap_deepmind(
                     env,
                     dim=model_config.get("dim", 84),
-                    framestack=not model_config.get("use_lstm") and not model_config.get("no_framestack"))
+                    framestack=not model_config.get("use_lstm")
+                    and not model_config.get("no_framestack"))
                 if monitor_path:
                     env = _monitor(env, monitor_path)
                 return env
