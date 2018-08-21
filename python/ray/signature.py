@@ -6,8 +6,11 @@ from collections import namedtuple
 import funcsigs
 from funcsigs import Parameter
 
-from ray.services import logger
+import ray.logger
 from ray.utils import is_cython
+
+# Default logger.
+logger = ray.logger.default_logger
 
 FunctionSignature = namedtuple("FunctionSignature", [
     "arg_names", "arg_defaults", "arg_is_positionals", "keyword_names",

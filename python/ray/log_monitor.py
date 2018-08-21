@@ -7,10 +7,13 @@ import os
 import redis
 import time
 
+import ray.logger
 from ray.services import get_ip_address
 from ray.services import get_port
-from ray.services import logger
 import ray.utils
+
+# Default logger.
+logger = ray.logger.default_logger
 
 
 class LogMonitor(object):

@@ -3,7 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 import binascii
-import logging
 import json
 import os
 import random
@@ -26,13 +25,8 @@ import pyarrow
 import ray.ray_constants
 import ray.global_scheduler as global_scheduler
 import ray.local_scheduler
+import ray.logger
 import ray.plasma
-
-logger = logging.getLogger("ray")
-logger.setLevel(logging.INFO)
-ch = logging.StreamHandler(sys.stderr)
-ch.setLevel(logging.INFO)
-logger.addHandler(ch)
 
 PROCESS_TYPE_MONITOR = "monitor"
 PROCESS_TYPE_LOG_MONITOR = "log_monitor"
@@ -97,6 +91,17 @@ RAYLET_EXECUTABLE = os.path.join(
 # - manager_port: The Internet port that the object store manager listens on
 ObjectStoreAddress = namedtuple("ObjectStoreAddress",
                                 ["name", "manager_name", "manager_port"])
+
+
+def set_logger(input_logger):
+    global logger
+    if input_logger is not None:
+        logger = input_logger
+
+
+def reset_logger():
+    global logger
+    logger = ray.logger.default_logger
 
 
 def address(ip_address, port):

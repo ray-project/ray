@@ -25,9 +25,9 @@ import ray.gcs_utils
 import ray.remote_function
 import ray.serialization as serialization
 import ray.services as services
-from ray.services import logger
 import ray.signature
 import ray.local_scheduler
+import ray.logger
 import ray.plasma
 import ray.ray_constants as ray_constants
 from ray import import_thread
@@ -72,6 +72,9 @@ DEFAULT_ACTOR_CREATION_CPUS_SIMPLE_CASE = 0
 # specified.
 DEFAULT_ACTOR_METHOD_CPUS_SPECIFIED_CASE = 0
 DEFAULT_ACTOR_CREATION_CPUS_SPECIFIED_CASE = 1
+
+# Default logger.
+logger = ray.logger.default_logger
 
 
 class RayTaskError(Exception):
