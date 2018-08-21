@@ -135,14 +135,14 @@ if(RAY_USE_LOG4CPLUS)
   message(STATUS "Start to building log4cplus!")
   set(LOG4CPLUS_VERSION "2.0.1")
   string(REPLACE "." "_" LOG4CPLUS_VERSION_IN_PATH ${LOG4CPLUS_VERSION})
-  set(LOG4CPLUS_CMAKE_CXX_FLAGS ${EP_CXX_FLAGS} "-fPIC")
+  set(LOG4CPLUS_CMAKE_CXX_FLAGS "${EP_CXX_FLAGS} -fPIC")
 
   set(LOG4CPLUS_URL "https://github.com/log4cplus/log4cplus/releases/download/REL_${LOG4CPLUS_VERSION_IN_PATH}/log4cplus-${LOG4CPLUS_VERSION}.tar.gz")
   message("Downloading Log4cplus from ${LOG4CPLUS_URL}")
   set(LOG4CPLUS_PREFIX "${CMAKE_CURRENT_BINARY_DIR}/log4cplus_ep-prefix/src/log4cplus_ep")
   set(LOG4CPLUS_HOME "${LOG4CPLUS_PREFIX}")
   set(LOG4CPLUS_INCLUDE_DIR "${LOG4CPLUS_PREFIX}/include")
-  set(LOG4CPLUS_STATIC_LIB "${LOG4CPLUS_PREFIX}/lib/liblog4cplusS.a")
+  set(LOG4CPLUS_STATIC_LIB "${LOG4CPLUS_PREFIX}/lib/liblog4cplus.a")
 
   set(LOG4CPLUS_CMAKE_ARGS -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
                         -DCMAKE_INSTALL_PREFIX=${LOG4CPLUS_PREFIX}
@@ -150,8 +150,8 @@ if(RAY_USE_LOG4CPLUS)
                         -DLOG4CPLUS_BUILD_TESTING=OFF
                         -DWITH_UNIT_TESTS=OFF
                         -DLOG4CPLUS_BUILD_LOGGINGSERVER=OFF
+                        -DLOG4CPLUS_ENABLE_DECORATED_LIBRARY_NAME=OFF
                         -DCMAKE_CXX_FLAGS_${UPPERCASE_BUILD_TYPE}=${LOG4CPLUS_CMAKE_CXX_FLAGS}
-                        -DCMAKE_C_FLAGS_${UPPERCASE_BUILD_TYPE}=${EP_C_FLAGS}
                         -DCMAKE_CXX_FLAGS=${LOG4CPLUS_CMAKE_CXX_FLAGS})
 
   ExternalProject_Add(log4cplus_ep
