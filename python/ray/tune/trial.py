@@ -69,9 +69,9 @@ class Checkpoint(object):
     Checkpoint may be saved in different storage.
 
     Attributes:
-	    storage (str): Storage type.
-	    value (str): If storage == MEMORY, value is a Python object.
-	        If Storage == DISK, value is a path points to the checkpoint in disk.
+        storage (str): Storage type.
+        value (str): If storage==MEMORY,value is a Python object.
+            If storage==DISK,value is a path points to the checkpoint in disk.
     """
 
     MEMORY = "memory"
