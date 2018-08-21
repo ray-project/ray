@@ -11,7 +11,7 @@ from ray.rllib.evaluation.sample_batch import MultiAgentSampleBatchBuilder, \
     MultiAgentBatch
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 from ray.rllib.env.async_vector_env import AsyncVectorEnv
-from ray.rllib.env.atari_wrappers import get_wrapper_by_name, MonitorEnv
+from ray.rllib.env.atari_wrappers import get_wrapper_by_cls, MonitorEnv
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 
 RolloutMetrics = namedtuple(
@@ -401,7 +401,7 @@ def _fetch_atari_metrics(async_vector_env):
         return None
     atari_out = []
     for u in unwrapped:
-        monitor = get_wrapper_by_name(u, MonitorEnv)
+        monitor = get_wrapper_by_cls(u, MonitorEnv)
         if not monitor:
             return None
         for eps_rew, eps_len in monitor.next_episode_results():

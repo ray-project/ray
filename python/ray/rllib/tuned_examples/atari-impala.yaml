@@ -1,4 +1,4 @@
-# Runs on a single g3.16xl node
+# Runs on a g3.16xl node with 3 m4.16xl workers
 atari-impala:
     env:
         grid_search:

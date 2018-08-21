@@ -17,6 +17,8 @@ def collect_metrics(local_evaluator, remote_evaluators=[]):
 
 
 def collect_episodes(local_evaluator, remote_evaluators=[]):
+    """Gathers new episodes metrics tuples from the given evaluators."""
+
     metric_lists = ray.get([
         a.apply.remote(lambda ev: ev.sampler.get_metrics())
         for a in remote_evaluators
@@ -29,6 +31,8 @@ def collect_episodes(local_evaluator, remote_evaluators=[]):
 
 
 def summarize_episodes(episodes):
+    """Summarizes a set of episode metrics tuples."""
+
     episode_rewards = []
     episode_lengths = []
     policy_rewards = collections.defaultdict(list)

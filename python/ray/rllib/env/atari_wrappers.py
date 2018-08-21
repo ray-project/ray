@@ -10,22 +10,8 @@ def is_atari(env):
     return hasattr(env, "unwrapped") and hasattr(env.unwrapped, "ale")
 
 
-def get_wrapper_by_name(env, cls):
-    """Given an a gym environment possibly wrapped multiple times, returns a wrapper
-    of class named classname or raises ValueError if no such wrapper was applied
-
-    Parameters
-    ----------
-    env: gym.Env of gym.Wrapper
-        gym environment
-    classname: str
-        name of the wrapper
-
-    Returns
-    -------
-    wrapper: gym.Wrapper
-        wrapper named classname
-    """
+def get_wrapper_by_cls(env, cls):
+    """Returns the gym env wrapper of the given class, or None."""
     currentenv = env
     while True:
         if isinstance(currentenv, cls):
@@ -38,8 +24,7 @@ def get_wrapper_by_name(env, cls):
 
 class MonitorEnv(gym.Wrapper):
     def __init__(self, env=None):
-        """
-        """
+        """Record episodes stats prior to EpisodicLifeEnv, etc."""
         gym.Wrapper.__init__(self, env)
         self._current_reward = None
         self._num_steps = None
