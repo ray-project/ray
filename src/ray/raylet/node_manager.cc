@@ -531,6 +531,7 @@ void NodeManager::ProcessClientMessage(
     if (message->is_worker()) {
       // Register the new worker.
       worker_pool_.RegisterWorker(std::move(worker));
+      DispatchTasks();
     } else {
       // Register the new driver.
       JobID job_id = from_flatbuf(*message->driver_id());
