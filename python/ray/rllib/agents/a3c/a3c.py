@@ -7,6 +7,7 @@ import os
 import time
 
 import ray
+from ray.rllib.agents.a3c.a3c_tf_policy_graph import A3CPolicyGraph
 from ray.rllib.agents.agent import Agent, with_common_config
 from ray.rllib.optimizers import AsyncGradientsOptimizer
 from ray.rllib.utils import FilterManager, merge_dicts
@@ -84,7 +85,6 @@ class A3CAgent(Agent):
                 A3CTorchPolicyGraph
             policy_cls = A3CTorchPolicyGraph
         else:
-            from ray.rllib.agents.a3c.a3c_tf_policy_graph import A3CPolicyGraph
             policy_cls = self._policy_graph
 
         self.local_evaluator = self.make_local_evaluator(

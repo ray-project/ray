@@ -8,7 +8,6 @@ atari-a2c-vtrace:
             - SpaceInvadersNoFrameskip-v4 
     run: A2C
     config:
-        vtrace: true
         sample_batch_size: 100
         num_workers: 5
         num_envs_per_worker: 5

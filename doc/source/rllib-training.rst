@@ -26,7 +26,6 @@ training process with TensorBoard by running
 
      tensorboard --logdir=~/ray_results
 
-
 The ``train.py`` script has a number of options you can show by running
 
 .. code-block:: bash
@@ -44,14 +43,12 @@ Specifying Parameters
 Each algorithm has specific hyperparameters that can be set with ``--config``, in addition to a number of `common hyperparameters <https://github.com/ray-project/ray/blob/master/python/ray/rllib/agents/agent.py>`__. See the
 `algorithms documentation <rllib-algorithms.html>`__ for more information.
 
-In an example below, we train A3C by specifying 8 workers through the config flag.
-function that creates the env to refer to it by name. The contents of the env_config agent config field will be passed to that function to allow the environment to be configured. The return type should be an OpenAI gym.Env. For example:
-
+In an example below, we train A2C by specifying 8 workers through the config flag. We also set ``"monitor": true`` to save episode videos to the result dir:
 
 .. code-block:: bash
 
     python ray/python/ray/rllib/train.py --env=PongDeterministic-v4 \
-        --run=A3C --config '{"num_workers": 8}'
+        --run=A2C --config '{"num_workers": 8, "monitor": true}'
 
 Evaluating Trained Agents
 ~~~~~~~~~~~~~~~~~~~~~~~~~
