@@ -169,9 +169,10 @@ class LSTM(Model):
         lstm_out, lstm_state = tf.nn.dynamic_rnn(
             lstm,
             last_layer,
-            initial_state=state_in,
             sequence_length=self.seq_lens,
-            time_major=False)
+            time_major=False,
+            dtype=tf.float32)
+
         self.state_out = list(lstm_state)
 
         # Compute outputs

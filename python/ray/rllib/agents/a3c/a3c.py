@@ -15,6 +15,7 @@ from ray.tune.trial import Resources
 DEFAULT_CONFIG = with_common_config({
     # Whether to use V-trace correction
     "vtrace": False,
+    "lr_schedule": None,
     # Size of rollout batch
     "sample_batch_size": 10,
     # Use PyTorch as backend - no LSTM support
