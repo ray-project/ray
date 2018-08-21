@@ -49,12 +49,10 @@ DEFAULT_CONFIG = with_common_config({
     "entropy_coeff": -0.01,
 
     # Model and preprocessor options.
-    "clip_rewards": True,
-    "preprocessor_pref": "deepmind",
     "model": {
         "use_lstm": False,
         "max_seq_len": 20,
-        "dim": 80,
+        "dim": 84,
     },
 })
 

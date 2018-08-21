@@ -95,7 +95,6 @@ class Trial(object):
         The args here take the same meaning as the command line flags defined
         in ray.tune.config_parser.
         """
-
         if not has_trainable(trainable_name):
             # Make sure rllib agents are registered
             from ray import rllib  # noqa: F401
@@ -267,9 +266,12 @@ class Trial(object):
                 self._status_string(),
                 location_string(
                     self.last_result.get(HOSTNAME),
-                    self.last_result.get(PID))),
-            '{} s'.format(int(self.last_result.get(TIME_TOTAL_S))),
+                    self.last_result.get(PID))), '{} s'.format(
+                        int(self.last_result.get(TIME_TOTAL_S)))
         ]
+
+        if self.last_result.get("timesteps_total") is not None:
+            pieces.append('{} ts'.format(self.last_result["timesteps_total"]))
 
         if self.last_result.get("episode_reward_mean") is not None:
             pieces.append('{} rew'.format(

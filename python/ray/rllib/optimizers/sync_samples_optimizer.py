@@ -43,6 +43,7 @@ class SyncSamplesOptimizer(PolicyOptimizer):
                 else:
                     samples.append(self.local_evaluator.sample())
             samples = SampleBatch.concat_samples(samples)
+            self.sample_timer.push_units_processed(samples.count)
 
         with self.grad_timer:
             for i in range(self.num_sgd_iter):
@@ -64,5 +65,7 @@ class SyncSamplesOptimizer(PolicyOptimizer):
                                         3),
                 "opt_peak_throughput": round(self.grad_timer.mean_throughput,
                                              3),
+                "sample_peak_throughput": round(
+                    self.sample_timer.mean_throughput, 3),
                 "opt_samples": round(self.grad_timer.mean_units_processed, 3),
             })
