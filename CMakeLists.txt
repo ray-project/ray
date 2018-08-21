@@ -36,11 +36,11 @@ option(RAY_USE_NEW_GCS
 
 option(RAY_USE_GLOG
   "Build the logging system using glog"
-  OFF)
+  ON)
 
 option(RAY_USE_LOG4CPLUS
   "Build the logging system using log4cplus"
-  ON)
+  OFF)
 
 if (RAY_USE_LOG4CPLUS AND RAY_USE_GLOG)
   message(FATAL_ERROR "At most 1 option of RAY_USE_LOG4CPLUS & RAY_USE_GLOG should be specified")

@@ -1,6 +1,6 @@
+#include <chrono>
 #include <cstdlib>
 #include <iostream>
-#include <chrono>
 
 #include "gtest/gtest.h"
 #include "ray/util/logging.h"

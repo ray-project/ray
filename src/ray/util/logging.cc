@@ -80,7 +80,7 @@ using namespace google;
 
 // Glog's severity map.
 static int GetMappedSeverity(int severity) {
-  int severity_map[] = {
+  static int severity_map[] = {
       // glog has no DEBUG level. It has verbose level but hard to adapt here.
       GLOG_INFO,     // RAY_DEBUG
       GLOG_INFO,     // RAY_INFO
@@ -98,7 +98,7 @@ using namespace log4cplus::helpers;
 
 // Log4cplus's severity map.
 static int GetMappedSeverity(int severity) {
-  int severity_map[] = {
+  static int severity_map[] = {
       DEBUG_LOG_LEVEL,  // RAY_DEBUG
       INFO_LOG_LEVEL,   // RAY_INFO
       WARN_LOG_LEVEL,   // RAY_WARNING
@@ -108,7 +108,6 @@ static int GetMappedSeverity(int severity) {
   // Ray log level starts from -1 (RAY_DEBUG);
   return severity_map[severity + 1];
 }
-
 
 // This is a helper class for log4cplus.
 // Log4cplus needs initialized, so the ctor will do the default initialization.
@@ -195,8 +194,7 @@ void RayLog::StartRayLog(const std::string &app_name, int severity_threshold,
   }
   google::SetStderrLogging(mapped_severity_threshold_);
 #elif RAY_USE_LOG4CPLUS
-  Log4cplusHelper::InitLog4cplus(app_name_str, severity_threshold_,
-                                 dir_ends_with_slash);
+  Log4cplusHelper::InitLog4cplus(app_name_str, severity_threshold_, dir_ends_with_slash);
 #endif
 }
 
@@ -215,8 +213,8 @@ RayLog::RayLog(const char *file_name, int line_number, int severity)
       implement(nullptr) {
 #ifdef RAY_USE_GLOG
   if (severity_ >= severity_threshold_) {
-    implement = new google::LogMessage(file_name_, line_number_,
-                                       GetMappedSeverity(severity_));
+    implement =
+        new google::LogMessage(file_name_, line_number_, GetMappedSeverity(severity_));
   }
 #elif RAY_USE_LOG4CPLUS
   implement = new std::stringstream();
