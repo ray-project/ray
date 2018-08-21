@@ -9,10 +9,12 @@ atari-a2c-vtrace:
     run: A2C
     config:
         vtrace: true
-        sample_batch_size: 100
-        num_workers: 5
-        num_envs_per_worker: 5
+        num_workers: 16
+        sample_batch_size: 5
+        grad_clip: 1.0
         gpu: true
+        optimizer:
+            grads_per_step: 1000
         lr_schedule: [
             [0, 0.0007],
             [20000000, 0.000000000001],
