@@ -79,13 +79,17 @@ int RayLog::severity_threshold_ = RAY_ERROR;
 using namespace google;
 
 // Glog's severity map.
-int SeverityMapper::severity_map[] = {
-    // glog has no DEBUG level. It has verbose level but hard to adapt here.
-    GLOG_INFO,     // RAY_DEBUG
-    GLOG_INFO,     // RAY_INFO
-    GLOG_WARNING,  // RAY_WARNING
-    GLOG_ERROR,    // RAY_ERROR
-    GLOG_FATAL     // RAY_FATAL
+static int GetMappedSeverity(int severity) {
+  int severity_map[] = {
+      // glog has no DEBUG level. It has verbose level but hard to adapt here.
+      GLOG_INFO,     // RAY_DEBUG
+      GLOG_INFO,     // RAY_INFO
+      GLOG_WARNING,  // RAY_WARNING
+      GLOG_ERROR,    // RAY_ERROR
+      GLOG_FATAL     // RAY_FATAL
+  };
+  // Ray log level starts from -1 (RAY_DEBUG);
+  return severity_map[severity + 1];
 };
 
 #elif RAY_USE_LOG4CPLUS
@@ -93,13 +97,18 @@ using namespace log4cplus;
 using namespace log4cplus::helpers;
 
 // Log4cplus's severity map.
-int SeverityMapper::severity_map[] = {
-    DEBUG_LOG_LEVEL,  // RAY_DEBUG
-    INFO_LOG_LEVEL,   // RAY_INFO
-    WARN_LOG_LEVEL,   // RAY_WARNING
-    ERROR_LOG_LEVEL,  // RAY_ERROR
-    FATAL_LOG_LEVEL   // RAY_FATAL
-};
+static int GetMappedSeverity(int severity) {
+  int severity_map[] = {
+      DEBUG_LOG_LEVEL,  // RAY_DEBUG
+      INFO_LOG_LEVEL,   // RAY_INFO
+      WARN_LOG_LEVEL,   // RAY_WARNING
+      ERROR_LOG_LEVEL,  // RAY_ERROR
+      FATAL_LOG_LEVEL   // RAY_FATAL
+  };
+  // Ray log level starts from -1 (RAY_DEBUG);
+  return severity_map[severity + 1];
+}
+
 
 // This is a helper class for log4cplus.
 // Log4cplus needs initialized, so the ctor will do the default initialization.
@@ -113,16 +122,16 @@ class Log4cplusHelper {
     RayLog::SetStaticImplement(&static_logger);
   }
 
-  static std::string GetDefualtPatternString() {
+  static std::string GetDafaultPatternString() {
     // Default log format.
-    return "%d{%m/%d/%y %H:%M:%S}  - %m [%l]%n";
+    return "%d{%Y-%m-%d_%H-%M-%S} [%l]: %m%n";
   }
 
   static void AddConsoleAppender(log4cplus::Logger &logger,
                                  const std::string &appender_name) {
     SharedObjectPtr<Appender> appender(new ConsoleAppender());
     appender->setName(appender_name);
-    std::unique_ptr<Layout> layout(new PatternLayout(GetDefualtPatternString()));
+    std::unique_ptr<Layout> layout(new PatternLayout(GetDafaultPatternString()));
     appender->setLayout(std::move(layout));
     logger.addAppender(appender);
   }
@@ -131,7 +140,7 @@ class Log4cplusHelper {
                               const std::string &log_dir) {
     SharedObjectPtr<Appender> appender(
         new DailyRollingFileAppender(log_dir + app_name, DAILY, true, 50));
-    std::unique_ptr<Layout> layout(new PatternLayout(GetDefualtPatternString()));
+    std::unique_ptr<Layout> layout(new PatternLayout(GetDafaultPatternString()));
     appender->setName(app_name);
     appender->setLayout(std::move(layout));
     logger.addAppender(appender);
@@ -143,7 +152,7 @@ class Log4cplusHelper {
     AddConsoleAppender(static_logger,
                        (std::string(app_name) + "console appender").c_str());
     AddFileAppender(static_logger, app_name, log_dir);
-    static_logger.setLogLevel(SeverityMapper::GetMappedSeverity(severity_threshold));
+    static_logger.setLogLevel(GetMappedSeverity(severity_threshold));
     RayLog::SetStaticImplement(&static_logger);
   }
 
@@ -157,8 +166,8 @@ static Log4cplusHelper log4cplus_initializer;
 
 #endif
 
-void RayLog::StartRayLog(const char *app_name, int severity_threshold,
-                         const char *log_dir) {
+void RayLog::StartRayLog(const std::string &app_name, int severity_threshold,
+                         const std::string &log_dir) {
   std::string dir_ends_with_slash = std::string(log_dir);
   if (!dir_ends_with_slash.empty()) {
     if (dir_ends_with_slash[dir_ends_with_slash.length() - 1] != '/') {
@@ -178,7 +187,7 @@ void RayLog::StartRayLog(const char *app_name, int severity_threshold,
   }
   severity_threshold_ = severity_threshold;
 #ifdef RAY_USE_GLOG
-  int mapped_severity_threshold_ = SeverityMapper::GetMappedSeverity(severity_threshold_);
+  int mapped_severity_threshold_ = GetMappedSeverity(severity_threshold_);
   google::InitGoogleLogging(app_name_str.c_str());
   if (!dir_ends_with_slash.empty()) {
     google::SetLogFilenameExtension(app_name_str.c_str());
@@ -186,8 +195,7 @@ void RayLog::StartRayLog(const char *app_name, int severity_threshold,
   }
   google::SetStderrLogging(mapped_severity_threshold_);
 #elif RAY_USE_LOG4CPLUS
-  int mapped_severity_threshold_ = SeverityMapper::GetMappedSeverity(severity_threshold_);
-  Log4cplusHelper::InitLog4cplus(app_name_str, mapped_severity_threshold_,
+  Log4cplusHelper::InitLog4cplus(app_name_str, severity_threshold_,
                                  dir_ends_with_slash);
 #endif
 }
@@ -208,7 +216,7 @@ RayLog::RayLog(const char *file_name, int line_number, int severity)
 #ifdef RAY_USE_GLOG
   if (severity_ >= severity_threshold_) {
     implement = new google::LogMessage(file_name_, line_number_,
-                                       SeverityMapper::GetMappedSeverity(severity_));
+                                       GetMappedSeverity(severity_));
   }
 #elif RAY_USE_LOG4CPLUS
   implement = new std::stringstream();
@@ -233,7 +241,7 @@ RayLog::~RayLog() {
   delete reinterpret_cast<google::LogMessage *>(implement);
 #elif RAY_USE_LOG4CPLUS
   log4cplus::Logger &logger = *reinterpret_cast<log4cplus::Logger *>(static_impl);
-  int mapped_severity = SeverityMapper::GetMappedSeverity(severity_);
+  int mapped_severity = GetMappedSeverity(severity_);
   if (severity_ >= severity_threshold_) {
     log4cplus::detail::macro_forced_log(
         logger, mapped_severity, reinterpret_cast<std::stringstream *>(implement)->str(),

@@ -111,7 +111,7 @@ if(RAY_USE_GLOG)
                         -DBUILD_SHARED_LIBS=OFF
                         -DBUILD_TESTING=OFF
                         -DWITH_GFLAGS=OFF
-                        -DCMAKE_CXX_FLAGS_${UPPERCASE_BUILD_TYPE}=${EP_CXX_FLAGS}
+                        -DCMAKE_CXX_FLAGS_${UPPERCASE_BUILD_TYPE}=${GLOG_CMAKE_CXX_FLAGS}
                         -DCMAKE_C_FLAGS_${UPPERCASE_BUILD_TYPE}=${EP_C_FLAGS}
                         -DCMAKE_CXX_FLAGS=${GLOG_CMAKE_CXX_FLAGS})
 
@@ -150,7 +150,7 @@ if(RAY_USE_LOG4CPLUS)
                         -DLOG4CPLUS_BUILD_TESTING=OFF
                         -DWITH_UNIT_TESTS=OFF
                         -DLOG4CPLUS_BUILD_LOGGINGSERVER=OFF
-                        -DCMAKE_CXX_FLAGS_${UPPERCASE_BUILD_TYPE}=${EP_CXX_FLAGS}
+                        -DCMAKE_CXX_FLAGS_${UPPERCASE_BUILD_TYPE}=${LOG4CPLUS_CMAKE_CXX_FLAGS}
                         -DCMAKE_C_FLAGS_${UPPERCASE_BUILD_TYPE}=${EP_C_FLAGS}
                         -DCMAKE_CXX_FLAGS=${LOG4CPLUS_CMAKE_CXX_FLAGS})
 
@@ -161,8 +161,8 @@ if(RAY_USE_LOG4CPLUS)
     BUILD_BYPRODUCTS "${LOG4CPLUS_STATIC_LIB}"
     CMAKE_ARGS ${LOG4CPLUS_CMAKE_ARGS})
 
-  message(STATUS "GLog include dir: ${LOG4CPLUS_INCLUDE_DIR}")
-  message(STATUS "GLog static library: ${LOG4CPLUS_STATIC_LIB}")
+  message(STATUS "Log4cplus include dir: ${LOG4CPLUS_INCLUDE_DIR}")
+  message(STATUS "Log4cplus static library: ${LOG4CPLUS_STATIC_LIB}")
   include_directories(SYSTEM ${LOG4CPLUS_INCLUDE_DIR})
   ADD_THIRDPARTY_LIB(log4cplus
     STATIC_LIB ${LOG4CPLUS_STATIC_LIB})

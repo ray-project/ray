@@ -74,8 +74,8 @@ class RayLog : public RayLogBase {
   }
 
   // The init function of ray log for a program which should be called only once.
-  static void StartRayLog(const char *appName, int severity_threshold = RAY_ERROR,
-                          const char *logDir = "/tmp");
+  static void StartRayLog(const std::string &appName, int severity_threshold = RAY_ERROR,
+                          const std::string &logDir = "/tmp");
   // The shutdown function of ray log which should be used with StartRayLog as a pair.
   static void ShutDownRayLog();
 
