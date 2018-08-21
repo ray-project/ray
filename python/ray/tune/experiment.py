@@ -5,7 +5,6 @@ from __future__ import print_function
 import copy
 import six
 import types
-import warnings
 
 from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.error import TuneError
@@ -32,7 +31,12 @@ class Experiment(object):
             e.g. ``{"cpu": 64, "gpu": 8}``. Note that GPUs will not be
             assigned unless you specify them here. Defaults to 1 CPU and 0
             GPUs in ``Trainable.default_resource_request()``.
-        total_samples (int): Number of times to repeat each trial. Defaults to 1.
+        repeat (int): Deprecated and will be removed in future versions of
+            Ray. Use `num_samples` instead.
+        num_samples (int): Number of times to sample from the
+            hyperparameter space. Defaults to 1. If `grid_search` is
+            provided as an argument, the grid will be repeated
+            `num_samples` of times.
         local_dir (str): Local dir to save training results to.
             Defaults to ``~/ray_results``.
         upload_dir (str): Optional URI to sync training results
@@ -73,6 +77,7 @@ class Experiment(object):
                  stop=None,
                  config=None,
                  trial_resources=None,
+                 repeat=1,
                  num_samples=1,
                  local_dir=None,
                  upload_dir="",
@@ -107,7 +112,8 @@ class Experiment(object):
             raise TuneError("No trainable specified!")
 
         if "repeat" in spec:
-            warnings.warn("repeat is deprecated, use total_samples instead")
+            raise DeprecationWarning("The parameter `repeat` is deprecated; converting to `num_samples`. \
+                `repeat` will be removed in future versions of Ray.")```
             spec["num_samples"] = spec["repeat"]
             del spec["repeat"]
 
