@@ -34,7 +34,6 @@ class SchedulingPolicy {
   std::unordered_map<TaskID, ClientID> Schedule(
       std::unordered_map<ClientID, SchedulingResources> &cluster_resources,
       const ClientID &local_client_id);
-      //, const std::vector<ClientID> &others);
 
   /// \brief SchedulingPolicy destructor.
   virtual ~SchedulingPolicy();

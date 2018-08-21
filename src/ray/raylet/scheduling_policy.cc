@@ -46,11 +46,12 @@ std::unordered_map<TaskID, ClientID> SchedulingPolicy::Schedule(
       // pair = ClientID, SchedulingResources
       ClientID node_client_id = client_resource_pair.first;
       const auto &node_resources = client_resource_pair.second;
-      ResourceSet available_node_resources = ResourceSet(node_resources.GetAvailableResources());
+      ResourceSet available_node_resources =
+          ResourceSet(node_resources.GetAvailableResources());
       available_node_resources.SubtractResourcesStrict(node_resources.GetLoadResources());
       RAY_LOG(DEBUG) << "client_id " << node_client_id
                      << " avail: " << node_resources.GetAvailableResources().ToString()
-                     << " load: "  << node_resources.GetLoadResources().ToString()
+                     << " load: " << node_resources.GetLoadResources().ToString()
                      << " avail-load: " << available_node_resources.ToString();
 
       if (resource_demand.IsSubset(available_node_resources)) {
@@ -79,8 +80,8 @@ std::unordered_map<TaskID, ClientID> SchedulingPolicy::Schedule(
       // placeable until cluster capacity becomes available.
       // TODO(rkn): Propagate a warning to the user.
       RAY_LOG(DEBUG) << "This task requires "
-                       << t.GetTaskSpecification().GetRequiredResources().ToString()
-                       << ", but no nodes have the necessary resources.";
+                     << t.GetTaskSpecification().GetRequiredResources().ToString()
+                     << ", but no nodes have the necessary resources.";
     }
   }
   return decision;

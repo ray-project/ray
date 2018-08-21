@@ -244,7 +244,7 @@ void NodeManager::Heartbeat() {
   RAY_LOG(DEBUG) << "[Heartbeat] resources available: "
                  << local_resources.GetAvailableResources().ToString();
   for (const auto &resource_pair :
-      local_resources.GetAvailableResources().GetResourceMap()) {
+       local_resources.GetAvailableResources().GetResourceMap()) {
     heartbeat_data->resources_available_label.push_back(resource_pair.first);
     heartbeat_data->resources_available_capacity.push_back(resource_pair.second);
   }
@@ -370,10 +370,9 @@ void NodeManager::HeartbeatAdded(gcs::AsyncGcsClient *client, const ClientID &cl
   ResourceSet remote_available(heartbeat_data.resources_available_label,
                                heartbeat_data.resources_available_capacity);
   ResourceSet remote_load(heartbeat_data.resource_load_label,
-                                      heartbeat_data.resource_load_capacity);
+                          heartbeat_data.resource_load_capacity);
   // TODO(atumanov): assert that the load is a non-empty ResourceSet.
-  RAY_LOG(DEBUG) << "[HeartbeatAdded]: received load: "
-                << remote_load.ToString();
+  RAY_LOG(DEBUG) << "[HeartbeatAdded]: received load: " << remote_load.ToString();
   remote_resources.SetAvailableResources(std::move(remote_available));
   // Extract the load information and save it locally.
   remote_resources.SetLoadResources(std::move(remote_load));
@@ -381,22 +380,23 @@ void NodeManager::HeartbeatAdded(gcs::AsyncGcsClient *client, const ClientID &cl
   // Construct cluster resources for the heartbeating client_id & call scheduling policy.
   // The scheduling policy will only consider the resources of the heartbeating client_id
   // for task placement.
-  std::unordered_map<ClientID, SchedulingResources>
-      remote_resource_map({{client_id, remote_resources}});
+  std::unordered_map<ClientID, SchedulingResources> remote_resource_map(
+      {{client_id, remote_resources}});
   RAY_LOG(DEBUG) << "[HeartbeatAdded]: remote resources available before: "
-                << remote_resource_map[client_id].GetAvailableResources().ToString()
-                << cluster_resource_map_[client_id].GetAvailableResources().ToString();
-    ScheduleTasks(remote_resource_map);
+                 << remote_resource_map[client_id].GetAvailableResources().ToString()
+                 << cluster_resource_map_[client_id].GetAvailableResources().ToString();
+  ScheduleTasks(remote_resource_map);
   // Update locally maintained copy of remote resource availability after the placement
   // decision.
-  ResourceSet updated_available_resources = remote_resource_map[client_id].GetAvailableResources();
+  ResourceSet updated_available_resources =
+      remote_resource_map[client_id].GetAvailableResources();
   remote_resources.SetAvailableResources(std::move(updated_available_resources));
   // Assert that the available resources have been updated in the cluster resource map.
   RAY_LOG(DEBUG) << "[HeartbeatAdded]: remote resources available after: "
-                << remote_resource_map[client_id].GetAvailableResources().ToString()
-                << cluster_resource_map_[client_id].GetAvailableResources().ToString();
+                 << remote_resource_map[client_id].GetAvailableResources().ToString()
+                 << cluster_resource_map_[client_id].GetAvailableResources().ToString();
   RAY_CHECK(remote_resources.GetAvailableResources().IsEqual(
-            remote_resource_map[client_id].GetAvailableResources()));
+      remote_resource_map[client_id].GetAvailableResources()));
 }
 
 void NodeManager::HandleActorCreation(const ActorID &actor_id,
@@ -514,7 +514,8 @@ void NodeManager::DispatchTasks() {
   }
   // Update the resource load information after dispatch.
   const ClientID &local_client_id = gcs_client_->client_table().GetLocalClientId();
-  cluster_resource_map_[local_client_id].SetLoadResources(local_queues_.GetResourceLoad());
+  cluster_resource_map_[local_client_id].SetLoadResources(
+      local_queues_.GetResourceLoad());
 }
 
 void NodeManager::ProcessClientMessage(
@@ -549,9 +550,10 @@ void NodeManager::ProcessClientMessage(
     worker_pool_.PushWorker(std::move(worker));
     // Local resource availability changed: invoke scheduling policy for local node.
     const ClientID &local_client_id = gcs_client_->client_table().GetLocalClientId();
-    cluster_resource_map_[local_client_id].SetLoadResources(local_queues_.GetResourceLoad());
-    std::unordered_map<ClientID, SchedulingResources>
-        local_resource_map({{local_client_id, cluster_resource_map_[local_client_id]}});
+    cluster_resource_map_[local_client_id].SetLoadResources(
+        local_queues_.GetResourceLoad());
+    std::unordered_map<ClientID, SchedulingResources> local_resource_map(
+        {{local_client_id, cluster_resource_map_[local_client_id]}});
     // Invoke the scheduling policy only on local resources.
     ScheduleTasks(local_resource_map);
     // Call task dispatch to assign work to the new worker.
@@ -626,9 +628,10 @@ void NodeManager::ProcessClientMessage(
       // Try to dispatch more tasks since the blocked worker released some
       // resources.
       const ClientID &local_client_id = gcs_client_->client_table().GetLocalClientId();
-      cluster_resource_map_[local_client_id].SetLoadResources(local_queues_.GetResourceLoad());
-      std::unordered_map<ClientID, SchedulingResources>
-          local_resource_map({{local_client_id, cluster_resource_map_[local_client_id]}});
+      cluster_resource_map_[local_client_id].SetLoadResources(
+          local_queues_.GetResourceLoad());
+      std::unordered_map<ClientID, SchedulingResources> local_resource_map(
+          {{local_client_id, cluster_resource_map_[local_client_id]}});
       // Invoke the scheduling policy only on local resources.
       ScheduleTasks(local_resource_map);
       // Since some resources may have been released, we can try to dispatch more tasks.
@@ -820,11 +823,10 @@ void NodeManager::ScheduleTasks(
   const ClientID &local_client_id = gcs_client_->client_table().GetLocalClientId();
   // Call scheduling policy.
   auto policy_decision = scheduling_policy_.Schedule(resource_map, local_client_id);
-  // TODO(atumanov): wrap debug log code in a DEBUG pragma
 
 #ifndef NDEBUG
   RAY_LOG(DEBUG) << "[NM ScheduleTasks] policy decision:";
-  for (const auto &task_client_pair : policy_decision)  {
+  for (const auto &task_client_pair : policy_decision) {
     TaskID task_id = task_client_pair.first;
     ClientID client_id = task_client_pair.second;
     RAY_LOG(DEBUG) << task_id << " --> " << client_id;
@@ -979,7 +981,8 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
       local_queues_.QueuePlaceableTasks({task});
       // Update local resource load information.
       const ClientID &local_client_id = gcs_client_->client_table().GetLocalClientId();
-      cluster_resource_map_[local_client_id].SetLoadResources(local_queues_.GetResourceLoad());
+      cluster_resource_map_[local_client_id].SetLoadResources(
+          local_queues_.GetResourceLoad());
       ScheduleTasks(cluster_resource_map_);
       DispatchTasks();
     }
@@ -1016,9 +1019,10 @@ void NodeManager::HandleWorkerBlocked(std::shared_ptr<Worker> worker) {
   // Try to dispatch more tasks since the blocked worker released some
   // resources.
   const ClientID &local_client_id = gcs_client_->client_table().GetLocalClientId();
-  cluster_resource_map_[local_client_id].SetLoadResources(local_queues_.GetResourceLoad());
-  std::unordered_map<ClientID, SchedulingResources>
-      local_resource_map({{local_client_id, cluster_resource_map_[local_client_id]}});
+  cluster_resource_map_[local_client_id].SetLoadResources(
+      local_queues_.GetResourceLoad());
+  std::unordered_map<ClientID, SchedulingResources> local_resource_map(
+      {{local_client_id, cluster_resource_map_[local_client_id]}});
   // Invoke the scheduling policy only on local resources.
   ScheduleTasks(local_resource_map);
   DispatchTasks();

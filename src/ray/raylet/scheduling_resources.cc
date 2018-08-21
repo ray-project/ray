@@ -437,10 +437,14 @@ std::vector<flatbuffers::Offset<protocol::ResourceIdSetInfo>> ResourceIdSet::ToF
 /// SchedulingResources class implementation
 
 SchedulingResources::SchedulingResources()
-    : resources_total_(ResourceSet()), resources_available_(ResourceSet()), resources_load_(ResourceSet()) {}
+    : resources_total_(ResourceSet()),
+      resources_available_(ResourceSet()),
+      resources_load_(ResourceSet()) {}
 
 SchedulingResources::SchedulingResources(const ResourceSet &total)
-    : resources_total_(total), resources_available_(total), resources_load_(ResourceSet()) {}
+    : resources_total_(total),
+      resources_available_(total),
+      resources_load_(ResourceSet()) {}
 
 SchedulingResources::~SchedulingResources() {}
 
@@ -475,7 +479,6 @@ void SchedulingResources::SetLoadResources(ResourceSet &&newset) {
 const ResourceSet &SchedulingResources::GetLoadResources() const {
   return resources_load_;
 }
-
 
 // Return specified resources back to SchedulingResources.
 bool SchedulingResources::Release(const ResourceSet &resources) {

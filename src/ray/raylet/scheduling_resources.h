@@ -87,7 +87,6 @@ class ResourceSet {
   /// \return True if the resource set was added successfully. False otherwise.
   bool AddResourcesStrict(const ResourceSet &other);
 
-
   /// \brief Aggregate resources from the other set into this set, adding any missing
   /// resource labels to this set.
   ///
