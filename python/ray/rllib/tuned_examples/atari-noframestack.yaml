@@ -1,5 +1,5 @@
 # Runs on a single g3.16xl node
-atari-impala-lstm:
+atari-impala-noframestack:
     env:
         grid_search:
             - BreakoutNoFrameskip-v4
@@ -13,8 +13,7 @@ atari-impala-lstm:
         num_workers: 32
         num_envs_per_worker: 5
         model:
-            use_lstm: true  # also disables framestacking
-            conv_activation: elu
+            no_framestack: true
         lr_schedule: [
             [0, 0.0005],
             [20000000, 0.000000000001],
