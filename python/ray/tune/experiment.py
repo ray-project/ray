@@ -59,7 +59,7 @@ class Experiment(object):
         >>>         "cpu": 1,
         >>>         "gpu": 0
         >>>     },
-        >>>     total_samples=10,
+        >>>     num_samples=10,
         >>>     local_dir="~/ray_results",
         >>>     upload_dir="s3://your_bucket/path",
         >>>     checkpoint_freq=10,
@@ -73,7 +73,7 @@ class Experiment(object):
                  stop=None,
                  config=None,
                  trial_resources=None,
-                 total_samples=1,
+                 num_samples=1,
                  local_dir=None,
                  upload_dir="",
                  checkpoint_freq=0,
@@ -84,7 +84,7 @@ class Experiment(object):
             "stop": stop or {},
             "config": config or {},
             "trial_resources": trial_resources,
-            "total_samples": total_samples,
+            "num_samples": num_samples,
             "local_dir": local_dir or DEFAULT_RESULTS_DIR,
             "upload_dir": upload_dir,
             "checkpoint_freq": checkpoint_freq,
@@ -108,13 +108,8 @@ class Experiment(object):
 
         if "repeat" in spec:
             warnings.warn("repeat is deprecated, use total_samples instead")
-            spec["total_samples"] = spec["repeat"]
+            spec["num_samples"] = spec["repeat"]
             del spec["repeat"]
-        
-        if "grid_search" in spec or "config" in spec and "grid_search" in spec["config"]:
-            if "repeat" in spec:
-                del spec["repeat"]
-            del spec["total_samples"]
 
         # Special case the `env` param for RLlib by automatically
         # moving it into the `config` section.

@@ -195,7 +195,7 @@ if __name__ == "__main__":
             "decay": lambda spec: spec.config.lr / 100.0,
             "dropout": grid_search([0.25, 0.5]),
         },
-        "total_samples": 4,
+        "num_samples": 4,
     }
 
     if args.smoke_test:

@@ -70,7 +70,7 @@ if __name__ == "__main__":
                 "stop": {
                     "training_iteration": 1 if args.smoke_test else 99999
                 },
-                "total_samples": 20,
+                "num_samples": 20,
                 "trial_resources": {
                     "cpu": 1,
                     "gpu": 0
