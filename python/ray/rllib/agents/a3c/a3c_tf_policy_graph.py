@@ -14,6 +14,7 @@ from ray.rllib.evaluation.postprocessing import compute_advantages
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 from ray.rllib.models.misc import linear, normc_initializer
 from ray.rllib.models.catalog import ModelCatalog
+from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
 
 
 class A3CLoss(object):
@@ -42,6 +43,7 @@ class A3CPolicyGraph(TFPolicyGraph):
         config = dict(ray.rllib.agents.a3c.a3c.DEFAULT_CONFIG, **config)
         self.config = config
         self.sess = tf.get_default_session()
+        self.cur_lr = tf.Variable(config["lr"])
 
         # Setup the policy
         self.observations = tf.placeholder(
@@ -96,6 +98,7 @@ class A3CPolicyGraph(TFPolicyGraph):
 
         self.stats_fetches = {
             "stats": {
+                "cur_lr": tf.cast(self.cur_lr, tf.float64),
                 "policy_loss": self.loss.pi_loss,
                 "policy_entropy": self.loss.entropy,
                 "grad_gnorm": tf.global_norm(self._grads),
@@ -106,6 +109,14 @@ class A3CPolicyGraph(TFPolicyGraph):
         }
 
         self.sess.run(tf.global_variables_initializer())
+
+        if self.config["lr_schedule"] is None:
+            lr = ConstantSchedule(self.config["lr"])
+        elif isinstance(self.config["lr_schedule"], list):
+            lr = PiecewiseSchedule(
+                self.config["lr_schedule"],
+                outside_value=self.config["lr_schedule"][-1][-1])
+        self.lr_schedule = lr
 
     def extra_compute_action_fetches(self):
         return {"vf_preds": self.vf}
@@ -120,7 +131,7 @@ class A3CPolicyGraph(TFPolicyGraph):
         return vf[0]
 
     def optimizer(self):
-        return tf.train.AdamOptimizer(self.config["lr"])
+        return tf.train.AdamOptimizer(self.cur_lr)
 
     def gradients(self, optimizer):
         grads = tf.gradients(self.loss.total_loss, self.var_list)
@@ -145,3 +156,7 @@ class A3CPolicyGraph(TFPolicyGraph):
             last_r = self.value(sample_batch["new_obs"][-1], *next_state)
         return compute_advantages(sample_batch, last_r, self.config["gamma"],
                                   self.config["lambda"])
+
+    def on_global_var_update(self, global_vars):
+        self.cur_lr.load(
+            self.lr_schedule.value(global_vars["timestep"]), session=self.sess)
