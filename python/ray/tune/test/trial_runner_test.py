@@ -366,6 +366,23 @@ class TrainableFunctionApiTest(unittest.TestCase):
         self.assertEqual(trial.status, Trial.TERMINATED)
         self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], 99)
 
+    def testReportInfinity(self):
+        def train(config, reporter):
+            for i in range(100):
+                reporter(mean_accuracy=float('inf'))
+
+        register_trainable("f1", train)
+        [trial] = run_experiments({
+            "foo": {
+                "run": "f1",
+                "config": {
+                    "script_min_iter_time_s": 0,
+                },
+            }
+        })
+        self.assertEqual(trial.status, Trial.TERMINATED)
+        self.assertEqual(trial.last_result['mean_accuracy'], float('inf'))
+
 
 class RunExperimentTest(unittest.TestCase):
     def setUp(self):
