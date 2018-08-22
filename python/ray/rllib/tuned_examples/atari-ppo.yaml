@@ -10,7 +10,8 @@ atari-ppo:
     config:
         timesteps_per_batch: 2000
         sample_batch_size: 400
-        num_sgd_iter: 4
+        sgd_batchsize: 500
+        num_sgd_iter: 10
         num_workers: 5
         num_envs_per_worker: 5
         batch_mode: truncate_episodes
