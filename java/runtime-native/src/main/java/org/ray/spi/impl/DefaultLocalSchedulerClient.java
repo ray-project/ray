@@ -6,8 +6,11 @@ import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+
+import org.ray.api.Ray;
 import org.ray.api.UniqueID;
 import org.ray.core.RayRuntime;
+import org.ray.core.UniqueIdHelper;
 import org.ray.spi.LocalSchedulerLink;
 import org.ray.spi.model.FunctionArg;
 import org.ray.spi.model.TaskSpec;
@@ -113,6 +116,7 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
   public void reconstructObjects(List<UniqueID> objectIds, boolean fetchOnly) {
     RayLog.core.info("reconstruct objects {}", objectIds);
     _reconstruct_objects(client, getIdBytes(objectIds), fetchOnly);
+    RayLog.core.info("task id is {}", UniqueIdHelper.taskIdFromObjectId(objectIds.get(0)));
   }
 
   @Override

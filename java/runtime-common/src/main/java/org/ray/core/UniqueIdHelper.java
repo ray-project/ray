@@ -3,6 +3,7 @@ package org.ray.core;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Arrays;
+import java.util.BitSet;
 import java.util.Random;
 import org.apache.commons.lang3.BitField;
 import org.ray.api.UniqueID;
@@ -19,7 +20,6 @@ public class UniqueIdHelper {
       .withInitial(() -> ByteBuffer.allocate(Long.SIZE / Byte.SIZE));
   private static final ThreadLocal<Random> rand = ThreadLocal.withInitial(Random::new);
   private static final ThreadLocal<Long> randSeed = new ThreadLocal<>();
-  private static final int batchPos = 0;
   private static final int uniquenessPos = Long.SIZE / Byte.SIZE;
   private static final int typePos = 2 * Long.SIZE / Byte.SIZE;
   private static final BitField typeField = new BitField(0x7);
@@ -41,31 +41,6 @@ public class UniqueIdHelper {
     RayLog.core.debug("Thread random seed is set to " + seed);
     randSeed.set(seed);
     rand.get().setSeed(seed);
-  }
-
-  public static Long getNextCreateThreadRandomSeed() {
-    UniqueID currentTaskId = WorkerContext.currentTask().taskId;
-    byte[] bytes;
-
-    ByteBuffer lbuffer = longBuffer.get();
-    // similar to task id generation (see nextTaskId below)
-    if (!currentTaskId.isNil()) {
-      ByteBuffer rbb = ByteBuffer.wrap(currentTaskId.getBytes());
-      rbb.order(ByteOrder.LITTLE_ENDIAN);
-      long cid = rbb.getLong(uniquenessPos);
-      byte[] cbuffer = lbuffer.putLong(cid).array();
-      bytes = MD5Digestor.digest(cbuffer, WorkerContext.nextCallIndex());
-    } else {
-      long cid = rand.get().nextLong();
-      byte[] cbuffer = lbuffer.putLong(cid).array();
-      bytes = MD5Digestor.digest(cbuffer, rand.get().nextLong());
-    }
-    lbuffer.clear();
-
-    lbuffer.put(bytes, 0, Long.SIZE / Byte.SIZE);
-    long r = lbuffer.getLong();
-    lbuffer.clear();
-    return r;
   }
 
   private static Type getType(ByteBuffer bb) {
@@ -118,21 +93,24 @@ public class UniqueIdHelper {
   }
 
   private static UniqueID objectIdFromTaskId(UniqueID taskId,
-                                             boolean isReturn,
-                                             boolean hasMultipleReturn,
-                                             int index
+                                              boolean isReturn,
+                                              boolean hasMultipleReturn,
+                                              int index
   ) {
-    UniqueID oid = newZero();
-    ByteBuffer rbb = ByteBuffer.wrap(taskId.getBytes());
-    rbb.order(ByteOrder.LITTLE_ENDIAN);
+    byte[] objId = new byte[20];
+    System.arraycopy(taskId.getBytes(), 0, objId, 0, 20);
+    byte[] indexBytes = ByteBuffer.allocate(4).putInt(index).array();
+    objId[0] = indexBytes[3];
+    objId[1] = indexBytes[2];
+    objId[2] = indexBytes[1];
+    objId[3] = indexBytes[0];
+
+    UniqueID oid = new UniqueID(objId);
+
     ByteBuffer wbb = ByteBuffer.wrap(oid.getBytes());
     wbb.order(ByteOrder.LITTLE_ENDIAN);
-    setBatch(wbb, getBatch(rbb));
-    setUniqueness(wbb, getUniqueness(rbb));
-    setType(wbb, Type.OBJECT);
     setHasMultipleReturn(wbb, hasMultipleReturn ? 1 : 0);
-    setIsReturn(wbb, isReturn ? 1 : 0);
-    setWithinTaskIndex(wbb, index);
+
     return oid;
   }
 
@@ -140,18 +118,6 @@ public class UniqueIdHelper {
     byte[] b = new byte[UniqueID.LENGTH];
     Arrays.fill(b, (byte) 0);
     return new UniqueID(b);
-  }
-
-  private static void setBatch(ByteBuffer bb, long batchId) {
-    bb.putLong(batchPos, batchId);
-  }
-
-  private static long getBatch(ByteBuffer bb) {
-    return bb.getLong(batchPos);
-  }
-
-  private static void setUniqueness(ByteBuffer bb, long uniqueness) {
-    bb.putLong(uniquenessPos, uniqueness);
   }
 
   private static void setUniqueness(ByteBuffer bb, byte[] uniqueness) {
@@ -185,7 +151,7 @@ public class UniqueIdHelper {
   }
 
   public static UniqueID taskComputePutId(UniqueID uid, int putIndex) {
-    return objectIdFromTaskId(uid, false, false, putIndex);
+    return objectIdFromTaskId(uid, false, false, -1 * putIndex);
   }
 
   public static boolean hasMultipleReturnOrNotFromReturnObjectId(UniqueID returnId) {
@@ -200,15 +166,15 @@ public class UniqueIdHelper {
   }
 
   public static UniqueID taskIdFromObjectId(UniqueID objectId) {
-    UniqueID taskId = newZero();
-    ByteBuffer rbb = ByteBuffer.wrap(objectId.getBytes());
-    rbb.order(ByteOrder.LITTLE_ENDIAN);
-    ByteBuffer wbb = ByteBuffer.wrap(taskId.getBytes());
-    wbb.order(ByteOrder.LITTLE_ENDIAN);
-    setBatch(wbb, getBatch(rbb));
-    setUniqueness(wbb, getUniqueness(rbb));
-    setType(wbb, Type.TASK);
-    return taskId;
+    byte[] taskId = new byte[20];
+    System.arraycopy(objectId.getBytes(), 0, taskId, 0, 20);
+    taskId[0] = 0;
+    taskId[1] = 0;
+    taskId[2] = 0;
+    taskId[3] = 0;
+
+    UniqueID retId = new UniqueID(taskId);
+    return retId;
   }
 
   public static UniqueID nextTaskId(long batchId) {
@@ -220,13 +186,6 @@ public class UniqueIdHelper {
     UniqueID currentTaskId = WorkerContext.currentTask().taskId;
     ByteBuffer rbb = ByteBuffer.wrap(currentTaskId.getBytes());
     rbb.order(ByteOrder.LITTLE_ENDIAN);
-
-    // setup batch id
-    if (batchId == -1) {
-      setBatch(wbb, getBatch(rbb));
-    } else {
-      setBatch(wbb, batchId);
-    }
 
     // setup unique id (task id)
     byte[] idBytes;
@@ -246,26 +205,8 @@ public class UniqueIdHelper {
     }
     setUniqueness(wbb, idBytes);
     lbuffer.clear();
+
     return taskId;
-  }
-
-  public static void markCreateActorStage1Function(UniqueID functionId) {
-    ByteBuffer wbb = ByteBuffer.wrap(functionId.getBytes());
-    wbb.order(ByteOrder.LITTLE_ENDIAN);
-    setUniqueness(wbb, 1);
-  }
-
-  // WARNING: see hack in MethodId.java which must be aligned with here
-  public static boolean isNonLambdaCreateActorStage1Function(UniqueID functionId) {
-    ByteBuffer wbb = ByteBuffer.wrap(functionId.getBytes());
-    wbb.order(ByteOrder.LITTLE_ENDIAN);
-    return getUniqueness(wbb) == 1;
-  }
-
-  public static boolean isNonLambdaCommonFunction(UniqueID functionId) {
-    ByteBuffer wbb = ByteBuffer.wrap(functionId.getBytes());
-    wbb.order(ByteOrder.LITTLE_ENDIAN);
-    return getUniqueness(wbb) == 0;
   }
 
   public enum Type {

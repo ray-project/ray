@@ -1195,6 +1195,7 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id) {
       [this](ray::gcs::AsyncGcsClient *client, const TaskID &task_id) {
         // The task was not in the GCS task table. It must therefore be in the
         // lineage cache.
+        RAY_CHECK(lineage_cache_.ContainsTask(task_id)) << "Task id generated in java is wrong. " << task_id;
         if (!lineage_cache_.ContainsTask(task_id)) {
           // The task was not in the lineage cache.
           // TODO(swang): This should not ever happen, but Java TaskIDs are
