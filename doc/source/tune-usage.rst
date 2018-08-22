@@ -165,7 +165,7 @@ For more information on variant generation, see `basic_variant.py <https://githu
 Sampling Multiple Times
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-By default, each random variable and grid search point is sampled once. To take multiple random samples or repeat grid search runs, add ``num_samples: N`` to the experiment config.
+By default, each random variable and grid search point is sampled once. To take multiple random samples, add ``num_samples: N`` to the experiment config. If `grid_search` is provided as an argument, the grid will be repeated `num_samples` of times.
 
 .. code-block:: python
    :emphasize-lines: 12
