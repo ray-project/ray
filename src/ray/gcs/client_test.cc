@@ -29,8 +29,6 @@ class TestGcs : public ::testing::Test {
  public:
   TestGcs(CommandType command_type) : num_callbacks_(0), command_type_(command_type) {
     client_ = std::make_shared<gcs::AsyncGcsClient>("127.0.0.1", 6379, command_type_);
-    RAY_CHECK_OK(client_->Connect("127.0.0.1", 6379, /*sharding=*/false));
-
     job_id_ = JobID::from_random();
   }
 

@@ -34,7 +34,6 @@ class MockServer {
 
  private:
   ray::Status RegisterGcs(boost::asio::io_service &io_service) {
-    RAY_RETURN_NOT_OK(gcs_client_->Connect("127.0.0.1", 6379, /*sharding=*/false));
     RAY_RETURN_NOT_OK(gcs_client_->Attach(io_service));
 
     boost::asio::ip::tcp::endpoint endpoint = object_manager_acceptor_.local_endpoint();
