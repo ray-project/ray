@@ -75,13 +75,9 @@ class RayLog : public RayLogBase {
 
   // The init function of ray log for a program which should be called only once.
   static void StartRayLog(const std::string &appName, int severity_threshold = RAY_ERROR,
-                          const std::string &logDir = "/tmp");
+                          const std::string &logDir = "");
   // The shutdown function of ray log which should be used with StartRayLog as a pair.
   static void ShutDownRayLog();
-
-  static void *GetStaticImplement() { return static_impl; }
-
-  static void SetStaticImplement(void *pointer) { static_impl = pointer; }
 
  private:
   std::ostream &Stream();
@@ -89,11 +85,11 @@ class RayLog : public RayLogBase {
   int line_number_;
   int severity_;
   void *implement;
-  static void *static_impl;
   static int severity_threshold_;
 };
 
 // This class make RAY_CHECK compilation pass to change the << operator to void.
+// This class if copied from glog.
 class Voidify {
  public:
   Voidify() {}

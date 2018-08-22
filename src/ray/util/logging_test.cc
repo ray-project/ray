@@ -34,7 +34,7 @@ TEST(PrintLogTest, LogTestWithoutInit) {
 }
 
 TEST(PrintLogTest, LogTestWithInit) {
-  RayLog::StartRayLog("LogTestWithInit", RAY_DEBUG, "/tmp/");
+  RayLog::StartRayLog("LogTestWithInit", RAY_ERROR);
   PrintLog();
   RayLog::ShutDownRayLog();
 }
