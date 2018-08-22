@@ -263,7 +263,8 @@ void NodeManager::Heartbeat() {
                    << " load " << local_resources.GetLoadResources().ToString()
                    << " avail " << local_resources.GetAvailableResources().ToString()
                    << " total " << local_resources.GetTotalResources().ToString()
-                   << " queues\n" << local_queues_.ToString();
+                   << " queues\n"
+                   << local_queues_.ToString();
   }
 
   ray::Status status = heartbeat_table.Add(
@@ -999,11 +1000,16 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
       // TODO(atumanov): assert that !placeable.isempty() => insufficient available
       // resources locally.
       const ClientID &local_client_id = gcs_client_->client_table().GetLocalClientId();
-      RAY_LOG(DEBUG) << "SUBMIT: "
-          << " load " << cluster_resource_map_[local_client_id].GetLoadResources().ToString()
-          << " avail " << cluster_resource_map_[local_client_id].GetAvailableResources().ToString()
-          << " total " << cluster_resource_map_[local_client_id].GetTotalResources().ToString()
-          << " queues:\n" << local_queues_.ToString();
+      RAY_LOG(DEBUG)
+          << "SUBMIT: "
+          << " load "
+          << cluster_resource_map_[local_client_id].GetLoadResources().ToString()
+          << " avail "
+          << cluster_resource_map_[local_client_id].GetAvailableResources().ToString()
+          << " total "
+          << cluster_resource_map_[local_client_id].GetTotalResources().ToString()
+          << " queues:\n"
+          << local_queues_.ToString();
     }
   }
 }
