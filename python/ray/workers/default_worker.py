@@ -40,17 +40,17 @@ parser.add_argument(
 parser.add_argument(
     "--raylet-name", required=False, type=str, help="the raylet's name")
 parser.add_argument(
-        "--logging-level",
-        required=False,
-        type=str,
-        default="info",
-        help="The logging level, default is INFO.")
+    "--logging-level",
+    required=False,
+    type=str,
+    default="info",
+    help="The logging level, default is INFO.")
 parser.add_argument(
-        "--logging-format",
-        required=False,
-        type=str,
-        default="%(message)s",
-        help="The logging format.")
+    "--logging-format",
+    required=False,
+    type=str,
+    default="%(message)s",
+    help="The logging format.")
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -64,8 +64,9 @@ if __name__ == "__main__":
         "raylet_socket_name": args.raylet_name
     }
 
-    logging.basicConfig(level=logging.getLevelName(args.logging_level.upper()),
-                        format=args.logging_format)
+    logging.basicConfig(
+        level=logging.getLevelName(args.logging_level.upper()),
+        format=args.logging_format)
 
     ray.worker.connect(
         info, mode=ray.WORKER_MODE, use_raylet=(args.raylet_name is not None))

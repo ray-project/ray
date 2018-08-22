@@ -140,8 +140,9 @@ if __name__ == "__main__":
         default="%(message)s",
         help="The logging format.")
     args = parser.parse_args()
-    logging.basicConfig(level=logging.getLevelName(args.logging_level.upper()),
-                        format=args.logging_format)
+    logging.basicConfig(
+        level=logging.getLevelName(args.logging_level.upper()),
+        format=args.logging_format)
 
     redis_ip_address = get_ip_address(args.redis_address)
     redis_port = get_port(args.redis_address)

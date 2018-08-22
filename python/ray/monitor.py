@@ -284,8 +284,8 @@ class Monitor(object):
 
         # If the update was a deletion, add them to our accounting for dead
         # local schedulers and plasma managers.
-        logger.warn("Removed {}, client ID {}"
-                    .format(client_type, db_client_id))
+        logger.warn("Removed {}, client ID {}".format(client_type,
+                                                      db_client_id))
         if client_type == LOCAL_SCHEDULER_CLIENT_TYPE:
             if db_client_id not in self.dead_local_schedulers:
                 self.dead_local_schedulers.add(db_client_id)
