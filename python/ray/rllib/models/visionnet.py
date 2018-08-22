@@ -47,19 +47,19 @@ class VisionNetwork(Model):
 
 
 def get_filter_config(options):
-    filters_80x80 = [
+    filters_84x84 = [
         [16, [8, 8], 4],
         [32, [4, 4], 2],
-        [512, [10, 10], 1],
+        [256, [11, 11], 1],
     ]
     filters_42x42 = [
         [16, [4, 4], 2],
         [32, [4, 4], 2],
-        [512, [11, 11], 1],
+        [256, [11, 11], 1],
     ]
-    dim = options.get("dim", 80)
-    if dim == 80:
-        return filters_80x80
+    dim = options.get("dim", 84)
+    if dim == 84:
+        return filters_84x84
     elif dim == 42:
         return filters_42x42
     else:

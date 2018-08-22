@@ -74,7 +74,7 @@ class ModelCatalogTest(unittest.TestCase):
 
         with tf.variable_scope("test2"):
             p2 = ModelCatalog.get_model(
-                np.zeros((10, 80, 80, 3), dtype=np.float32), 5)
+                np.zeros((10, 84, 84, 3), dtype=np.float32), 5)
             self.assertEqual(type(p2), VisionNetwork)
 
     def testCustomModel(self):
