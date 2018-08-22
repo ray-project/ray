@@ -122,13 +122,13 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1put_1object(JNIEnv *,
  * Signature: (J[[BIIZ)[Z
  */
 JNIEXPORT jbooleanArray JNICALL
-    Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1waitObject(JNIEnv *,
-                                                                   jclass,
-                                                                   jlong,
-                                                                   jobjectArray,
-                                                                   jint,
-                                                                   jint,
-                                                                   jboolean);
+Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1waitObject(JNIEnv *,
+                                                               jclass,
+                                                               jlong,
+                                                               jobjectArray,
+                                                               jint,
+                                                               jint,
+                                                               jboolean);
 
 /*
  * Class:     org_ray_spi_impl_DefaultLocalSchedulerClient
@@ -136,10 +136,10 @@ JNIEXPORT jbooleanArray JNICALL
  * Signature: ([B[BI)[B
  */
 JNIEXPORT jbyteArray JNICALL
-    Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1computeTaskId(JNIEnv *,
-                                                                      jclass,
-                                                                      jbyteArray, jbyteArray,
-                                                                      jint);
+Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1generateTaskId(JNIEnv *,
+                                                                   jclass,
+                                                                   jbyteArray, jbyteArray,
+                                                                   jint);
 
 #ifdef __cplusplus
 }

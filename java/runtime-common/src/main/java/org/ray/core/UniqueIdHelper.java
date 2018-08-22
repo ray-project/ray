@@ -85,7 +85,7 @@ public class UniqueIdHelper {
 
     ByteBuffer wbb = ByteBuffer.wrap(oid.getBytes());
     wbb.order(ByteOrder.LITTLE_ENDIAN);
-    //setHasMultipleReturn(wbb, hasMultipleReturn ? 1 : 0);
+    setHasMultipleReturn(wbb, hasMultipleReturn ? 1 : 0);
 
     return oid;
   }

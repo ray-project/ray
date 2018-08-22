@@ -301,7 +301,7 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1waitObject(
 }
 
 JNIEXPORT jbyteArray JNICALL
-Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1computeTaskId(JNIEnv *env,
+Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1generateTaskId(JNIEnv *env,
                                                                  jclass,
                                                                  jbyteArray did,
                                                                  jbyteArray ptid,

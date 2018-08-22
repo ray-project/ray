@@ -45,7 +45,7 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
 
   private static native byte[] _computePutId(long client, byte[] taskId, int putIndex);
 
-  private static native byte[] _computeTaskId(byte[] driverId, byte[] parentTaskId, int taskIndex);
+  private static native byte[] _generateTaskId(byte[] driverId, byte[] parentTaskId, int taskIndex);
 
   private static native void _task_done(long client);
 
@@ -123,7 +123,12 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
 
   @Override
   public UniqueID generateTaskId(UniqueID driverId, UniqueID parentTaskId, int taskIndex) {
-    byte[] bytes = _computeTaskId(driverId.getBytes(), parentTaskId.getBytes(), taskIndex);
+    byte[] bytes = _generateTaskId(driverId.getBytes(), parentTaskId.getBytes(), taskIndex);
+    //TODO(qwang): This code will be removed once MultiReturns is removed.
+    bytes[16] = 0;
+    bytes[17] = 0;
+    bytes[18] = 0;
+    bytes[19] = 0;
     return new UniqueID(bytes);
   }
 
