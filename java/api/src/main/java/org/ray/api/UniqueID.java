@@ -1,5 +1,7 @@
 package org.ray.api;
 
+import org.omg.CORBA.PUBLIC_MEMBER;
+
 import java.io.Serializable;
 import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
@@ -16,21 +18,11 @@ public class UniqueID implements Serializable {
   private static final long serialVersionUID = 8588849129675565761L;
   byte[] id;
 
-  public UniqueID(byte[] id) {
-    this.id = id;
-  }
-
-  public UniqueID(ByteBuffer bb) {
-    assert (bb.remaining() == LENGTH);
-    id = new byte[bb.remaining()];
-    bb.get(id);
-  }
-
-  public UniqueID(String optionValue) {
+  public static UniqueID fromString(String optionValue) {
     assert (optionValue.length() == 2 * LENGTH);
     int j = 0;
 
-    id = new byte[LENGTH];
+    byte[] id = new byte[LENGTH];
     for (int i = 0; i < LENGTH; i++) {
       char c1 = optionValue.charAt(j++);
       char c2 = optionValue.charAt(j++);
@@ -38,6 +30,20 @@ public class UniqueID implements Serializable {
       int second = c2 <= '9' ? (c2 - '0') : (c2 - 'a' + 0xa);
       id[i] = (byte) (first * 16 + second);
     }
+
+    return new UniqueID(id);
+  }
+
+  public static UniqueID fromByteBuffer(ByteBuffer bb) {
+    assert (bb.remaining() == LENGTH);
+    byte[] id = new byte[bb.remaining()];
+    bb.get(id);
+
+    return new UniqueID(id);
+  }
+
+  public UniqueID(byte[] id) {
+    this.id = id;
   }
 
   public static UniqueID genNil() {
