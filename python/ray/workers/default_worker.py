@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import argparse
 import traceback
+import logging
 
 import ray
 import ray.actor
@@ -38,6 +39,18 @@ parser.add_argument(
     help="the local scheduler's name")
 parser.add_argument(
     "--raylet-name", required=False, type=str, help="the raylet's name")
+parser.add_argument(
+        "--logging-level",
+        required=False,
+        type=str,
+        default="info",
+        help="The logging level, default is INFO.")
+parser.add_argument(
+        "--logging-format",
+        required=False,
+        type=str,
+        default="%(message)s",
+        help="The logging format.")
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -50,6 +63,9 @@ if __name__ == "__main__":
         "local_scheduler_socket_name": args.local_scheduler_name,
         "raylet_socket_name": args.raylet_name
     }
+
+    logging.basicConfig(level=logging.getLevelName(args.logging_level.upper()),
+                        format=args.logging_format)
 
     ray.worker.connect(
         info, mode=ray.WORKER_MODE, use_raylet=(args.raylet_name is not None))

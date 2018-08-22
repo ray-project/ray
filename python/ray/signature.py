@@ -5,12 +5,12 @@ from __future__ import print_function
 from collections import namedtuple
 import funcsigs
 from funcsigs import Parameter
+import logging
 
-import ray.logger
 from ray.utils import is_cython
 
-# Default logger.
-logger = ray.logger.default_logger
+# Default logger: will be updated automatically after logging.basicConfig.
+logger = logging.getLogger(__name__)
 
 FunctionSignature = namedtuple("FunctionSignature", [
     "arg_names", "arg_defaults", "arg_is_positionals", "keyword_names",

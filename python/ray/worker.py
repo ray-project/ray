@@ -7,6 +7,7 @@ import collections
 import colorama
 import hashlib
 import inspect
+import logging
 import numpy as np
 import os
 import redis
@@ -27,7 +28,6 @@ import ray.serialization as serialization
 import ray.services as services
 import ray.signature
 import ray.local_scheduler
-import ray.logger
 import ray.plasma
 import ray.ray_constants as ray_constants
 from ray import import_thread
@@ -73,8 +73,8 @@ DEFAULT_ACTOR_CREATION_CPUS_SIMPLE_CASE = 0
 DEFAULT_ACTOR_METHOD_CPUS_SPECIFIED_CASE = 0
 DEFAULT_ACTOR_CREATION_CPUS_SPECIFIED_CASE = 1
 
-# Default logger.
-logger = ray.logger.default_logger
+# Default logger: will be updated automatically after logging.basicConfig.
+logger = logging.getLogger(__name__)
 
 
 class RayTaskError(Exception):
@@ -1733,7 +1733,9 @@ def init(redis_address=None,
          plasma_directory=None,
          huge_pages=False,
          include_webui=True,
-         use_raylet=None):
+         use_raylet=None,
+         logging_level=logging.INFO,
+         logging_format="%(message)s"):
     """Connect to an existing Ray cluster or start one and connect to it.
 
     This method handles two cases. Either a Ray cluster already exists and we
@@ -1793,6 +1795,9 @@ def init(redis_address=None,
         include_webui: Boolean flag indicating whether to start the web
             UI, which is a Jupyter notebook.
         use_raylet: True if the new raylet code path should be used.
+        logging_level: Logging level, default will be loging.WARN.
+        logging_format: Logging format, default will be "%(message)s"
+            which means only contains the message.
 
     Returns:
         Address information about the started processes.
@@ -1801,6 +1806,8 @@ def init(redis_address=None,
         Exception: An exception is raised if an inappropriate combination of
             arguments is passed in.
     """
+    logging.basicConfig(level=logging_level, format=logging_format)
+
     if global_worker.connected:
         if ignore_reinit_error:
             logger.error("Calling ray.init() again after it has already been "

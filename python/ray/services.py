@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import binascii
 import json
+import logging
 import os
 import random
 import resource
@@ -25,7 +26,6 @@ import pyarrow
 import ray.ray_constants
 import ray.global_scheduler as global_scheduler
 import ray.local_scheduler
-import ray.logger
 import ray.plasma
 
 PROCESS_TYPE_MONITOR = "monitor"
@@ -93,18 +93,7 @@ ObjectStoreAddress = namedtuple("ObjectStoreAddress",
                                 ["name", "manager_name", "manager_port"])
 
 # Default logger.
-logger = ray.logger.default_logger
-
-
-def set_logger(input_logger):
-    global logger
-    if input_logger is not None:
-        logger = input_logger
-
-
-def reset_logger():
-    global logger
-    logger = ray.logger.default_logger
+logger = logging.getLogger(__name__)
 
 
 def address(ip_address, port):

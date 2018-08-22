@@ -4,10 +4,10 @@ from __future__ import print_function
 
 import click
 import json
+import logging
 import os
 import subprocess
 
-import ray.logger
 import ray.services as services
 from ray.autoscaler.commands import (attach_cluster, exec_cluster,
                                      create_or_update_cluster, rsync,
@@ -153,37 +153,29 @@ def cli():
 @click.option(
     "--logging-level",
     required=False,
-    default="",
+    default="info",
     type=str,
     help="The logging level threshold")
 @click.option(
     "--logging-format",
     required=False,
-    default="",
+    default="%(message)s",
     type=str,
     help="The logging message format")
-@click.option(
-    "--logging-date-format",
-    required=False,
-    default="",
-    type=str,
-    help="The logging date format in the message")
 def start(node_ip_address, redis_address, redis_port, num_redis_shards,
           redis_max_clients, redis_shard_ports, object_manager_port,
           object_store_memory, num_workers, num_cpus, num_gpus, resources,
           head, no_ui, block, plasma_directory, huge_pages, autoscaling_config,
-          use_raylet, logging_level, logging_format, logging_date_format):
+          use_raylet, logging_level, logging_format):
     # Convert hostnames to numerical IP address.
     if node_ip_address is not None:
         node_ip_address = services.address_to_ip(node_ip_address)
     if redis_address is not None:
         redis_address = services.address_to_ip(redis_address)
 
-    logger = ray.logger.default_logger
-    if len(logging_level) > 0:
-        logger = ray.logger.create_logger(logging_level, logging_format,
-                                          logging_date_format, "ray_start")
-        services.set_logger(logger)
+    level = logging.getLevelName(logging_level.upper())
+    logging.basicConfig(level=level, format=logging_format)
+    logger = logging.getLogger(__name__)
 
     if use_raylet is None and os.environ.get("RAY_USE_XRAY") == "1":
         # This environment variable is used in our testing setup.
