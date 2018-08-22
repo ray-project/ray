@@ -115,10 +115,10 @@ class TrialRunner(object):
                              "ray.tune.run_experiments() or on the command "
                              "line to queue trials until the cluster scales "
                              "up. {}").format(
-                                trial.resources.summary_string(),
-                                self.trial_executor.debug_string(),
-                                trial._get_trainable_cls().resource_help(
-                                    trial.config)))
+                                 trial.resources.summary_string(),
+                                 self.trial_executor.debug_string(),
+                                 trial._get_trainable_cls().resource_help(
+                                     trial.config)))
                 elif trial.status == Trial.PAUSED:
                     raise TuneError(
                         "There are paused trials, but no more pending "

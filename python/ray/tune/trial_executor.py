@@ -67,8 +67,8 @@ class TrialExecutor(object):
         """
         try:
             print("Attempting to recover trial state from last checkpoint")
-            self.stop_trial(trial, error=True, error_msg=error_msg,
-                            stop_logger=False)
+            self.stop_trial(
+                trial, error=True, error_msg=error_msg, stop_logger=False)
             trial.result_logger.flush()
             self.start_trial(trial)
         except Exception:

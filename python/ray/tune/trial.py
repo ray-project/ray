@@ -142,8 +142,8 @@ class Trial(object):
         # Local trial state that is updated during the run
         self.last_result = None
         self.checkpoint_freq = checkpoint_freq
-        self._checkpoint = Checkpoint(storage=Checkpoint.DISK,
-                                      value=restore_path)
+        self._checkpoint = Checkpoint(
+            storage=Checkpoint.DISK, value=restore_path)
         self.status = Trial.PENDING
         self.location = None
         self.logdir = None

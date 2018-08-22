@@ -43,8 +43,7 @@ class RayTrialExecutor(TrialExecutor):
 
         # Logging for trials is handled centrally by TrialRunner, so
         # configure the remote runner to use a noop-logger.
-        return cls.remote(
-            config=trial.config, logger_creator=logger_creator)
+        return cls.remote(config=trial.config, logger_creator=logger_creator)
 
     def _train(self, trial):
         """Start one iteration of training and save remote id."""
@@ -131,8 +130,8 @@ class RayTrialExecutor(TrialExecutor):
     def stop_trial(self, trial, error=False, error_msg=None, stop_logger=True):
         """Only returns resources if resources allocated."""
         prior_status = trial.status
-        self._stop_trial(trial, error=error, error_msg=error_msg,
-                         stop_logger=stop_logger)
+        self._stop_trial(
+            trial, error=error, error_msg=error_msg, stop_logger=stop_logger)
         if prior_status == Trial.RUNNING:
             self._return_resources(trial.resources)
             out = self._find_item(self._running, trial)

@@ -225,8 +225,8 @@ class PopulationBasedTraining(FIFOScheduler):
         trial.config = new_config
         trial.experiment_tag = make_experiment_tag(
             trial_state.orig_tag, new_config, self._hyperparam_mutations)
-        trial_executor.start_trial(trial, Checkpoint.from_object(
-            new_state.last_checkpoint))
+        trial_executor.start_trial(
+            trial, Checkpoint.from_object(new_state.last_checkpoint))
         self._num_perturbations += 1
         # Transfer over the last perturbation time as well
         trial_state.last_perturbation_time = new_state.last_perturbation_time

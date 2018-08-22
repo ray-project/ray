@@ -989,7 +989,7 @@ class TrialRunnerTest(unittest.TestCase):
         runner.trial_executor.on_step_begin = types.MethodType(
             on_step_begin, runner.trial_executor)
         runner.trial_executor.on_step_end = types.MethodType(
-             on_step_end, runner.trial_executor)
+            on_step_end, runner.trial_executor)
 
         kwargs = {
             "stopping_criterion": {

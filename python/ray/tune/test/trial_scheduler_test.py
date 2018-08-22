@@ -152,7 +152,6 @@ class EarlyStoppingSuite(unittest.TestCase):
 
 
 class _MockTrialExecutor(TrialExecutor):
-
     def start_trial(self, trial, checkpoint_obj=None):
         trial.logger_running = True
         trial.restored_checkpoint = checkpoint_obj.value
