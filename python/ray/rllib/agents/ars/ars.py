@@ -110,7 +110,7 @@ class Worker(object):
         task_tstart = time.time()
         while (len(noise_indices) == 0 or
                time.time() - task_tstart < self.min_task_runtime):
-
+            import ipdb; ipdb.set_trace()
             if np.random.uniform() < self.config["eval_prob"]:
                 # Do an evaluation run with no perturbation.
                 self.policy.set_weights(params)
