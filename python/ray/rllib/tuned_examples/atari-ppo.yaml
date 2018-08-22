@@ -5,7 +5,7 @@ atari-ppo:
             - BreakoutNoFrameskip-v4
             - BeamRiderNoFrameskip-v4
             - QbertNoFrameskip-v4
-            - SpaceInvadersNoFrameskip-v4 
+            - SpaceInvadersNoFrameskip-v4
     run: PPO
     config:
         lambda: 0.95

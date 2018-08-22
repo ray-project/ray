@@ -5,7 +5,7 @@ atari-a2c:
             - BreakoutNoFrameskip-v4
             - BeamRiderNoFrameskip-v4
             - QbertNoFrameskip-v4
-            - SpaceInvadersNoFrameskip-v4 
+            - SpaceInvadersNoFrameskip-v4
     run: A2C
     config:
         sample_batch_size: 100
