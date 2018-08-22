@@ -4,7 +4,7 @@ pendulum-ars:
     run: ARS
     config:
         noise_stdev: 0.01
-        num_deltas: 1
+        num_deltas: 2
         deltas_used: 1
         num_workers: 1
         stepsize: 0.02

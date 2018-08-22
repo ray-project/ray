@@ -11,6 +11,7 @@ from ray.rllib.models import ModelCatalog, Model
 import tensorflow.contrib.slim as slim
 from ray.rllib.models.misc import normc_initializer
 
+
 def compute_ranks(x):
     """Returns ranks in [0, len(x))
 
@@ -60,6 +61,7 @@ def batched_weighted_sum(weights, vecs, batch_size):
         num_items_summed += len(batch_weights)
     return total, num_items_summed
 
+
 class LinearNetwork(Model):
     """Generic linear network."""
 
@@ -70,6 +72,7 @@ class LinearNetwork(Model):
                 weights_initializer=normc_initializer(0.01),
                 activation_fn=None, )
             return output, inputs
+
 
 def register_linear_network():
     ModelCatalog.register_custom_model("LinearNetwork", LinearNetwork)

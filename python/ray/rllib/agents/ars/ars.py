@@ -21,27 +21,24 @@ from ray.rllib.agents.ars import policies
 from ray.rllib.agents.ars import tabular_logger as tlogger
 from ray.rllib.agents.ars import utils
 
-
-
 Result = namedtuple("Result", [
     "noise_indices", "noisy_returns", "sign_noisy_returns", "noisy_lengths",
     "eval_returns", "eval_lengths"
 ])
 
-
 DEFAULT_CONFIG = with_common_config({
-    'noise_stdev': 0.02,
-    'num_deltas': 4,
-    'deltas_used': 4,
+    'noise_stdev': 0.02,  # std deviation of parameter noise
+    'num_deltas': 4,  # number of perturbations to try
+    'deltas_used': 4,  # number of perturbations to keep in gradient estimate
     'num_workers': 2,
-    'stepsize': 0.01,
+    'stepsize': 0.01,  # sgd step-size
     'observation_filter': "MeanStdFilter",
     'noise_size': 250000000,
-    'eval_prob': 0.03,
+    'eval_prob': 0.03,  # probability of evaluating the parameter rewards
     'env_config': {},
     'offset': 0,
-    'policy_type': "LinearPolicy", # FIXME(ev) policy is not linear yet
-    "fcnet_hiddens": [32, 32]
+    'policy_type': "LinearPolicy",  # ["LinearPolicy", "MLPPolicy"]
+    "fcnet_hiddens": [32, 32],  # fcnet structure of MLPPolicy
 })
 
 
@@ -68,6 +65,7 @@ class SharedNoiseTable(object):
         idx = self.sample_index(dim)
         return idx, self.get(idx, dim)
 
+
 @ray.remote
 class Worker(object):
     def __init__(self, config, policy_params, env_creator, noise,
@@ -92,7 +90,6 @@ class Worker(object):
                 config["observation_filter"],
                 config["fcnet_hiddens"], **policy_params)
 
-
     def rollout(self, timestep_limit, add_noise=False):
         rollout_rewards, rollout_length = policies.rollout(
             self.policy, self.env, timestep_limit=timestep_limit,
@@ -107,10 +104,7 @@ class Worker(object):
         eval_returns, eval_lengths = [], []
 
         # Perform some rollouts with noise.
-        task_tstart = time.time()
-        while (len(noise_indices) == 0 or
-               time.time() - task_tstart < self.min_task_runtime):
-            import ipdb; ipdb.set_trace()
+        while (len(noise_indices) == 0):
             if np.random.uniform() < self.config["eval_prob"]:
                 # Do an evaluation run with no perturbation.
                 self.policy.set_weights(params)
@@ -272,8 +266,9 @@ class ARSAgent(Agent):
         if self.deltas_used > self.num_deltas:
             self.deltas_used = self.num_deltas
 
+        percentile = 100 * (1 - (self.deltas_used / self.num_deltas))
         idx = np.arange(max_rewards.size)[
-            max_rewards >= np.percentile(max_rewards, 100 * (1 - (self.deltas_used / self.num_deltas)))]
+            max_rewards >= np.percentile(max_rewards, percentile)]
         noise_idx = noise_indices[idx]
         noisy_returns = noisy_returns[idx, :]
 
@@ -288,8 +283,8 @@ class ARSAgent(Agent):
         if not np.isclose(np.std(noisy_returns), 0.0):
             g /= np.std(noisy_returns)
         assert (
-            g.shape == (self.policy.num_params,) and
-            g.dtype == np.float32)
+                g.shape == (self.policy.num_params,) and
+                g.dtype == np.float32)
         print('the number of policy params is, ', self.policy.num_params)
         # Compute the new weights theta.
         theta, update_ratio = self.optimizer.update(-g)
@@ -362,4 +357,4 @@ class ARSAgent(Agent):
         self.timesteps_so_far = objects[2]
 
     def compute_action(self, observation):
-        return self.policy.compute(observation, update=True)[0] #FIXME(ev) set to false
+        return self.policy.compute(observation, update=True)[0]

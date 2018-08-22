@@ -2,14 +2,16 @@
 cartpole-ars:
     env: CartPole-v0
     run: ARS
-    repeat: 1
     stop:
         episode_reward_mean: 200
-        time_total_s: 300
+        time_total_s: 600
     config:
         noise_stdev: 0.02
-        num_deltas: 10
-        deltas_used: 10
+        num_deltas: 50
+        deltas_used: 25
         num_workers: 2
         stepsize: 0.01
         noise_size: 250000000
+        eval_prob: 0.5
+        policy_type: MLPPolicy
+        fcnet_hiddens: [16, 16]
