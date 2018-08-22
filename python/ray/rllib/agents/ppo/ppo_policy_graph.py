@@ -8,6 +8,7 @@ import ray
 from ray.rllib.evaluation.postprocessing import compute_advantages
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 from ray.rllib.models.catalog import ModelCatalog
+from ray.rllib.models.misc import linear, normc_initializer
 from ray.rllib.utils.explained_variance import explained_variance
 from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
 
