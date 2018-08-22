@@ -43,7 +43,7 @@ class A3CPolicyGraph(TFPolicyGraph):
         config = dict(ray.rllib.agents.a3c.a3c.DEFAULT_CONFIG, **config)
         self.config = config
         self.sess = tf.get_default_session()
-        self.cur_lr = tf.Variable(config["lr"])
+        self.cur_lr = tf.get_variable("lr", initializer=config["lr"])
 
         # Setup the policy
         self.observations = tf.placeholder(

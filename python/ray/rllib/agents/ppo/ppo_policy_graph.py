@@ -101,7 +101,7 @@ class PPOPolicyGraph(TFPolicyGraph):
         """
         config = dict(ray.rllib.agents.ppo.ppo.DEFAULT_CONFIG, **config)
         self.sess = tf.get_default_session()
-        self.cur_lr = tf.Variable(config["sgd_stepsize"])
+        self.cur_lr = tf.get_variable("lr", initializer=config["sgd_stepsize"])
         self.action_space = action_space
         self.config = config
         self.kl_coeff_val = self.config["kl_coeff"]

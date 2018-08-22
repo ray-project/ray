@@ -91,7 +91,7 @@ class VTracePolicyGraph(TFPolicyGraph):
             "Must use `truncate_episodes` batch mode with V-trace."
         self.config = config
         self.sess = tf.get_default_session()
-        self.cur_lr = tf.Variable(config["lr"])
+        self.cur_lr = tf.get_variable("lr", initializer=config["lr"])
 
         # Setup the policy
         self.observations = tf.placeholder(
