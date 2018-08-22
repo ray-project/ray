@@ -26,6 +26,10 @@ DEFAULT_CONFIG = with_common_config({
     "num_sgd_iter": 30,
     # Stepsize of SGD
     "sgd_stepsize": 5e-5,
+    # Learning rate schedule
+    "lr_schedule": None,
+    # Share layers for value function
+    "use_shared_vf": False,
     # Total SGD batch size across all devices for SGD (multi-gpu only)
     "sgd_batchsize": 128,
     # Coefficient of the value function loss

@@ -9,6 +9,7 @@ from ray.rllib.evaluation.postprocessing import compute_advantages
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.utils.explained_variance import explained_variance
+from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
 
 
 class PPOLoss(object):
@@ -100,6 +101,7 @@ class PPOPolicyGraph(TFPolicyGraph):
         """
         config = dict(ray.rllib.agents.ppo.ppo.DEFAULT_CONFIG, **config)
         self.sess = tf.get_default_session()
+        self.cur_lr = tf.Variable(config["sgd_stepsize"])
         self.action_space = action_space
         self.config = config
         self.kl_coeff_val = self.config["kl_coeff"]
@@ -155,16 +157,21 @@ class PPOPolicyGraph(TFPolicyGraph):
         curr_action_dist = dist_cls(self.logits)
         self.sampler = curr_action_dist.sample()
         if self.config["use_gae"]:
-            vf_config = self.config["model"].copy()
-            # Do not split the last layer of the value function into
-            # mean parameters and standard deviation parameters and
-            # do not make the standard deviations free variables.
-            vf_config["free_log_std"] = False
-            vf_config["use_lstm"] = False
-            with tf.variable_scope("value_function"):
-                self.value_function = ModelCatalog.get_model(
-                    obs_ph, 1, vf_config).outputs
-                self.value_function = tf.reshape(self.value_function, [-1])
+            if self.config["use_shared_vf"]:
+                self.value_function = tf.reshape(
+                    linear(self.model.last_layer, 1, "value",
+                           normc_initializer(1.0)), [-1])
+            else:
+                vf_config = self.config["model"].copy()
+                # Do not split the last layer of the value function into
+                # mean parameters and standard deviation parameters and
+                # do not make the standard deviations free variables.
+                vf_config["free_log_std"] = False
+                vf_config["use_lstm"] = False
+                with tf.variable_scope("value_function"):
+                    self.value_function = ModelCatalog.get_model(
+                        obs_ph, 1, vf_config).outputs
+                    self.value_function = tf.reshape(self.value_function, [-1])
         else:
             self.value_function = tf.zeros(shape=tf.shape(obs_ph)[:1])
 
@@ -199,8 +206,25 @@ class PPOPolicyGraph(TFPolicyGraph):
 
         self.sess.run(tf.global_variables_initializer())
 
+        if self.config["lr_schedule"] is None:
+            lr = ConstantSchedule(self.config["lr"])
+        elif isinstance(self.config["lr_schedule"], list):
+            lr = PiecewiseSchedule(
+                self.config["lr_schedule"],
+                outside_value=self.config["lr_schedule"][-1][-1])
+        self.lr_schedule = lr
+
         self.explained_variance = explained_variance(value_targets_ph,
                                                      self.value_function)
+        self.stats_fetches = {
+            "cur_lr": tf.cast(self.cur_lr, tf.float64),
+            "total_loss": self.loss_obj.loss,
+            "policy_loss": self.loss_obj.mean_policy_loss,
+            "vf_loss": self.loss_obj.mean_vf_loss,
+            "vf_explained_var": self.explained_variance,
+            "kl": self.loss_obj.mean_kl,
+            "entropy": self.loss_obj.mean_entropy
+        }
 
     def copy(self, existing_inputs):
         """Creates a copy of self using existing input placeholders."""
@@ -214,14 +238,7 @@ class PPOPolicyGraph(TFPolicyGraph):
         return {"vf_preds": self.value_function, "logits": self.logits}
 
     def extra_compute_grad_fetches(self):
-        return {
-            "total_loss": self.loss_obj.loss,
-            "policy_loss": self.loss_obj.mean_policy_loss,
-            "vf_loss": self.loss_obj.mean_vf_loss,
-            "vf_explained_var": self.explained_variance,
-            "kl": self.loss_obj.mean_kl,
-            "entropy": self.loss_obj.mean_entropy
-        }
+        return self.stats_fetches
 
     def update_kl(self, sampled_kl):
         if sampled_kl > 2.0 * self.kl_target:
@@ -242,7 +259,7 @@ class PPOPolicyGraph(TFPolicyGraph):
         return batch
 
     def optimizer(self):
-        return tf.train.AdamOptimizer(self.config["sgd_stepsize"])
+        return tf.train.AdamOptimizer(self.cur_lr)
 
     def gradients(self, optimizer):
         return optimizer.compute_gradients(
@@ -250,3 +267,7 @@ class PPOPolicyGraph(TFPolicyGraph):
 
     def get_initial_state(self):
         return self.model.state_init
+
+    def on_global_var_update(self, global_vars):
+        self.cur_lr.load(
+            self.lr_schedule.value(global_vars["timestep"]), session=self.sess)

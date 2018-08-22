@@ -106,7 +106,10 @@ class Agent(Trainable):
         """Convenience method to return configured local evaluator."""
 
         return self._make_evaluator(
-            PolicyEvaluator, env_creator, policy_graph, 0,
+            PolicyEvaluator,
+            env_creator,
+            policy_graph,
+            0,
             # important: allow local tf to use multiple CPUs for optimization
             merge_dicts(
                 self.config, {
