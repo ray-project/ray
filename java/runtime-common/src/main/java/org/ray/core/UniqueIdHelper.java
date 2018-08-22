@@ -21,14 +21,10 @@ public class UniqueIdHelper {
   private static final ThreadLocal<Random> rand = ThreadLocal.withInitial(Random::new);
   private static final ThreadLocal<Long> randSeed = new ThreadLocal<>();
   private static final int uniquenessPos = Long.SIZE / Byte.SIZE;
-  private static final int typePos = 2 * Long.SIZE / Byte.SIZE;
-  private static final BitField typeField = new BitField(0x7);
   private static final int testPos = 2 * Long.SIZE / Byte.SIZE;
   private static final BitField testField = new BitField(0x1 << 3);
   private static final int unionPos = 2 * Long.SIZE / Byte.SIZE;
   private static final BitField multipleReturnField = new BitField(0x1 << 8);
-  private static final BitField isReturnIdField = new BitField(0x1 << 9);
-  private static final BitField withinTaskIndexField = new BitField(0xFFFFFC00);
 
   public static void setThreadRandomSeed(long seed) {
     if (randSeed.get() != null) {
@@ -41,26 +37,6 @@ public class UniqueIdHelper {
     RayLog.core.debug("Thread random seed is set to " + seed);
     randSeed.set(seed);
     rand.get().setSeed(seed);
-  }
-
-  private static Type getType(ByteBuffer bb) {
-    byte v = bb.get(typePos);
-    return Type.values()[typeField.getValue(v)];
-  }
-
-  private static boolean getIsTest(ByteBuffer bb) {
-    byte v = bb.get(testPos);
-    return testField.getValue(v) == 1;
-  }
-
-  private static int getIsReturn(ByteBuffer bb) {
-    int v = bb.getInt(unionPos);
-    return isReturnIdField.getValue(v);
-  }
-
-  private static int getWithinTaskIndex(ByteBuffer bb) {
-    int v = bb.getInt(unionPos);
-    return withinTaskIndexField.getValue(v);
   }
 
   public static void setTest(UniqueID id, boolean isTest) {
@@ -126,27 +102,9 @@ public class UniqueIdHelper {
     }
   }
 
-  private static void setType(ByteBuffer bb, Type type) {
-    byte v = bb.get(typePos);
-    v = (byte) typeField.setValue(v, type.ordinal());
-    bb.put(typePos, v);
-  }
-
   private static void setHasMultipleReturn(ByteBuffer bb, int hasMultipleReturnOrNot) {
     int v = bb.getInt(unionPos);
     v = multipleReturnField.setValue(v, hasMultipleReturnOrNot);
-    bb.putInt(unionPos, v);
-  }
-
-  private static void setIsReturn(ByteBuffer bb, int isReturn) {
-    int v = bb.getInt(unionPos);
-    v = isReturnIdField.setValue(v, isReturn);
-    bb.putInt(unionPos, v);
-  }
-
-  private static void setWithinTaskIndex(ByteBuffer bb, int index) {
-    int v = bb.getInt(unionPos);
-    v = withinTaskIndexField.setValue(v, index);
     bb.putInt(unionPos, v);
   }
 
@@ -181,7 +139,6 @@ public class UniqueIdHelper {
     UniqueID taskId = newZero();
     ByteBuffer wbb = ByteBuffer.wrap(taskId.getBytes());
     wbb.order(ByteOrder.LITTLE_ENDIAN);
-    setType(wbb, Type.TASK);
 
     UniqueID currentTaskId = WorkerContext.currentTask().taskId;
     ByteBuffer rbb = ByteBuffer.wrap(currentTaskId.getBytes());
