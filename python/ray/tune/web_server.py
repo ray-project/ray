@@ -124,7 +124,8 @@ def RunnerHandler(runner):
                 elif command == TuneClient.ADD:
                     name = args["name"]
                     spec = args["spec"]
-                    trial_generator = BasicVariantGenerator({name: spec})
+                    trial_generator = BasicVariantGenerator()
+                    trial_generator.add_configurations({name: spec})
                     for trial in trial_generator.next_trials():
                         runner.add_trial(trial)
                 else:

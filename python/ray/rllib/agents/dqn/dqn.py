@@ -18,7 +18,7 @@ from ray.tune.trial import Resources
 OPTIMIZER_SHARED_CONFIGS = [
     "buffer_size", "prioritized_replay", "prioritized_replay_alpha",
     "prioritized_replay_beta", "prioritized_replay_eps", "sample_batch_size",
-    "train_batch_size", "learning_starts", "clip_rewards"
+    "train_batch_size", "learning_starts"
 ]
 
 DEFAULT_CONFIG = with_common_config({
@@ -61,8 +61,6 @@ DEFAULT_CONFIG = with_common_config({
     "prioritized_replay_beta": 0.4,
     # Epsilon to add to the TD errors when updating priorities.
     "prioritized_replay_eps": 1e-6,
-    # Whether to clip rewards to [-1, 1] prior to adding to the replay buffer.
-    "clip_rewards": True,
     # Whether to LZ4 compress observations
     "compress_observations": True,
 
@@ -137,14 +135,27 @@ class DQNAgent(Agent):
 
         self.local_evaluator = self.make_local_evaluator(
             self.env_creator, self._policy_graph)
-        self.remote_evaluators = self.make_remote_evaluators(
-            self.env_creator, self._policy_graph, self.config["num_workers"], {
-                "num_cpus": self.config["num_cpus_per_worker"],
-                "num_gpus": self.config["num_gpus_per_worker"]
-            })
+
+        def create_remote_evaluators():
+            return self.make_remote_evaluators(
+                self.env_creator, self._policy_graph,
+                self.config["num_workers"], {
+                    "num_cpus": self.config["num_cpus_per_worker"],
+                    "num_gpus": self.config["num_gpus_per_worker"]
+                })
+
+        if self.config["optimizer_class"] != "AsyncReplayOptimizer":
+            self.remote_evaluators = create_remote_evaluators()
+        else:
+            # Hack to workaround https://github.com/ray-project/ray/issues/2541
+            self.remote_evaluators = None
         self.optimizer = getattr(optimizers, self.config["optimizer_class"])(
             self.local_evaluator, self.remote_evaluators,
             self.config["optimizer"])
+        # Create the remote evaluators *after* the replay actors
+        if self.remote_evaluators is None:
+            self.remote_evaluators = create_remote_evaluators()
+            self.optimizer.set_evaluators(self.remote_evaluators)
 
         self.last_target_update_ts = 0
         self.num_target_updates = 0

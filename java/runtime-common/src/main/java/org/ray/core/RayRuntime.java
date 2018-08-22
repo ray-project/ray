@@ -80,7 +80,7 @@ public abstract class RayRuntime implements RayApi {
       configReader = new ConfigReader(configPath, updateConfigStr);
       RayRuntime.params = new RayParameters(configReader);
 
-      RayLog.init(params.working_directory);
+      RayLog.init(params.log_dir);
       assert RayLog.core != null;
 
       ins = instantiate(params);

@@ -16,7 +16,14 @@ docker run  -e "RAY_USE_XRAY=1" --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     --env PongDeterministic-v0 \
     --run A3C \
     --stop '{"training_iteration": 2}' \
-    --config '{"num_workers": 16}'
+    --config '{"num_workers": 2}'
+
+docker run  -e "RAY_USE_XRAY=1" --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/rllib/train.py \
+    --env PongDeterministic-v0 \
+    --run A2C \
+    --stop '{"training_iteration": 2}' \
+    --config '{"num_workers": 2}'
 
 docker run  -e "RAY_USE_XRAY=1" --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/train.py \
@@ -51,14 +58,14 @@ docker run  -e "RAY_USE_XRAY=1" --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     --env Pendulum-v0 \
     --run ES \
     --stop '{"training_iteration": 2}' \
-    --config '{"stepsize": 0.01, "episodes_per_batch": 20, "timesteps_per_batch": 100}'
+    --config '{"stepsize": 0.01, "episodes_per_batch": 20, "timesteps_per_batch": 100, "num_workers": 2}'
 
 docker run  -e "RAY_USE_XRAY=1" --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/train.py \
     --env Pong-v0 \
     --run ES \
     --stop '{"training_iteration": 2}' \
-    --config '{"stepsize": 0.01, "episodes_per_batch": 20, "timesteps_per_batch": 100}'
+    --config '{"stepsize": 0.01, "episodes_per_batch": 20, "timesteps_per_batch": 100, "num_workers": 2}'
 
 docker run  -e "RAY_USE_XRAY=1" --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/train.py \
@@ -113,20 +120,6 @@ docker run  -e "RAY_USE_XRAY=1" --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     --run PPO \
     --stop '{"training_iteration": 2}' \
     --config '{"kl_coeff": 1.0, "num_sgd_iter": 10, "sgd_stepsize": 1e-4, "sgd_batchsize": 64, "timesteps_per_batch": 2000, "num_workers": 1, "model": {"dim": 40, "conv_filters": [[16, [8, 8], 4], [32, [4, 4], 2], [512, [5, 5], 1]]}}'
-
-docker run  -e "RAY_USE_XRAY=1" --rm --shm-size=10G --memory=10G $DOCKER_SHA \
-    python /ray/python/ray/rllib/train.py \
-    --env PongDeterministic-v4 \
-    --run A3C \
-    --stop '{"training_iteration": 2}' \
-    --config '{"num_workers": 2, "use_pytorch": true, "model": {"use_lstm": false, "grayscale": true, "zero_mean": false, "dim": 80, "channel_major": true}}'
-
-docker run  -e "RAY_USE_XRAY=1" --rm --shm-size=10G --memory=10G $DOCKER_SHA \
-    python /ray/python/ray/rllib/train.py \
-    --env CartPole-v1 \
-    --run A3C \
-    --stop '{"training_iteration": 2}' \
-    --config '{"num_workers": 2, "use_pytorch": true}'
 
 docker run  -e "RAY_USE_XRAY=1" --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/train.py \
@@ -284,6 +277,20 @@ docker run  -e "RAY_USE_XRAY=1" --rm --shm-size=10G --memory=10G $DOCKER_SHA \
 
 docker run  -e "RAY_USE_XRAY=1" --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/examples/multiagent_two_trainers.py --num-iters=2
+
+docker run  -e "RAY_USE_XRAY=1" --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/rllib/train.py \
+    --env PongDeterministic-v4 \
+    --run A3C \
+    --stop '{"training_iteration": 2}' \
+    --config '{"num_workers": 2, "use_pytorch": true, "model": {"use_lstm": false, "grayscale": true, "zero_mean": false, "dim": 84, "channel_major": true}, "preprocessor_pref": "rllib"}'
+
+docker run  -e "RAY_USE_XRAY=1" --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/rllib/train.py \
+    --env CartPole-v1 \
+    --run A3C \
+    --stop '{"training_iteration": 2}' \
+    --config '{"num_workers": 2, "use_pytorch": true}'
 
 python3 $ROOT_DIR/multi_node_docker_test.py \
     --docker-image=$DOCKER_SHA \

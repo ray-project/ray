@@ -104,7 +104,8 @@ class TFPolicyGraph(PolicyGraph):
                               builder,
                               obs_batch,
                               state_batches=None,
-                              is_training=False):
+                              is_training=False,
+                              episodes=None):
         state_batches = state_batches or []
         assert len(self._state_inputs) == len(state_batches), \
             (self._state_inputs, state_batches)
@@ -118,8 +119,11 @@ class TFPolicyGraph(PolicyGraph):
                                       [self.extra_compute_action_fetches()])
         return fetches[0], fetches[1:-1], fetches[-1]
 
-    def compute_actions(self, obs_batch, state_batches=None,
-                        is_training=False):
+    def compute_actions(self,
+                        obs_batch,
+                        state_batches=None,
+                        is_training=False,
+                        episodes=None):
         builder = TFRunBuilder(self._sess, "compute_actions")
         fetches = self.build_compute_actions(builder, obs_batch, state_batches,
                                              is_training)

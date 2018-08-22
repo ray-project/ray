@@ -17,7 +17,11 @@ from ray.tune.registry import register_env
 
 
 class MockPolicyGraph(PolicyGraph):
-    def compute_actions(self, obs_batch, state_batches, is_training=False):
+    def compute_actions(self,
+                        obs_batch,
+                        state_batches,
+                        is_training=False,
+                        episodes=None):
         return [0] * len(obs_batch), [], {}
 
     def postprocess_trajectory(self, batch, other_agent_batches=None):
@@ -25,7 +29,11 @@ class MockPolicyGraph(PolicyGraph):
 
 
 class BadPolicyGraph(PolicyGraph):
-    def compute_actions(self, obs_batch, state_batches, is_training=False):
+    def compute_actions(self,
+                        obs_batch,
+                        state_batches,
+                        is_training=False,
+                        episodes=None):
         raise Exception("intentional error")
 
     def postprocess_trajectory(self, batch, other_agent_batches=None):
@@ -111,6 +119,27 @@ class TestPolicyEvaluator(unittest.TestCase):
             lambda ev, i: (i, ev.batch_steps))
         self.assertEqual(results, [5, 5, 5])
         self.assertEqual(results2, [(0, 5), (1, 5), (2, 5)])
+
+    def testRewardClipping(self):
+        # clipping on
+        ev = PolicyEvaluator(
+            env_creator=lambda _: MockEnv2(episode_length=10),
+            policy_graph=MockPolicyGraph,
+            clip_rewards=True,
+            batch_mode="complete_episodes")
+        self.assertEqual(max(ev.sample()["rewards"]), 1)
+        result = collect_metrics(ev, [])
+        self.assertEqual(result["episode_reward_mean"], 1000)
+
+        # clipping off
+        ev2 = PolicyEvaluator(
+            env_creator=lambda _: MockEnv2(episode_length=10),
+            policy_graph=MockPolicyGraph,
+            clip_rewards=False,
+            batch_mode="complete_episodes")
+        self.assertEqual(max(ev2.sample()["rewards"]), 100)
+        result2 = collect_metrics(ev2, [])
+        self.assertEqual(result2["episode_reward_mean"], 1000)
 
     def testMetrics(self):
         ev = PolicyEvaluator(

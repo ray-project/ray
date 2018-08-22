@@ -137,11 +137,6 @@ class VTracePolicyGraph(TFPolicyGraph):
                 rs,
                 [1, 0] + list(range(2, 1 + int(tf.shape(tensor).shape[0]))))
 
-        if self.config["clip_rewards"]:
-            clipped_rewards = tf.clip_by_value(rewards, -1, 1)
-        else:
-            clipped_rewards = rewards
-
         # Inputs are reshaped from [B * T] => [T - 1, B] for V-trace calc.
         self.loss = VTraceLoss(
             actions=to_batches(actions)[:-1],
@@ -151,7 +146,7 @@ class VTracePolicyGraph(TFPolicyGraph):
             behaviour_logits=to_batches(behaviour_logits)[:-1],
             target_logits=to_batches(self.model.outputs)[:-1],
             discount=config["gamma"],
-            rewards=to_batches(clipped_rewards)[:-1],
+            rewards=to_batches(rewards)[:-1],
             values=to_batches(values)[:-1],
             bootstrap_value=to_batches(values)[-1],
             vf_loss_coeff=self.config["vf_loss_coeff"],

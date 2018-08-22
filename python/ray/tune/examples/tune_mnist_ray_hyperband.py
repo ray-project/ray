@@ -32,7 +32,7 @@ import time
 import ray
 from ray.tune import grid_search, run_experiments, register_trainable, \
     Trainable
-from ray.tune.hyperband import HyperBandScheduler
+from ray.tune.schedulers import HyperBandScheduler
 from tensorflow.examples.tutorials.mnist import input_data
 
 import tensorflow as tf
