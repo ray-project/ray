@@ -9,6 +9,5 @@ from ray.rllib.models.linear import LinearNetwork
 
 __all__ = [
     "ActionDistribution", "Categorical", "DiagGaussian", "Deterministic",
-    "ModelCatalog", "Model", "Preprocessor", "FullyConnectedNetwork", "LSTM",
-    "LinearNetwork"
+    "ModelCatalog", "Model", "Preprocessor", "FullyConnectedNetwork", "LSTM"
 ]

@@ -6,9 +6,9 @@ pendulum-ars:
         noise_stdev: 0.01
         num_deltas: 12
         deltas_used: 12
-        num_workers: 2
+        num_workers: 1
         stepsize: 0.01
         noise_size: 250000000
         fcnet_hiddens: [32,32]
-        policy_type: LinearPolicy
+        policy_type: MLPPolicy
         eval_prob: 0.2

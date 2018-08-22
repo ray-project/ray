@@ -20,8 +20,7 @@ from ray.rllib.agents.ars import optimizers
 from ray.rllib.agents.ars import policies
 from ray.rllib.agents.ars import tabular_logger as tlogger
 from ray.rllib.agents.ars import utils
-from ray.rllib.models import ModelCatalog
-from ray.rllib.models.linear import LinearNetwork
+
 
 
 Result = namedtuple("Result", [
@@ -164,13 +163,15 @@ class ARSAgent(Agent):
             "action_noise_std": 0.0
         }
 
+        # register the linear network
+        utils.register_linear_network()
+
         env = self.env_creator(self.config["env_config"])
         from ray.rllib import models
         preprocessor = models.ModelCatalog.get_preprocessor(env)
 
         self.sess = utils.make_session(single_threaded=False)
-        if self.config["policy_type"] == "Linear":
-            ModelCatalog.register_custom_model("LinearNetwork", LinearNetwork)
+        if self.config["policy_type"] == "LinearPolicy":
             self.policy = policies.LinearPolicy(
                 self.sess, env.action_space, preprocessor,
                 self.config["observation_filter"], **policy_params)
@@ -329,7 +330,7 @@ class ARSAgent(Agent):
             "time_elapsed": step_tend - self.tstart
         }
 
-        result = ray.tune.result.TrainingResult(
+        result = dict(
             episode_reward_mean=eval_returns.mean(),
             episode_len_mean=eval_lengths.mean(),
             timesteps_this_iter=noisy_lengths.sum(),

@@ -10,8 +10,10 @@ import numpy as np
 import tensorflow as tf
 
 import ray
-from ray.rllib.models import ModelCatalog
 from ray.rllib.utils.filter import get_filter
+from ray.rllib.models import ModelCatalog, Model
+import tensorflow.contrib.slim as slim
+from ray.rllib.models.misc import normc_initializer
 
 
 def rollout(policy, env, timestep_limit=None, add_noise=False):
@@ -80,6 +82,7 @@ class LinearPolicy(object):
 
     def get_weights(self):
         return self.variables.get_flat()
+
 
 class MLPPolicy(object):
     def __init__(self, sess, action_space, preprocessor,
