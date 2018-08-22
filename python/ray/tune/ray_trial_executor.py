@@ -165,7 +165,7 @@ class RayTrialExecutor(TrialExecutor):
         try:
             result = ray.get(result_id)
         except Exception as e:
-            print("fetch_one_result failed", e.message)
+            print("fetch_one_result failed:", traceback.format_exc())
 
         return trial, result
 
