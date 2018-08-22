@@ -340,7 +340,7 @@ class HeartbeatTable : public Table<ClientID, HeartbeatTableData> {
 
 class DriverTable : public Log<JobID, DriverTableData> {
  public:
-  DriverTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,, AsyncGcsClient *client)
+  DriverTable(const std::vector<std::shared_ptr<RedisContext>> &contexts, AsyncGcsClient *client)
       : Log(contexts, client) {
     pubsub_channel_ = TablePubsub::DRIVER;
     prefix_ = TablePrefix::DRIVER;
@@ -408,7 +408,8 @@ class TaskLeaseTable : public Table<TaskID, TaskLeaseData> {
     std::vector<std::string> args = {"PEXPIRE",
                                      EnumNameTablePrefix(prefix_) + id.binary(),
                                      std::to_string(data->timeout)};
-    return context_->RunArgvAsync(args);
+
+    return GetRedisContext(id)->RunArgvAsync(args);
   }
 };
 
@@ -542,7 +543,7 @@ class ErrorTable : private Log<JobID, ErrorTableData> {
                            const std::string &error_message, double timestamp);
 };
 
-class ProfileTable : public Log<UniqueID, ProfileTableData> {
+class ProfileTable : private Log<UniqueID, ProfileTableData> {
  public:
   ProfileTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
                AsyncGcsClient *client)

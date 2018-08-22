@@ -2,8 +2,8 @@
 
 #include "ray/gcs/redis_context.h"
 
-static void GetRedisShards(redisContext *context, std::vector<std::string> *addresses,
-                           std::vector<int> *ports) {
+static void GetRedisShards(redisContext *context, std::vector<std::string>& addresses,
+                           std::vector<int>& ports) {
   // Get the total number of Redis shards in the system.
   int num_attempts = 0;
   redisReply *reply = nullptr;
@@ -57,10 +57,10 @@ static void GetRedisShards(redisContext *context, std::vector<std::string> *addr
     std::string addr;
     std::stringstream ss(reply->element[i]->str);
     getline(ss, addr, ':');
-    addresses->push_back(addr);
+    addresses.push_back(addr);
     int port;
     ss >> port;
-    ports->push_back(port);
+    ports.push_back(port);
   }
   freeReplyObject(reply);
 }
@@ -81,18 +81,16 @@ AsyncGcsClient::AsyncGcsClient(const std::string &address, int port, const Clien
   // This design decision may worth a look.
   std::vector<std::string> addresses;
   std::vector<int> ports;
-  GetRedisShards(primary_context_->sync_context(), &addresses, &ports);
+  GetRedisShards(primary_context_->sync_context(), addresses, ports);
   if (addresses.size() == 0 || ports.size() == 0) {
     addresses.push_back(address);
     ports.push_back(port);
   }
 
-  // First time connect: populate shard_contexts.
-  if (shard_contexts_.empty()) {
-    for (unsigned int i = 0; i < addresses.size(); ++i) {
-      // Slower than emplace but resource safe.
-      shard_contexts_.push_back(std::make_shared<RedisContext>());
-    }
+  // Populate shard_contexts.
+  for (unsigned int i = 0; i < addresses.size(); ++i) {
+    // Slower than emplace but resource safe.
+    shard_contexts_.push_back(std::make_shared<RedisContext>());
   }
 
   // Call connect for all contexts. Safe to do many times.
@@ -114,6 +112,12 @@ AsyncGcsClient::AsyncGcsClient(const std::string &address, int port, const Clien
   heartbeat_table_.reset(new HeartbeatTable(shard_contexts_, this));
   profile_table_.reset(new ProfileTable(shard_contexts_, this));
   command_type_ = command_type;
+
+  // TODO(swang): Call the client table's Connect() method here. To do this,
+  // we need to make sure that we are attached to an event loop first. This
+  // currently isn't possible because the aeEventLoop, which we use for
+  // testing, requires us to connect to Redis first.
+
 }
 
 #if RAY_USE_NEW_GCS
@@ -131,14 +135,6 @@ AsyncGcsClient::AsyncGcsClient(const std::string &address, int port, CommandType
 
 AsyncGcsClient::AsyncGcsClient(const std::string &address, int port) : AsyncGcsClient(address, port, ClientID::from_random()) {}
 
-Status AsyncGcsClient::Connect(const std::string &address, int port, bool sharding) {
-  // TODO(swang): Call the client table's Connect() method here. To do this,
-  // we need to make sure that we are attached to an event loop first. This
-  // currently isn't possible because the aeEventLoop, which we use for
-  // testing, requires us to connect to Redis first.
-  return Status::OK();
-}
-
 Status Attach(plasma::EventLoop &event_loop) {
   // TODO(pcm): Implement this via
   // context()->AttachToEventLoop(event loop)
@@ -147,8 +143,8 @@ Status Attach(plasma::EventLoop &event_loop) {
 
 Status AsyncGcsClient::Attach(boost::asio::io_service &io_service) {
   // Take care of sharding contexts.
-  shard_asio_async_clients_.clear();
-  shard_asio_subscribe_clients_.clear();
+  RAY_CHECK(shard_asio_async_clients_.empty())
+      << "Attach shall be called only once";
   for (std::shared_ptr<RedisContext> context : shard_contexts_) {
     shard_asio_async_clients_.emplace_back(
         new RedisAsioClient(io_service, context->async_context()));

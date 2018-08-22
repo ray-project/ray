@@ -18,7 +18,6 @@ Monitor::Monitor(boost::asio::io_service &io_service, const std::string &redis_a
     : gcs_client_(redis_address, redis_port),
       num_heartbeats_timeout_(RayConfig::instance().num_heartbeats_timeout()),
       heartbeat_timer_(io_service) {
-  RAY_CHECK_OK(gcs_client_.Connect(redis_address, redis_port, /*sharding=*/true));
   RAY_CHECK_OK(gcs_client_.Attach(io_service));
 }
 

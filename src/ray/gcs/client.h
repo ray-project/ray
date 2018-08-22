@@ -24,6 +24,9 @@ class RAY_EXPORT AsyncGcsClient {
   /// Attach() must be called. To read and write from the GCS tables requires a
   /// further call to Connect() to the client table.
   ///
+  /// \param address The GCS IP address.
+  /// \param port The GCS port.
+  /// \param sharding If true, use sharded redis for the GCS.
   /// \param client_id The ID to assign to the client.
   /// \param command_type GCS command type.  If CommandType::kChain, chain-replicated
   /// versions of the tables might be used, if available.
@@ -32,13 +35,6 @@ class RAY_EXPORT AsyncGcsClient {
   AsyncGcsClient(const std::string &address, int port, CommandType command_type);
   AsyncGcsClient(const std::string &address, int port);
 
-  /// Connect to the GCS.
-  ///
-  /// \param address The GCS IP address.
-  /// \param port The GCS port.
-  /// \param sharding If true, use sharded redis for the GCS.
-  /// \return Status.
-  Status Connect(const std::string &address, int port, bool sharding);
   /// Attach this client to a plasma event loop. Note that only
   /// one event loop should be attached at a time.
   Status Attach(plasma::EventLoop &event_loop);
