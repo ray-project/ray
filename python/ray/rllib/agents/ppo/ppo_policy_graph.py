@@ -6,11 +6,11 @@ import tensorflow as tf
 
 import ray
 from ray.rllib.evaluation.postprocessing import compute_advantages
-from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
+from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph, \
+    LearningRateSchedule
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.misc import linear, normc_initializer
 from ray.rllib.utils.explained_variance import explained_variance
-from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
 
 
 class PPOLoss(object):
@@ -86,7 +86,7 @@ class PPOLoss(object):
         self.loss = loss
 
 
-class PPOPolicyGraph(TFPolicyGraph):
+class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
     def __init__(self,
                  observation_space,
                  action_space,
@@ -102,7 +102,6 @@ class PPOPolicyGraph(TFPolicyGraph):
         """
         config = dict(ray.rllib.agents.ppo.ppo.DEFAULT_CONFIG, **config)
         self.sess = tf.get_default_session()
-        self.cur_lr = tf.get_variable("lr", initializer=config["sgd_stepsize"])
         self.action_space = action_space
         self.config = config
         self.kl_coeff_val = self.config["kl_coeff"]
@@ -158,7 +157,7 @@ class PPOPolicyGraph(TFPolicyGraph):
         curr_action_dist = dist_cls(self.logits)
         self.sampler = curr_action_dist.sample()
         if self.config["use_gae"]:
-            if self.config["use_shared_vf"]:
+            if self.config["vf_share_layers"]:
                 self.value_function = tf.reshape(
                     linear(self.model.last_layer, 1, "value",
                            normc_initializer(1.0)), [-1])
@@ -191,6 +190,8 @@ class PPOPolicyGraph(TFPolicyGraph):
             vf_loss_coeff=self.config["vf_loss_coeff"],
             use_gae=self.config["use_gae"])
 
+        LearningRateSchedule.__init__(self, self.config["sgd_stepsize"],
+                                      self.config["lr_schedule"])
         TFPolicyGraph.__init__(
             self,
             observation_space,
@@ -206,15 +207,6 @@ class PPOPolicyGraph(TFPolicyGraph):
             max_seq_len=config["model"]["max_seq_len"])
 
         self.sess.run(tf.global_variables_initializer())
-
-        if self.config["lr_schedule"] is None:
-            lr = ConstantSchedule(self.config["lr"])
-        elif isinstance(self.config["lr_schedule"], list):
-            lr = PiecewiseSchedule(
-                self.config["lr_schedule"],
-                outside_value=self.config["lr_schedule"][-1][-1])
-        self.lr_schedule = lr
-
         self.explained_variance = explained_variance(value_targets_ph,
                                                      self.value_function)
         self.stats_fetches = {
@@ -259,16 +251,9 @@ class PPOPolicyGraph(TFPolicyGraph):
             use_gae=self.config["use_gae"])
         return batch
 
-    def optimizer(self):
-        return tf.train.AdamOptimizer(self.cur_lr)
-
     def gradients(self, optimizer):
         return optimizer.compute_gradients(
             self._loss, colocate_gradients_with_ops=True)
 
     def get_initial_state(self):
         return self.model.state_init
-
-    def on_global_var_update(self, global_vars):
-        self.cur_lr.load(
-            self.lr_schedule.value(global_vars["timestep"]), session=self.sess)

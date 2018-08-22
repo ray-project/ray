@@ -29,7 +29,7 @@ DEFAULT_CONFIG = with_common_config({
     # Learning rate schedule
     "lr_schedule": None,
     # Share layers for value function
-    "use_shared_vf": False,
+    "vf_share_layers": False,
     # Total SGD batch size across all devices for SGD (multi-gpu only)
     "sgd_batchsize": 128,
     # Coefficient of the value function loss

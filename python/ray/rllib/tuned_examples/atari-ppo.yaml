@@ -16,7 +16,7 @@ atari-ppo:
         num_workers: 5
         num_envs_per_worker: 5
         batch_mode: truncate_episodes
-        use_shared_vf: true
+        vf_share_layers: true
         num_gpus: 1
         lr_schedule: [
             [0, 0.0007],

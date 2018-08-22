@@ -9,6 +9,7 @@ import ray
 from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.models.lstm import chop_into_sequences
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
+from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
 
 
 class TFPolicyGraph(PolicyGraph):
@@ -229,3 +230,23 @@ class TFPolicyGraph(PolicyGraph):
 
     def loss_inputs(self):
         return self._loss_inputs
+
+
+class LearningRateSchedule(object):
+    """Mixin for TFPolicyGraph that adds a learning rate schedule."""
+
+    def __init__(self, lr, lr_schedule):
+        self.cur_lr = tf.get_variable("lr", initializer=lr)
+        if lr_schedule is None:
+            self.lr_schedule = ConstantSchedule(lr)
+        else:
+            self.lr_schedule = PiecewiseSchedule(
+                lr_schedule, outside_value=lr_schedule[-1][-1])
+
+    def on_global_var_update(self, global_vars):
+        self.cur_lr.load(
+            self.lr_schedule.value(global_vars["timestep"]),
+            session=self._sess)
+
+    def optimizer(self):
+        return tf.train.AdamOptimizer(self.cur_lr)

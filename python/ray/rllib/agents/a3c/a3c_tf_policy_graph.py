@@ -11,10 +11,10 @@ import ray
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.explained_variance import explained_variance
 from ray.rllib.evaluation.postprocessing import compute_advantages
-from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
+from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph, \
+    LearningRateSchedule
 from ray.rllib.models.misc import linear, normc_initializer
 from ray.rllib.models.catalog import ModelCatalog
-from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
 
 
 class A3CLoss(object):
@@ -38,12 +38,11 @@ class A3CLoss(object):
                            self.entropy * entropy_coeff)
 
 
-class A3CPolicyGraph(TFPolicyGraph):
+class A3CPolicyGraph(LearningRateSchedule, TFPolicyGraph):
     def __init__(self, observation_space, action_space, config):
         config = dict(ray.rllib.agents.a3c.a3c.DEFAULT_CONFIG, **config)
         self.config = config
         self.sess = tf.get_default_session()
-        self.cur_lr = tf.get_variable("lr", initializer=config["lr"])
 
         # Setup the policy
         self.observations = tf.placeholder(
@@ -82,6 +81,8 @@ class A3CPolicyGraph(TFPolicyGraph):
             ("advantages", advantages),
             ("value_targets", self.v_target),
         ]
+        LearningRateSchedule.__init__(self, self.config["lr"],
+                                      self.config["lr_schedule"])
         TFPolicyGraph.__init__(
             self,
             observation_space,
@@ -110,14 +111,6 @@ class A3CPolicyGraph(TFPolicyGraph):
 
         self.sess.run(tf.global_variables_initializer())
 
-        if self.config["lr_schedule"] is None:
-            lr = ConstantSchedule(self.config["lr"])
-        elif isinstance(self.config["lr_schedule"], list):
-            lr = PiecewiseSchedule(
-                self.config["lr_schedule"],
-                outside_value=self.config["lr_schedule"][-1][-1])
-        self.lr_schedule = lr
-
     def extra_compute_action_fetches(self):
         return {"vf_preds": self.vf}
 
@@ -129,9 +122,6 @@ class A3CPolicyGraph(TFPolicyGraph):
             feed_dict[k] = v
         vf = self.sess.run(self.vf, feed_dict)
         return vf[0]
-
-    def optimizer(self):
-        return tf.train.AdamOptimizer(self.cur_lr)
 
     def gradients(self, optimizer):
         grads = tf.gradients(self.loss.total_loss, self.var_list)
@@ -156,7 +146,3 @@ class A3CPolicyGraph(TFPolicyGraph):
             last_r = self.value(sample_batch["new_obs"][-1], *next_state)
         return compute_advantages(sample_batch, last_r, self.config["gamma"],
                                   self.config["lambda"])
-
-    def on_global_var_update(self, global_vars):
-        self.cur_lr.load(
-            self.lr_schedule.value(global_vars["timestep"]), session=self.sess)
