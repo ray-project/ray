@@ -15,50 +15,9 @@ import org.ray.util.logger.RayLog;
 // see src/common/common.h for UniqueID layout
 //
 public class UniqueIdHelper {
-
-  private static final ThreadLocal<ByteBuffer> longBuffer = ThreadLocal
-      .withInitial(() -> ByteBuffer.allocate(Long.SIZE / Byte.SIZE));
-  private static final ThreadLocal<Random> rand = ThreadLocal.withInitial(Random::new);
-  private static final ThreadLocal<Long> randSeed = new ThreadLocal<>();
-  private static final int uniquenessPos = Long.SIZE / Byte.SIZE;
-  private static final int testPos = 2 * Long.SIZE / Byte.SIZE;
-  private static final BitField testField = new BitField(0x1 << 3);
   private static final int unionPos = 2 * Long.SIZE / Byte.SIZE;
   private static final BitField multipleReturnField = new BitField(0x1 << 8);
 
-  public static void setThreadRandomSeed(long seed) {
-    if (randSeed.get() != null) {
-      RayLog.core.error("Thread random seed is already set to " + randSeed.get()
-          + " and now to be overwritten to " + seed);
-      throw new RuntimeException("Thread random seed is already set to " + randSeed.get()
-          + " and now to be overwritten to " + seed);
-    }
-
-    RayLog.core.debug("Thread random seed is set to " + seed);
-    randSeed.set(seed);
-    rand.get().setSeed(seed);
-  }
-
-  public static void setTest(UniqueID id, boolean isTest) {
-    ByteBuffer bb = ByteBuffer.wrap(id.getBytes());
-    setIsTest(bb, isTest);
-  }
-
-  private static void setIsTest(ByteBuffer bb, boolean isTest) {
-    byte v = bb.get(testPos);
-    v = (byte) testField.setValue(v, isTest ? 1 : 0);
-    bb.put(testPos, v);
-  }
-
-  public static long getUniqueness(UniqueID id) {
-    ByteBuffer bb = ByteBuffer.wrap(id.getBytes());
-    bb.order(ByteOrder.LITTLE_ENDIAN);
-    return getUniqueness(bb);
-  }
-
-  private static long getUniqueness(ByteBuffer bb) {
-    return bb.getLong(uniquenessPos);
-  }
 
   public static UniqueID taskComputeReturnId(
       UniqueID uid,
@@ -94,12 +53,6 @@ public class UniqueIdHelper {
     byte[] b = new byte[UniqueID.LENGTH];
     Arrays.fill(b, (byte) 0);
     return new UniqueID(b);
-  }
-
-  private static void setUniqueness(ByteBuffer bb, byte[] uniqueness) {
-    for (int i = 0; i < Long.SIZE / Byte.SIZE; ++i) {
-      bb.put(uniquenessPos + i, uniqueness[i]);
-    }
   }
 
   private static void setHasMultipleReturn(ByteBuffer bb, int hasMultipleReturnOrNot) {
