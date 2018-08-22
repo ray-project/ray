@@ -129,4 +129,8 @@ public class LocalSchedulerProxy {
 
     return new WaitResult<>(readyObjs, remainObjs);
   }
+
+  public UniqueID generateTaskId(UniqueID driverId, UniqueID parentTaskId, int taskIndex) {
+    return scheduler.generateTaskId(driverId, parentTaskId, taskIndex);
+  }
 }

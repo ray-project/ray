@@ -8,6 +8,7 @@
 
 #include "ray/constants.h"
 #include "ray/status.h"
+#include "common/common.h"
 
 namespace ray {
 
@@ -187,6 +188,27 @@ const TaskID ComputeTaskId(const ObjectID &object_id) {
   // object ID.
   uint64_t bitmask = static_cast<uint64_t>(-1) << kObjectIdIndexSize;
   *first_bytes = *first_bytes & (bitmask);
+  return task_id;
+}
+
+const TaskID GenerateTaskID(const DriverID &driver_id,
+                            const TaskID &parent_task_id,
+                            int parent_task_counter) {
+  // Compute hashes.
+  SHA256_CTX ctx;
+  sha256_init(&ctx);
+  sha256_update(&ctx, (BYTE *)&driver_id, sizeof(driver_id));
+  sha256_update(&ctx, (BYTE *)&parent_task_id, sizeof(parent_task_id));
+  sha256_update(&ctx, (BYTE *)&parent_task_counter, sizeof(parent_task_counter));
+
+  // Compute the final task ID from the hash.
+  BYTE buff[DIGEST_SIZE];
+  sha256_final(&ctx, buff);
+  TaskID task_id;
+  RAY_DCHECK(sizeof(task_id) <= DIGEST_SIZE);
+  memcpy(&task_id, buff, sizeof(task_id));
+  task_id = FinishTaskId(task_id);
+
   return task_id;
 }
 

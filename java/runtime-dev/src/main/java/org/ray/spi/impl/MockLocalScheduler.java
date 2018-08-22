@@ -90,6 +90,11 @@ public class MockLocalScheduler implements LocalSchedulerLink {
   }
 
   @Override
+  public UniqueID generateTaskId(UniqueID driverId, UniqueID parentTaskId, int taskIndex) {
+    throw new RuntimeException("Not implement here.");
+  }
+
+  @Override
   public List<byte[]> wait(byte[][] objectIds, int timeoutMs, int numReturns) {
     return store.wait(objectIds, timeoutMs, numReturns);
   }

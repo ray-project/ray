@@ -45,6 +45,8 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
 
   private static native byte[] _computePutId(long client, byte[] taskId, int putIndex);
 
+  private static native byte[] _computeTaskId(byte[] driverId, byte[] parentTaskId, int taskIndex);
+
   private static native void _task_done(long client);
 
   private static native boolean[] _waitObject(long conn, byte[][] objectIds, 
@@ -117,6 +119,12 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
     RayLog.core.info("reconstruct objects {}", objectIds);
     _reconstruct_objects(client, getIdBytes(objectIds), fetchOnly);
     RayLog.core.info("task id is {}", UniqueIdHelper.taskIdFromObjectId(objectIds.get(0)));
+  }
+
+  @Override
+  public UniqueID generateTaskId(UniqueID driverId, UniqueID parentTaskId, int taskIndex) {
+    byte[] bytes = _computeTaskId(driverId.getBytes(), parentTaskId.getBytes(), taskIndex);
+    return new UniqueID(bytes);
   }
 
   @Override

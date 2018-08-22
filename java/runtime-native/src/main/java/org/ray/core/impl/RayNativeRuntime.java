@@ -243,7 +243,12 @@ public class RayNativeRuntime extends RayRuntime {
   @SuppressWarnings("unchecked")
   @Override
   public <T> RayActor<T> create(Class<T> cls) {
-    UniqueID createTaskId = UniqueIdHelper.nextTaskId(-1);
+    UniqueID createTaskId = localSchedulerProxy.generateTaskId(
+        WorkerContext.currentTask().driverId,
+        WorkerContext.currentTask().taskId,
+        WorkerContext.nextCallIndex()
+    );
+
     UniqueID actorId = UniqueIdHelper.taskComputeReturnId(createTaskId, 0, false);
     RayActor<T> actor = new RayActor<>(actorId);
     UniqueID cursorId;

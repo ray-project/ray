@@ -85,7 +85,7 @@ public class UniqueIdHelper {
 
     ByteBuffer wbb = ByteBuffer.wrap(oid.getBytes());
     wbb.order(ByteOrder.LITTLE_ENDIAN);
-    setHasMultipleReturn(wbb, hasMultipleReturn ? 1 : 0);
+    //setHasMultipleReturn(wbb, hasMultipleReturn ? 1 : 0);
 
     return oid;
   }
@@ -135,40 +135,4 @@ public class UniqueIdHelper {
     return retId;
   }
 
-  public static UniqueID nextTaskId(long batchId) {
-    UniqueID taskId = newZero();
-    ByteBuffer wbb = ByteBuffer.wrap(taskId.getBytes());
-    wbb.order(ByteOrder.LITTLE_ENDIAN);
-
-    UniqueID currentTaskId = WorkerContext.currentTask().taskId;
-    ByteBuffer rbb = ByteBuffer.wrap(currentTaskId.getBytes());
-    rbb.order(ByteOrder.LITTLE_ENDIAN);
-
-    // setup unique id (task id)
-    byte[] idBytes;
-
-    ByteBuffer lbuffer = longBuffer.get();
-    // if inside a task
-    if (!currentTaskId.isNil()) {
-      long cid = rbb.getLong(uniquenessPos);
-      byte[] cbuffer = lbuffer.putLong(cid).array();
-      idBytes = MD5Digestor.digest(cbuffer, WorkerContext.nextCallIndex());
-
-      // if not
-    } else {
-      long cid = rand.get().nextLong();
-      byte[] cbuffer = lbuffer.putLong(cid).array();
-      idBytes = MD5Digestor.digest(cbuffer, rand.get().nextLong());
-    }
-    setUniqueness(wbb, idBytes);
-    lbuffer.clear();
-
-    return taskId;
-  }
-
-  public enum Type {
-    OBJECT,
-    TASK,
-    ACTOR,
-  }
 }

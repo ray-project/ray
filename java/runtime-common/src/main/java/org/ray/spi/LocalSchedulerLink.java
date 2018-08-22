@@ -21,5 +21,7 @@ public interface LocalSchedulerLink {
 
   void notifyUnblocked();
 
+  UniqueID generateTaskId(UniqueID driverId, UniqueID parentTaskId, int taskIndex);
+
   List<byte[]> wait(byte[][] objectIds, int timeoutMs, int numReturns);
 }
