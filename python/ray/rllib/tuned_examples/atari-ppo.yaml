@@ -8,12 +8,11 @@ atari-ppo:
             - SpaceInvadersNoFrameskip-v4
     run: PPO
     config:
-        lambda: 0.95
         timesteps_per_batch: 2000
         sample_batch_size: 400
         sgd_batchsize: 500
         num_sgd_iter: 4
-        num_workers: 5
+        num_workers: 10
         num_envs_per_worker: 5
         batch_mode: truncate_episodes
         vf_share_layers: true
