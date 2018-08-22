@@ -35,6 +35,8 @@ class SchedulingPolicy {
       std::unordered_map<ClientID, SchedulingResources> &cluster_resources,
       const ClientID &local_client_id);
 
+  std::vector<TaskID> SpillOver(SchedulingResources &remote_scheduling_resources) const;
+
   /// \brief SchedulingPolicy destructor.
   virtual ~SchedulingPolicy();
 

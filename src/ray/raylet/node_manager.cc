@@ -381,26 +381,16 @@ void NodeManager::HeartbeatAdded(gcs::AsyncGcsClient *client, const ClientID &cl
   // Extract the load information and save it locally.
   remote_resources.SetLoadResources(std::move(remote_load));
 
-  // Construct cluster resources for the heartbeating client_id & call scheduling policy.
-  // The scheduling policy will only consider the resources of the heartbeating client_id
-  // for task placement.
-  std::unordered_map<ClientID, SchedulingResources> remote_resource_map(
-      {{client_id, remote_resources}});
-  RAY_LOG(DEBUG) << "[HeartbeatAdded]: remote resources available before: "
-                 << remote_resource_map[client_id].GetAvailableResources().ToString()
-                 << cluster_resource_map_[client_id].GetAvailableResources().ToString();
-  ScheduleTasks(remote_resource_map);
-  // Update locally maintained copy of remote resource availability after the placement
-  // decision.
-  ResourceSet updated_available_resources =
-      remote_resource_map[client_id].GetAvailableResources();
-  remote_resources.SetAvailableResources(std::move(updated_available_resources));
-  // Assert that the available resources have been updated in the cluster resource map.
-  RAY_LOG(DEBUG) << "[HeartbeatAdded]: remote resources available after: "
-                 << remote_resource_map[client_id].GetAvailableResources().ToString()
-                 << cluster_resource_map_[client_id].GetAvailableResources().ToString();
-  RAY_CHECK(remote_resources.GetAvailableResources().IsEqual(
-      remote_resource_map[client_id].GetAvailableResources()));
+  auto decision = scheduling_policy_.SpillOver(remote_resources);
+  // Extract decision for this local scheduler.
+  std::unordered_set<TaskID> local_task_ids;
+  for (const auto &task_id : decision) {
+      // (See design_docs/task_states.rst for the state transition diagram.)
+      const auto task = local_queues_.RemoveTask(task_id);
+      // Attempt to forward the task. If this fails to forward the task,
+      // the task will be resubmit locally.
+      ForwardTaskOrResubmit(task, client_id);
+  }
 }
 
 void NodeManager::HandleActorCreation(const ActorID &actor_id,

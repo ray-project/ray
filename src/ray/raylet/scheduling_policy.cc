@@ -20,6 +20,7 @@ std::unordered_map<TaskID, ClientID> SchedulingPolicy::Schedule(
   // TODO(atumanov): protect DEBUG code blocks with ifdef DEBUG
   RAY_LOG(DEBUG) << "[Schedule] cluster resource map: ";
 
+#ifndef NDEBUG
   for (const auto &client_resource_pair : cluster_resources) {
     // pair = ClientID, SchedulingResources
     const ClientID &client_id = client_resource_pair.first;
@@ -27,7 +28,10 @@ std::unordered_map<TaskID, ClientID> SchedulingPolicy::Schedule(
     RAY_LOG(DEBUG) << "client_id: " << client_id << " "
                    << resources.GetAvailableResources().ToString();
   }
+#endif
 
+  // We expect all placeable tasks to be placed on exit from this policy method.
+  RAY_CHECK(scheduling_queue_.GetPlaceableTasks().size() <= 1);
   // Iterate over running tasks, get their resource demand and try to schedule.
   for (const auto &t : scheduling_queue_.GetPlaceableTasks()) {
     // Get task's resource demand
@@ -73,17 +77,62 @@ std::unordered_map<TaskID, ClientID> SchedulingPolicy::Schedule(
       ResourceSet new_load(cluster_resources[dst_client_id].GetLoadResources());
       new_load.AddResources(resource_demand);
       cluster_resources[dst_client_id].SetLoadResources(std::move(new_load));
-      RAY_LOG(DEBUG) << "[SchedulingPolicy] idx=" << client_key_index << " " << task_id
-                     << " --> " << client_keys[client_key_index];
     } else {
-      // There are no nodes that can feasibly execute this task. The task remains
-      // placeable until cluster capacity becomes available.
-      // TODO(rkn): Propagate a warning to the user.
-      RAY_LOG(DEBUG) << "This task requires "
-                     << t.GetTaskSpecification().GetRequiredResources().ToString()
-                     << ", but no nodes have the necessary resources.";
+      // If the task doesn't fit, place randomly subject to hard constraints.
+      for (const auto &client_resource_pair2 : cluster_resources) {
+        // pair = ClientID, SchedulingResources
+        ClientID node_client_id = client_resource_pair2.first;
+        const auto &node_resources = client_resource_pair2.second;
+        if (resource_demand.IsSubset(node_resources.GetTotalResources())) {
+          // This node is a feasible candidate.
+          client_keys.push_back(node_client_id);
+        }
+      }
+      // client candidate list constructed, pick randomly.
+      if (!client_keys.empty()) {
+        // Choose index at random.
+        // Initialize a uniform integer distribution over the key space.
+        // TODO(atumanov): change uniform random to discrete, weighted by resource capacity.
+        std::uniform_int_distribution<int> distribution(0, client_keys.size() - 1);
+        int client_key_index = distribution(gen_);
+        const ClientID &dst_client_id = client_keys[client_key_index];
+        decision[t.GetTaskSpecification().TaskId()] = dst_client_id;
+        // Update dst_client_id's load to keep track of remote task load until
+        // the next heartbeat.
+        ResourceSet new_load(cluster_resources[dst_client_id].GetLoadResources());
+        new_load.AddResources(resource_demand);
+        cluster_resources[dst_client_id].SetLoadResources(std::move(new_load));
+      } else {
+        // There are no nodes that can feasibly execute this task. The task remains
+        // placeable until cluster capacity becomes available.
+        // TODO(rkn): Propagate a warning to the user.
+        RAY_LOG(INFO) << "This task requires "
+                      << t.GetTaskSpecification().GetRequiredResources().ToString()
+                      << ", but no nodes have the necessary resources.";
+        // We're taking ownership of the infeasible task.
+        // TODO(atumanov): decide on better way of handling infeasible placeable tasks.
+        decision[t.GetTaskSpecification().TaskId()] = local_client_id;
+      }
     }
   }
+
+  return decision;
+}
+
+std::vector<TaskID> SchedulingPolicy::SpillOver(
+    SchedulingResources &remote_scheduling_resources) const {
+  // The policy decision to be returned.
+  std::vector<TaskID> decision;
+
+  ResourceSet new_load(remote_scheduling_resources.GetLoadResources());
+
+  if (scheduling_queue_.GetReadyTasks().size() > 0) {
+    const auto task = scheduling_queue_.GetReadyTasks().front();
+    decision.push_back(task.GetTaskSpecification().TaskId());
+    new_load.AddResources(task.GetTaskSpecification().GetRequiredResources());
+  }
+  remote_scheduling_resources.SetLoadResources(std::move(new_load));
+
   return decision;
 }
 
