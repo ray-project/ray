@@ -181,6 +181,7 @@ install:
   - ./src/ray/raylet/lineage_cache_test
   - ./src/ray/raylet/task_dependency_manager_test
   - ./src/ray/raylet/reconstruction_policy_test
+  - ./src/ray/util/logging_test
 
   - bash ../src/common/test/run_tests.sh
   - bash ../src/plasma/test/run_tests.sh
