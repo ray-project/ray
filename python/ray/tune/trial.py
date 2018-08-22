@@ -89,7 +89,8 @@ class Trial(object):
                  checkpoint_freq=0,
                  restore_path=None,
                  upload_dir=None,
-                 max_failures=0):
+                 max_failures=0,
+                 **kwargs):
         """Initialize a new trial.
 
         The args here take the same meaning as the command line flags defined
@@ -131,6 +132,8 @@ class Trial(object):
             self.trial_id = Trial.generate_id()
         self.error_file = None
         self.num_failures = 0
+        for k, v in kwargs.items():
+            setattr(self, k, v)
 
     @classmethod
     def generate_id(cls):
