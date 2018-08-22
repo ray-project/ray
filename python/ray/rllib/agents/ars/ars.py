@@ -13,7 +13,7 @@ import pickle
 import time
 
 import ray
-from ray.rllib.agents import Agent
+from ray.rllib.agents import Agent, with_common_config
 from ray.tune.trial import Resources
 
 from ray.rllib.agents.ars import optimizers
@@ -30,7 +30,7 @@ Result = namedtuple("Result", [
 ])
 
 
-DEFAULT_CONFIG = {
+DEFAULT_CONFIG = with_common_config({
     'noise_stdev': 0.02,
     'num_deltas': 4,
     'deltas_used': 4,
@@ -43,7 +43,7 @@ DEFAULT_CONFIG = {
     'shift': 0,
     'policy_type': "LinearPolicy", # FIXME(ev) policy is not linear yet
     "fcnet_hiddens": [32, 32]
-}
+})
 
 
 @ray.remote
