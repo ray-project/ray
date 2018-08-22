@@ -1,14 +1,15 @@
 # can expect improvement to -140 reward in ~300-500k timesteps
 pendulum-ars:
-    env: Pendulum-v0
+    env: Swimmer-v2
     run: ARS
     config:
         noise_stdev: 0.01
-        num_deltas: 12
-        deltas_used: 12
+        num_deltas: 1
+        deltas_used: 1
         num_workers: 1
-        stepsize: 0.01
+        stepsize: 0.02
         noise_size: 250000000
         fcnet_hiddens: [32,32]
-        policy_type: MLPPolicy
+        policy_type: LinearPolicy
         eval_prob: 0.2
+        offset: 0

@@ -16,11 +16,25 @@ import tensorflow.contrib.slim as slim
 from ray.rllib.models.misc import normc_initializer
 
 
-def rollout(policy, env, timestep_limit=None, add_noise=False):
+def rollout(policy, env, timestep_limit=None, add_noise=False, offset=0):
     """Do a rollout.
 
     If add_noise is True, the rollout will take noisy actions with
     noise drawn from that stream. Otherwise, no action noise will be added.
+
+    Parameters
+    ----------
+    policy: tf object
+        policy from which to draw actions
+    env: GymEnv
+        environment from which to draw rewards, done, and next state
+    timestep_limit: int, optional
+        steps after which to end the rollout
+    add_noise: bool, optional
+        indicates whether exploratory action noise should be added
+    offset: int, optional
+        value to subtract from the reward. For example, survival bonus
+        from humanoid
     """
     env_timestep_limit = env.spec.max_episode_steps
     timestep_limit = (env_timestep_limit if timestep_limit is None
@@ -29,8 +43,9 @@ def rollout(policy, env, timestep_limit=None, add_noise=False):
     t = 0
     observation = env.reset()
     for _ in range(timestep_limit or 999999):
-        ac = policy.compute(observation, add_noise=add_noise)[0]
+        ac = policy.compute(observation, add_noise=add_noise, update=True)[0]
         observation, rew, done, _ = env.step(ac)
+        rew -= np.abs(offset)
         rews.append(rew)
         t += 1
         if done:

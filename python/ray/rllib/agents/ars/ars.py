@@ -39,7 +39,7 @@ DEFAULT_CONFIG = with_common_config({
     'noise_size': 250000000,
     'eval_prob': 0.03,
     'env_config': {},
-    'shift': 0,
+    'offset': 0,
     'policy_type': "LinearPolicy", # FIXME(ev) policy is not linear yet
     "fcnet_hiddens": [32, 32]
 })
@@ -93,10 +93,10 @@ class Worker(object):
                 config["fcnet_hiddens"], **policy_params)
 
 
-    def rollout(self, timestep_limit, add_noise=True):
+    def rollout(self, timestep_limit, add_noise=False):
         rollout_rewards, rollout_length = policies.rollout(
             self.policy, self.env, timestep_limit=timestep_limit,
-            add_noise=add_noise)
+            add_noise=add_noise, offset=self.config['offset'])
         return rollout_rewards, rollout_length
 
     def do_rollouts(self, params, timestep_limit=None):
@@ -266,9 +266,6 @@ class ARSAgent(Agent):
         noisy_returns = np.array(all_training_returns)
         noisy_lengths = np.array(all_training_lengths)
 
-        # scale the returns by their standard deviation
-        noisy_returns /= np.std(noisy_returns)
-
         # keep only the best returns
         # select top performing directions if deltas_used < num_deltas
         max_rewards = np.max(noisy_returns, axis=1)
@@ -287,6 +284,9 @@ class ARSAgent(Agent):
              for index in noise_idx),
             batch_size=min(500, noisy_returns[:, 0].size))
         g /= noise_idx.size
+        # scale the returns by their standard deviation
+        if not np.isclose(np.std(noisy_returns), 0.0):
+            g /= np.std(noisy_returns)
         assert (
             g.shape == (self.policy.num_params,) and
             g.dtype == np.float32)
@@ -301,12 +301,13 @@ class ARSAgent(Agent):
         tlogger.record_tabular("EvalEpRewStd", eval_returns.std())
         tlogger.record_tabular("EvalEpLenMean", eval_lengths.mean())
 
-        tlogger.record_tabular("EpRewMean", noisy_returns.mean())
-        tlogger.record_tabular("EpRewStd", noisy_returns.std())
-        tlogger.record_tabular("EpLenMean", noisy_lengths.mean())
+        tlogger.record_tabular("NoisyEpRewMean", noisy_returns.mean())
+        tlogger.record_tabular("NoisyEpRewStd", noisy_returns.std())
+        tlogger.record_tabular("NoisyEpLenMean", noisy_lengths.mean())
 
-        tlogger.record_tabular("Norm", float(np.square(theta).sum()))
-        tlogger.record_tabular("GradNorm", float(np.square(g).sum()))
+        tlogger.record_tabular("WeightsNorm", float(np.square(theta).sum()))
+        tlogger.record_tabular("WeightsStd", float(np.std(theta)))
+        tlogger.record_tabular("Grad2Norm", float(np.sqrt(np.square(g).sum())))
         tlogger.record_tabular("UpdateRatio", float(update_ratio))
 
         tlogger.record_tabular("EpisodesThisIter", noisy_lengths.size)
@@ -361,4 +362,4 @@ class ARSAgent(Agent):
         self.timesteps_so_far = objects[2]
 
     def compute_action(self, observation):
-        return self.policy.compute(observation, update=False)[0] #FIXME(ev) set to false
+        return self.policy.compute(observation, update=True)[0] #FIXME(ev) set to false
