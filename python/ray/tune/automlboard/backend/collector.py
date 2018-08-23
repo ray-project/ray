@@ -62,13 +62,8 @@ class CollectorService(object):
         """Initialize logger settings."""
         logger = logging.getLogger("automlboard")
         logger.setLevel(log_level)
-        logging.getLogger().setLevel(logging.getLevelName(log_level))
-        logging.getLogger('requests.packages.urllib3.connectionpool') \
-            .setLevel(logging.WARNING)
-
-        logging.getLogger().handlers = []
-        log_format = '[%(asctime)s %(levelname)s] %(filename)s:' \
-                     '%(funcName)s:%(lineno)d  %(message)s'
+        log_format = '[%(levelname)s %(asctime)s] %(filename)s:' \
+                     '%(lineno)d  %(message)s'
         logging.basicConfig(
             stream=sys.stdout, format=log_format, level=log_level)
         return log_level
@@ -195,7 +190,7 @@ class Collector(Thread):
         """
         meta = self._build_job_meta(job_dir)
 
-        logging.info("Create job: %s" % meta)
+        logging.debug("Create job: %s" % meta)
 
         job_record = JobRecord.from_json(meta)
         job_record.save()
