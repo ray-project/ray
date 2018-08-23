@@ -53,7 +53,11 @@ def job(request):
     current_job = JobRecord.objects \
         .filter(job_id=job_id) \
         .order_by('-start_time')[0]
-    param_keys = trial_records[0]["params"].keys()
+
+    if len(trial_records) > 0:
+        param_keys = trial_records[0]["params"].keys()
+    else:
+        param_keys = []
 
     # TODO: support custom metrics here
     metric_keys = ["episode_reward", "accuracy", "loss"]
