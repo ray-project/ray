@@ -270,6 +270,7 @@ def wrap_deepmind(env, dim=84, framestack=True):
 
     Args:
         dim (int): Dimension to resize observations to (dim x dim).
+        framestack (bool): Whether to framestack observations.
     """
     env = MonitorEnv(env)
     env = NoopResetEnv(env, noop_max=30)
