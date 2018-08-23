@@ -21,6 +21,7 @@ EXPR_PARARM_FILE = "params.json"
 EXPR_PROGRESS_FILE = "progress.csv"
 EXPR_RESULT_FILE = "result.json"
 EXPR_META_FILE = "trial_status.json"
+DEFAULT_LOGDIR = "./ray_results"
 
 
 class CollectorService(object):
@@ -29,8 +30,6 @@ class CollectorService(object):
     The service will save the information of job and
     trials information in db.
     """
-
-    DEFAULT_LOGDIR = "./ray_results"
 
     def __init__(self,
                  log_dir=DEFAULT_LOGDIR,

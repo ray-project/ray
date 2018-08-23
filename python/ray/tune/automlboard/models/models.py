@@ -63,22 +63,15 @@ class ResultRecord(models.Model):
     trial_id = models.CharField(max_length=50)
     timesteps_total = models.BigIntegerField(blank=True, null=True)
     done = models.CharField(max_length=30, blank=True, null=True)
-    info = models.CharField(max_length=256, blank=True, null=True)
     episode_reward_mean = models.CharField(
         max_length=30, blank=True, null=True)
-    episode_len_mean = models.CharField(max_length=30, blank=True, null=True)
-    episodes_total = models.CharField(max_length=30, blank=True, null=True)
     mean_accuracy = models.FloatField(blank=True, null=True)
-    mean_validation_accuracy = models.FloatField(blank=True, null=True)
     mean_loss = models.FloatField(blank=True, null=True)
-    neg_mean_loss = models.FloatField(blank=True, null=True)
-    experiment_id = models.CharField(max_length=256, blank=True, null=True)
     trainning_iteration = models.BigIntegerField(blank=True, null=True)
     timesteps_this_iter = models.BigIntegerField(blank=True, null=True)
     time_this_iter_s = models.BigIntegerField(blank=True, null=True)
     time_total_s = models.BigIntegerField(blank=True, null=True)
     date = models.CharField(max_length=30, blank=True, null=True)
-    timestamp = models.BigIntegerField(blank=True, null=True)
     hostname = models.CharField(max_length=50, blank=True, null=True)
     node_ip = models.CharField(max_length=50, blank=True, null=True)
     config = models.CharField(max_length=256, blank=True, null=True)
@@ -92,19 +85,14 @@ class ResultRecord(models.Model):
             trial_id=json_info["trial_id"],
             timesteps_total=json_info["timesteps_total"],
             done=json_info.get("done", None),
-            info=json_info.get("info", None),
             episode_reward_mean=json_info.get("episode_reward_mean", None),
-            episodes_total=json_info.get("episodes_total", None),
             mean_accuracy=json_info.get("mean_accuracy", None),
-            mean_validation_accuracy=json_info.get("mean_validation_accuracy", None),
             mean_loss=json_info.get("mean_loss", None),
-            experiment_id=json_info.get("experiment_id", None),
             trainning_iteration=json_info.get("training_iteration", None),
             timesteps_this_iter=json_info.get("timesteps_this_iter", None),
             time_this_iter_s=json_info.get("time_this_iter_s", None),
             time_total_s=json_info.get("time_total_s", None),
             date=json_info.get("date", None),
-            timestamp=json_info.get("timestamp", None),
             hostname=json_info.get("hostname", None),
             node_ip=json_info.get("node_ip", None),
             config=json_info.get("config", None))

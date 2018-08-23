@@ -125,12 +125,12 @@
                                 <tr class="active">
                                     <th class="bottom-row" data-field="Trial ID" data-sortable="true">Trial Id</th>
                                     <th class="bottom-row" data-field="Timesteps" data-sortable="true">Timesteps</th>
-                                    <th class="bottom-row" data-field="Info" data-sortable="true">Info</th>
+                                    <th class="bottom-row" data-field="Train Iteration" data-sortable="true">Train Iteration</th>
                                     <th class="bottom-row" data-field="Episode Reward Mean" data-sortable="true">Episode Reward Mean</th>
                                     <th class="bottom-row" data-field="Episodes Total" data-sortable="true">Episodes Total</th>
                                     <th class="bottom-row" data-field="Mean Accuracy" data-sortable="true">Mean Accuracy</th>
                                     <th class="bottom-row" data-field="Mean Loss" data-sortable="true">Mean Loss</th>
-                                    <th class="bottom-row" data-field="Time This Iter" data-sortable="true">Time This Iter</th>
+                                    <th class="bottom-row" data-field="Time Total" data-sortable="true">Time Total</th>
                                     <th class="bottom-row" data-field="Date" data-sortable="true">Date</th>
                                     <th class="bottom-row" data-field="Hostname" data-sortable="true">Hostname</th>
                                 </tr>
@@ -140,12 +140,12 @@
                                     <tr>
                                         <td>{{ result.trial_id }}</td>
                                         <td>{{ result.timesteps_total }}</td>
-                                        <td>{{ result.info }}</td>
+                                        <td>{{ result.trainning_iteration }}</td>
                                         <td>{{ result.episode_reward_mean }}</td>
                                         <td>{{ result.episodes_total }}</td>
                                         <td>{{ result.mean_accuracy }}</td>
                                         <td>{{ result.loss }}</td>
-                                        <td>{{ result.time_this_iter_s }}</td>
+                                        <td>{{ result.time_total_s }}</td>
                                         <td>{{ result.date }}</td>
                                         <td>{{ result.hostname }}</td>
                                     </tr>
