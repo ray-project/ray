@@ -131,7 +131,7 @@ matrix:
         # - python -m pytest python/ray/local_scheduler/test/test.py
         # - python -m pytest python/ray/global_scheduler/test/test.py
 
-        - python -m pytest python/ray/test/test_global_state.py
+        - pytest -v python/ray/test/test_global_state.py
         - python -m pytest python/ray/test/test_queue.py
         - python -m pytest test/xray_test.py
 
@@ -202,7 +202,7 @@ script:
   - python -m pytest python/ray/local_scheduler/test/test.py
   - python -m pytest python/ray/global_scheduler/test/test.py
 
-  - python -m pytest python/ray/test/test_global_state.py
+  - pytest -v python/ray/test/test_global_state.py
   - python -m pytest python/ray/test/test_queue.py
   - python -m pytest test/xray_test.py
 

@@ -1335,11 +1335,11 @@ class GlobalState(object):
                 dynamic_resources = {}
                 for i in range(num_resources):
                     dyn = message.DynamicResources(i)
-                    dynamic_resources[dyn.Key().decode("utf-8")] = dyn.Value()
+                    resource_id = decode(dyn.Key())
+                    dynamic_resources[resource_id] = dyn.Value()
 
                 # Update available resources for this local scheduler
-                client_id = (binascii.hexlify(
-                    message.DbClientId()).decode("utf-8"))
+                client_id = decode(binascii.hexlify(message.DbClientId()))
                 available_resources_by_id[client_id] = dynamic_resources
 
                 # Update local schedulers in cluster
@@ -1382,13 +1382,12 @@ class GlobalState(object):
                     num_resources = message.ResourcesAvailableLabelLength()
                     dynamic_resources = {}
                     for i in range(num_resources):
-                        resource_id = message.ResourcesAvailableLabel(i)
-                        resource_str = resource_id.decode("utf-8")
+                        resource_id = decode(message.ResourcesAvailableLabel(i))
                         dynamic_resources[resource_str] = (
                             message.ResourcesAvailableCapacity(i))
 
                     # Update available resources for this client
-                    client_id = message.ClientId().decode("utf-8")
+                    client_id = decode(message.ClientId())
                     available_resources_by_id[client_id] = dynamic_resources
 
                 # Update clients in cluster
