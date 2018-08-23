@@ -40,7 +40,7 @@ TEST(PrintLogTest, LogTestWithInit) {
   RayLog::ShutDownRayLog();
 }
 
-// This test will output large amount of logs to stderr, should be diabled in travis.
+// This test will output large amount of logs to stderr, should be disabled in travis.
 TEST(LogPerfTest, PerfTest) {
   RayLog::StartRayLog("/fake/path/to/appdire/LogPerfTest", RAY_ERROR, "/tmp/");
   int rounds = 100000;
