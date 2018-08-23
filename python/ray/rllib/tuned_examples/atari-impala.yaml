@@ -1,4 +1,5 @@
 # Runs on a g3.16xl node with 3 m4.16xl workers
+# See https://github.com/ray-project/rl-experiments for results
 atari-impala:
     env:
         grid_search:
