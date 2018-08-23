@@ -1,6 +1,8 @@
 package org.ray.api;
 
+import javax.xml.bind.DatatypeConverter;
 import java.io.Serializable;
+import java.lang.reflect.Array;
 import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
 import java.util.Arrays;
@@ -12,32 +14,24 @@ import java.util.Random;
 public class UniqueID implements Serializable {
 
   public static final int LENGTH = 20;
-  public static final UniqueID nil = genNilInternal();
+  public static final UniqueID NIL = genNilInternal();
   private static final long serialVersionUID = 8588849129675565761L;
   byte[] id;
 
-  public static UniqueID fromString(String hex) {
-    assert (hex.length() == 2 * LENGTH);
-    int j = 0;
-
-    byte[] id = new byte[LENGTH];
-    for (int i = 0; i < LENGTH; i++) {
-      char c1 = hex.charAt(j++);
-      char c2 = hex.charAt(j++);
-      int first = c1 <= '9' ? (c1 - '0') : (c1 - 'a' + 0xa);
-      int second = c2 <= '9' ? (c2 - '0') : (c2 - 'a' + 0xa);
-      id[i] = (byte) (first * 16 + second);
+  public static UniqueID fromHex(String hex) {
+    if (hex.length() != 2 * LENGTH) {
+      throw new IllegalArgumentException("The argument is illegal.");
     }
 
-    return new UniqueID(id);
-  }
-
-  public static UniqueID fromUniqueID(UniqueID id) {
-    return new UniqueID(id.id);
+    byte[] bytes = DatatypeConverter.parseHexBinary(hex);
+    return new UniqueID(bytes);
   }
 
   public static UniqueID fromByteBuffer(ByteBuffer bb) {
-    assert (bb.remaining() == LENGTH);
+    if (bb.remaining() != LENGTH) {
+      throw new IllegalArgumentException("The argument is illegal.");
+    }
+
     byte[] id = new byte[bb.remaining()];
     bb.get(id);
 
@@ -45,7 +39,7 @@ public class UniqueID implements Serializable {
   }
 
   public static UniqueID genNil() {
-    return UniqueID.fromUniqueID(nil);
+    return NIL.copy();
   }
 
   public static UniqueID randomId() {
@@ -56,10 +50,7 @@ public class UniqueID implements Serializable {
 
   private static UniqueID genNilInternal() {
     byte[] b = new byte[LENGTH];
-    for (int i = 0; i < b.length; i++) {
-      b[i] = (byte) 0xFF;
-    }
-
+    Arrays.fill(b, (byte) 0xFF);
     return new UniqueID(b);
   }
 
@@ -82,12 +73,7 @@ public class UniqueID implements Serializable {
 
   @Override
   public int hashCode() {
-    int hash = 0xdeadbeef;
-    IntBuffer bb = ByteBuffer.wrap(id).asIntBuffer();
-    while (bb.hasRemaining()) {
-      hash ^= bb.get();
-    }
-    return hash;
+    return Arrays.hashCode(id);
   }
 
   @Override
