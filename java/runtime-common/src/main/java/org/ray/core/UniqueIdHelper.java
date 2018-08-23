@@ -28,9 +28,9 @@ public class UniqueIdHelper {
   }
 
   private static UniqueID objectIdFromTaskId(UniqueID taskId,
-                                              boolean isReturn,
-                                              boolean hasMultipleReturn,
-                                              int index
+                                             boolean isReturn,
+                                             boolean hasMultipleReturn,
+                                             int index
   ) {
     byte[] objId = new byte[20];
     System.arraycopy(taskId.getBytes(), 0, objId, 0, 20);

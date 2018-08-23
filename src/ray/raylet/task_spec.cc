@@ -63,20 +63,8 @@ TaskSpecification::TaskSpecification(
     : spec_() {
   flatbuffers::FlatBufferBuilder fbb;
 
-  // Compute hashes.
-  SHA256_CTX ctx;
-  sha256_init(&ctx);
-  sha256_update(&ctx, (BYTE *)&driver_id, sizeof(driver_id));
-  sha256_update(&ctx, (BYTE *)&parent_task_id, sizeof(parent_task_id));
-  sha256_update(&ctx, (BYTE *)&parent_counter, sizeof(parent_counter));
+  TaskID task_id = GenerateTaskID(driver_id, parent_task_id, parent_counter);
 
-  // Compute the final task ID from the hash.
-  BYTE buff[DIGEST_SIZE];
-  sha256_final(&ctx, buff);
-  TaskID task_id;
-  RAY_DCHECK(sizeof(task_id) <= DIGEST_SIZE);
-  memcpy(&task_id, buff, sizeof(task_id));
-  task_id = FinishTaskId(task_id);
   // Add argument object IDs.
   std::vector<flatbuffers::Offset<Arg>> arguments;
   for (auto &argument : task_arguments) {
