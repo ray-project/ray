@@ -10,7 +10,7 @@ import org.apache.arrow.plasma.PlasmaClient;
 import org.ray.api.RayActor;
 import org.ray.api.RayRemote;
 import org.ray.api.UniqueID;
-import org.ray.api.funcs.RayFunc_2_1;
+import org.ray.api.funcs.RayFunc2;
 import org.ray.core.RayRuntime;
 import org.ray.core.UniqueIdHelper;
 import org.ray.core.WorkerContext;
@@ -248,11 +248,11 @@ public class RayNativeRuntime extends RayRuntime {
     RayActor<T> actor = new RayActor<>(actorId);
     UniqueID cursorId;
 
-    RayFunc_2_1<byte[], String, byte[]> createActorLambda = RayNativeRuntime::createActorInActor;
+    RayFunc2<byte[], String, byte[]> createActorLambda = RayNativeRuntime::createActorInActor;
     cursorId = worker.rpcCreateActor(
         createTaskId,
         actorId,
-        RayFunc_2_1.class,
+        RayFunc2.class,
         createActorLambda,
         1,
         new Object[]{actorId.getBytes(), cls.getName()}
