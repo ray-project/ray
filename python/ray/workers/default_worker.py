@@ -44,7 +44,8 @@ parser.add_argument(
     required=False,
     type=str,
     default="info",
-    help="The logging level, default is INFO.")
+    help="The logging level threshold, choices=['debug', 'info', 'warning',"
+         " 'error', 'critical'], default='info'")
 parser.add_argument(
     "--logging-format",
     required=False,

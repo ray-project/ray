@@ -12,7 +12,9 @@ from ray.services import get_ip_address
 from ray.services import get_port
 import ray.utils
 
-# Default logger: will be updated automatically after logging.basicConfig.
+# Logger for this module. It should be configured at the entry point
+# into the program using Ray. Ray configures it by default automatically
+# using logging.basicConfig in its entry/init points.
 logger = logging.getLogger(__name__)
 
 
@@ -132,7 +134,8 @@ if __name__ == "__main__":
         required=False,
         type=str,
         default="info",
-        help="The logging level, default is INFO.")
+        help="The logging level threshold, choices=['debug', 'info', "
+             "'warning', 'error', 'critical'], default=info")
     parser.add_argument(
         "--logging-format",
         required=False,

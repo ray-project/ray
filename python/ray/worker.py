@@ -73,7 +73,9 @@ DEFAULT_ACTOR_CREATION_CPUS_SIMPLE_CASE = 0
 DEFAULT_ACTOR_METHOD_CPUS_SPECIFIED_CASE = 0
 DEFAULT_ACTOR_CREATION_CPUS_SPECIFIED_CASE = 1
 
-# Default logger: will be updated automatically after logging.basicConfig.
+# Logger for this module. It should be configured at the entry point
+# into the program using Ray. Ray configures it by default automatically
+# using logging.basicConfig in its entry/init points.
 logger = logging.getLogger(__name__)
 
 
@@ -1734,6 +1736,7 @@ def init(redis_address=None,
          huge_pages=False,
          include_webui=True,
          use_raylet=None,
+         configure_logging=True,
          logging_level=logging.INFO,
          logging_format="%(message)s"):
     """Connect to an existing Ray cluster or start one and connect to it.
@@ -1795,6 +1798,8 @@ def init(redis_address=None,
         include_webui: Boolean flag indicating whether to start the web
             UI, which is a Jupyter notebook.
         use_raylet: True if the new raylet code path should be used.
+        configure_logging: True if allow the logging cofiguration here.
+            Otherwise, the users may want to configure it by their own.
         logging_level: Logging level, default will be loging.WARN.
         logging_format: Logging format, default will be "%(message)s"
             which means only contains the message.
@@ -1806,7 +1811,8 @@ def init(redis_address=None,
         Exception: An exception is raised if an inappropriate combination of
             arguments is passed in.
     """
-    logging.basicConfig(level=logging_level, format=logging_format)
+    if configure_logging:
+        logging.basicConfig(level=logging_level, format=logging_format)
 
     if global_worker.connected:
         if ignore_reinit_error:

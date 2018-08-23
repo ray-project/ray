@@ -9,7 +9,9 @@ import logging
 
 from ray.utils import is_cython
 
-# Default logger: will be updated automatically after logging.basicConfig.
+# Logger for this module. It should be configured at the entry point
+# into the program using Ray. Ray configures it by default automatically
+# using logging.basicConfig in its entry/init points.
 logger = logging.getLogger(__name__)
 
 FunctionSignature = namedtuple("FunctionSignature", [

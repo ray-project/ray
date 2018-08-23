@@ -92,7 +92,9 @@ RAYLET_EXECUTABLE = os.path.join(
 ObjectStoreAddress = namedtuple("ObjectStoreAddress",
                                 ["name", "manager_name", "manager_port"])
 
-# Default logger.
+# Logger for this module. It should be configured at the entry point
+# into the program using Ray. Ray configures it by default automatically
+# using logging.basicConfig in its entry/init points.
 logger = logging.getLogger(__name__)
 
 
