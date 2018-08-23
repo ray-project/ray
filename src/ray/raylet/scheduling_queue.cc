@@ -105,6 +105,10 @@ const std::list<Task> &SchedulingQueue::GetReadyTasks() const {
   return this->ready_tasks_.GetTasks();
 }
 
+const std::list<Task> &SchedulingQueue::GetInfeasibleTasks() const {
+  return this->infeasible_tasks_.GetTasks();
+}
+
 ResourceSet SchedulingQueue::GetQueueResources(const TaskQueue &task_queue) const {
   // Iterate over all tasks of the specified queue and aggregate total resource
   // demand in a resource set.
@@ -152,6 +156,9 @@ void SchedulingQueue::FilterState(std::unordered_set<TaskID> &task_ids,
   case TaskState::BLOCKED:
     FilterStateFromQueue(blocked_tasks_, task_ids, filter_state);
     break;
+  case TaskState::INFEASIBLE:
+    FilterStateFromQueue(infeasible_tasks_, task_ids, filter_state);
+    break;
   case TaskState::DRIVER: {
     const auto driver_ids = GetDriverTaskIds();
     for (auto it = task_ids.begin(); it != task_ids.end();) {
@@ -179,6 +186,8 @@ std::vector<Task> SchedulingQueue::RemoveTasks(std::unordered_set<TaskID> &task_
   RemoveTasksFromQueue(ready_tasks_, task_ids, removed_tasks);
   RemoveTasksFromQueue(running_tasks_, task_ids, removed_tasks);
   RemoveTasksFromQueue(blocked_tasks_, task_ids, removed_tasks);
+  RemoveTasksFromQueue(infeasible_tasks_, task_ids, removed_tasks);
+
 
   RAY_CHECK(task_ids.size() == 0);
   return removed_tasks;
@@ -232,6 +241,9 @@ void SchedulingQueue::MoveTasks(std::unordered_set<TaskID> &task_ids, TaskState 
     break;
   case TaskState::BLOCKED:
     QueueTasks(blocked_tasks_, removed_tasks);
+    break;
+  case TaskState::INFEASIBLE:
+    QueueTasks(infeasible_tasks_, removed_tasks);
     break;
   default:
     RAY_LOG(FATAL) << "Attempting to move tasks to unrecognized state "

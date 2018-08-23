@@ -12,7 +12,7 @@ namespace ray {
 
 namespace raylet {
 
-enum class TaskState { INIT, PLACEABLE, WAITING, READY, RUNNING, BLOCKED, DRIVER };
+enum class TaskState { INIT, PLACEABLE, WAITING, READY, RUNNING, BLOCKED, DRIVER, INFEASIBLE };
 
 /// \class SchedulingQueue
 ///
@@ -50,6 +50,8 @@ class SchedulingQueue {
   /// \return A const reference to the queue of tasks that have all
   /// dependencies local and that are waiting to be scheduled.
   const std::list<Task> &GetPlaceableTasks() const;
+
+  const std::list<Task> &GetInfeasibleTasks() const;
 
   /// \brief Return an aggregate resource set for all tasks exerting load on this raylet.
   ///
@@ -232,6 +234,7 @@ class SchedulingQueue {
   /// Tasks that were dispatched to a worker but are blocked on a data
   /// dependency that was missing at runtime.
   TaskQueue blocked_tasks_;
+  TaskQueue infeasible_tasks_;
   /// The set of currently running driver tasks. These are empty tasks that are
   /// started by a driver process on initialization.
   std::unordered_set<TaskID> driver_task_ids_;

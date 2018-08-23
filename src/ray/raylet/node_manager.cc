@@ -259,7 +259,7 @@ void NodeManager::Heartbeat() {
     heartbeat_data->resource_load_capacity.push_back(resource_pair.second);
   }
   if (++counter % 10 == 0) {
-    RAY_LOG(DEBUG) << "HEARTBEAT: "
+    RAY_LOG(INFO) << "HEARTBEAT: "
                    << " load " << local_resources.GetLoadResources().ToString()
                    << " avail " << local_resources.GetAvailableResources().ToString()
                    << " total " << local_resources.GetTotalResources().ToString()
@@ -982,7 +982,7 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
       // TODO(atumanov): assert that !placeable.isempty() => insufficient available
       // resources locally.
       const ClientID &local_client_id = gcs_client_->client_table().GetLocalClientId();
-      RAY_LOG(DEBUG)
+      RAY_LOG(INFO)
           << "SUBMIT: "
           << " load "
           << cluster_resource_map_[local_client_id].GetLoadResources().ToString()

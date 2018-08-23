@@ -126,6 +126,15 @@ std::vector<TaskID> SchedulingPolicy::SpillOver(
 
   ResourceSet new_load(remote_scheduling_resources.GetLoadResources());
 
+  // Check if we can accommodate an infeasible task.
+  for (const auto &task: scheduling_queue_.GetInfeasibleTasks()) {
+    if (task.GetTaskSpecification().GetRequiredResources().IsSubset(
+        remote_scheduling_resources.GetTotalResources())) {
+      decision.push_back(task.GetTaskSpecification().TaskId());
+      new_load.AddResources(task.GetTaskSpecification().GetRequiredResources());
+    }
+  }
+
   for (const auto &task : scheduling_queue_.GetReadyTasks()) {
     if (!task.GetTaskSpecification().IsActorTask()) {
       decision.push_back(task.GetTaskSpecification().TaskId());
