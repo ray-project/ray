@@ -861,15 +861,15 @@ void NodeManager::ScheduleTasks(
   // manager. TaskDependencyManager::TaskPending() is assumed to be idempotent.
   // TODO(atumanov): evaluate performance implications of registering all new tasks on
   // submission vs. registering remaining queued placeable tasks here.
+  std::unordered_set<TaskID> move_task_set;
   for (const auto &task : local_queues_.GetPlaceableTasks()) {
     task_dependency_manager_.TaskPending(task);
-    // Assumption: all remaining placeable tasks are infeasible and are moved to the
-    // infeasible task queue. Infeasible task queue is checked when new nodes join.
-    std::unordered_set<TaskID> move_task_set({task.GetTaskSpecification().TaskId()});
-    local_queues_.MoveTasks(move_task_set, TaskState::PLACEABLE, TaskState::INFEASIBLE);
-
+    move_task_set.insert(task.GetTaskSpecification().TaskId());
   }
 
+  // Assumption: all remaining placeable tasks are infeasible and are moved to the
+  // infeasible task queue. Infeasible task queue is checked when new nodes join.
+  local_queues_.MoveTasks(move_task_set, TaskState::PLACEABLE, TaskState::INFEASIBLE);
   // Check the invariant that no placeable tasks remain after a call to the policy.
   RAY_CHECK(local_queues_.GetPlaceableTasks().size() == 0);
 }
