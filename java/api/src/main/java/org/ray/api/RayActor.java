@@ -73,7 +73,7 @@ public class RayActor<T> extends RayObject<T> implements Externalizable {
   }
 
   public UniqueID computeNextActorHandleId() {
-    byte[] bytes = Sha1Digestor.digest(actorHandleId.id, ++forksNum);
+    byte[] bytes = Sha1Digestor.digest(actorHandleId.getBytes(), ++forksNum);
     return new UniqueID(bytes);
   }
 

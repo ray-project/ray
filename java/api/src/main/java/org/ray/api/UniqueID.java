@@ -14,22 +14,14 @@ public class UniqueID implements Serializable {
   public static final int LENGTH = 20;
   public static final UniqueID NIL = genNilInternal();
   private static final long serialVersionUID = 8588849129675565761L;
-  byte[] id;
+  private byte[] id;
 
-  public static UniqueID fromHex(String hex) {
-    if (hex.length() != 2 * LENGTH) {
-      throw new IllegalArgumentException("The argument is illegal.");
-    }
-
+  public static UniqueID fromHexString(String hex) {
     byte[] bytes = DatatypeConverter.parseHexBinary(hex);
     return new UniqueID(bytes);
   }
 
   public static UniqueID fromByteBuffer(ByteBuffer bb) {
-    if (bb.remaining() != LENGTH) {
-      throw new IllegalArgumentException("The argument is illegal.");
-    }
-
     byte[] id = new byte[bb.remaining()];
     bb.get(id);
 
@@ -53,6 +45,10 @@ public class UniqueID implements Serializable {
   }
 
   public UniqueID(byte[] id) {
+    if (id.length != LENGTH) {
+      throw new IllegalArgumentException("Illegal argument: " + id.toString());
+    }
+
     this.id = id;
   }
 
@@ -90,14 +86,7 @@ public class UniqueID implements Serializable {
 
   @Override
   public String toString() {
-    String s = "";
-    String hex = "0123456789abcdef";
-    for (int i = 0; i < LENGTH; i++) {
-      int val = id[i] & 0xff;
-      s += hex.charAt(val >> 4);
-      s += hex.charAt(val & 0xf);
-    }
-    return s;
+    return DatatypeConverter.printHexBinary(id);
   }
 
   public boolean isNil() {
