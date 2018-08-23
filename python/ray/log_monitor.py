@@ -134,14 +134,15 @@ if __name__ == "__main__":
         required=False,
         type=str,
         default="info",
+        choices=['debug', 'info', 'warning', 'error', 'critical'],
         help="The logging level threshold, choices=['debug', 'info', "
-             "'warning', 'error', 'critical'], default=info")
+             "'warning', 'error', 'critical'], default='info'")
     parser.add_argument(
         "--logging-format",
         required=False,
         type=str,
         default="%(message)s",
-        help="The logging format.")
+        help="The logging format. default='%(message)s'")
     args = parser.parse_args()
     logging.basicConfig(
         level=logging.getLevelName(args.logging_level.upper()),

@@ -155,14 +155,15 @@ def cli():
     required=False,
     default="info",
     type=str,
+    choices=['debug', 'info', 'warning', 'error', 'critical'],
     help="The logging level threshold, choices=['debug', 'info', 'warning',"
-         " 'error', 'critical'], default=info")
+         " 'error', 'critical'], default='info'")
 @click.option(
     "--logging-format",
     required=False,
     default="%(message)s",
     type=str,
-    help="The logging message format")
+    help="The logging format. default='%(message)s'")
 def start(node_ip_address, redis_address, redis_port, num_redis_shards,
           redis_max_clients, redis_shard_ports, object_manager_port,
           object_store_memory, num_workers, num_cpus, num_gpus, resources,

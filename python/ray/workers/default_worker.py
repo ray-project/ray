@@ -44,6 +44,7 @@ parser.add_argument(
     required=False,
     type=str,
     default="info",
+    choices=['debug', 'info', 'warning', 'error', 'critical'],
     help="The logging level threshold, choices=['debug', 'info', 'warning',"
          " 'error', 'critical'], default='info'")
 parser.add_argument(
@@ -51,7 +52,7 @@ parser.add_argument(
     required=False,
     type=str,
     default="%(message)s",
-    help="The logging format.")
+    help="The logging format. default='%(message)s'")
 
 if __name__ == "__main__":
     args = parser.parse_args()
