@@ -67,7 +67,6 @@ public class Worker {
 
   }
 
-
   private RayObject taskSubmit(UniqueID taskId, MethodId methodId, Object[] args) {
     RayInvocation ri = createRemoteInvocation(methodId, args, RayActor.nil);
     return scheduler.submit(taskId, ri);

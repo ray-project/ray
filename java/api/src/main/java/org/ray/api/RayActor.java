@@ -10,7 +10,7 @@ import org.ray.util.Sha1Digestor;
  * Ray actor abstraction.
  */
 public class RayActor<T> extends RayObject<T> implements Externalizable {
-  public static final RayActor<?> nil = new RayActor<>(UniqueID.NIL, UniqueID.NIL);
+  public static final RayActor<?> NIL = new RayActor<>(UniqueID.NIL, UniqueID.NIL);
   private static final long serialVersionUID = 1877485807405645036L;
 
   private int taskCounter = 0;
