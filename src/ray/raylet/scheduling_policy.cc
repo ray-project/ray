@@ -109,9 +109,6 @@ std::unordered_map<TaskID, ClientID> SchedulingPolicy::Schedule(
         RAY_LOG(INFO) << "This task requires "
                       << t.GetTaskSpecification().GetRequiredResources().ToString()
                       << ", but no nodes have the necessary resources.";
-        // We're taking ownership of the infeasible task.
-        // TODO(atumanov): decide on better way of handling infeasible placeable tasks.
-        decision[t.GetTaskSpecification().TaskId()] = local_client_id;
       }
     }
   }

@@ -863,7 +863,15 @@ void NodeManager::ScheduleTasks(
   // submission vs. registering remaining queued placeable tasks here.
   for (const auto &task : local_queues_.GetPlaceableTasks()) {
     task_dependency_manager_.TaskPending(task);
+    // Assumption: all remaining placeable tasks are infeasible and are moved to the
+    // infeasible task queue. Infeasible task queue is checked when new nodes join.
+    std::unordered_set<TaskID> move_task_set({task.GetTaskSpecification().TaskId()});
+    local_queues_.MoveTasks(move_task_set, TaskState::PLACEABLE, TaskState::INFEASIBLE);
+
   }
+
+  // Check the invariant that no placeable tasks remain after a call to the policy.
+  RAY_CHECK(local_queues_.GetPlaceableTasks().size() == 0);
 }
 
 void NodeManager::TreatTaskAsFailed(const TaskSpecification &spec) {
