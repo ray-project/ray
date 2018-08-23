@@ -82,6 +82,9 @@ class PolicyOptimizer(object):
     def collect_metrics(self, min_history=100):
         """Returns evaluator and optimizer stats.
 
+        Arguments:
+            min_history (int): Min history length to smooth results over.
+
         Returns:
             res (dict): A training result dict from evaluator metrics with
                 `info` replaced with stats from self.
