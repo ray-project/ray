@@ -129,6 +129,7 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
                 tf.float32, name="value_targets", shape=(None, ))
             existing_state_in = None
             existing_seq_lens = None
+        self.observations = obs_ph
 
         self.loss_in = [
             ("obs", obs_ph),
@@ -241,8 +242,24 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
         self.kl_coeff.load(self.kl_coeff_val, session=self.sess)
         return self.kl_coeff_val
 
+    def value(self, ob, *args):
+        feed_dict = {self.observations: [ob], self.model.seq_lens: [1]}
+        assert len(args) == len(self.model.state_in), \
+            (args, self.model.state_in)
+        for k, v in zip(self.model.state_in, args):
+            feed_dict[k] = v
+        vf = self.sess.run(self.value_function, feed_dict)
+        return vf[0]
+
     def postprocess_trajectory(self, sample_batch, other_agent_batches=None):
-        last_r = 0.0
+        completed = sample_batch["dones"][-1]
+        if completed:
+            last_r = 0.0
+        else:
+            next_state = []
+            for i in range(len(self.model.state_in)):
+                next_state.append([sample_batch["state_out_{}".format(i)][-1]])
+            last_r = self.value(sample_batch["new_obs"][-1], *next_state)
         batch = compute_advantages(
             sample_batch,
             last_r,
