@@ -119,7 +119,7 @@ class Collector(Thread):
             time.sleep(self._reload_interval)
             self._do_collect()
 
-        logging.info("collector stopped.")
+        logging.info("Collector stopped.")
 
     def stop(self):
         """Stop the main polling loop."""
@@ -132,9 +132,9 @@ class Collector(Thread):
         Records in DB backend will be cleared.
         """
         if not os.path.exists(self._logdir):
-            raise CollectorError("log directory %s not exists" % self._logdir)
+            raise CollectorError("Log directory %s not exists" % self._logdir)
 
-        logging.info("collector started to run, taking %s "
+        logging.info("Collector started to run, taking %s "
                      "as parent directory for all job logs." % self._logdir)
 
         # clear old records
@@ -212,7 +212,7 @@ class Collector(Thread):
         """
         meta = self._build_job_meta(job_dir)
 
-        logging.info("create job: %s" % meta)
+        logging.info("Create job: %s" % meta)
 
         job_record = JobRecord.from_json(meta)
         job_record.save()
@@ -236,7 +236,7 @@ class Collector(Thread):
         meta = parse_json(meta_file)
 
         if meta:
-            logging.debug("update job info for %s" % meta["job_id"])
+            logging.debug("Update job info for %s" % meta["job_id"])
             JobRecord.objects \
                 .filter(job_id=meta["job_id"]) \
                 .update(end_time=timestamp2date(meta["end_time"]))
@@ -254,7 +254,7 @@ class Collector(Thread):
         """
         meta = self._build_trial_meta(expr_dir)
 
-        logging.debug("create trial for %s" % meta)
+        logging.debug("Create trial for %s" % meta)
 
         trial_record = TrialRecord.from_json(meta)
         trial_record.save()
@@ -391,7 +391,7 @@ class Collector(Thread):
 
         """
         for result in results:
-            logging.debug("appending result: %s" % result)
+            logging.debug("Appending result: %s" % result)
             result["trial_id"] = trial_id
             result_record = ResultRecord.from_json(result)
             result_record.save()

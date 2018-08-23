@@ -31,7 +31,7 @@ def run_board(args):
     service.run()
 
     # frontend service
-    print("try to start automlboard on port %s\n" % args.port)
+    print("Try to start automlboard on port %s\n" % args.port)
     command = [
         'manage.py', 'runserver',
         '0.0.0.0:%s' % args.port, '--noreload'
