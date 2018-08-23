@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import pickle
 import os
+import time
 
 import ray
 from ray.rllib.agents.agent import Agent, with_common_config
@@ -30,6 +31,8 @@ DEFAULT_CONFIG = with_common_config({
     "use_gpu_for_workers": False,
     # Whether to emit extra summary stats
     "summarize": False,
+    # Min time per iteration
+    "min_iter_time_s": 5,
     # Workers sample async. Note that this increases the effective
     # sample_batch_size by up to 5x due to async buffering of batches.
     "sample_async": True,
@@ -44,7 +47,7 @@ DEFAULT_CONFIG = with_common_config({
         # (Image statespace) - Each pixel
         "zero_mean": False,
         # (Image statespace) - Converts image to (dim, dim, C)
-        "dim": 80,
+        "dim": 84,
         # (Image statespace) - Converts image shape to (C, dim, dim)
         "channel_major": False,
     },
@@ -55,11 +58,6 @@ DEFAULT_CONFIG = with_common_config({
         "gpu_options": {
             "allow_growth": True,
         },
-    },
-    # Arguments to pass to the rllib optimizer
-    "optimizer": {
-        # Number of gradients applied for each `train` step
-        "grads_per_step": 100,
     },
 })
 
@@ -93,18 +91,23 @@ class A3CAgent(Agent):
         self.remote_evaluators = self.make_remote_evaluators(
             self.env_creator, policy_cls, self.config["num_workers"],
             {"num_gpus": 1 if self.config["use_gpu_for_workers"] else 0})
-        self.optimizer = AsyncGradientsOptimizer(self.local_evaluator,
-                                                 self.remote_evaluators,
-                                                 self.config["optimizer"])
+        self.optimizer = self._make_optimizer()
+
+    def _make_optimizer(self):
+        return AsyncGradientsOptimizer(self.local_evaluator,
+                                       self.remote_evaluators,
+                                       self.config["optimizer"])
 
     def _train(self):
         prev_steps = self.optimizer.num_steps_sampled
-        self.optimizer.step()
-        FilterManager.synchronize(self.local_evaluator.filters,
-                                  self.remote_evaluators)
+        start = time.time()
+        while time.time() - start < self.config["min_iter_time_s"]:
+            self.optimizer.step()
+            FilterManager.synchronize(self.local_evaluator.filters,
+                                      self.remote_evaluators)
         result = self.optimizer.collect_metrics()
-        result = result._replace(
-            timesteps_this_iter=self.optimizer.num_steps_sampled - prev_steps)
+        result.update(timesteps_this_iter=self.optimizer.num_steps_sampled -
+                      prev_steps)
         return result
 
     def _stop(self):

@@ -14,6 +14,7 @@ ray.rllib.agents
 .. autoclass:: ray.rllib.agents.dqn.DQNAgent
 .. autoclass:: ray.rllib.agents.es.ESAgent
 .. autoclass:: ray.rllib.agents.pg.PGAgent
+.. autoclass:: ray.rllib.agents.impala.ImpalaAgent
 .. autoclass:: ray.rllib.agents.ppo.PPOAgent
 
 ray.rllib.env

@@ -37,17 +37,22 @@ DEFAULT_CONFIG = with_common_config({
 
     # Learning params.
     "grad_clip": 40.0,
-    "lr": 0.0001,
+    # either "adam" or "rmsprop"
+    "opt_type": "adam",
+    "lr": 0.0005,
+    # rmsprop considered
+    "decay": 0.99,
+    "momentum": 0.0,
+    "epsilon": 0.1,
+    # balancing the three losses
     "vf_loss_coeff": 0.5,
     "entropy_coeff": -0.01,
 
     # Model and preprocessor options.
-    "clip_rewards": True,
-    "preprocessor_pref": "deepmind",
     "model": {
         "use_lstm": False,
         "max_seq_len": 20,
-        "dim": 80,
+        "dim": 84,
     },
 })
 
@@ -93,8 +98,8 @@ class ImpalaAgent(Agent):
         FilterManager.synchronize(self.local_evaluator.filters,
                                   self.remote_evaluators)
         result = self.optimizer.collect_metrics()
-        result = result._replace(
-            timesteps_this_iter=self.optimizer.num_steps_sampled - prev_steps)
+        result.update(timesteps_this_iter=self.optimizer.num_steps_sampled -
+                      prev_steps)
         return result
 
     def _stop(self):

@@ -5,12 +5,7 @@ from ray.rllib.utils.filter import Filter
 from ray.rllib.utils.policy_client import PolicyClient
 from ray.rllib.utils.policy_server import PolicyServer
 
-__all__ = [
-    "Filter",
-    "FilterManager",
-    "PolicyClient",
-    "PolicyServer",
-]
+__all__ = ["Filter", "FilterManager", "PolicyClient", "PolicyServer"]
 
 
 def merge_dicts(d1, d2):

@@ -56,6 +56,7 @@ int PyObjectToUniqueID(PyObject *object, ray::ObjectID *object_id);
 PyObject *PyObjectID_make(ray::ObjectID object_id);
 
 PyObject *check_simple_value(PyObject *self, PyObject *args);
+PyObject *compute_task_id(PyObject *self, PyObject *args);
 
 PyObject *PyTask_to_string(PyObject *, PyObject *args);
 PyObject *PyTask_from_string(PyObject *, PyObject *args);

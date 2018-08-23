@@ -82,11 +82,11 @@ class PolicyOptimizer(object):
         """Returns evaluator and optimizer stats.
 
         Returns:
-            res (TrainingResult): TrainingResult from evaluator metrics with
+            res (dict): A training result dict from evaluator metrics with
                 `info` replaced with stats from self.
         """
         res = collect_metrics(self.local_evaluator, self.remote_evaluators)
-        res = res._replace(info=self.stats())
+        res.update(info=self.stats())
         return res
 
     def save(self):

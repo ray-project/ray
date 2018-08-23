@@ -55,9 +55,6 @@ def test_submitting_tasks(ray_start_combination):
     assert ray.services.all_processes_alive()
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") == "1",
-    reason="This test does not work with xray yet.")
 def test_dependencies(ray_start_combination):
     @ray.remote
     def f(x):
@@ -81,9 +78,6 @@ def test_dependencies(ray_start_combination):
     assert ray.services.all_processes_alive()
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") == "1",
-    reason="This test does not work with xray yet.")
 def test_submitting_many_tasks(ray_start_regular):
     @ray.remote
     def f(x):
@@ -158,7 +152,9 @@ def ray_start_reconstruction(request):
 
     # Start the Redis global state store.
     node_ip_address = "127.0.0.1"
-    redis_address, redis_shards = ray.services.start_redis(node_ip_address)
+    use_raylet = os.environ.get("RAY_USE_XRAY") == "1"
+    redis_address, redis_shards = ray.services.start_redis(
+        node_ip_address, use_raylet=use_raylet)
     redis_ip_address = ray.services.get_ip_address(redis_address)
     redis_port = ray.services.get_port(redis_address)
     time.sleep(0.1)
@@ -228,9 +224,6 @@ def ray_start_reconstruction(request):
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") == "1",
-    reason="This test does not work with xray yet.")
-@pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Failing with new GCS API on Linux.")
 def test_simple(ray_start_reconstruction):
@@ -238,7 +231,7 @@ def test_simple(ray_start_reconstruction):
     # Define the size of one task's return argument so that the combined
     # sum of all objects' sizes is at least twice the plasma stores'
     # combined allotted memory.
-    num_objects = 1000
+    num_objects = 100
     size = int(plasma_store_memory * 1.5 / (num_objects * 8))
 
     # Define a remote task with no dependencies, which returns a numpy
@@ -272,9 +265,6 @@ def test_simple(ray_start_reconstruction):
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") == "1",
-    reason="This test does not work with xray yet.")
-@pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Failing with new GCS API on Linux.")
 def test_recursive(ray_start_reconstruction):
@@ -282,7 +272,7 @@ def test_recursive(ray_start_reconstruction):
     # Define the size of one task's return argument so that the combined
     # sum of all objects' sizes is at least twice the plasma stores'
     # combined allotted memory.
-    num_objects = 1000
+    num_objects = 100
     size = int(plasma_store_memory * 1.5 / (num_objects * 8))
 
     # Define a root task with no dependencies, which returns a numpy array
@@ -331,9 +321,6 @@ def test_recursive(ray_start_reconstruction):
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") == "1",
-    reason="This test does not work with xray yet.")
-@pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Failing with new GCS API on Linux.")
 def test_multiple_recursive(ray_start_reconstruction):
@@ -341,7 +328,7 @@ def test_multiple_recursive(ray_start_reconstruction):
     # Define the size of one task's return argument so that the combined
     # sum of all objects' sizes is at least twice the plasma stores'
     # combined allotted memory.
-    num_objects = 1000
+    num_objects = 100
     size = plasma_store_memory * 2 // (num_objects * 8)
 
     # Define a root task with no dependencies, which returns a numpy array
@@ -473,9 +460,6 @@ def test_nondeterministic_task(ray_start_reconstruction):
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") == "1",
-    reason="This test does not work with xray yet.")
-@pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Failing with new GCS API on Linux.")
 def test_driver_put_errors(ray_start_reconstruction):
@@ -483,7 +467,7 @@ def test_driver_put_errors(ray_start_reconstruction):
     # Define the size of one task's return argument so that the combined
     # sum of all objects' sizes is at least twice the plasma stores'
     # combined allotted memory.
-    num_objects = 1000
+    num_objects = 100
     size = plasma_store_memory * 2 // (num_objects * 8)
 
     # Define a task with a single dependency, a numpy array, that returns

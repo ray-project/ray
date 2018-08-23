@@ -46,8 +46,8 @@ public class RayParameters {
   @AConfig(comment = "driver ID when the worker is served as a driver")
   public UniqueID driver_id = UniqueID.nil;
 
-  @AConfig(comment = "working directory")
-  public String working_directory = "./run";
+  @AConfig(comment = "logging directory")
+  public String log_dir = "/tmp/raylogs";
 
   @AConfig(comment = "primary redis port")
   public int redis_port = 34222;
@@ -123,6 +123,9 @@ public class RayParameters {
 
   @AConfig(comment = "worker fetch request size")
   public int worker_fetch_request_size = 10000;
+
+  @AConfig(comment = "static resource list of this node")
+  public String static_resources = "";
 
   public RayParameters(ConfigReader config) {
     if (null != config) {

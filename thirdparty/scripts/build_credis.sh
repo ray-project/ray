@@ -29,7 +29,7 @@ fi
 if [[ "${RAY_USE_NEW_GCS}" = "on" ]]; then
   pushd "$TP_DIR/pkg/"
     if [[ ! -d "credis" ]]; then
-      git clone --recursive https://github.com/ray-project/credis
+      git clone -q --recursive https://github.com/ray-project/credis
     fi
   popd
 

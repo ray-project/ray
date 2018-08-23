@@ -47,6 +47,7 @@ MOCK_MODULES = ["gym",
                 "ray.core.generated.ClientTableData",
                 "ray.core.generated.GcsTableEntry",
                 "ray.core.generated.HeartbeatTableData",
+                "ray.core.generated.DriverTableData",
                 "ray.core.generated.ErrorTableData",
                 "ray.core.generated.ProfileTableData",
                 "ray.core.generated.ObjectTableData",
@@ -55,6 +56,9 @@ MOCK_MODULES = ["gym",
                 "ray.core.generated.TablePubsub",]
 for mod_name in MOCK_MODULES:
   sys.modules[mod_name] = mock.Mock()
+# ray.rllib.models.action_dist.py and
+# ray.rllib.models.lstm.py will use tf.VERSION
+sys.modules["tensorflow"].VERSION = "9.9.9"
 
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the

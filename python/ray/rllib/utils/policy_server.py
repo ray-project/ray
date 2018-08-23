@@ -28,7 +28,11 @@ class PolicyServer(ThreadingMixIn, HTTPServer):
                def __init__(self):
                    ServingEnv.__init__(
                        self, spaces.Discrete(2),
-                       spaces.Box(low=-10, high=10, shape=(4,)))
+                       spaces.Box(
+                           low=-10,
+                           high=10,
+                           shape=(4,),
+                           dtype=np.float32))
                def run(self):
                    server = PolicyServer(self, "localhost", 8900)
                    server.serve_forever()

@@ -11,7 +11,7 @@ def is_atari(env):
 
 
 class NoopResetEnv(gym.Wrapper):
-    def __init__(self, env, noop_max=30, random_starts=False):
+    def __init__(self, env, noop_max=30):
         """Sample initial states by taking random number of no-ops on reset.
         No-op is assumed to be action 0.
         """
@@ -19,7 +19,6 @@ class NoopResetEnv(gym.Wrapper):
         self.noop_max = noop_max
         self.override_num_noops = None
         self.noop_action = 0
-        self.random_starts = random_starts
         assert env.unwrapped.get_action_meanings()[0] == 'NOOP'
 
     def reset(self, **kwargs):
@@ -32,11 +31,7 @@ class NoopResetEnv(gym.Wrapper):
         assert noops > 0
         obs = None
         for _ in range(noops):
-            if self.random_starts:
-                action = np.random.randint(self.env.action_space.n)
-            else:
-                action = self.noop_action
-            obs, _, done, _ = self.env.step(action)
+            obs, _, done, _ = self.env.step(self.noop_action)
             if done:
                 obs = self.env.reset(**kwargs)
         return obs
@@ -93,9 +88,9 @@ class EpisodicLifeEnv(gym.Wrapper):
         # then update lives to handle bonus lives
         lives = self.env.unwrapped.ale.lives()
         if lives < self.lives and lives > 0:
-            # for Qbert sometimes we stay in lives == 0 condtion for a few
-            # frames so its important to keep lives > 0, so that we only reset
-            # once the environment advertises done.
+            # for Qbert sometimes we stay in lives == 0 condtion for a few fr
+            # so its important to keep lives > 0, so that we only reset once
+            # the environment advertises done.
             done = True
         self.lives = lives
         return obs, reward, done, info
@@ -150,10 +145,13 @@ class WarpFrame(gym.ObservationWrapper):
     def __init__(self, env, dim):
         """Warp frames to the specified size (dim x dim)."""
         gym.ObservationWrapper.__init__(self, env)
-        self.width = dim  # in rllib we use 80
+        self.width = dim
         self.height = dim
         self.observation_space = spaces.Box(
-            low=0, high=255, shape=(self.height, self.width, 1))
+            low=0,
+            high=255,
+            shape=(self.height, self.width, 1),
+            dtype=np.uint8)
 
     def observation(self, frame):
         frame = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
@@ -170,7 +168,10 @@ class FrameStack(gym.Wrapper):
         self.frames = deque([], maxlen=k)
         shp = env.observation_space.shape
         self.observation_space = spaces.Box(
-            low=0, high=255, shape=(shp[0], shp[1], shp[2] * k))
+            low=0,
+            high=255,
+            shape=(shp[0], shp[1], shp[2] * k),
+            dtype=env.observation_space.dtype)
 
     def reset(self):
         ob = self.env.reset()
@@ -188,22 +189,34 @@ class FrameStack(gym.Wrapper):
         return np.concatenate(self.frames, axis=2)
 
 
-def wrap_deepmind(env, random_starts=True, dim=80):
+class ScaledFloatFrame(gym.ObservationWrapper):
+    def __init__(self, env):
+        gym.ObservationWrapper.__init__(self, env)
+        self.observation_space = gym.spaces.Box(
+            low=0, high=1, shape=env.observation_space.shape, dtype=np.float32)
+
+    def observation(self, observation):
+        # careful! This undoes the memory optimization, use
+        # with smaller replay buffers only.
+        return np.array(observation).astype(np.float32) / 255.0
+
+
+def wrap_deepmind(env, dim=84):
     """Configure environment for DeepMind-style Atari.
 
     Note that we assume reward clipping is done outside the wrapper.
 
     Args:
-        random_starts (bool): Start with random actions instead of noops.
         dim (int): Dimension to resize observations to (dim x dim).
     """
-    env = NoopResetEnv(env, noop_max=30, random_starts=random_starts)
+    env = NoopResetEnv(env, noop_max=30)
     if 'NoFrameskip' in env.spec.id:
         env = MaxAndSkipEnv(env, skip=4)
     env = EpisodicLifeEnv(env)
     if 'FIRE' in env.unwrapped.get_action_meanings():
         env = FireResetEnv(env)
     env = WarpFrame(env, dim)
-    # env = ClipRewardEnv(env)  # reward clipping is handled by DQN replay
+    # env = ScaledFloatFrame(env)  # TODO: use for dqn?
+    # env = ClipRewardEnv(env)  # reward clipping is handled by policy eval
     env = FrameStack(env, 4)
     return env

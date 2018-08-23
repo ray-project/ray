@@ -12,7 +12,6 @@ import tensorflow as tf
 from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
 from ray.rllib.utils import deep_update
 from ray.tune.registry import ENV_CREATOR, _global_registry
-from ray.tune.result import TrainingResult
 from ray.tune.trainable import Trainable
 
 COMMON_CONFIG = {
@@ -32,8 +31,10 @@ COMMON_CONFIG = {
     "sample_async": False,
     # Which observation filter to apply to the observation
     "observation_filter": "NoFilter",
+    # Whether to clip rewards prior to experience postprocessing
+    "clip_rewards": True,
     # Whether to use rllib or deepmind preprocessors
-    "preprocessor_pref": "rllib",
+    "preprocessor_pref": "deepmind",
     # Arguments to pass to the env creator
     "env_config": {},
     # Environment name can also be passed via config
@@ -137,6 +138,7 @@ class Agent(Trainable):
             compress_observations=config["compress_observations"],
             num_envs=config["num_envs_per_worker"],
             observation_filter=config["observation_filter"],
+            clip_rewards=config["clip_rewards"],
             env_config=config["env_config"],
             model_config=config["model"],
             policy_config=config,
@@ -217,7 +219,11 @@ class Agent(Trainable):
 
         Arguments:
             observation (obj): observation from the environment.
-            state (list): RNN hidden state, if any.
+            state (list): RNN hidden state, if any. If state is not None,
+                          then all of compute_single_action(...) is returned
+                          (computed action, rnn state, logits dictionary).
+                          Otherwise compute_single_action(...)[0] is
+                          returned (computed action).
             policy_id (str): policy to query (only applies to multi-agent).
         """
 
@@ -225,10 +231,15 @@ class Agent(Trainable):
             state = []
         filtered_obs = self.local_evaluator.filters[policy_id](
             observation, update=False)
+        if state:
+            return self.local_evaluator.for_policy(
+                lambda p: p.compute_single_action(
+                    filtered_obs, state, is_training=False),
+                policy_id=policy_id)
         return self.local_evaluator.for_policy(
-            lambda p: p.compute_single_action(
-                filtered_obs, state, is_training=False)[0],
-            policy_id=policy_id)
+                lambda p: p.compute_single_action(
+                    filtered_obs, state, is_training=False)[0],
+                policy_id=policy_id)
 
     def get_weights(self, policies=None):
         """Return a dictionary of policy ids to weights.
@@ -255,6 +266,7 @@ class _MockAgent(Agent):
     _default_config = {
         "mock_error": False,
         "persistent_error": False,
+        "test_variable": 1
     }
 
     def _init(self):
@@ -265,7 +277,7 @@ class _MockAgent(Agent):
         if self.config["mock_error"] and self.iteration == 1 \
                 and (self.config["persistent_error"] or not self.restored):
             raise Exception("mock error")
-        return TrainingResult(
+        return dict(
             episode_reward_mean=10,
             episode_len_mean=10,
             timesteps_this_iter=10,
@@ -309,7 +321,7 @@ class _SigmoidFakeData(_MockAgent):
         i = max(0, self.iteration - self.config["offset"])
         v = np.tanh(float(i) / self.config["width"])
         v *= self.config["height"]
-        return TrainingResult(
+        return dict(
             episode_reward_mean=v,
             episode_len_mean=v,
             timesteps_this_iter=self.config["iter_timesteps"],
@@ -329,7 +341,7 @@ class _ParameterTuningAgent(_MockAgent):
     }
 
     def _train(self):
-        return TrainingResult(
+        return dict(
             episode_reward_mean=self.config["reward_amt"] * self.iteration,
             episode_len_mean=self.config["reward_amt"],
             timesteps_this_iter=self.config["iter_timesteps"],
@@ -361,6 +373,9 @@ def get_agent_class(alg):
     elif alg == "A3C":
         from ray.rllib.agents import a3c
         return a3c.A3CAgent
+    elif alg == "A2C":
+        from ray.rllib.agents import a3c
+        return a3c.A2CAgent
     elif alg == "BC":
         from ray.rllib.agents import bc
         return bc.BCAgent

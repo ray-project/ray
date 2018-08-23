@@ -38,8 +38,8 @@ void ConnectionPool::RegisterSender(ConnectionType type, const ClientID &client_
   // Don't add to available connections. It will become available once it is released.
 }
 
-ray::Status ConnectionPool::GetSender(ConnectionType type, const ClientID &client_id,
-                                      std::shared_ptr<SenderConnection> *conn) {
+void ConnectionPool::GetSender(ConnectionType type, const ClientID &client_id,
+                               std::shared_ptr<SenderConnection> *conn) {
   std::unique_lock<std::mutex> guard(connection_mutex);
   SenderMapType &avail_conn_map = (type == ConnectionType::MESSAGE)
                                       ? available_message_send_connections_
@@ -49,17 +49,15 @@ ray::Status ConnectionPool::GetSender(ConnectionType type, const ClientID &clien
   } else {
     *conn = nullptr;
   }
-  return ray::Status::OK();
 }
 
-ray::Status ConnectionPool::ReleaseSender(ConnectionType type,
-                                          std::shared_ptr<SenderConnection> &conn) {
+void ConnectionPool::ReleaseSender(ConnectionType type,
+                                   std::shared_ptr<SenderConnection> &conn) {
   std::unique_lock<std::mutex> guard(connection_mutex);
   SenderMapType &conn_map = (type == ConnectionType::MESSAGE)
                                 ? available_message_send_connections_
                                 : available_transfer_send_connections_;
   Return(conn_map, conn->GetClientID(), conn);
-  return ray::Status::OK();
 }
 
 void ConnectionPool::Add(ReceiverMapType &conn_map, const ClientID &client_id,

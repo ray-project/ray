@@ -36,20 +36,20 @@ Environments
 * `OpenAI Gym <rllib-env.html#openai-gym>`__
 * `Vectorized <rllib-env.html#vectorized>`__
 * `Multi-Agent <rllib-env.html#multi-agent>`__
-* `Serving (Agent-oriented) <rllib-env.html#serving>`__
+* `Serving (Agent driven) <rllib-env.html#agent-driven>`__
 * `Offline Data Ingest <rllib-env.html#offline-data>`__ 
 * `Batch Asynchronous <rllib-env.html#batch-asynchronous>`__
 
 Algorithms
 ----------
-* `Ape-X Distributed Prioritized Experience Replay <rllib-algorithms.html#ape-x-distributed-prioritized-experience-replay>`__
-* `Asynchronous Advantage Actor-Critic <rllib-algorithms.html#asynchronous-advantage-actor-critic>`__
-* `Deep Deterministic Policy Gradients <rllib-algorithms.html#deep-deterministic-policy-gradients>`__
-* `Deep Q Networks <rllib-algorithms.html#deep-q-networks>`__
+* `Ape-X Distributed Prioritized Experience Replay <rllib-algorithms.html#distributed-prioritized-experience-replay-ape-x>`__
+* `Advantage Actor-Critic (A2C, A3C) <rllib-algorithms.html#advantage-actor-critic-a2c-a3c>`__
+* `Deep Deterministic Policy Gradients (DDPG) <rllib-algorithms.html#deep-deterministic-policy-gradients-ddpg>`__
+* `Deep Q Networks (DQN) <rllib-algorithms.html#deep-q-networks-dqn>`__
 * `Evolution Strategies <rllib-algorithms.html#evolution-strategies>`__
-* `Importance Weighted Actor-Learner Architecture <rllib-algorithms.html#importance-weighted-actor-learner-architecture>`__
+* `Importance Weighted Actor-Learner Architecture (IMPALA) <rllib-algorithms.html#importance-weighted-actor-learner-architecture-impala>`__
 * `Policy Gradients <rllib-algorithms.html#policy-gradients>`__
-* `Proximal Policy Optimization <rllib-algorithms.html#proximal-policy-optimization>`__
+* `Proximal Policy Optimization (PPO) <rllib-algorithms.html#proximal-policy-optimization-ppo>`__
 
 Models and Preprocessors
 ------------------------
@@ -58,6 +58,7 @@ Models and Preprocessors
 * `Custom Models <rllib-models.html#custom-models>`__
 * `Custom Preprocessors <rllib-models.html#custom-preprocessors>`__
 * `Customizing Policy Graphs <rllib-models.html#customizing-policy-graphs>`__
+* `Model-Based Rollouts <rllib-models.html#model-based-rollouts>`__
 
 RLlib Concepts
 --------------
@@ -73,3 +74,11 @@ Package Reference
 * `ray.rllib.models <rllib-package-ref.html#module-ray.rllib.models>`__
 * `ray.rllib.optimizers <rllib-package-ref.html#module-ray.rllib.optimizers>`__
 * `ray.rllib.utils <rllib-package-ref.html#module-ray.rllib.utils>`__
+
+Troubleshooting
+---------------
+
+If you encounter errors like
+`blas_thread_init: pthread_create: Resource temporarily unavailable` when using many workers,
+try setting ``OMP_NUM_THREADS=1``. Similarly, check configured system limits with
+`ulimit -a` for other resource limit errors.

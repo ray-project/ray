@@ -9,6 +9,7 @@ import ray
 from ray.rllib import _register_all
 from ray.tune.trial import Trial, Resources
 from ray.tune.web_server import TuneClient
+from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.trial_runner import TrialRunner
 
 
@@ -30,7 +31,8 @@ class TuneServerSuite(unittest.TestCase):
     def basicSetup(self):
         ray.init(num_cpus=4, num_gpus=1)
         port = get_valid_port()
-        self.runner = TrialRunner(launch_web_server=True, server_port=port)
+        self.runner = TrialRunner(
+            BasicVariantGenerator(), launch_web_server=True, server_port=port)
         runner = self.runner
         kwargs = {
             "stopping_criterion": {

@@ -6,6 +6,7 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+
 import org.ray.api.RayList;
 import org.ray.api.RayMap;
 import org.ray.api.RayObject;
@@ -17,6 +18,7 @@ import org.ray.core.UniqueIdHelper;
 import org.ray.core.WorkerContext;
 import org.ray.spi.model.RayInvocation;
 import org.ray.spi.model.TaskSpec;
+import org.ray.util.ResourceUtil;
 import org.ray.util.logger.RayLog;
 
 /**
@@ -108,6 +110,8 @@ public class LocalSchedulerProxy {
     task.taskId = taskId;
     task.returnIds = returnIds;
     task.cursorId = invocation.getActor() != null ? invocation.getActor().getTaskCursor() : null;
+    task.resources = ResourceUtil
+                         .getResourcesMapFromArray(invocation.getRemoteAnnotation().resources());
 
     //WorkerContext.onSubmitTask();
     RayLog.core.info(

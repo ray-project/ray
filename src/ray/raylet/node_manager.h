@@ -1,6 +1,8 @@
 #ifndef RAY_RAYLET_NODE_MANAGER_H
 #define RAY_RAYLET_NODE_MANAGER_H
 
+#include <boost/asio/steady_timer.hpp>
+
 // clang-format off
 #include "ray/raylet/task.h"
 #include "ray/object_manager/object_manager.h"
@@ -92,8 +94,11 @@ class NodeManager {
   void FinishAssignedTask(Worker &worker);
   /// Perform a placement decision on placeable tasks.
   void ScheduleTasks();
-  /// Resubmit a task whose return value needs to be reconstructed.
-  void ResubmitTask(const TaskID &task_id);
+  /// Handle a task whose return value(s) must be reconstructed.
+  void HandleTaskReconstruction(const TaskID &task_id);
+  /// Resubmit a task for execution. This is a task that was previously already
+  /// submitted to a raylet but which must now be re-executed.
+  void ResubmitTask(const Task &task);
   /// Attempt to forward a task to a remote different node manager. If this
   /// fails, the task will be resubmit locally.
   ///
@@ -144,6 +149,10 @@ class NodeManager {
   /// accounting, but does not write to any global accounting in the GCS.
   void HandleObjectMissing(const ObjectID &object_id);
 
+  /// Handles updates to driver table.
+  void HandleDriverTableUpdate(const ClientID &id,
+                               const std::vector<DriverTableDataT> &driver_data);
+
   boost::asio::io_service &io_service_;
   ObjectManager &object_manager_;
   /// A Plasma object store client. This is used exclusively for creating new
@@ -152,8 +161,13 @@ class NodeManager {
   plasma::PlasmaClient store_client_;
   /// A client connection to the GCS.
   std::shared_ptr<gcs::AsyncGcsClient> gcs_client_;
-  boost::asio::deadline_timer heartbeat_timer_;
-  uint64_t heartbeat_period_ms_;
+  /// The timer used to send heartbeats.
+  boost::asio::steady_timer heartbeat_timer_;
+  /// The period used for the heartbeat timer.
+  std::chrono::milliseconds heartbeat_period_;
+  /// The time that the last heartbeat was sent at. Used to make sure we are
+  /// keeping up with heartbeats.
+  uint64_t last_heartbeat_at_ms_;
   /// The resources local to this node.
   const SchedulingResources local_resources_;
   /// The resources (and specific resource IDs) that are currently available.

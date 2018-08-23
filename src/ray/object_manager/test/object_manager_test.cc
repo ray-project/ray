@@ -65,8 +65,9 @@ class MockServer {
       object_manager_.ProcessClientMessage(client, message_type, message);
     };
     // Accept a new local client and dispatch it to the node manager.
-    auto new_connection = TcpClientConnection::Create(client_handler, message_handler,
-                                                      std::move(object_manager_socket_));
+    auto new_connection =
+        TcpClientConnection::Create(client_handler, message_handler,
+                                    std::move(object_manager_socket_), "object manager");
     DoAcceptObjectManager();
   }
 
@@ -283,9 +284,11 @@ class TestObjectManager : public TestObjectManagerBase {
 
     RAY_CHECK_OK(server1->object_manager_.object_directory_->SubscribeObjectLocations(
         sub_id, object_1,
-        [this, sub_id, object_1, object_2](const std::vector<ray::ClientID> &,
+        [this, sub_id, object_1, object_2](const std::vector<ray::ClientID> &clients,
                                            const ray::ObjectID &object_id) {
-          TestWaitWhileSubscribed(sub_id, object_1, object_2);
+          if (!clients.empty()) {
+            TestWaitWhileSubscribed(sub_id, object_1, object_2);
+          }
         }));
   }
 
@@ -437,16 +440,7 @@ class TestObjectManager : public TestObjectManagerBase {
         }));
   }
 
-  void TestWaitComplete() { TestBufferPool(); }
-
-  void TestBufferPool() {
-    // Ensure the number of chunks generated do not exceed the number of send threads.
-    for (uint64_t i = object_chunk_size / 2; i < 10 * object_chunk_size; ++i) {
-      uint64_t num_chunks = server1->object_manager_.buffer_pool_.GetNumChunks(i);
-      ASSERT_LE(num_chunks, max_sends);
-    }
-    main_service.stop();
-  }
+  void TestWaitComplete() { main_service.stop(); }
 
   void TestConnections() {
     RAY_LOG(DEBUG) << "\n"

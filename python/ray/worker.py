@@ -578,7 +578,7 @@ class Worker(object):
             function_id: The ID of the function to execute.
             args: The arguments to pass into the function. Arguments can be
                 object IDs or they can be values. If they are values, they must
-                be serializable objecs.
+                be serializable objects.
             actor_id: The ID of the actor that this task is for.
             actor_counter: The counter of the actor task.
             is_actor_checkpoint_method: True if this is an actor checkpoint
@@ -724,8 +724,8 @@ class Worker(object):
 
         Args:
             function (Callable): The function to run on all of the workers. It
-                should not take any arguments. If it returns anything, its
-                return values will not be used.
+                takes only one argument, a worker info dict. If it returns
+                anything, its return values will not be used.
             run_on_other_drivers: The boolean that indicates whether we want to
                 run this funtion on other drivers. One case is we may need to
                 share objects across drivers.
@@ -782,8 +782,6 @@ class Worker(object):
         been defined.
 
         Args:
-            is_actor (bool): True if this worker is an actor, and false
-                otherwise.
             function_id (str): The ID of the function that we want to execute.
             driver_id (str): The ID of the driver to push the error message to
                 if this times out.
@@ -818,7 +816,7 @@ class Worker(object):
         """Retrieve the arguments for the remote function.
 
         This retrieves the values for the arguments to the remote function that
-        were passed in as object IDs. Argumens that were passed by value are
+        were passed in as object IDs. Arguments that were passed by value are
         not changed. This is called by the worker that is executing the remote
         function.
 
@@ -1540,8 +1538,8 @@ def _init(address_info=None,
             provided if start_ray_local is True.
         num_local_schedulers (int): The number of local schedulers to start.
             This is only provided if start_ray_local is True.
-        object_store_memory: The amount of memory (in bytes) to start the
-            object store with.
+        object_store_memory: The maximum amount of memory (in bytes) to
+            allow the object store to use.
         driver_mode (bool): The mode in which to start the driver. This should
             be one of ray.SCRIPT_MODE, ray.LOCAL_MODE, and ray.SILENT_MODE.
         redirect_worker_output: True if the stdout and stderr of worker
@@ -1728,6 +1726,7 @@ def init(redis_address=None,
          num_custom_resource=None,
          num_redis_shards=None,
          redis_max_clients=None,
+         redis_protected_mode=True,
          plasma_directory=None,
          huge_pages=False,
          include_webui=True,

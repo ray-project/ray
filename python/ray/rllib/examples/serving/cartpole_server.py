@@ -10,6 +10,7 @@ To try this out, in two separate shells run:
 
 import os
 from gym import spaces
+import numpy as np
 
 import ray
 from ray.rllib.agents.dqn import DQNAgent
@@ -25,8 +26,9 @@ CHECKPOINT_FILE = "last_checkpoint.out"
 
 class CartpoleServing(ServingEnv):
     def __init__(self):
-        ServingEnv.__init__(self, spaces.Discrete(2),
-                            spaces.Box(low=-10, high=10, shape=(4, )))
+        ServingEnv.__init__(
+            self, spaces.Discrete(2),
+            spaces.Box(low=-10, high=10, shape=(4, ), dtype=np.float32))
 
     def run(self):
         print("Starting policy server at {}:{}".format(SERVER_ADDRESS,

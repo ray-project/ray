@@ -2,19 +2,6 @@ cmake_minimum_required(VERSION 3.4)
 
 project(ray)
 
-set(CMAKE_RAY_LANG_PYTHON "NO")
-set(CMAKE_RAY_LANG_JAVA "NO")
-if ("${CMAKE_RAY_LANGUAGE}" STREQUAL "python")
-  set(CMAKE_RAY_LANG_PYTHON "YES")
-elseif ("${CMAKE_RAY_LANGUAGE}" STREQUAL "java")
-  set(CMAKE_RAY_LANG_JAVA "YES")
-elseif ("${CMAKE_RAY_LANGUAGE}" STREQUAL "")
-  message(WARNING "Language is not set, choose Python as default.")
-  set(CMAKE_RAY_LANG_PYTHON "YES")
-else()
-  message(FATAL_ERROR "Unrecognized language, use -DCMAKE_RAY_LANGUAGE=java|python. Abort.")
-endif()
-
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/Modules")
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/scripts/thirdparty.cmake)
@@ -116,12 +103,12 @@ if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
 
   # Make sure that the Python extensions are built before copying the files.
   if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
-    get_local_scheduler_library("python" LOCAL_SCHEDULER_LIBRARY_LANG)
-    add_dependencies(copy_ray ${LOCAL_SCHEDULER_LIBRARY_LANG})
+    get_local_scheduler_library("python" LOCAL_SCHEDULER_LIBRARY_PYTHON)
+    add_dependencies(copy_ray ${LOCAL_SCHEDULER_LIBRARY_PYTHON})
   endif()
   if ("${CMAKE_RAY_LANG_JAVA}" STREQUAL "YES")
-    get_local_scheduler_library("java" LOCAL_SCHEDULER_LIBRARY_LANG)
-    add_dependencies(copy_ray ${LOCAL_SCHEDULER_LIBRARY_LANG})
+    get_local_scheduler_library("java" LOCAL_SCHEDULER_LIBRARY_JAVA)
+    add_dependencies(copy_ray ${LOCAL_SCHEDULER_LIBRARY_JAVA})
   endif()
 
   add_dependencies(copy_ray ray_redis_module)
