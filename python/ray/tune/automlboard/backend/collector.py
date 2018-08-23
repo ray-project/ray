@@ -60,8 +60,6 @@ class CollectorService(object):
     @classmethod
     def init_logger(cls, log_level):
         """Initialize logger settings."""
-        logger = logging.getLogger("automlboard")
-        logger.setLevel(log_level)
         log_format = '[%(levelname)s %(asctime)s] %(filename)s:' \
                      '%(lineno)d  %(message)s'
         logging.basicConfig(
