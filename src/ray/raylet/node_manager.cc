@@ -812,9 +812,7 @@ void NodeManager::ProcessNodeManagerMessage(TcpClientConnection &node_manager_cl
 void NodeManager::ScheduleTasks(
     std::unordered_map<ClientID, SchedulingResources> &resource_map) {
   const ClientID &local_client_id = gcs_client_->client_table().GetLocalClientId();
-  int64_t num_waiting_changed = 0;
 
-  do {
     // If the resource map contains the local raylet, update load before calling policy.
     if (resource_map.count(local_client_id) > 0) {
       resource_map[local_client_id].SetLoadResources(local_queues_.GetResourceLoad());
@@ -849,21 +847,13 @@ void NodeManager::ScheduleTasks(
       }
     }
 
-    num_waiting_changed = 0;
     // Transition locally placed tasks to waiting or ready for dispatch.
     if (local_task_ids.size() > 0) {
-      uint64_t num_waiting_before = local_queues_.GetWaitingTasks().size();
       std::vector<Task> tasks = local_queues_.RemoveTasks(local_task_ids);
       for (const auto &t : tasks) {
         EnqueuePlaceableTask(t);
       }
-      num_waiting_changed = local_queues_.GetWaitingTasks().size() - num_waiting_before;
-      // The number of waiting tasks cannot decrease as a result of transitioning a
-      // placeable task to ready or waiting.
-      RAY_CHECK(num_waiting_changed >= 0);
     }
-    // If any tasks transitioned to waiting AND more work to place, repeat.
-  } while (num_waiting_changed > 0 && local_queues_.GetPlaceableTasks().size() > 0);
 
   // All remaining placeable tasks should be registered with the task dependency
   // manager. TaskDependencyManager::TaskPending() is assumed to be idempotent.
