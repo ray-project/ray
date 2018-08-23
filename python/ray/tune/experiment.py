@@ -112,8 +112,8 @@ class Experiment(object):
             raise TuneError("No trainable specified!")
 
         if "repeat" in spec:
-            raise DeprecationWarning("The parameter `repeat` is deprecated;
-                converting to `num_samples`. `repeat` will be removed in 
+            raise DeprecationWarning("The parameter `repeat` is deprecated; \
+                converting to `num_samples`. `repeat` will be removed in \
                 future versions of Ray.")
             spec["num_samples"] = spec["repeat"]
             del spec["repeat"]
