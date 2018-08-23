@@ -9,38 +9,50 @@ import ray
 
 def setup_module():
     if not ray.worker.global_worker.connected:
-        ray.init()
+        ray.init(num_cpus=1)
 
-        # Finish initializing Ray. Otherwise available_resources() does not
-        # reflect resource use of submitted tasks
-        ray.get(noop.remote())
+    # Finish initializing Ray. Otherwise available_resources() does not
+    # reflect resource use of submitted tasks
+    ray.get(cpu_task.remote(0))
 
 
 @ray.remote(num_cpus=1)
-def cpu_task():
-    time.sleep(0.5)
-
-
-@ray.remote
-def noop():
-    return
+def cpu_task(seconds):
+    time.sleep(seconds)
 
 
 class TestAvailableResources(object):
+    timeout = 10
+
     def test_no_tasks(self):
         cluster_resources = ray.global_state.cluster_resources()
         available_resources = ray.global_state.cluster_resources()
         assert cluster_resources == available_resources
 
-    def test_cpu_task(self):
+    def test_replenish_resources(self):
         cluster_resources = ray.global_state.cluster_resources()
 
-        # Check the resource use of a launched task
-        task_id = cpu_task.remote()
-        available_resources = ray.global_state.available_resources()
-        assert cluster_resources["CPU"] == available_resources["CPU"] + 1
+        ray.get(cpu_task.remote(0))
+        start = time.time()
+        resources_reset = False
 
-        # Check that the resource is replenished
-        ray.get(task_id)
-        available_resources = ray.global_state.cluster_resources()
-        assert cluster_resources == available_resources
+        while not resources_reset and time.time() - start < self.timeout:
+            resources_reset = cluster_resources == ray.global_state.available_resources(
+            )
+
+        assert resources_reset
+
+    def test_uses_resources(self):
+        cluster_resources = ray.global_state.cluster_resources()
+        task_id = cpu_task.remote(1)
+        start = time.time()
+        resource_used = False
+
+        while not resource_used and time.time() - start < self.timeout:
+            available_resources = ray.global_state.available_resources()
+            resource_used = available_resources[
+                "CPU"] == cluster_resources["CPU"] - 1
+
+        assert resource_used
+
+        ray.get(task_id)  # clean up to reset resources
