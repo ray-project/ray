@@ -87,7 +87,8 @@ def start_plasma_store(plasma_store_memory=DEFAULT_PLASMA_STORE_MEMORY,
     """
     if use_valgrind and use_profiler:
         raise Exception("Cannot use valgrind and profiler at the same time.")
-    plasma_store_executable = os.path.join(pa.__path__[0], "plasma_store_server")
+    plasma_store_executable = os.path.join(pa.__path__[0],
+                                           "plasma_store_server")
     plasma_store_name = "/tmp/plasma_store{}".format(random_name())
     command = [
         plasma_store_executable, "-s", plasma_store_name, "-m",

@@ -21,7 +21,8 @@ import setuptools.command.build_ext as _build_ext
 ray_files = [
     "ray/core/src/common/thirdparty/redis/src/redis-server",
     "ray/core/src/common/redis_module/libray_redis_module.so",
-    "ray/core/src/plasma/plasma_store_server", "ray/core/src/plasma/plasma_manager",
+    "ray/core/src/plasma/plasma_store_server",
+    "ray/core/src/plasma/plasma_manager",
     "ray/core/src/local_scheduler/local_scheduler",
     "ray/core/src/local_scheduler/liblocal_scheduler_library_python.so",
     "ray/core/src/global_scheduler/global_scheduler",
