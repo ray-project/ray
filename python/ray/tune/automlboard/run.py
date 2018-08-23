@@ -77,7 +77,7 @@ def init_config(args):
     execute_from_command_line(command)
 
 
-if __name__ == "__main__":
+def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--logdir",
@@ -113,3 +113,7 @@ if __name__ == "__main__":
     cmd_args = parser.parse_args()
 
     run_board(cmd_args)
+
+
+if __name__ == "__main__":
+    main()
