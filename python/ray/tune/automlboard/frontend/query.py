@@ -5,7 +5,7 @@ from __future__ import unicode_literals
 
 from django.shortcuts import HttpResponse
 
-from models.models import JobRecord, TrialRecord
+from ray.tune.automlboard.models.models import JobRecord, TrialRecord
 
 import json
 

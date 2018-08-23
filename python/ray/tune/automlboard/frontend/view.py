@@ -5,8 +5,10 @@ from __future__ import unicode_literals
 
 from django.shortcuts import render
 
-from settings import AUTOMLBOARD_RELOAD_INTERVAL, AUTOMLBOARD_LOG_DIR
-from models.models import JobRecord, TrialRecord, ResultRecord
+from ray.tune.automlboard.settings import AUTOMLBOARD_RELOAD_INTERVAL, \
+    AUTOMLBOARD_LOG_DIR
+from ray.tune.automlboard.models.models import JobRecord, \
+    TrialRecord, ResultRecord
 
 import datetime
 

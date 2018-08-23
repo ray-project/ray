@@ -1,1 +1,1 @@
-default_app_config = "models.apps.ModelConfig"
+default_app_config = "ray.tune.automlboard.models.apps.ModelConfig"

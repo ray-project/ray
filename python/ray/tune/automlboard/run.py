@@ -10,6 +10,8 @@ import argparse
 from django.core.management import execute_from_command_line
 from common.exception import DatabaseError
 
+root_path = os.path.dirname(os.path.abspath(__file__))
+
 
 def run_board(args):
     """
@@ -33,7 +35,7 @@ def run_board(args):
     # frontend service
     print("Try to start automlboard on port %s\n" % args.port)
     command = [
-        'manage.py', 'runserver',
+        os.path.join(root_path, 'manage.py'), 'runserver',
         '0.0.0.0:%s' % args.port, '--noreload'
     ]
     execute_from_command_line(command)
@@ -69,9 +71,9 @@ def init_config(args):
         print("Using sqlite3 as the database backend, "
               "information will be stored in automlboard.db")
 
-    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "settings")
+    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "ray.tune.automlboard.settings")
     django.setup()
-    command = ['manage.py', 'migrate', '--run-syncdb']
+    command = [os.path.join(root_path, 'manage.py'), 'migrate', '--run-syncdb']
     execute_from_command_line(command)
 
 

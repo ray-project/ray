@@ -9,11 +9,12 @@ import time
 
 from threading import Thread
 
-from common.exception import CollectorError
-from common.utils import parse_json
-from common.utils import parse_multiple_json, timestamp2date
-
-from models.models import JobRecord, TrialRecord, ResultRecord
+from ray.tune.automlboard.common.exception import CollectorError
+from ray.tune.automlboard.common.utils import parse_json, \
+    parse_multiple_json, timestamp2date
+from ray.tune.automlboard.models.models import JobRecord, \
+    TrialRecord, ResultRecord
+from ray.tune.result import DEFAULT_RESULTS_DIR
 
 JOB_META_FILE = "job_status.json"
 
@@ -21,7 +22,6 @@ EXPR_PARARM_FILE = "params.json"
 EXPR_PROGRESS_FILE = "progress.csv"
 EXPR_RESULT_FILE = "result.json"
 EXPR_META_FILE = "trial_status.json"
-DEFAULT_LOGDIR = "./ray_results"
 
 
 class CollectorService(object):
@@ -32,7 +32,7 @@ class CollectorService(object):
     """
 
     def __init__(self,
-                 log_dir=DEFAULT_LOGDIR,
+                 log_dir=DEFAULT_RESULTS_DIR,
                  reload_interval=30,
                  standalone=True,
                  log_level="INFO"):

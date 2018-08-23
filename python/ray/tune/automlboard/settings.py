@@ -37,7 +37,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'models',
+    'ray.tune.automlboard.models',
 ]
 
 MIDDLEWARE = [
@@ -50,7 +50,7 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
-ROOT_URLCONF = 'frontend.urls'
+ROOT_URLCONF = 'ray.tune.automlboard.frontend.urls'
 
 TEMPLATES = [
     {
@@ -68,7 +68,7 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = 'frontend.wsgi.application'
+WSGI_APPLICATION = 'ray.tune.automlboard.frontend.wsgi.application'
 
 DB_ENGINE_NAME_MAP = {
     "mysql": "django.db.backends.mysql",

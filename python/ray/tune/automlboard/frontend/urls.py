@@ -25,8 +25,8 @@ from __future__ import print_function
 from django.conf.urls import url
 from django.contrib import admin
 
-import frontend.view as view
-import frontend.query as query
+import ray.tune.automlboard.frontend.view as view
+import ray.tune.automlboard.frontend.query as query
 
 urlpatterns = [
     url(r'^admin/', admin.site.urls),
