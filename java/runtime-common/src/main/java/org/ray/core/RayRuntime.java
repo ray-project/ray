@@ -209,7 +209,7 @@ public abstract class RayRuntime implements RayApi {
   }
 
   /**
-   * get the task identity of the currently running task, UniqueID.Nil if not inside any
+   * get the task identity of the currently running task, UniqueID.NIL if not inside any
    */
   public UniqueID getCurrentTaskId() {
     return worker.getCurrentTaskId();

@@ -1,12 +1,10 @@
 package org.ray.api;
 
-import javax.xml.bind.DatatypeConverter;
 import java.io.Serializable;
-import java.lang.reflect.Array;
 import java.nio.ByteBuffer;
-import java.nio.IntBuffer;
 import java.util.Arrays;
 import java.util.Random;
+import javax.xml.bind.DatatypeConverter;
 
 /**
  * Unique ID for task, worker, function...
