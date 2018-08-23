@@ -6,6 +6,7 @@ from __future__ import unicode_literals
 from django.shortcuts import HttpResponse
 
 from ray.tune.automlboard.models.models import JobRecord, TrialRecord
+from ray.tune.trial import Trial
 
 import json
 
@@ -40,9 +41,9 @@ def query_job(request):
     trials = TrialRecord.objects.filter(job_id=job_id)
 
     total_num = len(trials)
-    running_num = sum(t.trial_status == "RUNNING" for t in trials)
-    success_num = sum(t.trial_status == "TERMINATED" for t in trials)
-    failed_num = sum(t.trial_status == "ERROR" for t in trials)
+    running_num = sum(t.trial_status == Trial.RUNNING for t in trials)
+    success_num = sum(t.trial_status == Trial.TERMINATED for t in trials)
+    failed_num = sum(t.trial_status == Trial.ERROR for t in trials)
     if total_num == 0:
         progress = 0
     else:

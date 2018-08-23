@@ -99,6 +99,7 @@ class Collector(Thread):
         self._monitored_jobs = set()
         self._monitored_trials = set()
         self._result_offsets = {}
+        self.daemon = True
 
     def run(self):
         """Run the main event loop for collector thread.

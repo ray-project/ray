@@ -9,6 +9,7 @@ from ray.tune.automlboard.settings import AUTOMLBOARD_RELOAD_INTERVAL, \
     AUTOMLBOARD_LOG_DIR
 from ray.tune.automlboard.models.models import JobRecord, \
     TrialRecord, ResultRecord
+from ray.tune.trial import Trial
 
 import datetime
 
@@ -19,9 +20,9 @@ def index(request):
     recent_trials = TrialRecord.objects.order_by('-start_time')[0:500]
 
     total_num = len(recent_trials)
-    running_num = sum(t.trial_status == "RUNNING" for t in recent_trials)
-    success_num = sum(t.trial_status == "TERMINATED" for t in recent_trials)
-    failed_num = sum(t.trial_status == "ERROR" for t in recent_trials)
+    running_num = sum(t.trial_status == Trial.RUNNING for t in recent_trials)
+    success_num = sum(t.trial_status == Trial.TERMINATED for t in recent_trials)
+    failed_num = sum(t.trial_status == Trial.ERROR for t in recent_trials)
 
     job_records = []
     for recent_job in recent_jobs:
@@ -93,9 +94,9 @@ def get_job_info(current_job):
     """Get job information for current job."""
     trials = TrialRecord.objects.filter(job_id=current_job.job_id)
     total_num = len(trials)
-    running_num = sum(t.trial_status == "RUNNING" for t in trials)
-    success_num = sum(t.trial_status == "TERMINATED" for t in trials)
-    failed_num = sum(t.trial_status == "ERROR" for t in trials)
+    running_num = sum(t.trial_status == Trial.RUNNING for t in trials)
+    success_num = sum(t.trial_status == Trial.TERMINATED for t in trials)
+    failed_num = sum(t.trial_status == Trial.ERROR for t in trials)
 
     if total_num == 0:
         progress = 0
