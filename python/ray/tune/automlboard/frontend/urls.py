@@ -24,7 +24,9 @@ from __future__ import print_function
 
 from django.conf.urls import url
 from django.contrib import admin
-from . import view, query
+
+import frontend.view as view
+import frontend.query as query
 
 urlpatterns = [
     url(r'^admin/', admin.site.urls),

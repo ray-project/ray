@@ -42,6 +42,7 @@ class TrialRecord(models.Model):
     start_time = models.CharField(max_length=50)
     end_time = models.CharField(max_length=50)
     params = models.CharField(max_length=50)
+    metrics = models.CharField(max_length=256, null=True, blank=True)
 
     @classmethod
     def from_json(cls, json_info):

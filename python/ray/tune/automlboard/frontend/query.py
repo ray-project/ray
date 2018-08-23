@@ -41,9 +41,9 @@ def query_job(request):
     trials = TrialRecord.objects.filter(job_id=job_id)
 
     total_num = len(trials)
-    running_num = len(filter(lambda t: t.trial_status == "RUNNING", trials))
-    success_num = len(filter(lambda t: t.trial_status == "TERMINATED", trials))
-    failed_num = len(filter(lambda t: t.trial_status == "FAILED", trials))
+    running_num = sum(t.trial_status == "RUNNING" for t in trials)
+    success_num = sum(t.trial_status == "TERMINATED" for t in trials)
+    failed_num = sum(t.trial_status == "ERROR" for t in trials)
     if total_num == 0:
         progress = 0
     else:

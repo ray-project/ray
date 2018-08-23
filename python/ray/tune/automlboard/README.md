@@ -1,6 +1,6 @@
 ## About AutoMLBoard
 
-AutoMLBoard can be used as a monitor who collect information about ray tune jobs and
+AutoMLBoard can be used as a monitor who collect information about Tune jobs and
 show the trial information to the frontend.
 
 ### Install

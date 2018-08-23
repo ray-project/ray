@@ -70,7 +70,7 @@ class CollectorService(object):
     @classmethod
     def init_logger(cls, log_level):
         """Initialize logger settings."""
-        logger = logging.getLogger("auomlboard")
+        logger = logging.getLogger("automlboard")
         logger.setLevel(log_level)
         logging.getLogger().setLevel(logging.getLevelName(log_level))
         logging.getLogger('requests.packages.urllib3.connectionpool') \
@@ -159,7 +159,7 @@ class Collector(Thread):
            meta file.
 
         Args:
-            job_name(str)
+            job_name(str) name of the Tune experiment
 
         """
         job_path = os.path.join(self._logdir, job_name)
@@ -272,25 +272,36 @@ class Collector(Thread):
         """
         trial_id = expr_dir[-8:]
 
+        meta_file = os.path.join(expr_dir, EXPR_META_FILE)
+        meta = parse_json(meta_file)
+
         result_file = os.path.join(expr_dir, EXPR_RESULT_FILE)
         offset = self._result_offsets.get(trial_id, 0)
         results, new_offset = parse_multiple_json(result_file, offset)
         self._add_results(results, trial_id)
         self._result_offsets[trial_id] = new_offset
 
-        meta_file = os.path.join(expr_dir, EXPR_META_FILE)
-        meta = parse_json(meta_file)
-
         if meta:
             TrialRecord.objects \
                 .filter(trial_id=trial_id) \
                 .update(trial_status=meta["status"],
                         end_time=timestamp2date(meta.get("end_time", None)))
-        elif len(results) > 0 and results[-1].get("done"):
-            TrialRecord.objects \
-                .filter(trial_id=trial_id) \
-                .update(trial_status="TERMINATED",
-                        end_time=results[-1].get("date", None))
+        elif len(results) > 0:
+            metrics = {
+                "episode_reward": results[-1].get("episode_reward_mean", None),
+                "accuracy": results[-1].get("mean_accuracy", None),
+                "loss": results[-1].get("loss", None)
+            }
+            if results[-1].get("done"):
+                TrialRecord.objects \
+                    .filter(trial_id=trial_id) \
+                    .update(trial_status="TERMINATED",
+                            end_time=results[-1].get("date", None),
+                            metrics=str(metrics))
+            else:
+                TrialRecord.objects \
+                    .filter(trial_id=trial_id) \
+                    .update(metrics=str(metrics))
 
     @classmethod
     def _build_job_meta(cls, job_dir):
@@ -348,7 +359,7 @@ class Collector(Thread):
                 "trial_id": trial_id,
                 "job_id": job_id,
                 "status": "RUNNING",
-                "type": "RAYTUNE",
+                "type": "TUNE",
                 "start_time": os.path.getctime(expr_dir),
                 "end_time": None,
                 "progress_offset": 0,

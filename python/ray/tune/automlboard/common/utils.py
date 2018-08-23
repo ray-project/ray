@@ -53,7 +53,7 @@ def parse_json(json_file):
             info_str = f.readlines()
             info_str = "".join(info_str)
             json_info = json.loads(info_str)
-            return json_info
+            return unicode2str(json_info)
     except BaseException as e:
         logging.error(e.message)
         return None
@@ -100,3 +100,18 @@ def parse_multiple_json(json_file, offset=None):
 def timestamp2date(timestamp):
     """Convert a timestamp to date."""
     return time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(timestamp))
+
+
+def unicode2str(content):
+    """Convert the unicode element of the content to str recursively."""
+    if isinstance(content, dict):
+        result = {}
+        for key in content.keys():
+            result[unicode2str(key)] = unicode2str(content[key])
+        return result
+    elif isinstance(content, list):
+        return [unicode2str(element) for element in content]
+    elif isinstance(content, unicode):
+        return content.encode('utf-8')
+    else:
+        return content

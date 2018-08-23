@@ -5,112 +5,159 @@
 
     {% load staticfiles %}
 
-    <!-- static dependency backup -->
-    <!--script src="/static/jquery-3.1.0.min.js"></script>
-    <script src="/static/jquery.dataTables.min.js"></script>
-    <script src="/static/moment.min.js"></script>
-    <script src="/static/jquery-ui.js"></script>
-    <script src="/static/bootstrap.min.js"></script>
-    <script src="/static/dataTables.bootstrap.min.js"></script-->
+    <script src="https://code.jquery.com/jquery-3.2.1.slim.min.js" integrity="sha384-KJ3o2DKtIkvYIK3UENzmM7KCkRr/rE9/Qpg6aAZGJwFDMVNA/GpGFF93hXpG5KkN" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.11.0/umd/popper.min.js" integrity="sha384-b/U6ypiBEHpOf/4+1nzFpr53nxSS+GLCkfwBdFNTxtclqqenISfwAzpKaMNFNmj4" crossorigin="anonymous"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0-beta/js/bootstrap.min.js" integrity="sha384-h0AbiXch4ZDo7tp9hKZ4TsHbi047NrKGLO3SEJAg45jXxnGIfYzk4Si90RDIqNm1" crossorigin="anonymous"></script>
 
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.1.3/js/bootstrap.min.js"></script>
 
-    <!-- cdn links for dependency, use the static dependency above if the url failed -->
-    <script src="https://code.jquery.com/jquery-3.1.0.min.js"></script>
-    <script src="https://cdn.datatables.net/1.10.11/js/jquery.dataTables.min.js"></script>
-    <script src="https://momentjs.com/downloads/moment.min.js"></script>
-    <script src="http://code.jquery.com/ui/1.12.1/jquery-ui.js"></script>
-    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"
-            integrity="sha384-Tc5IQib027qvyjSMfHjOMaLkfuWVxZxUPnCJA7l2mCWNIpG9mGCD8wGNIcPD7Txa"
-            crossorigin="anonymous"></script>
+    <!-- Latest compiled and minified CSS -->
+    <link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/bootstrap-table/1.12.1/bootstrap-table.min.css">
+    <!-- Latest compiled and minified JavaScript -->
+    <script src="//cdnjs.cloudflare.com/ajax/libs/bootstrap-table/1.12.1/bootstrap-table.min.js"></script>
+    <!-- Latest compiled and minified Locales -->
+    <!--script src="//cdnjs.cloudflare.com/ajax/libs/bootstrap-table/1.12.1/locale/bootstrap-table-zh-CN.min.js"></script-->
 
+    <script src="/static/js/ExperimentList.js"></script>
 
-    <!-- local static dependency -->
-    <link rel="stylesheet" type="text/css" href="/static/jquery-ui.css">
-    <link rel="stylesheet" type="text/css" href="/static/bootstrap.min.css">
-    <link rel="stylesheet" type="text/css" href="/static/bootstrap-sortable.css">
-    <link rel="stylesheet" type="text/css" href="/static/dataTables.bootstrap.min.css">
-    <link rel="stylesheet" type="text/css" href="/static/monitor.css">
-
-    <script src="/static/bootstrap-sortable.js"></script>
-    <script src="/static/dataTables.bootstrap.min.js"></script>
-    <script src="/static/monitor.js"></script>
-
-
-    <!--[if lt IE 9]>
-    <script src="https://oss.maxcdn.com/libs/html5shiv/3.7.0/html5shiv.js"></script>
-    <script src="https://oss.maxcdn.com/libs/respond.js/1.3.0/respond.min.js"></script>
-    <![endif]-->
+    <link rel="stylesheet" href="/static/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/static/css/App.css">
+    <link rel="stylesheet" href="/static/css/HomePage.css">
+    <link rel="stylesheet" href="/static/css/ExperimentView.css">
+    <link rel="stylesheet" href="/static/css/ExperimentList.css">
+    <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.2.0/css/all.css" integrity="sha384-hWVjflwFxL6sNzntih27bfxkr27PmbbK/iSvJ+a4+0owXq79v+lsFkW54bOGbiDQ" crossorigin="anonymous">
 </head>
 <body>
-<nav class="navbar navbar-default" style="margin-bottom: 20px; background-color: #00BFFF;">
-    <div class="container container-fluid">
-        <!-- Brand and toggle get grouped for better mobile display -->
-        <div class="navbar-header">
-            <a class="navbar-brand" href="#" style="padding-top: 5px;">
-                <img src="/static/automlboard_logo.png" style="width:180px; height:40px;">
-            </a>
-        </div>
+<nav class="navbar navbar-expand-lg navbar-dark bg-primary" style="margin-right: auto;margin-left: auto;">
+    <a class="navbar-brand" href="#" style="padding-left: 50px">AutoMLBoard</a>
+    <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarColor01" aria-controls="navbarColor01" aria-expanded="false" aria-label="Toggle navigation">
+        <span class="navbar-toggler-icon"></span>
+    </button>
 
-        <!-- Collect the nav links, forms, and other content for toggling -->
-        <div class="collapse navbar-collapse" id="bs-example-navbar-collapse-1">
-            <ul class="nav navbar-nav" id="top-navbar">
-                <li><a href="/" style="color:#FFFFFF">Jobs</a></li>
-                <li><a href="/job?job_id={{ job_id }}" style="color:#FFFFFF">{{ job_id }}</a></li>
-            </ul>
-            <form class="navbar-form navbar-left">
-            </form>
-            <ul class="nav navbar-nav navbar-right">
-                <li class="dropdown"><a href="#" style="color:#FFFFFF" class="dropdown-toggle"
-                                        data-toggle="dropdown" role="button" aria-haspopup="true"
-                                        aria-expanded="false">Welcome<span class="caret"></span></a>
-                    <ul class="dropdown-menu">
-                        <li><a href="#">Exit</a></li>
-                    </ul>
-                </li>
-            </ul>
-        </div><!-- /.navbar-collapse -->
-    </div><!-- /.container-fluid -->
-</nav>
-<div class="container container-fluid">
-    <div class="row">
-        <ul class="nav nav-tabs" style="margin-bottom: 10px">
-            <li class="active">
-                <h4>Results of trial {{ trial_id }}</h4>
+    <div class="collapse navbar-collapse" id="navbarColor01">
+        <ul class="navbar-nav mr-auto">
+            <li class="nav-item">
+                <a class="nav-link" href="/">Home <span class="sr-only">(current)</span></a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="https://github.com/ray-project/ray">Github</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="http://ray.readthedocs.io/">Document</a>
             </li>
         </ul>
-        <table class="table table-bordered sortable" style="table-layout: fixed; word-wrap: break-word;"
-               id="metrics_info_table">
-            <thead>
-            <tr class="active">
-                <th class="col-md-3">Trial Id</th>
-                <th class="col-md-3">Timesteps</th>
-                <th class="col-md-2">Info</th>
-                <th class="col-md-4">Episode Reward Mean</th>
-                <th class="col-md-4">Episodes Total</th>
-                <th class="col-md-4">Mean Accuracy</th>
-                <th class="col-md-3">Mean Loss</th>
-                <th class="col-md-3">Time This Iter</th>
-                <th class="col-md-4">Date</th>
-                <th class="col-md-4">Hostname</th>
-            </tr>
-            </thead>
-            <tbody>
-            {% for result in recent_results %}
-            <tr>
-                <td>{{ result.trial_id }}</td>
-                <td>{{ result.timesteps_total }}</td>
-                <td>{{ result.info }}</td>
-                <td>{{ result.episode_reward_mean }}</td>
-                <td>{{ result.episodes_total }}</td>
-                <td>{{ result.mean_accuracy }}</td>
-                <td>{{ result.loss }}</td>
-                <td>{{ result.time_this_iter_s }}</td>
-                <td>{{ result.date }}</td>
-                <td>{{ result.hostname }}</td>
-            </tr>
-            {% endfor %}
-            </tbody>
-        </table>
+        <!--<form class="form-inline my-2 my-lg-0">-->
+        <!--<input class="form-control mr-sm-2" type="text" placeholder="Search">-->
+        <!--<button class="btn btn-secondary my-2 my-sm-0" type="submit">Search</button>-->
+        <!--</form>-->
+    </div>
+</nav>
+<div class="container" style="max-width: none">
+    <div class="outer-container row" id = "row-main">
+        <div class="HomePage-experiment-list-container col-md-2" id="sidebar">
+            <div>
+                <div class="collapsed-expander-container">
+                    <div class="experiment-list-outer-container">
+                        <div><h1 class="experiments-header" style="padding-right: 80px">Trials</h1>
+                            <div class="collapser-container" onclick="collapse_experiment_list()">
+                                <i class="collapser fa fa-chevron-left login-icon"></i>
+                            </div>
+                            <div class="experiment-list-container" style="height: 800px;">
+                                <ul class="nav nav-pills flex-column">
+                                    {% for trial in recent_trials %}
+                                        <tr>
+                                            <li class="nav-item">
+                                                <a class="nav-link" href="trial?job_id={{ trial.job_id }}&trial_id={{ trial.trial_id }}">Trial-{{ trial.trial_id }}</a>
+                                            </li>
+                                        </tr>
+                                    {% endfor %}
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="experiment-view-container col-md-8" id="content">
+            <div class="ExperimentPage">
+                <div>
+                    <div class="ExperimentView">
+                        <h1>Trial-{{ current_trial.trial_id }}</h1>
+                        <hr class="divider"/>
+                        <div class="metadata" style="max-width: 900px;">
+                            <span class="metadata">
+                                <span class="metadata-header">Status:</span>
+                                {{ current_trial.trial_status }}
+                            </span>
+                            <br>
+                            <span class="metadata" style="line-height: 40px">
+                                <span class="metadata-header">Start Time:</span>
+                                {{ current_trial.start_time }}
+                            </span>
+                            <span class="metadata" style="line-height: 40px">
+                                <span class="metadata-header">End Time:</span>
+                                {{ current_trial.end_time }}
+                            </span>
+                            <br>
+                        </div>
+                        <div class="metadata" style="margin-top: 20px">
+                                <button disabled="" type="button" class="btn btn-default"
+                                        style="width: 80px; max-height: 35px; margin-right: 10px">Kill</button>
+                                <a href="/job?job_id={{ job_id }}">
+                                    <button type="button" class="btn-primary btn btn-default"
+                                            style="width: 80px; max-height: 35px; margin-right: 20px">Return</button>
+                                </a>
+                        </div>
+                        <hr class="divider"/>
+                        <div class="ExperimentView-runs">
+                            <table class="table table-hover"
+                                   id="trial_table"
+                                   data-toggle="table"
+                                   data-show-columns="true"
+                                   data-show-export="true"
+                                   data-minimum-count-columns="2"
+                                   data-id-field="id"
+                                   data-show-pagination-switch="true"
+                                   data-page-list="[10, 25, 50, 100, ALL]"
+                                   data-pagination="true"
+                                   style="border: none; max-height: 800px">
+                                <thead>
+                                <tr class="active">
+                                    <th class="bottom-row" data-field="Trial ID" data-sortable="true">Trial Id</th>
+                                    <th class="bottom-row" data-field="Timesteps" data-sortable="true">Timesteps</th>
+                                    <th class="bottom-row" data-field="Info" data-sortable="true">Info</th>
+                                    <th class="bottom-row" data-field="Episode Reward Mean" data-sortable="true">Episode Reward Mean</th>
+                                    <th class="bottom-row" data-field="Episodes Total" data-sortable="true">Episodes Total</th>
+                                    <th class="bottom-row" data-field="Mean Accuracy" data-sortable="true">Mean Accuracy</th>
+                                    <th class="bottom-row" data-field="Mean Loss" data-sortable="true">Mean Loss</th>
+                                    <th class="bottom-row" data-field="Time This Iter" data-sortable="true">Time This Iter</th>
+                                    <th class="bottom-row" data-field="Date" data-sortable="true">Date</th>
+                                    <th class="bottom-row" data-field="Hostname" data-sortable="true">Hostname</th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                {% for result in recent_results %}
+                                    <tr>
+                                        <td>{{ result.trial_id }}</td>
+                                        <td>{{ result.timesteps_total }}</td>
+                                        <td>{{ result.info }}</td>
+                                        <td>{{ result.episode_reward_mean }}</td>
+                                        <td>{{ result.episodes_total }}</td>
+                                        <td>{{ result.mean_accuracy }}</td>
+                                        <td>{{ result.loss }}</td>
+                                        <td>{{ result.time_this_iter_s }}</td>
+                                        <td>{{ result.date }}</td>
+                                        <td>{{ result.hostname }}</td>
+                                    </tr>
+                                {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="experiment-view-right"></div>
     </div>
 </div>
 </body>
