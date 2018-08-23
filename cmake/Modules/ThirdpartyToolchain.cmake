@@ -96,7 +96,7 @@ find_package(Boost COMPONENTS system filesystem REQUIRED)
 include_directories(${Boost_INCLUDE_DIR})
 
 if(RAY_USE_GLOG)
-  message(STATUS "Start to building glog!")
+  message(STATUS "Starting to build glog")
   set(GLOG_VERSION "0.3.5")
   set(GLOG_CMAKE_CXX_FLAGS ${EP_CXX_FLAGS} "-fPIC")
 

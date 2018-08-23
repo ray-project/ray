@@ -34,12 +34,14 @@ TEST(PrintLogTest, LogTestWithoutInit) {
 }
 
 TEST(PrintLogTest, LogTestWithInit) {
-  RayLog::StartRayLog("LogTestWithInit", RAY_ERROR);
+  // Test empty app name.
+  RayLog::StartRayLog("", RAY_DEBUG);
   PrintLog();
   RayLog::ShutDownRayLog();
 }
 
-TEST(PrintLogTest, LogPerfTest) {
+// This test will output large amount of logs to stderr, should be diabled in travis.
+TEST(LogPerfTest, PerfTest) {
   RayLog::StartRayLog("/fake/path/to/appdire/LogPerfTest", RAY_ERROR, "/tmp/");
   int rounds = 100000;
 

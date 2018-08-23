@@ -7,8 +7,22 @@
 
 #include <cstdlib>
 #include <iostream>
+#include <memory>
 
 #include "ray/util/macros.h"
+
+// Forward declaration for the log provider.
+#ifdef RAY_USE_GLOG
+namespace google {
+class LogMessage;
+}  // namespace google
+typedef google::LogMessage LoggingProvider;
+#else
+namespace ray {
+class CerrLog;
+}  // namespace ray
+typedef ray::CerrLog LoggingProvider;
+#endif
 
 namespace ray {
 // Log levels. LOG ignores them, so their values are abitrary.
@@ -65,7 +79,8 @@ class RayLog : public RayLogBase {
 
   template <typename T>
   RayLogBase &operator<<(const T &t) {
-    if (implement == nullptr) {
+    if (logging_provider_ == nullptr) {
+      // This means the logging level is lower than the threshold.
       RAY_IGNORE_EXPR(t);
     } else {
       this->Stream() << t;
@@ -82,15 +97,12 @@ class RayLog : public RayLogBase {
 
  private:
   std::ostream &Stream();
-  const char *file_name_;
-  int line_number_;
-  int severity_;
-  void *implement;
+  std::unique_ptr<LoggingProvider> logging_provider_;
   static int severity_threshold_;
 };
 
 // This class make RAY_CHECK compilation pass to change the << operator to void.
-// This class if copied from glog.
+// This class is copied from glog.
 class Voidify {
  public:
   Voidify() {}

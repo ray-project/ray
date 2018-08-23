@@ -59,48 +59,52 @@ using namespace google;
 
 // Glog's severity map.
 static int GetMappedSeverity(int severity) {
-  static int severity_map[] = {
-      // glog has no DEBUG level. It has verbose level but hard to adapt here.
-      GLOG_INFO,     // RAY_DEBUG
-      GLOG_INFO,     // RAY_INFO
-      GLOG_WARNING,  // RAY_WARNING
-      GLOG_ERROR,    // RAY_ERROR
-      GLOG_FATAL     // RAY_FATAL
-  };
-  // Ray log level starts from -1 (RAY_DEBUG);
-  return severity_map[severity + 1];
-};
+  switch (severity) {
+  case RAY_DEBUG:
+    return GLOG_INFO;
+  case RAY_INFO:
+    return GLOG_INFO;
+  case RAY_WARNING:
+    return GLOG_WARNING;
+  case RAY_ERROR:
+    return GLOG_ERROR;
+  case RAY_FATAL:
+    return GLOG_FATAL;
+  default:
+    RAY_LOG(FATAL) << "Unsupported logging level: " << severity;
+    // This return won't be hit but compiler needs it.
+    return GLOG_FATAL;
+  }
+}
 
 #endif
 
 void RayLog::StartRayLog(const std::string &app_name, int severity_threshold,
                          const std::string &log_dir) {
 #ifdef RAY_USE_GLOG
-  std::string dir_ends_with_slash = std::string(log_dir);
-  if (!dir_ends_with_slash.empty()) {
-    if (dir_ends_with_slash[dir_ends_with_slash.length() - 1] != '/') {
+  severity_threshold_ = severity_threshold;
+  int mapped_severity_threshold = GetMappedSeverity(severity_threshold_);
+  google::InitGoogleLogging(app_name.c_str());
+  google::SetStderrLogging(mapped_severity_threshold);
+  // Enble log file if log_dir is not empty.
+  if (!log_dir.empty()) {
+    auto dir_ends_with_slash = log_dir;
+    if (log_dir[log_dir.length() - 1] != '/') {
       dir_ends_with_slash += "/";
     }
-  }
-  std::string app_name_str = app_name;
-  if (app_name_str.empty()) {
-    app_name_str = "DefaultApp";
-  } else {
-    // Find the app name without the path.
-    std::string full_name = app_name;
-    size_t pos = full_name.rfind('/');
-    if (pos != full_name.npos && pos + 1 < full_name.length()) {
-      app_name_str = full_name.substr(pos + 1);
+    auto app_name_without_path = app_name;
+    if (app_name.empty()) {
+      app_name_without_path = "DefaultApp";
+    } else {
+      // Find the app name without the path.
+      size_t pos = app_name.rfind('/');
+      if (pos != app_name.npos && pos + 1 < app_name.length()) {
+        app_name_without_path = app_name.substr(pos + 1);
+      }
     }
+    google::SetLogFilenameExtension(app_name_without_path.c_str());
+    google::SetLogDestination(mapped_severity_threshold, log_dir.c_str());
   }
-  severity_threshold_ = severity_threshold;
-  int mapped_severity_threshold_ = GetMappedSeverity(severity_threshold_);
-  google::InitGoogleLogging(app_name_str.c_str());
-  if (!dir_ends_with_slash.empty()) {
-    google::SetLogFilenameExtension(app_name_str.c_str());
-    google::SetLogDestination(mapped_severity_threshold_, dir_ends_with_slash.c_str());
-  }
-  google::SetStderrLogging(mapped_severity_threshold_);
 #endif
 }
 
@@ -110,38 +114,27 @@ void RayLog::ShutDownRayLog() {
 #endif
 }
 
-RayLog::RayLog(const char *file_name, int line_number, int severity)
-    : file_name_(file_name),
-      line_number_(line_number),
-      severity_(severity),
-      implement(nullptr) {
+RayLog::RayLog(const char *file_name, int line_number, int severity) {
 #ifdef RAY_USE_GLOG
   // glog does not have DEBUG level, we can handle it here.
-  if (severity_ >= severity_threshold_) {
-    implement =
-        new google::LogMessage(file_name_, line_number_, GetMappedSeverity(severity_));
+  if (severity >= severity_threshold_) {
+    logging_provider_.reset(
+        new google::LogMessage(file_name, line_number, GetMappedSeverity(severity)));
   }
 #else
-  implement = new CerrLog(severity_);
-  *reinterpret_cast<CerrLog *>(implement) << file_name_ << ":" << line_number_ << ": ";
+  logging_provider_.reset(new CerrLog(severity));
+  *logging_provider_ << file_name << ":" << line_number << ": ";
 #endif
 }
 
 std::ostream &RayLog::Stream() {
 #ifdef RAY_USE_GLOG
-  return reinterpret_cast<google::LogMessage *>(implement)->stream();
+  return logging_provider_->stream();
 #else
-  return reinterpret_cast<CerrLog *>(implement)->Stream();
+  return logging_provider_->Stream();
 #endif
 }
 
-RayLog::~RayLog() {
-#ifdef RAY_USE_GLOG
-  delete reinterpret_cast<google::LogMessage *>(implement);
-#else
-  delete reinterpret_cast<CerrLog *>(implement);
-#endif
-  implement = nullptr;
-}
+RayLog::~RayLog() { logging_provider_.reset(); }
 
 }  // namespace ray
