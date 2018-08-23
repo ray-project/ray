@@ -249,14 +249,12 @@ public class RayNativeRuntime extends RayRuntime {
     UniqueID cursorId;
 
     RayFunc2<byte[], String, byte[]> createActorLambda = RayNativeRuntime::createActorInActor;
-    cursorId = worker.rpcCreateActor(
+    cursorId = worker.createActor(
         createTaskId,
         actorId,
-        RayFunc2.class,
         createActorLambda,
-        1,
         new Object[]{actorId.getBytes(), cls.getName()}
-    ).getObjs()[0].getId();
+    ).getId();
     actor.setTaskCursor(cursorId);
     return actor;
   }

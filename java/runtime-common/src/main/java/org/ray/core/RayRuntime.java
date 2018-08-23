@@ -13,7 +13,6 @@ import org.apache.commons.lang3.tuple.Pair;
 import org.ray.api.Ray;
 import org.ray.api.RayApi;
 import org.ray.api.RayObject;
-import org.ray.api.RayObjects;
 import org.ray.api.UniqueID;
 import org.ray.api.WaitResult;
 import org.ray.api.funcs.RayFunc;
@@ -263,9 +262,8 @@ public abstract class RayRuntime implements RayApi {
   }
 
   @Override
-  public RayObjects call(UniqueID taskId, Class<?> funcCls, RayFunc lambda, int returnCount,
-      Object... args) {
-    return worker.rpc(taskId, funcCls, lambda, returnCount, args);
+  public RayObject call(RayFunc func, Object... args) {
+    return worker.submit(func, args);
   }
 
   private <T> List<T> doGet(List<UniqueID> objectIds, boolean isMetadata)

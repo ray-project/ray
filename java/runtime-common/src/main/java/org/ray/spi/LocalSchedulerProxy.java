@@ -1,10 +1,8 @@
 package org.ray.spi;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import org.ray.api.RayObject;
-import org.ray.api.RayObjects;
 import org.ray.api.UniqueID;
 import org.ray.api.WaitResult;
 import org.ray.core.ArgumentsBuilder;
@@ -28,31 +26,35 @@ public class LocalSchedulerProxy {
     this.scheduler = scheduler;
   }
 
-  public RayObjects submit(UniqueID taskId, RayInvocation invocation, int returnCount,
-                           boolean multiReturn) {
-    UniqueID[] returnIds = buildReturnIds(taskId, returnCount, multiReturn);
+  public RayObject submit(UniqueID taskId, RayInvocation invocation) {
+    UniqueID[] returnIds = genReturnIds(taskId, 1);
     this.doSubmit(invocation, taskId, returnIds, UniqueID.nil);
-    return new RayObjects(returnIds);
+    return new RayObject(returnIds[0]);
   }
 
-  public RayObjects submit(UniqueID taskId, UniqueID createActorId, RayInvocation invocation,
-                           int returnCount, boolean multiReturn) {
-    UniqueID[] returnIds = buildReturnIds(taskId, returnCount, multiReturn);
+  public RayObject submitActorTask(UniqueID taskId, RayInvocation invocation) {
+    // add one for the dummy return ID
+    UniqueID[] returnIds = genReturnIds(taskId, 2);
+    this.doSubmit(invocation, taskId, returnIds, UniqueID.nil);
+    return new RayObject(returnIds[0]);
+  }
+
+  public RayObject submit(UniqueID taskId, UniqueID createActorId, RayInvocation invocation) {
+    UniqueID[] returnIds = genReturnIds(taskId, 1);
     this.doSubmit(invocation, taskId, returnIds, createActorId);
-    return new RayObjects(returnIds);
+    return new RayObject(returnIds[0]);
   }
 
-  // build Object IDs of return values.
-  private UniqueID[] buildReturnIds(UniqueID taskId, int returnCount, boolean multiReturn) {
-    UniqueID[] returnIds = new UniqueID[returnCount];
-    for (int k = 0; k < returnCount; k++) {
-      returnIds[k] = UniqueIdHelper.taskComputeReturnId(taskId, k, multiReturn);
+  // generate the return ids of a task.
+  private UniqueID[] genReturnIds(UniqueID taskId, int numReturns) {
+    UniqueID[] ret = new UniqueID[numReturns];
+    for (int i = 0; i < numReturns; i++) {
+      ret[i] = UniqueIdHelper.taskComputeReturnId(taskId, i, false);
     }
-    return returnIds;
+    return ret;
   }
 
-  private void doSubmit(RayInvocation invocation, UniqueID taskId,
-                        UniqueID[] returnIds, UniqueID createActorId) {
+  private void doSubmit(RayInvocation invocation, UniqueID taskId, UniqueID[] returnIds, UniqueID createActorId) {
 
     final TaskSpec current = WorkerContext.currentTask();
     TaskSpec task = new TaskSpec();
@@ -72,12 +74,6 @@ public class LocalSchedulerProxy {
     task.resources = ResourceUtil
                          .getResourcesMapFromArray(invocation.getRemoteAnnotation().resources());
 
-    //WorkerContext.onSubmitTask();
-    RayLog.core.info(
-        "Task " + taskId + " submitted, functionId = " + task.functionId + " actorId = "
-            + task.actorId + ", driverId = " + task.driverId + ", return_ids = " + Arrays
-            .toString(returnIds) + ", currentTask " + WorkerContext.currentTask().taskId
-            + " cursorId = " + task.cursorId);
     scheduler.submitTask(task);
   }
 

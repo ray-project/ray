@@ -37,10 +37,7 @@ public class RpcGenerator extends BaseGenerator {
       genericTypes += "T" + i + ", ";
       callList += ", t" + i;
     }
-    String body = String.format(
-        "return Ray.internal().call(null, %s.class, f, 1%s).objs[0];",
-        funcClass, callList
-    );
+    String body = String.format("return Ray.internal().call(f%s);", callList);
     for (String param : generateParameters(numParameters)) {
       indents(1);
       newLine(String.format(
