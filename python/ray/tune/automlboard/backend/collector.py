@@ -14,14 +14,8 @@ from ray.tune.automlboard.common.utils import parse_json, \
     parse_multiple_json, timestamp2date
 from ray.tune.automlboard.models.models import JobRecord, \
     TrialRecord, ResultRecord
-from ray.tune.result import DEFAULT_RESULTS_DIR
-
-JOB_META_FILE = "job_status.json"
-
-EXPR_PARARM_FILE = "params.json"
-EXPR_PROGRESS_FILE = "progress.csv"
-EXPR_RESULT_FILE = "result.json"
-EXPR_META_FILE = "trial_status.json"
+from ray.tune.result import DEFAULT_RESULTS_DIR, JOB_META_FILE, \
+    EXPR_PARARM_FILE, EXPR_RESULT_FILE, EXPR_META_FILE
 
 
 class CollectorService(object):
