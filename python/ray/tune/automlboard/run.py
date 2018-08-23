@@ -1,6 +1,6 @@
-#!/usr/bin/env python
-# Author: Rujie Jiang rujie.jrj@antfin.com
-# Date: Tue May 15 11:46:20 2018
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
 
 import os
 import re
