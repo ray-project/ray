@@ -136,7 +136,7 @@ if __name__ == "__main__":
         default="info",
         choices=['debug', 'info', 'warning', 'error', 'critical'],
         help="The logging level threshold, choices=['debug', 'info', "
-             "'warning', 'error', 'critical'], default='info'")
+        "'warning', 'error', 'critical'], default='info'")
     parser.add_argument(
         "--logging-format",
         required=False,

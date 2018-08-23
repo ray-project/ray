@@ -155,9 +155,8 @@ def cli():
     required=False,
     default="info",
     type=str,
-    choices=['debug', 'info', 'warning', 'error', 'critical'],
     help="The logging level threshold, choices=['debug', 'info', 'warning',"
-         " 'error', 'critical'], default='info'")
+    " 'error', 'critical'], default='info'")
 @click.option(
     "--logging-format",
     required=False,
