@@ -10,6 +10,7 @@ import pickle
 
 import tensorflow as tf
 from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
+from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.utils import deep_update, merge_dicts
 from ray.tune.registry import ENV_CREATOR, _global_registry
 from ray.tune.trainable import Trainable
@@ -187,10 +188,11 @@ class Agent(Trainable):
     def train(self):
         """Overrides super.train to synchronize global vars."""
 
-        self.global_vars["timestep"] = self.optimizer.num_steps_sampled
-        if isinstance(self.local_evaluator, PolicyEvaluator):
-            self.local_evaluator.set_global_vars(self.global_vars)
-            for ev in self.remote_evaluators:
+        if hasattr(self, "optimizer") and isinstance(self.optimizer,
+                                                     PolicyOptimizer):
+            self.global_vars["timestep"] = self.optimizer.num_steps_sampled
+            self.optimizer.local_evaluator.set_global_vars(self.global_vars)
+            for ev in self.optimizer.remote_evaluators:
                 ev.set_global_vars.remote(self.global_vars)
 
         return Trainable.train(self)
