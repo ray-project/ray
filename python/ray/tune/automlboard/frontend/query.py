@@ -11,8 +11,7 @@ import json
 
 
 def query_job(request):
-    """
-    Rest API to query the job info, with the given job_id.
+    """Rest API to query the job info, with the given job_id.
 
     The url pattern should be like this:
 
@@ -72,8 +71,7 @@ def query_job(request):
 
 
 def query_trial(request):
-    """
-    Rest API to query the trial info, with the given trial_id.
+    """Rest API to query the trial info, with the given trial_id.
 
     The url pattern should be like this:
 
