@@ -12,7 +12,7 @@ import javax.xml.bind.DatatypeConverter;
 public class UniqueID implements Serializable {
 
   public static final int LENGTH = 20;
-  public static final UniqueID NIL = genNilInternal();
+  public static final UniqueID NIL = genNil();
   private static final long serialVersionUID = 8588849129675565761L;
   private byte[] id;
 
@@ -29,18 +29,14 @@ public class UniqueID implements Serializable {
   }
 
   public static UniqueID genNil() {
-    return NIL.copy();
+    byte[] b = new byte[LENGTH];
+    Arrays.fill(b, (byte) 0xFF);
+    return new UniqueID(b);
   }
 
   public static UniqueID randomId() {
     byte[] b = new byte[LENGTH];
     new Random().nextBytes(b);
-    return new UniqueID(b);
-  }
-
-  private static UniqueID genNilInternal() {
-    byte[] b = new byte[LENGTH];
-    Arrays.fill(b, (byte) 0xFF);
     return new UniqueID(b);
   }
 
