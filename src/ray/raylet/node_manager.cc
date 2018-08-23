@@ -546,7 +546,7 @@ void NodeManager::ProcessClientMessage(
     std::unordered_map<ClientID, SchedulingResources> local_resource_map(
         {{local_client_id, cluster_resource_map_[local_client_id]}});
     // Invoke the scheduling policy only on local resources.
-    ScheduleTasks(local_resource_map);
+    // ScheduleTasks(local_resource_map);
     // Call task dispatch to assign work to the new worker.
     DispatchTasks();
 
@@ -616,6 +616,7 @@ void NodeManager::ProcessClientMessage(
       cluster_resource_map_[client_id].Release(lifetime_resources.ToResourceSet());
       worker->ResetLifetimeResourceIds();
 
+#if 0
       // Try to dispatch more tasks since the blocked worker released some
       // resources.
       const ClientID &local_client_id = gcs_client_->client_table().GetLocalClientId();
@@ -625,6 +626,7 @@ void NodeManager::ProcessClientMessage(
           {{local_client_id, cluster_resource_map_[local_client_id]}});
       // Invoke the scheduling policy only on local resources.
       ScheduleTasks(local_resource_map);
+#endif
       // Since some resources may have been released, we can try to dispatch more tasks.
       DispatchTasks();
     } else {
@@ -1021,6 +1023,7 @@ void NodeManager::HandleWorkerBlocked(std::shared_ptr<Worker> worker) {
   local_queues_.QueueBlockedTasks({task});
   worker->MarkBlocked();
 
+#if 0
   // Try to dispatch more tasks since the blocked worker released some
   // resources.
   const ClientID &local_client_id = gcs_client_->client_table().GetLocalClientId();
@@ -1030,6 +1033,7 @@ void NodeManager::HandleWorkerBlocked(std::shared_ptr<Worker> worker) {
       {{local_client_id, cluster_resource_map_[local_client_id]}});
   // Invoke the scheduling policy only on local resources.
   ScheduleTasks(local_resource_map);
+#endif
   DispatchTasks();
 }
 
