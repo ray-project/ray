@@ -1,7 +1,5 @@
 package org.ray.api;
 
-import org.omg.CORBA.PUBLIC_MEMBER;
-
 import java.io.Serializable;
 import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
@@ -14,24 +12,28 @@ import java.util.Random;
 public class UniqueID implements Serializable {
 
   public static final int LENGTH = 20;
-  public static final UniqueID nil = genNil();
+  public static final UniqueID nil = genNilInternal();
   private static final long serialVersionUID = 8588849129675565761L;
   byte[] id;
 
-  public static UniqueID fromString(String optionValue) {
-    assert (optionValue.length() == 2 * LENGTH);
+  public static UniqueID fromString(String hex) {
+    assert (hex.length() == 2 * LENGTH);
     int j = 0;
 
     byte[] id = new byte[LENGTH];
     for (int i = 0; i < LENGTH; i++) {
-      char c1 = optionValue.charAt(j++);
-      char c2 = optionValue.charAt(j++);
+      char c1 = hex.charAt(j++);
+      char c2 = hex.charAt(j++);
       int first = c1 <= '9' ? (c1 - '0') : (c1 - 'a' + 0xa);
       int second = c2 <= '9' ? (c2 - '0') : (c2 - 'a' + 0xa);
       id[i] = (byte) (first * 16 + second);
     }
 
     return new UniqueID(id);
+  }
+
+  public static UniqueID fromUniqueID(UniqueID id) {
+    return new UniqueID(id.id);
   }
 
   public static UniqueID fromByteBuffer(ByteBuffer bb) {
@@ -42,11 +44,17 @@ public class UniqueID implements Serializable {
     return new UniqueID(id);
   }
 
-  public UniqueID(byte[] id) {
-    this.id = id;
+  public static UniqueID genNil() {
+    return UniqueID.fromUniqueID(nil);
   }
 
-  public static UniqueID genNil() {
+  public static UniqueID randomId() {
+    byte[] b = new byte[LENGTH];
+    new Random().nextBytes(b);
+    return new UniqueID(b);
+  }
+
+  private static UniqueID genNilInternal() {
     byte[] b = new byte[LENGTH];
     for (int i = 0; i < b.length; i++) {
       b[i] = (byte) 0xFF;
@@ -55,10 +63,8 @@ public class UniqueID implements Serializable {
     return new UniqueID(b);
   }
 
-  public static UniqueID randomId() {
-    byte[] b = new byte[LENGTH];
-    new Random().nextBytes(b);
-    return new UniqueID(b);
+  public UniqueID(byte[] id) {
+    this.id = id;
   }
 
   public byte[] getBytes() {
