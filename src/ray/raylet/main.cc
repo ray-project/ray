@@ -6,6 +6,7 @@
 
 #ifndef RAYLET_TEST
 int main(int argc, char *argv[]) {
+  RayLog::StartRayLog(argv[0], RAY_INFO);
   RAY_CHECK(argc == 10);
 
   const std::string raylet_socket_name = std::string(argv[1]);
@@ -104,5 +105,6 @@ int main(int argc, char *argv[]) {
   signals.async_wait(handler);
 
   main_service.run();
+  RayLog::ShutDownRayLog();
 }
 #endif
