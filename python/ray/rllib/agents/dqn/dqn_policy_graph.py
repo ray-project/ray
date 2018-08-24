@@ -92,6 +92,12 @@ class QNetwork(object):
         return tf.sign(x) * tf.sqrt(tf.abs(x))
 
     def noisy_layer(self, prefix, action_in, out_size, sigma0, non_linear=True):
+        """
+        a common dense layer: y = w^{T}x + b
+        a noisy layer: y = (w + \epsilon_w*\sigma_w)^{T}x + (b+\epsilon_b*\sigma_b)
+        where \epsilon are random variables sampled from factorized normal distributions
+        and \sigma are trainable variables which are expected to vanish along the training procedure
+        """
         in_size = int(action_in.shape[1])
 
         epsilon_in = tf.random_normal(shape=[in_size])
@@ -171,6 +177,7 @@ class QLoss(object):
 
             if num_atoms > 1:
                 # Distributional Q-learning which corresponds to an entropy loss
+
                 z = tf.range(num_atoms, dtype=tf.float32)
                 z = v_min + z*(v_max-v_min)/float(num_atoms-1)
 
@@ -178,9 +185,11 @@ class QLoss(object):
                 r_tau = tf.expand_dims(rewards, -1) + gamma**n_step * tf.expand_dims(1.0-done_mask, -1) * tf.expand_dims(z, 0)
                 r_tau = tf.clip_by_value(r_tau, v_min, v_max)
                 b = (r_tau - v_min) / ((v_max-v_min) / float(num_atoms-1))
-                # b = tf.clip_by_value(b, 1e-7, num_atoms-1.0-1e-7)
                 l = tf.floor(b)
                 u = tf.ceil(b)
+                # indespensable judgement which is missed in most implementations
+                # when b happens to be an integer, l == u, so pr_j(s', a*) will be discarded
+                # because (u-b) == (b-l) == 0
                 floor_equal_ceil = tf.to_float(tf.less(u-l, 0.5))
 
                 l_project = tf.one_hot(
@@ -195,6 +204,8 @@ class QLoss(object):
                 mu_delta = tf.reduce_sum(u_project*tf.expand_dims(mu_delta, -1), axis=1)
                 m = ml_delta + mu_delta
 
+                # Rainbow paper claims that using this cross entropy loss for priority
+                # is robust and insensitive to `prioritized_replay_alpha`
                 self.td_error = tf.nn.softmax_cross_entropy_with_logits(
                     labels=m, logits=q_logits_t_selected)
                 self.loss = tf.reduce_mean(self.td_error * importance_weights)
