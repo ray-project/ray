@@ -7,6 +7,7 @@ import os
 import time
 
 import ray
+from ray.rllib.agents.a3c.a3c_tf_policy_graph import A3CPolicyGraph
 from ray.rllib.agents.agent import Agent, with_common_config
 from ray.rllib.optimizers import AsyncGradientsOptimizer
 from ray.rllib.utils import FilterManager, merge_dicts
@@ -23,14 +24,14 @@ DEFAULT_CONFIG = with_common_config({
     "grad_clip": 40.0,
     # Learning rate
     "lr": 0.0001,
+    # Learning rate schedule
+    "lr_schedule": None,
     # Value Function Loss coefficient
     "vf_loss_coeff": 0.5,
     # Entropy coefficient
     "entropy_coeff": -0.01,
     # Whether to place workers on GPUs
     "use_gpu_for_workers": False,
-    # Whether to emit extra summary stats
-    "summarize": False,
     # Min time per iteration
     "min_iter_time_s": 5,
     # Workers sample async. Note that this increases the effective
@@ -67,6 +68,7 @@ class A3CAgent(Agent):
 
     _agent_name = "A3C"
     _default_config = DEFAULT_CONFIG
+    _policy_graph = A3CPolicyGraph
 
     @classmethod
     def default_resource_request(cls, config):
@@ -83,8 +85,7 @@ class A3CAgent(Agent):
                 A3CTorchPolicyGraph
             policy_cls = A3CTorchPolicyGraph
         else:
-            from ray.rllib.agents.a3c.a3c_tf_policy_graph import A3CPolicyGraph
-            policy_cls = A3CPolicyGraph
+            policy_cls = self._policy_graph
 
         self.local_evaluator = self.make_local_evaluator(
             self.env_creator, policy_cls)

@@ -7,8 +7,8 @@ import math
 import copy
 
 from ray.tune.error import TuneError
-from ray.tune.trial import Trial
-from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
+from ray.tune.trial import Trial, Checkpoint
+from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.suggest.variant_generator import format_vars
 
 # Parameters are transferred from the top PBT_QUANTILE fraction of trials to
@@ -187,7 +187,8 @@ class PopulationBasedTraining(FIFOScheduler):
         lower_quantile, upper_quantile = self._quantiles()
 
         if trial in upper_quantile:
-            state.last_checkpoint = trial.checkpoint(to_object_store=True)
+            state.last_checkpoint = trial_runner.trial_executor.save(
+                trial, Checkpoint.MEMORY)
             self._num_checkpoints += 1
         else:
             state.last_checkpoint = None  # not a top trial
@@ -195,7 +196,7 @@ class PopulationBasedTraining(FIFOScheduler):
         if trial in lower_quantile:
             trial_to_clone = random.choice(upper_quantile)
             assert trial is not trial_to_clone
-            self._exploit(trial, trial_to_clone)
+            self._exploit(trial_runner.trial_executor, trial, trial_to_clone)
 
         for trial in trial_runner.get_trials():
             if trial.status in [Trial.PENDING, Trial.PAUSED]:
@@ -203,7 +204,7 @@ class PopulationBasedTraining(FIFOScheduler):
 
         return TrialScheduler.CONTINUE
 
-    def _exploit(self, trial, trial_to_clone):
+    def _exploit(self, trial_executor, trial, trial_to_clone):
         """Transfers perturbed state from trial_to_clone -> trial."""
 
         trial_state = self._trial_state[trial]
@@ -220,11 +221,12 @@ class PopulationBasedTraining(FIFOScheduler):
                   trial_state.last_score))
         # TODO(ekl) restarting the trial is expensive. We should implement a
         # lighter way reset() method that can alter the trial config.
-        trial.stop(stop_logger=False)
+        trial_executor.stop_trial(trial, stop_logger=False)
         trial.config = new_config
         trial.experiment_tag = make_experiment_tag(
             trial_state.orig_tag, new_config, self._hyperparam_mutations)
-        trial.start(new_state.last_checkpoint)
+        trial_executor.start_trial(
+            trial, Checkpoint.from_object(new_state.last_checkpoint))
         self._num_perturbations += 1
         # Transfer over the last perturbation time as well
         trial_state.last_perturbation_time = new_state.last_perturbation_time
