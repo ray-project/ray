@@ -153,6 +153,8 @@ class NodeManager {
   void HandleDriverTableUpdate(const ClientID &id,
                                const std::vector<DriverTableDataT> &driver_data);
 
+  bool CheckDependencyManagerInvariant() const;
+
   boost::asio::io_service &io_service_;
   ObjectManager &object_manager_;
   /// A Plasma object store client. This is used exclusively for creating new

@@ -204,6 +204,15 @@ void TaskDependencyManager::UnsubscribeDependencies(const TaskID &task_id) {
   }
 }
 
+std::vector<TaskID> TaskDependencyManager::GetPendingTasks() const {
+  std::vector<TaskID> keys;
+  keys.reserve(pending_tasks_.size());
+  for (const auto &id_task_pair : pending_tasks_) {
+    keys.push_back(id_task_pair.first);
+  }
+  return keys;
+}
+
 void TaskDependencyManager::TaskPending(const Task &task) {
   TaskID task_id = task.GetTaskSpecification().TaskId();
 

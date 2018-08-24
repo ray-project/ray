@@ -221,6 +221,9 @@ void SchedulingQueue::MoveTasks(std::unordered_set<TaskID> &task_ids, TaskState 
   case TaskState::BLOCKED:
     RemoveTasksFromQueue(blocked_tasks_, task_ids, removed_tasks);
     break;
+  case TaskState::INFEASIBLE:
+    RemoveTasksFromQueue(infeasible_tasks_, task_ids, removed_tasks);
+    break;
   default:
     RAY_LOG(FATAL) << "Attempting to move tasks from unrecognized state "
                    << static_cast<std::underlying_type<TaskState>::type>(src_state);

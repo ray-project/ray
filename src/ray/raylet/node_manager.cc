@@ -279,6 +279,7 @@ void NodeManager::Heartbeat() {
     RAY_LOG(INFO) << "is redis error: " << status.IsRedisError();
   }
   RAY_CHECK_OK(status);
+  RAY_CHECK(CheckDependencyManagerInvariant());
 
   // Reset the timer.
   heartbeat_timer_.expires_from_now(heartbeat_period_);
@@ -865,13 +866,32 @@ void NodeManager::ScheduleTasks(
   for (const auto &task : local_queues_.GetPlaceableTasks()) {
     task_dependency_manager_.TaskPending(task);
     move_task_set.insert(task.GetTaskSpecification().TaskId());
+    // Assert that this placeable task is not feasible locally (necessary but not
+    // sufficient).
+    RAY_CHECK(!task.GetTaskSpecification().GetRequiredResources().IsSubset(
+        cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].GetTotalResources()
+    ));
   }
+  RAY_CHECK(CheckDependencyManagerInvariant());
 
   // Assumption: all remaining placeable tasks are infeasible and are moved to the
   // infeasible task queue. Infeasible task queue is checked when new nodes join.
   local_queues_.MoveTasks(move_task_set, TaskState::PLACEABLE, TaskState::INFEASIBLE);
+  RAY_CHECK(CheckDependencyManagerInvariant());
   // Check the invariant that no placeable tasks remain after a call to the policy.
   RAY_CHECK(local_queues_.GetPlaceableTasks().size() == 0);
+}
+
+bool NodeManager::CheckDependencyManagerInvariant() const {
+  std::vector<TaskID> pending_task_ids = task_dependency_manager_.GetPendingTasks();
+  // Assert that each pending task in the task dependency manager is in one of the queues.
+  for (const auto &task_id : pending_task_ids) {
+    if (!local_queues_.HasTask(task_id)) {
+      return false;
+    }
+  }
+  // TODO(atumanov): perform the check in the opposite direction.
+  return true;
 }
 
 void NodeManager::TreatTaskAsFailed(const TaskSpecification &spec) {
@@ -1002,6 +1022,7 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
           << local_queues_.ToString();
     }
   }
+  RAY_CHECK(CheckDependencyManagerInvariant());
 }
 
 void NodeManager::HandleWorkerBlocked(std::shared_ptr<Worker> worker) {
@@ -1089,10 +1110,6 @@ void NodeManager::HandleWorkerUnblocked(std::shared_ptr<Worker> worker) {
 }
 
 void NodeManager::EnqueuePlaceableTask(const Task &task) {
-  // Mark the task as pending. Once the task has finished execution, or once it
-  // has been forwarded to another node, the task must be marked as canceled in
-  // the TaskDependencyManager.
-  task_dependency_manager_.TaskPending(task);
   // TODO(atumanov): add task lookup hashmap and change EnqueuePlaceableTask to take
   // a vector of TaskIDs. Trigger MoveTask internally.
   // Subscribe to the task's dependencies.
@@ -1108,6 +1125,10 @@ void NodeManager::EnqueuePlaceableTask(const Task &task) {
   } else {
     local_queues_.QueueWaitingTasks({task});
   }
+  // Mark the task as pending. Once the task has finished execution, or once it
+  // has been forwarded to another node, the task must be marked as canceled in
+  // the TaskDependencyManager.
+  task_dependency_manager_.TaskPending(task);
 }
 
 void NodeManager::AssignTask(Task &task) {
@@ -1369,8 +1390,17 @@ void NodeManager::HandleObjectMissing(const ObjectID &object_id) {
 
     // Check that remaining tasks that could not be transitioned are running
     // workers or drivers, now blocked in a get.
+    std::cerr << "tasks in the set " << waiting_task_id_set.size() << std::endl;
     local_queues_.FilterState(waiting_task_id_set, TaskState::RUNNING);
     local_queues_.FilterState(waiting_task_id_set, TaskState::DRIVER);
+    // At this point, if the set is not-empty we have a problem.
+    std::cerr << "remaining tasks in the set " << waiting_task_id_set.size() << std::endl;
+    for (const auto &tid : waiting_task_id_set) {
+      std::cerr << " taskid: " << tid.hex() << (local_queues_.HasTask(tid)?"is":"is not")
+                << " in the queues" << std::endl;
+    }
+    RAY_CHECK(CheckDependencyManagerInvariant());
+    local_queues_.FilterState(waiting_task_id_set, TaskState::INFEASIBLE);
     RAY_CHECK(waiting_task_id_set.empty());
     // Moving ready tasks to waiting may have changed the load, making space for placing
     // new tasks locally.
