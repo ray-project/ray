@@ -312,7 +312,6 @@ class ARSAgent(Agent):
             "update_ratio": update_ratio,
             "episodes_this_iter": noisy_lengths.size,
             "episodes_so_far": self.episodes_so_far,
-            "timesteps_this_iter": noisy_lengths.sum(),
             "timesteps_so_far": self.timesteps_so_far,
             "time_elapsed_this_iter": step_tend - step_tstart,
             "time_elapsed": step_tend - self.tstart
