@@ -1278,10 +1278,8 @@ void NodeManager::HandleObjectMissing(const ObjectID &object_id) {
     // Check that remaining tasks that could not be transitioned are running
     // workers or drivers, now blocked in a get.
     local_queues_.FilterState(waiting_task_id_set, TaskState::RUNNING);
-    if (!waiting_task_id_set.empty()) {
-      RAY_CHECK(waiting_task_id_set.size() == 1);
-      RAY_CHECK(waiting_task_id_set.begin()->is_nil());
-    }
+    local_queues_.FilterState(waiting_task_id_set, TaskState::DRIVER);
+    RAY_CHECK(waiting_task_id_set.empty());
   }
 }
 

@@ -83,7 +83,7 @@ class TestObjectManagerBase : public ::testing::Test {
     this->server1.reset();
     this->server2.reset();
 
-    int s = system("killall plasma_store &");
+    int s = system("killall plasma_store_server &");
     ASSERT_TRUE(!s);
 
     std::string cmd_str = test_executable.substr(0, test_executable.find_last_of("/"));

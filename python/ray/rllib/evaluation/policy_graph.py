@@ -174,3 +174,11 @@ class PolicyGraph(object):
             state (obj): Serialized local state.
         """
         self.set_weights(state)
+
+    def on_global_var_update(self, global_vars):
+        """Called on an update to global vars.
+
+        Arguments:
+            global_vars (dict): Global variables broadcast from the driver.
+        """
+        pass

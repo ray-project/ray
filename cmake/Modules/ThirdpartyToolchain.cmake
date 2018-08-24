@@ -94,3 +94,39 @@ endif()
 set(Boost_USE_STATIC_LIBS ON)
 find_package(Boost COMPONENTS system filesystem REQUIRED)
 include_directories(${Boost_INCLUDE_DIR})
+
+if(RAY_USE_GLOG)
+  message(STATUS "Starting to build glog")
+  set(GLOG_VERSION "0.3.5")
+  set(GLOG_CMAKE_CXX_FLAGS ${EP_CXX_FLAGS} "-fPIC")
+
+  set(GLOG_URL "https://github.com/google/glog/archive/v${GLOG_VERSION}.tar.gz")
+  set(GLOG_PREFIX "${CMAKE_CURRENT_BINARY_DIR}/glog_ep-prefix/src/glog_ep")
+  set(GLOG_HOME "${GLOG_PREFIX}")
+  set(GLOG_INCLUDE_DIR "${GLOG_PREFIX}/include")
+  set(GLOG_STATIC_LIB "${GLOG_PREFIX}/lib/libglog.a")
+
+  set(GLOG_CMAKE_ARGS -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+                        -DCMAKE_INSTALL_PREFIX=${GLOG_PREFIX}
+                        -DBUILD_SHARED_LIBS=OFF
+                        -DBUILD_TESTING=OFF
+                        -DWITH_GFLAGS=OFF
+                        -DCMAKE_CXX_FLAGS_${UPPERCASE_BUILD_TYPE}=${GLOG_CMAKE_CXX_FLAGS}
+                        -DCMAKE_C_FLAGS_${UPPERCASE_BUILD_TYPE}=${EP_C_FLAGS}
+                        -DCMAKE_CXX_FLAGS=${GLOG_CMAKE_CXX_FLAGS})
+
+  ExternalProject_Add(glog_ep
+    URL ${GLOG_URL}
+    ${EP_LOG_OPTIONS}
+    BUILD_IN_SOURCE 1
+    BUILD_BYPRODUCTS "${GLOG_STATIC_LIB}"
+    CMAKE_ARGS ${GLOG_CMAKE_ARGS})
+
+  message(STATUS "GLog include dir: ${GLOG_INCLUDE_DIR}")
+  message(STATUS "GLog static library: ${GLOG_STATIC_LIB}")
+  include_directories(SYSTEM ${GLOG_INCLUDE_DIR})
+  ADD_THIRDPARTY_LIB(glog
+    STATIC_LIB ${GLOG_STATIC_LIB})
+
+  add_dependencies(glog glog_ep)
+endif()
