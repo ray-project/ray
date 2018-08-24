@@ -1382,7 +1382,8 @@ class GlobalState(object):
                     num_resources = message.ResourcesAvailableLabelLength()
                     dynamic_resources = {}
                     for i in range(num_resources):
-                        resource_id = decode(message.ResourcesAvailableLabel(i))
+                        resource_id = decode(
+                            message.ResourcesAvailableLabel(i))
                         dynamic_resources[resource_str] = (
                             message.ResourcesAvailableCapacity(i))
 
