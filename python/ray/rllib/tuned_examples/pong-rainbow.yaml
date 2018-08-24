@@ -19,7 +19,7 @@ pong-deterministic-rainbow:
         target_network_update_freq: 500
         prioritized_replay: True
         prioritized_replay_alpha: 0.5
-        beta_annealing_fraction: 1.0
+        beta_annealing_fraction: 0.2
         final_prioritized_replay_beta: 1.0
         n_step: 3
         gpu: True

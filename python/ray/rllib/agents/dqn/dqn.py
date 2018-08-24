@@ -168,6 +168,12 @@ class DQNAgent(Agent):
         else:
             # Hack to workaround https://github.com/ray-project/ray/issues/2541
             self.remote_evaluators = None
+            # Annealing the hyper-parameter beta for prioritized_replay_beta
+            # is used in Rainbow (single machine)
+            del self.config["optimizer"]["schedule_max_timesteps"]
+            del self.config["optimizer"]["beta_annealing_fraction"]
+            del self.config["optimizer"]["final_prioritized_replay_beta"]
+
         self.optimizer = getattr(optimizers, self.config["optimizer_class"])(
             self.local_evaluator, self.remote_evaluators,
             self.config["optimizer"])
