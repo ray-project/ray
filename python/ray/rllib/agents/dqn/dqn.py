@@ -17,7 +17,9 @@ from ray.tune.trial import Resources
 
 OPTIMIZER_SHARED_CONFIGS = [
     "buffer_size", "prioritized_replay", "prioritized_replay_alpha",
-    "prioritized_replay_beta", "prioritized_replay_eps", "sample_batch_size",
+    "prioritized_replay_beta", "schedule_max_timesteps",
+    "beta_annealing_fraction", "final_prioritized_replay_beta",
+    "prioritized_replay_eps", "sample_batch_size",
     "train_batch_size", "learning_starts"
 ]
 
@@ -31,6 +33,8 @@ DEFAULT_CONFIG = with_common_config({
     "v_max": 10.0,
     # Whether to use noisy network
     "noisy": False,
+    # control the initial value of noisy nets
+    "sigma0": 0.5,
     # Whether to use dueling dqn
     "dueling": True,
     # Whether to use double dqn
@@ -67,6 +71,11 @@ DEFAULT_CONFIG = with_common_config({
     "prioritized_replay_alpha": 0.6,
     # Beta parameter for sampling from prioritized replay buffer.
     "prioritized_replay_beta": 0.4,
+    # Fraction of entire training period over which the beta parameter is
+    # annealed
+    "beta_annealing_fraction": 0.2,
+    # Final value of beta
+    "final_prioritized_replay_beta": 0.4,
     # Epsilon to add to the TD errors when updating priorities.
     "prioritized_replay_eps": 1e-6,
     # Whether to LZ4 compress observations
@@ -75,6 +84,8 @@ DEFAULT_CONFIG = with_common_config({
     # === Optimization ===
     # Learning rate for adam optimizer
     "lr": 5e-4,
+    # Adam epsilon hyper parameter
+    "adam_epsilon": 1e-8,
     # If not None, clip gradients during optimization at this value
     "grad_norm_clipping": 40,
     # How many steps of the model to sample before learning starts.
