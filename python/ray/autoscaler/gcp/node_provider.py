@@ -15,8 +15,7 @@ from ray.autoscaler.gcp.config import MAX_POLLS, POLL_INTERVAL
 INSTANCE_NAME_MAX_LEN = 64
 INSTANCE_NAME_UUID_LEN = 8
 
-logger = logging.getLogger("ray.autoscaler")
-logger.setLevel(logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 def wait_for_compute_zone_operation(compute, project_name, operation, zone):

@@ -33,8 +33,7 @@ def key_pair(i, region):
 
 # Suppress excessive connection dropped logs from boto
 logging.getLogger("botocore").setLevel(logging.WARNING)
-logger = logging.getLogger("ray.autoscaler")
-logger.setLevel(logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 def bootstrap_aws(config):
@@ -173,11 +172,11 @@ def _configure_subnet(config):
     subnet_descr = [(s.subnet_id, s.availability_zone) for s in subnets]
     if "SubnetIds" not in config["head_node"]:
         config["head_node"]["SubnetIds"] = subnet_ids
-        logger.debug("SubnetIds not specified for head node, using {}".format(subnet_descr))
+        logger.warning("SubnetIds not specified for head node, using {}".format(subnet_descr))
 
     if "SubnetIds" not in config["worker_nodes"]:
         config["worker_nodes"]["SubnetIds"] = subnet_ids
-        logger.debug("SubnetId not specified for workers, using {}".format(subnet_descr))
+        logger.warning("SubnetId not specified for workers, using {}".format(subnet_descr))
 
     return config
 

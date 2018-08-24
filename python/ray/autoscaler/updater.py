@@ -23,8 +23,7 @@ from ray.autoscaler.tags import TAG_RAY_NODE_STATUS, TAG_RAY_RUNTIME_CONFIG
 NODE_START_WAIT_S = 300
 SSH_CHECK_INTERVAL = 5
 
-logger = logging.getLogger("ray.autoscaler")
-logger.setLevel(logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 def pretty_cmd(cmd_str):
@@ -66,7 +65,6 @@ class NodeUpdater(object):
             handler = logging.StreamHandler(stream=self.logfile)
             handler.setLevel(logging.INFO)
             self.logger.addHandler(handler)
-
             self.output_name = self.logfile.name
             self.stdout = self.logfile
             self.stderr = self.logfile

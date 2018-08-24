@@ -24,8 +24,7 @@ from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_LAUNCH_CONFIG, \
     TAG_RAY_NODE_NAME
 from ray.autoscaler.updater import NodeUpdaterProcess
 
-logger = logging.getLogger("ray.autoscaler")
-logger.setLevel(logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 def create_or_update_cluster(config_file, override_min_workers,
@@ -82,13 +81,13 @@ def teardown_cluster(config_file, yes, workers_only, override_cluster_name):
 
     if not workers_only:
         for node in provider.nodes({TAG_RAY_NODE_TYPE: "head"}):
-            print("Terminating head node {}".format(node))
+            logger.warning("Terminating head node {}".format(node))
             provider.terminate_node(node)
 
     nodes = provider.nodes({TAG_RAY_NODE_TYPE: "worker"})
     while nodes:
         for node in nodes:
-            logger.info("Terminating worker {}".format(node))
+            logger.warning("Terminating worker {}".format(node))
             provider.terminate_node(node)
         time.sleep(5)
         nodes = provider.nodes({TAG_RAY_NODE_TYPE: "worker"})

@@ -30,8 +30,7 @@ DEFAULT_SERVICE_ACCOUNT_ROLES = ("roles/storage.objectAdmin",
 MAX_POLLS = 12
 POLL_INTERVAL = 5
 
-logger = logging.getLogger("ray.autoscaler")
-logger.setLevel(logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 def wait_for_crm_operation(operation):

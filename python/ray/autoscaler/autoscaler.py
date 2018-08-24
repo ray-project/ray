@@ -33,8 +33,7 @@ from ray.autoscaler.tags import (TAG_RAY_LAUNCH_CONFIG, TAG_RAY_RUNTIME_CONFIG,
                                  TAG_RAY_NODE_NAME)
 import ray.services as services
 
-logger = logging.getLogger("ray.autoscaler")
-logger.setLevel(logging.INFO)
+logger = logging.getLogger(__name__)
 
 REQUIRED, OPTIONAL = True, False
 
@@ -155,11 +154,11 @@ class LoadMetrics(object):
         def prune(mapping):
             unwanted = set(mapping) - active_ips
             for unwanted_key in unwanted:
-                logger.info("Removed mapping", unwanted_key,
+                logger.warning("Removed mapping", unwanted_key,
                             mapping[unwanted_key])
                 del mapping[unwanted_key]
             if unwanted:
-                logger.info(
+                logger.warning(
                     "Removed {} stale ip mappings: {} not in {}".format(
                         len(unwanted), unwanted, active_ips))
 
@@ -359,7 +358,7 @@ class StandardAutoscaler(object):
                          "".format(traceback.format_exc()))
             self.num_failures += 1
             if self.num_failures > self.max_failures:
-                logger.error(
+                logger.critical(
                     "*** StandardAutoscaler: Too many errors, abort. ***")
                 raise e
 
