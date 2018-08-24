@@ -38,8 +38,7 @@ class SyncReplayOptimizer(PolicyOptimizer):
               sample_batch_size=4):
 
         self.replay_starts = learning_starts
-        #self.prioritized_replay_beta = prioritized_replay_beta
-        # linearly annealing beta
+        # linearly annealing beta used in Rainbow paper
         self.prioritized_replay_beta = LinearSchedule(
             schedule_timesteps=int(schedule_max_timesteps*beta_annealing_fraction),
             initial_p=prioritized_replay_beta,
