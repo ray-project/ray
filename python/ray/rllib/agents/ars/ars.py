@@ -68,7 +68,11 @@ class SharedNoiseTable(object):
 
 @ray.remote
 class Worker(object):
-    def __init__(self, config, policy_params, env_creator, noise,
+    def __init__(self,
+                 config,
+                 policy_params,
+                 env_creator,
+                 noise,
                  min_task_runtime=0.2):
         self.min_task_runtime = min_task_runtime
         self.config = config
@@ -87,13 +91,16 @@ class Worker(object):
         else:
             self.policy = policies.MLPPolicy(
                 self.sess, self.env.action_space, self.preprocessor,
-                config["observation_filter"],
-                config["fcnet_hiddens"], **policy_params)
+                config["observation_filter"], config["fcnet_hiddens"],
+                **policy_params)
 
     def rollout(self, timestep_limit, add_noise=False):
         rollout_rewards, rollout_length = policies.rollout(
-            self.policy, self.env, timestep_limit=timestep_limit,
-            add_noise=add_noise, offset=self.config['offset'])
+            self.policy,
+            self.env,
+            timestep_limit=timestep_limit,
+            add_noise=add_noise,
+            offset=self.config['offset'])
         return rollout_rewards, rollout_length
 
     def do_rollouts(self, params, timestep_limit=None):
@@ -129,7 +136,8 @@ class Worker(object):
                 noise_indices.append(noise_index)
                 returns.append([rewards_pos.sum(), rewards_neg.sum()])
                 sign_returns.append(
-                    [np.sign(rewards_pos).sum(), np.sign(rewards_neg).sum()])
+                    [np.sign(rewards_pos).sum(),
+                     np.sign(rewards_neg).sum()])
                 lengths.append([lengths_pos, lengths_neg])
 
         return Result(
@@ -153,9 +161,7 @@ class ARSAgent(Agent):
         return Resources(cpu=1, gpu=0, extra_cpu=cf["num_workers"])
 
     def _init(self):
-        policy_params = {
-            "action_noise_std": 0.0
-        }
+        policy_params = {"action_noise_std": 0.0}
 
         # register the linear network
         utils.register_linear_network()
@@ -187,9 +193,9 @@ class ARSAgent(Agent):
         # Create the actors.
         print("Creating actors.")
         self.workers = [
-            Worker.remote(
-                self.config, policy_params, self.env_creator, noise_id)
-            for _ in range(self.config["num_workers"])]
+            Worker.remote(self.config, policy_params, self.env_creator,
+                          noise_id) for _ in range(self.config["num_workers"])
+        ]
 
         self.episodes_so_far = 0
         self.timesteps_so_far = 0
@@ -199,21 +205,20 @@ class ARSAgent(Agent):
         num_episodes, num_timesteps = 0, 0
         results = []
         while num_episodes < min_episodes:
-            print(
-                "Collected {} episodes {} timesteps so far this iter".format(
-                    num_episodes, num_timesteps))
-            rollout_ids = [worker.do_rollouts.remote(theta_id)
-                           for worker in self.workers]
+            print("Collected {} episodes {} timesteps so far this iter".format(
+                num_episodes, num_timesteps))
+            rollout_ids = [
+                worker.do_rollouts.remote(theta_id) for worker in self.workers
+            ]
             # Get the results of the rollouts.
             for result in ray.get(rollout_ids):
                 results.append(result)
                 # Update the number of episodes and the number of timesteps
                 # keeping in mind that result.noisy_lengths is a list of lists,
                 # where the inner lists have length 2.
-                num_episodes += sum(len(pair) for pair
-                                    in result.noisy_lengths)
-                num_timesteps += sum(sum(pair) for pair
-                                     in result.noisy_lengths)
+                num_episodes += sum(len(pair) for pair in result.noisy_lengths)
+                num_timesteps += sum(
+                    sum(pair) for pair in result.noisy_lengths)
         return results, num_episodes, num_timesteps
 
     def _train(self):
@@ -228,8 +233,7 @@ class ARSAgent(Agent):
         # Use the actors to do rollouts, note that we pass in the ID of the
         # policy weights.
         results, num_episodes, num_timesteps = self._collect_results(
-            theta_id,
-            config["num_deltas"])
+            theta_id, config["num_deltas"])
 
         all_noise_indices = []
         all_training_returns = []
@@ -282,9 +286,8 @@ class ARSAgent(Agent):
         # scale the returns by their standard deviation
         if not np.isclose(np.std(noisy_returns), 0.0):
             g /= np.std(noisy_returns)
-        assert (
-                g.shape == (self.policy.num_params,) and
-                g.dtype == np.float32)
+        assert (g.shape == (self.policy.num_params, )
+                and g.dtype == np.float32)
         print('the number of policy params is, ', self.policy.num_params)
         # Compute the new weights theta.
         theta, update_ratio = self.optimizer.update(-g)
@@ -331,13 +334,10 @@ class ARSAgent(Agent):
             w.__ray_terminate__.remote()
 
     def _save(self, checkpoint_dir):
-        checkpoint_path = os.path.join(
-            checkpoint_dir, "checkpoint-{}".format(self.iteration))
+        checkpoint_path = os.path.join(checkpoint_dir,
+                                       "checkpoint-{}".format(self.iteration))
         weights = self.policy.get_weights()
-        objects = [
-            weights,
-            self.episodes_so_far,
-            self.timesteps_so_far]
+        objects = [weights, self.episodes_so_far, self.timesteps_so_far]
         pickle.dump(objects, open(checkpoint_path, "wb"))
         return checkpoint_path
 

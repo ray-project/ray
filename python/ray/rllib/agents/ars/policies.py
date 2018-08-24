@@ -35,8 +35,8 @@ def rollout(policy, env, timestep_limit=None, add_noise=False, offset=0):
         from humanoid
     """
     env_timestep_limit = env.spec.max_episode_steps
-    timestep_limit = (env_timestep_limit if timestep_limit is None
-                      else min(timestep_limit, env_timestep_limit))
+    timestep_limit = (env_timestep_limit if timestep_limit is None else min(
+        timestep_limit, env_timestep_limit))
     rews = []
     t = 0
     observation = env.reset()
@@ -53,38 +53,42 @@ def rollout(policy, env, timestep_limit=None, add_noise=False, offset=0):
 
 
 class GenericPolicy(object):
-    def __init__(self, sess, action_space, preprocessor,
-                 observation_filter, action_noise_std, options={}):
+    def __init__(self,
+                 sess,
+                 action_space,
+                 preprocessor,
+                 observation_filter,
+                 action_noise_std,
+                 options={}):
         self.sess = sess
         self.action_space = action_space
         self.action_noise_std = action_noise_std
         self.preprocessor = preprocessor
-        self.observation_filter = get_filter(
-            observation_filter, self.preprocessor.shape)
-        self.inputs = tf.placeholder(
-            tf.float32, [None] + list(self.preprocessor.shape))
+        self.observation_filter = get_filter(observation_filter,
+                                             self.preprocessor.shape)
+        self.inputs = tf.placeholder(tf.float32,
+                                     [None] + list(self.preprocessor.shape))
 
         # Policy network.
         dist_class, dist_dim = ModelCatalog.get_action_dist(
             self.action_space, dist_type="deterministic")
-        model = ModelCatalog.get_model(self.inputs, dist_dim,
-                                       options=options)
+        model = ModelCatalog.get_model(self.inputs, dist_dim, options=options)
         dist = dist_class(model.outputs)
         self.sampler = dist.sample()
 
         self.variables = ray.experimental.TensorFlowVariables(
             model.outputs, self.sess)
 
-        self.num_params = sum(np.prod(variable.shape.as_list())
-                              for _, variable
-                              in self.variables.variables.items())
+        self.num_params = sum(
+            np.prod(variable.shape.as_list())
+            for _, variable in self.variables.variables.items())
         self.sess.run(tf.global_variables_initializer())
 
     def compute(self, observation, add_noise=False, update=True):
         observation = self.preprocessor.transform(observation)
         observation = self.observation_filter(observation[None], update=update)
-        action = self.sess.run(self.sampler,
-                               feed_dict={self.inputs: observation})
+        action = self.sess.run(
+            self.sampler, feed_dict={self.inputs: observation})
         if add_noise and isinstance(self.action_space, gym.spaces.Box):
             action += np.random.randn(*action.shape) * self.action_noise_std
         return action
@@ -97,18 +101,26 @@ class GenericPolicy(object):
 
 
 class LinearPolicy(GenericPolicy):
-    def __init__(self, sess, action_space, preprocessor,
-                 observation_filter, action_noise_std):
+    def __init__(self, sess, action_space, preprocessor, observation_filter,
+                 action_noise_std):
         options = {"custom_model": "LinearNetwork"}
-        super().__init__(sess, action_space, preprocessor,
-                         observation_filter, action_noise_std,
-                         options=options)
+        super().__init__(
+            sess,
+            action_space,
+            preprocessor,
+            observation_filter,
+            action_noise_std,
+            options=options)
 
 
 class MLPPolicy(GenericPolicy):
-    def __init__(self, sess, action_space, preprocessor,
-                 observation_filter, fcnet_hiddens, action_noise_std):
+    def __init__(self, sess, action_space, preprocessor, observation_filter,
+                 fcnet_hiddens, action_noise_std):
         options = {"fcnet_hiddens": fcnet_hiddens}
-        super().__init__(sess, action_space, preprocessor,
-                         observation_filter, action_noise_std,
-                         options=options)
+        super().__init__(
+            sess,
+            action_space,
+            preprocessor,
+            observation_filter,
+            action_noise_std,
+            options=options)
