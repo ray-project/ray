@@ -19,8 +19,8 @@ OPTIMIZER_SHARED_CONFIGS = [
     "buffer_size", "prioritized_replay", "prioritized_replay_alpha",
     "prioritized_replay_beta", "schedule_max_timesteps",
     "beta_annealing_fraction", "final_prioritized_replay_beta",
-    "prioritized_replay_eps", "sample_batch_size",
-    "train_batch_size", "learning_starts"
+    "prioritized_replay_eps", "sample_batch_size", "train_batch_size",
+    "learning_starts"
 ]
 
 DEFAULT_CONFIG = with_common_config({
