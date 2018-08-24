@@ -1,0 +1,19 @@
+# Runs on a single g3.16xl node
+# See https://github.com/ray-project/rl-experiments for results
+atari-a2c:
+    env:
+        grid_search:
+            - BreakoutNoFrameskip-v4
+            - BeamRiderNoFrameskip-v4
+            - QbertNoFrameskip-v4
+            - SpaceInvadersNoFrameskip-v4
+    run: A2C
+    config:
+        sample_batch_size: 100
+        num_workers: 5
+        num_envs_per_worker: 5
+        gpu: true
+        lr_schedule: [
+            [0, 0.0007],
+            [20000000, 0.000000000001],
+        ]

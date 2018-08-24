@@ -47,6 +47,5 @@ mountaincarcontinuous-ddpg:
         num_workers: 0
         num_gpus_per_worker: 0
         optimizer_class: "SyncReplayOptimizer"
-        optimizer_config: {}
         per_worker_exploration: False
         worker_side_prioritization: False
