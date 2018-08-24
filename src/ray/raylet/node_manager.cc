@@ -1209,6 +1209,7 @@ void NodeManager::AssignTask(Task &task) {
     // worker once one becomes available.
     // (See design_docs/task_states.rst for the state transition diagram.)
     local_queues_.QueueReadyTasks(std::vector<Task>({task}));
+    DispatchTasks();
   }
 }
 
