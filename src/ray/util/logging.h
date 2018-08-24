@@ -65,28 +65,32 @@ class RayLogBase {
  public:
   virtual ~RayLogBase(){};
 
+  virtual bool IsEnabled() const { return false; };
+
   template <typename T>
   RayLogBase &operator<<(const T &t) {
-    RAY_IGNORE_EXPR(t);
+    if (IsEnabled()) {
+      Stream() << t;
+    } else {
+      RAY_IGNORE_EXPR(t);
+    }
     return *this;
   }
+
+ protected:
+  virtual std::ostream &Stream() { return std::cerr; };
 };
 
 class RayLog : public RayLogBase {
  public:
   RayLog(const char *file_name, int line_number, int severity);
+
   virtual ~RayLog();
 
-  template <typename T>
-  RayLogBase &operator<<(const T &t) {
-    if (logging_provider_ == nullptr) {
-      // This means the logging level is lower than the threshold.
-      RAY_IGNORE_EXPR(t);
-    } else {
-      this->Stream() << t;
-    }
-    return *this;
-  }
+  /// Return whether or not logging is enabled.
+  ///
+  /// \return True if logging is enabled and false otherwise.
+  virtual bool IsEnabled() const;
 
   // The init function of ray log for a program which should be called only once.
   // If logDir is empty, the log won't output to file.
@@ -96,9 +100,13 @@ class RayLog : public RayLogBase {
   static void ShutDownRayLog();
 
  private:
-  std::ostream &Stream();
   std::unique_ptr<LoggingProvider> logging_provider_;
+  /// True if log messages should be logged and false if they should be ignored.
+  bool is_enabled_;
   static int severity_threshold_;
+
+ protected:
+  virtual std::ostream &Stream();
 };
 
 // This class make RAY_CHECK compilation pass to change the << operator to void.
