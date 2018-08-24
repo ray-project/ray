@@ -65,9 +65,17 @@ class RayLogBase {
  public:
   virtual ~RayLogBase(){};
 
+  virtual std::ostream &Stream() { return std::cerr; };
+
+  virtual bool IsEnable() { return false; };
+
   template <typename T>
   RayLogBase &operator<<(const T &t) {
-    RAY_IGNORE_EXPR(t);
+    if (IsEnable()) {
+      Stream() << t;
+    } else {
+      RAY_IGNORE_EXPR(t);
+    }
     return *this;
   }
 };
@@ -75,18 +83,12 @@ class RayLogBase {
 class RayLog : public RayLogBase {
  public:
   RayLog(const char *file_name, int line_number, int severity);
+
   virtual ~RayLog();
 
-  template <typename T>
-  RayLogBase &operator<<(const T &t) {
-    if (logging_provider_ == nullptr) {
-      // This means the logging level is lower than the threshold.
-      RAY_IGNORE_EXPR(t);
-    } else {
-      this->Stream() << t;
-    }
-    return *this;
-  }
+  virtual bool IsEnable();
+
+  virtual std::ostream &Stream();
 
   // The init function of ray log for a program which should be called only once.
   // If logDir is empty, the log won't output to file.
@@ -96,8 +98,8 @@ class RayLog : public RayLogBase {
   static void ShutDownRayLog();
 
  private:
-  std::ostream &Stream();
   std::unique_ptr<LoggingProvider> logging_provider_;
+  bool is_enable_;
   static int severity_threshold_;
 };
 

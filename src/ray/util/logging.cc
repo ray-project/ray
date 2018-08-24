@@ -114,13 +114,13 @@ void RayLog::ShutDownRayLog() {
 #endif
 }
 
-RayLog::RayLog(const char *file_name, int line_number, int severity) {
+RayLog::RayLog(const char *file_name, int line_number, int severity)
+    // glog does not have DEBUG level, we can handle it here.
+    : is_enable_(severity >= severity_threshold_) {
 #ifdef RAY_USE_GLOG
-  // glog does not have DEBUG level, we can handle it here.
-  if (severity >= severity_threshold_) {
-    logging_provider_.reset(
-        new google::LogMessage(file_name, line_number, GetMappedSeverity(severity)));
-  }
+  // Stream() is public, make sure the pointer is set.
+  logging_provider_.reset(
+      new google::LogMessage(file_name, line_number, GetMappedSeverity(severity)));
 #else
   logging_provider_.reset(new CerrLog(severity));
   *logging_provider_ << file_name << ":" << line_number << ": ";
@@ -134,6 +134,8 @@ std::ostream &RayLog::Stream() {
   return logging_provider_->Stream();
 #endif
 }
+
+bool RayLog::IsEnable() { return is_enable_; }
 
 RayLog::~RayLog() { logging_provider_.reset(); }
 
