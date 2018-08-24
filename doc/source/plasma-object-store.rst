@@ -21,6 +21,10 @@ huge pages as follows.
   sudo bash -c "echo $gid > /proc/sys/vm/hugetlb_shm_group"
   sudo bash -c "echo 20000 > /proc/sys/vm/nr_hugepages"
 
+**Note:** Once you create the huge pages, they will take up memory which will
+never be freed unless you remove the huge pages. If you run into memory issues,
+that may be the issue.
+
 You need root access to create the file system, but not for running the object
 store.
 
