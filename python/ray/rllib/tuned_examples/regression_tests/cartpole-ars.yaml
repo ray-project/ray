@@ -1,4 +1,3 @@
-# can expect improvement to -140 reward in ~300-500k timesteps
 cartpole-ars:
     env: CartPole-v0
     run: ARS

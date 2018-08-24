@@ -18,7 +18,7 @@ from ray.tune.trial import Resources
 
 from ray.rllib.agents.ars import optimizers
 from ray.rllib.agents.ars import policies
-from ray.rllib.agents.ars import tabular_logger as tlogger
+from ray.rllib.agents.es import tabular_logger as tlogger
 from ray.rllib.agents.ars import utils
 
 Result = namedtuple("Result", [
@@ -304,14 +304,6 @@ class ARSAgent(Agent):
         tlogger.record_tabular("WeightsStd", float(np.std(theta)))
         tlogger.record_tabular("Grad2Norm", float(np.sqrt(np.square(g).sum())))
         tlogger.record_tabular("UpdateRatio", float(update_ratio))
-
-        tlogger.record_tabular("EpisodesThisIter", noisy_lengths.size)
-        tlogger.record_tabular("EpisodesSoFar", self.episodes_so_far)
-        tlogger.record_tabular("TimestepsThisIter", noisy_lengths.sum())
-        tlogger.record_tabular("TimestepsSoFar", self.timesteps_so_far)
-
-        tlogger.record_tabular("TimeElapsedThisIter", step_tend - step_tstart)
-        tlogger.record_tabular("TimeElapsed", step_tend - self.tstart)
         tlogger.dump_tabular()
 
         info = {
