@@ -91,10 +91,9 @@ class NodeUpdater(object):
             if hasattr(e, "cmd"):
                 error_str = "(Exit Status {}) {}".format(
                     e.returncode, pretty_cmd(" ".join(e.cmd)))
-            self.logger.error(
-                "NodeUpdater: Error updating {}"
-                "See {} for remote logs.".format(error_str,
-                                                 self.output_name))
+            self.logger.error("NodeUpdater: Error updating {}"
+                              "See {} for remote logs.".format(
+                                  error_str, self.output_name))
             self.provider.set_node_tags(self.node_id,
                                         {TAG_RAY_NODE_STATUS: "update-failed"})
             if self.logfile is not None:
@@ -107,9 +106,8 @@ class NodeUpdater(object):
                 TAG_RAY_NODE_STATUS: "up-to-date",
                 TAG_RAY_RUNTIME_CONFIG: self.runtime_hash
             })
-        self.logger.info(
-            "NodeUpdater: Applied config {} to node {}".format(
-                self.runtime_hash, self.node_id))
+        self.logger.info("NodeUpdater: Applied config {} to node {}".format(
+            self.runtime_hash, self.node_id))
 
     def do_update(self):
         self.provider.set_node_tags(self.node_id,
@@ -119,8 +117,8 @@ class NodeUpdater(object):
         # Wait for external IP
         while time.time() < deadline and \
                 not self.provider.is_terminated(self.node_id):
-            self.logger.info(
-                "NodeUpdater: Waiting for IP of {}...".format(self.node_id))
+            self.logger.info("NodeUpdater: Waiting for IP of {}...".format(
+                self.node_id))
             self.ssh_ip = self.get_node_ip()
             if self.ssh_ip is not None:
                 break
@@ -159,9 +157,8 @@ class NodeUpdater(object):
         self.provider.set_node_tags(self.node_id,
                                     {TAG_RAY_NODE_STATUS: "syncing-files"})
         for remote_path, local_path in self.file_mounts.items():
-            self.logger.info(
-                "NodeUpdater: Syncing {} to {}...".format(
-                    local_path, remote_path))
+            self.logger.info("NodeUpdater: Syncing {} to {}...".format(
+                local_path, remote_path))
             assert os.path.exists(local_path), local_path
             if os.path.isdir(local_path):
                 if not local_path.endswith("/"):
