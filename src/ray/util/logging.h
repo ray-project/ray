@@ -67,11 +67,11 @@ class RayLogBase {
 
   virtual std::ostream &Stream() { return std::cerr; };
 
-  virtual bool IsEnable() { return false; };
+  virtual bool IsEnabled() { return false; };
 
   template <typename T>
   RayLogBase &operator<<(const T &t) {
-    if (IsEnable()) {
+    if (IsEnabled()) {
       Stream() << t;
     } else {
       RAY_IGNORE_EXPR(t);
@@ -86,7 +86,10 @@ class RayLog : public RayLogBase {
 
   virtual ~RayLog();
 
-  virtual bool IsEnable();
+  /// Return whether or not logging is enabled.
+  ///
+  /// \return True if logging is enabled and false otherwise.
+  virtual bool IsEnabled();
 
   virtual std::ostream &Stream();
 
@@ -99,7 +102,8 @@ class RayLog : public RayLogBase {
 
  private:
   std::unique_ptr<LoggingProvider> logging_provider_;
-  bool is_enable_;
+  /// True if log messages should be logged and false if they should be ignored.
+  bool is_enabled_;
   static int severity_threshold_;
 };
 

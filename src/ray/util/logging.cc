@@ -116,7 +116,7 @@ void RayLog::ShutDownRayLog() {
 
 RayLog::RayLog(const char *file_name, int line_number, int severity)
     // glog does not have DEBUG level, we can handle it here.
-    : is_enable_(severity >= severity_threshold_) {
+    : is_enabled_(severity >= severity_threshold_) {
 #ifdef RAY_USE_GLOG
   // Stream() is public, make sure the pointer is set.
   logging_provider_.reset(
@@ -135,7 +135,7 @@ std::ostream &RayLog::Stream() {
 #endif
 }
 
-bool RayLog::IsEnable() { return is_enable_; }
+bool RayLog::IsEnabled() { return is_enabled_; }
 
 RayLog::~RayLog() { logging_provider_.reset(); }
 
