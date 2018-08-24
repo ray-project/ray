@@ -40,7 +40,8 @@ class SyncReplayOptimizer(PolicyOptimizer):
         self.replay_starts = learning_starts
         # linearly annealing beta used in Rainbow paper
         self.prioritized_replay_beta = LinearSchedule(
-            schedule_timesteps=int(schedule_max_timesteps*beta_annealing_fraction),
+            schedule_timesteps=int(
+                schedule_max_timesteps * beta_annealing_fraction),
             initial_p=prioritized_replay_beta,
             final_p=final_prioritized_replay_beta)
         self.prioritized_replay_eps = prioritized_replay_eps
@@ -130,7 +131,8 @@ class SyncReplayOptimizer(PolicyOptimizer):
                     (obses_t, actions, rewards, obses_tp1, dones, weights,
                      batch_indexes) = replay_buffer.sample(
                          self.train_batch_size,
-                         beta=self.prioritized_replay_beta.value(self.num_steps_trained))
+                         beta=self.prioritized_replay_beta.value(
+                             self.num_steps_trained))
                 else:
                     (obses_t, actions, rewards, obses_tp1,
                      dones) = replay_buffer.sample(self.train_batch_size)
