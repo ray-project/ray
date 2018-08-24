@@ -65,8 +65,6 @@ class RayLogBase {
  public:
   virtual ~RayLogBase(){};
 
-  virtual std::ostream &Stream() { return std::cerr; };
-
   virtual bool IsEnabled() { return false; };
 
   template <typename T>
@@ -78,6 +76,9 @@ class RayLogBase {
     }
     return *this;
   }
+
+ protected:
+  virtual std::ostream &Stream() { return std::cerr; };
 };
 
 class RayLog : public RayLogBase {
@@ -91,8 +92,6 @@ class RayLog : public RayLogBase {
   /// \return True if logging is enabled and false otherwise.
   virtual bool IsEnabled();
 
-  virtual std::ostream &Stream();
-
   // The init function of ray log for a program which should be called only once.
   // If logDir is empty, the log won't output to file.
   static void StartRayLog(const std::string &appName, int severity_threshold = RAY_ERROR,
@@ -105,6 +104,9 @@ class RayLog : public RayLogBase {
   /// True if log messages should be logged and false if they should be ignored.
   bool is_enabled_;
   static int severity_threshold_;
+
+ protected:
+  virtual std::ostream &Stream();
 };
 
 // This class make RAY_CHECK compilation pass to change the << operator to void.
