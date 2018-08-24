@@ -91,7 +91,7 @@ def make_parser(parser_creator=None, **kwargs):
         "unless you specify them here. For RLlib, you probably want to "
         "leave this alone and use RLlib configs to control parallelism.")
     parser.add_argument(
-        "--repeat",
+        "--num-samples",
         default=1,
         type=int,
         help="Number of times to repeat each trial.")

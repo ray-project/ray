@@ -39,7 +39,7 @@ class HyperOptSearch(SuggestionAlgorithm):
         >>> config = {
         >>>     "my_exp": {
         >>>         "run": "exp",
-        >>>         "repeat": 10 if args.smoke_test else 1000,
+        >>>         "num_samples": 10 if args.smoke_test else 1000,
         >>>         "stop": {
         >>>             "training_iteration": 100
         >>>         },

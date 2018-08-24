@@ -224,12 +224,12 @@ if __name__ == '__main__':
             'learning_rate': lambda spec: 10**np.random.uniform(-5, -3),
             'activation': grid_search(['relu', 'elu', 'tanh']),
         },
-        "repeat": 10,
+        "num_samples": 10,
     }
 
     if args.smoke_test:
         mnist_spec['stop']['training_iteration'] = 2
-        mnist_spec['repeat'] = 2
+        mnist_spec['num_samples'] = 2
 
     ray.init()
     hyperband = HyperBandScheduler(
