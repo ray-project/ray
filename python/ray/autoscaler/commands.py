@@ -10,6 +10,7 @@ import tempfile
 import time
 import sys
 import click
+import logging
 
 import yaml
 try:  # py3

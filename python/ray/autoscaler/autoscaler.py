@@ -155,7 +155,7 @@ class LoadMetrics(object):
             unwanted = set(mapping) - active_ips
             for unwanted_key in unwanted:
                 logger.warning("Removed mapping", unwanted_key,
-                            mapping[unwanted_key])
+                               mapping[unwanted_key])
                 del mapping[unwanted_key]
             if unwanted:
                 logger.warning(

@@ -81,7 +81,7 @@ class NodeUpdater(object):
             return self.provider.external_ip(self.node_id)
 
     def run(self):
-        self.logger.info(
+        logger.info(  # Note that this does not log via child logger
             "NodeUpdater: Updating {} to {}, logging to {}".format(
                 self.node_id, self.runtime_hash, self.output_name))
         try:
