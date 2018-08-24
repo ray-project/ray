@@ -100,7 +100,8 @@ class PolicyEvaluator(EvaluatorInterface):
                  env_config=None,
                  model_config=None,
                  policy_config=None,
-                 worker_index=0):
+                 worker_index=0,
+                 monitor_path=None):
         """Initialize a policy evaluator.
 
         Arguments:
@@ -158,6 +159,8 @@ class PolicyEvaluator(EvaluatorInterface):
             worker_index (int): For remote evaluators, this should be set to a
                 non-zero and unique value. This index is passed to created envs
                 through EnvContext so that envs can be configured per worker.
+            monitor_path (str): Write out episode stats and videos to this
+                directory if specified.
         """
 
         env_context = EnvContext(env_config or {}, worker_index)
@@ -184,12 +187,22 @@ class PolicyEvaluator(EvaluatorInterface):
                 preprocessor_pref == "deepmind":
 
             def wrap(env):
-                return wrap_deepmind(env, dim=model_config.get("dim", 84))
+                env = wrap_deepmind(
+                    env,
+                    dim=model_config.get("dim", 84),
+                    framestack=not model_config.get("use_lstm")
+                    and not model_config.get("no_framestack"))
+                if monitor_path:
+                    env = _monitor(env, monitor_path)
+                return env
         else:
 
             def wrap(env):
-                return ModelCatalog.get_preprocessor_as_wrapper(
+                env = ModelCatalog.get_preprocessor_as_wrapper(
                     env, model_config)
+                if monitor_path:
+                    env = _monitor(env, monitor_path)
+                return env
 
         self.env = wrap(self.env)
 
@@ -452,6 +465,9 @@ class PolicyEvaluator(EvaluatorInterface):
         for pid, state in objs["state"].items():
             self.policy_map[pid].set_state(state)
 
+    def set_global_vars(self, global_vars):
+        self.foreach_policy(lambda p, _: p.on_global_var_update(global_vars))
+
 
 def _validate_and_canonicalize(policy_graph, env):
     if isinstance(policy_graph, dict):
@@ -487,6 +503,10 @@ def _validate_and_canonicalize(policy_graph, env):
             DEFAULT_POLICY_ID: (policy_graph, env.observation_space,
                                 env.action_space, {})
         }
+
+
+def _monitor(env, path):
+    return gym.wrappers.Monitor(env, path, resume=True)
 
 
 def _has_tensorflow_graph(policy_dict):
