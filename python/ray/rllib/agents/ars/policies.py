@@ -62,6 +62,12 @@ class GenericPolicy(object):
                  observation_filter,
                  action_noise_std,
                  options={}):
+
+        if len(preprocessor.shape) > 1:
+            raise UnsupportedSpaceException(
+                "Observation space {} is not supported with ARS.".format(
+                    preprocessor.shape))
+
         self.sess = sess
         self.action_space = action_space
         self.action_noise_std = action_noise_std
@@ -72,13 +78,8 @@ class GenericPolicy(object):
                                      [None] + list(self.preprocessor.shape))
 
         # Policy network.
-        if isinstance(action_space, Box):
-            dist_class, dist_dim = ModelCatalog.get_action_dist(
-                action_space, dist_type="deterministic")
-        else:
-            raise UnsupportedSpaceException(
-                "Action space {} is not supported for ARS.".format(
-                    action_space))
+        dist_class, dist_dim = ModelCatalog.get_action_dist(
+            action_space, dist_type="deterministic")
 
         model = ModelCatalog.get_model(self.inputs, dist_dim, options=options)
         dist = dist_class(model.outputs)
