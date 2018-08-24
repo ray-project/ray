@@ -390,6 +390,7 @@ def stop():
     help=("Override the configured max worker node count for the cluster."))
 @click.option(
     "--cluster-name",
+    "-n",
     required=False,
     type=str,
     help=("Override the configured cluster name."))
@@ -423,6 +424,7 @@ def create_or_update(cluster_config_file, min_workers, max_workers, no_restart,
     help=("Don't ask for confirmation."))
 @click.option(
     "--cluster-name",
+    "-n",
     required=False,
     type=str,
     help=("Override the configured cluster name."))
@@ -439,6 +441,7 @@ def teardown(cluster_config_file, yes, workers_only, cluster_name):
     help=("Start the cluster if needed."))
 @click.option(
     "--cluster-name",
+    "-n",
     required=False,
     type=str,
     help=("Override the configured cluster name."))
@@ -452,6 +455,7 @@ def attach(cluster_config_file, start, cluster_name):
 @click.argument("target", required=True, type=str)
 @click.option(
     "--cluster-name",
+    "-n",
     required=False,
     type=str,
     help=("Override the configured cluster name."))
@@ -465,6 +469,7 @@ def rsync_down(cluster_config_file, source, target, cluster_name):
 @click.argument("target", required=True, type=str)
 @click.option(
     "--cluster-name",
+    "-n",
     required=False,
     type=str,
     help=("Override the configured cluster name."))
@@ -492,6 +497,7 @@ def rsync_up(cluster_config_file, source, target, cluster_name):
     help=("Run the command in a screen."))
 @click.option(
     "--cluster-name",
+    "-n",
     required=False,
     type=str,
     help=("Override the configured cluster name."))
@@ -507,6 +513,7 @@ def exec_cmd(cluster_config_file, cmd, screen, stop, start, cluster_name,
 @click.argument("cluster_config_file", required=True, type=str)
 @click.option(
     "--cluster-name",
+    "-n",
     required=False,
     type=str,
     help=("Override the configured cluster name."))

@@ -45,7 +45,10 @@ build_arrow() {
     rm -rf $TP_DIR/build/arrow/cpp/build/CMakeCache.txt
   fi
 
-  if [[ ! -d $TP_DIR/build/arrow ]]; then
+  if [[ ! -d $TP_DIR/build/arrow/.git ]]; then
+    if [[ -d $TP_DIR/build/arrow ]]; then
+      rm -rf $TP_DIR/build/arrow
+    fi
     git clone -q https://github.com/apache/arrow.git "$TP_DIR/build/arrow"
   fi
 

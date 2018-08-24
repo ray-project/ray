@@ -158,6 +158,7 @@ matrix:
         - python -m pytest python/ray/tune/test/trial_scheduler_test.py
         - python -m pytest python/ray/tune/test/experiment_test.py
         - python -m pytest python/ray/tune/test/tune_server_test.py
+        - python -m pytest python/ray/tune/test/ray_trial_executor_test.py
 
         # ray rllib tests
         - python -m pytest python/ray/rllib/test/test_catalog.py
@@ -181,6 +182,7 @@ install:
   - ./src/ray/raylet/lineage_cache_test
   - ./src/ray/raylet/task_dependency_manager_test
   - ./src/ray/raylet/reconstruction_policy_test
+  - ./src/ray/util/logging_test --gtest_filter=PrintLogTest*
 
   - bash ../src/common/test/run_tests.sh
   - bash ../src/plasma/test/run_tests.sh
@@ -228,6 +230,7 @@ script:
   - python -m pytest python/ray/tune/test/trial_scheduler_test.py
   - python -m pytest python/ray/tune/test/experiment_test.py
   - python -m pytest python/ray/tune/test/tune_server_test.py
+  - python -m pytest python/ray/tune/test/ray_trial_executor_test.py
 
   # ray rllib tests
   - python -m pytest python/ray/rllib/test/test_catalog.py
