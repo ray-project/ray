@@ -11,7 +11,9 @@ import tensorflow as tf
 
 import ray
 from ray.rllib.utils.filter import get_filter
+from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.models import ModelCatalog
+from gym.spaces import Box
 
 
 def rollout(policy, env, timestep_limit=None, add_noise=False, offset=0):
@@ -70,8 +72,14 @@ class GenericPolicy(object):
                                      [None] + list(self.preprocessor.shape))
 
         # Policy network.
-        dist_class, dist_dim = ModelCatalog.get_action_dist(
-            self.action_space, dist_type="deterministic")
+        if isinstance(action_space, Box):
+            dist_class, dist_dim = ModelCatalog.get_action_dist(
+                action_space, dist_type="deterministic")
+        else:
+            raise UnsupportedSpaceException(
+                "Action space {} is not supported for ARS.".format(
+                    action_space))
+
         model = ModelCatalog.get_model(self.inputs, dist_dim, options=options)
         dist = dist_class(model.outputs)
         self.sampler = dist.sample()
