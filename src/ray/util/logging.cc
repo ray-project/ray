@@ -138,7 +138,7 @@ std::ostream &RayLog::Stream() {
 #endif
 }
 
-bool RayLog::IsEnabled() { return is_enabled_; }
+bool RayLog::IsEnabled() const { return is_enabled_; }
 
 RayLog::~RayLog() { logging_provider_.reset(); }
 

@@ -65,7 +65,7 @@ class RayLogBase {
  public:
   virtual ~RayLogBase(){};
 
-  virtual bool IsEnabled() { return false; };
+  virtual bool IsEnabled() const { return false; };
 
   template <typename T>
   RayLogBase &operator<<(const T &t) {
@@ -90,7 +90,7 @@ class RayLog : public RayLogBase {
   /// Return whether or not logging is enabled.
   ///
   /// \return True if logging is enabled and false otherwise.
-  virtual bool IsEnabled();
+  virtual bool IsEnabled() const;
 
   // The init function of ray log for a program which should be called only once.
   // If logDir is empty, the log won't output to file.
