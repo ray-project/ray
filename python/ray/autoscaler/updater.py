@@ -58,7 +58,7 @@ class NodeUpdater(object):
         }
         self.setup_cmds = setup_cmds
         self.runtime_hash = runtime_hash
-        self.logger = logger.getChild(node_id)
+        self.logger = logger.getChild(str(node_id))
         if redirect_output:
             self.logfile = tempfile.NamedTemporaryFile(
                 mode="w", prefix="node-updater-", delete=False)
