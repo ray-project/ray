@@ -339,7 +339,7 @@ def _get_head_node(config,
         return _get_head_node(
             config, config_file, override_cluster_name, create_if_needed=False)
     else:
-        raise ValueError("Head node of cluster ({}) not found!".format(
+        raise RuntimeError("Head node of cluster ({}) not found!".format(
             config["cluster_name"]))
 
 
