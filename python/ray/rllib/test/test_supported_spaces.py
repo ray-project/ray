@@ -112,14 +112,14 @@ class ModelSupportedSpaces(unittest.TestCase):
         check_support(
             "ES", {
                 "num_workers": 1,
-                "noise_size": 1000,
+                "noise_size": 100000,
                 "episodes_per_batch": 1,
                 "timesteps_per_batch": 1
             }, stats)
         check_support(
             "ARS", {
                 "num_workers": 1,
-                "noise_size": 1000,
+                "noise_size": 100000,
                 "num_deltas": 1,
                 "deltas_used": 1
             }, stats)
