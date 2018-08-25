@@ -25,6 +25,13 @@ Tuned examples: `PongDeterministic-v4 <https://github.com/ray-project/ray/blob/m
 
 See also our `Atari results <https://github.com/ray-project/rl-experiments>`__.
 
+Augmented Random Search (ARS)
+-----------------------------
+`[paper] <https://arxiv.org/abs/1803.07055>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/python/ray/rllib/agents/ars/ars.py>`__
+ARS is a random search method for training linear policies for continuous control problems. Code here is adapted from https://github.com/modestyachts/ARS to integrate with RLlib APIs.
+
+Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tuned_examples/regression_tests/cartpole-ars.yaml>`__, `Swimmer-v2 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tuned_examples/swimmer-ars.yaml>`__
+
 Deep Deterministic Policy Gradients (DDPG)
 ------------------------------------------
 `[paper] <https://arxiv.org/abs/1509.02971>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/python/ray/rllib/agents/ddpg/ddpg.py>`__
