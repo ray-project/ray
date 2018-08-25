@@ -33,7 +33,7 @@ def key_pair(i, region):
 
 # Suppress excessive connection dropped logs from boto
 logging.getLogger("botocore").setLevel(logging.WARNING)
-logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
 def bootstrap_aws(config):
@@ -61,7 +61,7 @@ def _configure_iam_role(config):
     profile = _get_instance_profile(DEFAULT_RAY_INSTANCE_PROFILE, config)
 
     if profile is None:
-        logger.info("Creating new instance profile {}".format(
+        log.info("Creating new instance profile {}".format(
             DEFAULT_RAY_INSTANCE_PROFILE))
         client = _client("iam", config)
         client.create_instance_profile(
@@ -74,7 +74,7 @@ def _configure_iam_role(config):
     if not profile.roles:
         role = _get_role(DEFAULT_RAY_IAM_ROLE, config)
         if role is None:
-            logger.info("Creating new role {}".format(DEFAULT_RAY_IAM_ROLE))
+            log.info("Creating new role {}".format(DEFAULT_RAY_IAM_ROLE))
             iam = _resource("iam", config)
             iam.create_role(
                 RoleName=DEFAULT_RAY_IAM_ROLE,
@@ -98,7 +98,7 @@ def _configure_iam_role(config):
         profile.add_role(RoleName=role.name)
         time.sleep(15)  # wait for propagation
 
-    logger.info("Role not specified for head node, using {}".format(
+    log.info("Role not specified for head node, using {}".format(
         profile.arn))
     config["head_node"]["IamInstanceProfile"] = {"Arn": profile.arn}
 
@@ -124,7 +124,7 @@ def _configure_key_pair(config):
 
         # We can safely create a new key.
         if not key and not os.path.exists(key_path):
-            logger.info("Creating new key pair {}".format(key_name))
+            log.info("Creating new key pair {}".format(key_name))
             key = ec2.create_key_pair(KeyName=key_name)
             with open(key_path, "w") as f:
                 f.write(key.key_material)
@@ -135,7 +135,7 @@ def _configure_key_pair(config):
     assert os.path.exists(key_path), \
         "Private key file {} not found for {}".format(key_path, key_name)
 
-    logger.info("KeyName not specified for nodes, using {}".format(key_name))
+    log.info("KeyName not specified for nodes, using {}".format(key_name))
 
     config["auth"]["ssh_private_key"] = key_path
     config["head_node"]["KeyName"] = key_name
@@ -172,12 +172,12 @@ def _configure_subnet(config):
     subnet_descr = [(s.subnet_id, s.availability_zone) for s in subnets]
     if "SubnetIds" not in config["head_node"]:
         config["head_node"]["SubnetIds"] = subnet_ids
-        logger.info("SubnetIds not specified for head node,"
+        log.info("SubnetIds not specified for head node,"
                        " using {}".format(subnet_descr))
 
     if "SubnetIds" not in config["worker_nodes"]:
         config["worker_nodes"]["SubnetIds"] = subnet_ids
-        logger.info("SubnetId not specified for workers,"
+        log.info("SubnetId not specified for workers,"
                        " using {}".format(subnet_descr))
 
     return config
@@ -193,7 +193,7 @@ def _configure_security_group(config):
     security_group = _get_security_group(config, vpc_id, group_name)
 
     if security_group is None:
-        logger.info("Creating new security group {}".format(group_name))
+        log.info("Creating new security group {}".format(group_name))
         client = _client("ec2", config)
         client.create_security_group(
             Description="Auto-created security group for Ray workers",
@@ -220,13 +220,13 @@ def _configure_security_group(config):
         }])
 
     if "SecurityGroupIds" not in config["head_node"]:
-        logger.info(
+        log.info(
             "SecurityGroupIds not specified for head node, using {}".format(
                 security_group.group_name))
         config["head_node"]["SecurityGroupIds"] = [security_group.id]
 
     if "SecurityGroupIds" not in config["worker_nodes"]:
-        logger.info(
+        log.info(
             "SecurityGroupIds not specified for workers, using {}".format(
                 security_group.group_name))
         config["worker_nodes"]["SecurityGroupIds"] = [security_group.id]
