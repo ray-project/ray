@@ -522,7 +522,7 @@ class VariantGeneratorTest(unittest.TestCase):
     def testParseToTrials(self):
         trials = self.generate_trials({
             "run": "PPO",
-            "repeat": 2,
+            "num_samples": 2,
             "max_failures": 5,
             "config": {
                 "env": "Pong-v0",
@@ -651,7 +651,7 @@ class VariantGeneratorTest(unittest.TestCase):
         """Checks that next_trials() supports throttling."""
         experiment_spec = {
             "run": "PPO",
-            "repeat": 6,
+            "num_samples": 6,
         }
         experiments = [Experiment.from_json("test", experiment_spec)]
 
@@ -1133,7 +1133,7 @@ class TrialRunnerTest(unittest.TestCase):
         ray.init(num_cpus=4, num_gpus=2)
         experiment_spec = {
             "run": "__fake",
-            "repeat": 3,
+            "num_samples": 3,
             "stop": {
                 "training_iteration": 1
             }
