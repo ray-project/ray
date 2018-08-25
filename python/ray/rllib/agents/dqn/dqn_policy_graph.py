@@ -215,21 +215,21 @@ class QLoss(object):
                     1.0 - done_mask, -1) * tf.expand_dims(z, 0)
             r_tau = tf.clip_by_value(r_tau, v_min, v_max)
             b = (r_tau - v_min) / ((v_max - v_min) / float(num_atoms - 1))
-            l = tf.floor(b)
-            u = tf.ceil(b)
+            lb = tf.floor(b)
+            ub = tf.ceil(b)
             # indispensable judgement which is missed in most implementations
-            # when b happens to be an integer, l == u, so pr_j(s', a*) will be
-            # discarded because (u-b) == (b-l) == 0
-            floor_equal_ceil = tf.to_float(tf.less(u - l, 0.5))
+            # when b happens to be an integer, lb == ub, so pr_j(s', a*) will
+            # be discarded because (ub-b) == (b-lb) == 0
+            floor_equal_ceil = tf.to_float(tf.less(ub - lb, 0.5))
 
             l_project = tf.one_hot(
-                tf.cast(l, dtype=tf.int32),
+                tf.cast(lb, dtype=tf.int32),
                 num_atoms)  # (batch_size, num_atoms, num_atoms)
             u_project = tf.one_hot(
-                tf.cast(u, dtype=tf.int32),
+                tf.cast(ub, dtype=tf.int32),
                 num_atoms)  # (batch_size, num_atoms, num_atoms)
-            ml_delta = q_dist_tp1_best * (u - b + floor_equal_ceil)
-            mu_delta = q_dist_tp1_best * (b - l)
+            ml_delta = q_dist_tp1_best * (ub - b + floor_equal_ceil)
+            mu_delta = q_dist_tp1_best * (b - lb)
             ml_delta = tf.reduce_sum(
                 l_project * tf.expand_dims(ml_delta, -1), axis=1)
             mu_delta = tf.reduce_sum(
