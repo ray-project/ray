@@ -46,7 +46,7 @@ Algorithms
 * `Advantage Actor-Critic (A2C, A3C) <rllib-algorithms.html#advantage-actor-critic-a2c-a3c>`__
 * `Augmented Random Search (ARS) <rllib-algorithms.html#augmented-random-search-ars>`__
 * `Deep Deterministic Policy Gradients (DDPG) <rllib-algorithms.html#deep-deterministic-policy-gradients-ddpg>`__
-* `Deep Q Networks (DQN) <rllib-algorithms.html#deep-q-networks-dqn>`__
+* `Deep Q Networks (DQN, Rainbow) <rllib-algorithms.html#deep-q-networks-dqn-rainbow>`__
 * `Evolution Strategies <rllib-algorithms.html#evolution-strategies>`__
 * `Importance Weighted Actor-Learner Architecture (IMPALA) <rllib-algorithms.html#importance-weighted-actor-learner-architecture-impala>`__
 * `Policy Gradients <rllib-algorithms.html#policy-gradients>`__
