@@ -13,7 +13,6 @@ from six.moves import queue
 import subprocess
 import threading
 import time
-import traceback
 
 from collections import defaultdict
 from datetime import datetime

@@ -173,12 +173,12 @@ def _configure_subnet(config):
     if "SubnetIds" not in config["head_node"]:
         config["head_node"]["SubnetIds"] = subnet_ids
         logger.info("SubnetIds not specified for head node,"
-                       " using {}".format(subnet_descr))
+                    " using {}".format(subnet_descr))
 
     if "SubnetIds" not in config["worker_nodes"]:
         config["worker_nodes"]["SubnetIds"] = subnet_ids
         logger.info("SubnetId not specified for workers,"
-                       " using {}".format(subnet_descr))
+                    " using {}".format(subnet_descr))
 
     return config
 
