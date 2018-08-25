@@ -113,7 +113,7 @@ class LinearPolicy(GenericPolicy):
     def __init__(self, sess, action_space, preprocessor, observation_filter,
                  action_noise_std):
         options = {"custom_model": "LinearNetwork"}
-        super().__init__(
+        GenericPolicy.__init__(
             sess,
             action_space,
             preprocessor,
@@ -126,7 +126,7 @@ class MLPPolicy(GenericPolicy):
     def __init__(self, sess, action_space, preprocessor, observation_filter,
                  fcnet_hiddens, action_noise_std):
         options = {"fcnet_hiddens": fcnet_hiddens}
-        super().__init__(
+        GenericPolicy.__init__(
             sess,
             action_space,
             preprocessor,
