@@ -215,8 +215,7 @@ class NodeUpdater(object):
         if verbose:
             self.log.info(
                 "NodeUpdater: running {} on {}...".format(
-                    pretty_cmd(cmd), self.ssh_ip),
-                file=self.stdout)
+                    pretty_cmd(cmd), self.ssh_ip))
         ssh = ["ssh"]
         if allocate_tty:
             ssh.append("-tt")
