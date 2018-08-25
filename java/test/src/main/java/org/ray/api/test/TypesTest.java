@@ -11,7 +11,7 @@ import org.ray.api.Ray;
 import org.ray.api.RayRemote;
 
 /**
- * types test.
+ * Test returning different types.
  */
 @RunWith(MyRunner.class)
 public class TypesTest {

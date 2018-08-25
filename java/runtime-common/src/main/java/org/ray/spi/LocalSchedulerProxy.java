@@ -39,7 +39,8 @@ public class LocalSchedulerProxy {
     return new RayObject(returnIds[0]);
   }
 
-  public RayObject submit(UniqueID taskId, UniqueID createActorId, RayInvocation invocation) {
+  public RayObject submitActorCreationTask(UniqueID taskId, UniqueID createActorId,
+      RayInvocation invocation) {
     UniqueID[] returnIds = genReturnIds(taskId, 1);
     this.doSubmit(invocation, taskId, returnIds, createActorId);
     return new RayObject(returnIds[0]);
@@ -54,7 +55,8 @@ public class LocalSchedulerProxy {
     return ret;
   }
 
-  private void doSubmit(RayInvocation invocation, UniqueID taskId, UniqueID[] returnIds, UniqueID createActorId) {
+  private void doSubmit(RayInvocation invocation, UniqueID taskId, UniqueID[] returnIds,
+      UniqueID createActorId) {
 
     final TaskSpec current = WorkerContext.currentTask();
     TaskSpec task = new TaskSpec();
@@ -71,8 +73,8 @@ public class LocalSchedulerProxy {
     task.taskId = taskId;
     task.returnIds = returnIds;
     task.cursorId = invocation.getActor() != null ? invocation.getActor().getTaskCursor() : null;
-    task.resources = ResourceUtil
-                         .getResourcesMapFromArray(invocation.getRemoteAnnotation().resources());
+    task.resources = ResourceUtil.getResourcesMapFromArray(
+        invocation.getRemoteAnnotation().resources());
 
     scheduler.submitTask(task);
   }
