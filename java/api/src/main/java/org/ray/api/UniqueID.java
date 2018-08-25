@@ -14,7 +14,7 @@ public class UniqueID implements Serializable {
   public static final int LENGTH = 20;
   public static final UniqueID NIL = genNil();
   private static final long serialVersionUID = 8588849129675565761L;
-  private byte[] id;
+  private final byte[] id;
 
   public static UniqueID fromHexString(String hex) {
     byte[] bytes = DatatypeConverter.parseHexBinary(hex);
