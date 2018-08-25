@@ -13,7 +13,6 @@ import ray
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.models import ModelCatalog
-from gym.spaces import Box
 
 
 def rollout(policy, env, timestep_limit=None, add_noise=False, offset=0):
