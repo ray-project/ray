@@ -169,7 +169,7 @@ class LoadMetrics(object):
     def approx_workers_used(self):
         return self._info()["NumNodesUsed"]
 
-    def debug_string(self):
+    def info_string(self):
         return " - {}".format("\n - ".join(
             ["{}: {}".format(k, v) for k, v in sorted(self._info().items())]))
 
@@ -370,7 +370,7 @@ class StandardAutoscaler(object):
         self.last_update_time = time.time()
         num_pending = self.num_launches_pending.value
         nodes = self.workers()
-        log.info(self.debug_string(nodes))
+        log.info(self.info_string(nodes))
         self.load_metrics.prune_active_ips(
             [self.provider.internal_ip(node_id) for node_id in nodes])
         target_workers = self.target_num_workers()
@@ -394,7 +394,7 @@ class StandardAutoscaler(object):
                 self.provider.terminate_node(node_id)
         if num_terminated > 0:
             nodes = self.workers()
-            log.info(self.debug_string(nodes))
+            log.info(self.info_string(nodes))
 
         # Terminate nodes if there are too many
         num_terminated = 0
@@ -406,7 +406,7 @@ class StandardAutoscaler(object):
             nodes = nodes[:-1]
         if num_terminated > 0:
             nodes = self.workers()
-            log.info(self.debug_string(nodes))
+            log.info(self.info_string(nodes))
 
         # Launch new nodes if needed
         num_workers = len(nodes) + num_pending
@@ -415,7 +415,7 @@ class StandardAutoscaler(object):
                               self.max_concurrent_launches - num_pending)
             num_launches = min(max_allowed, target_workers - num_workers)
             self.launch_new_node(num_launches)
-            log.info(self.debug_string())
+            log.info(self.info_string())
 
         # Process any completed updates
         completed = []
@@ -433,7 +433,7 @@ class StandardAutoscaler(object):
             # immediately trying to restart Ray on the new node.
             self.load_metrics.mark_active(self.provider.internal_ip(node_id))
             nodes = self.workers()
-            log.info(self.debug_string(nodes))
+            log.info(self.info_string(nodes))
 
         # Update nodes with out-of-date files
         for node_id in nodes:
@@ -562,7 +562,7 @@ class StandardAutoscaler(object):
     def workers(self):
         return self.provider.nodes(tag_filters={TAG_RAY_NODE_TYPE: "worker"})
 
-    def debug_string(self, nodes=None):
+    def info_string(self, nodes=None):
         if nodes is None:
             nodes = self.workers()
         suffix = ""
@@ -575,7 +575,7 @@ class StandardAutoscaler(object):
                 len(self.num_failed_updates))
         return "StandardAutoscaler [{}]: {}/{} target nodes{}\n{}".format(
             datetime.now(), len(nodes), self.target_num_workers(), suffix,
-            self.load_metrics.debug_string())
+            self.load_metrics.info_string())
 
 
 def typename(v):
