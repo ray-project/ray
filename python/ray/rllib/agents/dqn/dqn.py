@@ -26,7 +26,7 @@ OPTIMIZER_SHARED_CONFIGS = [
 DEFAULT_CONFIG = with_common_config({
     # === Model ===
     # Number of atoms for representing the distribution of return. When
-    # this is a positive integer value, distributional Q-learning is used.
+    # this is greater than 1, distributional Q-learning is used.
     # the discrete supports are bounded by v_min and v_max
     "num_atoms": 1,
     "v_min": -10.0,
@@ -149,6 +149,9 @@ class DQNAgent(Agent):
         ]
 
         for k in OPTIMIZER_SHARED_CONFIGS:
+            if self._agent_name != "DQN" and k in ["schedule_max_timesteps", "beta_annealing_fraction", "final_prioritized_replay_beta"]:
+                # only Rainbow needs annealing prioritized_replay_beta
+                continue
             if k not in self.config["optimizer"]:
                 self.config["optimizer"][k] = self.config[k]
 
@@ -168,11 +171,6 @@ class DQNAgent(Agent):
         else:
             # Hack to workaround https://github.com/ray-project/ray/issues/2541
             self.remote_evaluators = None
-            # Annealing the hyper-parameter beta for prioritized_replay_beta
-            # is used in Rainbow (single machine)
-            del self.config["optimizer"]["schedule_max_timesteps"]
-            del self.config["optimizer"]["beta_annealing_fraction"]
-            del self.config["optimizer"]["final_prioritized_replay_beta"]
 
         self.optimizer = getattr(optimizers, self.config["optimizer_class"])(
             self.local_evaluator, self.remote_evaluators,
