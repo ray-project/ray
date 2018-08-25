@@ -149,7 +149,10 @@ class DQNAgent(Agent):
         ]
 
         for k in OPTIMIZER_SHARED_CONFIGS:
-            if self._agent_name != "DQN" and k in ["schedule_max_timesteps", "beta_annealing_fraction", "final_prioritized_replay_beta"]:
+            if self._agent_name != "DQN" and k in [
+                    "schedule_max_timesteps", "beta_annealing_fraction",
+                    "final_prioritized_replay_beta"
+            ]:
                 # only Rainbow needs annealing prioritized_replay_beta
                 continue
             if k not in self.config["optimizer"]:
