@@ -94,8 +94,9 @@ class QNetwork(object):
             if num_atoms > 1:
                 support_logits_per_action_mean = tf.reduce_mean(
                     support_logits_per_action, 1)
-                support_logits_per_action_centered = support_logits_per_action - tf.expand_dims(
-                    support_logits_per_action_mean, 1)
+                support_logits_per_action_centered = (
+                    support_logits_per_action - tf.expand_dims(
+                        support_logits_per_action_mean, 1))
                 support_logits_per_action = tf.expand_dims(
                     state_score, 1) + support_logits_per_action_centered
                 support_prob_per_action = tf.nn.softmax(
@@ -119,9 +120,11 @@ class QNetwork(object):
                     non_linear=True):
         """
         a common dense layer: y = w^{T}x + b
-        a noisy layer: y = (w + \epsilon_w*\sigma_w)^{T}x + (b+\epsilon_b*\sigma_b)
-        where \epsilon are random variables sampled from factorized normal distributions
-        and \sigma are trainable variables which are expected to vanish along the training procedure
+        a noisy layer: y = (w + \epsilon_w*\sigma_w)^{T}x +
+            (b+\epsilon_b*\sigma_b)
+        where \epsilon are random variables sampled from factorized normal
+        distributions and \sigma are trainable variables which are expected to
+        vanish along the training procedure
         """
         in_size = int(action_in.shape[1])
 
@@ -214,9 +217,9 @@ class QLoss(object):
             b = (r_tau - v_min) / ((v_max - v_min) / float(num_atoms - 1))
             l = tf.floor(b)
             u = tf.ceil(b)
-            # indespensable judgement which is missed in most implementations
-            # when b happens to be an integer, l == u, so pr_j(s', a*) will be discarded
-            # because (u-b) == (b-l) == 0
+            # indispensable judgement which is missed in most implementations
+            # when b happens to be an integer, l == u, so pr_j(s', a*) will be
+            # discarded because (u-b) == (b-l) == 0
             floor_equal_ceil = tf.to_float(tf.less(u - l, 0.5))
 
             l_project = tf.one_hot(
@@ -233,8 +236,8 @@ class QLoss(object):
                 u_project * tf.expand_dims(mu_delta, -1), axis=1)
             m = ml_delta + mu_delta
 
-            # Rainbow paper claims that using this cross entropy loss for priority
-            # is robust and insensitive to `prioritized_replay_alpha`
+            # Rainbow paper claims that using this cross entropy loss for
+            # priority is robust and insensitive to `prioritized_replay_alpha`
             self.td_error = tf.nn.softmax_cross_entropy_with_logits(
                 labels=m, logits=q_logits_t_selected)
             self.loss = tf.reduce_mean(self.td_error * importance_weights)
@@ -245,7 +248,8 @@ class QLoss(object):
             q_t_selected_target = rewards + gamma**n_step * q_tp1_best_masked
 
             # compute the error (potentially clipped)
-            self.td_error = q_t_selected - tf.stop_gradient(q_t_selected_target)
+            self.td_error = (
+                q_t_selected - tf.stop_gradient(q_t_selected_target))
             self.loss = tf.reduce_mean(
                 importance_weights * _huber_loss(self.td_error))
 
@@ -307,8 +311,9 @@ class DQNPolicyGraph(TFPolicyGraph):
         # compute estimate of best possible value starting from state at t + 1
         if config["double_q"]:
             with tf.variable_scope(Q_SCOPE, reuse=True):
-                q_tp1_using_online_net, q_logits_tp1_using_online_net, q_dist_tp1_using_online_net = self._build_q_network(
-                    self.obs_tp1)
+                q_tp1_using_online_net, q_logits_tp1_using_online_net, \
+                    q_dist_tp1_using_online_net = self._build_q_network(
+                        self.obs_tp1)
             q_tp1_best_using_online_net = tf.argmax(q_tp1_using_online_net, 1)
             q_tp1_best_one_hot_selection = tf.one_hot(
                 q_tp1_best_using_online_net, self.num_actions)
