@@ -69,7 +69,9 @@ namespace ray {
 
 namespace gcs {
 
-AsyncGcsClient::AsyncGcsClient(const std::string &address, int port, const ClientID &client_id, CommandType command_type) {
+AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
+  const ClientID &client_id, CommandType command_type,
+  bool is_test_client = false) {
   primary_context_ = std::make_shared<RedisContext>();
   // A boolean placeholder value.
   // Used since changing the API of Connect is breaking some tests.
@@ -77,26 +79,31 @@ AsyncGcsClient::AsyncGcsClient(const std::string &address, int port, const Clien
   const bool DUMMY_BOOL = true;
   RAY_CHECK_OK(primary_context_->Connect(address, port, DUMMY_BOOL));
 
-  // Moving sharding into constructor defaultly means that sharding = true.
-  // This design decision may worth a look.
-  std::vector<std::string> addresses;
-  std::vector<int> ports;
-  GetRedisShards(primary_context_->sync_context(), addresses, ports);
-  if (addresses.size() == 0 || ports.size() == 0) {
-    addresses.push_back(address);
-    ports.push_back(port);
-  }
+  if (!is_test_client) {
+    // Moving sharding into constructor defaultly means that sharding = true.
+    // This design decision may worth a look.
+    std::vector<std::string> addresses;
+    std::vector<int> ports;
+    GetRedisShards(primary_context_->sync_context(), addresses, ports);
+    if (addresses.size() == 0 || ports.size() == 0) {
+      addresses.push_back(address);
+      ports.push_back(port);
+    }
 
-  // Populate shard_contexts.
-  for (unsigned int i = 0; i < addresses.size(); ++i) {
-    // Slower than emplace but resource safe.
+    // Populate shard_contexts.
+    for (unsigned int i = 0; i < addresses.size(); ++i) {
+      // Slower than emplace but resource safe.
+      shard_contexts_.push_back(std::make_shared<RedisContext>());
+    }
+
+    // Call connect for all contexts. Safe to do many times.
+    // Here shard_contexts_.size() == addresses.size();
+    for (unsigned int i = 0; i < addresses.size(); ++i) {
+      RAY_CHECK_OK(shard_contexts_[i]->Connect(addresses[i], ports[i], DUMMY_BOOL));
+    }
+  } else {
     shard_contexts_.push_back(std::make_shared<RedisContext>());
-  }
-
-  // Call connect for all contexts. Safe to do many times.
-  // Here shard_contexts_.size() == addresses.size();
-  for (unsigned int i = 0; i < addresses.size(); ++i) {
-    RAY_CHECK_OK(shard_contexts_[i]->Connect(addresses[i], ports[i], DUMMY_BOOL));
+    RAY_CHECK_OK(shard_contexts_[0]->Connect(address, port, DUMMY_BOOL));
   }
 
   client_table_.reset(new ClientTable({primary_context_}, this, client_id));
@@ -132,6 +139,9 @@ AsyncGcsClient::AsyncGcsClient(const std::string &address, int port, const Clien
 
 AsyncGcsClient::AsyncGcsClient(const std::string &address, int port, CommandType command_type)
     : AsyncGcsClient(address, port, ClientID::from_random(), command_type) {}
+
+AsyncGcsClient::AsyncGcsClient(const std::string &address, int port, CommandType command_type, bool is_test_client)
+    : AsyncGcsClient(address, port, ClientID::from_random(), command_type, is_test_client) {}
 
 AsyncGcsClient::AsyncGcsClient(const std::string &address, int port) : AsyncGcsClient(address, port, ClientID::from_random()) {}
 

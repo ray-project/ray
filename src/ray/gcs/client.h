@@ -30,9 +30,10 @@ class RAY_EXPORT AsyncGcsClient {
   /// \param client_id The ID to assign to the client.
   /// \param command_type GCS command type.  If CommandType::kChain, chain-replicated
   /// versions of the tables might be used, if available.
-  AsyncGcsClient(const std::string &address, int port, const ClientID &client_id, CommandType command_type);
+  AsyncGcsClient(const std::string &address, int port, const ClientID &client_id, CommandType command_type, bool is_test_client);
   AsyncGcsClient(const std::string &address, int port, const ClientID &client_id);
   AsyncGcsClient(const std::string &address, int port, CommandType command_type);
+  AsyncGcsClient(const std::string &address, int port, CommandType command_type, bool is_test_client);
   AsyncGcsClient(const std::string &address, int port);
 
   /// Attach this client to a plasma event loop. Note that only
