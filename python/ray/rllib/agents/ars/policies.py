@@ -114,6 +114,7 @@ class LinearPolicy(GenericPolicy):
                  action_noise_std):
         options = {"custom_model": "LinearNetwork"}
         GenericPolicy.__init__(
+            self,
             sess,
             action_space,
             preprocessor,
@@ -127,6 +128,7 @@ class MLPPolicy(GenericPolicy):
                  fcnet_hiddens, action_noise_std):
         options = {"fcnet_hiddens": fcnet_hiddens}
         GenericPolicy.__init__(
+            self,
             sess,
             action_space,
             preprocessor,
