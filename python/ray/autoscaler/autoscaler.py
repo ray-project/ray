@@ -154,11 +154,11 @@ class LoadMetrics(object):
         def prune(mapping):
             unwanted = set(mapping) - active_ips
             for unwanted_key in unwanted:
-                logger.warning("Removed mapping", unwanted_key,
-                               mapping[unwanted_key])
+                logger.info("Removed mapping: {} - {}".format(
+                    unwanted_key, mapping[unwanted_key]))
                 del mapping[unwanted_key]
             if unwanted:
-                logger.warning(
+                logger.info(
                     "Removed {} stale ip mappings: {} not in {}".format(
                         len(unwanted), unwanted, active_ips))
 
@@ -243,7 +243,7 @@ class NodeLauncher(threading.Thread):
             }, count)
         after = self.provider.nodes(tag_filters=tag_filters)
         if set(after).issubset(before):
-            logger.warning("No new nodes reported after node creation")
+            logger.error("No new nodes reported after node creation")
 
     def run(self):
         while True:
@@ -354,8 +354,7 @@ class StandardAutoscaler(object):
             self.reload_config(errors_fatal=False)
             self._update()
         except Exception as e:
-            logger.error("StandardAutoscaler: Error during autoscaling: {}"
-                         "".format(traceback.format_exc()))
+            logger.exception("Error during autoscaling.")
             self.num_failures += 1
             if self.num_failures > self.max_failures:
                 logger.critical(
@@ -463,8 +462,7 @@ class StandardAutoscaler(object):
             if errors_fatal:
                 raise e
             else:
-                logger.error("StandardAutoscaler: Error parsing config: {}",
-                             traceback.format_exc())
+                logger.exception("StandardAutoscaler: Error parsing config.")
 
     def target_num_workers(self):
         target_frac = self.config["target_utilization_fraction"]

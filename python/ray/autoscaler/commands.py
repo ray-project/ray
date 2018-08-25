@@ -82,13 +82,13 @@ def teardown_cluster(config_file, yes, workers_only, override_cluster_name):
 
     if not workers_only:
         for node in provider.nodes({TAG_RAY_NODE_TYPE: "head"}):
-            logger.warning("Terminating head node {}".format(node))
+            logger.info("Terminating head node {}".format(node))
             provider.terminate_node(node)
 
     nodes = provider.nodes({TAG_RAY_NODE_TYPE: "worker"})
     while nodes:
         for node in nodes:
-            logger.warning("Terminating worker {}".format(node))
+            logger.info("Terminating worker {}".format(node))
             provider.terminate_node(node)
         time.sleep(5)
         nodes = provider.nodes({TAG_RAY_NODE_TYPE: "worker"})
