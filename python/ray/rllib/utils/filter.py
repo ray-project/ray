@@ -62,7 +62,7 @@ class RunningStat(object):
     def __init__(self, shape=None):
         self._n = 0
         self._M = np.zeros(shape)
-        self._S = np.ones(shape)
+        self._S = np.zeros(shape)
 
     def copy(self):
         other = RunningStat()
