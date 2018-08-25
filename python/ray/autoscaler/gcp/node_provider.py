@@ -15,12 +15,12 @@ from ray.autoscaler.gcp.config import MAX_POLLS, POLL_INTERVAL
 INSTANCE_NAME_MAX_LEN = 64
 INSTANCE_NAME_UUID_LEN = 8
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 def wait_for_compute_zone_operation(compute, project_name, operation, zone):
     """Poll for compute zone operation until finished."""
-    log.info("Waiting for operation {} to finish...".format(
+    logger.info("Waiting for operation {} to finish...".format(
         operation["name"]))
 
     for _ in range(MAX_POLLS):
@@ -31,7 +31,7 @@ def wait_for_compute_zone_operation(compute, project_name, operation, zone):
             raise Exception(result["error"])
 
         if result["status"] == "DONE":
-            log.info("Done.")
+            logger.info("Done.")
             break
 
         time.sleep(POLL_INTERVAL)

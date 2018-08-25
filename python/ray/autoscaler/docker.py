@@ -9,7 +9,7 @@ try:  # py3
 except ImportError:  # py2
     from pipes import quote
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 def dockerize_if_needed(config):
@@ -19,7 +19,7 @@ def dockerize_if_needed(config):
     cname = config["docker"].get("container_name")
     if not docker_image:
         if cname:
-            log.warning(
+            logger.warning(
                 "Container name given but no Docker image - continuing...")
         return config
     else:
