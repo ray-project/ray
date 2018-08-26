@@ -114,7 +114,7 @@ class TestObjectManagerBase : public ::testing::Test {
     push_timeout_ms = 1000;
 
     // start first server
-    gcs_client_1 = std::shared_ptr<gcs::AsyncGcsClient>(new gcs::AsyncGcsClient("127.0.0.1", 6379));
+    gcs_client_1 = std::shared_ptr<gcs::AsyncGcsClient>(new gcs::AsyncGcsClient("127.0.0.1", 6379, /*is_test_client=*/true));
     ObjectManagerConfig om_config_1;
     om_config_1.store_socket_name = store_id_1;
     om_config_1.pull_timeout_ms = pull_timeout_ms;
@@ -125,7 +125,7 @@ class TestObjectManagerBase : public ::testing::Test {
     server1.reset(new MockServer(main_service, om_config_1, gcs_client_1));
 
     // start second server
-    gcs_client_2 = std::shared_ptr<gcs::AsyncGcsClient>(new gcs::AsyncGcsClient("127.0.0.1", 6379));
+    gcs_client_2 = std::shared_ptr<gcs::AsyncGcsClient>(new gcs::AsyncGcsClient("127.0.0.1", 6379, /*is_test_client=*/true));
     ObjectManagerConfig om_config_2;
     om_config_2.store_socket_name = store_id_2;
     om_config_2.pull_timeout_ms = pull_timeout_ms;

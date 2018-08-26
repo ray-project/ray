@@ -130,11 +130,11 @@ AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
 #if RAY_USE_NEW_GCS
 // Use of kChain currently only applies to Table::Add which affects only the
 // task table, and when RAY_USE_NEW_GCS is set at compile time.
-AsyncGcsClient::AsyncGcsClient(const std::string &address, int port, const ClientID &client_id)
-    : AsyncGcsClient(address, port, client_id, CommandType::kChain) {}
+AsyncGcsClient::AsyncGcsClient(const std::string &address, int port, const ClientID &client_id, bool is_test_client = false)
+    : AsyncGcsClient(address, port, client_id, CommandType::kChain, is_test_client) {}
 #else
-AsyncGcsClient::AsyncGcsClient(const std::string &address, int port, const ClientID &client_id)
-    : AsyncGcsClient(address, port, client_id, CommandType::kRegular) {}
+AsyncGcsClient::AsyncGcsClient(const std::string &address, int port, const ClientID &client_id, bool is_test_client = false)
+    : AsyncGcsClient(address, port, client_id, CommandType::kRegular, is_test_client) {}
 #endif  // RAY_USE_NEW_GCS
 
 AsyncGcsClient::AsyncGcsClient(const std::string &address, int port, CommandType command_type)
@@ -144,6 +144,8 @@ AsyncGcsClient::AsyncGcsClient(const std::string &address, int port, CommandType
     : AsyncGcsClient(address, port, ClientID::from_random(), command_type, is_test_client) {}
 
 AsyncGcsClient::AsyncGcsClient(const std::string &address, int port) : AsyncGcsClient(address, port, ClientID::from_random()) {}
+
+AsyncGcsClient::AsyncGcsClient(const std::string &address, int port, bool is_test_client) : AsyncGcsClient(address, port, ClientID::from_random(), is_test_client) {}
 
 Status Attach(plasma::EventLoop &event_loop) {
   // TODO(pcm): Implement this via
