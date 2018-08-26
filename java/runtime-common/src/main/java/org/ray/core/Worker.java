@@ -68,7 +68,7 @@ public class Worker {
   }
 
   private RayObject taskSubmit(UniqueID taskId, MethodId methodId, Object[] args) {
-    RayInvocation ri = createRemoteInvocation(methodId, args, RayActor.nil);
+    RayInvocation ri = createRemoteInvocation(methodId, args, RayActor.NIL);
     return scheduler.submit(taskId, ri);
   }
 
@@ -94,7 +94,7 @@ public class Worker {
       RayFunc func, Object[] args) {
     Preconditions.checkNotNull(taskId);
     MethodId mid = methodIdOf(func);
-    RayInvocation ri = createRemoteInvocation(mid, args, RayActor.nil);
+    RayInvocation ri = createRemoteInvocation(mid, args, RayActor.NIL);
     return scheduler.submitActorCreationTask(taskId, createActorId, ri);
   }
 
