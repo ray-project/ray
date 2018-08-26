@@ -368,6 +368,11 @@ def fetch_and_register_actor(actor_class_key, worker):
             # because we currently do need the actor worker to submit new tasks
             # for the actor.
 
+        # After this worker has been sucessfully converted into an actor,
+        # store the association between its actor_id and the actor_class_id
+        # in the GCS for debugging purposes.
+        worker.redis_client.set(b"ActorInstance:" + actor_id_str, actor_class_key)
+
 
 def publish_actor_class_to_key(key, actor_class_info, worker):
     """Push an actor class definition to Redis.
