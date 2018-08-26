@@ -28,14 +28,14 @@ public class LocalSchedulerProxy {
 
   public RayObject submit(UniqueID taskId, RayInvocation invocation) {
     UniqueID[] returnIds = genReturnIds(taskId, 1);
-    this.doSubmit(invocation, taskId, returnIds, UniqueID.nil);
+    this.doSubmit(invocation, taskId, returnIds, UniqueID.NIL);
     return new RayObject(returnIds[0]);
   }
 
   public RayObject submitActorTask(UniqueID taskId, RayInvocation invocation) {
     // add one for the dummy return ID
     UniqueID[] returnIds = genReturnIds(taskId, 2);
-    this.doSubmit(invocation, taskId, returnIds, UniqueID.nil);
+    this.doSubmit(invocation, taskId, returnIds, UniqueID.NIL);
     return new RayObject(returnIds[0]);
   }
 

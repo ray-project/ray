@@ -135,15 +135,15 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
     TaskInfo info = TaskInfo.getRootAsTaskInfo(bb);
 
     TaskSpec spec = new TaskSpec();
-    spec.driverId = new UniqueID(info.driverIdAsByteBuffer());
-    spec.taskId = new UniqueID(info.taskIdAsByteBuffer());
-    spec.parentTaskId = new UniqueID(info.parentTaskIdAsByteBuffer());
+    spec.driverId = UniqueID.fromByteBuffer(info.driverIdAsByteBuffer());
+    spec.taskId = UniqueID.fromByteBuffer(info.taskIdAsByteBuffer());
+    spec.parentTaskId = UniqueID.fromByteBuffer(info.parentTaskIdAsByteBuffer());
     spec.parentCounter = info.parentCounter();
-    spec.actorId = new UniqueID(info.actorIdAsByteBuffer());
+    spec.actorId = UniqueID.fromByteBuffer(info.actorIdAsByteBuffer());
     spec.actorCounter = info.actorCounter();
-    spec.createActorId = new UniqueID(info.actorCreationIdAsByteBuffer());
+    spec.createActorId = UniqueID.fromByteBuffer(info.actorCreationIdAsByteBuffer());
 
-    spec.functionId = new UniqueID(info.functionIdAsByteBuffer());
+    spec.functionId = UniqueID.fromByteBuffer(info.functionIdAsByteBuffer());
 
     List<FunctionArg> args = new ArrayList<>();
     for (int i = 0; i < info.argsLength(); i++) {
@@ -156,7 +156,7 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
         for (int j = 0; j < idCount; j++) {
           ByteBuffer lbb = sarg.objectIdAsByteBuffer(j);
           assert (lbb != null && lbb.remaining() > 0);
-          darg.ids.add(new UniqueID(lbb));
+          darg.ids.add(UniqueID.fromByteBuffer(lbb));
         }
       }
 
@@ -175,7 +175,7 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
     for (int i = 0; i < info.returnsLength(); i++) {
       ByteBuffer lbb = info.returnsAsByteBuffer(i);
       assert (lbb != null && lbb.remaining() > 0);
-      rids.add(new UniqueID(lbb));
+      rids.add(UniqueID.fromByteBuffer(lbb));
     }
     spec.returnIds = rids.toArray(new UniqueID[0]);
 
@@ -193,7 +193,7 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
     final int parentTaskIdOffset = fbb.createString(task.parentTaskId.toByteBuffer());
     final int parentCounter = task.parentCounter;
     final int actorCreateIdOffset = fbb.createString(task.createActorId.toByteBuffer());
-    final int actorCreateDummyIdOffset = fbb.createString(UniqueID.nil.toByteBuffer());
+    final int actorCreateDummyIdOffset = fbb.createString(UniqueID.NIL.toByteBuffer());
     final int actorIdOffset = fbb.createString(task.actorId.toByteBuffer());
     final int actorHandleIdOffset = fbb.createString(task.actorHandleId.toByteBuffer());
     final int actorCounter = task.actorCounter;
