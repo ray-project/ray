@@ -12,6 +12,7 @@ import ray.services as services
 from ray.autoscaler.commands import (attach_cluster, exec_cluster,
                                      create_or_update_cluster, rsync,
                                      teardown_cluster, get_head_node_ip)
+import ray.ray_constants as ray_constants
 import ray.utils
 
 
@@ -153,16 +154,15 @@ def cli():
 @click.option(
     "--logging-level",
     required=False,
-    default="info",
+    default=ray_constants.LOGGER_LEVEL,
     type=str,
-    help="The logging level threshold, choices=['debug', 'info', 'warning',"
-    " 'error', 'critical'], default='info'")
+    help=ray_constants.LOGGER_LEVEL_HELP)
 @click.option(
     "--logging-format",
     required=False,
-    default="%(message)s",
+    default=ray_constants.LOGGER_FORMAT,
     type=str,
-    help="The logging format. default='%(message)s'")
+    help=ray_constants.LOGGER_FORMAT_HELP)
 def start(node_ip_address, redis_address, redis_port, num_redis_shards,
           redis_max_clients, redis_shard_ports, object_manager_port,
           object_store_memory, num_workers, num_cpus, num_gpus, resources,

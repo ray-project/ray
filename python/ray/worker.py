@@ -1738,7 +1738,7 @@ def init(redis_address=None,
          use_raylet=None,
          configure_logging=True,
          logging_level=logging.INFO,
-         logging_format="%(message)s"):
+         logging_format=ray_constants.LOGGER_FORMAT):
     """Connect to an existing Ray cluster or start one and connect to it.
 
     This method handles two cases. Either a Ray cluster already exists and we
@@ -1800,7 +1800,7 @@ def init(redis_address=None,
         use_raylet: True if the new raylet code path should be used.
         configure_logging: True if allow the logging cofiguration here.
             Otherwise, the users may want to configure it by their own.
-        logging_level: Logging level, default will be loging.WARN.
+        logging_level: Logging level, default will be loging.INFO.
         logging_format: Logging format, default will be "%(message)s"
             which means only contains the message.
 

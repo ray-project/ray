@@ -787,16 +787,15 @@ if __name__ == "__main__":
         "--logging-level",
         required=False,
         type=str,
-        default="info",
-        choices=['debug', 'info', 'warning', 'error', 'critical'],
-        help="The logging level threshold, choices=['debug', 'info', "
-        "'warning', 'error', 'critical'], default='info'")
+        default=ray_constants.LOGGER_LEVEL,
+        choices=ray_constants.LOGGER_LEVEL_CHOICES,
+        help=ray_constants.LOGGER_LEVEL_HELP)
     parser.add_argument(
         "--logging-format",
         required=False,
         type=str,
-        default="%(message)s",
-        help="The logging format. default='%(message)s'")
+        default=ray_constants.LOGGER_FORMAT,
+        help=ray_constants.LOGGER_FORMAT_HELP)
     args = parser.parse_args()
     level = logging.getLevelName(args.logging_level.upper())
     logging.basicConfig(level=level, format=args.logging_format)
