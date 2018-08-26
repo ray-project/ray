@@ -47,7 +47,7 @@ public class RayNativeRuntime extends RayRuntime {
   private KeyValueStoreLink kvStore = null;
   private RunManager manager = null;
   private Object actor = null;
-  private UniqueID actorId = UniqueID.nil;
+  private UniqueID actorId = UniqueID.NIL;
 
   protected RayNativeRuntime() {
   }
@@ -114,7 +114,7 @@ public class RayNativeRuntime extends RayRuntime {
         LocalSchedulerLink slink = new DefaultLocalSchedulerClient(
             params.local_scheduler_name,
             WorkerContext.currentWorkerId(),
-            UniqueID.nil,
+            UniqueID.NIL,
             isWorker,
             WorkerContext.currentTask().taskId,
             0,
@@ -133,7 +133,7 @@ public class RayNativeRuntime extends RayRuntime {
         LocalSchedulerLink slink = new DefaultLocalSchedulerClient(
             params.raylet_socket_name,
             WorkerContext.currentWorkerId(),
-            UniqueID.nil,
+            UniqueID.NIL,
             isWorker,
             WorkerContext.currentTask().taskId,
             0,
