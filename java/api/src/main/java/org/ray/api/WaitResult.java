@@ -1,24 +1,26 @@
 package org.ray.api;
 
 
+import java.util.List;
+
 /**
  * The result of Ray.wait() distinguish the ready ones and the remain ones
  */
 public class WaitResult<T> {
 
-  private final RayList<T> readyOnes;
-  private final RayList<T> remainOnes;
+  private final List<RayObject<T>> readyOnes;
+  private final List<RayObject<T>> remainOnes;
 
-  public WaitResult(RayList<T> readyOnes, RayList<T> remainOnes) {
+  public WaitResult(List<RayObject<T>> readyOnes, List<RayObject<T>> remainOnes) {
     this.readyOnes = readyOnes;
     this.remainOnes = remainOnes;
   }
 
-  public RayList<T> getReadyOnes() {
+  public List<RayObject<T>> getReadyOnes() {
     return readyOnes;
   }
 
-  public RayList<T> getRemainOnes() {
+  public List<RayObject<T>> getRemainOnes() {
     return remainOnes;
   }
 
