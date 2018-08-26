@@ -7,6 +7,7 @@ import collections
 import colorama
 import hashlib
 import inspect
+import logging
 import numpy as np
 import os
 import redis
@@ -25,7 +26,6 @@ import ray.gcs_utils
 import ray.remote_function
 import ray.serialization as serialization
 import ray.services as services
-from ray.services import logger
 import ray.signature
 import ray.local_scheduler
 import ray.plasma
@@ -72,6 +72,11 @@ DEFAULT_ACTOR_CREATION_CPUS_SIMPLE_CASE = 0
 # specified.
 DEFAULT_ACTOR_METHOD_CPUS_SPECIFIED_CASE = 0
 DEFAULT_ACTOR_CREATION_CPUS_SPECIFIED_CASE = 1
+
+# Logger for this module. It should be configured at the entry point
+# into the program using Ray. Ray configures it by default automatically
+# using logging.basicConfig in its entry/init points.
+logger = logging.getLogger(__name__)
 
 
 class RayTaskError(Exception):
@@ -1730,7 +1735,10 @@ def init(redis_address=None,
          plasma_directory=None,
          huge_pages=False,
          include_webui=True,
-         use_raylet=None):
+         use_raylet=None,
+         configure_logging=True,
+         logging_level=logging.INFO,
+         logging_format=ray_constants.LOGGER_FORMAT):
     """Connect to an existing Ray cluster or start one and connect to it.
 
     This method handles two cases. Either a Ray cluster already exists and we
@@ -1790,6 +1798,11 @@ def init(redis_address=None,
         include_webui: Boolean flag indicating whether to start the web
             UI, which is a Jupyter notebook.
         use_raylet: True if the new raylet code path should be used.
+        configure_logging: True if allow the logging cofiguration here.
+            Otherwise, the users may want to configure it by their own.
+        logging_level: Logging level, default will be loging.INFO.
+        logging_format: Logging format, default will be "%(message)s"
+            which means only contains the message.
 
     Returns:
         Address information about the started processes.
@@ -1798,6 +1811,9 @@ def init(redis_address=None,
         Exception: An exception is raised if an inappropriate combination of
             arguments is passed in.
     """
+    if configure_logging:
+        logging.basicConfig(level=logging_level, format=logging_format)
+
     if global_worker.connected:
         if ignore_reinit_error:
             logger.error("Calling ray.init() again after it has already been "
