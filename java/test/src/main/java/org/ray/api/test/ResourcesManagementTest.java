@@ -1,5 +1,6 @@
 package org.ray.api.test;
 
+import com.google.common.collect.ImmutableList;
 import org.junit.Assert;
 import org.junit.Assume;
 import org.junit.Test;
@@ -55,7 +56,7 @@ public class ResourcesManagementTest {
 
     // This is a case that can't satisfy required resources.
     final RayObject<Integer> result2 = Ray.call(ResourcesManagementTest::echo2, 200);
-    WaitResult<Integer> waitResult = Ray.wait(result2, 1000);
+    WaitResult<Integer> waitResult = Ray.wait(ImmutableList.of(result2), 1, 1000);
 
     Assert.assertEquals(0, waitResult.getReadyOnes().size());
     Assert.assertEquals(1, waitResult.getRemainOnes().size());
@@ -72,7 +73,7 @@ public class ResourcesManagementTest {
     // This is a case that can't satisfy required resources.
     RayActor<ResourcesManagementTest.Echo2> echo2 = Ray.create(Echo2.class);
     final RayObject<Integer> result2 = Ray.call(Echo2::echo, echo2, 100);
-    WaitResult<Integer> waitResult = Ray.wait(result2, 1000);
+    WaitResult<Integer> waitResult = Ray.wait(ImmutableList.of(result2), 1, 1000);
 
     Assert.assertEquals(0, waitResult.getReadyOnes().size());
     Assert.assertEquals(1, waitResult.getRemainOnes().size());
