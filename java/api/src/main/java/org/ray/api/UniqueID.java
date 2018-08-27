@@ -42,8 +42,8 @@ public class UniqueID implements Serializable {
 
   public UniqueID(byte[] id) {
     if (id.length != LENGTH) {
-      throw new IllegalArgumentException("Illegal argument: " + id.toString()
-          + ". The length of the argument should be " + String.valueOf(LENGTH) + ".");
+      throw new IllegalArgumentException("Illegal argument for UniqueID, expect " + LENGTH
+          + " bytes, but got " + id.length + " bytes.");
     }
 
     this.id = id;
