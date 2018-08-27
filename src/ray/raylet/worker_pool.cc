@@ -2,6 +2,9 @@
 
 #include <sys/wait.h>
 
+#include <algorithm>
+#include <thread>
+
 #include "ray/status.h"
 #include "ray/util/logging.h"
 
@@ -97,7 +100,9 @@ uint32_t WorkerPool::Size(const Language &language) const {
 void WorkerPool::StartWorkerProcess(const Language &language, bool force_start) {
   // The first condition makes sure that we are always starting up to
   // num_cpus_ number of processes in parallel.
-  if (static_cast<int>(starting_worker_processes_.size()) >= num_cpus_ && !force_start) {
+  if (static_cast<int>(starting_worker_processes_.size()) >=
+          std::min(num_cpus_, static_cast<int>(std::thread::hardware_concurrency())) &&
+      !force_start) {
     // Workers have been started, but not registered. Force start disabled -- returning.
     RAY_LOG(DEBUG) << starting_worker_processes_.size()
                    << " worker processes pending registration";

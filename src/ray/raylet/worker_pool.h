@@ -42,9 +42,9 @@ class WorkerPool {
   /// Asynchronously start a new worker process. Once the worker process has
   /// registered with an external server, the process should create and
   /// register num_workers_per_process_ workers, then add them to the pool.
-  /// Failure to start the worker process is a fatal error.
-  /// This function will start up to num_cpus many workers in parallel
-  /// if it is called multiple times.
+  /// Failure to start the worker process is a fatal error. If too many workers
+  /// are already being started and force_start is false, then this function
+  /// will return without starting any workers.
   ///
   /// \param language Which language this worker process should be.
   /// \param force_start Controls whether to force starting a worker regardless of any
