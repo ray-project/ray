@@ -87,7 +87,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       local_available_resources_(config.resource_config),
       worker_pool_(config.num_initial_workers, config.num_workers_per_process,
                    static_cast<int>(config.resource_config.GetNumCpus()),
-                   config.worker_command),
+                   config.worker_commands),
       local_queues_(SchedulingQueue()),
       scheduling_policy_(local_queues_),
       reconstruction_policy_(
@@ -485,7 +485,8 @@ void NodeManager::ProcessClientMessage(
   case protocol::MessageType::RegisterClientRequest: {
     auto message = flatbuffers::GetRoot<protocol::RegisterClientRequest>(message_data);
     client->SetClientID(from_flatbuf(*message->client_id()));
-    auto worker = std::make_shared<Worker>(message->worker_pid(), client);
+    auto worker =
+        std::make_shared<Worker>(message->worker_pid(), message->language(), client);
     if (message->is_worker()) {
       // Register the new worker.
       worker_pool_.RegisterWorker(std::move(worker));
@@ -1030,13 +1031,13 @@ void NodeManager::AssignTask(Task &task) {
   }
 
   // Try to get an idle worker that can execute this task.
-  std::shared_ptr<Worker> worker = worker_pool_.PopWorker(spec.ActorId());
+  std::shared_ptr<Worker> worker = worker_pool_.PopWorker(spec);
   if (worker == nullptr) {
     // There are no workers that can execute this task.
     if (!spec.IsActorTask()) {
       // There are no more non-actor workers available to execute this task.
       // Start a new worker.
-      worker_pool_.StartWorkerProcess();
+      worker_pool_.StartWorkerProcess(spec.GetLanguage());
     }
     // Queue this task for future assignment. The task will be assigned to a
     // worker once one becomes available.
