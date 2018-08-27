@@ -1384,7 +1384,7 @@ class GlobalState(object):
                     for i in range(num_resources):
                         resource_id = decode(
                             message.ResourcesAvailableLabel(i))
-                        dynamic_resources[resource_str] = (
+                        dynamic_resources[resource_id] = (
                             message.ResourcesAvailableCapacity(i))
 
                     # Update available resources for this client
