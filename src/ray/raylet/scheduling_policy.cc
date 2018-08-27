@@ -135,9 +135,12 @@ std::vector<TaskID> SchedulingPolicy::SpillOver(
 
   for (const auto &task : scheduling_queue_.GetReadyTasks()) {
     if (!task.GetTaskSpecification().IsActorTask()) {
-      decision.push_back(task.GetTaskSpecification().TaskId());
-      new_load.AddResources(task.GetTaskSpecification().GetRequiredResources());
-      break;
+      if (task.GetTaskSpecification().GetRequiredResources().IsSubset(
+          remote_scheduling_resources.GetTotalResources())) {
+        decision.push_back(task.GetTaskSpecification().TaskId());
+        new_load.AddResources(task.GetTaskSpecification().GetRequiredResources());
+        break;
+      }
     }
   }
   remote_scheduling_resources.SetLoadResources(std::move(new_load));
