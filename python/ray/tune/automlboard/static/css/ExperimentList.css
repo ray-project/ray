@@ -70,7 +70,7 @@
 @media (min-width: 992px) {
     .collapsed {
         display: block;
-        margin-left: -15%; /* same width as sidebar */
+        margin-left: -18%; /* same width as sidebar */
     }
 }
 
