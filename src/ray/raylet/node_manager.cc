@@ -224,7 +224,6 @@ void NodeManager::HandleDriverTableUpdate(
 }
 
 void NodeManager::Heartbeat() {
-  static uint64_t counter;
   uint64_t now_ms = current_time_ms();
   uint64_t interval = now_ms - last_heartbeat_at_ms_;
   if (interval > RayConfig::instance().num_heartbeats_warning() *
@@ -258,14 +257,6 @@ void NodeManager::Heartbeat() {
     heartbeat_data->resource_load_label.push_back(resource_pair.first);
     heartbeat_data->resource_load_capacity.push_back(resource_pair.second);
   }
-  if (++counter % 10 == 0) {
-    RAY_LOG(DEBUG) << "HEARTBEAT: "
-                   << " load " << local_resources.GetLoadResources().ToString()
-                   << " avail " << local_resources.GetAvailableResources().ToString()
-                   << " total " << local_resources.GetTotalResources().ToString()
-                   << " queues\n"
-                   << local_queues_.ToString();
-  }
 
   ray::Status status = heartbeat_table.Add(
       UniqueID::nil(), gcs_client_->client_table().GetLocalClientId(), heartbeat_data,
@@ -279,7 +270,6 @@ void NodeManager::Heartbeat() {
     RAY_LOG(INFO) << "is redis error: " << status.IsRedisError();
   }
   RAY_CHECK_OK(status);
-  RAY_CHECK(CheckDependencyManagerInvariant());
 
   // Reset the timer.
   heartbeat_timer_.expires_from_now(heartbeat_period_);
@@ -386,14 +376,14 @@ void NodeManager::HeartbeatAdded(gcs::AsyncGcsClient *client, const ClientID &cl
   // Extract decision for this local scheduler.
   std::unordered_set<TaskID> local_task_ids;
   for (const auto &task_id : decision) {
-      // (See design_docs/task_states.rst for the state transition diagram.)
-      const auto task = local_queues_.RemoveTask(task_id);
-      // Since we are spilling back from the ready and waiting queues, we need
-      // to unsubscribe the dependencies.
-      task_dependency_manager_.UnsubscribeDependencies(task_id);
-      // Attempt to forward the task. If this fails to forward the task,
-      // the task will be resubmit locally.
-      ForwardTaskOrResubmit(task, client_id);
+    // (See design_docs/task_states.rst for the state transition diagram.)
+    const auto task = local_queues_.RemoveTask(task_id);
+    // Since we are spilling back from the ready and waiting queues, we need
+    // to unsubscribe the dependencies.
+    task_dependency_manager_.UnsubscribeDependencies(task_id);
+    // Attempt to forward the task. If this fails to forward the task,
+    // the task will be resubmit locally.
+    ForwardTaskOrResubmit(task, client_id);
   }
 }
 
@@ -620,17 +610,6 @@ void NodeManager::ProcessClientMessage(
       cluster_resource_map_[client_id].Release(lifetime_resources.ToResourceSet());
       worker->ResetLifetimeResourceIds();
 
-#if 0
-      // Try to dispatch more tasks since the blocked worker released some
-      // resources.
-      const ClientID &local_client_id = gcs_client_->client_table().GetLocalClientId();
-      cluster_resource_map_[local_client_id].SetLoadResources(
-          local_queues_.GetResourceLoad());
-      std::unordered_map<ClientID, SchedulingResources> local_resource_map(
-          {{local_client_id, cluster_resource_map_[local_client_id]}});
-      // Invoke the scheduling policy only on local resources.
-      ScheduleTasks(local_resource_map);
-#endif
       // Since some resources may have been released, we can try to dispatch more tasks.
       DispatchTasks();
     } else {
@@ -819,47 +798,47 @@ void NodeManager::ScheduleTasks(
     std::unordered_map<ClientID, SchedulingResources> &resource_map) {
   const ClientID &local_client_id = gcs_client_->client_table().GetLocalClientId();
 
-    // If the resource map contains the local raylet, update load before calling policy.
-    if (resource_map.count(local_client_id) > 0) {
-      resource_map[local_client_id].SetLoadResources(local_queues_.GetResourceLoad());
-    }
-    // Invoke the scheduling policy.
-    auto policy_decision = scheduling_policy_.Schedule(resource_map, local_client_id);
+  // If the resource map contains the local raylet, update load before calling policy.
+  if (resource_map.count(local_client_id) > 0) {
+    resource_map[local_client_id].SetLoadResources(local_queues_.GetResourceLoad());
+  }
+  // Invoke the scheduling policy.
+  auto policy_decision = scheduling_policy_.Schedule(resource_map, local_client_id);
 
 #ifndef NDEBUG
-    RAY_LOG(DEBUG) << "[NM ScheduleTasks] policy decision:";
-    for (const auto &task_client_pair : policy_decision) {
-      TaskID task_id = task_client_pair.first;
-      ClientID client_id = task_client_pair.second;
-      RAY_LOG(DEBUG) << task_id << " --> " << client_id;
-    }
+  RAY_LOG(DEBUG) << "[NM ScheduleTasks] policy decision:";
+  for (const auto &task_client_pair : policy_decision) {
+    TaskID task_id = task_client_pair.first;
+    ClientID client_id = task_client_pair.second;
+    RAY_LOG(DEBUG) << task_id << " --> " << client_id;
+  }
 #endif
 
-    // Extract decision for this local scheduler.
-    std::unordered_set<TaskID> local_task_ids;
-    // Iterate over (taskid, clientid) pairs, extract tasks assigned to the local node.
-    for (const auto &task_client_pair : policy_decision) {
-      const TaskID &task_id = task_client_pair.first;
-      const ClientID &client_id = task_client_pair.second;
-      if (client_id == local_client_id) {
-        local_task_ids.insert(task_id);
-      } else {
-        // TODO(atumanov): need a better interface for task exit on forward.
-        // (See design_docs/task_states.rst for the state transition diagram.)
-        const auto task = local_queues_.RemoveTask(task_id);
-        // Attempt to forward the task. If this fails to forward the task,
-        // the task will be resubmit locally.
-        ForwardTaskOrResubmit(task, client_id);
-      }
+  // Extract decision for this local scheduler.
+  std::unordered_set<TaskID> local_task_ids;
+  // Iterate over (taskid, clientid) pairs, extract tasks assigned to the local node.
+  for (const auto &task_client_pair : policy_decision) {
+    const TaskID &task_id = task_client_pair.first;
+    const ClientID &client_id = task_client_pair.second;
+    if (client_id == local_client_id) {
+      local_task_ids.insert(task_id);
+    } else {
+      // TODO(atumanov): need a better interface for task exit on forward.
+      // (See design_docs/task_states.rst for the state transition diagram.)
+      const auto task = local_queues_.RemoveTask(task_id);
+      // Attempt to forward the task. If this fails to forward the task,
+      // the task will be resubmit locally.
+      ForwardTaskOrResubmit(task, client_id);
     }
+  }
 
-    // Transition locally placed tasks to waiting or ready for dispatch.
-    if (local_task_ids.size() > 0) {
-      std::vector<Task> tasks = local_queues_.RemoveTasks(local_task_ids);
-      for (const auto &t : tasks) {
-        EnqueuePlaceableTask(t);
-      }
+  // Transition locally placed tasks to waiting or ready for dispatch.
+  if (local_task_ids.size() > 0) {
+    std::vector<Task> tasks = local_queues_.RemoveTasks(local_task_ids);
+    for (const auto &t : tasks) {
+      EnqueuePlaceableTask(t);
     }
+  }
 
   // All remaining placeable tasks should be registered with the task dependency
   // manager. TaskDependencyManager::TaskPending() is assumed to be idempotent.
@@ -875,12 +854,10 @@ void NodeManager::ScheduleTasks(
         cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].GetTotalResources()
     ));
   }
-  RAY_CHECK(CheckDependencyManagerInvariant());
 
   // Assumption: all remaining placeable tasks are infeasible and are moved to the
   // infeasible task queue. Infeasible task queue is checked when new nodes join.
   local_queues_.MoveTasks(move_task_set, TaskState::PLACEABLE, TaskState::INFEASIBLE);
-  RAY_CHECK(CheckDependencyManagerInvariant());
   // Check the invariant that no placeable tasks remain after a call to the policy.
   RAY_CHECK(local_queues_.GetPlaceableTasks().size() == 0);
 }
@@ -1012,20 +989,8 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
       DispatchTasks();
       // TODO(atumanov): assert that !placeable.isempty() => insufficient available
       // resources locally.
-      const ClientID &local_client_id = gcs_client_->client_table().GetLocalClientId();
-      RAY_LOG(DEBUG)
-          << "SUBMIT: "
-          << " load "
-          << cluster_resource_map_[local_client_id].GetLoadResources().ToString()
-          << " avail "
-          << cluster_resource_map_[local_client_id].GetAvailableResources().ToString()
-          << " total "
-          << cluster_resource_map_[local_client_id].GetTotalResources().ToString()
-          << " queues:\n"
-          << local_queues_.ToString();
     }
   }
-  RAY_CHECK(CheckDependencyManagerInvariant());
 }
 
 void NodeManager::HandleWorkerBlocked(std::shared_ptr<Worker> worker) {
@@ -1055,17 +1020,6 @@ void NodeManager::HandleWorkerBlocked(std::shared_ptr<Worker> worker) {
   local_queues_.QueueBlockedTasks({task});
   worker->MarkBlocked();
 
-#if 0
-  // Try to dispatch more tasks since the blocked worker released some
-  // resources.
-  const ClientID &local_client_id = gcs_client_->client_table().GetLocalClientId();
-  cluster_resource_map_[local_client_id].SetLoadResources(
-      local_queues_.GetResourceLoad());
-  std::unordered_map<ClientID, SchedulingResources> local_resource_map(
-      {{local_client_id, cluster_resource_map_[local_client_id]}});
-  // Invoke the scheduling policy only on local resources.
-  ScheduleTasks(local_resource_map);
-#endif
   DispatchTasks();
 }
 
@@ -1393,17 +1347,8 @@ void NodeManager::HandleObjectMissing(const ObjectID &object_id) {
 
     // Check that remaining tasks that could not be transitioned are running
     // workers or drivers, now blocked in a get.
-    std::cerr << "tasks in the set " << waiting_task_id_set.size() << std::endl;
     local_queues_.FilterState(waiting_task_id_set, TaskState::RUNNING);
     local_queues_.FilterState(waiting_task_id_set, TaskState::DRIVER);
-    // At this point, if the set is not-empty we have a problem.
-    std::cerr << "remaining tasks in the set " << waiting_task_id_set.size() << std::endl;
-    for (const auto &tid : waiting_task_id_set) {
-      std::cerr << " taskid: " << tid.hex() << (local_queues_.HasTask(tid)?"is":"is not")
-                << " in the queues" << std::endl;
-    }
-    RAY_CHECK(CheckDependencyManagerInvariant());
-    local_queues_.FilterState(waiting_task_id_set, TaskState::INFEASIBLE);
     RAY_CHECK(waiting_task_id_set.empty());
     // Moving ready tasks to waiting may have changed the load, making space for placing
     // new tasks locally.
