@@ -923,6 +923,9 @@ class ActorsWithGPUs(unittest.TestCase):
         ready_ids, _ = ray.wait([a.get_location_and_ids.remote()], timeout=10)
         assert ready_ids == []
 
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") == "1",
+        "This test does not work with xray yet.")
     def testActorMultipleGPUsFromMultipleTasks(self):
         num_local_schedulers = 10
         num_gpus_per_scheduler = 10
