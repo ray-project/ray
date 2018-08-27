@@ -116,9 +116,11 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
 
   @Override
   public void reconstructObjects(List<UniqueID> objectIds, boolean fetchOnly) {
-    RayLog.core.info("reconstruct objects {}", objectIds);
+    if (RayLog.core.isInfoEnabled()) {
+      RayLog.core.info("Reconstructing objects for task {}, object IDs are {}",
+          UniqueIdHelper.computeTaskId(objectIds.get(0)), objectIds);
+    }
     _reconstruct_objects(client, getIdBytes(objectIds), fetchOnly);
-    RayLog.core.info("task id is {}", UniqueIdHelper.computeTaskId(objectIds.get(0)));
   }
 
   @Override

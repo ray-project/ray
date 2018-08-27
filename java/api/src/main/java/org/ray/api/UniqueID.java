@@ -7,13 +7,11 @@ import java.util.Random;
 import javax.xml.bind.DatatypeConverter;
 
 /**
- * Unique ID for task, worker, function...
+ * Unique ID for task, worker, function.
  */
 public class UniqueID implements Serializable {
 
   public static final int LENGTH = 20;
-  public static final int OBJECT_INDEX_POS = 0;
-  public static final int OBJECT_INDEX_LENGTH = 4;
   public static final UniqueID NIL = genNil();
   private static final long serialVersionUID = 8588849129675565761L;
   private final byte[] id;
@@ -44,7 +42,8 @@ public class UniqueID implements Serializable {
 
   public UniqueID(byte[] id) {
     if (id.length != LENGTH) {
-      throw new IllegalArgumentException("Illegal argument: " + id.toString());
+      throw new IllegalArgumentException("Illegal argument: " + id.toString()
+          + ". The length of the argument should be " + String.valueOf(LENGTH) + ".");
     }
 
     this.id = id;
