@@ -87,7 +87,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       local_available_resources_(config.resource_config),
       worker_pool_(config.num_initial_workers, config.num_workers_per_process,
                    static_cast<int>(config.resource_config.GetNumCpus()),
-                   config.worker_command),
+                   config.worker_commands),
       local_queues_(SchedulingQueue()),
       scheduling_policy_(local_queues_),
       reconstruction_policy_(
@@ -485,7 +485,8 @@ void NodeManager::ProcessClientMessage(
   case protocol::MessageType::RegisterClientRequest: {
     auto message = flatbuffers::GetRoot<protocol::RegisterClientRequest>(message_data);
     client->SetClientID(from_flatbuf(*message->client_id()));
-    auto worker = std::make_shared<Worker>(message->worker_pid(), client);
+    auto worker =
+        std::make_shared<Worker>(message->worker_pid(), message->language(), client);
     if (message->is_worker()) {
       // Register the new worker.
       worker_pool_.RegisterWorker(std::move(worker));
@@ -1030,13 +1031,13 @@ void NodeManager::AssignTask(Task &task) {
   }
 
   // Try to get an idle worker that can execute this task.
-  std::shared_ptr<Worker> worker = worker_pool_.PopWorker(spec.ActorId());
+  std::shared_ptr<Worker> worker = worker_pool_.PopWorker(spec);
   if (worker == nullptr) {
     // There are no workers that can execute this task.
     if (!spec.IsActorTask()) {
       // There are no more non-actor workers available to execute this task.
       // Start a new worker.
-      worker_pool_.StartWorkerProcess();
+      worker_pool_.StartWorkerProcess(spec.GetLanguage());
     }
     // Queue this task for future assignment. The task will be assigned to a
     // worker once one becomes available.
@@ -1194,21 +1195,11 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id) {
       [this](ray::gcs::AsyncGcsClient *client, const TaskID &task_id) {
         // The task was not in the GCS task table. It must therefore be in the
         // lineage cache.
-        if (!lineage_cache_.ContainsTask(task_id)) {
-          // The task was not in the lineage cache.
-          // TODO(swang): This should not ever happen, but Java TaskIDs are
-          // currently computed differently from Python TaskIDs, so
-          // reconstruction is currently broken for Java. Once the TaskID
-          // generation code matches for both frontends, we should be able to
-          // remove this warning and make it a fatal check.
-          RAY_LOG(WARNING) << "Task " << task_id << " to reconstruct was not found in "
-                                                    "the GCS or the lineage cache. This "
-                                                    "job may hang.";
-        } else {
-          // Use a copy of the cached task spec to re-execute the task.
-          const Task task = lineage_cache_.GetTask(task_id);
-          ResubmitTask(task);
-        }
+        RAY_CHECK(lineage_cache_.ContainsTask(task_id));
+        // Use a copy of the cached task spec to re-execute the task.
+        const Task task = lineage_cache_.GetTask(task_id);
+        ResubmitTask(task);
+
       }));
 }
 

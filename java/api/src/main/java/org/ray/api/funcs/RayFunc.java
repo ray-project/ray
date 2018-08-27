@@ -1,9 +1,9 @@
-package org.ray.api.internal;
+package org.ray.api.funcs;
 
 import java.io.Serializable;
 
 /**
- * Base of the ray remote function.
+ * Interface of all Ray remote functions.
  */
 public interface RayFunc extends Serializable {
 

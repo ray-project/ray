@@ -9,12 +9,9 @@
   <suppress checks="AbbreviationAsWordInNameCheck" files="RayParameters.java"/>
   <suppress checks="MethodNameCheck" files="ResourcePair.java"/>
   <suppress checks="ParameterNameCheck" files="ResourcePair.java"/>
-  <suppress checks="MethodNameCheck" files="RayMap.java"/>
-  <suppress checks="MethodNameCheck" files="RayList.java"/>
-  <suppress checks="OverloadMethodsDeclarationOrderCheck" files="Rpc.java"/>
   <suppress checks="MethodTypeParameterNameCheck" files="Rpc.java"/>
   <suppress checks="AbbreviationAsWordInNameCheck" files="UniqueID.java"/>
-  <suppress checks="TypeNameCheck" files="RayFunc_[0-9]_.+\.java"/>
+  <suppress checks=".*" files="Rpc.java"/>
   <!-- suppress check for flatbuffer-generated files. -->
   <!-- TODO(raulchen): move these files to a directory, so this rule can be simplier. -->
   <suppress checks=".*" files="(Arg|ResourcePair|TaskLanguage|TaskInfo|ClientTableData).java" />
