@@ -249,7 +249,7 @@ public class RayNativeRuntime extends RayRuntime {
         WorkerContext.nextCallIndex()
     );
 
-    UniqueID actorId = UniqueIdHelper.taskComputeReturnId(createTaskId, 0, false);
+    UniqueID actorId = UniqueIdHelper.taskComputeReturnId(createTaskId, 0);
     RayActor<T> actor = new RayActor<>(actorId);
     UniqueID cursorId;
 
