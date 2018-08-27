@@ -138,7 +138,8 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1waitObject(JNIEnv *,
 JNIEXPORT jbyteArray JNICALL
 Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1generateTaskId(JNIEnv *,
                                                                    jclass,
-                                                                   jbyteArray, jbyteArray,
+                                                                   jbyteArray,
+                                                                   jbyteArray,
                                                                    jint);
 
 #ifdef __cplusplus

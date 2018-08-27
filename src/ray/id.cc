@@ -6,9 +6,9 @@
 #include <mutex>
 #include <random>
 
+#include "common/common.h"
 #include "ray/constants.h"
 #include "ray/status.h"
-#include "common/common.h"
 
 namespace ray {
 
@@ -192,8 +192,7 @@ const TaskID ComputeTaskId(const ObjectID &object_id) {
   return task_id;
 }
 
-const TaskID GenerateTaskId(const DriverID &driver_id,
-                            const TaskID &parent_task_id,
+const TaskID GenerateTaskId(const DriverID &driver_id, const TaskID &parent_task_id,
                             int parent_task_counter) {
   // Compute hashes.
   SHA256_CTX ctx;

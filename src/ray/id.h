@@ -91,9 +91,8 @@ const TaskID ComputeTaskId(const ObjectID &object_id);
 /// \param parent_task_id The parent task of this task.
 /// \param parent_task_counter The task index of the worker.
 /// \return The task ID generated from the given info.
-const TaskID GenerateTaskId(const DriverID &driver_id,
-                           const TaskID &parent_task_id,
-                           int parent_task_counter);
+const TaskID GenerateTaskId(const DriverID &driver_id, const TaskID &parent_task_id,
+                            int parent_task_counter);
 
 /// Compute the index of this object in the task that created it.
 ///
