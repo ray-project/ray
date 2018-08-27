@@ -106,7 +106,7 @@ std::vector<TaskID> TaskDependencyManager::HandleObjectLocal(
 
 std::vector<TaskID> TaskDependencyManager::HandleObjectMissing(
     const ray::ObjectID &object_id) {
-  // Add the object to the table of locally available objects.
+  // Remove the object from the table of locally available objects.
   auto erased = local_objects_.erase(object_id);
   RAY_CHECK(erased == 1);
 
@@ -124,6 +124,7 @@ std::vector<TaskID> TaskDependencyManager::HandleObjectMissing(
         // missing.
         if (task_entry.num_missing_dependencies == 0) {
           waiting_task_ids.push_back(dependent_task_id);
+          RAY_CHECK(pending_tasks_.count(dependent_task_id) == 1);
         }
         task_entry.num_missing_dependencies++;
       }

@@ -259,7 +259,7 @@ void NodeManager::Heartbeat() {
     heartbeat_data->resource_load_capacity.push_back(resource_pair.second);
   }
   if (++counter % 10 == 0) {
-    RAY_LOG(INFO) << "HEARTBEAT: "
+    RAY_LOG(DEBUG) << "HEARTBEAT: "
                    << " load " << local_resources.GetLoadResources().ToString()
                    << " avail " << local_resources.GetAvailableResources().ToString()
                    << " total " << local_resources.GetTotalResources().ToString()
@@ -388,6 +388,9 @@ void NodeManager::HeartbeatAdded(gcs::AsyncGcsClient *client, const ClientID &cl
   for (const auto &task_id : decision) {
       // (See design_docs/task_states.rst for the state transition diagram.)
       const auto task = local_queues_.RemoveTask(task_id);
+      // Since we are spilling back from the ready and waiting queues, we need
+      // to unsubscribe the dependencies.
+      task_dependency_manager_.UnsubscribeDependencies(task_id);
       // Attempt to forward the task. If this fails to forward the task,
       // the task will be resubmit locally.
       ForwardTaskOrResubmit(task, client_id);
@@ -1010,7 +1013,7 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
       // TODO(atumanov): assert that !placeable.isempty() => insufficient available
       // resources locally.
       const ClientID &local_client_id = gcs_client_->client_table().GetLocalClientId();
-      RAY_LOG(INFO)
+      RAY_LOG(DEBUG)
           << "SUBMIT: "
           << " load "
           << cluster_resource_map_[local_client_id].GetLoadResources().ToString()
