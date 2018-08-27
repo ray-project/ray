@@ -178,6 +178,7 @@ const ObjectID ComputeReturnId(const TaskID &task_id, int64_t return_index) {
 
 const ObjectID ComputePutId(const TaskID &task_id, int64_t put_index) {
   RAY_CHECK(put_index >= 1 && put_index <= kMaxTaskPuts);
+  // We multiply put_index by -1 to distinguish from task_index.
   return ComputeObjectId(task_id, -1 * put_index);
 }
 

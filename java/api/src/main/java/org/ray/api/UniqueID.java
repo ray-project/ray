@@ -12,7 +12,9 @@ import javax.xml.bind.DatatypeConverter;
 public class UniqueID implements Serializable {
 
   public static final int LENGTH = 20;
-  public static final UniqueID NIL = genNil();
+  public static final int OBJECT_INDEX_POS = 0;
+  public static final int OBJECT_INDEX_LENGTH = 4;
+  public static final UniqueID nil = genNil();
   private static final long serialVersionUID = 8588849129675565761L;
   private final byte[] id;
 
