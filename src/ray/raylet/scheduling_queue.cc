@@ -105,6 +105,27 @@ const std::list<Task> &SchedulingQueue::GetReadyTasks() const {
   return this->ready_tasks_.GetTasks();
 }
 
+ResourceSet SchedulingQueue::GetQueueResources(const TaskQueue &task_queue) const {
+  // Iterate over all tasks of the specified queue and aggregate total resource
+  // demand in a resource set.
+  ResourceSet queue_resources;
+  for (const auto &task : task_queue.GetTasks()) {
+    queue_resources.AddResources(task.GetTaskSpecification().GetRequiredResources());
+  }
+  return queue_resources;
+}
+
+ResourceSet SchedulingQueue::GetReadyQueueResources() const {
+  return GetQueueResources(ready_tasks_);
+}
+
+ResourceSet SchedulingQueue::GetResourceLoad() const {
+  ResourceSet load_resource_set;
+  load_resource_set.AddResources(GetReadyQueueResources());
+  // TODO(atumanov): consider other types of tasks as part of load.
+  return load_resource_set;
+}
+
 const std::list<Task> &SchedulingQueue::GetRunningTasks() const {
   return this->running_tasks_.GetTasks();
 }
@@ -262,6 +283,24 @@ void SchedulingQueue::RemoveDriverTaskId(const TaskID &driver_id) {
 
 const std::unordered_set<TaskID> &SchedulingQueue::GetDriverTaskIds() const {
   return driver_task_ids_;
+}
+
+const std::string SchedulingQueue::ToString() const {
+  std::string result;
+
+  result += "placeable_tasks_ size is " +
+            std::to_string(placeable_tasks_.GetTasks().size()) + "\n";
+  result +=
+      "waiting_tasks_ size is " + std::to_string(waiting_tasks_.GetTasks().size()) + "\n";
+  result +=
+      "ready_tasks_ size is " + std::to_string(ready_tasks_.GetTasks().size()) + "\n";
+  result +=
+      "running_tasks_ size is " + std::to_string(running_tasks_.GetTasks().size()) + "\n";
+  result +=
+      "blocked_tasks_ size is " + std::to_string(blocked_tasks_.GetTasks().size()) + "\n";
+  result += "methods_waiting_for_actor_creation_ size is " +
+            std::to_string(methods_waiting_for_actor_creation_.GetTasks().size()) + "\n";
+  return result;
 }
 
 }  // namespace raylet

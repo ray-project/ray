@@ -51,6 +51,12 @@ class SchedulingQueue {
   /// dependencies local and that are waiting to be scheduled.
   const std::list<Task> &GetPlaceableTasks() const;
 
+  /// \brief Return an aggregate resource set for all tasks exerting load on this raylet.
+  ///
+  /// \return A resource set with aggregate resource information about resource load on
+  /// this raylet.
+  ResourceSet GetResourceLoad() const;
+
   /// Get the queue of tasks in the ready state.
   ///
   /// \return A const reference to the queue of tasks ready
@@ -153,6 +159,18 @@ class SchedulingQueue {
   /// \param filter_state The task state to filter out.
   void FilterState(std::unordered_set<TaskID> &task_ids, TaskState filter_state) const;
 
+  /// \brief Return all resource demand associated with the ready queue.
+  ///
+  /// \return Aggregate resource demand from ready tasks.
+  ResourceSet GetReadyQueueResources() const;
+
+  /// Return a human-readable string indicating the number of tasks in each
+  /// queue.
+  ///
+  /// \return A string that can be used to display the contents of the queues
+  /// for debugging purposes.
+  const std::string ToString() const;
+
   class TaskQueue {
    public:
     /// Creating a task queue.
@@ -217,6 +235,12 @@ class SchedulingQueue {
   /// The set of currently running driver tasks. These are empty tasks that are
   /// started by a driver process on initialization.
   std::unordered_set<TaskID> driver_task_ids_;
+
+  /// \brief Return all resource demand associated with the specified task queue.
+  ///
+  /// \param task_queue The task queue for which aggregate resource demand is calculated.
+  /// \return Aggregate resource demand.
+  ResourceSet GetQueueResources(const TaskQueue &task_queue) const;
 };
 
 }  // namespace raylet
