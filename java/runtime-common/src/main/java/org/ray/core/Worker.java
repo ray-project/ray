@@ -82,7 +82,9 @@ public class Worker {
 
   public RayObject submit(RayFunc func, Object[] args) {
     MethodId methodId = methodIdOf(func);
-    UniqueID taskId = UniqueIdHelper.nextTaskId(-1);
+    UniqueID taskId = scheduler.generateTaskId(WorkerContext.currentTask().driverId,
+          WorkerContext.currentTask().taskId,
+          WorkerContext.nextCallIndex());
     if (args.length > 0 && args[0].getClass().equals(RayActor.class)) {
       return actorTaskSubmit(taskId, methodId, args, (RayActor<?>) args[0]);
     } else {
@@ -123,7 +125,7 @@ public class Worker {
   }
 
   public UniqueID getCurrentTaskNextPutId() {
-    return UniqueIdHelper.taskComputePutId(
+    return UniqueIdHelper.computePutId(
         WorkerContext.currentTask().taskId, WorkerContext.nextPutIndex());
   }
 

@@ -113,7 +113,6 @@ public abstract class RayRuntime implements RayApi {
       RemoteFunctionManager remoteLoader,
       PathConfig pathManager
   ) {
-    UniqueIdHelper.setThreadRandomSeed(UniqueIdHelper.getUniqueness(params.driver_id));
     remoteFunctionManager = remoteLoader;
     pathConfig = pathManager;
 

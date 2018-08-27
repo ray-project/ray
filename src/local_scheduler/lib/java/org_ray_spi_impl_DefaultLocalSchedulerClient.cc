@@ -3,6 +3,7 @@
 #include "local_scheduler/lib/java/org_ray_spi_impl_DefaultLocalSchedulerClient.h"
 #include "local_scheduler_client.h"
 #include "logging.h"
+#include "ray/id.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -297,6 +298,31 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1waitObject(
     }
   }
   return resultArray;
+}
+
+JNIEXPORT jbyteArray JNICALL
+Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1generateTaskId(
+    JNIEnv *env,
+    jclass,
+    jbyteArray did,
+    jbyteArray ptid,
+    jint parent_task_counter) {
+  UniqueIdFromJByteArray o1(env, did);
+  ray::DriverID driver_id = *o1.PID;
+
+  UniqueIdFromJByteArray o2(env, ptid);
+  ray::TaskID parent_task_id = *o2.PID;
+
+  ray::TaskID task_id =
+      ray::GenerateTaskId(driver_id, parent_task_id, parent_task_counter);
+  jbyteArray result = env->NewByteArray(sizeof(ray::TaskID));
+  if (nullptr == result) {
+    return nullptr;
+  }
+  env->SetByteArrayRegion(result, 0, sizeof(TaskID),
+                          reinterpret_cast<jbyte *>(&task_id));
+
+  return result;
 }
 
 #ifdef __cplusplus
