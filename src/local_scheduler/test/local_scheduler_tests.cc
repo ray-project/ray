@@ -126,7 +126,7 @@ LocalSchedulerMock *LocalSchedulerMock_init(int num_workers,
   for (int i = 0; i < num_mock_workers; ++i) {
     mock->conns[i] = LocalSchedulerConnection_init(
         local_scheduler_socket_name.c_str(), WorkerID::nil(), true,
-        JobID::nil(), false);
+        JobID::nil(), false, Language::PYTHON);
   }
 
   background_thread.join();
