@@ -132,7 +132,7 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1waitObject(JNIEnv *,
 
 /*
  * Class:     org_ray_spi_impl_DefaultLocalSchedulerClient
- * Method:    _computeTaskId
+ * Method:    _generateTaskId
  * Signature: ([B[BI)[B
  */
 JNIEXPORT jbyteArray JNICALL

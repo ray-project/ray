@@ -312,7 +312,7 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1generateTaskId(JNIEnv *env,
   UniqueIdFromJByteArray o2(env, ptid);
   ray::TaskID parent_task_id = *o2.PID;
 
-  ray::TaskID task_id = ray::GenerateTaskID(driver_id, parent_task_id, parent_task_counter);
+  ray::TaskID task_id = ray::GenerateTaskId(driver_id, parent_task_id, parent_task_counter);
   jbyteArray result = env->NewByteArray(sizeof(ray::TaskID));
   if (nullptr == result) {
     return nullptr;

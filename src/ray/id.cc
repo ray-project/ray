@@ -191,7 +191,7 @@ const TaskID ComputeTaskId(const ObjectID &object_id) {
   return task_id;
 }
 
-const TaskID GenerateTaskID(const DriverID &driver_id,
+const TaskID GenerateTaskId(const DriverID &driver_id,
                             const TaskID &parent_task_id,
                             int parent_task_counter) {
   // Compute hashes.
