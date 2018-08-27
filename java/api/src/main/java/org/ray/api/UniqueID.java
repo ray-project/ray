@@ -87,11 +87,6 @@ public class UniqueID implements Serializable {
   }
 
   public boolean isNil() {
-    for (byte b : id) {
-      if (b != (byte) 0xFF) {
-        return false;
-      }
-    }
-    return true;
+    return this.equals(NIL);
   }
 }
