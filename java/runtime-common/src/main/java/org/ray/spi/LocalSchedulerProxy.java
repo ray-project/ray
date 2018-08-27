@@ -50,7 +50,7 @@ public class LocalSchedulerProxy {
   private UniqueID[] genReturnIds(UniqueID taskId, int numReturns) {
     UniqueID[] ret = new UniqueID[numReturns];
     for (int i = 0; i < numReturns; i++) {
-      ret[i] = UniqueIdHelper.taskComputeReturnId(taskId, i, false);
+      ret[i] = UniqueIdHelper.computeReturnId(taskId, i + 1);
     }
     return ret;
   }
@@ -128,5 +128,9 @@ public class LocalSchedulerProxy {
     }
 
     return new WaitResult<>(readyObjs, remainObjs);
+  }
+
+  public UniqueID generateTaskId(UniqueID driverId, UniqueID parentTaskId, int taskIndex) {
+    return scheduler.generateTaskId(driverId, parentTaskId, taskIndex);
   }
 }

@@ -1195,21 +1195,11 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id) {
       [this](ray::gcs::AsyncGcsClient *client, const TaskID &task_id) {
         // The task was not in the GCS task table. It must therefore be in the
         // lineage cache.
-        if (!lineage_cache_.ContainsTask(task_id)) {
-          // The task was not in the lineage cache.
-          // TODO(swang): This should not ever happen, but Java TaskIDs are
-          // currently computed differently from Python TaskIDs, so
-          // reconstruction is currently broken for Java. Once the TaskID
-          // generation code matches for both frontends, we should be able to
-          // remove this warning and make it a fatal check.
-          RAY_LOG(WARNING) << "Task " << task_id << " to reconstruct was not found in "
-                                                    "the GCS or the lineage cache. This "
-                                                    "job may hang.";
-        } else {
-          // Use a copy of the cached task spec to re-execute the task.
-          const Task task = lineage_cache_.GetTask(task_id);
-          ResubmitTask(task);
-        }
+        RAY_CHECK(lineage_cache_.ContainsTask(task_id));
+        // Use a copy of the cached task spec to re-execute the task.
+        const Task task = lineage_cache_.GetTask(task_id);
+        ResubmitTask(task);
+
       }));
 }
 
