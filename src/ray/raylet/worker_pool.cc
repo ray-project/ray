@@ -98,10 +98,16 @@ uint32_t WorkerPool::Size(const Language &language) const {
 }
 
 void WorkerPool::StartWorkerProcess(const Language &language, bool force_start) {
-  // The first condition makes sure that we are always starting up to
-  // num_cpus_ number of processes in parallel.
-  if (static_cast<int>(starting_worker_processes_.size()) >=
-          std::min(num_cpus_, static_cast<int>(std::thread::hardware_concurrency())) &&
+  // Determine the maximum number of workers that we will allow to be started
+  // in parallel.
+  int max_concurrency = num_cpus_;
+  // Note that std::thread::hardware_concurrency() is a hint and can return 0.
+  int hardware_concurrency = static_cast<int>(std::thread::hardware_concurrency());
+  if (hardware_concurrency != 0) {
+    max_concurrency = std::min(max_concurrency, hardware_concurrency);
+  }
+
+  if (static_cast<int>(starting_worker_processes_.size()) >= max_concurrency &&
       !force_start) {
     // Workers have been started, but not registered. Force start disabled -- returning.
     RAY_LOG(DEBUG) << starting_worker_processes_.size()
