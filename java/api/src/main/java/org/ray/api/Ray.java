@@ -1,15 +1,12 @@
 package org.ray.api;
 
-import com.google.common.collect.ImmutableList;
 import java.util.List;
 import org.ray.api.internal.RayConnector;
-import org.ray.util.exception.TaskExecutionException;
-import org.ray.util.logger.RayLog;
 
 /**
  * Ray API.
  */
-public final class Ray extends Rpc {
+public final class Ray extends RayCall {
 
   private static RayApi impl = null;
 
@@ -22,72 +19,33 @@ public final class Ray extends Rpc {
     }
   }
 
-  /**
-   * Put obj into object store.
-   */
   public static <T> RayObject<T> put(T obj) {
     return impl.put(obj);
   }
 
-  public static <T, TMT> RayObject<T> put(T obj, TMT metadata) {
-    return impl.put(obj, metadata);
-  }
-
-  /**
-   * Get obj(s) from object store.
-   */
-  static <T> T get(UniqueID objectId) throws TaskExecutionException {
+  public static <T> T get(UniqueID objectId) {
     return impl.get(objectId);
   }
 
-  static <T> List<T> get(List<UniqueID> objectIds) throws TaskExecutionException {
+  public static <T> List<T> get(List<UniqueID> objectIds) {
     return impl.get(objectIds);
   }
 
-  static <T> T getMeta(UniqueID objectId) throws TaskExecutionException {
-    return impl.getMeta(objectId);
+  public static <T> WaitResult<T> wait(List<RayObject<T>> waitList, int numReturns,
+                                       int timeoutMs) {
+    return impl.wait(waitList, numReturns, timeoutMs);
   }
 
-  static <T> List<T> getMeta(List<UniqueID> objectIds) throws TaskExecutionException {
-    return impl.getMeta(objectIds);
+  public static <T> WaitResult<T> wait(List<RayObject<T>> waitList, int numReturns) {
+    return impl.wait(waitList, numReturns, Integer.MAX_VALUE);
   }
 
-  /**
-   * wait until timeout or enough RayObject are ready.
-   *
-   * @param waitfor             wait for who
-   * @param numReturns          how many of ready is enough
-   * @param timeoutMilliseconds in millisecond
-   */
-  public static <T> WaitResult<T> wait(List<RayObject<T>> waitfor, int numReturns,
-                                       int timeoutMilliseconds) {
-    return impl.wait(waitfor, numReturns, timeoutMilliseconds);
+  public static <T> WaitResult<T> wait(List<RayObject<T>> waitList) {
+    return impl.wait(waitList, waitList.size(), Integer.MAX_VALUE);
   }
 
-  public static <T> WaitResult<T> wait(List<RayObject<T>> waitfor, int numReturns) {
-    return impl.wait(waitfor, numReturns, Integer.MAX_VALUE);
-  }
-
-  public static <T> WaitResult<T> wait(List<RayObject<T>> waitfor) {
-    return impl.wait(waitfor, waitfor.size(), Integer.MAX_VALUE);
-  }
-
-  /**
-   * create actor object.
-   */
-  public static <T> RayActor<T> create(Class<T> cls) {
-    try {
-      if (cls.getConstructor() == null) {
-        System.err.println("class " + cls.getName()
-            + " does not (actors must) have a constructor with no arguments");
-        RayLog.core.error("class {} does not (actors must) have a constructor with no arguments",
-            cls.getName());
-      }
-    } catch (Exception e) {
-      System.exit(1);
-      return null;
-    }
-    return impl.create(cls);
+  public static <T> RayActor<T> createActor(Class<T> actorClass) {
+    return impl.createActor(actorClass);
   }
 
   /**

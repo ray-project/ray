@@ -6,7 +6,7 @@ import java.lang.reflect.Modifier;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
-import org.ray.api.RayRemote;
+import org.ray.api.annotation.RayRemote;
 import org.ray.api.UniqueID;
 
 

@@ -1,6 +1,6 @@
 // generated automatically, do not modify.
 
-package org.ray.api.funcs;
+package org.ray.api.function;
 
 @FunctionalInterface
 public interface RayFunc3<T0, T1, T2, R> extends RayFunc {

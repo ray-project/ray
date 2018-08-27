@@ -3,7 +3,7 @@ package org.ray.exercise;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
-import org.ray.api.RayRemote;
+import org.ray.api.annotation.RayRemote;
 import org.ray.core.RayRuntime;
 
 /**
@@ -14,8 +14,8 @@ public class Exercise05 {
   public static void main(String[] args) {
     try {
       Ray.init();
-      // `Ray.create` creates an actor instance.
-      RayActor<Adder> adder = Ray.create(Adder.class);
+      // `Ray.createActor` creates an actor instance.
+      RayActor<Adder> adder = Ray.createActor(Adder.class);
       // Use `Ray.call(actor, parameters)` to call an actor method.
       RayObject<Integer> result1 = Ray.call(Adder::add, adder, 1);
       System.out.println(result1.get());

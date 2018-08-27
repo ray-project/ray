@@ -1,18 +1,18 @@
 package org.ray.core;
 
-import com.google.common.base.Preconditions;
 import java.util.Arrays;
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.UniqueID;
-import org.ray.api.funcs.RayFunc;
-import org.ray.spi.LocalSchedulerProxy;
-import org.ray.spi.model.RayInvocation;
+import org.ray.api.function.RayFunc;
+import org.ray.api.function.RayFunc2;
+import org.ray.spi.LocalSchedulerLink;
 import org.ray.spi.model.RayMethod;
 import org.ray.spi.model.TaskSpec;
 import org.ray.util.MethodId;
+import org.ray.util.ResourceUtil;
 import org.ray.util.exception.TaskExecutionException;
 import org.ray.util.logger.RayLog;
 
@@ -22,10 +22,10 @@ import org.ray.util.logger.RayLog;
  */
 public class Worker {
 
-  private final LocalSchedulerProxy scheduler;
+  private final LocalSchedulerLink scheduler;
   private final LocalFunctionManager functions;
 
-  public Worker(LocalSchedulerProxy scheduler, LocalFunctionManager functions) {
+  public Worker(LocalSchedulerLink scheduler, LocalFunctionManager functions) {
     this.scheduler = scheduler;
     this.functions = functions;
   }
@@ -33,14 +33,13 @@ public class Worker {
   public void loop() {
     while (true) {
       RayLog.core.info(Thread.currentThread().getName() + ":fetching new task...");
-      TaskSpec task = scheduler.getTask();
+      TaskSpec task = scheduler.getTaskTodo();
       execute(task, functions);
     }
   }
 
   public static void execute(TaskSpec task, LocalFunctionManager funcs) {
-    RayLog.core.info("Task " + task.taskId + " start execute");
-    Throwable ex = null;
+    RayLog.core.info("Executing task {}", task.taskId);
 
     if (!task.actorId.isNil() || (task.createActorId != null && !task.createActorId.isNil())) {
       task.returnIds = ArrayUtils.subarray(task.returnIds, 0, task.returnIds.length - 1);
@@ -51,69 +50,80 @@ public class Worker {
           .getMethod(task.driverId, task.actorId, task.functionId, task.args);
       WorkerContext.prepare(task, pr.getLeft());
       InvocationExecutor.execute(task, pr);
-    } catch (NoSuchMethodException | SecurityException | ClassNotFoundException e) {
-      RayLog.core.error("task execution failed for " + task.taskId, e);
-      ex = new TaskExecutionException("task execution failed for " + task.taskId, e);
-    } catch (Throwable e) {
-      RayLog.core.error("catch Throwable when execute for " + task.taskId, e);
-      ex = e;
+      RayLog.core.info("Finished executing task {}", task.taskId);
+    } catch (Exception e) {
+      RayLog.core.error("Failed to execute task " + task.taskId, e);
+      RayRuntime.getInstance().putRaw(task.returnIds[0], e);
     }
-
-    if (ex != null) {
-      for (int k = 0; k < task.returnIds.length; k++) {
-        RayRuntime.getInstance().putRaw(task.returnIds[k], ex);
-      }
-    }
-
   }
 
-  private RayObject taskSubmit(UniqueID taskId, MethodId methodId, Object[] args) {
-    RayInvocation ri = createRemoteInvocation(methodId, args, RayActor.NIL);
-    return scheduler.submit(taskId, ri);
-  }
-
-  private RayObject actorTaskSubmit(UniqueID taskId, MethodId methodId, Object[] args,
-      RayActor<?> actor) {
-    RayInvocation ri = createRemoteInvocation(methodId, args, actor);
-    RayObject ret = scheduler.submitActorTask(taskId, ri);
-    actor.setTaskCursor(ret.getId());
+  /**
+   * generate the return ids of a task.
+   */
+  private UniqueID[] genReturnIds(UniqueID taskId, int numReturns) {
+    UniqueID[] ret = new UniqueID[numReturns];
+    for (int i = 0; i < numReturns; i++) {
+      ret[i] = UniqueIdHelper.computeReturnId(taskId, i + 1);
+    }
     return ret;
   }
 
-  public RayObject submit(RayFunc func, Object[] args) {
-    MethodId methodId = methodIdOf(func);
-    UniqueID taskId = scheduler.generateTaskId(WorkerContext.currentTask().driverId,
-          WorkerContext.currentTask().taskId,
+  private TaskSpec createTaskSpec(RayFunc func, RayActor actor, Object[] args, Class actorClassForCreation) {
+    final TaskSpec current = WorkerContext.currentTask();
+    UniqueID taskId = scheduler.generateTaskId(current.driverId,
+          current.taskId,
           WorkerContext.nextCallIndex());
-    if (args.length > 0 && args[0].getClass().equals(RayActor.class)) {
-      return actorTaskSubmit(taskId, methodId, args, (RayActor<?>) args[0]);
-    } else {
-      return taskSubmit(taskId, methodId, args);
+    int numReturns = actor.getId().isNil() ? 1 : 2;
+    UniqueID[] returnIds = genReturnIds(taskId, numReturns);
+
+    UniqueID actorCreationId = UniqueID.NIL;
+    if (actorClassForCreation != null) {
+      args = new Object[] {returnIds[0], actorClassForCreation.getName()};
+      actorCreationId = returnIds[0];
     }
+
+    MethodId methodId = methodIdOf(func);
+
+    args = Arrays.copyOf(args, args.length + 1);
+    args[args.length - 1] = methodId.className;
+
+    RayMethod rayMethod = functions.getMethod(
+        current.driverId, actor.getId(), new UniqueID(methodId.getSha1Hash()), methodId.className
+    ).getRight();
+    UniqueID funcId = rayMethod.getFuncId();
+
+    return new TaskSpec(
+        current.driverId,
+        taskId,
+        current.taskId,
+        -1,
+        actor.getId(),
+        actor.getTaskCounter(),
+        funcId,
+        ArgumentsBuilder.wrap(args),
+        returnIds,
+        actor.getHandleId(),
+        actorCreationId,
+        ResourceUtil.getResourcesMapFromArray(rayMethod.remoteAnnotation.resources()),
+        actor.getLastTaskId()
+    );
   }
 
-  public RayObject createActor(UniqueID taskId, UniqueID createActorId,
-      RayFunc func, Object[] args) {
-    Preconditions.checkNotNull(taskId);
-    MethodId mid = methodIdOf(func);
-    RayInvocation ri = createRemoteInvocation(mid, args, RayActor.NIL);
-    return scheduler.submitActorCreationTask(taskId, createActorId, ri);
+  public RayObject submit(RayFunc func, RayActor actor, Object[] args) {
+    TaskSpec spec = createTaskSpec(func, actor, args, null);
+    if (!actor.getId().isNil()) {
+      actor.onSubmittingTask(spec.returnIds[1]);
+    }
+    scheduler.submitTask(spec);
+    return new RayObjectImpl(spec.returnIds[0]);
   }
 
-  private RayInvocation createRemoteInvocation(MethodId methodId, Object[] args,
-      RayActor<?> actor) {
-    UniqueID driverId = WorkerContext.currentTask().driverId;
-
-    Object[] ls = Arrays.copyOf(args, args.length + 1);
-    ls[args.length] = methodId.className;
-
-    RayMethod method = functions
-        .getMethod(driverId, actor.getId(), new UniqueID(methodId.getSha1Hash()),
-            methodId.className).getRight();
-
-    RayInvocation ri = new RayInvocation(methodId.className, method.getFuncId(),
-        ls, method.remoteAnnotation, actor);
-    return ri;
+  public RayActor submitActorCreationTask(RayFunc2<UniqueID, String, Object> func, Class actorClass) {
+    TaskSpec spec = createTaskSpec(func, RayActorImpl.NIL, null, actorClass);
+    RayActorImpl actor = new RayActorImpl(spec.returnIds[0]);
+    actor.onSubmittingTask(spec.returnIds[0]);
+    scheduler.submitTask(spec);
+    return actor;
   }
 
   private MethodId methodIdOf(RayFunc serialLambda) {

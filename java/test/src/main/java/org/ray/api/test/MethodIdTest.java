@@ -4,7 +4,7 @@ package org.ray.api.test;
 import java.lang.reflect.Method;
 import org.junit.Assert;
 import org.junit.Test;
-import org.ray.api.funcs.RayFunc3;
+import org.ray.api.function.RayFunc3;
 import org.ray.util.MethodId;
 import org.ray.util.logger.RayLog;
 

@@ -57,6 +57,7 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
 
   @Override
   public void submitTask(TaskSpec task) {
+    RayLog.core.debug("Submitting task: {}", task);
     // We don't support resources management in non raylet mode.
     if (!useRaylet) {
       task.resources.clear();
@@ -72,12 +73,12 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
     }
 
     ByteBuffer info = taskSpec2Info(task);
-    byte[] a = null;
+    byte[] cursorId = null;
     if (!task.actorId.isNil()) {
-      a = task.cursorId.getBytes();
+      cursorId = task.cursorId.getBytes();
     }
 
-    nativeSubmitTask(client, a, info, info.position(), info.remaining(), useRaylet);
+    nativeSubmitTask(client, cursorId, info, info.position(), info.remaining(), useRaylet);
   }
 
   @Override
@@ -137,27 +138,25 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
 
     List<FunctionArg> args = new ArrayList<>();
     for (int i = 0; i < info.argsLength(); i++) {
-      FunctionArg darg = new FunctionArg();
+      UniqueID id = null;
+      byte[] data = null;
       Arg sarg = info.args(i);
 
       int idCount = sarg.objectIdsLength();
       if (idCount > 0) {
-        darg.ids = new ArrayList<>();
-        for (int j = 0; j < idCount; j++) {
-          ByteBuffer lbb = sarg.objectIdAsByteBuffer(j);
-          assert (lbb != null && lbb.remaining() > 0);
-          darg.ids.add(UniqueID.fromByteBuffer(lbb));
-        }
+        ByteBuffer lbb = sarg.objectIdAsByteBuffer(0);
+        assert (lbb != null && lbb.remaining() > 0);
+        id = UniqueID.fromByteBuffer(lbb);
       }
 
       ByteBuffer lbb = sarg.dataAsByteBuffer();
       if (lbb != null && lbb.remaining() > 0) {
         // TODO: how to avoid memory copy
-        darg.data = new byte[lbb.remaining()];
-        lbb.get(darg.data);
+        data = new byte[lbb.remaining()];
+        lbb.get(data);
       }
 
-      args.add(darg);
+      args.add(new FunctionArg(id, data));
     }
     spec.args = args.toArray(new FunctionArg[0]);
 
@@ -195,12 +194,10 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
 
       int objectIdOffset = 0;
       int dataOffset = 0;
-      if (task.args[i].ids != null) {
-        int idCount = task.args[i].ids.size();
-        int[] idOffsets = new int[idCount];
-        for (int k = 0; k < idCount; k++) {
-          idOffsets[k] = fbb.createString(task.args[i].ids.get(k).toByteBuffer());
-        }
+      if (task.args[i].id != null) {
+        int[] idOffsets = new int[] {
+            fbb.createString(task.args[i].id.toByteBuffer())
+        };
         objectIdOffset = fbb.createVectorOfTables(idOffsets);
       } else {
         objectIdOffset = fbb.createVectorOfTables(new int[0]);

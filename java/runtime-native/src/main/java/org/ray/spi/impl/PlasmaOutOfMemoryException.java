@@ -2,7 +2,7 @@ package org.ray.spi.impl;
 
 /**
  * This exception is raised if the object could not be created because the plasma store is unable to
- * evict enough objects to create room for it.
+ * evict enough objects to createActor room for it.
  */
 public class PlasmaOutOfMemoryException extends Exception {
 

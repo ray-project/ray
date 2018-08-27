@@ -11,14 +11,16 @@ import java.util.Map;
 import org.apache.arrow.plasma.ObjectStoreLink;
 import org.apache.commons.lang3.tuple.Pair;
 import org.ray.api.Ray;
+import org.ray.api.RayActor;
 import org.ray.api.RayApi;
 import org.ray.api.RayObject;
 import org.ray.api.UniqueID;
 import org.ray.api.WaitResult;
-import org.ray.api.funcs.RayFunc;
+import org.ray.api.annotation.RayRemote;
+import org.ray.api.function.RayFunc;
+import org.ray.api.function.RayFunc2;
 import org.ray.core.model.RayParameters;
 import org.ray.spi.LocalSchedulerLink;
-import org.ray.spi.LocalSchedulerProxy;
 import org.ray.spi.ObjectStoreProxy;
 import org.ray.spi.ObjectStoreProxy.GetStatus;
 import org.ray.spi.PathConfig;
@@ -37,11 +39,13 @@ public abstract class RayRuntime implements RayApi {
   protected static RayParameters params = null;
   private static boolean fromRayInit = false;
   protected Worker worker;
-  protected LocalSchedulerProxy localSchedulerProxy;
+  protected LocalSchedulerLink localSchedulerProxy;
   protected ObjectStoreProxy objectStoreProxy;
   protected LocalFunctionManager functions;
   protected RemoteFunctionManager remoteFunctionManager;
   protected PathConfig pathConfig;
+
+  private Map<UniqueID, Object> actors = new HashMap<>();
 
   // app level Ray.init()
   // make it private so there is no direct usage but only from Ray.init
@@ -117,7 +121,7 @@ public abstract class RayRuntime implements RayApi {
     pathConfig = pathManager;
 
     functions = new LocalFunctionManager(remoteLoader);
-    localSchedulerProxy = new LocalSchedulerProxy(slink);
+    localSchedulerProxy = slink;
 
     if (!params.use_raylet) {
       objectStoreProxy = new ObjectStoreProxy(plink);
@@ -180,31 +184,21 @@ public abstract class RayRuntime implements RayApi {
 
   public abstract void cleanUp();
 
-  public <T> void putRaw(UniqueID taskId, UniqueID objectId, T obj) {
-    putRaw(taskId, objectId, obj, null);
-  }
-
   /***********
    * RayApi methods.
    ***********/
 
-  public <T, TMT> void putRaw(UniqueID taskId, UniqueID objectId, T obj, TMT metadata) {
+  public <T> void putRaw(UniqueID taskId, UniqueID objectId, T obj) {
     RayLog.core.info("Task " + taskId.toString() + " Object " + objectId.toString() + " put");
     if (!params.use_raylet) {
       localSchedulerProxy.markTaskPutDependency(taskId, objectId);
     }
-    objectStoreProxy.put(objectId, obj, metadata);
+    objectStoreProxy.put(objectId, obj, null);
   }
 
   public <T> void putRaw(UniqueID objectId, T obj) {
     UniqueID taskId = getCurrentTaskId();
-    putRaw(taskId, objectId, obj, null);
-  }
-
-  public <T> void putRaw(T obj) {
-    UniqueID taskId = getCurrentTaskId();
-    UniqueID objectId = getCurrentTaskNextPutId();
-    putRaw(taskId, objectId, obj, null);
+    putRaw(taskId, objectId, obj);
   }
 
   /**
@@ -224,49 +218,35 @@ public abstract class RayRuntime implements RayApi {
 
   @Override
   public <T> RayObject<T> put(T obj) {
-    return put(obj, null);
+    UniqueID taskId = getCurrentTaskId();
+    UniqueID objectId = getCurrentTaskNextPutId();
+    putRaw(taskId, objectId, obj);
+    return new RayObjectImpl<>(objectId);
   }
 
   @Override
-  public <T, TMT> RayObject<T> put(T obj, TMT metadata) {
-    UniqueID taskId = getCurrentTaskId();
-    UniqueID objectId = getCurrentTaskNextPutId();
-    putRaw(taskId, objectId, obj, metadata);
-    return new RayObject<>(objectId);
+  public <T> WaitResult<T> wait(List<RayObject<T>> waitList, int numReturns, int timeoutMs) {
+    return objectStoreProxy.wait(waitList, numReturns, timeoutMs);
+  }
+
+  @Override
+  public RayObject call(RayFunc func, Object[] args) {
+    return worker.submit(func, RayActorImpl.NIL, args);
+  }
+
+  @Override
+  public RayObject call(RayFunc func, RayActor actor, Object[] args) {
+    return worker.submit(func, actor, args);
   }
 
   @Override
   public <T> T get(UniqueID objectId) throws TaskExecutionException {
-    return doGet(objectId, false);
+    List<T> ret = get(ImmutableList.of(objectId));
+    return ret.get(0);
   }
 
   @Override
-  public <T> List<T> get(List<UniqueID> objectIds) throws TaskExecutionException {
-    return doGet(objectIds, false);
-  }
-
-  @Override
-  public <T> T getMeta(UniqueID objectId) throws TaskExecutionException {
-    return doGet(objectId, true);
-  }
-
-  @Override
-  public <T> List<T> getMeta(List<UniqueID> objectIds) throws TaskExecutionException {
-    return doGet(objectIds, true);
-  }
-
-  @Override
-  public <T> WaitResult<T> wait(List<RayObject<T>> waitfor, int numReturns, int timeout) {
-    return objectStoreProxy.wait(waitfor, numReturns, timeout);
-  }
-
-  @Override
-  public RayObject call(RayFunc func, Object... args) {
-    return worker.submit(func, args);
-  }
-
-  private <T> List<T> doGet(List<UniqueID> objectIds, boolean isMetadata)
-      throws TaskExecutionException {
+  public <T> List<T> get(List<UniqueID> objectIds) {
     boolean wasBlocked = false;
     UniqueID taskId = getCurrentTaskId();
 
@@ -286,7 +266,7 @@ public abstract class RayRuntime implements RayApi {
 
       // Get the objects. We initially try to get the objects immediately.
       List<Pair<T, GetStatus>> ret = objectStoreProxy
-          .get(objectIds, params.default_first_check_timeout_ms, isMetadata);
+          .get(objectIds, params.default_first_check_timeout_ms, false);
       assert ret.size() == numObjectIds;
 
       // Mapping the object IDs that we haven't gotten yet to their original index in objectIds.
@@ -319,7 +299,7 @@ public abstract class RayRuntime implements RayApi {
         }
 
         List<Pair<T, GetStatus>> results = objectStoreProxy
-            .get(unreadyList, params.default_get_check_interval_ms, isMetadata);
+            .get(unreadyList, params.default_get_check_interval_ms, false);
 
         // Remove any entries for objects we received during this iteration so we
         // don't retrieve the same object twice.
@@ -355,14 +335,6 @@ public abstract class RayRuntime implements RayApi {
     }
   }
 
-  private <T> T doGet(UniqueID objectId, boolean isMetadata) throws TaskExecutionException {
-    ImmutableList<UniqueID> objectIds = ImmutableList.of(objectId);
-    List<T> results = doGet(objectIds, isMetadata);
-
-    assert results.size() == 1;
-    return results.get(0);
-  }
-
   private List<List<UniqueID>> splitIntoBatches(List<UniqueID> objectIds, int batchSize) {
     List<List<UniqueID>> batches = new ArrayList<>();
     int objectsSize = objectIds.size();
@@ -377,6 +349,27 @@ public abstract class RayRuntime implements RayApi {
     }
 
     return batches;
+  }
+
+  @Override
+  public <T> RayActor<T> createActor(Class<T> actorClass) {
+    return worker.submitActorCreationTask(RayRuntime::createLocalActor, actorClass);
+  }
+
+  @RayRemote
+  private static Object createLocalActor(UniqueID actorId, String className) {
+    try {
+      Class<?> cls = Class.forName(className, true, Thread.currentThread().getContextClassLoader());
+      Object actor = cls.getConstructor().newInstance();
+      getInstance().actors.put(actorId, actor);
+      RayLog.core.info("Created actor: {}, actor id: {}", className, actorId);
+      return null;
+    } catch (ClassNotFoundException | InstantiationException | IllegalAccessException
+        | IllegalArgumentException | InvocationTargetException | NoSuchMethodException
+        | SecurityException e) {
+      RayLog.core.error("Failed to create actor {}", className, e);
+      throw new TaskExecutionException(e);
+    }
   }
 
   /**
@@ -397,13 +390,8 @@ public abstract class RayRuntime implements RayApi {
   /**
    * get actor with given id.
    */
-  public abstract Object getLocalActor(UniqueID id);
-
-  public PathConfig getPaths() {
-    return pathConfig;
+  public Object getLocalActor(UniqueID id) {
+    return actors.get(id);
   }
 
-  public RemoteFunctionManager getRemoteFunctionManager() {
-    return remoteFunctionManager;
-  }
 }

@@ -1,60 +1,31 @@
 package org.ray.api;
 
 import java.util.List;
-import org.ray.api.funcs.RayFunc;
-import org.ray.util.exception.TaskExecutionException;
+import org.ray.api.function.RayFunc;
 
 /**
  * Ray runtime abstraction.
  */
 public interface RayApi {
 
-  /**
-   * Put obj into object store.
-   *
-   * @return RayObject
-   */
   <T> RayObject<T> put(T obj);
 
-  <T, TMT> RayObject<T> put(T obj, TMT metadata);
+  <T> T get(UniqueID objectId);
 
-  /**
-   * Get real obj from object store.
-   */
-  <T> T get(UniqueID objectId) throws TaskExecutionException;
+  <T> List<T> get(List<UniqueID> objectId);
 
-  /**
-   * Get real objects from object store.
-   *
-   * @param objectIds list of ids of objects to get
-   */
-  <T> List<T> get(List<UniqueID> objectIds) throws TaskExecutionException;
+  <T> WaitResult<T> wait(List<RayObject<T>> waitList, int numReturns, int timeoutMs);
 
-  <T> T getMeta(UniqueID objectId) throws TaskExecutionException;
-
-  <T> List<T> getMeta(List<UniqueID> objectIds) throws TaskExecutionException;
-
-  /**
-   * wait until timeout or enough RayObjects are ready.
-   *
-   * @param waitfor wait for who
-   * @param numReturns how many of ready is enough
-   * @param timeout in millisecond
-   */
-  <T> WaitResult<T> wait(List<RayObject<T>> waitfor, int numReturns, int timeout);
-
-  /**
-   * create remote actor.
-   */
-  <T> RayActor<T> create(Class<T> cls);
+  <T> RayActor<T> createActor(Class<T> cls);
 
   /**
    * Invoke a remote function.
    *
-   * @param func the target running function
-   * @param args arguments to this funcRun, can be its original form or RayObject
+   * @param func the remote function to run.
+   * @param args arguments of the remote function.
    * @return a set of ray objects with their return ids
    */
-  RayObject call(RayFunc func, Object... args);
+  RayObject call(RayFunc func, Object[] args);
 
+  RayObject call(RayFunc func, RayActor actor, Object[] args);
 }

@@ -6,7 +6,7 @@ import java.util.List;
 import org.junit.Assert;
 import org.ray.api.Ray;
 import org.ray.api.RayObject;
-import org.ray.api.RayRemote;
+import org.ray.api.annotation.RayRemote;
 import org.ray.util.FileUtil;
 
 /**

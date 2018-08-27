@@ -1,10 +1,9 @@
-package org.ray.api;
+package org.ray.api.annotation;
 
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
-import org.ray.util.ResourceItem;
 
 /**
  * a ray remote function or class (as an actor).

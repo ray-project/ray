@@ -2,7 +2,6 @@ package org.ray.api.internal;
 
 import java.lang.reflect.Method;
 import org.ray.api.RayApi;
-import org.ray.util.logger.RayLog;
 
 /**
  * Mediator, which pulls the {@code org.ray.api.RayApi} up to run.
@@ -19,7 +18,7 @@ public class RayConnector {
       m.setAccessible(false);
       return api;
     } catch (ReflectiveOperationException | IllegalArgumentException | SecurityException e) {
-      RayLog.core.error("Load {} class failed.", className, e);
+//      RayLog.core.error("Load {} class failed.", className, e);
       throw new Error("RayApi is not successfully initiated.");
     }
   }

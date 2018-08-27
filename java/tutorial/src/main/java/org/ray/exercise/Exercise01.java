@@ -3,7 +3,7 @@ package org.ray.exercise;
 import java.io.Serializable;
 import org.ray.api.Ray;
 import org.ray.api.RayObject;
-import org.ray.api.RayRemote;
+import org.ray.api.annotation.RayRemote;
 import org.ray.core.RayRuntime;
 
 /**

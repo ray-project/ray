@@ -53,11 +53,9 @@ public class MockLocalScheduler implements LocalSchedulerLink {
 
   private UniqueID isTaskReady(TaskSpec spec) {
     for (FunctionArg arg : spec.args) {
-      if (arg.ids != null) {
-        for (UniqueID id : arg.ids) {
-          if (!store.isObjectReady(id)) {
-            return id;
-          }
+      if (arg.id != null) {
+        if (!store.isObjectReady(arg.id)) {
+          return arg.id;
         }
       }
     }

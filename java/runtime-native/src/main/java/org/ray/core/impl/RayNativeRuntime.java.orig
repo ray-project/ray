@@ -104,14 +104,16 @@ public final class RayNativeRuntime extends RayRuntime {
               "how many release requests should be delayed in plasma client");
 
       if (!params.use_raylet) {
-        ObjectStoreLink plink = new PlasmaClient(params.object_store_name,
+        ObjectStoreLink plink = new PlasmaClient(params.object_store_name, 
             params.object_store_manager_name, releaseDelay);
 
         LocalSchedulerLink slink = new DefaultLocalSchedulerClient(
             params.local_scheduler_name,
             WorkerContext.currentWorkerId(),
+            UniqueID.NIL,
             isWorker,
             WorkerContext.currentTask().taskId,
+            0,
             false
         );
 
@@ -127,8 +129,10 @@ public final class RayNativeRuntime extends RayRuntime {
         LocalSchedulerLink slink = new DefaultLocalSchedulerClient(
             params.raylet_socket_name,
             WorkerContext.currentWorkerId(),
+            UniqueID.NIL,
             isWorker,
             WorkerContext.currentTask().taskId,
+            0,
             true
         );
 
@@ -222,4 +226,62 @@ public final class RayNativeRuntime extends RayRuntime {
       kvStore.hmset("Workers:" + workerId, workerInfo);
     }
   }
+<<<<<<< HEAD
+
+  @SuppressWarnings("unchecked")
+  @Override
+  public <T> RayActor<T> create(Class<T> cls) {
+    UniqueID createTaskId = localSchedulerProxy.generateTaskId(
+        WorkerContext.currentTask().driverId,
+        WorkerContext.currentTask().taskId,
+        WorkerContext.nextCallIndex()
+    );
+
+    UniqueID actorId = UniqueIdHelper.computeReturnId(createTaskId, 0);
+    RayActor<T> actor = new RayActor<>(actorId);
+    UniqueID cursorId;
+
+    RayFunc2<byte[], String, byte[]> createActorLambda = RayNativeRuntime::createActorInActor;
+    cursorId = worker.createActor(
+        createTaskId,
+        actorId,
+        createActorLambda,
+        new Object[]{actorId.getBytes(), cls.getName()}
+    ).getId();
+    actor.setTaskCursor(cursorId);
+    return actor;
+  }
+
+  @RayRemote
+  public static byte[] createActorInActor(byte[] actorId, String className) {
+    ((RayNativeRuntime) RayRuntime.getInstance()).localCreateActorInActor(actorId, className);
+    return actorId;
+  }
+
+  public Object localCreateActorInActor(byte[] actorId, String className) {
+    try {
+      this.actorId = new UniqueID(actorId);
+      Class<?> cls = Class.forName(className, true, Thread.currentThread().getContextClassLoader());
+
+      Constructor<?>[] cts = cls.getConstructors();
+      for (Constructor<?> ct : cts) {
+        System.err.println(ct.getName() + ", param count = " + ct.getParameterCount());
+      }
+
+      actor = cls.getConstructor(new Class<?>[0]).newInstance();
+      RayLog.core.info("create actor " + this.actorId + " inside actor ok");
+      return actor;
+    } catch (ClassNotFoundException | InstantiationException | IllegalAccessException
+        | IllegalArgumentException | InvocationTargetException | NoSuchMethodException
+        | SecurityException e) {
+      e.printStackTrace();
+      String log = "create actor " + this.actorId + " for " + className + "  failed, ex = " + e
+          .getMessage();
+      System.err.println(log);
+      RayLog.core.error(log, e);
+      throw new TaskExecutionException(log, e);
+    }
+  }
+=======
+>>>>>>> cb77bb9c... wip
 }

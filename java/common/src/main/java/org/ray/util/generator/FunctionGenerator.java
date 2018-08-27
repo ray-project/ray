@@ -4,9 +4,9 @@ import java.io.IOException;
 import org.ray.util.FileUtil;
 
 /**
- * A util class that generates all the classes under org.ray.api.funcs package.
+ * A util class that generates all the classes under org.ray.api.function package.
  */
-public class FuncsGenerator extends BaseGenerator {
+public class FunctionGenerator extends BaseGenerator {
 
   private String generate(int numParameters) {
     sb = new StringBuilder();
@@ -23,7 +23,7 @@ public class FuncsGenerator extends BaseGenerator {
 
     newLine("// generated automatically, do not modify.");
     newLine("");
-    newLine("package org.ray.api.funcs;");
+    newLine("package org.ray.api.function;");
     newLine("");
     newLine("@FunctionalInterface");
     newLine(String.format("public interface RayFunc%d<%sR> extends RayFunc {",
@@ -37,8 +37,8 @@ public class FuncsGenerator extends BaseGenerator {
 
   public static void main(String[] args) throws IOException {
     String root = System.getProperty("user.dir")
-        + "/api/src/main/java/org/ray/api/funcs/";
-    FuncsGenerator generator = new FuncsGenerator();
+        + "/api/src/main/java/org/ray/api/function/";
+    FunctionGenerator generator = new FunctionGenerator();
     for (int i = 0; i <= MAX_PARAMETERS; i++) {
       String content = generator.generate(i);
       FileUtil.overrideFile(root + "RayFunc" + i + ".java", content);

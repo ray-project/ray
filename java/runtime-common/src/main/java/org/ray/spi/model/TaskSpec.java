@@ -41,13 +41,34 @@ public class TaskSpec {
   // ID per actor client for session consistency
   public UniqueID actorHandleId;
 
-  // Id for create a target actor
+  // Id for createActor a target actor
   public UniqueID createActorId;
 
   // The task's resource demands.
   public Map<String, Double> resources;
 
   public UniqueID cursorId;
+
+  public TaskSpec() {}
+
+  public TaskSpec(UniqueID driverId, UniqueID taskId, UniqueID parentTaskId, int parentCounter,
+      UniqueID actorId, int actorCounter, UniqueID functionId, FunctionArg[] args,
+      UniqueID[] returnIds, UniqueID actorHandleId, UniqueID createActorId,
+      Map<String, Double> resources, UniqueID cursorId) {
+    this.driverId = driverId;
+    this.taskId = taskId;
+    this.parentTaskId = parentTaskId;
+    this.parentCounter = parentCounter;
+    this.actorId = actorId;
+    this.actorCounter = actorCounter;
+    this.functionId = functionId;
+    this.args = args;
+    this.returnIds = returnIds;
+    this.actorHandleId = actorHandleId;
+    this.createActorId = createActorId;
+    this.resources = resources;
+    this.cursorId = cursorId;
+  }
 
   @Override
   public String toString() {

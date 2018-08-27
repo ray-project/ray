@@ -181,7 +181,7 @@ public class RayCli {
     String appDir = "/tmp/" + cmdSubmit.className;
     String extPath = appDir + "/" + packageName;
     if (!FileUtil.createDir(extPath, false)) {
-      throw new RuntimeException("create dir " + extPath + " failed ");
+      throw new RuntimeException("createActor dir " + extPath + " failed ");
     }
 
     ZipFile zipFile = new ZipFile(cmdSubmit.packageZip);

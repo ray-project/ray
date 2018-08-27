@@ -1,7 +1,7 @@
 package org.ray.spi.model;
 
 import java.lang.reflect.Method;
-import org.ray.api.RayRemote;
+import org.ray.api.annotation.RayRemote;
 import org.ray.api.UniqueID;
 import org.ray.util.MethodId;
 

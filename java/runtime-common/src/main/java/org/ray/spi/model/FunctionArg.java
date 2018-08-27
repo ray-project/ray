@@ -8,10 +8,15 @@ import org.ray.api.UniqueID;
  */
 public class FunctionArg {
 
-  public ArrayList<UniqueID> ids;
-  public byte[] data;
+  public final UniqueID id;
+  public final byte[] data;
+
+  public FunctionArg(UniqueID id, byte[] data) {
+    this.id = id;
+    this.data = data;
+  }
 
   public void toString(StringBuilder builder) {
-    builder.append("ids: ").append(ids).append(", ").append("<data>:").append(data);
+    builder.append("ids: ").append(id).append(", ").append("<data>:").append(data);
   }
 }
