@@ -92,7 +92,8 @@ std::unordered_map<TaskID, ClientID> SchedulingPolicy::Schedule(
       if (!client_keys.empty()) {
         // Choose index at random.
         // Initialize a uniform integer distribution over the key space.
-        // TODO(atumanov): change uniform random to discrete, weighted by resource capacity.
+        // TODO(atumanov): change uniform random to discrete, weighted by resource
+        // capacity.
         std::uniform_int_distribution<int> distribution(0, client_keys.size() - 1);
         int client_key_index = distribution(gen_);
         const ClientID &dst_client_id = client_keys[client_key_index];
@@ -124,9 +125,9 @@ std::vector<TaskID> SchedulingPolicy::SpillOver(
   ResourceSet new_load(remote_scheduling_resources.GetLoadResources());
 
   // Check if we can accommodate an infeasible task.
-  for (const auto &task: scheduling_queue_.GetInfeasibleTasks()) {
+  for (const auto &task : scheduling_queue_.GetInfeasibleTasks()) {
     if (task.GetTaskSpecification().GetRequiredResources().IsSubset(
-        remote_scheduling_resources.GetTotalResources())) {
+            remote_scheduling_resources.GetTotalResources())) {
       decision.push_back(task.GetTaskSpecification().TaskId());
       new_load.AddResources(task.GetTaskSpecification().GetRequiredResources());
     }

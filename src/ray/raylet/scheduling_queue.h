@@ -12,7 +12,16 @@ namespace ray {
 
 namespace raylet {
 
-enum class TaskState { INIT, PLACEABLE, WAITING, READY, RUNNING, BLOCKED, DRIVER, INFEASIBLE };
+enum class TaskState {
+  INIT,
+  PLACEABLE,
+  WAITING,
+  READY,
+  RUNNING,
+  BLOCKED,
+  DRIVER,
+  INFEASIBLE
+};
 
 /// \class SchedulingQueue
 ///

@@ -188,7 +188,6 @@ std::vector<Task> SchedulingQueue::RemoveTasks(std::unordered_set<TaskID> &task_
   RemoveTasksFromQueue(blocked_tasks_, task_ids, removed_tasks);
   RemoveTasksFromQueue(infeasible_tasks_, task_ids, removed_tasks);
 
-
   RAY_CHECK(task_ids.size() == 0);
   return removed_tasks;
 }
@@ -313,8 +312,8 @@ const std::string SchedulingQueue::ToString() const {
       "running_tasks_ size is " + std::to_string(running_tasks_.GetTasks().size()) + "\n";
   result +=
       "blocked_tasks_ size is " + std::to_string(blocked_tasks_.GetTasks().size()) + "\n";
-  result +=
-      "infeasible_tasks_ size is " + std::to_string(infeasible_tasks_.GetTasks().size()) + "\n";
+  result += "infeasible_tasks_ size is " +
+            std::to_string(infeasible_tasks_.GetTasks().size()) + "\n";
   result += "methods_waiting_for_actor_creation_ size is " +
             std::to_string(methods_waiting_for_actor_creation_.GetTasks().size()) + "\n";
   return result;

@@ -851,7 +851,8 @@ void NodeManager::ScheduleTasks(
     // Assert that this placeable task is not feasible locally (necessary but not
     // sufficient).
     RAY_CHECK(!task.GetTaskSpecification().GetRequiredResources().IsSubset(
-        cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].GetTotalResources()
+        cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()]
+            .GetTotalResources()
     ));
   }
 
