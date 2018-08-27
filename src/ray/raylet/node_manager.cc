@@ -852,8 +852,7 @@ void NodeManager::ScheduleTasks(
     // sufficient).
     RAY_CHECK(!task.GetTaskSpecification().GetRequiredResources().IsSubset(
         cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()]
-            .GetTotalResources()
-    ));
+            .GetTotalResources()));
   }
 
   // Assumption: all remaining placeable tasks are infeasible and are moved to the

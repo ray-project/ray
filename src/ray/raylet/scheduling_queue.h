@@ -60,6 +60,10 @@ class SchedulingQueue {
   /// dependencies local and that are waiting to be scheduled.
   const std::list<Task> &GetPlaceableTasks() const;
 
+  /// Get the queue of tasks in the infeasible state.
+  ///
+  /// \return A const reference to the queue of tasks whose resource
+  /// requirements are not satisfied by any node in the cluster.
   const std::list<Task> &GetInfeasibleTasks() const;
 
   /// \brief Return an aggregate resource set for all tasks exerting load on this raylet.
@@ -243,6 +247,8 @@ class SchedulingQueue {
   /// Tasks that were dispatched to a worker but are blocked on a data
   /// dependency that was missing at runtime.
   TaskQueue blocked_tasks_;
+  /// Tasks that require resources that are not available on any of the nodes
+  /// in the cluster.
   TaskQueue infeasible_tasks_;
   /// The set of currently running driver tasks. These are empty tasks that are
   /// started by a driver process on initialization.
