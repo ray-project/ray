@@ -1,6 +1,7 @@
 package org.ray.core;
 
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.util.Arrays;
 import org.ray.api.UniqueID;
 
@@ -17,11 +18,8 @@ public class UniqueIdHelper {
   private static UniqueID computeObjectId(UniqueID taskId, int index) {
     byte[] objId = new byte[UniqueID.LENGTH];
     System.arraycopy(taskId.getBytes(),0, objId, 0, UniqueID.LENGTH);
-    byte[] indexBytes = ByteBuffer.allocate(UniqueID.OBJECT_INDEX_LENGTH).putInt(index).array();
-    objId[0] = indexBytes[3];
-    objId[1] = indexBytes[2];
-    objId[2] = indexBytes[1];
-    objId[3] = indexBytes[0];
+    ByteBuffer wbb = ByteBuffer.wrap(objId);
+    wbb.putInt(UniqueID.OBJECT_INDEX_POS, index);
 
     return new UniqueID(objId);
   }
