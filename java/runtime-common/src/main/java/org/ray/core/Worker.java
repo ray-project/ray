@@ -125,7 +125,7 @@ public class Worker {
   }
 
   public UniqueID getCurrentTaskNextPutId() {
-    return UniqueIdHelper.taskComputePutId(
+    return UniqueIdHelper.computePutId(
         WorkerContext.currentTask().taskId, WorkerContext.nextPutIndex());
   }
 

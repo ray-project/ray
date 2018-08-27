@@ -91,7 +91,7 @@ public class MockLocalScheduler implements LocalSchedulerLink {
 
   @Override
   public UniqueID generateTaskId(UniqueID driverId, UniqueID parentTaskId, int taskIndex) {
-    throw new RuntimeException("Not implement here.");
+    throw new RuntimeException("Not implemented here.");
   }
 
   @Override

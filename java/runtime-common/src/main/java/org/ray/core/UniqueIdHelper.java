@@ -10,11 +10,11 @@ import org.ray.api.UniqueID;
 //
 public class UniqueIdHelper {
 
-  public static UniqueID taskComputeReturnId(UniqueID uid, int returnIndex) {
-    return objectIdFromTaskId(uid, returnIndex);
+  public static UniqueID computeReturnId(UniqueID taskId, int returnIndex) {
+    return computeObjectId(taskId, returnIndex);
   }
 
-  private static UniqueID objectIdFromTaskId(UniqueID taskId, int index) {
+  private static UniqueID computeObjectId(UniqueID taskId, int index) {
     byte[] objId = new byte[UniqueID.LENGTH];
     System.arraycopy(taskId.getBytes(), 0, objId, 0, UniqueID.LENGTH);
     byte[] indexBytes = ByteBuffer.allocate(4).putInt(index).array();
@@ -23,21 +23,19 @@ public class UniqueIdHelper {
     objId[2] = indexBytes[1];
     objId[3] = indexBytes[0];
 
-    UniqueID oid = new UniqueID(objId);
-    return oid;
+    return new UniqueID(objId);
   }
 
-  public static UniqueID taskComputePutId(UniqueID uid, int putIndex) {
-    return objectIdFromTaskId(uid, -1 * putIndex);
+  public static UniqueID computePutId(UniqueID uid, int putIndex) {
+    return computeObjectId(uid, -1 * putIndex);
   }
 
-  public static UniqueID taskIdFromObjectId(UniqueID objectId) {
+  public static UniqueID computeTaskId(UniqueID objectId) {
     byte[] taskId = new byte[20];
     System.arraycopy(objectId.getBytes(), 0, taskId, 0, UniqueID.LENGTH);
     Arrays.fill(taskId, 0, 3, (byte) 0);
 
-    UniqueID retId = new UniqueID(taskId);
-    return retId;
+    return new UniqueID(taskId);
   }
 
 }
