@@ -37,8 +37,8 @@ class TestAvailableResources(object):
         resources_reset = False
 
         while not resources_reset and time.time() - start < self.timeout:
-            resources_reset = cluster_resources == ray.global_state.available_resources(
-            )
+            resources_reset = (
+                cluster_resources == ray.global_state.available_resources())
 
         assert resources_reset
 
