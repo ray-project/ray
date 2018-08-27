@@ -319,7 +319,8 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1generateTaskId(
   if (nullptr == result) {
     return nullptr;
   }
-  env->SetByteArrayRegion(result, 0, sizeof(TaskID), reinterpret_cast<jbyte *>(&task_id));
+  env->SetByteArrayRegion(result, 0, sizeof(TaskID),
+                          reinterpret_cast<jbyte *>(&task_id));
 
   return result;
 }
