@@ -133,7 +133,8 @@ class WorkerPool {
     std::list<std::shared_ptr<Worker>> registered_drivers;
   };
 
-  /// A helper function that gets the pool for the given language.
+  /// A helper function that returns the reference of the pool state
+  /// for a given language.
   inline State &GetStateForLanguage(const Language &language);
 
   /// The number of CPUs this Raylet has available.
