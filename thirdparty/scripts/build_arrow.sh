@@ -37,7 +37,7 @@ fi
 # The PR for this commit is https://github.com/apache/arrow/pull/2482. We
 # include the link here to make it easier to find the right commit because
 # Arrow often rewrites git history and invalidates certain commits.
-TARGET_COMMIT_ID=29276bf39cad0f50ce7c50b1613cd2a069d447ca
+TARGET_COMMIT_ID=279277d0961814b5bd5c4cb0bdc722d6d1dc2075
 build_arrow() {
   echo "building arrow"
   # Make sure arrow will be built again when building ray for java later than python
