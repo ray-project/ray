@@ -208,11 +208,11 @@ class Trial(object):
     def should_checkpoint(self, result):
         """Whether this trial is due for checkpointing."""
 
-        if not self.checkpoint_freq:
-            return False
-
         if result.get(DONE) and self.checkpoint_at_end:
             return True
+
+        if not self.checkpoint_freq:
+            return False
 
         return self.last_result[TRAINING_ITERATION] % self.checkpoint_freq == 0
 

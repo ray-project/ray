@@ -44,8 +44,7 @@ class Experiment(object):
         checkpoint_freq (int): How many training iterations between
             checkpoints. A value of 0 (default) disables checkpointing.
         checkpoint_at_end (bool): Whether to checkpoint at the end of the
-            experiment. Default is False. Enabled only when
-            checkpoint_freq is not 0.
+            experiment regardless of the checkpoint_freq. Default is False.
         max_failures (int): Try to recover a trial from its last
             checkpoint at least this many times. Only applies if
             checkpointing is enabled. Defaults to 3.
