@@ -21,7 +21,7 @@ class ActorAPI(unittest.TestCase):
         ray.shutdown()
 
     def testKeywordArgs(self):
-        ray.init(num_workers=0, driver_mode=ray.SILENT_MODE)
+        ray.init(num_workers=0)
 
         @ray.remote
         class Actor(object):
@@ -189,7 +189,7 @@ class ActorAPI(unittest.TestCase):
         assert ray.get(f.get_val.remote()) == 3
 
     def testDecoratorArgs(self):
-        ray.init(num_workers=0, driver_mode=ray.SILENT_MODE)
+        ray.init(num_workers=0)
 
         # This is an invalid way of using the actor decorator.
         with pytest.raises(Exception):

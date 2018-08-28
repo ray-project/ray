@@ -43,8 +43,7 @@ from ray.utils import (
 SCRIPT_MODE = 0
 WORKER_MODE = 1
 LOCAL_MODE = 2
-SILENT_MODE = 3
-PYTHON_MODE = 4
+PYTHON_MODE = 3
 
 ERROR_KEY_PREFIX = b"Error:"
 
@@ -194,8 +193,8 @@ class Worker(object):
             function itself. This is the set of remote functions that can be
             executed by this worker.
         connected (bool): True if Ray has been started and False otherwise.
-        mode: The mode of the worker. One of SCRIPT_MODE, LOCAL_MODE,
-            SILENT_MODE, and WORKER_MODE.
+        mode: The mode of the worker. One of SCRIPT_MODE, LOCAL_MODE, and
+            WORKER_MODE.
         cached_remote_functions_and_actors: A list of information for exporting
             remote functions and actor classes definitions that were defined
             before the worker called connect. When the worker eventually does
@@ -294,13 +293,8 @@ class Worker(object):
         debugging purposes. It will not send remote function calls to the
         scheduler and will insead execute them in a blocking fashion.
 
-        The mode SILENT_MODE should be used only during testing. It does not
-        print any information about errors because some of the tests
-        intentionally fail.
-
         Args:
-            mode: One of SCRIPT_MODE, WORKER_MODE, LOCAL_MODE, and
-                SILENT_MODE.
+            mode: One of SCRIPT_MODE, WORKER_MODE, and LOCAL_MODE.
         """
         self.mode = mode
 
@@ -680,7 +674,7 @@ class Worker(object):
             decorated_function: The decorated function (this is used to enable
                 the remote function to recursively call itself).
         """
-        if self.mode not in [SCRIPT_MODE, SILENT_MODE]:
+        if self.mode != SCRIPT_MODE:
             raise Exception("export_remote_function can only be called on a "
                             "driver.")
 
@@ -1505,7 +1499,8 @@ def _init(address_info=None,
           num_workers=None,
           num_local_schedulers=None,
           object_store_memory=None,
-          driver_mode=SCRIPT_MODE,
+          local_mode=False,
+          driver_mode=None,
           redirect_worker_output=False,
           redirect_output=True,
           start_workers_from_local_scheduler=True,
@@ -1545,8 +1540,8 @@ def _init(address_info=None,
             This is only provided if start_ray_local is True.
         object_store_memory: The maximum amount of memory (in bytes) to
             allow the object store to use.
-        driver_mode (bool): The mode in which to start the driver. This should
-            be one of ray.SCRIPT_MODE, ray.LOCAL_MODE, and ray.SILENT_MODE.
+        local_mode (bool): True if the code should be executed serially
+            without Ray. This is useful for debugging.
         redirect_worker_output: True if the stdout and stderr of worker
             processes should be redirected to files.
         redirect_output (bool): True if stdout and stderr for non-worker
@@ -1581,12 +1576,13 @@ def _init(address_info=None,
         Exception: An exception is raised if an inappropriate combination of
             arguments is passed in.
     """
-    if driver_mode == PYTHON_MODE:
-        raise Exception("ray.PYTHON_MODE has been renamed to ray.LOCAL_MODE. "
-                        "Please use ray.LOCAL_MODE.")
-    if driver_mode not in [SCRIPT_MODE, LOCAL_MODE, SILENT_MODE]:
-        raise Exception("Driver_mode must be in [ray.SCRIPT_MODE, "
-                        "ray.LOCAL_MODE, ray.SILENT_MODE].")
+    if driver_mode is not None:
+        raise Exception("The 'driver_mode' argument has been deprecated. "
+                        "To run Ray in local mode, pass in local_mode=True.")
+    if local_mode:
+        driver_mode = LOCAL_MODE
+    else:
+        driver_mode = SCRIPT_MODE
 
     if use_raylet is None and os.environ.get("RAY_USE_XRAY") == "1":
         # This environment variable is used in our testing setup.
@@ -1724,7 +1720,8 @@ def init(redis_address=None,
          node_ip_address=None,
          object_id_seed=None,
          num_workers=None,
-         driver_mode=SCRIPT_MODE,
+         local_mode=False,
+         driver_mode=None,
          redirect_worker_output=False,
          redirect_output=True,
          ignore_reinit_error=False,
@@ -1779,8 +1776,8 @@ def init(redis_address=None,
             manner. However, the same ID should not be used for different jobs.
         num_workers (int): The number of workers to start. This is only
             provided if redis_address is not provided.
-        driver_mode (bool): The mode in which to start the driver. This should
-            be one of ray.SCRIPT_MODE, ray.LOCAL_MODE, and ray.SILENT_MODE.
+        local_mode (bool): True if the code should be executed serially
+            without Ray. This is useful for debugging.
         redirect_worker_output: True if the stdout and stderr of worker
             processes should be redirected to files.
         redirect_output (bool): True if stdout and stderr for non-worker
@@ -1838,6 +1835,7 @@ def init(redis_address=None,
         address_info=info,
         start_ray_local=(redis_address is None),
         num_workers=num_workers,
+        local_mode=local_mode,
         driver_mode=driver_mode,
         redirect_worker_output=redirect_worker_output,
         redirect_output=redirect_output,
@@ -1885,7 +1883,7 @@ def shutdown(worker=global_worker):
     if hasattr(worker, "plasma_client"):
         worker.plasma_client.disconnect()
 
-    if worker.mode in [SCRIPT_MODE, SILENT_MODE]:
+    if worker.mode == SCRIPT_MODE:
         # If this is a driver, push the finish time to Redis and clean up any
         # other services that were started with the driver.
         worker.redis_client.hmset(b"Drivers:" + worker.worker_id,
@@ -1912,7 +1910,7 @@ normal_excepthook = sys.excepthook
 
 def custom_excepthook(type, value, tb):
     # If this is a driver, push the exception to redis.
-    if global_worker.mode in [SCRIPT_MODE, SILENT_MODE]:
+    if global_worker.mode == SCRIPT_MODE:
         error_message = "".join(traceback.format_tb(tb))
         global_worker.redis_client.hmset(b"Drivers:" + global_worker.worker_id,
                                          {"exception": error_message})
@@ -2058,8 +2056,8 @@ def connect(info,
             sockets of the plasma store, plasma manager, and local scheduler.
         object_id_seed: A seed to use to make the generation of object IDs
             deterministic.
-        mode: The mode of the worker. One of SCRIPT_MODE, WORKER_MODE,
-            LOCAL_MODE, and SILENT_MODE.
+        mode: The mode of the worker. One of SCRIPT_MODE, WORKER_MODE, and
+            LOCAL_MODE.
         use_raylet: True if the new raylet code path should be used.
     """
     # Do some basic checking to make sure we didn't call ray.init twice.
@@ -2102,7 +2100,7 @@ def connect(info,
     try:
         ray.services.check_version_info(worker.redis_client)
     except Exception as e:
-        if mode in [SCRIPT_MODE, SILENT_MODE]:
+        if mode == SCRIPT_MODE:
             raise e
         elif mode == WORKER_MODE:
             traceback_str = traceback.format_exc()
@@ -2138,7 +2136,7 @@ def connect(info,
     global_state._initialize_global_state(redis_ip_address, int(redis_port))
 
     # Register the worker with Redis.
-    if mode in [SCRIPT_MODE, SILENT_MODE]:
+    if mode == SCRIPT_MODE:
         # The concept of a driver is the same as the concept of a "job".
         # Register the driver/job with Redis here.
         import __main__ as main
@@ -2189,7 +2187,7 @@ def connect(info,
 
     # If this is a driver, set the current task ID, the task driver ID, and set
     # the task index to 0.
-    if mode in [SCRIPT_MODE, SILENT_MODE]:
+    if mode == SCRIPT_MODE:
         # If the user provided an object_id_seed, then set the current task ID
         # deterministically based on that seed (without altering the state of
         # the user's random number generator). Otherwise, set the current task
@@ -2275,7 +2273,7 @@ def connect(info,
     if mode != LOCAL_MODE and worker.use_raylet:
         worker.profiler.start_flush_thread()
 
-    if mode in [SCRIPT_MODE, SILENT_MODE]:
+    if mode == SCRIPT_MODE:
         # Add the directory containing the script that is running to the Python
         # paths of the workers. Also add the current directory. Note that this
         # assumes that the directory structures on the machines in the clusters
