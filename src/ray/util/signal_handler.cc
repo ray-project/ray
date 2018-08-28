@@ -9,7 +9,7 @@
 using namespace ray;
 
 // Normally stop ray will also send the signal.
-int SignalHandler::ignorable_logging_level_ = RAY_INFO;
+int SignalHandler::terminate_logging_level_ = RAY_INFO;
 // The list of signals that has installed handlers.
 std::vector<int> SignalHandler::installed_signals_;
 // The current app name.
@@ -23,16 +23,16 @@ void SignalHandler::InstallSingalHandler(const std::string &app_name,
                                          bool install_sigterm) {
   app_name_ = app_name;
   // SIGINT = 2. It is the message of: Ctrl + C.
-  InstallSignalHandlerHelper(SIGINT, IgnorableHandler);
+  InstallSignalHandlerHelper(SIGINT, TerminateHandler);
   // SIGILL = 4. It is the message when using *(nullptr).
-  InstallSignalHandlerHelper(SIGILL, UnignorableHandler);
+  InstallSignalHandlerHelper(SIGILL, FatalErrorHandler);
   // SIGSEGV = 11. It is the message when segment fault happens.
-  InstallSignalHandlerHelper(SIGSEGV, UnignorableHandler);
+  InstallSignalHandlerHelper(SIGSEGV, FatalErrorHandler);
   if (install_sigterm) {
     // SIGTERM = 15. Termination message.
     // Here is a special treatment for this signal, because
     // this message handler is used by local_scheduler and global_scheduler.
-    InstallSignalHandlerHelper(SIGTERM, IgnorableHandler);
+    InstallSignalHandlerHelper(SIGTERM, TerminateHandler);
   }
   // Do not set handler for SIGABRT which happens when abort() is called.
   // If we set handler for SIGABRT, there will be indefinite call.
@@ -44,15 +44,15 @@ void SignalHandler::UninstallSingalHandler() {
   }
 }
 
-void SignalHandler::UnignorableHandler(int sig) {
+void SignalHandler::FatalErrorHandler(int sig) {
   if (sig == SIGILL || sig == SIGSEGV) {
     auto info = GetReachDebugInfo(sig);
     RAY_LOG(FATAL) << info;
   }
 }
 
-void SignalHandler::IgnorableHandler(int sig) {
-  if (RayLog::IsLevelEnabled(ignorable_logging_level_) &&
+void SignalHandler::TerminateHandler(int sig) {
+  if (RayLog::IsLevelEnabled(terminate_logging_level_) &&
       (sig == SIGINT || sig == SIGTERM)) {
     auto info = GetReachDebugInfo(sig);
     RAY_LOG(FATAL) << info;
