@@ -788,8 +788,6 @@ void NodeManager::ProcessNodeManagerMessage(TcpClientConnection &node_manager_cl
   node_manager_client.ProcessMessages();
 }
 
-// Make a placement decision for placeable tasks given the resource_map provided.
-// Perform task state transition and task forwarding based on the placement decision.
 void NodeManager::ScheduleTasks(
     std::unordered_map<ClientID, SchedulingResources> &resource_map) {
   const ClientID &local_client_id = gcs_client_->client_table().GetLocalClientId();
