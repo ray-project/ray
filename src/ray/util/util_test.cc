@@ -71,9 +71,8 @@ TEST(SignalTest, SIGILL_Test) {
   pid = fork();
   ASSERT_TRUE(pid >= 0);
   if (pid == 0) {
-    // Writing to nullptr will cause SIGILL in MacOs bug SIGSEGV in Linux.
-    int *pointer = nullptr;
-    *pointer = 100;
+    // This code will cause SIGILL sent.
+    asm("ud2");
   } else {
     Sleep();
     RAY_LOG(ERROR) << "SIGILL_Test: kill pid " << pid
