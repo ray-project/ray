@@ -47,7 +47,7 @@ plasma3_pid=$!
 plasma4_pid=$!
 sleep 1
 
-./src/plasma/client_tests
+# ./src/plasma/client_tests
 
 kill $plasma4_pid
 kill $plasma3_pid
