@@ -4,7 +4,8 @@ package org.ray.api;
 import java.util.List;
 
 /**
- * The result of Ray.wait() distinguish the ready ones and the remain ones
+ * Represents the result of a Ray.wait call. It contains 2 lists,
+ * one containing the locally available objects, one containing the rest.
  */
 public class WaitResult<T> {
 
@@ -16,10 +17,16 @@ public class WaitResult<T> {
     this.remainOnes = remainOnes;
   }
 
+  /**
+   * Get the list of ready objects.
+   */
   public List<RayObject<T>> getReadyOnes() {
     return readyOnes;
   }
 
+  /**
+   * Get the list of unready objects.
+   */
   public List<RayObject<T>> getRemainOnes() {
     return remainOnes;
   }

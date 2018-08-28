@@ -365,7 +365,8 @@ public abstract class BaseRayRuntime implements RayRuntime {
     RayFunc2<UniqueID, String, Object> func = BaseRayRuntime::createLocalActor;
     TaskSpec spec = createTaskSpec(func, RayActorImpl.NIL, null, actorClass);
     RayActorImpl actor = new RayActorImpl(spec.returnIds[0]);
-    actor.setTaskCursor(spec.returnIds[1]);
+    actor.increaseTaskCounter();
+    actor.setTaskCursor(spec.returnIds[0]);
     localSchedulerClient.submitTask(spec);
     return actor;
   }

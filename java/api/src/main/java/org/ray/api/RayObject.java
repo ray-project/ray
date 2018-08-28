@@ -1,10 +1,8 @@
 package org.ray.api;
 
-import java.io.Serializable;
-
 /**
  * Represents an object in the object store.
- * @param <T> the object type.
+ * @param <T> The object type.
  */
 public interface RayObject<T> {
 

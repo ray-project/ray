@@ -1,19 +1,24 @@
 package org.ray.api.annotation;
 
+import java.lang.annotation.Documented;
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * a ray remote function or class (as an actor).
+ * Defines a remote function (when used on a method)
+ * or actor (when used on a class).
  */
-@Target({ElementType.METHOD, ElementType.TYPE})
+@Documented
 @Retention(RetentionPolicy.RUNTIME)
+@Target({ElementType.METHOD, ElementType.TYPE})
 public @interface RayRemote {
+
   /**
-   * This is used for default resources.
-   * @return The resources of the method or actor need.
+   * Defines the quantity of various custom resources to reserve
+   * for this task or for the lifetime of the actor.
+   * @return an array of custom resource items.
    */
   ResourceItem[] resources() default {@ResourceItem()};
 }

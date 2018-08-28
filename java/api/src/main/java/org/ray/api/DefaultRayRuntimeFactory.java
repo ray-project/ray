@@ -2,6 +2,9 @@ package org.ray.api;
 
 import java.lang.reflect.Method;
 
+/**
+ * The default Ray runtime factory. It produces an instance of BaseRayRuntime.
+ */
 public class DefaultRayRuntimeFactory implements RayRuntimeFactory {
 
   @Override
