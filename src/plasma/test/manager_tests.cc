@@ -9,7 +9,7 @@
 
 #include <string>
 
-#include "plasma/test-common.h"
+#include "plasma/test-util.h"
 
 #include "common.h"
 #include "test/test_common.h"
