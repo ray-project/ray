@@ -942,7 +942,7 @@ class TrialRunnerTest(unittest.TestCase):
         ray.init(num_cpus=1, num_gpus=1)
         runner = TrialRunner(BasicVariantGenerator())
         kwargs = {
-            "stopping_criterion":{
+            "stopping_criterion": {
                 "training_iteration": 2
             },
             "checkpoint_freq": 5,
