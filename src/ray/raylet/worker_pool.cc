@@ -50,6 +50,7 @@ WorkerPool::WorkerPool(
     : num_workers_per_process_(num_workers_per_process),
       maximum_startup_concurrency_(maximum_startup_concurrency) {
   RAY_CHECK(num_workers_per_process > 0) << "num_workers_per_process must be positive.";
+  RAY_CHECK(maximum_startup_concurrency > 0);
   // Ignore SIGCHLD signals. If we don't do this, then worker processes will
   // become zombies instead of dying gracefully.
   signal(SIGCHLD, SIG_IGN);

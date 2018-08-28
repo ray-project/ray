@@ -1009,9 +1009,9 @@ def start_raylet(redis_address,
     static_resources = check_and_update_resources(resources, True)
 
     # Limit the number of workers that can be started in parallel by the
-    # raylet.
-    maximum_startup_concurrency = min(psutil.cpu_count(),
-                                      static_resources["CPU"])
+    # raylet. However, make sure it is at least 1.
+    maximum_startup_concurrency = max(1, min(psutil.cpu_count(),
+                                             static_resources["CPU"]))
 
     # Format the resource argument in a form like 'CPU,1.0,GPU,0,Custom,3'.
     resource_argument = ",".join([

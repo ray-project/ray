@@ -623,8 +623,9 @@ public class RunManager {
 
     String resourceArgument = ResourceUtil.getResourcesStringFromMap(staticResources);
 
-    int maximumStartupConcurrency = Math.min(staticResources.get("CPU").intValue(),
-                                             Runtime.getRuntime().availableProcessors());
+    int hardwareConcurrency = Runtime.getRuntime().availableProcessors();
+    int maximumStartupConcurrency = Math.max(1, Math.min(staticResources.get("CPU").intValue(),
+                                                         hardwareConcurrency));
 
     // The second-last arugment is the worker command for Python, not needed for Java.
     String[] cmds = new String[]{filePath, rayletSocketName, storeName, ip, gcsIp,
