@@ -938,6 +938,29 @@ class TrialRunnerTest(unittest.TestCase):
         self.assertEqual(ray.get(trials[1].runner.get_info.remote()), 1)
         self.addCleanup(os.remove, path)
 
+    def testCheckpointingAtEnd(self):
+        ray.init(num_cpus=1, num_gpus=1)
+        runner = TrialRunner(BasicVariantGenerator())
+        kwargs = {
+            "stopping_criterion":{
+                "training_iteration": 2
+            },
+            "checkpoint_freq": 5,
+            "checkpoint_at_end": True,
+            "resources": Resources(cpu=1, gpu=1),
+        }
+        runner.add_trial(Trial("__fake", **kwargs))
+        trials = runner.get_trials()
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+        runner.step()
+        runner.step()
+        self.assertEqual(trials[0].last_result[DONE], True)
+        path = runner.trial_executor.save(trials[0])
+        #self.assertEqual(path[-1], 3)
+        self.assertGreater(path[-1], 1, "checkpoint_at_end failed")
+
     def testResultDone(self):
         """Tests that last_result is marked `done` after trial is complete."""
         ray.init(num_cpus=1, num_gpus=1)
