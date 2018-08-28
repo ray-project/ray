@@ -235,8 +235,8 @@ class TrialRunner(object):
                 result, terminate=(decision == TrialScheduler.STOP))
 
             if trial.should_checkpoint(result):
-                    # TODO(rliaw): This is a blocking call
-                    self.trial_executor.save(trial)
+                # TODO(rliaw): This is a blocking call
+                self.trial_executor.save(trial)
 
             if decision == TrialScheduler.CONTINUE:
                 self.trial_executor.continue_training(trial)
