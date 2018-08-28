@@ -229,6 +229,7 @@ class Worker(object):
         # allowed for a particular function, the worker is killed.
         self.num_task_executions = collections.defaultdict(lambda: {})
         self.connected = False
+        self.mode = None
         self.cached_remote_functions_and_actors = []
         self.cached_functions_to_run = []
         self.fetch_and_register_actor = None
