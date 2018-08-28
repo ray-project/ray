@@ -627,7 +627,7 @@ public class RunManager {
 
     // The second-last arugment is the worker command for Python, not needed for Java.
     String[] cmds = new String[]{filePath, rayletSocketName, storeName, ip, gcsIp,
-        gcsPort, "" + numWorkers, "" + maximum_startup_concurrency, resourceArgument
+        gcsPort, "" + numWorkers, "" + maximum_startup_concurrency, resourceArgument,
         "", workerCommand};
 
     Process p = startProcess(cmds, null, RunInfo.ProcessType.PT_RAYLET,
