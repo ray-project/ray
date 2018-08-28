@@ -2,6 +2,7 @@
 #include "ray/util/logging.h"
 
 #include <sstream>
+#include <signal.h>
 #include <stdlib.h>
 #include <unistd.h>
 
@@ -59,9 +60,10 @@ void SignalHandler::IgnorableHandler(int sig) {
 
 std::string SignalHandler::GetReachDebugInfo(int sig) {
   std::ostringstream ostream;
-  const int max_path_length = 256;
+  const size_t max_path_length = 256;
   char working_directory[max_path_length] = "";
-  getcwd(working_directory, max_path_length);
+  auto p = getcwd(working_directory, max_path_length);
+  RAY_IGNORE_EXPR(p);
   ostream << "Signal: " << sig << " received for app: " << app_name_ << "\n";
   ostream << "Current working directory: " << working_directory << "\n";
   return ostream.str();
