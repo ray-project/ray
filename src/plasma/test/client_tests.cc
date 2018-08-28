@@ -4,7 +4,7 @@
 #include <unistd.h>
 #include <sys/time.h>
 
-#include "plasma/test-common.h"
+#include "plasma/test-util.h"
 
 #include "plasma/common.h"
 #include "plasma/client.h"
