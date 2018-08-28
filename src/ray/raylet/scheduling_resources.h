@@ -91,6 +91,7 @@ class ResourceSet {
   /// resource labels to this set.
   ///
   /// \param other: The other resource set to add.
+  /// \return Void.
   void AddResources(const ResourceSet &other);
 
   /// \brief Subtract a set of resources from the current set of resources, only if

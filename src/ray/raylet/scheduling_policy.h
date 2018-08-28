@@ -29,7 +29,8 @@ class SchedulingPolicy {
   /// information for some subset of the cluster. For all client IDs in the returned
   /// placement map, the corresponding SchedulingResources::resources_load_ is
   /// incremented by the aggregate resource demand of the tasks assigned to it.
-  ///
+  /// \param local_client_id The ID of the node manager that owns this
+  /// SchedulingPolicy object.
   /// \return Scheduling decision, mapping tasks to raylets for placement.
   std::unordered_map<TaskID, ClientID> Schedule(
       std::unordered_map<ClientID, SchedulingResources> &cluster_resources,
