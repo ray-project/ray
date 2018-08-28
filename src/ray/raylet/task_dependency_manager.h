@@ -99,6 +99,12 @@ class TaskDependencyManager {
   /// this object dependency.
   std::vector<TaskID> HandleObjectMissing(const ray::ObjectID &object_id);
 
+  /// Get a list of all Tasks currently marked as pending object dependencies in the task
+  /// dependency manager.
+  ///
+  /// \return Return a vector of TaskIDs for tasks registered as pending.
+  std::vector<TaskID> GetPendingTasks() const;
+
  private:
   using ObjectDependencyMap = std::unordered_map<ray::ObjectID, std::vector<ray::TaskID>>;
 

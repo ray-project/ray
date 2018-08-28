@@ -12,7 +12,16 @@ namespace ray {
 
 namespace raylet {
 
-enum class TaskState { INIT, PLACEABLE, WAITING, READY, RUNNING, BLOCKED, DRIVER };
+enum class TaskState {
+  INIT,
+  PLACEABLE,
+  WAITING,
+  READY,
+  RUNNING,
+  BLOCKED,
+  DRIVER,
+  INFEASIBLE
+};
 
 /// \class SchedulingQueue
 ///
@@ -50,6 +59,18 @@ class SchedulingQueue {
   /// \return A const reference to the queue of tasks that have all
   /// dependencies local and that are waiting to be scheduled.
   const std::list<Task> &GetPlaceableTasks() const;
+
+  /// Get the queue of tasks in the infeasible state.
+  ///
+  /// \return A const reference to the queue of tasks whose resource
+  /// requirements are not satisfied by any node in the cluster.
+  const std::list<Task> &GetInfeasibleTasks() const;
+
+  /// \brief Return an aggregate resource set for all tasks exerting load on this raylet.
+  ///
+  /// \return A resource set with aggregate resource information about resource load on
+  /// this raylet.
+  ResourceSet GetResourceLoad() const;
 
   /// Get the queue of tasks in the ready state.
   ///
@@ -153,6 +174,18 @@ class SchedulingQueue {
   /// \param filter_state The task state to filter out.
   void FilterState(std::unordered_set<TaskID> &task_ids, TaskState filter_state) const;
 
+  /// \brief Return all resource demand associated with the ready queue.
+  ///
+  /// \return Aggregate resource demand from ready tasks.
+  ResourceSet GetReadyQueueResources() const;
+
+  /// Return a human-readable string indicating the number of tasks in each
+  /// queue.
+  ///
+  /// \return A string that can be used to display the contents of the queues
+  /// for debugging purposes.
+  const std::string ToString() const;
+
   class TaskQueue {
    public:
     /// Creating a task queue.
@@ -214,9 +247,18 @@ class SchedulingQueue {
   /// Tasks that were dispatched to a worker but are blocked on a data
   /// dependency that was missing at runtime.
   TaskQueue blocked_tasks_;
+  /// Tasks that require resources that are not available on any of the nodes
+  /// in the cluster.
+  TaskQueue infeasible_tasks_;
   /// The set of currently running driver tasks. These are empty tasks that are
   /// started by a driver process on initialization.
   std::unordered_set<TaskID> driver_task_ids_;
+
+  /// \brief Return all resource demand associated with the specified task queue.
+  ///
+  /// \param task_queue The task queue for which aggregate resource demand is calculated.
+  /// \return Aggregate resource demand.
+  ResourceSet GetQueueResources(const TaskQueue &task_queue) const;
 };
 
 }  // namespace raylet
