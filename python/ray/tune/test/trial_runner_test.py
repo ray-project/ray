@@ -958,7 +958,6 @@ class TrialRunnerTest(unittest.TestCase):
         runner.step()
         self.assertEqual(trials[0].last_result[DONE], True)
         path = runner.trial_executor.save(trials[0])
-        #self.assertEqual(path[-1], 3)
         self.assertGreater(path[-1], 1, "checkpoint_at_end failed")
 
     def testResultDone(self):
