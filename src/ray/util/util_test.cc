@@ -1,31 +1,30 @@
-#include <chrono>
+#include <signal.h>
 #include <cstdlib>
 #include <iostream>
 
 #include "gtest/gtest.h"
 #include "ray/util/logging.h"
 #include "ray/util/signal_handler.h"
-#include <signal.h>
 
 // This test just print some call stack information.
 namespace ray {
 
-void Sleep() {
-  usleep(100000);
-}
+void Sleep() { usleep(100000); }
 
 void TestSendSignal(const std::string &test_name, int signal) {
   pid_t pid;
-  pid=fork();
+  pid = fork();
   ASSERT_TRUE(pid >= 0);
   if (pid == 0) {
     while (true) {
       int n = 1000;
-      while (n--);
+      while (n--)
+        ;
     }
   } else {
     Sleep();
-    std::cout << test_name << ": kill pid " << pid << " with return value=" << kill(pid, signal) << std::endl;
+    RAY_LOG(ERROR) << test_name << ": kill pid " << pid
+                   << " with return value=" << kill(pid, signal);
     Sleep();
   }
 }
@@ -52,14 +51,15 @@ TEST(SignalTest, SendIntSignalTest) {
 TEST(SignalTest, SIGSEGV_Test) {
   ray::SignalHandler::InstallSingalHandler("util_test", true);
   pid_t pid;
-  pid=fork();
+  pid = fork();
   ASSERT_TRUE(pid >= 0);
   if (pid == 0) {
     int *pointer = (int *)0x1237896;
     *pointer = 100;
   } else {
     Sleep();
-    std::cout << "SIGSEGV_Test: kill pid " << pid << " with return value=" << kill(pid, SIGKILL) << std::endl;
+    RAY_LOG(ERROR) << "SIGSEGV_Test: kill pid " << pid
+                   << " with return value=" << kill(pid, SIGKILL);
     Sleep();
   }
   ray::SignalHandler::UninstallSingalHandler();
@@ -68,7 +68,7 @@ TEST(SignalTest, SIGSEGV_Test) {
 TEST(SignalTest, SIGILL_Test) {
   ray::SignalHandler::InstallSingalHandler("util_test", false);
   pid_t pid;
-  pid=fork();
+  pid = fork();
   ASSERT_TRUE(pid >= 0);
   if (pid == 0) {
     // Writing to nullptr will cause SIGILL in MacOs bug SIGSEGV in Linux.
@@ -76,7 +76,8 @@ TEST(SignalTest, SIGILL_Test) {
     *pointer = 100;
   } else {
     Sleep();
-    std::cout << "SIGILL_Test: kill pid " << pid << " with return value=" << kill(pid, SIGKILL) << std::endl;
+    RAY_LOG(ERROR) << "SIGILL_Test: kill pid " << pid
+                   << " with return value=" << kill(pid, SIGKILL);
     Sleep();
   }
   ray::SignalHandler::UninstallSingalHandler();

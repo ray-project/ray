@@ -1,10 +1,10 @@
 #include "ray/util/signal_handler.h"
 #include "ray/util/logging.h"
 
-#include <sstream>
 #include <signal.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <sstream>
 
 using namespace ray;
 
@@ -15,11 +15,12 @@ std::vector<int> SignalHandler::installed_signals_;
 // The current app name.
 std::string SignalHandler::app_name_;
 
-void SignalHandler::InstallSignalHandlerHelper(int sig, void(*handler)(int)){
-    signal(sig, handler);
-    installed_signals_.push_back(sig);
+void SignalHandler::InstallSignalHandlerHelper(int sig, void (*handler)(int)) {
+  signal(sig, handler);
+  installed_signals_.push_back(sig);
 }
-void SignalHandler::InstallSingalHandler(const std::string &app_name, bool install_sigterm) {
+void SignalHandler::InstallSingalHandler(const std::string &app_name,
+                                         bool install_sigterm) {
   app_name_ = app_name;
   // SIGINT = 2. It is the message of: Ctrl + C.
   InstallSignalHandlerHelper(SIGINT, IgnorableHandler);
@@ -51,8 +52,8 @@ void SignalHandler::UnignorableHandler(int sig) {
 }
 
 void SignalHandler::IgnorableHandler(int sig) {
-  if (RayLog::IsLevelEnabled(ignorable_logging_level_)
-      && (sig == SIGINT || sig == SIGTERM)) {
+  if (RayLog::IsLevelEnabled(ignorable_logging_level_) &&
+      (sig == SIGINT || sig == SIGTERM)) {
     auto info = GetReachDebugInfo(sig);
     RAY_LOG(FATAL) << info;
   }
