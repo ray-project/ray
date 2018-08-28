@@ -6,7 +6,7 @@ import org.ray.api.function.RayFunc;
 /**
  * Ray runtime abstraction.
  */
-public interface RayApi {
+public interface RayRuntime {
 
   <T> RayObject<T> put(T obj);
 

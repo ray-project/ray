@@ -1,6 +1,6 @@
 package org.ray.runner.worker;
 
-import org.ray.core.RayRuntime;
+import org.ray.core.BaseRayRuntime;
 import org.ray.core.model.WorkerMode;
 
 /**
@@ -16,9 +16,9 @@ public class DefaultWorker {
   //
   public static void main(String[] args) {
     try {
-      RayRuntime.init(args);
-      assert RayRuntime.getParams().worker_mode == WorkerMode.WORKER;
-      RayRuntime.getInstance().loop();
+      BaseRayRuntime.init(args);
+      assert BaseRayRuntime.getParams().worker_mode == WorkerMode.WORKER;
+      BaseRayRuntime.getInstance().loop();
       throw new RuntimeException("Control flow should never reach here");
 
     } catch (Throwable e) {

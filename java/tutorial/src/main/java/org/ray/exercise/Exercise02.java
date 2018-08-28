@@ -3,7 +3,7 @@ package org.ray.exercise;
 import org.ray.api.Ray;
 import org.ray.api.RayObject;
 import org.ray.api.annotation.RayRemote;
-import org.ray.core.RayRuntime;
+import org.ray.core.BaseRayRuntime;
 
 /**
  * Execute remote functions in parallel with some dependencies.
@@ -48,7 +48,7 @@ public class Exercise02 {
     } catch (Throwable t) {
       t.printStackTrace();
     } finally {
-      RayRuntime.getInstance().cleanUp();
+      BaseRayRuntime.getInstance().cleanUp();
     }
   }
 }

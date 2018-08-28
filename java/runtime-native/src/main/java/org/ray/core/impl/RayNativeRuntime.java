@@ -1,16 +1,12 @@
 package org.ray.core.impl;
 
-import java.lang.reflect.InvocationTargetException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.apache.arrow.plasma.ObjectStoreLink;
 import org.apache.arrow.plasma.PlasmaClient;
-import org.apache.commons.lang3.tuple.Pair;
 import org.ray.api.UniqueID;
-import org.ray.api.function.RayFunc1;
-import org.ray.api.function.RayFunc2;
-import org.ray.core.RayRuntime;
+import org.ray.core.BaseRayRuntime;
 import org.ray.core.WorkerContext;
 import org.ray.core.model.RayParameters;
 import org.ray.core.model.WorkerMode;
@@ -27,13 +23,12 @@ import org.ray.spi.impl.NonRayletStateStoreProxyImpl;
 import org.ray.spi.impl.RayletStateStoreProxyImpl;
 import org.ray.spi.impl.RedisClient;
 import org.ray.spi.model.AddressInfo;
-import org.ray.util.exception.TaskExecutionException;
 import org.ray.util.logger.RayLog;
 
 /**
  * native runtime for local box and cluster run.
  */
-public final class RayNativeRuntime extends RayRuntime {
+public final class RayNativeRuntime extends BaseRayRuntime {
 
   static {
     System.err.println("Current working directory is " + System.getProperty("user.dir"));
@@ -99,7 +94,7 @@ public final class RayNativeRuntime extends RayRuntime {
     if (params.worker_mode != WorkerMode.NONE) {
       String overwrites = "";
       // initialize the links
-      int releaseDelay = RayRuntime.configReader
+      int releaseDelay = BaseRayRuntime.configReader
           .getIntegerValue("ray", "plasma_default_release_delay", 0,
               "how many release requests should be delayed in plasma client");
 
@@ -156,7 +151,7 @@ public final class RayNativeRuntime extends RayRuntime {
 
   private void startOnebox(RayParameters params, PathConfig paths) throws Exception {
     params.cleanup = true;
-    manager = new RunManager(params, paths, RayRuntime.configReader);
+    manager = new RunManager(params, paths, BaseRayRuntime.configReader);
     manager.startRayHead();
 
     params.redis_address = manager.info().redisAddress;

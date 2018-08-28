@@ -6,7 +6,7 @@ import org.ray.api.Ray;
 import org.ray.api.RayObject;
 import org.ray.api.annotation.RayRemote;
 import org.ray.api.WaitResult;
-import org.ray.core.RayRuntime;
+import org.ray.core.BaseRayRuntime;
 
 /**
  * Use Ray.wait to ignore stragglers
@@ -67,7 +67,7 @@ public class Exercise04 {
     } catch (Throwable t) {
       t.printStackTrace();
     } finally {
-      RayRuntime.getInstance().cleanUp();
+      BaseRayRuntime.getInstance().cleanUp();
     }
   }
 }

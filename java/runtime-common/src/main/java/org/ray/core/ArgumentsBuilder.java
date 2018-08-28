@@ -1,10 +1,6 @@
 package org.ray.core;
 
-import java.io.Serializable;
 import java.lang.reflect.Method;
-import java.lang.reflect.Modifier;
-import java.util.ArrayList;
-import java.util.Arrays;
 import org.apache.commons.lang3.tuple.Pair;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
@@ -61,7 +57,7 @@ public class ArgumentsBuilder {
         realArgs[i] = Ray.get(arg.id);
       }
     }
-    Object actor = task.actorId.isNil() ? null: RayRuntime.getInstance().getLocalActor(task.actorId);
+    Object actor = task.actorId.isNil() ? null: BaseRayRuntime.getInstance().getLocalActor(task.actorId);
     return Pair.of(actor, realArgs);
   }
 }

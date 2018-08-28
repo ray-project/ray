@@ -8,7 +8,7 @@ import org.ray.api.internal.RayConnector;
  */
 public final class Ray extends RayCall {
 
-  private static RayApi impl = null;
+  private static RayRuntime impl = null;
 
   /**
    * initialize the current worker or the single-box cluster.
@@ -51,7 +51,7 @@ public final class Ray extends RayCall {
   /**
    * get underlying runtime.
    */
-  static RayApi internal() {
+  static RayRuntime internal() {
     return impl;
   }
 }

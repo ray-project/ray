@@ -10,7 +10,7 @@ import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.annotation.RayRemote;
 import org.ray.api.WaitResult;
-import org.ray.core.RayRuntime;
+import org.ray.core.BaseRayRuntime;
 import org.ray.api.annotation.ResourceItem;
 
 /**
@@ -49,7 +49,7 @@ public class ResourcesManagementTest {
 
   @Test
   public void testMethods() {
-    Assume.assumeTrue(RayRuntime.getParams().use_raylet);
+    Assume.assumeTrue(BaseRayRuntime.getParams().use_raylet);
     // This is a case that can satisfy required resources.
     RayObject<Integer> result1 = Ray.call(ResourcesManagementTest::echo1, 100);
     Assert.assertEquals(100, (int) result1.get());
@@ -64,7 +64,7 @@ public class ResourcesManagementTest {
 
   @Test
   public void testActors() {
-    Assume.assumeTrue(RayRuntime.getParams().use_raylet);
+    Assume.assumeTrue(BaseRayRuntime.getParams().use_raylet);
     // This is a case that can satisfy required resources.
     RayActor<ResourcesManagementTest.Echo1> echo1 = Ray.createActor(Echo1.class);
     final RayObject<Integer> result1 = Ray.call(Echo1::echo, echo1, 100);

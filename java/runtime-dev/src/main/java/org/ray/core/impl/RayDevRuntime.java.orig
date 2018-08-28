@@ -8,7 +8,7 @@ import org.ray.api.RayActor;
 import org.ray.api.annotation.RayRemote;
 import org.ray.api.UniqueID;
 import org.ray.api.function.RayFunc2;
-import org.ray.core.RayRuntime;
+import org.ray.core.BaseRayRuntime;
 import org.ray.core.UniqueIdHelper;
 import org.ray.core.WorkerContext;
 import org.ray.core.model.RayParameters;

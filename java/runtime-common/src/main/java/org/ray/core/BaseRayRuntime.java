@@ -12,7 +12,7 @@ import org.apache.arrow.plasma.ObjectStoreLink;
 import org.apache.commons.lang3.tuple.Pair;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
-import org.ray.api.RayApi;
+import org.ray.api.RayRuntime;
 import org.ray.api.RayObject;
 import org.ray.api.UniqueID;
 import org.ray.api.WaitResult;
@@ -36,10 +36,10 @@ import org.ray.util.logger.RayLog;
 /**
  * Core functionality to implement Ray APIs.
  */
-public abstract class RayRuntime implements RayApi {
+public abstract class BaseRayRuntime implements RayRuntime {
 
   public static ConfigReader configReader;
-  protected static RayRuntime ins = null;
+  protected static BaseRayRuntime ins = null;
   protected static RayParameters params = null;
   private static boolean fromRayInit = false;
   protected Worker worker;
@@ -56,11 +56,11 @@ public abstract class RayRuntime implements RayApi {
 
   // app level Ray.init()
   // make it private so there is no direct usage but only from Ray.init
-  private static RayRuntime init() {
+  private static BaseRayRuntime init() {
     if (ins == null) {
       try {
         fromRayInit = true;
-        RayRuntime.init(null, null);
+        BaseRayRuntime.init(null, null);
         fromRayInit = false;
       } catch (Exception e) {
         e.printStackTrace();
@@ -70,9 +70,9 @@ public abstract class RayRuntime implements RayApi {
     return ins;
   }
 
-  // engine level RayRuntime.init(xx, xx)
+  // engine level BaseRayRuntime.init(xx, xx)
   // updateConfigStr is sth like section1.k1=v1;section2.k2=v2
-  public static RayRuntime init(String configPath, String updateConfigStr) throws Exception {
+  public static BaseRayRuntime init(String configPath, String updateConfigStr) throws Exception {
     if (ins == null) {
       if (configPath == null) {
         configPath = System.getenv("RAY_CONFIG");
@@ -85,7 +85,7 @@ public abstract class RayRuntime implements RayApi {
         }
       }
       configReader = new ConfigReader(configPath, updateConfigStr);
-      RayRuntime.params = new RayParameters(configReader);
+      BaseRayRuntime.params = new RayParameters(configReader);
 
       RayLog.init(params.log_dir);
       assert RayLog.core != null;
@@ -102,7 +102,7 @@ public abstract class RayRuntime implements RayApi {
 
   // init with command line args
   // --config=ray.config.ini --overwrite=updateConfigStr
-  public static RayRuntime init(String[] args) throws Exception {
+  public static BaseRayRuntime init(String[] args) throws Exception {
     String config = null;
     String updateConfig = null;
     for (String arg : args) {
@@ -139,19 +139,19 @@ public abstract class RayRuntime implements RayApi {
     worker = new Worker(localSchedulerClient, functions);
   }
 
-  private static RayRuntime instantiate(RayParameters params) {
+  private static BaseRayRuntime instantiate(RayParameters params) {
     String className = params.run_mode.isNativeRuntime()
         ? "org.ray.core.impl.RayNativeRuntime" : "org.ray.core.impl.RayDevRuntime";
 
-    RayRuntime runtime;
+    BaseRayRuntime runtime;
     try {
       Class<?> cls = Class.forName(className);
       if (cls.getConstructors().length > 0) {
-        throw new Error("The RayRuntime final class should not have any public constructor.");
+        throw new Error("The BaseRayRuntime final class should not have any public constructor.");
       }
       Constructor<?> cons = cls.getDeclaredConstructor();
       cons.setAccessible(true);
-      runtime = (RayRuntime) cons.newInstance();
+      runtime = (BaseRayRuntime) cons.newInstance();
       cons.setAccessible(false);
     } catch (InstantiationException | IllegalAccessException | IllegalArgumentException
         | InvocationTargetException | SecurityException | ClassNotFoundException
@@ -159,7 +159,7 @@ public abstract class RayRuntime implements RayApi {
       RayLog.core
           .error("Load class " + className + " failed for run-mode " + params.run_mode.toString(),
               e);
-      throw new Error("RayRuntime not registered for run-mode " + params.run_mode.toString());
+      throw new Error("BaseRayRuntime not registered for run-mode " + params.run_mode.toString());
     }
 
     RayLog.core
@@ -167,9 +167,9 @@ public abstract class RayRuntime implements RayApi {
     try {
       runtime.start(params);
     } catch (Exception e) {
-      System.err.println("RayRuntime start failed:" + e.getMessage()); //in case of logger not ready
+      System.err.println("BaseRayRuntime start failed:" + e.getMessage()); //in case of logger not ready
       e.printStackTrace(); //in case of logger not ready
-      RayLog.core.error("RayRuntime start failed", e);
+      RayLog.core.error("BaseRayRuntime start failed", e);
       System.exit(-1);
     }
 
@@ -181,7 +181,7 @@ public abstract class RayRuntime implements RayApi {
    */
   public abstract void start(RayParameters params) throws Exception;
 
-  public static RayRuntime getInstance() {
+  public static BaseRayRuntime getInstance() {
     return ins;
   }
 
@@ -362,7 +362,7 @@ public abstract class RayRuntime implements RayApi {
   @Override
   @SuppressWarnings("unchecked")
   public <T> RayActor<T> createActor(Class<T> actorClass) {
-    RayFunc2<UniqueID, String, Object> func = RayRuntime::createLocalActor;
+    RayFunc2<UniqueID, String, Object> func = BaseRayRuntime::createLocalActor;
     TaskSpec spec = createTaskSpec(func, RayActorImpl.NIL, null, actorClass);
     RayActorImpl actor = new RayActorImpl(spec.returnIds[0]);
     actor.setTaskCursor(spec.returnIds[1]);

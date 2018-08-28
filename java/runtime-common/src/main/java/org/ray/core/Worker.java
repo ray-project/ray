@@ -1,18 +1,11 @@
 package org.ray.core;
 
-import java.util.Arrays;
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.tuple.Pair;
-import org.ray.api.RayActor;
-import org.ray.api.RayObject;
 import org.ray.api.UniqueID;
-import org.ray.api.function.RayFunc;
-import org.ray.api.function.RayFunc2;
 import org.ray.spi.LocalSchedulerLink;
 import org.ray.spi.model.RayMethod;
 import org.ray.spi.model.TaskSpec;
-import org.ray.util.MethodId;
-import org.ray.util.ResourceUtil;
 import org.ray.util.logger.RayLog;
 
 /**
@@ -52,7 +45,7 @@ public class Worker {
       RayLog.core.info("Finished executing task {}", task.taskId);
     } catch (Exception e) {
       RayLog.core.error("Failed to execute task " + task.taskId, e);
-      RayRuntime.getInstance().put(task.returnIds[0], e);
+      BaseRayRuntime.getInstance().put(task.returnIds[0], e);
     }
   }
 
