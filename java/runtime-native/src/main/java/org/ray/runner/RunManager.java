@@ -623,9 +623,11 @@ public class RunManager {
 
     String resourceArgument = ResourceUtil.getResourcesStringFromMap(staticResources);
 
+    int maximum_startup_concurrency = staticResources.get("CPU").intValue();
+
     // The second-last arugment is the worker command for Python, not needed for Java.
     String[] cmds = new String[]{filePath, rayletSocketName, storeName, ip, gcsIp,
-        gcsPort, "" + numWorkers, resourceArgument,
+        gcsPort, "" + numWorkers, "" + maximum_startup_concurrency, resourceArgument
         "", workerCommand};
 
     Process p = startProcess(cmds, null, RunInfo.ProcessType.PT_RAYLET,
