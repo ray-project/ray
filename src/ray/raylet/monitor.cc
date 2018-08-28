@@ -25,6 +25,7 @@ Monitor::Monitor(boost::asio::io_service &io_service, const std::string &redis_a
 
 void Monitor::HandleHeartbeat(const ClientID &client_id) {
   heartbeats_[client_id] = num_heartbeats_timeout_;
+  // TODO add to buffer
 }
 
 void Monitor::Start() {

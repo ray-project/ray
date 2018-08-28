@@ -214,6 +214,10 @@ ClassTable &AsyncGcsClient::class_table() { return *class_table_; }
 
 HeartbeatTable &AsyncGcsClient::heartbeat_table() { return *heartbeat_table_; }
 
+HeartbeatBatchTable &AsyncGcsClient::heartbeat_batch_table() {
+  return *heartbeat_batch_table_;
+}
+
 ErrorTable &AsyncGcsClient::error_table() { return *error_table_; }
 
 DriverTable &AsyncGcsClient::driver_table() { return *driver_table_; }

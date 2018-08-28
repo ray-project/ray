@@ -156,13 +156,14 @@ ray::Status NodeManager::RegisterGcs() {
   };
   gcs_client_->client_table().RegisterClientRemovedCallback(node_manager_client_removed);
 
-  // Subscribe to node manager heartbeats.
-  const auto heartbeat_added = [this](gcs::AsyncGcsClient *client, const ClientID &id,
-                                      const HeartbeatTableDataT &heartbeat_data) {
-    HeartbeatAdded(client, id, heartbeat_data);
+  // Subscribe to node manager heartbeat batch.
+  const auto heartbeat_batch_added =
+      [this](gcs::AsyncGcsClient *client, const ClientID &id,
+             const HeartbeatBatchTableDataT &heartbeat_batch) {
+    HeartbeatBatchAdded(client, id, heartbeat_batch);
   };
-  RAY_RETURN_NOT_OK(gcs_client_->heartbeat_table().Subscribe(
-      UniqueID::nil(), UniqueID::nil(), heartbeat_added, nullptr,
+  RAY_RETURN_NOT_OK(gcs_client_->heartbeat_batch_table().Subscribe(
+      UniqueID::nil(), UniqueID::nil(), heartbeat_batch_added, nullptr,
       [](gcs::AsyncGcsClient *client) {
         RAY_LOG(DEBUG) << "heartbeat table subscription done callback called.";
       }));
@@ -445,6 +446,14 @@ void NodeManager::HeartbeatAdded(gcs::AsyncGcsClient *client, const ClientID &cl
     // Attempt to forward the task. If this fails to forward the task,
     // the task will be resubmit locally.
     ForwardTaskOrResubmit(task, client_id);
+  }
+}
+
+void NodeManager::HeartbeatBatchAdded(gcs::AsyncGcsClient *client,
+                                      const ClientID &client_id,
+                                      const HeartbeatBatchTableDataT& heartbeat_batch) {
+  for (auto& heartbeat_data : heartbeat_batch.batch) {
+    this->HeartbeatAdded(client, client_id, *heartbeat_data);
   }
 }
 
