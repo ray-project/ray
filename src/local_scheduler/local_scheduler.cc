@@ -15,18 +15,19 @@
 #include "event_loop.h"
 #include "format/local_scheduler_generated.h"
 #include "io.h"
-#include "logging.h"
-#include "local_scheduler_shared.h"
 #include "local_scheduler.h"
 #include "local_scheduler_algorithm.h"
+#include "local_scheduler_shared.h"
+#include "logging.h"
 #include "net.h"
+#include "ray/util/signal_handler.h"
 #include "state/actor_notification_table.h"
 #include "state/db.h"
 #include "state/db_client_table.h"
 #include "state/driver_table.h"
-#include "state/task_table.h"
-#include "state/object_table.h"
 #include "state/error_table.h"
+#include "state/object_table.h"
+#include "state/task_table.h"
 
 using MessageType = ray::local_scheduler::protocol::MessageType;
 
@@ -1426,6 +1427,8 @@ void start_server(
  * suite has its own declaration of main. */
 #ifndef LOCAL_SCHEDULER_TEST
 int main(int argc, char *argv[]) {
+  RayLog::StartRayLog(argv[0], RAY_INFO);
+  ray::SignalHandler::InstallSingalHandler(argv[0], false);
   signal(SIGTERM, signal_handler);
   /* Path of the listening socket of the local scheduler. */
   char *scheduler_socket_name = NULL;
@@ -1551,5 +1554,7 @@ int main(int argc, char *argv[]) {
                plasma_store_socket_name, plasma_manager_socket_name,
                plasma_manager_address, global_scheduler_exists,
                static_resource_conf, start_worker_command, num_workers);
+  ray::SignalHandler::UninstallSingalHandler();
+  RayLog::ShutDownRayLog();
 }
 #endif

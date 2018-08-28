@@ -3,6 +3,7 @@
 #include "common/state/ray_config.h"
 #include "ray/raylet/raylet.h"
 #include "ray/status.h"
+#include "ray/util/signal_handler.h"
 
 #ifndef RAYLET_TEST
 
@@ -16,6 +17,7 @@ static std::vector<std::string> parse_worker_command(std::string worker_command)
 
 int main(int argc, char *argv[]) {
   RayLog::StartRayLog(argv[0], RAY_INFO);
+  ray::SignalHandler::InstallSingalHandler(argv[0], true);
   RAY_CHECK(argc == 10);
 
   const std::string raylet_socket_name = std::string(argv[1]);
@@ -111,6 +113,7 @@ int main(int argc, char *argv[]) {
   signals.async_wait(handler);
 
   main_service.run();
+  ray::SignalHandler::UninstallSingalHandler();
   RayLog::ShutDownRayLog();
 }
 #endif

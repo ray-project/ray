@@ -1,8 +1,11 @@
 #include <iostream>
 
 #include "ray/raylet/monitor.h"
+#include "ray/util/signal_handler.h"
 
 int main(int argc, char *argv[]) {
+  RayLog::StartRayLog(argv[0], RAY_INFO);
+  ray::SignalHandler::InstallSingalHandler(argv[0], true);
   RAY_CHECK(argc == 3);
 
   const std::string redis_address = std::string(argv[1]);
@@ -13,4 +16,6 @@ int main(int argc, char *argv[]) {
   ray::raylet::Monitor monitor(io_service, redis_address, redis_port);
   monitor.Start();
   io_service.run();
+  ray::SignalHandler::UninstallSingalHandler();
+  RayLog::ShutDownRayLog();
 }
