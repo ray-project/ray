@@ -5,8 +5,7 @@ function collapse_experiment_list() {
   var over_flow_attr = $(".experiment-list-container").css("overflow-y");
   if (over_flow_attr == "scroll") {
     $(".experiment-list-container").css("overflow-y", "visible")
-  }
-  else {
+  } else {
     $(".experiment-list-container").css("overflow-y", "scroll")
   }
 }
