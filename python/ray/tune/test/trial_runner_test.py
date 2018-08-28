@@ -945,7 +945,6 @@ class TrialRunnerTest(unittest.TestCase):
             "stopping_criterion": {
                 "training_iteration": 2
             },
-            "checkpoint_freq": 5,
             "checkpoint_at_end": True,
             "resources": Resources(cpu=1, gpu=1),
         }
@@ -957,8 +956,8 @@ class TrialRunnerTest(unittest.TestCase):
         runner.step()
         runner.step()
         self.assertEqual(trials[0].last_result[DONE], True)
-        path = runner.trial_executor.save(trials[0])
-        self.assertGreater(path[-1], 1, "checkpoint_at_end failed")
+        self.assertEqual(trials[0].has_checkpoint(), True)
+
 
     def testResultDone(self):
         """Tests that last_result is marked `done` after trial is complete."""
