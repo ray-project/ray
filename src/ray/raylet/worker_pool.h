@@ -30,10 +30,14 @@ class WorkerPool {
   ///
   /// \param num_worker_processes The number of worker processes to start, per language.
   /// \param num_workers_per_process The number of workers per process.
+  /// \param maximum_startup_concurrency The maximum number of worker processes
+  /// that can be started in parallel (typically this should be set to the number of CPU
+  /// resoures on the machine).
   /// \param worker_commands The commands used to start the worker process, grouped by
   /// language.
   WorkerPool(
-      int num_worker_processes, int num_workers_per_process, int num_cpus,
+      int num_worker_processes, int num_workers_per_process,
+      int maximum_startup_concurrency,
       const std::unordered_map<Language, std::vector<std::string>> &worker_commands);
 
   /// Destructor responsible for freeing a set of workers owned by this class.
@@ -137,9 +141,8 @@ class WorkerPool {
   /// for a given language.
   inline State &GetStateForLanguage(const Language &language);
 
-  /// The number of CPUs this Raylet has available.
-  int num_cpus_;
-
+  /// The maximum number of workers that can be started concurrently.
+  int maximum_startup_concurrency_;
   /// Pool states per language.
   std::unordered_map<Language, State> states_by_lang_;
 };
