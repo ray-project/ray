@@ -940,20 +940,16 @@ class TrialRunnerTest(unittest.TestCase):
 
     def testCheckpointingAtEnd(self):
         ray.init(num_cpus=1, num_gpus=1)
-        experiment_spec = {
-            "test_end_checkpoint": {
-                "run": "__fake",
-                "stopping_criterion": {
-                    "training_iteration": 2
-                },
-                "checkpoint_at_end": True,
-                "resources": Resources(cpu=1, gpu=1)
+        runner = TrialRunner(BasicVariantGenerator())
+        kwargs = {
+            "stopping_criterion": {
+                "training_iteration": 2
             },
+            "checkpoint_freq": 5,
+            "checkpoint_at_end": True,
+            "resources": Resources(cpu=1, gpu=1),
         }
-        experiments = [Experiment.from_json("test", experiment_spec)]
-        searcher = _MockSuggestionAlgorithm(max_concurrent=2)
-        searcher.add_configurations(experiments)
-        runner = TrialRunner(search_alg=searcher)
+        runner.add_trial(Trial("__fake", **kwargs))
         trials = runner.get_trials()
 
         runner.step()
