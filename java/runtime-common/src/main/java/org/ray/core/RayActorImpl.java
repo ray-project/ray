@@ -14,8 +14,19 @@ public final class RayActorImpl<T> implements RayActor<T>, Externalizable {
 
   private UniqueID id;
   private UniqueID handleId;
+  /**
+   * The number of tasks that have been invoked on this actor.
+   */
   private int taskCounter;
+  /**
+   * The unique id of the last return of the last task.
+   * It's used as a dependency for the next task.
+   */
   private UniqueID taskCursor;
+  /**
+   * The number of times that this actor handle has been forked.
+   * It's used to make sure ids of actor handles are unique.
+   */
   private int numForks;
 
   public RayActorImpl() {
@@ -29,8 +40,8 @@ public final class RayActorImpl<T> implements RayActor<T>, Externalizable {
   public RayActorImpl(UniqueID id, UniqueID handleId) {
     this.id = id;
     this.handleId = handleId;
-    taskCounter = 0;
-    taskCursor = null;
+    this.taskCounter = 0;
+    this.taskCursor = null;
     numForks = 0;
   }
 
@@ -44,21 +55,18 @@ public final class RayActorImpl<T> implements RayActor<T>, Externalizable {
     return handleId;
   }
 
-  @Override
-  public UniqueID getLastTaskId() {
+  public void setTaskCursor(UniqueID taskCursor) {
+    this.taskCursor = taskCursor;
+  }
+
+  public UniqueID getTaskCursor() {
     return taskCursor;
   }
 
-  @Override
-  public int getTaskCounter() {
-    return taskCounter;
+  public int increaseTaskCounter() {
+    return taskCounter++;
   }
 
-  @Override
-  public void onSubmittingTask(UniqueID taskId) {
-    taskCursor = taskId;
-    taskCounter += 1;
-  }
 
   private UniqueID computeNextActorHandleId() {
     byte[] bytes = Sha1Digestor.digest(handleId.getBytes(), ++numForks);

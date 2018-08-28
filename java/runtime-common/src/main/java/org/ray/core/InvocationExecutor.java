@@ -2,7 +2,6 @@ package org.ray.core;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.util.Map;
 import org.apache.commons.lang3.tuple.Pair;
 import org.ray.api.UniqueID;
 import org.ray.spi.model.RayMethod;
@@ -80,7 +79,7 @@ public class InvocationExecutor {
     if (task.returnIds == null || task.returnIds.length == 0) {
       return;
     }
-    RayRuntime.getInstance().putRaw(task.returnIds[0], result);
+    RayRuntime.getInstance().put(task.returnIds[0], result);
   }
 
   private static String formatTaskExecutionExceptionMsg(TaskSpec task, String funcName) {
@@ -89,6 +88,6 @@ public class InvocationExecutor {
   }
 
   private static void safePut(UniqueID objectId, Object obj) {
-    RayRuntime.getInstance().putRaw(objectId, obj);
+    RayRuntime.getInstance().put(objectId, obj);
   }
 }

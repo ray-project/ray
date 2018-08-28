@@ -9,10 +9,4 @@ public interface RayActor<T> {
   UniqueID getId();
 
   UniqueID getHandleId();
-
-  UniqueID getLastTaskId();
-
-  int getTaskCounter();
-
-  void onSubmittingTask(UniqueID taskId);
 }

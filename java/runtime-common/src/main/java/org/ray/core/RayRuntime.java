@@ -25,6 +25,10 @@ import org.ray.spi.ObjectStoreProxy;
 import org.ray.spi.ObjectStoreProxy.GetStatus;
 import org.ray.spi.PathConfig;
 import org.ray.spi.RemoteFunctionManager;
+import org.ray.spi.model.RayMethod;
+import org.ray.spi.model.TaskSpec;
+import org.ray.util.MethodId;
+import org.ray.util.ResourceUtil;
 import org.ray.util.config.ConfigReader;
 import org.ray.util.exception.TaskExecutionException;
 import org.ray.util.logger.RayLog;
@@ -39,12 +43,15 @@ public abstract class RayRuntime implements RayApi {
   protected static RayParameters params = null;
   private static boolean fromRayInit = false;
   protected Worker worker;
-  protected LocalSchedulerLink localSchedulerProxy;
+  protected LocalSchedulerLink localSchedulerClient;
   protected ObjectStoreProxy objectStoreProxy;
   protected LocalFunctionManager functions;
   protected RemoteFunctionManager remoteFunctionManager;
   protected PathConfig pathConfig;
 
+  /**
+   * Actor ID -> actor instance.
+   */
   private Map<UniqueID, Object> actors = new HashMap<>();
 
   // app level Ray.init()
@@ -121,7 +128,7 @@ public abstract class RayRuntime implements RayApi {
     pathConfig = pathManager;
 
     functions = new LocalFunctionManager(remoteLoader);
-    localSchedulerProxy = slink;
+    localSchedulerClient = slink;
 
     if (!params.use_raylet) {
       objectStoreProxy = new ObjectStoreProxy(plink);
@@ -129,7 +136,7 @@ public abstract class RayRuntime implements RayApi {
       objectStoreProxy = new ObjectStoreProxy(plink, slink);
     }
     
-    worker = new Worker(localSchedulerProxy, functions);
+    worker = new Worker(localSchedulerClient, functions);
   }
 
   private static RayRuntime instantiate(RayParameters params) {
@@ -184,21 +191,21 @@ public abstract class RayRuntime implements RayApi {
 
   public abstract void cleanUp();
 
-  /***********
-   * RayApi methods.
-   ***********/
 
-  public <T> void putRaw(UniqueID taskId, UniqueID objectId, T obj) {
-    RayLog.core.info("Task " + taskId.toString() + " Object " + objectId.toString() + " put");
-    if (!params.use_raylet) {
-      localSchedulerProxy.markTaskPutDependency(taskId, objectId);
-    }
-    objectStoreProxy.put(objectId, obj, null);
+  @Override
+  public <T> RayObject<T> put(T obj) {
+    UniqueID objectId = getCurrentTaskNextPutId();
+    put(objectId, obj);
+    return new RayObjectImpl<>(objectId);
   }
 
-  public <T> void putRaw(UniqueID objectId, T obj) {
+  public <T> void put(UniqueID objectId, T obj) {
     UniqueID taskId = getCurrentTaskId();
-    putRaw(taskId, objectId, obj);
+    RayLog.core.info("Putting object {}, for task {} ", objectId, taskId);
+    if (!params.use_raylet) {
+      localSchedulerClient.markTaskPutDependency(taskId, objectId);
+    }
+    objectStoreProxy.put(objectId, obj, null);
   }
 
   /**
@@ -214,29 +221,6 @@ public abstract class RayRuntime implements RayApi {
    */
   public UniqueID getCurrentTaskNextPutId() {
     return worker.getCurrentTaskNextPutId();
-  }
-
-  @Override
-  public <T> RayObject<T> put(T obj) {
-    UniqueID taskId = getCurrentTaskId();
-    UniqueID objectId = getCurrentTaskNextPutId();
-    putRaw(taskId, objectId, obj);
-    return new RayObjectImpl<>(objectId);
-  }
-
-  @Override
-  public <T> WaitResult<T> wait(List<RayObject<T>> waitList, int numReturns, int timeoutMs) {
-    return objectStoreProxy.wait(waitList, numReturns, timeoutMs);
-  }
-
-  @Override
-  public RayObject call(RayFunc func, Object[] args) {
-    return worker.submit(func, RayActorImpl.NIL, args);
-  }
-
-  @Override
-  public RayObject call(RayFunc func, RayActor actor, Object[] args) {
-    return worker.submit(func, actor, args);
   }
 
   @Override
@@ -260,7 +244,7 @@ public abstract class RayRuntime implements RayApi {
         if (!params.use_raylet) {
           objectStoreProxy.fetch(batch);
         } else {
-          localSchedulerProxy.reconstructObjects(batch, true);
+          localSchedulerClient.reconstructObjects(batch, true);
         }
       }
 
@@ -288,13 +272,13 @@ public abstract class RayRuntime implements RayApi {
         for (List<UniqueID> batch : reconstructBatches) {
           if (!params.use_raylet) {
             for (UniqueID objectId : batch) {
-              localSchedulerProxy.reconstructObject(objectId, false);
+              localSchedulerClient.reconstructObject(objectId, false);
             }
             // Do another fetch for objects that aren't available locally yet, in case
             // they were evicted since the last fetch.
             objectStoreProxy.fetch(batch);
           } else {
-            localSchedulerProxy.reconstructObjects(batch, false);
+            localSchedulerClient.reconstructObjects(batch, false);
           }
         }
 
@@ -330,7 +314,7 @@ public abstract class RayRuntime implements RayApi {
       // If there were objects that we weren't able to get locally, let the local
       // scheduler know that we're now unblocked.
       if (wasBlocked) {
-        localSchedulerProxy.notifyUnblocked();
+        localSchedulerClient.notifyUnblocked();
       }
     }
   }
@@ -352,8 +336,38 @@ public abstract class RayRuntime implements RayApi {
   }
 
   @Override
+  public <T> WaitResult<T> wait(List<RayObject<T>> waitList, int numReturns, int timeoutMs) {
+    return objectStoreProxy.wait(waitList, numReturns, timeoutMs);
+  }
+
+  @Override
+  public RayObject call(RayFunc func, Object[] args) {
+    TaskSpec spec = createTaskSpec(func, RayActorImpl.NIL, args, null);
+    localSchedulerClient.submitTask(spec);
+    return new RayObjectImpl(spec.returnIds[0]);
+  }
+
+  @Override
+  public RayObject call(RayFunc func, RayActor actor, Object[] args) {
+    if (!(actor instanceof RayActorImpl)) {
+      throw new IllegalArgumentException("Unsupported actor type: " + actor.getClass().getName());
+    }
+    RayActorImpl actorImpl = (RayActorImpl)actor;
+    TaskSpec spec = createTaskSpec(func, actorImpl, args, null);
+    actorImpl.setTaskCursor(spec.returnIds[1]);
+    localSchedulerClient.submitTask(spec);
+    return new RayObjectImpl(spec.returnIds[0]);
+  }
+
+  @Override
+  @SuppressWarnings("unchecked")
   public <T> RayActor<T> createActor(Class<T> actorClass) {
-    return worker.submitActorCreationTask(RayRuntime::createLocalActor, actorClass);
+    RayFunc2<UniqueID, String, Object> func = RayRuntime::createLocalActor;
+    TaskSpec spec = createTaskSpec(func, RayActorImpl.NIL, null, actorClass);
+    RayActorImpl actor = new RayActorImpl(spec.returnIds[0]);
+    actor.setTaskCursor(spec.returnIds[1]);
+    localSchedulerClient.submitTask(spec);
+    return actor;
   }
 
   @RayRemote
@@ -373,10 +387,58 @@ public abstract class RayRuntime implements RayApi {
   }
 
   /**
-   * get the object put identity of the currently running task, UniqueID.NIL if not inside any
+   * generate the return ids of a task.
    */
-  public UniqueID[] getCurrentTaskReturnIDs() {
-    return worker.getCurrentTaskReturnIDs();
+  private UniqueID[] genReturnIds(UniqueID taskId, int numReturns) {
+    UniqueID[] ret = new UniqueID[numReturns];
+    for (int i = 0; i < numReturns; i++) {
+      ret[i] = UniqueIdHelper.computeReturnId(taskId, i + 1);
+    }
+    return ret;
+  }
+
+  private TaskSpec createTaskSpec(RayFunc func, RayActorImpl actor, Object[] args, Class actorClassForCreation) {
+    final TaskSpec current = WorkerContext.currentTask();
+    UniqueID taskId = localSchedulerClient.generateTaskId(current.driverId,
+        current.taskId,
+        WorkerContext.nextCallIndex());
+    int numReturns = actor.getId().isNil() ? 1 : 2;
+    UniqueID[] returnIds = genReturnIds(taskId, numReturns);
+
+    UniqueID actorCreationId = UniqueID.NIL;
+    if (actorClassForCreation != null) {
+      args = new Object[] {returnIds[0], actorClassForCreation.getName()};
+      actorCreationId = returnIds[0];
+    }
+
+    MethodId methodId = MethodId.fromSerializedLambda(func);
+
+    // NOTE: we append the class name at the end of arguments,
+    // so that we can look up the method based on the class name.
+    // TODO(hchen): move class name to task spec.
+    args = Arrays.copyOf(args, args.length + 1);
+    args[args.length - 1] = methodId.className;
+
+    RayMethod rayMethod = functions.getMethod(
+        current.driverId, actor.getId(), new UniqueID(methodId.getSha1Hash()), methodId.className
+    ).getRight();
+    UniqueID funcId = rayMethod.getFuncId();
+
+    return new TaskSpec(
+        current.driverId,
+        taskId,
+        current.taskId,
+        -1,
+        actor.getId(),
+        actor.increaseTaskCounter(),
+        funcId,
+        ArgumentsBuilder.wrap(args),
+        returnIds,
+        actor.getHandleId(),
+        actorCreationId,
+        ResourceUtil.getResourcesMapFromArray(rayMethod.remoteAnnotation.resources()),
+        actor.getTaskCursor()
+    );
   }
 
   /***********
