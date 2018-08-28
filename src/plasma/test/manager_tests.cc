@@ -257,7 +257,7 @@ TEST object_notifications_test(void) {
   int flags = fcntl(fd[1], F_GETFL, 0);
   RAY_CHECK(fcntl(fd[1], F_SETFL, flags | O_NONBLOCK) == 0);
 
-  ObjectID object_id = random_object_id();
+  ObjectID object_id = plasma::random_object_id();
   fb::ObjectInfoT info;
   info.object_id = object_id.binary();
   info.data_size = 10;
