@@ -37,6 +37,7 @@ set(RAY_SRCS
   gcs/redis_context.cc
   gcs/asio.cc
   util/logging.cc
+  util/signal_handler.cc
   common/client_connection.cc
   object_manager/object_manager_client_connection.cc
   object_manager/connection_pool.cc

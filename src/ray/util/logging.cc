@@ -114,6 +114,10 @@ void RayLog::ShutDownRayLog() {
 #endif
 }
 
+bool RayLog::IsLevelEnabled(int log_level) {
+  return log_level >= severity_threshold_;
+}
+
 RayLog::RayLog(const char *file_name, int line_number, int severity)
     // glog does not have DEBUG level, we can handle it here.
     : is_enabled_(severity >= severity_threshold_) {
