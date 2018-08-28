@@ -66,13 +66,13 @@ bool ResourceSet::IsEqual(const ResourceSet &rhs) const {
 }
 
 bool ResourceSet::AddResource(const std::string &resource_name, double capacity) {
-  this->resource_capacity_[resource_name] = capacity;
+  resource_capacity_[resource_name] = capacity;
   return true;
 }
 bool ResourceSet::RemoveResource(const std::string &resource_name) {
   throw std::runtime_error("Method not implemented");
 }
-bool ResourceSet::SubtractResources(const ResourceSet &other) {
+bool ResourceSet::SubtractResourcesStrict(const ResourceSet &other) {
   // Subtract the resources and track whether a resource goes below zero.
   bool oversubscribed = false;
   for (const auto &resource_pair : other.GetResourceMap()) {
@@ -88,20 +88,31 @@ bool ResourceSet::SubtractResources(const ResourceSet &other) {
   return !oversubscribed;
 }
 
-bool ResourceSet::AddResources(const ResourceSet &other) {
+// Perform a left join.
+bool ResourceSet::AddResourcesStrict(const ResourceSet &other) {
   // Return failure if attempting to perform vector addition with unknown labels.
-  // TODO(atumanov): make the implementation atomic. Currently, if false is returned
-  // the resource capacity may be partially mutated. To reverse, call SubtractResources.
+  for (const auto &resource_pair : other.GetResourceMap()) {
+    const std::string &resource_label = resource_pair.first;
+    const double &resource_capacity = resource_pair.second;
+    RAY_CHECK(resource_capacity_.count(resource_label) != 0);
+    resource_capacity_[resource_label] += resource_capacity;
+  }
+  return true;
+}
+
+// Perform an outer join.
+void ResourceSet::AddResources(const ResourceSet &other) {
   for (const auto &resource_pair : other.GetResourceMap()) {
     const std::string &resource_label = resource_pair.first;
     const double &resource_capacity = resource_pair.second;
     if (resource_capacity_.count(resource_label) == 0) {
-      return false;
+      // Add the new label if not found.
+      RAY_CHECK(AddResource(resource_label, resource_capacity));
     } else {
+      // Increment the resource by its capacity.
       resource_capacity_[resource_label] += resource_capacity;
     }
   }
-  return true;
 }
 
 bool ResourceSet::GetResource(const std::string &resource_name, double *value) const {
@@ -426,10 +437,14 @@ std::vector<flatbuffers::Offset<protocol::ResourceIdSetInfo>> ResourceIdSet::ToF
 /// SchedulingResources class implementation
 
 SchedulingResources::SchedulingResources()
-    : resources_total_(ResourceSet()), resources_available_(ResourceSet()) {}
+    : resources_total_(ResourceSet()),
+      resources_available_(ResourceSet()),
+      resources_load_(ResourceSet()) {}
 
 SchedulingResources::SchedulingResources(const ResourceSet &total)
-    : resources_total_(total), resources_available_(total) {}
+    : resources_total_(total),
+      resources_available_(total),
+      resources_load_(ResourceSet()) {}
 
 SchedulingResources::~SchedulingResources() {}
 
@@ -457,14 +472,22 @@ const ResourceSet &SchedulingResources::GetTotalResources() const {
   return this->resources_total_;
 }
 
+void SchedulingResources::SetLoadResources(ResourceSet &&newset) {
+  resources_load_ = newset;
+}
+
+const ResourceSet &SchedulingResources::GetLoadResources() const {
+  return resources_load_;
+}
+
 // Return specified resources back to SchedulingResources.
 bool SchedulingResources::Release(const ResourceSet &resources) {
-  return this->resources_available_.AddResources(resources);
+  return this->resources_available_.AddResourcesStrict(resources);
 }
 
 // Take specified resources from SchedulingResources.
 bool SchedulingResources::Acquire(const ResourceSet &resources) {
-  return this->resources_available_.SubtractResources(resources);
+  return this->resources_available_.SubtractResourcesStrict(resources);
 }
 
 }  // namespace raylet

@@ -2150,6 +2150,7 @@ class SchedulingAlgorithm(unittest.TestCase):
 
         @ray.remote
         def f(x):
+            time.sleep(0.010)
             return ray.worker.global_worker.plasma_client.store_socket_name
 
         # This object will be local to one of the local schedulers. Make sure
