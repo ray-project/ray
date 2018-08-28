@@ -4,9 +4,8 @@ import com.google.common.collect.ImmutableList;
 import java.util.List;
 import org.ray.api.Ray;
 import org.ray.api.RayObject;
-import org.ray.api.annotation.RayRemote;
 import org.ray.api.WaitResult;
-import org.ray.core.BaseRayRuntime;
+import org.ray.api.annotation.RayRemote;
 
 /**
  * Use Ray.wait to ignore stragglers
@@ -67,7 +66,7 @@ public class Exercise04 {
     } catch (Throwable t) {
       t.printStackTrace();
     } finally {
-      BaseRayRuntime.getInstance().cleanUp();
+      Ray.shutdown();
     }
   }
 }

@@ -4,7 +4,6 @@ import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.annotation.RayRemote;
-import org.ray.core.BaseRayRuntime;
 
 /**
  * Show usage of actors.
@@ -24,7 +23,7 @@ public class Exercise05 {
     } catch (Throwable t) {
       t.printStackTrace();
     } finally {
-      BaseRayRuntime.getInstance().cleanUp();
+      Ray.shutdown();
     }
   }
 

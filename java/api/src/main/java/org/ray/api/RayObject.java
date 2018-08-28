@@ -19,9 +19,5 @@ public interface RayObject<T> {
    */
   UniqueID getId();
 
-  /**
-   * Whether this object is locally available.
-   */
-  boolean isLocal();
 }
 

@@ -21,7 +21,7 @@ public class RayDevRuntime extends BaseRayRuntime {
   }
 
   @Override
-  public void cleanUp() {
+  public void shutdown() {
     // nothing to do
   }
 }

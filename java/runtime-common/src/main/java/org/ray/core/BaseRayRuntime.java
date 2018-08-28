@@ -189,7 +189,7 @@ public abstract class BaseRayRuntime implements RayRuntime {
     return params;
   }
 
-  public abstract void cleanUp();
+  public abstract void shutdown();
 
 
   @Override

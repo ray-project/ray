@@ -8,6 +8,8 @@ import org.ray.api.function.RayFunc;
  */
 public interface RayRuntime {
 
+  void shutdown();
+
   <T> RayObject<T> put(T obj);
 
   <T> T get(UniqueID objectId);

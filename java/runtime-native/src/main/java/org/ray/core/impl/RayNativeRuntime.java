@@ -143,7 +143,7 @@ public final class RayNativeRuntime extends BaseRayRuntime {
   }
 
   @Override
-  public void cleanUp() {
+  public void shutdown() {
     if (null != manager) {
       manager.cleanup(true);
     }
