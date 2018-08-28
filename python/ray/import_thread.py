@@ -162,7 +162,6 @@ class ImportThread(object):
              key, ["driver_id", "function", "run_on_other_drivers"])
 
         if (run_on_other_drivers == "False"
-                and self.worker.mode in [ray.SCRIPT_MODE, ray.SILENT_MODE]
                 and driver_id != self.worker.task_driver_id.id()):
             return
 
