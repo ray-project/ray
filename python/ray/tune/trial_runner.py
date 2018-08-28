@@ -235,12 +235,8 @@ class TrialRunner(object):
                 result, terminate=(decision == TrialScheduler.STOP))
 
             if trial.should_checkpoint(result):
-                try:
-                    # TODO(rliaw): This is a blocking call
-                    self.trial_executor.save(trial)
-                except NotImplementedError:
-                    print("Trainable does not have _save implemented."
-                          "No checkpoints will be saved.")
+                # TODO(rliaw): This is a blocking call
+                self.trial_executor.save(trial)
 
             if decision == TrialScheduler.CONTINUE:
                 self.trial_executor.continue_training(trial)
