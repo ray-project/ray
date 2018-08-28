@@ -112,6 +112,7 @@ class Trial(object):
                  resources=None,
                  stopping_criterion=None,
                  checkpoint_freq=0,
+                 checkpoint_at_end=False,
                  restore_path=None,
                  upload_dir=None,
                  max_failures=0):
@@ -142,6 +143,7 @@ class Trial(object):
         # Local trial state that is updated during the run
         self.last_result = None
         self.checkpoint_freq = checkpoint_freq
+        self.checkpoint_at_end = checkpoint_at_end
         self._checkpoint = Checkpoint(
             storage=Checkpoint.DISK, value=restore_path)
         self.status = Trial.PENDING
@@ -203,11 +205,14 @@ class Trial(object):
 
         return False
 
-    def should_checkpoint(self):
+    def should_checkpoint(self, result):
         """Whether this trial is due for checkpointing."""
 
         if not self.checkpoint_freq:
             return False
+
+        if result.get(DONE) and self.checkpoint_at_end:
+            return True
 
         return self.last_result[TRAINING_ITERATION] % self.checkpoint_freq == 0
 
