@@ -106,7 +106,7 @@ def unicode2str(content):
         return result
     elif isinstance(content, list):
         return [unicode2str(element) for element in content]
-    elif isinstance(content, unicode):
-        return content.encode('utf-8')
-    else:
+    elif isinstance(content, int) or isinstance(content, float):
         return content
+    else:
+        return content.encode('utf-8')

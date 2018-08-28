@@ -21,7 +21,8 @@ def index(request):
 
     total_num = len(recent_trials)
     running_num = sum(t.trial_status == Trial.RUNNING for t in recent_trials)
-    success_num = sum(t.trial_status == Trial.TERMINATED for t in recent_trials)
+    success_num = sum(
+        t.trial_status == Trial.TERMINATED for t in recent_trials)
     failed_num = sum(t.trial_status == Trial.ERROR for t in recent_trials)
 
     job_records = []
@@ -61,13 +62,15 @@ def job(request):
 
     # TODO: support custom metrics here
     metric_keys = ["episode_reward", "accuracy", "loss"]
-    context = {'current_job': get_job_info(current_job),
-               'recent_jobs': recent_jobs,
-               'recent_trials': trial_records,
-               'param_keys': param_keys,
-               'param_num': len(param_keys),
-               'metric_keys': metric_keys,
-               'metric_num': len(metric_keys)}
+    context = {
+        'current_job': get_job_info(current_job),
+        'recent_jobs': recent_jobs,
+        'recent_trials': trial_records,
+        'param_keys': param_keys,
+        'param_num': len(param_keys),
+        'metric_keys': metric_keys,
+        'metric_num': len(metric_keys)
+    }
     return render(request, 'job.html', context)
 
 
@@ -134,8 +137,8 @@ def get_trial_info(current_trial):
         # end time is parsed from result.json and the format
         # is like: yyyy-mm-dd_hh-MM-ss, which will be converted
         # to yyyy-mm-dd hh:MM:ss here
-        time_obj = datetime.datetime.strptime(
-            current_trial.end_time, "%Y-%m-%d_%H-%M-%S")
+        time_obj = datetime.datetime.strptime(current_trial.end_time,
+                                              "%Y-%m-%d_%H-%M-%S")
         end_time = time_obj.strftime("%Y-%m-%d %H:%M:%S")
     else:
         end_time = current_trial.end_time
