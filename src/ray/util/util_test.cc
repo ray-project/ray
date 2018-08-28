@@ -30,26 +30,26 @@ void TestSendSignal(const std::string &test_name, int signal) {
 }
 
 TEST(SignalTest, SendTermSignal_Unset_Test) {
-  ray::SignalHandler::InstallSingalHandler("util_test", false);
+  ray::SignalHandlers::InstallSingalHandler("util_test", false);
   // This should not print call stack message.
   TestSendSignal("SendTermSignal_Unset_Test", SIGTERM);
-  ray::SignalHandler::UninstallSingalHandler();
+  ray::SignalHandlers::UninstallSingalHandler();
 }
 
 TEST(SignalTest, SendTermSignalTest) {
-  ray::SignalHandler::InstallSingalHandler("util_test", true);
+  ray::SignalHandlers::InstallSingalHandler("util_test", true);
   TestSendSignal("SendTermSignalTest", SIGTERM);
-  ray::SignalHandler::UninstallSingalHandler();
+  ray::SignalHandlers::UninstallSingalHandler();
 }
 
 TEST(SignalTest, SendIntSignalTest) {
-  ray::SignalHandler::InstallSingalHandler("util_test", false);
+  ray::SignalHandlers::InstallSingalHandler("util_test", false);
   TestSendSignal("SendIntSignalTest", SIGINT);
-  ray::SignalHandler::UninstallSingalHandler();
+  ray::SignalHandlers::UninstallSingalHandler();
 }
 
 TEST(SignalTest, SIGSEGV_Test) {
-  ray::SignalHandler::InstallSingalHandler("util_test", true);
+  ray::SignalHandlers::InstallSingalHandler("util_test", true);
   pid_t pid;
   pid = fork();
   ASSERT_TRUE(pid >= 0);
@@ -62,11 +62,11 @@ TEST(SignalTest, SIGSEGV_Test) {
                    << " with return value=" << kill(pid, SIGKILL);
     Sleep();
   }
-  ray::SignalHandler::UninstallSingalHandler();
+  ray::SignalHandlers::UninstallSingalHandler();
 }
 
 TEST(SignalTest, SIGILL_Test) {
-  ray::SignalHandler::InstallSingalHandler("util_test", false);
+  ray::SignalHandlers::InstallSingalHandler("util_test", false);
   pid_t pid;
   pid = fork();
   ASSERT_TRUE(pid >= 0);
@@ -79,7 +79,7 @@ TEST(SignalTest, SIGILL_Test) {
                    << " with return value=" << kill(pid, SIGKILL);
     Sleep();
   }
-  ray::SignalHandler::UninstallSingalHandler();
+  ray::SignalHandlers::UninstallSingalHandler();
 }
 
 }  // namespace ray

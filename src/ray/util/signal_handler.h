@@ -6,7 +6,7 @@
 
 namespace ray {
 
-class SignalHandler {
+class SignalHandlers {
  public:
   /// Setup the signal handler, which should be called in main function.
   ///
@@ -14,7 +14,8 @@ class SignalHandler {
   /// \param install_sigterm Whether install the handler for SIGTERM, because
   /// some app has already have a handler for this signal.
   /// \return Void.
-  static void InstallSingalHandler(const std::string &app_name, bool install_sigterm);
+  static void InstallSingalHandler(const std::string &app_name,
+                                   bool is_installing_sigterm);
 
   /// Reset the signal handler to the default handler.
   ///
@@ -25,10 +26,13 @@ class SignalHandler {
   static void FatalErrorHandler(int signal);
   static void TerminateHandler(int signal);
   static void InstallSignalHandlerHelper(int signal, void (*handler)(int));
-  static std::string GetReachDebugInfo(int signal);
+  static std::string GetRichDebugInfo(int signal);
   static std::string app_name_;
   static int terminate_logging_level_;
   static std::vector<int> installed_signals_;
+  // Disable constructor.
+  SignalHandlers() = delete;
+  SignalHandlers(const SignalHandlers &) = delete;
 };
 
 }  // namespace ray

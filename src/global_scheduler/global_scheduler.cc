@@ -460,7 +460,7 @@ void start_server(const char *node_ip_address,
 
 int main(int argc, char *argv[]) {
   RayLog::StartRayLog(argv[0], RAY_INFO);
-  ray::SignalHandler::InstallSingalHandler(argv[0], false);
+  ray::SignalHandlers::InstallSingalHandler(argv[0], false);
   signal(SIGTERM, signal_handler);
   /* IP address and port of the primary redis instance. */
   char *redis_primary_addr_port = NULL;
@@ -492,6 +492,6 @@ int main(int argc, char *argv[]) {
     RAY_LOG(FATAL) << "specify the node IP address with the -h switch";
   }
   start_server(node_ip_address, redis_primary_addr, redis_primary_port);
-  ray::SignalHandler::UninstallSingalHandler();
+  ray::SignalHandlers::UninstallSingalHandler();
   RayLog::ShutDownRayLog();
 }

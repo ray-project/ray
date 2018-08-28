@@ -1635,7 +1635,7 @@ void signal_handler(int signal) {
 #ifndef PLASMA_TEST
 int main(int argc, char *argv[]) {
   RayLog::StartRayLog(argv[0], RAY_INFO);
-  ray::SignalHandler::InstallSingalHandler(argv[0], false);
+  ray::SignalHandlers::InstallSingalHandler(argv[0], false);
   signal(SIGTERM, signal_handler);
   /* Socket name of the plasma store this manager is connected to. */
   char *store_socket_name = NULL;
@@ -1695,7 +1695,7 @@ int main(int argc, char *argv[]) {
   }
   start_server(store_socket_name, manager_socket_name, master_addr, port,
                redis_primary_addr, redis_primary_port);
-  ray::SignalHandler::UninstallSingalHandler();
+  ray::SignalHandlers::UninstallSingalHandler();
   RayLog::ShutDownRayLog();
 }
 #endif
