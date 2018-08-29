@@ -34,7 +34,7 @@ class AtariPixelPreprocessor(Preprocessor):
     def _init(self):
         self._grayscale = self._options.get("grayscale", False)
         self._zero_mean = self._options.get("zero_mean", True)
-        self._dim = self._options.get("dim", 80)
+        self._dim = self._options.get("dim", 84)
         self._channel_major = self._options.get("channel_major", False)
         if self._grayscale:
             self.shape = (self._dim, self._dim, 1)
@@ -48,8 +48,8 @@ class AtariPixelPreprocessor(Preprocessor):
     def transform(self, observation):
         """Downsamples images from (210, 160, 3) by the configured factor."""
         scaled = observation[25:-25, :, :]
-        if self._dim < 80:
-            scaled = cv2.resize(scaled, (80, 80))
+        if self._dim < 84:
+            scaled = cv2.resize(scaled, (84, 84))
         # OpenAI: Resize by half, then down to 42x42 (essentially mipmapping).
         # If we resize directly we lose pixels that, when mapped to 42x42,
         # aren't close enough to the pixel boundary.

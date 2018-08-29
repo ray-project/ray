@@ -26,6 +26,10 @@ DEFAULT_CONFIG = with_common_config({
     "num_sgd_iter": 30,
     # Stepsize of SGD
     "sgd_stepsize": 5e-5,
+    # Learning rate schedule
+    "lr_schedule": None,
+    # Share layers for value function
+    "vf_share_layers": False,
     # Total SGD batch size across all devices for SGD (multi-gpu only)
     "sgd_batchsize": 128,
     # Coefficient of the value function loss
@@ -63,6 +67,7 @@ class PPOAgent(Agent):
 
     _agent_name = "PPO"
     _default_config = DEFAULT_CONFIG
+    _policy_graph = PPOPolicyGraph
 
     @classmethod
     def default_resource_request(cls, config):
@@ -75,9 +80,9 @@ class PPOAgent(Agent):
 
     def _init(self):
         self.local_evaluator = self.make_local_evaluator(
-            self.env_creator, PPOPolicyGraph)
+            self.env_creator, self._policy_graph)
         self.remote_evaluators = self.make_remote_evaluators(
-            self.env_creator, PPOPolicyGraph, self.config["num_workers"], {
+            self.env_creator, self._policy_graph, self.config["num_workers"], {
                 "num_cpus": self.config["num_cpus_per_worker"],
                 "num_gpus": self.config["num_gpus_per_worker"]
             })
@@ -91,7 +96,6 @@ class PPOAgent(Agent):
             self.optimizer = LocalMultiGPUOptimizer(
                 self.local_evaluator, self.remote_evaluators, {
                     "sgd_batch_size": self.config["sgd_batchsize"],
-                    "sgd_stepsize": self.config["sgd_stepsize"],
                     "num_sgd_iter": self.config["num_sgd_iter"],
                     "num_gpus": self.config["num_gpus"],
                     "timesteps_per_batch": self.config["timesteps_per_batch"],

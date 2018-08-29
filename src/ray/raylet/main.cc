@@ -5,8 +5,18 @@
 #include "ray/status.h"
 
 #ifndef RAYLET_TEST
+
+/// A helper function that parse the worker command string into a vector of arguments.
+static std::vector<std::string> parse_worker_command(std::string worker_command) {
+  std::istringstream iss(worker_command);
+  std::vector<std::string> result(std::istream_iterator<std::string>{iss},
+                                  std::istream_iterator<std::string>());
+  return result;
+}
+
 int main(int argc, char *argv[]) {
-  RAY_CHECK(argc == 10);
+  RayLog::StartRayLog(argv[0], RAY_INFO);
+  RAY_CHECK(argc == 11);
 
   const std::string raylet_socket_name = std::string(argv[1]);
   const std::string store_socket_name = std::string(argv[2]);
@@ -14,9 +24,10 @@ int main(int argc, char *argv[]) {
   const std::string redis_address = std::string(argv[4]);
   int redis_port = std::stoi(argv[5]);
   int num_initial_workers = std::stoi(argv[6]);
-  const std::string static_resource_list = std::string(argv[7]);
-  const std::string python_worker_command = std::string(argv[8]);
-  const std::string java_worker_command = std::string(argv[9]);
+  int maximum_startup_concurrency = std::stoi(argv[7]);
+  const std::string static_resource_list = std::string(argv[8]);
+  const std::string python_worker_command = std::string(argv[9]);
+  const std::string java_worker_command = std::string(argv[10]);
 
   // Configuration for the node manager.
   ray::raylet::NodeManagerConfig node_manager_config;
@@ -38,22 +49,20 @@ int main(int argc, char *argv[]) {
   node_manager_config.num_initial_workers = num_initial_workers;
   node_manager_config.num_workers_per_process =
       RayConfig::instance().num_workers_per_process();
-  // Use a default worker that can execute empty tasks with dependencies.
+  node_manager_config.maximum_startup_concurrency = maximum_startup_concurrency;
 
-  std::string worker_command;
   if (!python_worker_command.empty()) {
-    worker_command = python_worker_command;
-  } else if (!java_worker_command.empty()) {
-    worker_command = java_worker_command;
-  } else {
+    node_manager_config.worker_commands.emplace(
+        make_pair(Language::PYTHON, parse_worker_command(python_worker_command)));
+  }
+  if (!java_worker_command.empty()) {
+    node_manager_config.worker_commands.emplace(
+        make_pair(Language::JAVA, parse_worker_command(java_worker_command)));
+  }
+  if (python_worker_command.empty() && java_worker_command.empty()) {
     RAY_CHECK(0)
         << "Either Python worker command or Java worker command should be provided.";
   }
-
-  std::istringstream iss(worker_command);
-  std::vector<std::string> results(std::istream_iterator<std::string>{iss},
-                                   std::istream_iterator<std::string>());
-  node_manager_config.worker_command.swap(results);
 
   node_manager_config.heartbeat_period_ms =
       RayConfig::instance().heartbeat_timeout_milliseconds();
@@ -104,5 +113,6 @@ int main(int argc, char *argv[]) {
   signals.async_wait(handler);
 
   main_service.run();
+  RayLog::ShutDownRayLog();
 }
 #endif

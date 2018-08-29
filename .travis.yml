@@ -125,45 +125,46 @@ matrix:
         # module is only found if the test directory is in the PYTHONPATH.
         - export PYTHONPATH="$PYTHONPATH:./test/"
 
-        - python -m pytest python/ray/common/test/test.py
-        - python -m pytest python/ray/common/redis_module/runtest.py
-        - python -m pytest python/ray/plasma/test/test.py
-        # - python -m pytest python/ray/local_scheduler/test/test.py
-        # - python -m pytest python/ray/global_scheduler/test/test.py
+        - python -m pytest -v python/ray/common/test/test.py
+        - python -m pytest -v python/ray/common/redis_module/runtest.py
+        - python -m pytest -v python/ray/plasma/test/test.py
+        # - python -m pytest -v python/ray/local_scheduler/test/test.py
+        # - python -m pytest -v python/ray/global_scheduler/test/test.py
 
-        - python -m pytest python/ray/test/test_queue.py
-        - python -m pytest test/xray_test.py
+        - python -m pytest -v python/ray/test/test_queue.py
+        - python -m pytest -v test/xray_test.py
 
         # The --assert=plain here is because pytest's assertion
         # rewriting mechanism seems to mess up on this file,
         # see https://github.com/ray-project/ray/issues/2514
         - python -m pytest -v --assert=plain test/runtest.py
-        - python -m pytest test/array_test.py
-        - python -m pytest test/actor_test.py
-        - python -m pytest test/autoscaler_test.py
-        - python -m pytest test/tensorflow_test.py
-        - python -m pytest test/failure_test.py
-        - python -m pytest test/microbenchmarks.py
-        - python -m pytest test/stress_tests.py
+        - python -m pytest -v test/array_test.py
+        - python -m pytest -v test/actor_test.py
+        - python -m pytest -v test/autoscaler_test.py
+        - python -m pytest -v test/tensorflow_test.py
+        - python -m pytest -v test/failure_test.py
+        - python -m pytest -v test/microbenchmarks.py
+        - python -m pytest -v test/stress_tests.py
         - pytest test/component_failures_test.py
         - python test/multi_node_test.py
-        - python -m pytest test/recursion_test.py
+        - python -m pytest -v test/recursion_test.py
         - pytest test/monitor_test.py
-        - python -m pytest test/cython_test.py
-        - python -m pytest test/credis_test.py
+        - python -m pytest -v test/cython_test.py
+        - python -m pytest -v test/credis_test.py
 
         # ray tune tests
         - python python/ray/tune/test/dependency_test.py
-        - python -m pytest python/ray/tune/test/trial_runner_test.py
-        - python -m pytest python/ray/tune/test/trial_scheduler_test.py
-        - python -m pytest python/ray/tune/test/experiment_test.py
-        - python -m pytest python/ray/tune/test/tune_server_test.py
+        - python -m pytest -v python/ray/tune/test/trial_runner_test.py
+        - python -m pytest -v python/ray/tune/test/trial_scheduler_test.py
+        - python -m pytest -v python/ray/tune/test/experiment_test.py
+        - python -m pytest -v python/ray/tune/test/tune_server_test.py
+        - python -m pytest -v python/ray/tune/test/ray_trial_executor_test.py
 
         # ray rllib tests
-        - python -m pytest python/ray/rllib/test/test_catalog.py
-        - python -m pytest python/ray/rllib/test/test_filters.py
-        - python -m pytest python/ray/rllib/test/test_optimizers.py
-        - python -m pytest python/ray/rllib/test/test_evaluators.py
+        - python -m pytest -v python/ray/rllib/test/test_catalog.py
+        - python -m pytest -v python/ray/rllib/test/test_filters.py
+        - python -m pytest -v python/ray/rllib/test/test_optimizers.py
+        - python -m pytest -v python/ray/rllib/test/test_evaluators.py
 
 
 install:
@@ -181,6 +182,7 @@ install:
   - ./src/ray/raylet/lineage_cache_test
   - ./src/ray/raylet/task_dependency_manager_test
   - ./src/ray/raylet/reconstruction_policy_test
+  - ./src/ray/util/logging_test --gtest_filter=PrintLogTest*
 
   - bash ../src/common/test/run_tests.sh
   - bash ../src/plasma/test/run_tests.sh
@@ -195,45 +197,46 @@ script:
   # module is only found if the test directory is in the PYTHONPATH.
   - export PYTHONPATH="$PYTHONPATH:./test/"
 
-  - python -m pytest python/ray/common/test/test.py
-  - python -m pytest python/ray/common/redis_module/runtest.py
-  - python -m pytest python/ray/plasma/test/test.py
-  - python -m pytest python/ray/local_scheduler/test/test.py
-  - python -m pytest python/ray/global_scheduler/test/test.py
+  - python -m pytest -v python/ray/common/test/test.py
+  - python -m pytest -v python/ray/common/redis_module/runtest.py
+  - python -m pytest -v python/ray/plasma/test/test.py
+  - python -m pytest -v python/ray/local_scheduler/test/test.py
+  - python -m pytest -v python/ray/global_scheduler/test/test.py
 
-  - python -m pytest python/ray/test/test_queue.py
-  - python -m pytest test/xray_test.py
+  - python -m pytest -v python/ray/test/test_queue.py
+  - python -m pytest -v test/xray_test.py
 
   # The --assert=plain here is because pytest's assertion
   # rewriting mechanism seems to mess up on this file,
   # see https://github.com/ray-project/ray/issues/2514
   - python -m pytest --assert=plain -v test/runtest.py
-  - python -m pytest test/array_test.py
-  - python -m pytest test/actor_test.py
-  - python -m pytest test/autoscaler_test.py
-  - python -m pytest test/tensorflow_test.py
-  - python -m pytest test/failure_test.py
-  - python -m pytest test/microbenchmarks.py
-  - python -m pytest test/stress_tests.py
-  - python -m pytest test/component_failures_test.py
+  - python -m pytest -v test/array_test.py
+  - python -m pytest -v test/actor_test.py
+  - python -m pytest -v test/autoscaler_test.py
+  - python -m pytest -v test/tensorflow_test.py
+  - python -m pytest -v test/failure_test.py
+  - python -m pytest -v test/microbenchmarks.py
+  - python -m pytest -v test/stress_tests.py
+  - python -m pytest -v test/component_failures_test.py
   - python test/multi_node_test.py
-  - python -m pytest test/recursion_test.py
-  - python -m pytest test/monitor_test.py
-  - python -m pytest test/cython_test.py
-  - python -m pytest test/credis_test.py
+  - python -m pytest -v test/recursion_test.py
+  - python -m pytest -v test/monitor_test.py
+  - python -m pytest -v test/cython_test.py
+  - python -m pytest -v test/credis_test.py
 
   # ray tune tests
   - python python/ray/tune/test/dependency_test.py
-  - python -m pytest python/ray/tune/test/trial_runner_test.py
-  - python -m pytest python/ray/tune/test/trial_scheduler_test.py
-  - python -m pytest python/ray/tune/test/experiment_test.py
-  - python -m pytest python/ray/tune/test/tune_server_test.py
+  - python -m pytest -v python/ray/tune/test/trial_runner_test.py
+  - python -m pytest -v python/ray/tune/test/trial_scheduler_test.py
+  - python -m pytest -v python/ray/tune/test/experiment_test.py
+  - python -m pytest -v python/ray/tune/test/tune_server_test.py
+  - python -m pytest -v python/ray/tune/test/ray_trial_executor_test.py
 
   # ray rllib tests
-  - python -m pytest python/ray/rllib/test/test_catalog.py
-  - python -m pytest python/ray/rllib/test/test_filters.py
-  - python -m pytest python/ray/rllib/test/test_optimizers.py
-  - python -m pytest python/ray/rllib/test/test_evaluators.py
+  - python -m pytest -v python/ray/rllib/test/test_catalog.py
+  - python -m pytest -v python/ray/rllib/test/test_filters.py
+  - python -m pytest -v python/ray/rllib/test/test_optimizers.py
+  - python -m pytest -v python/ray/rllib/test/test_evaluators.py
 
 deploy:
   - provider: s3

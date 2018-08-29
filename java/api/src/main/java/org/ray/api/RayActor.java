@@ -10,14 +10,14 @@ import org.ray.util.Sha1Digestor;
  * Ray actor abstraction.
  */
 public class RayActor<T> extends RayObject<T> implements Externalizable {
-  public static final RayActor<?> nil = new RayActor<>(UniqueID.nil, UniqueID.nil);
+  public static final RayActor<?> NIL = new RayActor<>(UniqueID.NIL, UniqueID.NIL);
   private static final long serialVersionUID = 1877485807405645036L;
 
   private int taskCounter = 0;
 
   private UniqueID taskCursor = null;
 
-  private UniqueID actorHandleId = UniqueID.nil;
+  private UniqueID actorHandleId = UniqueID.NIL;
 
   private int forksNum = 0;
 
@@ -73,7 +73,7 @@ public class RayActor<T> extends RayObject<T> implements Externalizable {
   }
 
   public UniqueID computeNextActorHandleId() {
-    byte[] bytes = Sha1Digestor.digest(actorHandleId.id, ++forksNum);
+    byte[] bytes = Sha1Digestor.digest(actorHandleId.getBytes(), ++forksNum);
     return new UniqueID(bytes);
   }
 

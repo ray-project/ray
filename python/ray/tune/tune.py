@@ -6,13 +6,11 @@ import time
 
 from ray.tune.error import TuneError
 from ray.tune.suggest import BasicVariantGenerator
-from ray.tune.hyperband import HyperBandScheduler
-from ray.tune.async_hyperband import AsyncHyperBandScheduler
-from ray.tune.median_stopping_rule import MedianStoppingRule
 from ray.tune.trial import Trial, DEBUG_PRINT_INTERVAL
 from ray.tune.log_sync import wait_for_log_sync
 from ray.tune.trial_runner import TrialRunner
-from ray.tune.trial_scheduler import FIFOScheduler
+from ray.tune.schedulers import (HyperBandScheduler, AsyncHyperBandScheduler,
+                                 FIFOScheduler, MedianStoppingRule)
 from ray.tune.web_server import TuneServer
 
 _SCHEDULERS = {
@@ -37,11 +35,13 @@ def run_experiments(experiments=None,
                     with_server=False,
                     server_port=TuneServer.DEFAULT_PORT,
                     verbose=True,
-                    queue_trials=False):
-    """Tunes experiments.
+                    queue_trials=False,
+                    trial_executor=None):
+    """Runs and blocks until all trials finish.
 
     Args:
-        experiments (Experiment | list | dict): Experiments to run.
+        experiments (Experiment | list | dict): Experiments to run. Will be
+            passed to `search_alg` via `add_configurations`.
         search_alg (SearchAlgorithm): Search Algorithm. Defaults to
             BasicVariantGenerator.
         scheduler (TrialScheduler): Scheduler for executing
@@ -55,17 +55,36 @@ def run_experiments(experiments=None,
             not currently have enough resources to launch one. This should
             be set to True when running on an autoscaling cluster to enable
             automatic scale-up.
+        trial_executor (TrialExecutor): Manage the execution of trials.
+
+    Examples:
+        >>> experiment_spec = Experiment("experiment", my_func)
+        >>> run_experiments(experiments=experiment_spec)
+
+        >>> experiment_spec = {"experiment": {"run": my_func}}
+        >>> run_experiments(experiments=experiment_spec)
+
+        >>> run_experiments(
+        >>>     experiments=experiment_spec,
+        >>>     scheduler=MedianStoppingRule(...))
+
+        >>> run_experiments(
+        >>>     experiments=experiment_spec,
+        >>>     search_alg=SearchAlgorithm(),
+        >>>     scheduler=MedianStoppingRule(...))
 
     Returns:
         List of Trial objects, holding data for each executed trial.
+
     """
+
     if scheduler is None:
         scheduler = FIFOScheduler()
 
     if search_alg is None:
-        assert experiments is not None, "Experiments need to be specified" \
-            "if search_alg is not provided."
-        search_alg = BasicVariantGenerator(experiments)
+        search_alg = BasicVariantGenerator()
+
+    search_alg.add_configurations(experiments)
 
     runner = TrialRunner(
         search_alg,
@@ -73,7 +92,8 @@ def run_experiments(experiments=None,
         launch_web_server=with_server,
         server_port=server_port,
         verbose=verbose,
-        queue_trials=queue_trials)
+        queue_trials=queue_trials,
+        trial_executor=trial_executor)
 
     print(runner.debug_string(max_debug=99999))
 

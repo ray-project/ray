@@ -123,12 +123,12 @@ class AsyncVectorEnv(object):
         return None
 
     def get_unwrapped(self):
-        """Return a reference to some underlying gym env, if any.
+        """Return a reference to the underlying gym envs, if any.
 
         Returns:
-            env (gym.Env|None): Underlying gym env or None.
+            envs (list): Underlying gym envs or [].
         """
-        return None
+        return []
 
 
 # Fixed agent identifier when there is only the single agent in the env

@@ -90,7 +90,7 @@ class RemoteFunction(object):
 
         # # Export the function.
         worker = ray.worker.get_global_worker()
-        if worker.mode in [ray.worker.SCRIPT_MODE, ray.worker.SILENT_MODE]:
+        if worker.mode == ray.worker.SCRIPT_MODE:
             self._export()
         elif worker.mode is None:
             worker.cached_remote_functions_and_actors.append(

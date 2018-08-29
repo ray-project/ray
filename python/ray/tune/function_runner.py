@@ -12,7 +12,12 @@ from ray.tune.result import TIMESTEPS_TOTAL
 
 
 class StatusReporter(object):
-    """Object passed into your main() that you can report status through."""
+    """Object passed into your main() that you can report status through.
+
+    Example:
+        >>> reporter = StatusReporter()
+        >>> reporter(timesteps_total=1)
+    """
 
     def __init__(self):
         self._latest_result = None

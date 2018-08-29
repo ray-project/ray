@@ -34,7 +34,7 @@ else
     LOAD_MODULE_ARGS="--loadmodule ${REDIS_MODULE}"
 fi
 
-STORE_EXEC="$CORE_DIR/src/plasma/plasma_store"
+STORE_EXEC="$CORE_DIR/src/plasma/plasma_store_server"
 
 # Allow cleanup commands to fail.
 $REDIS_DIR/redis-cli -p 6379 shutdown || true

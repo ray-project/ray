@@ -33,7 +33,7 @@ public class RayDevRuntime extends RayRuntime {
 
   private byte[] createLocalActor(String className) {
     UniqueID taskId = WorkerContext.currentTask().taskId;
-    UniqueID actorId = UniqueIdHelper.taskComputeReturnId(taskId, 0, false);
+    UniqueID actorId = UniqueIdHelper.computeReturnId(taskId, 0);
     try {
       Class<?> cls = Class.forName(className);
 
