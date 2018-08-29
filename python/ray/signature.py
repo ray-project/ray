@@ -5,9 +5,14 @@ from __future__ import print_function
 from collections import namedtuple
 import funcsigs
 from funcsigs import Parameter
+import logging
 
-from ray.services import logger
 from ray.utils import is_cython
+
+# Logger for this module. It should be configured at the entry point
+# into the program using Ray. Ray configures it by default automatically
+# using logging.basicConfig in its entry/init points.
+logger = logging.getLogger(__name__)
 
 FunctionSignature = namedtuple("FunctionSignature", [
     "arg_names", "arg_defaults", "arg_is_positionals", "keyword_names",

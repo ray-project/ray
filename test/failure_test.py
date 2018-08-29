@@ -44,7 +44,7 @@ class TaskStatusTest(unittest.TestCase):
         def throw_exception_fct3(x):
             raise Exception("Test function 3 intentionally failed.")
 
-        ray.init(num_workers=3, driver_mode=ray.SILENT_MODE)
+        ray.init(num_workers=3)
 
         throw_exception_fct1.remote()
         throw_exception_fct1.remote()
@@ -86,7 +86,7 @@ class TaskStatusTest(unittest.TestCase):
             assert False
 
     def testFailImportingRemoteFunction(self):
-        ray.init(num_workers=2, driver_mode=ray.SILENT_MODE)
+        ray.init(num_workers=2)
 
         # Create the contents of a temporary Python file.
         temporary_python_file = """
@@ -125,7 +125,7 @@ def temporary_helper_function():
         sys.path.pop(-1)
 
     def testFailedFunctionToRun(self):
-        ray.init(num_workers=2, driver_mode=ray.SILENT_MODE)
+        ray.init(num_workers=2)
 
         def f(worker):
             if ray.worker.global_worker.mode == ray.WORKER_MODE:
@@ -140,7 +140,7 @@ def temporary_helper_function():
         assert "Function to run failed." in error_info[1]["message"]
 
     def testFailImportingActor(self):
-        ray.init(num_workers=2, driver_mode=ray.SILENT_MODE)
+        ray.init(num_workers=2)
 
         # Create the contents of a temporary Python file.
         temporary_python_file = """
@@ -203,7 +203,7 @@ class ActorTest(unittest.TestCase):
         ray.shutdown()
 
     def testFailedActorInit(self):
-        ray.init(num_workers=0, driver_mode=ray.SILENT_MODE)
+        ray.init(num_workers=0)
 
         error_message1 = "actor constructor failed"
         error_message2 = "actor method failed"
@@ -233,7 +233,7 @@ class ActorTest(unittest.TestCase):
         assert error_message2 in ray.error_info()[1]["message"]
 
     def testIncorrectMethodCalls(self):
-        ray.init(num_workers=0, driver_mode=ray.SILENT_MODE)
+        ray.init(num_workers=0)
 
         @ray.remote
         class Actor(object):
@@ -275,7 +275,7 @@ class WorkerDeath(unittest.TestCase):
         ray.shutdown()
 
     def testWorkerRaisingException(self):
-        ray.init(num_workers=1, driver_mode=ray.SILENT_MODE)
+        ray.init(num_workers=1)
 
         @ray.remote
         def f():
@@ -290,7 +290,7 @@ class WorkerDeath(unittest.TestCase):
         assert len(ray.error_info()) == 2
 
     def testWorkerDying(self):
-        ray.init(num_workers=0, driver_mode=ray.SILENT_MODE)
+        ray.init(num_workers=0)
 
         # Define a remote function that will kill the worker that runs it.
         @ray.remote
@@ -306,7 +306,7 @@ class WorkerDeath(unittest.TestCase):
         assert "died or was killed while executing" in error_info[0]["message"]
 
     def testActorWorkerDying(self):
-        ray.init(num_workers=0, driver_mode=ray.SILENT_MODE)
+        ray.init(num_workers=0)
 
         @ray.remote
         class Actor(object):
@@ -326,7 +326,7 @@ class WorkerDeath(unittest.TestCase):
         wait_for_errors(ray_constants.WORKER_DIED_PUSH_ERROR, 1)
 
     def testActorWorkerDyingFutureTasks(self):
-        ray.init(num_workers=0, driver_mode=ray.SILENT_MODE)
+        ray.init(num_workers=0)
 
         @ray.remote
         class Actor(object):
@@ -349,7 +349,7 @@ class WorkerDeath(unittest.TestCase):
         wait_for_errors(ray_constants.WORKER_DIED_PUSH_ERROR, 1)
 
     def testActorWorkerDyingNothingInProgress(self):
-        ray.init(num_workers=0, driver_mode=ray.SILENT_MODE)
+        ray.init(num_workers=0)
 
         @ray.remote
         class Actor(object):
@@ -374,10 +374,7 @@ class PutErrorTest(unittest.TestCase):
 
     def testPutError1(self):
         store_size = 10**6
-        ray.worker._init(
-            start_ray_local=True,
-            driver_mode=ray.SILENT_MODE,
-            object_store_memory=store_size)
+        ray.worker._init(start_ray_local=True, object_store_memory=store_size)
 
         num_objects = 3
         object_size = 4 * 10**5
@@ -421,10 +418,7 @@ class PutErrorTest(unittest.TestCase):
     def testPutError2(self):
         # This is the same as the previous test, but it calls ray.put directly.
         store_size = 10**6
-        ray.worker._init(
-            start_ray_local=True,
-            driver_mode=ray.SILENT_MODE,
-            object_store_memory=store_size)
+        ray.worker._init(start_ray_local=True, object_store_memory=store_size)
 
         num_objects = 3
         object_size = 4 * 10**5
@@ -473,7 +467,7 @@ class ConfigurationTest(unittest.TestCase):
         ray_version = ray.__version__
         ray.__version__ = "fake ray version"
 
-        ray.init(num_workers=1, driver_mode=ray.SILENT_MODE)
+        ray.init(num_workers=1)
 
         wait_for_errors(ray_constants.VERSION_MISMATCH_PUSH_ERROR, 1)
 

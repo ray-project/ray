@@ -47,7 +47,7 @@ class MultiNodeTest(unittest.TestCase):
 
     def testErrorIsolation(self):
         # Connect a driver to the Ray cluster.
-        ray.init(redis_address=self.redis_address, driver_mode=ray.SILENT_MODE)
+        ray.init(redis_address=self.redis_address)
 
         # There shouldn't be any errors yet.
         assert len(ray.error_info()) == 0
@@ -115,7 +115,7 @@ print("success")
     def testRemoteFunctionIsolation(self):
         # This test will run multiple remote functions with the same names in
         # two different drivers. Connect a driver to the Ray cluster.
-        ray.init(redis_address=self.redis_address, driver_mode=ray.SILENT_MODE)
+        ray.init(redis_address=self.redis_address)
 
         # Start another driver and make sure that it can define and call its
         # own commands with the same names.
@@ -158,7 +158,7 @@ print("success")
     def testDriverExitingQuickly(self):
         # This test will create some drivers that submit some tasks and then
         # exit without waiting for the tasks to complete.
-        ray.init(redis_address=self.redis_address, driver_mode=ray.SILENT_MODE)
+        ray.init(redis_address=self.redis_address)
 
         # Define a driver that creates an actor and exits.
         driver_script1 = """
@@ -322,7 +322,7 @@ def train_func(config, reporter):  # add a reporter arg
         time.sleep(0.1)
         reporter(timesteps_total=i, mean_accuracy=i+97)  # report metrics
 
-ray.init(redis_address="{}", driver_mode=ray.SILENT_MODE)
+ray.init(redis_address="{}")
 ray.tune.register_trainable("train_func", train_func)
 
 tune.run_experiments({{

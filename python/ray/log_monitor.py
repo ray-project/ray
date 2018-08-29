@@ -3,14 +3,20 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
+import logging
 import os
 import redis
 import time
 
+import ray.ray_constants as ray_constants
 from ray.services import get_ip_address
 from ray.services import get_port
-from ray.services import logger
 import ray.utils
+
+# Logger for this module. It should be configured at the entry point
+# into the program using Ray. Ray configures it by default automatically
+# using logging.basicConfig in its entry/init points.
+logger = logging.getLogger(__name__)
 
 
 class LogMonitor(object):
@@ -124,7 +130,23 @@ if __name__ == "__main__":
         required=True,
         type=str,
         help="The IP address of the node this process is on.")
+    parser.add_argument(
+        "--logging-level",
+        required=False,
+        type=str,
+        default=ray_constants.LOGGER_LEVEL,
+        choices=ray_constants.LOGGER_LEVEL_CHOICES,
+        help=ray_constants.LOGGER_LEVEL_HELP)
+    parser.add_argument(
+        "--logging-format",
+        required=False,
+        type=str,
+        default=ray_constants.LOGGER_FORMAT,
+        help=ray_constants.LOGGER_FORMAT_HELP)
     args = parser.parse_args()
+    logging.basicConfig(
+        level=logging.getLevelName(args.logging_level.upper()),
+        format=args.logging_format)
 
     redis_ip_address = get_ip_address(args.redis_address)
     redis_port = get_port(args.redis_address)

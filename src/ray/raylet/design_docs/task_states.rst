@@ -3,16 +3,16 @@ Task State: Definitions & Transition Diagram
 
 A task can be in one of the following states:
 
-- **Placeable**: the task is ready to be placed at the node where is going to be
-  executed. This can be either local or a remote node. The decision is based on
-  resource availability (the location and size of the task's arguments are
-  ignore). If the local node has enough resources to satisfy task's demand, then
-  the task is placed locally, otherwise is forwarded to another node.
+- **Placeable**: the task is ready to be assigned to a node (either a local or a
+  remote node). The decision is based on resource availability (the location and
+  size of the task's arguments are currently ignored). If the local node has
+  enough resources to satisfy task's demand, then the task is placed locally,
+  otherwise it is forwarded to another node. This placement decision is not
+  final. The task can later be spilled over to another node.
 
 - **WaitForActorCreation**: an actor method (task) is waiting for its actor to get
-  instantiated. Once the actor is created, the task transitions into the
-  waiting state, if the actor is local, or it is forwarded to the remote machine
-  running the actor.
+  instantiated. Once the actor is created, the task will be forwarded to the
+  remote machine running the actor.
 
 - **Waiting**: the task is waiting for its argument dependencies to be satisfied,
   i.e., for its arguments to be transferred to the local object store.
@@ -24,18 +24,30 @@ A task can be in one of the following states:
   worker/actor.
 
 - **Blocked**: the task is being blocked as some data objects it depends on are not
-  available, e.g., because the task has launched another task and it waits
-  for the results, ore because of failures.
+  available, e.g., because the task has launched another task and is waiting
+  for the results.
+
+- **Infeasible:** the task has resource requirements that are not satisfied by
+  any machine.
 
 ::
 
-         forward
-          ------
-         |      |   resource          arguments        actor/worker
-         |      v  available            local             available
-         Placeable ----------> Waiting --------> Ready ---------> Running
-          |     ^                 ^                                |   ^
-    actor |     | actor           | actor                   worker |   | worker
-  created |     | created         | created                blocked |   | unblocked
-          v     | (remote)        | (local)                        v   |
-     WaitForActorCreation---------                                Blocked
+                                    ---------------------------------
+                                   |                                 |
+                                   |     forward                     | forward
+                                   |----------------                 |
+  node with                  ------|                |   arguments    |
+  resources          forward|      |   resource     |     local      |   actor/worker
+  joins                     |      v  available     |    -------->   |    available
+    ---------------------- Placeable ----------> Waiting           Ready ---------> Running
+  |                       | |  ^                    ^    <--------   ^               |   ^
+  |             |---------  |  |                    |    local arg   |               |   |
+  |             |           |  |                    |     evicted    |        worker |   | worker
+  |             |     actor |  |                    |                |       blocked |   | unblocked
+  |   resources |   created |  | actor              | ---------------                |   |
+  |  infeasible |           |  | created            | actor                          |   |
+  |             |           |  | (remote)           | created                        v   |
+  |             |           v  |                    | (local)                              Blocked
+  |             |     WaitForActorCreation----------
+  |             v
+   ----Infeasible

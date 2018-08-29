@@ -1,5 +1,6 @@
 package org.ray.api;
 
+import com.google.common.collect.ImmutableList;
 import java.util.List;
 import org.ray.api.internal.RayConnector;
 import org.ray.util.exception.TaskExecutionException;
@@ -58,23 +59,17 @@ public final class Ray extends Rpc {
    * @param numReturns          how many of ready is enough
    * @param timeoutMilliseconds in millisecond
    */
-  public static <T> WaitResult<T> wait(RayList<T> waitfor, int numReturns,
+  public static <T> WaitResult<T> wait(List<RayObject<T>> waitfor, int numReturns,
                                        int timeoutMilliseconds) {
     return impl.wait(waitfor, numReturns, timeoutMilliseconds);
   }
 
-  public static <T> WaitResult<T> wait(RayList<T> waitfor, int numReturns) {
+  public static <T> WaitResult<T> wait(List<RayObject<T>> waitfor, int numReturns) {
     return impl.wait(waitfor, numReturns, Integer.MAX_VALUE);
   }
 
-  public static <T> WaitResult<T> wait(RayList<T> waitfor) {
+  public static <T> WaitResult<T> wait(List<RayObject<T>> waitfor) {
     return impl.wait(waitfor, waitfor.size(), Integer.MAX_VALUE);
-  }
-
-  public static <T> WaitResult<T> wait(RayObject<T> waitfor, int timeoutMilliseconds) {
-    RayList<T> waits = new RayList<>();
-    waits.add(waitfor);
-    return impl.wait(waits, 1, timeoutMilliseconds);
   }
 
   /**

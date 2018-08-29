@@ -4,14 +4,13 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
-import java.lang.invoke.SerializedLambda;
 import java.lang.reflect.Method;
 import java.util.concurrent.TimeUnit;
 import org.junit.Assert;
 import org.junit.Test;
-import org.ray.api.funcs.RayFunc_0_1;
-import org.ray.api.funcs.RayFunc_1_1;
-import org.ray.api.funcs.RayFunc_3_1;
+import org.ray.api.funcs.RayFunc0;
+import org.ray.api.funcs.RayFunc1;
+import org.ray.api.funcs.RayFunc3;
 import org.ray.util.MethodId;
 import org.ray.util.logger.RayLog;
 
@@ -36,7 +35,7 @@ public class LambdaUtilsTest {
     }
   }
 
-  public static <T0, T1, T2, R0> void testRemoteLambdaParse(RayFunc_3_1<T0, T1, T2, R0> f, int n,
+  public static <T0, T1, T2, R0> void testRemoteLambdaParse(RayFunc3<T0, T1, T2, R0> f, int n,
       boolean forceNew, boolean debug)
       throws Exception {
     if (debug) {
@@ -52,7 +51,7 @@ public class LambdaUtilsTest {
         (end - start) / n));
   }
 
-  public static <T0, T1, T2, R0> void testRemoteLambdaSerde(RayFunc_3_1<T0, T1, T2, R0> f, int n,
+  public static <T0, T1, T2, R0> void testRemoteLambdaSerde(RayFunc3<T0, T1, T2, R0> f, int n,
       boolean de, boolean debug)
       throws Exception {
     if (debug) {
@@ -66,7 +65,7 @@ public class LambdaUtilsTest {
       out.close();
       if (de) {
         ObjectInputStream in = new ObjectInputStream(new ByteArrayInputStream(bytes.toByteArray()));
-        RayFunc_3_1 def = (RayFunc_3_1) in.readObject();
+        RayFunc3 def = (RayFunc3) in.readObject();
         in.close();
         if (debug) {
           RayLog.core.info("de#" + def.getClass().getName());
@@ -80,28 +79,28 @@ public class LambdaUtilsTest {
             (end - start) / n));
   }
 
-  public static void testCall0(RayFunc_0_1 f) {
+  public static void testCall0(RayFunc0 f) {
     MethodId mid = MethodId.fromSerializedLambda(f);
     RayLog.core.info(mid.toString());
     Assert.assertEquals(mid.load(), CALL0);
     Assert.assertTrue(mid.isStatic);
   }
 
-  public static <T, R> void testCall1(RayFunc_1_1<T, R> f, T t) {
+  public static <T, R> void testCall1(RayFunc1<T, R> f, T t) {
     MethodId mid = MethodId.fromSerializedLambda(f);
     RayLog.core.info(mid.toString());
     Assert.assertEquals(mid.load(), CALL1);
     Assert.assertTrue(mid.isStatic);
   }
 
-  public static <T, R> void testCall2(RayFunc_1_1<T, R> f) {
+  public static <T, R> void testCall2(RayFunc1<T, R> f) {
     MethodId mid = MethodId.fromSerializedLambda(f);
     RayLog.core.info(mid.toString());
     Assert.assertEquals(mid.load(), CALL2);
     Assert.assertTrue(!mid.isStatic);
   }
 
-  public static <T0, T1, T2, R0> void testCall3(RayFunc_3_1<T0, T1, T2, R0> f) {
+  public static <T0, T1, T2, R0> void testCall3(RayFunc3<T0, T1, T2, R0> f) {
     MethodId mid = MethodId.fromSerializedLambda(f);
     RayLog.core.info(mid.toString());
     Assert.assertEquals(mid.load(), CALL3);

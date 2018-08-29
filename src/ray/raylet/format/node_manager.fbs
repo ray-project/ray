@@ -123,6 +123,8 @@ table RegisterClientRequest {
   worker_pid: long;
   // The driver ID. This is non-nil if the client is a driver.
   driver_id: string;
+  // Language of this worker.
+  language: Language;
 }
 
 table RegisterClientReply {

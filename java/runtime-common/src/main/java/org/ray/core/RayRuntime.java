@@ -5,7 +5,6 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -13,13 +12,10 @@ import org.apache.arrow.plasma.ObjectStoreLink;
 import org.apache.commons.lang3.tuple.Pair;
 import org.ray.api.Ray;
 import org.ray.api.RayApi;
-import org.ray.api.RayList;
-import org.ray.api.RayMap;
 import org.ray.api.RayObject;
-import org.ray.api.RayObjects;
 import org.ray.api.UniqueID;
 import org.ray.api.WaitResult;
-import org.ray.api.internal.RayFunc;
+import org.ray.api.funcs.RayFunc;
 import org.ray.core.model.RayParameters;
 import org.ray.spi.LocalSchedulerLink;
 import org.ray.spi.LocalSchedulerProxy;
@@ -117,7 +113,6 @@ public abstract class RayRuntime implements RayApi {
       RemoteFunctionManager remoteLoader,
       PathConfig pathManager
   ) {
-    UniqueIdHelper.setThreadRandomSeed(UniqueIdHelper.getUniqueness(params.driver_id));
     remoteFunctionManager = remoteLoader;
     pathConfig = pathManager;
 
@@ -213,7 +208,7 @@ public abstract class RayRuntime implements RayApi {
   }
 
   /**
-   * get the task identity of the currently running task, UniqueID.Nil if not inside any
+   * get the task identity of the currently running task, UniqueID.NIL if not inside any
    */
   public UniqueID getCurrentTaskId() {
     return worker.getCurrentTaskId();
@@ -261,28 +256,14 @@ public abstract class RayRuntime implements RayApi {
   }
 
   @Override
-  public <T> WaitResult<T> wait(RayList<T> waitfor, int numReturns, int timeout) {
+  public <T> WaitResult<T> wait(List<RayObject<T>> waitfor, int numReturns, int timeout) {
     return objectStoreProxy.wait(waitfor, numReturns, timeout);
   }
 
   @Override
-  public RayObjects call(UniqueID taskId, Class<?> funcCls, RayFunc lambda, int returnCount,
-      Object... args) {
-    return worker.rpc(taskId, funcCls, lambda, returnCount, args);
+  public RayObject call(RayFunc func, Object... args) {
+    return worker.submit(func, args);
   }
-
-  @Override
-  public <R, RIDT> RayMap<RIDT, R> callWithReturnLabels(UniqueID taskId, Class<?> funcCls,
-      RayFunc lambda, Collection<RIDT> returnids, Object... args) {
-    return worker.rpcWithReturnLabels(taskId, funcCls, lambda, returnids, args);
-  }
-
-  @Override
-  public <R> RayList<R> callWithReturnIndices(UniqueID taskId, Class<?> funcCls,
-      RayFunc lambda, Integer returnCount, Object... args) {
-    return worker.rpcWithReturnIndices(taskId, funcCls, lambda, returnCount, args);
-  }
-
 
   private <T> List<T> doGet(List<UniqueID> objectIds, boolean isMetadata)
       throws TaskExecutionException {
@@ -399,7 +380,7 @@ public abstract class RayRuntime implements RayApi {
   }
 
   /**
-   * get the object put identity of the currently running task, UniqueID.Nil if not inside any
+   * get the object put identity of the currently running task, UniqueID.NIL if not inside any
    */
   public UniqueID[] getCurrentTaskReturnIDs() {
     return worker.getCurrentTaskReturnIDs();

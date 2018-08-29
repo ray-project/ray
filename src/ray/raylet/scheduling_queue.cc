@@ -105,6 +105,31 @@ const std::list<Task> &SchedulingQueue::GetReadyTasks() const {
   return this->ready_tasks_.GetTasks();
 }
 
+const std::list<Task> &SchedulingQueue::GetInfeasibleTasks() const {
+  return this->infeasible_tasks_.GetTasks();
+}
+
+ResourceSet SchedulingQueue::GetQueueResources(const TaskQueue &task_queue) const {
+  // Iterate over all tasks of the specified queue and aggregate total resource
+  // demand in a resource set.
+  ResourceSet queue_resources;
+  for (const auto &task : task_queue.GetTasks()) {
+    queue_resources.AddResources(task.GetTaskSpecification().GetRequiredResources());
+  }
+  return queue_resources;
+}
+
+ResourceSet SchedulingQueue::GetReadyQueueResources() const {
+  return GetQueueResources(ready_tasks_);
+}
+
+ResourceSet SchedulingQueue::GetResourceLoad() const {
+  ResourceSet load_resource_set;
+  load_resource_set.AddResources(GetReadyQueueResources());
+  // TODO(atumanov): consider other types of tasks as part of load.
+  return load_resource_set;
+}
+
 const std::list<Task> &SchedulingQueue::GetRunningTasks() const {
   return this->running_tasks_.GetTasks();
 }
@@ -130,6 +155,9 @@ void SchedulingQueue::FilterState(std::unordered_set<TaskID> &task_ids,
     break;
   case TaskState::BLOCKED:
     FilterStateFromQueue(blocked_tasks_, task_ids, filter_state);
+    break;
+  case TaskState::INFEASIBLE:
+    FilterStateFromQueue(infeasible_tasks_, task_ids, filter_state);
     break;
   case TaskState::DRIVER: {
     const auto driver_ids = GetDriverTaskIds();
@@ -158,6 +186,7 @@ std::vector<Task> SchedulingQueue::RemoveTasks(std::unordered_set<TaskID> &task_
   RemoveTasksFromQueue(ready_tasks_, task_ids, removed_tasks);
   RemoveTasksFromQueue(running_tasks_, task_ids, removed_tasks);
   RemoveTasksFromQueue(blocked_tasks_, task_ids, removed_tasks);
+  RemoveTasksFromQueue(infeasible_tasks_, task_ids, removed_tasks);
 
   RAY_CHECK(task_ids.size() == 0);
   return removed_tasks;
@@ -191,6 +220,9 @@ void SchedulingQueue::MoveTasks(std::unordered_set<TaskID> &task_ids, TaskState 
   case TaskState::BLOCKED:
     RemoveTasksFromQueue(blocked_tasks_, task_ids, removed_tasks);
     break;
+  case TaskState::INFEASIBLE:
+    RemoveTasksFromQueue(infeasible_tasks_, task_ids, removed_tasks);
+    break;
   default:
     RAY_LOG(FATAL) << "Attempting to move tasks from unrecognized state "
                    << static_cast<std::underlying_type<TaskState>::type>(src_state);
@@ -212,6 +244,9 @@ void SchedulingQueue::MoveTasks(std::unordered_set<TaskID> &task_ids, TaskState 
   case TaskState::BLOCKED:
     QueueTasks(blocked_tasks_, removed_tasks);
     break;
+  case TaskState::INFEASIBLE:
+    QueueTasks(infeasible_tasks_, removed_tasks);
+    break;
   default:
     RAY_LOG(FATAL) << "Attempting to move tasks to unrecognized state "
                    << static_cast<std::underlying_type<TaskState>::type>(dst_state);
@@ -227,7 +262,7 @@ bool SchedulingQueue::HasTask(const TaskID &task_id) const {
   return (methods_waiting_for_actor_creation_.HasTask(task_id) ||
           waiting_tasks_.HasTask(task_id) || placeable_tasks_.HasTask(task_id) ||
           ready_tasks_.HasTask(task_id) || running_tasks_.HasTask(task_id) ||
-          blocked_tasks_.HasTask(task_id));
+          blocked_tasks_.HasTask(task_id) || infeasible_tasks_.HasTask(task_id));
 }
 
 void SchedulingQueue::QueueWaitingTasks(const std::vector<Task> &tasks) {
@@ -262,6 +297,26 @@ void SchedulingQueue::RemoveDriverTaskId(const TaskID &driver_id) {
 
 const std::unordered_set<TaskID> &SchedulingQueue::GetDriverTaskIds() const {
   return driver_task_ids_;
+}
+
+const std::string SchedulingQueue::ToString() const {
+  std::string result;
+
+  result += "placeable_tasks_ size is " +
+            std::to_string(placeable_tasks_.GetTasks().size()) + "\n";
+  result +=
+      "waiting_tasks_ size is " + std::to_string(waiting_tasks_.GetTasks().size()) + "\n";
+  result +=
+      "ready_tasks_ size is " + std::to_string(ready_tasks_.GetTasks().size()) + "\n";
+  result +=
+      "running_tasks_ size is " + std::to_string(running_tasks_.GetTasks().size()) + "\n";
+  result +=
+      "blocked_tasks_ size is " + std::to_string(blocked_tasks_.GetTasks().size()) + "\n";
+  result += "infeasible_tasks_ size is " +
+            std::to_string(infeasible_tasks_.GetTasks().size()) + "\n";
+  result += "methods_waiting_for_actor_creation_ size is " +
+            std::to_string(methods_waiting_for_actor_creation_.GetTasks().size()) + "\n";
+  return result;
 }
 
 }  // namespace raylet

@@ -39,11 +39,12 @@ class TestObjectManagerBase : public ::testing::Test {
     node_manager_config.num_initial_workers = 0;
     node_manager_config.num_workers_per_process = 1;
     // Use a default worker that can execute empty tasks with dependencies.
-    node_manager_config.worker_command.push_back("python");
-    node_manager_config.worker_command.push_back(
-        "../python/ray/workers/default_worker.py");
-    node_manager_config.worker_command.push_back(raylet_socket_name.c_str());
-    node_manager_config.worker_command.push_back(store_socket_name.c_str());
+    std::vector<std::string> py_worker_command;
+    py_worker_command.push_back("python");
+    py_worker_command.push_back("../python/ray/workers/default_worker.py");
+    py_worker_command.push_back(raylet_socket_name.c_str());
+    py_worker_command.push_back(store_socket_name.c_str());
+    node_manager_config.worker_commands[Language::PYTHON] = py_worker_command;
     return node_manager_config;
   };
 

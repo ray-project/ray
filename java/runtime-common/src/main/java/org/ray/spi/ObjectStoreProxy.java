@@ -4,7 +4,6 @@ import java.util.ArrayList;
 import java.util.List;
 import org.apache.arrow.plasma.ObjectStoreLink;
 import org.apache.commons.lang3.tuple.Pair;
-import org.ray.api.RayList;
 import org.ray.api.RayObject;
 import org.ray.api.UniqueID;
 import org.ray.api.WaitResult;
@@ -91,9 +90,9 @@ public class ObjectStoreProxy {
     store.put(id.getBytes(), Serializer.encode(obj), Serializer.encode(metadata));
   }
 
-  public <T> WaitResult<T> wait(RayList<T> waitfor, int numReturns, int timeout) {
+  public <T> WaitResult<T> wait(List<RayObject<T>> waitfor, int numReturns, int timeout) {
     List<UniqueID> ids = new ArrayList<>();
-    for (RayObject<T> obj : waitfor.Objects()) {
+    for (RayObject<T> obj : waitfor) {
       ids.add(obj.getId());
     }
     List<byte[]> readys;
@@ -103,9 +102,9 @@ public class ObjectStoreProxy {
       readys = localSchedulerLink.wait(getIdBytes(ids), timeout, numReturns);
     }
 
-    RayList<T> readyObjs = new RayList<>();
-    RayList<T> remainObjs = new RayList<>();
-    for (RayObject<T> obj : waitfor.Objects()) {
+    List<RayObject<T>> readyObjs = new ArrayList<>();
+    List<RayObject<T>> remainObjs = new ArrayList<>();
+    for (RayObject<T> obj : waitfor) {
       if (readys.contains(obj.getId().getBytes())) {
         readyObjs.add(obj);
       } else {

@@ -17,9 +17,10 @@ from ray.rllib.evaluation.sample_batch import SampleBatch
 
 
 def _register_all():
+
     for key in [
             "PPO", "ES", "DQN", "APEX", "A3C", "BC", "PG", "DDPG", "APEX_DDPG",
-            "IMPALA", "A2C", "__fake", "__sigmoid_fake_data",
+            "IMPALA", "ARS", "A2C", "__fake", "__sigmoid_fake_data",
             "__parameter_tuning"
     ]:
         from ray.rllib.agents.agent import get_agent_class

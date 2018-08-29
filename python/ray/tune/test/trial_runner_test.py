@@ -538,7 +538,7 @@ class VariantGeneratorTest(unittest.TestCase):
     def testParseToTrials(self):
         trials = self.generate_trials({
             "run": "PPO",
-            "repeat": 2,
+            "num_samples": 2,
             "max_failures": 5,
             "config": {
                 "env": "Pong-v0",
@@ -667,7 +667,7 @@ class VariantGeneratorTest(unittest.TestCase):
         """Checks that next_trials() supports throttling."""
         experiment_spec = {
             "run": "PPO",
-            "repeat": 6,
+            "num_samples": 6,
         }
         experiments = [Experiment.from_json("test", experiment_spec)]
 
@@ -954,6 +954,26 @@ class TrialRunnerTest(unittest.TestCase):
         self.assertEqual(ray.get(trials[1].runner.get_info.remote()), 1)
         self.addCleanup(os.remove, path)
 
+    def testCheckpointingAtEnd(self):
+        ray.init(num_cpus=1, num_gpus=1)
+        runner = TrialRunner(BasicVariantGenerator())
+        kwargs = {
+            "stopping_criterion": {
+                "training_iteration": 2
+            },
+            "checkpoint_at_end": True,
+            "resources": Resources(cpu=1, gpu=1),
+        }
+        runner.add_trial(Trial("__fake", **kwargs))
+        trials = runner.get_trials()
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+        runner.step()
+        runner.step()
+        self.assertEqual(trials[0].last_result[DONE], True)
+        self.assertEqual(trials[0].has_checkpoint(), True)
+
     def testResultDone(self):
         """Tests that last_result is marked `done` after trial is complete."""
         ray.init(num_cpus=1, num_gpus=1)
@@ -1149,7 +1169,7 @@ class TrialRunnerTest(unittest.TestCase):
         ray.init(num_cpus=4, num_gpus=2)
         experiment_spec = {
             "run": "__fake",
-            "repeat": 3,
+            "num_samples": 3,
             "stop": {
                 "training_iteration": 1
             }
