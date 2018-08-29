@@ -155,6 +155,8 @@ def to_argv(config):
         argv.append("--{}".format(k.replace("_", "-")))
         if isinstance(v, string_types):
             argv.append(v)
+        elif isinstance(v, bool):
+            argv.append(v)
         else:
             argv.append(json.dumps(v, cls=_SafeFallbackEncoder))
     return argv
