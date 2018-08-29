@@ -113,6 +113,12 @@ def make_parser(parser_creator=None, **kwargs):
         help="How many training iterations between checkpoints. "
         "A value of 0 (default) disables checkpointing.")
     parser.add_argument(
+        "--checkpoint-at-end",
+        default=False,
+        type=bool,
+        help="Whether to checkpoint at the end of the experiment. "
+        "Default is False.")
+    parser.add_argument(
         "--max-failures",
         default=3,
         type=int,
@@ -148,6 +154,8 @@ def to_argv(config):
             raise ValueError("Use '_' instead of '-' in `{}`".format(k))
         argv.append("--{}".format(k.replace("_", "-")))
         if isinstance(v, string_types):
+            argv.append(v)
+        elif isinstance(v, bool):
             argv.append(v)
         else:
             argv.append(json.dumps(v, cls=_SafeFallbackEncoder))
@@ -186,6 +194,7 @@ def create_trial_from_spec(spec, output_path, parser, **trial_kwargs):
         # json.load leads to str -> unicode in py2.7
         stopping_criterion=spec.get("stop", {}),
         checkpoint_freq=args.checkpoint_freq,
+        checkpoint_at_end=args.checkpoint_at_end,
         # str(None) doesn't create None
         restore_path=spec.get("restore"),
         upload_dir=args.upload_dir,
