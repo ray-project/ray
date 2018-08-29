@@ -25,7 +25,7 @@ class SignalHandlers {
  private:
   static void FatalErrorHandler(int signal);
   static void TerminateHandler(int signal);
-  static void InstallSignalHandlerHelper(int signal, void (*handler)(int));
+  static void InstallSignalHandlerHelper(int signal, const struct sigaction &action);
   static std::string GetRichDebugInfo(int signal);
   static std::string app_name_;
   static int terminate_logging_level_;
