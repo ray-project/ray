@@ -38,18 +38,6 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
     this.useRaylet = useRaylet;
   }
 
-  private static native long _init(String localSchedulerSocket, byte[] workerId,
-      boolean isWorker, byte[] driverTaskId, boolean useRaylet);
-
-  private static native byte[] _computePutId(long client, byte[] taskId, int putIndex);
-
-  private static native byte[] _generateTaskId(byte[] driverId, byte[] parentTaskId, int taskIndex);
-
-  private static native void _taskDone(long client);
-
-  private static native boolean[] _waitObject(long conn, byte[][] objectIds,
-       int numReturns, int timeout, boolean waitLocal);
-
   @Override
   public List<byte[]> wait(byte[][] objectIds, int timeoutMs, int numReturns) {
     assert (useRaylet == true);
@@ -131,16 +119,6 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
   public void notifyUnblocked() {
     _notifyUnblocked(client);
   }
-
-  private static native void _notifyUnblocked(long client);
-
-  private static native void _reconstructObjects(long client, byte[][] objectIds,
-                                                 boolean fetchOnly);
-
-  private static native void _putObject(long client, byte[] taskId, byte[] objectId);
-
-  // return TaskInfo (in FlatBuffer)
-  private static native byte[] _getTaskTodo(long client, boolean useRaylet);
 
   public static TaskSpec taskInfo2Spec(ByteBuffer bb) {
     bb.order(ByteOrder.LITTLE_ENDIAN);
@@ -280,9 +258,6 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
     return buffer;
   }
 
-  private static native void _submitTask(long client, byte[] cursorId, ByteBuffer taskBuff,
-      int pos, int taskSize, boolean useRaylet);
-
   private static byte[][] getIdBytes(List<UniqueID> objectIds) {
     int size = objectIds.size();
     byte[][] ids = new byte[size][];
@@ -296,5 +271,35 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
     _destroy(client);
   }
 
+
+  // Native method declarations.
+
+  private static native long _init(String localSchedulerSocket, byte[] workerId,
+      boolean isWorker, byte[] driverTaskId, boolean useRaylet);
+
+  private static native void _submitTask(long client, byte[] cursorId, ByteBuffer taskBuff,
+      int pos, int taskSize, boolean useRaylet);
+
+  // return TaskInfo (in FlatBuffer)
+  private static native byte[] _getTaskTodo(long client, boolean useRaylet);
+
+  private static native byte[] _computePutId(long client, byte[] taskId, int putIndex);
+
   private static native void _destroy(long client);
+
+  private static native void _taskDone(long client);
+
+  private static native void _reconstructObjects(long client, byte[][] objectIds,
+      boolean fetchOnly);
+
+  private static native void _notifyUnblocked(long client);
+
+  private static native void _putObject(long client, byte[] taskId, byte[] objectId);
+
+  private static native boolean[] _waitObject(long conn, byte[][] objectIds,
+      int numReturns, int timeout, boolean waitLocal);
+
+  private static native byte[] _generateTaskId(byte[] driverId, byte[] parentTaskId,
+      int taskIndex);
+
 }
