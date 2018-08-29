@@ -73,11 +73,8 @@ AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
   const ClientID &client_id, CommandType command_type,
   bool is_test_client = false) {
   primary_context_ = std::make_shared<RedisContext>();
-  // A boolean placeholder value.
-  // Used since changing the API of Connect is breaking some tests.
-  // Would be removed soon in the future.
-  const bool DUMMY_BOOL = true;
-  RAY_CHECK_OK(primary_context_->Connect(address, port, DUMMY_BOOL));
+
+  RAY_CHECK_OK(primary_context_->Connect(address, port, /*sharding=*/true));
 
   if (!is_test_client) {
     // Moving sharding into constructor defaultly means that sharding = true.
@@ -91,14 +88,11 @@ AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
     }
 
     // Populate shard_contexts.
-    for (unsigned int i = 0; i < addresses.size(); ++i) {
-      // Slower than emplace but resource safe.
+    for (int i = 0; i < addresses.size(); ++i) {
       shard_contexts_.push_back(std::make_shared<RedisContext>());
     }
-
-    // Call connect for all contexts. Safe to do many times.
-    // Here shard_contexts_.size() == addresses.size();
-    for (unsigned int i = 0; i < addresses.size(); ++i) {
+    RAY_CHECK(shard_contexts_.size() == addresses.size());
+    for (int i = 0; i < addresses.size(); ++i) {
       RAY_CHECK_OK(shard_contexts_[i]->Connect(addresses[i], ports[i], DUMMY_BOOL));
     }
   } else {
