@@ -1,7 +1,9 @@
 #ifndef RAY_UTIL_UTIL_H
 #define RAY_UTIL_UTIL_H
 
+#include <boost/system/error_code.hpp>
 #include <chrono>
+#include "ray/status.h"
 
 /// Return the number of milliseconds since the steady clock epoch. NOTE: The
 /// returned timestamp may be used for accurately measuring intervals but has
@@ -34,5 +36,30 @@ inline ray::Status boost_to_ray_status(const boost::system::error_code &error) {
     return ray::Status::IOError(strerror(error.value()));
   }
 }
+
+template <class Shutdown>
+class InitShutdownWrapper {
+ public:
+  /// Create an instance of InitShutdownWrapper which will call shuntdown
+  /// function when it is out of scope.
+  ///
+  /// \param init_func The init function.
+  /// \param shuntdown_func The shutdown function.
+  /// \param args The auguments for the init function.
+  template <class Init, class... Args>
+  InitShutdownWrapper(Init init_func, Shutdown shuntdown_func, Args &&... args)
+      : shutdown(shuntdown_func) {
+    init_func(args...);
+  }
+
+  /// Destructor of InitShutdownWrapper which will call the shutdown function.
+  ~InitShutdownWrapper() { shutdown(); }
+
+ private:
+  Shutdown shutdown;
+};
+
+// Most of the shutdown function is the type of void (*)().
+typedef InitShutdownWrapper<void (*)()> DefaultInitShutdown;
 
 #endif  // RAY_UTIL_UTIL_H

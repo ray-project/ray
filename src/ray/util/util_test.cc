@@ -5,6 +5,7 @@
 #include "gtest/gtest.h"
 #include "ray/util/logging.h"
 #include "ray/util/signal_handler.h"
+#include "ray/util/util.h"
 
 // This test just print some call stack information.
 namespace ray {
@@ -31,23 +32,31 @@ void TestSendSignal(const std::string &test_name, int signal) {
 
 TEST(SignalTest, SendTermSignal_Unset_Test) {
   // SignalHandlers will be automatically uninstalled when it is out of scope.
-  auto installed = ray::SignalHandlers("util_test", false);
+  DefaultInitShutdown signal_handler_uninstall_wrapper(
+      SignalHandlers::InstallSignalHandler, SignalHandlers::UninstallSignalHandler,
+      "SendTermSignal_Unset_Test", false);
   // This should not print call stack message.
   TestSendSignal("SendTermSignal_Unset_Test", SIGTERM);
 }
 
 TEST(SignalTest, SendTermSignalTest) {
-  auto installed = ray::SignalHandlers("util_test", true);
+  DefaultInitShutdown signal_handler_uninstall_wrapper(
+      SignalHandlers::InstallSignalHandler, SignalHandlers::UninstallSignalHandler,
+      "SendTermSignalTest", true);
   TestSendSignal("SendTermSignalTest", SIGTERM);
 }
 
 TEST(SignalTest, SendIntSignalTest) {
-  auto installed = ray::SignalHandlers("util_test", false);
+  DefaultInitShutdown signal_handler_uninstall_wrapper(
+      SignalHandlers::InstallSignalHandler, SignalHandlers::UninstallSignalHandler,
+      "SendIntSignalTest", true);
   TestSendSignal("SendIntSignalTest", SIGINT);
 }
 
 TEST(SignalTest, SIGSEGV_Test) {
-  auto installed = ray::SignalHandlers("util_test", true);
+  DefaultInitShutdown signal_handler_uninstall_wrapper(
+      SignalHandlers::InstallSignalHandler, SignalHandlers::UninstallSignalHandler,
+      "SIGSEGV_Test", true);
   pid_t pid;
   pid = fork();
   ASSERT_TRUE(pid >= 0);
@@ -63,7 +72,9 @@ TEST(SignalTest, SIGSEGV_Test) {
 }
 
 TEST(SignalTest, SIGILL_Test) {
-  auto installed = ray::SignalHandlers("util_test", false);
+  DefaultInitShutdown signal_handler_uninstall_wrapper(
+      SignalHandlers::InstallSignalHandler, SignalHandlers::UninstallSignalHandler,
+      "SIGILL_Test", false);
   pid_t pid;
   pid = fork();
   ASSERT_TRUE(pid >= 0);
@@ -81,9 +92,9 @@ TEST(SignalTest, SIGILL_Test) {
 }  // namespace ray
 
 int main(int argc, char **argv) {
-  ray::RayLog::StartRayLog("", RAY_DEBUG);
+  DefaultInitShutdown ray_log_shutdown_wrapper(
+      ray::RayLog::StartRayLog, ray::RayLog::ShutDownRayLog, argv[0], RAY_DEBUG, "");
   ::testing::InitGoogleTest(&argc, argv);
   int failed = RUN_ALL_TESTS();
-  ray::RayLog::ShutDownRayLog();
   return failed;
 }
