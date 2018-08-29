@@ -45,8 +45,6 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient_nativeInit(
     jboolean isWorker,
     jbyteArray driverId,
     jboolean useRaylet) {
-// private static native long _init(String localSchedulerSocket, byte[] workerId,
-//     boolean isWorker, byte[] driverTaskId, boolean useRaylet);
   UniqueIdFromJByteArray worker_id(env, workerId);
   UniqueIdFromJByteArray driver_id(env, driverId);
   const char *nativeString = env->GetStringUTFChars(sockName, JNI_FALSE);
@@ -72,8 +70,6 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient_nativeSubmitTask(
     jint pos,
     jint taskSize,
     jboolean useRaylet) {
-  // private static native void _submitTask(long client, byte[] cursorId,
-  //     ByteBuffer taskBuff, int pos, int taskSize, boolean useRaylet);
   auto conn = reinterpret_cast<LocalSchedulerConnection *>(client);
 
   std::vector<ObjectID> execution_dependencies;
@@ -106,8 +102,6 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient_nativeGetTask(
     jclass,
     jlong client,
     jboolean useRaylet) {
-  // private static native byte[] _getTaskTodo(long client,
-  //     boolean useRaylet);
   auto conn = reinterpret_cast<LocalSchedulerConnection *>(client);
   int64_t task_size = 0;
 
@@ -132,37 +126,6 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient_nativeGetTask(
 
 /*
  * Class:     org_ray_spi_impl_DefaultLocalSchedulerClient
- * Method:    nativeComputePutId
- * Signature: (J[BI)[B
- */
-JNIEXPORT jbyteArray JNICALL
-Java_org_ray_spi_impl_DefaultLocalSchedulerClient_nativeComputePutId(JNIEnv *env,
-                                                                     jclass,
-                                                                     jlong client,
-                                                                     jbyteArray taskId,
-                                                                     jint putIndex) {
-  // private static native byte[] _computePutId(long client, byte[] taskId,
-  //     int putIndex);
-  UniqueIdFromJByteArray task(env, taskId);
-
-  auto conn = reinterpret_cast<LocalSchedulerConnection *>(client);
-  ObjectID put_id = task_compute_put_id(*task.PID, putIndex);
-  local_scheduler_put_object(conn, *task.PID, put_id);
-
-  jbyteArray result;
-  result = env->NewByteArray(sizeof(ObjectID));
-  if (result == nullptr) {
-    return nullptr; /* out of memory error thrown */
-  }
-
-  // move from task spec structure to the java structure
-  env->SetByteArrayRegion(result, 0, sizeof(ObjectID),
-                          reinterpret_cast<jbyte *>(&put_id));
-  return result;
-}
-
-/*
- * Class:     org_ray_spi_impl_DefaultLocalSchedulerClient
  * Method:    nativeDestroy
  * Signature: (J)V
  */
@@ -170,7 +133,6 @@ JNIEXPORT void JNICALL
 Java_org_ray_spi_impl_DefaultLocalSchedulerClient_nativeDestroy(JNIEnv *,
                                                                 jclass,
                                                                 jlong client) {
-  // private static native void _destroy(long client);
   auto conn = reinterpret_cast<LocalSchedulerConnection *>(client);
   local_scheduler_disconnect_client(conn);
   LocalSchedulerConnection_free(conn);
@@ -188,9 +150,6 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient_nativeReconstructObjects(
     jlong client,
     jobjectArray objectIds,
     jboolean fetchOnly) {
-  // private static native void _reconstructObjects(long client, byte[][] objectIds,
-  //     boolean fetchOnly);
-
   std::vector<ObjectID> object_ids;
   auto len = env->GetArrayLength(objectIds);
   for (int i = 0; i < len; i++) {
@@ -212,7 +171,6 @@ JNIEXPORT void JNICALL
 Java_org_ray_spi_impl_DefaultLocalSchedulerClient_nativeNotifyUnblocked(JNIEnv *,
                                                                         jclass,
                                                                         jlong client) {
-  // private static native void _notifyUnblocked(long client);
   auto conn = reinterpret_cast<LocalSchedulerConnection *>(client);
   local_scheduler_notify_unblocked(conn);
 }
@@ -229,8 +187,6 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient_nativePutObject(
     jlong client,
     jbyteArray taskId,
     jbyteArray objectId) {
-  // private static native void _putObject(long client, byte[] taskId,
-  // byte[] objectId);
   UniqueIdFromJByteArray object_id(env, objectId), task_id(env, taskId);
   auto conn = reinterpret_cast<LocalSchedulerConnection *>(client);
   local_scheduler_put_object(conn, *task_id.PID, *object_id.PID);
@@ -250,8 +206,6 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient_nativeWaitObject(
     jint numReturns,
     jint timeoutMillis,
     jboolean isWaitLocal) {
-  // private static native boolean[] _waitObject(long conn, byte[][] objectIds,
-  //     int numReturns, int timeout, boolean waitLocal);
   std::vector<ObjectID> object_ids;
   auto len = env->GetArrayLength(objectIds);
   for (int i = 0; i < len; i++) {
@@ -304,8 +258,6 @@ JNIEXPORT jbyteArray JNICALL
     jbyteArray driverId,
     jbyteArray parentTaskId,
     jint parent_task_counter) {
-  // private static native byte[] _generateTaskId(byte[] driverId,
-  //     byte[] parentTaskId, int taskIndex);
   UniqueIdFromJByteArray object_id1(env, driverId);
   ray::DriverID driver_id = *object_id1.PID;
 

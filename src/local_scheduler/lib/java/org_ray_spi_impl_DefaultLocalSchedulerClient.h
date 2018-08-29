@@ -33,14 +33,6 @@ JNIEXPORT jbyteArray JNICALL Java_org_ray_spi_impl_DefaultLocalSchedulerClient_n
 
 /*
  * Class:     org_ray_spi_impl_DefaultLocalSchedulerClient
- * Method:    nativeComputePutId
- * Signature: (J[BI)[B
- */
-JNIEXPORT jbyteArray JNICALL Java_org_ray_spi_impl_DefaultLocalSchedulerClient_nativeComputePutId
-    (JNIEnv *, jclass, jlong, jbyteArray, jint);
-
-/*
- * Class:     org_ray_spi_impl_DefaultLocalSchedulerClient
  * Method:    nativeDestroy
  * Signature: (J)V
  */

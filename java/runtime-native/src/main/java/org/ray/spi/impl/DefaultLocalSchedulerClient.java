@@ -272,7 +272,18 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
   }
 
 
-  // Native method declarations.
+  /// Native method declarations.
+  ///
+  /// If you change the signature of any native methods, please re-generate
+  /// the C++ header file and update the C++ implementation accordingly:
+  ///
+  /// Suppose that $Dir is your ray root directory.
+  /// 1) pushd $Dir/java/runtime-native/target/classes
+  /// 2) javah -classpath .:$Dir/java/runtime-common/target/classes/:$Dir/java/api/target/classes/
+  ///    org.ray.spi.impl.DefaultLocalSchedulerClient
+  /// 3) cp org_ray_spi_impl_DefaultLocalSchedulerClient.h $Dir/src/local_scheduler/lib/java/
+  /// 4) vim $Dir/src/local_scheduler/lib/java/org_ray_spi_impl_DefaultLocalSchedulerClient.cc
+  /// 5) popd
 
   private static native long nativeInit(String localSchedulerSocket, byte[] workerId,
       boolean isWorker, byte[] driverTaskId, boolean useRaylet);
@@ -282,8 +293,6 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
 
   // return TaskInfo (in FlatBuffer)
   private static native byte[] nativeGetTask(long client, boolean useRaylet);
-
-  private static native byte[] nativeComputePutId(long client, byte[] taskId, int putIndex);
 
   private static native void nativeDestroy(long client);
 
