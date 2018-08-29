@@ -35,7 +35,7 @@ class ImportThread(object):
 
     def start(self):
         """Start the import thread."""
-        t = threading.Thread(target=self._run)
+        t = threading.Thread(target=self._run, name="ray_import_thread")
         # Making the thread a daemon causes it to exit
         # when the main thread exits.
         t.daemon = True
