@@ -153,7 +153,8 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient_nativeReconstructObjects(
   std::vector<ObjectID> object_ids;
   auto len = env->GetArrayLength(objectIds);
   for (int i = 0; i < len; i++) {
-    jbyteArray object_id_bytes = (jbyteArray) env->GetObjectArrayElement(objectIds, i);
+    jbyteArray object_id_bytes =
+        (jbyteArray) env->GetObjectArrayElement(objectIds, i);
     UniqueIdFromJByteArray object_id(env, object_id_bytes);
     object_ids.push_back(*object_id.PID);
     env->DeleteLocalRef(object_id_bytes);
@@ -168,9 +169,10 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient_nativeReconstructObjects(
  * Signature: (J)V
  */
 JNIEXPORT void JNICALL
-Java_org_ray_spi_impl_DefaultLocalSchedulerClient_nativeNotifyUnblocked(JNIEnv *,
-                                                                        jclass,
-                                                                        jlong client) {
+Java_org_ray_spi_impl_DefaultLocalSchedulerClient_nativeNotifyUnblocked(
+    JNIEnv *,
+    jclass,
+    jlong client) {
   auto conn = reinterpret_cast<LocalSchedulerConnection *>(client);
   local_scheduler_notify_unblocked(conn);
 }
@@ -209,7 +211,8 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient_nativeWaitObject(
   std::vector<ObjectID> object_ids;
   auto len = env->GetArrayLength(objectIds);
   for (int i = 0; i < len; i++) {
-    jbyteArray object_id_bytes = (jbyteArray) env->GetObjectArrayElement(objectIds, i);
+    jbyteArray object_id_bytes =
+        (jbyteArray) env->GetObjectArrayElement(objectIds, i);
     UniqueIdFromJByteArray object_id(env, object_id_bytes);
     object_ids.push_back(*object_id.PID);
     env->DeleteLocalRef(object_id_bytes);
@@ -252,7 +255,7 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient_nativeWaitObject(
  * Signature: ([B[BI)[B
  */
 JNIEXPORT jbyteArray JNICALL
-    Java_org_ray_spi_impl_DefaultLocalSchedulerClient_nativeGenerateTaskId(
+Java_org_ray_spi_impl_DefaultLocalSchedulerClient_nativeGenerateTaskId(
     JNIEnv *env,
     jclass,
     jbyteArray driverId,
