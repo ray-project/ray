@@ -32,16 +32,14 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
   boolean useRaylet = false;
 
   public DefaultLocalSchedulerClient(String schedulerSockName, UniqueID clientId,
-                                     UniqueID actorId, boolean isWorker, UniqueID driverId,
-                                     long numGpus, boolean useRaylet) {
-    client = _init(schedulerSockName, clientId.getBytes(), actorId.getBytes(), isWorker,
-        driverId.getBytes(), numGpus, useRaylet);
+      boolean isWorker, UniqueID driverId, boolean useRaylet) {
+    client = _init(schedulerSockName, clientId.getBytes(),
+        isWorker, driverId.getBytes(), useRaylet);
     this.useRaylet = useRaylet;
   }
 
   private static native long _init(String localSchedulerSocket, byte[] workerId,
-                                   byte[] actorId, boolean isWorker, byte[] driverTaskId,
-                                   long numGpus, boolean useRaylet);
+      boolean isWorker, byte[] driverTaskId, boolean useRaylet);
 
   private static native byte[] _computePutId(long client, byte[] taskId, int putIndex);
 
@@ -49,7 +47,7 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
 
   private static native void _taskDone(long client);
 
-  private static native boolean[] _waitObject(long conn, byte[][] objectIds, 
+  private static native boolean[] _waitObject(long conn, byte[][] objectIds,
        int numReturns, int timeout, boolean waitLocal);
 
   @Override
@@ -282,9 +280,8 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
     return buffer;
   }
 
-  // task -> TaskInfo (with FlatBuffer)
-  private static native void _submitTask(long client, byte[] cursorId, /*Direct*/ByteBuffer task,
-                                         int pos, int sz, boolean useRaylet);
+  private static native void _submitTask(long client, byte[] cursorId, ByteBuffer taskBuff,
+      int pos, int taskSize, boolean useRaylet);
 
   private static byte[][] getIdBytes(List<UniqueID> objectIds) {
     int size = objectIds.size();

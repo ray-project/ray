@@ -10,17 +10,15 @@ extern "C" {
 /*
  * Class:     org_ray_spi_impl_DefaultLocalSchedulerClient
  * Method:    _init
- * Signature: (Ljava/lang/String;[B[BZ[BJZ)J
+ * Signature: (Ljava/lang/String;[BZ[BJZ)J
  */
 JNIEXPORT jlong JNICALL
 Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1init(JNIEnv *,
                                                          jclass,
                                                          jstring,
                                                          jbyteArray,
-                                                         jbyteArray,
                                                          jboolean,
                                                          jbyteArray,
-                                                         jlong,
                                                          jboolean);
 
 /*
