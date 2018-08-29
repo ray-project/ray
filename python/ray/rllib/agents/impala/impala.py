@@ -92,16 +92,7 @@ class ImpalaAgent(Agent):
         else:
             policy_cls = A3CPolicyGraph
         self.local_evaluator = self.make_local_evaluator(
-            self.env_creator,
-            policy_cls,
-            # important: allow more cpu threads for multi-gpu
-            merge_dicts(
-                self.config, {
-                    "tf_session_args": {
-                        "intra_op_parallelism_threads": None,
-                        "inter_op_parallelism_threads": None,
-                    },
-                }))
+            self.env_creator, policy_cls)
         self.remote_evaluators = self.make_remote_evaluators(
             self.env_creator, policy_cls, self.config["num_workers"],
             {"num_cpus": 1})

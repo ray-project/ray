@@ -126,13 +126,12 @@ class Agent(Trainable):
 
         cls = PolicyEvaluator.as_remote(**remote_args).remote
         return [
-            self._make_evaluator(cls, env_creator, policy_graph, i + 1)
-            for i in range(count)
+            self._make_evaluator(cls, env_creator, policy_graph, i + 1,
+                                 self.config) for i in range(count)
         ]
 
-    def _make_evaluator(self, cls, env_creator, policy_graph, worker_index):
-        config = self.config
-
+    def _make_evaluator(self, cls, env_creator, policy_graph, worker_index,
+                        config):
         def session_creator():
             return tf.Session(
                 config=tf.ConfigProto(**config["tf_session_args"]))
