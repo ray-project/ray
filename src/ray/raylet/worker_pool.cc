@@ -2,6 +2,9 @@
 
 #include <sys/wait.h>
 
+#include <algorithm>
+#include <thread>
+
 #include "ray/status.h"
 #include "ray/util/logging.h"
 
@@ -41,10 +44,13 @@ namespace raylet {
 /// A constructor that initializes a worker pool with
 /// (num_worker_processes * num_workers_per_process) workers for each language.
 WorkerPool::WorkerPool(
-    int num_worker_processes, int num_workers_per_process, int num_cpus,
+    int num_worker_processes, int num_workers_per_process,
+    int maximum_startup_concurrency,
     const std::unordered_map<Language, std::vector<std::string>> &worker_commands)
-    : num_workers_per_process_(num_workers_per_process), num_cpus_(num_cpus) {
+    : num_workers_per_process_(num_workers_per_process),
+      maximum_startup_concurrency_(maximum_startup_concurrency) {
   RAY_CHECK(num_workers_per_process > 0) << "num_workers_per_process must be positive.";
+  RAY_CHECK(maximum_startup_concurrency > 0);
   // Ignore SIGCHLD signals. If we don't do this, then worker processes will
   // become zombies instead of dying gracefully.
   signal(SIGCHLD, SIG_IGN);
@@ -95,9 +101,11 @@ uint32_t WorkerPool::Size(const Language &language) const {
 }
 
 void WorkerPool::StartWorkerProcess(const Language &language, bool force_start) {
-  // The first condition makes sure that we are always starting up to
-  // num_cpus_ number of processes in parallel.
-  if (static_cast<int>(starting_worker_processes_.size()) >= num_cpus_ && !force_start) {
+  // If we are already starting up too many workers, then return without starting
+  // more.
+  if (static_cast<int>(starting_worker_processes_.size()) >=
+          maximum_startup_concurrency_ &&
+      !force_start) {
     // Workers have been started, but not registered. Force start disabled -- returning.
     RAY_LOG(DEBUG) << starting_worker_processes_.size()
                    << " worker processes pending registration";

@@ -13,7 +13,7 @@ int NUM_WORKERS_PER_PROCESS = 3;
 class WorkerPoolMock : public WorkerPool {
  public:
   WorkerPoolMock()
-      : WorkerPool(0, NUM_WORKERS_PER_PROCESS, 0,
+      : WorkerPool(0, NUM_WORKERS_PER_PROCESS, 1,
                    {{Language::PYTHON, {"dummy_py_worker_command"}},
                     {Language::JAVA, {"dummy_java_worker_command"}}}) {}
 
