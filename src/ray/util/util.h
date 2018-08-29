@@ -53,7 +53,11 @@ class InitShutdownWrapper {
   }
 
   /// Destructor of InitShutdownWrapper which will call the shutdown function.
-  ~InitShutdownWrapper() { shutdown(); }
+  ~InitShutdownWrapper() {
+    if (shutdown != nullptr) {
+      shutdown();
+    }
+  }
 
  private:
   Shutdown shutdown;
