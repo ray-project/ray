@@ -160,11 +160,14 @@ class ImportThread(object):
         (driver_id, serialized_function,
          run_on_other_drivers) = self.redis_client.hmget(
              key, ["driver_id", "function", "run_on_other_drivers"])
+        run_on_other_drivers = ray.utils.decode(run_on_other_drivers) == "True"
 
-        if (run_on_other_drivers == "False"
-                and self.worker.mode == ray.SCRIPT_MODE
-                and driver_id != self.worker.task_driver_id.id()):
-            return
+        # If this is a driver, we should only import and run the function if it
+        # is from another driver and run_on_other_drivers is True.
+        if self.worker.mode == ray.SCRIPT_MODE:
+            if (driver_id == self.worker.task_driver_id.id()
+                    or not run_on_other_drivers):
+                return
 
         try:
             # Deserialize the function.
