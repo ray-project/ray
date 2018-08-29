@@ -11,7 +11,7 @@ from ray.rllib.agents.a3c.a3c_tf_policy_graph import A3CPolicyGraph
 from ray.rllib.agents.impala.vtrace_policy_graph import VTracePolicyGraph
 from ray.rllib.agents.agent import Agent, with_common_config
 from ray.rllib.optimizers import AsyncSamplesOptimizer
-from ray.rllib.utils import FilterManager, merge_dicts
+from ray.rllib.utils import FilterManager
 from ray.tune.trial import Resources
 
 OPTIMIZER_SHARED_CONFIGS = [
