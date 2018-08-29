@@ -232,6 +232,10 @@ class Trial(object):
                         int(self.last_result.get(TIME_TOTAL_S)))
         ]
 
+        if self.last_result.get(TRAINING_ITERATION) is not None:
+            pieces.append('{} iter'.format(
+                self.last_result[TRAINING_ITERATION]))
+
         if self.last_result.get("timesteps_total") is not None:
             pieces.append('{} ts'.format(self.last_result["timesteps_total"]))
 

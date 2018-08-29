@@ -98,7 +98,7 @@ class FunctionRunner(Trainable):
         self._runner = _RunnerThread(entrypoint, scrubbed_config,
                                      self._status_reporter)
         self._start_time = time.time()
-        self._last_reported_timestep = 0
+        self._last_reported_timestep = None
         self._runner.start()
 
     def _trainable_func(self):
@@ -117,8 +117,11 @@ class FunctionRunner(Trainable):
 
         curr_ts_total = result.get(TIMESTEPS_TOTAL,
                                    self._last_reported_timestep)
-        result.update(
-            timesteps_this_iter=(curr_ts_total - self._last_reported_timestep))
+        if curr_ts_total is not None:
+            if self._last_reported_timestep is None:
+                self._last_reported_timestep = 0
+            result.update(
+                timesteps_this_iter=(curr_ts_total - self._last_reported_timestep))
         self._last_reported_timestep = curr_ts_total
 
         return result
