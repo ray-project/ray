@@ -30,10 +30,15 @@ class WorkerPool {
   ///
   /// \param num_worker_processes The number of worker processes to start, per language.
   /// \param num_workers_per_process The number of workers per process.
+  /// \param maximum_startup_concurrency The maximum number of worker processes
+  /// that can be started in parallel (typically this should be set to the number of CPU
+  /// resources on the machine). Note that this limit can be overridden in
+  /// StartWorkerProcess by the force_start flag.
   /// \param worker_commands The commands used to start the worker process, grouped by
   /// language.
   WorkerPool(
-      int num_worker_processes, int num_workers_per_process, int num_cpus,
+      int num_worker_processes, int num_workers_per_process,
+      int maximum_startup_concurrency,
       const std::unordered_map<Language, std::vector<std::string>> &worker_commands);
 
   /// Destructor responsible for freeing a set of workers owned by this class.
@@ -42,13 +47,14 @@ class WorkerPool {
   /// Asynchronously start a new worker process. Once the worker process has
   /// registered with an external server, the process should create and
   /// register num_workers_per_process_ workers, then add them to the pool.
-  /// Failure to start the worker process is a fatal error.
-  /// This function will start up to num_cpus many workers in parallel
-  /// if it is called multiple times.
+  /// Failure to start the worker process is a fatal error. If too many workers
+  /// are already being started and force_start is false, then this function
+  /// will return without starting any workers.
   ///
   /// \param language Which language this worker process should be.
   /// \param force_start Controls whether to force starting a worker regardless of any
-  /// workers that have already been started but not yet registered.
+  /// workers that have already been started but not yet registered. This overrides
+  /// the maximum_startup_concurrency_ value.
   void StartWorkerProcess(const Language &language, bool force_start = false);
 
   /// Register a new worker. The Worker should be added by the caller to the
@@ -137,9 +143,8 @@ class WorkerPool {
   /// for a given language.
   inline State &GetStateForLanguage(const Language &language);
 
-  /// The number of CPUs this Raylet has available.
-  int num_cpus_;
-
+  /// The maximum number of workers that can be started concurrently.
+  int maximum_startup_concurrency_;
   /// Pool states per language.
   std::unordered_map<Language, State> states_by_lang_;
 };

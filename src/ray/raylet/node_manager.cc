@@ -86,8 +86,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       local_resources_(config.resource_config),
       local_available_resources_(config.resource_config),
       worker_pool_(config.num_initial_workers, config.num_workers_per_process,
-                   static_cast<int>(config.resource_config.GetNumCpus()),
-                   config.worker_commands),
+                   config.maximum_startup_concurrency, config.worker_commands),
       local_queues_(SchedulingQueue()),
       scheduling_policy_(local_queues_),
       reconstruction_policy_(
@@ -235,11 +234,13 @@ void NodeManager::Heartbeat() {
   RAY_LOG(DEBUG) << "[Heartbeat] sending heartbeat.";
   auto &heartbeat_table = gcs_client_->heartbeat_table();
   auto heartbeat_data = std::make_shared<HeartbeatTableDataT>();
-  auto client_id = gcs_client_->client_table().GetLocalClientId();
-  const SchedulingResources &local_resources = cluster_resource_map_[client_id];
-  heartbeat_data->client_id = client_id.hex();
+  const auto &my_client_id = gcs_client_->client_table().GetLocalClientId();
+  SchedulingResources &local_resources = cluster_resource_map_[my_client_id];
+  heartbeat_data->client_id = my_client_id.binary();
   // TODO(atumanov): modify the heartbeat table protocol to use the ResourceSet directly.
   // TODO(atumanov): implement a ResourceSet const_iterator.
+  RAY_LOG(DEBUG) << "[Heartbeat] resources available: "
+                 << local_resources.GetAvailableResources().ToString();
   for (const auto &resource_pair :
        local_resources.GetAvailableResources().GetResourceMap()) {
     heartbeat_data->resources_available_label.push_back(resource_pair.first);
@@ -248,6 +249,12 @@ void NodeManager::Heartbeat() {
   for (const auto &resource_pair : local_resources.GetTotalResources().GetResourceMap()) {
     heartbeat_data->resources_total_label.push_back(resource_pair.first);
     heartbeat_data->resources_total_capacity.push_back(resource_pair.second);
+  }
+
+  local_resources.SetLoadResources(local_queues_.GetResourceLoad());
+  for (const auto &resource_pair : local_resources.GetLoadResources().GetResourceMap()) {
+    heartbeat_data->resource_load_label.push_back(resource_pair.first);
+    heartbeat_data->resource_load_capacity.push_back(resource_pair.second);
   }
 
   ray::Status status = heartbeat_table.Add(
@@ -338,7 +345,8 @@ void NodeManager::ClientRemoved(const ClientTableDataT &client_data) {
 void NodeManager::HeartbeatAdded(gcs::AsyncGcsClient *client, const ClientID &client_id,
                                  const HeartbeatTableDataT &heartbeat_data) {
   RAY_LOG(DEBUG) << "[HeartbeatAdded]: received heartbeat from client id " << client_id;
-  if (client_id == gcs_client_->client_table().GetLocalClientId()) {
+  const ClientID &local_client_id = gcs_client_->client_table().GetLocalClientId();
+  if (client_id == local_client_id) {
     // Skip heartbeats from self.
     return;
   }
@@ -351,14 +359,31 @@ void NodeManager::HeartbeatAdded(gcs::AsyncGcsClient *client, const ClientID &cl
                   << client_id;
     return;
   }
-  SchedulingResources &resources = it->second;
-  ResourceSet heartbeat_resource_available(heartbeat_data.resources_available_label,
-                                           heartbeat_data.resources_available_capacity);
-  resources.SetAvailableResources(
-      ResourceSet(heartbeat_data.resources_available_label,
-                  heartbeat_data.resources_available_capacity));
-  RAY_CHECK(this->cluster_resource_map_[client_id].GetAvailableResources() ==
-            heartbeat_resource_available);
+  SchedulingResources &remote_resources = it->second;
+
+  ResourceSet remote_available(heartbeat_data.resources_available_label,
+                               heartbeat_data.resources_available_capacity);
+  ResourceSet remote_load(heartbeat_data.resource_load_label,
+                          heartbeat_data.resource_load_capacity);
+  // TODO(atumanov): assert that the load is a non-empty ResourceSet.
+  RAY_LOG(DEBUG) << "[HeartbeatAdded]: received load: " << remote_load.ToString();
+  remote_resources.SetAvailableResources(std::move(remote_available));
+  // Extract the load information and save it locally.
+  remote_resources.SetLoadResources(std::move(remote_load));
+
+  auto decision = scheduling_policy_.SpillOver(remote_resources);
+  // Extract decision for this local scheduler.
+  std::unordered_set<TaskID> local_task_ids;
+  for (const auto &task_id : decision) {
+    // (See design_docs/task_states.rst for the state transition diagram.)
+    const auto task = local_queues_.RemoveTask(task_id);
+    // Since we are spilling back from the ready and waiting queues, we need
+    // to unsubscribe the dependencies.
+    task_dependency_manager_.UnsubscribeDependencies(task_id);
+    // Attempt to forward the task. If this fails to forward the task,
+    // the task will be resubmit locally.
+    ForwardTaskOrResubmit(task, client_id);
+  }
 }
 
 void NodeManager::HandleActorCreation(const ActorID &actor_id,
@@ -455,13 +480,13 @@ void NodeManager::ProcessNewClient(LocalClientConnection &client) {
 void NodeManager::DispatchTasks() {
   // Work with a copy of scheduled tasks.
   // (See design_docs/task_states.rst for the state transition diagram.)
-  auto scheduled_tasks = local_queues_.GetReadyTasks();
+  auto ready_tasks = local_queues_.GetReadyTasks();
   // Return if there are no tasks to schedule.
-  if (scheduled_tasks.empty()) {
+  if (ready_tasks.empty()) {
     return;
   }
 
-  for (const auto &task : scheduled_tasks) {
+  for (const auto &task : ready_tasks) {
     const auto &task_resources = task.GetTaskSpecification().GetRequiredResources();
     if (!local_available_resources_.Contains(task_resources)) {
       // Not enough local resources for this task right now, skip this task.
@@ -490,6 +515,7 @@ void NodeManager::ProcessClientMessage(
     if (message->is_worker()) {
       // Register the new worker.
       worker_pool_.RegisterWorker(std::move(worker));
+      DispatchTasks();
     } else {
       // Register the new driver.
       JobID job_id = from_flatbuf(*message->driver_id());
@@ -507,6 +533,10 @@ void NodeManager::ProcessClientMessage(
     }
     // Return the worker to the idle pool.
     worker_pool_.PushWorker(std::move(worker));
+    // Local resource availability changed: invoke scheduling policy for local node.
+    const ClientID &local_client_id = gcs_client_->client_table().GetLocalClientId();
+    cluster_resource_map_[local_client_id].SetLoadResources(
+        local_queues_.GetResourceLoad());
     // Call task dispatch to assign work to the new worker.
     DispatchTasks();
 
@@ -758,15 +788,22 @@ void NodeManager::ProcessNodeManagerMessage(TcpClientConnection &node_manager_cl
   node_manager_client.ProcessMessages();
 }
 
-void NodeManager::ScheduleTasks() {
-  auto policy_decision = scheduling_policy_.Schedule(
-      cluster_resource_map_, gcs_client_->client_table().GetLocalClientId(),
-      remote_clients_);
+void NodeManager::ScheduleTasks(
+    std::unordered_map<ClientID, SchedulingResources> &resource_map) {
+  const ClientID &local_client_id = gcs_client_->client_table().GetLocalClientId();
+
+  // If the resource map contains the local raylet, update load before calling policy.
+  if (resource_map.count(local_client_id) > 0) {
+    resource_map[local_client_id].SetLoadResources(local_queues_.GetResourceLoad());
+  }
+  // Invoke the scheduling policy.
+  auto policy_decision = scheduling_policy_.Schedule(resource_map, local_client_id);
+
 #ifndef NDEBUG
   RAY_LOG(DEBUG) << "[NM ScheduleTasks] policy decision:";
-  for (const auto &pair : policy_decision) {
-    TaskID task_id = pair.first;
-    ClientID client_id = pair.second;
+  for (const auto &task_client_pair : policy_decision) {
+    TaskID task_id = task_client_pair.first;
+    ClientID client_id = task_client_pair.second;
     RAY_LOG(DEBUG) << task_id << " --> " << client_id;
   }
 #endif
@@ -774,10 +811,10 @@ void NodeManager::ScheduleTasks() {
   // Extract decision for this local scheduler.
   std::unordered_set<TaskID> local_task_ids;
   // Iterate over (taskid, clientid) pairs, extract tasks assigned to the local node.
-  for (const auto &task_schedule : policy_decision) {
-    const TaskID task_id = task_schedule.first;
-    const ClientID client_id = task_schedule.second;
-    if (client_id == gcs_client_->client_table().GetLocalClientId()) {
+  for (const auto &task_client_pair : policy_decision) {
+    const TaskID &task_id = task_client_pair.first;
+    const ClientID &client_id = task_client_pair.second;
+    if (client_id == local_client_id) {
       local_task_ids.insert(task_id);
     } else {
       // TODO(atumanov): need a better interface for task exit on forward.
@@ -801,9 +838,34 @@ void NodeManager::ScheduleTasks() {
   // manager. TaskDependencyManager::TaskPending() is assumed to be idempotent.
   // TODO(atumanov): evaluate performance implications of registering all new tasks on
   // submission vs. registering remaining queued placeable tasks here.
+  std::unordered_set<TaskID> move_task_set;
   for (const auto &task : local_queues_.GetPlaceableTasks()) {
     task_dependency_manager_.TaskPending(task);
+    move_task_set.insert(task.GetTaskSpecification().TaskId());
+    // Assert that this placeable task is not feasible locally (necessary but not
+    // sufficient).
+    RAY_CHECK(!task.GetTaskSpecification().GetRequiredResources().IsSubset(
+        cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()]
+            .GetTotalResources()));
   }
+
+  // Assumption: all remaining placeable tasks are infeasible and are moved to the
+  // infeasible task queue. Infeasible task queue is checked when new nodes join.
+  local_queues_.MoveTasks(move_task_set, TaskState::PLACEABLE, TaskState::INFEASIBLE);
+  // Check the invariant that no placeable tasks remain after a call to the policy.
+  RAY_CHECK(local_queues_.GetPlaceableTasks().size() == 0);
+}
+
+bool NodeManager::CheckDependencyManagerInvariant() const {
+  std::vector<TaskID> pending_task_ids = task_dependency_manager_.GetPendingTasks();
+  // Assert that each pending task in the task dependency manager is in one of the queues.
+  for (const auto &task_id : pending_task_ids) {
+    if (!local_queues_.HasTask(task_id)) {
+      return false;
+    }
+  }
+  // TODO(atumanov): perform the check in the opposite direction.
+  return true;
 }
 
 void NodeManager::TreatTaskAsFailed(const TaskSpecification &spec) {
@@ -917,7 +979,10 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
     } else {
       // (See design_docs/task_states.rst for the state transition diagram.)
       local_queues_.QueuePlaceableTasks({task});
-      ScheduleTasks();
+      ScheduleTasks(cluster_resource_map_);
+      DispatchTasks();
+      // TODO(atumanov): assert that !placeable.isempty() => insufficient available
+      // resources locally.
     }
   }
 }
@@ -949,8 +1014,6 @@ void NodeManager::HandleWorkerBlocked(std::shared_ptr<Worker> worker) {
   local_queues_.QueueBlockedTasks({task});
   worker->MarkBlocked();
 
-  // Try to dispatch more tasks since the blocked worker released some
-  // resources.
   DispatchTasks();
 }
 
@@ -998,10 +1061,6 @@ void NodeManager::HandleWorkerUnblocked(std::shared_ptr<Worker> worker) {
 }
 
 void NodeManager::EnqueuePlaceableTask(const Task &task) {
-  // Mark the task as pending. Once the task has finished execution, or once it
-  // has been forwarded to another node, the task must be marked as canceled in
-  // the TaskDependencyManager.
-  task_dependency_manager_.TaskPending(task);
   // TODO(atumanov): add task lookup hashmap and change EnqueuePlaceableTask to take
   // a vector of TaskIDs. Trigger MoveTask internally.
   // Subscribe to the task's dependencies.
@@ -1017,6 +1076,10 @@ void NodeManager::EnqueuePlaceableTask(const Task &task) {
   } else {
     local_queues_.QueueWaitingTasks({task});
   }
+  // Mark the task as pending. Once the task has finished execution, or once it
+  // has been forwarded to another node, the task must be marked as canceled in
+  // the TaskDependencyManager.
+  task_dependency_manager_.TaskPending(task);
 }
 
 void NodeManager::AssignTask(Task &task) {
@@ -1049,11 +1112,10 @@ void NodeManager::AssignTask(Task &task) {
   RAY_LOG(DEBUG) << "Assigning task to worker with pid " << worker->Pid();
   flatbuffers::FlatBufferBuilder fbb;
 
-  const ClientID &my_client_id = gcs_client_->client_table().GetLocalClientId();
-
   // Resource accounting: acquire resources for the assigned task.
   auto acquired_resources =
       local_available_resources_.Acquire(spec.GetRequiredResources());
+  const auto &my_client_id = gcs_client_->client_table().GetLocalClientId();
   RAY_CHECK(
       this->cluster_resource_map_[my_client_id].Acquire(spec.GetRequiredResources()));
 
@@ -1119,6 +1181,7 @@ void NodeManager::AssignTask(Task &task) {
     // worker once one becomes available.
     // (See design_docs/task_states.rst for the state transition diagram.)
     local_queues_.QueueReadyTasks(std::vector<Task>({task}));
+    DispatchTasks();
   }
 }
 
@@ -1243,7 +1306,7 @@ void NodeManager::HandleObjectLocal(const ObjectID &object_id) {
     // Transition tasks from waiting to scheduled.
     // (See design_docs/task_states.rst for the state transition diagram.)
     local_queues_.MoveTasks(ready_task_id_set, TaskState::WAITING, TaskState::READY);
-    // New scheduled tasks appeared in the queue, try to dispatch them.
+    // New ready tasks appeared in the queue, try to dispatch them.
     DispatchTasks();
 
     // Check that remaining tasks that could not be transitioned are blocked
@@ -1271,6 +1334,9 @@ void NodeManager::HandleObjectMissing(const ObjectID &object_id) {
     local_queues_.FilterState(waiting_task_id_set, TaskState::RUNNING);
     local_queues_.FilterState(waiting_task_id_set, TaskState::DRIVER);
     RAY_CHECK(waiting_task_id_set.empty());
+    // Moving ready tasks to waiting may have changed the load, making space for placing
+    // new tasks locally.
+    ScheduleTasks(cluster_resource_map_);
   }
 }
 
@@ -1317,7 +1383,8 @@ void NodeManager::ForwardTaskOrResubmit(const Task &task,
       // The task is not for an actor and may therefore be placed on another
       // node immediately. Send it to the scheduling policy to be placed again.
       local_queues_.QueuePlaceableTasks({task});
-      ScheduleTasks();
+      ScheduleTasks(cluster_resource_map_);
+      DispatchTasks();
     }
   }
 }

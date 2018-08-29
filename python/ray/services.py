@@ -246,6 +246,14 @@ def get_node_ip_address(address="8.8.8.8:53"):
         node_ip_address = s.getsockname()[0]
     except Exception as e:
         node_ip_address = "127.0.0.1"
+        # [Errno 101] Network is unreachable
+        if e.errno == 101:
+            try:
+                # try get node ip address from host name
+                host_name = socket.getfqdn(socket.gethostname())
+                node_ip_address = socket.gethostbyname(host_name)
+            except Exception:
+                pass
 
     return node_ip_address
 
@@ -1000,6 +1008,11 @@ def start_raylet(redis_address,
 
     static_resources = check_and_update_resources(resources, True)
 
+    # Limit the number of workers that can be started in parallel by the
+    # raylet. However, make sure it is at least 1.
+    maximum_startup_concurrency = max(
+        1, min(psutil.cpu_count(), static_resources["CPU"]))
+
     # Format the resource argument in a form like 'CPU,1.0,GPU,0,Custom,3'.
     resource_argument = ",".join([
         "{},{}".format(resource_name, resource_value)
@@ -1027,6 +1040,7 @@ def start_raylet(redis_address,
         gcs_ip_address,
         gcs_port,
         str(num_workers),
+        str(maximum_startup_concurrency),
         resource_argument,
         start_worker_command,
         "",  # Worker command for Java, not needed for Python.
