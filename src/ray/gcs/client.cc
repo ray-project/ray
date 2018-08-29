@@ -88,12 +88,12 @@ AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
     }
 
     // Populate shard_contexts.
-    for (int i = 0; i < addresses.size(); ++i) {
+    for (size_t i = 0; i < addresses.size(); ++i) {
       shard_contexts_.push_back(std::make_shared<RedisContext>());
     }
 
     RAY_CHECK(shard_contexts_.size() == addresses.size());
-    for (int i = 0; i < addresses.size(); ++i) {
+    for (size_t i = 0; i < addresses.size(); ++i) {
       RAY_CHECK_OK(shard_contexts_[i]->Connect(addresses[i], ports[i], /*sharding=*/true));
     }
   } else {
