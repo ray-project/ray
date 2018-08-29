@@ -32,7 +32,8 @@ class WorkerPool {
   /// \param num_workers_per_process The number of workers per process.
   /// \param maximum_startup_concurrency The maximum number of worker processes
   /// that can be started in parallel (typically this should be set to the number of CPU
-  /// resoures on the machine).
+  /// resoures on the machine). Note that this limit can be overridden in
+  /// StartWorkerProcess by the force_start flag.
   /// \param worker_commands The commands used to start the worker process, grouped by
   /// language.
   WorkerPool(
@@ -52,7 +53,8 @@ class WorkerPool {
   ///
   /// \param language Which language this worker process should be.
   /// \param force_start Controls whether to force starting a worker regardless of any
-  /// workers that have already been started but not yet registered.
+  /// workers that have already been started but not yet registered. This overrides
+  /// the maximum_startup_concurrency_ value.
   void StartWorkerProcess(const Language &language, bool force_start = false);
 
   /// Register a new worker. The Worker should be added by the caller to the
