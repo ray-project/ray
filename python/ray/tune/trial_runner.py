@@ -234,15 +234,18 @@ class TrialRunner(object):
             trial.update_last_result(
                 result, terminate=(decision == TrialScheduler.STOP))
 
-            if trial.should_checkpoint(result):
-                # TODO(rliaw): This is a blocking call
-                self.trial_executor.save(trial)
-
             if decision == TrialScheduler.CONTINUE:
+                if trial.should_checkpoint(result):
+                    # TODO(rliaw): This is a blocking call
+                    self.trial_executor.save(trial)
                 self.trial_executor.continue_training(trial)
             elif decision == TrialScheduler.PAUSE:
                 self.trial_executor.pause_trial(trial)
             elif decision == TrialScheduler.STOP:
+                # Checkpoint before ending the trial
+                # if checkpoint_at_end experiment option is set to True
+                if trial.should_checkpoint(result):
+                    self.trial_executor.save(trial)
                 self.trial_executor.stop_trial(trial)
             else:
                 assert False, "Invalid scheduling decision: {}".format(
