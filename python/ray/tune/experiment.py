@@ -31,7 +31,12 @@ class Experiment(object):
             e.g. ``{"cpu": 64, "gpu": 8}``. Note that GPUs will not be
             assigned unless you specify them here. Defaults to 1 CPU and 0
             GPUs in ``Trainable.default_resource_request()``.
-        repeat (int): Number of times to repeat each trial. Defaults to 1.
+        repeat (int): Deprecated and will be removed in future versions of
+            Ray. Use `num_samples` instead.
+        num_samples (int): Number of times to sample from the
+            hyperparameter space. Defaults to 1. If `grid_search` is
+            provided as an argument, the grid will be repeated
+            `num_samples` of times.
         local_dir (str): Local dir to save training results to.
             Defaults to ``~/ray_results``.
         upload_dir (str): Optional URI to sync training results
@@ -58,7 +63,7 @@ class Experiment(object):
         >>>         "cpu": 1,
         >>>         "gpu": 0
         >>>     },
-        >>>     repeat=10,
+        >>>     num_samples=10,
         >>>     local_dir="~/ray_results",
         >>>     upload_dir="s3://your_bucket/path",
         >>>     checkpoint_freq=10,
@@ -73,6 +78,7 @@ class Experiment(object):
                  config=None,
                  trial_resources=None,
                  repeat=1,
+                 num_samples=1,
                  local_dir=None,
                  upload_dir="",
                  checkpoint_freq=0,
@@ -83,7 +89,7 @@ class Experiment(object):
             "stop": stop or {},
             "config": config or {},
             "trial_resources": trial_resources,
-            "repeat": repeat,
+            "num_samples": num_samples,
             "local_dir": local_dir or DEFAULT_RESULTS_DIR,
             "upload_dir": upload_dir,
             "checkpoint_freq": checkpoint_freq,
@@ -104,6 +110,13 @@ class Experiment(object):
         """
         if "run" not in spec:
             raise TuneError("No trainable specified!")
+
+        if "repeat" in spec:
+            raise DeprecationWarning("The parameter `repeat` is deprecated; \
+                converting to `num_samples`. `repeat` will be removed in \
+                future versions of Ray.")
+            spec["num_samples"] = spec["repeat"]
+            del spec["repeat"]
 
         # Special case the `env` param for RLlib by automatically
         # moving it into the `config` section.

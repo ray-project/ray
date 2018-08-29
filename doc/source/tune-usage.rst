@@ -72,7 +72,7 @@ dictionary. Tune will convert the dict into an ``ray.tune.Experiment`` object.
                 "beta": tune.grid_search([1, 2]),
             },
             "trial_resources": { "cpu": 1, "gpu": 0 },
-            "repeat": 10,
+            "num_samples": 10,
             "local_dir": "~/ray_results",
             "upload_dir": "s3://your_bucket/path",
             "checkpoint_freq": 10,
@@ -165,7 +165,7 @@ For more information on variant generation, see `basic_variant.py <https://githu
 Sampling Multiple Times
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-By default, each random variable and grid search point is sampled once. To take multiple random samples or repeat grid search runs, add ``repeat: N`` to the experiment config.
+By default, each random variable and grid search point is sampled once. To take multiple random samples, add ``num_samples: N`` to the experiment config. If `grid_search` is provided as an argument, the grid will be repeated `num_samples` of times.
 
 .. code-block:: python
    :emphasize-lines: 12
@@ -181,11 +181,11 @@ By default, each random variable and grid search point is sampled once. To take 
                     tune.grid_search([16, 64, 256]),
                 ],
             },
-            "repeat": 10
+            "num_samples": 10
         }
     })
 
-E.g. in the above, ``"repeat": 10`` repeats the 3x3 grid search 10 times, for a total of 90 trials, each with randomly sampled values of ``alpha`` and ``beta``.
+E.g. in the above, ``"num_samples": 10`` repeats the 3x3 grid search 10 times, for a total of 90 trials, each with randomly sampled values of ``alpha`` and ``beta``.
 
 
 Using GPUs (Resource Allocation)

@@ -1,4 +1,6 @@
-from __future__ import absolute_import, division, print_function
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
 
 import os
 import pytest
@@ -1006,7 +1008,7 @@ class APITest(unittest.TestCase):
         os.environ.get("RAY_USE_XRAY") == "1",
         "This test does not work with xray (nor is it intended to).")
     def testLoggingAPI(self):
-        self.init_ray(driver_mode=ray.SILENT_MODE)
+        self.init_ray()
 
         def events():
             # This is a hack for getting the event log. It is not part of the
@@ -1175,7 +1177,7 @@ class APITest(unittest.TestCase):
             ray.get(3)
 
     def testMultithreading(self):
-        self.init_ray(driver_mode=ray.SILENT_MODE)
+        self.init_ray()
 
         @ray.remote
         def f():
@@ -1312,7 +1314,7 @@ class LocalModeTest(unittest.TestCase):
             x[0] = 1
             return x
 
-        ray.init(driver_mode=ray.LOCAL_MODE)
+        ray.init(local_mode=True)
 
         @ray.remote
         def f():
@@ -2146,6 +2148,7 @@ class SchedulingAlgorithm(unittest.TestCase):
 
         @ray.remote
         def f(x):
+            time.sleep(0.010)
             return ray.worker.global_worker.plasma_client.store_socket_name
 
         # This object will be local to one of the local schedulers. Make sure

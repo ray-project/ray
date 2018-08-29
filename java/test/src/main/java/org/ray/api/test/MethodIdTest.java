@@ -1,18 +1,16 @@
 package org.ray.api.test;
 
 
-import java.lang.invoke.SerializedLambda;
 import java.lang.reflect.Method;
 import org.junit.Assert;
 import org.junit.Test;
-import org.ray.api.funcs.RayFunc_3_1;
-import org.ray.util.LambdaUtils;
+import org.ray.api.funcs.RayFunc3;
 import org.ray.util.MethodId;
 import org.ray.util.logger.RayLog;
 
 public class MethodIdTest {
 
-  public static <T0, T1, T2, R0> MethodId fromLambda(RayFunc_3_1<T0, T1, T2, R0> f) {
+  public static <T0, T1, T2, R0> MethodId fromLambda(RayFunc3<T0, T1, T2, R0> f) {
     MethodId mid = MethodId.fromSerializedLambda(f, true);
     return mid;
   }

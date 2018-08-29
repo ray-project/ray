@@ -14,6 +14,7 @@ from ray.rllib.evaluation.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
 from ray.rllib.utils.compression import pack_if_needed
 from ray.rllib.utils.filter import RunningStat
 from ray.rllib.utils.timer import TimerStat
+from ray.rllib.utils.schedules import LinearSchedule
 
 
 class SyncReplayOptimizer(PolicyOptimizer):
@@ -29,12 +30,20 @@ class SyncReplayOptimizer(PolicyOptimizer):
               prioritized_replay=True,
               prioritized_replay_alpha=0.6,
               prioritized_replay_beta=0.4,
+              schedule_max_timesteps=100000,
+              beta_annealing_fraction=0.2,
+              final_prioritized_replay_beta=0.4,
               prioritized_replay_eps=1e-6,
               train_batch_size=32,
               sample_batch_size=4):
 
         self.replay_starts = learning_starts
-        self.prioritized_replay_beta = prioritized_replay_beta
+        # linearly annealing beta used in Rainbow paper
+        self.prioritized_replay_beta = LinearSchedule(
+            schedule_timesteps=int(
+                schedule_max_timesteps * beta_annealing_fraction),
+            initial_p=prioritized_replay_beta,
+            final_p=final_prioritized_replay_beta)
         self.prioritized_replay_eps = prioritized_replay_eps
         self.train_batch_size = train_batch_size
 
@@ -122,7 +131,8 @@ class SyncReplayOptimizer(PolicyOptimizer):
                     (obses_t, actions, rewards, obses_tp1, dones, weights,
                      batch_indexes) = replay_buffer.sample(
                          self.train_batch_size,
-                         beta=self.prioritized_replay_beta)
+                         beta=self.prioritized_replay_beta.value(
+                             self.num_steps_trained))
                 else:
                     (obses_t, actions, rewards, obses_tp1,
                      dones) = replay_buffer.sample(self.train_batch_size)

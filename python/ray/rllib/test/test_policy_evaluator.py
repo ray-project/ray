@@ -8,6 +8,7 @@ import unittest
 
 import ray
 from ray.rllib.agents.pg import PGAgent
+from ray.rllib.agents.a3c import A2CAgent
 from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.evaluation.policy_graph import PolicyGraph
@@ -96,6 +97,9 @@ class MockVectorEnv(VectorEnv):
             info_batch.append(info)
         return obs_batch, rew_batch, done_batch, info_batch
 
+    def get_unwrapped(self):
+        return self.envs
+
 
 class TestPolicyEvaluator(unittest.TestCase):
     def testBasic(self):
@@ -106,6 +110,17 @@ class TestPolicyEvaluator(unittest.TestCase):
         for key in ["obs", "actions", "rewards", "dones", "advantages"]:
             self.assertIn(key, batch)
         self.assertGreater(batch["advantages"][0], 1)
+
+    def testGlobalVarsUpdate(self):
+        agent = A2CAgent(
+            env="CartPole-v0",
+            config={
+                "lr_schedule": [[0, 0.1], [400, 0.000001]],
+            })
+        result = agent.train()
+        self.assertGreater(result["info"]["learner"]["cur_lr"], 0.01)
+        result2 = agent.train()
+        self.assertLess(result2["info"]["learner"]["cur_lr"], 0.0001)
 
     def testQueryEvaluators(self):
         register_env("test", lambda _: gym.make("CartPole-v0"))

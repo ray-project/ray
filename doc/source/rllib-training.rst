@@ -26,7 +26,6 @@ training process with TensorBoard by running
 
      tensorboard --logdir=~/ray_results
 
-
 The ``train.py`` script has a number of options you can show by running
 
 .. code-block:: bash
@@ -44,14 +43,12 @@ Specifying Parameters
 Each algorithm has specific hyperparameters that can be set with ``--config``, in addition to a number of `common hyperparameters <https://github.com/ray-project/ray/blob/master/python/ray/rllib/agents/agent.py>`__. See the
 `algorithms documentation <rllib-algorithms.html>`__ for more information.
 
-In an example below, we train A3C by specifying 8 workers through the config flag.
-function that creates the env to refer to it by name. The contents of the env_config agent config field will be passed to that function to allow the environment to be configured. The return type should be an OpenAI gym.Env. For example:
-
+In an example below, we train A2C by specifying 8 workers through the config flag. We also set ``"monitor": true`` to save episode videos to the result dir:
 
 .. code-block:: bash
 
     python ray/python/ray/rllib/train.py --env=PongDeterministic-v4 \
-        --run=A3C --config '{"num_workers": 8}'
+        --run=A2C --config '{"num_workers": 8, "monitor": true}'
 
 Evaluating Trained Agents
 ~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -102,6 +99,8 @@ Here is an example of the basic usage:
 
     ray.init()
     config = ppo.DEFAULT_CONFIG.copy()
+    config["num_gpus"] = 0
+    config["num_workers"] = 1
     agent = ppo.PPOAgent(config=config, env="CartPole-v0")
 
     # Can optionally call agent.restore(path) to load a checkpoint.
@@ -134,6 +133,7 @@ All RLlib agents are compatible with the `Tune API <tune-usage.html>`__. This en
             "env": "CartPole-v0",
             "stop": {"episode_reward_mean": 200},
             "config": {
+                "num_gpus": 0,
                 "num_workers": 1,
                 "sgd_stepsize": tune.grid_search([0.01, 0.001, 0.0001]),
             },
