@@ -33,7 +33,7 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
 
   public DefaultLocalSchedulerClient(String schedulerSockName, UniqueID clientId,
       boolean isWorker, UniqueID driverId, boolean useRaylet) {
-    client = _init(schedulerSockName, clientId.getBytes(),
+    client = nativeInit(schedulerSockName, clientId.getBytes(),
         isWorker, driverId.getBytes(), useRaylet);
     this.useRaylet = useRaylet;
   }
@@ -42,7 +42,7 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
   public List<byte[]> wait(byte[][] objectIds, int timeoutMs, int numReturns) {
     assert (useRaylet == true);
 
-    boolean[] readys = _waitObject(client, objectIds, numReturns, timeoutMs, false);
+    boolean[] readys = nativeWaitObject(client, objectIds, numReturns, timeoutMs, false);
     assert (readys.length == objectIds.length);
 
     List<byte[]> ret = new ArrayList<>();
@@ -77,12 +77,12 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
       a = task.cursorId.getBytes();
     }
 
-    _submitTask(client, a, info, info.position(), info.remaining(), useRaylet);
+    nativeSubmitTask(client, a, info, info.position(), info.remaining(), useRaylet);
   }
 
   @Override
   public TaskSpec getTaskTodo() {
-    byte[] bytes = _getTaskTodo(client, useRaylet);
+    byte[] bytes = nativeGetTaskTodo(client, useRaylet);
     assert (null != bytes);
     ByteBuffer bb = ByteBuffer.wrap(bytes);
     return taskInfo2Spec(bb);
@@ -90,14 +90,14 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
 
   @Override
   public void markTaskPutDependency(UniqueID taskId, UniqueID objectId) {
-    _putObject(client, taskId.getBytes(), objectId.getBytes());
+    nativePutObject(client, taskId.getBytes(), objectId.getBytes());
   }
 
   @Override
   public void reconstructObject(UniqueID objectId, boolean fetchOnly) {
     List<UniqueID> objects = new ArrayList<>();
     objects.add(objectId);
-    _reconstructObjects(client, getIdBytes(objects), fetchOnly);
+    nativeReconstructObjects(client, getIdBytes(objects), fetchOnly);
   }
 
   @Override
@@ -106,18 +106,18 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
       RayLog.core.info("Reconstructing objects for task {}, object IDs are {}",
           UniqueIdHelper.computeTaskId(objectIds.get(0)), objectIds);
     }
-    _reconstructObjects(client, getIdBytes(objectIds), fetchOnly);
+    nativeReconstructObjects(client, getIdBytes(objectIds), fetchOnly);
   }
 
   @Override
   public UniqueID generateTaskId(UniqueID driverId, UniqueID parentTaskId, int taskIndex) {
-    byte[] bytes = _generateTaskId(driverId.getBytes(), parentTaskId.getBytes(), taskIndex);
+    byte[] bytes = nativeGenerateTaskId(driverId.getBytes(), parentTaskId.getBytes(), taskIndex);
     return new UniqueID(bytes);
   }
 
   @Override
   public void notifyUnblocked() {
-    _notifyUnblocked(client);
+    nativeNotifyUnblocked(client);
   }
 
   public static TaskSpec taskInfo2Spec(ByteBuffer bb) {
@@ -268,38 +268,38 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
   }
 
   public void destroy() {
-    _destroy(client);
+    nativeDestroy(client);
   }
 
 
   // Native method declarations.
 
-  private static native long _init(String localSchedulerSocket, byte[] workerId,
+  private static native long nativeInit(String localSchedulerSocket, byte[] workerId,
       boolean isWorker, byte[] driverTaskId, boolean useRaylet);
 
-  private static native void _submitTask(long client, byte[] cursorId, ByteBuffer taskBuff,
+  private static native void nativeSubmitTask(long client, byte[] cursorId, ByteBuffer taskBuff,
       int pos, int taskSize, boolean useRaylet);
 
   // return TaskInfo (in FlatBuffer)
-  private static native byte[] _getTaskTodo(long client, boolean useRaylet);
+  private static native byte[] nativeGetTaskTodo(long client, boolean useRaylet);
 
-  private static native byte[] _computePutId(long client, byte[] taskId, int putIndex);
+  private static native byte[] nativeComputePutId(long client, byte[] taskId, int putIndex);
 
-  private static native void _destroy(long client);
+  private static native void nativeDestroy(long client);
 
-  private static native void _taskDone(long client);
+  private static native void nativeTaskDone(long client);
 
-  private static native void _reconstructObjects(long client, byte[][] objectIds,
+  private static native void nativeReconstructObjects(long client, byte[][] objectIds,
       boolean fetchOnly);
 
-  private static native void _notifyUnblocked(long client);
+  private static native void nativeNotifyUnblocked(long client);
 
-  private static native void _putObject(long client, byte[] taskId, byte[] objectId);
+  private static native void nativePutObject(long client, byte[] taskId, byte[] objectId);
 
-  private static native boolean[] _waitObject(long conn, byte[][] objectIds,
+  private static native boolean[] nativeWaitObject(long conn, byte[][] objectIds,
       int numReturns, int timeout, boolean waitLocal);
 
-  private static native byte[] _generateTaskId(byte[] driverId, byte[] parentTaskId,
+  private static native byte[] nativeGenerateTaskId(byte[] driverId, byte[] parentTaskId,
       int taskIndex);
 
 }
