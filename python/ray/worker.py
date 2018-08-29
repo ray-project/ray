@@ -1522,8 +1522,8 @@ def _init(address_info=None,
     Args:
         address_info (dict): A dictionary with address information for
             processes in a partially-started Ray cluster. If
-            start_ray_local=True, any processes not in this dictionary will be
-            started. If provided, an updated address_info dictionary will be
+            start_ray_local=True, any processes not in this dictionary will not
+            be started. If provided, an updated address_info dictionary will be
             returned to include processes that are newly started.
         start_ray_local (bool): If True then this will start any processes not
             already in address_info, including Redis, a global scheduler, local
