@@ -25,10 +25,10 @@ JNIEXPORT void JNICALL Java_org_ray_spi_impl_DefaultLocalSchedulerClient_nativeS
 
 /*
  * Class:     org_ray_spi_impl_DefaultLocalSchedulerClient
- * Method:    nativeGetTaskTodo
+ * Method:    nativeGetTask
  * Signature: (JZ)[B
  */
-JNIEXPORT jbyteArray JNICALL Java_org_ray_spi_impl_DefaultLocalSchedulerClient_nativeGetTaskTodo
+JNIEXPORT jbyteArray JNICALL Java_org_ray_spi_impl_DefaultLocalSchedulerClient_nativeGetTask
     (JNIEnv *, jclass, jlong, jboolean);
 
 /*
@@ -45,14 +45,6 @@ JNIEXPORT jbyteArray JNICALL Java_org_ray_spi_impl_DefaultLocalSchedulerClient_n
  * Signature: (J)V
  */
 JNIEXPORT void JNICALL Java_org_ray_spi_impl_DefaultLocalSchedulerClient_nativeDestroy
-(JNIEnv *, jclass, jlong);
-
-/*
- * Class:     org_ray_spi_impl_DefaultLocalSchedulerClient
- * Method:    nativeTaskDone
- * Signature: (J)V
- */
-JNIEXPORT void JNICALL Java_org_ray_spi_impl_DefaultLocalSchedulerClient_nativeTaskDone
 (JNIEnv *, jclass, jlong);
 
 /*

@@ -81,8 +81,8 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
   }
 
   @Override
-  public TaskSpec getTaskTodo() {
-    byte[] bytes = nativeGetTaskTodo(client, useRaylet);
+  public TaskSpec getTask() {
+    byte[] bytes = nativeGetTask(client, useRaylet);
     assert (null != bytes);
     ByteBuffer bb = ByteBuffer.wrap(bytes);
     return taskInfo2Spec(bb);
@@ -281,13 +281,11 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
       int pos, int taskSize, boolean useRaylet);
 
   // return TaskInfo (in FlatBuffer)
-  private static native byte[] nativeGetTaskTodo(long client, boolean useRaylet);
+  private static native byte[] nativeGetTask(long client, boolean useRaylet);
 
   private static native byte[] nativeComputePutId(long client, byte[] taskId, int putIndex);
 
   private static native void nativeDestroy(long client);
-
-  private static native void nativeTaskDone(long client);
 
   private static native void nativeReconstructObjects(long client, byte[][] objectIds,
       boolean fetchOnly);
