@@ -117,9 +117,9 @@ make -j${PARALLEL}
 popd
 
 # Move stuff from Arrow to Ray.
-cp $ROOT_DIR/thirdparty/pkg/arrow/cpp/build/cpp-install/bin/plasma_store $BUILD_DIR/src/plasma/
+cp $ROOT_DIR/thirdparty/pkg/arrow/cpp/build/cpp-install/bin/plasma_store_server $BUILD_DIR/src/plasma/
 if [[ "$RAY_BUILD_PYTHON" == "YES" ]]; then
-  cp $ROOT_DIR/thirdparty/pkg/arrow/cpp/build/cpp-install/bin/plasma_store $BUILD_DIR/../python/ray/core/src/plasma/
+  cp $ROOT_DIR/thirdparty/pkg/arrow/cpp/build/cpp-install/bin/plasma_store_server $BUILD_DIR/../python/ray/core/src/plasma/
 fi
 if [[ "$RAY_BUILD_JAVA" == "YES" ]]; then
   cp $ROOT_DIR/thirdparty/build/arrow/cpp/build/release/libplasma_java.* $BUILD_DIR/src/plasma/
