@@ -5,7 +5,8 @@
 
 int main(int argc, char *argv[]) {
   RayLog::StartRayLog(argv[0], RAY_INFO);
-  ray::SignalHandlers::InstallSingalHandler(argv[0], true);
+  // SignalHandlers will be automatically uninstalled when it is out of scope.
+  auto installed = ray::SignalHandlers(argv[0], false);
   RAY_CHECK(argc == 3);
 
   const std::string redis_address = std::string(argv[1]);
@@ -16,6 +17,5 @@ int main(int argc, char *argv[]) {
   ray::raylet::Monitor monitor(io_service, redis_address, redis_port);
   monitor.Start();
   io_service.run();
-  ray::SignalHandlers::UninstallSingalHandler();
   RayLog::ShutDownRayLog();
 }

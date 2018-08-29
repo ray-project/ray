@@ -23,17 +23,29 @@ class SignalHandlers {
   /// \return Void.
   static void UninstallSingalHandler();
 
+  /// Get the app name.
+  ///
+  /// \return The returned app name.
+  static std::string GetAppName();
+
+  /// Get the logging level for termination signal.
+  ///
+  /// \return The logging level.
+  static int GetLoggingLevel();
+
+  // This is the RAII mechanism for SignalHandlers.
+  // At the same time it also disables other format of ctor.
+  SignalHandlers(const std::string &app_name, bool is_installing_sigterm) {
+    InstallSingalHandler(app_name, is_installing_sigterm);
+  }
+
+  // Automatically do UninstallSingalHandler.
+  ~SignalHandlers() { UninstallSingalHandler(); }
+
  private:
-  static void FatalErrorHandler(int signal);
-  static void TerminateHandler(int signal);
-  static void InstallSignalHandlerHelper(int signal, const struct sigaction &action);
-  static std::string GetRichDebugInfo(int signal);
   static std::string app_name_;
   static int terminate_logging_level_;
   static std::vector<int> installed_signals_;
-  // Disable constructor.
-  SignalHandlers() = delete;
-  SignalHandlers(const SignalHandlers &) = delete;
 };
 
 }  // namespace ray

@@ -17,11 +17,40 @@ std::vector<int> SignalHandlers::installed_signals_;
 // The current app name.
 std::string SignalHandlers::app_name_;
 
-void SignalHandlers::InstallSignalHandlerHelper(int signal,
-                                                const struct sigaction &action) {
+void InstallSignalHandlerHelper(int signal, const struct sigaction &action,
+                                std::vector<int> &installed_signals) {
   sigaction(signal, &action, nullptr);
-  installed_signals_.push_back(signal);
+  installed_signals.push_back(signal);
 }
+
+static std::string GetRichDebugInfo(int sig) {
+  std::ostringstream ostream;
+  char working_directory[PATH_MAX] = "";
+  auto p = getcwd(working_directory, PATH_MAX);
+  RAY_IGNORE_EXPR(p);
+  ostream << "Signal: " << sig << " received for app: " << SignalHandlers::GetAppName();
+  ostream << "\nCurrent working directory: " << working_directory << "\n";
+  return ostream.str();
+}
+
+static void FatalErrorHandler(int sig) {
+  if (sig == SIGILL || sig == SIGSEGV) {
+    const auto &info = GetRichDebugInfo(sig);
+    RAY_LOG(FATAL) << info;
+  }
+}
+
+void TerminateHandler(int sig) {
+  if (RayLog::IsLevelEnabled(SignalHandlers::GetLoggingLevel()) &&
+      (sig == SIGINT || sig == SIGTERM)) {
+    auto info = GetRichDebugInfo(sig);
+    RAY_LOG(FATAL) << info;
+  }
+}
+
+std::string SignalHandlers::GetAppName() { return app_name_; }
+
+int SignalHandlers::GetLoggingLevel() { return terminate_logging_level_; }
 
 void SignalHandlers::InstallSingalHandler(const std::string &app_name,
                                           bool is_installing_sigterm) {
@@ -31,16 +60,16 @@ void SignalHandlers::InstallSingalHandler(const std::string &app_name,
   struct sigaction fatal_action;
   fatal_action.sa_handler = FatalErrorHandler;
   // SIGINT = 2. It is the message of: Ctrl + C.
-  InstallSignalHandlerHelper(SIGINT, terminate_action);
+  InstallSignalHandlerHelper(SIGINT, terminate_action, installed_signals_);
   // SIGILL = 4. It is the message when using *(nullptr).
-  InstallSignalHandlerHelper(SIGILL, fatal_action);
+  InstallSignalHandlerHelper(SIGILL, fatal_action, installed_signals_);
   // SIGSEGV = 11. It is the message when segment fault happens.
-  InstallSignalHandlerHelper(SIGSEGV, fatal_action);
+  InstallSignalHandlerHelper(SIGSEGV, fatal_action, installed_signals_);
   if (is_installing_sigterm) {
     // SIGTERM = 15. Termination message.
     // Here is a special treatment for this signal, because
     // this message handler is used by local_scheduler and global_scheduler.
-    InstallSignalHandlerHelper(SIGTERM, terminate_action);
+    InstallSignalHandlerHelper(SIGTERM, terminate_action, installed_signals_);
   }
   // Do not set handler for SIGABRT which happens when abort() is called.
   // If we set handler for SIGABRT, there will be indefinite call.
@@ -53,29 +82,4 @@ void SignalHandlers::UninstallSingalHandler() {
     sigaction(signal, &restore_action, nullptr);
   }
   installed_signals_.clear();
-}
-
-void SignalHandlers::FatalErrorHandler(int sig) {
-  if (sig == SIGILL || sig == SIGSEGV) {
-    const auto &info = GetRichDebugInfo(sig);
-    RAY_LOG(FATAL) << info;
-  }
-}
-
-void SignalHandlers::TerminateHandler(int sig) {
-  if (RayLog::IsLevelEnabled(terminate_logging_level_) &&
-      (sig == SIGINT || sig == SIGTERM)) {
-    auto info = GetRichDebugInfo(sig);
-    RAY_LOG(FATAL) << info;
-  }
-}
-
-std::string SignalHandlers::GetRichDebugInfo(int sig) {
-  std::ostringstream ostream;
-  char working_directory[PATH_MAX] = "";
-  auto p = getcwd(working_directory, PATH_MAX);
-  RAY_IGNORE_EXPR(p);
-  ostream << "Signal: " << sig << " received for app: " << app_name_ << "\n";
-  ostream << "Current working directory: " << working_directory << "\n";
-  return ostream.str();
 }

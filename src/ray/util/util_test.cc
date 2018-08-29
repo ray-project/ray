@@ -30,26 +30,24 @@ void TestSendSignal(const std::string &test_name, int signal) {
 }
 
 TEST(SignalTest, SendTermSignal_Unset_Test) {
-  ray::SignalHandlers::InstallSingalHandler("util_test", false);
+  // SignalHandlers will be automatically uninstalled when it is out of scope.
+  auto installed = ray::SignalHandlers("util_test", false);
   // This should not print call stack message.
   TestSendSignal("SendTermSignal_Unset_Test", SIGTERM);
-  ray::SignalHandlers::UninstallSingalHandler();
 }
 
 TEST(SignalTest, SendTermSignalTest) {
-  ray::SignalHandlers::InstallSingalHandler("util_test", true);
+  auto installed = ray::SignalHandlers("util_test", true);
   TestSendSignal("SendTermSignalTest", SIGTERM);
-  ray::SignalHandlers::UninstallSingalHandler();
 }
 
 TEST(SignalTest, SendIntSignalTest) {
-  ray::SignalHandlers::InstallSingalHandler("util_test", false);
+  auto installed = ray::SignalHandlers("util_test", false);
   TestSendSignal("SendIntSignalTest", SIGINT);
-  ray::SignalHandlers::UninstallSingalHandler();
 }
 
 TEST(SignalTest, SIGSEGV_Test) {
-  ray::SignalHandlers::InstallSingalHandler("util_test", true);
+  auto installed = ray::SignalHandlers("util_test", true);
   pid_t pid;
   pid = fork();
   ASSERT_TRUE(pid >= 0);
@@ -62,11 +60,10 @@ TEST(SignalTest, SIGSEGV_Test) {
                    << " with return value=" << kill(pid, SIGKILL);
     Sleep();
   }
-  ray::SignalHandlers::UninstallSingalHandler();
 }
 
 TEST(SignalTest, SIGILL_Test) {
-  ray::SignalHandlers::InstallSingalHandler("util_test", false);
+  auto installed = ray::SignalHandlers("util_test", false);
   pid_t pid;
   pid = fork();
   ASSERT_TRUE(pid >= 0);
@@ -79,7 +76,6 @@ TEST(SignalTest, SIGILL_Test) {
                    << " with return value=" << kill(pid, SIGKILL);
     Sleep();
   }
-  ray::SignalHandlers::UninstallSingalHandler();
 }
 
 }  // namespace ray

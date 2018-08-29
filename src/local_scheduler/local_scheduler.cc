@@ -1428,7 +1428,8 @@ void start_server(
 #ifndef LOCAL_SCHEDULER_TEST
 int main(int argc, char *argv[]) {
   RayLog::StartRayLog(argv[0], RAY_INFO);
-  ray::SignalHandlers::InstallSingalHandler(argv[0], false);
+  // SignalHandlers will be automatically uninstalled when it is out of scope.
+  auto installed = ray::SignalHandlers(argv[0], false);
   signal(SIGTERM, signal_handler);
   /* Path of the listening socket of the local scheduler. */
   char *scheduler_socket_name = NULL;
@@ -1554,7 +1555,6 @@ int main(int argc, char *argv[]) {
                plasma_store_socket_name, plasma_manager_socket_name,
                plasma_manager_address, global_scheduler_exists,
                static_resource_conf, start_worker_command, num_workers);
-  ray::SignalHandlers::UninstallSingalHandler();
   RayLog::ShutDownRayLog();
 }
 #endif
