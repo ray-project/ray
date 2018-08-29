@@ -91,13 +91,14 @@ AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
     for (int i = 0; i < addresses.size(); ++i) {
       shard_contexts_.push_back(std::make_shared<RedisContext>());
     }
+
     RAY_CHECK(shard_contexts_.size() == addresses.size());
     for (int i = 0; i < addresses.size(); ++i) {
-      RAY_CHECK_OK(shard_contexts_[i]->Connect(addresses[i], ports[i], DUMMY_BOOL));
+      RAY_CHECK_OK(shard_contexts_[i]->Connect(addresses[i], ports[i], /*sharding=*/true));
     }
   } else {
     shard_contexts_.push_back(std::make_shared<RedisContext>());
-    RAY_CHECK_OK(shard_contexts_[0]->Connect(address, port, DUMMY_BOOL));
+    RAY_CHECK_OK(shard_contexts_[0]->Connect(address, port, /*sharding=*/true));
   }
 
   client_table_.reset(new ClientTable({primary_context_}, this, client_id));
