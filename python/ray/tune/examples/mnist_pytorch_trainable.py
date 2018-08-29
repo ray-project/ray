@@ -122,6 +122,13 @@ class TrainMNIST(Trainable):
         self._train_iteration()
         return self._test()
 
+    def _save(self):
+        torch.save(self.model.state_dict(),
+                   os.path.join(os.getcwd(), "model.pth"))
+
+    def _restore(self):
+        self.model.load_state_dict(os.path.join(os.getcwd(), "model.pth"))
+
 
 if __name__ == '__main__':
     datasets.MNIST('~/data', train=True, download=True)
@@ -130,14 +137,12 @@ if __name__ == '__main__':
     import numpy as np
     import ray
     from ray import tune
-    from ray.tune.schedulers import AsyncHyperBandScheduler
+    from ray.tune.schedulers import HyperBandScheduler
 
     ray.init()
-    sched = AsyncHyperBandScheduler(
+    sched = HyperBandScheduler(
         time_attr="training_iteration",
-        reward_attr="neg_mean_loss",
-        max_t=400,
-        grace_period=20)
+        reward_attr="neg_mean_loss")
 
     tune.run_experiments(
         {
