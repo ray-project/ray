@@ -148,7 +148,7 @@ if __name__ == '__main__':
                 },
                 "trial_resources": {"cpu": 3},
                 "run": TrainMNIST,
-                "num_samples": 10,
+                "num_samples": 1,
                 "config": {
                     "args": args,
                     "lr": lambda spec: np.random.uniform(0.001, 0.1),
