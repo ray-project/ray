@@ -88,7 +88,7 @@ class TuneServerSuite(unittest.TestCase):
         self.assertEqual(len(all_trials), 2)
 
     def testStopTrial(self):
-        """Check if Stop Trial works"""
+        """Check if Stop Trial works."""
         runner, client = self.basicSetup()
         for i in range(2):
             runner.step()

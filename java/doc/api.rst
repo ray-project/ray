@@ -79,99 +79,13 @@ locally available.
 
 ``Ray.wait`` is used to wait for a list of ``RayObject``\s to be locally available.
 It will block the current thread until ``numReturns`` objects are ready or
-``timeoutMilliseconds`` has passed. See multi-value support for ``RayList``.
+``timeoutMilliseconds`` has passed.
 
 .. code:: java
 
-    public static WaitResult<T> wait(RayList<T> waitfor, int numReturns, int timeoutMilliseconds);
-    public static WaitResult<T> wait(RayList<T> waitfor, int numReturns);
-    public static WaitResult<T> wait(RayList<T> waitfor);
-
-Multi-value API
----------------
-
-Multi-value Types
-~~~~~~~~~~~~~~~~~
-
-Multiple ``RayObject``\s can be placed in a single data
-structure as a return value or as a ``Ray.call`` parameter through the
-following container types.
-
-``MultipleReturnsX<R0, R1, ...>``
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-This consists of multiple heterogeneous values, with types ``R0``,
-``R1``,... respectively. Currently this container type is only
-supported as the return type of ``Ray.call``. Therefore you cannot use it
-as the type of an input parameter.
-
-``RayList<T>``
-^^^^^^^^^^^^^^
-
-This is a list of ``RayObject<T>``\s, which inherits from ``List<T>`` in Java. It
-can be used as the type for both a return value and a parameter value.
-
-``RayMap<L, T>``
-^^^^^^^^^^^^^^^^
-
-A map of ``RayObject<T>``\s with each indexed using a label with type
-``L``, inherited from ``Map<L, T>``. It can be used as the type for both
-a return value and a parameter value.
-
-Multiple heterogeneous return values
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-To return multiple heterogeneous values in a remote functions, you can
-define your original method's return type as ``MultipleReturnsX`` and
-then invoke it with ``Ray.call_X``. Note: ``X`` is the number of return
-values, at most 4 values are supported.
-
-Here's an `example <https://github.com/ray-project/ray/tree/master/java/tutorial/src/main/java/org/ray/exercise/Exercise05.java>`_.
-
-
-Return with ``RayList``
-~~~~~~~~~~~~~~~~~~~~~~~
-
-To return a list of ``RayObject``\s, you can invoke your method with ``Ray.call_n``.
-``Ray.call_n`` is similar to ``Ray.call`` except that it has an additional parameter
-``returnCount``, which specifies the number of return values in the list.
-
-Here's an `example <https://github.com/ray-project/ray/tree/master/java/tutorial/src/main/java/org/ray/exercise/Exercise06.java>`_.
-
-Return with ``RayMap``
-~~~~~~~~~~~~~~~~~~~~~~
-
-This is similar to ``RayList`` case, except that now each returned
-``RayObject<R>`` in ``RayMap<L,R>`` has a given label when
-``Ray.call_n`` is called.
-
-Here's an `example <https://github.com/ray-project/ray/tree/master/java/tutorial/src/main/java/org/ray/exercise/Exercise07.java>`_.
-
-Use ``RayList`` and ``RayMap`` as parameters
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. code:: java
-
-    public class ListTExample {
-        public static void main(String[] args) {
-            Ray.init();
-            RayList<Integer> ints = new RayList<>();
-            ints.add(Ray.put(new Integer(1)));
-            ints.add(Ray.put(new Integer(1)));
-            ints.add(Ray.put(new Integer(1)));
-            RayObject<Integer> obj = Ray.call(ListTExample::sum，(List<Integer>)ints);
-            Assert.assertTrue(obj.get().equals(3));
-        }
-
-        @RayRemote
-        public static int sum(List<Integer> ints) {
-            int sum = 0;
-            for (Integer i : ints) {
-                sum += i;
-            }
-            return sum;
-        }
-    }
+    public static WaitResult<T> wait(List<RayObject<T>> waitfor, int numReturns, int timeoutMilliseconds);
+    public static WaitResult<T> wait(List<RayObject<T>> waitfor, int numReturns);
+    public static WaitResult<T> wait(List<RayObject<T>> waitfor);
 
 Actor Support
 -------------

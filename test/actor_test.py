@@ -21,7 +21,7 @@ class ActorAPI(unittest.TestCase):
         ray.shutdown()
 
     def testKeywordArgs(self):
-        ray.init(num_workers=0, driver_mode=ray.SILENT_MODE)
+        ray.init(num_workers=0)
 
         @ray.remote
         class Actor(object):
@@ -189,7 +189,7 @@ class ActorAPI(unittest.TestCase):
         assert ray.get(f.get_val.remote()) == 3
 
     def testDecoratorArgs(self):
-        ray.init(num_workers=0, driver_mode=ray.SILENT_MODE)
+        ray.init(num_workers=0)
 
         # This is an invalid way of using the actor decorator.
         with pytest.raises(Exception):
@@ -766,9 +766,6 @@ class ActorsWithGPUs(unittest.TestCase):
 
     @unittest.skipIf(
         os.environ.get('RAY_USE_NEW_GCS', False), "Crashing with new GCS API.")
-    @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
     def testActorGPUs(self):
         num_local_schedulers = 3
         num_gpus_per_scheduler = 4
@@ -812,9 +809,6 @@ class ActorsWithGPUs(unittest.TestCase):
         ready_ids, _ = ray.wait([a.get_location_and_ids.remote()], timeout=10)
         assert ready_ids == []
 
-    @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
     def testActorMultipleGPUs(self):
         num_local_schedulers = 3
         num_gpus_per_scheduler = 5
@@ -887,9 +881,6 @@ class ActorsWithGPUs(unittest.TestCase):
         ready_ids, _ = ray.wait([a.get_location_and_ids.remote()], timeout=10)
         assert ready_ids == []
 
-    @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
     def testActorDifferentNumbersOfGPUs(self):
         # Test that we can create actors on two nodes that have different
         # numbers of GPUs.
@@ -982,9 +973,6 @@ class ActorsWithGPUs(unittest.TestCase):
         assert ready_ids == []
 
     @unittest.skipIf(sys.version_info < (3, 0), "This test requires Python 3.")
-    @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
     def testActorsAndTasksWithGPUs(self):
         num_local_schedulers = 3
         num_gpus_per_scheduler = 6
@@ -1251,6 +1239,57 @@ class ActorsWithGPUs(unittest.TestCase):
         ready_ids, remaining_ids = ray.wait([x_id], timeout=1000)
         assert ready_ids == []
         assert remaining_ids == [x_id]
+
+
+@unittest.skipIf(
+    os.environ.get("RAY_USE_XRAY") != "1", "This test only works with xray.")
+class ActorExceptionFailures(unittest.TestCase):
+    def tearDown(self):
+        ray.shutdown()
+
+    def testExceptionRaisedWhenActorNodeDies(self):
+        ray.worker._init(
+            start_ray_local=True, num_local_schedulers=2, num_cpus=1)
+
+        @ray.remote
+        class Counter(object):
+            def __init__(self):
+                self.x = 0
+
+            def local_plasma(self):
+                return ray.worker.global_worker.plasma_client.store_socket_name
+
+            def inc(self):
+                self.x += 1
+                return self.x
+
+        local_plasma = ray.worker.global_worker.plasma_client.store_socket_name
+
+        # Create an actor that is not on the local scheduler.
+        actor = Counter.remote()
+        while ray.get(actor.local_plasma.remote()) == local_plasma:
+            actor = Counter.remote()
+
+        # Kill the second plasma store to get rid of the cached objects and
+        # trigger the corresponding local scheduler to exit.
+        process = ray.services.all_processes[
+            ray.services.PROCESS_TYPE_PLASMA_STORE][1]
+        process.kill()
+
+        # Submit some new actor tasks.
+        x_ids = [actor.inc.remote() for _ in range(100)]
+
+        # Make sure that getting the result raises an exception.
+        for _ in range(10):
+            for x_id in x_ids:
+                with pytest.raises(ray.worker.RayGetError):
+                    # There is some small chance that ray.get will actually
+                    # succeed (if the object is transferred before the raylet
+                    # dies).
+                    ray.get(x_id)
+
+        # Make sure the process has exited.
+        process.wait()
 
 
 @unittest.skipIf(

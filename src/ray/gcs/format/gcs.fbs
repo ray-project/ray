@@ -194,6 +194,9 @@ table HeartbeatTableData {
   // Total resource capacity configured for this node manager.
   resources_total_label: [string];
   resources_total_capacity: [double];
+  // Aggregate outstanding resource load on this node manager.
+  resource_load_label: [string];
+  resource_load_capacity: [double];
 }
 
 // Data for a lease on task execution.

@@ -163,7 +163,7 @@ class LoadMetricsTest(unittest.TestCase):
         lm = LoadMetrics()
         lm.update("1.1.1.1", {"CPU": 2}, {"CPU": 0})
         lm.update("2.2.2.2", {"CPU": 2, "GPU": 16}, {"CPU": 2, "GPU": 2})
-        debug = lm.debug_string()
+        debug = lm.info_string()
         assert "ResourceUsage: 2.0/4.0 CPU, 14.0/16.0 GPU" in debug
         assert "NumNodesConnected: 2" in debug
         assert "NumNodesUsed: 1.88" in debug

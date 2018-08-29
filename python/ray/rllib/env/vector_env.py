@@ -49,7 +49,7 @@ class VectorEnv(object):
         raise NotImplementedError
 
     def get_unwrapped(self):
-        """Returns a single instance of the underlying env."""
+        """Returns the underlying env instances."""
         raise NotImplementedError
 
 
@@ -87,4 +87,4 @@ class _VectorizedGymEnv(VectorEnv):
         return obs_batch, rew_batch, done_batch, info_batch
 
     def get_unwrapped(self):
-        return self.envs[0]
+        return self.envs

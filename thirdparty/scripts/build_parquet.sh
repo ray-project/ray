@@ -50,8 +50,11 @@ build_parquet() {
   fi
 }
 
-if [ ! -d $TP_DIR/build/parquet-cpp ]; then
-  git clone https://github.com/apache/parquet-cpp.git "$TP_DIR/build/parquet-cpp"
+if [ ! -d $TP_DIR/build/parquet-cpp/.git ]; then
+  if [[ -d $TP_DIR/build/parquet-cpp ]]; then
+      rm -rf $TP_DIR/build/parquet-cpp
+  fi
+  git clone -q https://github.com/apache/parquet-cpp.git "$TP_DIR/build/parquet-cpp"
   pushd $TP_DIR/build/parquet-cpp
   git fetch origin master
   git checkout $TARGET_COMMIT_ID

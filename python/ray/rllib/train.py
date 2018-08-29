@@ -91,7 +91,7 @@ def run(args, parser):
                 "stop": args.stop,
                 "config": dict(args.config, env=args.env),
                 "restore": args.restore,
-                "repeat": args.repeat,
+                "num_samples": args.num_samples,
                 "upload_dir": args.upload_dir,
             }
         }

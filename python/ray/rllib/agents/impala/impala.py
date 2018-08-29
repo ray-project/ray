@@ -29,7 +29,6 @@ DEFAULT_CONFIG = with_common_config({
     "sample_batch_size": 50,
     "train_batch_size": 500,
     "min_iter_time_s": 10,
-    "summarize": False,
     "gpu": True,
     "num_workers": 2,
     "num_cpus_per_worker": 1,
@@ -40,6 +39,7 @@ DEFAULT_CONFIG = with_common_config({
     # either "adam" or "rmsprop"
     "opt_type": "adam",
     "lr": 0.0005,
+    "lr_schedule": None,
     # rmsprop considered
     "decay": 0.99,
     "momentum": 0.0,
@@ -49,12 +49,10 @@ DEFAULT_CONFIG = with_common_config({
     "entropy_coeff": -0.01,
 
     # Model and preprocessor options.
-    "clip_rewards": True,
-    "preprocessor_pref": "deepmind",
     "model": {
         "use_lstm": False,
         "max_seq_len": 20,
-        "dim": 80,
+        "dim": 84,
     },
 })
 
@@ -64,6 +62,7 @@ class ImpalaAgent(Agent):
 
     _agent_name = "IMPALA"
     _default_config = DEFAULT_CONFIG
+    _policy_graph = VTracePolicyGraph
 
     @classmethod
     def default_resource_request(cls, config):
@@ -79,7 +78,7 @@ class ImpalaAgent(Agent):
             if k not in self.config["optimizer"]:
                 self.config["optimizer"][k] = self.config[k]
         if self.config["vtrace"]:
-            policy_cls = VTracePolicyGraph
+            policy_cls = self._policy_graph
         else:
             policy_cls = A3CPolicyGraph
         self.local_evaluator = self.make_local_evaluator(

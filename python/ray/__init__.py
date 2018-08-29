@@ -51,7 +51,7 @@ from ray.profiling import profile  # noqa: E402
 from ray.worker import (error_info, init, connect, disconnect, get, put, wait,
                         remote, get_gpu_ids, get_resource_ids, get_webui_url,
                         register_custom_serializer, shutdown)  # noqa: E402
-from ray.worker import (SCRIPT_MODE, WORKER_MODE, LOCAL_MODE, SILENT_MODE,
+from ray.worker import (SCRIPT_MODE, WORKER_MODE, LOCAL_MODE,
                         PYTHON_MODE)  # noqa: E402
 from ray.worker import global_state  # noqa: E402
 import ray.internal  # noqa: E402
@@ -62,14 +62,14 @@ from ray.actor import method  # noqa: E402
 
 # Ray version string. TODO(rkn): This is also defined separately in setup.py.
 # Fix this.
-__version__ = "0.5.0"
+__version__ = "0.5.1"
 
 __all__ = [
     "error_info", "init", "connect", "disconnect", "get", "put", "wait",
     "remote", "profile", "actor", "method", "get_gpu_ids", "get_resource_ids",
     "get_webui_url", "register_custom_serializer", "shutdown", "SCRIPT_MODE",
-    "WORKER_MODE", "LOCAL_MODE", "SILENT_MODE", "PYTHON_MODE", "global_state",
-    "ObjectID", "_config", "__version__", "internal"
+    "WORKER_MODE", "LOCAL_MODE", "PYTHON_MODE", "global_state", "ObjectID",
+    "_config", "__version__", "internal"
 ]
 
 import ctypes  # noqa: E402

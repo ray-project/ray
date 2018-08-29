@@ -12,9 +12,13 @@ int NUM_WORKERS_PER_PROCESS = 3;
 
 class WorkerPoolMock : public WorkerPool {
  public:
-  WorkerPoolMock() : WorkerPool(0, NUM_WORKERS_PER_PROCESS, 0, {}) {}
+  WorkerPoolMock()
+      : WorkerPool(0, NUM_WORKERS_PER_PROCESS, 0,
+                   {{Language::PYTHON, {"dummy_py_worker_command"}},
+                    {Language::JAVA, {"dummy_java_worker_command"}}}) {}
 
-  void StartWorkerProcess(pid_t pid, bool force_start = false) {
+  void StartWorkerProcess(pid_t pid, const Language &language = Language::PYTHON,
+                          bool force_start = false) {
     if (starting_worker_processes_.size() > 0 && !force_start) {
       // Workers have been started, but not registered. Force start disabled -- returning.
       RAY_LOG(DEBUG) << starting_worker_processes_.size()
@@ -22,7 +26,7 @@ class WorkerPoolMock : public WorkerPool {
       return;
     }
     // Either no workers are pending registration or the worker start is being forced.
-    RAY_LOG(DEBUG) << "starting new worker process, worker pool size " << Size();
+    RAY_LOG(DEBUG) << "starting new worker process, worker pool size " << Size(language);
     starting_worker_processes_.emplace(std::make_pair(pid, num_workers_per_process_));
   }
 
@@ -33,7 +37,8 @@ class WorkerPoolTest : public ::testing::Test {
  public:
   WorkerPoolTest() : worker_pool_(), io_service_() {}
 
-  std::shared_ptr<Worker> CreateWorker(pid_t pid) {
+  std::shared_ptr<Worker> CreateWorker(pid_t pid,
+                                       const Language &language = Language::PYTHON) {
     std::function<void(LocalClientConnection &)> client_handler =
         [this](LocalClientConnection &client) { HandleNewClient(client); };
     std::function<void(std::shared_ptr<LocalClientConnection>, int64_t, const uint8_t *)>
@@ -44,7 +49,7 @@ class WorkerPoolTest : public ::testing::Test {
     boost::asio::local::stream_protocol::socket socket(io_service_);
     auto client = LocalClientConnection::Create(client_handler, message_handler,
                                                 std::move(socket), "worker");
-    return std::shared_ptr<Worker>(new Worker(pid, client));
+    return std::shared_ptr<Worker>(new Worker(pid, language, client));
   }
 
  protected:
@@ -55,6 +60,14 @@ class WorkerPoolTest : public ::testing::Test {
   void HandleNewClient(LocalClientConnection &){};
   void HandleMessage(std::shared_ptr<LocalClientConnection>, int64_t, const uint8_t *){};
 };
+
+static inline TaskSpecification ExampleTaskSpec(
+    const ActorID actor_id = ActorID::nil(),
+    const Language &language = Language::PYTHON) {
+  return TaskSpecification(UniqueID::nil(), UniqueID::nil(), 0, ActorID::nil(),
+                           ObjectID::nil(), actor_id, ActorHandleID::nil(), 0,
+                           FunctionID::nil(), {}, 0, {}, language);
+}
 
 TEST_F(WorkerPoolTest, HandleWorkerRegistration) {
   pid_t pid = 1234;
@@ -85,7 +98,8 @@ TEST_F(WorkerPoolTest, HandleWorkerRegistration) {
 TEST_F(WorkerPoolTest, HandleWorkerPushPop) {
   // Try to pop a worker from the empty pool and make sure we don't get one.
   std::shared_ptr<Worker> popped_worker;
-  popped_worker = worker_pool_.PopWorker(ActorID::nil());
+  const auto task_spec = ExampleTaskSpec();
+  popped_worker = worker_pool_.PopWorker(task_spec);
   ASSERT_EQ(popped_worker, nullptr);
 
   // Create some workers.
@@ -98,13 +112,13 @@ TEST_F(WorkerPoolTest, HandleWorkerPushPop) {
   }
 
   // Pop two workers and make sure they're one of the workers we created.
-  popped_worker = worker_pool_.PopWorker(ActorID::nil());
+  popped_worker = worker_pool_.PopWorker(task_spec);
   ASSERT_NE(popped_worker, nullptr);
   ASSERT_TRUE(workers.count(popped_worker) > 0);
-  popped_worker = worker_pool_.PopWorker(ActorID::nil());
+  popped_worker = worker_pool_.PopWorker(task_spec);
   ASSERT_NE(popped_worker, nullptr);
   ASSERT_TRUE(workers.count(popped_worker) > 0);
-  popped_worker = worker_pool_.PopWorker(ActorID::nil());
+  popped_worker = worker_pool_.PopWorker(task_spec);
   ASSERT_EQ(popped_worker, nullptr);
 }
 
@@ -115,17 +129,37 @@ TEST_F(WorkerPoolTest, PopActorWorker) {
   worker_pool_.PushWorker(worker);
 
   // Assign an actor ID to the worker.
-  auto actor = worker_pool_.PopWorker(ActorID::nil());
+  const auto task_spec = ExampleTaskSpec();
+  auto actor = worker_pool_.PopWorker(task_spec);
   auto actor_id = ActorID::from_random();
   actor->AssignActorId(actor_id);
   worker_pool_.PushWorker(actor);
 
   // Check that there are no more non-actor workers.
-  ASSERT_EQ(worker_pool_.PopWorker(ActorID::nil()), nullptr);
+  ASSERT_EQ(worker_pool_.PopWorker(task_spec), nullptr);
   // Check that we can pop the actor worker.
-  actor = worker_pool_.PopWorker(actor_id);
+  const auto actor_task_spec = ExampleTaskSpec(actor_id);
+  actor = worker_pool_.PopWorker(actor_task_spec);
   ASSERT_EQ(actor, worker);
   ASSERT_EQ(actor->GetActorId(), actor_id);
+}
+
+TEST_F(WorkerPoolTest, PopWorkersOfMultipleLanguages) {
+  // Create a Python Worker, and add it to the pool
+  auto py_worker = CreateWorker(1234, Language::PYTHON);
+  worker_pool_.PushWorker(py_worker);
+  // Check that no worker will be popped if the given task is a Java task
+  const auto java_task_spec = ExampleTaskSpec(ActorID::nil(), Language::JAVA);
+  ASSERT_EQ(worker_pool_.PopWorker(java_task_spec), nullptr);
+  // Check that the worker can be popped if the given task is a Python task
+  const auto py_task_spec = ExampleTaskSpec(ActorID::nil(), Language::PYTHON);
+  ASSERT_NE(worker_pool_.PopWorker(py_task_spec), nullptr);
+
+  // Create a Java Worker, and add it to the pool
+  auto java_worker = CreateWorker(1234, Language::JAVA);
+  worker_pool_.PushWorker(java_worker);
+  // Check that the worker will be popped now for Java task
+  ASSERT_NE(worker_pool_.PopWorker(java_task_spec), nullptr);
 }
 
 }  // namespace raylet

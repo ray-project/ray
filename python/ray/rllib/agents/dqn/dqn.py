@@ -17,12 +17,24 @@ from ray.tune.trial import Resources
 
 OPTIMIZER_SHARED_CONFIGS = [
     "buffer_size", "prioritized_replay", "prioritized_replay_alpha",
-    "prioritized_replay_beta", "prioritized_replay_eps", "sample_batch_size",
-    "train_batch_size", "learning_starts", "clip_rewards"
+    "prioritized_replay_beta", "schedule_max_timesteps",
+    "beta_annealing_fraction", "final_prioritized_replay_beta",
+    "prioritized_replay_eps", "sample_batch_size", "train_batch_size",
+    "learning_starts"
 ]
 
 DEFAULT_CONFIG = with_common_config({
     # === Model ===
+    # Number of atoms for representing the distribution of return. When
+    # this is greater than 1, distributional Q-learning is used.
+    # the discrete supports are bounded by v_min and v_max
+    "num_atoms": 1,
+    "v_min": -10.0,
+    "v_max": 10.0,
+    # Whether to use noisy network
+    "noisy": False,
+    # control the initial value of noisy nets
+    "sigma0": 0.5,
     # Whether to use dueling dqn
     "dueling": True,
     # Whether to use double dqn
@@ -59,16 +71,21 @@ DEFAULT_CONFIG = with_common_config({
     "prioritized_replay_alpha": 0.6,
     # Beta parameter for sampling from prioritized replay buffer.
     "prioritized_replay_beta": 0.4,
+    # Fraction of entire training period over which the beta parameter is
+    # annealed
+    "beta_annealing_fraction": 0.2,
+    # Final value of beta
+    "final_prioritized_replay_beta": 0.4,
     # Epsilon to add to the TD errors when updating priorities.
     "prioritized_replay_eps": 1e-6,
-    # Whether to clip rewards to [-1, 1] prior to adding to the replay buffer.
-    "clip_rewards": True,
     # Whether to LZ4 compress observations
     "compress_observations": True,
 
     # === Optimization ===
     # Learning rate for adam optimizer
     "lr": 5e-4,
+    # Adam epsilon hyper parameter
+    "adam_epsilon": 1e-8,
     # If not None, clip gradients during optimization at this value
     "grad_norm_clipping": 40,
     # How many steps of the model to sample before learning starts.
@@ -132,19 +149,39 @@ class DQNAgent(Agent):
         ]
 
         for k in OPTIMIZER_SHARED_CONFIGS:
+            if self._agent_name != "DQN" and k in [
+                    "schedule_max_timesteps", "beta_annealing_fraction",
+                    "final_prioritized_replay_beta"
+            ]:
+                # only Rainbow needs annealing prioritized_replay_beta
+                continue
             if k not in self.config["optimizer"]:
                 self.config["optimizer"][k] = self.config[k]
 
         self.local_evaluator = self.make_local_evaluator(
             self.env_creator, self._policy_graph)
-        self.remote_evaluators = self.make_remote_evaluators(
-            self.env_creator, self._policy_graph, self.config["num_workers"], {
-                "num_cpus": self.config["num_cpus_per_worker"],
-                "num_gpus": self.config["num_gpus_per_worker"]
-            })
+
+        def create_remote_evaluators():
+            return self.make_remote_evaluators(
+                self.env_creator, self._policy_graph,
+                self.config["num_workers"], {
+                    "num_cpus": self.config["num_cpus_per_worker"],
+                    "num_gpus": self.config["num_gpus_per_worker"]
+                })
+
+        if self.config["optimizer_class"] != "AsyncReplayOptimizer":
+            self.remote_evaluators = create_remote_evaluators()
+        else:
+            # Hack to workaround https://github.com/ray-project/ray/issues/2541
+            self.remote_evaluators = None
+
         self.optimizer = getattr(optimizers, self.config["optimizer_class"])(
             self.local_evaluator, self.remote_evaluators,
             self.config["optimizer"])
+        # Create the remote evaluators *after* the replay actors
+        if self.remote_evaluators is None:
+            self.remote_evaluators = create_remote_evaluators()
+            self.optimizer.set_evaluators(self.remote_evaluators)
 
         self.last_target_update_ts = 0
         self.num_target_updates = 0

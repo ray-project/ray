@@ -26,7 +26,6 @@ training process with TensorBoard by running
 
      tensorboard --logdir=~/ray_results
 
-
 The ``train.py`` script has a number of options you can show by running
 
 .. code-block:: bash
@@ -36,7 +35,7 @@ The ``train.py`` script has a number of options you can show by running
 The most important options are for choosing the environment
 with ``--env`` (any OpenAI gym environment including ones registered by the user
 can be used) and for choosing the algorithm with ``--run``
-(available options are ``PPO``, ``PG``, ``A3C``, ``IMPALA``, ``ES``, ``DDPG``, ``DQN``, ``APEX``, and ``APEX_DDPG``).
+(available options are ``PPO``, ``PG``, ``A2C``, ``A3C``, ``IMPALA``, ``ES``, ``DDPG``, ``DQN``, ``APEX``, and ``APEX_DDPG``).
 
 Specifying Parameters
 ~~~~~~~~~~~~~~~~~~~~~
@@ -44,14 +43,12 @@ Specifying Parameters
 Each algorithm has specific hyperparameters that can be set with ``--config``, in addition to a number of `common hyperparameters <https://github.com/ray-project/ray/blob/master/python/ray/rllib/agents/agent.py>`__. See the
 `algorithms documentation <rllib-algorithms.html>`__ for more information.
 
-In an example below, we train A3C by specifying 8 workers through the config flag.
-function that creates the env to refer to it by name. The contents of the env_config agent config field will be passed to that function to allow the environment to be configured. The return type should be an OpenAI gym.Env. For example:
-
+In an example below, we train A2C by specifying 8 workers through the config flag. We also set ``"monitor": true`` to save episode videos to the result dir:
 
 .. code-block:: bash
 
     python ray/python/ray/rllib/train.py --env=PongDeterministic-v4 \
-        --run=A3C --config '{"num_workers": 8}'
+        --run=A2C --config '{"num_workers": 8, "monitor": true}'
 
 Evaluating Trained Agents
 ~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -115,11 +112,12 @@ Here is an example of the basic usage:
            checkpoint = agent.save()
            print("checkpoint saved at", checkpoint)
 
+
 .. note::
 
     It's recommended that you run RLlib agents with `Tune <tune.html>`__, for easy experiment management and visualization of results. Just set ``"run": AGENT_NAME, "env": ENV_NAME`` in the experiment config.
 
-All RLlib agents are compatible with the `Tune API <tune.html#concepts>`__. This enables them to be easily used in experiments with `Tune <tune.html>`__. For example, the following code performs a simple hyperparam sweep of PPO:
+All RLlib agents are compatible with the `Tune API <tune-usage.html>`__. This enables them to be easily used in experiments with `Tune <tune.html>`__. For example, the following code performs a simple hyperparam sweep of PPO:
 
 .. code-block:: python
 

@@ -31,7 +31,8 @@ static int PyLocalSchedulerClient_init(PyLocalSchedulerClient *self,
   /* Connect to the local scheduler. */
   self->local_scheduler_connection = LocalSchedulerConnection_init(
       socket_name, client_id, static_cast<bool>(PyObject_IsTrue(is_worker)),
-      driver_id, static_cast<bool>(PyObject_IsTrue(use_raylet)));
+      driver_id, static_cast<bool>(PyObject_IsTrue(use_raylet)),
+      Language::PYTHON);
   return 0;
 }
 
