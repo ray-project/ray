@@ -958,7 +958,6 @@ class TrialRunnerTest(unittest.TestCase):
         self.assertEqual(trials[0].last_result[DONE], True)
         self.assertEqual(trials[0].has_checkpoint(), True)
 
-
     def testResultDone(self):
         """Tests that last_result is marked `done` after trial is complete."""
         ray.init(num_cpus=1, num_gpus=1)
