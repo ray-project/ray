@@ -43,6 +43,8 @@ class Experiment(object):
             to (e.g. ``s3://bucket``).
         checkpoint_freq (int): How many training iterations between
             checkpoints. A value of 0 (default) disables checkpointing.
+        checkpoint_at_end (bool): Whether to checkpoint at the end of the
+            experiment regardless of the checkpoint_freq. Default is False.
         max_failures (int): Try to recover a trial from its last
             checkpoint at least this many times. Only applies if
             checkpointing is enabled. Defaults to 3.
@@ -82,6 +84,7 @@ class Experiment(object):
                  local_dir=None,
                  upload_dir="",
                  checkpoint_freq=0,
+                 checkpoint_at_end=False,
                  max_failures=3,
                  restore=None):
         spec = {
@@ -93,6 +96,7 @@ class Experiment(object):
             "local_dir": local_dir or DEFAULT_RESULTS_DIR,
             "upload_dir": upload_dir,
             "checkpoint_freq": checkpoint_freq,
+            "checkpoint_at_end": checkpoint_at_end,
             "max_failures": max_failures,
             "restore": restore
         }
