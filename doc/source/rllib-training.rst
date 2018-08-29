@@ -99,6 +99,8 @@ Here is an example of the basic usage:
 
     ray.init()
     config = ppo.DEFAULT_CONFIG.copy()
+    config["num_gpus"] = 0
+    config["num_workers"] = 1
     agent = ppo.PPOAgent(config=config, env="CartPole-v0")
 
     # Can optionally call agent.restore(path) to load a checkpoint.
@@ -131,6 +133,7 @@ All RLlib agents are compatible with the `Tune API <tune-usage.html>`__. This en
             "env": "CartPole-v0",
             "stop": {"episode_reward_mean": 200},
             "config": {
+                "num_gpus": 0,
                 "num_workers": 1,
                 "sgd_stepsize": tune.grid_search([0.01, 0.001, 0.0001]),
             },
