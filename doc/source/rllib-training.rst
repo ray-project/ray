@@ -50,6 +50,11 @@ In an example below, we train A2C by specifying 8 workers through the config fla
     python ray/python/ray/rllib/train.py --env=PongDeterministic-v4 \
         --run=A2C --config '{"num_workers": 8, "monitor": true}'
 
+Specifying Resources
+~~~~~~~~~~~~~~~~~~~~
+
+You can control the degree of parallelism used by setting the ``num_workers`` hyperparameter for most agents. Many agents also provide a ``num_gpus`` or ``gpu`` option. In addition, you can allocate a fraction of a GPU by setting ``gpu_fraction: f``. For example, with DQN you can pack five agents onto one GPU by setting ``gpu_fraction: 0.2``. Note that fractional GPU support requires enabling the experimental Xray backend by setting ``RAY_USE_XRAY=1``.
+
 Evaluating Trained Agents
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
