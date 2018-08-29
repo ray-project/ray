@@ -56,7 +56,7 @@ add_dependencies(plasma_manager gen_plasma_fbs)
 
 target_link_libraries(plasma_manager common ${PLASMA_STATIC_LIB} ray_static ${ARROW_STATIC_LIB} -lpthread ${Boost_SYSTEM_LIBRARY})
 
-# define_test(client_tests "")
-# define_test(manager_tests "" plasma_manager.cc)
-# target_link_libraries(manager_tests ${Boost_SYSTEM_LIBRARY})
-# add_dependencies(manager_tests gen_plasma_fbs)
+define_test(client_tests "")
+define_test(manager_tests "" plasma_manager.cc)
+target_link_libraries(manager_tests ${Boost_SYSTEM_LIBRARY})
+add_dependencies(manager_tests gen_plasma_fbs)

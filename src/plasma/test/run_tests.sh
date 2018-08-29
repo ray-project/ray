@@ -5,7 +5,7 @@ set -e
 
 ./src/plasma/plasma_store_server -s /tmp/plasma_store_socket_1 -m 0 &
 sleep 1
-# ./src/plasma/manager_tests
+./src/plasma/manager_tests
 killall plasma_store_server
 
 LaunchRedis() {
@@ -47,7 +47,7 @@ plasma3_pid=$!
 plasma4_pid=$!
 sleep 1
 
-# ./src/plasma/client_tests
+./src/plasma/client_tests
 
 kill $plasma4_pid
 kill $plasma3_pid
