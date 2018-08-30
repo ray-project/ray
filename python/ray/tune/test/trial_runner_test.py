@@ -547,7 +547,8 @@ class RunExperimentTest(unittest.TestCase):
             "foo": {
                 "run": train,
                 "checkpoint_at_end": True
-            }})
+            }
+        })
         for trial in trials:
             self.assertEqual(trial.status, Trial.TERMINATED)
             self.assertTrue(trial.has_checkpoint())
