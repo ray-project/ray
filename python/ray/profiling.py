@@ -87,7 +87,9 @@ class Profiler(object):
         self.lock = threading.Lock()
 
     def start_flush_thread(self):
-        t = threading.Thread(target=self._periodically_flush_profile_events)
+        t = threading.Thread(
+            target=self._periodically_flush_profile_events,
+            name="ray_push_profiling_information")
         # Making the thread a daemon causes it to exit when the main thread
         # exits.
         t.daemon = True

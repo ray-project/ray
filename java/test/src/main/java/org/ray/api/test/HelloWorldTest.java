@@ -6,7 +6,6 @@ import org.junit.runner.RunWith;
 import org.ray.api.Ray;
 import org.ray.api.RayObject;
 import org.ray.api.RayRemote;
-import org.ray.util.logger.RayLog;
 
 /**
  * Hello world.
@@ -15,37 +14,25 @@ import org.ray.util.logger.RayLog;
 public class HelloWorldTest {
 
   @RayRemote
-  public static String sayHello() {
-    String ret = "he";
-    ret += "llo";
-    RayLog.rapp.info("real say hello");
-    //throw new RuntimeException("+++++++++++++++++++++hello exception");
-    return ret;
+  private static String hello() {
+    return "hello";
   }
 
   @RayRemote
-  public static String sayWorld() {
-    String ret = "world";
-    ret += "!";
-    return ret;
+  private static String world() {
+    return "world!";
   }
 
   @RayRemote
-  public static String merge(String hello, String world) {
+  private static String merge(String hello, String world) {
     return hello + "," + world;
   }
 
   @Test
-  public void test() {
-    String helloWorld = sayHelloWorld();
-    RayLog.rapp.info(helloWorld);
+  public void testHelloWorld() {
+    RayObject<String> hello = Ray.call(HelloWorldTest::hello);
+    RayObject<String> world = Ray.call(HelloWorldTest::world);
+    String helloWorld = Ray.call(HelloWorldTest::merge, hello, world).get();
     Assert.assertEquals("hello,world!", helloWorld);
-    Assert.assertTrue(Ray.call(TypesTest::sayBool).get());
-  }
-
-  public String sayHelloWorld() {
-    RayObject<String> hello = Ray.call(HelloWorldTest::sayHello);
-    RayObject<String> world = Ray.call(HelloWorldTest::sayWorld);
-    return Ray.call(HelloWorldTest::merge, hello, world).get();
   }
 }

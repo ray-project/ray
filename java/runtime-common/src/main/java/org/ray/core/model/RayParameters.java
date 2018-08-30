@@ -44,7 +44,7 @@ public class RayParameters {
   public int local_scheduler_rpc_port = 34567;
 
   @AConfig(comment = "driver ID when the worker is served as a driver")
-  public UniqueID driver_id = UniqueID.nil;
+  public UniqueID driver_id = UniqueID.NIL;
 
   @AConfig(comment = "logging directory")
   public String log_dir = "/tmp/raylogs";

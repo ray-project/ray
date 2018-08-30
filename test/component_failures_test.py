@@ -31,7 +31,6 @@ class ComponentFailureTest(unittest.TestCase):
 
         ray.worker._init(
             num_workers=1,
-            driver_mode=ray.SILENT_MODE,
             start_workers_from_local_scheduler=False,
             start_ray_local=True,
             redirect_output=True)
@@ -73,7 +72,6 @@ class ComponentFailureTest(unittest.TestCase):
 
         ray.worker._init(
             num_workers=1,
-            driver_mode=ray.SILENT_MODE,
             start_workers_from_local_scheduler=False,
             start_ray_local=True,
             redirect_output=True)

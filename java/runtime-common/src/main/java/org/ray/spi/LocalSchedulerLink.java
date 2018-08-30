@@ -11,7 +11,7 @@ public interface LocalSchedulerLink {
 
   void submitTask(TaskSpec task);
 
-  TaskSpec getTaskTodo();
+  TaskSpec getTask();
 
   void markTaskPutDependency(UniqueID taskId, UniqueID objectId);
 
@@ -20,6 +20,8 @@ public interface LocalSchedulerLink {
   void reconstructObjects(List<UniqueID> objectIds, boolean fetchOnly);
 
   void notifyUnblocked();
+
+  UniqueID generateTaskId(UniqueID driverId, UniqueID parentTaskId, int taskIndex);
 
   List<byte[]> wait(byte[][] objectIds, int timeoutMs, int numReturns);
 }

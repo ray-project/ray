@@ -459,11 +459,21 @@ def test_nondeterministic_task(ray_start_reconstruction):
                for error in errors)
 
 
+@pytest.fixture
+def ray_start_driver_put_errors():
+    plasma_store_memory = 10**9
+    # Start the Ray processes.
+    ray.init(num_cpus=1, object_store_memory=plasma_store_memory)
+    yield plasma_store_memory
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
+
+
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Failing with new GCS API on Linux.")
-def test_driver_put_errors(ray_start_reconstruction):
-    _, _, plasma_store_memory, _ = ray_start_reconstruction
+def test_driver_put_errors(ray_start_driver_put_errors):
+    plasma_store_memory = ray_start_driver_put_errors
     # Define the size of one task's return argument so that the combined
     # sum of all objects' sizes is at least twice the plasma stores'
     # combined allotted memory.

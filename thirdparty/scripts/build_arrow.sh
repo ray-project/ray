@@ -34,10 +34,10 @@ else
   exit 1
 fi
 
-# The PR for this commit is https://github.com/apache/arrow/pull/2435. We
+# The PR for this commit is https://github.com/apache/arrow/pull/2458. We
 # include the link here to make it easier to find the right commit because
 # Arrow often rewrites git history and invalidates certain commits.
-TARGET_COMMIT_ID=51410bc17bf76f766ac94effb315bf038afb7479
+TARGET_COMMIT_ID=fda4b3dcfc773612b12973df5053193f236fc696
 build_arrow() {
   echo "building arrow"
   # Make sure arrow will be built again when building ray for java later than python
@@ -45,7 +45,10 @@ build_arrow() {
     rm -rf $TP_DIR/build/arrow/cpp/build/CMakeCache.txt
   fi
 
-  if [[ ! -d $TP_DIR/build/arrow ]]; then
+  if [[ ! -d $TP_DIR/build/arrow/.git ]]; then
+    if [[ -d $TP_DIR/build/arrow ]]; then
+      rm -rf $TP_DIR/build/arrow
+    fi
     git clone -q https://github.com/apache/arrow.git "$TP_DIR/build/arrow"
   fi
 
