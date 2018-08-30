@@ -180,7 +180,7 @@ if __name__ == '__main__':
                     "cpu": 3
                 },
                 "run": "train_mnist",
-                "num_samples":  1 if args.smoke_test else 10,
+                "num_samples": 1 if args.smoke_test else 10,
                 "config": {
                     "lr": lambda spec: np.random.uniform(0.001, 0.1),
                     "momentum": lambda spec: np.random.uniform(0.1, 0.9),

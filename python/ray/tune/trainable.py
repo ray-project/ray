@@ -74,7 +74,7 @@ class Trainable(object):
 
         self._iteration = 0
         self._time_total = 0.0
-        self._timesteps_total = 0
+        self._timesteps_total = None
         self._setup()
         self._initialize_ok = True
         self._local_ip = ray.services.get_node_ip_address()
@@ -150,9 +150,15 @@ class Trainable(object):
             time_this_iter = time.time() - start
         self._time_total += time_this_iter
 
-        self._timesteps_total += result.get(TIMESTEPS_THIS_ITER, 0)
-
         result.setdefault(DONE, False)
+
+        # self._timesteps_total should only be tracked if increments provided
+        if result.get(TIMESTEPS_THIS_ITER):
+            if self._timesteps_total is None:
+                self._timesteps_total = 0
+            self._timesteps_total += result[TIMESTEPS_THIS_ITER]
+
+        # self._timesteps_total should not override user-provided total
         result.setdefault(TIMESTEPS_TOTAL, self._timesteps_total)
 
         # Provides auto-filled neg_mean_loss for avoiding regressions
