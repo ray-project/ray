@@ -2,6 +2,7 @@
 from __future__ import print_function
 
 import argparse
+import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -28,6 +29,7 @@ parser.add_argument('--no-cuda', action='store_true', default=False,
                     help='disables CUDA training')
 parser.add_argument('--seed', type=int, default=1, metavar='S',
                     help='random seed (default: 1)')
+parser.add_argument('--smoke-test', action="store_true", help="Finish quickly for testing")
 
 
 class Net(nn.Module):
@@ -122,12 +124,13 @@ class TrainMNIST(Trainable):
         self._train_iteration()
         return self._test()
 
-    def _save(self):
+    def _save(self, path):
         torch.save(self.model.state_dict(),
-                   os.path.join(os.getcwd(), "model.pth"))
+                   os.path.join(path, "model.pth"))
+        return path
 
-    def _restore(self):
-        self.model.load_state_dict(os.path.join(os.getcwd(), "model.pth"))
+    def _restore(self, path):
+        self.model.load_state_dict(os.path.join(path,  "model.pth"))
 
 
 if __name__ == '__main__':
@@ -143,17 +146,17 @@ if __name__ == '__main__':
     sched = HyperBandScheduler(
         time_attr="training_iteration",
         reward_attr="neg_mean_loss")
-
     tune.run_experiments(
         {
             "exp": {
                 "stop": {
-                    "mean_accuracy": 0.98,
-                    "training_iteration": 20
+                    "mean_accuracy": 0.95,
+                    "training_iteration": 1 if args.smoke_test else 20,
                 },
                 "trial_resources": {"cpu": 3},
                 "run": TrainMNIST,
-                "num_samples": 1,
+                "num_samples": 1 if args.smoke_test else 20,
+                "checkpoint_at_end": True,
                 "config": {
                     "args": args,
                     "lr": lambda spec: np.random.uniform(0.001, 0.1),
