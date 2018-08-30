@@ -8,7 +8,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.ray.api.Ray;
 import org.ray.api.RayObject;
-import org.ray.api.UniqueID;
+import org.ray.api.id.UniqueId;
 
 /**
  * Test putting and getting objects
@@ -25,7 +25,7 @@ public class ObjectStoreTest {
   @Test
   public void testGetMultipleObjects() {
     List<Integer> ints = ImmutableList.of(1, 2, 3, 4, 5);
-    List<UniqueID> ids = ints.stream().map(obj -> Ray.put(obj).getId())
+    List<UniqueId> ids = ints.stream().map(obj -> Ray.put(obj).getId())
         .collect(Collectors.toList());
     Assert.assertEquals(ints, Ray.get(ids));
   }

@@ -2,7 +2,7 @@ package org.ray.core;
 
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.tuple.Pair;
-import org.ray.api.UniqueID;
+import org.ray.api.id.UniqueId;
 import org.ray.spi.LocalSchedulerLink;
 import org.ray.spi.model.RayMethod;
 import org.ray.spi.model.TaskSpec;
@@ -49,16 +49,16 @@ public class Worker {
     }
   }
 
-  public UniqueID getCurrentTaskId() {
+  public UniqueId getCurrentTaskId() {
     return WorkerContext.currentTask().taskId;
   }
 
-  public UniqueID getCurrentTaskNextPutId() {
+  public UniqueId getCurrentTaskNextPutId() {
     return UniqueIdHelper.computePutId(
         WorkerContext.currentTask().taskId, WorkerContext.nextPutIndex());
   }
 
-  public UniqueID[] getCurrentTaskReturnIDs() {
+  public UniqueId[] getCurrentTaskReturnIDs() {
     return WorkerContext.currentTask().returnIds;
   }
 }

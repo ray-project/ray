@@ -7,7 +7,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-import org.ray.api.UniqueID;
+import org.ray.api.id.UniqueId;
 import org.ray.core.AbstractRayRuntime;
 import org.ray.core.UniqueIdHelper;
 import org.ray.spi.LocalSchedulerLink;
@@ -30,8 +30,8 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
   private long client = 0;
   boolean useRaylet = false;
 
-  public DefaultLocalSchedulerClient(String schedulerSockName, UniqueID clientId,
-      boolean isWorker, UniqueID driverId, boolean useRaylet) {
+  public DefaultLocalSchedulerClient(String schedulerSockName, UniqueId clientId,
+      boolean isWorker, UniqueId driverId, boolean useRaylet) {
     client = nativeInit(schedulerSockName, clientId.getBytes(),
         isWorker, driverId.getBytes(), useRaylet);
     this.useRaylet = useRaylet;
@@ -89,19 +89,19 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
   }
 
   @Override
-  public void markTaskPutDependency(UniqueID taskId, UniqueID objectId) {
+  public void markTaskPutDependency(UniqueId taskId, UniqueId objectId) {
     nativePutObject(client, taskId.getBytes(), objectId.getBytes());
   }
 
   @Override
-  public void reconstructObject(UniqueID objectId, boolean fetchOnly) {
-    List<UniqueID> objects = new ArrayList<>();
+  public void reconstructObject(UniqueId objectId, boolean fetchOnly) {
+    List<UniqueId> objects = new ArrayList<>();
     objects.add(objectId);
     nativeReconstructObjects(client, getIdBytes(objects), fetchOnly);
   }
 
   @Override
-  public void reconstructObjects(List<UniqueID> objectIds, boolean fetchOnly) {
+  public void reconstructObjects(List<UniqueId> objectIds, boolean fetchOnly) {
     if (RayLog.core.isInfoEnabled()) {
       RayLog.core.info("Reconstructing objects for task {}, object IDs are {}",
           UniqueIdHelper.computeTaskId(objectIds.get(0)), objectIds);
@@ -110,9 +110,9 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
   }
 
   @Override
-  public UniqueID generateTaskId(UniqueID driverId, UniqueID parentTaskId, int taskIndex) {
+  public UniqueId generateTaskId(UniqueId driverId, UniqueId parentTaskId, int taskIndex) {
     byte[] bytes = nativeGenerateTaskId(driverId.getBytes(), parentTaskId.getBytes(), taskIndex);
-    return new UniqueID(bytes);
+    return new UniqueId(bytes);
   }
 
   @Override
@@ -125,19 +125,19 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
     TaskInfo info = TaskInfo.getRootAsTaskInfo(bb);
 
     TaskSpec spec = new TaskSpec();
-    spec.driverId = UniqueID.fromByteBuffer(info.driverIdAsByteBuffer());
-    spec.taskId = UniqueID.fromByteBuffer(info.taskIdAsByteBuffer());
-    spec.parentTaskId = UniqueID.fromByteBuffer(info.parentTaskIdAsByteBuffer());
+    spec.driverId = UniqueId.fromByteBuffer(info.driverIdAsByteBuffer());
+    spec.taskId = UniqueId.fromByteBuffer(info.taskIdAsByteBuffer());
+    spec.parentTaskId = UniqueId.fromByteBuffer(info.parentTaskIdAsByteBuffer());
     spec.parentCounter = info.parentCounter();
-    spec.actorId = UniqueID.fromByteBuffer(info.actorIdAsByteBuffer());
+    spec.actorId = UniqueId.fromByteBuffer(info.actorIdAsByteBuffer());
     spec.actorCounter = info.actorCounter();
-    spec.createActorId = UniqueID.fromByteBuffer(info.actorCreationIdAsByteBuffer());
+    spec.createActorId = UniqueId.fromByteBuffer(info.actorCreationIdAsByteBuffer());
 
-    spec.functionId = UniqueID.fromByteBuffer(info.functionIdAsByteBuffer());
+    spec.functionId = UniqueId.fromByteBuffer(info.functionIdAsByteBuffer());
 
     List<FunctionArg> args = new ArrayList<>();
     for (int i = 0; i < info.argsLength(); i++) {
-      UniqueID id = null;
+      UniqueId id = null;
       byte[] data = null;
       Arg sarg = info.args(i);
 
@@ -145,7 +145,7 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
       if (idCount > 0) {
         ByteBuffer lbb = sarg.objectIdAsByteBuffer(0);
         assert (lbb != null && lbb.remaining() > 0);
-        id = UniqueID.fromByteBuffer(lbb);
+        id = UniqueId.fromByteBuffer(lbb);
       }
 
       ByteBuffer lbb = sarg.dataAsByteBuffer();
@@ -159,13 +159,13 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
     }
     spec.args = args.toArray(new FunctionArg[0]);
 
-    List<UniqueID> rids = new ArrayList<>();
+    List<UniqueId> rids = new ArrayList<>();
     for (int i = 0; i < info.returnsLength(); i++) {
       ByteBuffer lbb = info.returnsAsByteBuffer(i);
       assert (lbb != null && lbb.remaining() > 0);
-      rids.add(UniqueID.fromByteBuffer(lbb));
+      rids.add(UniqueId.fromByteBuffer(lbb));
     }
-    spec.returnIds = rids.toArray(new UniqueID[0]);
+    spec.returnIds = rids.toArray(new UniqueId[0]);
 
     return spec;
   }
@@ -181,7 +181,7 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
     final int parentTaskIdOffset = fbb.createString(task.parentTaskId.toByteBuffer());
     final int parentCounter = task.parentCounter;
     final int actorCreateIdOffset = fbb.createString(task.createActorId.toByteBuffer());
-    final int actorCreateDummyIdOffset = fbb.createString(UniqueID.NIL.toByteBuffer());
+    final int actorCreateDummyIdOffset = fbb.createString(UniqueId.NIL.toByteBuffer());
     final int actorIdOffset = fbb.createString(task.actorId.toByteBuffer());
     final int actorHandleIdOffset = fbb.createString(task.actorHandleId.toByteBuffer());
     final int actorCounter = task.actorCounter;
@@ -254,7 +254,7 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
     return buffer;
   }
 
-  private static byte[][] getIdBytes(List<UniqueID> objectIds) {
+  private static byte[][] getIdBytes(List<UniqueId> objectIds) {
     int size = objectIds.size();
     byte[][] ids = new byte[size][];
     for (int i = 0; i < size; i++) {

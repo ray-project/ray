@@ -5,15 +5,15 @@ import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
 import org.ray.api.RayActor;
-import org.ray.api.UniqueID;
+import org.ray.api.id.UniqueId;
 import org.ray.util.Sha1Digestor;
 
 public final class RayActorImpl<T> implements RayActor<T>, Externalizable {
 
   public static final RayActorImpl NIL = new RayActorImpl();
 
-  private UniqueID id;
-  private UniqueID handleId;
+  private UniqueId id;
+  private UniqueId handleId;
   /**
    * The number of tasks that have been invoked on this actor.
    */
@@ -22,7 +22,7 @@ public final class RayActorImpl<T> implements RayActor<T>, Externalizable {
    * The unique id of the last return of the last task.
    * It's used as a dependency for the next task.
    */
-  private UniqueID taskCursor;
+  private UniqueId taskCursor;
   /**
    * The number of times that this actor handle has been forked.
    * It's used to make sure ids of actor handles are unique.
@@ -30,14 +30,14 @@ public final class RayActorImpl<T> implements RayActor<T>, Externalizable {
   private int numForks;
 
   public RayActorImpl() {
-    this(UniqueID.NIL, UniqueID.NIL);
+    this(UniqueId.NIL, UniqueId.NIL);
   }
 
-  public RayActorImpl(UniqueID id) {
-    this(id, UniqueID.NIL);
+  public RayActorImpl(UniqueId id) {
+    this(id, UniqueId.NIL);
   }
 
-  public RayActorImpl(UniqueID id, UniqueID handleId) {
+  public RayActorImpl(UniqueId id, UniqueId handleId) {
     this.id = id;
     this.handleId = handleId;
     this.taskCounter = 0;
@@ -46,20 +46,20 @@ public final class RayActorImpl<T> implements RayActor<T>, Externalizable {
   }
 
   @Override
-  public UniqueID getId() {
+  public UniqueId getId() {
     return id;
   }
 
   @Override
-  public UniqueID getHandleId() {
+  public UniqueId getHandleId() {
     return handleId;
   }
 
-  public void setTaskCursor(UniqueID taskCursor) {
+  public void setTaskCursor(UniqueId taskCursor) {
     this.taskCursor = taskCursor;
   }
 
-  public UniqueID getTaskCursor() {
+  public UniqueId getTaskCursor() {
     return taskCursor;
   }
 
@@ -68,9 +68,9 @@ public final class RayActorImpl<T> implements RayActor<T>, Externalizable {
   }
 
 
-  private UniqueID computeNextActorHandleId() {
+  private UniqueId computeNextActorHandleId() {
     byte[] bytes = Sha1Digestor.digest(handleId.getBytes(), ++numForks);
-    return new UniqueID(bytes);
+    return new UniqueId(bytes);
   }
 
   @Override
@@ -82,8 +82,8 @@ public final class RayActorImpl<T> implements RayActor<T>, Externalizable {
 
   @Override
   public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
-    this.id = (UniqueID) in.readObject();
-    this.handleId = (UniqueID) in.readObject();
-    this.taskCursor = (UniqueID) in.readObject();
+    this.id = (UniqueId) in.readObject();
+    this.handleId = (UniqueId) in.readObject();
+    this.taskCursor = (UniqueId) in.readObject();
   }
 }

@@ -5,7 +5,7 @@ import org.apache.commons.lang3.tuple.Pair;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
-import org.ray.api.UniqueID;
+import org.ray.api.id.UniqueId;
 import org.ray.spi.model.FunctionArg;
 import org.ray.spi.model.TaskSpec;
 
@@ -19,7 +19,7 @@ public class ArgumentsBuilder {
     FunctionArg[] ret = new FunctionArg[args.length];
     for (int i = 0; i < ret.length; i++) {
       Object arg = args[i];
-      UniqueID id = null;
+      UniqueId id = null;
       byte[] data = null;
       if (arg == null) {
         data = Serializer.encode(null);

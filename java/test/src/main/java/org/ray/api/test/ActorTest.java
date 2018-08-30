@@ -6,10 +6,9 @@ import org.junit.runner.RunWith;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
-import org.ray.api.UniqueID;
+import org.ray.api.id.UniqueId;
 import org.ray.api.annotation.RayRemote;
 import org.ray.api.function.RayFunc2;
-import org.ray.api.function.RayFunc3;
 
 @RunWith(MyRunner.class)
 public class ActorTest {
@@ -41,7 +40,7 @@ public class ActorTest {
   public void testCreateAndCallActor() {
     // Test creating an actor
     RayActor<Counter> actor = Ray.createActor(Counter.class);
-    Assert.assertNotEquals(actor.getId(), UniqueID.NIL);
+    Assert.assertNotEquals(actor.getId(), UniqueId.NIL);
     // Test calling an actor
     RayFunc2<Counter, Integer, Integer> f = Counter::incr;
     Assert.assertEquals(Integer.valueOf(1), Ray.call(f, actor, 1).get());

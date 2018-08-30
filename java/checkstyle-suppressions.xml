@@ -10,7 +10,6 @@
   <suppress checks="MethodNameCheck" files="ResourcePair.java"/>
   <suppress checks="ParameterNameCheck" files="ResourcePair.java"/>
   <suppress checks="MethodTypeParameterNameCheck" files="Rpc.java"/>
-  <suppress checks="AbbreviationAsWordInNameCheck" files="UniqueID.java"/>
   <suppress checks=".*" files="Rpc.java"/>
   <!-- suppress check for flatbuffer-generated files. -->
   <!-- TODO(raulchen): move these files to a directory, so this rule can be simplier. -->

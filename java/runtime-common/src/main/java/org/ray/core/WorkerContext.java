@@ -1,6 +1,6 @@
 package org.ray.core;
 
-import org.ray.api.UniqueID;
+import org.ray.api.id.UniqueId;
 import org.ray.core.model.RayParameters;
 import org.ray.core.model.WorkerMode;
 import org.ray.spi.model.TaskSpec;
@@ -12,7 +12,7 @@ public class WorkerContext {
   /**
    * id of worker.
    */
-  public static UniqueID workerID = UniqueID.randomId();
+  public static UniqueId workerID = UniqueId.randomId();
   /**
    * current doing task.
    */
@@ -35,13 +35,13 @@ public class WorkerContext {
     currentWorkerCtx.set(ctx);
 
     TaskSpec dummy = new TaskSpec();
-    dummy.parentTaskId = UniqueID.NIL;
+    dummy.parentTaskId = UniqueId.NIL;
     if (params.worker_mode == WorkerMode.DRIVER) {
-      dummy.taskId = UniqueID.randomId();
+      dummy.taskId = UniqueId.randomId();
     } else {
-      dummy.taskId = UniqueID.NIL;
+      dummy.taskId = UniqueId.NIL;
     }
-    dummy.actorId = UniqueID.NIL;
+    dummy.actorId = UniqueId.NIL;
     dummy.driverId = params.driver_id;
     prepare(dummy, null);
 
@@ -72,7 +72,7 @@ public class WorkerContext {
     return ++get().currentTaskCallCount;
   }
 
-  public static UniqueID currentWorkerId() {
+  public static UniqueId currentWorkerId() {
     return WorkerContext.workerID;
   }
 

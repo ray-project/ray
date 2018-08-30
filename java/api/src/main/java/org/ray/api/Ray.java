@@ -1,6 +1,7 @@
 package org.ray.api;
 
 import java.util.List;
+import org.ray.api.id.UniqueId;
 
 /**
  * This class contains all public APIs of Ray.
@@ -50,7 +51,7 @@ public final class Ray extends RayCall {
    * @param objectId The ID of the object to get.
    * @return The Java object.
    */
-  public static <T> T get(UniqueID objectId) {
+  public static <T> T get(UniqueId objectId) {
     return runtime.get(objectId);
   }
 
@@ -60,7 +61,7 @@ public final class Ray extends RayCall {
    * @param objectIds The list of object IDs.
    * @return A list of Java objects.
    */
-  public static <T> List<T> get(List<UniqueID> objectIds) {
+  public static <T> List<T> get(List<UniqueId> objectIds) {
     return runtime.get(objectIds);
   }
 

@@ -319,7 +319,7 @@ public class ConfigReader {
           Object v = Enum.valueOf((Class<Enum>) fld.getType(), sv);
           fld.set(obj, v);
           // TODO: this is a hack and needs to be resolved later
-        } else if (fld.getType().getName().equals("org.ray.api.UniqueID")) {
+        } else if (fld.getType().getName().equals("org.ray.api.UniqueId")) {
           String sv = getStringValue(section, fld.getName(), defaultFldValue.toString(), comment);
           Object v;
           try {

@@ -5,7 +5,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
-import org.ray.api.UniqueID;
+import org.ray.api.id.UniqueId;
 import org.ray.format.gcs.ClientTableData;
 import org.ray.spi.KeyValueStoreLink;
 import org.ray.spi.model.AddressInfo;
@@ -29,7 +29,7 @@ public class RayletStateStoreProxyImpl extends BaseStateStoreProxyImpl {
     List<AddressInfo> schedulerInfo = new ArrayList<>();
 
     byte[] prefix = "CLIENT".getBytes();
-    byte[] postfix = UniqueID.genNil().getBytes();
+    byte[] postfix = UniqueId.genNil().getBytes();
     byte[] clientKey = new byte[prefix.length + postfix.length];
     System.arraycopy(prefix, 0, clientKey, 0, prefix.length);
     System.arraycopy(postfix, 0, clientKey, prefix.length, postfix.length);

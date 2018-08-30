@@ -2,6 +2,7 @@ package org.ray.api;
 
 import java.util.List;
 import org.ray.api.function.RayFunc;
+import org.ray.api.id.UniqueId;
 
 /**
  * Base interface of a Ray runtime.
@@ -27,7 +28,7 @@ public interface RayRuntime {
    * @param objectId The ID of the object to get.
    * @return The Java object.
    */
-  <T> T get(UniqueID objectId);
+  <T> T get(UniqueId objectId);
 
   /**
    * Get a list of objects from the object store.
@@ -35,7 +36,7 @@ public interface RayRuntime {
    * @param objectIds The list of object IDs.
    * @return A list of Java objects.
    */
-  <T> List<T> get(List<UniqueID> objectIds);
+  <T> List<T> get(List<UniqueId> objectIds);
 
   /**
    * Wait for a list of RayObjects to be locally available,

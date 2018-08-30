@@ -1,4 +1,4 @@
-package org.ray.api;
+package org.ray.api.id;
 
 import java.io.Serializable;
 import java.nio.ByteBuffer;
@@ -10,52 +10,52 @@ import javax.xml.bind.DatatypeConverter;
  * Represents a unique id of all Ray concepts, including
  * objects, tasks, workers, actors, etc.
  */
-public class UniqueID implements Serializable {
+public class UniqueId implements Serializable {
 
   public static final int LENGTH = 20;
-  public static final UniqueID NIL = genNil();
+  public static final UniqueId NIL = genNil();
   private static final long serialVersionUID = 8588849129675565761L;
   private final byte[] id;
 
   /**
-   * Create a UniqueID from a hex string.
+   * Create a UniqueId from a hex string.
    */
-  public static UniqueID fromHexString(String hex) {
+  public static UniqueId fromHexString(String hex) {
     byte[] bytes = DatatypeConverter.parseHexBinary(hex);
-    return new UniqueID(bytes);
+    return new UniqueId(bytes);
   }
 
   /**
-   * Creates a UniqueID from a ByteBuffer.
+   * Creates a UniqueId from a ByteBuffer.
    */
-  public static UniqueID fromByteBuffer(ByteBuffer bb) {
+  public static UniqueId fromByteBuffer(ByteBuffer bb) {
     byte[] id = new byte[bb.remaining()];
     bb.get(id);
 
-    return new UniqueID(id);
+    return new UniqueId(id);
   }
 
   /**
-   * Generate a nil UniqueID.
+   * Generate a nil UniqueId.
    */
-  public static UniqueID genNil() {
+  public static UniqueId genNil() {
     byte[] b = new byte[LENGTH];
     Arrays.fill(b, (byte) 0xFF);
-    return new UniqueID(b);
+    return new UniqueId(b);
   }
 
   /**
-   * Generate an UniqueID with random value.
+   * Generate an UniqueId with random value.
    */
-  public static UniqueID randomId() {
+  public static UniqueId randomId() {
     byte[] b = new byte[LENGTH];
     new Random().nextBytes(b);
-    return new UniqueID(b);
+    return new UniqueId(b);
   }
 
-  public UniqueID(byte[] id) {
+  public UniqueId(byte[] id) {
     if (id.length != LENGTH) {
-      throw new IllegalArgumentException("Illegal argument for UniqueID, expect " + LENGTH
+      throw new IllegalArgumentException("Illegal argument for UniqueId, expect " + LENGTH
           + " bytes, but got " + id.length + " bytes.");
     }
 
@@ -63,7 +63,7 @@ public class UniqueID implements Serializable {
   }
 
   /**
-   * Get the byte data of this UniqueID.
+   * Get the byte data of this UniqueId.
    */
   public byte[] getBytes() {
     return id;
@@ -77,11 +77,11 @@ public class UniqueID implements Serializable {
   }
 
   /**
-   * Create a copy of this UniqueID.
+   * Create a copy of this UniqueId.
    */
-  public UniqueID copy() {
+  public UniqueId copy() {
     byte[] nid = Arrays.copyOf(id, id.length);
-    return new UniqueID(nid);
+    return new UniqueId(nid);
   }
 
   /**
@@ -102,11 +102,11 @@ public class UniqueID implements Serializable {
       return false;
     }
 
-    if (!(obj instanceof UniqueID)) {
+    if (!(obj instanceof UniqueId)) {
       return false;
     }
 
-    UniqueID r = (UniqueID) obj;
+    UniqueId r = (UniqueId) obj;
     return Arrays.equals(id, r.id);
   }
 

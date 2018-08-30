@@ -3,7 +3,7 @@ package org.ray.core;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import org.apache.commons.lang3.tuple.Pair;
-import org.ray.api.UniqueID;
+import org.ray.api.id.UniqueId;
 import org.ray.spi.model.RayMethod;
 import org.ray.spi.model.TaskSpec;
 import org.ray.util.exception.TaskExecutionException;
@@ -87,7 +87,7 @@ public class InvocationExecutor {
         + " failed with function name = " + funcName;
   }
 
-  private static void safePut(UniqueID objectId, Object obj) {
+  private static void safePut(UniqueId objectId, Object obj) {
     AbstractRayRuntime.getInstance().put(objectId, obj);
   }
 }

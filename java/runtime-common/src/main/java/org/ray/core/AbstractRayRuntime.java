@@ -14,7 +14,7 @@ import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayRuntime;
 import org.ray.api.RayObject;
-import org.ray.api.UniqueID;
+import org.ray.api.id.UniqueId;
 import org.ray.api.WaitResult;
 import org.ray.api.annotation.RayRemote;
 import org.ray.api.function.RayFunc;
@@ -52,7 +52,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   /**
    * Actor ID -> actor instance.
    */
-  private Map<UniqueID, Object> actors = new HashMap<>();
+  private Map<UniqueId, Object> actors = new HashMap<>();
 
   // app level Ray.init()
   // make it private so there is no direct usage but only from Ray.init
@@ -194,13 +194,13 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   @Override
   public <T> RayObject<T> put(T obj) {
-    UniqueID objectId = getCurrentTaskNextPutId();
+    UniqueId objectId = getCurrentTaskNextPutId();
     put(objectId, obj);
     return new RayObjectImpl<>(objectId);
   }
 
-  public <T> void put(UniqueID objectId, T obj) {
-    UniqueID taskId = getCurrentTaskId();
+  public <T> void put(UniqueId objectId, T obj) {
+    UniqueId taskId = getCurrentTaskId();
     RayLog.core.info("Putting object {}, for task {} ", objectId, taskId);
     if (!params.use_raylet) {
       localSchedulerClient.markTaskPutDependency(taskId, objectId);
@@ -209,9 +209,9 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   }
 
   /**
-   * get the task identity of the currently running task, UniqueID.NIL if not inside any
+   * get the task identity of the currently running task, UniqueId.NIL if not inside any
    */
-  public UniqueID getCurrentTaskId() {
+  public UniqueId getCurrentTaskId() {
     return worker.getCurrentTaskId();
   }
 
@@ -219,28 +219,28 @@ public abstract class AbstractRayRuntime implements RayRuntime {
    * get the to-be-returned objects identities of the currently running task, empty array if not
    * inside any.
    */
-  public UniqueID getCurrentTaskNextPutId() {
+  public UniqueId getCurrentTaskNextPutId() {
     return worker.getCurrentTaskNextPutId();
   }
 
   @Override
-  public <T> T get(UniqueID objectId) throws TaskExecutionException {
+  public <T> T get(UniqueId objectId) throws TaskExecutionException {
     List<T> ret = get(ImmutableList.of(objectId));
     return ret.get(0);
   }
 
   @Override
-  public <T> List<T> get(List<UniqueID> objectIds) {
+  public <T> List<T> get(List<UniqueId> objectIds) {
     boolean wasBlocked = false;
-    UniqueID taskId = getCurrentTaskId();
+    UniqueId taskId = getCurrentTaskId();
 
     try {
       int numObjectIds = objectIds.size();
 
       // Do an initial fetch for remote objects.
-      List<List<UniqueID>> fetchBatches =
+      List<List<UniqueId>> fetchBatches =
           splitIntoBatches(objectIds, params.worker_fetch_request_size);
-      for (List<UniqueID> batch : fetchBatches) {
+      for (List<UniqueId> batch : fetchBatches) {
         if (!params.use_raylet) {
           objectStoreProxy.fetch(batch);
         } else {
@@ -254,7 +254,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
       assert ret.size() == numObjectIds;
 
       // Mapping the object IDs that we haven't gotten yet to their original index in objectIds.
-      Map<UniqueID, Integer> unreadys = new HashMap<>();
+      Map<UniqueId, Integer> unreadys = new HashMap<>();
       for (int i = 0; i < numObjectIds; i++) {
         if (ret.get(i).getRight() != GetStatus.SUCCESS) {
           unreadys.put(objectIds.get(i), i);
@@ -265,13 +265,13 @@ public abstract class AbstractRayRuntime implements RayRuntime {
       // Try reconstructing any objects we haven't gotten yet. Try to get them
       // until at least PlasmaLink.GET_TIMEOUT_MS milliseconds passes, then repeat.
       while (unreadys.size() > 0) {
-        List<UniqueID> unreadyList = new ArrayList<>(unreadys.keySet());
-        List<List<UniqueID>> reconstructBatches =
+        List<UniqueId> unreadyList = new ArrayList<>(unreadys.keySet());
+        List<List<UniqueId>> reconstructBatches =
             splitIntoBatches(unreadyList, params.worker_fetch_request_size);
 
-        for (List<UniqueID> batch : reconstructBatches) {
+        for (List<UniqueId> batch : reconstructBatches) {
           if (!params.use_raylet) {
-            for (UniqueID objectId : batch) {
+            for (UniqueId objectId : batch) {
               localSchedulerClient.reconstructObject(objectId, false);
             }
             // Do another fetch for objects that aren't available locally yet, in case
@@ -290,7 +290,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
         for (int i = 0; i < results.size(); i++) {
           Pair<T, GetStatus> value = results.get(i);
           if (value.getRight() == GetStatus.SUCCESS) {
-            UniqueID id = unreadyList.get(i);
+            UniqueId id = unreadyList.get(i);
             ret.set(unreadys.get(id), value);
             unreadys.remove(id);
           }
@@ -319,13 +319,13 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     }
   }
 
-  private List<List<UniqueID>> splitIntoBatches(List<UniqueID> objectIds, int batchSize) {
-    List<List<UniqueID>> batches = new ArrayList<>();
+  private List<List<UniqueId>> splitIntoBatches(List<UniqueId> objectIds, int batchSize) {
+    List<List<UniqueId>> batches = new ArrayList<>();
     int objectsSize = objectIds.size();
 
     for (int i = 0; i < objectsSize; i += batchSize) {
       int endIndex = i + batchSize;
-      List<UniqueID> batchIds = (endIndex < objectsSize)
+      List<UniqueId> batchIds = (endIndex < objectsSize)
           ? objectIds.subList(i, endIndex)
           : objectIds.subList(i, objectsSize);
 
@@ -362,7 +362,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   @Override
   @SuppressWarnings("unchecked")
   public <T> RayActor<T> createActor(Class<T> actorClass) {
-    RayFunc2<UniqueID, String, Object> func = AbstractRayRuntime::createLocalActor;
+    RayFunc2<UniqueId, String, Object> func = AbstractRayRuntime::createLocalActor;
     TaskSpec spec = createTaskSpec(func, RayActorImpl.NIL, null, actorClass);
     RayActorImpl actor = new RayActorImpl(spec.returnIds[0]);
     actor.increaseTaskCounter();
@@ -372,7 +372,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   }
 
   @RayRemote
-  private static Object createLocalActor(UniqueID actorId, String className) {
+  private static Object createLocalActor(UniqueId actorId, String className) {
     try {
       Class<?> cls = Class.forName(className, true, Thread.currentThread().getContextClassLoader());
       Object actor = cls.getConstructor().newInstance();
@@ -390,8 +390,8 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   /**
    * generate the return ids of a task.
    */
-  private UniqueID[] genReturnIds(UniqueID taskId, int numReturns) {
-    UniqueID[] ret = new UniqueID[numReturns];
+  private UniqueId[] genReturnIds(UniqueId taskId, int numReturns) {
+    UniqueId[] ret = new UniqueId[numReturns];
     for (int i = 0; i < numReturns; i++) {
       ret[i] = UniqueIdHelper.computeReturnId(taskId, i + 1);
     }
@@ -400,13 +400,13 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   private TaskSpec createTaskSpec(RayFunc func, RayActorImpl actor, Object[] args, Class actorClassForCreation) {
     final TaskSpec current = WorkerContext.currentTask();
-    UniqueID taskId = localSchedulerClient.generateTaskId(current.driverId,
+    UniqueId taskId = localSchedulerClient.generateTaskId(current.driverId,
         current.taskId,
         WorkerContext.nextCallIndex());
     int numReturns = actor.getId().isNil() ? 1 : 2;
-    UniqueID[] returnIds = genReturnIds(taskId, numReturns);
+    UniqueId[] returnIds = genReturnIds(taskId, numReturns);
 
-    UniqueID actorCreationId = UniqueID.NIL;
+    UniqueId actorCreationId = UniqueId.NIL;
     if (actorClassForCreation != null) {
       args = new Object[] {returnIds[0], actorClassForCreation.getName()};
       actorCreationId = returnIds[0];
@@ -421,9 +421,9 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     args[args.length - 1] = methodId.className;
 
     RayMethod rayMethod = functions.getMethod(
-        current.driverId, actor.getId(), new UniqueID(methodId.getSha1Hash()), methodId.className
+        current.driverId, actor.getId(), new UniqueId(methodId.getSha1Hash()), methodId.className
     ).getRight();
-    UniqueID funcId = rayMethod.getFuncId();
+    UniqueId funcId = rayMethod.getFuncId();
 
     return new TaskSpec(
         current.driverId,
@@ -453,7 +453,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   /**
    * get actor with given id.
    */
-  public Object getLocalActor(UniqueID id) {
+  public Object getLocalActor(UniqueId id) {
     return actors.get(id);
   }
 
