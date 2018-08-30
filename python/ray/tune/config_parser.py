@@ -114,8 +114,7 @@ def make_parser(parser_creator=None, **kwargs):
         "A value of 0 (default) disables checkpointing.")
     parser.add_argument(
         "--checkpoint-at-end",
-        default=False,
-        type=bool,
+        action="store_true",
         help="Whether to checkpoint at the end of the experiment. "
         "Default is False.")
     parser.add_argument(
@@ -152,11 +151,12 @@ def to_argv(config):
     for k, v in config.items():
         if "-" in k:
             raise ValueError("Use '_' instead of '-' in `{}`".format(k))
-        argv.append("--{}".format(k.replace("_", "-")))
+        if not isinstance(v, bool) or v:  # for argparse flags
+            argv.append("--{}".format(k.replace("_", "-")))
         if isinstance(v, string_types):
             argv.append(v)
         elif isinstance(v, bool):
-            argv.append(v)
+            pass
         else:
             argv.append(json.dumps(v, cls=_SafeFallbackEncoder))
     return argv
