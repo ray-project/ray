@@ -14,12 +14,12 @@ import org.ray.api.WaitResult;
 public class WaitTest {
 
   @RayRemote
-  public static String hi() {
+  private static String hi() {
     return "hi";
   }
 
   @RayRemote
-  public static String delayHi() {
+  private static String delayHi() {
     try {
       Thread.sleep(100 * 1000);
     } catch (Exception e) {
