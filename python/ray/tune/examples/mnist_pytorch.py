@@ -53,6 +53,8 @@ parser.add_argument(
     default=1,
     metavar='S',
     help='random seed (default: 1)')
+parser.add_argument(
+    '--smoke-test', action="store_true", help="Finish quickly for testing")
 
 
 def train_mnist(args, config, reporter):
@@ -172,13 +174,13 @@ if __name__ == '__main__':
             "exp": {
                 "stop": {
                     "mean_accuracy": 0.98,
-                    "training_iteration": 20
+                    "training_iteration": 1 if args.smoke_test else 20
                 },
                 "trial_resources": {
                     "cpu": 3
                 },
                 "run": "train_mnist",
-                "num_samples": 10,
+                "num_samples":  1 if args.smoke_test else 10,
                 "config": {
                     "lr": lambda spec: np.random.uniform(0.001, 0.1),
                     "momentum": lambda spec: np.random.uniform(0.1, 0.9),
