@@ -189,7 +189,7 @@ class TestGlobalScheduler(unittest.TestCase):
         assert (db_client_id is not None)
 
     @unittest.skipIf(
-        os.environ.get('RAY_USE_NEW_GCS', False),
+        os.environ.get("RAY_USE_NEW_GCS", False),
         "New GCS API doesn't have a Python API yet.")
     def test_integration_single_task(self):
         # There should be three db clients, the global scheduler, the local
@@ -307,13 +307,13 @@ class TestGlobalScheduler(unittest.TestCase):
         self.assertEqual(num_tasks_done + num_tasks_waiting, num_tasks)
 
     @unittest.skipIf(
-        os.environ.get('RAY_USE_NEW_GCS', False),
+        os.environ.get("RAY_USE_NEW_GCS", False),
         "New GCS API doesn't have a Python API yet.")
     def test_integration_many_tasks_handler_sync(self):
         self.integration_many_tasks_helper(timesync=True)
 
     @unittest.skipIf(
-        os.environ.get('RAY_USE_NEW_GCS', False),
+        os.environ.get("RAY_USE_NEW_GCS", False),
         "New GCS API doesn't have a Python API yet.")
     def test_integration_many_tasks(self):
         # More realistic case: should handle out of order object and task

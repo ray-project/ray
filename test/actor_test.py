@@ -765,7 +765,7 @@ class ActorsWithGPUs(unittest.TestCase):
         ray.shutdown()
 
     @unittest.skipIf(
-        os.environ.get('RAY_USE_NEW_GCS', False), "Crashing with new GCS API.")
+        os.environ.get("RAY_USE_NEW_GCS", False), "Crashing with new GCS API.")
     def testActorGPUs(self):
         num_local_schedulers = 3
         num_gpus_per_scheduler = 4
@@ -1297,7 +1297,7 @@ class ActorReconstruction(unittest.TestCase):
         ray.shutdown()
 
     @unittest.skipIf(
-        os.environ.get('RAY_USE_NEW_GCS', False), "Hanging with new GCS API.")
+        os.environ.get("RAY_USE_NEW_GCS", False), "Hanging with new GCS API.")
     def testLocalSchedulerDying(self):
         ray.worker._init(
             start_ray_local=True,
@@ -1342,7 +1342,7 @@ class ActorReconstruction(unittest.TestCase):
         assert results == list(range(1, 1 + len(results)))
 
     @unittest.skipIf(
-        os.environ.get('RAY_USE_NEW_GCS', False), "Hanging with new GCS API.")
+        os.environ.get("RAY_USE_NEW_GCS", False), "Hanging with new GCS API.")
     def testManyLocalSchedulersDying(self):
         # This test can be made more stressful by increasing the numbers below.
         # The total number of actors created will be
@@ -1474,7 +1474,7 @@ class ActorReconstruction(unittest.TestCase):
         return actor, ids
 
     @unittest.skipIf(
-        os.environ.get('RAY_USE_NEW_GCS', False), "Hanging with new GCS API.")
+        os.environ.get("RAY_USE_NEW_GCS", False), "Hanging with new GCS API.")
     def testCheckpointing(self):
         actor, ids = self.setup_counter_actor(test_checkpoint=True)
         # Wait for the last task to finish running.
@@ -1499,7 +1499,7 @@ class ActorReconstruction(unittest.TestCase):
         assert num_inc_calls < x
 
     @unittest.skipIf(
-        os.environ.get('RAY_USE_NEW_GCS', False), "Hanging with new GCS API.")
+        os.environ.get("RAY_USE_NEW_GCS", False), "Hanging with new GCS API.")
     def testRemoteCheckpoint(self):
         actor, ids = self.setup_counter_actor(test_checkpoint=True)
 
@@ -1525,7 +1525,7 @@ class ActorReconstruction(unittest.TestCase):
         assert x == 101
 
     @unittest.skipIf(
-        os.environ.get('RAY_USE_NEW_GCS', False), "Hanging with new GCS API.")
+        os.environ.get("RAY_USE_NEW_GCS", False), "Hanging with new GCS API.")
     def testLostCheckpoint(self):
         actor, ids = self.setup_counter_actor(test_checkpoint=True)
         # Wait for the first fraction of tasks to finish running.
@@ -1551,7 +1551,7 @@ class ActorReconstruction(unittest.TestCase):
         assert 5 < num_inc_calls
 
     @unittest.skipIf(
-        os.environ.get('RAY_USE_NEW_GCS', False), "Hanging with new GCS API.")
+        os.environ.get("RAY_USE_NEW_GCS", False), "Hanging with new GCS API.")
     def testCheckpointException(self):
         actor, ids = self.setup_counter_actor(
             test_checkpoint=True, save_exception=True)
@@ -1580,7 +1580,7 @@ class ActorReconstruction(unittest.TestCase):
             assert error["type"] == ray_constants.CHECKPOINT_PUSH_ERROR
 
     @unittest.skipIf(
-        os.environ.get('RAY_USE_NEW_GCS', False), "Hanging with new GCS API.")
+        os.environ.get("RAY_USE_NEW_GCS", False), "Hanging with new GCS API.")
     def testCheckpointResumeException(self):
         actor, ids = self.setup_counter_actor(
             test_checkpoint=True, resume_exception=True)
@@ -1646,7 +1646,7 @@ class ActorReconstruction(unittest.TestCase):
         assert x == count + 1
 
     @unittest.skipIf(
-        os.environ.get('RAY_USE_NEW_GCS', False), "Hanging with new GCS API.")
+        os.environ.get("RAY_USE_NEW_GCS", False), "Hanging with new GCS API.")
     def testRemoteCheckpointDistributedHandle(self):
         counter, ids = self.setup_counter_actor(test_checkpoint=True)
 
@@ -1798,7 +1798,7 @@ class ActorReconstruction(unittest.TestCase):
         assert queue == reconstructed_queue[:len(queue)]
 
     @unittest.skipIf(
-        os.environ.get('RAY_USE_NEW_GCS', False),
+        os.environ.get("RAY_USE_NEW_GCS", False),
         "Currently doesn't work with the new GCS.")
     def testNondeterministicReconstruction(self):
         self._testNondeterministicReconstruction(10, 100, 10)
