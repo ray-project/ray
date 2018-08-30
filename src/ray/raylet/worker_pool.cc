@@ -104,7 +104,7 @@ void WorkerPool::StartWorkerProcess(const Language &language) {
   // If we are already starting up too many workers, then return without starting
   // more.
   if (static_cast<int>(starting_worker_processes_.size()) >=
-          maximum_startup_concurrency_) {
+      maximum_startup_concurrency_) {
     // Workers have been started, but not registered. Force start disabled -- returning.
     RAY_LOG(DEBUG) << starting_worker_processes_.size()
                    << " worker processes pending registration";
