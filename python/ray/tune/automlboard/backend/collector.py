@@ -4,7 +4,6 @@ from __future__ import print_function
 
 import logging
 import os
-import sys
 import time
 
 from threading import Thread
@@ -38,10 +37,11 @@ class CollectorService(object):
             standalone (boolean): The service will not stop and if True.
             log_level (str): Level of logging.
         """
-        self.init_logger(log_level)
+        self.logger = self.init_logger(log_level)
         self.standalone = standalone
         self.collector = Collector(
-            reload_interval=reload_interval, logdir=log_dir)
+            reload_interval=reload_interval,
+            logdir=log_dir, logger=self.logger)
 
     def run(self):
         """Start the collector worker thread.
@@ -60,24 +60,29 @@ class CollectorService(object):
     @classmethod
     def init_logger(cls, log_level):
         """Initialize logger settings."""
-        log_format = '[%(levelname)s %(asctime)s] %(filename)s:' \
-                     '%(lineno)d  %(message)s'
-        logging.basicConfig(
-            stream=sys.stdout, format=log_format, level=log_level)
-        return log_level
+        logger = logging.getLogger("AutoMLBoard")
+        handler = logging.StreamHandler()
+        formatter = logging.Formatter('[%(levelname)s %(asctime)s] '
+                                      '%(filename)s: %(lineno)d  '
+                                      '%(message)s')
+        handler.setFormatter(formatter)
+        logger.setLevel(log_level)
+        logger.addHandler(handler)
+        return logger
 
 
 class Collector(Thread):
     """Worker thread for collector service."""
 
-    def __init__(self, reload_interval, logdir):
+    def __init__(self, reload_interval, logdir, logger):
         """Initialize collector worker thread.
 
         Args
             reload_interval (int): Time period to sleep after each round
                                    of polling.
-            logdir (str): directory path to save the status information of
+            logdir (str): Directory path to save the status information of
                           jobs and trials.
+            logger (Logger): Logger for collector thread.
         """
         super(Collector, self).__init__()
         self._is_finished = False
@@ -86,6 +91,7 @@ class Collector(Thread):
         self._monitored_jobs = set()
         self._monitored_trials = set()
         self._result_offsets = {}
+        self.logger = logger
         self.daemon = True
 
     def run(self):
@@ -101,7 +107,7 @@ class Collector(Thread):
             time.sleep(self._reload_interval)
             self._do_collect()
 
-        logging.info("Collector stopped.")
+        self.logger.info("Collector stopped.")
 
     def stop(self):
         """Stop the main polling loop."""
@@ -115,8 +121,8 @@ class Collector(Thread):
         if not os.path.exists(self._logdir):
             raise CollectorError("Log directory %s not exists" % self._logdir)
 
-        logging.info("Collector started to run, taking %s "
-                     "as parent directory for all job logs." % self._logdir)
+        self.logger.info("Collector started to run, taking %s "
+                         "as parent directory for all job logs." % self._logdir)
 
         # clear old records
         JobRecord.objects.filter().delete()
@@ -188,7 +194,7 @@ class Collector(Thread):
         """
         meta = self._build_job_meta(job_dir)
 
-        logging.debug("Create job: %s" % meta)
+        self.logger.debug("Create job: %s" % meta)
 
         job_record = JobRecord.from_json(meta)
         job_record.save()
@@ -226,7 +232,7 @@ class Collector(Thread):
         """
         meta = self._build_trial_meta(expr_dir)
 
-        logging.debug("Create trial for %s" % meta)
+        self.logger.debug("Create trial for %s" % meta)
 
         trial_record = TrialRecord.from_json(meta)
         trial_record.save()
@@ -346,8 +352,7 @@ class Collector(Thread):
 
         return meta
 
-    @classmethod
-    def _add_results(cls, results, trial_id):
+    def _add_results(self, results, trial_id):
         """Add a list of results into db.
 
         Args:
@@ -355,7 +360,7 @@ class Collector(Thread):
             trial_id (str): Id of the trial.
         """
         for result in results:
-            logging.debug("Appending result: %s" % result)
+            self.logger.debug("Appending result: %s" % result)
             result["trial_id"] = trial_id
             result_record = ResultRecord.from_json(result)
             result_record.save()

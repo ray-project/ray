@@ -41,7 +41,7 @@ class TrialRecord(models.Model):
     trial_status = models.CharField(max_length=20)
     start_time = models.CharField(max_length=50)
     end_time = models.CharField(max_length=50)
-    params = models.CharField(max_length=50)
+    params = models.CharField(max_length=50, blank=True, null=True)
     metrics = models.CharField(max_length=256, null=True, blank=True)
 
     @classmethod
