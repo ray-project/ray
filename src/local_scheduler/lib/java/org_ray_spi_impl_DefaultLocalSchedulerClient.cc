@@ -154,7 +154,7 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient_nativeReconstructObjects(
   auto len = env->GetArrayLength(objectIds);
   for (int i = 0; i < len; i++) {
     jbyteArray object_id_bytes =
-        static_cast<jbyteArray> (env->GetObjectArrayElement(objectIds, i));
+        static_cast<jbyteArray>(env->GetObjectArrayElement(objectIds, i));
     UniqueIdFromJByteArray object_id(env, object_id_bytes);
     object_ids.push_back(*object_id.PID);
     env->DeleteLocalRef(object_id_bytes);
@@ -212,7 +212,7 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient_nativeWaitObject(
   auto len = env->GetArrayLength(objectIds);
   for (int i = 0; i < len; i++) {
     jbyteArray object_id_bytes =
-        static_cast<jbyteArray> (env->GetObjectArrayElement(objectIds, i));
+        static_cast<jbyteArray>(env->GetObjectArrayElement(objectIds, i));
     UniqueIdFromJByteArray object_id(env, object_id_bytes);
     object_ids.push_back(*object_id.PID);
     env->DeleteLocalRef(object_id_bytes);
