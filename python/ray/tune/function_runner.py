@@ -121,7 +121,8 @@ class FunctionRunner(Trainable):
             if self._last_reported_timestep is None:
                 self._last_reported_timestep = 0
             result.update(
-                timesteps_this_iter=(curr_ts_total - self._last_reported_timestep))
+                timesteps_this_iter=(
+                    curr_ts_total - self._last_reported_timestep))
         self._last_reported_timestep = curr_ts_total
 
         return result

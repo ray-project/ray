@@ -278,12 +278,26 @@ class Trainable(object):
         raise NotImplementedError
 
     def _save(self, checkpoint_dir):
-        """Subclasses should override this to implement save()."""
+        """Subclasses should override this to implement save().
+
+        Args:
+            checkpoint_dir (str): The directory where the checkpoint
+                can be stored.
+
+        Returns:
+            Checkpoint path that may be passed to restore(). Typically
+                would default to `checkpoint_dir`.
+        """
 
         raise NotImplementedError
 
     def _restore(self, checkpoint_path):
-        """Subclasses should override this to implement restore()."""
+        """Subclasses should override this to implement restore().
+
+        Args:
+            checkpoint_path (str): The directory where the checkpoint
+                is stored.
+        """
 
         raise NotImplementedError
 
