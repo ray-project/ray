@@ -11,7 +11,7 @@ public interface LocalSchedulerLink {
 
   void submitTask(TaskSpec task);
 
-  TaskSpec getTaskTodo();
+  TaskSpec getTask();
 
   void markTaskPutDependency(UniqueID taskId, UniqueID objectId);
 

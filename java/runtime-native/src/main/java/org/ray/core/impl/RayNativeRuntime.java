@@ -114,10 +114,8 @@ public class RayNativeRuntime extends RayRuntime {
         LocalSchedulerLink slink = new DefaultLocalSchedulerClient(
             params.local_scheduler_name,
             WorkerContext.currentWorkerId(),
-            UniqueID.NIL,
             isWorker,
             WorkerContext.currentTask().taskId,
-            0,
             false
         );
 
@@ -133,10 +131,8 @@ public class RayNativeRuntime extends RayRuntime {
         LocalSchedulerLink slink = new DefaultLocalSchedulerClient(
             params.raylet_socket_name,
             WorkerContext.currentWorkerId(),
-            UniqueID.NIL,
             isWorker,
             WorkerContext.currentTask().taskId,
-            0,
             true
         );
 
