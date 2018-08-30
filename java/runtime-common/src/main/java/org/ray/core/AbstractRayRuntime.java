@@ -13,7 +13,7 @@ import org.apache.commons.lang3.tuple.Pair;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
-import org.ray.api.RayRuntime;
+import org.ray.api.runtime.RayRuntime;
 import org.ray.api.WaitResult;
 import org.ray.api.annotation.RayRemote;
 import org.ray.api.function.RayFunc;

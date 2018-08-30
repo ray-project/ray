@@ -1,6 +1,9 @@
-package org.ray.api;
+package org.ray.api.runtime;
 
 import java.util.List;
+import org.ray.api.RayActor;
+import org.ray.api.RayObject;
+import org.ray.api.WaitResult;
 import org.ray.api.function.RayFunc;
 import org.ray.api.id.UniqueId;
 

@@ -1,4 +1,4 @@
-package org.ray.api;
+package org.ray.api.runtime;
 
 /**
  * A factory that produces a RayRuntime instance.
