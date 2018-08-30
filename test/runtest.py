@@ -955,12 +955,19 @@ class APITest(unittest.TestCase):
 
         ray.worker.global_worker.run_function_on_all_workers(f)
 
-        self.init_ray()
+        self.init_ray(num_cpus=1)
+
+        def get_modified_path():
+            return sys.path[-4], sys.path[-3], sys.path[-2], sys.path[-1]
+
+        # run_function_on_all_workers also runs on the driver, so make sure it
+        # did the right thing.
+        assert get_modified_path() == (1, 2, 3, 4)
 
         @ray.remote
         def get_state():
             time.sleep(1)
-            return sys.path[-4], sys.path[-3], sys.path[-2], sys.path[-1]
+            return get_modified_path()
 
         res1 = get_state.remote()
         res2 = get_state.remote()
