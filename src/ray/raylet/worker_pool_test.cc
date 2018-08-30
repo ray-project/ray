@@ -17,9 +17,8 @@ class WorkerPoolMock : public WorkerPool {
                    {{Language::PYTHON, {"dummy_py_worker_command"}},
                     {Language::JAVA, {"dummy_java_worker_command"}}}) {}
 
-  void StartWorkerProcess(pid_t pid, const Language &language = Language::PYTHON,
-                          bool force_start = false) {
-    if (starting_worker_processes_.size() > 0 && !force_start) {
+  void StartWorkerProcess(pid_t pid, const Language &language = Language::PYTHON) {
+    if (starting_worker_processes_.size() > 0) {
       // Workers have been started, but not registered. Force start disabled -- returning.
       RAY_LOG(DEBUG) << starting_worker_processes_.size()
                      << " worker processes pending registration";

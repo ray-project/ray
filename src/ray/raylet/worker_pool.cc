@@ -62,7 +62,7 @@ WorkerPool::WorkerPool(
     RAY_CHECK(!state.worker_command.empty()) << "Worker command must not be empty.";
     // Force-start num_workers worker processes for this language.
     for (int i = 0; i < num_worker_processes; i++) {
-      StartWorkerProcess(entry.first, true);
+      StartWorkerProcess(entry.first);
     }
   }
 }
@@ -100,12 +100,11 @@ uint32_t WorkerPool::Size(const Language &language) const {
   }
 }
 
-void WorkerPool::StartWorkerProcess(const Language &language, bool force_start) {
+void WorkerPool::StartWorkerProcess(const Language &language) {
   // If we are already starting up too many workers, then return without starting
   // more.
   if (static_cast<int>(starting_worker_processes_.size()) >=
-          maximum_startup_concurrency_ &&
-      !force_start) {
+      maximum_startup_concurrency_) {
     // Workers have been started, but not registered. Force start disabled -- returning.
     RAY_LOG(DEBUG) << starting_worker_processes_.size()
                    << " worker processes pending registration";

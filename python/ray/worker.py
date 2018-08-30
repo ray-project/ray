@@ -2259,10 +2259,15 @@ def connect(info,
     # scheduler for new error messages.
     if mode == SCRIPT_MODE:
         if not worker.use_raylet:
-            t = threading.Thread(target=print_error_messages, args=(worker, ))
+            t = threading.Thread(
+                target=print_error_messages,
+                name="ray_print_error_messages",
+                args=(worker, ))
         else:
             t = threading.Thread(
-                target=print_error_messages_raylet, args=(worker, ))
+                target=print_error_messages_raylet,
+                name="ray_print_error_messages",
+                args=(worker, ))
         # Making the thread a daemon causes it to exit when the main thread
         # exits.
         t.daemon = True

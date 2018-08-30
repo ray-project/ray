@@ -65,7 +65,7 @@ public class MockLocalScheduler implements LocalSchedulerLink {
   }
 
   @Override
-  public TaskSpec getTaskTodo() {
+  public TaskSpec getTask() {
     throw new RuntimeException("invalid execution flow here");
   }
 
