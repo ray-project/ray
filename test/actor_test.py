@@ -1986,10 +1986,8 @@ def ray_stop():
     ray.shutdown()
 
 
-@unittest.skipIf(
-    os.environ.get("RAY_USE_XRAY") == "1" or sys.version_info < (3, 0),
-    "This test does not work with xray yet"
-    " and is currently failing on Python 2.7.")
+@unittest.skipIf(sys.version_info < (3, 0),
+                 "This test is currently failing on Python 2.7.")
 def testLifetimeAndTransientResources(ray_stop):
     ray.init(num_cpus=1)
 
