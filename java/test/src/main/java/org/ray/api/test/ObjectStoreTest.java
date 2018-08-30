@@ -11,7 +11,7 @@ import org.ray.api.RayObject;
 import org.ray.api.id.UniqueId;
 
 /**
- * Test putting and getting objects
+ * Test putting and getting objects.
  */
 @RunWith(MyRunner.class)
 public class ObjectStoreTest {

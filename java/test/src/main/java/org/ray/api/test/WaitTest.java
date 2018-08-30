@@ -7,8 +7,8 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.ray.api.Ray;
 import org.ray.api.RayObject;
-import org.ray.api.annotation.RayRemote;
 import org.ray.api.WaitResult;
+import org.ray.api.annotation.RayRemote;
 
 @RunWith(MyRunner.class)
 public class WaitTest {

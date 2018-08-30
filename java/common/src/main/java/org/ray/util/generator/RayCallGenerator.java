@@ -106,8 +106,8 @@ public class RayCallGenerator extends BaseGenerator {
   }
 
   public static void main(String[] args) throws IOException {
-    String path = System.getProperty("user.dir") +
-        "/api/src/main/java/org/ray/api/RayCall.java";
+    String path = System.getProperty("user.dir")
+        + "/api/src/main/java/org/ray/api/RayCall.java";
     FileUtil.overrideFile(path, new RayCallGenerator().build());
   }
 }

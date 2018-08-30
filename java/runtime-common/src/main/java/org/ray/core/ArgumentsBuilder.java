@@ -26,7 +26,7 @@ public class ArgumentsBuilder {
       } else if (arg instanceof RayActor) {
         data = Serializer.encode(arg);
       } else if (arg instanceof RayObject) {
-        id = ((RayObject)arg).getId();
+        id = ((RayObject) arg).getId();
       } else if (checkSimpleValue(arg)) {
         data = Serializer.encode(arg);
       } else {
@@ -46,7 +46,7 @@ public class ArgumentsBuilder {
   public static Pair<Object, Object[]> unwrap(TaskSpec task, Method m, ClassLoader classLoader) {
     // the last arg is className
     Object[] realArgs = new Object[task.args.length - 1];
-    for (int i = 0; i < task.args.length -1; i++) {
+    for (int i = 0; i < task.args.length - 1; i++) {
       FunctionArg arg = task.args[i];
       if (arg.id == null) {
         // pass by value
@@ -57,7 +57,8 @@ public class ArgumentsBuilder {
         realArgs[i] = Ray.get(arg.id);
       }
     }
-    Object actor = task.actorId.isNil() ? null: AbstractRayRuntime.getInstance().getLocalActor(task.actorId);
+    Object actor = task.actorId.isNil()
+        ? null : AbstractRayRuntime.getInstance().getLocalActor(task.actorId);
     return Pair.of(actor, realArgs);
   }
 }

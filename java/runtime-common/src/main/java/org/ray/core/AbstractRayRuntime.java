@@ -12,13 +12,13 @@ import org.apache.arrow.plasma.ObjectStoreLink;
 import org.apache.commons.lang3.tuple.Pair;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
-import org.ray.api.RayRuntime;
 import org.ray.api.RayObject;
-import org.ray.api.id.UniqueId;
+import org.ray.api.RayRuntime;
 import org.ray.api.WaitResult;
 import org.ray.api.annotation.RayRemote;
 import org.ray.api.function.RayFunc;
 import org.ray.api.function.RayFunc2;
+import org.ray.api.id.UniqueId;
 import org.ray.core.model.RayParameters;
 import org.ray.spi.LocalSchedulerLink;
 import org.ray.spi.ObjectStoreProxy;
@@ -72,7 +72,8 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   // engine level AbstractRayRuntime.init(xx, xx)
   // updateConfigStr is sth like section1.k1=v1;section2.k2=v2
-  public static AbstractRayRuntime init(String configPath, String updateConfigStr) throws Exception {
+  public static AbstractRayRuntime init(String configPath, String updateConfigStr)
+      throws Exception {
     if (ins == null) {
       if (configPath == null) {
         configPath = System.getenv("RAY_CONFIG");
@@ -147,7 +148,8 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     try {
       Class<?> cls = Class.forName(className);
       if (cls.getConstructors().length > 0) {
-        throw new Error("The AbstractRayRuntime final class should not have any public constructor.");
+        throw new Error(
+            "The AbstractRayRuntime final class should not have any public constructor.");
       }
       Constructor<?> cons = cls.getDeclaredConstructor();
       cons.setAccessible(true);
@@ -159,7 +161,8 @@ public abstract class AbstractRayRuntime implements RayRuntime {
       RayLog.core
           .error("Load class " + className + " failed for run-mode " + params.run_mode.toString(),
               e);
-      throw new Error("AbstractRayRuntime not registered for run-mode " + params.run_mode.toString());
+      throw new Error("AbstractRayRuntime not registered for run-mode "
+          + params.run_mode.toString());
     }
 
     RayLog.core
@@ -167,9 +170,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     try {
       runtime.start(params);
     } catch (Exception e) {
-      System.err.println("AbstractRayRuntime start failed:" + e.getMessage()); //in case of logger not ready
-      e.printStackTrace(); //in case of logger not ready
-      RayLog.core.error("AbstractRayRuntime start failed", e);
+      RayLog.core.error("Failed to init RayRuntime", e);
       System.exit(-1);
     }
 
@@ -398,7 +399,8 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     return ret;
   }
 
-  private TaskSpec createTaskSpec(RayFunc func, RayActorImpl actor, Object[] args, Class actorClassForCreation) {
+  private TaskSpec createTaskSpec(RayFunc func, RayActorImpl actor, Object[] args,
+      Class actorClassForCreation) {
     final TaskSpec current = WorkerContext.currentTask();
     UniqueId taskId = localSchedulerClient.generateTaskId(current.driverId,
         current.taskId,

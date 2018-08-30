@@ -22,14 +22,14 @@ public final class Ray extends RayCall {
    *
    * @param factory A factory that produces the runtime instance.
    */
-  synchronized public static void init(RayRuntimeFactory factory) {
+  public static synchronized void init(RayRuntimeFactory factory) {
     if (runtime == null) {
       runtime = factory.createRayRuntime();
     }
   }
 
   /**
-   * Shutdown Ray runtime
+   * Shutdown Ray runtime.
    */
   public static void shutdown() {
     runtime.shutdown();

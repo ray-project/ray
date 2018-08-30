@@ -32,7 +32,8 @@ public class InvocationExecutor {
     try {
       executeInternal(task, pr);
     } catch (IllegalAccessException | IllegalArgumentException | InvocationTargetException e) {
-      if (!task.actorId.isNil() && AbstractRayRuntime.getInstance().getLocalActor(task.actorId) == null) {
+      if (!task.actorId.isNil()
+          && AbstractRayRuntime.getInstance().getLocalActor(task.actorId) == null) {
         ex = new TaskExecutionException("Task " + taskdesc + " execution on actor " + task.actorId
             + " failed as the actor is not present ", e);
         RayLog.core.error("Task " + taskdesc + " execution on actor " + task.actorId
