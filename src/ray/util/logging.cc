@@ -114,6 +114,12 @@ void RayLog::ShutDownRayLog() {
 #endif
 }
 
+void RayLog::InstallFailureSignalHandler() {
+#ifdef RAY_USE_GLOG
+  google::InstallFailureSignalHandler();
+#endif
+}
+
 bool RayLog::IsLevelEnabled(int log_level) { return log_level >= severity_threshold_; }
 
 RayLog::RayLog(const char *file_name, int line_number, int severity)

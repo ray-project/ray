@@ -96,6 +96,7 @@ class RayLog : public RayLogBase {
   // If logDir is empty, the log won't output to file.
   static void StartRayLog(const std::string &appName, int severity_threshold = RAY_ERROR,
                           const std::string &logDir = "");
+
   // The shutdown function of ray log which should be used with StartRayLog as a pair.
   static void ShutDownRayLog();
 
@@ -104,6 +105,10 @@ class RayLog : public RayLogBase {
   /// \param log_level The input log level to test.
   /// \return True if input log level is not lower than the threshold.
   static bool IsLevelEnabled(int log_level);
+
+  // Install the failure signal handler to output call stack when crash.
+  // If glog is not installed, this function won't do anything.
+  static void InstallFailureSignalHandler();
 
  private:
   std::unique_ptr<LoggingProvider> logging_provider_;

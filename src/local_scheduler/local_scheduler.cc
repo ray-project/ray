@@ -20,7 +20,6 @@
 #include "local_scheduler_shared.h"
 #include "logging.h"
 #include "net.h"
-#include "ray/util/signal_handler.h"
 #include "ray/util/util.h"
 #include "state/actor_notification_table.h"
 #include "state/db.h"
@@ -1428,11 +1427,10 @@ void start_server(
  * suite has its own declaration of main. */
 #ifndef LOCAL_SCHEDULER_TEST
 int main(int argc, char *argv[]) {
-  DefaultInitShutdown ray_log_shutdown_wrapper(
-      RayLog::StartRayLog, RayLog::ShutDownRayLog, argv[0], RAY_INFO, "");
-  DefaultInitShutdown signal_handler_uninstall_wrapper(
-      SignalHandlers::InstallSignalHandler,
-      SignalHandlers::UninstallSignalHandler, argv[0], false);
+  DefaultInitShutdown ray_log_shutdown_wrapper(ray::RayLog::StartRayLog,
+                                               ray::RayLog::ShutDownRayLog,
+                                               argv[0], RAY_INFO, "");
+  ray::RayLog::InstallFailureSignalHandler();
   signal(SIGTERM, signal_handler);
   /* Path of the listening socket of the local scheduler. */
   char *scheduler_socket_name = NULL;

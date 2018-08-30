@@ -4,7 +4,6 @@
 
 #include "gtest/gtest.h"
 #include "ray/util/logging.h"
-#include "ray/util/signal_handler.h"
 #include "ray/util/util.h"
 
 // This test just print some call stack information.
@@ -30,38 +29,31 @@ void TestSendSignal(const std::string &test_name, int signal) {
   }
 }
 
-TEST(SignalTest, SendTermSignal_Unset_Test) {
-  // SignalHandlers will be automatically uninstalled when it is out of scope.
-  DefaultInitShutdown signal_handler_uninstall_wrapper(
-      SignalHandlers::InstallSignalHandler, SignalHandlers::UninstallSignalHandler,
-      "SendTermSignal_Unset_Test", false);
-  // This should not print call stack message.
-  TestSendSignal("SendTermSignal_Unset_Test", SIGTERM);
-}
+TEST(SignalTest, SendTermSignalTest) { TestSendSignal("SendTermSignalTest", SIGTERM); }
 
-TEST(SignalTest, SendTermSignalTest) {
-  DefaultInitShutdown signal_handler_uninstall_wrapper(
-      SignalHandlers::InstallSignalHandler, SignalHandlers::UninstallSignalHandler,
-      "SendTermSignalTest", true);
-  TestSendSignal("SendTermSignalTest", SIGTERM);
-}
+TEST(SignalTest, SendBusSignalTest) { TestSendSignal("SendBusSignalTest", SIGBUS); }
 
-TEST(SignalTest, SendIntSignalTest) {
-  DefaultInitShutdown signal_handler_uninstall_wrapper(
-      SignalHandlers::InstallSignalHandler, SignalHandlers::UninstallSignalHandler,
-      "SendIntSignalTest", true);
-  TestSendSignal("SendIntSignalTest", SIGINT);
-}
-
-TEST(SignalTest, SIGSEGV_Test) {
-  DefaultInitShutdown signal_handler_uninstall_wrapper(
-      SignalHandlers::InstallSignalHandler, SignalHandlers::UninstallSignalHandler,
-      "SIGSEGV_Test", true);
+TEST(SignalTest, SIGABRT_Test) {
   pid_t pid;
   pid = fork();
   ASSERT_TRUE(pid >= 0);
   if (pid == 0) {
-    int *pointer = (int *)0x1237896;
+    // This code will cause SIGABRT sent.
+    std::abort();
+  } else {
+    Sleep();
+    RAY_LOG(ERROR) << "SIGABRT_Test: kill pid " << pid
+                   << " with return value=" << kill(pid, SIGKILL);
+    Sleep();
+  }
+}
+
+TEST(SignalTest, SIGSEGV_Test) {
+  pid_t pid;
+  pid = fork();
+  ASSERT_TRUE(pid >= 0);
+  if (pid == 0) {
+    int *pointer = reinterpret_cast<int *>(0x1237896);
     *pointer = 100;
   } else {
     Sleep();
@@ -72,9 +64,6 @@ TEST(SignalTest, SIGSEGV_Test) {
 }
 
 TEST(SignalTest, SIGILL_Test) {
-  DefaultInitShutdown signal_handler_uninstall_wrapper(
-      SignalHandlers::InstallSignalHandler, SignalHandlers::UninstallSignalHandler,
-      "SIGILL_Test", false);
   pid_t pid;
   pid = fork();
   ASSERT_TRUE(pid >= 0);
@@ -94,6 +83,7 @@ TEST(SignalTest, SIGILL_Test) {
 int main(int argc, char **argv) {
   DefaultInitShutdown ray_log_shutdown_wrapper(
       ray::RayLog::StartRayLog, ray::RayLog::ShutDownRayLog, argv[0], RAY_DEBUG, "");
+  ray::RayLog::InstallFailureSignalHandler();
   ::testing::InitGoogleTest(&argc, argv);
   int failed = RUN_ALL_TESTS();
   return failed;

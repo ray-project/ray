@@ -7,7 +7,6 @@
 #include "global_scheduler.h"
 #include "global_scheduler_algorithm.h"
 #include "net.h"
-#include "ray/util/signal_handler.h"
 #include "ray/util/util.h"
 #include "state/db_client_table.h"
 #include "state/local_scheduler_table.h"
@@ -460,11 +459,10 @@ void start_server(const char *node_ip_address,
 }
 
 int main(int argc, char *argv[]) {
-  DefaultInitShutdown ray_log_shutdown_wrapper(
-      RayLog::StartRayLog, RayLog::ShutDownRayLog, argv[0], RAY_INFO, "");
-  DefaultInitShutdown signal_handler_uninstall_wrapper(
-      SignalHandlers::InstallSignalHandler,
-      SignalHandlers::UninstallSignalHandler, argv[0], false);
+  DefaultInitShutdown ray_log_shutdown_wrapper(ray::RayLog::StartRayLog,
+                                               ray::RayLog::ShutDownRayLog,
+                                               argv[0], RAY_INFO, "");
+  ray::RayLog::InstallFailureSignalHandler();
   signal(SIGTERM, signal_handler);
   /* IP address and port of the primary redis instance. */
   char *redis_primary_addr_port = NULL;

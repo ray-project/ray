@@ -3,6 +3,7 @@
 
 #include <boost/system/error_code.hpp>
 #include <chrono>
+
 #include "ray/status.h"
 
 /// Return the number of milliseconds since the steady clock epoch. NOTE: The
@@ -40,7 +41,7 @@ inline ray::Status boost_to_ray_status(const boost::system::error_code &error) {
 template <class Shutdown>
 class InitShutdownWrapper {
  public:
-  /// Create an instance of InitShutdownWrapper which will call shuntdown
+  /// Create an instance of InitShutdownWrapper which will call shutdown
   /// function when it is out of scope.
   ///
   /// \param init_func The init function.
@@ -48,22 +49,22 @@ class InitShutdownWrapper {
   /// \param args The auguments for the init function.
   template <class Init, class... Args>
   InitShutdownWrapper(Init init_func, Shutdown shuntdown_func, Args &&... args)
-      : shutdown(shuntdown_func) {
+      : shutdown_(shuntdown_func) {
     init_func(args...);
   }
 
   /// Destructor of InitShutdownWrapper which will call the shutdown function.
   ~InitShutdownWrapper() {
-    if (shutdown != nullptr) {
-      shutdown();
+    if (shutdown_ != nullptr) {
+      shutdown_();
     }
   }
 
  private:
-  Shutdown shutdown;
+  Shutdown shutdown_;
 };
 
 // Most of the shutdown function is the type of void (*)().
-typedef InitShutdownWrapper<void (*)()> DefaultInitShutdown;
+using DefaultInitShutdown = InitShutdownWrapper<void (*)()>;
 
 #endif  // RAY_UTIL_UTIL_H
