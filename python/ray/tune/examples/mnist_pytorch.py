@@ -1,4 +1,5 @@
-# Original Code here: https://github.com/pytorch/examples/blob/master/mnist/main.py
+# Original Code here:
+# https://github.com/pytorch/examples/blob/master/mnist/main.py
 from __future__ import print_function
 
 import argparse
@@ -9,23 +10,49 @@ import torch.optim as optim
 from torchvision import datasets, transforms
 from torch.autograd import Variable
 
-
 # Training settings
 parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
-parser.add_argument('--batch-size', type=int, default=64, metavar='N',
-                    help='input batch size for training (default: 64)')
-parser.add_argument('--test-batch-size', type=int, default=1000, metavar='N',
-                    help='input batch size for testing (default: 1000)')
-parser.add_argument('--epochs', type=int, default=10, metavar='N',
-                    help='number of epochs to train (default: 10)')
-parser.add_argument('--lr', type=float, default=0.01, metavar='LR',
-                    help='learning rate (default: 0.01)')
-parser.add_argument('--momentum', type=float, default=0.5, metavar='M',
-                    help='SGD momentum (default: 0.5)')
-parser.add_argument('--no-cuda', action='store_true', default=False,
-                    help='disables CUDA training')
-parser.add_argument('--seed', type=int, default=1, metavar='S',
-                    help='random seed (default: 1)')
+parser.add_argument(
+    '--batch-size',
+    type=int,
+    default=64,
+    metavar='N',
+    help='input batch size for training (default: 64)')
+parser.add_argument(
+    '--test-batch-size',
+    type=int,
+    default=1000,
+    metavar='N',
+    help='input batch size for testing (default: 1000)')
+parser.add_argument(
+    '--epochs',
+    type=int,
+    default=10,
+    metavar='N',
+    help='number of epochs to train (default: 10)')
+parser.add_argument(
+    '--lr',
+    type=float,
+    default=0.01,
+    metavar='LR',
+    help='learning rate (default: 0.01)')
+parser.add_argument(
+    '--momentum',
+    type=float,
+    default=0.5,
+    metavar='M',
+    help='SGD momentum (default: 0.5)')
+parser.add_argument(
+    '--no-cuda',
+    action='store_true',
+    default=False,
+    help='disables CUDA training')
+parser.add_argument(
+    '--seed',
+    type=int,
+    default=1,
+    metavar='S',
+    help='random seed (default: 1)')
 
 
 def train_mnist(args, config, reporter):
@@ -36,22 +63,30 @@ def train_mnist(args, config, reporter):
     if args.cuda:
         torch.cuda.manual_seed(args.seed)
 
-
     kwargs = {'num_workers': 1, 'pin_memory': True} if args.cuda else {}
     train_loader = torch.utils.data.DataLoader(
-        datasets.MNIST('~/data', train=True, download=False,
-                       transform=transforms.Compose([
-                           transforms.ToTensor(),
-                           transforms.Normalize((0.1307,), (0.3081,))
-                       ])),
-        batch_size=args.batch_size, shuffle=True, **kwargs)
+        datasets.MNIST(
+            '~/data',
+            train=True,
+            download=False,
+            transform=transforms.Compose([
+                transforms.ToTensor(),
+                transforms.Normalize((0.1307, ), (0.3081, ))
+            ])),
+        batch_size=args.batch_size,
+        shuffle=True,
+        **kwargs)
     test_loader = torch.utils.data.DataLoader(
-        datasets.MNIST('~/data', train=False, transform=transforms.Compose([
-                           transforms.ToTensor(),
-                           transforms.Normalize((0.1307,), (0.3081,))
-                       ])),
-        batch_size=args.test_batch_size, shuffle=True, **kwargs)
-
+        datasets.MNIST(
+            '~/data',
+            train=False,
+            transform=transforms.Compose([
+                transforms.ToTensor(),
+                transforms.Normalize((0.1307, ), (0.3081, ))
+            ])),
+        batch_size=args.test_batch_size,
+        shuffle=True,
+        **kwargs)
 
     class Net(nn.Module):
         def __init__(self):
@@ -75,7 +110,8 @@ def train_mnist(args, config, reporter):
     if args.cuda:
         model.cuda()
 
-    optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
+    optimizer = optim.SGD(
+        model.parameters(), lr=args.lr, momentum=args.momentum)
 
     def train(epoch):
         model.train()
@@ -98,8 +134,11 @@ def train_mnist(args, config, reporter):
                 data, target = data.cuda(), target.cuda()
             data, target = Variable(data, volatile=True), Variable(target)
             output = model(data)
-            test_loss += F.nll_loss(output, target, size_average=False).data[0] # sum up batch loss
-            pred = output.data.max(1, keepdim=True)[1] # get the index of the max log-probability
+            test_loss += F.nll_loss(
+                output, target,
+                size_average=False).data[0]  # sum up batch loss
+            pred = output.data.max(
+                1, keepdim=True)[1]  # get the index of the max log-probability
             correct += pred.eq(target.data.view_as(pred)).long().cpu().sum()
 
         test_loss = test_loss.item() / len(test_loader.dataset)
@@ -114,14 +153,13 @@ def train_mnist(args, config, reporter):
 if __name__ == '__main__':
     datasets.MNIST('~/data', train=True, download=True)
     args = parser.parse_args()
-    
+
     import numpy as np
     import ray
     from ray import tune
     from ray.tune.schedulers import AsyncHyperBandScheduler
 
     ray.init()
-    #ray.init(redis_address="localhost:6379")
     sched = AsyncHyperBandScheduler(
         time_attr="training_iteration",
         reward_attr="neg_mean_loss",
@@ -136,7 +174,9 @@ if __name__ == '__main__':
                     "mean_accuracy": 0.98,
                     "training_iteration": 20
                 },
-                "trial_resources": {"cpu": 3},
+                "trial_resources": {
+                    "cpu": 3
+                },
                 "run": "train_mnist",
                 "num_samples": 10,
                 "config": {
@@ -147,4 +187,3 @@ if __name__ == '__main__':
         },
         verbose=0,
         scheduler=sched)
-
