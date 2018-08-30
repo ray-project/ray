@@ -535,6 +535,23 @@ class RunExperimentTest(unittest.TestCase):
         for trial in trials:
             self.assertEqual(trial.status, Trial.TERMINATED)
 
+    def testCheckpointAtEnd(self):
+        class train(Trainable):
+            def _train(self):
+                return dict(timesteps_this_iter=1, done=True)
+
+            def _save(self, path):
+                return path
+
+        trials = run_experiments({
+            "foo": {
+                "run": train,
+                "checkpoint_at_end": True
+            }})
+        for trial in trials:
+            self.assertEqual(trial.status, Trial.TERMINATED)
+            self.assertTrue(trial.has_checkpoint())
+
 
 class VariantGeneratorTest(unittest.TestCase):
     def setUp(self):

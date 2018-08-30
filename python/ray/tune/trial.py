@@ -16,7 +16,7 @@ from ray.tune.logger import pretty_print, UnifiedLogger
 # have been defined yet. See https://github.com/ray-project/ray/issues/1716.
 import ray.tune.registry
 from ray.tune.result import (DEFAULT_RESULTS_DIR, DONE, HOSTNAME, PID,
-                             TIME_TOTAL_S, TRAINING_ITERATION)
+                             TIME_TOTAL_S, TRAINING_ITERATION, TIMESTEPS_TOTAL)
 from ray.utils import random_string, binary_to_hex
 
 DEBUG_PRINT_INTERVAL = 5
@@ -241,8 +241,8 @@ class Trial(object):
             pieces.append('{} iter'.format(
                 self.last_result[TRAINING_ITERATION]))
 
-        if self.last_result.get("timesteps_total") is not None:
-            pieces.append('{} ts'.format(self.last_result["timesteps_total"]))
+        if self.last_result.get(TIMESTEPS_TOTAL) is not None:
+            pieces.append('{} ts'.format(self.last_result[TIMESTEPS_TOTAL]))
 
         if self.last_result.get("episode_reward_mean") is not None:
             pieces.append('{} rew'.format(
