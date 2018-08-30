@@ -203,7 +203,7 @@ script:
   # - python -m pytest -v python/ray/global_scheduler/test/test.py
 
   - python -m pytest -v python/ray/test/test_queue.py
-  - python -m pytest test/xray_test.py
+  - python -m pytest -v test/xray_test.py
 
   # The --assert=plain here is because pytest's assertion
   # rewriting mechanism seems to mess up on this file,
