@@ -57,7 +57,7 @@ public class ArgumentsBuilder {
         realArgs[i] = Ray.get(arg.id);
       }
     }
-    Object actor = task.actorId.isNil() ? null: BaseRayRuntime.getInstance().getLocalActor(task.actorId);
+    Object actor = task.actorId.isNil() ? null: AbstractRayRuntime.getInstance().getLocalActor(task.actorId);
     return Pair.of(actor, realArgs);
   }
 }

@@ -1,6 +1,6 @@
 package org.ray.runner.worker;
 
-import org.ray.core.BaseRayRuntime;
+import org.ray.core.AbstractRayRuntime;
 import org.ray.core.model.WorkerMode;
 
 /**
@@ -15,13 +15,13 @@ public class DefaultDriver {
   //
   public static void main(String[] args) {
     try {
-      BaseRayRuntime.init(args);
-      assert BaseRayRuntime.getParams().worker_mode == WorkerMode.DRIVER;
+      AbstractRayRuntime.init(args);
+      assert AbstractRayRuntime.getParams().worker_mode == WorkerMode.DRIVER;
 
-      String driverClass = BaseRayRuntime.configReader
+      String driverClass = AbstractRayRuntime.configReader
           .getStringValue("ray.java.start", "driver_class", "",
               "java class which main is served as the driver in a java worker");
-      String driverArgs = BaseRayRuntime.configReader
+      String driverArgs = AbstractRayRuntime.configReader
           .getStringValue("ray.java.start", "driver_args", "",
               "arguments for the java class main function which is served at the driver");
       Class<?> cls = Class.forName(driverClass);

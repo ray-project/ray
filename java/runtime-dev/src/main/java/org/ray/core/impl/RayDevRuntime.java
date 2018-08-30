@@ -1,6 +1,6 @@
 package org.ray.core.impl;
 
-import org.ray.core.BaseRayRuntime;
+import org.ray.core.AbstractRayRuntime;
 import org.ray.core.model.RayParameters;
 import org.ray.spi.NopRemoteFunctionManager;
 import org.ray.spi.PathConfig;
@@ -8,7 +8,7 @@ import org.ray.spi.RemoteFunctionManager;
 import org.ray.spi.impl.MockLocalScheduler;
 import org.ray.spi.impl.MockObjectStore;
 
-public class RayDevRuntime extends BaseRayRuntime {
+public class RayDevRuntime extends AbstractRayRuntime {
 
   @Override
   public void start(RayParameters params) {

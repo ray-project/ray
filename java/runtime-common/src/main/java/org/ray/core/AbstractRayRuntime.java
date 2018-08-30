@@ -36,10 +36,10 @@ import org.ray.util.logger.RayLog;
 /**
  * Core functionality to implement Ray APIs.
  */
-public abstract class BaseRayRuntime implements RayRuntime {
+public abstract class AbstractRayRuntime implements RayRuntime {
 
   public static ConfigReader configReader;
-  protected static BaseRayRuntime ins = null;
+  protected static AbstractRayRuntime ins = null;
   protected static RayParameters params = null;
   private static boolean fromRayInit = false;
   protected Worker worker;
@@ -56,11 +56,11 @@ public abstract class BaseRayRuntime implements RayRuntime {
 
   // app level Ray.init()
   // make it private so there is no direct usage but only from Ray.init
-  private static BaseRayRuntime init() {
+  private static AbstractRayRuntime init() {
     if (ins == null) {
       try {
         fromRayInit = true;
-        BaseRayRuntime.init(null, null);
+        AbstractRayRuntime.init(null, null);
         fromRayInit = false;
       } catch (Exception e) {
         e.printStackTrace();
@@ -70,9 +70,9 @@ public abstract class BaseRayRuntime implements RayRuntime {
     return ins;
   }
 
-  // engine level BaseRayRuntime.init(xx, xx)
+  // engine level AbstractRayRuntime.init(xx, xx)
   // updateConfigStr is sth like section1.k1=v1;section2.k2=v2
-  public static BaseRayRuntime init(String configPath, String updateConfigStr) throws Exception {
+  public static AbstractRayRuntime init(String configPath, String updateConfigStr) throws Exception {
     if (ins == null) {
       if (configPath == null) {
         configPath = System.getenv("RAY_CONFIG");
@@ -85,7 +85,7 @@ public abstract class BaseRayRuntime implements RayRuntime {
         }
       }
       configReader = new ConfigReader(configPath, updateConfigStr);
-      BaseRayRuntime.params = new RayParameters(configReader);
+      AbstractRayRuntime.params = new RayParameters(configReader);
 
       RayLog.init(params.log_dir);
       assert RayLog.core != null;
@@ -102,7 +102,7 @@ public abstract class BaseRayRuntime implements RayRuntime {
 
   // init with command line args
   // --config=ray.config.ini --overwrite=updateConfigStr
-  public static BaseRayRuntime init(String[] args) throws Exception {
+  public static AbstractRayRuntime init(String[] args) throws Exception {
     String config = null;
     String updateConfig = null;
     for (String arg : args) {
@@ -139,19 +139,19 @@ public abstract class BaseRayRuntime implements RayRuntime {
     worker = new Worker(localSchedulerClient, functions);
   }
 
-  private static BaseRayRuntime instantiate(RayParameters params) {
+  private static AbstractRayRuntime instantiate(RayParameters params) {
     String className = params.run_mode.isNativeRuntime()
         ? "org.ray.core.impl.RayNativeRuntime" : "org.ray.core.impl.RayDevRuntime";
 
-    BaseRayRuntime runtime;
+    AbstractRayRuntime runtime;
     try {
       Class<?> cls = Class.forName(className);
       if (cls.getConstructors().length > 0) {
-        throw new Error("The BaseRayRuntime final class should not have any public constructor.");
+        throw new Error("The AbstractRayRuntime final class should not have any public constructor.");
       }
       Constructor<?> cons = cls.getDeclaredConstructor();
       cons.setAccessible(true);
-      runtime = (BaseRayRuntime) cons.newInstance();
+      runtime = (AbstractRayRuntime) cons.newInstance();
       cons.setAccessible(false);
     } catch (InstantiationException | IllegalAccessException | IllegalArgumentException
         | InvocationTargetException | SecurityException | ClassNotFoundException
@@ -159,7 +159,7 @@ public abstract class BaseRayRuntime implements RayRuntime {
       RayLog.core
           .error("Load class " + className + " failed for run-mode " + params.run_mode.toString(),
               e);
-      throw new Error("BaseRayRuntime not registered for run-mode " + params.run_mode.toString());
+      throw new Error("AbstractRayRuntime not registered for run-mode " + params.run_mode.toString());
     }
 
     RayLog.core
@@ -167,9 +167,9 @@ public abstract class BaseRayRuntime implements RayRuntime {
     try {
       runtime.start(params);
     } catch (Exception e) {
-      System.err.println("BaseRayRuntime start failed:" + e.getMessage()); //in case of logger not ready
+      System.err.println("AbstractRayRuntime start failed:" + e.getMessage()); //in case of logger not ready
       e.printStackTrace(); //in case of logger not ready
-      RayLog.core.error("BaseRayRuntime start failed", e);
+      RayLog.core.error("AbstractRayRuntime start failed", e);
       System.exit(-1);
     }
 
@@ -181,7 +181,7 @@ public abstract class BaseRayRuntime implements RayRuntime {
    */
   public abstract void start(RayParameters params) throws Exception;
 
-  public static BaseRayRuntime getInstance() {
+  public static AbstractRayRuntime getInstance() {
     return ins;
   }
 
@@ -362,7 +362,7 @@ public abstract class BaseRayRuntime implements RayRuntime {
   @Override
   @SuppressWarnings("unchecked")
   public <T> RayActor<T> createActor(Class<T> actorClass) {
-    RayFunc2<UniqueID, String, Object> func = BaseRayRuntime::createLocalActor;
+    RayFunc2<UniqueID, String, Object> func = AbstractRayRuntime::createLocalActor;
     TaskSpec spec = createTaskSpec(func, RayActorImpl.NIL, null, actorClass);
     RayActorImpl actor = new RayActorImpl(spec.returnIds[0]);
     actor.increaseTaskCounter();

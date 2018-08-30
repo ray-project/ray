@@ -32,7 +32,7 @@ public class InvocationExecutor {
     try {
       executeInternal(task, pr);
     } catch (IllegalAccessException | IllegalArgumentException | InvocationTargetException e) {
-      if (!task.actorId.isNil() && BaseRayRuntime.getInstance().getLocalActor(task.actorId) == null) {
+      if (!task.actorId.isNil() && AbstractRayRuntime.getInstance().getLocalActor(task.actorId) == null) {
         ex = new TaskExecutionException("Task " + taskdesc + " execution on actor " + task.actorId
             + " failed as the actor is not present ", e);
         RayLog.core.error("Task " + taskdesc + " execution on actor " + task.actorId
@@ -79,7 +79,7 @@ public class InvocationExecutor {
     if (task.returnIds == null || task.returnIds.length == 0) {
       return;
     }
-    BaseRayRuntime.getInstance().put(task.returnIds[0], result);
+    AbstractRayRuntime.getInstance().put(task.returnIds[0], result);
   }
 
   private static String formatTaskExecutionExceptionMsg(TaskSpec task, String funcName) {
@@ -88,6 +88,6 @@ public class InvocationExecutor {
   }
 
   private static void safePut(UniqueID objectId, Object obj) {
-    BaseRayRuntime.getInstance().put(objectId, obj);
+    AbstractRayRuntime.getInstance().put(objectId, obj);
   }
 }

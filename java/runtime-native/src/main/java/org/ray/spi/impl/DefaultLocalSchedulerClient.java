@@ -8,7 +8,7 @@ import java.util.List;
 import java.util.Map;
 
 import org.ray.api.UniqueID;
-import org.ray.core.BaseRayRuntime;
+import org.ray.core.AbstractRayRuntime;
 import org.ray.core.UniqueIdHelper;
 import org.ray.spi.LocalSchedulerLink;
 import org.ray.spi.model.FunctionArg;
@@ -23,7 +23,7 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
 
   private static ThreadLocal<ByteBuffer> _taskBuffer = ThreadLocal.withInitial(() -> {
     ByteBuffer bb = ByteBuffer
-        .allocateDirect(BaseRayRuntime.getParams().max_submit_task_buffer_size_bytes);
+        .allocateDirect(AbstractRayRuntime.getParams().max_submit_task_buffer_size_bytes);
     bb.order(ByteOrder.LITTLE_ENDIAN);
     return bb;
   });
@@ -244,9 +244,9 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
     fbb.finish(root);
     ByteBuffer buffer = fbb.dataBuffer();
 
-    if (buffer.remaining() > BaseRayRuntime.getParams().max_submit_task_buffer_size_bytes) {
+    if (buffer.remaining() > AbstractRayRuntime.getParams().max_submit_task_buffer_size_bytes) {
       RayLog.core.error(
-          "Allocated buffer is not enough to transfer the task specification: " + BaseRayRuntime
+          "Allocated buffer is not enough to transfer the task specification: " + AbstractRayRuntime
               .getParams().max_submit_task_buffer_size_bytes + " vs " + buffer.remaining());
       assert (false);
     }

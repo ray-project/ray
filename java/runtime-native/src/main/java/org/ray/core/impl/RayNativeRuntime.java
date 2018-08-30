@@ -5,8 +5,7 @@ import java.util.List;
 import java.util.Map;
 import org.apache.arrow.plasma.ObjectStoreLink;
 import org.apache.arrow.plasma.PlasmaClient;
-import org.ray.api.UniqueID;
-import org.ray.core.BaseRayRuntime;
+import org.ray.core.AbstractRayRuntime;
 import org.ray.core.WorkerContext;
 import org.ray.core.model.RayParameters;
 import org.ray.core.model.WorkerMode;
@@ -28,7 +27,7 @@ import org.ray.util.logger.RayLog;
 /**
  * native runtime for local box and cluster run.
  */
-public final class RayNativeRuntime extends BaseRayRuntime {
+public final class RayNativeRuntime extends AbstractRayRuntime {
 
   static {
     System.err.println("Current working directory is " + System.getProperty("user.dir"));
@@ -94,7 +93,7 @@ public final class RayNativeRuntime extends BaseRayRuntime {
     if (params.worker_mode != WorkerMode.NONE) {
       String overwrites = "";
       // initialize the links
-      int releaseDelay = BaseRayRuntime.configReader
+      int releaseDelay = AbstractRayRuntime.configReader
           .getIntegerValue("ray", "plasma_default_release_delay", 0,
               "how many release requests should be delayed in plasma client");
 
@@ -151,7 +150,7 @@ public final class RayNativeRuntime extends BaseRayRuntime {
 
   private void startOnebox(RayParameters params, PathConfig paths) throws Exception {
     params.cleanup = true;
-    manager = new RunManager(params, paths, BaseRayRuntime.configReader);
+    manager = new RunManager(params, paths, AbstractRayRuntime.configReader);
     manager.startRayHead();
 
     params.redis_address = manager.info().redisAddress;

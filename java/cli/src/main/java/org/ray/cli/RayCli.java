@@ -162,7 +162,7 @@ public class RayCli {
         cmdSubmit.packageZip.lastIndexOf('/') + 1,
         cmdSubmit.packageZip.lastIndexOf('.'));
 
-    //final RemoteFunctionManager functionManager = BaseRayRuntime
+    //final RemoteFunctionManager functionManager = AbstractRayRuntime
     //    .getInstance().getRemoteFunctionManager();
 
     UniqueID resourceId = functionManager.registerResource(zip);
@@ -206,8 +206,8 @@ public class RayCli {
     RayLog.rapp.debug("Find app class path  " + additionalClassPath);
 
     // Start driver process.
-    //RunManager runManager = new RunManager(params, BaseRayRuntime.getInstance().getPaths(),
-    //  BaseRayRuntime.configReader);
+    //RunManager runManager = new RunManager(params, AbstractRayRuntime.getInstance().getPaths(),
+    //  AbstractRayRuntime.configReader);
     RunManager runManager = new RunManager(params, paths, config);
     Process proc = runManager.startDriver(
         DefaultDriver.class.getName(),

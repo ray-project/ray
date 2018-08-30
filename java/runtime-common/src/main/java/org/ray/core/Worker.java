@@ -25,7 +25,7 @@ public class Worker {
   public void loop() {
     while (true) {
       RayLog.core.info(Thread.currentThread().getName() + ":fetching new task...");
-      TaskSpec task = scheduler.getTaskTodo();
+      TaskSpec task = scheduler.getTask();
       execute(task, functions);
     }
   }
@@ -45,7 +45,7 @@ public class Worker {
       RayLog.core.info("Finished executing task {}", task.taskId);
     } catch (Exception e) {
       RayLog.core.error("Failed to execute task " + task.taskId, e);
-      BaseRayRuntime.getInstance().put(task.returnIds[0], e);
+      AbstractRayRuntime.getInstance().put(task.returnIds[0], e);
     }
   }
 
