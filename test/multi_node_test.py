@@ -152,9 +152,6 @@ print("success")
         # Make sure the other driver succeeded.
         assert "success" in out
 
-    @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
     def testDriverExitingQuickly(self):
         # This test will create some drivers that submit some tasks and then
         # exit without waiting for the tasks to complete.
