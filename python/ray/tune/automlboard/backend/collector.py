@@ -41,7 +41,8 @@ class CollectorService(object):
         self.standalone = standalone
         self.collector = Collector(
             reload_interval=reload_interval,
-            logdir=log_dir, logger=self.logger)
+            logdir=log_dir,
+            logger=self.logger)
 
     def run(self):
         """Start the collector worker thread.
@@ -121,8 +122,8 @@ class Collector(Thread):
         if not os.path.exists(self._logdir):
             raise CollectorError("Log directory %s not exists" % self._logdir)
 
-        self.logger.info("Collector started to run, taking %s "
-                         "as parent directory for all job logs." % self._logdir)
+        self.logger.info("Collector started, taking %s as parent directory"
+                         "for all job logs." % self._logdir)
 
         # clear old records
         JobRecord.objects.filter().delete()
