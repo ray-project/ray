@@ -124,11 +124,11 @@ matrix:
         # module is only found if the test directory is in the PYTHONPATH.
         - export PYTHONPATH="$PYTHONPATH:./test/"
 
-        - python -m pytest python/ray/common/test/test.py
-        - python -m pytest python/ray/common/redis_module/runtest.py
-        - python -m pytest python/ray/plasma/test/test.py
-        - python -m pytest python/ray/local_scheduler/test/test.py
-        - python -m pytest python/ray/global_scheduler/test/test.py
+        - python -m pytest -v python/ray/common/test/test.py
+        - python -m pytest -v python/ray/common/redis_module/runtest.py
+        - python -m pytest -v python/ray/plasma/test/test.py
+        - python -m pytest -v python/ray/local_scheduler/test/test.py
+        - python -m pytest -v python/ray/global_scheduler/test/test.py
 
         - python -m pytest -v python/ray/test/test_queue.py
         - python -m pytest -v test/xray_test.py
@@ -196,11 +196,11 @@ script:
   # module is only found if the test directory is in the PYTHONPATH.
   - export PYTHONPATH="$PYTHONPATH:./test/"
 
-  - python -m pytest python/ray/common/test/test.py
-  - python -m pytest python/ray/common/redis_module/runtest.py
-  - python -m pytest python/ray/plasma/test/test.py
-  # - python python/ray/local_scheduler/test/test.py
-  # - python python/ray/global_scheduler/test/test.py
+  - python -m pytest -v python/ray/common/test/test.py
+  - python -m pytest -v python/ray/common/redis_module/runtest.py
+  - python -m pytest -v python/ray/plasma/test/test.py
+  # - python -m pytest -v python/ray/local_scheduler/test/test.py
+  # - python -m pytest -v python/ray/global_scheduler/test/test.py
 
   - python -m pytest -v python/ray/test/test_queue.py
   - python -m pytest test/xray_test.py
