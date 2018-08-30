@@ -80,7 +80,7 @@ public class LocalSchedulerProxy {
   }
 
   public TaskSpec getTask() {
-    TaskSpec ts = scheduler.getTaskTodo();
+    TaskSpec ts = scheduler.getTask();
     RayLog.core.info("Task " + ts.taskId.toString() + " received");
     return ts;
   }
