@@ -383,6 +383,36 @@ class TrainableFunctionApiTest(unittest.TestCase):
         self.assertEqual(trial.status, Trial.TERMINATED)
         self.assertEqual(trial.last_result['mean_accuracy'], float('inf'))
 
+    def testReportTimeStep(self):
+        def train(config, reporter):
+            for i in range(100):
+                reporter(mean_accuracy=5)
+
+        [trial] = run_experiments({
+            "foo": {
+                "run": train,
+                "config": {
+                    "script_min_iter_time_s": 0,
+                },
+            }
+        })
+        self.assertIsNone(trial.last_result[TIMESTEPS_TOTAL])
+
+        def train3(config, reporter):
+            for i in range(10):
+                reporter(timesteps_total=5)
+
+        [trial3] = run_experiments({
+            "foo": {
+                "run": train3,
+                "config": {
+                    "script_min_iter_time_s": 0,
+                },
+            }
+        })
+        self.assertEqual(trial3.last_result[TIMESTEPS_TOTAL], 5)
+        self.assertEqual(trial3.last_result["timesteps_this_iter"], 0)
+
 
 class RunExperimentTest(unittest.TestCase):
     def setUp(self):
@@ -504,6 +534,24 @@ class RunExperimentTest(unittest.TestCase):
         })
         for trial in trials:
             self.assertEqual(trial.status, Trial.TERMINATED)
+
+    def testCheckpointAtEnd(self):
+        class train(Trainable):
+            def _train(self):
+                return dict(timesteps_this_iter=1, done=True)
+
+            def _save(self, path):
+                return path
+
+        trials = run_experiments({
+            "foo": {
+                "run": train,
+                "checkpoint_at_end": True
+            }
+        })
+        for trial in trials:
+            self.assertEqual(trial.status, Trial.TERMINATED)
+            self.assertTrue(trial.has_checkpoint())
 
 
 class VariantGeneratorTest(unittest.TestCase):
