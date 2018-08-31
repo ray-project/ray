@@ -199,7 +199,8 @@ class Agent(Trainable):
 
         if self.config["observation_filter"] != "NoFilter":
             FilterManager.synchronize(
-                self.local_evaluator.filters, self.remote_evaluators,
+                self.local_evaluator.filters,
+                self.remote_evaluators,
                 update_remote=self.config["synchronize_filters"])
 
         return Trainable.train(self)
