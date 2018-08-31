@@ -83,12 +83,12 @@ class PPOAgent(Agent):
     def _init(self):
         waste_ratio = (
             self.config["sample_batch_size"] * self.config["num_workers"] /
-            self.config["timesteps_per_batch"])
+            self.config["train_batch_size"])
         if waste_ratio > 1:
             msg = (
-                "sample_batch_size * num_workers >> timesteps_per_batch. "
+                "sample_batch_size * num_workers >> train_batch_size. "
                 "This means that many steps will be discarded. Consider "
-                "reducing sample_batch_size, or increase timesteps_per_batch.")
+                "reducing sample_batch_size, or increase train_batch_size.")
             if waste_ratio > 1.5:
                 raise ValueError(msg)
             else:
