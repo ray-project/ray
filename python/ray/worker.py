@@ -1534,8 +1534,6 @@ def _init(address_info=None,
             object IDs. The same value can be used across multiple runs of the
             same job in order to generate the object IDs in a consistent
             manner. However, the same ID should not be used for different jobs.
-        num_workers (int): The number of workers to start. This is only
-            provided if start_ray_local is True.
         num_local_schedulers (int): The number of local schedulers to start.
             This is only provided if start_ray_local is True.
         object_store_memory: The maximum amount of memory (in bytes) to
@@ -1774,8 +1772,6 @@ def init(redis_address=None,
             object IDs. The same value can be used across multiple runs of the
             same job in order to generate the object IDs in a consistent
             manner. However, the same ID should not be used for different jobs.
-        num_workers (int): The number of workers to start. This is only
-            provided if redis_address is not provided.
         local_mode (bool): True if the code should be executed serially
             without Ray. This is useful for debugging.
         redirect_worker_output: True if the stdout and stderr of worker

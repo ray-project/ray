@@ -20,16 +20,15 @@ def ray_start_regular():
     ray.shutdown()
 
 
-@pytest.fixture(params=[(1, 4), (4, 4)])
+@pytest.fixture(params=[1, 4])
 def ray_start_combination(request):
-    num_local_schedulers = request.param[0]
-    num_workers_per_scheduler = request.param[1]
+    num_local_schedulers = request.param
+    num_workers_per_scheduler = 10
     # Start the Ray processes.
     ray.worker._init(
         start_ray_local=True,
-        num_workers=num_workers_per_scheduler,
         num_local_schedulers=num_local_schedulers,
-        num_cpus=10)
+        num_cpus=num_workers_per_scheduler)
     yield num_local_schedulers, num_workers_per_scheduler
     # The code after the yield will run as teardown code.
     ray.shutdown()
@@ -187,7 +186,6 @@ def ray_start_reconstruction(request):
     ray.worker._init(
         address_info=address_info,
         start_ray_local=True,
-        num_workers=1,
         num_local_schedulers=num_local_schedulers,
         num_cpus=[1] * num_local_schedulers,
         redirect_output=True)
@@ -537,6 +535,6 @@ def test_driver_put_errors(ray_start_driver_put_errors):
 #       object_ids = [f.remote(i, j) for j in range(10)]
 #       return ray.get(object_ids)
 #
-#     ray.init(num_workers=1)
+#     ray.init(num_cpus=1)
 #     ray.get([g.remote(i) for i in range(1000)])
 #     ray.shutdown()

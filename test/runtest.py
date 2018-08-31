@@ -300,7 +300,7 @@ class WorkerTest(unittest.TestCase):
         # purposes only.
         num_workers = 4
         ray.worker._init(
-            num_workers=num_workers,
+            num_cpus=num_workers,
             start_workers_from_local_scheduler=False,
             start_ray_local=True)
 
@@ -312,7 +312,7 @@ class WorkerTest(unittest.TestCase):
         assert values == [1] * (num_workers * 2)
 
     def testPutGet(self):
-        ray.init(num_workers=0)
+        ray.init(num_cpus=0)
 
         for i in range(100):
             value_before = i * 10**6
@@ -349,7 +349,7 @@ class APITest(unittest.TestCase):
         ray.shutdown()
 
     def testCustomSerializers(self):
-        self.init_ray(num_workers=1)
+        self.init_ray(num_cpus=1)
 
         class Foo(object):
             def __init__(self):
@@ -385,7 +385,7 @@ class APITest(unittest.TestCase):
         assert ray.get(f.remote()) == ((3, "string1", Bar.__name__), "string2")
 
     def testRegisterClass(self):
-        self.init_ray(num_workers=2)
+        self.init_ray(num_cpus=2)
 
         # Check that putting an object of a class that has not been registered
         # throws an exception.
@@ -732,7 +732,7 @@ class APITest(unittest.TestCase):
         assert ray.get(m.remote(1)) == 2
 
     def testSubmitAPI(self):
-        self.init_ray(num_gpus=1, resources={"Custom": 1}, num_workers=1)
+        self.init_ray(num_gpus=1, resources={"Custom": 1}, num_cpus=1)
 
         @ray.remote
         def f(n):
@@ -1214,7 +1214,6 @@ class APITest(unittest.TestCase):
         ray.worker._init(
             start_ray_local=True,
             num_local_schedulers=3,
-            num_workers=1,
             num_cpus=[1, 1, 1],
             resources=[{
                 "Custom0": 1
@@ -1397,7 +1396,7 @@ class ResourcesTest(unittest.TestCase):
 
     def testResourceConstraints(self):
         num_workers = 20
-        ray.init(num_workers=num_workers, num_cpus=10, num_gpus=2)
+        ray.init(num_cpus=10, num_gpus=2)
 
         @ray.remote(num_cpus=0)
         def get_worker_id():
@@ -1472,7 +1471,7 @@ class ResourcesTest(unittest.TestCase):
 
     def testMultiResourceConstraints(self):
         num_workers = 20
-        ray.init(num_workers=num_workers, num_cpus=10, num_gpus=10)
+        ray.init(num_cpus=10, num_gpus=10)
 
         @ray.remote(num_cpus=0)
         def get_worker_id():
@@ -1762,7 +1761,6 @@ class ResourcesTest(unittest.TestCase):
         address_info = ray.worker._init(
             start_ray_local=True,
             num_local_schedulers=3,
-            num_workers=1,
             num_cpus=[100, 5, 10],
             num_gpus=[0, 5, 1])
 
@@ -2040,19 +2038,6 @@ class WorkerPoolTests(unittest.TestCase):
     def tearDown(self):
         ray.shutdown()
 
-    def testNoWorkers(self):
-        ray.init(num_workers=0)
-
-        @ray.remote
-        def f():
-            return 1
-
-        # Make sure we can call a remote function. This will require starting a
-        # new worker.
-        ray.get(f.remote())
-
-        ray.get([f.remote() for _ in range(100)])
-
     def testBlockingTasks(self):
         ray.init(num_cpus=1)
 
@@ -2148,11 +2133,11 @@ class SchedulingAlgorithm(unittest.TestCase):
         # This test ensures that tasks are being assigned to all local
         # schedulers in a roughly equal manner even when the tasks have
         # dependencies.
-        num_workers = 3
+        num_cpus = 3
         num_local_schedulers = 3
         ray.worker._init(
             start_ray_local=True,
-            num_workers=num_workers,
+            num_cpus=num_cpus,
             num_local_schedulers=num_local_schedulers)
 
         @ray.remote
@@ -2407,10 +2392,7 @@ class GlobalStateAPI(unittest.TestCase):
 
     def testWorkers(self):
         num_workers = 3
-        ray.init(
-            redirect_worker_output=True,
-            num_cpus=num_workers,
-            num_workers=num_workers)
+        ray.init(redirect_worker_output=True, num_cpus=num_workers)
 
         @ray.remote
         def f():
