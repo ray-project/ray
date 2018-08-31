@@ -844,6 +844,7 @@ void NodeManager::ScheduleTasks(
     move_task_set.insert(task.GetTaskSpecification().TaskId());
     // Push a warning to the task's driver that this task is currently infeasible.
     {
+      // TODO(rkn): Define this constant somewhere else.
       std::string type = "infeasible_task";
       std::ostringstream error_message;
       error_message << "The task with ID " << task.GetTaskSpecification().TaskId()
