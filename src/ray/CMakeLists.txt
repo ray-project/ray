@@ -1,14 +1,12 @@
 cmake_minimum_required(VERSION 3.2)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -Wall -Werror -std=c++11")
 
-include_directories(${CMAKE_CURRENT_LIST_DIR}/../common/thirdparty/ae)
-
 add_subdirectory(util)
 add_subdirectory(gcs)
 add_subdirectory(object_manager)
 add_subdirectory(raylet)
 
-include(${CMAKE_CURRENT_LIST_DIR}/../common/cmake/Common.cmake)
+include_directories(${CMAKE_SOURCE_DIR}/src/common/thirdparty/ae)
 
 set(AE_SRCS
   ${CMAKE_CURRENT_LIST_DIR}/../common/thirdparty/ae/ae.c
@@ -63,7 +61,13 @@ set(RAY_SRCS
 )
 
 set(RAY_LIB_STATIC_LINK_LIBS ${PLASMA_STATIC_LIB} ${ARROW_STATIC_LIB})
-set(RAY_LIB_DEPENDENCIES gen_gcs_fbs gen_object_manager_fbs gen_node_manager_fbs gen_local_scheduler_fbs ${COMMON_FBS_OUTPUT_FILES})
+set(RAY_LIB_DEPENDENCIES
+    arrow_ep
+    gen_gcs_fbs
+    gen_object_manager_fbs
+    gen_node_manager_fbs
+    gen_local_scheduler_fbs
+    ${COMMON_FBS_OUTPUT_FILES})
 
 if(RAY_USE_GLOG)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DRAY_USE_GLOG")

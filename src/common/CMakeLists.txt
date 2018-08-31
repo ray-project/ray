@@ -2,7 +2,9 @@ cmake_minimum_required(VERSION 3.4)
 
 project(common)
 
-include(${CMAKE_CURRENT_LIST_DIR}/cmake/Common.cmake)
+if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
+  include_directories("${CMAKE_CURRENT_LIST_DIR}/lib/python")
+endif ()
 
 add_subdirectory(redis_module)
 
@@ -91,6 +93,8 @@ add_library(common STATIC
   state/error_table.cc
   thirdparty/ae/ae.c
   thirdparty/sha256.c)
+
+add_dependencies(common arrow_ep)
 
 if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
   add_dependencies(common gen_common_python_fbs)

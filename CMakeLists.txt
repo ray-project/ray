@@ -1,13 +1,8 @@
-cmake_minimum_required(VERSION 3.4)
+cmake_minimum_required(VERSION 3.7)
 
 project(ray)
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/Modules")
-
-include(${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/scripts/thirdparty.cmake)
-
-find_package(Arrow)
-find_package(Plasma)
 
 # This ensures that things like gnu++11 get passed correctly
 set(CMAKE_CXX_STANDARD 11)
@@ -17,6 +12,18 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_GLIBCXX_USE_CXX11_ABI=0")
 
 # We require a C++11 compliant compiler
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# supress warning of ray_shared
+cmake_policy(SET CMP0068 OLD)
+
+# ray build options
+option(RAY_BUILD_PYTHON
+    "build python library"
+    ON)
+
+option(RAY_BUILD_JAVA
+    "build java library"
+    OFF)
 
 option(RAY_BUILD_STATIC
   "Build the libray static libraries"
@@ -38,6 +45,14 @@ option(RAY_USE_GLOG
   "Build the logging system using glog"
   ON)
 
+if (RAY_BUILD_PYTHON)
+  set(CMAKE_RAY_LANG_PYTHON YES)
+endif ()
+
+if (RAY_BUILD_JAVA)
+  set(CMAKE_RAY_LANG_JAVA YES)
+endif ()
+
 if (RAY_USE_NEW_GCS)
   add_definitions(-DRAY_USE_NEW_GCS)
 endif()
@@ -48,7 +63,7 @@ include(BuildUtils)
 enable_testing()
 
 include(ThirdpartyToolchain)
-
+include(Common)
 
 # TODO(rkn): Fix all of this. This include is needed for the following
 # reason. The local scheduler depends on tables.cc which depends on

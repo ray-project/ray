@@ -158,3 +158,5 @@ java/**/.settings
 java/**/.classpath
 java/**/.project
 
+# python virtual env
+venv

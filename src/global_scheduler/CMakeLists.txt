@@ -2,11 +2,12 @@ cmake_minimum_required(VERSION 3.4)
 
 project(global_scheduler)
 
-include(${CMAKE_CURRENT_LIST_DIR}/../common/cmake/Common.cmake)
+set(global_scheduler_header_files global_scheduler.h global_scheduler_algorithm.h)
+set(global_scheduler_source_files global_scheduler_algorithm.cc global_scheduler.cc)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Werror -Wall")
 
-add_executable(global_scheduler global_scheduler.cc global_scheduler_algorithm.cc)
+add_executable(global_scheduler ${global_scheduler_header_files} ${global_scheduler_source_files})
 
 # Make sure ${HIREDIS_LIB} is ready before linking.
 add_dependencies(global_scheduler hiredis)

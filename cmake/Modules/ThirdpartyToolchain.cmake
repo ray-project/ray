@@ -14,10 +14,12 @@ if(RAY_BUILD_TESTS OR RAY_BUILD_BENCHMARKS)
   elseif(NOT MSVC)
     set(GTEST_CMAKE_CXX_FLAGS "-fPIC")
   endif()
-  string(TOUPPER ${CMAKE_BUILD_TYPE} UPPERCASE_BUILD_TYPE)
+  if(CMAKE_BUILD_TYPE)
+    string(TOUPPER ${CMAKE_BUILD_TYPE} UPPERCASE_BUILD_TYPE)
+  endif()
   set(GTEST_CMAKE_CXX_FLAGS "${EP_CXX_FLAGS} ${CMAKE_CXX_FLAGS_${UPPERCASE_BUILD_TYPE}} ${GTEST_CMAKE_CXX_FLAGS}")
 
-  set(GTEST_PREFIX "${CMAKE_CURRENT_BINARY_DIR}/googletest_ep-prefix/src/googletest_ep")
+  set(GTEST_PREFIX "${CMAKE_CURRENT_BINARY_DIR}/external/googletest/src/googletest_ep")
   set(GTEST_INCLUDE_DIR "${GTEST_PREFIX}/include")
   set(GTEST_STATIC_LIB
     "${GTEST_PREFIX}/lib/${CMAKE_STATIC_LIBRARY_PREFIX}gtest${CMAKE_STATIC_LIBRARY_SUFFIX}")
@@ -33,6 +35,7 @@ if(RAY_BUILD_TESTS OR RAY_BUILD_BENCHMARKS)
   endif()
 
   ExternalProject_Add(googletest_ep
+    PREFIX external/googletest
     URL "https://github.com/google/googletest/archive/release-${GTEST_VERSION}.tar.gz"
     BUILD_BYPRODUCTS ${GTEST_STATIC_LIB} ${GTEST_MAIN_STATIC_LIB} ${GMOCK_MAIN_STATIC_LIB}
     CMAKE_ARGS ${GTEST_CMAKE_ARGS}
@@ -51,6 +54,45 @@ if(RAY_BUILD_TESTS OR RAY_BUILD_BENCHMARKS)
   add_dependencies(gtest googletest_ep)
   add_dependencies(gtest_main googletest_ep)
   add_dependencies(gmock_main googletest_ep)
+
+  set(GFLAGS_CMAKE_CXX_FLAGS ${EP_CXX_FLAGS})
+
+  set(GFLAGS_URL "https://github.com/gflags/gflags/archive/v${GFLAGS_VERSION}.tar.gz")
+  set(GFLAGS_PREFIX "${CMAKE_CURRENT_BINARY_DIR}/external/gflags/src/gflags_ep")
+  set(GFLAGS_HOME "${GFLAGS_PREFIX}")
+  set(GFLAGS_INCLUDE_DIR "${GFLAGS_PREFIX}/include")
+  if(MSVC)
+    set(GFLAGS_STATIC_LIB "${GFLAGS_PREFIX}/lib/gflags_static.lib")
+  else()
+    set(GFLAGS_STATIC_LIB "${GFLAGS_PREFIX}/lib/libgflags.a")
+  endif()
+  set(GFLAGS_CMAKE_ARGS -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+                        -DCMAKE_INSTALL_PREFIX=${GFLAGS_PREFIX}
+                        -DBUILD_SHARED_LIBS=OFF
+                        -DBUILD_STATIC_LIBS=ON
+                        -DBUILD_PACKAGING=OFF
+                        -DBUILD_TESTING=OFF
+                        -BUILD_CONFIG_TESTS=OFF
+                        -DINSTALL_HEADERS=ON
+                        -DCMAKE_CXX_FLAGS_${UPPERCASE_BUILD_TYPE}=${EP_CXX_FLAGS}
+                        -DCMAKE_C_FLAGS_${UPPERCASE_BUILD_TYPE}=${EP_C_FLAGS}
+                        -DCMAKE_CXX_FLAGS=${GFLAGS_CMAKE_CXX_FLAGS})
+
+  ExternalProject_Add(gflags_ep
+    PREFIX external/gflags
+    URL ${GFLAGS_URL}
+    ${EP_LOG_OPTIONS}
+    BUILD_IN_SOURCE 1
+    BUILD_BYPRODUCTS "${GFLAGS_STATIC_LIB}"
+    CMAKE_ARGS ${GFLAGS_CMAKE_ARGS})
+
+  message(STATUS "GFlags include dir: ${GFLAGS_INCLUDE_DIR}")
+  message(STATUS "GFlags static library: ${GFLAGS_STATIC_LIB}")
+  include_directories(SYSTEM ${GFLAGS_INCLUDE_DIR})
+  ADD_THIRDPARTY_LIB(gflags
+    STATIC_LIB ${GFLAGS_STATIC_LIB})
+
+  add_dependencies(gflags gflags_ep)
 endif()
 
 set(Boost_USE_STATIC_LIBS ON)
@@ -66,7 +108,7 @@ if(RAY_USE_GLOG)
   endif()
 
   set(GLOG_URL "https://github.com/google/glog/archive/v${GLOG_VERSION}.tar.gz")
-  set(GLOG_PREFIX "${CMAKE_CURRENT_BINARY_DIR}/glog_ep-prefix/src/glog_ep")
+  set(GLOG_PREFIX "${CMAKE_CURRENT_BINARY_DIR}/external/glog/src/glog_ep")
   set(GLOG_HOME "${GLOG_PREFIX}")
   set(GLOG_INCLUDE_DIR "${GLOG_PREFIX}/include")
   set(GLOG_STATIC_LIB "${GLOG_PREFIX}/lib/libglog.a")
@@ -81,6 +123,7 @@ if(RAY_USE_GLOG)
                         -DCMAKE_CXX_FLAGS=${GLOG_CMAKE_CXX_FLAGS})
 
   ExternalProject_Add(glog_ep
+    PREFIX external/glog
     URL ${GLOG_URL}
     ${EP_LOG_OPTIONS}
     BUILD_IN_SOURCE 1
@@ -95,3 +138,76 @@ if(RAY_USE_GLOG)
 
   add_dependencies(glog glog_ep)
 endif()
+
+# flatbuffers
+include(FlatBuffersExternalProject)
+
+message(STATUS "Flatbuffers home: ${FLATBUFFERS_HOME}")
+message(STATUS "Flatbuffers include dir: ${FLATBUFFERS_INCLUDE_DIR}")
+message(STATUS "Flatbuffers static library: ${FLATBUFFERS_STATIC_LIB}")
+message(STATUS "Flatbuffers compiler: ${FLATBUFFERS_COMPILER}")
+include_directories(SYSTEM ${FLATBUFFERS_INCLUDE_DIR})
+
+ADD_THIRDPARTY_LIB(flatbuffers STATIC_LIB ${FLATBUFFERS_STATIC_LIB})
+
+add_dependencies(flatbuffers flatbuffers_ep)
+
+# Apache Arrow, use FLATBUFFERS_HOME and BOOST_ROOT
+include(ArrowExternalProject)
+
+message(STATUS "Arrow home: ${ARROW_HOME}")
+message(STATUS "Arrow source dir: ${ARROW_SOURCE_DIR}")
+message(STATUS "Arrow include dir: ${ARROW_INCLUDE_DIR}")
+message(STATUS "Arrow static library: ${ARROW_STATIC_LIB}")
+message(STATUS "Arrow shared library: ${ARROW_SHARED_LIB}")
+include_directories(SYSTEM ${ARROW_INCLUDE_DIR})
+
+ADD_THIRDPARTY_LIB(arrow STATIC_LIB ${ARROW_STATIC_LIB})
+
+add_dependencies(arrow arrow_ep)
+
+# Plasma, it is already built in arrow
+message(STATUS "Plasma include dir: ${PLASMA_INCLUDE_DIR}")
+message(STATUS "Plasma static library: ${PLASMA_STATIC_LIB}")
+message(STATUS "Plasma shared library: ${PLASMA_SHARED_LIB}")
+include_directories(SYSTEM ${PLASMA_INCLUDE_DIR})
+
+ADD_THIRDPARTY_LIB(plasma STATIC_LIB ${PLASMA_STATIC_LIB})
+
+add_dependencies(plasma plasma_ep)
+
+if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
+  # Apache parquet cpp
+  include(ParquetExternalProject)
+
+  message(STATUS "Parquet home: ${PARQUET_HOME}")
+  message(STATUS "Parquet include dir: ${PARQUET_INCLUDE_DIR}")
+  message(STATUS "Parquet static library: ${PARQUET_STATIC_LIB}")
+  message(STATUS "Parquet shared library: ${PARQUET_SHARED_LIB}")
+  include_directories(SYSTEM ${PARQUET_INCLUDE_DIR})
+
+  ADD_THIRDPARTY_LIB(parquet STATIC_LIB ${PARQUET_STATIC_LIB})
+
+  add_dependencies(parquet parquet_ep)
+
+  # pyarrow
+  add_custom_target(pyarrow ALL DEPENDS parquet_ep)
+
+  find_package(PythonInterp REQUIRED)
+  message(STATUS "PYTHON_EXECUTABLE: ${PYTHON_EXECUTABLE}")
+
+  set(pyarrow_ENV
+      "PKG_CONFIG_PATH=${ARROW_HOME}/lib/pkgconfig"
+      "PYARROW_WITH_PLASMA=1"
+      "PYARROW_WITH_TENSORFLOW=1"
+      "PYARROW_BUNDLE_ARROW_CPP=1"
+      "PARQUET_HOME=${PARQUET_HOME}"
+      "PYARROW_WITH_PARQUET=1"
+      )
+
+  add_custom_command(TARGET pyarrow PRE_BUILD
+      COMMAND ${CMAKE_COMMAND} -E env ${pyarrow_ENV}
+      ${PYTHON_EXECUTABLE} setup.py build_ext
+      WORKING_DIRECTORY ${ARROW_SOURCE_DIR}/python
+      )
+endif ()
