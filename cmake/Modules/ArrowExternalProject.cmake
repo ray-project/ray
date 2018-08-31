@@ -22,7 +22,7 @@ if (RAY_BUILD_JAVA)
 endif ()
 
 set(arrow_URL https://github.com/apache/arrow.git)
-set(arrow_TAG 4660833b2c5ef63a97445e304b8f72a2e0170f9c)
+set(arrow_TAG fda4b3dcfc773612b12973df5053193f236fc696)
 
 set(ARROW_INSTALL_PREFIX ${CMAKE_CURRENT_BINARY_DIR}/external/arrow-install)
 set(ARROW_HOME ${ARROW_INSTALL_PREFIX})
@@ -61,11 +61,12 @@ set(ARROW_CMAKE_ARGS
     -DARROW_WITH_ZSTD=off
     -DARROW_PLASMA_JAVA_CLIENT=${BUILD_ARROW_PLASMA_JAVA_CLIENT}
     -DFLATBUFFERS_HOME=${FLATBUFFERS_HOME}
+    -DBOOST_ROOT=${BOOST_ROOT}
     )
 
 ExternalProject_Add(arrow_ep
     PREFIX external/arrow
-    DEPENDS flatbuffers_ep
+    DEPENDS flatbuffers_ep boost_ep
     GIT_REPOSITORY ${arrow_URL}
     GIT_TAG ${arrow_TAG}
     SOURCE_SUBDIR cpp

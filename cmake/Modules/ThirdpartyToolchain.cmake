@@ -95,10 +95,6 @@ if(RAY_BUILD_TESTS OR RAY_BUILD_BENCHMARKS)
   add_dependencies(gflags gflags_ep)
 endif()
 
-set(Boost_USE_STATIC_LIBS ON)
-find_package(Boost COMPONENTS system filesystem REQUIRED)
-include_directories(${Boost_INCLUDE_DIR})
-
 if(RAY_USE_GLOG)
   message(STATUS "Starting to build glog")
   set(GLOG_VERSION "0.3.5")
@@ -138,6 +134,15 @@ if(RAY_USE_GLOG)
 
   add_dependencies(glog glog_ep)
 endif()
+
+# boost
+include(BoostExternalProject)
+
+message(STATUS "Boost root: ${BOOST_ROOT}")
+message(STATUS "Boost include dir: ${Boost_INCLUDE_DIR}")
+message(STATUS "Boost system library: ${Boost_SYSTEM_LIBRARY}")
+message(STATUS "Boost filesystem library: ${Boost_FILESYSTEM_LIBRARY}")
+include_directories(${Boost_INCLUDE_DIR})
 
 # flatbuffers
 include(FlatBuffersExternalProject)
