@@ -2,11 +2,13 @@ package org.ray.api.test;
 
 import org.junit.Assert;
 import org.junit.Test;
+import org.ray.api.annotation.RayRemote;
 import org.ray.spi.model.RayActorMethods;
 import org.ray.util.logger.RayLog;
 
 public class RayActorMethodsTest {
 
+  @RayRemote
   public static class ExampleActor {
 
     public void func1() {}
