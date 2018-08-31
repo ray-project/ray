@@ -33,7 +33,7 @@ def run_string_as_driver(driver_script):
 
 @pytest.fixture
 def ray_start_head():
-    out = run_and_get_output(["ray", "start", "--head"])
+    out = run_and_get_output(["ray", "start", "--head", "--num-cpus=2"])
     # Get the redis address from the output.
     redis_substring_prefix = "redis_address=\""
     redis_address_location = (
@@ -201,6 +201,73 @@ print("success")
         # Make sure the first driver ran to completion.
         assert "success" in out
         assert ray.services.all_processes_alive()
+
+
+@pytest.fixture
+def ray_start_head_with_resources():
+    out = run_and_get_output(["ray", "start", "--head", "--num-cpus=1",
+                              "--num-gpus=1"])
+    # Get the redis address from the output.
+    redis_substring_prefix = "redis_address=\""
+    redis_address_location = (
+        out.find(redis_substring_prefix) + len(redis_substring_prefix))
+    redis_address = out[redis_address_location:]
+    redis_address = redis_address.split("\"")[0]
+
+    yield redis_address
+
+    # Disconnect from the Ray cluster.
+    ray.shutdown()
+    # Kill the Ray cluster.
+    subprocess.Popen(["ray", "stop"]).wait()
+
+
+@pytest.mark.skip(reason="This test does not work yet.")
+def test_drivers_release_resources(ray_start_head_with_resources):
+    redis_address = ray_start_head_with_resources
+
+    ray.init(redis_address=redis_address)
+
+    # Define a driver that creates an actor and exits.
+    driver_script = """
+import time
+import ray
+
+ray.init(redis_address="{}")
+
+@ray.remote
+def f(duration):
+    time.sleep(duration)
+
+@ray.remote(num_gpus=1)
+def g(duration):
+    time.sleep(duration)
+
+@ray.remote(num_gpus=1)
+class Foo(object):
+    def __init__(self):
+        pass
+
+# Make sure some resources are available for us to run tasks.
+ray.get(f.remote(0))
+ray.get(g.remote(0))
+
+# Start a bunch of actors and tasks that use resources. These should all be
+# cleaned up when this driver exits.
+foos = [Foo.remote() for _ in range(100)]
+[f.remote(10 ** 6) for _ in range(100)]
+
+print("success")
+""".format(redis_address)
+
+    # Make sure we can run this driver repeatedly, which means that resources
+    # are getting released in between.
+    for _ in range(5):
+        out = run_string_as_driver(driver_script)
+        # Make sure the first driver ran to completion.
+        assert "success" in out
+        # TODO(rkn): Also make sure that this works when the driver exits
+        # ungracefully.
 
 
 def test_calling_start_ray_head():
