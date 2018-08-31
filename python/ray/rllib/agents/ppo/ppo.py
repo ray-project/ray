@@ -79,6 +79,18 @@ class PPOAgent(Agent):
             extra_gpu=cf["num_gpus_per_worker"] * cf["num_workers"])
 
     def _init(self):
+        waste_ratio = (
+            self.config["sample_batch_size"] * self.config["num_workers"] /
+            self.config["timesteps_per_batch"])
+        if waste_ratio > 1:
+            msg = (
+                "sample_batch_size * num_workers >> timesteps_per_batch. "
+                "This means that many steps will be discarded. Consider "
+                "reducing sample_batch_size, or increase timesteps_per_batch.")
+            if waste_ratio > 1.5:
+                raise ValueError(msg)
+            else:
+                print("Warning: " + msg)
         self.local_evaluator = self.make_local_evaluator(
             self.env_creator, self._policy_graph)
         self.remote_evaluators = self.make_remote_evaluators(
