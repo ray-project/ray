@@ -94,7 +94,7 @@ public class LocalFunctionManager {
       RayTaskMethods tasks = taskMethods.get(className);
       if (tasks == null) {
         tasks = RayTaskMethods.fromClass(className, classLoader);
-        RayLog.core.info("createActor RayTaskMethods:" + tasks);
+        RayLog.core.info("create RayTaskMethods:" + tasks);
         taskMethods.put(className, tasks);
       }
       RayMethod m = tasks.functions.get(methodId);
@@ -113,7 +113,7 @@ public class LocalFunctionManager {
       RayActorMethods actor = actors.get(className);
       if (actor == null) {
         actor = RayActorMethods.fromClass(className, classLoader);
-        RayLog.core.info("createActor RayActorMethods:" + actor);
+        RayLog.core.info("create RayActorMethods:" + actor);
         actors.put(className, actor);
       }
       return isStatic ? actor.staticFunctions.get(methodId) : actor.functions.get(methodId);

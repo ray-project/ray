@@ -6,9 +6,11 @@ import java.util.Arrays;
 import org.ray.api.id.UniqueId;
 
 
-//
-// Helper methods for UniqueId. These are the same as the helper functions in src/ray/id.h.
-//
+/**
+ * Helper method for UniqueId.
+ * Note: any changes to these methods must be synced with C++ helper functions
+ * in src/ray/id.h
+ */
 public class UniqueIdHelper {
   public static final int OBJECT_INDEX_POS = 0;
   public static final int OBJECT_INDEX_LENGTH = 4;

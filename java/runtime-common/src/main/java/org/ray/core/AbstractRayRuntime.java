@@ -389,7 +389,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   }
 
   /**
-   * generate the return ids of a task.
+   * Generate the return ids of a task.
    */
   private UniqueId[] genReturnIds(UniqueId taskId, int numReturns) {
     UniqueId[] ret = new UniqueId[numReturns];
@@ -399,6 +399,15 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     return ret;
   }
 
+  /**
+   * Create the task specification.
+   * @param func The target remote function.
+   * @param actor The actor handle. If the task is not an actor task, actor id must be NIL.
+   * @param args The arguments for the remote function.
+   * @param actorClassForCreation If the task is a actor creation task, the argument should be
+   *     the actor class. Otherwise, it should be null.
+   * @return A TaskSpec object.
+   */
   private TaskSpec createTaskSpec(RayFunc func, RayActorImpl actor, Object[] args,
       Class actorClassForCreation) {
     final TaskSpec current = WorkerContext.currentTask();

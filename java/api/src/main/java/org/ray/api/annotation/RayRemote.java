@@ -7,8 +7,8 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Defines a remote function (when used on a method)
- * or actor (when used on a class).
+ * Defines a remote function (when used on a method),
+ * or an actor (when used on a class).
  */
 @Documented
 @Retention(RetentionPolicy.RUNTIME)
@@ -20,5 +20,5 @@ public @interface RayRemote {
    * for this task or for the lifetime of the actor.
    * @return an array of custom resource items.
    */
-  ResourceItem[] resources() default {@ResourceItem()};
+  ResourceItem[] resources() default {};
 }

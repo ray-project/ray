@@ -18,7 +18,7 @@ public @interface ResourceItem {
   /**
    * Name of this resource, must not be null or empty.
    */
-  String name() default "";
+  String name();
 
   /**
    * Quantity of this resource.

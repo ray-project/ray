@@ -162,9 +162,6 @@ public class RayCli {
         cmdSubmit.packageZip.lastIndexOf('/') + 1,
         cmdSubmit.packageZip.lastIndexOf('.'));
 
-    //final RemoteFunctionManager functionManager = AbstractRayRuntime
-    //    .getInstance().getRemoteFunctionManager();
-
     UniqueId resourceId = functionManager.registerResource(zip);
 
     // Init RayLog before using it.
@@ -181,7 +178,7 @@ public class RayCli {
     String appDir = "/tmp/" + cmdSubmit.className;
     String extPath = appDir + "/" + packageName;
     if (!FileUtil.createDir(extPath, false)) {
-      throw new RuntimeException("createActor dir " + extPath + " failed ");
+      throw new RuntimeException("create dir " + extPath + " failed ");
     }
 
     ZipFile zipFile = new ZipFile(cmdSubmit.packageZip);
@@ -206,8 +203,6 @@ public class RayCli {
     RayLog.rapp.debug("Find app class path  " + additionalClassPath);
 
     // Start driver process.
-    //RunManager runManager = new RunManager(params, AbstractRayRuntime.getInstance().getPaths(),
-    //  AbstractRayRuntime.configReader);
     RunManager runManager = new RunManager(params, paths, config);
     Process proc = runManager.startDriver(
         DefaultDriver.class.getName(),

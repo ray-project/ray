@@ -60,7 +60,7 @@ public interface FileStoreLink {
   /**
    * Create an FSDataOutputStream at the indicated Path. Files are overwritten by default.
    *
-   * @param f the file to createActor
+   * @param f the file to create
    */
   DataOutputStream create(String f, boolean overwrite);
 

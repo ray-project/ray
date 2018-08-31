@@ -119,7 +119,7 @@ public class FileUtil {
   public static String getCanonicalDirectory(final String rawDir) throws IOException {
     String dir = rawDir.length() == 0 ? "." : rawDir;
 
-    // createActor working dir if necessary
+    // create working dir if necessary
     File dd = new File(dir);
     if (!dd.exists()) {
       dd.mkdirs();
