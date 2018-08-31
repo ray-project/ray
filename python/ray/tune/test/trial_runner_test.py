@@ -383,6 +383,36 @@ class TrainableFunctionApiTest(unittest.TestCase):
         self.assertEqual(trial.status, Trial.TERMINATED)
         self.assertEqual(trial.last_result['mean_accuracy'], float('inf'))
 
+    def testReportTimeStep(self):
+        def train(config, reporter):
+            for i in range(100):
+                reporter(mean_accuracy=5)
+
+        [trial] = run_experiments({
+            "foo": {
+                "run": train,
+                "config": {
+                    "script_min_iter_time_s": 0,
+                },
+            }
+        })
+        self.assertIsNone(trial.last_result[TIMESTEPS_TOTAL])
+
+        def train3(config, reporter):
+            for i in range(10):
+                reporter(timesteps_total=5)
+
+        [trial3] = run_experiments({
+            "foo": {
+                "run": train3,
+                "config": {
+                    "script_min_iter_time_s": 0,
+                },
+            }
+        })
+        self.assertEqual(trial3.last_result[TIMESTEPS_TOTAL], 5)
+        self.assertEqual(trial3.last_result["timesteps_this_iter"], 0)
+
 
 class RunExperimentTest(unittest.TestCase):
     def setUp(self):
@@ -504,6 +534,24 @@ class RunExperimentTest(unittest.TestCase):
         })
         for trial in trials:
             self.assertEqual(trial.status, Trial.TERMINATED)
+
+    def testCheckpointAtEnd(self):
+        class train(Trainable):
+            def _train(self):
+                return dict(timesteps_this_iter=1, done=True)
+
+            def _save(self, path):
+                return path
+
+        trials = run_experiments({
+            "foo": {
+                "run": train,
+                "checkpoint_at_end": True
+            }
+        })
+        for trial in trials:
+            self.assertEqual(trial.status, Trial.TERMINATED)
+            self.assertTrue(trial.has_checkpoint())
 
 
 class VariantGeneratorTest(unittest.TestCase):
@@ -937,6 +985,26 @@ class TrialRunnerTest(unittest.TestCase):
         self.assertEqual(trials[1].status, Trial.RUNNING)
         self.assertEqual(ray.get(trials[1].runner.get_info.remote()), 1)
         self.addCleanup(os.remove, path)
+
+    def testCheckpointingAtEnd(self):
+        ray.init(num_cpus=1, num_gpus=1)
+        runner = TrialRunner(BasicVariantGenerator())
+        kwargs = {
+            "stopping_criterion": {
+                "training_iteration": 2
+            },
+            "checkpoint_at_end": True,
+            "resources": Resources(cpu=1, gpu=1),
+        }
+        runner.add_trial(Trial("__fake", **kwargs))
+        trials = runner.get_trials()
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+        runner.step()
+        runner.step()
+        self.assertEqual(trials[0].last_result[DONE], True)
+        self.assertEqual(trials[0].has_checkpoint(), True)
 
     def testResultDone(self):
         """Tests that last_result is marked `done` after trial is complete."""

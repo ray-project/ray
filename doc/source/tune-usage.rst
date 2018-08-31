@@ -254,6 +254,20 @@ Additionally, checkpointing can be used to provide fault-tolerance for experimen
         },
     })
 
+The checkpoint_freq may not coincide with the exact end of an experiment. If you want a checkpoint to be created at the end
+of a trial, you can additionally set the checkpoint_at_end to True. An example is shown below:
+
+.. code-block:: python
+   :emphasize-lines: 5
+
+    run_experiments({
+        "my_experiment_name": {
+            "run": my_trainable
+            "checkpoint_freq": 10,
+            "checkpoint_at_end": True,
+            "max_failures": 5,
+        },
+    })
 
 Handling Large Datasets
 -----------------------
