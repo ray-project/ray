@@ -106,7 +106,7 @@ class ModelSupportedSpaces(unittest.TestCase):
             "PPO", {
                 "num_workers": 1,
                 "num_sgd_iter": 1,
-                "timesteps_per_batch": 1,
+                "train_batch_size": 1,
                 "sgd_batchsize": 1
             }, stats)
         check_support(
@@ -114,7 +114,7 @@ class ModelSupportedSpaces(unittest.TestCase):
                 "num_workers": 1,
                 "noise_size": 10000000,
                 "episodes_per_batch": 1,
-                "timesteps_per_batch": 1
+                "train_batch_size": 1
             }, stats)
         check_support(
             "ARS", {

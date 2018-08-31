@@ -7,6 +7,6 @@ hopper-ppo:
         num_sgd_iter: 20
         sgd_stepsize: .0001
         sgd_batchsize: 32768
-        timesteps_per_batch: 160000
+        train_batch_size: 160000
         num_workers: 64
         num_gpus: 4

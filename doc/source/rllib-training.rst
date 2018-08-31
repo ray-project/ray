@@ -50,6 +50,8 @@ In an example below, we train A2C by specifying 8 workers through the config fla
     python ray/python/ray/rllib/train.py --env=PongDeterministic-v4 \
         --run=A2C --config '{"num_workers": 8, "monitor": true}'
 
+.. image:: rllib-config.svg
+
 Evaluating Trained Agents
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 

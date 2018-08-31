@@ -20,8 +20,12 @@ DEFAULT_CONFIG = with_common_config({
     "lambda": 1.0,
     # Initial coefficient for KL divergence
     "kl_coeff": 0.2,
+    # Size of batches collected from each worker
+    "sample_batch_size": 200,
     # Number of timesteps collected for each SGD round
-    "timesteps_per_batch": 4000,
+    "train_batch_size": 4000,
+    # Total SGD batch size across all devices for SGD (multi-gpu only)
+    "sgd_batchsize": 128,
     # Number of SGD iterations in each outer loop
     "num_sgd_iter": 30,
     # Stepsize of SGD
@@ -30,8 +34,6 @@ DEFAULT_CONFIG = with_common_config({
     "lr_schedule": None,
     # Share layers for value function
     "vf_share_layers": False,
-    # Total SGD batch size across all devices for SGD (multi-gpu only)
-    "sgd_batchsize": 128,
     # Coefficient of the value function loss
     "vf_loss_coeff": 1.0,
     # Coefficient of the entropy regularizer
@@ -102,7 +104,7 @@ class PPOAgent(Agent):
             self.optimizer = SyncSamplesOptimizer(
                 self.local_evaluator, self.remote_evaluators, {
                     "num_sgd_iter": self.config["num_sgd_iter"],
-                    "timesteps_per_batch": self.config["timesteps_per_batch"]
+                    "train_batch_size": self.config["train_batch_size"]
                 })
         else:
             self.optimizer = LocalMultiGPUOptimizer(
@@ -110,7 +112,7 @@ class PPOAgent(Agent):
                     "sgd_batch_size": self.config["sgd_batchsize"],
                     "num_sgd_iter": self.config["num_sgd_iter"],
                     "num_gpus": self.config["num_gpus"],
-                    "timesteps_per_batch": self.config["timesteps_per_batch"],
+                    "train_batch_size": self.config["train_batch_size"],
                     "standardize_fields": ["advantages"],
                 })
 

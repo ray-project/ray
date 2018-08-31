@@ -12,7 +12,7 @@ humanoid-ppo-gae:
         sgd_stepsize: .0001
         sgd_batchsize: 32768
         horizon: 5000
-        timesteps_per_batch: 320000
+        train_batch_size: 320000
         model:
             free_log_std: true
         num_workers: 64

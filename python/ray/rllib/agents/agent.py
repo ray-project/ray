@@ -26,6 +26,9 @@ COMMON_CONFIG = {
     "num_workers": 2,
     # Default sample batch size
     "sample_batch_size": 200,
+    # Training batch size, if applicable. Should be >= sample_batch_size.
+    # Samples batches will be concatenated together to this size for training.
+    "train_batch_size": 200,
     # Whether to rollout "complete_episodes" or "truncate_episodes"
     "batch_mode": "truncate_episodes",
     # Whether to use a background thread for sampling (slightly off-policy)

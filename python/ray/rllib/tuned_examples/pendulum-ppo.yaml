@@ -3,7 +3,7 @@ pendulum-ppo:
     env: Pendulum-v0
     run: PPO
     config:
-        timesteps_per_batch: 2048
+        train_batch_size: 2048
         num_workers: 4
         lambda: 0.1
         gamma: 0.95

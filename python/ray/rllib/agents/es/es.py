@@ -30,7 +30,7 @@ DEFAULT_CONFIG = {
     "l2_coeff": 0.005,
     "noise_stdev": 0.02,
     "episodes_per_batch": 1000,
-    "timesteps_per_batch": 10000,
+    "train_batch_size": 10000,
     "eval_prob": 0.003,
     "return_proc_mode": "centered_rank",
     "num_workers": 10,
@@ -214,7 +214,7 @@ class ESAgent(Agent):
         # policy weights.
         results, num_episodes, num_timesteps = self._collect_results(
             theta_id, config["episodes_per_batch"],
-            config["timesteps_per_batch"])
+            config["train_batch_size"])
 
         all_noise_indices = []
         all_training_returns = []
