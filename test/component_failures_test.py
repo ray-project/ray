@@ -29,7 +29,7 @@ def ray_start_workers_separate():
     os.environ.get("RAY_USE_XRAY", False),
     reason="This test does not work with xray yet.")
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS", False),
+    os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Not working with new GCS API.")
 def test_dying_worker_get(ray_start_workers_separate):
     obj_id = 20 * b"a"
@@ -65,7 +65,7 @@ def test_dying_worker_get(ray_start_workers_separate):
     os.environ.get("RAY_USE_XRAY", False),
     reason="This test does not work with xray yet.")
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS", False),
+    os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Not working with new GCS API.")
 def test_dying_worker_wait(ray_start_workers_separate):
     obj_id = 20 * b"a"
@@ -264,7 +264,7 @@ def test_raylet_failed():
     os.environ.get("RAY_USE_XRAY") == "1",
     reason="This test does not make sense with xray.")
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS", False),
+    os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Hanging with new GCS API.")
 def test_local_scheduler_failed():
     # Kill all local schedulers on worker nodes.
@@ -283,7 +283,7 @@ def test_local_scheduler_failed():
     os.environ.get("RAY_USE_XRAY") == "1",
     reason="This test does not make sense with xray.")
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS", False),
+    os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Hanging with new GCS API.")
 def test_plasma_manager_failed():
     # Kill all plasma managers on worker nodes.
@@ -299,7 +299,7 @@ def test_plasma_manager_failed():
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS", False),
+    os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Hanging with new GCS API.")
 def test_plasma_store_failed():
     # Kill all plasma stores on worker nodes.
@@ -315,7 +315,7 @@ def test_plasma_store_failed():
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS", False),
+    os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Hanging with new GCS API.")
 def test_driver_lives_sequential():
     ray.worker.init()
@@ -338,7 +338,7 @@ def test_driver_lives_sequential():
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS", False),
+    os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Hanging with new GCS API.")
 def test_driver_lives_parallel():
     ray.worker.init()
