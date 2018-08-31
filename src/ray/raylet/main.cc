@@ -89,7 +89,7 @@ int main(int argc, char *argv[]) {
                  << "object_chunk_size = " << object_manager_config.object_chunk_size;
 
   //  initialize mock gcs & object directory
-  auto gcs_client = std::make_shared<ray::gcs::AsyncGcsClient>();
+  auto gcs_client = std::make_shared<ray::gcs::AsyncGcsClient>(redis_address, redis_port);
   RAY_LOG(DEBUG) << "Initializing GCS client "
                  << gcs_client->client_table().GetLocalClientId();
 
