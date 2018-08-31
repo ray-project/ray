@@ -215,8 +215,6 @@ struct PlasmaManagerState {
    *  other plasma stores. */
   std::unordered_map<std::string, ClientConnection *> manager_connections;
   DBHandle *db;
-  /** The handle to the GCS (modern version of the above). */
-  ray::gcs::AsyncGcsClient gcs_client;
   /** Our address. */
   const char *addr;
   /** Our port. */
@@ -490,13 +488,6 @@ PlasmaManagerState *PlasmaManagerState_init(const char *store_socket_name,
     state->db = db_connect(std::string(redis_primary_addr), redis_primary_port,
                            "plasma_manager", manager_addr, db_connect_args);
     db_attach(state->db, state->loop, false);
-
-    RAY_CHECK_OK(state->gcs_client.Connect(std::string(redis_primary_addr),
-                                           redis_primary_port,
-                                           /*sharding=*/true));
-    RAY_CHECK_OK(state->gcs_client.context()->AttachToEventLoop(state->loop));
-    RAY_CHECK_OK(
-        state->gcs_client.primary_context()->AttachToEventLoop(state->loop));
   } else {
     state->db = NULL;
     RAY_LOG(DEBUG) << "No db connection specified";
