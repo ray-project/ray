@@ -61,6 +61,14 @@ public interface RayRuntime {
   <T> RayActor<T> createActor(Class<T> actorClass);
 
   /**
+   * Free a list of objects from Plasma Store.
+   *
+   * @param objectIds The object ids to free.
+   * @param localOnly Whether only free objects for local object or not.
+   */
+  void free(List<UniqueId> objectIds, boolean localOnly);
+
+  /**
    * Invoke a remote function.
    *
    * @param func The remote function to run.

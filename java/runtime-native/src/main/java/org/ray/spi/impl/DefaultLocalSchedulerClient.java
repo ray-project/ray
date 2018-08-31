@@ -120,6 +120,12 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
     nativeNotifyUnblocked(client);
   }
 
+  @Override
+  public void freePlasmaObjects(List<UniqueId> objectIds, boolean localOnly) {
+    byte[][] objectIdsArray = getIdBytes(objectIds);
+    nativeFreePlasmaObjects(client, objectIdsArray, localOnly);
+  }
+
   public static TaskSpec taskInfo2Spec(ByteBuffer bb) {
     bb.order(ByteOrder.LITTLE_ENDIAN);
     TaskInfo info = TaskInfo.getRootAsTaskInfo(bb);
@@ -277,9 +283,10 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
   /// 1) pushd $Dir/java/runtime-native/target/classes
   /// 2) javah -classpath .:$Dir/java/runtime-common/target/classes/:$Dir/java/api/target/classes/
   ///    org.ray.spi.impl.DefaultLocalSchedulerClient
-  /// 3) cp org_ray_spi_impl_DefaultLocalSchedulerClient.h $Dir/src/local_scheduler/lib/java/
-  /// 4) vim $Dir/src/local_scheduler/lib/java/org_ray_spi_impl_DefaultLocalSchedulerClient.cc
-  /// 5) popd
+  /// 3) using clang-format to format org_ray_spi_impl_DefaultLocalSchedulerClient.h
+  /// 4) cp org_ray_spi_impl_DefaultLocalSchedulerClient.h $Dir/src/local_scheduler/lib/java/
+  /// 5) vim $Dir/src/local_scheduler/lib/java/org_ray_spi_impl_DefaultLocalSchedulerClient.cc
+  /// 6) popd
 
   private static native long nativeInit(String localSchedulerSocket, byte[] workerId,
       boolean isWorker, byte[] driverTaskId, boolean useRaylet);
@@ -304,5 +311,8 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
 
   private static native byte[] nativeGenerateTaskId(byte[] driverId, byte[] parentTaskId,
       int taskIndex);
+
+  private static native void nativeFreePlasmaObjects(long conn, byte[][] objectIds,
+      boolean localOnly);
 
 }
