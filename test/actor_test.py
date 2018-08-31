@@ -700,7 +700,7 @@ def test_actor_load_balancing(shutdown_only):
     num_local_schedulers = 3
     ray.worker._init(
         start_ray_local=True,
-        num_workers=0,
+        num_cpus=2,
         num_local_schedulers=num_local_schedulers)
 
     @ray.remote
@@ -746,7 +746,6 @@ def test_actor_gpus(shutdown_only):
     num_gpus_per_scheduler = 4
     ray.worker._init(
         start_ray_local=True,
-        num_workers=0,
         num_local_schedulers=num_local_schedulers,
         num_cpus=(num_local_schedulers * [10 * num_gpus_per_scheduler]),
         num_gpus=(num_local_schedulers * [num_gpus_per_scheduler]))
@@ -789,7 +788,6 @@ def test_actor_multiple_gpus(shutdown_only):
     num_gpus_per_scheduler = 5
     ray.worker._init(
         start_ray_local=True,
-        num_workers=0,
         num_local_schedulers=num_local_schedulers,
         num_cpus=(num_local_schedulers * [10 * num_gpus_per_scheduler]),
         num_gpus=(num_local_schedulers * [num_gpus_per_scheduler]))
@@ -860,7 +858,6 @@ def test_actor_different_numbers_of_gpus(shutdown_only):
     # numbers of GPUs.
     ray.worker._init(
         start_ray_local=True,
-        num_workers=0,
         num_local_schedulers=3,
         num_cpus=[10, 10, 10],
         num_gpus=[0, 5, 10])
@@ -901,7 +898,6 @@ def test_actor_multiple_gpus_from_multiple_tasks(shutdown_only):
     num_gpus_per_scheduler = 10
     ray.worker._init(
         start_ray_local=True,
-        num_workers=0,
         num_local_schedulers=num_local_schedulers,
         redirect_output=True,
         num_cpus=(num_local_schedulers * [10 * num_gpus_per_scheduler]),
@@ -950,7 +946,6 @@ def test_actors_and_tasks_with_gpus(shutdown_only):
     num_gpus_per_scheduler = 6
     ray.worker._init(
         start_ray_local=True,
-        num_workers=0,
         num_local_schedulers=num_local_schedulers,
         num_cpus=num_gpus_per_scheduler,
         num_gpus=(num_local_schedulers * [num_gpus_per_scheduler]))
@@ -1270,7 +1265,7 @@ def test_local_scheduler_dying(shutdown_only):
     ray.worker._init(
         start_ray_local=True,
         num_local_schedulers=2,
-        num_workers=0,
+        num_cpus=2,
         redirect_output=True)
 
     @ray.remote
@@ -1388,7 +1383,7 @@ def setup_counter_actor(test_checkpoint=False,
     ray.worker._init(
         start_ray_local=True,
         num_local_schedulers=2,
-        num_workers=0,
+        num_cpus=2,
         redirect_output=True)
 
     # Only set the checkpoint interval if we're testing with checkpointing.
@@ -1734,7 +1729,7 @@ def _test_nondeterministic_reconstruction(num_forks, num_items_per_fork,
     ray.worker._init(
         start_ray_local=True,
         num_local_schedulers=2,
-        num_workers=0,
+        num_cpus=2,
         redirect_output=True)
 
     # Make a shared queue.
@@ -2018,7 +2013,7 @@ def test_custom_label_placement(shutdown_only):
     ray.worker._init(
         start_ray_local=True,
         num_local_schedulers=2,
-        num_workers=0,
+        num_cpus=5,
         resources=[{
             "CustomResource1": 2
         }, {
@@ -2049,11 +2044,7 @@ def test_custom_label_placement(shutdown_only):
 
 
 def test_creating_more_actors_than_resources(shutdown_only):
-    ray.init(
-        num_workers=0,
-        num_cpus=10,
-        num_gpus=2,
-        resources={"CustomResource1": 1})
+    ray.init(num_cpus=10, num_gpus=2, resources={"CustomResource1": 1})
 
     @ray.remote(num_gpus=1)
     class ResourceActor1(object):
