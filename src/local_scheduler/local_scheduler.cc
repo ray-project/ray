@@ -1427,9 +1427,9 @@ void start_server(
  * suite has its own declaration of main. */
 #ifndef LOCAL_SCHEDULER_TEST
 int main(int argc, char *argv[]) {
-  DefaultInitShutdown ray_log_shutdown_wrapper(ray::RayLog::StartRayLog,
-                                               ray::RayLog::ShutDownRayLog,
-                                               argv[0], RAY_INFO, "");
+  InitShutdownRAII<void (*)()> ray_log_shutdown_raii(
+      ray::RayLog::StartRayLog, ray::RayLog::ShutDownRayLog, argv[0], RAY_INFO,
+      /*log_dir=*/"");
   ray::RayLog::InstallFailureSignalHandler();
   signal(SIGTERM, signal_handler);
   /* Path of the listening socket of the local scheduler. */

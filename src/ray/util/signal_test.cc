@@ -81,8 +81,9 @@ TEST(SignalTest, SIGILL_Test) {
 }  // namespace ray
 
 int main(int argc, char **argv) {
-  DefaultInitShutdown ray_log_shutdown_wrapper(
-      ray::RayLog::StartRayLog, ray::RayLog::ShutDownRayLog, argv[0], RAY_DEBUG, "");
+  InitShutdownRAII<void (*)()> ray_log_shutdown_raii(
+      ray::RayLog::StartRayLog, ray::RayLog::ShutDownRayLog, argv[0], RAY_INFO,
+      /*log_dir=*/"");
   ray::RayLog::InstallFailureSignalHandler();
   ::testing::InitGoogleTest(&argc, argv);
   int failed = RUN_ALL_TESTS();

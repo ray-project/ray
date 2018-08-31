@@ -39,22 +39,22 @@ inline ray::Status boost_to_ray_status(const boost::system::error_code &error) {
 }
 
 template <class Shutdown>
-class InitShutdownWrapper {
+class InitShutdownRAII {
  public:
-  /// Create an instance of InitShutdownWrapper which will call shutdown
+  /// Create an instance of InitShutdownRAII which will call shutdown
   /// function when it is out of scope.
   ///
   /// \param init_func The init function.
   /// \param shuntdown_func The shutdown function.
   /// \param args The auguments for the init function.
   template <class Init, class... Args>
-  InitShutdownWrapper(Init init_func, Shutdown shuntdown_func, Args &&... args)
+  InitShutdownRAII(Init init_func, Shutdown shuntdown_func, Args &&... args)
       : shutdown_(shuntdown_func) {
     init_func(args...);
   }
 
-  /// Destructor of InitShutdownWrapper which will call the shutdown function.
-  ~InitShutdownWrapper() {
+  /// Destructor of InitShutdownRAII which will call the shutdown function.
+  ~InitShutdownRAII() {
     if (shutdown_ != nullptr) {
       shutdown_();
     }
@@ -63,8 +63,5 @@ class InitShutdownWrapper {
  private:
   Shutdown shutdown_;
 };
-
-// Most of the shutdown function is the type of void (*)().
-using DefaultInitShutdown = InitShutdownWrapper<void (*)()>;
 
 #endif  // RAY_UTIL_UTIL_H
