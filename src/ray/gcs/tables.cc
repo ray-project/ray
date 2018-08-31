@@ -138,8 +138,8 @@ Status Log<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
   };
   subscribe_callback_index_ = 1;
   for (auto &context : shard_contexts_) {
-    RAY_RETURN_NOT_OK(context->SubscribeAsync(client_id, pubsub_channel_,
-      callback, &subscribe_callback_index_));
+    RAY_RETURN_NOT_OK(context->SubscribeAsync(client_id, pubsub_channel_, callback,
+                                              &subscribe_callback_index_));
   }
   return Status::OK();
 }

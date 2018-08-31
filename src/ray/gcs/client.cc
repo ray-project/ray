@@ -2,8 +2,8 @@
 
 #include "ray/gcs/redis_context.h"
 
-static void GetRedisShards(redisContext *context, std::vector<std::string>& addresses,
-                           std::vector<int>& ports) {
+static void GetRedisShards(redisContext *context, std::vector<std::string> &addresses,
+                           std::vector<int> &ports) {
   // Get the total number of Redis shards in the system.
   int num_attempts = 0;
   redisReply *reply = nullptr;
@@ -70,8 +70,8 @@ namespace ray {
 namespace gcs {
 
 AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
-  const ClientID &client_id, CommandType command_type,
-  bool is_test_client = false) {
+                               const ClientID &client_id, CommandType command_type,
+                               bool is_test_client = false) {
   primary_context_ = std::make_shared<RedisContext>();
 
   RAY_CHECK_OK(primary_context_->Connect(address, port, /*sharding=*/true));
@@ -94,7 +94,8 @@ AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
 
     RAY_CHECK(shard_contexts_.size() == addresses.size());
     for (size_t i = 0; i < addresses.size(); ++i) {
-      RAY_CHECK_OK(shard_contexts_[i]->Connect(addresses[i], ports[i], /*sharding=*/true));
+      RAY_CHECK_OK(
+          shard_contexts_[i]->Connect(addresses[i], ports[i], /*sharding=*/true));
     }
   } else {
     shard_contexts_.push_back(std::make_shared<RedisContext>());
@@ -119,28 +120,34 @@ AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
   // we need to make sure that we are attached to an event loop first. This
   // currently isn't possible because the aeEventLoop, which we use for
   // testing, requires us to connect to Redis first.
-
 }
 
 #if RAY_USE_NEW_GCS
 // Use of kChain currently only applies to Table::Add which affects only the
 // task table, and when RAY_USE_NEW_GCS is set at compile time.
-AsyncGcsClient::AsyncGcsClient(const std::string &address, int port, const ClientID &client_id, bool is_test_client = false)
+AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
+                               const ClientID &client_id, bool is_test_client = false)
     : AsyncGcsClient(address, port, client_id, CommandType::kChain, is_test_client) {}
 #else
-AsyncGcsClient::AsyncGcsClient(const std::string &address, int port, const ClientID &client_id, bool is_test_client = false)
+AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
+                               const ClientID &client_id, bool is_test_client = false)
     : AsyncGcsClient(address, port, client_id, CommandType::kRegular, is_test_client) {}
 #endif  // RAY_USE_NEW_GCS
 
-AsyncGcsClient::AsyncGcsClient(const std::string &address, int port, CommandType command_type)
+AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
+                               CommandType command_type)
     : AsyncGcsClient(address, port, ClientID::from_random(), command_type) {}
 
-AsyncGcsClient::AsyncGcsClient(const std::string &address, int port, CommandType command_type, bool is_test_client)
-    : AsyncGcsClient(address, port, ClientID::from_random(), command_type, is_test_client) {}
+AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
+                               CommandType command_type, bool is_test_client)
+    : AsyncGcsClient(address, port, ClientID::from_random(), command_type,
+                     is_test_client) {}
 
-AsyncGcsClient::AsyncGcsClient(const std::string &address, int port) : AsyncGcsClient(address, port, ClientID::from_random()) {}
+AsyncGcsClient::AsyncGcsClient(const std::string &address, int port)
+    : AsyncGcsClient(address, port, ClientID::from_random()) {}
 
-AsyncGcsClient::AsyncGcsClient(const std::string &address, int port, bool is_test_client) : AsyncGcsClient(address, port, ClientID::from_random(), is_test_client) {}
+AsyncGcsClient::AsyncGcsClient(const std::string &address, int port, bool is_test_client)
+    : AsyncGcsClient(address, port, ClientID::from_random(), is_test_client) {}
 
 Status Attach(plasma::EventLoop &event_loop) {
   // TODO(pcm): Implement this via
@@ -150,8 +157,7 @@ Status Attach(plasma::EventLoop &event_loop) {
 
 Status AsyncGcsClient::Attach(boost::asio::io_service &io_service) {
   // Take care of sharding contexts.
-  RAY_CHECK(shard_asio_async_clients_.empty())
-      << "Attach shall be called only once";
+  RAY_CHECK(shard_asio_async_clients_.empty()) << "Attach shall be called only once";
   for (std::shared_ptr<RedisContext> context : shard_contexts_) {
     shard_asio_async_clients_.emplace_back(
         new RedisAsioClient(io_service, context->async_context()));

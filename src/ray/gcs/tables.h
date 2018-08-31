@@ -340,7 +340,8 @@ class HeartbeatTable : public Table<ClientID, HeartbeatTableData> {
 
 class DriverTable : public Log<JobID, DriverTableData> {
  public:
-  DriverTable(const std::vector<std::shared_ptr<RedisContext>> &contexts, AsyncGcsClient *client)
+  DriverTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
+              AsyncGcsClient *client)
       : Log(contexts, client) {
     pubsub_channel_ = TablePubsub::DRIVER;
     prefix_ = TablePrefix::DRIVER;
@@ -390,7 +391,7 @@ class TaskReconstructionLog : public Log<TaskID, TaskReconstructionData> {
 class TaskLeaseTable : public Table<TaskID, TaskLeaseData> {
  public:
   TaskLeaseTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
-        AsyncGcsClient *client)
+                 AsyncGcsClient *client)
       : Table(contexts, client) {
     pubsub_channel_ = TablePubsub::TASK_LEASE;
     prefix_ = TablePrefix::TASK_LEASE;
