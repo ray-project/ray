@@ -3,7 +3,7 @@ import unittest
 from ray.rllib.agents.ppo import PPOAgent, DEFAULT_CONFIG
 import ray
 
-class ModelCatalogTest(unittest.TestCase):
+class LocalModeTest(unittest.TestCase):
     def testLocal(self):
         ray.init(local_mode=True)
         cf = DEFAULT_CONFIG.copy()
