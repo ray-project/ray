@@ -28,7 +28,7 @@ public class RayMethodsTest {
 
     WaitResult<String> res = Ray.wait(ImmutableList.of(s1Id, s2Id), 2, 1000);
 
-    List<String> ss = res.getReadyOnes().stream().map(RayObject::get).collect(Collectors.toList());
+    List<String> ss = res.getReady().stream().map(RayObject::get).collect(Collectors.toList());
     int i1 = i1Id.get();
     double f1 = f1Id.get();
     Object n1 = n1Id.get();

@@ -58,8 +58,8 @@ public class ResourcesManagementTest {
     final RayObject<Integer> result2 = Ray.call(ResourcesManagementTest::echo2, 200);
     WaitResult<Integer> waitResult = Ray.wait(ImmutableList.of(result2), 1, 1000);
 
-    Assert.assertEquals(0, waitResult.getReadyOnes().size());
-    Assert.assertEquals(1, waitResult.getRemainOnes().size());
+    Assert.assertEquals(0, waitResult.getReady().size());
+    Assert.assertEquals(1, waitResult.getUnready().size());
   }
 
   @Test
@@ -75,8 +75,8 @@ public class ResourcesManagementTest {
     final RayObject<Integer> result2 = Ray.call(Echo2::echo, echo2, 100);
     WaitResult<Integer> waitResult = Ray.wait(ImmutableList.of(result2), 1, 1000);
 
-    Assert.assertEquals(0, waitResult.getReadyOnes().size());
-    Assert.assertEquals(1, waitResult.getRemainOnes().size());
+    Assert.assertEquals(0, waitResult.getReady().size());
+    Assert.assertEquals(1, waitResult.getUnready().size());
   }
 
 }

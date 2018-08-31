@@ -101,17 +101,17 @@ public class ObjectStoreProxy {
       readys = localSchedulerLink.wait(getIdBytes(ids), timeout, numReturns);
     }
 
-    List<RayObject<T>> readyObjs = new ArrayList<>();
-    List<RayObject<T>> remainObjs = new ArrayList<>();
+    List<RayObject<T>> readyList = new ArrayList<>();
+    List<RayObject<T>> unreadyList = new ArrayList<>();
     for (RayObject<T> obj : waitfor) {
       if (readys.contains(obj.getId().getBytes())) {
-        readyObjs.add(obj);
+        readyList.add(obj);
       } else {
-        remainObjs.add(obj);
+        unreadyList.add(obj);
       }
     }
 
-    return new WaitResult<>(readyObjs, remainObjs);
+    return new WaitResult<>(readyList, unreadyList);
   }
 
   public void fetch(List<UniqueId> objectIds) {
