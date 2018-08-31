@@ -25,25 +25,29 @@ typedef ray::CerrLog LoggingProvider;
 #endif
 
 namespace ray {
-// Log levels. LOG ignores them, so their values are abitrary.
 
-#define RAY_DEBUG (-1)
-#define RAY_INFO 0
-#define RAY_WARNING 1
-#define RAY_ERROR 2
-#define RAY_FATAL 3
+enum class RayLogLevel {
+  DEBUG = -1,
+  INFO = 0,
+  WARNING = 1,
+  ERROR = 2,
+  FATAL = 3,
+  INVALID = 4
+};
 
 #define RAY_LOG_INTERNAL(level) ::ray::RayLog(__FILE__, __LINE__, level)
 
 #define RAY_LOG(level) \
-  if (ray::RayLog::IsLevelEnabled(RAY_##level)) RAY_LOG_INTERNAL(RAY_##level)
+  if (ray::RayLog::IsLevelEnabled(ray::RayLogLevel::level)) \
+      RAY_LOG_INTERNAL(ray::RayLogLevel::level)
 
 #define RAY_IGNORE_EXPR(expr) ((void)(expr))
 
 #define RAY_CHECK(condition)                                                          \
-  (condition) ? RAY_IGNORE_EXPR(0) : ::ray::Voidify() &                               \
-                                         ::ray::RayLog(__FILE__, __LINE__, RAY_FATAL) \
-                                             << " Check failed: " #condition " "
+  (condition)                                                                         \
+      ? RAY_IGNORE_EXPR(0)                                                            \
+      : ::ray::Voidify() & ::ray::RayLog(__FILE__, __LINE__, ray::RayLogLevel::FATAL) \
+                               << " Check failed: " #condition " "
 
 #ifdef NDEBUG
 
@@ -85,7 +89,7 @@ class RayLogBase {
 
 class RayLog : public RayLogBase {
  public:
-  RayLog(const char *file_name, int line_number, int severity);
+  RayLog(const char *file_name, int line_number, RayLogLevel severity);
 
   virtual ~RayLog();
 
@@ -96,7 +100,8 @@ class RayLog : public RayLogBase {
 
   // The init function of ray log for a program which should be called only once.
   // If logDir is empty, the log won't output to file.
-  static void StartRayLog(const std::string &appName, int severity_threshold = RAY_ERROR,
+  static void StartRayLog(const std::string &appName,
+                          RayLogLevel severity_threshold = RayLogLevel::ERROR,
                           const std::string &logDir = "");
 
   // The shutdown function of ray log which should be used with StartRayLog as a pair.
@@ -111,12 +116,16 @@ class RayLog : public RayLogBase {
   // Install the failure signal handler to output call stack when crash.
   // If glog is not installed, this function won't do anything.
   static void InstallFailureSignalHandler();
+  // Get the log level from environment variable.
+  static RayLogLevel GetLogLevelFromEnv();
+
+  static const char *env_variable_name_;
 
  private:
   std::unique_ptr<LoggingProvider> logging_provider_;
   /// True if log messages should be logged and false if they should be ignored.
   bool is_enabled_;
-  static int severity_threshold_;
+  static RayLogLevel severity_threshold_;
   // In InitGoogleLogging, it simply keeps the pointer.
   // We need to make sure the app name passed to InitGoogleLogging exist.
   static std::string app_name_;

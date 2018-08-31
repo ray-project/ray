@@ -1,3 +1,4 @@
+#include <stdlib.h>
 #include <cstdlib>
 #include <iostream>
 
@@ -13,13 +14,13 @@ namespace ray {
 // which is independent of any libs.
 class CerrLog {
  public:
-  CerrLog(int severity) : severity_(severity), has_logged_(false) {}
+  CerrLog(RayLogLevel severity) : severity_(severity), has_logged_(false) {}
 
   virtual ~CerrLog() {
     if (has_logged_) {
       std::cerr << std::endl;
     }
-    if (severity_ == RAY_FATAL) {
+    if (severity_ == RayLogLevel::FATAL) {
       PrintBackTrace();
       std::abort();
     }
@@ -32,7 +33,7 @@ class CerrLog {
 
   template <class T>
   CerrLog &operator<<(const T &t) {
-    if (severity_ != RAY_DEBUG) {
+    if (severity_ != RayLogLevel::DEBUG) {
       has_logged_ = true;
       std::cerr << t;
     }
@@ -40,7 +41,7 @@ class CerrLog {
   }
 
  protected:
-  const int severity_;
+  const RayLogLevel severity_;
   bool has_logged_;
 
   void PrintBackTrace() {
@@ -52,27 +53,28 @@ class CerrLog {
   }
 };
 
-int RayLog::severity_threshold_ = RAY_INFO;
+RayLogLevel RayLog::severity_threshold_ = RayLogLevel::INFO;
 std::string RayLog::app_name_ = "";
+const char *RayLog::env_variable_name_ = "RAY_BACKEND_LOG_LEVEL";
 
 #ifdef RAY_USE_GLOG
 using namespace google;
 
 // Glog's severity map.
-static int GetMappedSeverity(int severity) {
+static int GetMappedSeverity(RayLogLevel severity) {
   switch (severity) {
-  case RAY_DEBUG:
+  case RayLogLevel::DEBUG:
     return GLOG_INFO;
-  case RAY_INFO:
+  case RayLogLevel::INFO:
     return GLOG_INFO;
-  case RAY_WARNING:
+  case RayLogLevel::WARNING:
     return GLOG_WARNING;
-  case RAY_ERROR:
+  case RayLogLevel::ERROR:
     return GLOG_ERROR;
-  case RAY_FATAL:
+  case RayLogLevel::FATAL:
     return GLOG_FATAL;
   default:
-    RAY_LOG(FATAL) << "Unsupported logging level: " << severity;
+    RAY_LOG(FATAL) << "Unsupported logging level: " << static_cast<int>(severity);
     // This return won't be hit but compiler needs it.
     return GLOG_FATAL;
   }
@@ -80,8 +82,35 @@ static int GetMappedSeverity(int severity) {
 
 #endif
 
-void RayLog::StartRayLog(const std::string &app_name, int severity_threshold,
+RayLogLevel RayLog::GetLogLevelFromEnv() {
+  const char *var_value = getenv(env_variable_name_);
+  if (var_value == nullptr) {
+    return RayLogLevel::INVALID;
+  }
+  std::string value = var_value;
+  if (value == "DEBUG") {
+    return RayLogLevel::DEBUG;
+  } else if (value == "INFO") {
+    return RayLogLevel::INFO;
+  } else if (value == "WARNING") {
+    return RayLogLevel::WARNING;
+  } else if (value == "ERROR") {
+    return RayLogLevel::ERROR;
+  } else if (value == "FATAL") {
+    return RayLogLevel::FATAL;
+  } else {
+    return RayLogLevel::INVALID;
+  }
+}
+
+void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_threshold,
                          const std::string &log_dir) {
+  auto env_severity = GetLogLevelFromEnv();
+  if (env_severity == RayLogLevel::INVALID) {
+    severity_threshold_ = severity_threshold;
+  } else {
+    severity_threshold_ = env_severity;
+  }
 #ifdef RAY_USE_GLOG
   severity_threshold_ = severity_threshold;
   app_name_ = app_name;
@@ -124,7 +153,7 @@ void RayLog::InstallFailureSignalHandler() {
 
 bool RayLog::IsLevelEnabled(int log_level) { return log_level >= severity_threshold_; }
 
-RayLog::RayLog(const char *file_name, int line_number, int severity)
+RayLog::RayLog(const char *file_name, int line_number, RayLogLevel severity)
     // glog does not have DEBUG level, we can handle it here.
     : is_enabled_(severity >= severity_threshold_) {
 #ifdef RAY_USE_GLOG
