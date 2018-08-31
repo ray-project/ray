@@ -739,8 +739,8 @@ def test_actor_load_balancing(shutdown_only):
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS", False),
-    reason="Crashing with new GCS API.")
+    os.environ.get("RAY_USE_NEW_GCS") == "on",
+    reason="Failing with new GCS API on Linux.")
 def test_actor_gpus(shutdown_only):
     num_local_schedulers = 3
     num_gpus_per_scheduler = 4
@@ -1264,7 +1264,7 @@ def test_exception_raised_when_actor_node_dies(shutdown_only):
     os.environ.get("RAY_USE_XRAY") == "1",
     reason="This test does not work with xray yet.")
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS", False),
+    os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Hanging with new GCS API.")
 def test_local_scheduler_dying(shutdown_only):
     ray.worker._init(
@@ -1314,7 +1314,7 @@ def test_local_scheduler_dying(shutdown_only):
     os.environ.get("RAY_USE_XRAY") == "1",
     reason="This test does not work with xray yet.")
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS", False),
+    os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Hanging with new GCS API.")
 def test_many_local_schedulers_dying(shutdown_only):
     # This test can be made more stressful by increasing the numbers below.
@@ -1451,7 +1451,7 @@ def setup_counter_actor(test_checkpoint=False,
     os.environ.get("RAY_USE_XRAY") == "1",
     reason="This test does not work with xray yet.")
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS", False),
+    os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Hanging with new GCS API.")
 def test_checkpointing(shutdown_only):
     actor, ids = setup_counter_actor(test_checkpoint=True)
@@ -1481,7 +1481,7 @@ def test_checkpointing(shutdown_only):
     os.environ.get("RAY_USE_XRAY") == "1",
     reason="This test does not work with xray yet.")
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS", False),
+    os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Hanging with new GCS API.")
 def test_remote_checkpoint(shutdown_only):
     actor, ids = setup_counter_actor(test_checkpoint=True)
@@ -1512,7 +1512,7 @@ def test_remote_checkpoint(shutdown_only):
     os.environ.get("RAY_USE_XRAY") == "1",
     reason="This test does not work with xray yet.")
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS", False),
+    os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Hanging with new GCS API.")
 def test_lost_checkpoint(shutdown_only):
     actor, ids = setup_counter_actor(test_checkpoint=True)
@@ -1543,7 +1543,7 @@ def test_lost_checkpoint(shutdown_only):
     os.environ.get("RAY_USE_XRAY") == "1",
     reason="This test does not work with xray yet.")
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS", False),
+    os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Hanging with new GCS API.")
 def test_checkpoint_exception(shutdown_only):
     actor, ids = setup_counter_actor(test_checkpoint=True, save_exception=True)
@@ -1576,7 +1576,7 @@ def test_checkpoint_exception(shutdown_only):
     os.environ.get("RAY_USE_XRAY") == "1",
     reason="This test does not work with xray yet.")
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS", False),
+    os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Hanging with new GCS API.")
 def test_checkpoint_resume_exception(shutdown_only):
     actor, ids = setup_counter_actor(
@@ -1648,7 +1648,7 @@ def test_distributed_handle(self):
     os.environ.get("RAY_USE_XRAY") == "1",
     reason="This test does not work with xray yet.")
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS", False),
+    os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Hanging with new GCS API.")
 def test_remote_checkpoint_distributed_handle(shutdown_only):
     counter, ids = setup_counter_actor(test_checkpoint=True)
@@ -1807,7 +1807,7 @@ def _test_nondeterministic_reconstruction(num_forks, num_items_per_fork,
     os.environ.get("RAY_USE_XRAY") == "1",
     reason="This test does not work with xray yet.")
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS", False),
+    os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Currently doesn't work with the new GCS.")
 def test_nondeterministic_reconstruction(shutdown_only):
     _test_nondeterministic_reconstruction(10, 100, 10)
