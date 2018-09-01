@@ -842,6 +842,19 @@ void NodeManager::ScheduleTasks(
   for (const auto &task : local_queues_.GetPlaceableTasks()) {
     task_dependency_manager_.TaskPending(task);
     move_task_set.insert(task.GetTaskSpecification().TaskId());
+    // Push a warning to the task's driver that this task is currently infeasible.
+    {
+      // TODO(rkn): Define this constant somewhere else.
+      std::string type = "infeasible_task";
+      std::ostringstream error_message;
+      error_message << "The task with ID " << task.GetTaskSpecification().TaskId()
+                    << " is infeasible and cannot currently be executed. "
+                    << "It requested "
+                    << task.GetTaskSpecification().GetRequiredResources().ToString();
+      RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
+          task.GetTaskSpecification().DriverId(), type, error_message.str(),
+          current_time_ms()));
+    }
     // Assert that this placeable task is not feasible locally (necessary but not
     // sufficient).
     RAY_CHECK(!task.GetTaskSpecification().GetRequiredResources().IsSubset(

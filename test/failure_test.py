@@ -480,3 +480,26 @@ def test_export_large_objects(ray_start_regular):
 
     # Make sure that a warning is generated.
     wait_for_errors(ray_constants.PICKLING_LARGE_OBJECT_PUSH_ERROR, 2)
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_USE_XRAY") != "1",
+    reason="This test only works with xray.")
+def test_warning_for_infeasible_tasks(ray_start_regular):
+    # Check that we get warning messages for infeasible tasks.
+
+    @ray.remote(num_gpus=1)
+    def f():
+        pass
+
+    @ray.remote(resources={"Custom": 1})
+    class Foo(object):
+        pass
+
+    # This task is infeasible.
+    f.remote()
+    wait_for_errors(ray_constants.INFEASIBLE_TASK_ERROR, 1)
+
+    # This actor placement task is infeasible.
+    Foo.remote()
+    wait_for_errors(ray_constants.INFEASIBLE_TASK_ERROR, 2)
