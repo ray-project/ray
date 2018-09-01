@@ -15,9 +15,9 @@ static std::vector<std::string> parse_worker_command(std::string worker_command)
 }
 
 int main(int argc, char *argv[]) {
-  InitShutdownRAII ray_log_shutdown_raii(
-      ray::RayLog::StartRayLog, ray::RayLog::ShutDownRayLog, argv[0], RAY_INFO,
-      /*log_dir=*/"");
+  InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
+                                         ray::RayLog::ShutDownRayLog, argv[0], RAY_INFO,
+                                         /*log_dir=*/"");
   ray::RayLog::InstallFailureSignalHandler();
   RAY_CHECK(argc == 11);
 

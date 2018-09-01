@@ -50,8 +50,7 @@ class InitShutdownRAII {
   /// \param shuntdown_func The shutdown function.
   /// \param args The auguments for the init function.
   template <class InitFunc, class... Args>
-  InitShutdownRAII(InitFunc init_func, ShutdownFunc shuntdown_func,
-                   Args &&... args)
+  InitShutdownRAII(InitFunc init_func, ShutdownFunc shuntdown_func, Args &&... args)
       : shutdown_(shuntdown_func) {
     init_func(args...);
   }
