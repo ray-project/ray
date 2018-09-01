@@ -115,6 +115,9 @@ class RayLog : public RayLogBase {
   /// True if log messages should be logged and false if they should be ignored.
   bool is_enabled_;
   static int severity_threshold_;
+  // In InitGoogleLogging, it simply keeps the pointer.
+  // We need to make sure the app name passed to InitGoogleLogging exist.
+  static std::string app_name_;
 
  protected:
   virtual std::ostream &Stream();
