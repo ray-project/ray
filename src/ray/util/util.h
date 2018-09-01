@@ -38,9 +38,11 @@ inline ray::Status boost_to_ray_status(const boost::system::error_code &error) {
   }
 }
 
-template <class Shutdown>
 class InitShutdownRAII {
  public:
+  /// Type of the Shutdown function.
+  using ShutdownFunc = void (*)();
+
   /// Create an instance of InitShutdownRAII which will call shutdown
   /// function when it is out of scope.
   ///
@@ -48,7 +50,7 @@ class InitShutdownRAII {
   /// \param shuntdown_func The shutdown function.
   /// \param args The auguments for the init function.
   template <class Init, class... Args>
-  InitShutdownRAII(Init init_func, Shutdown shuntdown_func, Args &&... args)
+  InitShutdownRAII(Init init_func, ShutdownFunc shuntdown_func, Args &&... args)
       : shutdown_(shuntdown_func) {
     init_func(args...);
   }
@@ -61,7 +63,7 @@ class InitShutdownRAII {
   }
 
  private:
-  Shutdown shutdown_;
+  ShutdownFunc shutdown_;
 };
 
 #endif  // RAY_UTIL_UTIL_H

@@ -81,7 +81,7 @@ TEST(SignalTest, SIGILL_Test) {
 }  // namespace ray
 
 int main(int argc, char **argv) {
-  InitShutdownRAII<void (*)()> ray_log_shutdown_raii(
+  InitShutdownRAII ray_log_shutdown_raii(
       ray::RayLog::StartRayLog, ray::RayLog::ShutDownRayLog, argv[0], RAY_INFO,
       /*log_dir=*/"");
   ray::RayLog::InstallFailureSignalHandler();
