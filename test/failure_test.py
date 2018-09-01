@@ -482,6 +482,9 @@ def test_export_large_objects(ray_start_regular):
     wait_for_errors(ray_constants.PICKLING_LARGE_OBJECT_PUSH_ERROR, 2)
 
 
+@pytest.mark.skipif(
+    os.environ.get("RAY_USE_XRAY") != "1",
+    reason="This test only works with xray.")
 def test_warning_for_infeasible_tasks(ray_start_regular):
     # Check that we get warning messages for infeasible tasks.
 
