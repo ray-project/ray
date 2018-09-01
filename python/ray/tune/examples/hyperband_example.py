@@ -64,7 +64,7 @@ if __name__ == "__main__":
     exp = Experiment(
         name="hyperband_test",
         run=MyTrainableClass,
-        repeat=20,
+        num_samples=20,
         stop={"training_iteration": 1 if args.smoke_test else 99999},
         config={
             "width": lambda spec: 10 + int(90 * random.random()),

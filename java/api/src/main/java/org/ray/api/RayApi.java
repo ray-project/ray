@@ -1,9 +1,7 @@
 package org.ray.api;
 
-import java.io.Serializable;
-import java.util.Collection;
 import java.util.List;
-import org.ray.api.internal.RayFunc;
+import org.ray.api.funcs.RayFunc;
 import org.ray.util.exception.TaskExecutionException;
 
 /**
@@ -39,11 +37,11 @@ public interface RayApi {
   /**
    * wait until timeout or enough RayObjects are ready.
    *
-   * @param waitfor    wait for who
+   * @param waitfor wait for who
    * @param numReturns how many of ready is enough
-   * @param timeout    in millisecond
+   * @param timeout in millisecond
    */
-  <T> WaitResult<T> wait(RayList<T> waitfor, int numReturns, int timeout);
+  <T> WaitResult<T> wait(List<RayObject<T>> waitfor, int numReturns, int timeout);
 
   /**
    * create remote actor.
@@ -51,46 +49,12 @@ public interface RayApi {
   <T> RayActor<T> create(Class<T> cls);
 
   /**
-   * submit a new task by invoking a remote function.
+   * Invoke a remote function.
    *
-   * @param taskId      nil
-   * @param funcCls     the target running function's class
-   * @param lambda      the target running function
-   * @param returnCount the number of to-be-returned objects from funcRun
-   * @param args        arguments to this funcRun, can be its original form or RayObject
+   * @param func the target running function
+   * @param args arguments to this funcRun, can be its original form or RayObject
    * @return a set of ray objects with their return ids
    */
-  RayObjects call(UniqueID taskId, Class<?> funcCls, RayFunc lambda, int returnCount,
-                  Object... args);
+  RayObject call(RayFunc func, Object... args);
 
-  /**
-   * In some cases, we would like the return value of a remote function to be splitted into multiple
-   * parts so that they are consumed by multiple further functions separately (potentially on
-   * different machines). We therefore introduce this API so that developers can annotate the
-   * outputs with a set of labels (usually with Integer or String).
-   *
-   * @param taskId    nil
-   * @param funcCls   the target running function's class
-   * @param lambda    the target running function
-   * @param returnids a set of labels to be used by the returned objects
-   * @param args      arguments to this funcRun, can be its original form or
-   *                  RayObject<original-type>
-   * @return a set of ray objects with their labels and return ids
-   */
-  <R, RIDT> RayMap<RIDT, R> callWithReturnLabels(UniqueID taskId, Class<?> funcCls,
-      RayFunc lambda, Collection<RIDT> returnids, Object... args);
-
-  /**
-   * a special case for the above RID-based labeling as <0...returnCount - 1>.
-   *
-   * @param taskId      nil
-   * @param funcCls     the target running function's class
-   * @param lambda      the target running function
-   * @param returnCount the number of to-be-returned objects from funcRun
-   * @param args        arguments to this funcRun, can be its original form or
-   *                    RayObject<original-type>
-   * @return an array of returned objects with their Unique ids
-   */
-  <R> RayList<R> callWithReturnIndices(UniqueID taskId, Class<?> funcCls, RayFunc lambda,
-                                       Integer returnCount, Object... args);
 }

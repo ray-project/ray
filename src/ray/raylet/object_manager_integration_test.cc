@@ -39,11 +39,12 @@ class TestObjectManagerBase : public ::testing::Test {
     node_manager_config.num_initial_workers = 0;
     node_manager_config.num_workers_per_process = 1;
     // Use a default worker that can execute empty tasks with dependencies.
-    node_manager_config.worker_command.push_back("python");
-    node_manager_config.worker_command.push_back(
-        "../python/ray/workers/default_worker.py");
-    node_manager_config.worker_command.push_back(raylet_socket_name.c_str());
-    node_manager_config.worker_command.push_back(store_socket_name.c_str());
+    std::vector<std::string> py_worker_command;
+    py_worker_command.push_back("python");
+    py_worker_command.push_back("../python/ray/workers/default_worker.py");
+    py_worker_command.push_back(raylet_socket_name.c_str());
+    py_worker_command.push_back(store_socket_name.c_str());
+    node_manager_config.worker_commands[Language::PYTHON] = py_worker_command;
     return node_manager_config;
   };
 
@@ -53,7 +54,8 @@ class TestObjectManagerBase : public ::testing::Test {
     std::string store_sock_2 = StartStore("2");
 
     // start first server
-    gcs_client_1 = std::shared_ptr<gcs::AsyncGcsClient>(new gcs::AsyncGcsClient());
+    gcs_client_1 = std::shared_ptr<gcs::AsyncGcsClient>(
+        new gcs::AsyncGcsClient("127.0.0.1", 6379, /*is_test_client=*/true));
     ObjectManagerConfig om_config_1;
     om_config_1.store_socket_name = store_sock_1;
     om_config_1.push_timeout_ms = 10000;
@@ -62,7 +64,8 @@ class TestObjectManagerBase : public ::testing::Test {
         GetNodeManagerConfig("raylet_1", store_sock_1), om_config_1, gcs_client_1));
 
     // start second server
-    gcs_client_2 = std::shared_ptr<gcs::AsyncGcsClient>(new gcs::AsyncGcsClient());
+    gcs_client_2 = std::shared_ptr<gcs::AsyncGcsClient>(
+        new gcs::AsyncGcsClient("127.0.0.1", 6379, /*is_test_client=*/true));
     ObjectManagerConfig om_config_2;
     om_config_2.store_socket_name = store_sock_2;
     om_config_2.push_timeout_ms = 10000;
@@ -83,7 +86,7 @@ class TestObjectManagerBase : public ::testing::Test {
     this->server1.reset();
     this->server2.reset();
 
-    int s = system("killall plasma_store &");
+    int s = system("killall plasma_store_server &");
     ASSERT_TRUE(!s);
 
     std::string cmd_str = test_executable.substr(0, test_executable.find_last_of("/"));

@@ -64,7 +64,7 @@ public class NativeRemoteFunctionManager implements RemoteFunctionManager {
 
   @Override
   public UniqueID getAppResourceId(UniqueID driverId) {
-    return new UniqueID(kvStore.get("App2ResMap", driverId.toString()));
+    return UniqueID.fromHexString(kvStore.get("App2ResMap", driverId.toString()));
   }
 
   @Override
@@ -92,7 +92,7 @@ public class NativeRemoteFunctionManager implements RemoteFunctionManager {
 
       ClassLoader cl = loadedApps.get(driverId);
       if (cl == null) {
-        UniqueID resId = new UniqueID(kvStore.get("App2ResMap", driverId.toString()));
+        UniqueID resId = UniqueID.fromHexString(kvStore.get("App2ResMap", driverId.toString()));
         byte[] res = getResource(resId);
         if (res == null) {
           throw new RuntimeException("get resource null, the resId " + resId.toString());

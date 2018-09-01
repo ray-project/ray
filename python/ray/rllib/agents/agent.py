@@ -10,7 +10,8 @@ import pickle
 
 import tensorflow as tf
 from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
-from ray.rllib.utils import deep_update
+from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
+from ray.rllib.utils import deep_update, merge_dicts
 from ray.tune.registry import ENV_CREATOR, _global_registry
 from ray.tune.trainable import Trainable
 
@@ -61,6 +62,8 @@ COMMON_CONFIG = {
     },
     # Whether to LZ4 compress observations
     "compress_observations": False,
+    # Whether to write episode stats and videos to the agent log dir
+    "monitor": False,
 
     # === Multiagent ===
     "multiagent": {
@@ -103,8 +106,19 @@ class Agent(Trainable):
     def make_local_evaluator(self, env_creator, policy_graph):
         """Convenience method to return configured local evaluator."""
 
-        return self._make_evaluator(PolicyEvaluator, env_creator, policy_graph,
-                                    0)
+        return self._make_evaluator(
+            PolicyEvaluator,
+            env_creator,
+            policy_graph,
+            0,
+            # important: allow local tf to use multiple CPUs for optimization
+            merge_dicts(
+                self.config, {
+                    "tf_session_args": {
+                        "intra_op_parallelism_threads": None,
+                        "inter_op_parallelism_threads": None,
+                    }
+                }))
 
     def make_remote_evaluators(self, env_creator, policy_graph, count,
                                remote_args):
@@ -112,13 +126,12 @@ class Agent(Trainable):
 
         cls = PolicyEvaluator.as_remote(**remote_args).remote
         return [
-            self._make_evaluator(cls, env_creator, policy_graph, i + 1)
-            for i in range(count)
+            self._make_evaluator(cls, env_creator, policy_graph, i + 1,
+                                 self.config) for i in range(count)
         ]
 
-    def _make_evaluator(self, cls, env_creator, policy_graph, worker_index):
-        config = self.config
-
+    def _make_evaluator(self, cls, env_creator, policy_graph, worker_index,
+                        config):
         def session_creator():
             return tf.Session(
                 config=tf.ConfigProto(**config["tf_session_args"]))
@@ -142,7 +155,8 @@ class Agent(Trainable):
             env_config=config["env_config"],
             model_config=config["model"],
             policy_config=config,
-            worker_index=worker_index)
+            worker_index=worker_index,
+            monitor_path=self.logdir if config["monitor"] else None)
 
     @classmethod
     def resource_help(cls, config):
@@ -164,9 +178,24 @@ class Agent(Trainable):
 
         config = config or {}
 
+        # Vars to synchronize to evaluators on each train call
+        self.global_vars = {"timestep": 0}
+
         # Agents allow env ids to be passed directly to the constructor.
         self._env_id = env or config.get("env")
         Trainable.__init__(self, config, logger_creator)
+
+    def train(self):
+        """Overrides super.train to synchronize global vars."""
+
+        if hasattr(self, "optimizer") and isinstance(self.optimizer,
+                                                     PolicyOptimizer):
+            self.global_vars["timestep"] = self.optimizer.num_steps_sampled
+            self.optimizer.local_evaluator.set_global_vars(self.global_vars)
+            for ev in self.optimizer.remote_evaluators:
+                ev.set_global_vars.remote(self.global_vars)
+
+        return Trainable.train(self)
 
     def _setup(self):
         env = self._env_id
@@ -364,6 +393,9 @@ def get_agent_class(alg):
     elif alg == "ES":
         from ray.rllib.agents import es
         return es.ESAgent
+    elif alg == "ARS":
+        from ray.rllib.agents import ars
+        return ars.ARSAgent
     elif alg == "DQN":
         from ray.rllib.agents import dqn
         return dqn.DQNAgent

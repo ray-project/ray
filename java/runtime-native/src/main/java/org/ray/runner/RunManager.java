@@ -369,7 +369,7 @@ public class RunManager {
         for (int j = 0; j < localNumWorkers[i]; j++) {
           startWorker(localStores.storeName, localStores.managerName, localStores.schedulerName,
               "/worker" + i + "." + j, params.redis_address,
-              params.node_ip_address, UniqueID.nil, "", params.redirect, params.cleanup);
+              params.node_ip_address, UniqueID.NIL, "", params.redirect, params.cleanup);
         }
       }
     }
@@ -570,7 +570,7 @@ public class RunManager {
 
     String workerCmd = null;
     workerCmd = buildWorkerCommand(true, info.storeName, info.managerName, name,
-        UniqueID.nil, "", ip, redisAddress);
+        UniqueID.NIL, "", ip, redisAddress);
     cmd += " -w \"" + workerCmd + "\"";
 
     if (redisAddress.length() > 0) {
@@ -614,7 +614,7 @@ public class RunManager {
 
     //Create the worker command that the raylet will use to start workers.
     String workerCommand = buildWorkerCommandRaylet(info.storeName, rayletSocketName,
-        UniqueID.nil, "", ip, redisAddress);
+        UniqueID.NIL, "", ip, redisAddress);
 
     int sep = redisAddress.indexOf(':');
     assert (sep != -1);
@@ -623,10 +623,14 @@ public class RunManager {
 
     String resourceArgument = ResourceUtil.getResourcesStringFromMap(staticResources);
 
+    int hardwareConcurrency = Runtime.getRuntime().availableProcessors();
+    int maximumStartupConcurrency = Math.max(1, Math.min(staticResources.get("CPU").intValue(),
+                                                         hardwareConcurrency));
+
     // The second-last arugment is the worker command for Python, not needed for Java.
     String[] cmds = new String[]{filePath, rayletSocketName, storeName, ip, gcsIp,
-        gcsPort, "" + numWorkers, resourceArgument,
-        "", workerCommand};
+        gcsPort, String.valueOf(numWorkers), String.valueOf(maximumStartupConcurrency),
+        resourceArgument, "", workerCommand};
 
     Process p = startProcess(cmds, null, RunInfo.ProcessType.PT_RAYLET,
         "raylet", redisAddress, ip, redirect, cleanup);
@@ -656,7 +660,7 @@ public class RunManager {
         + ";ray.java.start.raylet_socket_name=" + rayletSocketName
         + ";ray.java.start.worker_mode=WORKER;ray.java.start.use_raylet=true";
     workerConfigs += ";ray.java.start.deploy=" + params.deploy;
-    if (!actorId.equals(UniqueID.nil)) {
+    if (!actorId.equals(UniqueID.NIL)) {
       workerConfigs += ";ray.java.start.actor_id=" + actorId;
     }
     if (!actorClass.equals("")) {
@@ -688,7 +692,7 @@ public class RunManager {
         + ";ray.java.start.worker_mode=WORKER"
         + ";ray.java.start.local_scheduler_name=" + localSchedulerName;
     workerConfigs += ";ray.java.start.deploy=" + params.deploy;
-    if (!actorId.equals(UniqueID.nil)) {
+    if (!actorId.equals(UniqueID.NIL)) {
       workerConfigs += ";ray.java.start.actor_id=" + actorId;
     }
     if (!actorClass.equals("")) {

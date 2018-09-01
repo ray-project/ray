@@ -11,6 +11,7 @@ from ray.rllib import _register_all
 
 from ray.tune import Trainable, TuneError
 from ray.tune import register_env, register_trainable, run_experiments
+from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.schedulers import TrialScheduler, FIFOScheduler
 from ray.tune.registry import _global_registry, TRAINABLE_CLASS
 from ray.tune.result import DEFAULT_RESULTS_DIR, TIMESTEPS_TOTAL, DONE
@@ -365,6 +366,53 @@ class TrainableFunctionApiTest(unittest.TestCase):
         self.assertEqual(trial.status, Trial.TERMINATED)
         self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], 99)
 
+    def testReportInfinity(self):
+        def train(config, reporter):
+            for i in range(100):
+                reporter(mean_accuracy=float('inf'))
+
+        register_trainable("f1", train)
+        [trial] = run_experiments({
+            "foo": {
+                "run": "f1",
+                "config": {
+                    "script_min_iter_time_s": 0,
+                },
+            }
+        })
+        self.assertEqual(trial.status, Trial.TERMINATED)
+        self.assertEqual(trial.last_result['mean_accuracy'], float('inf'))
+
+    def testReportTimeStep(self):
+        def train(config, reporter):
+            for i in range(100):
+                reporter(mean_accuracy=5)
+
+        [trial] = run_experiments({
+            "foo": {
+                "run": train,
+                "config": {
+                    "script_min_iter_time_s": 0,
+                },
+            }
+        })
+        self.assertIsNone(trial.last_result[TIMESTEPS_TOTAL])
+
+        def train3(config, reporter):
+            for i in range(10):
+                reporter(timesteps_total=5)
+
+        [trial3] = run_experiments({
+            "foo": {
+                "run": train3,
+                "config": {
+                    "script_min_iter_time_s": 0,
+                },
+            }
+        })
+        self.assertEqual(trial3.last_result[TIMESTEPS_TOTAL], 5)
+        self.assertEqual(trial3.last_result["timesteps_this_iter"], 0)
+
 
 class RunExperimentTest(unittest.TestCase):
     def setUp(self):
@@ -487,6 +535,24 @@ class RunExperimentTest(unittest.TestCase):
         for trial in trials:
             self.assertEqual(trial.status, Trial.TERMINATED)
 
+    def testCheckpointAtEnd(self):
+        class train(Trainable):
+            def _train(self):
+                return dict(timesteps_this_iter=1, done=True)
+
+            def _save(self, path):
+                return path
+
+        trials = run_experiments({
+            "foo": {
+                "run": train,
+                "checkpoint_at_end": True
+            }
+        })
+        for trial in trials:
+            self.assertEqual(trial.status, Trial.TERMINATED)
+            self.assertTrue(trial.has_checkpoint())
+
 
 class VariantGeneratorTest(unittest.TestCase):
     def setUp(self):
@@ -504,7 +570,7 @@ class VariantGeneratorTest(unittest.TestCase):
     def testParseToTrials(self):
         trials = self.generate_trials({
             "run": "PPO",
-            "repeat": 2,
+            "num_samples": 2,
             "max_failures": 5,
             "config": {
                 "env": "Pong-v0",
@@ -633,7 +699,7 @@ class VariantGeneratorTest(unittest.TestCase):
         """Checks that next_trials() supports throttling."""
         experiment_spec = {
             "run": "PPO",
-            "repeat": 6,
+            "num_samples": 6,
         }
         experiments = [Experiment.from_json("test", experiment_spec)]
 
@@ -667,12 +733,13 @@ class TrialRunnerTest(unittest.TestCase):
     def testTrialStatus(self):
         ray.init()
         trial = Trial("__fake")
+        trial_executor = RayTrialExecutor()
         self.assertEqual(trial.status, Trial.PENDING)
-        trial.start()
+        trial_executor.start_trial(trial)
         self.assertEqual(trial.status, Trial.RUNNING)
-        trial.stop()
+        trial_executor.stop_trial(trial)
         self.assertEqual(trial.status, Trial.TERMINATED)
-        trial.stop(error=True)
+        trial_executor.stop_trial(trial, error=True)
         self.assertEqual(trial.status, Trial.ERROR)
 
     def testExperimentTagTruncation(self):
@@ -681,6 +748,7 @@ class TrialRunnerTest(unittest.TestCase):
         def train(config, reporter):
             reporter(timesteps_total=1)
 
+        trial_executor = RayTrialExecutor()
         register_trainable("f1", train)
 
         experiments = {
@@ -697,16 +765,17 @@ class TrialRunnerTest(unittest.TestCase):
             trial_generator = BasicVariantGenerator()
             trial_generator.add_configurations({name: spec})
             for trial in trial_generator.next_trials():
-                trial.start()
+                trial_executor.start_trial(trial)
                 self.assertLessEqual(len(trial.logdir), 200)
-                trial.stop()
+                trial_executor.stop_trial(trial)
 
     def testTrialErrorOnStart(self):
         ray.init()
+        trial_executor = RayTrialExecutor()
         _global_registry.register(TRAINABLE_CLASS, "asdf", None)
         trial = Trial("asdf", resources=Resources(1, 0))
         try:
-            trial.start()
+            trial_executor.start_trial(trial)
         except Exception as e:
             self.assertIn("a class", str(e))
 
@@ -901,8 +970,7 @@ class TrialRunnerTest(unittest.TestCase):
         runner.step()
         self.assertEqual(trials[0].status, Trial.RUNNING)
         self.assertEqual(ray.get(trials[0].runner.set_info.remote(1)), 1)
-
-        path = trials[0].checkpoint()
+        path = runner.trial_executor.save(trials[0])
         kwargs["restore_path"] = path
 
         runner.add_trial(Trial("__fake", **kwargs))
@@ -917,6 +985,26 @@ class TrialRunnerTest(unittest.TestCase):
         self.assertEqual(trials[1].status, Trial.RUNNING)
         self.assertEqual(ray.get(trials[1].runner.get_info.remote()), 1)
         self.addCleanup(os.remove, path)
+
+    def testCheckpointingAtEnd(self):
+        ray.init(num_cpus=1, num_gpus=1)
+        runner = TrialRunner(BasicVariantGenerator())
+        kwargs = {
+            "stopping_criterion": {
+                "training_iteration": 2
+            },
+            "checkpoint_at_end": True,
+            "resources": Resources(cpu=1, gpu=1),
+        }
+        runner.add_trial(Trial("__fake", **kwargs))
+        trials = runner.get_trials()
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+        runner.step()
+        runner.step()
+        self.assertEqual(trials[0].last_result[DONE], True)
+        self.assertEqual(trials[0].has_checkpoint(), True)
 
     def testResultDone(self):
         """Tests that last_result is marked `done` after trial is complete."""
@@ -956,10 +1044,10 @@ class TrialRunnerTest(unittest.TestCase):
 
         self.assertEqual(ray.get(trials[0].runner.set_info.remote(1)), 1)
 
-        trials[0].pause()
+        runner.trial_executor.pause_trial(trials[0])
         self.assertEqual(trials[0].status, Trial.PAUSED)
 
-        trials[0].resume()
+        runner.trial_executor.resume_trial(trials[0])
         self.assertEqual(trials[0].status, Trial.RUNNING)
 
         runner.step()
@@ -968,6 +1056,36 @@ class TrialRunnerTest(unittest.TestCase):
 
         runner.step()
         self.assertEqual(trials[0].status, Trial.TERMINATED)
+
+    def testStepHook(self):
+        ray.init(num_cpus=4, num_gpus=2)
+        runner = TrialRunner(BasicVariantGenerator())
+
+        def on_step_begin(self):
+            self._update_avail_resources()
+            cnt = self.pre_step if hasattr(self, 'pre_step') else 0
+            setattr(self, 'pre_step', cnt + 1)
+
+        def on_step_end(self):
+            cnt = self.pre_step if hasattr(self, 'post_step') else 0
+            setattr(self, 'post_step', 1 + cnt)
+
+        import types
+        runner.trial_executor.on_step_begin = types.MethodType(
+            on_step_begin, runner.trial_executor)
+        runner.trial_executor.on_step_end = types.MethodType(
+            on_step_end, runner.trial_executor)
+
+        kwargs = {
+            "stopping_criterion": {
+                "training_iteration": 5
+            },
+            "resources": Resources(cpu=1, gpu=1),
+        }
+        runner.add_trial(Trial("__fake", **kwargs))
+        runner.step()
+        self.assertEqual(runner.trial_executor.pre_step, 1)
+        self.assertEqual(runner.trial_executor.post_step, 1)
 
     def testStopTrial(self):
         ray.init(num_cpus=4, num_gpus=2)
@@ -1083,7 +1201,7 @@ class TrialRunnerTest(unittest.TestCase):
         ray.init(num_cpus=4, num_gpus=2)
         experiment_spec = {
             "run": "__fake",
-            "repeat": 3,
+            "num_samples": 3,
             "stop": {
                 "training_iteration": 1
             }

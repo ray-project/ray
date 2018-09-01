@@ -46,7 +46,8 @@ LocalSchedulerConnection *LocalSchedulerConnection_init(
     const UniqueID &worker_id,
     bool is_worker,
     const JobID &driver_id,
-    bool use_raylet);
+    bool use_raylet,
+    const Language &language);
 
 /**
  * Disconnect from the local scheduler.

@@ -65,7 +65,7 @@ public class MockLocalScheduler implements LocalSchedulerLink {
   }
 
   @Override
-  public TaskSpec getTaskTodo() {
+  public TaskSpec getTask() {
     throw new RuntimeException("invalid execution flow here");
   }
 
@@ -87,6 +87,11 @@ public class MockLocalScheduler implements LocalSchedulerLink {
   @Override
   public void notifyUnblocked() {
 
+  }
+
+  @Override
+  public UniqueID generateTaskId(UniqueID driverId, UniqueID parentTaskId, int taskIndex) {
+    throw new RuntimeException("Not implemented here.");
   }
 
   @Override

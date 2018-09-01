@@ -185,7 +185,7 @@ class HyperBandScheduler(FIFOScheduler):
                     raise Exception("Trial with unexpected status encountered")
                 if bracket.continue_trial(t):
                     if t.status == Trial.PAUSED:
-                        t.unpause()
+                        trial_runner.trial_executor.unpause_trial(t)
                     elif t.status == Trial.RUNNING:
                         action = TrialScheduler.CONTINUE
         return action

@@ -9,7 +9,7 @@ import org.ray.api.UniqueID;
  */
 public class RayInvocation {
 
-  private static final RayActor<?> nil = new RayActor<>(UniqueID.nil, UniqueID.nil);
+  private static final RayActor<?> nil = new RayActor<>(UniqueID.NIL, UniqueID.NIL);
   public final String className;
   /**
    * unique id for a method.
