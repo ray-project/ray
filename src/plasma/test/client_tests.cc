@@ -4,6 +4,8 @@
 #include <unistd.h>
 #include <sys/time.h>
 
+#include "plasma/test-util.h"
+
 #include "plasma/common.h"
 #include "plasma/client.h"
 
@@ -18,7 +20,7 @@ TEST plasma_status_tests(void) {
   PlasmaClient client2;
   ARROW_CHECK_OK(client2.Connect("/tmp/store2", "/tmp/manager2",
                                  plasma::kPlasmaDefaultReleaseDelay));
-  ObjectID oid1 = ObjectID::from_random();
+  ObjectID oid1 = random_object_id();
 
   /* Test for object non-existence. */
   int status;
@@ -57,7 +59,7 @@ TEST plasma_fetch_tests(void) {
   PlasmaClient client2;
   ARROW_CHECK_OK(client2.Connect("/tmp/store2", "/tmp/manager2",
                                  plasma::kPlasmaDefaultReleaseDelay));
-  ObjectID oid1 = ObjectID::from_random();
+  ObjectID oid1 = random_object_id();
 
   /* Test for object non-existence. */
   int status;
@@ -129,7 +131,7 @@ TEST plasma_nonblocking_get_tests(void) {
   PlasmaClient client;
   ARROW_CHECK_OK(client.Connect("/tmp/store1", "/tmp/manager1",
                                 plasma::kPlasmaDefaultReleaseDelay));
-  ObjectID oid = ObjectID::from_random();
+  ObjectID oid = random_object_id();
   ObjectID oid_array[1] = {oid};
   ObjectBuffer obj_buffer;
 
@@ -165,8 +167,8 @@ TEST plasma_wait_for_objects_tests(void) {
   PlasmaClient client2;
   ARROW_CHECK_OK(client2.Connect("/tmp/store2", "/tmp/manager2",
                                  plasma::kPlasmaDefaultReleaseDelay));
-  ObjectID oid1 = ObjectID::from_random();
-  ObjectID oid2 = ObjectID::from_random();
+  ObjectID oid1 = random_object_id();
+  ObjectID oid2 = random_object_id();
 #define NUM_OBJ_REQUEST 2
 #define WAIT_TIMEOUT_MS 1000
   ObjectRequest obj_requests[NUM_OBJ_REQUEST];
@@ -236,8 +238,8 @@ TEST plasma_get_tests(void) {
                                  plasma::kPlasmaDefaultReleaseDelay));
   ARROW_CHECK_OK(client2.Connect("/tmp/store2", "/tmp/manager2",
                                  plasma::kPlasmaDefaultReleaseDelay));
-  ObjectID oid1 = ObjectID::from_random();
-  ObjectID oid2 = ObjectID::from_random();
+  ObjectID oid1 = random_object_id();
+  ObjectID oid2 = random_object_id();
   ObjectBuffer obj_buffer1;
 
   ObjectID oid_array1[1] = {oid1};
@@ -278,8 +280,8 @@ TEST plasma_get_multiple_tests(void) {
                                  plasma::kPlasmaDefaultReleaseDelay));
   ARROW_CHECK_OK(client2.Connect("/tmp/store2", "/tmp/manager2",
                                  plasma::kPlasmaDefaultReleaseDelay));
-  ObjectID oid1 = ObjectID::from_random();
-  ObjectID oid2 = ObjectID::from_random();
+  ObjectID oid1 = random_object_id();
+  ObjectID oid2 = random_object_id();
   ObjectID obj_ids[NUM_OBJ_REQUEST];
   ObjectBuffer obj_buffer[NUM_OBJ_REQUEST];
   int obj1_first = 1, obj2_first = 2;
