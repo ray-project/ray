@@ -77,7 +77,7 @@ matrix:
 
         - python ./python/ray/plasma/test/test.py valgrind
         - python ./python/ray/local_scheduler/test/test.py valgrind
-        - python ./python/ray/global_scheduler/test/test.py valgrind
+        # - python ./python/ray/global_scheduler/test/test.py valgrind
 
     # Build Linux wheels.
     - os: linux
