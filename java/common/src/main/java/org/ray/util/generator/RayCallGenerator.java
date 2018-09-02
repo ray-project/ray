@@ -11,7 +11,7 @@ import org.ray.util.FileUtil;
 public class RayCallGenerator extends BaseGenerator {
 
   /**
-   * @return whole file content of `RayCall.java`
+   * @return Whole file content of `RayCall.java`.
    */
   private String build() {
     sb = new StringBuilder();

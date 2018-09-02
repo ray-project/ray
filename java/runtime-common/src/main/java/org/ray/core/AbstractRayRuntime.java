@@ -190,8 +190,8 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     return params;
   }
 
+  @Override
   public abstract void shutdown();
-
 
   @Override
   public <T> RayObject<T> put(T obj) {

@@ -34,7 +34,7 @@ public class WaitTest {
     RayObject<String> obj2 = Ray.call(WaitTest::delayedHi);
 
     List<RayObject<String>> waitList = ImmutableList.of(obj1, obj2);
-    WaitResult<String> waitResult = Ray.wait(waitList , 2, 2 * 1000);
+    WaitResult<String> waitResult = Ray.wait(waitList, 2, 2 * 1000);
 
     List<RayObject<String>> readyList = waitResult.getReady();
 
