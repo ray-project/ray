@@ -1206,11 +1206,10 @@ def error_applies_to_driver(error_key, worker=global_worker):
                               + ray_constants.ID_SIZE), error_key
     # If the driver ID in the error message is a sequence of all zeros, then
     # the message is intended for all drivers.
-    generic_driver_id = ray_constants.ID_SIZE * b"\x00"
     driver_id = error_key[len(ERROR_KEY_PREFIX):(
         len(ERROR_KEY_PREFIX) + ray_constants.ID_SIZE)]
     return (driver_id == worker.task_driver_id.id()
-            or driver_id == generic_driver_id)
+            or driver_id == ray.ray_constants.NIL_JOB_ID.id())
 
 
 def error_info(worker=global_worker):
