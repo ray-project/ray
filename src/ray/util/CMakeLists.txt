@@ -7,3 +7,4 @@ install(FILES
 )
 
 ADD_RAY_TEST(logging_test STATIC_LINK_LIBS ray_static gtest pthread)
+ADD_RAY_TEST(signal_test STATIC_LINK_LIBS ray_static gtest pthread ${Boost_SYSTEM_LIBRARY})

@@ -87,7 +87,7 @@ class RayLog : public RayLogBase {
 
   virtual ~RayLog();
 
-  /// Return whether or not logging is enabled.
+  /// Return whether or not current logging instance is enabled.
   ///
   /// \return True if logging is enabled and false otherwise.
   virtual bool IsEnabled() const;
@@ -96,14 +96,28 @@ class RayLog : public RayLogBase {
   // If logDir is empty, the log won't output to file.
   static void StartRayLog(const std::string &appName, int severity_threshold = RAY_ERROR,
                           const std::string &logDir = "");
+
   // The shutdown function of ray log which should be used with StartRayLog as a pair.
   static void ShutDownRayLog();
+
+  /// Return whether or not the log level is enabled in current setting.
+  ///
+  /// \param log_level The input log level to test.
+  /// \return True if input log level is not lower than the threshold.
+  static bool IsLevelEnabled(int log_level);
+
+  // Install the failure signal handler to output call stack when crash.
+  // If glog is not installed, this function won't do anything.
+  static void InstallFailureSignalHandler();
 
  private:
   std::unique_ptr<LoggingProvider> logging_provider_;
   /// True if log messages should be logged and false if they should be ignored.
   bool is_enabled_;
   static int severity_threshold_;
+  // In InitGoogleLogging, it simply keeps the pointer.
+  // We need to make sure the app name passed to InitGoogleLogging exist.
+  static std::string app_name_;
 
  protected:
   virtual std::ostream &Stream();
