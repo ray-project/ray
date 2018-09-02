@@ -111,6 +111,12 @@ class WorkerPool {
   /// \return The total count of all workers (actor and non-actor) in the pool.
   uint32_t Size(const Language &language) const;
 
+  /// Get all the workers for a particular driver.
+  ///
+  /// \param job_id The job ID.
+  /// \return A list containing all the workers for a driver.
+  std::list<std::shared_ptr<Worker>> GetDriverWorkers(const DriverID &driver_id) const;
+
  protected:
   /// A map from the pids of starting worker processes
   /// to the number of their unregistered workers.

@@ -192,6 +192,11 @@ class NodeManager {
   /// \return Void.
   void HandleWorkerUnblocked(std::shared_ptr<Worker> worker);
 
+  /// Kill a worker.
+  /// \param worker The worker to kill.
+  /// \return Void.
+  void KillWorker(std::shared_ptr<Worker> worker);
+
   /// Methods for actor scheduling.
   /// Handler for the creation of an actor, possibly on a remote node.
   ///
@@ -220,8 +225,32 @@ class NodeManager {
   /// treat them as failed.
   ///
   /// \param actor_id The actor that died.
+  /// \param unsubscribe_dependencies Whether to unsubscribe dependencies for the tasks.
   /// \return Void.
-  void CleanUpTasksForDeadActor(const ActorID &actor_id);
+  void CleanUpTasksForDeadActor(const ActorID &actor_id,
+                                bool unsubscribe_dependencies = false);
+
+  /// TODO(rkn): This should probably be removed when we improve the
+  /// SchedulingQueue API. This is a helper function for
+  /// CleanUpTasksForDeadDriver.
+  ///
+  /// This essentially loops over all of the tasks in the provided list and
+  /// finds The IDs of the tasks that belong to the given actor.
+  ///
+  /// \param driver_id The driver to get the tasks for.
+  /// \param tasks A list of tasks to extract from.
+  /// \param tasks_to_remove The task IDs of the extracted tasks are inserted in
+  /// this vector.
+  /// \return Void.
+  void GetDriverTasksFromList(const DriverID &driver_id, const std::list<Task> &tasks,
+                              std::unordered_set<TaskID> &tasks_to_remove);
+
+  /// When an driver dies, loop over all of the queued tasks for that driver and
+  /// treat them as failed.
+  ///
+  /// \param driver_id The driver that died.
+  /// \return Void.
+  void CleanUpTasksForDeadDriver(const DriverID &driver_id);
 
   /// Handle an object becoming local. This updates any local accounting, but
   /// does not write to any global accounting in the GCS.

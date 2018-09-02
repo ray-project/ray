@@ -210,14 +210,48 @@ ray::Status NodeManager::RegisterGcs() {
   return ray::Status::OK();
 }
 
+void NodeManager::KillWorker(std::shared_ptr<Worker> worker) {
+  /* If we're just cleaning up a single worker, allow it some time to clean
+    * up its state before force killing. The client socket will be closed
+    * and the worker struct will be freed after the timeout. */
+  kill(worker->Pid(), SIGTERM);
+
+  auto retry_timer = std::make_shared<boost::asio::deadline_timer>(io_service_);
+  auto retry_duration = boost::posix_time::milliseconds(
+    RayConfig::instance().kill_worker_timeout_milliseconds());
+  retry_timer->expires_from_now(retry_duration);
+  retry_timer->async_wait([
+    worker](const boost::system::error_code &error) {
+      // Force kill driver.
+      kill(worker->Pid(), SIGKILL);
+  });
+}
+
 void NodeManager::HandleDriverTableUpdate(
     const ClientID &id, const std::vector<DriverTableDataT> &driver_data) {
   for (const auto &entry : driver_data) {
     RAY_LOG(DEBUG) << "HandleDriverTableUpdate " << UniqueID::from_binary(entry.driver_id)
                    << " " << entry.is_dead;
     if (entry.is_dead) {
-      // TODO: Implement cleanup on driver death. For reference,
-      // see handle_driver_removed_callback in local_scheduler.cc
+
+      auto driver_id = UniqueID::from_binary(entry.driver_id);
+      auto workers = worker_pool_.GetDriverWorkers(driver_id);
+
+      // Kill all the workers. The actual cleanup for these workers are done
+      // later when we receive DisconnectClient message from them.
+      for (const auto &worker : workers) {
+        // Mark worker as dead, so further messages from the work are ignored
+        // (except DisconnectClient).
+        worker->MarkDead();
+        // Then kill the worker process.
+        KillWorker(worker);
+      }
+
+      // Remove all tasks for this driver from scheduling queues, and mark
+      // the results for these tasks are not required, cancel any attempts
+      // for re-construction. Note that at this time the workers are likely
+      // alive before of the delay to kill workers.
+      CleanUpTasksForDeadDriver(driver_id);
     }
   }
 }
@@ -450,7 +484,8 @@ void NodeManager::GetActorTasksFromList(const ActorID &actor_id,
   }
 }
 
-void NodeManager::CleanUpTasksForDeadActor(const ActorID &actor_id) {
+void NodeManager::CleanUpTasksForDeadActor(const ActorID &actor_id,
+                                           bool unsubscribe_dependencies) {
   // TODO(rkn): The code below should be cleaned up when we improve the
   // SchedulingQueue API.
   std::unordered_set<TaskID> tasks_to_remove;
@@ -468,6 +503,45 @@ void NodeManager::CleanUpTasksForDeadActor(const ActorID &actor_id) {
   for (auto const &task : removed_tasks) {
     const TaskSpecification &spec = task.GetTaskSpecification();
     TreatTaskAsFailed(spec);
+    if (unsubscribe_dependencies) {
+      task_dependency_manager_.UnsubscribeDependencies(spec.TaskId());
+    }
+    task_dependency_manager_.TaskCanceled(spec.TaskId());
+  }
+}
+
+void NodeManager::GetDriverTasksFromList(const DriverID &driver_id,
+                                         const std::list<Task> &tasks,
+                                         std::unordered_set<TaskID> &tasks_to_remove) {
+  for (auto const &task : tasks) {
+    auto const &spec = task.GetTaskSpecification();
+    if (driver_id == spec.DriverId()) {
+      tasks_to_remove.insert(spec.TaskId());
+    }
+  }
+}
+
+void NodeManager::CleanUpTasksForDeadDriver(const DriverID &driver_id) {
+  // TODO(rkn): The code below should be cleaned up when we improve the
+  // SchedulingQueue API.
+  std::unordered_set<TaskID> tasks_to_remove;
+
+  // (See design_docs/task_states.rst for the state transition diagram.)
+  GetDriverTasksFromList(driver_id, local_queues_.GetMethodsWaitingForActorCreation(),
+                        tasks_to_remove);
+  GetDriverTasksFromList(driver_id, local_queues_.GetWaitingTasks(), tasks_to_remove);
+  GetDriverTasksFromList(driver_id, local_queues_.GetPlaceableTasks(), tasks_to_remove);
+  GetDriverTasksFromList(driver_id, local_queues_.GetReadyTasks(), tasks_to_remove);
+  GetDriverTasksFromList(driver_id, local_queues_.GetRunningTasks(), tasks_to_remove);
+  GetDriverTasksFromList(driver_id, local_queues_.GetBlockedTasks(), tasks_to_remove);
+
+  auto removed_tasks = local_queues_.RemoveTasks(tasks_to_remove);
+  for (auto const &task : removed_tasks) {
+    const TaskSpecification &spec = task.GetTaskSpecification();
+    TreatTaskAsFailed(spec);
+    // The results for these tasks won't be used, so cancel any attempts
+    // for re-construction.
+    task_dependency_manager_.UnsubscribeDependencies(spec.TaskId());
     task_dependency_manager_.TaskCanceled(spec.TaskId());
   }
 }
@@ -517,16 +591,26 @@ void NodeManager::ProcessClientMessage(
       worker_pool_.RegisterWorker(std::move(worker));
       DispatchTasks();
     } else {
-      // Register the new driver.
-      JobID job_id = from_flatbuf(*message->driver_id());
-      worker->AssignTaskId(job_id);
+      // Register the new driver. Note that here the driver_id in RegisterClientRequest
+      // message is actually the ID of the driver task, while client_id presents the
+      // real driver ID, which can associate all the tasks/actors for a given driver,
+      // which is set to the worker ID. 
+      // TODO: check the java case.
+      JobID driver_task_id = from_flatbuf(*message->driver_id());
+      worker->AssignTaskId(driver_task_id);
+      worker->AssignDriverId(from_flatbuf(*message->client_id()));
       worker_pool_.RegisterDriver(std::move(worker));
-      local_queues_.AddDriverTaskId(job_id);
+      local_queues_.AddDriverTaskId(driver_task_id);
     }
   } break;
   case protocol::MessageType::GetTask: {
     std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
     RAY_CHECK(worker);
+    if (worker->IsDead()) {
+      // break out if the worker is marked as dead. This can happen
+      // when a worker is being killed.
+      break;
+    }
     // If the worker was assigned a task, mark it as finished.
     if (!worker->GetAssignedTaskId().is_nil()) {
       FinishAssignedTask(*worker);
@@ -551,7 +635,10 @@ void NodeManager::ProcessClientMessage(
       // an error to the driver.
       // (See design_docs/task_states.rst for the state transition diagram.)
       const TaskID &task_id = worker->GetAssignedTaskId();
-      if (!task_id.is_nil()) {
+      if (!task_id.is_nil() && !worker->IsDead()) {
+        // If the worker is killed intentionally, e.g. when driver exits,
+        // the task for this worker has already been removed from queue,
+        // so the following are skipped.
         auto const &running_tasks = local_queues_.GetRunningTasks();
         // TODO(rkn): This is too heavyweight just to get the task's driver ID.
         auto const it = std::find_if(
@@ -562,6 +649,7 @@ void NodeManager::ProcessClientMessage(
         RAY_CHECK(it != running_tasks.end());
         const TaskSpecification &spec = it->GetTaskSpecification();
         const JobID job_id = spec.DriverId();
+
         // TODO(rkn): Define this constant somewhere else.
         std::string type = "worker_died";
         std::ostringstream error_message;
@@ -590,7 +678,7 @@ void NodeManager::ProcessClientMessage(
         actor_entry->second.MarkDead();
         // For dead actors, if there are remaining tasks for this actor, we
         // should handle them.
-        CleanUpTasksForDeadActor(actor_id);
+        CleanUpTasksForDeadActor(actor_id, worker->IsDead());
       }
 
       const ClientID &client_id = gcs_client_->client_table().GetLocalClientId();
@@ -606,8 +694,12 @@ void NodeManager::ProcessClientMessage(
       cluster_resource_map_[client_id].Release(lifetime_resources.ToResourceSet());
       worker->ResetLifetimeResourceIds();
 
+      RAY_LOG(WARNING) << "Worker (pid=" << worker->Pid() << ") is disconnected. "
+        << "driver_id: " << worker->GetAssignedDriverId();
+
       // Since some resources may have been released, we can try to dispatch more tasks.
       DispatchTasks();
+
     } else {
       // The client is a driver.
       RAY_CHECK_OK(gcs_client_->driver_table().AppendDriverData(client->GetClientID(),
@@ -618,6 +710,9 @@ void NodeManager::ProcessClientMessage(
       RAY_CHECK(!driver_id.is_nil());
       local_queues_.RemoveDriverTaskId(driver_id);
       worker_pool_.DisconnectDriver(driver);
+
+      RAY_LOG(WARNING) << "Driver (pid=" << driver->Pid() << ") is disconnected. "
+        << "driver_id: " << driver->GetAssignedDriverId();
     }
     return;
   } break;
@@ -1138,6 +1233,7 @@ void NodeManager::AssignTask(Task &task) {
   if (status.ok()) {
     // We successfully assigned the task to the worker.
     worker->AssignTaskId(spec.TaskId());
+    worker->AssignDriverId(spec.DriverId());
     // If the task was an actor task, then record this execution to guarantee
     // consistency in the case of reconstruction.
     if (spec.IsActorTask()) {
@@ -1196,6 +1292,8 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
     // If this was an actor creation task, then convert the worker to an actor.
     auto actor_id = task.GetTaskSpecification().ActorCreationId();
     worker.AssignActorId(actor_id);
+    auto driver_id = task.GetTaskSpecification().DriverId();
+    worker.AssignDriverId(driver_id);
 
     // Publish the actor creation event to all other nodes so that methods for
     // the actor will be forwarded directly to this node.
@@ -1238,6 +1336,7 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
 
   // Unset the worker's assigned task.
   worker.AssignTaskId(TaskID::nil());
+  worker.AssignDriverId(DriverID::nil());
 }
 
 void NodeManager::HandleTaskReconstruction(const TaskID &task_id) {

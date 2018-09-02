@@ -173,7 +173,10 @@ bool TaskDependencyManager::SubscribeDependencies(
 void TaskDependencyManager::UnsubscribeDependencies(const TaskID &task_id) {
   // Remove the task from the table of subscribed tasks.
   auto it = task_dependencies_.find(task_id);
-  RAY_CHECK(it != task_dependencies_.end());
+  if (it == task_dependencies_.end()) {
+    return;
+  }
+
   const TaskDependencies task_entry = std::move(it->second);
   task_dependencies_.erase(it);
 
