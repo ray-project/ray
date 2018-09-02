@@ -13,29 +13,43 @@ import ray
 from ray.test.test_utils import run_and_get_output
 
 
-def run_string_as_driver(driver_script, blocking=True):
+def run_string_as_driver(driver_script):
     """Run a driver as a separate process.
 
     Args:
         driver_script: A string to run as a Python script.
-        blocking: If true then block until the driver code has finished.
-            Otherwise return after launching the driver.
 
     Returns:
-        The scripts output if blocking is true, otherwise a handle to the
-            driver process.
+        The script's output.
     """
     # Save the driver script as a file so we can call it using subprocess. If
     # blocking is false, we do not delete this file in order to make sure that
     # it doesn't get removed before the Python process tries to run it.
-    with tempfile.NamedTemporaryFile(delete=blocking) as f:
+    with tempfile.NamedTemporaryFile() as f:
         f.write(driver_script.encode("ascii"))
         f.flush()
-        driver_command = [sys.executable, f.name]
-        if blocking:
-            return ray.utils.decode(subprocess.check_output(driver_command))
-        else:
-            return subprocess.Popen(driver_command, stdout=subprocess.PIPE)
+        out = ray.utils.decode(
+            subprocess.check_output([sys.executable, f.name]))
+    return out
+
+
+def run_string_as_driver_nonblocking(driver_script):
+    """Start a driver as a separate process and return immediately.
+
+    Args:
+        driver_script: A string to run as a Python script.
+
+    Returns:
+        A handle to the driver process.
+    """
+    # Save the driver script as a file so we can call it using subprocess. We
+    # do not delete this file because if we do then it may get removed before
+    # the Python process tries to run it.
+    with tempfile.NamedTemporaryFile(delete=False) as f:
+        f.write(driver_script.encode("ascii"))
+        f.flush()
+        return subprocess.Popen(
+            [sys.executable, f.name], stdout=subprocess.PIPE)
 
 
 @pytest.fixture
@@ -284,7 +298,7 @@ print("success")
         # Make sure the first driver ran to completion.
         assert "success" in out
         # Also make sure that this works when the driver exits ungracefully.
-        process_handle = run_string_as_driver(driver_script2, blocking=False)
+        process_handle = run_string_as_driver_nonblocking(driver_script2)
         wait_for_success_output(process_handle)
         # Kill the process ungracefully.
         process_handle.kill()
