@@ -1,9 +1,9 @@
 #ifndef LOCAL_SCHEDULER_H
 #define LOCAL_SCHEDULER_H
 
+#include "event_loop.h"
 #include "local_scheduler_shared.h"
 #include "task.h"
-#include "event_loop.h"
 
 /**
  * Establish a connection to a new client.
