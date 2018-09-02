@@ -1,6 +1,6 @@
 package org.ray.core.model;
 
-import org.ray.api.UniqueID;
+import org.ray.api.id.UniqueId;
 import org.ray.util.NetworkUtil;
 import org.ray.util.config.AConfig;
 import org.ray.util.config.ConfigReader;
@@ -44,7 +44,7 @@ public class RayParameters {
   public int local_scheduler_rpc_port = 34567;
 
   @AConfig(comment = "driver ID when the worker is served as a driver")
-  public UniqueID driver_id = UniqueID.NIL;
+  public UniqueId driver_id = UniqueId.NIL;
 
   @AConfig(comment = "logging directory")
   public String log_dir = "/tmp/raylogs";

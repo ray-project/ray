@@ -2,9 +2,8 @@ package org.ray.core;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.util.Map;
 import org.apache.commons.lang3.tuple.Pair;
-import org.ray.api.UniqueID;
+import org.ray.api.id.UniqueId;
 import org.ray.spi.model.RayMethod;
 import org.ray.spi.model.TaskSpec;
 import org.ray.util.exception.TaskExecutionException;
@@ -33,7 +32,8 @@ public class InvocationExecutor {
     try {
       executeInternal(task, pr);
     } catch (IllegalAccessException | IllegalArgumentException | InvocationTargetException e) {
-      if (!task.actorId.isNil() && RayRuntime.getInstance().getLocalActor(task.actorId) == null) {
+      if (!task.actorId.isNil()
+          && AbstractRayRuntime.getInstance().getLocalActor(task.actorId) == null) {
         ex = new TaskExecutionException("Task " + taskdesc + " execution on actor " + task.actorId
             + " failed as the actor is not present ", e);
         RayLog.core.error("Task " + taskdesc + " execution on actor " + task.actorId
@@ -80,7 +80,7 @@ public class InvocationExecutor {
     if (task.returnIds == null || task.returnIds.length == 0) {
       return;
     }
-    RayRuntime.getInstance().putRaw(task.returnIds[0], result);
+    AbstractRayRuntime.getInstance().put(task.returnIds[0], result);
   }
 
   private static String formatTaskExecutionExceptionMsg(TaskSpec task, String funcName) {
@@ -88,7 +88,7 @@ public class InvocationExecutor {
         + " failed with function name = " + funcName;
   }
 
-  private static void safePut(UniqueID objectId, Object obj) {
-    RayRuntime.getInstance().putRaw(objectId, obj);
+  private static void safePut(UniqueId objectId, Object obj) {
+    AbstractRayRuntime.getInstance().put(objectId, obj);
   }
 }

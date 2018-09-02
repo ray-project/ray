@@ -1,22 +1,13 @@
 package org.ray.core;
 
-import java.io.Serializable;
 import java.lang.reflect.Method;
-import java.lang.reflect.Modifier;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Map.Entry;
 import org.apache.commons.lang3.tuple.Pair;
+import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
-import org.ray.api.UniqueID;
+import org.ray.api.id.UniqueId;
 import org.ray.spi.model.FunctionArg;
-import org.ray.spi.model.RayInvocation;
 import org.ray.spi.model.TaskSpec;
-import org.ray.util.exception.TaskExecutionException;
 
 /**
  * arguments wrap and unwrap.
@@ -24,36 +15,27 @@ import org.ray.util.exception.TaskExecutionException;
 public class ArgumentsBuilder {
 
   @SuppressWarnings({"rawtypes", "unchecked"})
-  public static FunctionArg[] wrap(RayInvocation invocation) {
-    Object[] oargs = invocation.getArgs();
-    FunctionArg[] fargs = new FunctionArg[oargs.length];
-    int k = 0;
-    for (Object oarg : oargs) {
-      fargs[k] = new FunctionArg();
-      if (oarg == null) {
-        fargs[k].data = Serializer.encode(null);
-      } else if (oarg.getClass().equals(RayActor.class)) {
-        // serialize actor unique id
-        if (k == 0) {
-          RayActorId aid = new RayActorId();
-          aid.id = ((RayActor) oarg).getId();
-          fargs[k].data = Serializer.encode(aid);
-        } else { // serialize actor handle
-          fargs[k].data = Serializer.encode(oarg);
-        }
-      } else if (oarg.getClass().equals(RayObject.class)) {
-        fargs[k].ids = new ArrayList<>();
-        fargs[k].ids.add(((RayObject) oarg).getId());
-      } else if (checkSimpleValue(oarg)) {
-        fargs[k].data = Serializer.encode(oarg);
+  public static FunctionArg[] wrap(Object[] args) {
+    FunctionArg[] ret = new FunctionArg[args.length];
+    for (int i = 0; i < ret.length; i++) {
+      Object arg = args[i];
+      UniqueId id = null;
+      byte[] data = null;
+      if (arg == null) {
+        data = Serializer.encode(null);
+      } else if (arg instanceof RayActor) {
+        data = Serializer.encode(arg);
+      } else if (arg instanceof RayObject) {
+        id = ((RayObject) arg).getId();
+      } else if (checkSimpleValue(arg)) {
+        data = Serializer.encode(arg);
       } else {
-        //big parameter, use object store and pass future
-        fargs[k].ids = new ArrayList<>();
-        fargs[k].ids.add(RayRuntime.getInstance().put(oarg).getId());
+        RayObject obj = Ray.put(arg);
+        id = obj.getId();
       }
-      k++;
+      ret[i] = new FunctionArg(id, data);
     }
-    return fargs;
+    return ret;
   }
 
   private static boolean checkSimpleValue(Object o) {
@@ -61,52 +43,22 @@ public class ArgumentsBuilder {
   }
 
   @SuppressWarnings({"rawtypes", "unchecked"})
-  public static Pair<Object, Object[]> unwrap(TaskSpec task, Method m, ClassLoader classLoader)
-      throws TaskExecutionException {
+  public static Pair<Object, Object[]> unwrap(TaskSpec task, Method m, ClassLoader classLoader) {
     // the last arg is className
-
-    FunctionArg[] fargs = Arrays.copyOf(task.args, task.args.length - 1);
-    Object current = null;
-    Object[] realArgs;
-
-    int start = 0;
-
-    // check actor method
-    if (!Modifier.isStatic(m.getModifiers())) {
-      start = 1;
-      RayActorId actorId = Serializer.decode(fargs[0].data, classLoader);
-      current = RayRuntime.getInstance().getLocalActor(actorId.id);
-      realArgs = new Object[fargs.length - 1];
-    } else {
-      realArgs = new Object[fargs.length];
-    }
-
-    int raIndex = 0;
-    for (int k = start; k < fargs.length; k++, raIndex++) {
-      FunctionArg farg = fargs[k];
-
-      // pass by value
-      if (farg.ids == null) {
-        Object obj = Serializer.decode(farg.data, classLoader);
-
-        // due to remote lambda, method may be static
-        if (obj instanceof RayActorId) {
-          assert (k == 0);
-          realArgs[raIndex] = RayRuntime.getInstance().getLocalActor(((RayActorId) obj).id);
-        } else {
-          realArgs[raIndex] = obj;
-        }
-      } else if (farg.data == null) { // only ids, big data or single object id
-        assert (farg.ids.size() == 1);
-        realArgs[raIndex] = RayRuntime.getInstance().get(farg.ids.get(0));
+    Object[] realArgs = new Object[task.args.length - 1];
+    for (int i = 0; i < task.args.length - 1; i++) {
+      FunctionArg arg = task.args[i];
+      if (arg.id == null) {
+        // pass by value
+        Object obj = Serializer.decode(arg.data, classLoader);
+        realArgs[i] = obj;
+      } else if (arg.data == null) {
+        // pass by reference
+        realArgs[i] = Ray.get(arg.id);
       }
     }
-    return Pair.of(current, realArgs);
-  }
-
-  public static class RayActorId implements Serializable {
-
-    private static final long serialVersionUID = 3993646395842605166L;
-    public UniqueID id;
+    Object actor = task.actorId.isNil()
+        ? null : AbstractRayRuntime.getInstance().getLocalActor(task.actorId);
+    return Pair.of(actor, realArgs);
   }
 }

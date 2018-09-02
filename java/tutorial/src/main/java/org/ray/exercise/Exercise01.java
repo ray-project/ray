@@ -3,8 +3,7 @@ package org.ray.exercise;
 import java.io.Serializable;
 import org.ray.api.Ray;
 import org.ray.api.RayObject;
-import org.ray.api.RayRemote;
-import org.ray.core.RayRuntime;
+import org.ray.api.annotation.RayRemote;
 
 /**
  * Define a remote function, and execute multiple remote functions in parallel.
@@ -41,7 +40,7 @@ public class Exercise01 implements Serializable {
     } catch (Throwable t) {
       t.printStackTrace();
     } finally {
-      RayRuntime.getInstance().cleanUp();
+      Ray.shutdown();
     }
   }
 }
