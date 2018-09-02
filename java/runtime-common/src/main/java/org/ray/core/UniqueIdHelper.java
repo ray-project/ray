@@ -3,12 +3,14 @@ package org.ray.core;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Arrays;
-import org.ray.api.UniqueID;
+import org.ray.api.id.UniqueId;
 
 
-//
-// Helper methods for UniqueID. These are the same as the helper functions in src/ray/id.h.
-//
+/**
+ * Helper method for UniqueId.
+ * Note: any changes to these methods must be synced with C++ helper functions
+ * in src/ray/id.h
+ */
 public class UniqueIdHelper {
   public static final int OBJECT_INDEX_POS = 0;
   public static final int OBJECT_INDEX_LENGTH = 4;
@@ -20,7 +22,7 @@ public class UniqueIdHelper {
    * @param returnIndex What number return value this object is in the task.
    * @return The computed object ID.
    */
-  public static UniqueID computeReturnId(UniqueID taskId, int returnIndex) {
+  public static UniqueId computeReturnId(UniqueId taskId, int returnIndex) {
     return computeObjectId(taskId, returnIndex);
   }
 
@@ -30,14 +32,14 @@ public class UniqueIdHelper {
    * @param index The index which can distinguish different objects in one task.
    * @return The computed object ID.
    */
-  private static UniqueID computeObjectId(UniqueID taskId, int index) {
-    byte[] objId = new byte[UniqueID.LENGTH];
-    System.arraycopy(taskId.getBytes(),0, objId, 0, UniqueID.LENGTH);
+  private static UniqueId computeObjectId(UniqueId taskId, int index) {
+    byte[] objId = new byte[UniqueId.LENGTH];
+    System.arraycopy(taskId.getBytes(),0, objId, 0, UniqueId.LENGTH);
     ByteBuffer wbb = ByteBuffer.wrap(objId);
     wbb.order(ByteOrder.LITTLE_ENDIAN);
     wbb.putInt(UniqueIdHelper.OBJECT_INDEX_POS, index);
 
-    return new UniqueID(objId);
+    return new UniqueId(objId);
   }
 
   /**
@@ -47,7 +49,7 @@ public class UniqueIdHelper {
    * @param putIndex What number put this object was created by in the task.
    * @return The computed object ID.
    */
-  public static UniqueID computePutId(UniqueID taskId, int putIndex) {
+  public static UniqueId computePutId(UniqueId taskId, int putIndex) {
     // We multiply putIndex by -1 to distinguish from returnIndex.
     return computeObjectId(taskId, -1 * putIndex);
   }
@@ -58,13 +60,13 @@ public class UniqueIdHelper {
    * @param objectId The object ID.
    * @return The task ID of the task that created this object.
    */
-  public static UniqueID computeTaskId(UniqueID objectId) {
-    byte[] taskId = new byte[UniqueID.LENGTH];
-    System.arraycopy(objectId.getBytes(), 0, taskId, 0, UniqueID.LENGTH);
+  public static UniqueId computeTaskId(UniqueId objectId) {
+    byte[] taskId = new byte[UniqueId.LENGTH];
+    System.arraycopy(objectId.getBytes(), 0, taskId, 0, UniqueId.LENGTH);
     Arrays.fill(taskId, UniqueIdHelper.OBJECT_INDEX_POS,
         UniqueIdHelper.OBJECT_INDEX_POS + UniqueIdHelper.OBJECT_INDEX_LENGTH, (byte) 0);
 
-    return new UniqueID(taskId);
+    return new UniqueId(taskId);
   }
 
 }

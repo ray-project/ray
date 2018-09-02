@@ -3,7 +3,7 @@ package org.ray.api.test;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.ray.api.Ray;
-import org.ray.api.RayRemote;
+import org.ray.api.annotation.RayRemote;
 
 @RunWith(MyRunner.class)
 public class EchoTest {

@@ -8,9 +8,9 @@ import java.lang.reflect.Method;
 import java.util.concurrent.TimeUnit;
 import org.junit.Assert;
 import org.junit.Test;
-import org.ray.api.funcs.RayFunc0;
-import org.ray.api.funcs.RayFunc1;
-import org.ray.api.funcs.RayFunc3;
+import org.ray.api.function.RayFunc0;
+import org.ray.api.function.RayFunc1;
+import org.ray.api.function.RayFunc3;
 import org.ray.util.MethodId;
 import org.ray.util.logger.RayLog;
 

@@ -6,7 +6,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import net.lingala.zip4j.core.ZipFile;
-import org.ray.api.UniqueID;
+import org.ray.api.id.UniqueId;
 import org.ray.core.model.RayParameters;
 import org.ray.core.model.RunMode;
 import org.ray.runner.RunManager;
@@ -162,10 +162,7 @@ public class RayCli {
         cmdSubmit.packageZip.lastIndexOf('/') + 1,
         cmdSubmit.packageZip.lastIndexOf('.'));
 
-    //final RemoteFunctionManager functionManager = RayRuntime
-    //    .getInstance().getRemoteFunctionManager();
-
-    UniqueID resourceId = functionManager.registerResource(zip);
+    UniqueId resourceId = functionManager.registerResource(zip);
 
     // Init RayLog before using it.
     RayLog.init(params.log_dir);
@@ -173,7 +170,7 @@ public class RayCli {
     RayLog.rapp.debug(
         "registerResource " + resourceId + " for package " + packageName + " done");
 
-    UniqueID appId = params.driver_id;
+    UniqueId appId = params.driver_id;
     functionManager.registerApp(appId, resourceId);
     RayLog.rapp.debug("registerApp " + appId + " for resouorce " + resourceId + " done");
   
@@ -206,8 +203,6 @@ public class RayCli {
     RayLog.rapp.debug("Find app class path  " + additionalClassPath);
 
     // Start driver process.
-    //RunManager runManager = new RunManager(params, RayRuntime.getInstance().getPaths(),
-    //  RayRuntime.configReader);
     RunManager runManager = new RunManager(params, paths, config);
     Process proc = runManager.startDriver(
         DefaultDriver.class.getName(),

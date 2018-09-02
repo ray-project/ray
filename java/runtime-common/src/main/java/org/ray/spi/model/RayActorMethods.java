@@ -6,22 +6,22 @@ import java.lang.reflect.Modifier;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
-import org.ray.api.RayRemote;
-import org.ray.api.UniqueID;
+import org.ray.api.annotation.RayRemote;
+import org.ray.api.id.UniqueId;
 
 
 public final class RayActorMethods {
 
   public final Class clazz;
   public final RayRemote remoteAnnotation;
-  public final Map<UniqueID, RayMethod> functions;
+  public final Map<UniqueId, RayMethod> functions;
   /**
    * the static function in Actor, call as task.
    */
-  public final Map<UniqueID, RayMethod> staticFunctions;
+  public final Map<UniqueId, RayMethod> staticFunctions;
 
   private RayActorMethods(Class clazz, RayRemote remoteAnnotation,
-      Map<UniqueID, RayMethod> functions, Map<UniqueID, RayMethod> staticFunctions) {
+      Map<UniqueId, RayMethod> functions, Map<UniqueId, RayMethod> staticFunctions) {
     this.clazz = clazz;
     this.remoteAnnotation = remoteAnnotation;
     this.functions = Collections.unmodifiableMap(new HashMap<>(functions));
@@ -35,8 +35,8 @@ public final class RayActorMethods {
       Preconditions
           .checkNotNull(remoteAnnotation, "%s must declare @RayRemote", clazzName);
       Method[] methods = clazz.getDeclaredMethods();
-      Map<UniqueID, RayMethod> functions = new HashMap<>(methods.length * 2);
-      Map<UniqueID, RayMethod> staticFunctions = new HashMap<>(methods.length * 2);
+      Map<UniqueId, RayMethod> functions = new HashMap<>(methods.length * 2);
+      Map<UniqueId, RayMethod> staticFunctions = new HashMap<>(methods.length * 2);
 
       for (Method m : methods) {
         if (!Modifier.isPublic(m.getModifiers())) {
