@@ -15,7 +15,7 @@ def env_integer(key, default):
 
 
 ID_SIZE = 20
-NIL_JOB_ID = ray.ObjectID(ID_SIZE * b"\x00")
+NIL_JOB_ID = ray.ObjectID(ID_SIZE * b"\xff")
 
 # If a remote function or actor (or some other export) has serialized size
 # greater than this quantity, print an warning.
@@ -43,6 +43,7 @@ WORKER_DIED_PUSH_ERROR = "worker_died"
 PUT_RECONSTRUCTION_PUSH_ERROR = "put_reconstruction"
 HASH_MISMATCH_PUSH_ERROR = "object_hash_mismatch"
 INFEASIBLE_TASK_ERROR = "infeasible_task"
+REMOVED_NODE_ERROR = "node_removed"
 
 # Abort autoscaling if more than this number of errors are encountered. This
 # is a safety feature to prevent e.g. runaway node launches.
