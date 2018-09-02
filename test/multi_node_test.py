@@ -22,9 +22,7 @@ def run_string_as_driver(driver_script):
     Returns:
         The script's output.
     """
-    # Save the driver script as a file so we can call it using subprocess. If
-    # blocking is false, we do not delete this file in order to make sure that
-    # it doesn't get removed before the Python process tries to run it.
+    # Save the driver script as a file so we can call it using subprocess.
     with tempfile.NamedTemporaryFile() as f:
         f.write(driver_script.encode("ascii"))
         f.flush()
