@@ -39,7 +39,9 @@ void Worker::AssignTaskId(const TaskID &task_id) { assigned_task_id_ = task_id; 
 
 const TaskID &Worker::GetAssignedTaskId() const { return assigned_task_id_; }
 
-void Worker::AssignDriverId(const DriverID &driver_id) { assigned_driver_id_ = driver_id; }
+void Worker::AssignDriverId(const DriverID &driver_id) {
+  assigned_driver_id_ = driver_id;
+}
 
 const DriverID &Worker::GetAssignedDriverId() const { return assigned_driver_id_; }
 

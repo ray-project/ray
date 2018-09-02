@@ -218,12 +218,11 @@ void NodeManager::KillWorker(std::shared_ptr<Worker> worker) {
 
   auto retry_timer = std::make_shared<boost::asio::deadline_timer>(io_service_);
   auto retry_duration = boost::posix_time::milliseconds(
-    RayConfig::instance().kill_worker_timeout_milliseconds());
+      RayConfig::instance().kill_worker_timeout_milliseconds());
   retry_timer->expires_from_now(retry_duration);
-  retry_timer->async_wait([
-    worker](const boost::system::error_code &error) {
-      // Force kill driver.
-      kill(worker->Pid(), SIGKILL);
+  retry_timer->async_wait([worker](const boost::system::error_code &error) {
+    // Force kill driver.
+    kill(worker->Pid(), SIGKILL);
   });
 }
 
@@ -233,7 +232,6 @@ void NodeManager::HandleDriverTableUpdate(
     RAY_LOG(DEBUG) << "HandleDriverTableUpdate " << UniqueID::from_binary(entry.driver_id)
                    << " " << entry.is_dead;
     if (entry.is_dead) {
-
       auto driver_id = UniqueID::from_binary(entry.driver_id);
       auto workers = worker_pool_.GetDriverWorkers(driver_id);
 
@@ -528,7 +526,7 @@ void NodeManager::CleanUpTasksForDeadDriver(const DriverID &driver_id) {
 
   // (See design_docs/task_states.rst for the state transition diagram.)
   GetDriverTasksFromList(driver_id, local_queues_.GetMethodsWaitingForActorCreation(),
-                        tasks_to_remove);
+                         tasks_to_remove);
   GetDriverTasksFromList(driver_id, local_queues_.GetWaitingTasks(), tasks_to_remove);
   GetDriverTasksFromList(driver_id, local_queues_.GetPlaceableTasks(), tasks_to_remove);
   GetDriverTasksFromList(driver_id, local_queues_.GetReadyTasks(), tasks_to_remove);
@@ -594,7 +592,7 @@ void NodeManager::ProcessClientMessage(
       // Register the new driver. Note that here the driver_id in RegisterClientRequest
       // message is actually the ID of the driver task, while client_id presents the
       // real driver ID, which can associate all the tasks/actors for a given driver,
-      // which is set to the worker ID. 
+      // which is set to the worker ID.
       // TODO: check the java case.
       JobID driver_task_id = from_flatbuf(*message->driver_id());
       worker->AssignTaskId(driver_task_id);
@@ -694,8 +692,8 @@ void NodeManager::ProcessClientMessage(
       cluster_resource_map_[client_id].Release(lifetime_resources.ToResourceSet());
       worker->ResetLifetimeResourceIds();
 
-      RAY_LOG(WARNING) << "Worker (pid=" << worker->Pid() << ") is disconnected. "
-        << "driver_id: " << worker->GetAssignedDriverId();
+      RAY_LOG(DEBUG) << "Worker (pid=" << worker->Pid() << ") is disconnected. "
+                       << "driver_id: " << worker->GetAssignedDriverId();
 
       // Since some resources may have been released, we can try to dispatch more tasks.
       DispatchTasks();
@@ -711,8 +709,8 @@ void NodeManager::ProcessClientMessage(
       local_queues_.RemoveDriverTaskId(driver_id);
       worker_pool_.DisconnectDriver(driver);
 
-      RAY_LOG(WARNING) << "Driver (pid=" << driver->Pid() << ") is disconnected. "
-        << "driver_id: " << driver->GetAssignedDriverId();
+      RAY_LOG(DEBUG) << "Driver (pid=" << driver->Pid() << ") is disconnected. "
+                       << "driver_id: " << driver->GetAssignedDriverId();
     }
     return;
   } break;

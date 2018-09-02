@@ -232,8 +232,8 @@ inline WorkerPool::State &WorkerPool::GetStateForLanguage(const Language &langua
   return state->second;
 }
 
-std::list<std::shared_ptr<Worker>>
-WorkerPool::GetDriverWorkers(const DriverID &driver_id) const {
+std::list<std::shared_ptr<Worker>> WorkerPool::GetDriverWorkers(
+    const DriverID &driver_id) const {
   std::list<std::shared_ptr<Worker>> workers;
 
   for (const auto &entry : states_by_lang_) {
