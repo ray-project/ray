@@ -11,7 +11,7 @@ In the high-level agent APIs, environments are identified with string names. By 
 
     import ray
     from ray.tune.registry import register_env
-    from ray.rllib import ppo
+    from ray.rllib.agents import ppo
 
     def env_creator(env_config):
         import gym

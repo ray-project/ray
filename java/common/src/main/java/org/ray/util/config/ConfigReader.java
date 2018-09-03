@@ -12,6 +12,7 @@ import java.util.Vector;
 import org.ini4j.Config;
 import org.ini4j.Ini;
 import org.ini4j.Profile;
+import org.ray.api.id.UniqueId;
 import org.ray.util.ObjectUtil;
 import org.ray.util.StringUtil;
 
@@ -319,7 +320,7 @@ public class ConfigReader {
           Object v = Enum.valueOf((Class<Enum>) fld.getType(), sv);
           fld.set(obj, v);
           // TODO: this is a hack and needs to be resolved later
-        } else if (fld.getType().getName().equals("org.ray.api.UniqueID")) {
+        } else if (fld.getType().equals(UniqueId.class)) {
           String sv = getStringValue(section, fld.getName(), defaultFldValue.toString(), comment);
           Object v;
           try {

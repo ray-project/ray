@@ -54,7 +54,6 @@ ray::Status Raylet::RegisterGcs(const std::string &node_ip_address,
                                 const std::string &redis_address, int redis_port,
                                 boost::asio::io_service &io_service,
                                 const NodeManagerConfig &node_manager_config) {
-  RAY_RETURN_NOT_OK(gcs_client_->Connect(redis_address, redis_port, /*sharding=*/true));
   RAY_RETURN_NOT_OK(gcs_client_->Attach(io_service));
 
   ClientTableDataT client_info = gcs_client_->client_table().GetLocalClient();

@@ -67,6 +67,8 @@ COMMON_CONFIG = {
     "compress_observations": False,
     # Whether to write episode stats and videos to the agent log dir
     "monitor": False,
+    # Allocate a fraction of a GPU instead of one (e.g., 0.3 GPUs)
+    "gpu_fraction": 1,
 
     # === Multiagent ===
     "multiagent": {

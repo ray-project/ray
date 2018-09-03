@@ -1,6 +1,6 @@
 package org.ray.spi;
 
-import org.ray.api.UniqueID;
+import org.ray.api.id.UniqueId;
 
 /**
  * register and load functions from function table.
@@ -15,14 +15,14 @@ public interface RemoteFunctionManager {
    * @param resourceZip a directory zip from @JarRewriter
    * @return SHA-1 hash of the content
    */
-  UniqueID registerResource(byte[] resourceZip);
+  UniqueId registerResource(byte[] resourceZip);
 
   /**
    * download resource content.
    *
    * @return resource content
    */
-  byte[] getResource(UniqueID resourceId);
+  byte[] getResource(UniqueId resourceId);
 
   /**
    * remove resource by its hash id
@@ -30,35 +30,35 @@ public interface RemoteFunctionManager {
    *
    * @param resourceId SHA-1 hash of the resource zip bytes
    */
-  void unregisterResource(UniqueID resourceId);
+  void unregisterResource(UniqueId resourceId);
 
   /*
    * register the <driver, resource> mapping to repo,
    * this function is invoked by whoever initiates the driver id
    */
-  void registerApp(UniqueID driverId, UniqueID resourceId);
+  void registerApp(UniqueId driverId, UniqueId resourceId);
 
   /**
    * get the resourceId of one app.
    *
    * @return resourceId of the app driver
    */
-  UniqueID getAppResourceId(UniqueID driverId);
+  UniqueId getAppResourceId(UniqueId driverId);
 
   /*
    * unregister <dirver, resource> mapping
    * this function is called when the driver exits or detected dead
    */
-  void unregisterApp(UniqueID driverId);
+  void unregisterApp(UniqueId driverId);
 
   /**
    * load resource.
    */
-  ClassLoader loadResource(UniqueID driverId);
+  ClassLoader loadResource(UniqueId driverId);
 
   /**
    * unload functions for this driver
    * this function is used by the workers on demand when a driver is dead.
    */
-  void unloadFunctions(UniqueID driverId);
+  void unloadFunctions(UniqueId driverId);
 }
