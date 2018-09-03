@@ -43,7 +43,7 @@ DEFAULT_CONFIG = with_common_config({
     "num_gpus_per_worker": 0,
     "replay_batch_slots": 0,
     "replay_proportion": 0.0,
-    "gpu_queue_size": 1,
+    "gpu_queue_size": 2,  # increases GPU mem usage by Nx to preload samples
     "sample_queue_depth": 2,
 
     # Learning params.
