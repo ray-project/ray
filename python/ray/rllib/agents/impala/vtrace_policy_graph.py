@@ -107,10 +107,7 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
                                           tf.get_variable_scope().name)
 
         # Setup the policy loss
-        if isinstance(action_space, gym.spaces.Box):
-            ac_size = action_space.shape[0]
-            actions = tf.placeholder(tf.float32, [None, ac_size], name="ac")
-        elif isinstance(action_space, gym.spaces.Discrete):
+        if isinstance(action_space, gym.spaces.Discrete):
             ac_size = action_space.n
             actions = tf.placeholder(tf.int64, [None], name="ac")
         else:
