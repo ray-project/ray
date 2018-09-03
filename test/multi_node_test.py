@@ -6,6 +6,7 @@ import sys
 import tempfile
 import time
 import unittest
+import signal
 
 import ray
 from ray.test.test_utils import run_and_get_output
@@ -194,6 +195,55 @@ print("success")
             assert "success" in out
             assert ray.services.all_processes_alive()
 
+
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") != "1",
+        "This test only targets xray.")
+    def testCleanupAtDriverExit(self):
+        # This test will create a driver that submit some tasks and then
+        # exit without waiting for the tasks to complete. Test that the
+        # tasks are cleaned up correctly.
+        ray.init(redis_address=self.redis_address)
+
+        # Define a driver that creates an actor and exits.
+        driver_script1 = """
+import ray
+ray.init(redis_address="{}")
+@ray.remote
+class Foo(object):
+    def __init__(self):
+        self.termination_received = False
+        signal.signal(signal.SIGTERM, self.signal_handler)
+
+    def f(self):
+        time.sleep(10)
+        # We shouldn't reach here.
+        assert self.termination_received
+
+    def signal_handler(self):
+        self.termination_received = True
+        sys.exit(0)
+
+Foo.remote().f.remote()
+print("success")
+""".format(self.redis_address)
+
+        # Create a driver and let it exit, make sure the the actor created
+        # by the driver gets SIGTERM.
+        for _ in range(3):
+            out = run_string_as_driver(driver_script1)
+            assert "success" in out
+            assert ray.services.all_processes_alive()
+
+class StartRayScriptTest(unittest.TestCase):
+    def testCallingStartRayHead(self):
+        # Test that we can call start-ray.sh with various command line
+        # parameters. TODO(rkn): This test only tests the --head code path. We
+        # should also test the non-head node code path.
+
+        # Test starting Ray with no arguments.
+        run_and_get_output(["ray", "start", "--head"])
+        subprocess.Popen(["ray", "stop"]).wait()
 
 class StartRayScriptTest(unittest.TestCase):
     def testCallingStartRayHead(self):
