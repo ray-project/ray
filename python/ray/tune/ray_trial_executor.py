@@ -63,8 +63,8 @@ class RayTrialExecutor(TrialExecutor):
         previous_run = self._find_item(self._paused, trial)
         if (prior_status == Trial.PAUSED and previous_run):
             # If Trial was in flight when paused, self._paused stores result.
-            remote_id = self._paused.pop(previous_run[0])
-            self._running[remote_id] = trial
+            self._paused.pop(previous_run[0])
+            self._running[previous_run[0]] = trial
         else:
             self._train(trial)
 
@@ -162,13 +162,21 @@ class RayTrialExecutor(TrialExecutor):
 
         return list(self._running.values())
 
-    def fetch_one_result(self):
-        """Fetches one result of the running trials."""
-
+    def get_next_available_trial(self):
         [result_id], _ = ray.wait(list(self._running))
-        trial = self._running.pop(result_id)
-        result = ray.get(result_id)
-        return trial, result
+        return self._running[result_id]
+
+    def fetch_result(self, trial):
+        """Fetches one result of the running trials.
+
+        Returns:
+            Result of the most recent trial training run."""
+        trial_future = self._find_item(self._running, trial)
+        if not trial_future:
+            raise ValueError("Trial was not running.")
+        self._running.pop(trial_future[0])
+        result = ray.get(trial_future[0])
+        return result
 
     def _commit_resources(self, resources):
         self._committed_resources = Resources(

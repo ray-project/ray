@@ -211,8 +211,9 @@ class TrialRunner(object):
         return trial
 
     def _process_events(self):
+        trial = self.trial_executor.get_next_available_trial()
         try:
-            trial, result = self.trial_executor.fetch_one_result()
+            result = self.trial_executor.fetch_result(trial)
             self._total_time += result[TIME_THIS_ITER_S]
 
             if trial.should_stop(result):
@@ -321,7 +322,7 @@ class TrialRunner(object):
                 trial.trial_id, early_terminated=True)
         elif trial.status is Trial.RUNNING:
             try:
-                _, result = self.trial_executor.fetch_one_result()
+                result = self.trial_executor.fetch_result(trial)
                 trial.update_last_result(result, terminate=True)
                 self._scheduler_alg.on_trial_complete(self, trial, result)
                 self._search_alg.on_trial_complete(
