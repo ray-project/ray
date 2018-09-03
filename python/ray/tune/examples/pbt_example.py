@@ -79,7 +79,7 @@ if __name__ == "__main__":
             "pbt_test": {
                 "run": MyTrainableClass,
                 "stop": {
-                    "training_iteration": 2 if args.smoke_test else 99999
+                    "training_iteration": 20 if args.smoke_test else 99999
                 },
                 "num_samples": 10,
                 "config": {
