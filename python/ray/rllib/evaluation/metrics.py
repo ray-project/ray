@@ -64,5 +64,5 @@ def summarize_episodes(episodes, new_episodes):
         episode_reward_min=min_reward,
         episode_reward_mean=avg_reward,
         episode_len_mean=avg_length,
-        episodes_total=len(new_episodes),
+        episodes=len(new_episodes),
         policy_reward_mean=dict(policy_rewards))
