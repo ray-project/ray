@@ -10,7 +10,7 @@ pendulum-ppo:
         num_workers: 4
         lambda: 0.1
         gamma: 0.95
-        sgd_stepsize: 0.0003
+        lr: 0.0003
         sgd_batchsize: 64
         num_sgd_iter: 10
         model:

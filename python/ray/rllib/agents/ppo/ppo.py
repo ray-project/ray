@@ -29,7 +29,7 @@ DEFAULT_CONFIG = with_common_config({
     # Number of SGD iterations in each outer loop
     "num_sgd_iter": 30,
     # Stepsize of SGD
-    "sgd_stepsize": 5e-5,
+    "lr": 5e-5,
     # Learning rate schedule
     "lr_schedule": None,
     # Share layers for value function

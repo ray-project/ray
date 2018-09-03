@@ -37,7 +37,7 @@ if __name__ == "__main__":
         hyperparam_mutations={
             "lambda": lambda: random.uniform(0.9, 1.0),
             "clip_param": lambda: random.uniform(0.01, 0.5),
-            "sgd_stepsize": [1e-3, 5e-4, 1e-4, 5e-5, 1e-5],
+            "lr": [1e-3, 5e-4, 1e-4, 5e-5, 1e-5],
             "num_sgd_iter": lambda: random.randint(1, 30),
             "sgd_batchsize": lambda: random.randint(128, 16384),
             "train_batch_size": lambda: random.randint(2000, 160000),
@@ -61,7 +61,7 @@ if __name__ == "__main__":
                     # These params are tuned from a fixed starting value.
                     "lambda": 0.95,
                     "clip_param": 0.2,
-                    "sgd_stepsize": 1e-4,
+                    "lr": 1e-4,
                     # These params start off randomly drawn from a set.
                     "num_sgd_iter":
                         lambda spec: random.choice([10, 20, 30]),
