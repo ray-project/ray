@@ -2,13 +2,9 @@ package org.ray.core;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
-import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.tuple.Pair;
-import org.ray.api.Ray;
 import org.ray.api.exception.RayException;
 import org.ray.api.id.UniqueId;
-import org.ray.api.runtime.RayRuntime;
-import org.ray.spi.LocalSchedulerLink;
 import org.ray.spi.model.RayMethod;
 import org.ray.spi.model.TaskSpec;
 import org.ray.util.logger.RayLog;
@@ -36,29 +32,29 @@ public class Worker {
   /**
    * Execute a task.
    */
-  public void execute(TaskSpec task) {
-    RayLog.core.info("Executing task {}", task.taskId);
-    Pair<ClassLoader, RayMethod> pair = runtime.getLocalFunctionManager().getMethod(
-        task.driverId, task.actorId, task.functionId, task.args);
-    doExecute(task, pair.getRight(), pair.getLeft());
-  }
-
-  private void doExecute(TaskSpec spec, RayMethod method, ClassLoader classLoader) {
+  public void execute(TaskSpec spec) {
+    RayLog.core.info("Executing task {}", spec.taskId);
     UniqueId returnId = spec.returnIds[0];
-    WorkerContext.prepare(spec, classLoader);
     ClassLoader oldLoader = Thread.currentThread().getContextClassLoader();
     try {
+      // Get method
+      Pair<ClassLoader, RayMethod> pair = runtime.getLocalFunctionManager().getMethod(
+          spec.driverId, spec.actorId, spec.functionId, spec.args);
+      ClassLoader classLoader = pair.getLeft();
+      RayMethod method = pair.getRight();
+      // Set context
+      WorkerContext.prepare(spec, classLoader);
       Thread.currentThread().setContextClassLoader(classLoader);
       // Get local actor object and arguments.
       Object actor = spec.isActorTask() ? runtime.localActors.get(spec.actorId) : null;
       Object[] args = ArgumentsBuilder.unwrap(spec, classLoader);
       // Execute the task.
       Object result;
-      if (method.invokable instanceof Method) {
-        result = ((Method) method.invokable).invoke(actor, args);
+      if (!method.isConstructor()) {
+        result = method.getMethod().invoke(actor, args);
       }
       else {
-        result = ((Constructor) method.invokable).newInstance(args);
+        result = method.getConstructor().newInstance(args);
       }
       // Set result
       if (!spec.isActorCreationTask()) {

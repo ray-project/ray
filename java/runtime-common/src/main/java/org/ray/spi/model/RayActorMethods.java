@@ -33,24 +33,19 @@ public final class RayActorMethods {
     this.staticFunctions = Collections.unmodifiableMap(new HashMap<>(staticFunctions));
   }
 
-  public static RayActorMethods fromClass(String clazzName, ClassLoader classLoader) {
+  public static RayActorMethods fromClass(String className, ClassLoader classLoader) {
     try {
-      Class clazz = Class.forName(clazzName, true, classLoader);
+      Class clazz = Class.forName(className, true, classLoader);
       RayRemote remoteAnnotation = (RayRemote) clazz.getAnnotation(RayRemote.class);
-      Preconditions
-          .checkNotNull(remoteAnnotation, "%s must declare @RayRemote", clazzName);
+      Preconditions.checkNotNull(remoteAnnotation,
+          "%s must be annotated with @RayRemote", className);
 
-      List<Executable> executables = new ArrayList<>();
-      executables.addAll(Arrays.asList(clazz.getDeclaredMethods()));
-      executables.addAll(Arrays.asList(clazz.getConstructors()));
+      List<Executable> executables = new ArrayList<>(Arrays.asList(clazz.getDeclaredMethods()));
 
-      Map<UniqueId, RayMethod> functions = new HashMap<>(executables.size() * 2);
-      Map<UniqueId, RayMethod> staticFunctions = new HashMap<>(executables.size() * 2);
+      Map<UniqueId, RayMethod> functions = new HashMap<>();
+      Map<UniqueId, RayMethod> staticFunctions = new HashMap<>();
 
       for (Executable e : executables) {
-        if (!Modifier.isPublic(e.getModifiers())) {
-          continue;
-        }
         RayMethod rayMethod = RayMethod.from(e, remoteAnnotation);
         if (Modifier.isStatic(e.getModifiers())) {
           staticFunctions.put(rayMethod.getFuncId(), rayMethod);
@@ -60,7 +55,7 @@ public final class RayActorMethods {
       }
       return new RayActorMethods(clazz, remoteAnnotation, functions, staticFunctions);
     } catch (Exception e) {
-      throw new RuntimeException("failed to get RayActorMethods from " + clazzName, e);
+      throw new RuntimeException("failed to get RayActorMethods from " + className, e);
     }
   }
 

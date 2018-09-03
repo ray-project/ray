@@ -4,7 +4,6 @@ import org.junit.Assert;
 import org.junit.Test;
 import org.ray.api.annotation.RayRemote;
 import org.ray.spi.model.RayActorMethods;
-import org.ray.util.logger.RayLog;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -22,7 +21,7 @@ public class RayActorMethodsTest {
     public static void func3() {}
   }
 
-//  @Test
+  @Test
   public void testActorMethods() {
     RayActorMethods methods = RayActorMethods
         .fromClass(ExampleActor.class.getName(), RayActorMethodsTest.class.getClassLoader());

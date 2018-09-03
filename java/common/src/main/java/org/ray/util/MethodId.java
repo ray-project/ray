@@ -69,15 +69,15 @@ public final class MethodId {
     return sb.toString();
   }
 
-  public static MethodId fromMethod(Executable method) {
-    final boolean isstatic = Modifier.isStatic(method.getModifiers());
+  public static MethodId fromExecutable(Executable method) {
+    final boolean isStatic = Modifier.isStatic(method.getModifiers());
     final String className = method.getDeclaringClass().getName();
     final String methodName = method instanceof Method
       ? method.getName() : "<init>";
     final Type type = method instanceof Method
         ? Type.getType((Method) method) : Type.getType((Constructor) method);
     final String methodDesc = type.getDescriptor();
-    return new MethodId(className, methodName, methodDesc, isstatic);
+    return new MethodId(className, methodName, methodDesc, isStatic);
   }
 
   public static MethodId fromSerializedLambda(Serializable serial) {
@@ -104,7 +104,6 @@ public final class MethodId {
     }
     return id;
   }
-
 
   public Method load() {
     return load(null);

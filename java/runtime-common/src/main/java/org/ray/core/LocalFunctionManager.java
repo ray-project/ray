@@ -83,20 +83,20 @@ public class LocalFunctionManager {
 
     final ClassLoader classLoader;
     final ConcurrentHashMap<String, RayTaskMethods> taskMethods = new ConcurrentHashMap<>();
-    final ConcurrentHashMap<String, RayActorMethods> actors = new ConcurrentHashMap<>();
+    final ConcurrentHashMap<String, RayActorMethods> actorMethods = new ConcurrentHashMap<>();
 
     FunctionTable(ClassLoader classLoader) {
       this.classLoader = classLoader;
     }
 
     RayMethod getTaskMethod(UniqueId methodId, String className) {
-      RayTaskMethods tasks = taskMethods.get(className);
-      if (tasks == null) {
-        tasks = RayTaskMethods.fromClass(className, classLoader);
-        RayLog.core.info("create RayTaskMethods:" + tasks);
-        taskMethods.put(className, tasks);
+      RayTaskMethods taskMethods = this.taskMethods.get(className);
+      if (taskMethods == null) {
+        taskMethods = RayTaskMethods.fromClass(className, classLoader);
+        RayLog.core.info("create RayTaskMethods: {}", taskMethods);
+        this.taskMethods.put(className, taskMethods);
       }
-      RayMethod m = tasks.functions.get(methodId);
+      RayMethod m = taskMethods.functions.get(methodId);
       if (m != null) {
         return m;
       }
@@ -109,13 +109,13 @@ public class LocalFunctionManager {
     }
 
     private RayMethod getActorMethod(UniqueId methodId, String className, boolean isStatic) {
-      RayActorMethods actor = actors.get(className);
-      if (actor == null) {
-        actor = RayActorMethods.fromClass(className, classLoader);
-        RayLog.core.info("create RayActorMethods:" + actor);
-        actors.put(className, actor);
+      RayActorMethods actorMethods = this.actorMethods.get(className);
+      if (actorMethods == null) {
+        actorMethods = RayActorMethods.fromClass(className, classLoader);
+        RayLog.core.info("create RayActorMethods: {}", actorMethods);
+        this.actorMethods.put(className, actorMethods);
       }
-      return isStatic ? actor.staticFunctions.get(methodId) : actor.functions.get(methodId);
+      return isStatic ? actorMethods.staticFunctions.get(methodId) : actorMethods.functions.get(methodId);
     }
   }
 }

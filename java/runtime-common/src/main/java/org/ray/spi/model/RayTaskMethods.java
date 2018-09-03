@@ -1,5 +1,6 @@
 package org.ray.spi.model;
 
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Executable;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -33,14 +34,11 @@ public final class RayTaskMethods {
       Map<UniqueId, RayMethod> functions = new HashMap<>(executables.size());
 
       for (Executable e : executables) {
-//        if (!Modifier.isStatic(e.getModifiers())) {
-//          continue;
-//        }
-        //task method only for static.
-//        RayRemote remoteAnnotation = e.getAnnotation(RayRemote.class);
-//        if (remoteAnnotation == null) {
-//          continue;
-//        }
+        // This executable must be either a constructor or a static method.
+        if (!(e instanceof Constructor) &&
+            !Modifier.isStatic(e.getModifiers())) {
+          continue;
+        }
         e.setAccessible(true);
         RayMethod rayMethod = RayMethod.from(e, null);
         functions.put(rayMethod.getFuncId(), rayMethod);
