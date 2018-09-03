@@ -25,7 +25,7 @@ DEFAULT_CONFIG = with_common_config({
     # Number of timesteps collected for each SGD round
     "train_batch_size": 4000,
     # Total SGD batch size across all devices for SGD (multi-gpu only)
-    "sgd_batchsize": 128,
+    "sgd_minibatch_size": 128,
     # Number of SGD iterations in each outer loop
     "num_sgd_iter": 30,
     # Stepsize of SGD
@@ -108,7 +108,7 @@ class PPOAgent(Agent):
         else:
             self.optimizer = LocalMultiGPUOptimizer(
                 self.local_evaluator, self.remote_evaluators, {
-                    "sgd_batch_size": self.config["sgd_batchsize"],
+                    "sgd_batch_size": self.config["sgd_minibatch_size"],
                     "num_sgd_iter": self.config["num_sgd_iter"],
                     "num_gpus": self.config["num_gpus"],
                     "train_batch_size": self.config["train_batch_size"],

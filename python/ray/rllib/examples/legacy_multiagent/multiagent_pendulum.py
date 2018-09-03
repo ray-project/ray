@@ -42,7 +42,7 @@ if __name__ == '__main__':
     ray.init(num_cpus=num_cpus, redirect_output=True)
     config["num_workers"] = num_cpus
     config["train_batch_size"] = 10
-    config["sgd_batchsize"] = 10
+    config["sgd_minibatch_size"] = 10
     config["num_sgd_iter"] = 10
     config["gamma"] = 0.999
     config["horizon"] = horizon

@@ -108,7 +108,7 @@ class ModelSupportedSpaces(unittest.TestCase):
                 "num_workers": 1,
                 "num_sgd_iter": 1,
                 "train_batch_size": 1,
-                "sgd_batchsize": 1
+                "sgd_minibatch_size": 1
             }, stats)
         check_support(
             "ES", {
