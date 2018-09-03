@@ -51,9 +51,36 @@ class RayTrialExecutorTest(unittest.TestCase):
         self.trial_executor.stop_trial(trial)
         self.assertEqual(Trial.TERMINATED, trial.status)
 
+    def testPauseResume(self):
+        """Tests that pausing works for trials in flight."""
+        trial = Trial("__fake")
+        self.trial_executor.start_trial(trial)
+        self.assertEqual(Trial.RUNNING, trial.status)
+        self.trial_executor.pause_trial(trial)
+        self.assertEqual(Trial.PAUSED, trial.status)
+        self.trial_executor.start_trial(trial)
+        self.assertEqual(Trial.RUNNING, trial.status)
+        self.trial_executor.stop_trial(trial)
+        self.assertEqual(Trial.TERMINATED, trial.status)
+
+    def testPauseResume2(self):
+        """Tests that pausing works for trials being processed."""
+        trial = Trial("__fake")
+        self.trial_executor.start_trial(trial)
+        self.assertEqual(Trial.RUNNING, trial.status)
+        self.trial_executor.fetch_one_result()
+        self.trial_executor.pause_trial(trial)
+        self.assertEqual(Trial.PAUSED, trial.status)
+        self.trial_executor.start_trial(trial)
+        self.assertEqual(Trial.RUNNING, trial.status)
+        self.trial_executor.stop_trial(trial)
+        self.assertEqual(Trial.TERMINATED, trial.status)
+
     def generate_trials(self, spec, name):
         suggester = BasicVariantGenerator({name: spec})
         return suggester.next_trials()
+
+
 
 
 if __name__ == "__main__":
