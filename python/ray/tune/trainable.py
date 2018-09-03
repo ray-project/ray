@@ -75,6 +75,9 @@ class Trainable(object):
         self._iteration = 0
         self._time_total = 0.0
         self._timesteps_total = None
+        self._time_since_restore = 0.0
+        self._timesteps_since_restore = 0
+        self._restored = False
         self._setup()
         self._initialize_ok = True
         self._local_ip = ray.services.get_node_ip_address()
@@ -149,6 +152,7 @@ class Trainable(object):
         else:
             time_this_iter = time.time() - start
         self._time_total += time_this_iter
+        self._time_since_restore += time_this_iter
 
         result.setdefault(DONE, False)
 
@@ -157,6 +161,7 @@ class Trainable(object):
             if self._timesteps_total is None:
                 self._timesteps_total = 0
             self._timesteps_total += result[TIMESTEPS_THIS_ITER]
+            self._timesteps_since_restore += result[TIMESTEPS_THIS_ITER]
 
         # self._timesteps_total should not override user-provided total
         result.setdefault(TIMESTEPS_TOTAL, self._timesteps_total)
@@ -177,6 +182,10 @@ class Trainable(object):
             hostname=os.uname()[1],
             node_ip=self._local_ip,
             config=self.config)
+        if self._restored:
+            result.update(
+                time_since_restore=self._time_since_restore,
+                timesteps_since_restore=self._timesteps_since_restore)
 
         self._result_logger.on_result(result)
 
@@ -248,6 +257,7 @@ class Trainable(object):
         self._iteration = metadata[1]
         self._timesteps_total = metadata[2]
         self._time_total = metadata[3]
+        self._restored = True
 
     def restore_from_object(self, obj):
         """Restores training state from a checkpoint object.
