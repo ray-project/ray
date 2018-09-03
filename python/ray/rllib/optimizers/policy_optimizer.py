@@ -98,7 +98,7 @@ class PolicyOptimizer(object):
             assert len(episodes) <= min_history
         self.episode_history.extend(orig_episodes)
         self.episode_history = self.episode_history[-min_history:]
-        res = summarize_episodes(episodes)
+        res = summarize_episodes(episodes, orig_episodes)
         res.update(info=self.stats())
         return res
 

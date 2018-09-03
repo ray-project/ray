@@ -13,7 +13,7 @@ def collect_metrics(local_evaluator, remote_evaluators=[]):
     """Gathers episode metrics from PolicyEvaluator instances."""
 
     episodes = collect_episodes(local_evaluator, remote_evaluators)
-    return summarize_episodes(episodes)
+    return summarize_episodes(episodes, episodes)
 
 
 def collect_episodes(local_evaluator, remote_evaluators=[]):
@@ -30,8 +30,13 @@ def collect_episodes(local_evaluator, remote_evaluators=[]):
     return episodes
 
 
-def summarize_episodes(episodes):
-    """Summarizes a set of episode metrics tuples."""
+def summarize_episodes(episodes, new_episodes):
+    """Summarizes a set of episode metrics tuples.
+
+    Arguments:
+        episodes: smoothed set of episodes including historical ones
+        new_episodes: just the new episodes in this iteration
+    """
 
     episode_rewards = []
     episode_lengths = []
@@ -59,4 +64,5 @@ def summarize_episodes(episodes):
         episode_reward_min=min_reward,
         episode_reward_mean=avg_reward,
         episode_len_mean=avg_length,
+        episodes_total=len(new_episodes),
         policy_reward_mean=dict(policy_rewards))
