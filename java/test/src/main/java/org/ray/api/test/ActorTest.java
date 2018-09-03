@@ -33,13 +33,27 @@ public class ActorTest {
   }
 
   @Test
-  public void testCreateAndCall() {
-    // Test creating an actor
+  public void testCreateAndCallActor() {
+    // Test creating an actor from a constructor
     RayActor<Counter> actor = Ray.createActor(Counter::new, 1);
     Assert.assertNotEquals(actor.getId(), UniqueId.NIL);
     // Test calling an actor
     Assert.assertEquals(Integer.valueOf(1), Ray.call(Counter::getValue, actor).get());
     Assert.assertEquals(Integer.valueOf(11), Ray.call(Counter::increase, actor, 10).get());
+  }
+
+  @RayRemote
+  public static Counter factory(int initValue) {
+    return new Counter(initValue);
+  }
+
+  @Test
+  public void testCreateActorFromFactory() {
+    // Test creating an actor from a factory method
+    RayActor<Counter> actor = Ray.createActor(ActorTest::factory, 1);
+    Assert.assertNotEquals(actor.getId(), UniqueId.NIL);
+    // Test calling an actor
+    Assert.assertEquals(Integer.valueOf(1), Ray.call(Counter::getValue, actor).get());
   }
 
   @RayRemote
