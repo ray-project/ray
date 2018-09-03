@@ -503,3 +503,45 @@ def test_warning_for_infeasible_tasks(ray_start_regular):
     # This actor placement task is infeasible.
     Foo.remote()
     wait_for_errors(ray_constants.INFEASIBLE_TASK_ERROR, 2)
+
+
+@pytest.fixture
+def ray_start_two_nodes():
+    # Start the Ray processes.
+    ray.worker._init(start_ray_local=True, num_local_schedulers=2, num_cpus=0)
+    yield None
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
+
+
+# Note that this test will take at least 10 seconds because it must wait for
+# the monitor to detect enough missed heartbeats.
+@pytest.mark.skipif(
+    os.environ.get("RAY_USE_XRAY") != "1",
+    reason="This test only works with xray.")
+def test_warning_for_dead_node(ray_start_two_nodes):
+    # Wait for the raylet to appear in the client table.
+    while len(ray.global_state.client_table()) < 2:
+        time.sleep(0.1)
+
+    client_ids = {item["ClientID"] for item in ray.global_state.client_table()}
+
+    # Try to make sure that the monitor has received at least one heartbeat
+    # from the node.
+    time.sleep(0.5)
+
+    # Kill both raylets.
+    ray.services.all_processes[ray.services.PROCESS_TYPE_RAYLET][1].kill()
+    ray.services.all_processes[ray.services.PROCESS_TYPE_RAYLET][0].kill()
+
+    # Check that we get warning messages for both raylets.
+    wait_for_errors(ray_constants.REMOVED_NODE_ERROR, 2, timeout=20)
+
+    # Extract the client IDs from the error messages. This will need to be
+    # changed if the error message changes.
+    warning_client_ids = {
+        item['message'].split(' ')[5]
+        for item in ray.error_info()
+    }
+
+    assert client_ids == warning_client_ids
