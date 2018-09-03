@@ -213,8 +213,7 @@ class ESAgent(Agent):
         # Use the actors to do rollouts, note that we pass in the ID of the
         # policy weights.
         results, num_episodes, num_timesteps = self._collect_results(
-            theta_id, config["episodes_per_batch"],
-            config["train_batch_size"])
+            theta_id, config["episodes_per_batch"], config["train_batch_size"])
 
         all_noise_indices = []
         all_training_returns = []
