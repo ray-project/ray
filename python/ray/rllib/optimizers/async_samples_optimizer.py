@@ -267,7 +267,8 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
         self.num_steps_trained += train_timesteps
 
     def _replay_as_needed(self):
-        num_needed = self.train_batch_size // self.sample_batch_size + 1
+        num_needed = int(
+            np.ceil(self.train_batch_size / self.sample_batch_size))
         if len(self.replay_batches) <= num_needed:
             return
         f = self.replay_proportion
