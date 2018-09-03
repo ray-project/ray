@@ -1,9 +1,8 @@
 package org.ray.core;
 
-import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.tuple.Pair;
+import org.ray.api.exception.RayException;
 import org.ray.api.id.UniqueId;
-import org.ray.spi.LocalSchedulerLink;
 import org.ray.spi.model.RayMethod;
 import org.ray.spi.model.TaskSpec;
 import org.ray.util.logger.RayLog;
@@ -14,51 +13,58 @@ import org.ray.util.logger.RayLog;
  */
 public class Worker {
 
-  private final LocalSchedulerLink scheduler;
-  private final LocalFunctionManager functions;
+  private final AbstractRayRuntime runtime;
 
-  public Worker(LocalSchedulerLink scheduler, LocalFunctionManager functions) {
-    this.scheduler = scheduler;
-    this.functions = functions;
+  public Worker(AbstractRayRuntime runtime) {
+    this.runtime = runtime;
   }
 
   public void loop() {
     while (true) {
       RayLog.core.info(Thread.currentThread().getName() + ":fetching new task...");
-      TaskSpec task = scheduler.getTask();
-      execute(task, functions);
+      TaskSpec task = runtime.getLocalSchedulerClient().getTask();
+      execute(task);
     }
   }
 
-  public static void execute(TaskSpec task, LocalFunctionManager funcs) {
-    RayLog.core.info("Executing task {}", task.taskId);
-
-    if (!task.actorId.isNil() || (task.createActorId != null && !task.createActorId.isNil())) {
-      task.returnIds = ArrayUtils.subarray(task.returnIds, 0, task.returnIds.length - 1);
-    }
-
+  /**
+   * Execute a task.
+   */
+  public void execute(TaskSpec spec) {
+    RayLog.core.info("Executing task {}", spec.taskId);
+    UniqueId returnId = spec.returnIds[0];
+    ClassLoader oldLoader = Thread.currentThread().getContextClassLoader();
     try {
-      Pair<ClassLoader, RayMethod> pr = funcs
-          .getMethod(task.driverId, task.actorId, task.functionId, task.args);
-      WorkerContext.prepare(task, pr.getLeft());
-      InvocationExecutor.execute(task, pr);
-      RayLog.core.info("Finished executing task {}", task.taskId);
+      // Get method
+      Pair<ClassLoader, RayMethod> pair = runtime.getLocalFunctionManager().getMethod(
+          spec.driverId, spec.actorId, spec.functionId, spec.args);
+      ClassLoader classLoader = pair.getLeft();
+      RayMethod method = pair.getRight();
+      // Set context
+      WorkerContext.prepare(spec, classLoader);
+      Thread.currentThread().setContextClassLoader(classLoader);
+      // Get local actor object and arguments.
+      Object actor = spec.isActorTask() ? runtime.localActors.get(spec.actorId) : null;
+      Object[] args = ArgumentsBuilder.unwrap(spec, classLoader);
+      // Execute the task.
+      Object result;
+      if (!method.isConstructor()) {
+        result = method.getMethod().invoke(actor, args);
+      } else {
+        result = method.getConstructor().newInstance(args);
+      }
+      // Set result
+      if (!spec.isActorCreationTask()) {
+        runtime.put(returnId, result);
+      } else {
+        runtime.localActors.put(returnId, result);
+      }
+      RayLog.core.info("Finished executing task {}", spec.taskId);
     } catch (Exception e) {
-      RayLog.core.error("Failed to execute task " + task.taskId, e);
-      AbstractRayRuntime.getInstance().put(task.returnIds[0], e);
+      RayLog.core.error("Error executing task " + spec, e);
+      runtime.put(returnId, new RayException("Error executing task " + spec, e));
+    } finally {
+      Thread.currentThread().setContextClassLoader(oldLoader);
     }
-  }
-
-  public UniqueId getCurrentTaskId() {
-    return WorkerContext.currentTask().taskId;
-  }
-
-  public UniqueId getCurrentTaskNextPutId() {
-    return UniqueIdHelper.computePutId(
-        WorkerContext.currentTask().taskId, WorkerContext.nextPutIndex());
-  }
-
-  public UniqueId[] getCurrentTaskReturnIDs() {
-    return WorkerContext.currentTask().returnIds;
   }
 }

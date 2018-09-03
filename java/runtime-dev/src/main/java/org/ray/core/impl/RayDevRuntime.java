@@ -15,7 +15,7 @@ public class RayDevRuntime extends AbstractRayRuntime {
     PathConfig pathConfig = new PathConfig(configReader);
     RemoteFunctionManager rfm = new NopRemoteFunctionManager(params.driver_id);
     MockObjectStore store = new MockObjectStore();
-    MockLocalScheduler scheduler = new MockLocalScheduler(store);
+    MockLocalScheduler scheduler = new MockLocalScheduler(this, store);
     init(scheduler, store, rfm, pathConfig);
     scheduler.setLocalFunctionManager(this.functions);
   }

@@ -68,5 +68,4 @@ public class UniqueIdHelper {
 
     return new UniqueId(taskId);
   }
-
 }
