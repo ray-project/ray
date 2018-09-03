@@ -14,7 +14,7 @@ public class Exercise05 {
     try {
       Ray.init();
       // `Ray.createActor` creates an actor instance.
-      RayActor<Adder> adder = Ray.createActor(Adder.class);
+      RayActor<Adder> adder = Ray.createActor(Adder::new, 0);
       // Use `Ray.call(actor, parameters)` to call an actor method.
       RayObject<Integer> result1 = Ray.call(Adder::add, adder, 1);
       System.out.println(result1.get());
@@ -34,8 +34,8 @@ public class Exercise05 {
   @RayRemote
   public static class Adder {
 
-    public Adder() {
-      sum = 0;
+    public Adder(int initValue) {
+      sum = initValue;
     }
 
     public int add(int n) {

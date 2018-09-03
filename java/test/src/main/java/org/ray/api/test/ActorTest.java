@@ -16,40 +16,61 @@ public class ActorTest {
   @RayRemote
   public static class Counter {
 
-    private int value = 0;
+    private int value;
 
-    public int incr(int delta) {
+    public Counter(int initValue) {
+      this.value = initValue;
+    }
+
+    public int getValue() {
+      return value;
+    }
+
+    public int increase(int delta) {
       value += delta;
       return value;
     }
   }
 
+  @Test
+  public void testCreateAndCallActor() {
+    // Test creating an actor from a constructor
+    RayActor<Counter> actor = Ray.createActor(Counter::new, 1);
+    Assert.assertNotEquals(actor.getId(), UniqueId.NIL);
+    // Test calling an actor
+    Assert.assertEquals(Integer.valueOf(1), Ray.call(Counter::getValue, actor).get());
+    Assert.assertEquals(Integer.valueOf(11), Ray.call(Counter::increase, actor, 10).get());
+  }
+
+  @RayRemote
+  public static Counter factory(int initValue) {
+    return new Counter(initValue);
+  }
+
+  @Test
+  public void testCreateActorFromFactory() {
+    // Test creating an actor from a factory method
+    RayActor<Counter> actor = Ray.createActor(ActorTest::factory, 1);
+    Assert.assertNotEquals(actor.getId(), UniqueId.NIL);
+    // Test calling an actor
+    Assert.assertEquals(Integer.valueOf(1), Ray.call(Counter::getValue, actor).get());
+  }
+
   @RayRemote
   public static int testActorAsFirstParameter(RayActor<Counter> actor, int delta) {
-    RayObject<Integer> res = Ray.call(Counter::incr, actor, delta);
+    RayObject<Integer> res = Ray.call(Counter::increase, actor, delta);
     return res.get();
   }
 
   @RayRemote
   public static int testActorAsSecondParameter(int delta, RayActor<Counter> actor) {
-    RayObject<Integer> res = Ray.call(Counter::incr, actor, delta);
+    RayObject<Integer> res = Ray.call(Counter::increase, actor, delta);
     return res.get();
   }
 
   @Test
-  public void testCreateAndCallActor() {
-    // Test creating an actor
-    RayActor<Counter> actor = Ray.createActor(Counter.class);
-    Assert.assertNotEquals(actor.getId(), UniqueId.NIL);
-    // Test calling an actor
-    RayFunc2<Counter, Integer, Integer> f = Counter::incr;
-    Assert.assertEquals(Integer.valueOf(1), Ray.call(f, actor, 1).get());
-    Assert.assertEquals(Integer.valueOf(11), Ray.call(Counter::incr, actor, 10).get());
-  }
-
-  @Test
   public void testPassActorAsParameter() {
-    RayActor<Counter> actor = Ray.createActor(Counter.class);
+    RayActor<Counter> actor = Ray.createActor(Counter::new, 0);
     RayFunc2<RayActor, Integer, Integer> f = ActorTest::testActorAsFirstParameter;
     Assert.assertEquals(Integer.valueOf(1),
         Ray.call(ActorTest::testActorAsFirstParameter, actor, 1).get());

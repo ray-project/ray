@@ -106,16 +106,6 @@ public final class Ray extends RayCall {
   }
 
   /**
-   * Create an actor on a remote node.
-   *
-   * @param actorClass the class of the actor to be created.
-   * @return A handle to the newly created actor.
-   */
-  public static <T> RayActor<T> createActor(Class<T> actorClass) {
-    return runtime.createActor(actorClass);
-  }
-
-  /**
    * Get the underlying runtime instance.
    */
   static RayRuntime internal() {
