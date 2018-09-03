@@ -5,17 +5,17 @@ import java.lang.reflect.Modifier;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
-import org.ray.api.RayRemote;
-import org.ray.api.UniqueID;
+import org.ray.api.annotation.RayRemote;
+import org.ray.api.id.UniqueId;
 
 
 public final class RayTaskMethods {
 
   public final Class clazz;
-  public final Map<UniqueID, RayMethod> functions;
+  public final Map<UniqueId, RayMethod> functions;
 
   public RayTaskMethods(Class clazz,
-      Map<UniqueID, RayMethod> functions) {
+      Map<UniqueId, RayMethod> functions) {
     this.clazz = clazz;
     this.functions = Collections.unmodifiableMap(new HashMap<>(functions));
   }
@@ -24,7 +24,7 @@ public final class RayTaskMethods {
     try {
       Class clazz = Class.forName(clazzName, true, classLoader);
       Method[] methods = clazz.getDeclaredMethods();
-      Map<UniqueID, RayMethod> functions = new HashMap<>(methods.length * 2);
+      Map<UniqueId, RayMethod> functions = new HashMap<>(methods.length * 2);
 
       for (Method m : methods) {
         if (!Modifier.isStatic(m.getModifiers())) {

@@ -28,9 +28,8 @@ static inline void flushall_redis(void) {
 class TestGcs : public ::testing::Test {
  public:
   TestGcs(CommandType command_type) : num_callbacks_(0), command_type_(command_type) {
-    client_ = std::make_shared<gcs::AsyncGcsClient>(command_type_);
-    RAY_CHECK_OK(client_->Connect("127.0.0.1", 6379, /*sharding=*/false));
-
+    client_ = std::make_shared<gcs::AsyncGcsClient>("127.0.0.1", 6379, command_type_,
+                                                    /*is_test_client=*/true);
     job_id_ = JobID::from_random();
   }
 
@@ -60,7 +59,10 @@ class TestGcsWithAe : public TestGcs {
  public:
   TestGcsWithAe(CommandType command_type) : TestGcs(command_type) {
     loop_ = aeCreateEventLoop(1024);
-    RAY_CHECK_OK(client_->context()->AttachToEventLoop(loop_));
+    RAY_CHECK_OK(client_->primary_context()->AttachToEventLoop(loop_));
+    for (auto &context : client_->shard_contexts()) {
+      RAY_CHECK_OK(context->AttachToEventLoop(loop_));
+    }
   }
 
   TestGcsWithAe() : TestGcsWithAe(CommandType::kRegular) {}

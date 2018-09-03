@@ -13,7 +13,7 @@ SUITE(io_tests);
 
 TEST ipc_socket_test(void) {
 #ifndef _WIN32
-  const char *socket_pathname = "test-socket";
+  const char *socket_pathname = "/tmp/test-socket";
   int socket_fd = bind_ipc_sock(socket_pathname, true);
   ASSERT(socket_fd >= 0);
 
@@ -55,7 +55,7 @@ TEST ipc_socket_test(void) {
 
 TEST long_ipc_socket_test(void) {
 #ifndef _WIN32
-  const char *socket_pathname = "long-test-socket";
+  const char *socket_pathname = "/tmp/long-test-socket";
   int socket_fd = bind_ipc_sock(socket_pathname, true);
   ASSERT(socket_fd >= 0);
 

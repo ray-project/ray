@@ -5,11 +5,10 @@ import java.util.List;
 import org.apache.arrow.plasma.ObjectStoreLink;
 import org.apache.commons.lang3.tuple.Pair;
 import org.ray.api.RayObject;
-import org.ray.api.UniqueID;
 import org.ray.api.WaitResult;
+import org.ray.api.id.UniqueId;
 import org.ray.core.Serializer;
 import org.ray.core.WorkerContext;
-import org.ray.spi.LocalSchedulerLink;
 import org.ray.util.exception.TaskExecutionException;
 
 /**
@@ -32,12 +31,12 @@ public class ObjectStoreProxy {
     this.localSchedulerLink = localSchedulerLink;
   } 
 
-  public <T> Pair<T, GetStatus> get(UniqueID objectId, boolean isMetadata)
+  public <T> Pair<T, GetStatus> get(UniqueId objectId, boolean isMetadata)
       throws TaskExecutionException {
     return get(objectId, getTimeoutMs, isMetadata);
   }
 
-  public <T> Pair<T, GetStatus> get(UniqueID id, int timeoutMs, boolean isMetadata)
+  public <T> Pair<T, GetStatus> get(UniqueId id, int timeoutMs, boolean isMetadata)
       throws TaskExecutionException {
     byte[] obj = store.get(id.getBytes(), timeoutMs, isMetadata);
     if (obj != null) {
@@ -52,12 +51,12 @@ public class ObjectStoreProxy {
     }
   }
 
-  public <T> List<Pair<T, GetStatus>> get(List<UniqueID> objectIds, boolean isMetadata)
+  public <T> List<Pair<T, GetStatus>> get(List<UniqueId> objectIds, boolean isMetadata)
       throws TaskExecutionException {
     return get(objectIds, getTimeoutMs, isMetadata);
   }
 
-  public <T> List<Pair<T, GetStatus>> get(List<UniqueID> ids, int timeoutMs, boolean isMetadata)
+  public <T> List<Pair<T, GetStatus>> get(List<UniqueId> ids, int timeoutMs, boolean isMetadata)
       throws TaskExecutionException {
     List<byte[]> objs = store.get(getIdBytes(ids), timeoutMs, isMetadata);
     List<Pair<T, GetStatus>> ret = new ArrayList<>();
@@ -77,7 +76,7 @@ public class ObjectStoreProxy {
     return ret;
   }
 
-  private static byte[][] getIdBytes(List<UniqueID> objectIds) {
+  private static byte[][] getIdBytes(List<UniqueId> objectIds) {
     int size = objectIds.size();
     byte[][] ids = new byte[size][];
     for (int i = 0; i < size; i++) {
@@ -86,12 +85,12 @@ public class ObjectStoreProxy {
     return ids;
   }
 
-  public void put(UniqueID id, Object obj, Object metadata) {
+  public void put(UniqueId id, Object obj, Object metadata) {
     store.put(id.getBytes(), Serializer.encode(obj), Serializer.encode(metadata));
   }
 
   public <T> WaitResult<T> wait(List<RayObject<T>> waitfor, int numReturns, int timeout) {
-    List<UniqueID> ids = new ArrayList<>();
+    List<UniqueId> ids = new ArrayList<>();
     for (RayObject<T> obj : waitfor) {
       ids.add(obj.getId());
     }
@@ -102,20 +101,20 @@ public class ObjectStoreProxy {
       readys = localSchedulerLink.wait(getIdBytes(ids), timeout, numReturns);
     }
 
-    List<RayObject<T>> readyObjs = new ArrayList<>();
-    List<RayObject<T>> remainObjs = new ArrayList<>();
+    List<RayObject<T>> readyList = new ArrayList<>();
+    List<RayObject<T>> unreadyList = new ArrayList<>();
     for (RayObject<T> obj : waitfor) {
       if (readys.contains(obj.getId().getBytes())) {
-        readyObjs.add(obj);
+        readyList.add(obj);
       } else {
-        remainObjs.add(obj);
+        unreadyList.add(obj);
       }
     }
 
-    return new WaitResult<>(readyObjs, remainObjs);
+    return new WaitResult<>(readyList, unreadyList);
   }
 
-  public void fetch(List<UniqueID> objectIds) {
+  public void fetch(List<UniqueId> objectIds) {
     if (localSchedulerLink == null) {
       store.fetch(getIdBytes(objectIds));
     } else {

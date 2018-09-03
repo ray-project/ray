@@ -1287,7 +1287,7 @@ class APITest(unittest.TestCase):
 
 
 @unittest.skipIf(
-    os.environ.get('RAY_USE_NEW_GCS', False),
+    os.environ.get("RAY_USE_NEW_GCS", False),
     "For now, RAY_USE_NEW_GCS supports 1 shard, and credis "
     "supports 1-node chain for that shard only.")
 class APITestSharded(APITest):
@@ -1295,11 +1295,7 @@ class APITestSharded(APITest):
         if kwargs is None:
             kwargs = {}
         kwargs["start_ray_local"] = True
-        if os.environ.get("RAY_USE_XRAY") == "1":
-            print("XRAY currently supports only a single Redis shard.")
-            kwargs["num_redis_shards"] = 1
-        else:
-            kwargs["num_redis_shards"] = 20
+        kwargs["num_redis_shards"] = 20
         kwargs["redirect_output"] = True
         ray.worker._init(**kwargs)
 
@@ -1675,17 +1671,23 @@ class ResourcesTest(unittest.TestCase):
         ray.get(a1.test.remote())
 
     @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
+        os.environ.get("RAY_USE_XRAY") != "1",
+        "This test only works with xray.")
     def testZeroCPUs(self):
+        ray.init(num_cpus=0)
+
+        @ray.remote(num_cpus=0)
+        def f():
+            return 1
+
+        # The task should be able to execute.
+        ray.get(f.remote())
+
+    def testZeroCPUsActor(self):
         ray.worker._init(
             start_ray_local=True, num_local_schedulers=2, num_cpus=[0, 2])
 
         local_plasma = ray.worker.global_worker.plasma_client.store_socket_name
-
-        @ray.remote(num_cpus=0)
-        def f():
-            return ray.worker.global_worker.plasma_client.store_socket_name
 
         @ray.remote
         class Foo(object):
@@ -1693,7 +1695,6 @@ class ResourcesTest(unittest.TestCase):
                 return ray.worker.global_worker.plasma_client.store_socket_name
 
         # Make sure tasks and actors run on the remote local scheduler.
-        assert ray.get(f.remote()) != local_plasma
         a = Foo.remote()
         assert ray.get(a.method.remote()) != local_plasma
 
@@ -2182,7 +2183,7 @@ def wait_for_num_objects(num_objects, timeout=10):
 
 
 @unittest.skipIf(
-    os.environ.get('RAY_USE_NEW_GCS', False),
+    os.environ.get("RAY_USE_NEW_GCS", False),
     "New GCS API doesn't have a Python API yet.")
 class GlobalStateAPI(unittest.TestCase):
     def tearDown(self):
