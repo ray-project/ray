@@ -6,7 +6,8 @@ import java.util.List;
 import org.ray.util.FileUtil;
 
 /**
- * A util class that generates `RayCall.java`
+ * A util class that generates `RayCall.java`,
+ * which provides type-safe interfaces for `Ray.call` and `Ray.createActor`.
  */
 public class RayCallGenerator extends BaseGenerator {
 
@@ -24,7 +25,7 @@ public class RayCallGenerator extends BaseGenerator {
     newLine("");
 
     newLine("/**");
-    newLine(" * This class provides type-safe interfaces for Ray.call.");
+    newLine(" * This class provides type-safe interfaces for `Ray.call` and `Ray.createActor`.");
     newLine(" **/");
     newLine("@SuppressWarnings({\"rawtypes\", \"unchecked\"})");
     newLine("class RayCall {");

@@ -5,7 +5,7 @@ package org.ray.api;
 import org.ray.api.function.*;
 
 /**
- * This class provides type-safe interfaces for Ray.call.
+ * This class provides type-safe interfaces for `Ray.call` and `Ray.createActor`.
  **/
 @SuppressWarnings({"rawtypes", "unchecked"})
 class RayCall {
