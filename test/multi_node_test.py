@@ -20,7 +20,7 @@ def run_string_as_driver(driver_script):
         driver_script: A string to run as a Python script.
 
     Returns:
-        The scripts output.
+        The script's output.
     """
     # Save the driver script as a file so we can call it using subprocess.
     with tempfile.NamedTemporaryFile() as f:
@@ -31,9 +31,28 @@ def run_string_as_driver(driver_script):
     return out
 
 
+def run_string_as_driver_nonblocking(driver_script):
+    """Start a driver as a separate process and return immediately.
+
+    Args:
+        driver_script: A string to run as a Python script.
+
+    Returns:
+        A handle to the driver process.
+    """
+    # Save the driver script as a file so we can call it using subprocess. We
+    # do not delete this file because if we do then it may get removed before
+    # the Python process tries to run it.
+    with tempfile.NamedTemporaryFile(delete=False) as f:
+        f.write(driver_script.encode("ascii"))
+        f.flush()
+        return subprocess.Popen(
+            [sys.executable, f.name], stdout=subprocess.PIPE)
+
+
 @pytest.fixture
 def ray_start_head():
-    out = run_and_get_output(["ray", "start", "--head"])
+    out = run_and_get_output(["ray", "start", "--head", "--num-cpus=2"])
     # Get the redis address from the output.
     redis_substring_prefix = "redis_address=\""
     redis_address_location = (
@@ -201,6 +220,86 @@ print("success")
         # Make sure the first driver ran to completion.
         assert "success" in out
         assert ray.services.all_processes_alive()
+
+
+@pytest.fixture
+def ray_start_head_with_resources():
+    out = run_and_get_output(
+        ["ray", "start", "--head", "--num-cpus=1", "--num-gpus=1"])
+    # Get the redis address from the output.
+    redis_substring_prefix = "redis_address=\""
+    redis_address_location = (
+        out.find(redis_substring_prefix) + len(redis_substring_prefix))
+    redis_address = out[redis_address_location:]
+    redis_address = redis_address.split("\"")[0]
+
+    yield redis_address
+
+    # Kill the Ray cluster.
+    subprocess.Popen(["ray", "stop"]).wait()
+
+
+@pytest.mark.skip(reason="This test does not work yet.")
+def test_drivers_release_resources(ray_start_head_with_resources):
+    redis_address = ray_start_head_with_resources
+
+    # Define a driver that creates an actor and exits.
+    driver_script1 = """
+import time
+import ray
+
+ray.init(redis_address="{}")
+
+@ray.remote
+def f(duration):
+    time.sleep(duration)
+
+@ray.remote(num_gpus=1)
+def g(duration):
+    time.sleep(duration)
+
+@ray.remote(num_gpus=1)
+class Foo(object):
+    def __init__(self):
+        pass
+
+# Make sure some resources are available for us to run tasks.
+ray.get(f.remote(0))
+ray.get(g.remote(0))
+
+# Start a bunch of actors and tasks that use resources. These should all be
+# cleaned up when this driver exits.
+foos = [Foo.remote() for _ in range(100)]
+[f.remote(10 ** 6) for _ in range(100)]
+
+print("success")
+""".format(redis_address)
+
+    driver_script2 = (driver_script1 +
+                      "import sys\nsys.stdout.flush()\ntime.sleep(10 ** 6)\n")
+
+    def wait_for_success_output(process_handle, timeout=100):
+        # Wait until the process prints "success" and then return.
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            output_line = ray.utils.decode(
+                process_handle.stdout.readline()).strip()
+            print(output_line)
+            if output_line == "success":
+                return
+        raise Exception("Timed out waiting for process to print success.")
+
+    # Make sure we can run this driver repeatedly, which means that resources
+    # are getting released in between.
+    for _ in range(5):
+        out = run_string_as_driver(driver_script1)
+        # Make sure the first driver ran to completion.
+        assert "success" in out
+        # Also make sure that this works when the driver exits ungracefully.
+        process_handle = run_string_as_driver_nonblocking(driver_script2)
+        wait_for_success_output(process_handle)
+        # Kill the process ungracefully.
+        process_handle.kill()
 
 
 def test_calling_start_ray_head():
