@@ -8,8 +8,6 @@ import subprocess
 import sys
 import tempfile
 import time
-import unittest
-import signal
 
 import ray
 from ray.test.test_utils import run_and_get_output
@@ -210,58 +208,19 @@ def f():
     return 1
 f.remote()
 print("success")
-""".format(self.redis_address)
+""".format(redis_address)
 
-        # Create some drivers and let them exit and make sure everything is
-        # still alive.
-        for _ in range(3):
-            out = run_string_as_driver(driver_script1)
-            # Make sure the first driver ran to completion.
-            assert "success" in out
-            out = run_string_as_driver(driver_script2)
-            # Make sure the first driver ran to completion.
-            assert "success" in out
-            assert ray.services.all_processes_alive()
+    # Create some drivers and let them exit and make sure everything is
+    # still alive.
+    for _ in range(3):
+        out = run_string_as_driver(driver_script1)
+        # Make sure the first driver ran to completion.
+        assert "success" in out
+        out = run_string_as_driver(driver_script2)
+        # Make sure the first driver ran to completion.
+        assert "success" in out
+        assert ray.services.all_processes_alive()
 
-
-    @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") != "1",
-        "This test only targets xray.")
-    def testCleanupAtDriverExit(self):
-        # This test will create a driver that submit some tasks and then
-        # exit without waiting for the tasks to complete. Test that the
-        # tasks are cleaned up correctly.
-        ray.init(redis_address=self.redis_address)
-
-        # Define a driver that creates an actor and exits.
-        driver_script1 = """
-import ray
-ray.init(redis_address="{}")
-@ray.remote
-class Foo(object):
-    def __init__(self):
-        self.termination_received = False
-        signal.signal(signal.SIGTERM, self.signal_handler)
-
-    def f(self):
-        time.sleep(10)
-        # We shouldn't reach here.
-        assert self.termination_received
-
-    def signal_handler(self):
-        self.termination_received = True
-        sys.exit(0)
-
-Foo.remote().f.remote()
-print("success")
-""".format(self.redis_address)
-
-        # Create a driver and let it exit, make sure the the actor created
-        # by the driver gets SIGTERM.
-        for _ in range(3):
-            out = run_string_as_driver(driver_script1)
-            assert "success" in out
-            assert ray.services.all_processes_alive()
 
 @pytest.fixture
 def ray_start_head_with_resources():
@@ -279,8 +238,6 @@ def ray_start_head_with_resources():
     # Kill the Ray cluster.
     subprocess.Popen(["ray", "stop"]).wait()
 
-
-@pytest.mark.skip(reason="This test does not work yet.")
 def test_drivers_release_resources(ray_start_head_with_resources):
     redis_address = ray_start_head_with_resources
 
@@ -319,7 +276,7 @@ print("success")
     driver_script2 = (driver_script1 +
                       "import sys\nsys.stdout.flush()\ntime.sleep(10 ** 6)\n")
 
-    def wait_for_success_output(process_handle, timeout=100):
+    def wait_for_success_output(process_handle, timeout=10):
         # Wait until the process prints "success" and then return.
         start_time = time.time()
         while time.time() - start_time < timeout:

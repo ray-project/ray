@@ -173,9 +173,7 @@ bool TaskDependencyManager::SubscribeDependencies(
 void TaskDependencyManager::UnsubscribeDependencies(const TaskID &task_id) {
   // Remove the task from the table of subscribed tasks.
   auto it = task_dependencies_.find(task_id);
-  if (it == task_dependencies_.end()) {
-    return;
-  }
+  RAY_CHECK(it != task_dependencies_.end());
 
   const TaskDependencies task_entry = std::move(it->second);
   task_dependencies_.erase(it);
@@ -299,6 +297,49 @@ void TaskDependencyManager::TaskCanceled(const TaskID &task_id) {
     }
   }
 }
+
+void TaskDependencyManager::CleanupForDriver(
+    const std::unordered_set<TaskID> &task_ids) {
+
+  for (auto it = task_dependencies_.begin(); it != task_dependencies_.end();) {
+    if (task_ids.find(it->first) != task_ids.end()) {
+      it = task_dependencies_.erase(it);
+    } else {
+      it++;
+    }
+  }
+
+  for (auto it = required_tasks_.begin(); it != required_tasks_.end();) {
+    if (task_ids.find(it->first) != task_ids.end()) {
+      it = required_tasks_.erase(it);
+    } else {
+      it++;
+    }
+  }
+
+  for (auto it = pending_tasks_.begin(); it != pending_tasks_.end();) {
+    if (task_ids.find(it->first) != task_ids.end()) {
+      it = pending_tasks_.erase(it);
+    } else {
+      it++;
+    }
+  }
+
+  for (auto it = required_objects_.begin(); it != required_objects_.end();) {
+    auto object_id = *it;
+    TaskID creating_task_id = ComputeTaskId(object_id);
+    if (task_ids.find(creating_task_id) != task_ids.end()) {
+      object_manager_.CancelPull(object_id);
+      reconstruction_policy_.Cancel(object_id);
+      it = required_objects_.erase(it);
+    } else {
+      it++;
+    }
+  }
+
+
+}
+
 
 }  // namespace raylet
 

@@ -105,6 +105,11 @@ class TaskDependencyManager {
   /// \return Return a vector of TaskIDs for tasks registered as pending.
   std::vector<TaskID> GetPendingTasks() const;
 
+  /// Cleanup everything for a collection of tasks.
+  ///
+  /// \param driver_task_ids The collection of task IDs for a driver.
+  void CleanupForDriver(const std::unordered_set<TaskID> &task_ids);
+
  private:
   using ObjectDependencyMap = std::unordered_map<ray::ObjectID, std::vector<ray::TaskID>>;
 

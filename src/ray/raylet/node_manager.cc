@@ -229,7 +229,7 @@ void NodeManager::KillWorker(std::shared_ptr<Worker> worker) {
 void NodeManager::HandleDriverTableUpdate(
     const ClientID &id, const std::vector<DriverTableDataT> &driver_data) {
   for (const auto &entry : driver_data) {
-    RAY_LOG(DEBUG) << "HandleDriverTableUpdate " << UniqueID::from_binary(entry.driver_id)
+    RAY_LOG(INFO) << "HandleDriverTableUpdate " << UniqueID::from_binary(entry.driver_id)
                    << " " << entry.is_dead;
     if (entry.is_dead) {
       auto driver_id = UniqueID::from_binary(entry.driver_id);
@@ -501,9 +501,6 @@ void NodeManager::CleanUpTasksForDeadActor(const ActorID &actor_id,
   for (auto const &task : removed_tasks) {
     const TaskSpecification &spec = task.GetTaskSpecification();
     TreatTaskAsFailed(spec);
-    if (unsubscribe_dependencies) {
-      task_dependency_manager_.UnsubscribeDependencies(spec.TaskId());
-    }
     task_dependency_manager_.TaskCanceled(spec.TaskId());
   }
 }
@@ -533,15 +530,9 @@ void NodeManager::CleanUpTasksForDeadDriver(const DriverID &driver_id) {
   GetDriverTasksFromList(driver_id, local_queues_.GetRunningTasks(), tasks_to_remove);
   GetDriverTasksFromList(driver_id, local_queues_.GetBlockedTasks(), tasks_to_remove);
 
-  auto removed_tasks = local_queues_.RemoveTasks(tasks_to_remove);
-  for (auto const &task : removed_tasks) {
-    const TaskSpecification &spec = task.GetTaskSpecification();
-    TreatTaskAsFailed(spec);
-    // The results for these tasks won't be used, so cancel any attempts
-    // for re-construction.
-    task_dependency_manager_.UnsubscribeDependencies(spec.TaskId());
-    task_dependency_manager_.TaskCanceled(spec.TaskId());
-  }
+  local_queues_.RemoveTasks(tasks_to_remove);
+
+  task_dependency_manager_.CleanupForDriver(tasks_to_remove);
 }
 
 void NodeManager::ProcessNewClient(LocalClientConnection &client) {
@@ -715,6 +706,12 @@ void NodeManager::ProcessClientMessage(
     return;
   } break;
   case protocol::MessageType::SubmitTask: {
+    std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
+    if (worker && worker->IsDead()) {
+      // break out if the worker is marked as dead. This can happen
+      // when a worker is being killed.
+      break;
+    }
     // Read the task submitted by the client.
     auto message = flatbuffers::GetRoot<protocol::SubmitTaskRequest>(message_data);
     TaskExecutionSpecification task_execution_spec(
@@ -726,6 +723,12 @@ void NodeManager::ProcessClientMessage(
     SubmitTask(task, Lineage());
   } break;
   case protocol::MessageType::ReconstructObjects: {
+    std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
+    if (worker && worker->IsDead()) {
+      // break out if the worker is marked as dead. This can happen
+      // when a worker is being killed.
+      break;
+    }
     auto message = flatbuffers::GetRoot<protocol::ReconstructObjects>(message_data);
     std::vector<ObjectID> required_object_ids;
     for (size_t i = 0; i < message->object_ids()->size(); ++i) {
@@ -770,6 +773,11 @@ void NodeManager::ProcessClientMessage(
   } break;
   case protocol::MessageType::NotifyUnblocked: {
     std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
+    if (worker && worker->IsDead()) {
+      // break out if the worker is marked as dead. This can happen
+      // when a worker is being killed.
+      break;
+    }
 
     // Re-acquire the CPU resources for the task that was assigned to the
     // unblocked worker.
@@ -1316,7 +1324,8 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
     actor_notification->driver_id = JobID::nil().binary();
     actor_notification->node_manager_id =
         gcs_client_->client_table().GetLocalClientId().binary();
-    RAY_LOG(DEBUG) << "Publishing actor creation: " << actor_id;
+    RAY_LOG(DEBUG) << "Publishing actor creation: " << actor_id
+                   << "driver_id: " << driver_id;
     RAY_CHECK_OK(gcs_client_->actor_table().Append(JobID::nil(), actor_id,
                                                    actor_notification, nullptr));
 
@@ -1347,7 +1356,11 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
 
   // Unset the worker's assigned task.
   worker.AssignTaskId(TaskID::nil());
-  worker.AssignDriverId(DriverID::nil());
+  // Unset the worker's assigned driver Id if this is not an actor.
+  if (!task.GetTaskSpecification().IsActorCreationTask() &&
+      !task.GetTaskSpecification().IsActorTask()) {
+    worker.AssignDriverId(DriverID::nil());
+  }
 }
 
 void NodeManager::HandleTaskReconstruction(const TaskID &task_id) {
