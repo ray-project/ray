@@ -53,14 +53,6 @@ public interface RayRuntime {
   <T> WaitResult<T> wait(List<RayObject<T>> waitList, int numReturns, int timeoutMs);
 
   /**
-   * Create an actor on a remote node.
-   *
-   * @param actorClass the class of the actor to be created.
-   * @return A handle to the newly created actor.
-   */
-  <T> RayActor<T> createActor(Class<T> actorClass);
-
-  /**
    * Invoke a remote function.
    *
    * @param func The remote function to run.
@@ -78,4 +70,14 @@ public interface RayRuntime {
    * @return The result object.
    */
   RayObject call(RayFunc func, RayActor actor, Object[] args);
+
+  /**
+   * Create an actor on a remote node.
+   *
+   * @param actorFactoryFunc A remote function whose return value is the actor object.
+   * @param args The arguments for the remote function.
+   * @param <T> The type of the actor object.
+   * @return A handle to the actor.
+   */
+  <T> RayActor<T> createActor(RayFunc actorFactoryFunc, Object[] args);
 }

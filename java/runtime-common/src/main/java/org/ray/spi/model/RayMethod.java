@@ -1,5 +1,6 @@
 package org.ray.spi.model;
 
+import java.lang.reflect.Executable;
 import java.lang.reflect.Method;
 import org.ray.api.annotation.RayRemote;
 import org.ray.api.id.UniqueId;
@@ -10,19 +11,19 @@ import org.ray.util.MethodId;
  */
 public class RayMethod {
 
-  public final Method invokable;
+  public final Executable invokable;
   public final String fullName;
   public final RayRemote remoteAnnotation;
   private final UniqueId funcId;
 
-  private RayMethod(Method m, RayRemote remoteAnnotation, UniqueId funcId) {
+  private RayMethod(Executable m, RayRemote remoteAnnotation, UniqueId funcId) {
     this.invokable = m;
     this.remoteAnnotation = remoteAnnotation;
     this.funcId = funcId;
     fullName = m.getDeclaringClass().getName() + "." + m.getName();
   }
 
-  public static RayMethod from(Method m, RayRemote parentRemoteAnnotation) {
+  public static RayMethod from(Executable m, RayRemote parentRemoteAnnotation) {
     Class<?> clazz = m.getDeclaringClass();
     RayRemote remoteAnnotation = m.getAnnotation(RayRemote.class);
     MethodId mid = MethodId.fromMethod(m);

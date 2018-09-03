@@ -62,8 +62,7 @@ public class LocalFunctionManager {
    * it may block for a while if the related resources (e.g., jars) are not ready on local machine
    */
   public Pair<ClassLoader, RayMethod> getMethod(UniqueId driverId, UniqueId actorId,
-      UniqueId methodId,
-      FunctionArg[] args) throws NoSuchMethodException, SecurityException, ClassNotFoundException {
+      UniqueId methodId, FunctionArg[] args) {
     Preconditions.checkArgument(args.length >= 1, "method's args len %s<=1", args.length);
     String className = (String) Serializer.decode(args[args.length - 1].data);
     return getMethod(driverId, actorId, methodId, className);

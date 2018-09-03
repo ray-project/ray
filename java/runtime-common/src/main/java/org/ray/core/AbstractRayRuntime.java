@@ -14,9 +14,7 @@ import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.WaitResult;
-import org.ray.api.annotation.RayRemote;
 import org.ray.api.function.RayFunc;
-import org.ray.api.function.RayFunc2;
 import org.ray.api.id.UniqueId;
 import org.ray.api.runtime.RayRuntime;
 import org.ray.core.model.RayParameters;
@@ -50,9 +48,9 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   protected PathConfig pathConfig;
 
   /**
-   * Actor ID -> actor instance.
+   * Actor ID -> local actor instance.
    */
-  private Map<UniqueId, Object> actors = new HashMap<>();
+  Map<UniqueId, Object> localActors = new HashMap<>();
 
   // app level Ray.init()
   // make it private so there is no direct usage but only from Ray.init
@@ -137,7 +135,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
       objectStoreProxy = new ObjectStoreProxy(plink, slink);
     }
     
-    worker = new Worker(localSchedulerClient, functions);
+    worker = new Worker(this);
   }
 
   private static AbstractRayRuntime instantiate(RayParameters params) {
@@ -195,33 +193,20 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   @Override
   public <T> RayObject<T> put(T obj) {
-    UniqueId objectId = getCurrentTaskNextPutId();
+    UniqueId objectId = UniqueIdHelper.computePutId(
+        WorkerContext.currentTask().taskId, WorkerContext.nextPutIndex());
+
     put(objectId, obj);
     return new RayObjectImpl<>(objectId);
   }
 
   public <T> void put(UniqueId objectId, T obj) {
-    UniqueId taskId = getCurrentTaskId();
+    UniqueId taskId = WorkerContext.currentTask().taskId;
     RayLog.core.info("Putting object {}, for task {} ", objectId, taskId);
     if (!params.use_raylet) {
       localSchedulerClient.markTaskPutDependency(taskId, objectId);
     }
     objectStoreProxy.put(objectId, obj, null);
-  }
-
-  /**
-   * get the task identity of the currently running task, UniqueId.NIL if not inside any
-   */
-  public UniqueId getCurrentTaskId() {
-    return worker.getCurrentTaskId();
-  }
-
-  /**
-   * get the to-be-returned objects identities of the currently running task, empty array if not
-   * inside any.
-   */
-  public UniqueId getCurrentTaskNextPutId() {
-    return worker.getCurrentTaskNextPutId();
   }
 
   @Override
@@ -233,7 +218,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   @Override
   public <T> List<T> get(List<UniqueId> objectIds) {
     boolean wasBlocked = false;
-    UniqueId taskId = getCurrentTaskId();
+    UniqueId taskId = WorkerContext.currentTask().taskId;
 
     try {
       int numObjectIds = objectIds.size();
@@ -343,7 +328,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   @Override
   public RayObject call(RayFunc func, Object[] args) {
-    TaskSpec spec = createTaskSpec(func, RayActorImpl.NIL, args, null);
+    TaskSpec spec = createTaskSpec(func, RayActorImpl.NIL, args, false);
     localSchedulerClient.submitTask(spec);
     return new RayObjectImpl(spec.returnIds[0]);
   }
@@ -354,7 +339,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
       throw new IllegalArgumentException("Unsupported actor type: " + actor.getClass().getName());
     }
     RayActorImpl actorImpl = (RayActorImpl)actor;
-    TaskSpec spec = createTaskSpec(func, actorImpl, args, null);
+    TaskSpec spec = createTaskSpec(func, actorImpl, args, false);
     actorImpl.setTaskCursor(spec.returnIds[1]);
     localSchedulerClient.submitTask(spec);
     return new RayObjectImpl(spec.returnIds[0]);
@@ -362,30 +347,13 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   @Override
   @SuppressWarnings("unchecked")
-  public <T> RayActor<T> createActor(Class<T> actorClass) {
-    RayFunc2<UniqueId, String, Object> func = AbstractRayRuntime::createLocalActor;
-    TaskSpec spec = createTaskSpec(func, RayActorImpl.NIL, null, actorClass);
-    RayActorImpl actor = new RayActorImpl(spec.returnIds[0]);
+  public <T> RayActor<T> createActor(RayFunc actorFactoryFunc, Object[] args) {
+    TaskSpec spec = createTaskSpec(actorFactoryFunc, RayActorImpl.NIL, args, true);
+    RayActorImpl<?> actor = new RayActorImpl(spec.returnIds[0]);
     actor.increaseTaskCounter();
     actor.setTaskCursor(spec.returnIds[0]);
     localSchedulerClient.submitTask(spec);
-    return actor;
-  }
-
-  @RayRemote
-  private static Object createLocalActor(UniqueId actorId, String className) {
-    try {
-      Class<?> cls = Class.forName(className, true, Thread.currentThread().getContextClassLoader());
-      Object actor = cls.getConstructor().newInstance();
-      getInstance().actors.put(actorId, actor);
-      RayLog.core.info("Created actor: {}, actor id: {}", className, actorId);
-      return null;
-    } catch (ClassNotFoundException | InstantiationException | IllegalAccessException
-        | IllegalArgumentException | InvocationTargetException | NoSuchMethodException
-        | SecurityException e) {
-      RayLog.core.error("Failed to create actor {}", className, e);
-      throw new TaskExecutionException(e);
-    }
+    return (RayActor<T>) actor;
   }
 
   /**
@@ -404,12 +372,11 @@ public abstract class AbstractRayRuntime implements RayRuntime {
    * @param func The target remote function.
    * @param actor The actor handle. If the task is not an actor task, actor id must be NIL.
    * @param args The arguments for the remote function.
-   * @param actorClassForCreation If the task is a actor creation task, the argument should be
-   *     the actor class. Otherwise, it should be null.
+   * @param isActorCreationTask Whether this task is an actor creation task.
    * @return A TaskSpec object.
    */
   private TaskSpec createTaskSpec(RayFunc func, RayActorImpl actor, Object[] args,
-      Class actorClassForCreation) {
+      boolean isActorCreationTask) {
     final TaskSpec current = WorkerContext.currentTask();
     UniqueId taskId = localSchedulerClient.generateTaskId(current.driverId,
         current.taskId,
@@ -418,8 +385,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     UniqueId[] returnIds = genReturnIds(taskId, numReturns);
 
     UniqueId actorCreationId = UniqueId.NIL;
-    if (actorClassForCreation != null) {
-      args = new Object[] {returnIds[0], actorClassForCreation.getName()};
+    if (isActorCreationTask) {
       actorCreationId = returnIds[0];
     }
 
@@ -448,24 +414,24 @@ public abstract class AbstractRayRuntime implements RayRuntime {
         returnIds,
         actor.getHandleId(),
         actorCreationId,
-        ResourceUtil.getResourcesMapFromArray(rayMethod.remoteAnnotation.resources()),
+        ResourceUtil.getResourcesMapFromArray(rayMethod.remoteAnnotation),
         actor.getTaskCursor()
     );
   }
-
-  /***********
-   * Internal Methods.
-   ***********/
 
   public void loop() {
     worker.loop();
   }
 
-  /**
-   * get actor with given id.
-   */
-  public Object getLocalActor(UniqueId id) {
-    return actors.get(id);
+  public Worker getWorker() {
+    return worker;
   }
 
+  public LocalSchedulerLink getLocalSchedulerClient() {
+    return localSchedulerClient;
+  }
+
+  public LocalFunctionManager getLocalFunctionManager() {
+    return functions;
+  }
 }
