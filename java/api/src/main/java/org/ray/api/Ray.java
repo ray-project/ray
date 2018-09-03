@@ -116,19 +116,9 @@ public final class Ray extends RayCall {
   }
 
   /**
-   * Free a list of objects from Plasma Store.
-   *
-   * @param objectIds The object ids to free.
-   * @param localOnly Whether only free objects for local object or not.
-   */
-  public static void free(List<UniqueId> objectIds, boolean localOnly) {
-    runtime.free(objectIds, localOnly);
-  }
-
-  /**
    * Get the underlying runtime instance.
    */
-  static RayRuntime internal() {
+  public static RayRuntime internal() {
     return runtime;
   }
 }

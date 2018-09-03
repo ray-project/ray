@@ -64,7 +64,7 @@ public interface RayRuntime {
    * Free a list of objects from Plasma Store.
    *
    * @param objectIds The object ids to free.
-   * @param localOnly Whether only free objects for local object or not.
+   * @param localOnly Whether only free objects for local object store or not.
    */
   void free(List<UniqueId> objectIds, boolean localOnly);
 
