@@ -693,7 +693,7 @@ void NodeManager::ProcessClientMessage(
       worker->ResetLifetimeResourceIds();
 
       RAY_LOG(DEBUG) << "Worker (pid=" << worker->Pid() << ") is disconnected. "
-                       << "driver_id: " << worker->GetAssignedDriverId();
+                     << "driver_id: " << worker->GetAssignedDriverId();
 
       // Since some resources may have been released, we can try to dispatch more tasks.
       DispatchTasks();
@@ -710,7 +710,7 @@ void NodeManager::ProcessClientMessage(
       worker_pool_.DisconnectDriver(driver);
 
       RAY_LOG(DEBUG) << "Driver (pid=" << driver->Pid() << ") is disconnected. "
-                       << "driver_id: " << driver->GetAssignedDriverId();
+                     << "driver_id: " << driver->GetAssignedDriverId();
     }
     return;
   } break;
