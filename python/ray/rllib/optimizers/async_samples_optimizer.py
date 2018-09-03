@@ -341,7 +341,7 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
                                        3),
             "train_throughput": round(self.timers["train"].mean_throughput, 3),
             "num_weight_syncs": self.num_weight_syncs,
-            "num_replays": self.num_replayed,
+            "num_steps_replayed": self.num_replayed,
         }
         debug_stats = {
             "timing_breakdown": timing,
