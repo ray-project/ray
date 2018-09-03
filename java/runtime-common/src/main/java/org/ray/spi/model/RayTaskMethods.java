@@ -35,8 +35,8 @@ public final class RayTaskMethods {
 
       for (Executable e : executables) {
         // This executable must be either a constructor or a static method.
-        if (!(e instanceof Constructor) &&
-            !Modifier.isStatic(e.getModifiers())) {
+        if (!(e instanceof Constructor)
+            && !Modifier.isStatic(e.getModifiers())) {
           continue;
         }
         e.setAccessible(true);

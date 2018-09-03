@@ -73,9 +73,9 @@ public final class MethodId {
     final boolean isStatic = Modifier.isStatic(method.getModifiers());
     final String className = method.getDeclaringClass().getName();
     final String methodName = method instanceof Method
-      ? method.getName() : "<init>";
+          ? method.getName() : "<init>";
     final Type type = method instanceof Method
-        ? Type.getType((Method) method) : Type.getType((Constructor) method);
+          ? Type.getType((Method) method) : Type.getType((Constructor) method);
     final String methodDesc = type.getDescriptor();
     return new MethodId(className, methodName, methodDesc, isStatic);
   }

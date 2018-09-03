@@ -50,15 +50,13 @@ public class Worker {
       Object result;
       if (!method.isConstructor()) {
         result = method.getMethod().invoke(actor, args);
-      }
-      else {
+      } else {
         result = method.getConstructor().newInstance(args);
       }
       // Set result
       if (!spec.isActorCreationTask()) {
         runtime.put(returnId, result);
-      }
-      else {
+      } else {
         runtime.localActors.put(returnId, result);
       }
       RayLog.core.info("Finished executing task {}", spec.taskId);

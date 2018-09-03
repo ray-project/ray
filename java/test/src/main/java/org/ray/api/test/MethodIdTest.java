@@ -41,3 +41,4 @@ public class MethodIdTest {
     public Foo(int a, String b) {}
   }
 }
+

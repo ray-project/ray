@@ -115,7 +115,8 @@ public class LocalFunctionManager {
         RayLog.core.info("create RayActorMethods: {}", actorMethods);
         this.actorMethods.put(className, actorMethods);
       }
-      return isStatic ? actorMethods.staticFunctions.get(methodId) : actorMethods.functions.get(methodId);
+      return isStatic ? actorMethods.staticFunctions.get(methodId)
+          : actorMethods.functions.get(methodId);
     }
   }
 }

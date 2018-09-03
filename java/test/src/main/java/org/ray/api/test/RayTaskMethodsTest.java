@@ -14,9 +14,13 @@ public class RayTaskMethodsTest {
   private static final Logger LOGGER = LoggerFactory.getLogger(RayTaskMethodsTest.class);
 
   private static class Foo {
+
     public Foo() {}
+
     public Foo(int x) {}
+
     public static void f1() {}
+
     public void f2() {}
   }
 
@@ -30,8 +34,7 @@ public class RayTaskMethodsTest {
     for (RayMethod m : methods.functions.values()) {
       if (m.isConstructor()) {
         numConstructors += 1;
-      }
-      else {
+      } else {
         numMethods += 1;
       }
     }
