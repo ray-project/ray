@@ -59,7 +59,10 @@ if __name__ == "__main__":
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
     args, _ = parser.parse_known_args()
-    ray.init()
+    if args.smoke_test:
+        ray.init(num_cpus=4)  # force pausing to happen for test
+    else:
+        ray.init()
 
     pbt = PopulationBasedTraining(
         time_attr="training_iteration",
