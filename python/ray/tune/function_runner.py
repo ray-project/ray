@@ -115,11 +115,12 @@ class FunctionRunner(Trainable):
             time.sleep(1)
             result = self._status_reporter._get_and_clear_status()
 
-        curr_ts_total = result.get(TIMESTEPS_TOTAL,
-                                   self._last_reported_timestep)
-        result.update(
-            timesteps_this_iter=(curr_ts_total - self._last_reported_timestep))
-        self._last_reported_timestep = curr_ts_total
+        curr_ts_total = result.get(TIMESTEPS_TOTAL)
+        if curr_ts_total is not None:
+            result.update(
+                timesteps_this_iter=(
+                    curr_ts_total - self._last_reported_timestep))
+            self._last_reported_timestep = curr_ts_total
 
         return result
 

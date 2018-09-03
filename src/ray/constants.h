@@ -2,6 +2,7 @@
 #define RAY_CONSTANTS_H_
 
 #include <limits.h>
+#include <stdint.h>
 
 /// Length of Ray IDs in bytes.
 constexpr int64_t kUniqueIDSize = 20;

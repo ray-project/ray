@@ -5,7 +5,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.concurrent.ConcurrentHashMap;
 import net.lingala.zip4j.core.ZipFile;
-import org.ray.api.UniqueID;
+import org.ray.api.id.UniqueId;
 import org.ray.spi.KeyValueStoreLink;
 import org.ray.spi.RemoteFunctionManager;
 import org.ray.util.FileUtil;
@@ -18,7 +18,7 @@ import org.ray.util.logger.RayLog;
  */
 public class NativeRemoteFunctionManager implements RemoteFunctionManager {
 
-  private final ConcurrentHashMap<UniqueID, ClassLoader> loadedApps = new ConcurrentHashMap<>();
+  private final ConcurrentHashMap<UniqueId, ClassLoader> loadedApps = new ConcurrentHashMap<>();
   private MessageDigest md;
   private final String appDir = System.getProperty("user.dir") + "/apps";
   private final KeyValueStoreLink kvStore;
@@ -35,11 +35,11 @@ public class NativeRemoteFunctionManager implements RemoteFunctionManager {
   }
 
   @Override
-  public UniqueID registerResource(byte[] resourceZip) {
+  public UniqueId registerResource(byte[] resourceZip) {
     byte[] digest = Sha1Digestor.digest(resourceZip);
-    assert (digest.length == UniqueID.LENGTH);
+    assert (digest.length == UniqueId.LENGTH);
 
-    UniqueID resourceId = new UniqueID(digest);
+    UniqueId resourceId = new UniqueId(digest);
 
     // TODO: resources must be saved in persistent store
     kvStore.set(resourceId.getBytes(), resourceZip, null);
@@ -48,32 +48,32 @@ public class NativeRemoteFunctionManager implements RemoteFunctionManager {
   }
 
   @Override
-  public byte[] getResource(UniqueID resourceId) {
+  public byte[] getResource(UniqueId resourceId) {
     return kvStore.get(resourceId.getBytes(), null);
   }
 
   @Override
-  public void unregisterResource(UniqueID resourceId) {
+  public void unregisterResource(UniqueId resourceId) {
     kvStore.delete(resourceId.getBytes(), null);
   }
 
   @Override
-  public void registerApp(UniqueID driverId, UniqueID resourceId) {
+  public void registerApp(UniqueId driverId, UniqueId resourceId) {
     kvStore.set("App2ResMap", resourceId.toString(), driverId.toString());
   }
 
   @Override
-  public UniqueID getAppResourceId(UniqueID driverId) {
-    return UniqueID.fromHexString(kvStore.get("App2ResMap", driverId.toString()));
+  public UniqueId getAppResourceId(UniqueId driverId) {
+    return UniqueId.fromHexString(kvStore.get("App2ResMap", driverId.toString()));
   }
 
   @Override
-  public void unregisterApp(UniqueID driverId) {
+  public void unregisterApp(UniqueId driverId) {
     kvStore.delete("App2ResMap", driverId.toString());
   }
 
   @Override
-  public ClassLoader loadResource(UniqueID driverId) {
+  public ClassLoader loadResource(UniqueId driverId) {
     ClassLoader classLoader = loadedApps.get(driverId);
     if (classLoader == null) {
       synchronized (this) {
@@ -86,13 +86,13 @@ public class NativeRemoteFunctionManager implements RemoteFunctionManager {
     return classLoader;
   }
 
-  private ClassLoader initLoadedApps(UniqueID driverId) {
+  private ClassLoader initLoadedApps(UniqueId driverId) {
     try {
       RayLog.core.info("initLoadedApps" + driverId.toString());
 
       ClassLoader cl = loadedApps.get(driverId);
       if (cl == null) {
-        UniqueID resId = UniqueID.fromHexString(kvStore.get("App2ResMap", driverId.toString()));
+        UniqueId resId = UniqueId.fromHexString(kvStore.get("App2ResMap", driverId.toString()));
         byte[] res = getResource(resId);
         if (res == null) {
           throw new RuntimeException("get resource null, the resId " + resId.toString());
@@ -120,7 +120,7 @@ public class NativeRemoteFunctionManager implements RemoteFunctionManager {
   }
 
   @Override
-  public synchronized void unloadFunctions(UniqueID driverId) {
+  public synchronized void unloadFunctions(UniqueId driverId) {
     ClassLoader cl = loadedApps.get(driverId);
     try {
       JarLoader.unloadJars(cl);

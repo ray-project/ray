@@ -2,6 +2,7 @@ package org.ray.util;
 
 import java.util.HashMap;
 import java.util.Map;
+import org.ray.api.annotation.ResourceItem;
 
 public class ResourceUtil {
   public static final String CPU_LITERAL = "CPU";

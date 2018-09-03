@@ -2,7 +2,7 @@ package org.ray.spi.model;
 
 import java.util.Arrays;
 import java.util.Map;
-import org.ray.api.UniqueID;
+import org.ray.api.id.UniqueId;
 import org.ray.util.ResourceUtil;
 
 /**
@@ -11,43 +11,64 @@ import org.ray.util.ResourceUtil;
 public class TaskSpec {
 
   // ID of the driver that created this task.
-  public UniqueID driverId;
+  public UniqueId driverId;
 
   // Task ID of the task.
-  public UniqueID taskId;
+  public UniqueId taskId;
 
   // Task ID of the parent task.
-  public UniqueID parentTaskId;
+  public UniqueId parentTaskId;
 
   // A count of the number of tasks submitted by the parent task before this one.
   public int parentCounter;
 
   // Actor ID of the task. This is the actor that this task is executed on
   // or NIL_ACTOR_ID if the task is just a normal task.
-  public UniqueID actorId;
+  public UniqueId actorId;
 
   // Number of tasks that have been submitted to this actor so far.
   public int actorCounter;
 
   // Function ID of the task.
-  public UniqueID functionId;
+  public UniqueId functionId;
 
   // Task arguments.
   public FunctionArg[] args;
 
   // return ids
-  public UniqueID[] returnIds;
+  public UniqueId[] returnIds;
 
   // ID per actor client for session consistency
-  public UniqueID actorHandleId;
+  public UniqueId actorHandleId;
 
-  // Id for create a target actor
-  public UniqueID createActorId;
+  // Id for createActor a target actor
+  public UniqueId createActorId;
 
   // The task's resource demands.
   public Map<String, Double> resources;
 
-  public UniqueID cursorId;
+  public UniqueId cursorId;
+
+  public TaskSpec() {}
+
+  public TaskSpec(UniqueId driverId, UniqueId taskId, UniqueId parentTaskId, int parentCounter,
+      UniqueId actorId, int actorCounter, UniqueId functionId, FunctionArg[] args,
+      UniqueId[] returnIds, UniqueId actorHandleId, UniqueId createActorId,
+      Map<String, Double> resources, UniqueId cursorId) {
+    this.driverId = driverId;
+    this.taskId = taskId;
+    this.parentTaskId = parentTaskId;
+    this.parentCounter = parentCounter;
+    this.actorId = actorId;
+    this.actorCounter = actorCounter;
+    this.functionId = functionId;
+    this.args = args;
+    this.returnIds = returnIds;
+    this.actorHandleId = actorHandleId;
+    this.createActorId = createActorId;
+    this.resources = resources;
+    this.cursorId = cursorId;
+  }
 
   @Override
   public String toString() {

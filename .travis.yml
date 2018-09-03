@@ -77,7 +77,7 @@ matrix:
 
         - python ./python/ray/plasma/test/test.py valgrind
         - python ./python/ray/local_scheduler/test/test.py valgrind
-        - python ./python/ray/global_scheduler/test/test.py valgrind
+        # - python ./python/ray/global_scheduler/test/test.py valgrind
 
     # Build Linux wheels.
     - os: linux
@@ -183,6 +183,7 @@ install:
   - ./src/ray/raylet/task_dependency_manager_test
   - ./src/ray/raylet/reconstruction_policy_test
   - ./src/ray/util/logging_test --gtest_filter=PrintLogTest*
+  - ./src/ray/util/signal_test
 
   - bash ../src/common/test/run_tests.sh
   - bash ../src/plasma/test/run_tests.sh

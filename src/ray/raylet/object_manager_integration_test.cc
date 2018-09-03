@@ -54,7 +54,8 @@ class TestObjectManagerBase : public ::testing::Test {
     std::string store_sock_2 = StartStore("2");
 
     // start first server
-    gcs_client_1 = std::shared_ptr<gcs::AsyncGcsClient>(new gcs::AsyncGcsClient());
+    gcs_client_1 = std::shared_ptr<gcs::AsyncGcsClient>(
+        new gcs::AsyncGcsClient("127.0.0.1", 6379, /*is_test_client=*/true));
     ObjectManagerConfig om_config_1;
     om_config_1.store_socket_name = store_sock_1;
     om_config_1.push_timeout_ms = 10000;
@@ -63,7 +64,8 @@ class TestObjectManagerBase : public ::testing::Test {
         GetNodeManagerConfig("raylet_1", store_sock_1), om_config_1, gcs_client_1));
 
     // start second server
-    gcs_client_2 = std::shared_ptr<gcs::AsyncGcsClient>(new gcs::AsyncGcsClient());
+    gcs_client_2 = std::shared_ptr<gcs::AsyncGcsClient>(
+        new gcs::AsyncGcsClient("127.0.0.1", 6379, /*is_test_client=*/true));
     ObjectManagerConfig om_config_2;
     om_config_2.store_socket_name = store_sock_2;
     om_config_2.push_timeout_ms = 10000;

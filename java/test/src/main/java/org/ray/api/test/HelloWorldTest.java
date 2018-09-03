@@ -5,7 +5,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.ray.api.Ray;
 import org.ray.api.RayObject;
-import org.ray.api.RayRemote;
+import org.ray.api.annotation.RayRemote;
 
 /**
  * Hello world.

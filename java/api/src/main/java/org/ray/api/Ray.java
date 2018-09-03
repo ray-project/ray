@@ -1,99 +1,124 @@
 package org.ray.api;
 
-import com.google.common.collect.ImmutableList;
 import java.util.List;
-import org.ray.api.internal.RayConnector;
-import org.ray.util.exception.TaskExecutionException;
-import org.ray.util.logger.RayLog;
+import org.ray.api.id.UniqueId;
+import org.ray.api.runtime.DefaultRayRuntimeFactory;
+import org.ray.api.runtime.RayRuntime;
+import org.ray.api.runtime.RayRuntimeFactory;
 
 /**
- * Ray API.
+ * This class contains all public APIs of Ray.
  */
-public final class Ray extends Rpc {
+public final class Ray extends RayCall {
 
-  private static RayApi impl = null;
+  private static RayRuntime runtime = null;
 
   /**
-   * initialize the current worker or the single-box cluster.
+   * Initialize Ray runtime with the default runtime implementation.
    */
   public static void init() {
-    if (impl == null) {
-      impl = RayConnector.run();
+    init(new DefaultRayRuntimeFactory());
+  }
+
+  /**
+   * Initialize Ray runtime with a custom runtime implementation.
+   *
+   * @param factory A factory that produces the runtime instance.
+   */
+  public static synchronized void init(RayRuntimeFactory factory) {
+    if (runtime == null) {
+      runtime = factory.createRayRuntime();
     }
   }
 
   /**
-   * Put obj into object store.
+   * Shutdown Ray runtime.
+   */
+  public static void shutdown() {
+    runtime.shutdown();
+  }
+
+  /**
+   * Store an object in the object store.
+   *
+   * @param obj The Java object to be stored.
+   * @return A RayObject instance that represents the in-store object.
    */
   public static <T> RayObject<T> put(T obj) {
-    return impl.put(obj);
-  }
-
-  public static <T, TMT> RayObject<T> put(T obj, TMT metadata) {
-    return impl.put(obj, metadata);
+    return runtime.put(obj);
   }
 
   /**
-   * Get obj(s) from object store.
-   */
-  static <T> T get(UniqueID objectId) throws TaskExecutionException {
-    return impl.get(objectId);
-  }
-
-  static <T> List<T> get(List<UniqueID> objectIds) throws TaskExecutionException {
-    return impl.get(objectIds);
-  }
-
-  static <T> T getMeta(UniqueID objectId) throws TaskExecutionException {
-    return impl.getMeta(objectId);
-  }
-
-  static <T> List<T> getMeta(List<UniqueID> objectIds) throws TaskExecutionException {
-    return impl.getMeta(objectIds);
-  }
-
-  /**
-   * wait until timeout or enough RayObject are ready.
+   * Get an object from the object store.
    *
-   * @param waitfor             wait for who
-   * @param numReturns          how many of ready is enough
-   * @param timeoutMilliseconds in millisecond
+   * @param objectId The ID of the object to get.
+   * @return The Java object.
    */
-  public static <T> WaitResult<T> wait(List<RayObject<T>> waitfor, int numReturns,
-                                       int timeoutMilliseconds) {
-    return impl.wait(waitfor, numReturns, timeoutMilliseconds);
-  }
-
-  public static <T> WaitResult<T> wait(List<RayObject<T>> waitfor, int numReturns) {
-    return impl.wait(waitfor, numReturns, Integer.MAX_VALUE);
-  }
-
-  public static <T> WaitResult<T> wait(List<RayObject<T>> waitfor) {
-    return impl.wait(waitfor, waitfor.size(), Integer.MAX_VALUE);
+  public static <T> T get(UniqueId objectId) {
+    return runtime.get(objectId);
   }
 
   /**
-   * create actor object.
+   * Get a list of objects from the object store.
+   *
+   * @param objectIds The list of object IDs.
+   * @return A list of Java objects.
    */
-  public static <T> RayActor<T> create(Class<T> cls) {
-    try {
-      if (cls.getConstructor() == null) {
-        System.err.println("class " + cls.getName()
-            + " does not (actors must) have a constructor with no arguments");
-        RayLog.core.error("class {} does not (actors must) have a constructor with no arguments",
-            cls.getName());
-      }
-    } catch (Exception e) {
-      System.exit(1);
-      return null;
-    }
-    return impl.create(cls);
+  public static <T> List<T> get(List<UniqueId> objectIds) {
+    return runtime.get(objectIds);
   }
 
   /**
-   * get underlying runtime.
+   * Wait for a list of RayObjects to be locally available,
+   * until specified number of objects are ready, or specified timeout has passed.
+   *
+   * @param waitList A list of RayObject to wait for.
+   * @param numReturns The number of objects that should be returned.
+   * @param timeoutMs The maximum time in milliseconds to wait before returning.
+   * @return Two lists, one containing locally available objects, one containing the rest.
    */
-  static RayApi internal() {
-    return impl;
+  public static <T> WaitResult<T> wait(List<RayObject<T>> waitList, int numReturns,
+      int timeoutMs) {
+    return runtime.wait(waitList, numReturns, timeoutMs);
+  }
+
+  /**
+   * A convenient helper method for Ray.wait. It will wait infinitely until
+   * specified number of objects are locally available.
+   *
+   * @param waitList A list of RayObject to wait for.
+   * @param numReturns The number of objects that should be returned.
+   * @return Two lists, one containing locally available objects, one containing the rest.
+   */
+  public static <T> WaitResult<T> wait(List<RayObject<T>> waitList, int numReturns) {
+    return runtime.wait(waitList, numReturns, Integer.MAX_VALUE);
+  }
+
+  /**
+   * A convenient helper method for Ray.wait. It will wait infinitely until
+   * all objects are locally available.
+   *
+   * @param waitList A list of RayObject to wait for.
+   * @return Two lists, one containing locally available objects, one containing the rest.
+   */
+  public static <T> WaitResult<T> wait(List<RayObject<T>> waitList) {
+    return runtime.wait(waitList, waitList.size(), Integer.MAX_VALUE);
+  }
+
+  /**
+   * Create an actor on a remote node.
+   *
+   * @param actorClass the class of the actor to be created.
+   * @return A handle to the newly created actor.
+   */
+  public static <T> RayActor<T> createActor(Class<T> actorClass) {
+    return runtime.createActor(actorClass);
+  }
+
+  /**
+   * Get the underlying runtime instance.
+   */
+  static RayRuntime internal() {
+    return runtime;
   }
 }
