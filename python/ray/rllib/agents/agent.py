@@ -197,7 +197,8 @@ class Agent(Trainable):
             for ev in self.optimizer.remote_evaluators:
                 ev.set_global_vars.remote(self.global_vars)
 
-        if self.config["observation_filter"] != "NoFilter":
+        if (self.config["observation_filter"] != "NoFilter"
+                and hasattr(self, "local_evaluator")):
             FilterManager.synchronize(
                 self.local_evaluator.filters,
                 self.remote_evaluators,
