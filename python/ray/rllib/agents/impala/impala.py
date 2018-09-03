@@ -21,6 +21,7 @@ OPTIMIZER_SHARED_CONFIGS = [
     "sample_batch_size",
     "train_batch_size",
     "replay_batch_slots",
+    "replay_proportion",
     "gpu_queue_size",
     "grad_clip",
     "sample_queue_depth",
@@ -41,6 +42,7 @@ DEFAULT_CONFIG = with_common_config({
     "num_cpus_per_worker": 1,
     "num_gpus_per_worker": 0,
     "replay_batch_slots": 0,
+    "replay_proportion": 0.0,
     "gpu_queue_size": 1,
     "sample_queue_depth": 2,
 

@@ -6,6 +6,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
 import os
 import random
 import time
@@ -71,7 +72,6 @@ class TFMultiGPULearner(LearnerThread):
                  num_gpus=2,
                  lr=0.0005,
                  train_batch_size=500,
-                 replay_batch_slots=0,
                  grad_clip=40,
                  gpu_queue_size=1):
         import tensorflow as tf
@@ -119,8 +119,6 @@ class TFMultiGPULearner(LearnerThread):
                 self.sess = self.local_evaluator.tf_sess
                 self.sess.run(tf.global_variables_initializer())
 
-        self.replay_batch_slots = replay_batch_slots
-        self.replay_buffer = []
         self.idle_optimizers = queue.Queue()
         self.ready_optimizers = queue.Queue()
         for opt in self.par_opt:
@@ -164,15 +162,7 @@ class _LoaderThread(threading.Thread):
     def step(self):
         l = self.learner
         with self.queue_timer:
-            if (l.inqueue.empty() and l.replay_batch_slots > 0
-                    and l.replay_buffer):
-                batch = random.choice(l.replay_buffer)
-            else:
-                batch = l.inqueue.get()
-                if l.replay_batch_slots > 0:
-                    l.replay_buffer.append(batch)
-                    if len(l.replay_buffer) > l.replay_batch_slots:
-                        l.replay_buffer.pop(0)
+            batch = l.inqueue.get()
             assert batch.count == l.train_batch_size
 
         opt = l.idle_optimizers.get()
@@ -208,13 +198,15 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
               debug=False,
               grad_clip=40,
               replay_batch_slots=0,
+              replay_proportion=0.0,
               gpu_queue_size=1,
               sample_queue_depth=2):
         self.debug = debug
         self.learning_started = False
         self.train_batch_size = train_batch_size
+        self.sample_batch_size = sample_batch_size
 
-        if num_gpus > 1 or gpu_queue_size > 1 or replay_batch_slots > 0:
+        if num_gpus > 1 or gpu_queue_size > 1:
             if train_batch_size // num_gpus % (
                     sample_batch_size // num_envs_per_worker) != 0:
                 raise ValueError(
@@ -224,7 +216,6 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
                 lr=lr,
                 num_gpus=num_gpus,
                 train_batch_size=train_batch_size,
-                replay_batch_slots=replay_batch_slots,
                 grad_clip=grad_clip,
                 gpu_queue_size=gpu_queue_size)
         else:
@@ -240,6 +231,7 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
             ["put_weights", "enqueue", "sample_processing", "train", "sample"]
         }
         self.num_weight_syncs = 0
+        self.num_replayed = 0
         self.learning_started = False
 
         # Kick off async background sampling
@@ -251,6 +243,14 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
                 self.sample_tasks.add(ev, ev.sample.remote())
 
         self.batch_buffer = []
+
+        assert not replay_batch_slots or \
+            replay_batch_slots * sample_batch_size > train_batch_size
+        if replay_proportion or replay_batch_slots:
+            assert replay_proportion and replay_batch_slots
+        self.replay_proportion = replay_proportion
+        self.replay_batch_slots = replay_batch_slots
+        self.replay_batches = []
 
     def step(self):
         assert self.learner.is_alive()
@@ -266,6 +266,19 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
             self.timers["train"].push_units_processed(train_timesteps)
         self.num_steps_sampled += sample_timesteps
         self.num_steps_trained += train_timesteps
+
+    def _replay_as_needed(self):
+        num_needed = self.train_batch_size // self.sample_batch_size + 1
+        if len(self.replay_batches) <= num_needed:
+            return
+        f = self.replay_proportion
+        while random.random() < f:
+            f -= 1
+            samples = np.random.choice(
+                self.replay_batches, num_needed, replace=False)
+            train_batch = samples[0].concat_samples(samples)
+            self.learner.inqueue.put(train_batch)
+            self.num_replayed += train_batch.count
 
     def _step(self):
         sample_timesteps, train_timesteps = 0, 0
@@ -283,6 +296,15 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
                     with self.timers["enqueue"]:
                         self.learner.inqueue.put(train_batch)
                     self.batch_buffer = []
+
+                    # Replay with configured probability
+                    self._replay_as_needed()
+
+                # Put in replay buffer if enabled
+                if self.replay_batch_slots > 0:
+                    self.replay_batches.append(sample_batch)
+                    if len(self.replay_batches) > self.replay_batch_slots:
+                        self.replay_batches.pop(0)
 
                 # Note that it's important to pull new weights once
                 # updated to avoid excessive correlation between actors
@@ -320,6 +342,7 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
                                        3),
             "train_throughput": round(self.timers["train"].mean_throughput, 3),
             "num_weight_syncs": self.num_weight_syncs,
+            "num_replays": self.num_replayed,
         }
         debug_stats = {
             "timing_breakdown": timing,
