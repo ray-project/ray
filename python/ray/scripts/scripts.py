@@ -567,6 +567,9 @@ cli.add_command(get_head_ip)
 
 
 def main():
+    logging.basicConfig(
+        level=logging.getLevelName(ray_constants.LOGGER_LEVEL.upper()),
+        format=ray_constants.LOGGER_FORMAT)
     return cli()
 
 

@@ -26,8 +26,6 @@ from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_LAUNCH_CONFIG, \
 from ray.autoscaler.updater import NodeUpdaterProcess
 
 logger = logging.getLogger(__name__)
-logging.basicConfig()
-logger.setLevel(logging.INFO)
 
 
 def create_or_update_cluster(config_file, override_min_workers,

@@ -24,8 +24,6 @@ NODE_START_WAIT_S = 300
 SSH_CHECK_INTERVAL = 5
 
 logger = logging.getLogger(__name__)
-logging.basicConfig()
-logger.setLevel(logging.INFO)
 
 
 def pretty_cmd(cmd_str):
