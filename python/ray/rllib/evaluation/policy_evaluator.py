@@ -228,7 +228,7 @@ class PolicyEvaluator(EvaluatorInterface):
             self.policy_map = self._build_policy_map(policy_dict,
                                                      policy_config)
 
-        self.multiagent = self.policy_map.keys() != set([DEFAULT_POLICY_ID])
+        self.multiagent = self.policy_map.keys() != {DEFAULT_POLICY_ID}
 
         self.filters = {
             policy_id: get_filter(observation_filter,
