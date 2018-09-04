@@ -11,7 +11,7 @@ import pickle
 import tensorflow as tf
 from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
-from ray.rllib.utils import deep_update, merge_dicts
+from ray.rllib.utils import FilterManager, deep_update, merge_dicts
 from ray.tune.registry import ENV_CREATOR, _global_registry
 from ray.tune.trainable import Trainable
 
@@ -32,6 +32,8 @@ COMMON_CONFIG = {
     "sample_async": False,
     # Which observation filter to apply to the observation
     "observation_filter": "NoFilter",
+    # Whether to synchronize the statistics of remote filters.
+    "synchronize_filters": True,
     # Whether to clip rewards prior to experience postprocessing
     "clip_rewards": True,
     # Whether to use rllib or deepmind preprocessors
@@ -196,6 +198,13 @@ class Agent(Trainable):
             self.optimizer.local_evaluator.set_global_vars(self.global_vars)
             for ev in self.optimizer.remote_evaluators:
                 ev.set_global_vars.remote(self.global_vars)
+
+        if (self.config.get("observation_filter", "NoFilter") != "NoFilter"
+                and hasattr(self, "local_evaluator")):
+            FilterManager.synchronize(
+                self.local_evaluator.filters,
+                self.remote_evaluators,
+                update_remote=self.config["synchronize_filters"])
 
         return Trainable.train(self)
 
