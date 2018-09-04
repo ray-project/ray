@@ -107,7 +107,8 @@ class ModelSupportedSpaces(unittest.TestCase):
             "PPO", {
                 "num_workers": 1,
                 "num_sgd_iter": 1,
-                "train_batch_size": 1,
+                "train_batch_size": 10,
+                "sample_batch_size": 10,
                 "sgd_minibatch_size": 1
             }, stats)
         check_support(
