@@ -20,14 +20,14 @@ set(PLASMA_FBS_OUTPUT_FILES
   "${OUTPUT_DIR}/common_generated.h")
 
 add_custom_target(gen_plasma_fbs DEPENDS ${PLASMA_FBS_OUTPUT_FILES})
-add_dependencies(gen_plasma_fbs flatbuffers_ep)
+add_dependencies(gen_plasma_fbs arrow_ep)
 
 # Copy the fbs files from Arrow project to local directory.
 add_custom_command(
   OUTPUT ${PLASMA_FBS_SRC}
   COMMAND mkdir -p ${CMAKE_CURRENT_LIST_DIR}/format/
-  COMMAND cp ${CMAKE_CURRENT_LIST_DIR}/../../thirdparty/build/arrow/cpp/src/plasma/format/plasma.fbs ${CMAKE_CURRENT_LIST_DIR}/format/
-  COMMAND cp ${CMAKE_CURRENT_LIST_DIR}/../../thirdparty/build/arrow/cpp/src/plasma/format/common.fbs ${CMAKE_CURRENT_LIST_DIR}/format/
+  COMMAND cp ${ARROW_SOURCE_DIR}/cpp/src/plasma/format/plasma.fbs ${CMAKE_CURRENT_LIST_DIR}/format/
+  COMMAND cp ${ARROW_SOURCE_DIR}/cpp/src/plasma/format/common.fbs ${CMAKE_CURRENT_LIST_DIR}/format/
   COMMENT "Copying ${PLASMA_FBS_SRC} to local"
   VERBATIM)
 

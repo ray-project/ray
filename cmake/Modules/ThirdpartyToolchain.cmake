@@ -34,9 +34,12 @@ if(RAY_BUILD_TESTS OR RAY_BUILD_BENCHMARKS)
     set(GTEST_CMAKE_ARGS ${GTEST_CMAKE_ARGS} -Dgtest_force_shared_crt=ON)
   endif()
 
+  set(GTEST_URL_MD5 "16877098823401d1bf2ed7891d7dce36")
+
   ExternalProject_Add(googletest_ep
     PREFIX external/googletest
     URL "https://github.com/google/googletest/archive/release-${GTEST_VERSION}.tar.gz"
+    URL_MD5 ${GTEST_URL_MD5}
     BUILD_BYPRODUCTS ${GTEST_STATIC_LIB} ${GTEST_MAIN_STATIC_LIB} ${GMOCK_MAIN_STATIC_LIB}
     CMAKE_ARGS ${GTEST_CMAKE_ARGS}
     ${EP_LOG_OPTIONS})
@@ -58,6 +61,7 @@ if(RAY_BUILD_TESTS OR RAY_BUILD_BENCHMARKS)
   set(GFLAGS_CMAKE_CXX_FLAGS ${EP_CXX_FLAGS})
 
   set(GFLAGS_URL "https://github.com/gflags/gflags/archive/v${GFLAGS_VERSION}.tar.gz")
+  set(GFLAGS_URL_MD5 "b99048d9ab82d8c56e876fb1456c285e")
   set(GFLAGS_PREFIX "${CMAKE_CURRENT_BINARY_DIR}/external/gflags/src/gflags_ep")
   set(GFLAGS_HOME "${GFLAGS_PREFIX}")
   set(GFLAGS_INCLUDE_DIR "${GFLAGS_PREFIX}/include")
@@ -81,6 +85,7 @@ if(RAY_BUILD_TESTS OR RAY_BUILD_BENCHMARKS)
   ExternalProject_Add(gflags_ep
     PREFIX external/gflags
     URL ${GFLAGS_URL}
+    URL_MD5 ${GFLAGS_URL_MD5}
     ${EP_LOG_OPTIONS}
     BUILD_IN_SOURCE 1
     BUILD_BYPRODUCTS "${GFLAGS_STATIC_LIB}"
@@ -108,6 +113,7 @@ if(RAY_USE_GLOG)
   set(GLOG_HOME "${GLOG_PREFIX}")
   set(GLOG_INCLUDE_DIR "${GLOG_PREFIX}/include")
   set(GLOG_STATIC_LIB "${GLOG_PREFIX}/lib/libglog.a")
+  set(GLOG_URL_MD5 "5df6d78b81e51b90ac0ecd7ed932b0d4")
 
   set(GLOG_CMAKE_ARGS -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
                         -DCMAKE_INSTALL_PREFIX=${GLOG_PREFIX}
@@ -121,6 +127,7 @@ if(RAY_USE_GLOG)
   ExternalProject_Add(glog_ep
     PREFIX external/glog
     URL ${GLOG_URL}
+    URL_MD5 ${GLOG_URL_MD5}
     ${EP_LOG_OPTIONS}
     BUILD_IN_SOURCE 1
     BUILD_BYPRODUCTS "${GLOG_STATIC_LIB}"
@@ -196,23 +203,28 @@ if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
   add_dependencies(parquet parquet_ep)
 
   # pyarrow
-  add_custom_target(pyarrow ALL DEPENDS parquet_ep)
-
   find_package(PythonInterp REQUIRED)
   message(STATUS "PYTHON_EXECUTABLE: ${PYTHON_EXECUTABLE}")
 
   set(pyarrow_ENV
-      "PKG_CONFIG_PATH=${ARROW_HOME}/lib/pkgconfig"
-      "PYARROW_WITH_PLASMA=1"
-      "PYARROW_WITH_TENSORFLOW=1"
-      "PYARROW_BUNDLE_ARROW_CPP=1"
-      "PARQUET_HOME=${PARQUET_HOME}"
-      "PYARROW_WITH_PARQUET=1"
-      )
+    "PKG_CONFIG_PATH=${ARROW_HOME}/lib/pkgconfig"
+    "PYARROW_WITH_PLASMA=1"
+    "PYARROW_WITH_TENSORFLOW=1"
+    "PYARROW_BUNDLE_ARROW_CPP=1"
+    "PARQUET_HOME=${PARQUET_HOME}"
+    "PYARROW_WITH_PARQUET=1"
+  )
 
-  add_custom_command(TARGET pyarrow PRE_BUILD
-      COMMAND ${CMAKE_COMMAND} -E env ${pyarrow_ENV}
-      ${PYTHON_EXECUTABLE} setup.py build_ext
-      WORKING_DIRECTORY ${ARROW_SOURCE_DIR}/python
-      )
+  # here we use externalProject to process pyarrow building
+  # add_custom_command would have problem with setup.py
+  ExternalProject_Add(pyarrow_ext
+    PREFIX external/pyarrow
+    DEPENDS parquet_ep
+    DOWNLOAD_COMMAND ""
+    BUILD_IN_SOURCE 1
+    CONFIGURE_COMMAND cd ${ARROW_SOURCE_DIR}/python && ${CMAKE_COMMAND} -E env ${pyarrow_ENV} ${PYTHON_EXECUTABLE} setup.py build
+    BUILD_COMMAND cd ${ARROW_SOURCE_DIR}/python && ${CMAKE_COMMAND} -E env ${pyarrow_ENV} ${PYTHON_EXECUTABLE} setup.py build_ext
+    INSTALL_COMMAND bash -c "cp -r \$(find ${ARROW_SOURCE_DIR}/python/build/ -maxdepth 1 -type d -print | grep -m1 'lib')/pyarrow ${CMAKE_SOURCE_DIR}/python/ray/pyarrow_files/"
+  )
+
 endif ()

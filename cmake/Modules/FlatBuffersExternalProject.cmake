@@ -12,6 +12,7 @@
 
 set(flatbuffers_VERSION "1.9.0")
 set(flatbuffers_URL "https://github.com/google/flatbuffers/archive/v${flatbuffers_VERSION}.tar.gz")
+set(flatbuffers_URL_MD5 "8be7513bf960034f6873326d09521a4b")
 
 set(FLATBUFFERS_INSTALL_PREFIX "${CMAKE_CURRENT_BINARY_DIR}/external/flatbuffers-install")
 set(FBS_DEPENDS flatbuffers_ep)
@@ -27,10 +28,11 @@ set(FLATBUFFERS_STATIC_LIB "${FLATBUFFERS_INSTALL_PREFIX}/lib${LIB_SUFFIX}/libfl
 set(FLATBUFFERS_COMPILER "${FLATBUFFERS_INSTALL_PREFIX}/bin/flatc")
 
 ExternalProject_Add(flatbuffers_ep
-    PREFIX external/flatbuffers
-    URL ${flatbuffers_URL}
-    CMAKE_ARGS
-    "-DCMAKE_CXX_FLAGS=-fPIC"
-    "-DCMAKE_INSTALL_PREFIX:PATH=${FLATBUFFERS_INSTALL_PREFIX}"
-    "-DFLATBUFFERS_BUILD_TESTS=OFF"
-    "-DCMAKE_BUILD_TYPE=RELEASE")
+  PREFIX external/flatbuffers
+  URL ${flatbuffers_URL}
+  URL_MD5 ${flatbuffers_URL_MD5}
+  CMAKE_ARGS
+  "-DCMAKE_CXX_FLAGS=-fPIC"
+  "-DCMAKE_INSTALL_PREFIX:PATH=${FLATBUFFERS_INSTALL_PREFIX}"
+  "-DFLATBUFFERS_BUILD_TESTS=OFF"
+  "-DCMAKE_BUILD_TYPE=RELEASE")

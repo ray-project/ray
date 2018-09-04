@@ -13,9 +13,6 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_GLIBCXX_USE_CXX11_ABI=0")
 # We require a C++11 compliant compiler
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# supress warning of ray_shared
-cmake_policy(SET CMP0068 OLD)
-
 # ray build options
 option(RAY_BUILD_PYTHON
     "build python library"
@@ -85,7 +82,23 @@ add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/src/plasma/)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/src/local_scheduler/)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/src/global_scheduler/)
 
+# final target copy_ray
+add_custom_target(copy_ray ALL)
+
+# Make sure redis-server is ready before copying.
+add_dependencies(copy_ray copy_redis)
+add_dependencies(copy_ray ray_redis_module)
+
+# copy plasma_store_server
+add_custom_command(TARGET copy_ray POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E
+    copy ${ARROW_HOME}/bin/plasma_store_server ${CMAKE_CURRENT_BINARY_DIR}/src/plasma
+  )
+
 if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
+  # add pyarrow as the dependency
+  add_dependencies(copy_ray pyarrow_ext)
+
   # NOTE: The lists below must be kept in sync with ray/python/setup.py.
 
   set(ray_file_list
@@ -114,23 +127,12 @@ if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
     list(APPEND build_ray_file_list ${CMAKE_BINARY_DIR}/${file})
   endforeach()
 
-  add_custom_target(copy_ray ALL
-      DEPENDS ${build_ray_file_list})
-
-  # Make sure redis-server is ready before copying.
-  add_dependencies(copy_ray copy_redis)
+  add_custom_target(copy_ray_files DEPENDS ${build_ray_file_list})
+  add_dependencies(copy_ray copy_ray_files)
 
   # Make sure that the Python extensions are built before copying the files.
-  if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
-    get_local_scheduler_library("python" LOCAL_SCHEDULER_LIBRARY_PYTHON)
-    add_dependencies(copy_ray ${LOCAL_SCHEDULER_LIBRARY_PYTHON})
-  endif()
-  if ("${CMAKE_RAY_LANG_JAVA}" STREQUAL "YES")
-    get_local_scheduler_library("java" LOCAL_SCHEDULER_LIBRARY_JAVA)
-    add_dependencies(copy_ray ${LOCAL_SCHEDULER_LIBRARY_JAVA})
-  endif()
-
-  add_dependencies(copy_ray ray_redis_module)
+  get_local_scheduler_library("python" LOCAL_SCHEDULER_LIBRARY_PYTHON)
+  add_dependencies(copy_ray ${LOCAL_SCHEDULER_LIBRARY_PYTHON})
 
   foreach(file ${ray_file_list})
   add_custom_command(TARGET copy_ray POST_BUILD
@@ -138,4 +140,22 @@ if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
                         copy ${CMAKE_BINARY_DIR}/${file}
                             ${CMAKE_BINARY_DIR}/../python/ray/core/${file})
   endforeach()
+
+  # copy plasma_store_server to python
+  add_custom_command(TARGET copy_ray POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E
+      copy ${ARROW_HOME}/bin/plasma_store_server ${CMAKE_SOURCE_DIR}/python/ray/core/src/plasma/
+    )
+
 endif()
+
+if ("${CMAKE_RAY_LANG_JAVA}" STREQUAL "YES")
+  get_local_scheduler_library("java" LOCAL_SCHEDULER_LIBRARY_JAVA)
+  add_dependencies(copy_ray ${LOCAL_SCHEDULER_LIBRARY_JAVA})
+
+  # copy libplasma_java files
+  add_custom_command(TARGET copy_ray POST_BUILD
+    COMMAND bash -c "cp ${ARROW_HOME}/lib/libplasma_java.* ${CMAKE_CURRENT_BINARY_DIR}/src/plasma"
+  )
+endif()
+

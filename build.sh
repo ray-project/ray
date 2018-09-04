@@ -100,27 +100,13 @@ mkdir -p ${BUILD_DIR}
 fi
 
 pushd "$BUILD_DIR"
-TP_PKG_DIR=$ROOT_DIR/thirdparty/pkg
-# We use these variables to set PKG_CONFIG_PATH, which is important so that
-# in cmake, pkg-config can find plasma.
-ARROW_HOME=$TP_PKG_DIR/arrow/cpp/build/cpp-install
-BOOST_ROOT=$TP_PKG_DIR/boost \
-PKG_CONFIG_PATH=$ARROW_HOME/lib/pkgconfig \
+
 cmake -DCMAKE_BUILD_TYPE=$CBUILD_TYPE \
       -DCMAKE_RAY_LANG_JAVA=$RAY_BUILD_JAVA \
       -DCMAKE_RAY_LANG_PYTHON=$RAY_BUILD_PYTHON \
       -DRAY_USE_NEW_GCS=$RAY_USE_NEW_GCS \
       -DPYTHON_EXECUTABLE:FILEPATH=$PYTHON_EXECUTABLE $ROOT_DIR
 
-make clean
+#make clean
 make -j${PARALLEL}
 popd
-
-# Move stuff from Arrow to Ray.
-cp $ROOT_DIR/thirdparty/pkg/arrow/cpp/build/cpp-install/bin/plasma_store_server $BUILD_DIR/src/plasma/
-if [[ "$RAY_BUILD_PYTHON" == "YES" ]]; then
-  cp $ROOT_DIR/thirdparty/pkg/arrow/cpp/build/cpp-install/bin/plasma_store_server $BUILD_DIR/../python/ray/core/src/plasma/
-fi
-if [[ "$RAY_BUILD_JAVA" == "YES" ]]; then
-  cp $ROOT_DIR/thirdparty/build/arrow/cpp/build/release/libplasma_java.* $BUILD_DIR/src/plasma/
-fi

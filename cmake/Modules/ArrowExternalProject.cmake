@@ -13,11 +13,8 @@
 #  - PLASMA_STATIC_LIB
 #  - PLASMA_SHARED_LIB
 
-option(BUILD_ARROW_PLASMA_JAVA_CLIENT
-    "build arrow plasma java client"
-    OFF)
-
-if (RAY_BUILD_JAVA)
+set(BUILD_ARROW_PLASMA_JAVA_CLIENT OFF)
+if ("${CMAKE_RAY_LANG_JAVA}" STREQUAL "YES")
   set(BUILD_ARROW_PLASMA_JAVA_CLIENT ON)
 endif ()
 
@@ -44,7 +41,7 @@ set(PLASMA_SHARED_LIB ${ARROW_LIBRARY_DIR}/libplasma${CMAKE_SHARED_LIBRARY_SUFFI
 set(PLASMA_STATIC_LIB ${ARROW_LIBRARY_DIR}/libplasma.a)
 
 set(ARROW_CMAKE_ARGS
-    -DCMAKE_BUILD_TYPE:STRING=${CMAKE_BUILD_TYPE}
+    -DCMAKE_BUILD_TYPE:STRING=Release
     -DCMAKE_INSTALL_PREFIX=${ARROW_INSTALL_PREFIX}
     -DCMAKE_C_FLAGS=-g -O3 ${EP_C_FLAGS}
     -DCMAKE_CXX_FLAGS=-g -O3 ${EP_CXX_FLAGS}
@@ -73,3 +70,14 @@ ExternalProject_Add(arrow_ep
     BUILD_BYPRODUCTS "${ARROW_SHARED_LIB}" "${ARROW_STATIC_LIB}"
     CMAKE_ARGS ${ARROW_CMAKE_ARGS}
     )
+
+if ("${CMAKE_RAY_LANG_JAVA}" STREQUAL "YES")
+  ExternalProject_Add_Step(arrow_ep arrow_ep_install_java_lib
+    COMMAND cd ${ARROW_SOURCE_DIR}/java && mvn clean install -pl plasma -am -Dmaven.test.skip
+    DEPENDS build)
+
+  # add install of library plasma_java, it is not configured in plasma CMakeLists.txt
+  ExternalProject_Add_Step(arrow_ep arrow_ep_install_plasma_java
+    COMMAND bash -c "cp ${CMAKE_CURRENT_BINARY_DIR}/external/arrow/src/arrow_ep-build/release/libplasma_java.* ${ARROW_LIBRARY_DIR}/"
+    DEPENDS build)
+endif ()
