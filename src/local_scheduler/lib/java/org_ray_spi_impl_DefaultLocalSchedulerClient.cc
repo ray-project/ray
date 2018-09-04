@@ -279,6 +279,31 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient_nativeGenerateTaskId(
   return result;
 }
 
+/*
+ * Class:     org_ray_spi_impl_DefaultLocalSchedulerClient
+ * Method:    nativeFreePlasmaObjects
+ * Signature: ([[BZ)V
+ */
+JNIEXPORT void JNICALL
+Java_org_ray_spi_impl_DefaultLocalSchedulerClient_nativeFreePlasmaObjects(
+    JNIEnv *env,
+    jclass,
+    jlong client,
+    jobjectArray objectIds,
+    jboolean localOnly) {
+  std::vector<ObjectID> object_ids;
+  auto len = env->GetArrayLength(objectIds);
+  for (int i = 0; i < len; i++) {
+    jbyteArray object_id_bytes =
+        static_cast<jbyteArray>(env->GetObjectArrayElement(objectIds, i));
+    UniqueIdFromJByteArray object_id(env, object_id_bytes);
+    object_ids.push_back(*object_id.PID);
+    env->DeleteLocalRef(object_id_bytes);
+  }
+  auto conn = reinterpret_cast<LocalSchedulerConnection *>(client);
+  local_scheduler_free_objects_in_object_store(conn, object_ids, localOnly);
+}
+
 #ifdef __cplusplus
 }
 #endif
