@@ -299,28 +299,10 @@ void TaskDependencyManager::TaskCanceled(const TaskID &task_id) {
 }
 
 void TaskDependencyManager::CleanupForDriver(const std::unordered_set<TaskID> &task_ids) {
-  for (auto it = task_dependencies_.begin(); it != task_dependencies_.end();) {
-    if (task_ids.find(it->first) != task_ids.end()) {
-      it = task_dependencies_.erase(it);
-    } else {
-      it++;
-    }
-  }
-
-  for (auto it = required_tasks_.begin(); it != required_tasks_.end();) {
-    if (task_ids.find(it->first) != task_ids.end()) {
-      it = required_tasks_.erase(it);
-    } else {
-      it++;
-    }
-  }
-
-  for (auto it = pending_tasks_.begin(); it != pending_tasks_.end();) {
-    if (task_ids.find(it->first) != task_ids.end()) {
-      it = pending_tasks_.erase(it);
-    } else {
-      it++;
-    }
+  for (auto it = task_ids.begin(); it != task_ids.end(); it++) {
+    task_dependencies_.erase(*it);
+    required_tasks_.erase(*it);
+    pending_tasks_.erase(*it);
   }
 
   for (auto it = required_objects_.begin(); it != required_objects_.end();) {

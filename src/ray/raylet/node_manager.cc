@@ -581,10 +581,9 @@ void NodeManager::ProcessClientMessage(
       DispatchTasks();
     } else {
       // Register the new driver. Note that here the driver_id in RegisterClientRequest
-      // message is actually the ID of the driver task, while client_id presents the
+      // message is actually the ID of the driver task, while client_id represents the
       // real driver ID, which can associate all the tasks/actors for a given driver,
       // which is set to the worker ID.
-      // TODO: check the java case.
       JobID driver_task_id = from_flatbuf(*message->driver_id());
       worker->AssignTaskId(driver_task_id);
       worker->AssignDriverId(from_flatbuf(*message->client_id()));
@@ -1325,7 +1324,7 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
     actor_notification->node_manager_id =
         gcs_client_->client_table().GetLocalClientId().binary();
     RAY_LOG(DEBUG) << "Publishing actor creation: " << actor_id
-                   << "driver_id: " << driver_id;
+                   << " driver_id: " << driver_id;
     RAY_CHECK_OK(gcs_client_->actor_table().Append(JobID::nil(), actor_id,
                                                    actor_notification, nullptr));
 

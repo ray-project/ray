@@ -193,6 +193,7 @@ class NodeManager {
   void HandleWorkerUnblocked(std::shared_ptr<Worker> worker);
 
   /// Kill a worker.
+  ///
   /// \param worker The worker to kill.
   /// \return Void.
   void KillWorker(std::shared_ptr<Worker> worker);
