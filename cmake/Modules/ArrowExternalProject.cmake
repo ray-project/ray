@@ -13,11 +13,6 @@
 #  - PLASMA_STATIC_LIB
 #  - PLASMA_SHARED_LIB
 
-set(BUILD_ARROW_PLASMA_JAVA_CLIENT OFF)
-if ("${CMAKE_RAY_LANG_JAVA}" STREQUAL "YES")
-  set(BUILD_ARROW_PLASMA_JAVA_CLIENT ON)
-endif ()
-
 set(arrow_URL https://github.com/apache/arrow.git)
 set(arrow_TAG fda4b3dcfc773612b12973df5053193f236fc696)
 
@@ -56,7 +51,7 @@ set(ARROW_CMAKE_ARGS
     -DARROW_WITH_LZ4=off
     -DARROW_WITH_ZLIB=off
     -DARROW_WITH_ZSTD=off
-    -DARROW_PLASMA_JAVA_CLIENT=${BUILD_ARROW_PLASMA_JAVA_CLIENT}
+    -DARROW_PLASMA_JAVA_CLIENT=ON
     -DFLATBUFFERS_HOME=${FLATBUFFERS_HOME}
     -DBOOST_ROOT=${BOOST_ROOT}
     )
@@ -74,10 +69,10 @@ ExternalProject_Add(arrow_ep
 if ("${CMAKE_RAY_LANG_JAVA}" STREQUAL "YES")
   ExternalProject_Add_Step(arrow_ep arrow_ep_install_java_lib
     COMMAND cd ${ARROW_SOURCE_DIR}/java && mvn clean install -pl plasma -am -Dmaven.test.skip
-    DEPENDS build)
+    DEPENDEES build)
 
   # add install of library plasma_java, it is not configured in plasma CMakeLists.txt
   ExternalProject_Add_Step(arrow_ep arrow_ep_install_plasma_java
     COMMAND bash -c "cp ${CMAKE_CURRENT_BINARY_DIR}/external/arrow/src/arrow_ep-build/release/libplasma_java.* ${ARROW_LIBRARY_DIR}/"
-    DEPENDS build)
+    DEPENDEES install)
 endif ()
