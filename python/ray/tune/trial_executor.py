@@ -119,17 +119,23 @@ class TrialExecutor(object):
         """A hook called after running one step of the trial event loop."""
         pass
 
-    def fetch_one_result(self):
-        """Fetches one result from running trials.
+    def get_next_available_trial(self):
+        """Blocking call that waits until one result is ready.
 
-        It's a blocking call waits until one result is ready.
+        Returns:
+            Trial object that is ready for intermediate processing.
+        """
+        raise NotImplementedError
+
+    def fetch_result(self, trial):
+        """Fetches one result for the trial.
+
+        Assumes the trial is running.
 
         Return:
-            A tuple of (trial, result). If fetch result failed,
-            return (trial, None) other than raise Exception.
+            Result object for the trial.
         """
-        raise NotImplementedError("Subclasses of TrialExecutor must provide "
-                                  "fetch_one_result() method")
+        raise NotImplementedError
 
     def debug_string(self):
         """Returns a human readable message for printing to the console."""
