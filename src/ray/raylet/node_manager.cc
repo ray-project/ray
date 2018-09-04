@@ -230,7 +230,7 @@ void NodeManager::HandleDriverTableUpdate(
     const ClientID &id, const std::vector<DriverTableDataT> &driver_data) {
   for (const auto &entry : driver_data) {
     RAY_LOG(INFO) << "HandleDriverTableUpdate " << UniqueID::from_binary(entry.driver_id)
-                   << " " << entry.is_dead;
+                  << " " << entry.is_dead;
     if (entry.is_dead) {
       auto driver_id = UniqueID::from_binary(entry.driver_id);
       auto workers = worker_pool_.GetDriverWorkers(driver_id);

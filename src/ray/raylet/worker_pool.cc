@@ -238,7 +238,8 @@ std::list<std::shared_ptr<Worker>> WorkerPool::GetDriverWorkers(
 
   for (const auto &entry : states_by_lang_) {
     for (const auto &worker : entry.second.registered_workers) {
-      RAY_LOG(DEBUG) << "worker: pid : " << worker->Pid() << " driver_id: " << worker->GetAssignedDriverId();
+      RAY_LOG(DEBUG) << "worker: pid : " << worker->Pid()
+                     << " driver_id: " << worker->GetAssignedDriverId();
       if (worker->GetAssignedDriverId() == driver_id) {
         workers.push_back(worker);
       }

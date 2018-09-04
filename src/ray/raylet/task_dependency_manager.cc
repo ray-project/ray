@@ -298,9 +298,7 @@ void TaskDependencyManager::TaskCanceled(const TaskID &task_id) {
   }
 }
 
-void TaskDependencyManager::CleanupForDriver(
-    const std::unordered_set<TaskID> &task_ids) {
-
+void TaskDependencyManager::CleanupForDriver(const std::unordered_set<TaskID> &task_ids) {
   for (auto it = task_dependencies_.begin(); it != task_dependencies_.end();) {
     if (task_ids.find(it->first) != task_ids.end()) {
       it = task_dependencies_.erase(it);
@@ -336,10 +334,7 @@ void TaskDependencyManager::CleanupForDriver(
       it++;
     }
   }
-
-
 }
-
 
 }  // namespace raylet
 
