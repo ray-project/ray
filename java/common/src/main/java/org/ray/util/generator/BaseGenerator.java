@@ -10,6 +10,11 @@ public abstract class BaseGenerator {
     sb.append(line).append("\n");
   }
 
+  protected void newLine(int numIndents, String line) {
+    indents(numIndents);
+    newLine(line);
+  }
+
   protected void indents(int numIndents) {
     for (int i = 0; i < numIndents; i++) {
       sb.append("  ");

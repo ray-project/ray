@@ -6,6 +6,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.ray.api.id.UniqueId;
 import org.ray.core.LocalFunctionManager;
 import org.ray.core.Worker;
+import org.ray.core.impl.RayDevRuntime;
 import org.ray.spi.LocalSchedulerLink;
 import org.ray.spi.model.FunctionArg;
 import org.ray.spi.model.TaskSpec;
@@ -19,8 +20,10 @@ public class MockLocalScheduler implements LocalSchedulerLink {
   private final Map<UniqueId, Map<UniqueId, TaskSpec>> waitTasks = new ConcurrentHashMap<>();
   private final MockObjectStore store;
   private LocalFunctionManager functions = null;
+  private final RayDevRuntime runtime;
 
-  public MockLocalScheduler(MockObjectStore store) {
+  public MockLocalScheduler(RayDevRuntime runtime, MockObjectStore store) {
+    this.runtime = runtime;
     this.store = store;
     store.registerScheduler(this);
   }
@@ -43,7 +46,7 @@ public class MockLocalScheduler implements LocalSchedulerLink {
   public void submitTask(TaskSpec task) {
     UniqueId id = isTaskReady(task);
     if (id == null) {
-      Worker.execute(task, functions);
+      runtime.getWorker().execute(task);
     } else {
       Map<UniqueId, TaskSpec> bucket = waitTasks
           .computeIfAbsent(id, id_ -> new ConcurrentHashMap<>());

@@ -8,7 +8,7 @@ import pickle
 import ray
 from ray.rllib.agents import Agent, with_common_config
 from ray.rllib.agents.ppo.ppo_policy_graph import PPOPolicyGraph
-from ray.rllib.utils import FilterManager, merge_dicts
+from ray.rllib.utils import merge_dicts
 from ray.rllib.optimizers import SyncSamplesOptimizer, LocalMultiGPUOptimizer
 from ray.tune.trial import Resources
 
@@ -113,8 +113,6 @@ class PPOAgent(Agent):
             # multi-agent
             self.local_evaluator.foreach_trainable_policy(
                 lambda pi, pi_id: pi.update_kl(fetches[pi_id]["kl"]))
-        FilterManager.synchronize(self.local_evaluator.filters,
-                                  self.remote_evaluators)
         res = self.optimizer.collect_metrics()
         res.update(
             timesteps_this_iter=self.optimizer.num_steps_sampled - prev_steps,

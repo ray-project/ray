@@ -34,6 +34,6 @@ class A2CAgent(A3CAgent):
         cf = merge_dicts(cls._default_config, config)
         return Resources(
             cpu=1,
-            gpu=1 if cf["gpu"] else 0,
+            gpu=cf["gpu_fraction"] if cf["gpu"] else 0,
             extra_cpu=cf["num_workers"],
             extra_gpu=cf["use_gpu_for_workers"] and cf["num_workers"] or 0)

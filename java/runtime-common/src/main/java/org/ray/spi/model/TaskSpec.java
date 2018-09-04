@@ -94,4 +94,11 @@ public class TaskSpec {
     return builder.toString();
   }
 
+  public boolean isActorTask() {
+    return !actorId.isNil();
+  }
+
+  public boolean isActorCreationTask() {
+    return !createActorId.isNil();
+  }
 }

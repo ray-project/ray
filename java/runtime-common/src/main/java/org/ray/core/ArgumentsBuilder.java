@@ -9,12 +9,16 @@ import org.ray.api.id.UniqueId;
 import org.ray.spi.model.FunctionArg;
 import org.ray.spi.model.TaskSpec;
 
-/**
- * arguments wrap and unwrap.
- */
 public class ArgumentsBuilder {
 
-  @SuppressWarnings({"rawtypes", "unchecked"})
+  private static boolean checkSimpleValue(Object o) {
+    // TODO(raulchen): implement this.
+    return true;
+  }
+
+  /**
+   * Convert real function arguments to task spec arguments.
+   */
   public static FunctionArg[] wrap(Object[] args) {
     FunctionArg[] ret = new FunctionArg[args.length];
     for (int i = 0; i < ret.length; i++) {
@@ -38,13 +42,11 @@ public class ArgumentsBuilder {
     return ret;
   }
 
-  private static boolean checkSimpleValue(Object o) {
-    return true;//TODO I think Ray don't want to pass big parameter
-  }
-
-  @SuppressWarnings({"rawtypes", "unchecked"})
-  public static Pair<Object, Object[]> unwrap(TaskSpec task, Method m, ClassLoader classLoader) {
-    // the last arg is className
+  /**
+   * Convert task spec arguments to real function arguments.
+   */
+  public static Object[] unwrap(TaskSpec task, ClassLoader classLoader) {
+    // Ignore the last arg, which is the class name
     Object[] realArgs = new Object[task.args.length - 1];
     for (int i = 0; i < task.args.length - 1; i++) {
       FunctionArg arg = task.args[i];
@@ -57,8 +59,6 @@ public class ArgumentsBuilder {
         realArgs[i] = Ray.get(arg.id);
       }
     }
-    Object actor = task.actorId.isNil()
-        ? null : AbstractRayRuntime.getInstance().getLocalActor(task.actorId);
-    return Pair.of(actor, realArgs);
+    return realArgs;
   }
 }

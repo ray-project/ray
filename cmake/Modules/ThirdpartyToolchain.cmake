@@ -51,44 +51,6 @@ if(RAY_BUILD_TESTS OR RAY_BUILD_BENCHMARKS)
   add_dependencies(gtest googletest_ep)
   add_dependencies(gtest_main googletest_ep)
   add_dependencies(gmock_main googletest_ep)
-
-  set(GFLAGS_CMAKE_CXX_FLAGS ${EP_CXX_FLAGS})
-
-  set(GFLAGS_URL "https://github.com/gflags/gflags/archive/v${GFLAGS_VERSION}.tar.gz")
-  set(GFLAGS_PREFIX "${CMAKE_CURRENT_BINARY_DIR}/gflags_ep-prefix/src/gflags_ep")
-  set(GFLAGS_HOME "${GFLAGS_PREFIX}")
-  set(GFLAGS_INCLUDE_DIR "${GFLAGS_PREFIX}/include")
-  if(MSVC)
-    set(GFLAGS_STATIC_LIB "${GFLAGS_PREFIX}/lib/gflags_static.lib")
-  else()
-    set(GFLAGS_STATIC_LIB "${GFLAGS_PREFIX}/lib/libgflags.a")
-  endif()
-  set(GFLAGS_CMAKE_ARGS -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
-                        -DCMAKE_INSTALL_PREFIX=${GFLAGS_PREFIX}
-                        -DBUILD_SHARED_LIBS=OFF
-                        -DBUILD_STATIC_LIBS=ON
-                        -DBUILD_PACKAGING=OFF
-                        -DBUILD_TESTING=OFF
-                        -BUILD_CONFIG_TESTS=OFF
-                        -DINSTALL_HEADERS=ON
-                        -DCMAKE_CXX_FLAGS_${UPPERCASE_BUILD_TYPE}=${EP_CXX_FLAGS}
-                        -DCMAKE_C_FLAGS_${UPPERCASE_BUILD_TYPE}=${EP_C_FLAGS}
-                        -DCMAKE_CXX_FLAGS=${GFLAGS_CMAKE_CXX_FLAGS})
-
-  ExternalProject_Add(gflags_ep
-    URL ${GFLAGS_URL}
-    ${EP_LOG_OPTIONS}
-    BUILD_IN_SOURCE 1
-    BUILD_BYPRODUCTS "${GFLAGS_STATIC_LIB}"
-    CMAKE_ARGS ${GFLAGS_CMAKE_ARGS})
-
-  message(STATUS "GFlags include dir: ${GFLAGS_INCLUDE_DIR}")
-  message(STATUS "GFlags static library: ${GFLAGS_STATIC_LIB}")
-  include_directories(SYSTEM ${GFLAGS_INCLUDE_DIR})
-  ADD_THIRDPARTY_LIB(gflags
-    STATIC_LIB ${GFLAGS_STATIC_LIB})
-
-  add_dependencies(gflags gflags_ep)
 endif()
 
 set(Boost_USE_STATIC_LIBS ON)

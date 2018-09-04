@@ -66,12 +66,12 @@ public class ResourcesManagementTest {
   public void testActors() {
     Assume.assumeTrue(AbstractRayRuntime.getParams().use_raylet);
     // This is a case that can satisfy required resources.
-    RayActor<ResourcesManagementTest.Echo1> echo1 = Ray.createActor(Echo1.class);
+    RayActor<ResourcesManagementTest.Echo1> echo1 = Ray.createActor(Echo1::new);
     final RayObject<Integer> result1 = Ray.call(Echo1::echo, echo1, 100);
     Assert.assertEquals(100, (int) result1.get());
 
     // This is a case that can't satisfy required resources.
-    RayActor<ResourcesManagementTest.Echo2> echo2 = Ray.createActor(Echo2.class);
+    RayActor<ResourcesManagementTest.Echo2> echo2 = Ray.createActor(Echo2::new);
     final RayObject<Integer> result2 = Ray.call(Echo2::echo, echo2, 100);
     WaitResult<Integer> waitResult = Ray.wait(ImmutableList.of(result2), 1, 1000);
 
