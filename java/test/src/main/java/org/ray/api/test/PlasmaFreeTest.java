@@ -4,6 +4,7 @@ import com.google.common.collect.ImmutableList;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.Assert;
+import org.junit.Assume;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.ray.api.Ray;
@@ -11,6 +12,7 @@ import org.ray.api.RayObject;
 import org.ray.api.WaitResult;
 import org.ray.api.annotation.RayRemote;
 import org.ray.api.id.UniqueId;
+import org.ray.core.AbstractRayRuntime;
 
 
 @RunWith(MyRunner.class)
@@ -23,6 +25,7 @@ public class PlasmaFreeTest {
 
   @Test
   public void test() {
+    Assume.assumeTrue(AbstractRayRuntime.getParams().use_raylet);
     RayObject<String> helloId = Ray.call(PlasmaFreeTest::hello);
     String helloString = helloId.get();
     Assert.assertEquals("hello", helloString);
