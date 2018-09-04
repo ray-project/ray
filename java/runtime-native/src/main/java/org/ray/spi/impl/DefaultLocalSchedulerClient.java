@@ -28,19 +28,15 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
     return bb;
   });
   private long client = 0;
-  boolean useRaylet = false;
 
   public DefaultLocalSchedulerClient(String schedulerSockName, UniqueId clientId,
-      boolean isWorker, UniqueId driverId, boolean useRaylet) {
+      boolean isWorker, UniqueId driverId) {
     client = nativeInit(schedulerSockName, clientId.getBytes(),
-        isWorker, driverId.getBytes(), useRaylet);
-    this.useRaylet = useRaylet;
+        isWorker, driverId.getBytes());
   }
 
   @Override
   public List<byte[]> wait(byte[][] objectIds, int timeoutMs, int numReturns) {
-    assert (useRaylet == true);
-
     boolean[] readys = nativeWaitObject(client, objectIds, numReturns, timeoutMs, false);
     assert (readys.length == objectIds.length);
 
@@ -57,18 +53,12 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
   @Override
   public void submitTask(TaskSpec task) {
     RayLog.core.debug("Submitting task: {}", task);
-    // We don't support resources management in non raylet mode.
-    if (!useRaylet) {
-      task.resources.clear();
+    if (!task.resources.containsKey(ResourceUtil.CPU_LITERAL)) {
       task.resources.put(ResourceUtil.CPU_LITERAL, 0.0);
-    } else {
-      if (!task.resources.containsKey(ResourceUtil.CPU_LITERAL)) {
-        task.resources.put(ResourceUtil.CPU_LITERAL, 0.0);
-      }
+    }
 
-      if (!task.resources.containsKey(ResourceUtil.GPU_LITERAL)) {
-        task.resources.put(ResourceUtil.GPU_LITERAL, 0.0);
-      }
+    if (!task.resources.containsKey(ResourceUtil.GPU_LITERAL)) {
+      task.resources.put(ResourceUtil.GPU_LITERAL, 0.0);
     }
 
     ByteBuffer info = taskSpec2Info(task);
@@ -77,27 +67,15 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
       cursorId = task.cursorId.getBytes();
     }
 
-    nativeSubmitTask(client, cursorId, info, info.position(), info.remaining(), useRaylet);
+    nativeSubmitTask(client, cursorId, info, info.position(), info.remaining());
   }
 
   @Override
   public TaskSpec getTask() {
-    byte[] bytes = nativeGetTask(client, useRaylet);
+    byte[] bytes = nativeGetTask(client);
     assert (null != bytes);
     ByteBuffer bb = ByteBuffer.wrap(bytes);
     return taskInfo2Spec(bb);
-  }
-
-  @Override
-  public void markTaskPutDependency(UniqueId taskId, UniqueId objectId) {
-    nativePutObject(client, taskId.getBytes(), objectId.getBytes());
-  }
-
-  @Override
-  public void reconstructObject(UniqueId objectId, boolean fetchOnly) {
-    List<UniqueId> objects = new ArrayList<>();
-    objects.add(objectId);
-    nativeReconstructObjects(client, getIdBytes(objects), fetchOnly);
   }
 
   @Override
@@ -289,13 +267,13 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
   /// 6) popd
 
   private static native long nativeInit(String localSchedulerSocket, byte[] workerId,
-      boolean isWorker, byte[] driverTaskId, boolean useRaylet);
+      boolean isWorker, byte[] driverTaskId);
 
   private static native void nativeSubmitTask(long client, byte[] cursorId, ByteBuffer taskBuff,
-      int pos, int taskSize, boolean useRaylet);
+      int pos, int taskSize);
 
   // return TaskInfo (in FlatBuffer)
-  private static native byte[] nativeGetTask(long client, boolean useRaylet);
+  private static native byte[] nativeGetTask(long client);
 
   private static native void nativeDestroy(long client);
 

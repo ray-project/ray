@@ -13,10 +13,6 @@ public interface LocalSchedulerLink {
 
   TaskSpec getTask();
 
-  void markTaskPutDependency(UniqueId taskId, UniqueId objectId);
-
-  void reconstructObject(UniqueId objectId, boolean fetchOnly);
-
   void reconstructObjects(List<UniqueId> objectIds, boolean fetchOnly);
 
   void notifyUnblocked();

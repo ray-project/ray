@@ -21,11 +21,6 @@ public class ObjectStoreProxy {
   private final LocalSchedulerLink localSchedulerLink;
   private final int getTimeoutMs = 1000;
 
-  public ObjectStoreProxy(ObjectStoreLink store) {
-    this.store = store;
-    this.localSchedulerLink = null;
-  }
-
   public ObjectStoreProxy(ObjectStoreLink store, LocalSchedulerLink localSchedulerLink) {
     this.store = store;
     this.localSchedulerLink = localSchedulerLink;
@@ -94,12 +89,7 @@ public class ObjectStoreProxy {
     for (RayObject<T> obj : waitfor) {
       ids.add(obj.getId());
     }
-    List<byte[]> readys;
-    if (localSchedulerLink == null) {
-      readys = store.wait(getIdBytes(ids), timeout, numReturns);
-    } else {
-      readys = localSchedulerLink.wait(getIdBytes(ids), timeout, numReturns);
-    }
+    List<byte[]> readys = localSchedulerLink.wait(getIdBytes(ids), timeout, numReturns);
 
     List<RayObject<T>> readyList = new ArrayList<>();
     List<RayObject<T>> unreadyList = new ArrayList<>();
@@ -112,14 +102,6 @@ public class ObjectStoreProxy {
     }
 
     return new WaitResult<>(readyList, unreadyList);
-  }
-
-  public void fetch(List<UniqueId> objectIds) {
-    if (localSchedulerLink == null) {
-      store.fetch(getIdBytes(objectIds));
-    } else {
-      localSchedulerLink.reconstructObjects(objectIds, true);
-    }
   }
 
   public enum GetStatus {

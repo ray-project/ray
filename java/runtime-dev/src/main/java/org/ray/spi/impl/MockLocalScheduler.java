@@ -71,16 +71,6 @@ public class MockLocalScheduler implements LocalSchedulerLink {
   }
 
   @Override
-  public void markTaskPutDependency(UniqueId taskId, UniqueId objectId) {
-
-  }
-
-  @Override
-  public void reconstructObject(UniqueId objectId, boolean fetchOnly) {
-
-  }
-
-  @Override
   public void reconstructObjects(List<UniqueId> objectIds, boolean fetchOnly) {
 
   }

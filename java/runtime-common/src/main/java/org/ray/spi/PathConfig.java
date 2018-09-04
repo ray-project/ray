@@ -28,15 +28,6 @@ public class PathConfig {
   @AConfig(comment = "path to plasma storage")
   public String store;
 
-  @AConfig(comment = "path to plasma manager")
-  public String store_manager;
-
-  @AConfig(comment = "path to local scheduler")
-  public String local_scheduler;
-
-  @AConfig(comment = "path to global scheduler")
-  public String global_scheduler;
-
   @AConfig(comment = "path to raylet")
   public String raylet;
 

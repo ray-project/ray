@@ -10,7 +10,7 @@ extern "C" {
 /*
  * Class:     org_ray_spi_impl_DefaultLocalSchedulerClient
  * Method:    nativeInit
- * Signature: (Ljava/lang/String;[BZ[BZ)J
+ * Signature: (Ljava/lang/String;[BZ[B)J
  */
 JNIEXPORT jlong JNICALL
 Java_org_ray_spi_impl_DefaultLocalSchedulerClient_nativeInit(JNIEnv *,
@@ -18,13 +18,12 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient_nativeInit(JNIEnv *,
                                                              jstring,
                                                              jbyteArray,
                                                              jboolean,
-                                                             jbyteArray,
-                                                             jboolean);
+                                                             jbyteArray);
 
 /*
  * Class:     org_ray_spi_impl_DefaultLocalSchedulerClient
  * Method:    nativeSubmitTask
- * Signature: (J[BLjava/nio/ByteBuffer;IIZ)V
+ * Signature: (J[BLjava/nio/ByteBuffer;II)V
  */
 JNIEXPORT void JNICALL
 Java_org_ray_spi_impl_DefaultLocalSchedulerClient_nativeSubmitTask(JNIEnv *,
@@ -33,19 +32,17 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient_nativeSubmitTask(JNIEnv *,
                                                                    jbyteArray,
                                                                    jobject,
                                                                    jint,
-                                                                   jint,
-                                                                   jboolean);
+                                                                   jint);
 
 /*
  * Class:     org_ray_spi_impl_DefaultLocalSchedulerClient
  * Method:    nativeGetTask
- * Signature: (JZ)[B
+ * Signature: (J)[B
  */
 JNIEXPORT jbyteArray JNICALL
 Java_org_ray_spi_impl_DefaultLocalSchedulerClient_nativeGetTask(JNIEnv *,
                                                                 jclass,
-                                                                jlong,
-                                                                jboolean);
+                                                                jlong);
 
 /*
  * Class:     org_ray_spi_impl_DefaultLocalSchedulerClient
