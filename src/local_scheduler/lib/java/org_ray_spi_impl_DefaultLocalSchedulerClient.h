@@ -120,6 +120,19 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient_nativeGenerateTaskId(
     jbyteArray,
     jint);
 
+/*
+ * Class:     org_ray_spi_impl_DefaultLocalSchedulerClient
+ * Method:    nativeFreePlasmaObjects
+ * Signature: (J[[BZ)V
+ */
+JNIEXPORT void JNICALL
+Java_org_ray_spi_impl_DefaultLocalSchedulerClient_nativeFreePlasmaObjects(
+    JNIEnv *,
+    jclass,
+    jlong,
+    jobjectArray,
+    jboolean);
+
 #ifdef __cplusplus
 }
 #endif
