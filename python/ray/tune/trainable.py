@@ -181,11 +181,9 @@ class Trainable(object):
             pid=os.getpid(),
             hostname=os.uname()[1],
             node_ip=self._local_ip,
-            config=self.config)
-        if self._restored:
-            result.update(
-                time_since_restore=self._time_since_restore,
-                timesteps_since_restore=self._timesteps_since_restore)
+            config=self.config,
+            time_since_restore=self._time_since_restore,
+            timesteps_since_restore=self._timesteps_since_restore)
 
         self._result_logger.on_result(result)
 
