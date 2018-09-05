@@ -76,7 +76,7 @@ static inline Task ExampleTask(const std::vector<ObjectID> &arguments,
   }
   auto spec = TaskSpecification(UniqueID::nil(), UniqueID::from_random(), 0,
                                 UniqueID::from_random(), task_arguments, num_returns,
-                                required_resources);
+                                required_resources, Language::PYTHON);
   auto execution_spec = TaskExecutionSpecification(std::vector<ObjectID>());
   execution_spec.IncrementNumForwards();
   Task task = Task(execution_spec, spec);
@@ -217,7 +217,7 @@ TEST_F(TaskDependencyManagerTest, TestTaskChain) {
   EXPECT_CALL(reconstruction_policy_mock_, Cancel(_)).Times(0);
   for (const auto &task : tasks) {
     // Subscribe to each of the tasks' arguments.
-    auto arguments = task.GetDependencies();
+    const auto &arguments = task.GetDependencies();
     bool ready = task_dependency_manager_.SubscribeDependencies(
         task.GetTaskSpecification().TaskId(), arguments);
     if (i < num_ready_tasks) {
@@ -291,7 +291,7 @@ TEST_F(TaskDependencyManagerTest, TestTaskForwarding) {
   auto tasks = MakeTaskChain(num_tasks, {}, 1);
   for (const auto &task : tasks) {
     // Subscribe to each of the tasks' arguments.
-    auto arguments = task.GetDependencies();
+    const auto &arguments = task.GetDependencies();
     static_cast<void>(task_dependency_manager_.SubscribeDependencies(
         task.GetTaskSpecification().TaskId(), arguments));
     EXPECT_CALL(gcs_mock_, Add(_, task.GetTaskSpecification().TaskId(), _, _));

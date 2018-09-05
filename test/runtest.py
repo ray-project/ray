@@ -1,4 +1,6 @@
-from __future__ import absolute_import, division, print_function
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
 
 import os
 import pytest
@@ -1006,7 +1008,7 @@ class APITest(unittest.TestCase):
         os.environ.get("RAY_USE_XRAY") == "1",
         "This test does not work with xray (nor is it intended to).")
     def testLoggingAPI(self):
-        self.init_ray(driver_mode=ray.SILENT_MODE)
+        self.init_ray()
 
         def events():
             # This is a hack for getting the event log. It is not part of the
@@ -1175,7 +1177,7 @@ class APITest(unittest.TestCase):
             ray.get(3)
 
     def testMultithreading(self):
-        self.init_ray(driver_mode=ray.SILENT_MODE)
+        self.init_ray()
 
         @ray.remote
         def f():
@@ -1205,9 +1207,87 @@ class APITest(unittest.TestCase):
         # test multi-threading in the worker
         ray.get(test_multi_threading_in_worker.remote())
 
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") != "1",
+        "This test only works with xray.")
+    def testFreeObjectsMultiNode(self):
+        ray.worker._init(
+            start_ray_local=True,
+            num_local_schedulers=3,
+            num_workers=1,
+            num_cpus=[1, 1, 1],
+            resources=[{
+                "Custom0": 1
+            }, {
+                "Custom1": 1
+            }, {
+                "Custom2": 1
+            }],
+            use_raylet=True)
+
+        @ray.remote(resources={"Custom0": 1})
+        def run_on_0():
+            return ray.worker.global_worker.plasma_client.store_socket_name
+
+        @ray.remote(resources={"Custom1": 1})
+        def run_on_1():
+            return ray.worker.global_worker.plasma_client.store_socket_name
+
+        @ray.remote(resources={"Custom2": 1})
+        def run_on_2():
+            return ray.worker.global_worker.plasma_client.store_socket_name
+
+        def create():
+            a = run_on_0.remote()
+            b = run_on_1.remote()
+            c = run_on_2.remote()
+            (l1, l2) = ray.wait([a, b, c], num_returns=3)
+            assert len(l1) == 3
+            assert len(l2) == 0
+            return (a, b, c)
+
+        def flush():
+            # Flush the Release History.
+            # Current Plasma Client Cache will maintain 64-item list.
+            # If the number changed, this will fail.
+            print("Start Flush!")
+            for i in range(64):
+                ray.get(
+                    [run_on_0.remote(),
+                     run_on_1.remote(),
+                     run_on_2.remote()])
+            print("Flush finished!")
+
+        def run_one_test(local_only):
+            (a, b, c) = create()
+            # The three objects should be generated on different object stores.
+            assert ray.get(a) != ray.get(b)
+            assert ray.get(a) != ray.get(c)
+            assert ray.get(c) != ray.get(b)
+            ray.internal.free([a, b, c], local_only=local_only)
+            flush()
+            return (a, b, c)
+
+        # Case 1: run this local_only=False. All 3 objects will be deleted.
+        (a, b, c) = run_one_test(False)
+        (l1, l2) = ray.wait([a, b, c], timeout=10, num_returns=1)
+        # All the objects are deleted.
+        assert len(l1) == 0
+        assert len(l2) == 3
+        # Case 2: run this local_only=True. Only 1 object will be deleted.
+        (a, b, c) = run_one_test(True)
+        (l1, l2) = ray.wait([a, b, c], timeout=10, num_returns=3)
+        # One object is deleted and 2 objects are not.
+        assert len(l1) == 2
+        assert len(l2) == 1
+        # The deleted object will have the same store with the driver.
+        local_return = ray.worker.global_worker.plasma_client.store_socket_name
+        for object_id in l1:
+            assert ray.get(object_id) != local_return
+
 
 @unittest.skipIf(
-    os.environ.get('RAY_USE_NEW_GCS', False),
+    os.environ.get("RAY_USE_NEW_GCS", False),
     "For now, RAY_USE_NEW_GCS supports 1 shard, and credis "
     "supports 1-node chain for that shard only.")
 class APITestSharded(APITest):
@@ -1215,11 +1295,7 @@ class APITestSharded(APITest):
         if kwargs is None:
             kwargs = {}
         kwargs["start_ray_local"] = True
-        if os.environ.get("RAY_USE_XRAY") == "1":
-            print("XRAY currently supports only a single Redis shard.")
-            kwargs["num_redis_shards"] = 1
-        else:
-            kwargs["num_redis_shards"] = 20
+        kwargs["num_redis_shards"] = 20
         kwargs["redirect_output"] = True
         ray.worker._init(**kwargs)
 
@@ -1238,7 +1314,7 @@ class LocalModeTest(unittest.TestCase):
             x[0] = 1
             return x
 
-        ray.init(driver_mode=ray.LOCAL_MODE)
+        ray.init(local_mode=True)
 
         @ray.remote
         def f():
@@ -1595,17 +1671,23 @@ class ResourcesTest(unittest.TestCase):
         ray.get(a1.test.remote())
 
     @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
+        os.environ.get("RAY_USE_XRAY") != "1",
+        "This test only works with xray.")
     def testZeroCPUs(self):
+        ray.init(num_cpus=0)
+
+        @ray.remote(num_cpus=0)
+        def f():
+            return 1
+
+        # The task should be able to execute.
+        ray.get(f.remote())
+
+    def testZeroCPUsActor(self):
         ray.worker._init(
             start_ray_local=True, num_local_schedulers=2, num_cpus=[0, 2])
 
         local_plasma = ray.worker.global_worker.plasma_client.store_socket_name
-
-        @ray.remote(num_cpus=0)
-        def f():
-            return ray.worker.global_worker.plasma_client.store_socket_name
 
         @ray.remote
         class Foo(object):
@@ -1613,7 +1695,6 @@ class ResourcesTest(unittest.TestCase):
                 return ray.worker.global_worker.plasma_client.store_socket_name
 
         # Make sure tasks and actors run on the remote local scheduler.
-        assert ray.get(f.remote()) != local_plasma
         a = Foo.remote()
         assert ray.get(a.method.remote()) != local_plasma
 
@@ -2072,6 +2153,7 @@ class SchedulingAlgorithm(unittest.TestCase):
 
         @ray.remote
         def f(x):
+            time.sleep(0.010)
             return ray.worker.global_worker.plasma_client.store_socket_name
 
         # This object will be local to one of the local schedulers. Make sure
@@ -2101,7 +2183,7 @@ def wait_for_num_objects(num_objects, timeout=10):
 
 
 @unittest.skipIf(
-    os.environ.get('RAY_USE_NEW_GCS', False),
+    os.environ.get("RAY_USE_NEW_GCS", False),
     "New GCS API doesn't have a Python API yet.")
 class GlobalStateAPI(unittest.TestCase):
     def tearDown(self):

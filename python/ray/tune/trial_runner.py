@@ -4,15 +4,15 @@ from __future__ import print_function
 
 import collections
 import os
-import ray
 import time
 import traceback
 
 from ray.tune import TuneError
+from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.result import TIME_THIS_ITER_S
+from ray.tune.trial import Trial
+from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.web_server import TuneServer
-from ray.tune.trial import Trial, Resources
-from ray.tune.trial_scheduler import FIFOScheduler, TrialScheduler
 
 MAX_DEBUG_TRIALS = 20
 
@@ -45,7 +45,8 @@ class TrialRunner(object):
                  launch_web_server=False,
                  server_port=TuneServer.DEFAULT_PORT,
                  verbose=True,
-                 queue_trials=False):
+                 queue_trials=False,
+                 trial_executor=None):
         """Initializes a new TrialRunner.
 
         Args:
@@ -60,14 +61,13 @@ class TrialRunner(object):
                 not currently have enough resources to launch one. This should
                 be set to True when running on an autoscaling cluster to enable
                 automatic scale-up.
+            trial_executor (TrialExecutor): Defaults to RayTrialExecutor.
         """
         self._search_alg = search_alg
         self._scheduler_alg = scheduler or FIFOScheduler()
         self._trials = []
-        self._running = {}
-        self._avail_resources = Resources(cpu=0, gpu=0)
-        self._committed_resources = Resources(cpu=0, gpu=0)
-        self._resources_initialized = False
+        self.trial_executor = trial_executor or \
+            RayTrialExecutor(queue_trials=queue_trials)
 
         # For debugging, it may be useful to halt trials after some time has
         # elapsed. TODO(ekl) consider exposing this in the API.
@@ -98,10 +98,11 @@ class TrialRunner(object):
         Callers should typically run this method repeatedly in a loop. They
         may inspect or modify the runner's state in between calls to step().
         """
+        self.trial_executor.on_step_begin()
         next_trial = self._get_next_trial()
         if next_trial is not None:
-            self._launch_trial(next_trial)
-        elif self._running:
+            self.trial_executor.start_trial(next_trial)
+        elif self.trial_executor.get_running_trials():
             self._process_events()
         else:
             for trial in self._trials:
@@ -109,13 +110,13 @@ class TrialRunner(object):
                     if not self.has_resources(trial.resources):
                         raise TuneError(
                             ("Insufficient cluster resources to launch trial: "
-                             "trial requested {} but the cluster only has {} "
-                             "available. Pass `queue_trials=True` in "
+                             "trial requested {} but the cluster summary: {} "
+                             "Pass `queue_trials=True` in "
                              "ray.tune.run_experiments() or on the command "
                              "line to queue trials until the cluster scales "
                              "up. {}").format(
                                  trial.resources.summary_string(),
-                                 self._avail_resources.summary_string(),
+                                 self.trial_executor.debug_string(),
                                  trial._get_trainable_cls().resource_help(
                                      trial.config)))
                 elif trial.status == Trial.PAUSED:
@@ -129,6 +130,7 @@ class TrialRunner(object):
 
             if self.is_finished():
                 self._server.shutdown()
+        self.trial_executor.on_step_end()
 
     def get_trial(self, tid):
         trial = [t for t in self._trials if t.trial_id == tid]
@@ -189,41 +191,12 @@ class TrialRunner(object):
     def _debug_messages(self):
         messages = ["== Status =="]
         messages.append(self._scheduler_alg.debug_string())
-        if self._resources_initialized:
-            messages.append(
-                "Resources requested: {}/{} CPUs, {}/{} GPUs".format(
-                    self._committed_resources.cpu, self._avail_resources.cpu,
-                    self._committed_resources.gpu, self._avail_resources.gpu))
+        messages.append(self.trial_executor.debug_string())
         return messages
 
     def has_resources(self, resources):
         """Returns whether this runner has at least the specified resources."""
-
-        cpu_avail = self._avail_resources.cpu - self._committed_resources.cpu
-        gpu_avail = self._avail_resources.gpu - self._committed_resources.gpu
-
-        have_space = (resources.cpu_total() <= cpu_avail
-                      and resources.gpu_total() <= gpu_avail)
-
-        if have_space:
-            return True
-
-        can_overcommit = self._queue_trials
-
-        if ((resources.cpu_total() > 0 and cpu_avail <= 0)
-                or (resources.gpu_total() > 0 and gpu_avail <= 0)):
-            can_overcommit = False  # requested resource is already saturated
-
-        if can_overcommit:
-            print("WARNING:tune:allowing trial to start even though the "
-                  "cluster does not have enough free resources. Trial actors "
-                  "may appear to hang until enough resources are added to the "
-                  "cluster (e.g., via autoscaling). You can disable this "
-                  "behavior by specifying `queue_trials=False` in "
-                  "ray.tune.run_experiments().")
-            return True
-
-        return False
+        return self.trial_executor.has_resources(resources)
 
     def _get_next_trial(self):
         """Replenishes queue.
@@ -231,38 +204,16 @@ class TrialRunner(object):
         Blocks if all trials queued have finished, but search algorithm is
         still not finished.
         """
-        self._update_avail_resources()
         trials_done = all(trial.is_finished() for trial in self._trials)
         wait_for_trial = trials_done and not self._search_alg.is_finished()
         self._update_trial_queue(blocking=wait_for_trial)
         trial = self._scheduler_alg.choose_trial_to_run(self)
         return trial
 
-    def _launch_trial(self, trial):
-        self._commit_resources(trial.resources)
-        try:
-            trial.start()
-            self._running[trial.train_remote()] = trial
-        except Exception:
-            error_msg = traceback.format_exc()
-            print("Error starting runner, retrying:", error_msg)
-            time.sleep(2)
-            trial.stop(error=True, error_msg=error_msg)
-            try:
-                trial.start()
-                self._running[trial.train_remote()] = trial
-            except Exception:
-                error_msg = traceback.format_exc()
-                print("Error starting runner, abort:", error_msg)
-                trial.stop(error=True, error_msg=error_msg)
-                # note that we don't return the resources, since they may
-                # have been lost
-
     def _process_events(self):
-        [result_id], _ = ray.wait(list(self._running))
-        trial = self._running.pop(result_id)
+        trial = self.trial_executor.get_next_available_trial()
         try:
-            result = ray.get(result_id)
+            result = self.trial_executor.fetch_result(trial)
             self._total_time += result[TIME_THIS_ITER_S]
 
             if trial.should_stop(result):
@@ -271,6 +222,7 @@ class TrialRunner(object):
                 self._search_alg.on_trial_complete(
                     trial.trial_id, result=result)
                 decision = TrialScheduler.STOP
+
             else:
                 decision = self._scheduler_alg.on_trial_result(
                     self, trial, result)
@@ -282,14 +234,18 @@ class TrialRunner(object):
                 result, terminate=(decision == TrialScheduler.STOP))
 
             if decision == TrialScheduler.CONTINUE:
-                if trial.should_checkpoint():
+                if trial.should_checkpoint(result):
                     # TODO(rliaw): This is a blocking call
-                    trial.checkpoint()
-                self._running[trial.train_remote()] = trial
+                    self.trial_executor.save(trial)
+                self.trial_executor.continue_training(trial)
             elif decision == TrialScheduler.PAUSE:
-                self._pause_trial(trial)
+                self.trial_executor.pause_trial(trial)
             elif decision == TrialScheduler.STOP:
-                self._stop_trial(trial)
+                # Checkpoint before ending the trial
+                # if checkpoint_at_end experiment option is set to True
+                if trial.should_checkpoint(result):
+                    self.trial_executor.save(trial)
+                self.trial_executor.stop_trial(trial)
             else:
                 assert False, "Invalid scheduling decision: {}".format(
                     decision)
@@ -304,30 +260,28 @@ class TrialRunner(object):
                     self._scheduler_alg.on_trial_error(self, trial)
                     self._search_alg.on_trial_complete(
                         trial.trial_id, error=True)
-                    self._stop_trial(trial, error=True, error_msg=error_msg)
+                    self.trial_executor.stop_trial(trial, True, error_msg)
 
     def _try_recover(self, trial, error_msg):
         try:
             print("Attempting to recover trial state from last checkpoint")
-            trial.stop(error=True, error_msg=error_msg, stop_logger=False)
-            trial.result_logger.flush()  # make sure checkpoint is synced
-            trial.start()
-            self._running[trial.train_remote()] = trial
+            self.trial_executor.restart_trial(trial, error_msg)
         except Exception:
             error_msg = traceback.format_exc()
             print("Error recovering trial from checkpoint, abort:", error_msg)
-            self._stop_trial(trial, error=True, error_msg=error_msg)
+            self.trial_executor.stop_trial(trial, True, error_msg=error_msg)
 
     def _update_trial_queue(self, blocking=False, timeout=600):
         """Adds next trials to queue if possible.
 
         Note that the timeout is currently unexposed to the user.
 
-        Arguments:
+        Args:
             blocking (bool): Blocks until either a trial is available
                 or the Runner finishes (i.e., timeout or search algorithm
                 finishes).
-            timeout (int): Seconds before blocking times out."""
+            timeout (int): Seconds before blocking times out.
+        """
         trials = self._search_alg.next_trials()
         if blocking and not trials:
             start = time.time()
@@ -339,18 +293,6 @@ class TrialRunner(object):
 
         for trial in trials:
             self.add_trial(trial)
-
-    def _commit_resources(self, resources):
-        self._committed_resources = Resources(
-            self._committed_resources.cpu + resources.cpu_total(),
-            self._committed_resources.gpu + resources.gpu_total())
-
-    def _return_resources(self, resources):
-        self._committed_resources = Resources(
-            self._committed_resources.cpu - resources.cpu_total(),
-            self._committed_resources.gpu - resources.gpu_total())
-        assert self._committed_resources.cpu >= 0
-        assert self._committed_resources.gpu >= 0
 
     def request_stop_trial(self, trial):
         self._stop_queue.append(trial)
@@ -379,13 +321,8 @@ class TrialRunner(object):
             self._search_alg.on_trial_complete(
                 trial.trial_id, early_terminated=True)
         elif trial.status is Trial.RUNNING:
-            # NOTE: There should only be one...
-            result_id = [
-                rid for rid, t in self._running.items() if t is trial
-            ][0]
-            self._running.pop(result_id)
             try:
-                result = ray.get(result_id)
+                result = self.trial_executor.fetch_result(trial)
                 trial.update_last_result(result, terminate=True)
                 self._scheduler_alg.on_trial_complete(self, trial, result)
                 self._search_alg.on_trial_complete(
@@ -397,50 +334,4 @@ class TrialRunner(object):
                 self._search_alg.on_trial_complete(trial.trial_id, error=True)
                 error = True
 
-        self._stop_trial(trial, error=error, error_msg=error_msg)
-
-    def _stop_trial(self, trial, error=False, error_msg=None):
-        """Only returns resources if resources allocated."""
-        prior_status = trial.status
-        trial.stop(error=error, error_msg=error_msg)
-        if prior_status == Trial.RUNNING:
-            self._return_resources(trial.resources)
-
-    def _pause_trial(self, trial):
-        """Only returns resources if resources allocated."""
-        prior_status = trial.status
-        trial.pause()
-        if prior_status == Trial.RUNNING:
-            self._return_resources(trial.resources)
-
-    def _update_avail_resources(self):
-        if self._resources_initialized:
-            previous_cpu = self._avail_resources.cpu_total()
-            previous_gpu = self._avail_resources.gpu_total()
-        else:
-            previous_cpu = 0
-            previous_gpu = 0
-            time.sleep(1)
-        while True:
-            clients = ray.global_state.client_table()
-            if ray.worker.global_worker.use_raylet:
-                # TODO(rliaw): Remove once raylet flag is swapped
-                num_cpus = sum(cl['Resources']['CPU'] for cl in clients)
-                num_gpus = sum(cl['Resources'].get('GPU', 0) for cl in clients)
-            else:
-                local_schedulers = [
-                    entry for client in clients.values() for entry in client
-                    if (entry['ClientType'] == 'local_scheduler'
-                        and not entry['Deleted'])
-                ]
-                num_cpus = sum(ls['CPU'] for ls in local_schedulers)
-                num_gpus = sum(ls.get('GPU', 0) for ls in local_schedulers)
-            if int(num_cpus) == previous_cpu and int(num_gpus) == previous_gpu:
-                break
-            else:
-                previous_cpu = int(num_cpus)
-                previous_gpu = int(num_gpus)
-            time.sleep(1)
-            print("_update_avail_resources: wait triggered")
-        self._avail_resources = Resources(int(num_cpus), int(num_gpus))
-        self._resources_initialized = True
+        self.trial_executor.stop_trial(trial, error=error, error_msg=error_msg)

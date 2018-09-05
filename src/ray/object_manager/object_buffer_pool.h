@@ -123,6 +123,12 @@ class ObjectBufferPool {
   /// \param chunk_index The index of the chunk.
   void SealChunk(const ObjectID &object_id, uint64_t chunk_index);
 
+  /// Free a list of objects from object store.
+  ///
+  /// \param object_ids the The list of ObjectIDs to be deleted.
+  /// \return Void.
+  void FreeObjects(const std::vector<ObjectID> &object_ids);
+
  private:
   /// Abort the create operation associated with an object. This destroys the buffer
   /// state, including create operations in progress for all chunks of the object.

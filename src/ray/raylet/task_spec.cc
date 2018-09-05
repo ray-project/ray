@@ -45,10 +45,12 @@ TaskSpecification::TaskSpecification(
     const UniqueID &driver_id, const TaskID &parent_task_id, int64_t parent_counter,
     const FunctionID &function_id,
     const std::vector<std::shared_ptr<TaskArgument>> &task_arguments, int64_t num_returns,
-    const std::unordered_map<std::string, double> &required_resources)
+    const std::unordered_map<std::string, double> &required_resources,
+    const Language &language)
     : TaskSpecification(driver_id, parent_task_id, parent_counter, ActorID::nil(),
                         ObjectID::nil(), ActorID::nil(), ActorHandleID::nil(), -1,
-                        function_id, task_arguments, num_returns, required_resources) {}
+                        function_id, task_arguments, num_returns, required_resources,
+                        language) {}
 
 TaskSpecification::TaskSpecification(
     const UniqueID &driver_id, const TaskID &parent_task_id, int64_t parent_counter,
@@ -56,24 +58,13 @@ TaskSpecification::TaskSpecification(
     const ActorID &actor_id, const ActorHandleID &actor_handle_id, int64_t actor_counter,
     const FunctionID &function_id,
     const std::vector<std::shared_ptr<TaskArgument>> &task_arguments, int64_t num_returns,
-    const std::unordered_map<std::string, double> &required_resources)
+    const std::unordered_map<std::string, double> &required_resources,
+    const Language &language)
     : spec_() {
   flatbuffers::FlatBufferBuilder fbb;
 
-  // Compute hashes.
-  SHA256_CTX ctx;
-  sha256_init(&ctx);
-  sha256_update(&ctx, (BYTE *)&driver_id, sizeof(driver_id));
-  sha256_update(&ctx, (BYTE *)&parent_task_id, sizeof(parent_task_id));
-  sha256_update(&ctx, (BYTE *)&parent_counter, sizeof(parent_counter));
+  TaskID task_id = GenerateTaskId(driver_id, parent_task_id, parent_counter);
 
-  // Compute the final task ID from the hash.
-  BYTE buff[DIGEST_SIZE];
-  sha256_final(&ctx, buff);
-  TaskID task_id;
-  RAY_DCHECK(sizeof(task_id) <= DIGEST_SIZE);
-  memcpy(&task_id, buff, sizeof(task_id));
-  task_id = FinishTaskId(task_id);
   // Add argument object IDs.
   std::vector<flatbuffers::Offset<Arg>> arguments;
   for (auto &argument : task_arguments) {
@@ -87,6 +78,20 @@ TaskSpecification::TaskSpecification(
     returns.push_back(to_flatbuf(fbb, return_id));
   }
 
+  // convert Language to TaskLanguage
+  // TODO(raulchen): remove this once we get rid of legacy ray.
+  TaskLanguage task_language = TaskLanguage::PYTHON;
+  switch (language) {
+  case Language::PYTHON:
+    task_language = TaskLanguage::PYTHON;
+    break;
+  case Language::JAVA:
+    task_language = TaskLanguage::JAVA;
+    break;
+  default:
+    RAY_LOG(FATAL) << "Unknown language: " << static_cast<int32_t>(language);
+  }
+
   // Serialize the TaskSpecification.
   auto spec = CreateTaskInfo(
       fbb, to_flatbuf(fbb, driver_id), to_flatbuf(fbb, task_id),
@@ -94,7 +99,7 @@ TaskSpecification::TaskSpecification(
       to_flatbuf(fbb, actor_creation_dummy_object_id), to_flatbuf(fbb, actor_id),
       to_flatbuf(fbb, actor_handle_id), actor_counter, false,
       to_flatbuf(fbb, function_id), fbb.CreateVector(arguments),
-      fbb.CreateVector(returns), map_to_flatbuf(fbb, required_resources));
+      fbb.CreateVector(returns), map_to_flatbuf(fbb, required_resources), task_language);
   fbb.Finish(spec);
   AssignSpecification(fbb.GetBufferPointer(), fbb.GetSize());
 }
@@ -177,6 +182,22 @@ const ResourceSet TaskSpecification::GetRequiredResources() const {
 bool TaskSpecification::IsDriverTask() const {
   // Driver tasks are empty tasks that have no function ID set.
   return FunctionId().is_nil();
+}
+
+Language TaskSpecification::GetLanguage() const {
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
+  // TODO(raulchen): remove this once we get rid of legacy ray.
+  auto language = message->language();
+  switch (language) {
+  case TaskLanguage::PYTHON:
+    return Language::PYTHON;
+  case TaskLanguage::JAVA:
+    return Language::JAVA;
+  default:
+    // This shouldn't be reachable.
+    RAY_LOG(FATAL) << "Unknown task language: " << static_cast<int32_t>(language);
+    return Language::PYTHON;
+  }
 }
 
 bool TaskSpecification::IsActorCreationTask() const {

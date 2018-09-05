@@ -1,7 +1,7 @@
 package org.ray.spi;
 
 import java.util.List;
-import org.ray.api.UniqueID;
+import org.ray.api.id.UniqueId;
 import org.ray.spi.model.TaskSpec;
 
 /**
@@ -11,15 +11,19 @@ public interface LocalSchedulerLink {
 
   void submitTask(TaskSpec task);
 
-  TaskSpec getTaskTodo();
+  TaskSpec getTask();
 
-  void markTaskPutDependency(UniqueID taskId, UniqueID objectId);
+  void markTaskPutDependency(UniqueId taskId, UniqueId objectId);
 
-  void reconstructObject(UniqueID objectId, boolean fetchOnly);
+  void reconstructObject(UniqueId objectId, boolean fetchOnly);
 
-  void reconstructObjects(List<UniqueID> objectIds, boolean fetchOnly);
+  void reconstructObjects(List<UniqueId> objectIds, boolean fetchOnly);
 
   void notifyUnblocked();
 
+  UniqueId generateTaskId(UniqueId driverId, UniqueId parentTaskId, int taskIndex);
+
   List<byte[]> wait(byte[][] objectIds, int timeoutMs, int numReturns);
+
+  void freePlasmaObjects(List<UniqueId> objectIds, boolean localOnly);
 }

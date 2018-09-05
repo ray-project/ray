@@ -5,7 +5,9 @@ namespace ray {
 namespace raylet {
 
 LineageEntry::LineageEntry(const Task &task, GcsStatus status)
-    : status_(status), task_(task) {}
+    : status_(status), task_(task) {
+  ComputeParentTaskIds();
+}
 
 GcsStatus LineageEntry::GetStatus() const { return status_; }
 
@@ -35,19 +37,26 @@ const TaskID LineageEntry::GetEntryId() const {
   return task_.GetTaskSpecification().TaskId();
 }
 
-const std::unordered_set<TaskID> LineageEntry::GetParentTaskIds() const {
-  std::unordered_set<TaskID> parent_ids;
+const std::unordered_set<TaskID> &LineageEntry::GetParentTaskIds() const {
+  return parent_task_ids_;
+}
+
+void LineageEntry::ComputeParentTaskIds() {
+  parent_task_ids_.clear();
   // A task's parents are the tasks that created its arguments.
-  auto dependencies = task_.GetDependencies();
-  for (auto &dependency : dependencies) {
-    parent_ids.insert(ComputeTaskId(dependency));
+  for (const auto &dependency : task_.GetDependencies()) {
+    parent_task_ids_.insert(ComputeTaskId(dependency));
   }
-  return parent_ids;
 }
 
 const Task &LineageEntry::TaskData() const { return task_; }
 
 Task &LineageEntry::TaskDataMutable() { return task_; }
+
+void LineageEntry::UpdateTaskData(const Task &task) {
+  task_.CopyTaskExecutionSpec(task);
+  ComputeParentTaskIds();
+}
 
 Lineage::Lineage() {}
 
@@ -86,7 +95,7 @@ bool Lineage::SetEntry(const Task &task, GcsStatus status) {
     if (current_entry->SetStatus(status)) {
       // SetStatus() would check if the new status is greater,
       // if it succeeds, go ahead to update the task field.
-      current_entry->TaskDataMutable().CopyTaskExecutionSpec(task);
+      current_entry->UpdateTaskData(task);
       return true;
     }
     return false;
@@ -160,7 +169,7 @@ void MergeLineageHelper(const TaskID &task_id, const Lineage &lineage_from,
   }
 
   // Insert a copy of the entry into lineage_to.
-  auto parent_ids = entry->GetParentTaskIds();
+  const auto &parent_ids = entry->GetParentTaskIds();
   // If the insert is successful, then continue the DFS. The insert will fail
   // if the new entry has an equal or lower GCS status than the current entry
   // in lineage_to. This also prevents us from traversing the same node twice.
@@ -171,8 +180,9 @@ void MergeLineageHelper(const TaskID &task_id, const Lineage &lineage_from,
   }
 }
 
-void LineageCache::AddWaitingTask(const Task &task, const Lineage &uncommitted_lineage) {
+bool LineageCache::AddWaitingTask(const Task &task, const Lineage &uncommitted_lineage) {
   auto task_id = task.GetTaskSpecification().TaskId();
+  RAY_LOG(DEBUG) << "add waiting task " << task_id << " on " << client_id_;
   // Merge the uncommitted lineage into the lineage cache.
   MergeLineageHelper(task_id, uncommitted_lineage, lineage_,
                      [](const LineageEntry &entry) {
@@ -186,36 +196,38 @@ void LineageCache::AddWaitingTask(const Task &task, const Lineage &uncommitted_l
                        return false;
                      });
 
-  // If the task was previously remote, then we may have been subscribed to
-  // it. Unsubscribe since we are now responsible for committing the task.
   auto entry = lineage_.GetEntry(task_id);
   if (entry) {
-    RAY_CHECK(entry->GetStatus() == GcsStatus::UNCOMMITTED_REMOTE);
-    UnsubscribeTask(task_id);
+    if (entry->GetStatus() == GcsStatus::UNCOMMITTED_REMOTE) {
+      // The task was previously remote, so we may have been subscribed to it.
+      // Unsubscribe since we are now responsible for committing the task.
+      UnsubscribeTask(task_id);
+    }
   }
 
   // Add the submitted task to the lineage cache as UNCOMMITTED_WAITING. It
   // should be marked as UNCOMMITTED_READY once the task starts execution.
-  RAY_CHECK(lineage_.SetEntry(task, GcsStatus::UNCOMMITTED_WAITING));
+  return lineage_.SetEntry(task, GcsStatus::UNCOMMITTED_WAITING);
 }
 
-void LineageCache::AddReadyTask(const Task &task) {
+bool LineageCache::AddReadyTask(const Task &task) {
   const TaskID task_id = task.GetTaskSpecification().TaskId();
+  RAY_LOG(DEBUG) << "add ready task " << task_id << " on " << client_id_;
 
-  // Tasks can only become READY if they were in WAITING.
-  auto entry = lineage_.GetEntryMutable(task_id);
-  RAY_CHECK(entry);
-  RAY_CHECK(entry->GetStatus() == GcsStatus::UNCOMMITTED_WAITING);
-
-  entry->SetStatus(GcsStatus::UNCOMMITTED_READY);
-  // TaskSepc is immutable, just update TaskExecSpec.
-  entry->TaskDataMutable().CopyTaskExecutionSpec(task);
-  // Attempt to flush the task.
-  bool flushed = FlushTask(task_id);
-  if (!flushed) {
-    // If we fail to flush the task here, due to uncommitted parents, then add
-    // the task to a cache to be flushed in the future.
-    uncommitted_ready_tasks_.insert(task_id);
+  // Set the task to READY.
+  if (lineage_.SetEntry(task, GcsStatus::UNCOMMITTED_READY)) {
+    // Attempt to flush the task.
+    bool flushed = FlushTask(task_id);
+    if (!flushed) {
+      // If we fail to flush the task here, due to uncommitted parents, then add
+      // the task to a cache to be flushed in the future.
+      uncommitted_ready_tasks_.insert(task_id);
+    }
+    return true;
+  } else {
+    // The task was already ready to be committed (UNCOMMITTED_READY) or
+    // committing (COMMITTING).
+    return false;
   }
 }
 
@@ -229,7 +241,9 @@ uint64_t LineageCache::CountUnsubscribedLineage(const TaskID &task_id,
     return 0;
   }
   auto entry = lineage_.GetEntry(task_id);
-  if (!entry) {
+  // Only count tasks that are remote. Tasks that are local will be evicted
+  // once they are committed in the GCS, along with their lineage.
+  if (!entry || entry->GetStatus() != GcsStatus::UNCOMMITTED_REMOTE) {
     return 0;
   }
   uint64_t cnt = 1;
@@ -239,36 +253,58 @@ uint64_t LineageCache::CountUnsubscribedLineage(const TaskID &task_id,
   return cnt;
 }
 
-void LineageCache::RemoveWaitingTask(const TaskID &task_id) {
+bool LineageCache::RemoveWaitingTask(const TaskID &task_id) {
+  RAY_LOG(DEBUG) << "remove waiting task " << task_id << " on " << client_id_;
   auto entry = lineage_.GetEntryMutable(task_id);
   if (!entry) {
-    return;
+    // The task was already evicted.
+    return false;
   }
 
-  // It's only okay to remove a task that is waiting for execution.
-  // TODO(swang): Is this necessarily true when there is reconstruction?
-  RAY_CHECK(entry->GetStatus() == GcsStatus::UNCOMMITTED_WAITING);
+  // If the task is already not in WAITING status, then exit. This should only
+  // happen when there are two copies of the task executing at the node, due to
+  // a spurious reconstruction. Then, either the task is already past WAITING
+  // status, in which case it will be committed, or it is in
+  // UNCOMMITTED_REMOTE, in which case it was already removed.
+  if (entry->GetStatus() != GcsStatus::UNCOMMITTED_WAITING) {
+    return false;
+  }
+
   // Reset the status to REMOTE. We keep the task instead of removing it
   // completely in case another task is submitted locally that depends on this
   // one.
   entry->ResetStatus(GcsStatus::UNCOMMITTED_REMOTE);
 
-  // Request a notification for every max_lineage_size_ tasks,
-  // so that the task and its uncommitted lineage can be evicted
-  // once the commit notification is received.
-  // By doing this, we make sure that the unevicted lineage won't be more than
-  // max_lineage_size_, and the number of subscribed tasks won't be more than
-  // N / max_lineage_size_, where N is the size of the task chain.
-  // NOTE(swang): The number of entries in the uncommitted lineage also
-  // includes local tasks that haven't been committed yet, not just remote
-  // tasks, so this is an overestimate.
-  std::unordered_set<TaskID> seen;
-  auto count = CountUnsubscribedLineage(task_id, seen);
-  if (count > max_lineage_size_) {
-    // Since this task was in state WAITING, check that we were not
-    // already subscribed to the task.
+  // Subscribe to the task if necessary. We do this if it has any local
+  // children that must be written to the GCS, or if its uncommitted remote
+  // lineage is too large.
+  if (uncommitted_ready_children_.find(task_id) != uncommitted_ready_children_.end()) {
+    // Subscribe to the task if it has any children in UNCOMMITTED_READY. We
+    // will attempt to flush its children once we receive a notification for
+    // this task's commit.  Since this task was in state WAITING, check that we
+    // were not already subscribed to the task.
     RAY_CHECK(SubscribeTask(task_id));
+  } else {
+    // Check if the uncommitted remote lineage is too large.  Request a
+    // notification for every max_lineage_size_ tasks, so that the task and its
+    // uncommitted lineage can be evicted once the commit notification is
+    // received.  By doing this, we make sure that the unevicted lineage won't
+    // be more than max_lineage_size_, and the number of subscribed tasks won't
+    // be more than N / max_lineage_size_, where N is the size of the task
+    // chain.
+    // NOTE(swang): The number of entries in the uncommitted lineage also
+    // includes local tasks that haven't been committed yet, not just remote
+    // tasks, so this is an overestimate.
+    std::unordered_set<TaskID> seen;
+    auto count = CountUnsubscribedLineage(task_id, seen);
+    if (count >= max_lineage_size_) {
+      // Since this task was in state WAITING, check that we were not
+      // already subscribed to the task.
+      RAY_CHECK(SubscribeTask(task_id));
+    }
   }
+  // The task was successfully reset to UNCOMMITTED_REMOTE.
+  return true;
 }
 
 void LineageCache::MarkTaskAsForwarded(const TaskID &task_id, const ClientID &node_id) {
@@ -285,9 +321,16 @@ Lineage LineageCache::GetUncommittedLineage(const TaskID &task_id,
       task_id, lineage_, uncommitted_lineage, [&](const LineageEntry &entry) {
         // The stopping condition for recursion is that the entry has
         // been committed to the GCS or has already been forwarded.
-        // The lineage always includes the requested task id.
-        return entry.WasExplicitlyForwarded(node_id) && !(entry.GetEntryId() == task_id);
+        return entry.WasExplicitlyForwarded(node_id);
       });
+  // The lineage always includes the requested task id, so add the task if it
+  // wasn't already added. The requested task may not have been added if it was
+  // already explicitly forwarded to this node before.
+  if (uncommitted_lineage.GetEntries().empty()) {
+    auto entry = lineage_.GetEntry(task_id);
+    RAY_CHECK(entry);
+    RAY_CHECK(uncommitted_lineage.SetEntry(entry->TaskData(), entry->GetStatus()));
+  }
   return uncommitted_lineage;
 }
 
@@ -305,8 +348,6 @@ bool LineageCache::FlushTask(const TaskID &task_id) {
     // committed yet, then as far as we know, it's still in flight to the
     // GCS. Skip this task for now.
     if (parent) {
-      RAY_CHECK(parent->GetStatus() != GcsStatus::UNCOMMITTED_WAITING)
-          << "Children should not become ready to flush before their parents.";
       // Request notifications about the parent entry's commit in the GCS if
       // the parent is remote. Otherwise, the parent is local and will
       // eventually be flushed. In either case, once we receive a
@@ -389,8 +430,17 @@ bool LineageCache::UnsubscribeTask(const TaskID &task_id) {
 }
 
 boost::optional<LineageEntry> LineageCache::EvictTask(const TaskID &task_id) {
+  RAY_LOG(DEBUG) << "evicting task " << task_id << " on " << client_id_;
   auto entry = lineage_.PopEntry(task_id);
   if (!entry) {
+    // The entry has already been evicted. Check that the entry does not have
+    // any dependent tasks, since we should've already attempted to flush these
+    // tasks on the first eviction.
+    RAY_CHECK(uncommitted_ready_children_.count(task_id) == 0);
+    // Check that we already unsubscribed from the task when handling the
+    // first eviction.
+    RAY_CHECK(subscribed_tasks_.count(task_id) == 0);
+    // Do nothing if the entry has already been evicted.
     return entry;
   }
 
@@ -421,18 +471,19 @@ boost::optional<LineageEntry> LineageCache::EvictTask(const TaskID &task_id) {
 }
 
 void LineageCache::EvictRemoteLineage(const TaskID &task_id) {
-  // Remove the ancestor task.
-  auto entry = EvictTask(task_id);
+  auto entry = lineage_.GetEntry(task_id);
   if (!entry) {
     return;
   }
-  // Tasks are committed in data dependency order per node, so the only
-  // ancestors of a committed task should be other remote tasks.
-  auto status = entry->GetStatus();
-  RAY_CHECK(status == GcsStatus::UNCOMMITTED_REMOTE);
-  // Recurse and remove this task's ancestors.
-  for (const auto &parent_id : entry->GetParentTaskIds()) {
-    EvictRemoteLineage(parent_id);
+  // Only evict tasks that are remote. Other tasks, and their lineage, will be
+  // evicted once they are committed.
+  if (entry->GetStatus() == GcsStatus::UNCOMMITTED_REMOTE) {
+    // Remove the ancestor task.
+    auto evicted_entry = EvictTask(task_id);
+    // Recurse and remove this task's ancestors.
+    for (const auto &parent_id : evicted_entry->GetParentTaskIds()) {
+      EvictRemoteLineage(parent_id);
+    }
   }
 }
 
@@ -440,20 +491,16 @@ void LineageCache::HandleEntryCommitted(const TaskID &task_id) {
   RAY_LOG(DEBUG) << "task committed: " << task_id;
   auto entry = EvictTask(task_id);
   if (!entry) {
-    // The committed entry has already been evicted. Check that the committed
-    // entry does not have any dependent tasks, since we should've already
-    // attempted to flush these tasks on the first commit notification.
-    RAY_CHECK(uncommitted_ready_children_.count(task_id) == 0);
-    // Check that we already unsubscribed from the task when handling the
-    // first commit notification.
-    RAY_CHECK(subscribed_tasks_.count(task_id) == 0);
-    // Do nothing if the committed entry has already been evicted.
+    // The task has already been evicted due to a previous commit notification,
+    // or because one of its descendants was committed.
     return;
   }
 
   // Evict the committed task's uncommitted lineage. Since local tasks are
   // written in data dependency order, the uncommitted lineage should only
   // include remote tasks, i.e. tasks that were committed by a different node.
+  // In case of reconstruction, the uncommitted lineage may also include local
+  // tasks that were resubmitted. These tasks are not evicted.
   for (const auto &parent_id : entry->GetParentTaskIds()) {
     EvictRemoteLineage(parent_id);
   }

@@ -22,10 +22,4 @@ To run a exercise case, set the ``RAY_CONFIG`` env variable and run the followin
 
 `Exercise 4 <https://github.com/ray-project/ray/tree/master/java/tutorial/src/main/java/org/ray/exercise/Exercise04.java>`_: Use ``Ray.wait`` to ignore stragglers.
 
-`Exercise 5 <https://github.com/ray-project/ray/tree/master/java/tutorial/src/main/java/org/ray/exercise/Exercise05.java>`_: Use multiple heterogeneous return values.
-
-`Exercise 6 <https://github.com/ray-project/ray/tree/master/java/tutorial/src/main/java/org/ray/exercise/Exercise06.java>`_: Usage of ``RayList<T>``.
-
-`Exercise 7 <https://github.com/ray-project/ray/tree/master/java/tutorial/src/main/java/org/ray/exercise/Exercise07.java>`_: Usage of ``RayMap<L, T>``.
-
-`Exercise 8 <https://github.com/ray-project/ray/tree/master/java/tutorial/src/main/java/org/ray/exercise/Exercise08.java>`_: Actor Support of create Actor and call Actor method.
+`Exercise 5 <https://github.com/ray-project/ray/tree/master/java/tutorial/src/main/java/org/ray/exercise/Exercise08.java>`_: Actor Support of create Actor and call Actor method.

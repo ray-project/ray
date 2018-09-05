@@ -17,7 +17,8 @@ LocalSchedulerConnection *LocalSchedulerConnection_init(
     const UniqueID &client_id,
     bool is_worker,
     const JobID &driver_id,
-    bool use_raylet) {
+    bool use_raylet,
+    const Language &language) {
   LocalSchedulerConnection *result = new LocalSchedulerConnection();
   result->use_raylet = use_raylet;
   result->conn = connect_ipc_sock_retry(local_scheduler_socket, -1, -1);
@@ -26,10 +27,17 @@ LocalSchedulerConnection *LocalSchedulerConnection_init(
    * NOTE(swang): If the local scheduler exits and we are registered as a
    * worker, we will get killed. */
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = ray::local_scheduler::protocol::CreateRegisterClientRequest(
-      fbb, is_worker, to_flatbuf(fbb, client_id), getpid(),
-      to_flatbuf(fbb, driver_id));
-  fbb.Finish(message);
+  if (use_raylet) {
+    auto message = ray::protocol::CreateRegisterClientRequest(
+        fbb, is_worker, to_flatbuf(fbb, client_id), getpid(),
+        to_flatbuf(fbb, driver_id), language);
+    fbb.Finish(message);
+  } else {
+    auto message = ray::local_scheduler::protocol::CreateRegisterClientRequest(
+        fbb, is_worker, to_flatbuf(fbb, client_id), getpid(),
+        to_flatbuf(fbb, driver_id));
+    fbb.Finish(message);
+  }
   /* Register the process ID with the local scheduler. */
   int success = write_message(
       result->conn, static_cast<int64_t>(MessageType::RegisterClientRequest),
@@ -350,4 +358,21 @@ void local_scheduler_push_profile_events(
                 static_cast<int64_t>(
                     ray::protocol::MessageType::PushProfileEventsRequest),
                 fbb.GetSize(), fbb.GetBufferPointer(), &conn->write_mutex);
+}
+
+void local_scheduler_free_objects_in_object_store(
+    LocalSchedulerConnection *conn,
+    const std::vector<ray::ObjectID> &object_ids,
+    bool local_only) {
+  flatbuffers::FlatBufferBuilder fbb;
+  auto message = ray::protocol::CreateFreeObjectsRequest(
+      fbb, local_only, to_flatbuf(fbb, object_ids));
+  fbb.Finish(message);
+
+  int success = write_message(
+      conn->conn,
+      static_cast<int64_t>(
+          ray::protocol::MessageType::FreeObjectsInObjectStoreRequest),
+      fbb.GetSize(), fbb.GetBufferPointer(), &conn->write_mutex);
+  RAY_CHECK(success == 0) << "Failed to write message to raylet.";
 }

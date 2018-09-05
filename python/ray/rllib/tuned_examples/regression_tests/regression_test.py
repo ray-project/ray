@@ -22,7 +22,7 @@ def _evaulate_config(filename):
     with open(os.path.join(CONFIG_DIR, filename)) as f:
         experiments = yaml.load(f)
         for _, config in experiments.items():
-            config["repeat"] = 3
+            config["num_samples"] = 3
     ray.init()
     trials = tune.run_experiments(experiments)
     results = defaultdict(list)

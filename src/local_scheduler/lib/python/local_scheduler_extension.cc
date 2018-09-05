@@ -31,7 +31,8 @@ static int PyLocalSchedulerClient_init(PyLocalSchedulerClient *self,
   /* Connect to the local scheduler. */
   self->local_scheduler_connection = LocalSchedulerConnection_init(
       socket_name, client_id, static_cast<bool>(PyObject_IsTrue(is_worker)),
-      driver_id, static_cast<bool>(PyObject_IsTrue(use_raylet)));
+      driver_id, static_cast<bool>(PyObject_IsTrue(use_raylet)),
+      Language::PYTHON);
   return 0;
 }
 
@@ -414,6 +415,43 @@ static PyObject *PyLocalSchedulerClient_push_profile_events(PyObject *self,
   Py_RETURN_NONE;
 }
 
+static PyObject *PyLocalSchedulerClient_free(PyObject *self, PyObject *args) {
+  PyObject *py_object_ids;
+  PyObject *py_local_only;
+
+  if (!PyArg_ParseTuple(args, "OO", &py_object_ids, &py_local_only)) {
+    return NULL;
+  }
+
+  bool local_only = static_cast<bool>(PyObject_IsTrue(py_local_only));
+
+  // Convert object ids.
+  PyObject *iter = PyObject_GetIter(py_object_ids);
+  if (!iter) {
+    return NULL;
+  }
+  std::vector<ObjectID> object_ids;
+  while (true) {
+    PyObject *next = PyIter_Next(iter);
+    ObjectID object_id;
+    if (!next) {
+      break;
+    }
+    if (!PyObjectToUniqueID(next, &object_id)) {
+      // Error parsing object ID.
+      return NULL;
+    }
+    object_ids.push_back(object_id);
+  }
+
+  // Invoke local_scheduler_free_objects_in_object_store.
+  local_scheduler_free_objects_in_object_store(
+      reinterpret_cast<PyLocalSchedulerClient *>(self)
+          ->local_scheduler_connection,
+      object_ids, local_only);
+  Py_RETURN_NONE;
+}
+
 static PyMethodDef PyLocalSchedulerClient_methods[] = {
     {"disconnect", (PyCFunction) PyLocalSchedulerClient_disconnect, METH_NOARGS,
      "Notify the local scheduler that this client is exiting gracefully."},
@@ -446,6 +484,8 @@ static PyMethodDef PyLocalSchedulerClient_methods[] = {
     {"push_profile_events",
      (PyCFunction) PyLocalSchedulerClient_push_profile_events, METH_VARARGS,
      "Store some profiling events in the GCS."},
+    {"free", (PyCFunction) PyLocalSchedulerClient_free, METH_VARARGS,
+     "Free a list of objects from object stores."},
     {NULL} /* Sentinel */
 };
 

@@ -101,6 +101,13 @@ class ObjectDirectoryInterface {
   /// \return Status of whether this method succeeded.
   virtual ray::Status ReportObjectRemoved(const ObjectID &object_id,
                                           const ClientID &client_id) = 0;
+
+  /// Go through all the client information.
+  ///
+  /// \param success_cb A callback which handles the success of this method.
+  /// This function will be called multiple times.
+  /// \return Void.
+  virtual void RunFunctionForEachClient(const InfoSuccessCallback &client_function) = 0;
 };
 
 /// Ray ObjectDirectory declaration.
@@ -114,6 +121,8 @@ class ObjectDirectory : public ObjectDirectoryInterface {
   ray::Status GetInformation(const ClientID &client_id,
                              const InfoSuccessCallback &success_callback,
                              const InfoFailureCallback &fail_callback) override;
+
+  void RunFunctionForEachClient(const InfoSuccessCallback &client_function) override;
 
   ray::Status LookupLocations(const ObjectID &object_id,
                               const OnLocationsFound &callback) override;
