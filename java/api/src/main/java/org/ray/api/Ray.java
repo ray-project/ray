@@ -108,7 +108,7 @@ public final class Ray extends RayCall {
   /**
    * Get the underlying runtime instance.
    */
-  static RayRuntime internal() {
+  public static RayRuntime internal() {
     return runtime;
   }
 }
