@@ -22,7 +22,7 @@ public interface LocalSchedulerLink {
 
   UniqueId generateTaskId(UniqueId driverId, UniqueId parentTaskId, int taskIndex);
 
-  <T> WaitResult<T> wait(List<RayObject<T>> waitFor, int numReturns, int timeout);
+  <T> WaitResult<T> wait(List<RayObject<T>> waitFor, int numReturns, int timeoutMs);
 
   void freePlasmaObjects(List<UniqueId> objectIds, boolean localOnly);
 }

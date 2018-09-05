@@ -38,22 +38,18 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
   }
 
   @Override
-  public <T> WaitResult<T> wait(List<RayObject<T>> waitFor, int numReturns, int timeoutMillis) {
+  public <T> WaitResult<T> wait(List<RayObject<T>> waitFor, int numReturns, int timeoutMs) {
     List<UniqueId> ids = new ArrayList<>();
     for (RayObject<T> element : waitFor) {
       ids.add(element.getId());
     }
 
-    boolean[] readys = nativeWaitObject(client, getIdBytes(ids), numReturns, timeoutMillis, false);
-    if (readys.length != ids.size()) {
-      throw new RuntimeException("Wait for objects failed.");
-    }
-
+    boolean[] ready = nativeWaitObject(client, getIdBytes(ids), numReturns, timeoutMs, false);
     List<RayObject<T>> readyList = new ArrayList<>();
     List<RayObject<T>> unreadyList = new ArrayList<>();
 
-    for (int i = 0; i < readys.length; i++) {
-      if (readys[i]) {
+    for (int i = 0; i < ready.length; i++) {
+      if (ready[i]) {
         readyList.add(waitFor.get(i));
       } else {
         unreadyList.add(waitFor.get(i));

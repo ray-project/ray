@@ -33,7 +33,13 @@ public class RunInfo {
     return processes;
   }
 
-  public enum ProcessType { PT_WORKER, PT_PLASMA_STORE,
-    PT_REDIS_SERVER, PT_WEB_UI, PT_RAYLET, PT_DRIVER
+  public enum ProcessType {
+    PT_WORKER,
+    PT_PLASMA_STORE,
+    PT_REDIS_SERVER,
+    PT_WEB_UI,
+    PT_RAYLET,
+    PT_DRIVER
   }
+
 }

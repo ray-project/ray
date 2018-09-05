@@ -89,7 +89,7 @@ public class MockLocalScheduler implements LocalSchedulerLink {
   }
 
   @Override
-  public <T> WaitResult<T> wait(List<RayObject<T>> waitFor, int numReturns, int timeout) {
+  public <T> WaitResult<T> wait(List<RayObject<T>> waitFor, int numReturns, int timeoutMs) {
     throw new RuntimeException("Not implemented here.");
   }
 
