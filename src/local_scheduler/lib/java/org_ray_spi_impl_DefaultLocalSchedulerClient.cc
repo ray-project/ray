@@ -88,10 +88,9 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient_nativeSubmitTask(
  * Signature: (J)[B
  */
 JNIEXPORT jbyteArray JNICALL
-Java_org_ray_spi_impl_DefaultLocalSchedulerClient_nativeGetTask(
-    JNIEnv *env,
-    jclass,
-    jlong client) {
+Java_org_ray_spi_impl_DefaultLocalSchedulerClient_nativeGetTask(JNIEnv *env,
+                                                                jclass,
+                                                                jlong client) {
   auto conn = reinterpret_cast<LocalSchedulerConnection *>(client);
   int64_t task_size = 0;
 
