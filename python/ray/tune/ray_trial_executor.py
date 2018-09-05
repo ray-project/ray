@@ -157,6 +157,14 @@ class RayTrialExecutor(TrialExecutor):
             self._paused[trial_future[0]] = trial
         super(RayTrialExecutor, self).pause_trial(trial)
 
+    def reset_trial(self, trail, new_config):
+        """If trainable (trial) supports resetting config on the fly,
+        reset config and return True, otherwise return False."""
+        if hasattr(trial, 'reset_config') and callable(trial.reset_config):
+            trial.reset_config(new_config)
+            return True
+        return False
+        
     def get_running_trials(self):
         """Returns the running trials."""
 

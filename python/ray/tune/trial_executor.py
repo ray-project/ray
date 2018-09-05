@@ -106,6 +106,10 @@ class TrialExecutor(object):
         assert trial.status == Trial.PAUSED, trial.status
         self.start_trial(trial)
 
+    def reset_trial(self, trial, new_config):
+        """Resets a trial to a certain configuration"""
+        raise NotImplementedError 
+
     def get_running_trials(self):
         """Returns all running trials."""
         raise NotImplementedError("Subclasses of TrialExecutor must provide "

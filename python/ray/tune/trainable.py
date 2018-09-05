@@ -275,6 +275,10 @@ class Trainable(object):
             self._result_logger.close()
             self._stop()
 
+    def reset_config(self, new_config):
+        """Reset config without restarting trial"""
+        pass
+
     def _train(self):
         """Subclasses should override this to implement train().
 
