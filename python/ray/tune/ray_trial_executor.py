@@ -6,6 +6,7 @@ from __future__ import print_function
 import os
 import time
 import traceback
+
 import ray
 from ray.tune.logger import NoopLogger
 from ray.tune.trial import Trial, Resources, Checkpoint
@@ -17,7 +18,7 @@ class RayTrialExecutor(TrialExecutor):
 
     def __init__(self, queue_trials=False):
         super(RayTrialExecutor, self).__init__(queue_trials)
-        self._running = {}  # TODO
+        self._running = {}
         # Since trial resume after paused should not run
         # trial.train.remote(), thus no more new remote object id generated.
         # We use self._paused to store paused trials here.
@@ -58,11 +59,12 @@ class RayTrialExecutor(TrialExecutor):
         trial.runner = self._setup_runner(trial)
         if not self.restore(trial, checkpoint):
             return
-        if prior_status == Trial.PAUSED:
-            # If prev status is PAUSED, self._paused stores its remote_id.
-            remote_id = self._find_item(self._paused, trial)[0]
-            self._paused.pop(remote_id)
-            self._running[remote_id] = trial
+
+        previous_run = self._find_item(self._paused, trial)
+        if (prior_status == Trial.PAUSED and previous_run):
+            # If Trial was in flight when paused, self._paused stores result.
+            self._paused.pop(previous_run[0])
+            self._running[previous_run[0]] = trial
         else:
             self._train(trial)
 
@@ -144,10 +146,15 @@ class RayTrialExecutor(TrialExecutor):
         self._train(trial)
 
     def pause_trial(self, trial):
-        """Pauses the trial."""
+        """Pauses the trial.
 
-        remote_id = self._find_item(self._running, trial)[0]
-        self._paused[remote_id] = trial
+        If trial is in-flight, preserves return value in separate queue
+        before pausing, which is restored when Trial is resumed.
+        """
+
+        trial_future = self._find_item(self._running, trial)
+        if trial_future:
+            self._paused[trial_future[0]] = trial
         super(RayTrialExecutor, self).pause_trial(trial)
 
     def get_running_trials(self):
@@ -155,18 +162,21 @@ class RayTrialExecutor(TrialExecutor):
 
         return list(self._running.values())
 
-    def fetch_one_result(self):
-        """Fetches one result of the running trials."""
-
+    def get_next_available_trial(self):
         [result_id], _ = ray.wait(list(self._running))
-        trial = self._running.pop(result_id)
-        result = None
-        try:
-            result = ray.get(result_id)
-        except Exception as e:
-            print("fetch_one_result failed:", traceback.format_exc())
+        return self._running[result_id]
 
-        return trial, result
+    def fetch_result(self, trial):
+        """Fetches one result of the running trials.
+
+        Returns:
+            Result of the most recent trial training run."""
+        trial_future = self._find_item(self._running, trial)
+        if not trial_future:
+            raise ValueError("Trial was not running.")
+        self._running.pop(trial_future[0])
+        result = ray.get(trial_future[0])
+        return result
 
     def _commit_resources(self, resources):
         self._committed_resources = Resources(

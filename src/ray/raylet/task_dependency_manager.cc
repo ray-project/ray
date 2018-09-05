@@ -106,7 +106,7 @@ std::vector<TaskID> TaskDependencyManager::HandleObjectLocal(
 
 std::vector<TaskID> TaskDependencyManager::HandleObjectMissing(
     const ray::ObjectID &object_id) {
-  // Add the object to the table of locally available objects.
+  // Remove the object from the table of locally available objects.
   auto erased = local_objects_.erase(object_id);
   RAY_CHECK(erased == 1);
 
@@ -124,6 +124,9 @@ std::vector<TaskID> TaskDependencyManager::HandleObjectMissing(
         // missing.
         if (task_entry.num_missing_dependencies == 0) {
           waiting_task_ids.push_back(dependent_task_id);
+          // During normal execution we should be able to include the check
+          // RAY_CHECK(pending_tasks_.count(dependent_task_id) == 1);
+          // However, this invariant will not hold during unit test execution.
         }
         task_entry.num_missing_dependencies++;
       }
@@ -202,6 +205,15 @@ void TaskDependencyManager::UnsubscribeDependencies(const TaskID &task_id) {
   for (const auto &object_id : task_entry.object_dependencies) {
     HandleRemoteDependencyCanceled(object_id);
   }
+}
+
+std::vector<TaskID> TaskDependencyManager::GetPendingTasks() const {
+  std::vector<TaskID> keys;
+  keys.reserve(pending_tasks_.size());
+  for (const auto &id_task_pair : pending_tasks_) {
+    keys.push_back(id_task_pair.first);
+  }
+  return keys;
 }
 
 void TaskDependencyManager::TaskPending(const Task &task) {

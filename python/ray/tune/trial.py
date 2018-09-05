@@ -16,7 +16,7 @@ from ray.tune.logger import pretty_print, UnifiedLogger
 # have been defined yet. See https://github.com/ray-project/ray/issues/1716.
 import ray.tune.registry
 from ray.tune.result import (DEFAULT_RESULTS_DIR, DONE, HOSTNAME, PID,
-                             TIME_TOTAL_S, TRAINING_ITERATION)
+                             TIME_TOTAL_S, TRAINING_ITERATION, TIMESTEPS_TOTAL)
 from ray.utils import random_string, binary_to_hex
 
 DEBUG_PRINT_INTERVAL = 5
@@ -112,6 +112,7 @@ class Trial(object):
                  resources=None,
                  stopping_criterion=None,
                  checkpoint_freq=0,
+                 checkpoint_at_end=False,
                  restore_path=None,
                  upload_dir=None,
                  max_failures=0):
@@ -142,6 +143,7 @@ class Trial(object):
         # Local trial state that is updated during the run
         self.last_result = None
         self.checkpoint_freq = checkpoint_freq
+        self.checkpoint_at_end = checkpoint_at_end
         self._checkpoint = Checkpoint(
             storage=Checkpoint.DISK, value=restore_path)
         self.status = Trial.PENDING
@@ -203,8 +205,11 @@ class Trial(object):
 
         return False
 
-    def should_checkpoint(self):
+    def should_checkpoint(self, result):
         """Whether this trial is due for checkpointing."""
+
+        if result.get(DONE) and self.checkpoint_at_end:
+            return True
 
         if not self.checkpoint_freq:
             return False
@@ -232,8 +237,12 @@ class Trial(object):
                         int(self.last_result.get(TIME_TOTAL_S)))
         ]
 
-        if self.last_result.get("timesteps_total") is not None:
-            pieces.append('{} ts'.format(self.last_result["timesteps_total"]))
+        if self.last_result.get(TRAINING_ITERATION) is not None:
+            pieces.append('{} iter'.format(
+                self.last_result[TRAINING_ITERATION]))
+
+        if self.last_result.get(TIMESTEPS_TOTAL) is not None:
+            pieces.append('{} ts'.format(self.last_result[TIMESTEPS_TOTAL]))
 
         if self.last_result.get("episode_reward_mean") is not None:
             pieces.append('{} rew'.format(

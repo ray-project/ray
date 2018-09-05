@@ -124,9 +124,9 @@ setup_commands:
       pip install
       google-api-python-client==1.6.7
       cython==0.27.3
-    # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.5.0-cp27-cp27mu-manylinux1_x86_64.whl
-    # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.5.0-cp35-cp35m-manylinux1_x86_64.whl
-    # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.5.0-cp36-cp36m-manylinux1_x86_64.whl
+    # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.5.2-cp27-cp27mu-manylinux1_x86_64.whl
+    # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.5.2-cp35-cp35m-manylinux1_x86_64.whl
+    # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.5.2-cp36-cp36m-manylinux1_x86_64.whl
     - >-
       cd ~
       && git clone https://github.com/ray-project/ray || true

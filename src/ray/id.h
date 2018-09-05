@@ -10,6 +10,10 @@
 #include "ray/constants.h"
 #include "ray/util/visibility.h"
 
+extern "C" {
+#include "sha256.h"
+}
+
 namespace ray {
 
 class RAY_EXPORT UniqueID {
@@ -80,6 +84,15 @@ const ObjectID ComputePutId(const TaskID &task_id, int64_t put_index);
 /// \param object_id The object ID.
 /// \return The task ID of the task that created this object.
 const TaskID ComputeTaskId(const ObjectID &object_id);
+
+/// Generate a task ID from the given info.
+///
+/// \param driver_id The driver that creates the task.
+/// \param parent_task_id The parent task of this task.
+/// \param parent_task_counter The task index of the worker.
+/// \return The task ID generated from the given info.
+const TaskID GenerateTaskId(const DriverID &driver_id, const TaskID &parent_task_id,
+                            int parent_task_counter);
 
 /// Compute the index of this object in the task that created it.
 ///

@@ -211,10 +211,9 @@ class TrialRunner(object):
         return trial
 
     def _process_events(self):
-        trial, result = self.trial_executor.fetch_one_result()
+        trial = self.trial_executor.get_next_available_trial()
         try:
-            if result is None:
-                raise ValueError("fetch_one_result failed")
+            result = self.trial_executor.fetch_result(trial)
             self._total_time += result[TIME_THIS_ITER_S]
 
             if trial.should_stop(result):
@@ -223,6 +222,7 @@ class TrialRunner(object):
                 self._search_alg.on_trial_complete(
                     trial.trial_id, result=result)
                 decision = TrialScheduler.STOP
+
             else:
                 decision = self._scheduler_alg.on_trial_result(
                     self, trial, result)
@@ -234,13 +234,17 @@ class TrialRunner(object):
                 result, terminate=(decision == TrialScheduler.STOP))
 
             if decision == TrialScheduler.CONTINUE:
-                if trial.should_checkpoint():
+                if trial.should_checkpoint(result):
                     # TODO(rliaw): This is a blocking call
                     self.trial_executor.save(trial)
                 self.trial_executor.continue_training(trial)
             elif decision == TrialScheduler.PAUSE:
                 self.trial_executor.pause_trial(trial)
             elif decision == TrialScheduler.STOP:
+                # Checkpoint before ending the trial
+                # if checkpoint_at_end experiment option is set to True
+                if trial.should_checkpoint(result):
+                    self.trial_executor.save(trial)
                 self.trial_executor.stop_trial(trial)
             else:
                 assert False, "Invalid scheduling decision: {}".format(
@@ -318,9 +322,7 @@ class TrialRunner(object):
                 trial.trial_id, early_terminated=True)
         elif trial.status is Trial.RUNNING:
             try:
-                _, result = self.trial_executor.fetch_one_result()
-                if result is None:
-                    raise ValueError("fetch_one_result failed")
+                result = self.trial_executor.fetch_result(trial)
                 trial.update_last_result(result, terminate=True)
                 self._scheduler_alg.on_trial_complete(self, trial, result)
                 self._search_alg.on_trial_complete(

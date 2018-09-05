@@ -65,7 +65,7 @@ def start_plasma_store(plasma_store_memory=DEFAULT_PLASMA_STORE_MEMORY,
 
     plasma_store_executable = os.path.join(
         os.path.abspath(os.path.dirname(__file__)),
-        "../core/src/plasma/plasma_store")
+        "../core/src/plasma/plasma_store_server")
     plasma_store_name = "/tmp/plasma_store{}".format(random_name())
     command = [
         plasma_store_executable, "-s", plasma_store_name, "-m",

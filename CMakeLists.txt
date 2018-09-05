@@ -34,6 +34,10 @@ option(RAY_USE_NEW_GCS
   "Use the new GCS implementation"
   OFF)
 
+option(RAY_USE_GLOG
+  "Build the logging system using glog"
+  ON)
+
 if (RAY_USE_NEW_GCS)
   add_definitions(-DRAY_USE_NEW_GCS)
 endif()

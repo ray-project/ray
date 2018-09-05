@@ -24,6 +24,11 @@
             <version>${project.version}</version>
         </dependency>
         <dependency>
+            <groupId>org.ray</groupId>
+            <artifactId>ray-common</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
             <groupId>de.ruedigermoeller</groupId>
             <artifactId>fst</artifactId>
         </dependency>

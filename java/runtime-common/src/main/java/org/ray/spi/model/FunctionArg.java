@@ -1,17 +1,21 @@
 package org.ray.spi.model;
 
-import java.util.ArrayList;
-import org.ray.api.UniqueID;
+import org.ray.api.id.UniqueId;
 
 /**
  * Represents arguments for ray function calls.
  */
 public class FunctionArg {
 
-  public ArrayList<UniqueID> ids;
-  public byte[] data;
+  public final UniqueId id;
+  public final byte[] data;
+
+  public FunctionArg(UniqueId id, byte[] data) {
+    this.id = id;
+    this.data = data;
+  }
 
   public void toString(StringBuilder builder) {
-    builder.append("ids: ").append(ids).append(", ").append("<data>:").append(data);
+    builder.append("ids: ").append(id).append(", ").append("<data>:").append(data);
   }
 }

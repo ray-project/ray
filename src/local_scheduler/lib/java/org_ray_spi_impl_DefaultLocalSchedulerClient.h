@@ -9,85 +9,61 @@ extern "C" {
 #endif
 /*
  * Class:     org_ray_spi_impl_DefaultLocalSchedulerClient
- * Method:    _init
- * Signature: (Ljava/lang/String;[B[BZJ)J
+ * Method:    nativeInit
+ * Signature: (Ljava/lang/String;[BZ[BZ)J
  */
 JNIEXPORT jlong JNICALL
-Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1init(JNIEnv *,
-                                                         jclass,
-                                                         jstring,
-                                                         jbyteArray,
-                                                         jbyteArray,
-                                                         jboolean,
-                                                         jbyteArray,
-                                                         jlong,
-                                                         jboolean);
+Java_org_ray_spi_impl_DefaultLocalSchedulerClient_nativeInit(JNIEnv *,
+                                                             jclass,
+                                                             jstring,
+                                                             jbyteArray,
+                                                             jboolean,
+                                                             jbyteArray,
+                                                             jboolean);
 
 /*
  * Class:     org_ray_spi_impl_DefaultLocalSchedulerClient
- * Method:    _submitTask
- * Signature: (JLjava/nio/ByteBuffer;II)V
+ * Method:    nativeSubmitTask
+ * Signature: (J[BLjava/nio/ByteBuffer;IIZ)V
  */
 JNIEXPORT void JNICALL
-Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1submitTask(JNIEnv *,
-                                                               jclass,
-                                                               jlong,
-                                                               jbyteArray,
-                                                               jobject,
-                                                               jint,
-                                                               jint,
-                                                               jboolean);
+Java_org_ray_spi_impl_DefaultLocalSchedulerClient_nativeSubmitTask(JNIEnv *,
+                                                                   jclass,
+                                                                   jlong,
+                                                                   jbyteArray,
+                                                                   jobject,
+                                                                   jint,
+                                                                   jint,
+                                                                   jboolean);
 
 /*
  * Class:     org_ray_spi_impl_DefaultLocalSchedulerClient
- * Method:    _getTaskTodo
- * Signature: (J)[B
+ * Method:    nativeGetTask
+ * Signature: (JZ)[B
  */
 JNIEXPORT jbyteArray JNICALL
-Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1getTaskTodo(JNIEnv *,
+Java_org_ray_spi_impl_DefaultLocalSchedulerClient_nativeGetTask(JNIEnv *,
                                                                 jclass,
                                                                 jlong,
                                                                 jboolean);
 
 /*
  * Class:     org_ray_spi_impl_DefaultLocalSchedulerClient
- * Method:    _computePutId
- * Signature: (J[BI)[B
- */
-JNIEXPORT jbyteArray JNICALL
-Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1computePutId(JNIEnv *,
-                                                                 jclass,
-                                                                 jlong,
-                                                                 jbyteArray,
-                                                                 jint);
-
-/*
- * Class:     org_ray_spi_impl_DefaultLocalSchedulerClient
- * Method:    _destroy
+ * Method:    nativeDestroy
  * Signature: (J)V
  */
 JNIEXPORT void JNICALL
-Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1destroy(JNIEnv *,
-                                                            jclass,
-                                                            jlong);
+Java_org_ray_spi_impl_DefaultLocalSchedulerClient_nativeDestroy(JNIEnv *,
+                                                                jclass,
+                                                                jlong);
 
 /*
  * Class:     org_ray_spi_impl_DefaultLocalSchedulerClient
- * Method:    _task_done
- * Signature: (J)V
+ * Method:    nativeReconstructObjects
+ * Signature: (J[[BZ)V
  */
 JNIEXPORT void JNICALL
-Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1task_1done(JNIEnv *,
-                                                               jclass,
-                                                               jlong);
-
-/*
- * Class:     org_ray_spi_impl_DefaultLocalSchedulerClient
- * Method:    _reconstruct_objects
- * Signature: (J[B)V
- */
-JNIEXPORT void JNICALL
-Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1reconstruct_1objects(
+Java_org_ray_spi_impl_DefaultLocalSchedulerClient_nativeReconstructObjects(
     JNIEnv *,
     jclass,
     jlong,
@@ -96,39 +72,66 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1reconstruct_1objects(
 
 /*
  * Class:     org_ray_spi_impl_DefaultLocalSchedulerClient
- * Method:    _notify_unblocked
+ * Method:    nativeNotifyUnblocked
  * Signature: (J)V
  */
 JNIEXPORT void JNICALL
-Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1notify_1unblocked(JNIEnv *,
-                                                                      jclass,
-                                                                      jlong);
+Java_org_ray_spi_impl_DefaultLocalSchedulerClient_nativeNotifyUnblocked(
+    JNIEnv *,
+    jclass,
+    jlong);
 
 /*
  * Class:     org_ray_spi_impl_DefaultLocalSchedulerClient
- * Method:    _put_object
+ * Method:    nativePutObject
  * Signature: (J[B[B)V
  */
 JNIEXPORT void JNICALL
-Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1put_1object(JNIEnv *,
-                                                                jclass,
-                                                                jlong,
-                                                                jbyteArray,
-                                                                jbyteArray);
+Java_org_ray_spi_impl_DefaultLocalSchedulerClient_nativePutObject(JNIEnv *,
+                                                                  jclass,
+                                                                  jlong,
+                                                                  jbyteArray,
+                                                                  jbyteArray);
 
 /*
  * Class:     org_ray_spi_impl_DefaultLocalSchedulerClient
- * Method:    _waitObject
+ * Method:    nativeWaitObject
  * Signature: (J[[BIIZ)[Z
  */
 JNIEXPORT jbooleanArray JNICALL
-Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1waitObject(JNIEnv *,
-                                                               jclass,
-                                                               jlong,
-                                                               jobjectArray,
-                                                               jint,
-                                                               jint,
-                                                               jboolean);
+Java_org_ray_spi_impl_DefaultLocalSchedulerClient_nativeWaitObject(JNIEnv *,
+                                                                   jclass,
+                                                                   jlong,
+                                                                   jobjectArray,
+                                                                   jint,
+                                                                   jint,
+                                                                   jboolean);
+
+/*
+ * Class:     org_ray_spi_impl_DefaultLocalSchedulerClient
+ * Method:    nativeGenerateTaskId
+ * Signature: ([B[BI)[B
+ */
+JNIEXPORT jbyteArray JNICALL
+Java_org_ray_spi_impl_DefaultLocalSchedulerClient_nativeGenerateTaskId(
+    JNIEnv *,
+    jclass,
+    jbyteArray,
+    jbyteArray,
+    jint);
+
+/*
+ * Class:     org_ray_spi_impl_DefaultLocalSchedulerClient
+ * Method:    nativeFreePlasmaObjects
+ * Signature: (J[[BZ)V
+ */
+JNIEXPORT void JNICALL
+Java_org_ray_spi_impl_DefaultLocalSchedulerClient_nativeFreePlasmaObjects(
+    JNIEnv *,
+    jclass,
+    jlong,
+    jobjectArray,
+    jboolean);
 
 #ifdef __cplusplus
 }
