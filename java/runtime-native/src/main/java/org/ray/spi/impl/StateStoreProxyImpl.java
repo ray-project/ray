@@ -2,33 +2,38 @@ package org.ray.spi.impl;
 
 import java.io.UnsupportedEncodingException;
 import java.nio.ByteBuffer;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
-
 import org.ray.api.id.UniqueId;
 import org.ray.format.gcs.ClientTableData;
 import org.ray.spi.KeyValueStoreLink;
+import org.ray.spi.StateStoreProxy;
 import org.ray.spi.model.AddressInfo;
 import org.ray.util.NetworkUtil;
 import org.ray.util.logger.RayLog;
-import org.ray.spi.StateStoreProxy;
 
 /**
  * A class used to interface with the Ray control state.
  */
-public class RayletStateStoreProxyImpl implements StateStoreProxy{
+public class StateStoreProxyImpl implements StateStoreProxy {
 
   public KeyValueStoreLink rayKvStore;
   public ArrayList<KeyValueStoreLink> shardStoreList = new ArrayList<>();
 
-  public RayletStateStoreProxyImpl(KeyValueStoreLink rayKvStore) {
+  public StateStoreProxyImpl(KeyValueStoreLink rayKvStore) {
     this.rayKvStore = rayKvStore;
   }
 
+  @Override
   public void setStore(KeyValueStoreLink rayKvStore) {
     this.rayKvStore = rayKvStore;
   }
 
+  @Override
   public synchronized void initializeGlobalState() throws Exception {
 
     String es;
@@ -63,6 +68,7 @@ public class RayletStateStoreProxyImpl implements StateStoreProxy{
     rayKvStore.checkConnected();
   }
 
+  @Override
   public synchronized Set<String> keys(final String pattern) {
     Set<String> allKeys = new HashSet<>();
     Set<String> tmpKey;
@@ -74,6 +80,7 @@ public class RayletStateStoreProxyImpl implements StateStoreProxy{
     return allKeys;
   }
 
+  @Override
   public List<AddressInfo> getAddressInfo(final String nodeIpAddress,
                                           final String redisAddress,
                                           int numRetries) {
@@ -83,11 +90,11 @@ public class RayletStateStoreProxyImpl implements StateStoreProxy{
         return doGetAddressInfo(nodeIpAddress, redisAddress);
       } catch (Exception e) {
         try {
-          RayLog.core.warn("Error occurred in RayletStateStoreProxyImpl getAddressInfo, "
+          RayLog.core.warn("Error occurred in StateStoreProxyImpl getAddressInfo, "
                   + (numRetries - count) + " retries remaining", e);
           TimeUnit.MILLISECONDS.sleep(1000);
         } catch (InterruptedException ie) {
-          RayLog.core.error("error at RayletStateStoreProxyImpl getAddressInfo", e);
+          RayLog.core.error("error at StateStoreProxyImpl getAddressInfo", e);
           throw new RuntimeException(e);
         }
       }

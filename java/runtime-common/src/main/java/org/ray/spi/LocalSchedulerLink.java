@@ -1,6 +1,9 @@
 package org.ray.spi;
 
 import java.util.List;
+
+import org.ray.api.RayObject;
+import org.ray.api.WaitResult;
 import org.ray.api.id.UniqueId;
 import org.ray.spi.model.TaskSpec;
 
@@ -19,7 +22,7 @@ public interface LocalSchedulerLink {
 
   UniqueId generateTaskId(UniqueId driverId, UniqueId parentTaskId, int taskIndex);
 
-  List<byte[]> wait(byte[][] objectIds, int timeoutMs, int numReturns);
+  <T> WaitResult<T> wait(List<RayObject<T>> waitFor, int numReturns, int timeout);
 
   void freePlasmaObjects(List<UniqueId> objectIds, boolean localOnly);
 }

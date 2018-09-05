@@ -287,24 +287,15 @@ public class RunManager {
 
     runInfo.localStores.add(info);
 
-    HashSet<RunInfo.ProcessType> excludeTypes = new HashSet<>();
-    excludeTypes.add(RunInfo.ProcessType.PT_LOCAL_SCHEDULER);
-    excludeTypes.add(RunInfo.ProcessType.PT_GLOBAL_SCHEDULER);
-    excludeTypes.add(RunInfo.ProcessType.PT_PLASMA_MANAGER);
-
-    if (!checkAlive(excludeTypes)) {
+    if (!checkAlive()) {
       cleanup(true);
       throw new RuntimeException("Start Ray processes failed");
     }
   }
 
-  private boolean checkAlive(HashSet<RunInfo.ProcessType> excludeTypes) {
+  private boolean checkAlive() {
     RunInfo.ProcessType[] types = RunInfo.ProcessType.values();
     for (int i = 0; i < types.length; i++) {
-      if (excludeTypes.contains(types[i])) {
-        continue;
-      }
-
       ProcessInfo p;
       for (int j = 0; j < runInfo.allProcesses.get(i).size(); ) {
         p = runInfo.allProcesses.get(i).get(j);

@@ -44,9 +44,6 @@ fi
 declare -a nativeBinaries=(
     "./src/common/thirdparty/redis/src/redis-server"
     "./src/plasma/plasma_store_server"
-    "./src/plasma/plasma_manager"
-    "./src/local_scheduler/local_scheduler"
-    "./src/global_scheduler/global_scheduler"
     "./src/ray/raylet/raylet"
     "./src/ray/raylet/raylet_monitor"
 )

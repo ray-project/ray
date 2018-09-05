@@ -7,6 +7,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+import org.ray.api.RayObject;
+import org.ray.api.WaitResult;
 import org.ray.api.id.UniqueId;
 import org.ray.core.AbstractRayRuntime;
 import org.ray.core.UniqueIdHelper;
@@ -36,30 +38,34 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
   }
 
   @Override
-  public List<byte[]> wait(byte[][] objectIds, int timeoutMs, int numReturns) {
-    boolean[] readys = nativeWaitObject(client, objectIds, numReturns, timeoutMs, false);
-    assert (readys.length == objectIds.length);
+  public <T> WaitResult<T> wait(List<RayObject<T>> waitFor, int numReturns, int timeoutMillis) {
+    List<UniqueId> ids = new ArrayList<>();
+    for (RayObject<T> element : waitFor) {
+      ids.add(element.getId());
+    }
 
-    List<byte[]> ret = new ArrayList<>();
+    boolean[] readys = nativeWaitObject(client, getIdBytes(ids), numReturns, timeoutMillis, false);
+    if (readys.length != ids.size()) {
+      throw new RuntimeException("Wait for objects failed.");
+    }
+
+    List<RayObject<T>> readyList = new ArrayList<>();
+    List<RayObject<T>> unreadyList = new ArrayList<>();
+
     for (int i = 0; i < readys.length; i++) {
       if (readys[i]) {
-        ret.add(objectIds[i]);
+        readyList.add(waitFor.get(i));
+      } else {
+        unreadyList.add(waitFor.get(i));
       }
     }
 
-    return ret;
+    return new WaitResult<>(readyList, unreadyList);
   }
 
   @Override
   public void submitTask(TaskSpec task) {
     RayLog.core.debug("Submitting task: {}", task);
-    if (!task.resources.containsKey(ResourceUtil.CPU_LITERAL)) {
-      task.resources.put(ResourceUtil.CPU_LITERAL, 0.0);
-    }
-
-    if (!task.resources.containsKey(ResourceUtil.GPU_LITERAL)) {
-      task.resources.put(ResourceUtil.GPU_LITERAL, 0.0);
-    }
 
     ByteBuffer info = taskSpec2Info(task);
     byte[] cursorId = null;

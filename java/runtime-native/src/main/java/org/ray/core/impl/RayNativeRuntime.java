@@ -18,8 +18,8 @@ import org.ray.spi.RemoteFunctionManager;
 import org.ray.spi.StateStoreProxy;
 import org.ray.spi.impl.DefaultLocalSchedulerClient;
 import org.ray.spi.impl.NativeRemoteFunctionManager;
-import org.ray.spi.impl.RayletStateStoreProxyImpl;
 import org.ray.spi.impl.RedisClient;
+import org.ray.spi.impl.StateStoreProxyImpl;
 import org.ray.spi.model.AddressInfo;
 import org.ray.util.logger.RayLog;
 
@@ -106,7 +106,8 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
 
     }
 
-    // TODO(qwang): A log to show processes run successfully.
+    RayLog.core.info("RayNativeRuntime started with store {}, raylet {}",
+        params.object_store_name, params.raylet_socket_name);
   }
 
   @Override
@@ -130,7 +131,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
   private void initStateStore(String redisAddress) throws Exception {
     kvStore = new RedisClient();
     kvStore.setAddr(redisAddress);
-    stateStoreProxy = new RayletStateStoreProxyImpl(kvStore);
+    stateStoreProxy = new StateStoreProxyImpl(kvStore);
     stateStoreProxy.initializeGlobalState();
   }
 

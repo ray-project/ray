@@ -129,7 +129,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     functions = new LocalFunctionManager(remoteLoader);
     localSchedulerClient = slink;
 
-    objectStoreProxy = new ObjectStoreProxy(plink, slink);
+    objectStoreProxy = new ObjectStoreProxy(plink);
     worker = new Worker(this);
   }
 
@@ -307,7 +307,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   @Override
   public <T> WaitResult<T> wait(List<RayObject<T>> waitList, int numReturns, int timeoutMs) {
-    return objectStoreProxy.wait(waitList, numReturns, timeoutMs);
+    return localSchedulerClient.wait(waitList, numReturns, timeoutMs);
   }
 
   @Override
