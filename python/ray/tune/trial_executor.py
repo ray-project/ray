@@ -108,7 +108,7 @@ class TrialExecutor(object):
 
     def reset_trial(self, trial, new_config):
         """Resets a trial to a certain configuration"""
-        raise NotImplementedError 
+        raise NotImplementedError
 
     def get_running_trials(self):
         """Returns all running trials."""
