@@ -51,10 +51,15 @@ set(ARROW_CMAKE_ARGS
     -DARROW_WITH_LZ4=off
     -DARROW_WITH_ZLIB=off
     -DARROW_WITH_ZSTD=off
-    -DARROW_PLASMA_JAVA_CLIENT=ON
     -DFLATBUFFERS_HOME=${FLATBUFFERS_HOME}
     -DBOOST_ROOT=${BOOST_ROOT}
     )
+
+if ("${CMAKE_RAY_LANG_JAVA}" STREQUAL "YES")
+  set(ARROW_CMAKE_ARGS ${ARROW_CMAKE_ARGS} -DARROW_PLASMA_JAVA_CLIENT=ON)
+endif ()
+
+message(STATUS "ARROW_CMAKE_ARGS: ${ARROW_CMAKE_ARGS}")
 
 ExternalProject_Add(arrow_ep
     PREFIX external/arrow
@@ -68,7 +73,7 @@ ExternalProject_Add(arrow_ep
 
 if ("${CMAKE_RAY_LANG_JAVA}" STREQUAL "YES")
   ExternalProject_Add_Step(arrow_ep arrow_ep_install_java_lib
-    COMMAND cd ${ARROW_SOURCE_DIR}/java && mvn clean install -pl plasma -am -Dmaven.test.skip
+    COMMAND bash -c "cd ${ARROW_SOURCE_DIR}/java && mvn clean install -pl plasma -am -Dmaven.test.skip > /dev/null"
     DEPENDEES build)
 
   # add install of library plasma_java, it is not configured in plasma CMakeLists.txt

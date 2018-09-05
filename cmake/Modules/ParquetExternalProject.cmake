@@ -14,7 +14,8 @@ include(ExternalProject)
 set(parquet_URL https://github.com/apache/parquet-cpp.git)
 set(parquet_TAG 63f41b00bddecb172bd5b3aa0366b4653f498811)
 
-set(PARQUET_INSTALL_PREFIX ${CMAKE_CURRENT_BINARY_DIR}/external/parquet-install)
+# install parquet into arrow_home...
+set(PARQUET_INSTALL_PREFIX ${ARROW_HOME})
 set(PARQUET_HOME ${PARQUET_INSTALL_PREFIX})
 set(PARQUET_INCLUDE_DIR ${PARQUET_INSTALL_PREFIX}/include)
 set(PARQUET_STATIC_LIB ${PARQUET_INSTALL_PREFIX}/lib/${CMAKE_STATIC_LIBRARY_PREFIX}parquet.a)

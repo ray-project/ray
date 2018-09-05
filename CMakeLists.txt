@@ -16,7 +16,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # ray build options
 option(RAY_BUILD_PYTHON
     "build python library"
-    ON)
+    OFF)
 
 option(RAY_BUILD_JAVA
     "build java library"
@@ -48,6 +48,10 @@ endif ()
 
 if (RAY_BUILD_JAVA)
   set(CMAKE_RAY_LANG_JAVA YES)
+endif ()
+
+if ("${CMAKE_RAY_LANG_JAVA}" STREQUAL "NO" AND "${CMAKE_RAY_LANG_PYTHON}" STREQUAL "NO")
+  message(FATAL_ERROR "NO RAY LANG DEFINED")
 endif ()
 
 if (RAY_USE_NEW_GCS)
