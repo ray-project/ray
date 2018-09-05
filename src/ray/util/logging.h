@@ -16,15 +16,16 @@
 namespace google {
 class LogMessage;
 }  // namespace google
-typedef google::LogMessage LoggingProvider;
-#else
-namespace ray {
-class CerrLog;
-}  // namespace ray
-typedef ray::CerrLog LoggingProvider;
 #endif
 
 namespace ray {
+
+#ifdef RAY_USE_GLOG
+typedef google::LogMessage LoggingProvider;
+#else
+class CerrLog;
+typedef CerrLog LoggingProvider;
+#endif
 // Log levels. LOG ignores them, so their values are abitrary.
 
 #define RAY_DEBUG (-1)

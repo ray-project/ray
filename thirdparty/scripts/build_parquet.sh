@@ -10,7 +10,7 @@ TP_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)/../
 PARQUET_HOME=$TP_DIR/pkg/arrow/cpp/build/cpp-install
 OPENSSL_DIR=/usr/local/opt/openssl
 BISON_DIR=/usr/local/opt/bison/bin
-TARGET_COMMIT_ID=63f41b00bddecb172bd5b3aa0366b4653f498811
+TARGET_COMMIT_ID=22c7cbb7f58b0efded3d904a01d2d793c745d3f0
 
 build_parquet() {
   echo "Building Parquet"

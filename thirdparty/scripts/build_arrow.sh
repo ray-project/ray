@@ -37,7 +37,8 @@ fi
 # The PR for this commit is https://github.com/apache/arrow/pull/2482. We
 # include the link here to make it easier to find the right commit because
 # Arrow often rewrites git history and invalidates certain commits.
-TARGET_COMMIT_ID=927bd34aaad875e82beca2584d5d777839fa8bb0
+# Temporary code change to try to find out root cause of CI test failure.
+TARGET_COMMIT_ID=fab81c4c96cd5462a1d511bafa5a0776ff57c13b
 build_arrow() {
   echo "building arrow"
   # Make sure arrow will be built again when building ray for java later than python
@@ -49,7 +50,7 @@ build_arrow() {
     if [[ -d $TP_DIR/build/arrow ]]; then
       rm -rf $TP_DIR/build/arrow
     fi
-    git clone -q https://github.com/apache/arrow.git "$TP_DIR/build/arrow"
+    git clone -q https://github.com/guoyuhong/arrow.git "$TP_DIR/build/arrow"
   fi
 
   if ! [ -x "$(command -v bison)" ]; then
@@ -100,6 +101,7 @@ build_arrow() {
       -DARROW_WITH_LZ4=off \
       -DARROW_WITH_ZLIB=off \
       -DARROW_WITH_ZSTD=off \
+      -DARROW_USE_GLOG=ON \
       -DARROW_PLASMA_JAVA_CLIENT=$BUILD_ARROW_PLASMA_JAVA_CLIENT \
       ..
   make VERBOSE=1 -j$PARALLEL
