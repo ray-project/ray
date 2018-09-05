@@ -53,6 +53,14 @@ public interface RayRuntime {
   <T> WaitResult<T> wait(List<RayObject<T>> waitList, int numReturns, int timeoutMs);
 
   /**
+   * Free a list of objects from Plasma Store.
+   *
+   * @param objectIds The object ids to free.
+   * @param localOnly Whether only free objects for local object store or not.
+   */
+  void free(List<UniqueId> objectIds, boolean localOnly);
+
+  /**
    * Invoke a remote function.
    *
    * @param func The remote function to run.

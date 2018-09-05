@@ -305,6 +305,11 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     }
   }
 
+  @Override
+  public void free(List<UniqueId> objectIds, boolean localOnly) {
+    localSchedulerClient.freePlasmaObjects(objectIds, localOnly);
+  }
+
   private List<List<UniqueId>> splitIntoBatches(List<UniqueId> objectIds, int batchSize) {
     List<List<UniqueId>> batches = new ArrayList<>();
     int objectsSize = objectIds.size();

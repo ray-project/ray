@@ -24,4 +24,6 @@ public interface LocalSchedulerLink {
   UniqueId generateTaskId(UniqueId driverId, UniqueId parentTaskId, int taskIndex);
 
   List<byte[]> wait(byte[][] objectIds, int timeoutMs, int numReturns);
+
+  void freePlasmaObjects(List<UniqueId> objectIds, boolean localOnly);
 }
