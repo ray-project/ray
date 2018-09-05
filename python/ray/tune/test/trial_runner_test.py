@@ -1034,9 +1034,13 @@ class TrialRunnerTest(unittest.TestCase):
         runner.step()
         self.assertEqual(trials[1].last_result["timesteps_since_restore"], 10)
         self.assertGreater(trials[1].last_result["time_since_restore"], 0)
+        self.assertGreater(
+            trials[1].last_result["iterations_since_restore"], 1)
         runner.step()
         self.assertEqual(trials[1].last_result["timesteps_since_restore"], 20)
         self.assertGreater(trials[1].last_result["time_since_restore"], 0)
+        self.assertGreater(
+            trials[1].last_result["iterations_since_restore"], 2)
         self.addCleanup(os.remove, path)
 
     def testCheckpointingAtEnd(self):

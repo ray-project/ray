@@ -77,6 +77,7 @@ class Trainable(object):
         self._timesteps_total = None
         self._time_since_restore = 0.0
         self._timesteps_since_restore = 0
+        self._iterations_since_restore = 0
         self._restored = False
         self._setup()
         self._initialize_ok = True
@@ -146,6 +147,7 @@ class Trainable(object):
         result = result.copy()
 
         self._iteration += 1
+        self._iterations_since_restore += 1
 
         if result.get(TIME_THIS_ITER_S) is not None:
             time_this_iter = result[TIME_THIS_ITER_S]
@@ -183,7 +185,8 @@ class Trainable(object):
             node_ip=self._local_ip,
             config=self.config,
             time_since_restore=self._time_since_restore,
-            timesteps_since_restore=self._timesteps_since_restore)
+            timesteps_since_restore=self._timesteps_since_restore,
+            iterations_since_restore=self._iterations_since_restore)
 
         self._result_logger.on_result(result)
 
