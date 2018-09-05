@@ -7,6 +7,8 @@
 
 PyObject *LocalSchedulerError;
 
+static bool isInit = false;
+
 // clang-format off
 typedef struct {
   PyObject_HEAD
@@ -17,6 +19,10 @@ typedef struct {
 static int PyLocalSchedulerClient_init(PyLocalSchedulerClient *self,
                                        PyObject *args,
                                        PyObject *kwds) {
+  if (!isInit) {
+    ray::RayLog::StartRayLog("LocalScheduler.so", RAY_INFO);
+    isInit = true;
+  }
   char *socket_name;
   UniqueID client_id;
   PyObject *is_worker;
