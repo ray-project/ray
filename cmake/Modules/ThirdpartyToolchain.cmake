@@ -51,46 +51,47 @@ if(RAY_BUILD_TESTS OR RAY_BUILD_BENCHMARKS)
   add_dependencies(gtest googletest_ep)
   add_dependencies(gtest_main googletest_ep)
   add_dependencies(gmock_main googletest_ep)
-
-  set(GFLAGS_CMAKE_CXX_FLAGS ${EP_CXX_FLAGS})
-
-  set(GFLAGS_URL "https://github.com/gflags/gflags/archive/v${GFLAGS_VERSION}.tar.gz")
-  set(GFLAGS_PREFIX "${CMAKE_CURRENT_BINARY_DIR}/gflags_ep-prefix/src/gflags_ep")
-  set(GFLAGS_HOME "${GFLAGS_PREFIX}")
-  set(GFLAGS_INCLUDE_DIR "${GFLAGS_PREFIX}/include")
-  if(MSVC)
-    set(GFLAGS_STATIC_LIB "${GFLAGS_PREFIX}/lib/gflags_static.lib")
-  else()
-    set(GFLAGS_STATIC_LIB "${GFLAGS_PREFIX}/lib/libgflags.a")
-  endif()
-  set(GFLAGS_CMAKE_ARGS -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
-                        -DCMAKE_INSTALL_PREFIX=${GFLAGS_PREFIX}
-                        -DBUILD_SHARED_LIBS=OFF
-                        -DBUILD_STATIC_LIBS=ON
-                        -DBUILD_PACKAGING=OFF
-                        -DBUILD_TESTING=OFF
-                        -BUILD_CONFIG_TESTS=OFF
-                        -DINSTALL_HEADERS=ON
-                        -DCMAKE_CXX_FLAGS_${UPPERCASE_BUILD_TYPE}=${EP_CXX_FLAGS}
-                        -DCMAKE_C_FLAGS_${UPPERCASE_BUILD_TYPE}=${EP_C_FLAGS}
-                        -DCMAKE_CXX_FLAGS=${GFLAGS_CMAKE_CXX_FLAGS})
-
-  ExternalProject_Add(gflags_ep
-    URL ${GFLAGS_URL}
-    ${EP_LOG_OPTIONS}
-    BUILD_IN_SOURCE 1
-    BUILD_BYPRODUCTS "${GFLAGS_STATIC_LIB}"
-    CMAKE_ARGS ${GFLAGS_CMAKE_ARGS})
-
-  message(STATUS "GFlags include dir: ${GFLAGS_INCLUDE_DIR}")
-  message(STATUS "GFlags static library: ${GFLAGS_STATIC_LIB}")
-  include_directories(SYSTEM ${GFLAGS_INCLUDE_DIR})
-  ADD_THIRDPARTY_LIB(gflags
-    STATIC_LIB ${GFLAGS_STATIC_LIB})
-
-  add_dependencies(gflags gflags_ep)
 endif()
 
 set(Boost_USE_STATIC_LIBS ON)
 find_package(Boost COMPONENTS system filesystem REQUIRED)
 include_directories(${Boost_INCLUDE_DIR})
+
+if(RAY_USE_GLOG)
+  message(STATUS "Starting to build glog")
+  set(GLOG_VERSION "0.3.5")
+  set(GLOG_CMAKE_CXX_FLAGS "${EP_CXX_FLAGS} -fPIC")
+  if(APPLE)
+    set(GLOG_CMAKE_CXX_FLAGS "${GLOG_CMAKE_CXX_FLAGS} -mmacosx-version-min=10.12")
+  endif()
+
+  set(GLOG_URL "https://github.com/google/glog/archive/v${GLOG_VERSION}.tar.gz")
+  set(GLOG_PREFIX "${CMAKE_CURRENT_BINARY_DIR}/glog_ep-prefix/src/glog_ep")
+  set(GLOG_HOME "${GLOG_PREFIX}")
+  set(GLOG_INCLUDE_DIR "${GLOG_PREFIX}/include")
+  set(GLOG_STATIC_LIB "${GLOG_PREFIX}/lib/libglog.a")
+
+  set(GLOG_CMAKE_ARGS -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+                        -DCMAKE_INSTALL_PREFIX=${GLOG_PREFIX}
+                        -DBUILD_SHARED_LIBS=OFF
+                        -DBUILD_TESTING=OFF
+                        -DWITH_GFLAGS=OFF
+                        -DCMAKE_CXX_FLAGS_${UPPERCASE_BUILD_TYPE}=${GLOG_CMAKE_CXX_FLAGS}
+                        -DCMAKE_C_FLAGS_${UPPERCASE_BUILD_TYPE}=${EP_C_FLAGS}
+                        -DCMAKE_CXX_FLAGS=${GLOG_CMAKE_CXX_FLAGS})
+
+  ExternalProject_Add(glog_ep
+    URL ${GLOG_URL}
+    ${EP_LOG_OPTIONS}
+    BUILD_IN_SOURCE 1
+    BUILD_BYPRODUCTS "${GLOG_STATIC_LIB}"
+    CMAKE_ARGS ${GLOG_CMAKE_ARGS})
+
+  message(STATUS "GLog include dir: ${GLOG_INCLUDE_DIR}")
+  message(STATUS "GLog static library: ${GLOG_STATIC_LIB}")
+  include_directories(SYSTEM ${GLOG_INCLUDE_DIR})
+  ADD_THIRDPARTY_LIB(glog
+    STATIC_LIB ${GLOG_STATIC_LIB})
+
+  add_dependencies(glog glog_ep)
+endif()

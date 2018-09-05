@@ -14,6 +14,7 @@ pong-a3c:
         lambda: 1.0
         lr: 0.0001
         observation_filter: NoFilter
+        preprocessor_pref: rllib
         model:
             use_lstm: true
             conv_activation: elu
@@ -27,5 +28,3 @@ pong-a3c:
                 [32, [3, 3], 2],
                 [32, [3, 3], 2],
             ]
-        optimizer:
-            grads_per_step: 1000

@@ -32,13 +32,11 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
 
     def _init(self,
               sgd_batch_size=128,
-              sgd_stepsize=5e-5,
               num_sgd_iter=10,
               timesteps_per_batch=1024,
               num_gpus=0,
               standardize_fields=[]):
         self.batch_size = sgd_batch_size
-        self.sgd_stepsize = sgd_stepsize
         self.num_sgd_iter = num_sgd_iter
         self.timesteps_per_batch = timesteps_per_batch
         if not num_gpus:
@@ -81,8 +79,7 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
                     else:
                         rnn_inputs = []
                     self.par_opt = LocalSyncParallelOptimizer(
-                        tf.train.AdamOptimizer(
-                            self.sgd_stepsize), self.devices,
+                        self.policy.optimizer(), self.devices,
                         [v for _, v in self.policy.loss_inputs()], rnn_inputs,
                         self.per_device_batch_size, self.policy.copy,
                         os.getcwd())

@@ -11,8 +11,8 @@ import random
 import time
 
 import ray
-from ray.tune import Trainable, register_trainable, run_experiments
-from ray.tune.pbt import PopulationBasedTraining
+from ray.tune import Trainable, run_experiments
+from ray.tune.schedulers import PopulationBasedTraining
 
 
 class MyTrainableClass(Trainable):
@@ -54,14 +54,15 @@ class MyTrainableClass(Trainable):
             self.current_value = data["value"]
 
 
-register_trainable("my_class", MyTrainableClass)
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
     args, _ = parser.parse_known_args()
-    ray.init()
+    if args.smoke_test:
+        ray.init(num_cpus=4)  # force pausing to happen for test
+    else:
+        ray.init()
 
     pbt = PopulationBasedTraining(
         time_attr="training_iteration",
@@ -79,11 +80,11 @@ if __name__ == "__main__":
     run_experiments(
         {
             "pbt_test": {
-                "run": "my_class",
+                "run": MyTrainableClass,
                 "stop": {
-                    "training_iteration": 2 if args.smoke_test else 99999
+                    "training_iteration": 20 if args.smoke_test else 99999
                 },
-                "repeat": 10,
+                "num_samples": 10,
                 "config": {
                     "factor_1": 4.0,
                     "factor_2": 1.0,

@@ -2,6 +2,8 @@ package org.ray.util;
 
 import java.util.HashMap;
 import java.util.Map;
+import org.ray.api.annotation.RayRemote;
+import org.ray.api.annotation.ResourceItem;
 
 public class ResourceUtil {
   public static final String CPU_LITERAL = "CPU";
@@ -10,17 +12,18 @@ public class ResourceUtil {
   /**
    * Convert the array that contains resource items to a map.
    *
-   * @param resourceArray The resources list to be converted.
+   * @param remoteAnnotation The RayRemote annotation that contains the resource items.
    * @return The map whose key represents the resource name
    *     and the value represents the resource quantity.
    */
-  public static Map<String, Double> getResourcesMapFromArray(ResourceItem[] resourceArray) {
+  public static Map<String, Double> getResourcesMapFromArray(RayRemote remoteAnnotation) {
     Map<String, Double> resourceMap = new HashMap<>();
-    if (resourceArray != null) {
-      for (ResourceItem item : resourceArray) {
-        if (!item.name().isEmpty()) {
-          resourceMap.put(item.name(), item.value());
-        }
+    if (remoteAnnotation == null) {
+      return resourceMap;
+    }
+    for (ResourceItem item : remoteAnnotation.resources()) {
+      if (!item.name().isEmpty()) {
+        resourceMap.put(item.name(), item.value());
       }
     }
 

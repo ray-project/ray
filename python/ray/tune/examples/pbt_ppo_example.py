@@ -14,7 +14,7 @@ import random
 
 import ray
 from ray.tune import run_experiments
-from ray.tune.pbt import PopulationBasedTraining
+from ray.tune.schedulers import PopulationBasedTraining
 
 if __name__ == "__main__":
 
@@ -50,7 +50,7 @@ if __name__ == "__main__":
             "pbt_humanoid_test": {
                 "run": "PPO",
                 "env": "Humanoid-v1",
-                "repeat": 8,
+                "num_samples": 8,
                 "config": {
                     "kl_coeff": 1.0,
                     "num_workers": 8,

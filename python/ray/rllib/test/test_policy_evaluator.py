@@ -8,6 +8,7 @@ import unittest
 
 import ray
 from ray.rllib.agents.pg import PGAgent
+from ray.rllib.agents.a3c import A2CAgent
 from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.evaluation.policy_graph import PolicyGraph
@@ -96,6 +97,9 @@ class MockVectorEnv(VectorEnv):
             info_batch.append(info)
         return obs_batch, rew_batch, done_batch, info_batch
 
+    def get_unwrapped(self):
+        return self.envs
+
 
 class TestPolicyEvaluator(unittest.TestCase):
     def testBasic(self):
@@ -106,6 +110,17 @@ class TestPolicyEvaluator(unittest.TestCase):
         for key in ["obs", "actions", "rewards", "dones", "advantages"]:
             self.assertIn(key, batch)
         self.assertGreater(batch["advantages"][0], 1)
+
+    def testGlobalVarsUpdate(self):
+        agent = A2CAgent(
+            env="CartPole-v0",
+            config={
+                "lr_schedule": [[0, 0.1], [400, 0.000001]],
+            })
+        result = agent.train()
+        self.assertGreater(result["info"]["learner"]["cur_lr"], 0.01)
+        result2 = agent.train()
+        self.assertLess(result2["info"]["learner"]["cur_lr"], 0.0001)
 
     def testQueryEvaluators(self):
         register_env("test", lambda _: gym.make("CartPole-v0"))
@@ -120,6 +135,27 @@ class TestPolicyEvaluator(unittest.TestCase):
         self.assertEqual(results, [5, 5, 5])
         self.assertEqual(results2, [(0, 5), (1, 5), (2, 5)])
 
+    def testRewardClipping(self):
+        # clipping on
+        ev = PolicyEvaluator(
+            env_creator=lambda _: MockEnv2(episode_length=10),
+            policy_graph=MockPolicyGraph,
+            clip_rewards=True,
+            batch_mode="complete_episodes")
+        self.assertEqual(max(ev.sample()["rewards"]), 1)
+        result = collect_metrics(ev, [])
+        self.assertEqual(result["episode_reward_mean"], 1000)
+
+        # clipping off
+        ev2 = PolicyEvaluator(
+            env_creator=lambda _: MockEnv2(episode_length=10),
+            policy_graph=MockPolicyGraph,
+            clip_rewards=False,
+            batch_mode="complete_episodes")
+        self.assertEqual(max(ev2.sample()["rewards"]), 100)
+        result2 = collect_metrics(ev2, [])
+        self.assertEqual(result2["episode_reward_mean"], 1000)
+
     def testMetrics(self):
         ev = PolicyEvaluator(
             env_creator=lambda _: MockEnv(episode_length=10),
@@ -132,7 +168,7 @@ class TestPolicyEvaluator(unittest.TestCase):
         ev.sample()
         ray.get(remote_ev.sample.remote())
         result = collect_metrics(ev, [remote_ev])
-        self.assertEqual(result["episodes_total"], 20)
+        self.assertEqual(result["episodes"], 20)
         self.assertEqual(result["episode_reward_mean"], 10)
 
     def testAsync(self):
@@ -168,12 +204,12 @@ class TestPolicyEvaluator(unittest.TestCase):
             batch = ev.sample()
             self.assertEqual(batch.count, 16)
         result = collect_metrics(ev, [])
-        self.assertEqual(result["episodes_total"], 0)
+        self.assertEqual(result["episodes"], 0)
         for _ in range(8):
             batch = ev.sample()
             self.assertEqual(batch.count, 16)
         result = collect_metrics(ev, [])
-        self.assertEqual(result["episodes_total"], 8)
+        self.assertEqual(result["episodes"], 8)
         indices = []
         for env in ev.async_env.vector_env.envs:
             self.assertEqual(env.unwrapped.config.worker_index, 0)
@@ -199,10 +235,10 @@ class TestPolicyEvaluator(unittest.TestCase):
         batch = ev.sample()
         self.assertEqual(batch.count, 16)
         result = collect_metrics(ev, [])
-        self.assertEqual(result["episodes_total"], 0)
+        self.assertEqual(result["episodes"], 0)
         batch = ev.sample()
         result = collect_metrics(ev, [])
-        self.assertEqual(result["episodes_total"], 4)
+        self.assertEqual(result["episodes"], 4)
 
     def testVectorEnvSupport(self):
         ev = PolicyEvaluator(
@@ -214,12 +250,12 @@ class TestPolicyEvaluator(unittest.TestCase):
             batch = ev.sample()
             self.assertEqual(batch.count, 10)
         result = collect_metrics(ev, [])
-        self.assertEqual(result["episodes_total"], 0)
+        self.assertEqual(result["episodes"], 0)
         for _ in range(8):
             batch = ev.sample()
             self.assertEqual(batch.count, 10)
         result = collect_metrics(ev, [])
-        self.assertEqual(result["episodes_total"], 8)
+        self.assertEqual(result["episodes"], 8)
 
     def testTruncateEpisodes(self):
         ev = PolicyEvaluator(

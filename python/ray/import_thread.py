@@ -35,7 +35,7 @@ class ImportThread(object):
 
     def start(self):
         """Start the import thread."""
-        t = threading.Thread(target=self._run)
+        t = threading.Thread(target=self._run, name="ray_import_thread")
         # Making the thread a daemon causes it to exit
         # when the main thread exits.
         t.daemon = True
@@ -162,7 +162,7 @@ class ImportThread(object):
              key, ["driver_id", "function", "run_on_other_drivers"])
 
         if (run_on_other_drivers == "False"
-                and self.worker.mode in [ray.SCRIPT_MODE, ray.SILENT_MODE]
+                and self.worker.mode == ray.SCRIPT_MODE
                 and driver_id != self.worker.task_driver_id.id()):
             return
 

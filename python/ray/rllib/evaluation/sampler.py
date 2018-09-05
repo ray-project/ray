@@ -11,6 +11,7 @@ from ray.rllib.evaluation.sample_batch import MultiAgentSampleBatchBuilder, \
     MultiAgentBatch
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 from ray.rllib.env.async_vector_env import AsyncVectorEnv
+from ray.rllib.env.atari_wrappers import get_wrapper_by_cls, MonitorEnv
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 
 RolloutMetrics = namedtuple(
@@ -34,6 +35,7 @@ class SyncSampler(object):
                  policies,
                  policy_mapping_fn,
                  obs_filters,
+                 clip_rewards,
                  num_local_steps,
                  horizon=None,
                  pack=False,
@@ -48,7 +50,7 @@ class SyncSampler(object):
         self.rollout_provider = _env_runner(
             self.async_vector_env, self.extra_batches.put, self.policies,
             self.policy_mapping_fn, self.num_local_steps, self.horizon,
-            self._obs_filters, pack, tf_sess)
+            self._obs_filters, clip_rewards, pack, tf_sess)
         self.metrics_queue = queue.Queue()
 
     def get_data(self):
@@ -89,6 +91,7 @@ class AsyncSampler(threading.Thread):
                  policies,
                  policy_mapping_fn,
                  obs_filters,
+                 clip_rewards,
                  num_local_steps,
                  horizon=None,
                  pack=False,
@@ -106,6 +109,7 @@ class AsyncSampler(threading.Thread):
         self.policies = policies
         self.policy_mapping_fn = policy_mapping_fn
         self._obs_filters = obs_filters
+        self.clip_rewards = clip_rewards
         self.daemon = True
         self.pack = pack
         self.tf_sess = tf_sess
@@ -121,7 +125,7 @@ class AsyncSampler(threading.Thread):
         rollout_provider = _env_runner(
             self.async_vector_env, self.extra_batches.put, self.policies,
             self.policy_mapping_fn, self.num_local_steps, self.horizon,
-            self._obs_filters, self.pack, self.tf_sess)
+            self._obs_filters, self.clip_rewards, self.pack, self.tf_sess)
         while True:
             # The timeout variable exists because apparently, if one worker
             # dies, the other workers won't die with it, unless the timeout is
@@ -181,6 +185,7 @@ def _env_runner(async_vector_env,
                 num_local_steps,
                 horizon,
                 obs_filters,
+                clip_rewards,
                 pack,
                 tf_sess=None):
     """This implements the common experience collection logic.
@@ -197,6 +202,7 @@ def _env_runner(async_vector_env,
         horizon (int): Horizon of the episode.
         obs_filters (dict): Map of policy id to filter used to process
             observations for the policy.
+        clip_rewards (bool): Whether to clip rewards before postprocessing.
         pack (bool): Whether to pack multiple episodes into each batch. This
             guarantees batches will be exactly `num_local_steps` in size.
         tf_sess (Session|None): Optional tensorflow session to use for batching
@@ -209,7 +215,8 @@ def _env_runner(async_vector_env,
 
     try:
         if not horizon:
-            horizon = async_vector_env.get_unwrapped().spec.max_episode_steps
+            horizon = (
+                async_vector_env.get_unwrapped()[0].spec.max_episode_steps)
     except Exception:
         print("Warning, no horizon specified, assuming infinite")
     if not horizon:
@@ -223,7 +230,7 @@ def _env_runner(async_vector_env,
         if batch_builder_pool:
             return batch_builder_pool.pop()
         else:
-            return MultiAgentSampleBatchBuilder(policies)
+            return MultiAgentSampleBatchBuilder(policies, clip_rewards)
 
     def new_episode():
         return MultiAgentEpisode(policies, policy_mapping_fn,
@@ -254,8 +261,13 @@ def _env_runner(async_vector_env,
             # Check episode termination conditions
             if dones[env_id]["__all__"] or episode.length >= horizon:
                 all_done = True
-                yield RolloutMetrics(episode.length, episode.total_reward,
-                                     dict(episode.agent_rewards))
+                atari_metrics = _fetch_atari_metrics(async_vector_env)
+                if atari_metrics is not None:
+                    for m in atari_metrics:
+                        yield m
+                else:
+                    yield RolloutMetrics(episode.length, episode.total_reward,
+                                         dict(episode.agent_rewards))
             else:
                 all_done = False
                 # At least send an empty dict if not done
@@ -377,6 +389,24 @@ def _env_runner(async_vector_env,
         # Return computed actions to ready envs. We also send to envs that have
         # taken off-policy actions; those envs are free to ignore the action.
         async_vector_env.send_actions(dict(actions_to_send))
+
+
+def _fetch_atari_metrics(async_vector_env):
+    """Atari games have multiple logical episodes, one per life.
+
+    However for metrics reporting we count full episodes all lives included.
+    """
+    unwrapped = async_vector_env.get_unwrapped()
+    if not unwrapped:
+        return None
+    atari_out = []
+    for u in unwrapped:
+        monitor = get_wrapper_by_cls(u, MonitorEnv)
+        if not monitor:
+            return None
+        for eps_rew, eps_len in monitor.next_episode_results():
+            atari_out.append(RolloutMetrics(eps_len, eps_rew, {}))
+    return atari_out
 
 
 def _to_column_format(rnn_state_rows):

@@ -13,7 +13,7 @@ from keras import backend as K
 
 import ray
 from ray import tune
-from ray.tune.async_hyperband import AsyncHyperBandScheduler
+from ray.tune.schedulers import AsyncHyperBandScheduler
 
 
 class TuneCallback(keras.callbacks.Callback):
@@ -184,7 +184,7 @@ if __name__ == '__main__':
                     "timesteps_total": 10 if args.smoke_test else 300
                 },
                 "run": "train_mnist",
-                "repeat": 1 if args.smoke_test else 10,
+                "num_samples": 1 if args.smoke_test else 10,
                 "config": {
                     "lr": lambda spec: np.random.uniform(0.001, 0.1),
                     "momentum": lambda spec: np.random.uniform(0.1, 0.9),

@@ -9,11 +9,15 @@ import traceback
 from ray.tune import TuneError
 from ray.tune.trainable import Trainable
 from ray.tune.result import TIMESTEPS_TOTAL
-from ray.tune.util import _serve_get_pin_requests
 
 
 class StatusReporter(object):
-    """Object passed into your main() that you can report status through."""
+    """Object passed into your main() that you can report status through.
+
+    Example:
+        >>> reporter = StatusReporter()
+        >>> reporter(timesteps_total=1)
+    """
 
     def __init__(self):
         self._latest_result = None
@@ -108,15 +112,15 @@ class FunctionRunner(Trainable):
                             self._default_config["script_min_iter_time_s"]))
         result = self._status_reporter._get_and_clear_status()
         while result is None:
-            _serve_get_pin_requests()
             time.sleep(1)
             result = self._status_reporter._get_and_clear_status()
 
-        curr_ts_total = result.get(TIMESTEPS_TOTAL,
-                                   self._last_reported_timestep)
-        result.update(
-            timesteps_this_iter=(curr_ts_total - self._last_reported_timestep))
-        self._last_reported_timestep = curr_ts_total
+        curr_ts_total = result.get(TIMESTEPS_TOTAL)
+        if curr_ts_total is not None:
+            result.update(
+                timesteps_this_iter=(
+                    curr_ts_total - self._last_reported_timestep))
+            self._last_reported_timestep = curr_ts_total
 
         return result
 

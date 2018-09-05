@@ -32,7 +32,7 @@ ACTION_SPACES_TO_TEST = {
 OBSERVATION_SPACES_TO_TEST = {
     "discrete": Discrete(5),
     "vector": Box(0.0, 1.0, (5, ), dtype=np.float32),
-    "image": Box(0.0, 1.0, (80, 80, 1), dtype=np.float32),
+    "image": Box(0.0, 1.0, (84, 84, 1), dtype=np.float32),
     "atari": Box(0.0, 1.0, (210, 160, 3), dtype=np.float32),
     "atari_ram": Box(0.0, 1.0, (128, ), dtype=np.float32),
     "simple_tuple": Tuple([
@@ -94,6 +94,7 @@ class ModelSupportedSpaces(unittest.TestCase):
     def testAll(self):
         ray.init()
         stats = {}
+        check_support("IMPALA", {"gpu": False}, stats)
         check_support("DDPG", {"timesteps_per_iteration": 1}, stats)
         check_support("DQN", {"timesteps_per_iteration": 1}, stats)
         check_support("A3C", {
@@ -115,6 +116,13 @@ class ModelSupportedSpaces(unittest.TestCase):
                 "noise_size": 10000000,
                 "episodes_per_batch": 1,
                 "timesteps_per_batch": 1
+            }, stats)
+        check_support(
+            "ARS", {
+                "num_workers": 1,
+                "noise_size": 10000000,
+                "num_deltas": 1,
+                "deltas_used": 1
             }, stats)
         check_support("PG", {"num_workers": 1, "optimizer": {}}, stats)
         num_unexpected_errors = 0

@@ -6,8 +6,10 @@ import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import org.ray.api.UniqueID;
-import org.ray.core.RayRuntime;
+
+import org.ray.api.id.UniqueId;
+import org.ray.core.AbstractRayRuntime;
+import org.ray.core.UniqueIdHelper;
 import org.ray.spi.LocalSchedulerLink;
 import org.ray.spi.model.FunctionArg;
 import org.ray.spi.model.TaskSpec;
@@ -21,37 +23,25 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
 
   private static ThreadLocal<ByteBuffer> _taskBuffer = ThreadLocal.withInitial(() -> {
     ByteBuffer bb = ByteBuffer
-        .allocateDirect(RayRuntime.getParams().max_submit_task_buffer_size_bytes);
+        .allocateDirect(AbstractRayRuntime.getParams().max_submit_task_buffer_size_bytes);
     bb.order(ByteOrder.LITTLE_ENDIAN);
     return bb;
   });
   private long client = 0;
   boolean useRaylet = false;
 
-  public DefaultLocalSchedulerClient(String schedulerSockName, UniqueID clientId,
-                                     UniqueID actorId, boolean isWorker, UniqueID driverId,
-                                     long numGpus, boolean useRaylet) {
-    client = _init(schedulerSockName, clientId.getBytes(), actorId.getBytes(), isWorker,
-        driverId.getBytes(), numGpus, useRaylet);
+  public DefaultLocalSchedulerClient(String schedulerSockName, UniqueId clientId,
+      boolean isWorker, UniqueId driverId, boolean useRaylet) {
+    client = nativeInit(schedulerSockName, clientId.getBytes(),
+        isWorker, driverId.getBytes(), useRaylet);
     this.useRaylet = useRaylet;
   }
-
-  private static native long _init(String localSchedulerSocket, byte[] workerId,
-                                   byte[] actorId, boolean isWorker, byte[] driverTaskId,
-                                   long numGpus, boolean useRaylet);
-
-  private static native byte[] _computePutId(long client, byte[] taskId, int putIndex);
-
-  private static native void _task_done(long client);
-
-  private static native boolean[] _waitObject(long conn, byte[][] objectIds, 
-       int numReturns, int timeout, boolean waitLocal);
 
   @Override
   public List<byte[]> wait(byte[][] objectIds, int timeoutMs, int numReturns) {
     assert (useRaylet == true);
 
-    boolean[] readys = _waitObject(client, objectIds, numReturns, timeoutMs, false);
+    boolean[] readys = nativeWaitObject(client, objectIds, numReturns, timeoutMs, false);
     assert (readys.length == objectIds.length);
 
     List<byte[]> ret = new ArrayList<>();
@@ -66,6 +56,7 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
 
   @Override
   public void submitTask(TaskSpec task) {
+    RayLog.core.debug("Submitting task: {}", task);
     // We don't support resources management in non raylet mode.
     if (!useRaylet) {
       task.resources.clear();
@@ -81,103 +72,106 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
     }
 
     ByteBuffer info = taskSpec2Info(task);
-    byte[] a = null;
+    byte[] cursorId = null;
     if (!task.actorId.isNil()) {
-      a = task.cursorId.getBytes();
+      cursorId = task.cursorId.getBytes();
     }
 
-    _submitTask(client, a, info, info.position(), info.remaining(), useRaylet);
+    nativeSubmitTask(client, cursorId, info, info.position(), info.remaining(), useRaylet);
   }
 
   @Override
-  public TaskSpec getTaskTodo() {
-    byte[] bytes = _getTaskTodo(client, useRaylet);
+  public TaskSpec getTask() {
+    byte[] bytes = nativeGetTask(client, useRaylet);
     assert (null != bytes);
     ByteBuffer bb = ByteBuffer.wrap(bytes);
     return taskInfo2Spec(bb);
   }
 
   @Override
-  public void markTaskPutDependency(UniqueID taskId, UniqueID objectId) {
-    _put_object(client, taskId.getBytes(), objectId.getBytes());
+  public void markTaskPutDependency(UniqueId taskId, UniqueId objectId) {
+    nativePutObject(client, taskId.getBytes(), objectId.getBytes());
   }
 
   @Override
-  public void reconstructObject(UniqueID objectId, boolean fetchOnly) {
-    List<UniqueID> objects = new ArrayList<>();
+  public void reconstructObject(UniqueId objectId, boolean fetchOnly) {
+    List<UniqueId> objects = new ArrayList<>();
     objects.add(objectId);
-    _reconstruct_objects(client, getIdBytes(objects), fetchOnly);
+    nativeReconstructObjects(client, getIdBytes(objects), fetchOnly);
   }
 
   @Override
-  public void reconstructObjects(List<UniqueID> objectIds, boolean fetchOnly) {
-    RayLog.core.info("reconstruct objects {}", objectIds);
-    _reconstruct_objects(client, getIdBytes(objectIds), fetchOnly);
+  public void reconstructObjects(List<UniqueId> objectIds, boolean fetchOnly) {
+    if (RayLog.core.isInfoEnabled()) {
+      RayLog.core.info("Reconstructing objects for task {}, object IDs are {}",
+          UniqueIdHelper.computeTaskId(objectIds.get(0)), objectIds);
+    }
+    nativeReconstructObjects(client, getIdBytes(objectIds), fetchOnly);
+  }
+
+  @Override
+  public UniqueId generateTaskId(UniqueId driverId, UniqueId parentTaskId, int taskIndex) {
+    byte[] bytes = nativeGenerateTaskId(driverId.getBytes(), parentTaskId.getBytes(), taskIndex);
+    return new UniqueId(bytes);
   }
 
   @Override
   public void notifyUnblocked() {
-    _notify_unblocked(client);
+    nativeNotifyUnblocked(client);
   }
 
-  private static native void _notify_unblocked(long client);
-
-  private static native void _reconstruct_objects(long client, byte[][] objectIds,
-                                                  boolean fetchOnly);
-
-  private static native void _put_object(long client, byte[] taskId, byte[] objectId);
-
-  // return TaskInfo (in FlatBuffer)
-  private static native byte[] _getTaskTodo(long client, boolean useRaylet);
+  @Override
+  public void freePlasmaObjects(List<UniqueId> objectIds, boolean localOnly) {
+    byte[][] objectIdsArray = getIdBytes(objectIds);
+    nativeFreePlasmaObjects(client, objectIdsArray, localOnly);
+  }
 
   public static TaskSpec taskInfo2Spec(ByteBuffer bb) {
     bb.order(ByteOrder.LITTLE_ENDIAN);
     TaskInfo info = TaskInfo.getRootAsTaskInfo(bb);
 
     TaskSpec spec = new TaskSpec();
-    spec.driverId = new UniqueID(info.driverIdAsByteBuffer());
-    spec.taskId = new UniqueID(info.taskIdAsByteBuffer());
-    spec.parentTaskId = new UniqueID(info.parentTaskIdAsByteBuffer());
+    spec.driverId = UniqueId.fromByteBuffer(info.driverIdAsByteBuffer());
+    spec.taskId = UniqueId.fromByteBuffer(info.taskIdAsByteBuffer());
+    spec.parentTaskId = UniqueId.fromByteBuffer(info.parentTaskIdAsByteBuffer());
     spec.parentCounter = info.parentCounter();
-    spec.actorId = new UniqueID(info.actorIdAsByteBuffer());
+    spec.actorId = UniqueId.fromByteBuffer(info.actorIdAsByteBuffer());
     spec.actorCounter = info.actorCounter();
-    spec.createActorId = new UniqueID(info.actorCreationIdAsByteBuffer());
+    spec.createActorId = UniqueId.fromByteBuffer(info.actorCreationIdAsByteBuffer());
 
-    spec.functionId = new UniqueID(info.functionIdAsByteBuffer());
+    spec.functionId = UniqueId.fromByteBuffer(info.functionIdAsByteBuffer());
 
     List<FunctionArg> args = new ArrayList<>();
     for (int i = 0; i < info.argsLength(); i++) {
-      FunctionArg darg = new FunctionArg();
+      UniqueId id = null;
+      byte[] data = null;
       Arg sarg = info.args(i);
 
       int idCount = sarg.objectIdsLength();
       if (idCount > 0) {
-        darg.ids = new ArrayList<>();
-        for (int j = 0; j < idCount; j++) {
-          ByteBuffer lbb = sarg.objectIdAsByteBuffer(j);
-          assert (lbb != null && lbb.remaining() > 0);
-          darg.ids.add(new UniqueID(lbb));
-        }
+        ByteBuffer lbb = sarg.objectIdAsByteBuffer(0);
+        assert (lbb != null && lbb.remaining() > 0);
+        id = UniqueId.fromByteBuffer(lbb);
       }
 
       ByteBuffer lbb = sarg.dataAsByteBuffer();
       if (lbb != null && lbb.remaining() > 0) {
         // TODO: how to avoid memory copy
-        darg.data = new byte[lbb.remaining()];
-        lbb.get(darg.data);
+        data = new byte[lbb.remaining()];
+        lbb.get(data);
       }
 
-      args.add(darg);
+      args.add(new FunctionArg(id, data));
     }
     spec.args = args.toArray(new FunctionArg[0]);
 
-    List<UniqueID> rids = new ArrayList<>();
+    List<UniqueId> rids = new ArrayList<>();
     for (int i = 0; i < info.returnsLength(); i++) {
       ByteBuffer lbb = info.returnsAsByteBuffer(i);
       assert (lbb != null && lbb.remaining() > 0);
-      rids.add(new UniqueID(lbb));
+      rids.add(UniqueId.fromByteBuffer(lbb));
     }
-    spec.returnIds = rids.toArray(new UniqueID[0]);
+    spec.returnIds = rids.toArray(new UniqueId[0]);
 
     return spec;
   }
@@ -193,7 +187,7 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
     final int parentTaskIdOffset = fbb.createString(task.parentTaskId.toByteBuffer());
     final int parentCounter = task.parentCounter;
     final int actorCreateIdOffset = fbb.createString(task.createActorId.toByteBuffer());
-    final int actorCreateDummyIdOffset = fbb.createString(UniqueID.nil.toByteBuffer());
+    final int actorCreateDummyIdOffset = fbb.createString(UniqueId.NIL.toByteBuffer());
     final int actorIdOffset = fbb.createString(task.actorId.toByteBuffer());
     final int actorHandleIdOffset = fbb.createString(task.actorHandleId.toByteBuffer());
     final int actorCounter = task.actorCounter;
@@ -205,12 +199,10 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
 
       int objectIdOffset = 0;
       int dataOffset = 0;
-      if (task.args[i].ids != null) {
-        int idCount = task.args[i].ids.size();
-        int[] idOffsets = new int[idCount];
-        for (int k = 0; k < idCount; k++) {
-          idOffsets[k] = fbb.createString(task.args[i].ids.get(k).toByteBuffer());
-        }
+      if (task.args[i].id != null) {
+        int[] idOffsets = new int[] {
+            fbb.createString(task.args[i].id.toByteBuffer())
+        };
         objectIdOffset = fbb.createVectorOfTables(idOffsets);
       } else {
         objectIdOffset = fbb.createVectorOfTables(new int[0]);
@@ -258,9 +250,9 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
     fbb.finish(root);
     ByteBuffer buffer = fbb.dataBuffer();
 
-    if (buffer.remaining() > RayRuntime.getParams().max_submit_task_buffer_size_bytes) {
+    if (buffer.remaining() > AbstractRayRuntime.getParams().max_submit_task_buffer_size_bytes) {
       RayLog.core.error(
-          "Allocated buffer is not enough to transfer the task specification: " + RayRuntime
+          "Allocated buffer is not enough to transfer the task specification: " + AbstractRayRuntime
               .getParams().max_submit_task_buffer_size_bytes + " vs " + buffer.remaining());
       assert (false);
     }
@@ -268,11 +260,7 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
     return buffer;
   }
 
-  // task -> TaskInfo (with FlatBuffer)
-  protected static native void _submitTask(long client, byte[] cursorId, /*Direct*/ByteBuffer task,
-                                         int pos, int sz, boolean useRaylet);
-
-  private static byte[][] getIdBytes(List<UniqueID> objectIds) {
+  private static byte[][] getIdBytes(List<UniqueId> objectIds) {
     int size = objectIds.size();
     byte[][] ids = new byte[size][];
     for (int i = 0; i < size; i++) {
@@ -282,8 +270,49 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
   }
 
   public void destroy() {
-    _destroy(client);
+    nativeDestroy(client);
   }
 
-  private static native void _destroy(long client);
+
+  /// Native method declarations.
+  ///
+  /// If you change the signature of any native methods, please re-generate
+  /// the C++ header file and update the C++ implementation accordingly:
+  ///
+  /// Suppose that $Dir is your ray root directory.
+  /// 1) pushd $Dir/java/runtime-native/target/classes
+  /// 2) javah -classpath .:$Dir/java/runtime-common/target/classes/:$Dir/java/api/target/classes/
+  ///    org.ray.spi.impl.DefaultLocalSchedulerClient
+  /// 3) clang-format -i org_ray_spi_impl_DefaultLocalSchedulerClient.h
+  /// 4) cp org_ray_spi_impl_DefaultLocalSchedulerClient.h $Dir/src/local_scheduler/lib/java/
+  /// 5) vim $Dir/src/local_scheduler/lib/java/org_ray_spi_impl_DefaultLocalSchedulerClient.cc
+  /// 6) popd
+
+  private static native long nativeInit(String localSchedulerSocket, byte[] workerId,
+      boolean isWorker, byte[] driverTaskId, boolean useRaylet);
+
+  private static native void nativeSubmitTask(long client, byte[] cursorId, ByteBuffer taskBuff,
+      int pos, int taskSize, boolean useRaylet);
+
+  // return TaskInfo (in FlatBuffer)
+  private static native byte[] nativeGetTask(long client, boolean useRaylet);
+
+  private static native void nativeDestroy(long client);
+
+  private static native void nativeReconstructObjects(long client, byte[][] objectIds,
+      boolean fetchOnly);
+
+  private static native void nativeNotifyUnblocked(long client);
+
+  private static native void nativePutObject(long client, byte[] taskId, byte[] objectId);
+
+  private static native boolean[] nativeWaitObject(long conn, byte[][] objectIds,
+      int numReturns, int timeout, boolean waitLocal);
+
+  private static native byte[] nativeGenerateTaskId(byte[] driverId, byte[] parentTaskId,
+      int taskIndex);
+
+  private static native void nativeFreePlasmaObjects(long conn, byte[][] objectIds,
+      boolean localOnly);
+
 }
