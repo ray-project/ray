@@ -6,7 +6,7 @@ import ray
 from ray.rllib.evaluation.sample_batch import SampleBatch
 
 
-def collect_samples(agents, timesteps_per_batch):
+def collect_samples(agents, train_batch_size):
     num_timesteps_so_far = 0
     trajectories = []
     # This variable maps the object IDs of trajectories that are currently
@@ -19,7 +19,7 @@ def collect_samples(agents, timesteps_per_batch):
         fut_sample = agent.sample.remote()
         agent_dict[fut_sample] = agent
 
-    while num_timesteps_so_far < timesteps_per_batch:
+    while num_timesteps_so_far < train_batch_size:
         # TODO(pcm): Make wait support arbitrary iterators and remove the
         # conversion to list here.
         [fut_sample], _ = ray.wait(list(agent_dict))
