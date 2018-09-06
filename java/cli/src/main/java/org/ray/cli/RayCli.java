@@ -15,7 +15,7 @@ import org.ray.runtime.gcs.KeyValueStoreLink;
 import org.ray.runtime.config.PathConfig;
 import org.ray.runtime.functionmanager.RemoteFunctionManager;
 import org.ray.runtime.gcs.StateStoreProxy;
-import org.ray.spi.impl.NativeRemoteFunctionManager;
+import org.ray.runtime.functionmanager.NativeRemoteFunctionManager;
 import org.ray.runtime.gcs.RedisClient;
 import org.ray.runtime.gcs.StateStoreProxyImpl;
 import org.ray.util.FileUtil;

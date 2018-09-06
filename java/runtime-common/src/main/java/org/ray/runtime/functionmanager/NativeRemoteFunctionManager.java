@@ -1,4 +1,4 @@
-package org.ray.spi.impl;
+package org.ray.runtime.functionmanager;
 
 import java.io.File;
 import java.security.MessageDigest;
@@ -7,7 +7,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import net.lingala.zip4j.core.ZipFile;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.gcs.KeyValueStoreLink;
-import org.ray.runtime.functionmanager.RemoteFunctionManager;
+import org.ray.runtime.util.JarLoader;
 import org.ray.util.FileUtil;
 import org.ray.util.Sha1Digestor;
 import org.ray.util.SystemUtil;

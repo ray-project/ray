@@ -1,4 +1,4 @@
-package org.ray.spi.impl;
+package org.ray.runtime.raylet;
 
 import com.google.flatbuffers.FlatBufferBuilder;
 import java.nio.ByteBuffer;
