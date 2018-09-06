@@ -38,7 +38,7 @@ fi
 # include the link here to make it easier to find the right commit because
 # Arrow often rewrites git history and invalidates certain commits.
 # Temporary code change to try to find out root cause of CI test failure.
-TARGET_COMMIT_ID=fab81c4c96cd5462a1d511bafa5a0776ff57c13b
+TARGET_COMMIT_ID=748df6951d1209de2952e7108c2016d7d7fc9b56
 build_arrow() {
   echo "building arrow"
   # Make sure arrow will be built again when building ray for java later than python
