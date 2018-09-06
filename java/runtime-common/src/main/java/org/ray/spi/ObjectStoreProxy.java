@@ -18,17 +18,10 @@ import org.ray.util.exception.TaskExecutionException;
 public class ObjectStoreProxy {
 
   private final ObjectStoreLink store;
-  private final LocalSchedulerLink localSchedulerLink;
   private final int getTimeoutMs = 1000;
 
   public ObjectStoreProxy(ObjectStoreLink store) {
     this.store = store;
-    this.localSchedulerLink = null;
-  }
-
-  public ObjectStoreProxy(ObjectStoreLink store, LocalSchedulerLink localSchedulerLink) {
-    this.store = store;
-    this.localSchedulerLink = localSchedulerLink;
   } 
 
   public <T> Pair<T, GetStatus> get(UniqueId objectId, boolean isMetadata)
@@ -87,39 +80,6 @@ public class ObjectStoreProxy {
 
   public void put(UniqueId id, Object obj, Object metadata) {
     store.put(id.getBytes(), Serializer.encode(obj), Serializer.encode(metadata));
-  }
-
-  public <T> WaitResult<T> wait(List<RayObject<T>> waitfor, int numReturns, int timeout) {
-    List<UniqueId> ids = new ArrayList<>();
-    for (RayObject<T> obj : waitfor) {
-      ids.add(obj.getId());
-    }
-    List<byte[]> readys;
-    if (localSchedulerLink == null) {
-      readys = store.wait(getIdBytes(ids), timeout, numReturns);
-    } else {
-      readys = localSchedulerLink.wait(getIdBytes(ids), timeout, numReturns);
-    }
-
-    List<RayObject<T>> readyList = new ArrayList<>();
-    List<RayObject<T>> unreadyList = new ArrayList<>();
-    for (RayObject<T> obj : waitfor) {
-      if (readys.contains(obj.getId().getBytes())) {
-        readyList.add(obj);
-      } else {
-        unreadyList.add(obj);
-      }
-    }
-
-    return new WaitResult<>(readyList, unreadyList);
-  }
-
-  public void fetch(List<UniqueId> objectIds) {
-    if (localSchedulerLink == null) {
-      store.fetch(getIdBytes(objectIds));
-    } else {
-      localSchedulerLink.reconstructObjects(objectIds, true);
-    }
   }
 
   public enum GetStatus {

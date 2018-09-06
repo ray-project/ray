@@ -25,7 +25,6 @@ public class PlasmaFreeTest {
 
   @Test
   public void test() {
-    Assume.assumeTrue(AbstractRayRuntime.getParams().use_raylet);
     RayObject<String> helloId = Ray.call(PlasmaFreeTest::hello);
     String helloString = helloId.get();
     Assert.assertEquals("hello", helloString);
