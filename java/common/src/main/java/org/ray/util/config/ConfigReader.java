@@ -324,9 +324,8 @@ public class ConfigReader {
           String sv = getStringValue(section, fld.getName(), defaultFldValue.toString(), comment);
           Object v;
           try {
-            v = fld.getType().getConstructor(new Class<?>[] {String.class}).newInstance(sv);
-          } catch (NoSuchMethodException | SecurityException | InstantiationException
-              | InvocationTargetException e) {
+            v = UniqueId.fromHexString(sv);
+          } catch (IllegalArgumentException e) {
             System.err.println(
                 section + "." + fld.getName() + "'s format (" + sv + ") is invalid, default to "
                     + defaultFldValue.toString());

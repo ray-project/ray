@@ -68,6 +68,14 @@ public class TaskSpec {
     this.createActorId = createActorId;
     this.resources = resources;
     this.cursorId = cursorId;
+
+    if (!this.resources.containsKey(ResourceUtil.CPU_LITERAL)) {
+      this.resources.put(ResourceUtil.CPU_LITERAL, 0.0);
+    }
+
+    if (!this.resources.containsKey(ResourceUtil.GPU_LITERAL)) {
+      this.resources.put(ResourceUtil.GPU_LITERAL, 0.0);
+    }
   }
 
   @Override
