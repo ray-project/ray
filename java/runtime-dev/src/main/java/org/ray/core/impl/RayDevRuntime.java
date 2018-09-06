@@ -1,9 +1,9 @@
 package org.ray.core.impl;
 
 import org.ray.core.AbstractRayRuntime;
-import org.ray.core.model.RayParameters;
+import org.ray.runtime.config.RayParameters;
 import org.ray.spi.NopRemoteFunctionManager;
-import org.ray.spi.PathConfig;
+import org.ray.runtime.config.PathConfig;
 import org.ray.spi.RemoteFunctionManager;
 import org.ray.spi.impl.MockLocalScheduler;
 import org.ray.spi.impl.MockObjectStore;

@@ -1,8 +1,8 @@
 package org.ray.core;
 
 import org.ray.api.id.UniqueId;
-import org.ray.core.model.RayParameters;
-import org.ray.core.model.WorkerMode;
+import org.ray.runtime.config.RayParameters;
+import org.ray.runtime.config.WorkerMode;
 import org.ray.spi.model.TaskSpec;
 
 public class WorkerContext {

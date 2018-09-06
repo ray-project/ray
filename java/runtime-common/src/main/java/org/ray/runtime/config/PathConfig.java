@@ -1,4 +1,4 @@
-package org.ray.spi;
+package org.ray.runtime.config;
 
 import org.ray.util.config.AConfig;
 import org.ray.util.config.ConfigReader;

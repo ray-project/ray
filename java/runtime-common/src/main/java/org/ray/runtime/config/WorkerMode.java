@@ -1,4 +1,4 @@
-package org.ray.core.model;
+package org.ray.runtime.config;
 
 public enum WorkerMode {
   NONE,   // not set

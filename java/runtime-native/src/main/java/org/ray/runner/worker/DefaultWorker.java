@@ -1,7 +1,7 @@
 package org.ray.runner.worker;
 
 import org.ray.core.AbstractRayRuntime;
-import org.ray.core.model.WorkerMode;
+import org.ray.runtime.config.WorkerMode;
 
 /**
  * default worker implementation.

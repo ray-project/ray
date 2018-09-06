@@ -1,4 +1,4 @@
-package org.ray.core.model;
+package org.ray.runtime.config;
 
 import org.ray.api.id.UniqueId;
 import org.ray.util.NetworkUtil;
