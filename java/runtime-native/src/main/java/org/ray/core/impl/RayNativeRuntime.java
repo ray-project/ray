@@ -9,7 +9,7 @@ import org.ray.runtime.AbstractRayRuntime;
 import org.ray.runtime.WorkerContext;
 import org.ray.runtime.config.RayParameters;
 import org.ray.runtime.config.WorkerMode;
-import org.ray.runner.RunManager;
+import org.ray.runtime.runner.RunManager;
 import org.ray.spi.KeyValueStoreLink;
 import org.ray.runtime.raylet.LocalSchedulerLink;
 import org.ray.runtime.functionmanager.NopRemoteFunctionManager;
@@ -20,7 +20,7 @@ import org.ray.spi.impl.DefaultLocalSchedulerClient;
 import org.ray.spi.impl.NativeRemoteFunctionManager;
 import org.ray.spi.impl.RedisClient;
 import org.ray.spi.impl.StateStoreProxyImpl;
-import org.ray.spi.model.AddressInfo;
+import org.ray.runtime.config.AddressInfo;
 import org.ray.util.logger.RayLog;
 
 /**

@@ -12,7 +12,7 @@ import org.ray.api.id.UniqueId;
 import org.ray.runtime.generated.ClientTableData;
 import org.ray.spi.KeyValueStoreLink;
 import org.ray.spi.StateStoreProxy;
-import org.ray.spi.model.AddressInfo;
+import org.ray.runtime.config.AddressInfo;
 import org.ray.util.NetworkUtil;
 import org.ray.util.logger.RayLog;
 

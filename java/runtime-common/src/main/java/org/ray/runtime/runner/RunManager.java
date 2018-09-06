@@ -1,4 +1,4 @@
-package org.ray.runner;
+package org.ray.runtime.runner;
 
 import com.google.common.collect.ImmutableList;
 import java.io.File;
@@ -12,10 +12,10 @@ import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.TimeUnit;
 import org.ray.api.id.UniqueId;
+import org.ray.runtime.config.AddressInfo;
 import org.ray.runtime.config.RayParameters;
-import org.ray.runner.RunInfo.ProcessType;
+import org.ray.runtime.runner.RunInfo.ProcessType;
 import org.ray.runtime.config.PathConfig;
-import org.ray.spi.model.AddressInfo;
 import org.ray.util.ResourceUtil;
 import org.ray.util.StringUtil;
 import org.ray.util.config.ConfigReader;

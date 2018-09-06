@@ -1,4 +1,4 @@
-package org.ray.spi.model;
+package org.ray.runtime.config;
 
 /**
  * Represents information of different process roles.

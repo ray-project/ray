@@ -1,9 +1,9 @@
-package org.ray.runner;
+package org.ray.runtime.runner;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import org.ray.spi.model.AddressInfo;
+import org.ray.runtime.config.AddressInfo;
 
 /**
  * information of kinds of processes.
