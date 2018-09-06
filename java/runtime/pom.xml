@@ -9,10 +9,10 @@
     </parent>
     <modelVersion>4.0.0</modelVersion>
     <groupId>org.ray</groupId>
-    <artifactId>ray-runtime-common</artifactId>
+    <artifactId>ray-runtime</artifactId>
 
-    <name>runtime common</name>
-    <description>runtime common</description>
+    <name>ray runtime</name>
+    <description>ray runtime</description>
     <url></url>
 
     <packaging>jar</packaging>

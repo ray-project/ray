@@ -25,11 +25,6 @@
       <version>${project.version}</version>
     </dependency>
     <dependency>
-      <groupId>org.ray</groupId>
-      <artifactId>ray-runtime-native</artifactId>
-      <version>${project.version}</version>
-    </dependency>
-    <dependency>
       <groupId>de.ruedigermoeller</groupId>
       <artifactId>fst</artifactId>
     </dependency>
@@ -71,7 +66,7 @@
             </goals>
           </execution>
         </executions>
-      </plugin>     
+      </plugin>
 	  <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-dependency-plugin</artifactId>

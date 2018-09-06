@@ -263,9 +263,8 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
   /// the C++ header file and update the C++ implementation accordingly:
   ///
   /// Suppose that $Dir is your ray root directory.
-  /// 1) pushd $Dir/java/runtime-native/target/classes
-  /// 2) javah -classpath .:$Dir/java/runtime-common/target/classes/:$Dir/java/api/target/classes/
-  ///    org.ray.spi.impl.DefaultLocalSchedulerClient
+  /// 1) pushd $Dir/java/runtime/target/classes
+  /// 2) javah -classpath .:$Dir/java/api/target/classes org.ray.runtime.raylet.DefaultLocalSchedulerClient
   /// 3) clang-format -i org_ray_spi_impl_DefaultLocalSchedulerClient.h
   /// 4) cp org_ray_spi_impl_DefaultLocalSchedulerClient.h $Dir/src/local_scheduler/lib/java/
   /// 5) vim $Dir/src/local_scheduler/lib/java/org_ray_spi_impl_DefaultLocalSchedulerClient.cc
