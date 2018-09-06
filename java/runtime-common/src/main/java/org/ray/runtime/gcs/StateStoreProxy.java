@@ -1,8 +1,7 @@
-package org.ray.spi;
+package org.ray.runtime.gcs;
 
 import java.util.List;
 import java.util.Set;
-import org.ray.runtime.config.AddressInfo;
 
 /**
  * Proxy client for state store, for instance redis.

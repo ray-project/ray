@@ -1,4 +1,4 @@
-package org.ray.runtime.config;
+package org.ray.runtime.gcs;
 
 /**
  * Represents information of different process roles.

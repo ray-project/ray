@@ -12,7 +12,7 @@ import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.TimeUnit;
 import org.ray.api.id.UniqueId;
-import org.ray.runtime.config.AddressInfo;
+import org.ray.runtime.gcs.AddressInfo;
 import org.ray.runtime.config.RayParameters;
 import org.ray.runtime.runner.RunInfo.ProcessType;
 import org.ray.runtime.config.PathConfig;

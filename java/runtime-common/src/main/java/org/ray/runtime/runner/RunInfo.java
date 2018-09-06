@@ -3,7 +3,7 @@ package org.ray.runtime.runner;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import org.ray.runtime.config.AddressInfo;
+import org.ray.runtime.gcs.AddressInfo;
 
 /**
  * information of kinds of processes.

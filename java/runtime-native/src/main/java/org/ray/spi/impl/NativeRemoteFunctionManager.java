@@ -6,7 +6,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.concurrent.ConcurrentHashMap;
 import net.lingala.zip4j.core.ZipFile;
 import org.ray.api.id.UniqueId;
-import org.ray.spi.KeyValueStoreLink;
+import org.ray.runtime.gcs.KeyValueStoreLink;
 import org.ray.runtime.functionmanager.RemoteFunctionManager;
 import org.ray.util.FileUtil;
 import org.ray.util.Sha1Digestor;
