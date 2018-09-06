@@ -137,28 +137,11 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   }
 
   private static AbstractRayRuntime instantiate(RayParameters params) {
-    String className = params.run_mode.isNativeRuntime()
-        ? "org.ray.core.impl.RayNativeRuntime" : "org.ray.core.impl.RayDevRuntime";
-
     AbstractRayRuntime runtime;
-    try {
-      Class<?> cls = Class.forName(className);
-      if (cls.getConstructors().length > 0) {
-        throw new Error(
-            "The AbstractRayRuntime final class should not have any public constructor.");
-      }
-      Constructor<?> cons = cls.getDeclaredConstructor();
-      cons.setAccessible(true);
-      runtime = (AbstractRayRuntime) cons.newInstance();
-      cons.setAccessible(false);
-    } catch (InstantiationException | IllegalAccessException | IllegalArgumentException
-        | InvocationTargetException | SecurityException | ClassNotFoundException
-        | NoSuchMethodException e) {
-      RayLog.core
-          .error("Load class " + className + " failed for run-mode " + params.run_mode.toString(),
-              e);
-      throw new Error("AbstractRayRuntime not registered for run-mode "
-          + params.run_mode.toString());
+    if (params.run_mode.isNativeRuntime()) {
+      runtime = new RayNativeRuntime();
+    } else {
+      runtime = new RayDevRuntime();
     }
 
     RayLog.core

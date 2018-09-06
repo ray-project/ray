@@ -36,7 +36,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
   private KeyValueStoreLink kvStore = null;
   private RunManager manager = null;
 
-  protected RayNativeRuntime() {
+  public RayNativeRuntime() {
   }
 
   @Override
