@@ -586,7 +586,14 @@ void ObjectManager::SubscribeRemainingWaitObjects(const UniqueID &wait_id) {
 }
 
 void ObjectManager::WaitComplete(const UniqueID &wait_id) {
-  auto &wait_state = active_wait_requests_.find(wait_id)->second;
+  auto iter = active_wait_requests_.find(wait_id);
+  if (iter == active_wait_requests_.end()) {
+    // This is possible if an object's location is obtained immediately,
+    // within the current callstack. In this case, WaitComplete has been
+    // invoked already, so we're done.
+    return;
+  }
+  auto &wait_state = iter->second;
   // If we complete with outstanding requests, then timeout_ms should be non-zero or -1
   // (infinite wait time).
   if (!wait_state.requested_objects.empty()) {
