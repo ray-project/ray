@@ -1,4 +1,4 @@
-package org.ray.spi.impl;
+package org.ray.runtime.objectstore;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -8,6 +8,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.apache.arrow.plasma.ObjectStoreLink;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.WorkerContext;
+import org.ray.runtime.raylet.MockLocalScheduler;
 import org.ray.util.logger.RayLog;
 
 /**
