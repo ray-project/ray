@@ -1,12 +1,14 @@
-#!/usr/bin/env python
-# Author: Rujie Jiang rujie.jrj@antfin.com
-# Date: Tue May 15 11:46:20 2018
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
 
 import random
 import logging
 import numpy as np
 
 from ray.tune import grid_search
+
+logger = logging.getLogger(__name__)
 
 
 class ParameterSpace(object):
@@ -130,7 +132,7 @@ class SearchSpace(object):
         self.param_list = param_list
         for ps in param_list:
             # ps MUST be ParameterSpace
-            logging.info("Add %s into SearchSpace" % ps)
+            logger.info("Add %s into SearchSpace" % ps)
 
     def to_grid_search(self):
         """Returns a dict of {parameter name: grid_search}.

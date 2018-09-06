@@ -1,6 +1,6 @@
-#!/usr/bin/env python
-# Author: Rujie Jiang rujie.jrj@antfin.com
-# Date: Tue May 15 11:46:20 2018
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
 
 import time
 import copy
@@ -8,19 +8,24 @@ import logging
 
 from ray.tune.trial import Trial
 from ray.tune.suggest import SearchAlgorithm
+from ray.tune.experiment import convert_to_experiment_list
 from ray.tune.suggest.variant_generator import generate_variants
 from ray.tune.config_parser import make_parser, create_trial_from_spec
 
+logger = logging.getLogger(__name__)
 
-def merge_config(path, value, config):
-    """Merge kv pair into config by expanding path separated by dot."""
-    keys = path.split('.')
-    for name in keys[:-1]:
-        if config.get(name) is None:
-            config[name] = {}
-        config = config[name]
-    # Set value corresponding to the last path name
-    config[keys[-1]] = value
+
+def deep_insert(path_list, value, config):
+    """Inserts value into config by path, generating intermediate dictionaries.
+
+    Example:
+        >>> deep_insert(path.split("."), value, {})
+    """
+    if len(path_list) > 1:
+        inside_config = config.setdefault(path_list[0], {})
+        deep_insert(path_list[1:], value, inside_config)
+    else:
+       config[path_list[0]] = value
 
 
 class AutoMLSearcher(SearchAlgorithm):
@@ -48,8 +53,7 @@ class AutoMLSearcher(SearchAlgorithm):
         self.search_space = search_space
         self.reward_attr = reward_attr
 
-        self.experiment = None
-        self.summary = None
+        self.experiment_list = []
         self.best_trial = None
         self._is_finished = False
         self._parser = make_parser()
@@ -61,9 +65,8 @@ class AutoMLSearcher(SearchAlgorithm):
         self._total_trial_num = 0
         self._start_ts = 0
 
-    def setup(self, exp, summary):
-        self.experiment = exp
-        self.summary = summary
+    def add_configurations(self, experiments):
+        self.experiment_list = convert_to_experiment_list(experiments)
 
     def get_best_trial(self):
         """Returns the Trial object with the best reward_attr"""
@@ -79,52 +82,49 @@ class AutoMLSearcher(SearchAlgorithm):
         if not extra_arg_list:
             extra_arg_list = [None] * len(raw_param_list)
 
-        for param_config, extra_arg in zip(raw_param_list, extra_arg_list):
-            tag = ''
-            new_spec = copy.deepcopy(self.experiment.spec)
-            for path, value in param_config.items():
-                tag += '%s=%s-' % (path.split('.')[-1], value)
-                merge_config(path, value, new_spec['config'])
+        for exp in self.experiment_list:
+            for param_config, extra_arg in zip(raw_param_list, extra_arg_list):
+                tag = ''
+                new_spec = copy.deepcopy(exp.spec)
+                for path, value in param_config.items():
+                    tag += '%s=%s-' % (path.split('.')[-1], value)
+                    deep_insert(path.split('.'), value, new_spec['config'])
 
-            trial = create_trial_from_spec(
-                new_spec, self.experiment.name,
-                self._parser, experiment_tag=tag
-            )
+                trial = create_trial_from_spec(
+                    new_spec, exp.name,
+                    self._parser, experiment_tag=tag
+                )
 
-            # AutoML specific fields set in Trial
-            trial.results = []
-            trial.best_result = None
-            trial.param_config = param_config
-            trial.extra_arg = extra_arg
+                # AutoML specific fields set in Trial
+                trial.results = []
+                trial.best_result = None
+                trial.param_config = param_config
+                trial.extra_arg = extra_arg
 
-            trials.append(trial)
-            self._running_trials[trial.trial_id] = trial
-            # self.summary.on_trial_create(trial)
+                trials.append(trial)
+                self._running_trials[trial.trial_id] = trial
 
         ntrial = len(trials)
         self._iteration += 1
         self._undone_count = ntrial
         self._total_trial_num += ntrial
         self._start_ts = time.time()
-        logging.info(("=========== BEGIN Experiment-Round: %s "
-                      "[%s NEW | %s TOTAL] ===========")
-                     % (self._iteration, ntrial, self._total_trial_num))
+        logger.info("=========== BEGIN Experiment-Round: %(round)s "
+                    "[%(new)s NEW | %(total)s TOTAL] ===========",
+                    {"round": self._iteration, "new": ntrial,
+                     "total": self._total_trial_num})
         return trials
-
-    def _trial_add_result(self, trial, result):
-        trial.results.append(result)
-        if trial.best_result is None \
-                or result[self.reward_attr] > trial.best_result[self.reward_attr]:
-            trial.best_result = result
 
     def on_trial_result(self, trial_id, result):
         if not result:
             return
 
-        # Update trial's best result
         trial = self._running_trials[trial_id]
-        self._trial_add_result(trial, result)
-        self.summary.on_trial_result(trial, result)
+        # Update trial's best result
+        trial.results.append(result)
+        if trial.best_result is None \
+                or result[self.reward_attr] > trial.best_result[self.reward_attr]:
+            trial.best_result = result
 
         # Update job's best trial
         if self.best_trial is None \
@@ -141,16 +141,24 @@ class AutoMLSearcher(SearchAlgorithm):
         self._undone_count -= 1
         if self._undone_count == 0:
             total = len(self._running_trials)
-            succ = len(filter(lambda t: t.status == Trial.TERMINATED,
-                              self._running_trials.values()))
+            succ = sum(t.status == Trial.TERMINATED
+                       for t in self._running_trials.values())
+            # handle the last trial
             this_trial = self._running_trials[trial_id]
             if this_trial.status == Trial.RUNNING and not error:
                 succ += 1
 
             elapsed = time.time() - self._start_ts
-            logging.info(("=========== END Experiment-Round: %s [%s TOTAL "
-                          "| %s SUCC | %s FAIL] this round, elapsed=%.2fs ===========")
-                         % (self._iteration, total, succ, total - succ, elapsed))
+            logger.info("=========== END Experiment-Round: %(round)s "
+                        "[%(succ)s SUCC | %(fail)s FAIL] this round, "
+                        "elapsed=%(elapsed).2f, BEST %(reward_attr)s=%(reward)f ===========",
+                        {"round": self._iteration,
+                         "succ": succ,
+                         "fail": total - succ,
+                         "elapsed": elapsed,
+                         "reward_attr": self.reward_attr,
+                         "reward": self.best_trial.best_result[self.reward_attr]
+                         if self.best_trial else None})
 
             action = self._feedback(self._running_trials.values())
             if action == AutoMLSearcher.TERMINATE:

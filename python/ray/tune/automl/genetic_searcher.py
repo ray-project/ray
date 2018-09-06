@@ -1,12 +1,14 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-# author: yiguang.wyg (yiguang.wyg@antfin.com)
-# date: 2018/06/27
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
 
 import logging
 import numpy as np
 
-from .search_policy import AutoMLSearcher
+from ray.tune.automl.search_policy import AutoMLSearcher
+
+logger = logging.getLogger(__name__)
+LOGGING_PREFIX = "[GENETIC SEARCH] "
 
 
 class GeneticSearch(AutoMLSearcher):
@@ -21,9 +23,10 @@ class GeneticSearch(AutoMLSearcher):
     def __init__(self, search_space, reward_attr,
                  max_generation=2,
                  population_size=10,
+                 population_decay=0.95,
                  keep_top_ratio=0.2,
                  selection_bound=0.4,
-                 crossover_bound=0.6):
+                 crossover_bound=0.4):
         """
         Initialize GeneticSearcher.
 
@@ -32,6 +35,7 @@ class GeneticSearch(AutoMLSearcher):
             reward_attr: The attribute name of the reward in the result.
             max_generation: Max iteration number of genetic search.
             population_size: Number of trials of the initial generation.
+            population_decay: Decay ratio of population size for the next generation.
             keep_top_ratio: Ratio of the top performance population.
             selection_bound: Threshold for performing selection.
             crossover_bound: Threshold for performing crossover.
@@ -41,6 +45,7 @@ class GeneticSearch(AutoMLSearcher):
         self._cur_generation = 1
         self._max_generation = max_generation
         self._population_size = population_size
+        self._population_decay = population_decay
         self._keep_top_ratio = keep_top_ratio
         self._selection_bound = selection_bound
         self._crossover_bound = crossover_bound
@@ -55,8 +60,9 @@ class GeneticSearch(AutoMLSearcher):
 
     def _select(self):
         population_size = len(self._cur_config_list)
-        logging.info("The %sth generation, population=%s"
-                     % (self._cur_generation, population_size))
+        logger.info(LOGGING_PREFIX +
+                    "Generate the %sth generation, population=%s",
+                    self._cur_generation, population_size)
         return self._cur_config_list, self._cur_encoding_list
 
     def _feedback(self, trials):
@@ -77,7 +83,11 @@ class GeneticSearch(AutoMLSearcher):
     def _next_generation(self, sorted_trials):
         """Generate genes (encodings) for the next generation.
 
-        Args：
+        Use the top K (_keep_top_ratio) trials of the last generation as candidates
+        to generate the next generation. The action could be selection, crossover
+        and mutation according corresponding ratio (_selection_bound, _crossover_bound).
+
+        Args:
             sorted_trials: List of finished trials with top performance ones first.
 
         Returns:
@@ -95,11 +105,10 @@ class GeneticSearch(AutoMLSearcher):
 
         for i in range(top_num, num_population):
             flip_coin = np.random.uniform()
-            if flip_coin >= self._selection_bound:
+            if flip_coin < self._selection_bound:
                 next_generation.append(GeneticSearch._selection(candidate))
             else:
-                flip_coin = np.random.uniform()
-                if flip_coin >= self._crossover_bound:
+                if flip_coin < self._selection_bound + self._crossover_bound:
                     next_generation.append(GeneticSearch._crossover(candidate))
                 else:
                     next_generation.append(GeneticSearch._mutation(candidate))
@@ -118,7 +127,7 @@ class GeneticSearch(AutoMLSearcher):
             The new population size.
         """
         # TODO: implement an generic resource allocate algorithm.
-        return int(max(last_population_size * 0.9, 3))
+        return int(max(last_population_size * self._population_decay, 3))
 
     @staticmethod
     def _selection(candidate):
@@ -129,6 +138,17 @@ class GeneticSearch(AutoMLSearcher):
         Args:
             candidate: List of candidate genes (encodings).
 
+        Examples:
+            >>> # Genes that represent 3 parameters
+            >>> gene1 = np.array([[0, 0, 1], [0, 1], [1, 0]])
+            >>> gene2 = np.array([[0, 1, 0], [1, 0], [0, 1]])
+            >>> new_gene = _selection([gene1, gene2])
+            >>> # new_gene could be gene1 overwritten with the 2nd parameter of gene2
+            >>> # in which case:
+            >>> #   new_gene[0] = gene1[0]
+            >>> #   new_gene[1] = gene2[1]
+            >>> #   new_gene[2] = gene1[0]
+
         Returns:
             New gene (encoding)
         """
@@ -137,8 +157,9 @@ class GeneticSearch(AutoMLSearcher):
         sample_1 = candidate[sample_index1]
         sample_2 = candidate[sample_index2]
         select_index = np.random.choice(len(sample_1))
-        logging.info("Perform selection from %sth to %sth at index=%s"
-                     % (sample_index2, sample_index1, select_index))
+        logger.info(LOGGING_PREFIX +
+                    "Perform selection from %sth to %sth at index=%s",
+                    sample_index2, sample_index1, select_index)
 
         next_gen = []
         for i in range(len(sample_1)):
@@ -157,6 +178,17 @@ class GeneticSearch(AutoMLSearcher):
         Args:
             candidate: List of candidate genes (encodings).
 
+        Examples:
+            >>> # Genes that represent 3 parameters
+            >>> gene1 = np.array([[0, 0, 1], [0, 1], [1, 0]])
+            >>> gene2 = np.array([[0, 1, 0], [1, 0], [0, 1]])
+            >>> new_gene = _crossover([gene1, gene2])
+            >>> # new_gene could be the first [n=1] parameters of gene1 + the rest of gene2
+            >>> # in which case:
+            >>> #   new_gene[0] = gene1[0]
+            >>> #   new_gene[1] = gene2[1]
+            >>> #   new_gene[2] = gene1[1]
+
         Returns:
             New gene (encoding)
         """
@@ -165,8 +197,9 @@ class GeneticSearch(AutoMLSearcher):
         sample_1 = candidate[sample_index1]
         sample_2 = candidate[sample_index2]
         cross_index = int(len(sample_1) * np.random.uniform(low=0.3, high=0.7))
-        logging.info("Perform crossover between %sth and %sth at index=%s"
-                     % (sample_index1, sample_index2, cross_index))
+        logger.info(LOGGING_PREFIX +
+                    "Perform crossover between %sth and %sth at index=%s",
+                    sample_index1, sample_index2, cross_index)
 
         next_gen = []
         for i in range(len(sample_1)):
@@ -186,6 +219,15 @@ class GeneticSearch(AutoMLSearcher):
             candidate: List of candidate genes (encodings).
             rate: Percentage of mutation bits
 
+        Examples:
+            >>> # Genes that represent 3 parameters
+            >>> gene1 = np.array([[0, 0, 1], [0, 1], [1, 0]])
+            >>> new_gene = _mutation([gene1])
+            >>> # new_gene could be the gene1 with the 3rd parameter changed
+            >>> #   new_gene[0] = gene1[0]
+            >>> #   new_gene[1] = gene1[1]
+            >>> #   new_gene[2] = [0, 1] != gene1[2]
+
         Returns:
             New gene (encoding)
         """
@@ -201,6 +243,7 @@ class GeneticSearch(AutoMLSearcher):
             bit = np.random.choice(field.shape[0])
             field[bit] = 1
 
-        logging.info("Perform mutation on %sth at index=%s"
-                     % (sample_index, str(idx_list)))
+        logger.info(LOGGING_PREFIX +
+                    "Perform mutation on %sth at index=%s",
+                    sample_index, str(idx_list))
         return sample
