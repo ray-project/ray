@@ -12,7 +12,7 @@
     <modules>
         <module>api</module>
         <module>common</module>
-        <module>runtime-common</module>
+        <module>runtime</module>
         <module>cli</module>
         <module>test</module>
         <module>tutorial</module>
