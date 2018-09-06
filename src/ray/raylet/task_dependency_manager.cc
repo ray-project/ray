@@ -299,12 +299,18 @@ void TaskDependencyManager::TaskCanceled(const TaskID &task_id) {
 }
 
 void TaskDependencyManager::CleanupForDriver(const std::unordered_set<TaskID> &task_ids) {
+  if (task_ids.empty()) {
+    return;
+  }
+
   for (auto it = task_ids.begin(); it != task_ids.end(); it++) {
     task_dependencies_.erase(*it);
     required_tasks_.erase(*it);
     pending_tasks_.erase(*it);
   }
 
+  // TODO: the size of required_objects_ could be large, consider to add
+  // an index if this turns out to be a perf problem.
   for (auto it = required_objects_.begin(); it != required_objects_.end();) {
     auto object_id = *it;
     TaskID creating_task_id = ComputeTaskId(object_id);

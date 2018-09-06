@@ -207,46 +207,14 @@ class NodeManager {
   void HandleActorCreation(const ActorID &actor_id,
                            const std::vector<ActorTableDataT> &data);
 
-  /// TODO(rkn): This should probably be removed when we improve the
-  /// SchedulingQueue API. This is a helper function for
-  /// CleanUpTasksForDeadActor.
-  ///
-  /// This essentially loops over all of the tasks in the provided list and
-  /// finds The IDs of the tasks that belong to the given actor.
-  ///
-  /// \param actor_id The actor to get the tasks for.
-  /// \param tasks A list of tasks to extract from.
-  /// \param tasks_to_remove The task IDs of the extracted tasks are inserted in
-  /// this vector.
-  /// \return Void.
-  void GetActorTasksFromList(const ActorID &actor_id, const std::list<Task> &tasks,
-                             std::unordered_set<TaskID> &tasks_to_remove);
-
   /// When an actor dies, loop over all of the queued tasks for that actor and
   /// treat them as failed.
   ///
   /// \param actor_id The actor that died.
-  /// \param unsubscribe_dependencies Whether to unsubscribe dependencies for the tasks.
   /// \return Void.
-  void CleanUpTasksForDeadActor(const ActorID &actor_id,
-                                bool unsubscribe_dependencies = false);
+  void CleanUpTasksForDeadActor(const ActorID &actor_id);
 
-  /// TODO(rkn): This should probably be removed when we improve the
-  /// SchedulingQueue API. This is a helper function for
-  /// CleanUpTasksForDeadDriver.
-  ///
-  /// This essentially loops over all of the tasks in the provided list and
-  /// finds The IDs of the tasks that belong to the given actor.
-  ///
-  /// \param driver_id The driver to get the tasks for.
-  /// \param tasks A list of tasks to extract from.
-  /// \param tasks_to_remove The task IDs of the extracted tasks are inserted in
-  /// this vector.
-  /// \return Void.
-  void GetDriverTasksFromList(const DriverID &driver_id, const std::list<Task> &tasks,
-                              std::unordered_set<TaskID> &tasks_to_remove);
-
-  /// When an driver dies, loop over all of the queued tasks for that driver and
+  /// When a driver dies, loop over all of the queued tasks for that driver and
   /// treat them as failed.
   ///
   /// \param driver_id The driver that died.

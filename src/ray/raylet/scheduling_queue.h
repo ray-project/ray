@@ -174,6 +174,18 @@ class SchedulingQueue {
   /// \param filter_state The task state to filter out.
   void FilterState(std::unordered_set<TaskID> &task_ids, TaskState filter_state) const;
 
+  /// \brief Get all the task IDs for a driver.
+  ///
+  /// \param driver_id All the tasks that have the given driver_id are returned.
+  /// \return All the tasks that have the given driver ID.
+  std::unordered_set<TaskID> GetTaskIdsForDriver(const DriverID &driver_id) const;
+
+  /// \brief Get all the task IDs for an actor.
+  ///
+  /// \param actor_id All the tasks that have the given actor_id are returned.
+  /// \return All the tasks that have the given actor ID.
+  std::unordered_set<TaskID> GetTaskIdsForActor(const ActorID &actor_id) const;
+
   /// \brief Return all resource demand associated with the ready queue.
   ///
   /// \return Aggregate resource demand from ready tasks.

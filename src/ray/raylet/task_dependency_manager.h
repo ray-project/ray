@@ -107,7 +107,7 @@ class TaskDependencyManager {
 
   /// Cleanup everything for a collection of tasks.
   ///
-  /// \param driver_task_ids The collection of task IDs for a driver.
+  /// \param task_ids The collection of task IDs for a driver.
   void CleanupForDriver(const std::unordered_set<TaskID> &task_ids);
 
  private:

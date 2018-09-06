@@ -39,6 +39,32 @@ inline void FilterStateFromQueue(const ray::raylet::SchedulingQueue::TaskQueue &
   }
 }
 
+// Helper function to get tasks for a driver from a given state.
+inline void GetDriverTasksFromQueue(const ray::raylet::SchedulingQueue::TaskQueue &queue,
+                                    const ray::DriverID &driver_id,
+                                    std::unordered_set<ray::TaskID> &task_ids) {
+  const auto &tasks = queue.GetTasks();
+  for (const auto &task : tasks) {
+    auto const &spec = task.GetTaskSpecification();
+    if (driver_id == spec.DriverId()) {
+      task_ids.insert(spec.TaskId());
+    }
+  }
+}
+
+// Helper function to get tasks for an actor from a given state.
+inline void GetActorTasksFromQueue(const ray::raylet::SchedulingQueue::TaskQueue &queue,
+                                    const ray::ActorID &actor_id,
+                                    std::unordered_set<ray::TaskID> &task_ids) {
+  const auto &tasks = queue.GetTasks();
+  for (const auto &task : tasks) {
+    auto const &spec = task.GetTaskSpecification();
+    if (actor_id == spec.ActorId()) {
+      task_ids.insert(spec.TaskId());
+    }
+  }
+}
+
 }  // namespace
 
 namespace ray {
@@ -283,6 +309,36 @@ void SchedulingQueue::QueueRunningTasks(const std::vector<Task> &tasks) {
 
 void SchedulingQueue::QueueBlockedTasks(const std::vector<Task> &tasks) {
   QueueTasks(blocked_tasks_, tasks);
+}
+
+std::unordered_set<TaskID> SchedulingQueue::GetTaskIdsForDriver(
+    const DriverID &driver_id) const {
+  std::unordered_set<TaskID> task_ids;
+
+  GetDriverTasksFromQueue(methods_waiting_for_actor_creation_, driver_id, task_ids);
+  GetDriverTasksFromQueue(waiting_tasks_, driver_id, task_ids);
+  GetDriverTasksFromQueue(placeable_tasks_, driver_id, task_ids);
+  GetDriverTasksFromQueue(ready_tasks_, driver_id, task_ids);
+  GetDriverTasksFromQueue(running_tasks_, driver_id, task_ids);
+  GetDriverTasksFromQueue(blocked_tasks_, driver_id, task_ids);
+  GetDriverTasksFromQueue(infeasible_tasks_, driver_id, task_ids);
+
+  return task_ids;
+}
+
+std::unordered_set<TaskID> SchedulingQueue::GetTaskIdsForActor(
+    const ActorID &actor_id) const {
+  std::unordered_set<TaskID> task_ids;
+
+  GetActorTasksFromQueue(methods_waiting_for_actor_creation_, actor_id, task_ids);
+  GetActorTasksFromQueue(waiting_tasks_, actor_id, task_ids);
+  GetActorTasksFromQueue(placeable_tasks_, actor_id, task_ids);
+  GetActorTasksFromQueue(ready_tasks_, actor_id, task_ids);
+  GetActorTasksFromQueue(running_tasks_, actor_id, task_ids);
+  GetActorTasksFromQueue(blocked_tasks_, actor_id, task_ids);
+  GetActorTasksFromQueue(infeasible_tasks_, actor_id, task_ids);
+
+  return task_ids;
 }
 
 void SchedulingQueue::AddDriverTaskId(const TaskID &driver_id) {
