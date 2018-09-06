@@ -913,13 +913,13 @@ void handle_driver_removed_callback(WorkerID driver_id, void *user_context) {
       RAY_CHECK(state->actor_mapping.count(actor_id) == 1);
       if (state->actor_mapping[actor_id].driver_id == driver_id) {
         /* This actor was created by the removed driver, so kill the actor. */
-        RAY_LOG(DEBUG) << "Killing an actor for a removed driver.";
+        RAY_LOG(WARNING) << "Killing an actor for a removed driver.";
         kill_worker(state, *it, false, true);
       }
     } else if (task != NULL) {
       TaskSpec *spec = Task_task_execution_spec(task)->Spec();
       if (TaskSpec_driver_id(spec) == driver_id) {
-        RAY_LOG(DEBUG) << "Killing a worker executing a task for a removed "
+        RAY_LOG(WARNING) << "Killing a worker executing a task for a removed "
                        << "driver.";
         kill_worker(state, *it, false, true);
       }
@@ -944,6 +944,7 @@ void handle_client_disconnect(LocalSchedulerState *state,
     driver_table_send_driver_death(state->db, worker->client_id, NULL);
   }
   /* Suppress the warning message if the worker already disconnected. */
+  RAY_LOG(WARNING) << "Calling kill_worker in handle_client_disconnect";
   kill_worker(state, worker, false, worker->disconnected);
 }
 
@@ -1121,7 +1122,7 @@ void process_message(event_loop *loop,
     reconstruct_object(state, object_id);
   } break;
   case static_cast<int64_t>(CommonMessageType::DISCONNECT_CLIENT): {
-    RAY_LOG(DEBUG) << "Disconnecting client on fd " << client_sock;
+    RAY_LOG(WARNING) << "Disconnecting client on fd " << client_sock;
     handle_client_disconnect(state, worker);
   } break;
   case static_cast<int64_t>(MessageType::NotifyUnblocked): {

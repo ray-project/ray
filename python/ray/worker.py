@@ -1880,6 +1880,7 @@ def shutdown(worker=global_worker):
     if hasattr(worker, "local_scheduler_client"):
         del worker.local_scheduler_client
     if hasattr(worker, "plasma_client"):
+        print("INFO: calling worker.plasma_client.disconnect()")
         worker.plasma_client.disconnect()
 
     if worker.mode == SCRIPT_MODE:
