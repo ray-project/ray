@@ -1,4 +1,4 @@
-package org.ray.spi;
+package org.ray.runtime.objectstore;
 
 import java.util.ArrayList;
 import java.util.List;

@@ -9,7 +9,7 @@ import org.ray.api.WaitResult;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.functionmanager.LocalFunctionManager;
 import org.ray.core.impl.RayDevRuntime;
-import org.ray.spi.LocalSchedulerLink;
+import org.ray.runtime.raylet.LocalSchedulerLink;
 import org.ray.spi.model.FunctionArg;
 import org.ray.spi.model.TaskSpec;
 

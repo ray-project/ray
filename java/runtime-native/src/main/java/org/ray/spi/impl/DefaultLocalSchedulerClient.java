@@ -12,7 +12,7 @@ import org.ray.api.WaitResult;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.AbstractRayRuntime;
 import org.ray.runtime.util.UniqueIdHelper;
-import org.ray.spi.LocalSchedulerLink;
+import org.ray.runtime.raylet.LocalSchedulerLink;
 import org.ray.spi.model.FunctionArg;
 import org.ray.spi.model.TaskSpec;
 import org.ray.util.logger.RayLog;
