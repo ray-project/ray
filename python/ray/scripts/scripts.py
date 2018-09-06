@@ -15,7 +15,6 @@ from ray.autoscaler.commands import (attach_cluster, exec_cluster,
 import ray.ray_constants as ray_constants
 import ray.utils
 
-
 logger = logging.getLogger(__name__)
 
 
