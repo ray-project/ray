@@ -1,35 +1,23 @@
 package org.ray.api;
 
-import java.io.Serializable;
-import org.ray.util.exception.TaskExecutionException;
+import org.ray.api.id.UniqueId;
 
 /**
- * RayObject&lt;T&gt; is a handle for T object, which may or may not be available now.
- * That said, RayObject can be viewed as a Future object with metadata.
+ * Represents an object in the object store.
+ * @param <T> The object type.
  */
-public class RayObject<T> implements Serializable {
+public interface RayObject<T> {
 
-  private static final long serialVersionUID = 3250003902037418062L;
+  /**
+   * Fetch the object from the object store, this method will block
+   * until the object is locally available.
+   */
+  T get();
 
-  UniqueID id;
-
-  public RayObject() {
-  }
-
-  public RayObject(UniqueID id) {
-    this.id = id;
-  }
-
-  public T get() throws TaskExecutionException {
-    return Ray.get(id);
-  }
-
-  public <TMT> TMT getMeta() throws TaskExecutionException {
-    return Ray.getMeta(id);
-  }
-
-  public UniqueID getId() {
-    return id;
-  }
+  /**
+   * Get the object id.
+   */
+  UniqueId getId();
 
 }
+

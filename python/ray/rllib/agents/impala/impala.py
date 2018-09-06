@@ -11,7 +11,6 @@ from ray.rllib.agents.a3c.a3c_tf_policy_graph import A3CPolicyGraph
 from ray.rllib.agents.impala.vtrace_policy_graph import VTracePolicyGraph
 from ray.rllib.agents.agent import Agent, with_common_config
 from ray.rllib.optimizers import AsyncSamplesOptimizer
-from ray.rllib.utils import FilterManager
 from ray.tune.trial import Resources
 
 OPTIMIZER_SHARED_CONFIGS = [
@@ -69,7 +68,7 @@ class ImpalaAgent(Agent):
         cf = dict(cls._default_config, **config)
         return Resources(
             cpu=1,
-            gpu=cf["gpu"] and 1 or 0,
+            gpu=cf["gpu"] and cf["gpu_fraction"] or 0,
             extra_cpu=cf["num_cpus_per_worker"] * cf["num_workers"],
             extra_gpu=cf["num_gpus_per_worker"] * cf["num_workers"])
 
@@ -96,8 +95,6 @@ class ImpalaAgent(Agent):
         self.optimizer.step()
         while time.time() - start < self.config["min_iter_time_s"]:
             self.optimizer.step()
-        FilterManager.synchronize(self.local_evaluator.filters,
-                                  self.remote_evaluators)
         result = self.optimizer.collect_metrics()
         result.update(timesteps_this_iter=self.optimizer.num_steps_sampled -
                       prev_steps)

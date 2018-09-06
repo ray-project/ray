@@ -800,6 +800,29 @@ class TrialRunnerTest(unittest.TestCase):
         self.assertEqual(trials[0].status, Trial.TERMINATED)
         self.assertEqual(trials[1].status, Trial.PENDING)
 
+    def testFractionalGpus(self):
+        ray.init(num_cpus=4, num_gpus=1, use_raylet=True)
+        runner = TrialRunner(BasicVariantGenerator())
+        kwargs = {
+            "resources": Resources(cpu=1, gpu=0.5),
+        }
+        trials = [
+            Trial("__fake", **kwargs),
+            Trial("__fake", **kwargs),
+            Trial("__fake", **kwargs),
+            Trial("__fake", **kwargs)
+        ]
+        for t in trials:
+            runner.add_trial(t)
+
+        for _ in range(10):
+            runner.step()
+
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+        self.assertEqual(trials[1].status, Trial.RUNNING)
+        self.assertEqual(trials[2].status, Trial.PENDING)
+        self.assertEqual(trials[3].status, Trial.PENDING)
+
     def testResourceScheduler(self):
         ray.init(num_cpus=4, num_gpus=1)
         runner = TrialRunner(BasicVariantGenerator())
@@ -984,6 +1007,38 @@ class TrialRunnerTest(unittest.TestCase):
         self.assertEqual(trials[0].status, Trial.TERMINATED)
         self.assertEqual(trials[1].status, Trial.RUNNING)
         self.assertEqual(ray.get(trials[1].runner.get_info.remote()), 1)
+        self.addCleanup(os.remove, path)
+
+    def testRestoreMetricsAfterCheckpointing(self):
+        ray.init(num_cpus=1, num_gpus=1)
+        runner = TrialRunner(BasicVariantGenerator())
+        kwargs = {
+            "resources": Resources(cpu=1, gpu=1),
+        }
+        runner.add_trial(Trial("__fake", **kwargs))
+        trials = runner.get_trials()
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+        self.assertEqual(ray.get(trials[0].runner.set_info.remote(1)), 1)
+        path = runner.trial_executor.save(trials[0])
+        runner.trial_executor.stop_trial(trials[0])
+        kwargs["restore_path"] = path
+
+        runner.add_trial(Trial("__fake", **kwargs))
+        trials = runner.get_trials()
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.TERMINATED)
+        self.assertEqual(trials[1].status, Trial.RUNNING)
+        runner.step()
+        self.assertEqual(trials[1].last_result["timesteps_since_restore"], 10)
+        self.assertEqual(trials[1].last_result["iterations_since_restore"], 1)
+        self.assertGreater(trials[1].last_result["time_since_restore"], 0)
+        runner.step()
+        self.assertEqual(trials[1].last_result["timesteps_since_restore"], 20)
+        self.assertEqual(trials[1].last_result["iterations_since_restore"], 2)
+        self.assertGreater(trials[1].last_result["time_since_restore"], 0)
         self.addCleanup(os.remove, path)
 
     def testCheckpointingAtEnd(self):

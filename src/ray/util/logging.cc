@@ -53,6 +53,7 @@ class CerrLog {
 };
 
 int RayLog::severity_threshold_ = RAY_INFO;
+std::string RayLog::app_name_ = "";
 
 #ifdef RAY_USE_GLOG
 using namespace google;
@@ -83,8 +84,9 @@ void RayLog::StartRayLog(const std::string &app_name, int severity_threshold,
                          const std::string &log_dir) {
 #ifdef RAY_USE_GLOG
   severity_threshold_ = severity_threshold;
+  app_name_ = app_name;
   int mapped_severity_threshold = GetMappedSeverity(severity_threshold_);
-  google::InitGoogleLogging(app_name.c_str());
+  google::InitGoogleLogging(app_name_.c_str());
   google::SetStderrLogging(mapped_severity_threshold);
   // Enble log file if log_dir is not empty.
   if (!log_dir.empty()) {
@@ -113,6 +115,14 @@ void RayLog::ShutDownRayLog() {
   google::ShutdownGoogleLogging();
 #endif
 }
+
+void RayLog::InstallFailureSignalHandler() {
+#ifdef RAY_USE_GLOG
+  google::InstallFailureSignalHandler();
+#endif
+}
+
+bool RayLog::IsLevelEnabled(int log_level) { return log_level >= severity_threshold_; }
 
 RayLog::RayLog(const char *file_name, int line_number, int severity)
     // glog does not have DEBUG level, we can handle it here.

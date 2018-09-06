@@ -12,7 +12,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.TimeUnit;
-import org.ray.api.UniqueID;
+import org.ray.api.id.UniqueId;
 import org.ray.core.model.RayParameters;
 import org.ray.core.model.RunMode;
 import org.ray.runner.RunInfo.ProcessType;
@@ -101,7 +101,7 @@ public class RunManager {
     startRayProcesses();
   }
 
-  public Process startDriver(String mainClass, String redisAddress, UniqueID driverId,
+  public Process startDriver(String mainClass, String redisAddress, UniqueId driverId,
       String logDir, String ip,
       String driverClass, String driverArgs, String additonalClassPaths,
       String additionalConfigs) {
@@ -369,7 +369,7 @@ public class RunManager {
         for (int j = 0; j < localNumWorkers[i]; j++) {
           startWorker(localStores.storeName, localStores.managerName, localStores.schedulerName,
               "/worker" + i + "." + j, params.redis_address,
-              params.node_ip_address, UniqueID.NIL, "", params.redirect, params.cleanup);
+              params.node_ip_address, UniqueId.NIL, "", params.redirect, params.cleanup);
         }
       }
     }
@@ -570,7 +570,7 @@ public class RunManager {
 
     String workerCmd = null;
     workerCmd = buildWorkerCommand(true, info.storeName, info.managerName, name,
-        UniqueID.NIL, "", ip, redisAddress);
+        UniqueId.NIL, "", ip, redisAddress);
     cmd += " -w \"" + workerCmd + "\"";
 
     if (redisAddress.length() > 0) {
@@ -614,7 +614,7 @@ public class RunManager {
 
     //Create the worker command that the raylet will use to start workers.
     String workerCommand = buildWorkerCommandRaylet(info.storeName, rayletSocketName,
-        UniqueID.NIL, "", ip, redisAddress);
+        UniqueId.NIL, "", ip, redisAddress);
 
     int sep = redisAddress.indexOf(':');
     assert (sep != -1);
@@ -654,13 +654,13 @@ public class RunManager {
   }
 
   private String buildWorkerCommandRaylet(String storeName, String rayletSocketName,
-      UniqueID actorId, String actorClass,
+      UniqueId actorId, String actorClass,
       String ip, String redisAddress) {
     String workerConfigs = "ray.java.start.object_store_name=" + storeName
         + ";ray.java.start.raylet_socket_name=" + rayletSocketName
         + ";ray.java.start.worker_mode=WORKER;ray.java.start.use_raylet=true";
     workerConfigs += ";ray.java.start.deploy=" + params.deploy;
-    if (!actorId.equals(UniqueID.NIL)) {
+    if (!actorId.equals(UniqueId.NIL)) {
       workerConfigs += ";ray.java.start.actor_id=" + actorId;
     }
     if (!actorClass.equals("")) {
@@ -685,14 +685,14 @@ public class RunManager {
 
   private String buildWorkerCommand(boolean isFromLocalScheduler, String storeName,
       String storeManagerName, String localSchedulerName,
-      UniqueID actorId, String actorClass, String
+      UniqueId actorId, String actorClass, String
       ip, String redisAddress) {
     String workerConfigs = "ray.java.start.object_store_name=" + storeName
         + ";ray.java.start.object_store_manager_name=" + storeManagerName
         + ";ray.java.start.worker_mode=WORKER"
         + ";ray.java.start.local_scheduler_name=" + localSchedulerName;
     workerConfigs += ";ray.java.start.deploy=" + params.deploy;
-    if (!actorId.equals(UniqueID.NIL)) {
+    if (!actorId.equals(UniqueId.NIL)) {
       workerConfigs += ";ray.java.start.actor_id=" + actorId;
     }
     if (!actorClass.equals("")) {
@@ -783,7 +783,7 @@ public class RunManager {
 
   public void startWorker(String storeName, String storeManagerName,
       String localSchedulerName, String workerName, String redisAddress,
-      String ip, UniqueID actorId, String actorClass,
+      String ip, UniqueId actorId, String actorClass,
       boolean redirect, boolean cleanup) {
     String cmd = buildWorkerCommand(false, storeName, storeManagerName, localSchedulerName, actorId,
         actorClass, ip, redisAddress);

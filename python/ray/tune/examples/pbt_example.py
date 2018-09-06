@@ -59,7 +59,10 @@ if __name__ == "__main__":
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
     args, _ = parser.parse_known_args()
-    ray.init()
+    if args.smoke_test:
+        ray.init(num_cpus=4)  # force pausing to happen for test
+    else:
+        ray.init()
 
     pbt = PopulationBasedTraining(
         time_attr="training_iteration",
@@ -79,7 +82,7 @@ if __name__ == "__main__":
             "pbt_test": {
                 "run": MyTrainableClass,
                 "stop": {
-                    "training_iteration": 2 if args.smoke_test else 99999
+                    "training_iteration": 20 if args.smoke_test else 99999
                 },
                 "num_samples": 10,
                 "config": {

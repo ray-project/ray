@@ -1,4 +1,4 @@
-package org.ray.api.funcs;
+package org.ray.api.function;
 
 import java.io.Serializable;
 

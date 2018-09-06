@@ -65,6 +65,9 @@ table TaskInfo {
 }
 
 // Object information data structure.
+// NOTE(pcm): This structure is replicated in
+// https://github.com/apache/arrow/blob/master/cpp/src/plasma/format/common.fbs,
+// so if you modify it, you should also modify that one.
 table ObjectInfo {
   // Object ID of this object.
   object_id: string;
@@ -72,11 +75,14 @@ table ObjectInfo {
   data_size: long;
   // Number of bytes the metadata of this object occupies in memory.
   metadata_size: long;
+  // Number of clients using the objects.
+  ref_count: int;
   // Unix epoch of when this object was created.
   create_time: long;
   // How long creation of this object took.
   construct_duration: long;
-  // Hash of the object content.
+  // Hash of the object content. If the object is not sealed yet this is
+  // an empty string.
   digest: string;
   // Specifies if this object was deleted or added.
   is_deletion: bool;
