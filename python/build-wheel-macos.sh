@@ -37,7 +37,13 @@ for ((i=0; i<${#PY_VERSIONS[@]}; ++i)); do
   # The -f flag is passed twice to also run git clean in the arrow subdirectory.
   # The -d flag removes directories. The -x flag ignores the .gitignore file,
   # and the -e flag ensures that we don't remove the .whl directory.
-  git clean -f -f -x -d -e .whl -e $DOWNLOAD_DIR
+  git clean -f -f -x -d \
+      -e .whl \
+      -e $DOWNLOAD_DIR \
+      -e thirdparty/pkg/boost \
+      -e thirdparty/build/boost_1_65_1 \
+      -e thirdparty/pkg/catapult \
+      -e thirdparty/pkg/redis
 
   # Install Python.
   INST_PATH=python_downloads/$PY_INST
