@@ -58,10 +58,12 @@ TablePrefix_ERROR_INFO_string = "ERROR_INFO"
 TablePrefix_PROFILE_string = "PROFILE"
 
 
-def construct_error_message(error_type, message, timestamp):
+def construct_error_message(driver_id, error_type, message, timestamp):
     """Construct a serialized ErrorTableData object.
 
     Args:
+        driver_id: The ID of the driver that the error should go to. If this is
+            nil, then the error will go to all drivers.
         error_type: The type of the error.
         message: The error message.
         timestamp: The time of the error.
@@ -70,10 +72,13 @@ def construct_error_message(error_type, message, timestamp):
         The serialized object.
     """
     builder = flatbuffers.Builder(0)
+    driver_offset = builder.CreateString(driver_id)
     error_type_offset = builder.CreateString(error_type)
     message_offset = builder.CreateString(message)
 
     ray.core.generated.ErrorTableData.ErrorTableDataStart(builder)
+    ray.core.generated.ErrorTableData.ErrorTableDataAddJobId(
+        builder, driver_offset)
     ray.core.generated.ErrorTableData.ErrorTableDataAddType(
         builder, error_type_offset)
     ray.core.generated.ErrorTableData.ErrorTableDataAddErrorMessage(

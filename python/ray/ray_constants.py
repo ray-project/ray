@@ -44,6 +44,7 @@ PUT_RECONSTRUCTION_PUSH_ERROR = "put_reconstruction"
 HASH_MISMATCH_PUSH_ERROR = "object_hash_mismatch"
 INFEASIBLE_TASK_ERROR = "infeasible_task"
 REMOVED_NODE_ERROR = "node_removed"
+MONITOR_DIED_ERROR = "monitor_died"
 
 # Abort autoscaling if more than this number of errors are encountered. This
 # is a safety feature to prevent e.g. runaway node launches.

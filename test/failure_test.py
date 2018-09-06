@@ -35,6 +35,13 @@ def ray_start_regular():
     ray.shutdown()
 
 
+@pytest.fixture
+def shutdown_only():
+    yield None
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
+
+
 def test_failed_task(ray_start_regular):
     @ray.remote
     def throw_exception_fct1():
@@ -445,7 +452,7 @@ def test_put_error2(ray_start_object_store_memory):
     wait_for_errors(ray_constants.PUT_RECONSTRUCTION_PUSH_ERROR, 1)
 
 
-def test_version_mismatch():
+def test_version_mismatch(shutdown_only):
     ray_version = ray.__version__
     ray.__version__ = "fake ray version"
 
@@ -456,7 +463,26 @@ def test_version_mismatch():
     # Reset the version.
     ray.__version__ = ray_version
 
-    ray.shutdown()
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_USE_XRAY") != "1",
+    reason="This test only works with xray.")
+def test_warning_monitor_died(shutdown_only):
+    ray.init(num_cpus=0)
+
+    time.sleep(1)  # Make sure the monitor has started.
+
+    # Cause the monitor to raise an exception by pushing a malformed message to
+    # Redis. This will probably kill the raylets and the raylet_monitor in
+    # addition to the monitor.
+    fake_id = 20 * b"\x00"
+    malformed_message = "asdf"
+    redis_client = ray.worker.global_state.redis_clients[0]
+    redis_client.execute_command(
+        "RAY.TABLE_ADD", ray.gcs_utils.TablePrefix.HEARTBEAT,
+        ray.gcs_utils.TablePubsub.HEARTBEAT, fake_id, malformed_message)
+
+    wait_for_errors(ray_constants.MONITOR_DIED_ERROR, 1)
 
 
 def test_export_large_objects(ray_start_regular):
