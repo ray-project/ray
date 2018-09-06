@@ -10,8 +10,8 @@ import org.ray.api.id.UniqueId;
 import org.ray.runtime.functionmanager.LocalFunctionManager;
 import org.ray.core.impl.RayDevRuntime;
 import org.ray.runtime.raylet.LocalSchedulerLink;
-import org.ray.spi.model.FunctionArg;
-import org.ray.spi.model.TaskSpec;
+import org.ray.runtime.task.FunctionArg;
+import org.ray.runtime.task.TaskSpec;
 
 /**
  * A mock implementation of {@code org.ray.spi.LocalSchedulerLink}, which stores waiting tasks in a

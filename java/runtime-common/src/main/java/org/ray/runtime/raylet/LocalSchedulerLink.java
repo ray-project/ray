@@ -5,7 +5,7 @@ import java.util.List;
 import org.ray.api.RayObject;
 import org.ray.api.WaitResult;
 import org.ray.api.id.UniqueId;
-import org.ray.spi.model.TaskSpec;
+import org.ray.runtime.task.TaskSpec;
 
 /**
  * Provides core functionalities of local scheduler.

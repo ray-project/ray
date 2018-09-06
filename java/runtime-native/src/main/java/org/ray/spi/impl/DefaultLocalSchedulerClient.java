@@ -17,8 +17,8 @@ import org.ray.runtime.generated.TaskInfo;
 import org.ray.runtime.generated.TaskLanguage;
 import org.ray.runtime.util.UniqueIdHelper;
 import org.ray.runtime.raylet.LocalSchedulerLink;
-import org.ray.spi.model.FunctionArg;
-import org.ray.spi.model.TaskSpec;
+import org.ray.runtime.task.FunctionArg;
+import org.ray.runtime.task.TaskSpec;
 import org.ray.util.logger.RayLog;
 
 /**

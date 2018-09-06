@@ -4,9 +4,8 @@ import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.id.UniqueId;
-import org.ray.runtime.util.Serializer;
-import org.ray.spi.model.FunctionArg;
-import org.ray.spi.model.TaskSpec;
+import org.ray.runtime.task.FunctionArg;
+import org.ray.runtime.task.TaskSpec;
 
 public class ArgumentsBuilder {
 

@@ -27,7 +27,7 @@ import org.ray.runtime.objectstore.ObjectStoreProxy.GetStatus;
 import org.ray.runtime.config.PathConfig;
 import org.ray.runtime.functionmanager.RemoteFunctionManager;
 import org.ray.runtime.functionmanager.RayMethod;
-import org.ray.spi.model.TaskSpec;
+import org.ray.runtime.task.TaskSpec;
 import org.ray.util.MethodId;
 import org.ray.util.ResourceUtil;
 import org.ray.util.config.ConfigReader;

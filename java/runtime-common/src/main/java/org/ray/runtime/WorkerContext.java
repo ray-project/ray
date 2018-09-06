@@ -3,7 +3,7 @@ package org.ray.runtime;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.config.RayParameters;
 import org.ray.runtime.config.WorkerMode;
-import org.ray.spi.model.TaskSpec;
+import org.ray.runtime.task.TaskSpec;
 
 public class WorkerContext {
 

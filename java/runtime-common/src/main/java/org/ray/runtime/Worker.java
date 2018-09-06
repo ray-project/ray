@@ -5,7 +5,7 @@ import org.ray.api.exception.RayException;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.util.ArgumentsBuilder;
 import org.ray.runtime.functionmanager.RayMethod;
-import org.ray.spi.model.TaskSpec;
+import org.ray.runtime.task.TaskSpec;
 import org.ray.util.logger.RayLog;
 
 /**
