@@ -2539,6 +2539,7 @@ class GlobalStateAPI(unittest.TestCase):
 class InitializationTest(unittest.TestCase):
     def tearDown(self):
         ray.shutdown()
+        assert not ray.is_initialized()
 
     def testInitialized(self):
         assert not ray.is_initialized()
