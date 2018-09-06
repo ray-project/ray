@@ -1,6 +1,6 @@
 package org.ray.core.impl;
 
-import org.ray.core.AbstractRayRuntime;
+import org.ray.runtime.AbstractRayRuntime;
 import org.ray.runtime.config.RayParameters;
 import org.ray.runtime.functionmanager.NopRemoteFunctionManager;
 import org.ray.runtime.config.PathConfig;

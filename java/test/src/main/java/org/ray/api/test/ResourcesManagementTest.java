@@ -2,7 +2,6 @@ package org.ray.api.test;
 
 import com.google.common.collect.ImmutableList;
 import org.junit.Assert;
-import org.junit.Assume;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.ray.api.Ray;
@@ -11,7 +10,6 @@ import org.ray.api.RayObject;
 import org.ray.api.WaitResult;
 import org.ray.api.annotation.RayRemote;
 import org.ray.api.annotation.ResourceItem;
-import org.ray.core.AbstractRayRuntime;
 
 /**
  * Resources Management Test.

@@ -1,4 +1,4 @@
-package org.ray.core;
+package org.ray.runtime;
 
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.config.RayParameters;

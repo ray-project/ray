@@ -7,7 +7,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import org.apache.arrow.plasma.ObjectStoreLink;
 import org.ray.api.id.UniqueId;
-import org.ray.core.WorkerContext;
+import org.ray.runtime.WorkerContext;
 import org.ray.util.logger.RayLog;
 
 /**

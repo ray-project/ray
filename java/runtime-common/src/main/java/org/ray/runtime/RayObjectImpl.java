@@ -1,4 +1,4 @@
-package org.ray.core;
+package org.ray.runtime;
 
 import java.io.Serializable;
 import org.ray.api.Ray;

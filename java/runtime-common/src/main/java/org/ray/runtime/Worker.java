@@ -1,4 +1,4 @@
-package org.ray.core;
+package org.ray.runtime;
 
 import org.apache.commons.lang3.tuple.Pair;
 import org.ray.api.exception.RayException;

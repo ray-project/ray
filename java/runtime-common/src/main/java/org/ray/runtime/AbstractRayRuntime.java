@@ -1,4 +1,4 @@
-package org.ray.core;
+package org.ray.runtime;
 
 import com.google.common.collect.ImmutableList;
 import java.lang.reflect.Constructor;

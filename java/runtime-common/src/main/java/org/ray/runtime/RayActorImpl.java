@@ -1,4 +1,4 @@
-package org.ray.core;
+package org.ray.runtime;
 
 import java.io.Externalizable;
 import java.io.IOException;
