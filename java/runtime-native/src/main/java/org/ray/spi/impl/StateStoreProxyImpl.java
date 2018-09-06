@@ -9,7 +9,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import org.ray.api.id.UniqueId;
-import org.ray.format.gcs.ClientTableData;
+import org.ray.runtime.generated.ClientTableData;
 import org.ray.spi.KeyValueStoreLink;
 import org.ray.spi.StateStoreProxy;
 import org.ray.spi.model.AddressInfo;
