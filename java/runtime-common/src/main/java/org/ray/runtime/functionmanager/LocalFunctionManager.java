@@ -1,15 +1,11 @@
-package org.ray.core;
+package org.ray.runtime.functionmanager;
 
 import com.google.common.base.Preconditions;
 import java.util.concurrent.ConcurrentHashMap;
 import org.apache.commons.lang3.tuple.Pair;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.util.Serializer;
-import org.ray.spi.RemoteFunctionManager;
 import org.ray.spi.model.FunctionArg;
-import org.ray.spi.model.RayActorMethods;
-import org.ray.spi.model.RayMethod;
-import org.ray.spi.model.RayTaskMethods;
 import org.ray.util.logger.RayLog;
 
 /**
@@ -45,7 +41,7 @@ public class LocalFunctionManager {
     return functionTable;
   }
 
-  Pair<ClassLoader, RayMethod> getMethod(UniqueId driverId, UniqueId actorId,
+  public Pair<ClassLoader, RayMethod> getMethod(UniqueId driverId, UniqueId actorId,
       UniqueId methodId, String className) {
     // assert the driver's resource is load.
     FunctionTable functionTable = loadDriverFunctions(driverId);

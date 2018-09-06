@@ -7,7 +7,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import net.lingala.zip4j.core.ZipFile;
 import org.ray.api.id.UniqueId;
 import org.ray.spi.KeyValueStoreLink;
-import org.ray.spi.RemoteFunctionManager;
+import org.ray.runtime.functionmanager.RemoteFunctionManager;
 import org.ray.util.FileUtil;
 import org.ray.util.Sha1Digestor;
 import org.ray.util.SystemUtil;

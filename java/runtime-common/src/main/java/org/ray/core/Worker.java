@@ -4,7 +4,7 @@ import org.apache.commons.lang3.tuple.Pair;
 import org.ray.api.exception.RayException;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.util.ArgumentsBuilder;
-import org.ray.spi.model.RayMethod;
+import org.ray.runtime.functionmanager.RayMethod;
 import org.ray.spi.model.TaskSpec;
 import org.ray.util.logger.RayLog;
 

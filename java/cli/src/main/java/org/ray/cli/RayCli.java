@@ -13,7 +13,7 @@ import org.ray.runner.RunManager;
 import org.ray.runner.worker.DefaultDriver;
 import org.ray.spi.KeyValueStoreLink;
 import org.ray.runtime.config.PathConfig;
-import org.ray.spi.RemoteFunctionManager;
+import org.ray.runtime.functionmanager.RemoteFunctionManager;
 import org.ray.spi.StateStoreProxy;
 import org.ray.spi.impl.NativeRemoteFunctionManager;
 import org.ray.spi.impl.RedisClient;
