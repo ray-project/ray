@@ -4,6 +4,7 @@ import com.google.common.base.Preconditions;
 import java.util.concurrent.ConcurrentHashMap;
 import org.apache.commons.lang3.tuple.Pair;
 import org.ray.api.id.UniqueId;
+import org.ray.runtime.util.Serializer;
 import org.ray.spi.RemoteFunctionManager;
 import org.ray.spi.model.FunctionArg;
 import org.ray.spi.model.RayActorMethods;

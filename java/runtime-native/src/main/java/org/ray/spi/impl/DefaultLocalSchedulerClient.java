@@ -11,11 +11,10 @@ import org.ray.api.RayObject;
 import org.ray.api.WaitResult;
 import org.ray.api.id.UniqueId;
 import org.ray.core.AbstractRayRuntime;
-import org.ray.core.UniqueIdHelper;
+import org.ray.runtime.util.UniqueIdHelper;
 import org.ray.spi.LocalSchedulerLink;
 import org.ray.spi.model.FunctionArg;
 import org.ray.spi.model.TaskSpec;
-import org.ray.util.ResourceUtil;
 import org.ray.util.logger.RayLog;
 
 /**

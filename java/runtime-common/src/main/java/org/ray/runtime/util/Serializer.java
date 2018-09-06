@@ -1,4 +1,4 @@
-package org.ray.core;
+package org.ray.runtime.util;
 
 import org.nustaq.serialization.FSTConfiguration;
 

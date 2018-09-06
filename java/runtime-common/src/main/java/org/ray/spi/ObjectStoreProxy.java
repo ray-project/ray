@@ -4,10 +4,8 @@ import java.util.ArrayList;
 import java.util.List;
 import org.apache.arrow.plasma.ObjectStoreLink;
 import org.apache.commons.lang3.tuple.Pair;
-import org.ray.api.RayObject;
-import org.ray.api.WaitResult;
 import org.ray.api.id.UniqueId;
-import org.ray.core.Serializer;
+import org.ray.runtime.util.Serializer;
 import org.ray.core.WorkerContext;
 import org.ray.util.exception.TaskExecutionException;
 
