@@ -271,7 +271,9 @@ class Trainable(object):
     def reset_config(self, new_config, new_experiment_tag):
         """Reset config without restarting trial
         Optional, used to speed up PBT"""
-        self._reset_config(self, new_config, new_experiment_tag)
+        self._reset_config(
+            new_config=new_config,
+            new_experiment_tag=new_experiment_tag)
 
     def stop(self):
         """Releases all resources used by this trainable."""

@@ -158,17 +158,15 @@ class RayTrialExecutor(TrialExecutor):
         super(RayTrialExecutor, self).pause_trial(trial)
 
     def reset_trial(self, trial, new_config, new_experiment_tag):
-        """If trainable (trial) supports resetting config on the fly,
+        """If trainable of trial supports resetting config on the fly,
         reset config and return True, otherwise return False."""
         try:
-            trainable = trial._get_trainable_cls()
-            trainable.reset_config(
-                self=trainable,
-                new_config=new_config,
-                new_experiment_tag=new_experiment_tag)
-            return True
-        except NotImplementedError as e:
+            trainable = trial.runner
+            ray.get(
+                trainable.reset_config.remote(new_config, new_experiment_tag))
+        except (ray.worker.RayGetError, NotImplementedError) as e:
             return False
+        return True
 
     def get_running_trials(self):
         """Returns the running trials."""
