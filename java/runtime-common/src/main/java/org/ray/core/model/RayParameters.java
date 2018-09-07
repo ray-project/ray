@@ -28,21 +28,6 @@ public class RayParameters {
   @AConfig(comment = "object store rpc listen port")
   public int object_store_rpc_port = 32567;
 
-  @AConfig(comment = "object store manager name (e.g., /tmp/storeMgr1111")
-  public String object_store_manager_name = "";
-
-  @AConfig(comment = "object store manager rpc listen port")
-  public int object_store_manager_rpc_port = 33567;
-
-  @AConfig(comment = "object store manager ray listen port")
-  public int object_store_manager_ray_listen_port = 33667;
-
-  @AConfig(comment = "local scheduler name (e.g., /tmp/scheduler1111")
-  public String local_scheduler_name = "";
-
-  @AConfig(comment = "local scheduler rpc listen port")
-  public int local_scheduler_rpc_port = 34567;
-
   @AConfig(comment = "driver ID when the worker is served as a driver")
   public UniqueId driver_id = UniqueId.NIL;
 
@@ -58,29 +43,14 @@ public class RayParameters {
   @AConfig(comment = "redirect err and stdout to files for newly created processes")
   public boolean redirect = true;
 
-  @AConfig(comment = "whether to start the global scheduler")
-  public boolean include_global_scheduler = false;
-
   @AConfig(comment = "whether to start redis shard server in addition to the primary server")
   public boolean start_redis_shards = false;
 
   @AConfig(comment = "whether to clean up the processes when there is a process start failure")
   public boolean cleanup = false;
 
-  @AConfig(comment = "whether to start workers from within the local schedulers")
-  public boolean start_workers_from_local_scheduler = true;
-
-  @AConfig(comment = "number of cpus assigned to each local scheduler")
-  public int[] num_cpus = {};
-
-  @AConfig(comment = "number of gpus assigned to each local scheduler")
-  public int[] num_gpus = {};
-
   @AConfig(comment = "number of redis shard servers to be started")
   public int num_redis_shards = 0;
-
-  @AConfig(comment = "number of local schedulers to be started")
-  public int num_local_schedulers = 1;
 
   @AConfig(comment = "whether this is a deployment in cluster")
   public boolean deploy = false;
@@ -111,9 +81,6 @@ public class RayParameters {
 
   @AConfig(comment = "delay seconds under onebox before app logic for debugging")
   public int onebox_delay_seconds_before_run_app_logic = 0;
-
-  @AConfig(comment = "whether to use raylet")
-  public boolean use_raylet = false;
 
   @AConfig(comment = "raylet socket name (e.g., /tmp/raylet1111")
   public String raylet_socket_name = "";
