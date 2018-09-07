@@ -35,7 +35,7 @@ std::unordered_map<TaskID, ClientID> SchedulingPolicy::Schedule(
   // Iterate over running tasks, get their resource demand and try to schedule.
   for (const auto &t : scheduling_queue_.GetPlaceableTasks()) {
     // Get task's resource demand
-    const auto spec = t.GetTaskSpecification();
+    const auto &spec = t.GetTaskSpecification();
     const auto &resource_demand = spec.GetRequiredPlacementResources();
     const TaskID &task_id = spec.TaskId();
 
@@ -124,7 +124,7 @@ std::vector<TaskID> SchedulingPolicy::SpillOver(
 
   // Check if we can accommodate an infeasible task.
   for (const auto &task : scheduling_queue_.GetInfeasibleTasks()) {
-    const auto spec = task.GetTaskSpecification();
+    const auto &spec = task.GetTaskSpecification();
     if (spec.GetRequiredPlacementResources().IsSubset(
             remote_scheduling_resources.GetTotalResources())) {
       decision.push_back(spec.TaskId());
@@ -133,7 +133,7 @@ std::vector<TaskID> SchedulingPolicy::SpillOver(
   }
 
   for (const auto &task : scheduling_queue_.GetReadyTasks()) {
-    const auto spec = task.GetTaskSpecification();
+    const auto &spec = task.GetTaskSpecification();
     if (!spec.IsActorTask()) {
       if (spec.GetRequiredPlacementResources().IsSubset(
               remote_scheduling_resources.GetTotalResources())) {
