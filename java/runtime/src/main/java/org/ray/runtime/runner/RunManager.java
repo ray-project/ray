@@ -16,10 +16,10 @@ import org.ray.runtime.config.PathConfig;
 import org.ray.runtime.config.RayParameters;
 import org.ray.runtime.gcs.AddressInfo;
 import org.ray.runtime.runner.RunInfo.ProcessType;
-import org.ray.util.ResourceUtil;
-import org.ray.util.StringUtil;
-import org.ray.util.config.ConfigReader;
-import org.ray.util.logger.RayLog;
+import org.ray.runtime.util.ResourceUtil;
+import org.ray.runtime.util.StringUtil;
+import org.ray.runtime.util.config.ConfigReader;
+import org.ray.runtime.util.logger.RayLog;
 import redis.clients.jedis.Jedis;
 
 /**

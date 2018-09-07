@@ -1,4 +1,4 @@
-package org.ray.util;
+package org.ray.runtime.util;
 
 import com.google.common.base.Preconditions;
 import java.io.Serializable;
@@ -14,7 +14,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.WeakHashMap;
 import org.objectweb.asm.Type;
-import org.ray.util.logger.RayLog;
+import org.ray.runtime.util.logger.RayLog;
 
 
 /**

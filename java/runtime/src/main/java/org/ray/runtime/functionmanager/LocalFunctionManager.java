@@ -6,7 +6,7 @@ import org.apache.commons.lang3.tuple.Pair;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.task.FunctionArg;
 import org.ray.runtime.util.Serializer;
-import org.ray.util.logger.RayLog;
+import org.ray.runtime.util.logger.RayLog;
 
 /**
  * local function manager which pulls remote functions on demand.

@@ -6,7 +6,7 @@ import java.io.ObjectInput;
 import java.io.ObjectOutput;
 import org.ray.api.RayActor;
 import org.ray.api.id.UniqueId;
-import org.ray.util.Sha1Digestor;
+import org.ray.runtime.util.Sha1Digestor;
 
 public final class RayActorImpl<T> implements RayActor<T>, Externalizable {
 

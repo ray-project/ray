@@ -1,4 +1,4 @@
-package org.ray.util;
+package org.ray.runtime.util;
 
 import java.util.HashMap;
 import java.util.Map;

@@ -1,4 +1,4 @@
-package org.ray.util;
+package org.ray.runtime.util;
 
 import java.io.Serializable;
 import java.lang.invoke.SerializedLambda;

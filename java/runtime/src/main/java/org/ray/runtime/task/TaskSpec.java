@@ -3,7 +3,7 @@ package org.ray.runtime.task;
 import java.util.Arrays;
 import java.util.Map;
 import org.ray.api.id.UniqueId;
-import org.ray.util.ResourceUtil;
+import org.ray.runtime.util.ResourceUtil;
 
 /**
  * Represents necessary information of a task for scheduling and executing.

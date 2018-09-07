@@ -5,7 +5,7 @@ import java.lang.reflect.Executable;
 import java.lang.reflect.Method;
 import org.ray.api.annotation.RayRemote;
 import org.ray.api.id.UniqueId;
-import org.ray.util.MethodId;
+import org.ray.runtime.util.MethodId;
 
 /**
  * method info.

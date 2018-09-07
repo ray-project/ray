@@ -1,6 +1,6 @@
-package org.ray.util.logger;
+package org.ray.runtime.util.logger;
 
-import org.ray.util.SystemUtil;
+import org.ray.runtime.util.SystemUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

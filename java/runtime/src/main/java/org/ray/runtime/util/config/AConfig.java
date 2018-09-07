@@ -1,4 +1,4 @@
-package org.ray.util.config;
+package org.ray.runtime.util.config;
 
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;

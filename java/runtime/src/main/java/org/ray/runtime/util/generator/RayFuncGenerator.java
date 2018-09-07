@@ -1,7 +1,7 @@
-package org.ray.util.generator;
+package org.ray.runtime.util.generator;
 
 import java.io.IOException;
-import org.ray.util.FileUtil;
+import org.ray.runtime.util.FileUtil;
 
 /**
  * A util class that generates all the RayFuncX classes under org.ray.api.function package.

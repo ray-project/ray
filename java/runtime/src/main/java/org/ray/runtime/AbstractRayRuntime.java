@@ -26,11 +26,11 @@ import org.ray.runtime.raylet.RayletClient;
 import org.ray.runtime.task.TaskSpec;
 import org.ray.runtime.util.ArgumentsBuilder;
 import org.ray.runtime.util.UniqueIdHelper;
-import org.ray.util.MethodId;
-import org.ray.util.ResourceUtil;
-import org.ray.util.config.ConfigReader;
-import org.ray.util.exception.TaskExecutionException;
-import org.ray.util.logger.RayLog;
+import org.ray.runtime.util.MethodId;
+import org.ray.runtime.util.ResourceUtil;
+import org.ray.runtime.util.config.ConfigReader;
+import org.ray.runtime.util.exception.TaskExecutionException;
+import org.ray.runtime.util.logger.RayLog;
 
 /**
  * Core functionality to implement Ray APIs.

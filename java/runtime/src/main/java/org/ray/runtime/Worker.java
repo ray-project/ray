@@ -6,7 +6,7 @@ import org.ray.api.id.UniqueId;
 import org.ray.runtime.functionmanager.RayMethod;
 import org.ray.runtime.task.TaskSpec;
 import org.ray.runtime.util.ArgumentsBuilder;
-import org.ray.util.logger.RayLog;
+import org.ray.runtime.util.logger.RayLog;
 
 /**
  * The worker, which pulls tasks from {@code org.ray.spi.LocalSchedulerProxy} and executes them

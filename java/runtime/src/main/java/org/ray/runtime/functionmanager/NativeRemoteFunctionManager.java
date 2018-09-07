@@ -8,10 +8,10 @@ import net.lingala.zip4j.core.ZipFile;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.gcs.KeyValueStoreLink;
 import org.ray.runtime.util.JarLoader;
-import org.ray.util.FileUtil;
-import org.ray.util.Sha1Digestor;
-import org.ray.util.SystemUtil;
-import org.ray.util.logger.RayLog;
+import org.ray.runtime.util.FileUtil;
+import org.ray.runtime.util.Sha1Digestor;
+import org.ray.runtime.util.SystemUtil;
+import org.ray.runtime.util.logger.RayLog;
 
 /**
  * native implementation of remote function manager.

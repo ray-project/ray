@@ -17,7 +17,7 @@ import org.ray.runtime.generated.TaskLanguage;
 import org.ray.runtime.task.FunctionArg;
 import org.ray.runtime.task.TaskSpec;
 import org.ray.runtime.util.UniqueIdHelper;
-import org.ray.util.logger.RayLog;
+import org.ray.runtime.util.logger.RayLog;
 
 public class RayletClientImpl implements RayletClient {
 

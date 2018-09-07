@@ -23,15 +23,9 @@
       <version>${project.version}</version>
     </dependency>
     <dependency>
-      <groupId>org.ray</groupId>
-      <artifactId>ray-common</artifactId>
-      <version>${project.version}</version>
-    </dependency>
-    <dependency>
       <groupId>de.ruedigermoeller</groupId>
       <artifactId>fst</artifactId>
     </dependency>
-
     <dependency>
       <groupId>com.github.davidmoten</groupId>
       <artifactId>flatbuffers-java</artifactId>
@@ -55,6 +49,22 @@
     <dependency>
       <groupId>net.lingala.zip4j</groupId>
       <artifactId>zip4j</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-log4j12</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>quartz</groupId>
+      <artifactId>quartz</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.ini4j</groupId>
+      <artifactId>ini4j</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.ow2.asm</groupId>
+      <artifactId>asm</artifactId>
     </dependency>
   </dependencies>
 </project>

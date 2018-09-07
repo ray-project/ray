@@ -1,4 +1,4 @@
-package org.ray.util.exception;
+package org.ray.runtime.util.exception;
 
 /**
  * An exception which is thrown when a ray task encounters an error when executing.

@@ -1,8 +1,8 @@
-package org.ray.util;
+package org.ray.runtime.util;
 
 import java.nio.ByteBuffer;
 import java.security.MessageDigest;
-import org.ray.util.logger.RayLog;
+import org.ray.runtime.util.logger.RayLog;
 
 public class MD5Digestor {
 

@@ -1,9 +1,9 @@
 package org.ray.runtime.config;
 
 import org.ray.api.id.UniqueId;
-import org.ray.util.NetworkUtil;
-import org.ray.util.config.AConfig;
-import org.ray.util.config.ConfigReader;
+import org.ray.runtime.util.NetworkUtil;
+import org.ray.runtime.util.config.AConfig;
+import org.ray.runtime.util.config.ConfigReader;
 
 /**
  * Runtime parameters of Ray process.

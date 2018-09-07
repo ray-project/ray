@@ -1,9 +1,9 @@
-package org.ray.util.generator;
+package org.ray.runtime.util.generator;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-import org.ray.util.FileUtil;
+import org.ray.runtime.util.FileUtil;
 
 /**
  * A util class that generates `RayCall.java`,

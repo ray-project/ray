@@ -9,7 +9,7 @@ import org.apache.arrow.plasma.ObjectStoreLink;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.WorkerContext;
 import org.ray.runtime.raylet.MockRayletClient;
-import org.ray.util.logger.RayLog;
+import org.ray.runtime.util.logger.RayLog;
 
 /**
  * A mock implementation of {@code org.ray.spi.ObjectStoreLink}, which use Map to store data.

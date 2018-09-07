@@ -18,9 +18,9 @@ import org.ray.runtime.gcs.StateStoreProxy;
 import org.ray.runtime.gcs.StateStoreProxyImpl;
 import org.ray.runtime.runner.RunManager;
 import org.ray.runtime.runner.worker.DefaultDriver;
-import org.ray.util.FileUtil;
-import org.ray.util.config.ConfigReader;
-import org.ray.util.logger.RayLog;
+import org.ray.runtime.util.FileUtil;
+import org.ray.runtime.util.config.ConfigReader;
+import org.ray.runtime.util.logger.RayLog;
 
 
 /**

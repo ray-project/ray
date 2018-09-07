@@ -1,4 +1,4 @@
-package org.ray.util.generator;
+package org.ray.runtime.util.generator;
 
 public abstract class BaseGenerator {
 

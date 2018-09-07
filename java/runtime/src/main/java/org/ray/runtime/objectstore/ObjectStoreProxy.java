@@ -7,7 +7,7 @@ import org.apache.commons.lang3.tuple.Pair;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.WorkerContext;
 import org.ray.runtime.util.Serializer;
-import org.ray.util.exception.TaskExecutionException;
+import org.ray.runtime.util.exception.TaskExecutionException;
 
 /**
  * Object store proxy, which handles serialization and deserialization, and utilize a {@code
