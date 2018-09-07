@@ -179,6 +179,21 @@ const ResourceSet TaskSpecification::GetRequiredResources() const {
   return ResourceSet(required_resources);
 }
 
+const ResourceSet TaskSpecification::GetRequiredResourcesForPlacement() const {
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
+  auto required_resources = map_from_flatbuf(*message->required_resources());
+
+  auto it = required_resources.find(kCPU_ResourceLabel);
+  RAY_CHECK(it != required_resources.end());
+  // Actor creation tasks require one more CPU for placement purposes than they
+  // actually acquire during execution in order to account for the resource
+  // requirements of subsequent actor methods.
+  if (IsActorCreationTask()) {
+    it->second += 1;
+  }
+  return ResourceSet(required_resources);
+}
+
 bool TaskSpecification::IsDriverTask() const {
   // Driver tasks are empty tasks that have no function ID set.
   return FunctionId().is_nil();

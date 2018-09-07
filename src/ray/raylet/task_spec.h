@@ -141,7 +141,22 @@ class TaskSpecification {
   const uint8_t *ArgVal(int64_t arg_index) const;
   size_t ArgValLength(int64_t arg_index) const;
   double GetRequiredResource(const std::string &resource_name) const;
+  /// Return the resources that are to be acquired during the execution of this
+  /// task.
+  ///
+  /// \return The resources that will be acquired during the execution of this
+  /// task.
   const ResourceSet GetRequiredResources() const;
+  /// Return the resources that are required for a task to be placed on a node.
+  /// This will typically be the same as the resources acquired during execution
+  /// and will always be a superset of those resources. However, they may
+  /// differ, e.g., actor creation tasks may require more resources to be
+  /// scheduled on a machine because the actor creation task may require no
+  /// resources itself, but subsequent actor methods may require resources, and
+  /// so the placement of the actor should take this into account.
+  ///
+  /// \return The resources that are required to place a task on a node.
+  const ResourceSet GetRequiredResourcesForPlacement() const;
   bool IsDriverTask() const;
   Language GetLanguage() const;
 

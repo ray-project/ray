@@ -135,9 +135,15 @@ double ResourceSet::GetNumCpus() const {
 
 const std::string ResourceSet::ToString() const {
   std::string return_string = "";
+  bool first_time_through_loop = true;
   for (const auto &resource_pair : this->resource_capacity_) {
+    if (!first_time_through_loop) {
+      return_string += ", ";
+    } else {
+      first_time_through_loop = false;
+    }
     return_string +=
-        "{" + resource_pair.first + "," + std::to_string(resource_pair.second) + "}, ";
+        "{" + resource_pair.first + "," + std::to_string(resource_pair.second) + "}";
   }
   return return_string;
 }
@@ -400,10 +406,16 @@ ResourceSet ResourceIdSet::ToResourceSet() const {
 
 std::string ResourceIdSet::ToString() const {
   std::string return_string = "AvailableResources: ";
+  bool first_time_through_loop = true;
   for (auto const &resource_pair : available_resources_) {
+    if (!first_time_through_loop) {
+      return_string += ", ";
+    } else {
+      first_time_through_loop = false;
+    }
     return_string += resource_pair.first + ": {";
     return_string += resource_pair.second.ToString();
-    return_string += "}, ";
+    return_string += "}";
   }
   return return_string;
 }
