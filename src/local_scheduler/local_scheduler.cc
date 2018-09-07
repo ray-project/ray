@@ -124,7 +124,7 @@ void kill_worker(LocalSchedulerState *state,
           force_kill_worker, (void *) worker);
       free_worker = false;
     }
-    RAY_LOG(DEBUG) << "Killed worker with pid " << worker->pid;
+    RAY_LOG(WARNING) << "Killed worker with pid " << worker->pid;
   }
 
   /* If this worker is still running a task and we aren't cleaning up, push an
