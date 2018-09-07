@@ -346,6 +346,7 @@ class ObjectManager : public ObjectManagerInterface {
       unfulfilled_push_requests_;
 
   std::unordered_map<ObjectID, PullRequest> pull_requests_;
+  std::unordered_map<UniqueID, std::string> WaitCompletMsg;
 };
 
 }  // namespace ray

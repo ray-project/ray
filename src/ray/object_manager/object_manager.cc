@@ -566,6 +566,15 @@ void ObjectManager::SubscribeRemainingWaitObjects(const UniqueID &wait_id) {
               RAY_CHECK_OK(object_directory_->UnsubscribeObjectLocations(
                   wait_id, subscribe_object_id));
               if (wait_state.found.size() >= wait_state.num_required_objects) {
+                auto iter = WaitCompletMsg.find(wait_id);
+                if (iter != WaitCompletMsg.end()) {
+                  RAY_LOG(ERROR) << "WaitComplete("<<wait_id.hex()<< ") called twice! Current is subscriber."
+                                 << "Previous msg: " << iter->second;
+                } else {
+                  std::ostringstream stream;
+                  stream << "WaitComplete("<<wait_id.hex()<< ") is called by Subscribe callback.";
+                  WaitCompletMsg.emplace(std::make_pair(wait_id, stream.str()));
+                }
                 WaitComplete(wait_id);
               }
             }
@@ -578,6 +587,15 @@ void ObjectManager::SubscribeRemainingWaitObjects(const UniqueID &wait_id) {
           [this, wait_id](const boost::system::error_code &error_code) {
             if (error_code.value() != 0) {
               return;
+            }
+            auto iter = WaitCompletMsg.find(wait_id);
+            if (iter != WaitCompletMsg.end()) {
+              RAY_LOG(ERROR) << "WaitComplete("<<wait_id.hex()<< ") called twice! Current is timer."
+                             << "Previous msg: " << iter->second;
+            } else {
+              std::ostringstream stream;
+              stream << "WaitComplete("<<wait_id.hex()<< ") is called by Timer callback.";
+              WaitCompletMsg.emplace(std::make_pair(wait_id, stream.str()));
             }
             WaitComplete(wait_id);
           });
