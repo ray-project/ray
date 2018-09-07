@@ -12,7 +12,7 @@
   <groupId>org.ray</groupId>
   <artifactId>ray-cli</artifactId>
 
-  <name>java cli for ray</name>
+  <name>java cli</name>
   <description>java cli for ray</description>
 
   <packaging>jar</packaging>

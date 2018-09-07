@@ -12,7 +12,7 @@
   <artifactId>ray-runtime</artifactId>
 
   <name>ray runtime</name>
-  <description>ray runtime</description>
+  <description>ray runtime implementation</description>
 
   <packaging>jar</packaging>
 
@@ -21,6 +21,10 @@
       <groupId>org.ray</groupId>
       <artifactId>ray-api</artifactId>
       <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.commons</groupId>
+      <artifactId>commons-lang3</artifactId>
     </dependency>
     <dependency>
       <groupId>de.ruedigermoeller</groupId>
@@ -53,10 +57,6 @@
     <dependency>
       <groupId>org.slf4j</groupId>
       <artifactId>slf4j-log4j12</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>quartz</groupId>
-      <artifactId>quartz</artifactId>
     </dependency>
     <dependency>
       <groupId>org.ini4j</groupId>
