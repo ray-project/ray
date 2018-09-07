@@ -933,12 +933,13 @@ void NodeManager::ScheduleTasks(
       // TODO(rkn): Define this constant somewhere else.
       std::string type = "infeasible_task";
       std::ostringstream error_message;
-      error_message << "The task with ID " << task.GetTaskSpecification().TaskId()
-                    << " is infeasible and cannot currently be executed. It requires "
-                    << task.GetTaskSpecification().GetRequiredResources().ToString()
-                    << " for execution and "
-                    << task.GetTaskSpecification().GetRequiredResourcesForPlacement().ToString()
-                    << " for placement.";
+      error_message
+          << "The task with ID " << task.GetTaskSpecification().TaskId()
+          << " is infeasible and cannot currently be executed. It requires "
+          << task.GetTaskSpecification().GetRequiredResources().ToString()
+          << " for execution and "
+          << task.GetTaskSpecification().GetRequiredResourcesForPlacement().ToString()
+          << " for placement.";
       RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
           task.GetTaskSpecification().DriverId(), type, error_message.str(),
           current_time_ms()));

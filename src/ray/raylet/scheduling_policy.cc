@@ -38,10 +38,6 @@ std::unordered_map<TaskID, ClientID> SchedulingPolicy::Schedule(
     const auto spec = t.GetTaskSpecification();
     const auto &resource_demand = spec.GetRequiredResourcesForPlacement();
     const TaskID &task_id = spec.TaskId();
-    RAY_LOG(DEBUG) << "[SchedulingPolicy]: task=" << task_id
-                   << " numforwards=" << t.GetTaskExecutionSpec().NumForwards()
-                   << " resources="
-                   << spec.GetRequiredResourcesForPlacement().ToString();
 
     // TODO(atumanov): try to place tasks locally first.
     // Construct a set of viable node candidates and randomly pick between them.
@@ -108,8 +104,7 @@ std::unordered_map<TaskID, ClientID> SchedulingPolicy::Schedule(
         // There are no nodes that can feasibly execute this task. The task remains
         // placeable until cluster capacity becomes available.
         // TODO(rkn): Propagate a warning to the user.
-        RAY_LOG(INFO) << "This task requires "
-                      << spec.GetRequiredResources().ToString()
+        RAY_LOG(INFO) << "This task requires " << spec.GetRequiredResources().ToString()
                       << " for execution and "
                       << spec.GetRequiredResourcesForPlacement().ToString()
                       << " for placement, but no nodes have the necessary resources.";
