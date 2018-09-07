@@ -106,7 +106,7 @@ class TrialExecutor(object):
         assert trial.status == Trial.PAUSED, trial.status
         self.start_trial(trial)
 
-    def reset_trial(self, trial, new_config):
+    def reset_trial(self, trial, new_config, new_experiment_tag):
         """Resets a trial to a certain configuration"""
         raise NotImplementedError
 

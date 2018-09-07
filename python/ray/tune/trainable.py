@@ -268,6 +268,11 @@ class Trainable(object):
         self.restore(checkpoint_path)
         shutil.rmtree(tmpdir)
 
+    def reset_config(self, new_config, new_experiment_tag):
+        """Reset config without restarting trial
+        Optional, used to speed up PBT"""
+        self._reset_config(self, new_config, new_experiment_tag)
+
     def stop(self):
         """Releases all resources used by this trainable."""
 
@@ -275,9 +280,6 @@ class Trainable(object):
             self._result_logger.close()
             self._stop()
 
-    def reset_config(self, new_config):
-        """Reset config without restarting trial"""
-        pass
 
     def _train(self):
         """Subclasses should override this to implement train().
@@ -310,6 +312,11 @@ class Trainable(object):
         """
 
         raise NotImplementedError
+
+    def _reset_config(self, new_config, new_experiment_tag):
+        """Reset config without restarting trial
+        Optional, used to speed up PBT"""
+        raise NotImplementedError 
 
     def _setup(self):
         """Subclasses should override this for custom initialization.
