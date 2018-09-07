@@ -162,7 +162,10 @@ class RayTrialExecutor(TrialExecutor):
         reset config and return True, otherwise return False."""
         try:
             trainable = trial._get_trainable_cls()
-            trainable.reset_config(trainable, new_config=new_config, new_experiment_tag=new_experiment_tag)
+            trainable.reset_config(
+                self=trainable,
+                new_config=new_config,
+                new_experiment_tag=new_experiment_tag)
             return True
         except NotImplementedError as e:
             return False

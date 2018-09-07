@@ -280,7 +280,6 @@ class Trainable(object):
             self._result_logger.close()
             self._stop()
 
-
     def _train(self):
         """Subclasses should override this to implement train().
 
@@ -316,7 +315,7 @@ class Trainable(object):
     def _reset_config(self, new_config, new_experiment_tag):
         """Reset config without restarting trial
         Optional, used to speed up PBT"""
-        raise NotImplementedError 
+        raise NotImplementedError
 
     def _setup(self):
         """Subclasses should override this for custom initialization.
