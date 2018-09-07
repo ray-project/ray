@@ -18,7 +18,12 @@ Worker::Worker(pid_t pid, const Language &language,
       connection_(connection),
       assigned_task_id_(TaskID::nil()),
       actor_id_(ActorID::nil()),
+      dead_(false),
       blocked_(false) {}
+
+void Worker::MarkDead() { dead_ = true; }
+
+bool Worker::IsDead() const { return dead_; }
 
 void Worker::MarkBlocked() { blocked_ = true; }
 
@@ -33,6 +38,12 @@ Language Worker::GetLanguage() const { return language_; }
 void Worker::AssignTaskId(const TaskID &task_id) { assigned_task_id_ = task_id; }
 
 const TaskID &Worker::GetAssignedTaskId() const { return assigned_task_id_; }
+
+void Worker::AssignDriverId(const DriverID &driver_id) {
+  assigned_driver_id_ = driver_id;
+}
+
+const DriverID &Worker::GetAssignedDriverId() const { return assigned_driver_id_; }
 
 void Worker::AssignActorId(const ActorID &actor_id) {
   RAY_CHECK(actor_id_.is_nil())
