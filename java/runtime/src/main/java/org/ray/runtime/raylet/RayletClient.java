@@ -8,9 +8,9 @@ import org.ray.api.id.UniqueId;
 import org.ray.runtime.task.TaskSpec;
 
 /**
- * Provides core functionalities of local scheduler.
+ * Client to the Raylet backend.
  */
-public interface LocalSchedulerLink {
+public interface RayletClient {
 
   void submitTask(TaskSpec task);
 

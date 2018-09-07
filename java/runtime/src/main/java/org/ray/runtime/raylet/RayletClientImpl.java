@@ -16,15 +16,11 @@ import org.ray.runtime.generated.ResourcePair;
 import org.ray.runtime.generated.TaskInfo;
 import org.ray.runtime.generated.TaskLanguage;
 import org.ray.runtime.util.UniqueIdHelper;
-import org.ray.runtime.raylet.LocalSchedulerLink;
 import org.ray.runtime.task.FunctionArg;
 import org.ray.runtime.task.TaskSpec;
 import org.ray.util.logger.RayLog;
 
-/**
- * JNI-based local scheduler link provider.
- */
-public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
+public class RayletClientImpl implements RayletClient {
 
   private static ThreadLocal<ByteBuffer> _taskBuffer = ThreadLocal.withInitial(() -> {
     ByteBuffer bb = ByteBuffer
@@ -34,7 +30,7 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
   });
   private long client = 0;
 
-  public DefaultLocalSchedulerClient(String schedulerSockName, UniqueId clientId,
+  public RayletClientImpl(String schedulerSockName, UniqueId clientId,
       boolean isWorker, UniqueId driverId) {
     client = nativeInit(schedulerSockName, clientId.getBytes(),
         isWorker, driverId.getBytes());
@@ -264,9 +260,9 @@ public class DefaultLocalSchedulerClient implements LocalSchedulerLink {
   ///
   /// Suppose that $Dir is your ray root directory.
   /// 1) pushd $Dir/java/runtime/target/classes
-  /// 2) javah -classpath .:$Dir/java/api/target/classes org.ray.runtime.raylet.DefaultLocalSchedulerClient
-  /// 3) clang-format -i org_ray_spi_impl_DefaultLocalSchedulerClient.h
-  /// 4) cp org_ray_spi_impl_DefaultLocalSchedulerClient.h $Dir/src/local_scheduler/lib/java/
+  /// 2) javah -classpath .:$Dir/java/api/target/classes org.ray.runtime.raylet.RayletClientImpl
+  /// 3) clang-format -i org_ray_runtime_raylet_RayletClientImpl.h
+  /// 4) cp org_ray_runtime_raylet_RayletClientImpl.h $Dir/src/local_scheduler/lib/java/
   /// 5) vim $Dir/src/local_scheduler/lib/java/org_ray_spi_impl_DefaultLocalSchedulerClient.cc
   /// 6) popd
 

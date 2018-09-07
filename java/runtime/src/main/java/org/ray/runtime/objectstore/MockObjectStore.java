@@ -8,7 +8,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.apache.arrow.plasma.ObjectStoreLink;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.WorkerContext;
-import org.ray.runtime.raylet.MockLocalScheduler;
+import org.ray.runtime.raylet.MockRayletClient;
 import org.ray.util.logger.RayLog;
 
 /**
@@ -18,7 +18,7 @@ public class MockObjectStore implements ObjectStoreLink {
 
   private final Map<UniqueId, byte[]> data = new ConcurrentHashMap<>();
   private final Map<UniqueId, byte[]> metadata = new ConcurrentHashMap<>();
-  private MockLocalScheduler scheduler = null;
+  private MockRayletClient scheduler = null;
 
   @Override
   public void put(byte[] objectId, byte[] value, byte[] metadataValue) {
@@ -104,7 +104,7 @@ public class MockObjectStore implements ObjectStoreLink {
     return data.containsKey(id);
   }
 
-  public void registerScheduler(MockLocalScheduler s) {
+  public void registerScheduler(MockRayletClient s) {
     scheduler = s;
   }
 }

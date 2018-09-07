@@ -16,8 +16,8 @@ import org.ray.runtime.gcs.KeyValueStoreLink;
 import org.ray.runtime.gcs.RedisClient;
 import org.ray.runtime.gcs.StateStoreProxy;
 import org.ray.runtime.gcs.StateStoreProxyImpl;
-import org.ray.runtime.raylet.DefaultLocalSchedulerClient;
-import org.ray.runtime.raylet.LocalSchedulerLink;
+import org.ray.runtime.raylet.RayletClientImpl;
+import org.ray.runtime.raylet.RayletClient;
 import org.ray.runtime.runner.RunManager;
 import org.ray.util.logger.RayLog;
 
@@ -89,7 +89,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
               "how many release requests should be delayed in plasma client");
 
       ObjectStoreLink plink = new PlasmaClient(params.object_store_name, "", releaseDelay);
-      LocalSchedulerLink slink = new DefaultLocalSchedulerClient(
+      RayletClient slink = new RayletClientImpl(
               params.raylet_socket_name,
               WorkerContext.currentWorkerId(),
               isWorker,

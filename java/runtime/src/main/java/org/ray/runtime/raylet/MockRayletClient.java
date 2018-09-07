@@ -13,17 +13,16 @@ import org.ray.runtime.task.FunctionArg;
 import org.ray.runtime.task.TaskSpec;
 
 /**
- * A mock implementation of {@code org.ray.spi.LocalSchedulerLink}, which stores waiting tasks in a
- * Map, and cooperates with a {@code org.ray.spi.impl.MockObjectStore}.
+ * A mock implementation of RayletClient, used in single process mode.
  */
-public class MockLocalScheduler implements LocalSchedulerLink {
+public class MockRayletClient implements RayletClient {
 
   private final Map<UniqueId, Map<UniqueId, TaskSpec>> waitTasks = new ConcurrentHashMap<>();
   private final MockObjectStore store;
   private LocalFunctionManager functions = null;
   private final RayDevRuntime runtime;
 
-  public MockLocalScheduler(RayDevRuntime runtime, MockObjectStore store) {
+  public MockRayletClient(RayDevRuntime runtime, MockObjectStore store) {
     this.runtime = runtime;
     this.store = store;
     store.registerScheduler(this);

@@ -1,8 +1,6 @@
 package org.ray.runtime;
 
 import com.google.common.collect.ImmutableList;
-import java.lang.reflect.Constructor;
-import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -21,7 +19,7 @@ import org.ray.runtime.config.RayParameters;
 import org.ray.runtime.functionmanager.LocalFunctionManager;
 import org.ray.runtime.util.ArgumentsBuilder;
 import org.ray.runtime.util.UniqueIdHelper;
-import org.ray.runtime.raylet.LocalSchedulerLink;
+import org.ray.runtime.raylet.RayletClient;
 import org.ray.runtime.objectstore.ObjectStoreProxy;
 import org.ray.runtime.objectstore.ObjectStoreProxy.GetStatus;
 import org.ray.runtime.config.PathConfig;
@@ -44,7 +42,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   protected static RayParameters params = null;
   private static boolean fromRayInit = false;
   protected Worker worker;
-  protected LocalSchedulerLink localSchedulerClient;
+  protected RayletClient localSchedulerClient;
   protected ObjectStoreProxy objectStoreProxy;
   protected LocalFunctionManager functions;
   protected RemoteFunctionManager remoteFunctionManager;
@@ -121,7 +119,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   }
 
   protected void init(
-      LocalSchedulerLink slink,
+      RayletClient slink,
       ObjectStoreLink plink,
       RemoteFunctionManager remoteLoader,
       PathConfig pathManager
@@ -397,7 +395,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     return worker;
   }
 
-  public LocalSchedulerLink getLocalSchedulerClient() {
+  public RayletClient getLocalSchedulerClient() {
     return localSchedulerClient;
   }
 
