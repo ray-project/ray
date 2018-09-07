@@ -115,7 +115,8 @@ class WorkerPool {
   ///
   /// \param driver_id The driver ID.
   /// \return A list containing all the workers which are running tasks for the driver.
-  std::vector<std::shared_ptr<Worker>> GetWorkersRunningTasksForDriver(const DriverID &driver_id) const;
+  std::vector<std::shared_ptr<Worker>> GetWorkersRunningTasksForDriver(
+      const DriverID &driver_id) const;
 
  protected:
   /// A map from the pids of starting worker processes

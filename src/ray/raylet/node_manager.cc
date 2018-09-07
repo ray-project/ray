@@ -529,7 +529,7 @@ void NodeManager::ProcessClientMessage(
     // For a worker that is marked as dead (because the driver has died already),
     // all the messages are ignored except DisconnectClient.
     if (static_cast<protocol::MessageType>(message_type) !=
-      protocol::MessageType::DisconnectClient) {
+        protocol::MessageType::DisconnectClient) {
       // Listen for more messages.
       client->ProcessMessages();
       return;

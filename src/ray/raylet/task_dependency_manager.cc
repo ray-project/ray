@@ -298,7 +298,8 @@ void TaskDependencyManager::TaskCanceled(const TaskID &task_id) {
   }
 }
 
-void TaskDependencyManager::RemoveTasksAndRelatedObjects(const std::unordered_set<TaskID> &task_ids) {
+void TaskDependencyManager::RemoveTasksAndRelatedObjects(
+    const std::unordered_set<TaskID> &task_ids) {
   if (task_ids.empty()) {
     return;
   }

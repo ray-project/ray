@@ -54,8 +54,8 @@ inline void GetDriverTasksFromQueue(const ray::raylet::SchedulingQueue::TaskQueu
 
 // Helper function to get tasks for an actor from a given state.
 inline void GetActorTasksFromQueue(const ray::raylet::SchedulingQueue::TaskQueue &queue,
-                                    const ray::ActorID &actor_id,
-                                    std::unordered_set<ray::TaskID> &task_ids) {
+                                   const ray::ActorID &actor_id,
+                                   std::unordered_set<ray::TaskID> &task_ids) {
   const auto &tasks = queue.GetTasks();
   for (const auto &task : tasks) {
     auto const &spec = task.GetTaskSpecification();
