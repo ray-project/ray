@@ -1,7 +1,6 @@
 package org.ray.runtime.raylet;
 
 import java.util.List;
-
 import org.ray.api.RayObject;
 import org.ray.api.WaitResult;
 import org.ray.api.id.UniqueId;

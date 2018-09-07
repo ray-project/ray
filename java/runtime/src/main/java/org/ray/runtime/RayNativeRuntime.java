@@ -16,8 +16,8 @@ import org.ray.runtime.gcs.KeyValueStoreLink;
 import org.ray.runtime.gcs.RedisClient;
 import org.ray.runtime.gcs.StateStoreProxy;
 import org.ray.runtime.gcs.StateStoreProxyImpl;
-import org.ray.runtime.raylet.RayletClientImpl;
 import org.ray.runtime.raylet.RayletClient;
+import org.ray.runtime.raylet.RayletClientImpl;
 import org.ray.runtime.runner.RunManager;
 import org.ray.util.logger.RayLog;
 
