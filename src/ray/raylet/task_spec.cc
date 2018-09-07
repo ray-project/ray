@@ -179,7 +179,7 @@ const ResourceSet TaskSpecification::GetRequiredResources() const {
   return ResourceSet(required_resources);
 }
 
-const ResourceSet TaskSpecification::GetRequiredResourcesForPlacement() const {
+const ResourceSet TaskSpecification::GetRequiredPlacementResources() const {
   auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
   auto required_resources = map_from_flatbuf(*message->required_resources());
 

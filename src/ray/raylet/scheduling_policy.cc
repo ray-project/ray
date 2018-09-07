@@ -36,7 +36,7 @@ std::unordered_map<TaskID, ClientID> SchedulingPolicy::Schedule(
   for (const auto &t : scheduling_queue_.GetPlaceableTasks()) {
     // Get task's resource demand
     const auto spec = t.GetTaskSpecification();
-    const auto &resource_demand = spec.GetRequiredResourcesForPlacement();
+    const auto &resource_demand = spec.GetRequiredPlacementResources();
     const TaskID &task_id = spec.TaskId();
 
     // TODO(atumanov): try to place tasks locally first.
@@ -106,7 +106,7 @@ std::unordered_map<TaskID, ClientID> SchedulingPolicy::Schedule(
         // TODO(rkn): Propagate a warning to the user.
         RAY_LOG(INFO) << "This task requires " << spec.GetRequiredResources().ToString()
                       << " for execution and "
-                      << spec.GetRequiredResourcesForPlacement().ToString()
+                      << spec.GetRequiredPlacementResources().ToString()
                       << " for placement, but no nodes have the necessary resources.";
       }
     }
@@ -125,7 +125,7 @@ std::vector<TaskID> SchedulingPolicy::SpillOver(
   // Check if we can accommodate an infeasible task.
   for (const auto &task : scheduling_queue_.GetInfeasibleTasks()) {
     const auto spec = task.GetTaskSpecification();
-    if (spec.GetRequiredResourcesForPlacement().IsSubset(
+    if (spec.GetRequiredPlacementResources().IsSubset(
             remote_scheduling_resources.GetTotalResources())) {
       decision.push_back(spec.TaskId());
       new_load.AddResources(spec.GetRequiredResources());
@@ -135,7 +135,7 @@ std::vector<TaskID> SchedulingPolicy::SpillOver(
   for (const auto &task : scheduling_queue_.GetReadyTasks()) {
     const auto spec = task.GetTaskSpecification();
     if (!spec.IsActorTask()) {
-      if (spec.GetRequiredResourcesForPlacement().IsSubset(
+      if (spec.GetRequiredPlacementResources().IsSubset(
               remote_scheduling_resources.GetTotalResources())) {
         decision.push_back(spec.TaskId());
         new_load.AddResources(spec.GetRequiredResources());

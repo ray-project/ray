@@ -938,7 +938,7 @@ void NodeManager::ScheduleTasks(
           << " is infeasible and cannot currently be executed. It requires "
           << task.GetTaskSpecification().GetRequiredResources().ToString()
           << " for execution and "
-          << task.GetTaskSpecification().GetRequiredResourcesForPlacement().ToString()
+          << task.GetTaskSpecification().GetRequiredPlacementResources().ToString()
           << " for placement.";
       RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
           task.GetTaskSpecification().DriverId(), type, error_message.str(),
@@ -946,7 +946,7 @@ void NodeManager::ScheduleTasks(
     }
     // Assert that this placeable task is not feasible locally (necessary but not
     // sufficient).
-    RAY_CHECK(!task.GetTaskSpecification().GetRequiredResourcesForPlacement().IsSubset(
+    RAY_CHECK(!task.GetTaskSpecification().GetRequiredPlacementResources().IsSubset(
         cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()]
             .GetTotalResources()));
   }
@@ -1278,8 +1278,7 @@ void NodeManager::AssignTask(Task &task) {
       this->cluster_resource_map_[my_client_id].Acquire(spec.GetRequiredResources()));
 
   if (spec.IsActorCreationTask()) {
-    // Check that we are not placing an actor creation task on a node with 0
-    // CPUs.
+    // Check that we are not placing an actor creation task on a node with 0 CPUs.
     RAY_CHECK(cluster_resource_map_[my_client_id].GetTotalResources().GetNumCpus() != 0);
     worker->SetLifetimeResourceIds(acquired_resources);
   } else {
