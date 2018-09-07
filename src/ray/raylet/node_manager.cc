@@ -236,20 +236,20 @@ void NodeManager::HandleDriverTableUpdate(
       auto driver_id = UniqueID::from_binary(entry.driver_id);
       auto workers = worker_pool_.GetWorkersRunningTasksForDriver(driver_id);
 
-      // Kill all the workers. The actual cleanup for these workers are done
-      // later when we receive DisconnectClient message from them.
+      // Kill all the workers. The actual cleanup for these workers is done
+      // later when we receive the DisconnectClient message from them.
       for (const auto &worker : workers) {
-        // Mark worker as dead, so further messages from the work are ignored
+        // Mark the worker as dead so further messages from it are ignored
         // (except DisconnectClient).
         worker->MarkDead();
         // Then kill the worker process.
         KillWorker(worker);
       }
 
-      // Remove all tasks for this driver from scheduling queues, and mark
-      // the results for these tasks are not required, cancel any attempts
-      // for re-construction. Note that at this time the workers are likely
-      // alive before of the delay to kill workers.
+      // Remove all tasks for this driver from the scheduling queues, mark
+      // the results for these tasks as not required, cancel any attempts
+      // at reconstruction. Note that at this time the workers are likely
+      // alive because of the delay in killing workers.
       CleanUpTasksForDeadDriver(driver_id);
     }
   }
@@ -586,9 +586,9 @@ void NodeManager::ProcessClientMessage(
       // (See design_docs/task_states.rst for the state transition diagram.)
       const TaskID &task_id = worker->GetAssignedTaskId();
       if (!task_id.is_nil() && !worker->IsDead()) {
-        // If the worker was killed intentionally, e.g. when driver exits,
-        // the task for this worker has already been removed from queue,
-        // so the following are skipped.
+        // If the worker was killed intentionally, e.g., when the driver that created
+        // the task that this worker is currently executing exits, the task for this
+        // worker has already been removed from queue, so the following are skipped.
         auto const &running_tasks = local_queues_.GetRunningTasks();
         // TODO(rkn): This is too heavyweight just to get the task's driver ID.
         auto const it = std::find_if(
