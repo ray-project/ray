@@ -1987,6 +1987,15 @@ def print_error_messages_raylet(worker):
         pass
 
 
+def is_initialized():
+    """Check if ray.init has been called yet.
+
+    Returns:
+        True if ray.init has already been called and false otherwise.
+    """
+    return ray.worker.global_worker.connected
+
+
 def print_error_messages(worker):
     """Print error messages in the background on the driver.
 
