@@ -1,6 +1,6 @@
 #include <jni.h>
 
-#include "local_scheduler/lib/java/org_ray_spi_impl_DefaultLocalSchedulerClient.h"
+#include "local_scheduler/lib/java/org_ray_runtime_raylet_RayletClientImpl.h"
 #include "local_scheduler_client.h"
 #include "logging.h"
 #include "ray/id.h"
@@ -32,18 +32,17 @@ class UniqueIdFromJByteArray {
 };
 
 /*
- * Class:     org_ray_spi_impl_DefaultLocalSchedulerClient
+ * Class:     org_ray_runtime_raylet_RayletClientImpl
  * Method:    nativeInit
  * Signature: (Ljava/lang/String;[BZ[B)J
  */
 JNIEXPORT jlong JNICALL
-Java_org_ray_spi_impl_DefaultLocalSchedulerClient_nativeInit(
-    JNIEnv *env,
-    jclass,
-    jstring sockName,
-    jbyteArray workerId,
-    jboolean isWorker,
-    jbyteArray driverId) {
+Java_org_ray_runtime_raylet_RayletClientImpl_nativeInit(JNIEnv *env,
+                                                        jclass,
+                                                        jstring sockName,
+                                                        jbyteArray workerId,
+                                                        jboolean isWorker,
+                                                        jbyteArray driverId) {
   UniqueIdFromJByteArray worker_id(env, workerId);
   UniqueIdFromJByteArray driver_id(env, driverId);
   const char *nativeString = env->GetStringUTFChars(sockName, JNI_FALSE);
@@ -55,12 +54,12 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient_nativeInit(
 }
 
 /*
- * Class:     org_ray_spi_impl_DefaultLocalSchedulerClient
+ * Class:     org_ray_runtime_raylet_RayletClientImpl
  * Method:    nativeSubmitTask
  * Signature: (J[BLjava/nio/ByteBuffer;II)V
  */
 JNIEXPORT void JNICALL
-Java_org_ray_spi_impl_DefaultLocalSchedulerClient_nativeSubmitTask(
+Java_org_ray_runtime_raylet_RayletClientImpl_nativeSubmitTask(
     JNIEnv *env,
     jclass,
     jlong client,
@@ -83,14 +82,14 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient_nativeSubmitTask(
 }
 
 /*
- * Class:     org_ray_spi_impl_DefaultLocalSchedulerClient
+ * Class:     org_ray_runtime_raylet_RayletClientImpl
  * Method:    nativeGetTask
  * Signature: (J)[B
  */
 JNIEXPORT jbyteArray JNICALL
-Java_org_ray_spi_impl_DefaultLocalSchedulerClient_nativeGetTask(JNIEnv *env,
-                                                                jclass,
-                                                                jlong client) {
+Java_org_ray_runtime_raylet_RayletClientImpl_nativeGetTask(JNIEnv *env,
+                                                           jclass,
+                                                           jlong client) {
   auto conn = reinterpret_cast<LocalSchedulerConnection *>(client);
   int64_t task_size = 0;
 
@@ -112,26 +111,26 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient_nativeGetTask(JNIEnv *env,
 }
 
 /*
- * Class:     org_ray_spi_impl_DefaultLocalSchedulerClient
+ * Class:     org_ray_runtime_raylet_RayletClientImpl
  * Method:    nativeDestroy
  * Signature: (J)V
  */
 JNIEXPORT void JNICALL
-Java_org_ray_spi_impl_DefaultLocalSchedulerClient_nativeDestroy(JNIEnv *,
-                                                                jclass,
-                                                                jlong client) {
+Java_org_ray_runtime_raylet_RayletClientImpl_nativeDestroy(JNIEnv *,
+                                                           jclass,
+                                                           jlong client) {
   auto conn = reinterpret_cast<LocalSchedulerConnection *>(client);
   local_scheduler_disconnect_client(conn);
   LocalSchedulerConnection_free(conn);
 }
 
 /*
- * Class:     org_ray_spi_impl_DefaultLocalSchedulerClient
+ * Class:     org_ray_runtime_raylet_RayletClientImpl
  * Method:    nativeReconstructObjects
  * Signature: (J[[BZ)V
  */
 JNIEXPORT void JNICALL
-Java_org_ray_spi_impl_DefaultLocalSchedulerClient_nativeReconstructObjects(
+Java_org_ray_runtime_raylet_RayletClientImpl_nativeReconstructObjects(
     JNIEnv *env,
     jclass,
     jlong client,
@@ -151,12 +150,12 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient_nativeReconstructObjects(
 }
 
 /*
- * Class:     org_ray_spi_impl_DefaultLocalSchedulerClient
+ * Class:     org_ray_runtime_raylet_RayletClientImpl
  * Method:    nativeNotifyUnblocked
  * Signature: (J)V
  */
 JNIEXPORT void JNICALL
-Java_org_ray_spi_impl_DefaultLocalSchedulerClient_nativeNotifyUnblocked(
+Java_org_ray_runtime_raylet_RayletClientImpl_nativeNotifyUnblocked(
     JNIEnv *,
     jclass,
     jlong client) {
@@ -165,12 +164,12 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient_nativeNotifyUnblocked(
 }
 
 /*
- * Class:     org_ray_spi_impl_DefaultLocalSchedulerClient
+ * Class:     org_ray_runtime_raylet_RayletClientImpl
  * Method:    nativePutObject
  * Signature: (J[B[B)V
  */
 JNIEXPORT void JNICALL
-Java_org_ray_spi_impl_DefaultLocalSchedulerClient_nativePutObject(
+Java_org_ray_runtime_raylet_RayletClientImpl_nativePutObject(
     JNIEnv *env,
     jclass,
     jlong client,
@@ -182,12 +181,12 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient_nativePutObject(
 }
 
 /*
- * Class:     org_ray_spi_impl_DefaultLocalSchedulerClient
+ * Class:     org_ray_runtime_raylet_RayletClientImpl
  * Method:    nativeWaitObject
  * Signature: (J[[BIIZ)[Z
  */
 JNIEXPORT jbooleanArray JNICALL
-Java_org_ray_spi_impl_DefaultLocalSchedulerClient_nativeWaitObject(
+Java_org_ray_runtime_raylet_RayletClientImpl_nativeWaitObject(
     JNIEnv *env,
     jclass,
     jlong client,
@@ -237,12 +236,12 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient_nativeWaitObject(
 }
 
 /*
- * Class:     org_ray_spi_impl_DefaultLocalSchedulerClient
+ * Class:     org_ray_runtime_raylet_RayletClientImpl
  * Method:    nativeGenerateTaskId
  * Signature: ([B[BI)[B
  */
 JNIEXPORT jbyteArray JNICALL
-Java_org_ray_spi_impl_DefaultLocalSchedulerClient_nativeGenerateTaskId(
+Java_org_ray_runtime_raylet_RayletClientImpl_nativeGenerateTaskId(
     JNIEnv *env,
     jclass,
     jbyteArray driverId,
@@ -267,12 +266,12 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient_nativeGenerateTaskId(
 }
 
 /*
- * Class:     org_ray_spi_impl_DefaultLocalSchedulerClient
+ * Class:     org_ray_runtime_raylet_RayletClientImpl
  * Method:    nativeFreePlasmaObjects
  * Signature: ([[BZ)V
  */
 JNIEXPORT void JNICALL
-Java_org_ray_spi_impl_DefaultLocalSchedulerClient_nativeFreePlasmaObjects(
+Java_org_ray_runtime_raylet_RayletClientImpl_nativeFreePlasmaObjects(
     JNIEnv *env,
     jclass,
     jlong client,
