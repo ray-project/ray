@@ -57,52 +57,13 @@ if(RAY_BUILD_TESTS OR RAY_BUILD_BENCHMARKS)
   add_dependencies(gtest googletest_ep)
   add_dependencies(gtest_main googletest_ep)
   add_dependencies(gmock_main googletest_ep)
-
-  set(GFLAGS_CMAKE_CXX_FLAGS ${EP_CXX_FLAGS})
-
-  set(GFLAGS_URL "https://github.com/gflags/gflags/archive/v${GFLAGS_VERSION}.tar.gz")
-  set(GFLAGS_URL_MD5 "b99048d9ab82d8c56e876fb1456c285e")
-  set(GFLAGS_PREFIX "${CMAKE_CURRENT_BINARY_DIR}/external/gflags/src/gflags_ep")
-  set(GFLAGS_HOME "${GFLAGS_PREFIX}")
-  set(GFLAGS_INCLUDE_DIR "${GFLAGS_PREFIX}/include")
-  if(MSVC)
-    set(GFLAGS_STATIC_LIB "${GFLAGS_PREFIX}/lib/gflags_static.lib")
-  else()
-    set(GFLAGS_STATIC_LIB "${GFLAGS_PREFIX}/lib/libgflags.a")
-  endif()
-  set(GFLAGS_CMAKE_ARGS -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
-                        -DCMAKE_INSTALL_PREFIX=${GFLAGS_PREFIX}
-                        -DBUILD_SHARED_LIBS=OFF
-                        -DBUILD_STATIC_LIBS=ON
-                        -DBUILD_PACKAGING=OFF
-                        -DBUILD_TESTING=OFF
-                        -BUILD_CONFIG_TESTS=OFF
-                        -DINSTALL_HEADERS=ON
-                        -DCMAKE_CXX_FLAGS_${UPPERCASE_BUILD_TYPE}=${EP_CXX_FLAGS}
-                        -DCMAKE_C_FLAGS_${UPPERCASE_BUILD_TYPE}=${EP_C_FLAGS}
-                        -DCMAKE_CXX_FLAGS=${GFLAGS_CMAKE_CXX_FLAGS})
-
-  ExternalProject_Add(gflags_ep
-    PREFIX external/gflags
-    URL ${GFLAGS_URL}
-    URL_MD5 ${GFLAGS_URL_MD5}
-    ${EP_LOG_OPTIONS}
-    BUILD_IN_SOURCE 1
-    BUILD_BYPRODUCTS "${GFLAGS_STATIC_LIB}"
-    CMAKE_ARGS ${GFLAGS_CMAKE_ARGS})
-
-  message(STATUS "GFlags include dir: ${GFLAGS_INCLUDE_DIR}")
-  message(STATUS "GFlags static library: ${GFLAGS_STATIC_LIB}")
-  include_directories(SYSTEM ${GFLAGS_INCLUDE_DIR})
-  ADD_THIRDPARTY_LIB(gflags
-    STATIC_LIB ${GFLAGS_STATIC_LIB})
-
-  add_dependencies(gflags gflags_ep)
 endif()
 
 if(RAY_USE_GLOG)
   message(STATUS "Starting to build glog")
   set(GLOG_VERSION "0.3.5")
+  # keep the url md5 equals with the version, `md5 v0.3.5.tar.gz`
+  set(GLOG_URL_MD5 "5df6d78b81e51b90ac0ecd7ed932b0d4")
   set(GLOG_CMAKE_CXX_FLAGS "${EP_CXX_FLAGS} -fPIC")
   if(APPLE)
     set(GLOG_CMAKE_CXX_FLAGS "${GLOG_CMAKE_CXX_FLAGS} -mmacosx-version-min=10.12")
@@ -113,7 +74,7 @@ if(RAY_USE_GLOG)
   set(GLOG_HOME "${GLOG_PREFIX}")
   set(GLOG_INCLUDE_DIR "${GLOG_PREFIX}/include")
   set(GLOG_STATIC_LIB "${GLOG_PREFIX}/lib/libglog.a")
-  set(GLOG_URL_MD5 "5df6d78b81e51b90ac0ecd7ed932b0d4")
+
 
   set(GLOG_CMAKE_ARGS -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
                         -DCMAKE_INSTALL_PREFIX=${GLOG_PREFIX}

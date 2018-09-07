@@ -12,6 +12,8 @@ if(UNIX AND NOT APPLE)
   link_libraries(rt)
 endif()
 
+include_directories("${ARROW_INCLUDE_DIR}")
+
 set(PLASMA_FBS_SRC "${CMAKE_CURRENT_LIST_DIR}/format/plasma.fbs" "${CMAKE_CURRENT_LIST_DIR}/format/common.fbs")
 set(OUTPUT_DIR ${CMAKE_CURRENT_LIST_DIR}/format/)
 

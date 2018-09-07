@@ -14,7 +14,7 @@
 #  - PLASMA_SHARED_LIB
 
 set(arrow_URL https://github.com/apache/arrow.git)
-set(arrow_TAG fda4b3dcfc773612b12973df5053193f236fc696)
+set(arrow_TAG 927bd34aaad875e82beca2584d5d777839fa8bb0)
 
 set(ARROW_INSTALL_PREFIX ${CMAKE_CURRENT_BINARY_DIR}/external/arrow-install)
 set(ARROW_HOME ${ARROW_INSTALL_PREFIX})

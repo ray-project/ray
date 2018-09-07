@@ -215,7 +215,11 @@ def _test_component_failed(component_type):
         components = ray.services.all_processes[component_type]
         for process in components[1:]:
             process.terminate()
-            time.sleep(1)
+
+        # while the local_scheduler is fetching object_ids,
+        # and would trigger `fetch_object_timeout_handler`, which leads to find the
+        # plasma manager or plasma store socket is broken, so local_scheduler failed.
+        time.sleep(1)
 
         for process in components[1:]:
             process.kill()
