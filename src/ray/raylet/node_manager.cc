@@ -222,7 +222,7 @@ void NodeManager::KillWorker(std::shared_ptr<Worker> worker) {
   retry_timer->expires_from_now(retry_duration);
   retry_timer->async_wait([retry_timer, worker](const boost::system::error_code &error) {
     RAY_LOG(DEBUG) << "Send SIGKILL to worker, pid=" << worker->Pid();
-    // Force kill driver.
+    // Force kill worker.
     kill(worker->Pid(), SIGKILL);
   });
 }
@@ -231,10 +231,10 @@ void NodeManager::HandleDriverTableUpdate(
     const ClientID &id, const std::vector<DriverTableDataT> &driver_data) {
   for (const auto &entry : driver_data) {
     RAY_LOG(DEBUG) << "HandleDriverTableUpdate " << UniqueID::from_binary(entry.driver_id)
-                  << " " << entry.is_dead;
+                   << " " << entry.is_dead;
     if (entry.is_dead) {
       auto driver_id = UniqueID::from_binary(entry.driver_id);
-      auto workers = worker_pool_.GetDriverWorkers(driver_id);
+      auto workers = worker_pool_.GetWorkersRunningTasksForDriver(driver_id);
 
       // Kill all the workers. The actual cleanup for these workers are done
       // later when we receive DisconnectClient message from them.
@@ -487,7 +487,7 @@ void NodeManager::CleanUpTasksForDeadDriver(const DriverID &driver_id) {
   auto tasks_to_remove = local_queues_.GetTaskIdsForDriver(driver_id);
   local_queues_.RemoveTasks(tasks_to_remove);
 
-  task_dependency_manager_.CleanupForDriver(tasks_to_remove);
+  task_dependency_manager_.RemoveTasksAndRelatedObjects(tasks_to_remove);
 }
 
 void NodeManager::ProcessNewClient(LocalClientConnection &client) {
@@ -524,8 +524,8 @@ void NodeManager::ProcessClientMessage(
     const uint8_t *message_data) {
   RAY_LOG(DEBUG) << "Message of type " << message_type;
 
-  auto worker = worker_pool_.GetRegisteredWorker(client);
-  if (worker && worker->IsDead()) {
+  auto registered_worker = worker_pool_.GetRegisteredWorker(client);
+  if (registered_worker && registered_worker->IsDead()) {
     // For a worker that is marked as dead (because the driver has died already),
     // all the messages are ignored except DisconnectClient.
     if (static_cast<protocol::MessageType>(message_type) !=
@@ -551,7 +551,7 @@ void NodeManager::ProcessClientMessage(
       // message is actually the ID of the driver task, while client_id represents the
       // real driver ID, which can associate all the tasks/actors for a given driver,
       // which is set to the worker ID.
-      JobID driver_task_id = from_flatbuf(*message->driver_id());
+      const JobID driver_task_id = from_flatbuf(*message->driver_id());
       worker->AssignTaskId(driver_task_id);
       worker->AssignDriverId(from_flatbuf(*message->client_id()));
       worker_pool_.RegisterDriver(std::move(worker));
@@ -559,6 +559,8 @@ void NodeManager::ProcessClientMessage(
     }
   } break;
   case protocol::MessageType::GetTask: {
+    std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
+    RAY_CHECK(worker);
     // If the worker was assigned a task, mark it as finished.
     if (!worker->GetAssignedTaskId().is_nil()) {
       FinishAssignedTask(*worker);
@@ -718,6 +720,8 @@ void NodeManager::ProcessClientMessage(
     }
   } break;
   case protocol::MessageType::NotifyUnblocked: {
+    std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
+
     // Re-acquire the CPU resources for the task that was assigned to the
     // unblocked worker.
     // TODO(swang): Because the object dependencies are tracked in the task

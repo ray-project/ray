@@ -298,7 +298,7 @@ void TaskDependencyManager::TaskCanceled(const TaskID &task_id) {
   }
 }
 
-void TaskDependencyManager::CleanupForDriver(const std::unordered_set<TaskID> &task_ids) {
+void TaskDependencyManager::RemoveTasksAndRelatedObjects(const std::unordered_set<TaskID> &task_ids) {
   if (task_ids.empty()) {
     return;
   }
@@ -312,7 +312,7 @@ void TaskDependencyManager::CleanupForDriver(const std::unordered_set<TaskID> &t
   // TODO: the size of required_objects_ could be large, consider to add
   // an index if this turns out to be a perf problem.
   for (auto it = required_objects_.begin(); it != required_objects_.end();) {
-    auto object_id = *it;
+    const auto object_id = *it;
     TaskID creating_task_id = ComputeTaskId(object_id);
     if (task_ids.find(creating_task_id) != task_ids.end()) {
       object_manager_.CancelPull(object_id);

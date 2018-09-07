@@ -232,7 +232,7 @@ inline WorkerPool::State &WorkerPool::GetStateForLanguage(const Language &langua
   return state->second;
 }
 
-std::vector<std::shared_ptr<Worker>> WorkerPool::GetDriverWorkers(
+std::vector<std::shared_ptr<Worker>> WorkerPool::GetWorkersRunningTasksForDriver(
     const DriverID &driver_id) const {
   std::vector<std::shared_ptr<Worker>> workers;
 

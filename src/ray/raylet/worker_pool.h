@@ -111,11 +111,11 @@ class WorkerPool {
   /// \return The total count of all workers (actor and non-actor) in the pool.
   uint32_t Size(const Language &language) const;
 
-  /// Get all the workers for a particular driver.
+  /// Get all the workers which are running tasks for a given driver.
   ///
-  /// \param job_id The job ID.
-  /// \return A list containing all the workers for a driver.
-  std::vector<std::shared_ptr<Worker>> GetDriverWorkers(const DriverID &driver_id) const;
+  /// \param driver_id The driver ID.
+  /// \return A list containing all the workers which are running tasks for the driver.
+  std::vector<std::shared_ptr<Worker>> GetWorkersRunningTasksForDriver(const DriverID &driver_id) const;
 
  protected:
   /// A map from the pids of starting worker processes
