@@ -11,6 +11,106 @@ ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 DOCKER_SHA=$($ROOT_DIR/../../build-docker.sh --output-sha --no-cache)
 echo "Using Docker image" $DOCKER_SHA
 
+# No Xray for PyTorch
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/rllib/train.py \
+    --env PongDeterministic-v4 \
+    --run A3C \
+    --stop '{"training_iteration": 2}' \
+    --config '{"num_workers": 2, "use_pytorch": true, "model": {"use_lstm": false, "grayscale": true, "zero_mean": false, "dim": 84, "channel_major": true}, "preprocessor_pref": "rllib"}'
+
+# No Xray for PyTorch
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/rllib/train.py \
+    --env CartPole-v1 \
+    --run A3C \
+    --stop '{"training_iteration": 2}' \
+    --config '{"num_workers": 2, "use_pytorch": true}'
+
+# No Xray for PyTorch
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/rllib/train.py \
+    --env CartPole-v1 \
+    --run A3C \
+    --stop '{"training_iteration": 2}' \
+    --config '{"num_workers": 2, "use_pytorch": true}'
+# No Xray for PyTorch
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/rllib/train.py \
+    --env CartPole-v1 \
+    --run A3C \
+    --stop '{"training_iteration": 2}' \
+    --config '{"num_workers": 2, "use_pytorch": true}'
+# No Xray for PyTorch
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/rllib/train.py \
+    --env CartPole-v1 \
+    --run A3C \
+    --stop '{"training_iteration": 2}' \
+    --config '{"num_workers": 2, "use_pytorch": true}'
+# No Xray for PyTorch
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/rllib/train.py \
+    --env CartPole-v1 \
+    --run A3C \
+    --stop '{"training_iteration": 2}' \
+    --config '{"num_workers": 2, "use_pytorch": true}'
+# No Xray for PyTorch
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/rllib/train.py \
+    --env CartPole-v1 \
+    --run A3C \
+    --stop '{"training_iteration": 2}' \
+    --config '{"num_workers": 2, "use_pytorch": true}'
+# No Xray for PyTorch
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/rllib/train.py \
+    --env CartPole-v1 \
+    --run A3C \
+    --stop '{"training_iteration": 2}' \
+    --config '{"num_workers": 2, "use_pytorch": true}'
+# No Xray for PyTorch
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/rllib/train.py \
+    --env CartPole-v1 \
+    --run A3C \
+    --stop '{"training_iteration": 2}' \
+    --config '{"num_workers": 2, "use_pytorch": true}'
+
+python3 $ROOT_DIR/multi_node_docker_test.py \
+    --docker-image=$DOCKER_SHA \
+    --num-nodes=5 \
+    --num-redis-shards=10 \
+    --use-raylet \
+    --test-script=/ray/test/jenkins_tests/multi_node_tests/test_0.py
+
+python3 $ROOT_DIR/multi_node_docker_test.py \
+    --docker-image=$DOCKER_SHA \
+    --num-nodes=5 \
+    --num-redis-shards=5 \
+    --num-gpus=0,1,2,3,4 \
+    --num-drivers=7 \
+    --driver-locations=0,1,0,1,2,3,4 \
+    --test-script=/ray/test/jenkins_tests/multi_node_tests/remove_driver_test.py
+
+python3 $ROOT_DIR/multi_node_docker_test.py \
+    --docker-image=$DOCKER_SHA \
+    --num-nodes=5 \
+    --num-redis-shards=2 \
+    --num-gpus=0,0,5,6,50 \
+    --num-drivers=100 \
+    --use-raylet \
+    --test-script=/ray/test/jenkins_tests/multi_node_tests/many_drivers_test.py
+
+python3 $ROOT_DIR/multi_node_docker_test.py \
+    --docker-image=$DOCKER_SHA \
+    --num-nodes=1 \
+    --mem-size=60G \
+    --shm-size=60G \
+    --use-raylet \
+    --test-script=/ray/test/jenkins_tests/multi_node_tests/large_memory_test.py
+
+
 docker run  -e "RAY_USE_XRAY=1" --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/train.py \
     --env PongDeterministic-v0 \
