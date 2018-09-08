@@ -169,7 +169,7 @@ class _MockTrialExecutor(TrialExecutor):
         return trial.trainable_name
 
     def reset_trial(self, trial, new_config):
-        pass
+        return False
 
 
 class _MockTrialRunner():
