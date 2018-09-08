@@ -120,7 +120,7 @@ class TestPolicyEvaluator(unittest.TestCase):
         result = agent.train()
         self.assertGreater(result["info"]["learner"]["cur_lr"], 0.01)
         result2 = agent.train()
-        self.assertLess(result2["info"]["learner"]["cur_lr"], 0.0001)
+        self.assertLess(result2["info"]["learner"]["cur_lr"], 0.1)
 
     def testQueryEvaluators(self):
         register_env("test", lambda _: gym.make("CartPole-v0"))
