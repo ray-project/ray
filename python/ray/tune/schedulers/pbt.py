@@ -223,10 +223,11 @@ class PopulationBasedTraining(FIFOScheduler):
         # lighter way reset() method that can alter the trial config.
         new_tag = make_experiment_tag(
             trial_state.orig_tag, new_config, self._hyperparam_mutations)
-        if not trial_executor.reset_trial(
+        reset_successful = trial_executor.reset_trial(
                 trial=trial,
                 new_config=new_config,
-                new_experiment_tag=new_tag):
+                new_experiment_tag=new_tag)
+        if not reset_successful:
             trial_executor.stop_trial(trial, stop_logger=False)
             trial.config = new_config
             trial.experiment_tag = new_tag

@@ -279,7 +279,7 @@ class Trainable(object):
         Returns:
             No value or "NOT_IMPLEMENTTED".
             """
-        return "NOT_IMPLEMENTED"
+        return False
 
     def stop(self):
         """Releases all resources used by this trainable."""

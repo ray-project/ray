@@ -175,7 +175,7 @@ class RayTrialExecutor(TrialExecutor):
         reset_val = ray.get(
             trainable.reset_config.remote(new_config, new_experiment_tag))
         # TODO: Figure out a better way to deal with exceptions than sentenial
-        if (reset_val == "NOT_IMPLEMENTED"):
+        if not reset_val:
             return False
         return True
 
