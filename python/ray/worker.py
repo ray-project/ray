@@ -909,7 +909,8 @@ class Worker(object):
 
         # Get task arguments from the object store.
         try:
-            self.reraise_actor_init_error()
+            if function_name != "__ray_terminate__":
+                self.reraise_actor_init_error()
             with profiling.profile("task:deserialize_arguments", worker=self):
                 arguments = self._get_arguments_for_execution(
                     function_name, args)
@@ -977,7 +978,7 @@ class Worker(object):
                 "function_name": function_name
             })
         # Mark the actor init as failed
-        if self.actor_id and function_name == "__init__":
+        if self.actor_id != NIL_ACTOR_ID and function_name == "__init__":
             self.mark_actor_init_failed(error)
 
     def _become_actor(self, task):
