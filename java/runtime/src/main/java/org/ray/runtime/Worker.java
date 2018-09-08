@@ -23,7 +23,7 @@ public class Worker {
   public void loop() {
     while (true) {
       RayLog.core.info(Thread.currentThread().getName() + ":fetching new task...");
-      TaskSpec task = runtime.getLocalSchedulerClient().getTask();
+      TaskSpec task = runtime.getRayletClient().getTask();
       execute(task);
     }
   }

@@ -89,14 +89,14 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
               "how many release requests should be delayed in plasma client");
 
       ObjectStoreLink plink = new PlasmaClient(params.object_store_name, "", releaseDelay);
-      RayletClient slink = new RayletClientImpl(
+      RayletClient rayletClient = new RayletClientImpl(
               params.raylet_socket_name,
               WorkerContext.currentWorkerId(),
               isWorker,
               WorkerContext.currentTask().taskId
       );
 
-      init(slink, plink, funcMgr, pathConfig);
+      init(rayletClient, plink, funcMgr, pathConfig);
 
       // register
       registerWorker(isWorker, params.node_ip_address, params.object_store_name,

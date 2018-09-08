@@ -42,7 +42,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   protected static RayParameters params = null;
   private static boolean fromRayInit = false;
   protected Worker worker;
-  protected RayletClient localSchedulerClient;
+  protected RayletClient rayletClient;
   protected ObjectStoreProxy objectStoreProxy;
   protected LocalFunctionManager functions;
   protected RemoteFunctionManager remoteFunctionManager;
@@ -128,7 +128,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     pathConfig = pathManager;
 
     functions = new LocalFunctionManager(remoteLoader);
-    localSchedulerClient = slink;
+    rayletClient = slink;
 
     objectStoreProxy = new ObjectStoreProxy(plink);
     worker = new Worker(this);
@@ -203,7 +203,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
       List<List<UniqueId>> fetchBatches =
           splitIntoBatches(objectIds, params.worker_fetch_request_size);
       for (List<UniqueId> batch : fetchBatches) {
-        localSchedulerClient.reconstructObjects(batch, true);
+        rayletClient.reconstructObjects(batch, true);
       }
 
       // Get the objects. We initially try to get the objects immediately.
@@ -228,7 +228,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
             splitIntoBatches(unreadyList, params.worker_fetch_request_size);
 
         for (List<UniqueId> batch : reconstructBatches) {
-          localSchedulerClient.reconstructObjects(batch, false);
+          rayletClient.reconstructObjects(batch, false);
         }
 
         List<Pair<T, GetStatus>> results = objectStoreProxy
@@ -263,14 +263,14 @@ public abstract class AbstractRayRuntime implements RayRuntime {
       // If there were objects that we weren't able to get locally, let the local
       // scheduler know that we're now unblocked.
       if (wasBlocked) {
-        localSchedulerClient.notifyUnblocked();
+        rayletClient.notifyUnblocked();
       }
     }
   }
 
   @Override
   public void free(List<UniqueId> objectIds, boolean localOnly) {
-    localSchedulerClient.freePlasmaObjects(objectIds, localOnly);
+    rayletClient.freePlasmaObjects(objectIds, localOnly);
   }
 
   private List<List<UniqueId>> splitIntoBatches(List<UniqueId> objectIds, int batchSize) {
@@ -291,13 +291,13 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   @Override
   public <T> WaitResult<T> wait(List<RayObject<T>> waitList, int numReturns, int timeoutMs) {
-    return localSchedulerClient.wait(waitList, numReturns, timeoutMs);
+    return rayletClient.wait(waitList, numReturns, timeoutMs);
   }
 
   @Override
   public RayObject call(RayFunc func, Object[] args) {
     TaskSpec spec = createTaskSpec(func, RayActorImpl.NIL, args, false);
-    localSchedulerClient.submitTask(spec);
+    rayletClient.submitTask(spec);
     return new RayObjectImpl(spec.returnIds[0]);
   }
 
@@ -309,7 +309,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     RayActorImpl actorImpl = (RayActorImpl)actor;
     TaskSpec spec = createTaskSpec(func, actorImpl, args, false);
     actorImpl.setTaskCursor(spec.returnIds[1]);
-    localSchedulerClient.submitTask(spec);
+    rayletClient.submitTask(spec);
     return new RayObjectImpl(spec.returnIds[0]);
   }
 
@@ -320,7 +320,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     RayActorImpl<?> actor = new RayActorImpl(spec.returnIds[0]);
     actor.increaseTaskCounter();
     actor.setTaskCursor(spec.returnIds[0]);
-    localSchedulerClient.submitTask(spec);
+    rayletClient.submitTask(spec);
     return (RayActor<T>) actor;
   }
 
@@ -346,7 +346,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   private TaskSpec createTaskSpec(RayFunc func, RayActorImpl actor, Object[] args,
       boolean isActorCreationTask) {
     final TaskSpec current = WorkerContext.currentTask();
-    UniqueId taskId = localSchedulerClient.generateTaskId(current.driverId,
+    UniqueId taskId = rayletClient.generateTaskId(current.driverId,
         current.taskId,
         WorkerContext.nextCallIndex());
     int numReturns = actor.getId().isNil() ? 1 : 2;
@@ -395,8 +395,8 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     return worker;
   }
 
-  public RayletClient getLocalSchedulerClient() {
-    return localSchedulerClient;
+  public RayletClient getRayletClient() {
+    return rayletClient;
   }
 
   public LocalFunctionManager getLocalFunctionManager() {
