@@ -107,7 +107,18 @@ class TrialExecutor(object):
         self.start_trial(trial)
 
     def reset_trial(self, trial, new_config, new_experiment_tag):
-        """Resets a trial to a certain configuration"""
+        """Tries to invoke `Trainable.reset_config()` to reset trial.
+
+        Args:
+            trial (Trial): Trial to be resetted.
+            new_config (dict): New configuration for Trial
+                trainable.
+            new_experiment_tag (str): New experiment name
+                for trial.
+
+        Returns:
+            True if `reset_config` is succesful else False.
+        """
         raise NotImplementedError
 
     def get_running_trials(self):
