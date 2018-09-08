@@ -84,7 +84,6 @@ class RayTrialExecutorTest(unittest.TestCase):
         self.assertEqual(exists, False)
         self.assertEqual(Trial.RUNNING, trial.status)
 
-
     def generate_trials(self, spec, name):
         suggester = BasicVariantGenerator({name: spec})
         return suggester.next_trials()
