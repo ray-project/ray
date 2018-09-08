@@ -57,7 +57,6 @@ class Trainable(object):
                 object. If unspecified, a default logger is created.
         """
 
-        self._initialize_ok = False
         self._experiment_id = uuid.uuid4().hex
         self.config = config or {}
 
@@ -76,7 +75,6 @@ class Trainable(object):
         self._time_total = 0.0
         self._timesteps_total = None
         self._setup()
-        self._initialize_ok = True
         self._local_ip = ray.services.get_node_ip_address()
 
     @classmethod
@@ -133,10 +131,6 @@ class Trainable(object):
         Returns:
             A dict that describes training progress.
         """
-
-        if not self._initialize_ok:
-            raise ValueError(
-                "Trainable initialization failed, see previous errors")
 
         start = time.time()
         result = self._train()
@@ -271,9 +265,8 @@ class Trainable(object):
     def stop(self):
         """Releases all resources used by this trainable."""
 
-        if self._initialize_ok:
-            self._result_logger.close()
-            self._stop()
+        self._result_logger.close()
+        self._stop()
 
     def _train(self):
         """Subclasses should override this to implement train().
