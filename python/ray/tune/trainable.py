@@ -271,7 +271,7 @@ class Trainable(object):
     def reset_config(self, new_config, new_experiment_tag):
         """Reset config without restarting trial
         Optional, used to speed up PBT"""
-        self._reset_config(
+        return self._reset_config(
             new_config=new_config,
             new_experiment_tag=new_experiment_tag)
 
@@ -317,7 +317,7 @@ class Trainable(object):
     def _reset_config(self, new_config, new_experiment_tag):
         """Reset config without restarting trial
         Optional, used to speed up PBT"""
-        raise NotImplementedError
+        return "NOT_IMPLEMENTED"
 
     def _setup(self):
         """Subclasses should override this for custom initialization.

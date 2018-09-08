@@ -160,11 +160,11 @@ class RayTrialExecutor(TrialExecutor):
     def reset_trial(self, trial, new_config, new_experiment_tag):
         """If trainable of trial supports resetting config on the fly,
         reset config and return True, otherwise return False."""
-        try:
-            trainable = trial.runner
-            ray.get(
-                trainable.reset_config.remote(new_config, new_experiment_tag))
-        except (ray.worker.RayGetError, NotImplementedError) as e:
+        trainable = trial.runner
+        reset_val = ray.get(
+            trainable.reset_config.remote(new_config, new_experiment_tag))
+        # TODO: Figure out a better way to deal with exceptions than sentenial
+        if (reset_val == "NOT_IMPLEMENTED"):
             return False
         return True
 
