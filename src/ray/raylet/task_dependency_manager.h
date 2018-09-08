@@ -105,6 +105,12 @@ class TaskDependencyManager {
   /// \return Return a vector of TaskIDs for tasks registered as pending.
   std::vector<TaskID> GetPendingTasks() const;
 
+  /// Remove all of the tasks specified, and all the objects created by
+  /// these tasks from task dependency manager.
+  ///
+  /// \param task_ids The collection of task IDs.
+  void RemoveTasksAndRelatedObjects(const std::unordered_set<TaskID> &task_ids);
+
  private:
   using ObjectDependencyMap = std::unordered_map<ray::ObjectID, std::vector<ray::TaskID>>;
 

@@ -29,8 +29,6 @@ import redis.clients.jedis.Jedis;
  */
 public class RunManager {
 
-  public static final int INT16_MAX = 32767;
-
   private static final DateTimeFormatter DATE_TIME_FORMATTER =
       DateTimeFormatter.ofPattern("Y-m-d_H-M-S");
 
@@ -71,13 +69,7 @@ public class RunManager {
     if (params.num_redis_shards <= 0) {
       params.num_redis_shards = 1;
     }
-    if (params.num_local_schedulers <= 0) {
-      params.num_local_schedulers = 1;
-    }
 
-    params.start_workers_from_local_scheduler = params.run_mode != RunMode.SINGLE_BOX;
-
-    params.include_global_scheduler = true;
     params.start_redis_shards = true;
 
     startRayProcesses();
@@ -90,12 +82,7 @@ public class RunManager {
     if (params.num_redis_shards != 0) {
       throw new Exception("Number of redis shards should be zero in non-head node.");
     }
-    if (params.num_local_schedulers <= 0) {
-      params.num_local_schedulers = 1;
-    }
 
-    //params.start_workers_from_local_scheduler = true;
-    params.include_global_scheduler = false;
     params.start_redis_shards = false;
 
     startRayProcesses();
@@ -281,120 +268,34 @@ public class RunManager {
     }
     redisClient.close();
 
-    // start global scheduler
-    if (params.include_global_scheduler && !params.use_raylet) {
-      startGlobalScheduler(
-          params.redis_address, params.node_ip_address, params.redirect, params.cleanup);
-    }
-
-    // prepare parameters for node processes
-    if (params.num_cpus.length == 0) {
-      params.num_cpus = new int[params.num_local_schedulers];
-      for (int i = 0; i < params.num_local_schedulers; i++) {
-        params.num_cpus[i] = 1;
-      }
-    } else {
-      assert (params.num_cpus.length == params.num_local_schedulers);
-    }
-
-    if (params.num_gpus.length == 0) {
-      params.num_gpus = new int[params.num_local_schedulers];
-      for (int i = 0; i < params.num_local_schedulers; i++) {
-        params.num_gpus[i] = 0;
-      }
-    } else {
-      assert (params.num_gpus.length == params.num_local_schedulers);
-    }
-
-    int[] localNumWorkers = new int[params.num_local_schedulers];
-    if (params.num_workers == 0) {
-      System.arraycopy(params.num_cpus, 0, localNumWorkers, 0, params.num_local_schedulers);
-    } else {
-      for (int i = 0; i < params.num_local_schedulers; i++) {
-        localNumWorkers[i] = params.num_workers;
-      }
-    }
-
     AddressInfo info = new AddressInfo();
 
-    if (params.use_raylet) {
-      // Start object store
-      int rpcPort = params.object_store_rpc_port;
-      String storeName = "/tmp/plasma_store" + rpcPort;
+    // Start object store
+    int rpcPort = params.object_store_rpc_port;
+    String storeName = "/tmp/plasma_store" + rpcPort;
 
-      startObjectStore(0, info,
-          params.redis_address, params.node_ip_address, params.redirect, params.cleanup);
-
-      Map<String, Double> staticResources =
-          ResourceUtil.getResourcesMapFromString(params.static_resources);
-
-      //Start raylet
-      startRaylet(storeName, info, params.num_workers,
-          params.redis_address,
-          params.node_ip_address, params.redirect, staticResources, params.cleanup);
-
-      runInfo.localStores.add(info);
-    } else {
-      for (int i = 0; i < params.num_local_schedulers; i++) {
-        // Start object stores
-        startObjectStore(i, info,
+    startObjectStore(0, info,
             params.redis_address, params.node_ip_address, params.redirect, params.cleanup);
 
-        startObjectManager(i, info,
+    Map<String, Double> staticResources =
+            ResourceUtil.getResourcesMapFromString(params.static_resources);
+
+    //Start raylet
+    startRaylet(storeName, info, params.num_workers,
             params.redis_address,
-            params.node_ip_address, params.redirect, params.cleanup);
+            params.node_ip_address, params.redirect, staticResources, params.cleanup);
 
-        // Start local scheduler
-        int workerCount = 0;
+    runInfo.localStores.add(info);
 
-        if (params.start_workers_from_local_scheduler) {
-          workerCount = localNumWorkers[i];
-          localNumWorkers[i] = 0;
-        }
-
-        startLocalScheduler(i, info,
-            params.num_cpus[i], params.num_gpus[i], workerCount,
-            params.redis_address,
-            params.node_ip_address, params.redirect, params.cleanup);
-
-        runInfo.localStores.add(info);
-      }
-    }
-
-    // start local workers
-    if (!params.use_raylet) {
-      for (int i = 0; i < params.num_local_schedulers; i++) {
-        AddressInfo localStores = runInfo.localStores.get(i);
-        localStores.workerCount = localNumWorkers[i];
-        for (int j = 0; j < localNumWorkers[i]; j++) {
-          startWorker(localStores.storeName, localStores.managerName, localStores.schedulerName,
-              "/worker" + i + "." + j, params.redis_address,
-              params.node_ip_address, UniqueId.NIL, "", params.redirect, params.cleanup);
-        }
-      }
-    }
-
-    HashSet<RunInfo.ProcessType> excludeTypes = new HashSet<>();
-    if (!params.use_raylet) {
-      excludeTypes.add(RunInfo.ProcessType.PT_RAYLET);
-    } else {
-      excludeTypes.add(RunInfo.ProcessType.PT_LOCAL_SCHEDULER);
-      excludeTypes.add(RunInfo.ProcessType.PT_GLOBAL_SCHEDULER);
-      excludeTypes.add(RunInfo.ProcessType.PT_PLASMA_MANAGER);
-    }
-    if (!checkAlive(excludeTypes)) {
+    if (!checkAlive()) {
       cleanup(true);
       throw new RuntimeException("Start Ray processes failed");
     }
   }
 
-  private boolean checkAlive(HashSet<RunInfo.ProcessType> excludeTypes) {
+  private boolean checkAlive() {
     RunInfo.ProcessType[] types = RunInfo.ProcessType.values();
     for (int i = 0; i < types.length; i++) {
-      if (excludeTypes.contains(types[i])) {
-        continue;
-      }
-
       ProcessInfo p;
       for (int j = 0; j < runInfo.allProcesses.get(i).size(); ) {
         p = runInfo.allProcesses.get(i).get(j);
@@ -513,96 +414,6 @@ public class RunManager {
     return ip + ":" + port;
   }
 
-  private void startGlobalScheduler(String redisAddress, String ip,
-      boolean redirect, boolean cleanup) {
-    String filePath = paths.global_scheduler;
-    String cmd = filePath + " -r " + redisAddress + " -h " + ip;
-
-    Map<String, String> env = null;
-    startProcess(cmd.split(" "), env, RunInfo.ProcessType.PT_GLOBAL_SCHEDULER, "global_scheduler",
-        redisAddress,
-        ip, redirect, cleanup);
-  }
-
-  /*
-   * @param storeName The name of the plasma store socket to connect to
-   *
-   * @param storeManagerName The name of the plasma manager socket to connect
-   * to
-   *
-   * @param storeManagerAddress the address of the plasma manager to connect
-   * to
-   *
-   * @param workerPath The path of the script to use when the local scheduler
-   * starts up new workers
-   *
-   * @param numCpus The number of CPUs the local scheduler should be
-   * configured with
-   *
-   * @param numGpus The number of GPUs the local scheduler should be
-   * configured with
-   *
-   * @param numWorkers The number of workers that the local scheduler should
-   * start
-   */
-  private void startLocalScheduler(int index, AddressInfo info, int numCpus,
-      int numGpus, int numWorkers,
-      String redisAddress, String ip, boolean redirect,
-      boolean cleanup) {
-    //if (numCpus <= 0)
-    //    numCpus = Runtime.getRuntime().availableProcessors();
-    if (numGpus <= 0) {
-      numGpus = 0;
-    }
-
-    String filePath = paths.local_scheduler;
-    int rpcPort = params.local_scheduler_rpc_port + index;
-    String name = "/tmp/scheduler" + rpcPort;
-    String rpcAddr = "";
-    String cmd = filePath + " -s " + name + " -p " + info.storeName + " -h " + ip + " -n "
-        + numWorkers + " -c " + "CPU," + INT16_MAX + ",GPU,0";
-
-    assert (info.managerName.length() > 0);
-    assert (info.storeName.length() > 0);
-    assert (redisAddress.length() > 0);
-
-    cmd += " -m " + info.managerName;
-
-    String workerCmd = null;
-    workerCmd = buildWorkerCommand(true, info.storeName, info.managerName, name,
-        UniqueId.NIL, "", ip, redisAddress);
-    cmd += " -w \"" + workerCmd + "\"";
-
-    if (redisAddress.length() > 0) {
-      cmd += " -r " + redisAddress;
-    }
-    if (info.managerPort > 0) {
-      cmd += " -a " + params.node_ip_address + ":" + info.managerPort;
-    }
-
-    Map<String, String> env = null;
-    String[] cmds = StringUtil.split(cmd, " ", "\"", "\"").toArray(new String[0]);
-    Process p = startProcess(cmds, env, RunInfo.ProcessType.PT_LOCAL_SCHEDULER,
-        "local_scheduler", redisAddress, ip, redirect, cleanup);
-
-    if (p != null && p.isAlive()) {
-      try {
-        TimeUnit.MILLISECONDS.sleep(100);
-      } catch (InterruptedException e) {
-        e.printStackTrace();
-      }
-    }
-
-    if (p == null || !p.isAlive()) {
-      info.schedulerName = "";
-      info.schedulerRpcAddr = "";
-      throw new RuntimeException("Start local scheduler failed ...");
-    } else {
-      info.schedulerName = name;
-      info.schedulerRpcAddr = rpcAddr;
-    }
-  }
-
   private void startRaylet(String storeName, AddressInfo info, int numWorkers,
       String redisAddress, String ip, boolean redirect,
       Map<String, Double> staticResources, boolean cleanup) {
@@ -658,39 +469,7 @@ public class RunManager {
       String ip, String redisAddress) {
     String workerConfigs = "ray.java.start.object_store_name=" + storeName
         + ";ray.java.start.raylet_socket_name=" + rayletSocketName
-        + ";ray.java.start.worker_mode=WORKER;ray.java.start.use_raylet=true";
-    workerConfigs += ";ray.java.start.deploy=" + params.deploy;
-    if (!actorId.equals(UniqueId.NIL)) {
-      workerConfigs += ";ray.java.start.actor_id=" + actorId;
-    }
-    if (!actorClass.equals("")) {
-      workerConfigs += ";ray.java.start.driver_class=" + actorClass;
-    }
-
-    String jvmArgs = "";
-    jvmArgs += " -Dlogging.path=" + params.log_dir;
-    jvmArgs += " -Dlogging.file.name=core-*pid_suffix*";
-
-    return buildJavaProcessCommand(
-        RunInfo.ProcessType.PT_WORKER,
-        "org.ray.runner.worker.DefaultWorker",
-        "",
-        workerConfigs,
-        jvmArgs,
-        ip,
-        redisAddress,
-        null
-    );
-  }
-
-  private String buildWorkerCommand(boolean isFromLocalScheduler, String storeName,
-      String storeManagerName, String localSchedulerName,
-      UniqueId actorId, String actorClass, String
-      ip, String redisAddress) {
-    String workerConfigs = "ray.java.start.object_store_name=" + storeName
-        + ";ray.java.start.object_store_manager_name=" + storeManagerName
-        + ";ray.java.start.worker_mode=WORKER"
-        + ";ray.java.start.local_scheduler_name=" + localSchedulerName;
+        + ";ray.java.start.worker_mode=WORKER";
     workerConfigs += ";ray.java.start.deploy=" + params.deploy;
     if (!actorId.equals(UniqueId.NIL)) {
       workerConfigs += ";ray.java.start.actor_id=" + actorId;
@@ -747,47 +526,4 @@ public class RunManager {
     }
   }
 
-  private AddressInfo startObjectManager(int index, AddressInfo info,
-      String redisAddress, String ip, boolean redirect,
-      boolean cleanup) {
-    String filePath = paths.store_manager;
-    int rpcPort = params.object_store_manager_rpc_port + index;
-    String name = "/tmp/plasma_manager" + rpcPort;
-    String rpcAddr = "";
-
-    String cmd = filePath + " -s " + info.storeName + " -m " + name + " -h " + ip + " -p "
-        + (params.object_store_manager_ray_listen_port + index)
-        + " -r " + redisAddress;
-
-    Map<String, String> env = null;
-    Process p = startProcess(cmd.split(" "), env, RunInfo.ProcessType.PT_PLASMA_MANAGER,
-        "object_manager", redisAddress, ip, redirect, cleanup);
-
-    if (p != null && p.isAlive()) {
-      try {
-        TimeUnit.MILLISECONDS.sleep(100);
-      } catch (InterruptedException e) {
-        e.printStackTrace();
-      }
-    }
-
-    if (p == null || !p.isAlive()) {
-      throw new RuntimeException("Start object manager failed ...");
-    } else {
-      info.managerName = name;
-      info.managerPort = params.object_store_manager_ray_listen_port + index;
-      info.managerRpcAddr = rpcAddr;
-      return info;
-    }
-  }
-
-  public void startWorker(String storeName, String storeManagerName,
-      String localSchedulerName, String workerName, String redisAddress,
-      String ip, UniqueId actorId, String actorClass,
-      boolean redirect, boolean cleanup) {
-    String cmd = buildWorkerCommand(false, storeName, storeManagerName, localSchedulerName, actorId,
-        actorClass, ip, redisAddress);
-    startProcess(cmd.split(" "), null, RunInfo.ProcessType.PT_WORKER, workerName, redisAddress, ip,
-        redirect, cleanup);
-  }
 }

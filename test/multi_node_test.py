@@ -239,7 +239,9 @@ def ray_start_head_with_resources():
     subprocess.Popen(["ray", "stop"]).wait()
 
 
-@pytest.mark.skip(reason="This test does not work yet.")
+@pytest.mark.skipif(
+    os.environ.get("RAY_USE_XRAY") != "1",
+    reason="This test only works with xray.")
 def test_drivers_release_resources(ray_start_head_with_resources):
     redis_address = ray_start_head_with_resources
 
@@ -278,7 +280,7 @@ print("success")
     driver_script2 = (driver_script1 +
                       "import sys\nsys.stdout.flush()\ntime.sleep(10 ** 6)\n")
 
-    def wait_for_success_output(process_handle, timeout=100):
+    def wait_for_success_output(process_handle, timeout=10):
         # Wait until the process prints "success" and then return.
         start_time = time.time()
         while time.time() - start_time < timeout:

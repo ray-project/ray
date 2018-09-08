@@ -3,6 +3,9 @@ package org.ray.spi.impl;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+
+import org.ray.api.RayObject;
+import org.ray.api.WaitResult;
 import org.ray.api.id.UniqueId;
 import org.ray.core.LocalFunctionManager;
 import org.ray.core.Worker;
@@ -71,16 +74,6 @@ public class MockLocalScheduler implements LocalSchedulerLink {
   }
 
   @Override
-  public void markTaskPutDependency(UniqueId taskId, UniqueId objectId) {
-
-  }
-
-  @Override
-  public void reconstructObject(UniqueId objectId, boolean fetchOnly) {
-
-  }
-
-  @Override
   public void reconstructObjects(List<UniqueId> objectIds, boolean fetchOnly) {
 
   }
@@ -96,8 +89,8 @@ public class MockLocalScheduler implements LocalSchedulerLink {
   }
 
   @Override
-  public List<byte[]> wait(byte[][] objectIds, int timeoutMs, int numReturns) {
-    return store.wait(objectIds, timeoutMs, numReturns);
+  public <T> WaitResult<T> wait(List<RayObject<T>> waitFor, int numReturns, int timeoutMs) {
+    throw new RuntimeException("Not implemented here.");
   }
 
   @Override

@@ -8,6 +8,7 @@ import logging
 import os
 import time
 from collections import Counter, defaultdict
+import traceback
 
 import redis
 
@@ -316,8 +317,9 @@ class Monitor(object):
         if ip:
             self.load_metrics.update(ip, static_resources, dynamic_resources)
         else:
-            print("Warning: could not find ip for client {} in {}.".format(
-                client_id, self.local_scheduler_id_to_ip_map))
+            logger.warning(
+                "Warning: could not find ip for client {} in {}.".format(
+                    client_id, self.local_scheduler_id_to_ip_map))
 
     def xray_heartbeat_handler(self, unused_channel, data):
         """Handle an xray heartbeat message from Redis."""
@@ -809,4 +811,17 @@ if __name__ == "__main__":
         autoscaling_config = None
 
     monitor = Monitor(redis_ip_address, redis_port, autoscaling_config)
-    monitor.run()
+
+    try:
+        monitor.run()
+    except Exception as e:
+        # Something went wrong, so push an error to all drivers.
+        redis_client = redis.StrictRedis(
+            host=redis_ip_address, port=redis_port)
+        traceback_str = ray.utils.format_error_message(traceback.format_exc())
+        message = "The monitor failed with the following error:\n{}".format(
+            traceback_str)
+        ray.utils.push_error_to_driver_through_redis(
+            redis_client, monitor.use_raylet, ray_constants.MONITOR_DIED_ERROR,
+            message)
+        raise e

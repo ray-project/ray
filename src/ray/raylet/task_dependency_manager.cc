@@ -174,6 +174,7 @@ void TaskDependencyManager::UnsubscribeDependencies(const TaskID &task_id) {
   // Remove the task from the table of subscribed tasks.
   auto it = task_dependencies_.find(task_id);
   RAY_CHECK(it != task_dependencies_.end());
+
   const TaskDependencies task_entry = std::move(it->second);
   task_dependencies_.erase(it);
 
@@ -293,6 +294,33 @@ void TaskDependencyManager::TaskCanceled(const TaskID &task_id) {
       // This object created by the task will no longer appear locally since
       // the task is canceled.  Try to make the object local if necessary.
       HandleRemoteDependencyRequired(object_entry.first);
+    }
+  }
+}
+
+void TaskDependencyManager::RemoveTasksAndRelatedObjects(
+    const std::unordered_set<TaskID> &task_ids) {
+  if (task_ids.empty()) {
+    return;
+  }
+
+  for (auto it = task_ids.begin(); it != task_ids.end(); it++) {
+    task_dependencies_.erase(*it);
+    required_tasks_.erase(*it);
+    pending_tasks_.erase(*it);
+  }
+
+  // TODO: the size of required_objects_ could be large, consider to add
+  // an index if this turns out to be a perf problem.
+  for (auto it = required_objects_.begin(); it != required_objects_.end();) {
+    const auto object_id = *it;
+    TaskID creating_task_id = ComputeTaskId(object_id);
+    if (task_ids.find(creating_task_id) != task_ids.end()) {
+      object_manager_.CancelPull(object_id);
+      reconstruction_policy_.Cancel(object_id);
+      it = required_objects_.erase(it);
+    } else {
+      it++;
     }
   }
 }

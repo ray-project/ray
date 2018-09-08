@@ -191,7 +191,7 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             vf_loss_coeff=self.config["vf_loss_coeff"],
             use_gae=self.config["use_gae"])
 
-        LearningRateSchedule.__init__(self, self.config["sgd_stepsize"],
+        LearningRateSchedule.__init__(self, self.config["lr"],
                                       self.config["lr_schedule"])
         TFPolicyGraph.__init__(
             self,

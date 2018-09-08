@@ -2536,5 +2536,21 @@ class GlobalStateAPI(unittest.TestCase):
         ray.experimental.flush_evicted_objects_unsafe()
 
 
+class InitializationTest(unittest.TestCase):
+    def tearDown(self):
+        ray.shutdown()
+        assert not ray.is_initialized()
+
+    def testInitialized(self):
+        assert not ray.is_initialized()
+        ray.init(num_cpus=0)
+        assert ray.is_initialized()
+
+    def testInitializedLocalMode(self):
+        assert not ray.is_initialized()
+        ray.init(num_cpus=0, local_mode=True)
+        assert ray.is_initialized()
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

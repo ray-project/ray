@@ -232,6 +232,23 @@ inline WorkerPool::State &WorkerPool::GetStateForLanguage(const Language &langua
   return state->second;
 }
 
+std::vector<std::shared_ptr<Worker>> WorkerPool::GetWorkersRunningTasksForDriver(
+    const DriverID &driver_id) const {
+  std::vector<std::shared_ptr<Worker>> workers;
+
+  for (const auto &entry : states_by_lang_) {
+    for (const auto &worker : entry.second.registered_workers) {
+      RAY_LOG(DEBUG) << "worker: pid : " << worker->Pid()
+                     << " driver_id: " << worker->GetAssignedDriverId();
+      if (worker->GetAssignedDriverId() == driver_id) {
+        workers.push_back(worker);
+      }
+    }
+  }
+
+  return workers;
+}
+
 }  // namespace raylet
 
 }  // namespace ray
