@@ -233,6 +233,8 @@ class Worker(object):
         self.cached_remote_functions_and_actors = []
         self.cached_functions_to_run = []
         self.fetch_and_register_actor = None
+        self.mark_actor_init_failed = None
+        self.reraise_actor_init_error = None
         self.make_actor = None
         self.actors = {}
         self.actor_task_counter = 0
@@ -907,6 +909,7 @@ class Worker(object):
 
         # Get task arguments from the object store.
         try:
+            self.reraise_actor_init_error()
             with profiling.profile("task:deserialize_arguments", worker=self):
                 arguments = self._get_arguments_for_execution(
                     function_name, args)
@@ -973,6 +976,9 @@ class Worker(object):
                 "function_id": function_id.id(),
                 "function_name": function_name
             })
+        # Mark the actor init as failed
+        if self.actor_id and function_name == "__init__":
+            self.mark_actor_init_failed(error)
 
     def _become_actor(self, task):
         """Turn this worker into an actor.
@@ -1025,7 +1031,6 @@ class Worker(object):
         # because that may indicate that the system is hanging, and it'd be
         # good to know where the system is hanging.
         with self.lock:
-
             function_name = (self.function_execution_info[driver_id][
                 function_id.id()]).function_name
             if not self.use_raylet:
