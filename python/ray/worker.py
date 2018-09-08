@@ -1031,6 +1031,7 @@ class Worker(object):
         # because that may indicate that the system is hanging, and it'd be
         # good to know where the system is hanging.
         with self.lock:
+
             function_name = (self.function_execution_info[driver_id][
                 function_id.id()]).function_name
             if not self.use_raylet:
