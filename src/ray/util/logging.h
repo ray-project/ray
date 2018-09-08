@@ -42,9 +42,8 @@ namespace ray {
 // by the compiler. We need the RAY_LOG_INTERNAL line so the statement after
 // macro substitution will still be well-formed. This trick is borrowed from
 // glog, see the definition of RAW_DLOG in src/glog/raw_logging.h.in.
-#define RAY_DLOG(level)           \
-  while (false)                   \
-    RAY_LOG_INTERNAL(RAY_##level)
+#define RAY_DLOG(level) \
+  while (false) RAY_LOG_INTERNAL(RAY_##level)
 #endif
 #define RAY_IGNORE_EXPR(expr) ((void)(expr))
 
