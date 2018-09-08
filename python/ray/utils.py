@@ -122,7 +122,7 @@ def push_error_to_driver_through_redis(redis_client,
         # Do everything in Python and through the Python Redis client instead
         # of through the raylet.
         error_data = ray.gcs_utils.construct_error_message(
-            error_type, message, time.time())
+            driver_id, error_type, message, time.time())
         redis_client.execute_command(
             "RAY.TABLE_APPEND", ray.gcs_utils.TablePrefix.ERROR_INFO,
             ray.gcs_utils.TablePubsub.ERROR_INFO, driver_id, error_data)
