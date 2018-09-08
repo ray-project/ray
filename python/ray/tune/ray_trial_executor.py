@@ -158,8 +158,19 @@ class RayTrialExecutor(TrialExecutor):
         super(RayTrialExecutor, self).pause_trial(trial)
 
     def reset_trial(self, trial, new_config, new_experiment_tag):
-        """If trainable of trial supports resetting config on the fly,
-        reset config and return True, otherwise return False."""
+        """Resets a trials configuration (if supported)
+
+        Args:
+            trial (Trial): Trial to be resetted.
+            new_config (dict): New configuration for Trial
+                trainable.
+            new_experiment_tag (str): New experiment name
+                for trial.
+
+        Returns:
+            bool: True when trainable has a reset function,
+                False otherwise.
+        """
         trainable = trial.runner
         reset_val = ray.get(
             trainable.reset_config.remote(new_config, new_experiment_tag))

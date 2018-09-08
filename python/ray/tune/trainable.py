@@ -269,11 +269,17 @@ class Trainable(object):
         shutil.rmtree(tmpdir)
 
     def reset_config(self, new_config, new_experiment_tag):
-        """Reset config without restarting trial
-        Optional, used to speed up PBT"""
-        return self._reset_config(
-            new_config=new_config,
-            new_experiment_tag=new_experiment_tag)
+        """Resets configuration without restarting the trial.
+
+        Args:
+            new_config (dir): Updated hyperparameter configuration
+                for the trainable.
+            new_experiment_tag (str): New experiment name for trial.
+
+        Returns:
+            No value or "NOT_IMPLEMENTTED".
+            """
+        return "NOT_IMPLEMENTED"
 
     def stop(self):
         """Releases all resources used by this trainable."""
@@ -313,11 +319,6 @@ class Trainable(object):
         """
 
         raise NotImplementedError
-
-    def _reset_config(self, new_config, new_experiment_tag):
-        """Reset config without restarting trial
-        Optional, used to speed up PBT"""
-        return "NOT_IMPLEMENTED"
 
     def _setup(self):
         """Subclasses should override this for custom initialization.

@@ -76,6 +76,15 @@ class RayTrialExecutorTest(unittest.TestCase):
         self.trial_executor.stop_trial(trial)
         self.assertEqual(Trial.TERMINATED, trial.status)
 
+    def testResetTrial(self):
+        """Tests that resetting a trial handles errors properly."""
+        trial = Trial("__fake")
+        self.trial_executor.start_trial(trial)
+        exists = self.trial_executor.reset_trial(trial, {}, "modified_mock")
+        self.assertEqual(exists, False)
+        self.assertEqual(Trial.RUNNING, trial.status)
+
+
     def generate_trials(self, spec, name):
         suggester = BasicVariantGenerator({name: spec})
         return suggester.next_trials()
