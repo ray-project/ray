@@ -1942,21 +1942,11 @@ def print_error_messages_raylet(worker):
     worker.error_message_pubsub_client.subscribe(error_pubsub_channel)
     # worker.error_message_pubsub_client.psubscribe("*")
 
-    # Keep a set of all the error messages that we've seen so far in order to
-    # avoid printing the same error message repeatedly. This is especially
-    # important when running a script inside of a tool like screen where
-    # scrolling is difficult.
-    old_error_messages = set()
-
     # Get the exports that occurred before the call to subscribe.
     with worker.lock:
         error_messages = global_state.error_messages(worker.task_driver_id)
         for error_message in error_messages:
-            if error_message not in old_error_messages:
-                logger.error(error_message)
-                old_error_messages.add(error_message)
-            else:
-                logger.error("Suppressing duplicate error message.")
+            logger.error(error_message)
 
     try:
         for msg in worker.error_message_pubsub_client.listen():
@@ -1974,12 +1964,7 @@ def print_error_messages_raylet(worker):
                 continue
 
             error_message = ray.utils.decode(error_data.ErrorMessage())
-
-            if error_message not in old_error_messages:
-                logger.error(error_message)
-                old_error_messages.add(error_message)
-            else:
-                logger.error("Suppressing duplicate error message.")
+            logger.error(error_message)
 
     except redis.ConnectionError:
         # When Redis terminates the listen call will throw a ConnectionError,
