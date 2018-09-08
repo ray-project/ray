@@ -958,6 +958,7 @@ class Worker(object):
                                      error, backtrace):
         function_name = self.function_execution_info[self.task_driver_id.id()][
             function_id.id()].function_name
+        print("INFO: _handle_process_task_failure creates RayTaskError")
         failure_object = RayTaskError(function_name, error, backtrace)
         failure_objects = [
             failure_object for _ in range(len(return_object_ids))
@@ -1055,6 +1056,7 @@ class Worker(object):
             self.num_task_executions[driver_id][function_id.id()] == self.
             function_execution_info[driver_id][function_id.id()].max_calls)
         if reached_max_executions:
+            print("INFO: reached_max_executions, will call self.local_scheduler_client.disconnect()")
             self.local_scheduler_client.disconnect()
             os._exit(0)
 
@@ -1076,6 +1078,7 @@ class Worker(object):
         """The main loop a worker runs to receive and execute tasks."""
 
         def exit(signum, frame):
+            print("INFO: calling shutdown from main_loop.exit")
             shutdown(worker=self)
             sys.exit(0)
 
@@ -1878,6 +1881,7 @@ def shutdown(worker=global_worker):
     """
     disconnect(worker)
     if hasattr(worker, "local_scheduler_client"):
+        print("INFO: calling del local_scheduler_client")
         del worker.local_scheduler_client
     if hasattr(worker, "plasma_client"):
         print("INFO: calling worker.plasma_client.disconnect()")

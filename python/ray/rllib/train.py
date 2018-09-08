@@ -116,3 +116,4 @@ if __name__ == "__main__":
     parser = create_parser()
     args = parser.parse_args()
     run(args, parser)
+    print("INFO: finish train.py.")
