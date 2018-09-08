@@ -20,12 +20,12 @@ class WorkerPoolMock : public WorkerPool {
   void StartWorkerProcess(pid_t pid, const Language &language = Language::PYTHON) {
     if (starting_worker_processes_.size() > 0) {
       // Workers have been started, but not registered. Force start disabled -- returning.
-      RAY_LOG(DEBUG) << starting_worker_processes_.size()
+      RAY_DLOG(INFO) << starting_worker_processes_.size()
                      << " worker processes pending registration";
       return;
     }
     // Either no workers are pending registration or the worker start is being forced.
-    RAY_LOG(DEBUG) << "starting new worker process, worker pool size " << Size(language);
+    RAY_DLOG(INFO) << "starting new worker process, worker pool size " << Size(language);
     starting_worker_processes_.emplace(std::make_pair(pid, num_workers_per_process_));
   }
 

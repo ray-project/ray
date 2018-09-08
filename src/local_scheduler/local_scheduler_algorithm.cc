@@ -232,7 +232,7 @@ void create_actor(SchedulingAlgorithmState *algorithm_state,
   algorithm_state->local_actor_infos[actor_id] = entry;
 
   /* Log some useful information about the actor that we created. */
-  RAY_LOG(DEBUG) << "Creating actor with ID " << actor_id;
+  RAY_DLOG(INFO) << "Creating actor with ID " << actor_id;
 }
 
 void remove_actor(SchedulingAlgorithmState *algorithm_state, ActorID actor_id) {
@@ -921,7 +921,7 @@ void dispatch_tasks(LocalSchedulerState *state,
     }
 
     /* Dispatch this task to an available worker and dequeue the task. */
-    RAY_LOG(DEBUG) << "Dispatching task";
+    RAY_DLOG(INFO) << "Dispatching task";
     /* Get the last available worker in the available worker queue. */
     LocalSchedulerClient *worker = algorithm_state->available_workers.back();
     /* Tell the available worker to execute the task. */
@@ -1048,7 +1048,7 @@ void queue_waiting_task(LocalSchedulerState *state,
     }
   }
 
-  RAY_LOG(DEBUG) << "Queueing task in waiting queue";
+  RAY_DLOG(INFO) << "Queueing task in waiting queue";
   auto it = queue_task(state, algorithm_state->waiting_task_queue,
                        execution_spec, from_global_scheduler);
   fetch_missing_dependencies(state, algorithm_state, it);
@@ -1069,7 +1069,7 @@ void queue_dispatch_task(LocalSchedulerState *state,
                          SchedulingAlgorithmState *algorithm_state,
                          TaskExecutionSpec &execution_spec,
                          bool from_global_scheduler) {
-  RAY_LOG(DEBUG) << "Queueing task in dispatch queue";
+  RAY_DLOG(INFO) << "Queueing task in dispatch queue";
   TaskSpec *spec = execution_spec.Spec();
   if (TaskSpec_is_actor_task(spec)) {
     queue_actor_task(state, algorithm_state, execution_spec,
@@ -1631,7 +1631,7 @@ void handle_object_removed(LocalSchedulerState *state,
        it != algorithm_state->dispatch_task_queue->end();) {
     if (it->DependsOn(removed_object_id)) {
       /* This task was dependent on the removed object. */
-      RAY_LOG(DEBUG) << "Moved task from dispatch queue back to waiting queue";
+      RAY_DLOG(INFO) << "Moved task from dispatch queue back to waiting queue";
       algorithm_state->waiting_task_queue->push_back(std::move(*it));
       /* Remove the task from the dispatch queue, but do not free the task
        * spec. */
@@ -1650,7 +1650,7 @@ void handle_object_removed(LocalSchedulerState *state,
          queue_it != actor_info.task_queue->end();) {
       if (queue_it->DependsOn(removed_object_id)) {
         /* This task was dependent on the removed object. */
-        RAY_LOG(DEBUG) << "Moved task from actor dispatch queue back to "
+        RAY_DLOG(INFO) << "Moved task from actor dispatch queue back to "
                        << "waiting queue";
         algorithm_state->waiting_task_queue->push_back(std::move(*queue_it));
         /* Remove the task from the dispatch queue, but do not free the task
@@ -1767,7 +1767,7 @@ int num_dispatch_tasks(SchedulingAlgorithmState *algorithm_state) {
 
 void print_worker_info(const char *message,
                        SchedulingAlgorithmState *algorithm_state) {
-  RAY_LOG(DEBUG) << message << ": " << algorithm_state->available_workers.size()
+  RAY_DLOG(INFO) << message << ": " << algorithm_state->available_workers.size()
                  << " available, " << algorithm_state->executing_workers.size()
                  << " executing, " << algorithm_state->blocked_workers.size()
                  << " blocked";

@@ -70,7 +70,7 @@ TableCallbackData *init_table_callback(DBHandle *db_handle,
   callback_data->timer_id = callback_data_id++;
   outstanding_callbacks_add(callback_data);
 
-  RAY_LOG(DEBUG) << "Initializing table command " << callback_data->label
+  RAY_DLOG(INFO) << "Initializing table command " << callback_data->label
                  << " with timer ID " << callback_data->timer_id;
   callback_data->retry_callback(callback_data);
 

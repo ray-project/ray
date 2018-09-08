@@ -346,7 +346,7 @@ uint8_t *read_message_async(event_loop *loop, int sock) {
   int error = read_bytes(sock, (uint8_t *) &size, sizeof(int64_t));
   if (error < 0) {
     /* The other side has closed the socket. */
-    RAY_LOG(DEBUG) << "Socket has been closed, or some other error has "
+    RAY_DLOG(INFO) << "Socket has been closed, or some other error has "
                    << "occurred.";
     if (loop != NULL) {
       event_loop_remove_file(loop, sock);
@@ -358,7 +358,7 @@ uint8_t *read_message_async(event_loop *loop, int sock) {
   error = read_bytes(sock, message, size);
   if (error < 0) {
     /* The other side has closed the socket. */
-    RAY_LOG(DEBUG) << "Socket has been closed, or some other error has "
+    RAY_DLOG(INFO) << "Socket has been closed, or some other error has "
                    << "occurred.";
     if (loop != NULL) {
       event_loop_remove_file(loop, sock);

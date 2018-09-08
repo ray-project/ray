@@ -74,7 +74,7 @@ void TaskDependencyManager::HandleRemoteDependencyCanceled(const ObjectID &objec
 
 std::vector<TaskID> TaskDependencyManager::HandleObjectLocal(
     const ray::ObjectID &object_id) {
-  RAY_LOG(DEBUG) << "object ready " << object_id.hex();
+  RAY_DLOG(INFO) << "object ready " << object_id.hex();
   // Add the object to the table of locally available objects.
   auto inserted = local_objects_.insert(object_id);
   RAY_CHECK(inserted.second);

@@ -18,14 +18,14 @@ std::unordered_map<TaskID, ClientID> SchedulingPolicy::Schedule(
   // The policy decision to be returned.
   std::unordered_map<TaskID, ClientID> decision;
   // TODO(atumanov): protect DEBUG code blocks with ifdef DEBUG
-  RAY_LOG(DEBUG) << "[Schedule] cluster resource map: ";
+  RAY_DLOG(INFO) << "[Schedule] cluster resource map: ";
 
 #ifndef NDEBUG
   for (const auto &client_resource_pair : cluster_resources) {
     // pair = ClientID, SchedulingResources
     const ClientID &client_id = client_resource_pair.first;
     const SchedulingResources &resources = client_resource_pair.second;
-    RAY_LOG(DEBUG) << "client_id: " << client_id << " "
+    RAY_DLOG(INFO) << "client_id: " << client_id << " "
                    << resources.GetAvailableResources().ToString();
   }
 #endif
@@ -37,7 +37,7 @@ std::unordered_map<TaskID, ClientID> SchedulingPolicy::Schedule(
     // Get task's resource demand
     const auto &resource_demand = t.GetTaskSpecification().GetRequiredResources();
     const TaskID &task_id = t.GetTaskSpecification().TaskId();
-    RAY_LOG(DEBUG) << "[SchedulingPolicy]: task=" << task_id
+    RAY_DLOG(INFO) << "[SchedulingPolicy]: task=" << task_id
                    << " numforwards=" << t.GetTaskExecutionSpec().NumForwards()
                    << " resources="
                    << t.GetTaskSpecification().GetRequiredResources().ToString();
@@ -53,7 +53,7 @@ std::unordered_map<TaskID, ClientID> SchedulingPolicy::Schedule(
       ResourceSet available_node_resources =
           ResourceSet(node_resources.GetAvailableResources());
       available_node_resources.SubtractResourcesStrict(node_resources.GetLoadResources());
-      RAY_LOG(DEBUG) << "client_id " << node_client_id
+      RAY_DLOG(INFO) << "client_id " << node_client_id
                      << " avail: " << node_resources.GetAvailableResources().ToString()
                      << " load: " << node_resources.GetLoadResources().ToString()
                      << " avail-load: " << available_node_resources.ToString();

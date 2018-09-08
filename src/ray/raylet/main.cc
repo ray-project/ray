@@ -47,7 +47,7 @@ int main(int argc, char *argv[]) {
   }
   node_manager_config.resource_config =
       ray::raylet::ResourceSet(std::move(static_resource_conf));
-  RAY_LOG(DEBUG) << "Starting raylet with static resource configuration: "
+  RAY_DLOG(INFO) << "Starting raylet with static resource configuration: "
                  << node_manager_config.resource_config.ToString();
   node_manager_config.num_initial_workers = num_initial_workers;
   node_manager_config.num_workers_per_process =
@@ -86,14 +86,14 @@ int main(int argc, char *argv[]) {
   object_manager_config.object_chunk_size =
       RayConfig::instance().object_manager_default_chunk_size();
 
-  RAY_LOG(DEBUG) << "Starting object manager with configuration: \n"
+  RAY_DLOG(INFO) << "Starting object manager with configuration: \n"
                  << "max_sends = " << object_manager_config.max_sends << "\n"
                  << "max_receives = " << object_manager_config.max_receives << "\n"
                  << "object_chunk_size = " << object_manager_config.object_chunk_size;
 
   //  initialize mock gcs & object directory
   auto gcs_client = std::make_shared<ray::gcs::AsyncGcsClient>(redis_address, redis_port);
-  RAY_LOG(DEBUG) << "Initializing GCS client "
+  RAY_DLOG(INFO) << "Initializing GCS client "
                  << gcs_client->client_table().GetLocalClientId();
 
   // Initialize the node manager.

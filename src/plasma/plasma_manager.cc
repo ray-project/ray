@@ -491,7 +491,7 @@ PlasmaManagerState *PlasmaManagerState_init(const char *store_socket_name,
     db_attach(state->db, state->loop, false);
   } else {
     state->db = NULL;
-    RAY_LOG(DEBUG) << "No db connection specified";
+    RAY_DLOG(INFO) << "No db connection specified";
   }
   state->addr = manager_addr;
   state->port = manager_port;
@@ -579,7 +579,7 @@ int write_object_chunk(ClientConnection *conn, PlasmaRequestBuffer *buf) {
     RAY_CHECK(conn->cursor <= buf->data_size + buf->metadata_size);
     /* If we've finished writing this buffer, reset the cursor. */
     if (conn->cursor == buf->data_size + buf->metadata_size) {
-      RAY_LOG(DEBUG) << "writing on channel " << conn->fd << " finished";
+      RAY_DLOG(INFO) << "writing on channel " << conn->fd << " finished";
       ClientConnection_finish_request(conn);
     }
     err = 0;
@@ -612,7 +612,7 @@ void send_queued_request(event_loop *loop,
         conn->fd);
     break;
   case MessageType::PlasmaDataReply:
-    RAY_LOG(DEBUG) << "Transferring object to manager";
+    RAY_DLOG(INFO) << "Transferring object to manager";
     if (ClientConnection_request_finished(conn)) {
       /* If the cursor is not set, we haven't sent any requests for this object
        * yet, so send the initial data request. */
@@ -709,7 +709,7 @@ void process_data_chunk(event_loop *loop,
     /* If we're done receiving the object, seal the object and release it. The
      * release corresponds to the call to plasma_create that occurred in
      * process_data_request. */
-    RAY_LOG(DEBUG) << "reading on channel " << data_sock << " finished";
+    RAY_DLOG(INFO) << "reading on channel " << data_sock << " finished";
     /* The following seal also triggers notification of clients for fetch or
      * wait requests, see process_object_notification. */
     ARROW_CHECK_OK(plasma_conn->Seal(buf->object_id.to_plasma_id()));
@@ -974,11 +974,11 @@ int fetch_timeout_handler(event_loop *loop, timer_id id, void *context) {
       if (is_receiving_or_received(manager_state, fetch_req->object_id)) {
         // Do nothing if the object transfer is in progress or if the object
         // has already been received.
-        RAY_LOG(DEBUG) << "fetch_timeout_handler: Object in progress or "
+        RAY_DLOG(INFO) << "fetch_timeout_handler: Object in progress or "
                        << "received. " << fetch_req->object_id;
         continue;
       }
-      RAY_LOG(DEBUG) << "fetch_timeout_handler: Object missing. "
+      RAY_DLOG(INFO) << "fetch_timeout_handler: Object missing. "
                      << fetch_req->object_id;
       request_transfer_from(manager_state, fetch_req);
       /* If we've tried all of the managers that we know about for this object,
@@ -1430,7 +1430,7 @@ ClientConnection *ClientConnection_listen(event_loop *loop,
   ClientConnection *conn = ClientConnection_init(state, new_socket, client_key);
 
   event_loop_add_file(loop, new_socket, EVENT_LOOP_READ, process_message, conn);
-  RAY_LOG(DEBUG) << "New client connection with fd " << new_socket;
+  RAY_DLOG(INFO) << "New client connection with fd " << new_socket;
   return conn;
 }
 
@@ -1476,7 +1476,7 @@ void process_message(event_loop *loop,
 
   switch (static_cast<MessageType>(type)) {
   case MessageType::PlasmaDataRequest: {
-    RAY_LOG(DEBUG) << "Processing data request";
+    RAY_DLOG(INFO) << "Processing data request";
     plasma::ObjectID object_id;
     char *address;
     int port;
@@ -1486,7 +1486,7 @@ void process_message(event_loop *loop,
     free(address);
   } break;
   case MessageType::PlasmaDataReply: {
-    RAY_LOG(DEBUG) << "Processing data reply";
+    RAY_DLOG(INFO) << "Processing data reply";
     plasma::ObjectID object_id;
     int64_t object_size;
     int64_t metadata_size;
@@ -1496,7 +1496,7 @@ void process_message(event_loop *loop,
                          metadata_size, conn);
   } break;
   case MessageType::PlasmaFetchRequest: {
-    RAY_LOG(DEBUG) << "Processing fetch remote";
+    RAY_DLOG(INFO) << "Processing fetch remote";
     std::vector<plasma::ObjectID> object_ids_to_fetch;
     /* TODO(pcm): process_fetch_requests allocates an array of num_objects
      * object_ids too so these should be shared in the future. */
@@ -1505,7 +1505,7 @@ void process_message(event_loop *loop,
                            object_ids_to_fetch.data());
   } break;
   case MessageType::PlasmaWaitRequest: {
-    RAY_LOG(DEBUG) << "Processing wait";
+    RAY_DLOG(INFO) << "Processing wait";
     plasma::ObjectRequestMap object_requests;
     int64_t timeout_ms;
     int num_ready_objects;
@@ -1515,13 +1515,13 @@ void process_message(event_loop *loop,
                          num_ready_objects);
   } break;
   case MessageType::PlasmaStatusRequest: {
-    RAY_LOG(DEBUG) << "Processing status";
+    RAY_DLOG(INFO) << "Processing status";
     plasma::ObjectID object_id;
     ARROW_CHECK_OK(plasma::ReadStatusRequest(data, length, &object_id, 1));
     process_status_request(conn, object_id);
   } break;
   case static_cast<MessageType>(CommonMessageType::DISCONNECT_CLIENT): {
-    RAY_LOG(DEBUG) << "Disconnecting client on fd " << client_sock;
+    RAY_DLOG(INFO) << "Disconnecting client on fd " << client_sock;
     event_loop_remove_file(loop, client_sock);
     ClientConnection_free(conn);
   } break;
@@ -1586,7 +1586,7 @@ void start_server(const char *store_socket_name,
   RAY_CHECK(listen(remote_sock, 128) != -1);
   RAY_CHECK(listen(local_sock, 128) != -1);
 
-  RAY_LOG(DEBUG) << "Started server connected to store " << store_socket_name
+  RAY_DLOG(INFO) << "Started server connected to store " << store_socket_name
                  << ", listening on port " << port;
   event_loop_add_file(g_manager_state->loop, local_sock, EVENT_LOOP_READ,
                       handle_new_client, g_manager_state);
@@ -1612,7 +1612,7 @@ void start_server(const char *store_socket_name,
 
 /* Report "success" to valgrind. */
 void signal_handler(int signal) {
-  RAY_LOG(DEBUG) << "Signal was " << signal;
+  RAY_DLOG(INFO) << "Signal was " << signal;
   if (signal == SIGTERM) {
     if (g_manager_state) {
       PlasmaManagerState_free(g_manager_state);

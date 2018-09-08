@@ -277,7 +277,7 @@ int64_t reconnect_context_callback(event_loop *loop,
   db->sync_context = redisConnect("127.0.0.1", 6379);
   /* Re-attach the database to the event loop (the file descriptor changed). */
   db_attach(db, loop, true);
-  RAY_LOG(DEBUG) << "Reconnected to Redis";
+  RAY_DLOG(INFO) << "Reconnected to Redis";
   return EVENT_LOOP_TIMER_DONE;
 }
 

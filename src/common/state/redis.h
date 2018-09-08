@@ -16,7 +16,7 @@
                  << "; " << M
 
 #define LOG_REDIS_DEBUG(context, M, ...)                                     \
-  RAY_LOG(DEBUG) << "Redis error " << context->err << " " << context->errstr \
+  RAY_DLOG(INFO) << "Redis error " << context->err << " " << context->errstr \
                  << "; " << M;
 
 struct DBHandle {

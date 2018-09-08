@@ -27,7 +27,6 @@ typedef ray::CerrLog LoggingProvider;
 namespace ray {
 // Log levels. LOG ignores them, so their values are abitrary.
 
-#define RAY_DEBUG (-1)
 #define RAY_INFO 0
 #define RAY_WARNING 1
 #define RAY_ERROR 2
@@ -36,6 +35,17 @@ namespace ray {
 #define RAY_LOG_INTERNAL(level) ::ray::RayLog(__FILE__, __LINE__, level)
 
 #define RAY_LOG(level) RAY_LOG_INTERNAL(RAY_##level)
+#ifndef NDEBUG
+#define RAY_DLOG(level) RAY_LOG_INTERNAL(RAY_##level)
+#else
+// The following makes sure that the whole statement will be optimized out
+// by the compiler. We need the RAY_LOG_INTERNAL line so the statement after
+// macro substitution will still be well-formed. This trick is borrowed from
+// glog, see the definition of RAW_DLOG in src/glog/raw_logging.h.in.
+#define RAY_DLOG(level)           \
+  while (false)                   \
+    RAY_LOG_INTERNAL(RAY_##level)
+#endif
 #define RAY_IGNORE_EXPR(expr) ((void)(expr))
 
 #define RAY_CHECK(condition)                                                          \

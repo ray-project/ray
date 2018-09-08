@@ -118,7 +118,7 @@ TaskSpec *local_scheduler_get_task(LocalSchedulerConnection *conn,
     read_message(conn->conn, &type, &reply_size, &reply);
   }
   if (type == static_cast<int64_t>(CommonMessageType::DISCONNECT_CLIENT)) {
-    RAY_LOG(DEBUG) << "Exiting because local scheduler closed connection.";
+    RAY_DLOG(INFO) << "Exiting because local scheduler closed connection.";
     exit(1);
   }
   RAY_CHECK(static_cast<MessageType>(type) == MessageType::ExecuteTask);
@@ -164,7 +164,7 @@ TaskSpec *local_scheduler_get_task_raylet(LocalSchedulerConnection *conn,
     read_message(conn->conn, &type, &reply_size, &reply);
   }
   if (type == static_cast<int64_t>(CommonMessageType::DISCONNECT_CLIENT)) {
-    RAY_LOG(DEBUG) << "Exiting because local scheduler closed connection.";
+    RAY_DLOG(INFO) << "Exiting because local scheduler closed connection.";
     exit(1);
   }
   RAY_CHECK(type == static_cast<int64_t>(MessageType::ExecuteTask));
@@ -272,7 +272,7 @@ const std::vector<uint8_t> local_scheduler_get_actor_frontier(
   }
   if (static_cast<CommonMessageType>(type) ==
       CommonMessageType::DISCONNECT_CLIENT) {
-    RAY_LOG(DEBUG) << "Exiting because local scheduler closed connection.";
+    RAY_DLOG(INFO) << "Exiting because local scheduler closed connection.";
     exit(1);
   }
   RAY_CHECK(static_cast<MessageType>(type) ==
