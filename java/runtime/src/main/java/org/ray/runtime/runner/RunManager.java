@@ -482,7 +482,7 @@ public class RunManager {
 
     return buildJavaProcessCommand(
         RunInfo.ProcessType.PT_WORKER,
-        "org.ray.runner.worker.DefaultWorker",
+        "org.ray.runtime.runner.worker.DefaultWorker",
         "",
         workerConfigs,
         jvmArgs,
