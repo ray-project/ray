@@ -1078,10 +1078,10 @@ class Worker(object):
         """The main loop a worker runs to receive and execute tasks."""
 
         def exit(signum, frame):
-            print("INFO: calling shutdown from main_loop.exit")
+            print("INFO: calling shutdown from main_loop.exit with pid=%s" % os.getpid())
             shutdown(worker=self)
             sys.exit(0)
-
+        print("INFO: started worker with pid=%s" % os.getpid())
         signal.signal(signal.SIGTERM, exit)
 
         while True:
