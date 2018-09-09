@@ -233,8 +233,7 @@ class Worker(object):
         self.cached_remote_functions_and_actors = []
         self.cached_functions_to_run = []
         self.fetch_and_register_actor = None
-        self.mark_actor_init_failed = None
-        self.reraise_actor_init_error = None
+        self.actor_init_error = None
         self.make_actor = None
         self.actors = {}
         self.actor_task_counter = 0
@@ -255,6 +254,17 @@ class Worker(object):
         self.serialization_context_map = {}
         # Identity of the driver that this worker is processing.
         self.task_driver_id = None
+
+    def mark_actor_init_failed(self, error):
+        """Called to mark this actor as failed during initialization."""
+
+        self.actor_init_error = error
+
+    def reraise_actor_init_error(self):
+        """Raises any previous actor initialization error."""
+
+        if self.actor_init_error is not None:
+            raise self.actor_init_error
 
     def get_serialization_context(self, driver_id):
         """Get the SerializationContext of the driver that this worker is processing.
