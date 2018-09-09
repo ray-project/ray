@@ -6,7 +6,6 @@ import copy
 import hashlib
 import inspect
 import json
-import sys
 import traceback
 
 import ray.cloudpickle as pickle
