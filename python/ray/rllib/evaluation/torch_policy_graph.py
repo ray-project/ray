@@ -86,7 +86,10 @@ class TorchPolicyGraph(PolicyGraph):
         with self.lock:
             loss_in = []
             for key in self._loss_inputs:
-                loss_in.append(torch.from_numpy(postprocessed_batch[key]))
+                if isinstance(postprocessed_batch[key], np.ndarray):
+                    loss_in.append(torch.from_numpy(postprocessed_batch[key]))
+                else:
+                    raise Exception("Invalid input for compute_gradients")
             loss_out = self._loss(*loss_in)
             self._optimizer.zero_grad()
             loss_out.backward()
