@@ -159,15 +159,14 @@ class GCPNodeProvider(NodeProvider):
                 (INSTANCE_NAME_MAX_LEN - INSTANCE_NAME_UUID_LEN - 1)), (
                     name_label, len(name_label))
 
-        labels[TAG_RAY_CLUSTER_NAME] = self.cluster_name
-
         config.update({
             "machineType": ("zones/{zone}/machineTypes/{machine_type}"
                             "".format(
                                 zone=availability_zone,
                                 machine_type=base_config["machineType"])),
             "labels": dict(
-                config.get("labels", {}), **labels),
+                config.get("labels", {}), **labels,
+                **{TAG_RAY_CLUSTER_NAME: self.cluster_name}),
         })
 
         operations = [

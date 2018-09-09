@@ -220,7 +220,7 @@ script:
   - python -m pytest -v test/failure_test.py
   - python -m pytest -v test/microbenchmarks.py
   - python -m pytest -v test/stress_tests.py
-  - python -m pytest -v test/component_failures_test.py
+  - python -m pytest -v -s -o log_cli=true test/component_failures_test.py
   - python test/multi_node_test.py
   - python -m pytest -v test/recursion_test.py
   - python -m pytest -v test/monitor_test.py
