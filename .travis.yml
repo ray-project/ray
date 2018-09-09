@@ -49,7 +49,7 @@ matrix:
         - export PATH="$HOME/miniconda/bin:$PATH"
         - cd doc
         - pip install -q -r requirements-doc.txt
-        - pip install yapf
+        - pip install yapf==0.23.0
         - sphinx-build -W -b html -d _build/doctrees source _build/html
         - cd ..
         # Run Python linting, ignore dict vs {} (C408), others are defaults
