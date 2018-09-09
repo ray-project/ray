@@ -24,22 +24,6 @@ from ray.utils import (
 
 DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS = 1
 
-_actor_init_error = None
-
-
-def mark_actor_init_failed(error):
-    """Called to mark this actor as failed during initialization."""
-
-    global _actor_init_error
-    _actor_init_error = error
-
-
-def reraise_actor_init_error():
-    """Raises any previous actor initialization error."""
-
-    if _actor_init_error is not None:
-        raise _actor_init_error
-
 
 def is_classmethod(f):
     """Returns whether the given method is a classmethod."""
@@ -382,7 +366,7 @@ def fetch_and_register_actor(actor_class_key, worker):
             traceback_str,
             driver_id,
             data={"actor_id": actor_id_str})
-        mark_actor_init_failed(e)
+        worker.mark_actor_init_failed(e)
 
 
 def publish_actor_class_to_key(key, actor_class_info, worker):
@@ -1085,6 +1069,4 @@ def make_actor(cls, num_cpus, num_gpus, resources, actor_method_cpus,
 
 
 ray.worker.global_worker.fetch_and_register_actor = fetch_and_register_actor
-ray.worker.global_worker.mark_actor_init_failed = mark_actor_init_failed
-ray.worker.global_worker.reraise_actor_init_error = reraise_actor_init_error
 ray.worker.global_worker.make_actor = make_actor
