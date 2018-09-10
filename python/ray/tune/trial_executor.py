@@ -110,14 +110,14 @@ class TrialExecutor(object):
         """Tries to invoke `Trainable.reset_config()` to reset trial.
 
         Args:
-            trial (Trial): Trial to be resetted.
+            trial (Trial): Trial to be reset.
             new_config (dict): New configuration for Trial
                 trainable.
             new_experiment_tag (str): New experiment name
                 for trial.
 
         Returns:
-            True if `reset_config` is succesful else False.
+            True if `reset_config` is successful else False.
         """
         raise NotImplementedError
 

@@ -288,7 +288,7 @@ class Trainable(object):
 
         Returns:
             True if configuration reset successfully else False.
-            """
+        """
         return False
 
     def stop(self):

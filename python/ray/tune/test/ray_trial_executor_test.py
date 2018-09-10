@@ -7,6 +7,7 @@ import unittest
 
 import ray
 from ray.rllib import _register_all
+from ray.tune import Trainable
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.trial import Trial, Checkpoint
@@ -76,12 +77,38 @@ class RayTrialExecutorTest(unittest.TestCase):
         self.trial_executor.stop_trial(trial)
         self.assertEqual(Trial.TERMINATED, trial.status)
 
-    def testResetTrial(self):
-        """Tests that resetting a trial handles errors properly."""
+    def testNoResetTrial(self):
+        """Tests that reset handles NotImplemented properly."""
         trial = Trial("__fake")
         self.trial_executor.start_trial(trial)
         exists = self.trial_executor.reset_trial(trial, {}, "modified_mock")
         self.assertEqual(exists, False)
+        self.assertEqual(Trial.RUNNING, trial.status)
+
+    def testResetTrial(self):
+        """Tests that reset works as expected."""
+
+        class B(Trainable):
+            def _train(self):
+                return dict(timesteps_this_iter=1, done=True)
+
+            def reset_config(self, config):
+                self.config = config
+                return True
+
+        trials = self.generate_trials({
+            "run": B,
+            "config": {
+                "foo": 0
+            },
+        }, "grid_search")
+        trial = trials[0]
+        self.trial_executor.start_trial(trial)
+        exists = self.trial_executor.reset_trial(trial, {"hi": 1},
+                                                 "modified_mock")
+        self.assertEqual(exists, True)
+        self.assertEqual(trial.config.get("hi"), 1)
+        self.assertEqual(trial.experiment_tag, "modified_mock")
         self.assertEqual(Trial.RUNNING, trial.status)
 
     def generate_trials(self, spec, name):
