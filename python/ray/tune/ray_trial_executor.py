@@ -172,8 +172,7 @@ class RayTrialExecutor(TrialExecutor):
         """
         trial.experiment_tag = new_experiment_tag
         trainable = trial.runner
-        reset_val = ray.get(
-            trainable.reset_config.remote(new_config))
+        reset_val = ray.get(trainable.reset_config.remote(new_config))
         return reset_val
 
     def get_running_trials(self):
