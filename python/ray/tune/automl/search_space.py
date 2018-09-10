@@ -111,7 +111,8 @@ class ContinuousSpace(ParameterSpace):
         return len(self.choices)
 
     def __str__(self):
-        return "ContinuousSpace %s: [%s, %s]" % (self.name, self.start, self.end)
+        return "ContinuousSpace %s: [%s, %s]" % (self.name,
+                                                 self.start, self.end)
 
 
 class SearchSpace(object):
@@ -151,7 +152,8 @@ class SearchSpace(object):
     def generate_random_one_hot_encoding(self):
         """Returns a list of one-hot encodings for all parameters.
 
-        1 one-hot np.array for 1 parameter, and the 1's place is randomly chosen.
+        1 one-hot np.array for 1 parameter,
+        and the 1's place is randomly chosen.
         """
         encoding = []
         for ps in self.param_list:
@@ -166,8 +168,9 @@ class SearchSpace(object):
 
 
         Arguments:
-            one_hot_encoding (list): A list of one hot encodings, 1 for each parameter.
-                The shape of each encoding should match that ``ParameterSpace``
+            one_hot_encoding (list): A list of one hot encodings,
+                1 for each parameter. The shape of each encoding
+                should match that ``ParameterSpace``
 
         Returns:
             A dict config with specific <name, value> pair

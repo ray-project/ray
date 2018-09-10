@@ -35,7 +35,8 @@ class GeneticSearch(AutoMLSearcher):
             reward_attr: The attribute name of the reward in the result.
             max_generation: Max iteration number of genetic search.
             population_size: Number of trials of the initial generation.
-            population_decay: Decay ratio of population size for the next generation.
+            population_decay: Decay ratio of population size for the
+                next generation.
             keep_top_ratio: Ratio of the top performance population.
             selection_bound: Threshold for performing selection.
             crossover_bound: Threshold for performing crossover.
@@ -71,7 +72,9 @@ class GeneticSearch(AutoMLSearcher):
             return AutoMLSearcher.TERMINATE
 
         sorted_trials = sorted(
-            trials, key=lambda t: t.best_result[self.reward_attr], reverse=True)
+            trials,
+            key=lambda t: t.best_result[self.reward_attr], reverse=True
+        )
         self._cur_encoding_list = self._next_generation(sorted_trials)
         self._cur_config_list = []
         for one_hot in self._cur_encoding_list:
@@ -83,12 +86,14 @@ class GeneticSearch(AutoMLSearcher):
     def _next_generation(self, sorted_trials):
         """Generate genes (encodings) for the next generation.
 
-        Use the top K (_keep_top_ratio) trials of the last generation as candidates
-        to generate the next generation. The action could be selection, crossover
-        and mutation according corresponding ratio (_selection_bound, _crossover_bound).
+        Use the top K (_keep_top_ratio) trials of the last generation
+        as candidates to generate the next generation. The action could
+        be selection, crossover and mutation according corresponding
+        ratio (_selection_bound, _crossover_bound).
 
         Args:
-            sorted_trials: List of finished trials with top performance ones first.
+            sorted_trials: List of finished trials with top
+                performance ones first.
 
         Returns:
             A list of new genes (encodings)
@@ -143,7 +148,8 @@ class GeneticSearch(AutoMLSearcher):
             >>> gene1 = np.array([[0, 0, 1], [0, 1], [1, 0]])
             >>> gene2 = np.array([[0, 1, 0], [1, 0], [0, 1]])
             >>> new_gene = _selection([gene1, gene2])
-            >>> # new_gene could be gene1 overwritten with the 2nd parameter of gene2
+            >>> # new_gene could be gene1 overwritten with the
+            >>> # 2nd parameter of gene2
             >>> # in which case:
             >>> #   new_gene[0] = gene1[0]
             >>> #   new_gene[1] = gene2[1]
@@ -183,7 +189,8 @@ class GeneticSearch(AutoMLSearcher):
             >>> gene1 = np.array([[0, 0, 1], [0, 1], [1, 0]])
             >>> gene2 = np.array([[0, 1, 0], [1, 0], [0, 1]])
             >>> new_gene = _crossover([gene1, gene2])
-            >>> # new_gene could be the first [n=1] parameters of gene1 + the rest of gene2
+            >>> # new_gene could be the first [n=1] parameters of
+            >>> # gene1 + the rest of gene2
             >>> # in which case:
             >>> #   new_gene[0] = gene1[0]
             >>> #   new_gene[1] = gene2[1]

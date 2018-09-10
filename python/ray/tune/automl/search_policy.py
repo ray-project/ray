@@ -29,7 +29,7 @@ def deep_insert(path_list, value, config):
 
 
 class AutoMLSearcher(SearchAlgorithm):
-    """Base class for AutoML search algorithm
+    """Base class for AutoML search algorithm.
 
     It works in a round-by-round way. For each experiment round,
     it generates a bunch of parameter config permutations, submits
@@ -123,7 +123,8 @@ class AutoMLSearcher(SearchAlgorithm):
         # Update trial's best result
         trial.results.append(result)
         if trial.best_result is None \
-                or result[self.reward_attr] > trial.best_result[self.reward_attr]:
+                or result[self.reward_attr] \
+                > trial.best_result[self.reward_attr]:
             trial.best_result = result
 
         # Update job's best trial
@@ -151,14 +152,16 @@ class AutoMLSearcher(SearchAlgorithm):
             elapsed = time.time() - self._start_ts
             logger.info("=========== END Experiment-Round: %(round)s "
                         "[%(succ)s SUCC | %(fail)s FAIL] this round, "
-                        "elapsed=%(elapsed).2f, BEST %(reward_attr)s=%(reward)f ===========",
+                        "elapsed=%(elapsed).2f, "
+                        "BEST %(reward_attr)s=%(reward)f ===========",
                         {"round": self._iteration,
                          "succ": succ,
                          "fail": total - succ,
                          "elapsed": elapsed,
                          "reward_attr": self.reward_attr,
-                         "reward": self.best_trial.best_result[self.reward_attr]
-                         if self.best_trial else None})
+                         "reward":
+                             self.best_trial.best_result[self.reward_attr]
+                             if self.best_trial else None})
 
             action = self._feedback(self._running_trials.values())
             if action == AutoMLSearcher.TERMINATE:
@@ -173,14 +176,15 @@ class AutoMLSearcher(SearchAlgorithm):
     def _select(self):
         """Select a bunch of parameter permutations to run.
 
-        The permutations should be a list of dict, which contains the <path, value> pair.
-        The ``path`` could be a dot separated string, which will be expanded to merge
-        into the experiment's config by the framework. For example:
+        The permutations should be a list of dict, which contains the
+        <path, value> pair. The ``path`` could be a dot separated string,
+        which will be expanded to merge into the experiment's config by the
+        framework. For example:
         pair                 : {"path.to.key": 1}
         config in experiment : {"path": {"to": {"key": 1}, ...}, ...}
 
-        The framework generates 1 config for 1 Trial. User could also return an extra list
-        to add an additional argument to the trial
+        The framework generates 1 config for 1 Trial. User could also return
+        an extra list to add an additional argument to the trial
 
         Returns:
             A list of config + a list of extra argument (can be None)
@@ -232,6 +236,3 @@ class RandomSearch(AutoMLSearcher):
 
     def _feedback(self, trials):
         return AutoMLSearcher.TERMINATE
-
-
-
