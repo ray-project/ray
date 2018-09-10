@@ -1724,7 +1724,6 @@ def init(redis_address=None,
          redirect_worker_output=False,
          redirect_output=True,
          ignore_reinit_error=False,
-         num_custom_resource=None,
          num_redis_shards=None,
          redis_max_clients=None,
          redis_protected_mode=True,
@@ -1985,6 +1984,15 @@ def print_error_messages_raylet(worker):
         # When Redis terminates the listen call will throw a ConnectionError,
         # which we catch here.
         pass
+
+
+def is_initialized():
+    """Check if ray.init has been called yet.
+
+    Returns:
+        True if ray.init has already been called and false otherwise.
+    """
+    return ray.worker.global_worker.connected
 
 
 def print_error_messages(worker):
