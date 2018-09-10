@@ -22,7 +22,7 @@ ray.init(num_cpus=10)
 CONFIGS = {
     "ES": {
         "episodes_per_batch": 10,
-        "timesteps_per_batch": 100,
+        "train_batch_size": 100,
         "num_workers": 2
     },
     "DQN": {},
@@ -40,7 +40,7 @@ CONFIGS = {
     },
     "PPO": {
         "num_sgd_iter": 5,
-        "timesteps_per_batch": 1000,
+        "train_batch_size": 1000,
         "num_workers": 2
     },
     "A3C": {

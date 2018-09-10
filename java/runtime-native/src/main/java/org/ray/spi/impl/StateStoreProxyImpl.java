@@ -1,26 +1,30 @@
 package org.ray.spi.impl;
 
 import java.io.UnsupportedEncodingException;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import org.ray.api.id.UniqueId;
+import org.ray.format.gcs.ClientTableData;
 import org.ray.spi.KeyValueStoreLink;
 import org.ray.spi.StateStoreProxy;
 import org.ray.spi.model.AddressInfo;
+import org.ray.util.NetworkUtil;
 import org.ray.util.logger.RayLog;
 
 /**
- * Base class used to interface with the Ray control state.
+ * A class used to interface with the Ray control state.
  */
-public abstract class BaseStateStoreProxyImpl implements StateStoreProxy {
+public class StateStoreProxyImpl implements StateStoreProxy {
 
   public KeyValueStoreLink rayKvStore;
   public ArrayList<KeyValueStoreLink> shardStoreList = new ArrayList<>();
 
-  public BaseStateStoreProxyImpl(KeyValueStoreLink rayKvStore) {
+  public StateStoreProxyImpl(KeyValueStoreLink rayKvStore) {
     this.rayKvStore = rayKvStore;
   }
 
@@ -49,7 +53,7 @@ public abstract class BaseStateStoreProxyImpl implements StateStoreProxy {
     Set<String> distinctIpAddress = new HashSet<String>(ipAddressPorts);
     if (distinctIpAddress.size() != numRedisShards) {
       es = String.format("Expected %d Redis shard addresses, found2 %d.", numRedisShards,
-        distinctIpAddress.size());
+              distinctIpAddress.size());
       throw new Exception(es);
     }
 
@@ -78,7 +82,7 @@ public abstract class BaseStateStoreProxyImpl implements StateStoreProxy {
 
   @Override
   public List<AddressInfo> getAddressInfo(final String nodeIpAddress,
-                                          final String redisAddress, 
+                                          final String redisAddress,
                                           int numRetries) {
     int count = 0;
     while (count < numRetries) {
@@ -86,11 +90,11 @@ public abstract class BaseStateStoreProxyImpl implements StateStoreProxy {
         return doGetAddressInfo(nodeIpAddress, redisAddress);
       } catch (Exception e) {
         try {
-          RayLog.core.warn("Error occurred in BaseStateStoreProxyImpl getAddressInfo, "
-              + (numRetries - count) + " retries remaining", e);
+          RayLog.core.warn("Error occurred in StateStoreProxyImpl getAddressInfo, "
+                  + (numRetries - count) + " retries remaining", e);
           TimeUnit.MILLISECONDS.sleep(1000);
         } catch (InterruptedException ie) {
-          RayLog.core.error("error at BaseStateStoreProxyImpl getAddressInfo", e);
+          RayLog.core.error("error at StateStoreProxyImpl getAddressInfo", e);
           throw new RuntimeException(e);
         }
       }
@@ -108,8 +112,44 @@ public abstract class BaseStateStoreProxyImpl implements StateStoreProxy {
    * @return A list of SchedulerInfo which contains node manager or local scheduler address info.
    * @throws Exception No redis client exception.
    */
-  protected abstract List<AddressInfo> doGetAddressInfo(final String nodeIpAddress,
-                                                        final String redisAddress) throws Exception;
+  public List<AddressInfo> doGetAddressInfo(final String nodeIpAddress,
+                                            final String redisAddress) throws Exception {
+    if (this.rayKvStore == null) {
+      throw new Exception("no redis client when use doGetAddressInfo");
+    }
+    List<AddressInfo> schedulerInfo = new ArrayList<>();
+
+    byte[] prefix = "CLIENT".getBytes();
+    byte[] postfix = UniqueId.genNil().getBytes();
+    byte[] clientKey = new byte[prefix.length + postfix.length];
+    System.arraycopy(prefix, 0, clientKey, 0, prefix.length);
+    System.arraycopy(postfix, 0, clientKey, prefix.length, postfix.length);
+
+    Set<byte[]> clients = rayKvStore.zrange(clientKey, 0, -1);
+
+    for (byte[] clientMessage : clients) {
+      ByteBuffer bb = ByteBuffer.wrap(clientMessage);
+      ClientTableData client = ClientTableData.getRootAsClientTableData(bb);
+      String clientNodeIpAddress = client.nodeManagerAddress();
+
+      String localIpAddress = NetworkUtil.getIpAddress(null);
+      String redisIpAddress = redisAddress.substring(0, redisAddress.indexOf(':'));
+
+      boolean headNodeAddress = "127.0.0.1".equals(clientNodeIpAddress)
+              && Objects.equals(redisIpAddress, localIpAddress);
+      boolean notHeadNodeAddress = Objects.equals(clientNodeIpAddress, nodeIpAddress);
+
+      if (headNodeAddress || notHeadNodeAddress) {
+        AddressInfo si = new AddressInfo();
+        si.storeName = client.objectStoreSocketName();
+        si.rayletSocketName = client.rayletSocketName();
+        si.managerRpcAddr = client.nodeManagerAddress();
+        si.managerPort = client.nodeManagerPort();
+        schedulerInfo.add(si);
+      }
+    }
+    return schedulerInfo;
+  }
 
   protected String charsetDecode(byte[] bs, String charset) throws UnsupportedEncodingException {
     return new String(bs, charset);

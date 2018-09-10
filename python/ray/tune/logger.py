@@ -140,6 +140,7 @@ class _TFLogger(Logger):
         }, ["ray", "tune"])
         iteration_stats = tf.Summary(value=iteration_value)
         self._file_writer.add_summary(iteration_stats, t)
+        self._file_writer.flush()
 
     def flush(self):
         self._file_writer.flush()
