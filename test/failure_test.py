@@ -206,9 +206,6 @@ def test_failed_actor_init(ray_start_regular):
         def __init__(self):
             raise Exception(error_message1)
 
-        def get_val(self):
-            return 1
-
         def fail_method(self):
             raise Exception(error_message2)
 
@@ -223,7 +220,27 @@ def test_failed_actor_init(ray_start_regular):
     a.fail_method.remote()
     wait_for_errors(ray_constants.TASK_PUSH_ERROR, 2)
     assert len(ray.error_info()) == 2
-    assert error_message2 in ray.error_info()[1]["message"]
+    assert error_message1 in ray.error_info()[1]["message"]
+
+
+def test_failed_actor_method(ray_start_regular):
+    error_message2 = "actor method failed"
+
+    @ray.remote
+    class FailedActor(object):
+        def __init__(self):
+            pass
+
+        def fail_method(self):
+            raise Exception(error_message2)
+
+    a = FailedActor.remote()
+
+    # Make sure that we get errors from a failed method.
+    a.fail_method.remote()
+    wait_for_errors(ray_constants.TASK_PUSH_ERROR, 1)
+    assert len(ray.error_info()) == 1
+    assert error_message2 in ray.error_info()[0]["message"]
 
 
 def test_incorrect_method_calls(ray_start_regular):

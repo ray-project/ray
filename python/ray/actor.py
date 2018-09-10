@@ -330,7 +330,21 @@ def fetch_and_register_actor(actor_class_key, worker):
     try:
         unpickled_class = pickle.loads(pickled_class)
         worker.actor_class = unpickled_class
-
+    except Exception:
+        # If an exception was thrown when the actor was imported, we record the
+        # traceback and notify the scheduler of the failure.
+        traceback_str = ray.utils.format_error_message(traceback.format_exc())
+        # Log the error message.
+        push_error_to_driver(
+            worker,
+            ray_constants.REGISTER_ACTOR_PUSH_ERROR,
+            traceback_str,
+            driver_id,
+            data={"actor_id": actor_id_str})
+        # TODO(rkn): In the future, it might make sense to have the worker exit
+        # here. However, currently that would lead to hanging if someone calls
+        # ray.get on a method invoked on the actor.
+    else:
         # TODO(pcm): Why is the below line necessary?
         unpickled_class.__module__ = module
         worker.actors[actor_id_str] = unpickled_class.__new__(unpickled_class)
@@ -353,19 +367,6 @@ def fetch_and_register_actor(actor_class_key, worker):
             # We do not set worker.function_properties[driver_id][function_id]
             # because we currently do need the actor worker to submit new tasks
             # for the actor.
-
-    except Exception as e:
-        # If an exception was thrown when the actor was imported, we record the
-        # traceback and notify the scheduler of the failure.
-        traceback_str = ray.utils.format_error_message(traceback.format_exc())
-        # Log the error message.
-        push_error_to_driver(
-            worker,
-            ray_constants.REGISTER_ACTOR_PUSH_ERROR,
-            traceback_str,
-            driver_id,
-            data={"actor_id": actor_id_str})
-        worker.mark_actor_init_failed(e)
 
 
 def publish_actor_class_to_key(key, actor_class_info, worker):
