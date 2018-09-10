@@ -345,7 +345,7 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
 def stop():
     subprocess.call(
         [
-            "killall global_scheduler plasma_store plasma_manager "
+            "killall global_scheduler plasma_store_server plasma_manager "
             "local_scheduler raylet raylet_monitor"
         ],
         shell=True)
