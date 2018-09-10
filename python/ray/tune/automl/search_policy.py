@@ -25,7 +25,7 @@ def deep_insert(path_list, value, config):
         inside_config = config.setdefault(path_list[0], {})
         deep_insert(path_list[1:], value, inside_config)
     else:
-       config[path_list[0]] = value
+        config[path_list[0]] = value
 
 
 class AutoMLSearcher(SearchAlgorithm):
@@ -57,7 +57,7 @@ class AutoMLSearcher(SearchAlgorithm):
         self.best_trial = None
         self._is_finished = False
         self._parser = make_parser()
-        self._undone_count = 0
+        self._unfinished_count = 0
         self._running_trials = {}
         self._completed_trials = {}
 
@@ -73,7 +73,7 @@ class AutoMLSearcher(SearchAlgorithm):
         return self.best_trial
 
     def next_trials(self):
-        if self._undone_count > 0:
+        if self._unfinished_count > 0:
             # Last round not finished
             return []
 
@@ -106,7 +106,7 @@ class AutoMLSearcher(SearchAlgorithm):
 
         ntrial = len(trials)
         self._iteration += 1
-        self._undone_count = ntrial
+        self._unfinished_count = ntrial
         self._total_trial_num += ntrial
         self._start_ts = time.time()
         logger.info("=========== BEGIN Experiment-Round: %(round)s "
@@ -138,8 +138,8 @@ class AutoMLSearcher(SearchAlgorithm):
                           error=False,
                           early_terminated=False):
         self.on_trial_result(trial_id, result)
-        self._undone_count -= 1
-        if self._undone_count == 0:
+        self._unfinished_count -= 1
+        if self._unfinished_count == 0:
             total = len(self._running_trials)
             succ = sum(t.status == Trial.TERMINATED
                        for t in self._running_trials.values())
