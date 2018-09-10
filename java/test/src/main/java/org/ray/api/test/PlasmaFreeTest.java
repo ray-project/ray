@@ -4,7 +4,6 @@ import com.google.common.collect.ImmutableList;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.Assert;
-import org.junit.Assume;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.ray.api.Ray;
@@ -12,7 +11,6 @@ import org.ray.api.RayObject;
 import org.ray.api.WaitResult;
 import org.ray.api.annotation.RayRemote;
 import org.ray.api.id.UniqueId;
-import org.ray.core.AbstractRayRuntime;
 
 
 @RunWith(MyRunner.class)

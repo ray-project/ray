@@ -28,25 +28,7 @@
 
         <dependency>
             <groupId>org.ray</groupId>
-            <artifactId>ray-runtime-common</artifactId>
-            <version>${project.version}</version>
-        </dependency>
-
-        <dependency>
-            <groupId>org.ray</groupId>
-            <artifactId>ray-runtime-native</artifactId>
-            <version>${project.version}</version>
-        </dependency>
-
-        <dependency>
-            <groupId>org.ray</groupId>
-            <artifactId>ray-runtime-dev</artifactId>
-            <version>${project.version}</version>
-        </dependency>
-
-        <dependency>
-            <groupId>org.ray</groupId>
-            <artifactId>ray-common</artifactId>
+            <artifactId>ray-runtime</artifactId>
             <version>${project.version}</version>
         </dependency>
 

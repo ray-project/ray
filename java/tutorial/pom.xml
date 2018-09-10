@@ -1,97 +1,73 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
 <project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xmlns="http://maven.apache.org/POM/4.0.0"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
-    <parent>
-        <groupId>org.ray.parent</groupId>
-        <artifactId>ray-superpom</artifactId>
-        <version>1.0</version>
-    </parent>
-    <modelVersion>4.0.0</modelVersion>
+  xmlns="http://maven.apache.org/POM/4.0.0"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+  <parent>
+    <groupId>org.ray.parent</groupId>
+    <artifactId>ray-superpom</artifactId>
+    <version>1.0</version>
+  </parent>
+  <modelVersion>4.0.0</modelVersion>
 
-    <groupId>org.ray</groupId>
-    <artifactId>ray-tutorial</artifactId>
+  <groupId>org.ray</groupId>
+  <artifactId>ray-tutorial</artifactId>
 
-    <name>java tutorial</name>
-    <description>Tutorial of using Ray with Java</description>
-    <url></url>
+  <name>java tutorial</name>
+  <description>Tutorial of using Ray with Java</description>
 
-    <packaging>jar</packaging>
+  <packaging>jar</packaging>
 
-    <dependencies>
-        <dependency>
-            <groupId>org.ray</groupId>
-            <artifactId>ray-api</artifactId>
-            <version>${project.version}</version>
-        </dependency>
-
-        <dependency>
-            <groupId>org.ray</groupId>
-            <artifactId>ray-runtime-common</artifactId>
-            <version>${project.version}</version>
-        </dependency>
-
-        <dependency>
-            <groupId>org.ray</groupId>
-            <artifactId>ray-runtime-native</artifactId>
-            <version>${project.version}</version>
-        </dependency>
-
-        <dependency>
-            <groupId>org.ray</groupId>
-            <artifactId>ray-runtime-dev</artifactId>
-            <version>${project.version}</version>
-        </dependency>
-
-        <dependency>
-            <groupId>org.ray</groupId>
-            <artifactId>ray-common</artifactId>
-            <version>${project.version}</version>
-        </dependency>
-
-    </dependencies>
-    <build>
-        <plugins>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-surefire-plugin</artifactId>
-                <version>2.20.1</version>
-                <configuration>
-                    <environmentVariables>
-                        <RAY_CONFIG>${basedir}/../ray.config.ini</RAY_CONFIG>
-                    </environmentVariables>
-                    <argLine>-ea
-                        -Djava.library.path=${basedir}/../../build/src/plasma:${basedir}/../../build/src/local_scheduler
-                        -noverify
-                        -DlogOutput=console
-                    </argLine>
-                    <testSourceDirectory>${basedir}/src/main/java/</testSourceDirectory>
-                    <testClassesDirectory>${project.build.directory}/classes/</testClassesDirectory>
-                </configuration>
-            </plugin>
-
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-dependency-plugin</artifactId>
-                <executions>
-                    <execution>
-                        <id>copy-dependencies</id>
-                        <phase>package</phase>
-                        <goals>
-                            <goal>copy-dependencies</goal>
-                        </goals>
-                        <configuration>
-                            <outputDirectory>${basedir}/lib</outputDirectory>
-                            <overWriteReleases>false</overWriteReleases>
-                            <overWriteSnapshots>false</overWriteSnapshots>
-                            <overWriteIfNewer>true</overWriteIfNewer>
-                        </configuration>
-                    </execution>
-                </executions>
-            </plugin>
-
-        </plugins>
-    </build>
-
+  <dependencies>
+    <dependency>
+      <groupId>org.ray</groupId>
+      <artifactId>ray-api</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.ray</groupId>
+      <artifactId>ray-runtime</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+  </dependencies>
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>2.20.1</version>
+        <configuration>
+          <environmentVariables>
+            <RAY_CONFIG>${basedir}/../ray.config.ini</RAY_CONFIG>
+          </environmentVariables>
+          <argLine>-ea
+            -Djava.library.path=${basedir}/../../build/src/plasma:${basedir}/../../build/src/local_scheduler
+            -noverify
+            -DlogOutput=console
+          </argLine>
+          <testSourceDirectory>${basedir}/src/main/java/</testSourceDirectory>
+          <testClassesDirectory>${project.build.directory}/classes/</testClassesDirectory>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-dependency-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>copy-dependencies</id>
+            <phase>package</phase>
+            <goals>
+              <goal>copy-dependencies</goal>
+            </goals>
+            <configuration>
+              <outputDirectory>${basedir}/lib</outputDirectory>
+              <overWriteReleases>false</overWriteReleases>
+              <overWriteSnapshots>false</overWriteSnapshots>
+              <overWriteIfNewer>true</overWriteIfNewer>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
 </project>
