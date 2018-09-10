@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import binascii
 import copy
 from collections import defaultdict
 import heapq
@@ -1339,7 +1338,7 @@ class GlobalState(object):
                     dynamic_resources[resource_id] = dyn.Value()
 
                 # Update available resources for this local scheduler
-                client_id = decode(binascii.hexlify(message.DbClientId()))
+                client_id = binary_to_hex(message.DbClientId())
                 available_resources_by_id[client_id] = dynamic_resources
 
                 # Update local schedulers in cluster
@@ -1388,7 +1387,7 @@ class GlobalState(object):
                             message.ResourcesAvailableCapacity(i))
 
                     # Update available resources for this client
-                    client_id = decode(message.ClientId())
+                    client_id = ray.utils.binary_to_hex(message.ClientId())
                     available_resources_by_id[client_id] = dynamic_resources
 
                 # Update clients in cluster
