@@ -32,15 +32,13 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
 
     def _init(self,
               sgd_batch_size=128,
-              sgd_stepsize=5e-5,
               num_sgd_iter=10,
-              timesteps_per_batch=1024,
+              train_batch_size=1024,
               num_gpus=0,
               standardize_fields=[]):
         self.batch_size = sgd_batch_size
-        self.sgd_stepsize = sgd_stepsize
         self.num_sgd_iter = num_sgd_iter
-        self.timesteps_per_batch = timesteps_per_batch
+        self.train_batch_size = train_batch_size
         if not num_gpus:
             self.devices = ["/cpu:0"]
         else:
@@ -81,8 +79,7 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
                     else:
                         rnn_inputs = []
                     self.par_opt = LocalSyncParallelOptimizer(
-                        tf.train.AdamOptimizer(
-                            self.sgd_stepsize), self.devices,
+                        self.policy.optimizer(), self.devices,
                         [v for _, v in self.policy.loss_inputs()], rnn_inputs,
                         self.per_device_batch_size, self.policy.copy,
                         os.getcwd())
@@ -102,7 +99,7 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
                 # TODO(rliaw): remove when refactoring
                 from ray.rllib.agents.ppo.rollout import collect_samples
                 samples = collect_samples(self.remote_evaluators,
-                                          self.timesteps_per_batch)
+                                          self.train_batch_size)
             else:
                 samples = self.local_evaluator.sample()
             self._check_not_multiagent(samples)

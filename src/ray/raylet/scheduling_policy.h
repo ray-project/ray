@@ -22,15 +22,21 @@ class SchedulingPolicy {
   /// \return Void.
   SchedulingPolicy(const SchedulingQueue &scheduling_queue);
 
-  /// Perform a scheduling operation, given a set of cluster resources and
-  /// producing a mapping of tasks to node managers.
+  /// \brief Perform a scheduling operation, given a set of cluster resources and
+  /// producing a mapping of tasks to raylets.
   ///
-  ///  \param cluster_resources: a set of cluster resources representing
-  ///         configured and current resource capacity on each node.
-  /// \return Scheduling decision, mapping tasks to node managers for placement.
+  /// \param cluster_resources: a set of cluster resources containing resource and load
+  /// information for some subset of the cluster. For all client IDs in the returned
+  /// placement map, the corresponding SchedulingResources::resources_load_ is
+  /// incremented by the aggregate resource demand of the tasks assigned to it.
+  /// \param local_client_id The ID of the node manager that owns this
+  /// SchedulingPolicy object.
+  /// \return Scheduling decision, mapping tasks to raylets for placement.
   std::unordered_map<TaskID, ClientID> Schedule(
-      const std::unordered_map<ClientID, SchedulingResources> &cluster_resources,
-      const ClientID &local_client_id, const std::vector<ClientID> &others);
+      std::unordered_map<ClientID, SchedulingResources> &cluster_resources,
+      const ClientID &local_client_id);
+
+  std::vector<TaskID> SpillOver(SchedulingResources &remote_scheduling_resources) const;
 
   /// \brief SchedulingPolicy destructor.
   virtual ~SchedulingPolicy();

@@ -9,6 +9,7 @@ import ray
 from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.models.lstm import chop_into_sequences
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
+from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
 
 
 class TFPolicyGraph(PolicyGraph):
@@ -104,7 +105,8 @@ class TFPolicyGraph(PolicyGraph):
                               builder,
                               obs_batch,
                               state_batches=None,
-                              is_training=False):
+                              is_training=False,
+                              episodes=None):
         state_batches = state_batches or []
         assert len(self._state_inputs) == len(state_batches), \
             (self._state_inputs, state_batches)
@@ -118,8 +120,11 @@ class TFPolicyGraph(PolicyGraph):
                                       [self.extra_compute_action_fetches()])
         return fetches[0], fetches[1:-1], fetches[-1]
 
-    def compute_actions(self, obs_batch, state_batches=None,
-                        is_training=False):
+    def compute_actions(self,
+                        obs_batch,
+                        state_batches=None,
+                        is_training=False,
+                        episodes=None):
         builder = TFRunBuilder(self._sess, "compute_actions")
         fetches = self.build_compute_actions(builder, obs_batch, state_batches,
                                              is_training)
@@ -225,3 +230,24 @@ class TFPolicyGraph(PolicyGraph):
 
     def loss_inputs(self):
         return self._loss_inputs
+
+
+class LearningRateSchedule(object):
+    """Mixin for TFPolicyGraph that adds a learning rate schedule."""
+
+    def __init__(self, lr, lr_schedule):
+        self.cur_lr = tf.get_variable("lr", initializer=lr)
+        if lr_schedule is None:
+            self.lr_schedule = ConstantSchedule(lr)
+        else:
+            self.lr_schedule = PiecewiseSchedule(
+                lr_schedule, outside_value=lr_schedule[-1][-1])
+
+    def on_global_var_update(self, global_vars):
+        super(LearningRateSchedule, self).on_global_var_update(global_vars)
+        self.cur_lr.load(
+            self.lr_schedule.value(global_vars["timestep"]),
+            session=self._sess)
+
+    def optimizer(self):
+        return tf.train.AdamOptimizer(self.cur_lr)

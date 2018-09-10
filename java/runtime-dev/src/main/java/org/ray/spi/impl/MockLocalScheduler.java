@@ -3,9 +3,13 @@ package org.ray.spi.impl;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import org.ray.api.UniqueID;
+
+import org.ray.api.RayObject;
+import org.ray.api.WaitResult;
+import org.ray.api.id.UniqueId;
 import org.ray.core.LocalFunctionManager;
 import org.ray.core.Worker;
+import org.ray.core.impl.RayDevRuntime;
 import org.ray.spi.LocalSchedulerLink;
 import org.ray.spi.model.FunctionArg;
 import org.ray.spi.model.TaskSpec;
@@ -16,11 +20,13 @@ import org.ray.spi.model.TaskSpec;
  */
 public class MockLocalScheduler implements LocalSchedulerLink {
 
-  private final Map<UniqueID, Map<UniqueID, TaskSpec>> waitTasks = new ConcurrentHashMap<>();
+  private final Map<UniqueId, Map<UniqueId, TaskSpec>> waitTasks = new ConcurrentHashMap<>();
   private final MockObjectStore store;
   private LocalFunctionManager functions = null;
+  private final RayDevRuntime runtime;
 
-  public MockLocalScheduler(MockObjectStore store) {
+  public MockLocalScheduler(RayDevRuntime runtime, MockObjectStore store) {
+    this.runtime = runtime;
     this.store = store;
     store.registerScheduler(this);
   }
@@ -29,8 +35,8 @@ public class MockLocalScheduler implements LocalSchedulerLink {
     functions = mgr;
   }
 
-  public void onObjectPut(UniqueID id) {
-    Map<UniqueID, TaskSpec> bucket = waitTasks.get(id);
+  public void onObjectPut(UniqueId id) {
+    Map<UniqueId, TaskSpec> bucket = waitTasks.get(id);
     if (bucket != null) {
       waitTasks.remove(id);
       for (TaskSpec ts : bucket.values()) {
@@ -41,23 +47,21 @@ public class MockLocalScheduler implements LocalSchedulerLink {
 
   @Override
   public void submitTask(TaskSpec task) {
-    UniqueID id = isTaskReady(task);
+    UniqueId id = isTaskReady(task);
     if (id == null) {
-      Worker.execute(task, functions);
+      runtime.getWorker().execute(task);
     } else {
-      Map<UniqueID, TaskSpec> bucket = waitTasks
+      Map<UniqueId, TaskSpec> bucket = waitTasks
           .computeIfAbsent(id, id_ -> new ConcurrentHashMap<>());
       bucket.put(id, task);
     }
   }
 
-  private UniqueID isTaskReady(TaskSpec spec) {
+  private UniqueId isTaskReady(TaskSpec spec) {
     for (FunctionArg arg : spec.args) {
-      if (arg.ids != null) {
-        for (UniqueID id : arg.ids) {
-          if (!store.isObjectReady(id)) {
-            return id;
-          }
+      if (arg.id != null) {
+        if (!store.isObjectReady(arg.id)) {
+          return arg.id;
         }
       }
     }
@@ -65,22 +69,12 @@ public class MockLocalScheduler implements LocalSchedulerLink {
   }
 
   @Override
-  public TaskSpec getTaskTodo() {
+  public TaskSpec getTask() {
     throw new RuntimeException("invalid execution flow here");
   }
 
   @Override
-  public void markTaskPutDependency(UniqueID taskId, UniqueID objectId) {
-
-  }
-
-  @Override
-  public void reconstructObject(UniqueID objectId, boolean fetchOnly) {
-
-  }
-
-  @Override
-  public void reconstructObjects(List<UniqueID> objectIds, boolean fetchOnly) {
+  public void reconstructObjects(List<UniqueId> objectIds, boolean fetchOnly) {
 
   }
 
@@ -90,7 +84,17 @@ public class MockLocalScheduler implements LocalSchedulerLink {
   }
 
   @Override
-  public List<byte[]> wait(byte[][] objectIds, int timeoutMs, int numReturns) {
-    return store.wait(objectIds, timeoutMs, numReturns);
+  public UniqueId generateTaskId(UniqueId driverId, UniqueId parentTaskId, int taskIndex) {
+    throw new RuntimeException("Not implemented here.");
+  }
+
+  @Override
+  public <T> WaitResult<T> wait(List<RayObject<T>> waitFor, int numReturns, int timeoutMs) {
+    throw new RuntimeException("Not implemented here.");
+  }
+
+  @Override
+  public void freePlasmaObjects(List<UniqueId> objectIds, boolean localOnly) {
+    return;
   }
 }

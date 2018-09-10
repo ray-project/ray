@@ -1,4 +1,6 @@
-from __future__ import absolute_import, division, print_function
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
 
 import os
 import pytest
@@ -1006,7 +1008,7 @@ class APITest(unittest.TestCase):
         os.environ.get("RAY_USE_XRAY") == "1",
         "This test does not work with xray (nor is it intended to).")
     def testLoggingAPI(self):
-        self.init_ray(driver_mode=ray.SILENT_MODE)
+        self.init_ray()
 
         def events():
             # This is a hack for getting the event log. It is not part of the
@@ -1175,7 +1177,7 @@ class APITest(unittest.TestCase):
             ray.get(3)
 
     def testMultithreading(self):
-        self.init_ray(driver_mode=ray.SILENT_MODE)
+        self.init_ray()
 
         @ray.remote
         def f():
@@ -1285,7 +1287,7 @@ class APITest(unittest.TestCase):
 
 
 @unittest.skipIf(
-    os.environ.get('RAY_USE_NEW_GCS', False),
+    os.environ.get("RAY_USE_NEW_GCS", False),
     "For now, RAY_USE_NEW_GCS supports 1 shard, and credis "
     "supports 1-node chain for that shard only.")
 class APITestSharded(APITest):
@@ -1293,11 +1295,7 @@ class APITestSharded(APITest):
         if kwargs is None:
             kwargs = {}
         kwargs["start_ray_local"] = True
-        if os.environ.get("RAY_USE_XRAY") == "1":
-            print("XRAY currently supports only a single Redis shard.")
-            kwargs["num_redis_shards"] = 1
-        else:
-            kwargs["num_redis_shards"] = 20
+        kwargs["num_redis_shards"] = 20
         kwargs["redirect_output"] = True
         ray.worker._init(**kwargs)
 
@@ -1316,7 +1314,7 @@ class LocalModeTest(unittest.TestCase):
             x[0] = 1
             return x
 
-        ray.init(driver_mode=ray.LOCAL_MODE)
+        ray.init(local_mode=True)
 
         @ray.remote
         def f():
@@ -1673,17 +1671,23 @@ class ResourcesTest(unittest.TestCase):
         ray.get(a1.test.remote())
 
     @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
+        os.environ.get("RAY_USE_XRAY") != "1",
+        "This test only works with xray.")
     def testZeroCPUs(self):
+        ray.init(num_cpus=0)
+
+        @ray.remote(num_cpus=0)
+        def f():
+            return 1
+
+        # The task should be able to execute.
+        ray.get(f.remote())
+
+    def testZeroCPUsActor(self):
         ray.worker._init(
             start_ray_local=True, num_local_schedulers=2, num_cpus=[0, 2])
 
         local_plasma = ray.worker.global_worker.plasma_client.store_socket_name
-
-        @ray.remote(num_cpus=0)
-        def f():
-            return ray.worker.global_worker.plasma_client.store_socket_name
 
         @ray.remote
         class Foo(object):
@@ -1691,7 +1695,6 @@ class ResourcesTest(unittest.TestCase):
                 return ray.worker.global_worker.plasma_client.store_socket_name
 
         # Make sure tasks and actors run on the remote local scheduler.
-        assert ray.get(f.remote()) != local_plasma
         a = Foo.remote()
         assert ray.get(a.method.remote()) != local_plasma
 
@@ -2150,6 +2153,7 @@ class SchedulingAlgorithm(unittest.TestCase):
 
         @ray.remote
         def f(x):
+            time.sleep(0.010)
             return ray.worker.global_worker.plasma_client.store_socket_name
 
         # This object will be local to one of the local schedulers. Make sure
@@ -2179,7 +2183,7 @@ def wait_for_num_objects(num_objects, timeout=10):
 
 
 @unittest.skipIf(
-    os.environ.get('RAY_USE_NEW_GCS', False),
+    os.environ.get("RAY_USE_NEW_GCS", False),
     "New GCS API doesn't have a Python API yet.")
 class GlobalStateAPI(unittest.TestCase):
     def tearDown(self):
@@ -2530,6 +2534,22 @@ class GlobalStateAPI(unittest.TestCase):
         # Make sure that we can call this method (but it won't do anything in
         # this test case).
         ray.experimental.flush_evicted_objects_unsafe()
+
+
+class InitializationTest(unittest.TestCase):
+    def tearDown(self):
+        ray.shutdown()
+        assert not ray.is_initialized()
+
+    def testInitialized(self):
+        assert not ray.is_initialized()
+        ray.init(num_cpus=0)
+        assert ray.is_initialized()
+
+    def testInitializedLocalMode(self):
+        assert not ray.is_initialized()
+        ray.init(num_cpus=0, local_mode=True)
+        assert ray.is_initialized()
 
 
 if __name__ == "__main__":

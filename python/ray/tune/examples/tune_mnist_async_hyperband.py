@@ -33,7 +33,7 @@ import tempfile
 import time
 
 import ray
-from ray.tune import grid_search, run_experiments, register_trainable
+from ray.tune import grid_search, run_experiments
 
 from tensorflow.examples.tutorials.mnist import input_data
 
@@ -218,10 +218,9 @@ if __name__ == '__main__':
         '--smoke-test', action='store_true', help='Finish quickly for testing')
     args, _ = parser.parse_known_args()
 
-    register_trainable('train_mnist', train)
     mnist_spec = {
-        'run': 'train_mnist',
-        'repeat': 10,
+        'run': train,
+        'num_samples': 10,
         'stop': {
             'mean_accuracy': 0.99,
             'timesteps_total': 600,
@@ -233,11 +232,11 @@ if __name__ == '__main__':
 
     if args.smoke_test:
         mnist_spec['stop']['training_iteration'] = 2
-        mnist_spec['repeat'] = 1
+        mnist_spec['num_samples'] = 1
 
     ray.init()
 
-    from ray.tune.async_hyperband import AsyncHyperBandScheduler
+    from ray.tune.schedulers import AsyncHyperBandScheduler
     run_experiments(
         {
             'tune_mnist_test': mnist_spec

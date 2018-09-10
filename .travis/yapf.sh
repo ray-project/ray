@@ -48,8 +48,8 @@ format_changed() {
     MERGEBASE="$(git merge-base upstream/master HEAD)"
 
     if ! git diff --diff-filter=ACM --quiet --exit-code "$MERGEBASE" -- '*.py' &>/dev/null; then
-        declare -a unformatted_files && mapfile -t unformatted_files < <(git diff --name-only --diff-filter=ACM "$MERGEBASE" -- '*.py')
-        yapf --in-place "${YAPF_EXCLUDES[@]}" "${YAPF_FLAGS[@]}" -- "${unformatted_files[@]}"
+        git diff --name-only --diff-filter=ACM "$MERGEBASE" -- '*.py' | xargs -P 5 \
+             yapf --in-place "${YAPF_EXCLUDES[@]}" "${YAPF_FLAGS[@]}"
     fi
 }
 

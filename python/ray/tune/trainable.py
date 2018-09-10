@@ -36,26 +36,23 @@ class Trainable(object):
 
     Note that, if you don't require checkpoint/restore functionality, then
     instead of implementing this class you can also get away with supplying
-    just a `my_train(config, reporter)` function and calling:
-
-    ``register_trainable("my_func", train)``
-
-    to register it for use with Tune. The function will be automatically
-    converted to this interface (sans checkpoint functionality).
-
-    Attributes:
-        config (obj): The hyperparam configuration for this trial.
-        logdir (str): Directory in which training outputs should be placed.
+    just a ``my_train(config, reporter)`` function to the config.
+    The function will be automatically converted to this interface
+    (sans checkpoint functionality).
     """
 
     def __init__(self, config=None, logger_creator=None):
         """Initialize an Trainable.
 
+        Sets up logging and points ``self.logdir`` to a directory in which
+        training outputs should be placed.
+
         Subclasses should prefer defining ``_setup()`` instead of overriding
         ``__init__()`` directly.
 
         Args:
-            config (dict): Trainable-specific configuration data.
+            config (dict): Trainable-specific configuration data. By default
+                will be saved as ``self.config``.
             logger_creator (func): Function that creates a ray.tune.Logger
                 object. If unspecified, a default logger is created.
         """
@@ -77,7 +74,11 @@ class Trainable(object):
 
         self._iteration = 0
         self._time_total = 0.0
-        self._timesteps_total = 0
+        self._timesteps_total = None
+        self._time_since_restore = 0.0
+        self._timesteps_since_restore = 0
+        self._iterations_since_restore = 0
+        self._restored = False
         self._setup()
         self._initialize_ok = True
         self._local_ip = ray.services.get_node_ip_address()
@@ -102,28 +103,36 @@ class Trainable(object):
         """Runs one logical iteration of training.
 
         Subclasses should override ``_train()`` instead to return results.
-
         This class automatically fills the following fields in the result:
-            done (bool): training is terminated. Filled only if not provided.
-            time_this_iter_s (float): Time in seconds
-                this iteration took to run. This may be overriden in order to
-                override the system-computed time difference.
-            time_total_s (float): Accumulated time in seconds
-                for this entire experiment.
-            experiment_id (str): Unique string identifier
-                for this experiment. This id is preserved
-                across checkpoint / restore calls.
-            training_iteration (int): The index of this
-                training iteration, e.g. call to train().
-            pid (str): The pid of the training process.
-            date (str): A formatted date of
-                when the result was processed.
-            timestamp (str): A UNIX timestamp of
-                when the result was processed.
-            hostname (str): The hostname of the machine
-                hosting the training process.
-            node_ip (str): The node ip of the machine
-                hosting the training process.
+
+            `done` (bool): training is terminated. Filled only if not provided.
+
+            `time_this_iter_s` (float): Time in seconds this iteration
+            took to run. This may be overriden in order to override the
+            system-computed time difference.
+
+            `time_total_s` (float): Accumulated time in seconds for this
+            entire experiment.
+
+            `experiment_id` (str): Unique string identifier
+            for this experiment. This id is preserved
+            across checkpoint / restore calls.
+
+            `training_iteration` (int): The index of this
+            training iteration, e.g. call to train().
+
+            `pid` (str): The pid of the training process.
+
+            `date` (str): A formatted date of when the result was processed.
+
+            `timestamp` (str): A UNIX timestamp of when the result
+            was processed.
+
+            `hostname` (str): Hostname of the machine hosting the training
+            process.
+
+            `node_ip` (str): Node ip of the machine hosting the training
+            process.
 
         Returns:
             A dict that describes training progress.
@@ -138,16 +147,25 @@ class Trainable(object):
         result = result.copy()
 
         self._iteration += 1
+        self._iterations_since_restore += 1
 
         if result.get(TIME_THIS_ITER_S) is not None:
             time_this_iter = result[TIME_THIS_ITER_S]
         else:
             time_this_iter = time.time() - start
         self._time_total += time_this_iter
-
-        self._timesteps_total += result.get(TIMESTEPS_THIS_ITER, 0)
+        self._time_since_restore += time_this_iter
 
         result.setdefault(DONE, False)
+
+        # self._timesteps_total should only be tracked if increments provided
+        if result.get(TIMESTEPS_THIS_ITER):
+            if self._timesteps_total is None:
+                self._timesteps_total = 0
+            self._timesteps_total += result[TIMESTEPS_THIS_ITER]
+            self._timesteps_since_restore += result[TIMESTEPS_THIS_ITER]
+
+        # self._timesteps_total should not override user-provided total
         result.setdefault(TIMESTEPS_TOTAL, self._timesteps_total)
 
         # Provides auto-filled neg_mean_loss for avoiding regressions
@@ -165,7 +183,10 @@ class Trainable(object):
             pid=os.getpid(),
             hostname=os.uname()[1],
             node_ip=self._local_ip,
-            config=self.config)
+            config=self.config,
+            time_since_restore=self._time_since_restore,
+            timesteps_since_restore=self._timesteps_since_restore,
+            iterations_since_restore=self._iterations_since_restore)
 
         self._result_logger.on_result(result)
 
@@ -237,6 +258,7 @@ class Trainable(object):
         self._iteration = metadata[1]
         self._timesteps_total = metadata[2]
         self._time_total = metadata[3]
+        self._restored = True
 
     def restore_from_object(self, obj):
         """Restores training state from a checkpoint object.
@@ -273,17 +295,35 @@ class Trainable(object):
         raise NotImplementedError
 
     def _save(self, checkpoint_dir):
-        """Subclasses should override this to implement save()."""
+        """Subclasses should override this to implement save().
+
+        Args:
+            checkpoint_dir (str): The directory where the checkpoint
+                can be stored.
+
+        Returns:
+            Checkpoint path that may be passed to restore(). Typically
+                would default to `checkpoint_dir`.
+        """
 
         raise NotImplementedError
 
     def _restore(self, checkpoint_path):
-        """Subclasses should override this to implement restore()."""
+        """Subclasses should override this to implement restore().
+
+        Args:
+            checkpoint_path (str): The directory where the checkpoint
+                is stored.
+        """
 
         raise NotImplementedError
 
     def _setup(self):
-        """Subclasses should override this for custom initialization."""
+        """Subclasses should override this for custom initialization.
+
+        Subclasses can access the hyperparameter configuration via
+        ``self.config``.
+        """
         pass
 
     def _stop(self):

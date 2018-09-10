@@ -6,7 +6,8 @@ ray.rllib.agents
 
 .. automodule:: ray.rllib.agents
     :members:
-
+    
+.. autoclass:: ray.rllib.agents.a3c.A2CAgent
 .. autoclass:: ray.rllib.agents.a3c.A3CAgent
 .. autoclass:: ray.rllib.agents.ddpg.ApexDDPGAgent
 .. autoclass:: ray.rllib.agents.ddpg.DDPGAgent
