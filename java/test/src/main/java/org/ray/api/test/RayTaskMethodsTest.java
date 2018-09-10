@@ -1,10 +1,9 @@
 package org.ray.api.test;
 
-import java.lang.reflect.Constructor;
 import org.junit.Assert;
 import org.junit.Test;
-import org.ray.spi.model.RayMethod;
-import org.ray.spi.model.RayTaskMethods;
+import org.ray.runtime.functionmanager.RayMethod;
+import org.ray.runtime.functionmanager.RayTaskMethods;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

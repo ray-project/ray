@@ -5,7 +5,7 @@ import java.lang.reflect.Executable;
 import org.junit.Assert;
 import org.junit.Test;
 import org.ray.api.function.RayFunc2;
-import org.ray.util.MethodId;
+import org.ray.runtime.util.MethodId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

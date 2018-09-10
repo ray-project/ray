@@ -2,7 +2,13 @@
 
 package org.ray.api;
 
-import org.ray.api.function.*;
+import org.ray.api.function.RayFunc0;
+import org.ray.api.function.RayFunc1;
+import org.ray.api.function.RayFunc2;
+import org.ray.api.function.RayFunc3;
+import org.ray.api.function.RayFunc4;
+import org.ray.api.function.RayFunc5;
+import org.ray.api.function.RayFunc6;
 
 /**
  * This class provides type-safe interfaces for `Ray.call` and `Ray.createActor`.
