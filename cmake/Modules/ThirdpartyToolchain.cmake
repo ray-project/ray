@@ -165,7 +165,7 @@ if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
 
   # pyarrow
   find_package(PythonInterp REQUIRED)
-  message(STATUS "PYTHON_EXECUTABLE: ${PYTHON_EXECUTABLE}")
+  message(STATUS "PYTHON_EXECUTABLE for pyarrow: ${PYTHON_EXECUTABLE}")
 
   set(pyarrow_ENV
     "PKG_CONFIG_PATH=${ARROW_LIBRARY_DIR}/pkgconfig"
