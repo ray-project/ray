@@ -401,6 +401,9 @@ class Worker(object):
             logger.info(
                 "The object with ID {} already exists in the object store."
                 .format(object_id))
+        except Exception as e:
+            logger.error("put_object error: %s" % e)
+            raise e
 
     def retrieve_and_deserialize(self, object_ids, timeout, error_timeout=10):
         start_time = time.time()
