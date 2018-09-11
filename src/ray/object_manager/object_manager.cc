@@ -586,14 +586,11 @@ void ObjectManager::SubscribeRemainingWaitObjects(const UniqueID &wait_id) {
 }
 
 void ObjectManager::WaitComplete(const UniqueID &wait_id) {
-  auto iter = active_wait_requests_.find(wait_id);
-  if (iter == active_wait_requests_.end()) {
-    // This is possible if an object's location is obtained immediately,
-    // within the current callstack. In this case, WaitComplete has been
-    // invoked already, so we're done.
-    return;
-  }
-  auto &wait_state = iter->second;
+  auto &wait_state = active_wait_requests_.find(wait_id)->second;
+  // Cancel the timer. This is okay even if the timer hasn't been started.
+  // The timer handler will be given a non-zero error code. The handler
+  // will do nothing on non-zero error codes.
+  wait_state.timeout_timer->cancel();
   // If we complete with outstanding requests, then timeout_ms should be non-zero or -1
   // (infinite wait time).
   if (!wait_state.requested_objects.empty()) {
@@ -603,10 +600,6 @@ void ObjectManager::WaitComplete(const UniqueID &wait_id) {
   for (const auto &object_id : wait_state.requested_objects) {
     RAY_CHECK_OK(object_directory_->UnsubscribeObjectLocations(wait_id, object_id));
   }
-  // Cancel the timer. This is okay even if the timer hasn't been started.
-  // The timer handler will be given a non-zero error code. The handler
-  // will do nothing on non-zero error codes.
-  wait_state.timeout_timer->cancel();
   // Order objects according to input order.
   std::vector<ObjectID> found;
   std::vector<ObjectID> remaining;
