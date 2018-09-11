@@ -207,7 +207,8 @@ class GeneticSearch(AutoMLSearcher):
         sample_2 = candidate[sample_index2]
         cross_index = int(len(sample_1) * np.random.uniform(low=0.3, high=0.7))
         logger.info(
-            LOGGING_PREFIX + "Perform crossover between %sth and %sth at index=%s",
+            LOGGING_PREFIX +
+            "Perform crossover between %sth and %sth at index=%s",
             sample_index1, sample_index2, cross_index)
 
         next_gen = []
