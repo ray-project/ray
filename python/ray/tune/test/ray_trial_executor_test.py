@@ -22,20 +22,6 @@ class RayTrialExecutorTest(unittest.TestCase):
         ray.shutdown()
         _register_all()  # re-register the evicted objects
 
-    def _get_trials(self):
-        trials = self.generate_trials({
-            "run": "PPO",
-            "config": {
-                "bar": {
-                    "grid_search": [True, False]
-                },
-                "foo": {
-                    "grid_search": [1, 2, 3]
-                },
-            },
-        }, "grid_search")
-        return list(trials)
-
     def testStartStop(self):
         trial = Trial("__fake")
         self.trial_executor.start_trial(trial)
@@ -112,7 +98,8 @@ class RayTrialExecutorTest(unittest.TestCase):
         self.assertEqual(Trial.RUNNING, trial.status)
 
     def generate_trials(self, spec, name):
-        suggester = BasicVariantGenerator({name: spec})
+        suggester = BasicVariantGenerator()
+        suggester.add_configurations({name: spec})
         return suggester.next_trials()
 
 
