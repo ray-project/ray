@@ -91,9 +91,7 @@ class AutoMLSearcher(SearchAlgorithm):
                     deep_insert(path.split('.'), value, new_spec['config'])
 
                 trial = create_trial_from_spec(
-                    new_spec, exp.name,
-                    self._parser, experiment_tag=tag
-                )
+                    new_spec, exp.name, self._parser, experiment_tag=tag)
 
                 # AutoML specific fields set in Trial
                 trial.results = []
@@ -109,10 +107,13 @@ class AutoMLSearcher(SearchAlgorithm):
         self._unfinished_count = ntrial
         self._total_trial_num += ntrial
         self._start_ts = time.time()
-        logger.info("=========== BEGIN Experiment-Round: %(round)s "
-                    "[%(new)s NEW | %(total)s TOTAL] ===========",
-                    {"round": self._iteration, "new": ntrial,
-                     "total": self._total_trial_num})
+        logger.info(
+            "=========== BEGIN Experiment-Round: %(round)s "
+            "[%(new)s NEW | %(total)s TOTAL] ===========", {
+                "round": self._iteration,
+                "new": ntrial,
+                "total": self._total_trial_num
+            })
         return trials
 
     def on_trial_result(self, trial_id, result):
@@ -150,18 +151,19 @@ class AutoMLSearcher(SearchAlgorithm):
                 succ += 1
 
             elapsed = time.time() - self._start_ts
-            logger.info("=========== END Experiment-Round: %(round)s "
-                        "[%(succ)s SUCC | %(fail)s FAIL] this round, "
-                        "elapsed=%(elapsed).2f, "
-                        "BEST %(reward_attr)s=%(reward)f ===========",
-                        {"round": self._iteration,
-                         "succ": succ,
-                         "fail": total - succ,
-                         "elapsed": elapsed,
-                         "reward_attr": self.reward_attr,
-                         "reward":
-                             self.best_trial.best_result[self.reward_attr]
-                             if self.best_trial else None})
+            logger.info(
+                "=========== END Experiment-Round: %(round)s "
+                "[%(succ)s SUCC | %(fail)s FAIL] this round, "
+                "elapsed=%(elapsed).2f, "
+                "BEST %(reward_attr)s=%(reward)f ===========", {
+                    "round": self._iteration,
+                    "succ": succ,
+                    "fail": total - succ,
+                    "elapsed": elapsed,
+                    "reward_attr": self.reward_attr,
+                    "reward": self.best_trial.best_result[self.reward_attr]
+                    if self.best_trial else None
+                })
 
             action = self._feedback(self._running_trials.values())
             if action == AutoMLSearcher.TERMINATE:

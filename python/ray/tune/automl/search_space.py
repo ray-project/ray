@@ -68,6 +68,7 @@ class ContinuousSpace(ParameterSpace):
     """
 
     LINEAR = 'linear'
+
     # TODO: logspace
 
     def __init__(self, name, start, end, num, distribution=LINEAR):
@@ -111,8 +112,8 @@ class ContinuousSpace(ParameterSpace):
         return len(self.choices)
 
     def __str__(self):
-        return "ContinuousSpace %s: [%s, %s]" % (self.name,
-                                                 self.start, self.end)
+        return "ContinuousSpace %s: [%s, %s]" % (self.name, self.start,
+                                                 self.end)
 
 
 class SearchSpace(object):

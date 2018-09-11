@@ -20,7 +20,9 @@ class GeneticSearch(AutoMLSearcher):
     the top population would increase generation by generation.
     """
 
-    def __init__(self, search_space, reward_attr,
+    def __init__(self,
+                 search_space,
+                 reward_attr,
                  max_generation=2,
                  population_size=10,
                  population_decay=0.95,
@@ -61,9 +63,9 @@ class GeneticSearch(AutoMLSearcher):
 
     def _select(self):
         population_size = len(self._cur_config_list)
-        logger.info(LOGGING_PREFIX +
-                    "Generate the %sth generation, population=%s",
-                    self._cur_generation, population_size)
+        logger.info(
+            LOGGING_PREFIX + "Generate the %sth generation, population=%s",
+            self._cur_generation, population_size)
         return self._cur_config_list, self._cur_encoding_list
 
     def _feedback(self, trials):
@@ -73,8 +75,8 @@ class GeneticSearch(AutoMLSearcher):
 
         sorted_trials = sorted(
             trials,
-            key=lambda t: t.best_result[self.reward_attr], reverse=True
-        )
+            key=lambda t: t.best_result[self.reward_attr],
+            reverse=True)
         self._cur_encoding_list = self._next_generation(sorted_trials)
         self._cur_config_list = []
         for one_hot in self._cur_encoding_list:
@@ -163,9 +165,9 @@ class GeneticSearch(AutoMLSearcher):
         sample_1 = candidate[sample_index1]
         sample_2 = candidate[sample_index2]
         select_index = np.random.choice(len(sample_1))
-        logger.info(LOGGING_PREFIX +
-                    "Perform selection from %sth to %sth at index=%s",
-                    sample_index2, sample_index1, select_index)
+        logger.info(
+            LOGGING_PREFIX + "Perform selection from %sth to %sth at index=%s",
+            sample_index2, sample_index1, select_index)
 
         next_gen = []
         for i in range(len(sample_1)):
@@ -204,9 +206,9 @@ class GeneticSearch(AutoMLSearcher):
         sample_1 = candidate[sample_index1]
         sample_2 = candidate[sample_index2]
         cross_index = int(len(sample_1) * np.random.uniform(low=0.3, high=0.7))
-        logger.info(LOGGING_PREFIX +
-                    "Perform crossover between %sth and %sth at index=%s",
-                    sample_index1, sample_index2, cross_index)
+        logger.info(
+            LOGGING_PREFIX + "Perform crossover between %sth and %sth at index=%s",
+            sample_index1, sample_index2, cross_index)
 
         next_gen = []
         for i in range(len(sample_1)):
@@ -245,12 +247,11 @@ class GeneticSearch(AutoMLSearcher):
             idx = np.random.choice(len(sample))
             idx_list.append(idx)
 
-            field = sample[idx]       # one-hot encoding
+            field = sample[idx]  # one-hot encoding
             field[np.argmax(field)] = 0
             bit = np.random.choice(field.shape[0])
             field[bit] = 1
 
-        logger.info(LOGGING_PREFIX +
-                    "Perform mutation on %sth at index=%s",
+        logger.info(LOGGING_PREFIX + "Perform mutation on %sth at index=%s",
                     sample_index, str(idx_list))
         return sample

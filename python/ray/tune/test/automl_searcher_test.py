@@ -13,17 +13,11 @@ class AutoMLSearcherTest(unittest.TestCase):
     def setUp(self):
         def dummy_train(config, reporter):
             reporter(timesteps_total=100, done=True)
+
         register_trainable("f1", dummy_train)
 
     def testExpandSearchSpace(self):
-        exp = {
-            "test-exp": {
-                "run": "f1",
-                "config": {
-                    "a": {'d': 'dummy'}
-                }
-            }
-        }
+        exp = {"test-exp": {"run": "f1", "config": {"a": {'d': 'dummy'}}}}
         space = SearchSpace([
             DiscreteSpace('a.b.c', [1, 2]),
             DiscreteSpace('a.d', ['a', 'b']),
@@ -37,14 +31,7 @@ class AutoMLSearcherTest(unittest.TestCase):
         self.assertTrue(trials[1].config['a']['d'] in ['a', 'b'])
 
     def testSearchRound(self):
-        exp = {
-            "test-exp": {
-                "run": "f1",
-                "config": {
-                    "a": {'d': 'dummy'}
-                }
-            }
-        }
+        exp = {"test-exp": {"run": "f1", "config": {"a": {'d': 'dummy'}}}}
         space = SearchSpace([
             DiscreteSpace('a.b.c', [1, 2]),
             DiscreteSpace('a.d', ['a', 'b']),
@@ -61,14 +48,7 @@ class AutoMLSearcherTest(unittest.TestCase):
         self.assertTrue(searcher.is_finished())
 
     def testBestTrial(self):
-        exp = {
-            "test-exp": {
-                "run": "f1",
-                "config": {
-                    "a": {'d': 'dummy'}
-                }
-            }
-        }
+        exp = {"test-exp": {"run": "f1", "config": {"a": {'d': 'dummy'}}}}
         space = SearchSpace([
             DiscreteSpace('a.b.c', [1, 2]),
             DiscreteSpace('a.d', ['a', 'b']),
@@ -79,11 +59,11 @@ class AutoMLSearcherTest(unittest.TestCase):
 
         self.assertEqual(len(searcher.next_trials()), 0)
         for i, trial in enumerate(trials):
-            rewards = [x for x in range(i, i+10)]
+            rewards = [x for x in range(i, i + 10)]
             random.shuffle(rewards)
             for reward in rewards:
                 searcher.on_trial_result(trial.trial_id, {"reward": reward})
 
         best_trial = searcher.get_best_trial()
         self.assertEqual(best_trial, trials[-1])
-        self.assertEqual(best_trial.best_result['reward'], 3+10-1)
+        self.assertEqual(best_trial.best_result['reward'], 3 + 10 - 1)
