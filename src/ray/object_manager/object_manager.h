@@ -336,7 +336,7 @@ class ObjectManager : public ObjectManagerInterface {
   UniqueID object_directory_pull_callback_id_ = UniqueID::from_random();
 
   /// A set of active wait requests.
-  std::unordered_map<UniqueID, WaitState> active_wait_requests_;
+  std::unordered_map<UniqueID, std::shared_ptr<WaitState>> active_wait_requests_;
 
   /// Maintains a map of push requests that have not been fulfilled due to an object not
   /// being local. Objects are removed from this map after push_timeout_ms have elapsed.
