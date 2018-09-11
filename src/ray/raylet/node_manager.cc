@@ -891,6 +891,17 @@ void NodeManager::TreatTaskAsFailed(const TaskSpecification &spec) {
     // information about the TaskSpecification implementation.
     num_returns -= 1;
   }
+  auto retry_timer = std::make_shared<boost::asio::deadline_timer>(io_service_);
+      auto retry_duration = boost::posix_time::milliseconds(2000);
+      retry_timer->expires_from_now(retry_duration);
+      retry_timer->async_wait(
+          [this, spec, retry_timer, num_returns](const boost::system::error_code &error) {
+            // Timer killing will receive the boost::asio::error::operation_aborted,
+            // we only handle the timeout event.
+            if (error) {
+              return;
+            }
+
   for (int64_t i = 0; i < num_returns; i++) {
     const ObjectID object_id = spec.ReturnId(i);
 
@@ -907,6 +918,8 @@ void NodeManager::TreatTaskAsFailed(const TaskSpecification &spec) {
       RAY_IGNORE_EXPR(store_client_.Release(object_id.to_plasma_id()));
     }
   }
+          });
+
 }
 
 void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineage,
@@ -1384,7 +1397,9 @@ void NodeManager::ForwardTaskOrResubmit(const Task &task,
           [this, task, task_id, retry_timer](const boost::system::error_code &error) {
             // Timer killing will receive the boost::asio::error::operation_aborted,
             // we only handle the timeout event.
-            RAY_CHECK(!error);
+            if (error) {
+              return;
+            }
             RAY_LOG(DEBUG) << "Resubmitting task " << task_id
                            << " because ForwardTask failed.";
             SubmitTask(task, Lineage());
