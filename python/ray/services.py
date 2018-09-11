@@ -47,9 +47,9 @@ PROCESS_TYPE_WEB_UI = "web_ui"
 all_processes = OrderedDict(
     [(PROCESS_TYPE_MONITOR, []), (PROCESS_TYPE_LOG_MONITOR, []),
      (PROCESS_TYPE_WORKER, []), (PROCESS_TYPE_RAYLET, []),
-     (PROCESS_TYPE_LOCAL_SCHEDULER, []), (PROCESS_TYPE_PLASMA_MANAGER, []),
-     (PROCESS_TYPE_PLASMA_STORE, []), (PROCESS_TYPE_GLOBAL_SCHEDULER, []),
-     (PROCESS_TYPE_REDIS_SERVER, []), (PROCESS_TYPE_WEB_UI, [])], )
+     (PROCESS_TYPE_LOCAL_SCHEDULER, []), (PROCESS_TYPE_GLOBAL_SCHEDULER, []),
+     (PROCESS_TYPE_REDIS_SERVER, []), (PROCESS_TYPE_PLASMA_MANAGER, []),
+     (PROCESS_TYPE_PLASMA_STORE, []), (PROCESS_TYPE_WEB_UI, [])], )
 
 # True if processes are run in the valgrind profiler.
 RUN_RAYLET_PROFILER = False
@@ -177,10 +177,13 @@ def cleanup():
     successfully_shut_down = True
     # Terminate the processes in reverse order.
     for process_type in all_processes.keys():
+        logger.warning("cleanup: %s" % process_type)
         # Kill all of the processes of a certain type.
         for p in all_processes[process_type]:
             success = kill_process(p)
             successfully_shut_down = successfully_shut_down and success
+            if process_type == PROCESS_TYPE_RAYLET:
+                time.sleep(1)
         # Reset the list of processes of this type.
         all_processes[process_type] = []
     if not successfully_shut_down:

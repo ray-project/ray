@@ -70,7 +70,7 @@ AUTOSCALER_HEARTBEAT_TIMEOUT_S = env_integer("AUTOSCALER_HEARTBEAT_TIMEOUT_S",
 BOTO_MAX_RETRIES = env_integer("BOTO_MAX_RETRIES", 12)
 
 # Default logger format: only contains the message.
-LOGGER_FORMAT = "%(message)s"
+LOGGER_FORMAT = "%(asctime)s %(process)d %(thread)d %(module)s %(levelno)s]: %(message)s"
 LOGGER_FORMAT_HELP = "The logging format. default='%(message)s'"
 LOGGER_LEVEL = "info"
 LOGGER_LEVEL_CHOICES = ['debug', 'info', 'warning', 'error', 'critical']
