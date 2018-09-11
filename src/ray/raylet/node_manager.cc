@@ -900,11 +900,11 @@ void NodeManager::TreatTaskAsFailed(const TaskSpecification &spec) {
     // detailed failure metadata in the future.
     arrow::Status status =
         store_client_.Create(object_id.to_plasma_id(), 1, NULL, 0, &data);
-    if (!status.IsPlasmaObjectExists()) {
+    if (status.ok()) {
       // TODO(rkn): We probably don't want this checks. E.g., if the object
       // store is full, we don't want to kill the raylet.
-      ARROW_CHECK_OK(status);
-      ARROW_CHECK_OK(store_client_.Seal(object_id.to_plasma_id()));
+      RAY_IGNORE_EXPR(store_client_.Seal(object_id.to_plasma_id()));
+      RAY_IGNORE_EXPR(store_client_.Release(object_id.to_plasma_id()));
     }
   }
 }
