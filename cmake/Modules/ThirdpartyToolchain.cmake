@@ -176,6 +176,10 @@ if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
     "PYARROW_WITH_PARQUET=1"
   )
 
+  # clean the arrow_ep/python/build/lib.xxxxx directory,
+  # or when you build with another python version, it creates multiple lib.xxxx directories
+  set_property(DIRECTORY APPEND PROPERTY ADDITIONAL_MAKE_CLEAN_FILES "${ARROW_SOURCE_DIR}/python/build/")
+
   # here we use externalProject to process pyarrow building
   # add_custom_command would have problem with setup.py
   ExternalProject_Add(pyarrow_ext
