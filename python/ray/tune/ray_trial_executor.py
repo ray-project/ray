@@ -157,6 +157,25 @@ class RayTrialExecutor(TrialExecutor):
             self._paused[trial_future[0]] = trial
         super(RayTrialExecutor, self).pause_trial(trial)
 
+    def reset_trial(self, trial, new_config, new_experiment_tag):
+        """Tries to invoke `Trainable.reset_config()` to reset trial.
+
+        Args:
+            trial (Trial): Trial to be reset.
+            new_config (dict): New configuration for Trial
+                trainable.
+            new_experiment_tag (str): New experiment name
+                for trial.
+
+        Returns:
+            True if `reset_config` is successful else False.
+        """
+        trial.experiment_tag = new_experiment_tag
+        trial.config = new_config
+        trainable = trial.runner
+        reset_val = ray.get(trainable.reset_config.remote(new_config))
+        return reset_val
+
     def get_running_trials(self):
         """Returns the running trials."""
 

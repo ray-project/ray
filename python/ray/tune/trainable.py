@@ -273,6 +273,18 @@ class Trainable(object):
         self.restore(checkpoint_path)
         shutil.rmtree(tmpdir)
 
+    def reset_config(self, new_config):
+        """Resets configuration without restarting the trial.
+
+        Args:
+            new_config (dir): Updated hyperparameter configuration
+                for the trainable.
+
+        Returns:
+            True if configuration reset successfully else False.
+        """
+        return False
+
     def stop(self):
         """Releases all resources used by this trainable."""
 
