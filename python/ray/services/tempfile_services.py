@@ -8,11 +8,7 @@ import tempfile
 
 import ray.utils
 
-logger = logging.getLogger("ray")
-logger.setLevel(logging.INFO)
-ch = logging.StreamHandler(sys.stderr)
-ch.setLevel(logging.INFO)
-logger.addHandler(ch)
+logger = logging.getLogger(__name__)
 
 # Change the default root by providing the directory named by the
 # TMPDIR environment variable.

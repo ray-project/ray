@@ -24,8 +24,7 @@ import ray.global_scheduler as global_scheduler
 import ray.local_scheduler
 import ray.plasma
 
-from ray.services.tempfile_services import (logger,
-                                            get_logs_dir_path,
+from ray.services.tempfile_services import (get_logs_dir_path,
                                             get_random_ipython_notebook_path,
                                             get_raylet_socket_name,
                                             new_redis_log_file,
