@@ -1544,7 +1544,7 @@ def start_ray_processes(address_info=None,
             local_scheduler_stdout_file, local_scheduler_stderr_file = (
                 new_log_files(
                     "local_scheduler_{}".format(i),
-                    redirect_output=redirect_worker_output))
+                    redirect_output=redirect_output))
             local_scheduler_name = start_local_scheduler(
                 redis_address,
                 node_ip_address,
