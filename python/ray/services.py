@@ -24,20 +24,20 @@ import ray.global_scheduler as global_scheduler
 import ray.local_scheduler
 import ray.plasma
 
-from ray.services.tempfile_services import (get_logs_dir_path,
-                                            get_random_ipython_notebook_path,
-                                            get_raylet_socket_name,
-                                            get_random_temp_redis_config_path,
-                                            new_redis_log_file,
-                                            new_raylet_log_file,
-                                            new_local_scheduler_log_file,
-                                            new_webui_log_file,
-                                            new_worker_log_file,
-                                            new_log_monitor_log_file,
-                                            new_global_scheduler_log_file,
-                                            new_plasma_store_log_file,
-                                            new_plasma_manager_log_file,
-                                            new_monitor_log_file)
+from ray.tempfile_services import (get_logs_dir_path,
+                                   get_random_ipython_notebook_path,
+                                   get_raylet_socket_name,
+                                   get_random_temp_redis_config_path,
+                                   new_redis_log_file,
+                                   new_raylet_log_file,
+                                   new_local_scheduler_log_file,
+                                   new_webui_log_file,
+                                   new_worker_log_file,
+                                   new_log_monitor_log_file,
+                                   new_global_scheduler_log_file,
+                                   new_plasma_store_log_file,
+                                   new_plasma_manager_log_file,
+                                   new_monitor_log_file)
 
 
 PROCESS_TYPE_MONITOR = "monitor"

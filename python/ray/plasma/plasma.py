@@ -8,8 +8,8 @@ import subprocess
 import sys
 import time
 
-from ray.services.tempfile_services import (get_object_store_socket_name,
-                                            get_plasma_manager_socket_name)
+from ray.tempfile_services import (get_object_store_socket_name,
+                                   get_plasma_manager_socket_name)
 
 __all__ = [
     "start_plasma_store", "start_plasma_manager", "DEFAULT_PLASMA_STORE_MEMORY"
