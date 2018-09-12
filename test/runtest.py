@@ -2070,7 +2070,8 @@ class WorkerPoolTests(unittest.TestCase):
             object_ids = [f.remote(i, j) for j in range(2)]
             return ray.wait(object_ids, num_returns=len(object_ids))
 
-        ray.get([h.remote(i) for i in range(4)])
+        if os.environ.get("RAY_USE_XRAY") == "1":
+            ray.get([h.remote(i) for i in range(4)])
 
         @ray.remote
         def _sleep(i):
