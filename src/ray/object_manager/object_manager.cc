@@ -593,6 +593,7 @@ void ObjectManager::SubscribeRemainingWaitObjects(const UniqueID &wait_id) {
 
 void ObjectManager::WaitComplete(const UniqueID &wait_id) {
   auto iter = active_wait_requests_.find(wait_id);
+  RAY_CHECK(iter != active_wait_requests_.end());
   auto wait_state = iter->second;
   active_wait_requests_.erase(iter);
   // Cancel the timer. This is okay even if the timer hasn't been started.
