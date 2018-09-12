@@ -4,14 +4,11 @@ from __future__ import print_function
 
 import os
 import psutil
-import random
 import subprocess
 import sys
 import time
 
-
-def random_name():
-    return str(random.randint(0, 99999999))
+from ray.services.tempfile_services import get_local_scheduler_socket_name
 
 
 def start_local_scheduler(plasma_store_name,
@@ -71,7 +68,7 @@ def start_local_scheduler(plasma_store_name,
     local_scheduler_executable = os.path.join(
         os.path.dirname(os.path.abspath(__file__)),
         "../core/src/local_scheduler/local_scheduler")
-    local_scheduler_name = "/tmp/scheduler{}".format(random_name())
+    local_scheduler_name = get_local_scheduler_socket_name()
     command = [
         local_scheduler_executable, "-s", local_scheduler_name, "-p",
         plasma_store_name, "-h", node_ip_address, "-n",

@@ -55,6 +55,25 @@ def get_raylet_socket_name(suffix=None):
     return raylet_socket_name
 
 
+def get_local_scheduler_socket_name(suffix=None):
+    """Get a socket name for local scheduler.
+
+    This function could be unsafe. The socket name may
+    refer to a file that did not exist at some point, but by the time
+    you get around to creating it, someone else may have beaten you to
+    the punch.
+    """
+    sockets_dir = get_sockets_dir_path()
+
+    if suffix is None:
+        raylet_socket_name = tempfile.mktemp(prefix='scheduler_',
+                                             dir=sockets_dir)
+    else:
+        raylet_socket_name = os.path.join(sockets_dir,
+                                          'scheduler_{}'.format(suffix))
+    return raylet_socket_name
+
+
 def get_random_ipython_notebook_path(port):
     """Get a new random ipython notebook path"""
 
@@ -62,7 +81,8 @@ def get_random_ipython_notebook_path(port):
         os.path.dirname(os.path.abspath(__file__)), "WebUI.ipynb")
     # We copy the notebook file so that the original doesn't get modified by
     # the user.
-    notebook_name = tempfile.mktemp(suffix='.ipynb', prefix='ray_ui_')
+    notebook_name = tempfile.mktemp(suffix='.ipynb', prefix='ray_ui_',
+                                    dir=TEMPDIR.name)
     new_notebook_filepath = os.path.join(get_logs_dir_path(), notebook_name)
     shutil.copy(notebook_filepath, new_notebook_filepath)
     new_notebook_directory = os.path.dirname(new_notebook_filepath)
@@ -71,6 +91,10 @@ def get_random_ipython_notebook_path(port):
                  .format(port, notebook_name, token))
     return new_notebook_directory, webui_url, token
 
+
+def get_random_temp_redis_config_path():
+    redis_config_name = tempfile.mktemp(prefix='redis_conf_', dir=TEMPDIR.name)
+    return redis_config_name
 
 def try_to_create_directory(directory_path):
     """Attempt to create a directory that is globally readable/writable.
