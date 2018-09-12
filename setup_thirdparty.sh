@@ -17,8 +17,3 @@ RAY_BUILD_PYTHON=$RAY_BUILD_PYTHON \
 RAY_BUILD_JAVA=$RAY_BUILD_JAVA \
 $ROOT_DIR/thirdparty/scripts/setup.sh $PYTHON_EXECUTABLE
 
-if [[ "$RAY_BUILD_JAVA" == "YES" ]]; then
-    pushd $ROOT_DIR/thirdparty/build/arrow/java
-    mvn clean install -pl plasma -am -Dmaven.test.skip
-    popd
-fi
