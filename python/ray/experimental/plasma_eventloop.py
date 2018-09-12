@@ -381,8 +381,7 @@ class PlasmaEpoll(PlasmaSelector):
 
     def __init__(self, worker):
         super().__init__(worker)
-        self.client = self.worker.plasma_client
-        self.client.subscribe()
+        self.client = None
 
     def _get_ready_ids(self, timeout):
         """
@@ -396,6 +395,11 @@ class PlasmaEpoll(PlasmaSelector):
         making it unable to schedule other jobs
         if there will not be any ready ObjectIDs later (not too often though).
         """
+
+        # Initialize lazily.
+        if self.client is None:
+            self.client = self.worker.plasma_client
+            self.client.subscribe()
 
         start = time.time()
         object_ids = []

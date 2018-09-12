@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import asyncio
 import ray
 from ray.experimental.plasma_eventloop import (
     PlasmaEpoll, PlasmaPoll, PlasmaSelectorEventLoop, PlasmaFutureGroup,
@@ -18,27 +19,28 @@ def cleanup():
         eventloop = None
 
 
-def _init_eventloop(selector_name='poll'):
+def init(selector_name='poll'):
     global eventloop
-    if eventloop is None:
-        if selector_name == 'poll':
-            selector = PlasmaPoll(global_worker)
-        elif selector_name == 'epoll':
-            selector = PlasmaEpoll(global_worker)
-        else:
-            raise Exception("Unknown selector name '%s'" % selector_name)
-        eventloop = PlasmaSelectorEventLoop(selector, worker=global_worker)
+    assert eventloop is None
+    if selector_name == 'poll':
+        selector = PlasmaPoll(global_worker)
+    elif selector_name == 'epoll':
+        selector = PlasmaEpoll(global_worker)
+    else:
+        raise Exception("Unknown selector name '%s'" % selector_name)
+    eventloop = PlasmaSelectorEventLoop(selector, worker=global_worker)
+    asyncio.set_event_loop(eventloop)
 
 
 def set_debug(enabled):
     if eventloop is None:
-        _init_eventloop()
+        init()
     eventloop.set_debug(enabled)
 
 
 def run_until_complete(future):
     if eventloop is None:
-        _init_eventloop()
+        init()
     return eventloop.run_until_complete(future)
 
 
@@ -59,7 +61,7 @@ def create_group(return_exceptions=False,
 
     worker.check_connected()
     if eventloop is None:
-        _init_eventloop()
+        init()
     return PlasmaFutureGroup(
         eventloop,
         return_exceptions=return_exceptions,
@@ -86,7 +88,7 @@ async def get(object_ids: RayAsyncParamsType, worker=global_worker):
 
     worker.check_connected()
     if eventloop is None:
-        _init_eventloop()
+        init()
     return await eventloop.get(object_ids)
 
 
@@ -137,7 +139,7 @@ async def wait(object_ids: RayAsyncParamsType,
 
     worker.check_connected()
     if eventloop is None:
-        _init_eventloop()
+        init()
 
     # TODO(rkn): This is a temporary workaround for
     # https://github.com/ray-project/ray/issues/997. However, it should be
