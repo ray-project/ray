@@ -35,5 +35,4 @@ ExternalProject_Add(boost_ep
   BUILD_BYPRODUCTS ${Boost_BUILD_PRODUCTS}
   CONFIGURE_COMMAND ./bootstrap.sh
   BUILD_COMMAND bash -c "./b2 cxxflags=-fPIC cflags=-fPIC variant=release link=static --with-filesystem --with-system --with-regex -j8 install --prefix=${Boost_INSTALL_PREFIX} > /dev/null"
-  INSTALL_COMMAND ""
-  )
+  INSTALL_COMMAND "")

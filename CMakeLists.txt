@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.7)
+cmake_minimum_required(VERSION 3.4)
 
 project(ray)
 
@@ -51,7 +51,8 @@ if (RAY_BUILD_JAVA)
 endif ()
 
 if ("${CMAKE_RAY_LANG_JAVA}" STREQUAL "NO" AND "${CMAKE_RAY_LANG_PYTHON}" STREQUAL "NO")
-  message(FATAL_ERROR "NO RAY LANG DEFINED")
+  message(FATAL_ERROR "Please specify which language support you want to build by passing \
+   -DRAY_BUILD_PYTHON=on and/or -DRAY_BUILD_JAVA=on to CMake")
 endif ()
 
 if (RAY_USE_NEW_GCS)
@@ -96,8 +97,7 @@ add_dependencies(copy_ray ray_redis_module)
 # copy plasma_store_server
 add_custom_command(TARGET copy_ray POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E
-    copy ${ARROW_HOME}/bin/plasma_store_server ${CMAKE_CURRENT_BINARY_DIR}/src/plasma
-  )
+    copy ${ARROW_HOME}/bin/plasma_store_server ${CMAKE_CURRENT_BINARY_DIR}/src/plasma)
 
 if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
   # add pyarrow as the dependency
@@ -148,8 +148,7 @@ if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
   # copy plasma_store_server to python
   add_custom_command(TARGET copy_ray POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E
-      copy ${ARROW_HOME}/bin/plasma_store_server ${CMAKE_SOURCE_DIR}/python/ray/core/src/plasma/
-    )
+      copy ${ARROW_HOME}/bin/plasma_store_server ${CMAKE_SOURCE_DIR}/python/ray/core/src/plasma/)
 
 endif()
 
@@ -159,7 +158,6 @@ if ("${CMAKE_RAY_LANG_JAVA}" STREQUAL "YES")
 
   # copy libplasma_java files
   add_custom_command(TARGET copy_ray POST_BUILD
-    COMMAND bash -c "cp ${ARROW_HOME}/lib/libplasma_java.* ${CMAKE_CURRENT_BINARY_DIR}/src/plasma"
-  )
+    COMMAND bash -c "cp ${ARROW_HOME}/lib/libplasma_java.* ${CMAKE_CURRENT_BINARY_DIR}/src/plasma")
 endif()
 
