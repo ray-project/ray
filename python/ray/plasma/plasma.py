@@ -8,6 +8,9 @@ import subprocess
 import sys
 import time
 
+from ray.services.tempfile_services import (get_object_store_socket_name,
+                                            get_plasma_manager_socket_name)
+
 __all__ = [
     "start_plasma_store", "start_plasma_manager", "DEFAULT_PLASMA_STORE_MEMORY"
 ]
@@ -15,10 +18,6 @@ __all__ = [
 PLASMA_WAIT_TIMEOUT = 2**30
 
 DEFAULT_PLASMA_STORE_MEMORY = 10**9
-
-
-def random_name():
-    return str(random.randint(0, 99999999))
 
 
 def start_plasma_store(plasma_store_memory=DEFAULT_PLASMA_STORE_MEMORY,
@@ -66,7 +65,7 @@ def start_plasma_store(plasma_store_memory=DEFAULT_PLASMA_STORE_MEMORY,
     plasma_store_executable = os.path.join(
         os.path.abspath(os.path.dirname(__file__)),
         "../core/src/plasma/plasma_store_server")
-    plasma_store_name = "/tmp/plasma_store{}".format(random_name())
+    plasma_store_name = get_object_store_socket_name()
     command = [
         plasma_store_executable, "-s", plasma_store_name, "-m",
         str(plasma_store_memory)
@@ -136,7 +135,7 @@ def start_plasma_manager(store_name,
     plasma_manager_executable = os.path.join(
         os.path.abspath(os.path.dirname(__file__)),
         "../core/src/plasma/plasma_manager")
-    plasma_manager_name = "/tmp/plasma_manager{}".format(random_name())
+    plasma_manager_name = get_plasma_manager_socket_name()
     if plasma_manager_port is not None:
         if num_retries != 1:
             raise Exception("num_retries must be 1 if port is specified.")

@@ -3,36 +3,64 @@ import datetime
 import logging
 import os
 import shutil
-import sys
 import tempfile
 
 import ray.utils
 
 logger = logging.getLogger(__name__)
 
-# Change the default root by providing the directory named by the
-# TMPDIR environment variable.
-TEMPDIR = tempfile.TemporaryDirectory(
-    prefix='ray_{pid}_'.format(pid=os.getpid()))
+RAY_TEMPDIR = 'RAY_TEMPDIR'
+RAY_OBJECT_STORE_SOCKET_NAME = 'RAY_OBJECT_STORE_SOCKET_NAME'
+
+
+def try_to_create_directory(directory_path):
+    """Attempt to create a directory that is globally readable/writable.
+
+    Args:
+        directory_path: The path of the directory to create.
+    """
+    if not os.path.exists(directory_path):
+        try:
+            os.makedirs(directory_path)
+        except OSError as e:
+            if e.errno != os.errno.EEXIST:
+                raise e
+            logger.warning(
+                "Attempted to create '{}', but the directory already "
+                "exists.".format(directory_path))
+        # Change the log directory permissions so others can use it. This is
+        # important when multiple people are using the same machine.
+        os.chmod(directory_path, 0o0777)
+
+
+if RAY_TEMPDIR in os.environ:
+    temp_root = os.environ[RAY_TEMPDIR]
+    try_to_create_directory(temp_root)
+else:
+    # Change the default root by providing the directory named by the
+    # TMPDIR environment variable.
+    temp_dir = tempfile.TemporaryDirectory(
+        prefix='ray_{pid}_'.format(pid=os.getpid()))
+    temp_root = temp_dir.name
 
 
 def get_logs_dir_path():
     """Get a temp dir for logging."""
-    logs_dir = os.path.join(TEMPDIR.name, 'logs')
+    logs_dir = os.path.join(temp_root, 'logs')
     try_to_create_directory(logs_dir)
     return logs_dir
 
 
 def get_rl_dir_path():
     """Get a temp dir that will be used by some of the RL algorithms."""
-    rl_dir = os.path.join(TEMPDIR.name, 'ray')
+    rl_dir = os.path.join(temp_root, 'ray')
     try_to_create_directory(rl_dir)
     return rl_dir
 
 
 def get_sockets_dir_path():
     """Get a temp dir for sockets"""
-    sockets_dir = os.path.join(TEMPDIR.name, 'sockets')
+    sockets_dir = os.path.join(temp_root, 'sockets')
     try_to_create_directory(sockets_dir)
     return sockets_dir
 
@@ -53,6 +81,20 @@ def get_raylet_socket_name(suffix=None):
         raylet_socket_name = os.path.join(sockets_dir,
                                           'raylet_{}'.format(suffix))
     return raylet_socket_name
+
+
+def get_object_store_socket_name():
+    sockets_dir = get_sockets_dir_path()
+    if RAY_OBJECT_STORE_SOCKET_NAME in os.environ:
+        return os.path.join(sockets_dir,
+                            os.environ[RAY_OBJECT_STORE_SOCKET_NAME])
+    else:
+        return tempfile.mktemp(prefix='plasma_store_', dir=sockets_dir)
+
+
+def get_plasma_manager_socket_name():
+    sockets_dir = get_sockets_dir_path()
+    return tempfile.mktemp(prefix='plasma_manager_', dir=sockets_dir)
 
 
 def get_local_scheduler_socket_name(suffix=None):
@@ -82,7 +124,7 @@ def get_random_ipython_notebook_path(port):
     # We copy the notebook file so that the original doesn't get modified by
     # the user.
     notebook_name = tempfile.mktemp(suffix='.ipynb', prefix='ray_ui_',
-                                    dir=TEMPDIR.name)
+                                    dir=temp_root)
     new_notebook_filepath = os.path.join(get_logs_dir_path(), notebook_name)
     shutil.copy(notebook_filepath, new_notebook_filepath)
     new_notebook_directory = os.path.dirname(new_notebook_filepath)
@@ -93,27 +135,8 @@ def get_random_ipython_notebook_path(port):
 
 
 def get_random_temp_redis_config_path():
-    redis_config_name = tempfile.mktemp(prefix='redis_conf_', dir=TEMPDIR.name)
+    redis_config_name = tempfile.mktemp(prefix='redis_conf_', dir=temp_root)
     return redis_config_name
-
-def try_to_create_directory(directory_path):
-    """Attempt to create a directory that is globally readable/writable.
-
-    Args:
-        directory_path: The path of the directory to create.
-    """
-    if not os.path.exists(directory_path):
-        try:
-            os.makedirs(directory_path)
-        except OSError as e:
-            if e.errno != os.errno.EEXIST:
-                raise e
-            logger.warning(
-                "Attempted to create '{}', but the directory already "
-                "exists.".format(directory_path))
-        # Change the log directory permissions so others can use it. This is
-        # important when multiple people are using the same machine.
-        os.chmod(directory_path, 0o0777)
 
 
 def new_log_files(name, redirect_output):
