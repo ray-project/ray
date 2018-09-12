@@ -2063,7 +2063,14 @@ class WorkerPoolTests(unittest.TestCase):
             object_ids = [f.remote(i, j) for j in range(2)]
             return ray.get(object_ids)
 
-        ray.get([g.remote(i) for i in range(4)])
+        @ray.remote
+        def h(i):
+            # Each instance of g submits and blocks on the result of another
+            # remote task using ray.wait.
+            object_ids = [f.remote(i, j) for j in range(2)]
+            return ray.wait(object_ids, num_returns=len(object_ids))
+
+        ray.get([h.remote(i) for i in range(4)])
 
         @ray.remote
         def _sleep(i):
