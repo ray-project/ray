@@ -1108,8 +1108,7 @@ void NodeManager::HandleClientBlocked(
   // Subscribe to the objects required by the ray.get. These objects will
   // be fetched and/or reconstructed as necessary, until the objects become
   // local or are unsubscribed.
-  task_dependency_manager_.SubscribeDependencies(current_task_id,
-                                                 required_object_ids);
+  task_dependency_manager_.SubscribeDependencies(current_task_id, required_object_ids);
 }
 
 void NodeManager::HandleClientUnblocked(
