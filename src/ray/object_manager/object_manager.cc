@@ -580,7 +580,7 @@ void ObjectManager::SubscribeRemainingWaitObjects(const UniqueID &wait_id) {
             if (error_code.value() != 0) {
               return;
             }
-            if (active_wait_requests_.find(wait_id) == active_wait_requests_.end()) {
+            if (active_wait_requests_.find(wait_id) != active_wait_requests_.end()) {
               // This is possible if an object's subscrition callback is call first,
               // then the timer goes off and the timer callback is post into the queue.
               // In this case, WaitComplete is invoked already, so we're done.
