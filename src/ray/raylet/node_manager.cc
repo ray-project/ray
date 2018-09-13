@@ -721,13 +721,15 @@ void NodeManager::ProcessClientMessage(
       }
     }
 
-    if (!required_object_ids.empty()) {
+    bool client_blocked = !required_object_ids.empty();
+    if (client_blocked) {
       HandleClientBlocked(client, required_object_ids);
     }
 
     ray::Status status = object_manager_.Wait(
         object_ids, wait_ms, num_required_objects, wait_local,
-        [this, client](std::vector<ObjectID> found, std::vector<ObjectID> remaining) {
+        [this, client_blocked, client](std::vector<ObjectID> found,
+                                       std::vector<ObjectID> remaining) {
           // Write the data.
           flatbuffers::FlatBufferBuilder fbb;
           flatbuffers::Offset<protocol::WaitReply> wait_reply = protocol::CreateWaitReply(
@@ -737,7 +739,9 @@ void NodeManager::ProcessClientMessage(
               client->WriteMessage(static_cast<int64_t>(protocol::MessageType::WaitReply),
                                    fbb.GetSize(), fbb.GetBufferPointer()));
           // The client is unblocked now because the wait call has returned.
-          HandleClientUnblocked(client);
+          if (client_blocked) {
+            HandleClientUnblocked(client);
+          }
         });
     RAY_CHECK_OK(status);
   } break;
