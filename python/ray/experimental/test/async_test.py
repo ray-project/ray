@@ -57,32 +57,32 @@ def run_api():
     # get
     tasks = gen_tasks()
     fut = async_api.get(tasks)
-    results = async_api.run_until_complete(fut)
+    results = asyncio.get_event_loop().run_until_complete(fut)
     assert all(a == b for a, b in zip(results, ray.get(tasks)))
 
     # wait
     tasks = gen_tasks()
     fut = async_api.wait(tasks, num_returns=len(tasks))
-    results, _ = async_api.run_until_complete(fut)
+    results, _ = asyncio.get_event_loop().run_until_complete(fut)
     assert set(results) == set(tasks)
 
     # wait_timeout
     tasks = gen_tasks(10)
     fut = async_api.wait(tasks, timeout=5, num_returns=len(tasks))
-    results, _ = async_api.run_until_complete(fut)
+    results, _ = asyncio.get_event_loop().run_until_complete(fut)
     assert results[0] == tasks[0]
 
     # wait_timeout_complex
     tasks = delayed_gen_tasks(10, 5)
     fut = async_api.wait(tasks, timeout=5, num_returns=len(tasks))
-    results, pendings = async_api.run_until_complete(fut)
+    results, pendings = asyncio.get_event_loop().run_until_complete(fut)
     assert tasks == pendings  # pytest supports list compare
 
     # get from coroutine/future
     async def get_obj():
         return ray.put("foobar")
 
-    result = async_api.run_until_complete(async_api.get(get_obj()))
+    result = asyncio.get_event_loop().run_until_complete(async_api.get(get_obj()))
     assert result == "foobar"
 
     # get from coroutine/future chains
@@ -98,22 +98,22 @@ def run_api():
             return await (recurrent_get(obj_id[0]))
         return obj_id
 
-    results = async_api.run_until_complete(recurrent_get(obj_id))
+    results = asyncio.get_event_loop().run_until_complete(recurrent_get(obj_id))
     assert results == "qwerty"
 
 
 def test_api_poll(init):
     async_api.set_debug(True)
-    async_api._init_eventloop('poll')
+    async_api.init('poll')
     run_api()
-    async_api.cleanup()
+    async_api.shutdown()
 
 
 def test_api_epoll(init):
     async_api.set_debug(True)
-    async_api._init_eventloop('epoll')
+    async_api.init('epoll')
     run_api()
-    async_api.cleanup()
+    async_api.shutdown()
 
 
 @pytest.fixture

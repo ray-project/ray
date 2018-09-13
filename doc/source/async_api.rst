@@ -12,6 +12,17 @@ Please refer to `Starting Ray`_ for instructions.
 .. _`Starting Ray`: http://ray.readthedocs.io/en/latest/tutorial.html#starting-ray
 
 
+Initialize & finalize Async Ray APIs
+------------------------------------
+
+Async Ray APIs can be initialized by calling any related functions.
+But users could call `ray.experimental.async_api.init` ahead of time to specify properties of the underlying eventloop.
+
+Once the APIs are initialized, an eventloop will be created and replace the default eventloop in `asyncio`.
+The new eventloop does not support system-related async operations.
+
+Users can shutdown the eventloop and restore the original one by calling `ray.experimental.async_api.shutdown`.
+
 Getting values from object IDs
 ------------------------------
 
@@ -24,6 +35,7 @@ ID.
 
 .. code-block:: python
 
+  import asyncio
   import time
   import ray.experimental.async_api as async_api
 
@@ -35,12 +47,13 @@ ID.
   # Get one object ID. The async get will return immediately.
   coroutine_object = async_api.get(f.remote())
   # Wait the coroutine until it completes.
-  async_api.run_until_complete(coroutine_object)  # {'key1': ['value']}
+  asyncio.get_event_loop().run_until_complete(coroutine_object)  # {'key1': ['value']}
 
 * A single coroutine or future that contains an ObjectID
 
 .. code-block:: python
 
+  import asyncio
   import time
   import ray
   import ray.experimental.async_api as async_api
@@ -51,13 +64,14 @@ ID.
   # Get one object ID. The async get will return immediately.
   coroutine_object = async_api.get(f())
   # Wait the coroutine until it completes.
-  async_api.run_until_complete(coroutine_object)  # {'key1': ['value']}
+  asyncio.get_event_loop().run_until_complete(coroutine_object)  # {'key1': ['value']}
 
 
 * A chain composed of coroutines and futures that will eventually return an ObjectID:
 
 .. code-block:: python
 
+    import asyncio
     import ray
     import ray.experimental.async_api as async_api
 
@@ -74,7 +88,7 @@ ID.
             return await (recurrent_get(obj_id[0]))
         return obj_id
 
-    results = async_api.run_until_complete(recurrent_get(obj_id)) # {'key1': ['value']}
+    results = asyncio.get_event_loop().run_until_complete(recurrent_get(obj_id)) # {'key1': ['value']}
 
 * A list composed of objects we talked above.
 
@@ -95,6 +109,7 @@ futures and coroutines.
 
 .. code-block:: python
 
+  import asyncio
   import time
   import ray.experimental.async_api as async_api
 
@@ -106,12 +121,12 @@ futures and coroutines.
   # Start 3 tasks with different durations.
   results = [f.remote(i) for i in range(3)]
   # Block until 2 of them have finished.
-  ready_ids, remaining_ids = async_api.run_until_complete(async_api.wait(results, num_returns=2))
+  ready_ids, remaining_ids = asyncio.get_event_loop().run_until_complete(async_api.wait(results, num_returns=2))
 
   # Start 5 tasks with different durations.
   results = [f.remote(i) for i in range(5)]
   # Block until 4 of them have finished or 2.5 seconds pass.
-  ready_ids, remaining_ids = async_api.run_until_complete(async_api.wait(results, num_returns=4, timeout=2500))
+  ready_ids, remaining_ids = asyncio.get_event_loop().run_until_complete(async_api.wait(results, num_returns=4, timeout=2500))
 
 Because `ray.experimental.async_api.wait` supports futures and coroutines as its input,
 it could happen that a passing in future/coroutine fails to return an ObjectID
@@ -119,6 +134,7 @@ before timeout. In this case, we will return the pending inputs:
 
 .. code-block:: python
 
+  import asyncio
   import time
   import ray.experimental.async_api as async_api
 
@@ -136,7 +152,7 @@ before timeout. In this case, we will return the pending inputs:
 
       tasks = delayed_gen_tasks(100, 5)
       fut = async_api.wait(tasks, timeout=5, num_returns=len(tasks))
-      results, pendings = async_api.run_until_complete(fut) # [], tasks
+      results, pendings = asyncio.get_event_loop().run_until_complete(fut) # [], tasks
 
 
 .. autofunction:: ray.experimental.async_api.wait

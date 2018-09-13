@@ -12,36 +12,34 @@ global_worker = ray.worker.global_worker
 eventloop: PlasmaSelectorEventLoop = None
 
 
-def cleanup():
+def init(selector_name='poll'):
+    global eventloop
+    if eventloop is None:
+        if selector_name == 'poll':
+            selector = PlasmaPoll(global_worker)
+        elif selector_name == 'epoll':
+            selector = PlasmaEpoll(global_worker)
+        else:
+            raise Exception("Unknown selector name '%s'" % selector_name)
+        eventloop = PlasmaSelectorEventLoop(selector, worker=global_worker)
+        asyncio.set_event_loop(eventloop)
+
+
+def shutdown():
+    """Cleanup the eventloop. Restore original eventloop."""
     global eventloop
     if eventloop is not None:
         eventloop.close()
         eventloop = None
-
-
-def init(selector_name='poll'):
-    global eventloop
-    assert eventloop is None
-    if selector_name == 'poll':
-        selector = PlasmaPoll(global_worker)
-    elif selector_name == 'epoll':
-        selector = PlasmaEpoll(global_worker)
-    else:
-        raise Exception("Unknown selector name '%s'" % selector_name)
-    eventloop = PlasmaSelectorEventLoop(selector, worker=global_worker)
-    asyncio.set_event_loop(eventloop)
+    # Restore the default eventloop.
+    asyncio.set_event_loop(asyncio.get_event_loop_policy().new_event_loop())
 
 
 def set_debug(enabled):
+    """If enabled, the eventloop will print debug info."""
     if eventloop is None:
         init()
     eventloop.set_debug(enabled)
-
-
-def run_until_complete(future):
-    if eventloop is None:
-        init()
-    return eventloop.run_until_complete(future)
 
 
 def create_group(return_exceptions=False,
