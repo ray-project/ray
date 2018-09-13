@@ -28,9 +28,8 @@ static inline void flushall_redis(void) {
 class TestGcs : public ::testing::Test {
  public:
   TestGcs(CommandType command_type) : num_callbacks_(0), command_type_(command_type) {
-    client_ = std::make_shared<gcs::AsyncGcsClient>(command_type_);
-    RAY_CHECK_OK(client_->Connect("127.0.0.1", 6379));
-
+    client_ = std::make_shared<gcs::AsyncGcsClient>("127.0.0.1", 6379, command_type_,
+                                                    /*is_test_client=*/true);
     job_id_ = JobID::from_random();
   }
 
@@ -60,7 +59,10 @@ class TestGcsWithAe : public TestGcs {
  public:
   TestGcsWithAe(CommandType command_type) : TestGcs(command_type) {
     loop_ = aeCreateEventLoop(1024);
-    RAY_CHECK_OK(client_->context()->AttachToEventLoop(loop_));
+    RAY_CHECK_OK(client_->primary_context()->AttachToEventLoop(loop_));
+    for (auto &context : client_->shard_contexts()) {
+      RAY_CHECK_OK(context->AttachToEventLoop(loop_));
+    }
   }
 
   TestGcsWithAe() : TestGcsWithAe(CommandType::kRegular) {}
@@ -388,6 +390,12 @@ void TestTableSubscribeAll(const JobID &job_id,
     }
   };
 
+  // The failure callback should not be called if we are subscribing to
+  // notifications for all keys.
+  auto failure_callback = [](gcs::AsyncGcsClient *client, const UniqueID &id) {
+    RAY_CHECK(false);
+  };
+
   // Callback for subscription success. We are guaranteed to receive
   // notifications after this is called.
   auto subscribe_callback = [job_id, task_id, task_specs](gcs::AsyncGcsClient *client) {
@@ -403,7 +411,8 @@ void TestTableSubscribeAll(const JobID &job_id,
   // subscribed, we will write the key several times and check that we get
   // notified for each.
   RAY_CHECK_OK(client->raylet_task_table().Subscribe(
-      job_id, ClientID::nil(), notification_callback, subscribe_callback));
+      job_id, ClientID::nil(), notification_callback, failure_callback,
+      subscribe_callback));
   // Run the event loop. The loop will only stop if the registered subscription
   // callback is called (or an assertion failure).
   test->Start();
@@ -451,7 +460,7 @@ void TestLogSubscribeAll(const JobID &job_id,
     }
   };
 
-  // Subscribe to all task table notifications. Once we have successfully
+  // Subscribe to all object table notifications. Once we have successfully
   // subscribed, we will append to the key several times and check that we get
   // notified for each.
   RAY_CHECK_OK(client->object_table().Subscribe(
@@ -479,16 +488,10 @@ void TestTableSubscribeId(const JobID &job_id,
   // Add a table entry.
   TaskID task_id1 = TaskID::from_random();
   std::vector<std::string> task_specs1 = {"abc", "def", "ghi"};
-  auto data1 = std::make_shared<protocol::TaskT>();
-  data1->task_specification = task_specs1[0];
-  RAY_CHECK_OK(client->raylet_task_table().Add(job_id, task_id1, data1, nullptr));
 
   // Add a table entry at a second key.
   TaskID task_id2 = TaskID::from_random();
   std::vector<std::string> task_specs2 = {"jkl", "mno", "pqr"};
-  auto data2 = std::make_shared<protocol::TaskT>();
-  data2->task_specification = task_specs2[0];
-  RAY_CHECK_OK(client->raylet_task_table().Add(job_id, task_id2, data2, nullptr));
 
   // The callback for a notification from the table. This should only be
   // received for keys that we requested notifications for.
@@ -504,6 +507,16 @@ void TestTableSubscribeId(const JobID &job_id,
     }
   };
 
+  // The failure callback should be called once since both keys start as empty.
+  bool failure_notification_received = false;
+  auto failure_callback = [task_id2, &failure_notification_received](
+      gcs::AsyncGcsClient *client, const UniqueID &id) {
+    ASSERT_EQ(id, task_id2);
+    // The failure notification should be the first notification received.
+    ASSERT_EQ(test->NumCallbacks(), 0);
+    failure_notification_received = true;
+  };
+
   // The callback for subscription success. Once we've subscribed, request
   // notifications for only one of the keys, then write to both keys.
   auto subscribe_callback = [job_id, task_id1, task_id2, task_specs1,
@@ -513,14 +526,12 @@ void TestTableSubscribeId(const JobID &job_id,
         job_id, task_id2, client->client_table().GetLocalClientId()));
     // Write both keys. We should only receive notifications for the key that
     // we requested them for.
-    auto remaining = std::vector<std::string>(++task_specs1.begin(), task_specs1.end());
-    for (const auto &task_spec : remaining) {
+    for (const auto &task_spec : task_specs1) {
       auto data = std::make_shared<protocol::TaskT>();
       data->task_specification = task_spec;
       RAY_CHECK_OK(client->raylet_task_table().Add(job_id, task_id1, data, nullptr));
     }
-    remaining = std::vector<std::string>(++task_specs2.begin(), task_specs2.end());
-    for (const auto &task_spec : remaining) {
+    for (const auto &task_spec : task_specs2) {
       auto data = std::make_shared<protocol::TaskT>();
       data->task_specification = task_spec;
       RAY_CHECK_OK(client->raylet_task_table().Add(job_id, task_id2, data, nullptr));
@@ -531,10 +542,13 @@ void TestTableSubscribeId(const JobID &job_id,
   // receive notifications for specific keys.
   RAY_CHECK_OK(client->raylet_task_table().Subscribe(
       job_id, client->client_table().GetLocalClientId(), notification_callback,
-      subscribe_callback));
+      failure_callback, subscribe_callback));
   // Run the event loop. The loop will only stop if the registered subscription
   // callback is called for the requested key.
   test->Start();
+  // Check that the failure callback was called since the key was initially
+  // empty.
+  ASSERT_TRUE(failure_notification_received);
   // Check that we received one notification callback for each write to the
   // requested key.
   ASSERT_EQ(test->NumCallbacks(), task_specs2.size());
@@ -635,6 +649,12 @@ void TestTableSubscribeCancel(const JobID &job_id,
   data->task_specification = task_specs[0];
   RAY_CHECK_OK(client->raylet_task_table().Add(job_id, task_id, data, nullptr));
 
+  // The failure callback should not be called since all keys are non-empty
+  // when notifications are requested.
+  auto failure_callback = [](gcs::AsyncGcsClient *client, const UniqueID &id) {
+    RAY_CHECK(false);
+  };
+
   // The callback for a notification from the table. This should only be
   // received for keys that we requested notifications for.
   auto notification_callback = [task_id, task_specs](
@@ -680,7 +700,7 @@ void TestTableSubscribeCancel(const JobID &job_id,
   // receive notifications for specific keys.
   RAY_CHECK_OK(client->raylet_task_table().Subscribe(
       job_id, client->client_table().GetLocalClientId(), notification_callback,
-      subscribe_callback));
+      failure_callback, subscribe_callback));
   // Run the event loop. The loop will only stop if the registered subscription
   // callback is called for the requested key.
   test->Start();

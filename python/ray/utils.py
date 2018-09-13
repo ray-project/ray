@@ -3,23 +3,27 @@ from __future__ import division
 from __future__ import print_function
 
 import binascii
+import functools
 import hashlib
 import numpy as np
 import os
 import sys
+import threading
+import time
 import uuid
 
+import ray.gcs_utils
 import ray.local_scheduler
+import ray.ray_constants as ray_constants
 
 ERROR_KEY_PREFIX = b"Error:"
-DRIVER_ID_LENGTH = 20
 
 
 def _random_string():
     id_hash = hashlib.sha1()
     id_hash.update(uuid.uuid4().bytes)
     id_bytes = id_hash.digest()
-    assert len(id_bytes) == 20
+    assert len(id_bytes) == ray_constants.ID_SIZE
     return id_bytes
 
 
@@ -45,7 +49,7 @@ def format_error_message(exception_message, task_exception=False):
     return "\n".join(lines)
 
 
-def push_error_to_driver(redis_client,
+def push_error_to_driver(worker,
                          error_type,
                          message,
                          driver_id=None,
@@ -53,7 +57,7 @@ def push_error_to_driver(redis_client,
     """Push an error message to the driver to be printed in the background.
 
     Args:
-        redis_client: The redis client to use.
+        worker: The worker to use.
         error_type (str): The type of the error.
         message (str): The message that will be printed in the background
             on the driver.
@@ -63,15 +67,65 @@ def push_error_to_driver(redis_client,
             will be serialized with json and stored in Redis.
     """
     if driver_id is None:
-        driver_id = DRIVER_ID_LENGTH * b"\x00"
+        driver_id = ray_constants.NIL_JOB_ID.id()
     error_key = ERROR_KEY_PREFIX + driver_id + b":" + _random_string()
     data = {} if data is None else data
-    redis_client.hmset(error_key, {
-        "type": error_type,
-        "message": message,
-        "data": data
-    })
-    redis_client.rpush("ErrorKeys", error_key)
+    if not worker.use_raylet:
+        worker.redis_client.hmset(error_key, {
+            "type": error_type,
+            "message": message,
+            "data": data
+        })
+        worker.redis_client.rpush("ErrorKeys", error_key)
+    else:
+        worker.local_scheduler_client.push_error(
+            ray.ObjectID(driver_id), error_type, message, time.time())
+
+
+def push_error_to_driver_through_redis(redis_client,
+                                       use_raylet,
+                                       error_type,
+                                       message,
+                                       driver_id=None,
+                                       data=None):
+    """Push an error message to the driver to be printed in the background.
+
+    Normally the push_error_to_driver function should be used. However, in some
+    instances, the local scheduler client is not available, e.g., because the
+    error happens in Python before the driver or worker has connected to the
+    backend processes.
+
+    Args:
+        redis_client: The redis client to use.
+        use_raylet: True if we are using the Raylet code path and false
+            otherwise.
+        error_type (str): The type of the error.
+        message (str): The message that will be printed in the background
+            on the driver.
+        driver_id: The ID of the driver to push the error message to. If this
+            is None, then the message will be pushed to all drivers.
+        data: This should be a dictionary mapping strings to strings. It
+            will be serialized with json and stored in Redis.
+    """
+    if driver_id is None:
+        driver_id = ray_constants.NIL_JOB_ID.id()
+    error_key = ERROR_KEY_PREFIX + driver_id + b":" + _random_string()
+    data = {} if data is None else data
+    if not use_raylet:
+        redis_client.hmset(error_key, {
+            "type": error_type,
+            "message": message,
+            "data": data
+        })
+        redis_client.rpush("ErrorKeys", error_key)
+    else:
+        # Do everything in Python and through the Python Redis client instead
+        # of through the raylet.
+        error_data = ray.gcs_utils.construct_error_message(
+            driver_id, error_type, message, time.time())
+        redis_client.execute_command(
+            "RAY.TABLE_APPEND", ray.gcs_utils.TablePrefix.ERROR_INFO,
+            ray.gcs_utils.TablePubsub.ERROR_INFO, driver_id, error_data)
 
 
 def is_cython(obj):
@@ -102,14 +156,14 @@ def random_string():
     deterministic manner, then we will need to make some changes here.
 
     Returns:
-        A random byte string of length 20.
+        A random byte string of length ray_constants.ID_SIZE.
     """
     # Get the state of the numpy random number generator.
     numpy_state = np.random.get_state()
     # Try to use true randomness.
     np.random.seed(None)
     # Generate the random ID.
-    random_id = np.random.bytes(20)
+    random_id = np.random.bytes(ray_constants.ID_SIZE)
     # Reset the state of the numpy random number generator.
     np.random.set_state(numpy_state)
     return random_id
@@ -117,6 +171,8 @@ def random_string():
 
 def decode(byte_str):
     """Make this unicode in Python 3, otherwise leave it as bytes."""
+    if not isinstance(byte_str, bytes):
+        raise ValueError("The argument must be a bytes object.")
     if sys.version_info >= (3, 0):
         return byte_str.decode("ascii")
     else:
@@ -210,8 +266,80 @@ def resources_from_resource_arguments(default_num_cpus, default_num_gpus,
     return resources
 
 
-def merge_dicts(d1, d2):
-    """Merge two dicts and return a new dict that's their union."""
-    d = d1.copy()
-    d.update(d2)
-    return d
+def check_oversized_pickle(pickled, name, obj_type, worker):
+    """Send a warning message if the pickled object is too large.
+
+    Args:
+        pickled: the pickled object.
+        name: name of the pickled object.
+        obj_type: type of the pickled object, can be 'function',
+            'remote function', 'actor', or 'object'.
+        worker: the worker used to send warning message.
+    """
+    length = len(pickled)
+    if length <= ray_constants.PICKLE_OBJECT_WARNING_SIZE:
+        return
+    warning_message = (
+        "Warning: The {} {} has size {} when pickled. "
+        "It will be stored in Redis, which could cause memory issues. "
+        "This may mean that its definition uses a large array or other object."
+    ).format(obj_type, name, length)
+    push_error_to_driver(
+        worker,
+        ray_constants.PICKLING_LARGE_OBJECT_PUSH_ERROR,
+        warning_message,
+        driver_id=worker.task_driver_id.id())
+
+
+class _ThreadSafeProxy(object):
+    """This class is used to create a thread-safe proxy for a given object.
+        Every method call will be guarded with a lock.
+
+    Attributes:
+        orig_obj (object): the original object.
+        lock (threading.Lock): the lock object.
+        _wrapper_cache (dict): a cache from original object's methods to
+            the proxy methods.
+    """
+
+    def __init__(self, orig_obj, lock):
+        self.orig_obj = orig_obj
+        self.lock = lock
+        self._wrapper_cache = {}
+
+    def __getattr__(self, attr):
+        orig_attr = getattr(self.orig_obj, attr)
+        if not callable(orig_attr):
+            # If the original attr is a field, just return it.
+            return orig_attr
+        else:
+            # If the orginal attr is a method,
+            # return a wrapper that guards the original method with a lock.
+            wrapper = self._wrapper_cache.get(attr)
+            if wrapper is None:
+
+                @functools.wraps(orig_attr)
+                def _wrapper(*args, **kwargs):
+                    with self.lock:
+                        return orig_attr(*args, **kwargs)
+
+                self._wrapper_cache[attr] = _wrapper
+                wrapper = _wrapper
+            return wrapper
+
+
+def thread_safe_client(client, lock=None):
+    """Create a thread-safe proxy which locks every method call
+    for the given client.
+
+    Args:
+        client: the client object to be guarded.
+        lock: the lock object that will be used to lock client's methods.
+            If None, a new lock will be used.
+
+    Returns:
+        A thread-safe proxy for the given client.
+    """
+    if lock is None:
+        lock = threading.Lock()
+    return _ThreadSafeProxy(client, lock)

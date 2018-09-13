@@ -18,6 +18,7 @@ import unittest
 import ray
 from ray.plasma.utils import (random_object_id, create_object_with_id,
                               create_object)
+import ray.ray_constants as ray_constants
 from ray import services
 import pyarrow as pa
 import pyarrow.plasma as plasma
@@ -86,7 +87,8 @@ def start_plasma_store(plasma_store_memory=DEFAULT_PLASMA_STORE_MEMORY,
     """
     if use_valgrind and use_profiler:
         raise Exception("Cannot use valgrind and profiler at the same time.")
-    plasma_store_executable = os.path.join(pa.__path__[0], "plasma_store")
+    plasma_store_executable = os.path.join(pa.__path__[0],
+                                           "plasma_store_server")
     plasma_store_name = "/tmp/plasma_store{}".format(random_name())
     command = [
         plasma_store_executable, "-s", plasma_store_name, "-m",
@@ -377,7 +379,7 @@ class TestPlasmaManager(unittest.TestCase):
         # Make sure that wait returns when the requested number of object IDs
         # are available and does not wait for all object IDs to be available.
         object_ids = [random_object_id() for _ in range(9)] + \
-                     [plasma.ObjectID(20 * b'\x00')]
+                     [plasma.ObjectID(ray_constants.ID_SIZE * b'\x00')]
         object_ids_perm = object_ids[:]
         random.shuffle(object_ids_perm)
         for i in range(10):

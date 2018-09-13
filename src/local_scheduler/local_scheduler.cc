@@ -15,18 +15,19 @@
 #include "event_loop.h"
 #include "format/local_scheduler_generated.h"
 #include "io.h"
-#include "logging.h"
-#include "local_scheduler_shared.h"
 #include "local_scheduler.h"
 #include "local_scheduler_algorithm.h"
+#include "local_scheduler_shared.h"
+#include "logging.h"
 #include "net.h"
+#include "ray/util/util.h"
 #include "state/actor_notification_table.h"
 #include "state/db.h"
 #include "state/db_client_table.h"
 #include "state/driver_table.h"
-#include "state/task_table.h"
-#include "state/object_table.h"
 #include "state/error_table.h"
+#include "state/object_table.h"
+#include "state/task_table.h"
 
 using MessageType = ray::local_scheduler::protocol::MessageType;
 
@@ -144,12 +145,7 @@ void kill_worker(LocalSchedulerState *state,
     /* Update the task table to reflect that the task failed to complete. */
     if (state->db != NULL) {
       Task_set_state(worker->task_in_progress, TaskStatus::LOST);
-#if !RAY_USE_NEW_GCS
       task_table_update(state->db, worker->task_in_progress, NULL, NULL, NULL);
-#else
-      RAY_CHECK_OK(TaskTableAdd(&state->gcs_client, worker->task_in_progress));
-      Task_free(worker->task_in_progress);
-#endif
     } else {
       Task_free(worker->task_in_progress);
     }
@@ -356,10 +352,6 @@ LocalSchedulerState *LocalSchedulerState_init(
     state->db = db_connect(std::string(redis_primary_addr), redis_primary_port,
                            "local_scheduler", node_ip_address, db_connect_args);
     db_attach(state->db, loop, false);
-
-    RAY_CHECK_OK(state->gcs_client.Connect(std::string(redis_primary_addr),
-                                           redis_primary_port));
-    RAY_CHECK_OK(state->gcs_client.context()->AttachToEventLoop(loop));
   } else {
     state->db = NULL;
   }
@@ -557,12 +549,7 @@ void assign_task_to_worker(LocalSchedulerState *state,
   worker->task_in_progress = Task_copy(task);
   /* Update the global task table. */
   if (state->db != NULL) {
-#if !RAY_USE_NEW_GCS
     task_table_update(state->db, task, NULL, NULL, NULL);
-#else
-    RAY_CHECK_OK(TaskTableAdd(&state->gcs_client, task));
-    Task_free(task);
-#endif
   } else {
     Task_free(task);
   }
@@ -629,7 +616,6 @@ void finish_task(LocalSchedulerState *state, LocalSchedulerClient *worker) {
       /* Update control state tables. */
       TaskStatus task_state = TaskStatus::DONE;
       Task_set_state(worker->task_in_progress, task_state);
-#if !RAY_USE_NEW_GCS
       auto retryInfo = RetryInfo{
           .num_retries = 0,  // This value is unused.
           .timeout = 0,      // This value is unused.
@@ -640,10 +626,6 @@ void finish_task(LocalSchedulerState *state, LocalSchedulerClient *worker) {
       // task table entries have already been cleaned up by the monitor.
       task_table_update(state->db, worker->task_in_progress, &retryInfo, NULL,
                         NULL);
-#else
-      RAY_CHECK_OK(TaskTableAdd(&state->gcs_client, worker->task_in_progress));
-      Task_free(worker->task_in_progress);
-#endif
     } else {
       Task_free(worker->task_in_progress);
     }
@@ -691,22 +673,10 @@ void reconstruct_task_update_callback(Task *task,
         /* (2) The current local scheduler for the task is dead. The task is
          * lost, but the task table hasn't received the update yet. Retry the
          * test-and-set. */
-#if !RAY_USE_NEW_GCS
         task_table_test_and_update(state->db, Task_task_id(task),
                                    current_local_scheduler_id, Task_state(task),
                                    TaskStatus::RECONSTRUCTING, NULL,
                                    reconstruct_task_update_callback, state);
-#else
-        RAY_CHECK_OK(gcs::TaskTableTestAndUpdate(
-            &state->gcs_client, Task_task_id(task), current_local_scheduler_id,
-            static_cast<SchedulingState>(Task_state(task)),
-            SchedulingState::RECONSTRUCTING,
-            [task, user_context](gcs::AsyncGcsClient *, const ray::TaskID &,
-                                 const TaskTableDataT &t, bool updated) {
-              reconstruct_task_update_callback(task, user_context, updated);
-            }));
-        Task_free(task);
-#endif
       }
     }
     /* The test-and-set failed, so it is not safe to resubmit the task for
@@ -750,22 +720,10 @@ void reconstruct_put_task_update_callback(Task *task,
         /* (2) The current local scheduler for the task is dead. The task is
          * lost, but the task table hasn't received the update yet. Retry the
          * test-and-set. */
-#if !RAY_USE_NEW_GCS
         task_table_test_and_update(state->db, Task_task_id(task),
                                    current_local_scheduler_id, Task_state(task),
                                    TaskStatus::RECONSTRUCTING, NULL,
                                    reconstruct_put_task_update_callback, state);
-#else
-        RAY_CHECK_OK(gcs::TaskTableTestAndUpdate(
-            &state->gcs_client, Task_task_id(task), current_local_scheduler_id,
-            static_cast<SchedulingState>(Task_state(task)),
-            SchedulingState::RECONSTRUCTING,
-            [task, user_context](gcs::AsyncGcsClient *, const ray::TaskID &,
-                                 const TaskTableDataT &, bool updated) {
-              reconstruct_put_task_update_callback(task, user_context, updated);
-            }));
-        Task_free(task);
-#endif
       } else if (Task_state(task) == TaskStatus::RUNNING) {
         /* (1) The task is still executing on a live node. The object created
          * by `ray.put` was not able to be reconstructed, and the workload will
@@ -820,27 +778,10 @@ void reconstruct_evicted_result_lookup_callback(ObjectID reconstruct_object_id,
   }
   /* If there are no other instances of the task running, it's safe for us to
    * claim responsibility for reconstruction. */
-#if !RAY_USE_NEW_GCS
   task_table_test_and_update(state->db, task_id, DBClientID::nil(),
                              (TaskStatus::DONE | TaskStatus::LOST),
                              TaskStatus::RECONSTRUCTING, NULL, done_callback,
                              state);
-#else
-  RAY_CHECK_OK(gcs::TaskTableTestAndUpdate(
-      &state->gcs_client, task_id, DBClientID::nil(),
-      static_cast<SchedulingState>(static_cast<uint>(SchedulingState::DONE) |
-                                   static_cast<uint>(SchedulingState::LOST)),
-      SchedulingState::RECONSTRUCTING,
-      [done_callback, state](gcs::AsyncGcsClient *, const ray::TaskID &,
-                             const TaskTableDataT &t, bool updated) {
-        Task *task = Task_alloc(t.task_info.data(), t.task_info.size(),
-                                static_cast<TaskStatus>(t.scheduling_state),
-                                DBClientID::from_binary(t.scheduler_id),
-                                std::vector<ObjectID>());
-        done_callback(task, state, updated);
-        Task_free(task);
-      }));
-#endif
 }
 
 void reconstruct_failed_result_lookup_callback(ObjectID reconstruct_object_id,
@@ -859,24 +800,9 @@ void reconstruct_failed_result_lookup_callback(ObjectID reconstruct_object_id,
   LocalSchedulerState *state = (LocalSchedulerState *) user_context;
   /* If the task failed to finish, it's safe for us to claim responsibility for
    * reconstruction. */
-#if !RAY_USE_NEW_GCS
   task_table_test_and_update(state->db, task_id, DBClientID::nil(),
                              TaskStatus::LOST, TaskStatus::RECONSTRUCTING, NULL,
                              reconstruct_task_update_callback, state);
-#else
-  RAY_CHECK_OK(gcs::TaskTableTestAndUpdate(
-      &state->gcs_client, task_id, DBClientID::nil(), SchedulingState::LOST,
-      SchedulingState::RECONSTRUCTING,
-      [state](gcs::AsyncGcsClient *, const ray::TaskID &,
-              const TaskTableDataT &t, bool updated) {
-        Task *task = Task_alloc(t.task_info.data(), t.task_info.size(),
-                                static_cast<TaskStatus>(t.scheduling_state),
-                                DBClientID::from_binary(t.scheduler_id),
-                                std::vector<ObjectID>());
-        reconstruct_task_update_callback(task, state, updated);
-        Task_free(task);
-      }));
-#endif
 }
 
 void reconstruct_object_lookup_callback(
@@ -1496,6 +1422,10 @@ void start_server(
  * suite has its own declaration of main. */
 #ifndef LOCAL_SCHEDULER_TEST
 int main(int argc, char *argv[]) {
+  InitShutdownRAII ray_log_shutdown_raii(
+      ray::RayLog::StartRayLog, ray::RayLog::ShutDownRayLog, argv[0], RAY_INFO,
+      /*log_dir=*/"");
+  ray::RayLog::InstallFailureSignalHandler();
   signal(SIGTERM, signal_handler);
   /* Path of the listening socket of the local scheduler. */
   char *scheduler_socket_name = NULL;

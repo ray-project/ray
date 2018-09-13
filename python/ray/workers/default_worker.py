@@ -3,10 +3,12 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
+import logging
 import traceback
 
 import ray
 import ray.actor
+import ray.ray_constants as ray_constants
 
 parser = argparse.ArgumentParser(
     description=("Parse addresses for the worker "
@@ -38,6 +40,19 @@ parser.add_argument(
     help="the local scheduler's name")
 parser.add_argument(
     "--raylet-name", required=False, type=str, help="the raylet's name")
+parser.add_argument(
+    "--logging-level",
+    required=False,
+    type=str,
+    default=ray_constants.LOGGER_LEVEL,
+    choices=ray_constants.LOGGER_LEVEL_CHOICES,
+    help=ray_constants.LOGGER_LEVEL_HELP)
+parser.add_argument(
+    "--logging-format",
+    required=False,
+    type=str,
+    default=ray_constants.LOGGER_FORMAT,
+    help=ray_constants.LOGGER_FORMAT_HELP)
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -50,6 +65,10 @@ if __name__ == "__main__":
         "local_scheduler_socket_name": args.local_scheduler_name,
         "raylet_socket_name": args.raylet_name
     }
+
+    logging.basicConfig(
+        level=logging.getLevelName(args.logging_level.upper()),
+        format=args.logging_format)
 
     ray.worker.connect(
         info, mode=ray.WORKER_MODE, use_raylet=(args.raylet_name is not None))
@@ -69,10 +88,11 @@ if __name__ == "__main__":
         ray.worker.global_worker.main_loop()
     except Exception as e:
         traceback_str = traceback.format_exc() + error_explanation
-        # Create a Redis client.
-        redis_client = ray.services.create_redis_client(args.redis_address)
         ray.utils.push_error_to_driver(
-            redis_client, "worker_crash", traceback_str, driver_id=None)
+            ray.worker.global_worker,
+            "worker_crash",
+            traceback_str,
+            driver_id=None)
         # TODO(rkn): Note that if the worker was in the middle of executing
         # a task, then any worker or driver that is blocking in a get call
         # and waiting for the output of that task will hang. We need to

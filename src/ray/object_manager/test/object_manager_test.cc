@@ -34,7 +34,6 @@ class MockServer {
 
  private:
   ray::Status RegisterGcs(boost::asio::io_service &io_service) {
-    RAY_RETURN_NOT_OK(gcs_client_->Connect("127.0.0.1", 6379));
     RAY_RETURN_NOT_OK(gcs_client_->Attach(io_service));
 
     boost::asio::ip::tcp::endpoint endpoint = object_manager_acceptor_.local_endpoint();
@@ -65,8 +64,9 @@ class MockServer {
       object_manager_.ProcessClientMessage(client, message_type, message);
     };
     // Accept a new local client and dispatch it to the node manager.
-    auto new_connection = TcpClientConnection::Create(client_handler, message_handler,
-                                                      std::move(object_manager_socket_));
+    auto new_connection =
+        TcpClientConnection::Create(client_handler, message_handler,
+                                    std::move(object_manager_socket_), "object manager");
     DoAcceptObjectManager();
   }
 
@@ -111,13 +111,11 @@ class TestObjectManagerBase : public ::testing::Test {
     store_id_2 = StartStore(UniqueID::from_random().hex());
 
     uint pull_timeout_ms = 1;
-    int max_sends = 2;
-    int max_receives = 2;
-    uint64_t object_chunk_size = static_cast<uint64_t>(std::pow(10, 3));
     push_timeout_ms = 1000;
 
     // start first server
-    gcs_client_1 = std::shared_ptr<gcs::AsyncGcsClient>(new gcs::AsyncGcsClient());
+    gcs_client_1 = std::shared_ptr<gcs::AsyncGcsClient>(
+        new gcs::AsyncGcsClient("127.0.0.1", 6379, /*is_test_client=*/true));
     ObjectManagerConfig om_config_1;
     om_config_1.store_socket_name = store_id_1;
     om_config_1.pull_timeout_ms = pull_timeout_ms;
@@ -128,7 +126,8 @@ class TestObjectManagerBase : public ::testing::Test {
     server1.reset(new MockServer(main_service, om_config_1, gcs_client_1));
 
     // start second server
-    gcs_client_2 = std::shared_ptr<gcs::AsyncGcsClient>(new gcs::AsyncGcsClient());
+    gcs_client_2 = std::shared_ptr<gcs::AsyncGcsClient>(
+        new gcs::AsyncGcsClient("127.0.0.1", 6379, /*is_test_client=*/true));
     ObjectManagerConfig om_config_2;
     om_config_2.store_socket_name = store_id_2;
     om_config_2.pull_timeout_ms = pull_timeout_ms;
@@ -192,6 +191,10 @@ class TestObjectManagerBase : public ::testing::Test {
   std::string store_id_2;
 
   uint push_timeout_ms;
+
+  int max_sends = 2;
+  int max_receives = 2;
+  uint64_t object_chunk_size = static_cast<uint64_t>(std::pow(10, 3));
 };
 
 class TestObjectManager : public TestObjectManagerBase {
@@ -245,14 +248,14 @@ class TestObjectManager : public TestObjectManagerBase {
 
     // dummy_id is not local. The push function will timeout.
     ObjectID dummy_id = ObjectID::from_random();
-    status = server1->object_manager_.Push(
-        dummy_id, gcs_client_2->client_table().GetLocalClientId());
+    server1->object_manager_.Push(dummy_id,
+                                  gcs_client_2->client_table().GetLocalClientId());
 
     created_object_id1 = ObjectID::from_random();
     WriteDataToClient(client1, data_size, created_object_id1);
     // Server1 holds Object1 so this Push call will success.
-    status = server1->object_manager_.Push(
-        created_object_id1, gcs_client_2->client_table().GetLocalClientId());
+    server1->object_manager_.Push(created_object_id1,
+                                  gcs_client_2->client_table().GetLocalClientId());
 
     // This timer is used to guarantee that the Push function for dummy_id will timeout.
     timer.reset(new boost::asio::deadline_timer(main_service));
@@ -282,9 +285,11 @@ class TestObjectManager : public TestObjectManagerBase {
 
     RAY_CHECK_OK(server1->object_manager_.object_directory_->SubscribeObjectLocations(
         sub_id, object_1,
-        [this, sub_id, object_1, object_2](const std::vector<ray::ClientID> &,
+        [this, sub_id, object_1, object_2](const std::vector<ray::ClientID> &clients,
                                            const ray::ObjectID &object_id) {
-          TestWaitWhileSubscribed(sub_id, object_1, object_2);
+          if (!clients.empty()) {
+            TestWaitWhileSubscribed(sub_id, object_1, object_2);
+          }
         }));
   }
 

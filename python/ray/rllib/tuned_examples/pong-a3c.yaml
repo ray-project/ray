@@ -1,10 +1,11 @@
+# This gets to ~19-20 reward in ~30 minutes / 4m steps on a m4.10xl instance
+# TODO(rliaw): this has regressed in performance
 pong-a3c:
     env: PongDeterministic-v4
     run: A3C
     config:
         num_workers: 16
-        batch_size: 20
-        use_lstm: true
+        sample_batch_size: 20
         use_pytorch: false
         vf_loss_coeff: 0.5
         entropy_coeff: -0.01
@@ -13,11 +14,17 @@ pong-a3c:
         lambda: 1.0
         lr: 0.0001
         observation_filter: NoFilter
-        reward_filter: NoFilter
+        preprocessor_pref: rllib
         model:
-            channel_major: false
+            use_lstm: true
+            conv_activation: elu
             dim: 42
             grayscale: true
             zero_mean: false
-        optimizer:
-            grads_per_step: 1000
+            # Reduced channel depth and kernel size from default
+            conv_filters: [
+                [32, [3, 3], 2],
+                [32, [3, 3], 2],
+                [32, [3, 3], 2],
+                [32, [3, 3], 2],
+            ]

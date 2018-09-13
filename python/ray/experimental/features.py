@@ -10,7 +10,7 @@ OBJECT_LOCATION_PREFIX = b"OL:"
 TASK_PREFIX = b"TT:"
 
 
-def flush_redis_unsafe():
+def flush_redis_unsafe(redis_client=None):
     """This removes some non-critical state from the primary Redis shard.
 
     This removes the log files as well as the event log from Redis. This can
@@ -18,10 +18,14 @@ def flush_redis_unsafe():
     of metadata in Redis. However, it will only partially address the issue as
     much of the data is in the task table (and object table), which are not
     flushed.
-    """
-    ray.worker.global_worker.check_connected()
 
-    redis_client = ray.worker.global_worker.redis_client
+    Args:
+      redis_client: optional, if not provided then ray.init() must have been
+        called.
+    """
+    if redis_client is None:
+        ray.worker.global_worker.check_connected()
+        redis_client = ray.worker.global_worker.redis_client
 
     # Delete the log files from the primary Redis shard.
     keys = redis_client.keys("LOGFILE:*")

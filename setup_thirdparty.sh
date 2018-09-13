@@ -4,7 +4,7 @@ set -x
 # Cause the script to exit if a single command fails.
 set -e
 
-TP_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
+ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 
 if [[ -z  "$1" ]]; then
   PYTHON_EXECUTABLE=`which python`
@@ -13,15 +13,7 @@ else
 fi
 echo "Using Python executable $PYTHON_EXECUTABLE."
 
-LANGUAGE="python"
-if [[ -n  "$2" ]]; then
-  LANGUAGE=$2
-fi
+RAY_BUILD_PYTHON=$RAY_BUILD_PYTHON \
+RAY_BUILD_JAVA=$RAY_BUILD_JAVA \
+$ROOT_DIR/thirdparty/scripts/setup.sh $PYTHON_EXECUTABLE
 
-$TP_DIR/thirdparty/scripts/setup.sh $PYTHON_EXECUTABLE $LANGUAGE
-
-if [[ "$LANGUAGE" == "java" ]]; then
-    pushd thirdparty/build/arrow/java
-    mvn clean install -pl plasma -am -Dmaven.test.skip
-    popd
-fi

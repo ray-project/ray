@@ -12,7 +12,6 @@
 
 #include "plasma/client.h"
 #include "plasma/events.h"
-#include "plasma/plasma.h"
 
 #include "ray/id.h"
 #include "ray/status.h"
@@ -124,6 +123,12 @@ class ObjectBufferPool {
   /// \param chunk_index The index of the chunk.
   void SealChunk(const ObjectID &object_id, uint64_t chunk_index);
 
+  /// Free a list of objects from object store.
+  ///
+  /// \param object_ids the The list of ObjectIDs to be deleted.
+  /// \return Void.
+  void FreeObjects(const std::vector<ObjectID> &object_ids);
+
  private:
   /// Abort the create operation associated with an object. This destroys the buffer
   /// state, including create operations in progress for all chunks of the object.
@@ -177,7 +182,7 @@ class ObjectBufferPool {
   /// get_buffer_state_, create_buffer_state_, and store_client_.
   std::mutex pool_mutex_;
   /// Determines the maximum chunk size to be transferred by a single thread.
-  const uint64_t chunk_size_;
+  const uint64_t default_chunk_size_;
   /// The state of a buffer that's currently being used.
   std::unordered_map<ray::ObjectID, GetBufferState> get_buffer_state_;
   /// The state of a buffer that's currently being used.

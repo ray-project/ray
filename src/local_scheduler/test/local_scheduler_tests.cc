@@ -125,7 +125,8 @@ LocalSchedulerMock *LocalSchedulerMock_init(int num_workers,
 
   for (int i = 0; i < num_mock_workers; ++i) {
     mock->conns[i] = LocalSchedulerConnection_init(
-        local_scheduler_socket_name.c_str(), WorkerID::nil(), true, false);
+        local_scheduler_socket_name.c_str(), WorkerID::nil(), true,
+        JobID::nil(), false, Language::PYTHON);
   }
 
   background_thread.join();
@@ -233,14 +234,8 @@ TEST object_reconstruction_test(void) {
     Task *task = Task_alloc(
         execution_spec, TaskStatus::DONE,
         get_db_client_id(local_scheduler->local_scheduler_state->db));
-#if !RAY_USE_NEW_GCS
     task_table_add_task(local_scheduler->local_scheduler_state->db, task, NULL,
                         NULL, NULL);
-#else
-    RAY_CHECK_OK(TaskTableAdd(
-        &local_scheduler->local_scheduler_state->gcs_client, task));
-    Task_free(task);
-#endif
 
     /* Trigger reconstruction, and run the event loop again. */
     ObjectID return_id = TaskSpec_return(spec, 0);
@@ -355,14 +350,8 @@ TEST object_reconstruction_recursive_test(void) {
     Task *last_task = Task_alloc(
         specs[NUM_TASKS - 1], TaskStatus::DONE,
         get_db_client_id(local_scheduler->local_scheduler_state->db));
-#if !RAY_USE_NEW_GCS
     task_table_add_task(local_scheduler->local_scheduler_state->db, last_task,
                         NULL, NULL, NULL);
-#else
-    RAY_CHECK_OK(TaskTableAdd(
-        &local_scheduler->local_scheduler_state->gcs_client, last_task));
-    Task_free(last_task);
-#endif
     /* Simulate eviction of the objects, so that reconstruction is required. */
     for (int i = 0; i < NUM_TASKS; ++i) {
       ObjectID return_id = TaskSpec_return(specs[i].Spec(), 0);

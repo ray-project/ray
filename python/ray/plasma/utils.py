@@ -6,10 +6,11 @@ import numpy as np
 import random
 
 import pyarrow.plasma as plasma
+import ray.ray_constants as ray_constants
 
 
 def random_object_id():
-    return plasma.ObjectID(np.random.bytes(20))
+    return plasma.ObjectID(np.random.bytes(ray_constants.ID_SIZE))
 
 
 def generate_metadata(length):

@@ -38,8 +38,8 @@ class Monitor {
  private:
   /// A client to the GCS, through which heartbeats are received.
   gcs::AsyncGcsClient gcs_client_;
-  /// The expected period between heartbeats, for an individual Raylet.
-  int64_t heartbeat_timeout_ms_;
+  /// The number of heartbeats that can be missed before a client is removed.
+  int64_t num_heartbeats_timeout_;
   /// A timer that ticks every heartbeat_timeout_ms_ milliseconds.
   boost::asio::deadline_timer heartbeat_timer_;
   /// For each Raylet that we receive a heartbeat from, the number of ticks

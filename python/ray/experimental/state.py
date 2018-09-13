@@ -6,46 +6,17 @@ import copy
 from collections import defaultdict
 import heapq
 import json
+import numbers
 import os
 import redis
 import sys
 import time
 
 import ray
+import ray.gcs_utils
+import ray.ray_constants as ray_constants
 from ray.utils import (decode, binary_to_object_id, binary_to_hex,
                        hex_to_binary)
-
-# Import flatbuffer bindings.
-from ray.core.generated.TaskReply import TaskReply
-from ray.core.generated.ResultTableReply import ResultTableReply
-from ray.core.generated.TaskExecutionDependencies import \
-    TaskExecutionDependencies
-
-from ray.core.generated.ClientTableData import ClientTableData
-from ray.core.generated.GcsTableEntry import GcsTableEntry
-from ray.core.generated.ObjectTableData import ObjectTableData
-
-from ray.core.generated.ray.protocol.Task import Task
-
-# These prefixes must be kept up-to-date with the definitions in
-# ray_redis_module.cc.
-DB_CLIENT_PREFIX = "CL:"
-OBJECT_INFO_PREFIX = "OI:"
-OBJECT_LOCATION_PREFIX = "OL:"
-OBJECT_SUBSCRIBE_PREFIX = "OS:"
-TASK_PREFIX = "TT:"
-FUNCTION_PREFIX = "RemoteFunction:"
-OBJECT_CHANNEL_PREFIX = "OC:"
-
-# These prefixes must be kept up-to-date with the TablePrefix enum in gcs.fbs.
-# TODO(rkn): We should use scoped enums, in which case we should be able to
-# just access the flatbuffer generated values.
-TablePrefix_RAYLET_TASK = 2
-TablePrefix_RAYLET_TASK_string = "TASK"
-TablePrefix_CLIENT = 3
-TablePrefix_CLIENT_string = "CLIENT"
-TablePrefix_OBJECT = 4
-TablePrefix_OBJECT_string = "OBJECT"
 
 # This mapping from integer to task state string must be kept up-to-date with
 # the scheduling_state enum in task.h.
@@ -199,7 +170,7 @@ class GlobalState(object):
         """
         result = []
         for client in self.redis_clients:
-            result.extend(client.keys(pattern))
+            result.extend(list(client.scan_iter(match=pattern)))
         return result
 
     def _object_table(self, object_id):
@@ -231,8 +202,9 @@ class GlobalState(object):
 
             result_table_response = self._execute_command(
                 object_id, "RAY.RESULT_TABLE_LOOKUP", object_id.id())
-            result_table_message = ResultTableReply.GetRootAsResultTableReply(
-                result_table_response, 0)
+            result_table_message = (
+                ray.gcs_utils.ResultTableReply.GetRootAsResultTableReply(
+                    result_table_response, 0))
 
             result = {
                 "ManagerIDs": manager_ids,
@@ -244,13 +216,15 @@ class GlobalState(object):
 
         else:
             # Use the raylet code path.
-            message = self.redis_client.execute_command(
-                "RAY.TABLE_LOOKUP", TablePrefix_OBJECT, "", object_id.id())
+            message = self._execute_command(object_id, "RAY.TABLE_LOOKUP",
+                                            ray.gcs_utils.TablePrefix.OBJECT,
+                                            "", object_id.id())
             result = []
-            gcs_entry = GcsTableEntry.GetRootAsGcsTableEntry(message, 0)
+            gcs_entry = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
+                message, 0)
 
             for i in range(gcs_entry.EntriesLength()):
-                entry = ObjectTableData.GetRootAsObjectTableData(
+                entry = ray.gcs_utils.ObjectTableData.GetRootAsObjectTableData(
                     gcs_entry.Entries(i), 0)
                 object_info = {
                     "DataSize": entry.ObjectSize(),
@@ -279,19 +253,22 @@ class GlobalState(object):
         else:
             # Return the entire object table.
             if not self.use_raylet:
-                object_info_keys = self._keys(OBJECT_INFO_PREFIX + "*")
-                object_location_keys = self._keys(OBJECT_LOCATION_PREFIX + "*")
+                object_info_keys = self._keys(
+                    ray.gcs_utils.OBJECT_INFO_PREFIX + "*")
+                object_location_keys = self._keys(
+                    ray.gcs_utils.OBJECT_LOCATION_PREFIX + "*")
                 object_ids_binary = set([
-                    key[len(OBJECT_INFO_PREFIX):] for key in object_info_keys
+                    key[len(ray.gcs_utils.OBJECT_INFO_PREFIX):]
+                    for key in object_info_keys
                 ] + [
-                    key[len(OBJECT_LOCATION_PREFIX):]
+                    key[len(ray.gcs_utils.OBJECT_LOCATION_PREFIX):]
                     for key in object_location_keys
                 ])
             else:
-                object_keys = self.redis_client.keys(
-                    TablePrefix_OBJECT_string + ":*")
+                object_keys = self._keys(
+                    ray.gcs_utils.TablePrefix_OBJECT_string + "*")
                 object_ids_binary = {
-                    key[len(TablePrefix_OBJECT_string + ":"):]
+                    key[len(ray.gcs_utils.TablePrefix_OBJECT_string):]
                     for key in object_keys
                 }
 
@@ -320,7 +297,7 @@ class GlobalState(object):
             if task_table_response is None:
                 raise Exception("There is no entry for task ID {} in the task "
                                 "table.".format(binary_to_hex(task_id.id())))
-            task_table_message = TaskReply.GetRootAsTaskReply(
+            task_table_message = ray.gcs_utils.TaskReply.GetRootAsTaskReply(
                 task_table_response, 0)
             task_spec = task_table_message.TaskSpec()
             task_spec = ray.local_scheduler.task_from_string(task_spec)
@@ -343,7 +320,8 @@ class GlobalState(object):
             }
 
             execution_dependencies_message = (
-                TaskExecutionDependencies.GetRootAsTaskExecutionDependencies(
+                ray.gcs_utils.TaskExecutionDependencies.
+                GetRootAsTaskExecutionDependencies(
                     task_table_message.ExecutionDependencies(), 0))
             execution_dependencies = [
                 ray.ObjectID(
@@ -370,17 +348,17 @@ class GlobalState(object):
 
         else:
             # Use the raylet code path.
-            message = self.redis_client.execute_command(
-                "RAY.TABLE_LOOKUP", TablePrefix_RAYLET_TASK, "", task_id.id())
-            gcs_entries = GcsTableEntry.GetRootAsGcsTableEntry(message, 0)
+            message = self._execute_command(
+                task_id, "RAY.TABLE_LOOKUP",
+                ray.gcs_utils.TablePrefix.RAYLET_TASK, "", task_id.id())
+            gcs_entries = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
+                message, 0)
 
             info = []
             for i in range(gcs_entries.EntriesLength()):
-                task_table_message = Task.GetRootAsTask(
+                task_table_message = ray.gcs_utils.Task.GetRootAsTask(
                     gcs_entries.Entries(i), 0)
 
-                task_table_message = Task.GetRootAsTask(
-                    gcs_entries.Entries(0), 0)
                 execution_spec = task_table_message.TaskExecutionSpec()
                 task_spec = task_table_message.TaskSpecification()
                 task_spec = ray.local_scheduler.task_from_string(task_spec)
@@ -432,15 +410,16 @@ class GlobalState(object):
             return self._task_table(task_id)
         else:
             if not self.use_raylet:
-                task_table_keys = self._keys(TASK_PREFIX + "*")
+                task_table_keys = self._keys(ray.gcs_utils.TASK_PREFIX + "*")
                 task_ids_binary = [
-                    key[len(TASK_PREFIX):] for key in task_table_keys
+                    key[len(ray.gcs_utils.TASK_PREFIX):]
+                    for key in task_table_keys
                 ]
             else:
-                task_table_keys = self.redis_client.keys(
-                    TablePrefix_RAYLET_TASK_string + ":*")
+                task_table_keys = self._keys(
+                    ray.gcs_utils.TablePrefix_RAYLET_TASK_string + "*")
                 task_ids_binary = [
-                    key[len(TablePrefix_RAYLET_TASK_string + ":"):]
+                    key[len(ray.gcs_utils.TablePrefix_RAYLET_TASK_string):]
                     for key in task_table_keys
                 ]
 
@@ -458,7 +437,8 @@ class GlobalState(object):
                 function.
         """
         self._check_connected()
-        function_table_keys = self.redis_client.keys(FUNCTION_PREFIX + "*")
+        function_table_keys = self.redis_client.keys(
+            ray.gcs_utils.FUNCTION_PREFIX + "*")
         results = {}
         for key in function_table_keys:
             info = self.redis_client.hgetall(key)
@@ -478,7 +458,8 @@ class GlobalState(object):
         """
         self._check_connected()
         if not self.use_raylet:
-            db_client_keys = self.redis_client.keys(DB_CLIENT_PREFIX + "*")
+            db_client_keys = self.redis_client.keys(
+                ray.gcs_utils.DB_CLIENT_PREFIX + "*")
             node_info = {}
             for key in db_client_keys:
                 client_info = self.redis_client.hgetall(key)
@@ -506,11 +487,10 @@ class GlobalState(object):
                             decode(value))
                     elif client_info[b"client_type"] == b"local_scheduler":
                         # The remaining fields are resource types.
-                        client_info_parsed[field.decode("ascii")] = float(
+                        client_info_parsed[decode(field)] = float(
                             decode(value))
                     else:
-                        client_info_parsed[field.decode("ascii")] = decode(
-                            value)
+                        client_info_parsed[decode(field)] = decode(value)
 
                 node_info[node_ip_address].append(client_info_parsed)
 
@@ -518,32 +498,39 @@ class GlobalState(object):
 
         else:
             # This is the raylet code path.
-            NIL_CLIENT_ID = 20 * b"\xff"
+            NIL_CLIENT_ID = ray_constants.ID_SIZE * b"\xff"
             message = self.redis_client.execute_command(
-                "RAY.TABLE_LOOKUP", TablePrefix_CLIENT, "", NIL_CLIENT_ID)
+                "RAY.TABLE_LOOKUP", ray.gcs_utils.TablePrefix.CLIENT, "",
+                NIL_CLIENT_ID)
+
+            # Handle the case where no clients are returned. This should only
+            # occur potentially immediately after the cluster is started.
+            if message is None:
+                return []
+
             node_info = []
-            gcs_entry = GcsTableEntry.GetRootAsGcsTableEntry(message, 0)
+            gcs_entry = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
+                message, 0)
 
             for i in range(gcs_entry.EntriesLength()):
-                client = ClientTableData.GetRootAsClientTableData(
-                    gcs_entry.Entries(i), 0)
+                client = (
+                    ray.gcs_utils.ClientTableData.GetRootAsClientTableData(
+                        gcs_entry.Entries(i), 0))
 
                 resources = {
-                    client.ResourcesTotalLabel(i).decode("ascii"):
+                    decode(client.ResourcesTotalLabel(i)):
                     client.ResourcesTotalCapacity(i)
                     for i in range(client.ResourcesTotalLabelLength())
                 }
                 node_info.append({
                     "ClientID": ray.utils.binary_to_hex(client.ClientId()),
                     "IsInsertion": client.IsInsertion(),
-                    "NodeManagerAddress": client.NodeManagerAddress().decode(
-                        "ascii"),
+                    "NodeManagerAddress": decode(client.NodeManagerAddress()),
                     "NodeManagerPort": client.NodeManagerPort(),
                     "ObjectManagerPort": client.ObjectManagerPort(),
-                    "ObjectStoreSocketName": client.ObjectStoreSocketName()
-                    .decode("ascii"),
-                    "RayletSocketName": client.RayletSocketName().decode(
-                        "ascii"),
+                    "ObjectStoreSocketName": decode(
+                        client.ObjectStoreSocketName()),
+                    "RayletSocketName": decode(client.RayletSocketName()),
                     "Resources": resources
                 })
             return node_info
@@ -559,14 +546,14 @@ class GlobalState(object):
         ip_filename_file = {}
 
         for filename in relevant_files:
-            filename = filename.decode("ascii")
+            filename = decode(filename)
             filename_components = filename.split(":")
             ip_addr = filename_components[1]
 
             file = self.redis_client.lrange(filename, 0, -1)
             file_str = []
             for x in file:
-                y = x.decode("ascii")
+                y = decode(x)
                 file_str.append(y)
 
             if ip_addr not in ip_filename_file:
@@ -646,7 +633,7 @@ class GlobalState(object):
                         event_log_set, **params)
 
             for (event, score) in event_list:
-                event_dict = json.loads(event.decode())
+                event_dict = json.loads(decode(event))
                 task_id = ""
                 for event in event_dict:
                     if "task_id" in event[3]:
@@ -659,31 +646,29 @@ class GlobalState(object):
                 heap_size += 1
 
                 for event in event_dict:
-                    if event[1] == "ray:get_task" and event[2] == 1:
+                    if event[1] == "get_task" and event[2] == 1:
                         task_info[task_id]["get_task_start"] = event[0]
-                    if event[1] == "ray:get_task" and event[2] == 2:
+                    if event[1] == "get_task" and event[2] == 2:
                         task_info[task_id]["get_task_end"] = event[0]
-                    if (event[1] == "ray:import_remote_function"
+                    if (event[1] == "register_remote_function"
                             and event[2] == 1):
                         task_info[task_id]["import_remote_start"] = event[0]
-                    if (event[1] == "ray:import_remote_function"
+                    if (event[1] == "register_remote_function"
                             and event[2] == 2):
                         task_info[task_id]["import_remote_end"] = event[0]
-                    if event[1] == "ray:acquire_lock" and event[2] == 1:
-                        task_info[task_id]["acquire_lock_start"] = event[0]
-                    if event[1] == "ray:acquire_lock" and event[2] == 2:
-                        task_info[task_id]["acquire_lock_end"] = event[0]
-                    if event[1] == "ray:task:get_arguments" and event[2] == 1:
+                    if (event[1] == "task:deserialize_arguments"
+                            and event[2] == 1):
                         task_info[task_id]["get_arguments_start"] = event[0]
-                    if event[1] == "ray:task:get_arguments" and event[2] == 2:
+                    if (event[1] == "task:deserialize_arguments"
+                            and event[2] == 2):
                         task_info[task_id]["get_arguments_end"] = event[0]
-                    if event[1] == "ray:task:execute" and event[2] == 1:
+                    if event[1] == "task:execute" and event[2] == 1:
                         task_info[task_id]["execute_start"] = event[0]
-                    if event[1] == "ray:task:execute" and event[2] == 2:
+                    if event[1] == "task:execute" and event[2] == 2:
                         task_info[task_id]["execute_end"] = event[0]
-                    if event[1] == "ray:task:store_outputs" and event[2] == 1:
+                    if event[1] == "task:store_outputs" and event[2] == 1:
                         task_info[task_id]["store_outputs_start"] = event[0]
-                    if event[1] == "ray:task:store_outputs" and event[2] == 2:
+                    if event[1] == "task:store_outputs" and event[2] == 2:
                         task_info[task_id]["store_outputs_end"] = event[0]
                     if "worker_id" in event[3]:
                         task_info[task_id]["worker_id"] = event[3]["worker_id"]
@@ -700,6 +685,173 @@ class GlobalState(object):
             self._add_missing_timestamps(info)
 
         return task_info
+
+    def _profile_table(self, component_id):
+        """Get the profile events for a given component.
+
+        Args:
+            component_id: An identifier for a component.
+
+        Returns:
+            A list of the profile events for the specified process.
+        """
+        # TODO(rkn): This method should support limiting the number of log
+        # events and should also support returning a window of events.
+        message = self._execute_command(component_id, "RAY.TABLE_LOOKUP",
+                                        ray.gcs_utils.TablePrefix.PROFILE, "",
+                                        component_id.id())
+
+        if message is None:
+            return []
+
+        gcs_entries = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
+            message, 0)
+
+        profile_events = []
+        for i in range(gcs_entries.EntriesLength()):
+            profile_table_message = (
+                ray.gcs_utils.ProfileTableData.GetRootAsProfileTableData(
+                    gcs_entries.Entries(i), 0))
+
+            component_type = decode(profile_table_message.ComponentType())
+            component_id = binary_to_hex(profile_table_message.ComponentId())
+            node_ip_address = decode(profile_table_message.NodeIpAddress())
+
+            for j in range(profile_table_message.ProfileEventsLength()):
+                profile_event_message = profile_table_message.ProfileEvents(j)
+
+                profile_event = {
+                    "event_type": decode(profile_event_message.EventType()),
+                    "component_id": component_id,
+                    "node_ip_address": node_ip_address,
+                    "component_type": component_type,
+                    "start_time": profile_event_message.StartTime(),
+                    "end_time": profile_event_message.EndTime(),
+                    "extra_data": json.loads(
+                        decode(profile_event_message.ExtraData())),
+                }
+
+                profile_events.append(profile_event)
+
+        return profile_events
+
+    def profile_table(self):
+        if not self.use_raylet:
+            raise Exception("This method is only supported in the raylet "
+                            "code path.")
+
+        profile_table_keys = self._keys(
+            ray.gcs_utils.TablePrefix_PROFILE_string + "*")
+        component_identifiers_binary = [
+            key[len(ray.gcs_utils.TablePrefix_PROFILE_string):]
+            for key in profile_table_keys
+        ]
+
+        return {
+            binary_to_hex(component_id): self._profile_table(
+                binary_to_object_id(component_id))
+            for component_id in component_identifiers_binary
+        }
+
+    def chrome_tracing_dump(self,
+                            include_task_data=False,
+                            filename=None,
+                            open_browser=False):
+        """Return a list of profiling events that can viewed as a timeline.
+
+        To view this information as a timeline, simply dump it as a json file
+        using json.dumps, and then load go to chrome://tracing in the Chrome
+        web browser and load the dumped file. Make sure to enable "Flow events"
+        in the "View Options" menu.
+
+        Args:
+            include_task_data: If true, we will include more task metadata such
+                as the task specifications in the json.
+            filename: If a filename is provided, the timeline is dumped to that
+                file.
+            open_browser: If true, we will attempt to automatically open the
+                timeline visualization in Chrome.
+
+        Returns:
+            If filename is not provided, this returns a list of profiling
+                events. Each profile event is a dictionary.
+        """
+        # TODO(rkn): Support including the task specification data in the
+        # timeline.
+        # TODO(rkn): This should support viewing just a window of time or a
+        # limited number of events.
+
+        if include_task_data:
+            raise NotImplementedError("This flag has not been implented yet.")
+
+        if open_browser:
+            raise NotImplementedError("This flag has not been implented yet.")
+
+        profile_table = self.profile_table()
+        all_events = []
+
+        # Colors are specified at
+        # https://github.com/catapult-project/catapult/blob/master/tracing/tracing/base/color_scheme.html.  # noqa: E501
+        default_color_mapping = defaultdict(
+            lambda: "generic_work", {
+                "get_task": "cq_build_abandoned",
+                "task": "rail_response",
+                "task:deserialize_arguments": "rail_load",
+                "task:execute": "rail_animation",
+                "task:store_outputs": "rail_idle",
+                "wait_for_function": "detailed_memory_dump",
+                "ray.get": "good",
+                "ray.put": "terrible",
+                "ray.wait": "vsync_highlight_color",
+                "submit_task": "background_memory_dump",
+                "fetch_and_run_function": "detailed_memory_dump",
+                "register_remote_function": "detailed_memory_dump",
+            })
+
+        def seconds_to_microseconds(time_in_seconds):
+            time_in_microseconds = 10**6 * time_in_seconds
+            return time_in_microseconds
+
+        for component_id_hex, component_events in profile_table.items():
+            for event in component_events:
+                new_event = {
+                    # The category of the event.
+                    "cat": event["event_type"],
+                    # The string displayed on the event.
+                    "name": event["event_type"],
+                    # The identifier for the group of rows that the event
+                    # appears in.
+                    "pid": event["node_ip_address"],
+                    # The identifier for the row that the event appears in.
+                    "tid": event["component_type"] + ":" +
+                    event["component_id"],
+                    # The start time in microseconds.
+                    "ts": seconds_to_microseconds(event["start_time"]),
+                    # The duration in microseconds.
+                    "dur": seconds_to_microseconds(event["end_time"] -
+                                                   event["start_time"]),
+                    # What is this?
+                    "ph": "X",
+                    # This is the name of the color to display the box in.
+                    "cname": default_color_mapping[event["event_type"]],
+                    # The extra user-defined data.
+                    "args": event["extra_data"],
+                }
+
+                # Modify the json with the additional user-defined extra data.
+                # This can be used to add fields or override existing fields.
+                if "cname" in event["extra_data"]:
+                    new_event["cname"] = event["extra_data"]["cname"]
+                if "name" in event["extra_data"]:
+                    new_event["name"] = event["extra_data"]["name"]
+
+                all_events.append(new_event)
+
+        if filename is not None:
+            with open(filename, "w") as outfile:
+                json.dump(all_events, outfile)
+        else:
+            return all_events
 
     def dump_catapult_trace(self,
                             path,
@@ -1063,21 +1215,20 @@ class GlobalState(object):
             worker_id = binary_to_hex(worker_key[len("Workers:"):])
 
             workers_data[worker_id] = {
-                "local_scheduler_socket": (
-                    worker_info[b"local_scheduler_socket"].decode("ascii")),
-                "node_ip_address": (worker_info[b"node_ip_address"]
-                                    .decode("ascii")),
-                "plasma_manager_socket": (worker_info[b"plasma_manager_socket"]
-                                          .decode("ascii")),
-                "plasma_store_socket": (worker_info[b"plasma_store_socket"]
-                                        .decode("ascii"))
+                "local_scheduler_socket": (decode(
+                    worker_info[b"local_scheduler_socket"])),
+                "node_ip_address": decode(worker_info[b"node_ip_address"]),
+                "plasma_manager_socket": decode(
+                    worker_info[b"plasma_manager_socket"]),
+                "plasma_store_socket": decode(
+                    worker_info[b"plasma_store_socket"])
             }
             if b"stderr_file" in worker_info:
-                workers_data[worker_id]["stderr_file"] = (
-                    worker_info[b"stderr_file"].decode("ascii"))
+                workers_data[worker_id]["stderr_file"] = decode(
+                    worker_info[b"stderr_file"])
             if b"stdout_file" in worker_info:
-                workers_data[worker_id]["stdout_file"] = (
-                    worker_info[b"stdout_file"].decode("ascii"))
+                workers_data[worker_id]["stdout_file"] = decode(
+                    worker_info[b"stdout_file"])
         return workers_data
 
     def actors(self):
@@ -1086,7 +1237,7 @@ class GlobalState(object):
         for key in actor_keys:
             info = self.redis_client.hgetall(key)
             actor_id = key[len("Actor:"):]
-            assert len(actor_id) == 20
+            assert len(actor_id) == ray_constants.ID_SIZE
             actor_info[binary_to_hex(actor_id)] = {
                 "class_id": binary_to_hex(info[b"class_id"]),
                 "driver_id": binary_to_hex(info[b"driver_id"]),
@@ -1127,7 +1278,7 @@ class GlobalState(object):
             A dictionary mapping resource name to the total quantity of that
                 resource in the cluster.
         """
-        resources = defaultdict(lambda: 0)
+        resources = defaultdict(int)
         if not self.use_raylet:
             local_schedulers = self.local_schedulers()
 
@@ -1146,3 +1297,176 @@ class GlobalState(object):
                     resources[key] += value
 
         return dict(resources)
+
+    def available_resources(self):
+        """Get the current available cluster resources.
+
+        Note that this information can grow stale as tasks start and finish.
+
+        Returns:
+            A dictionary mapping resource name to the total quantity of that
+                resource in the cluster.
+        """
+        available_resources_by_id = {}
+
+        if not self.use_raylet:
+            subscribe_client = self.redis_client.pubsub()
+            subscribe_client.subscribe(
+                ray.gcs_utils.LOCAL_SCHEDULER_INFO_CHANNEL)
+
+            local_scheduler_ids = {
+                local_scheduler["DBClientID"]
+                for local_scheduler in self.local_schedulers()
+            }
+
+            while set(available_resources_by_id.keys()) != local_scheduler_ids:
+                raw_message = subscribe_client.get_message()
+                if raw_message is None:
+                    continue
+                data = raw_message["data"]
+                # Ignore subscribtion success message from Redis
+                # This is a long in python 2 and an int in python 3
+                if isinstance(data, numbers.Number):
+                    continue
+                message = (ray.gcs_utils.LocalSchedulerInfoMessage.
+                           GetRootAsLocalSchedulerInfoMessage(data, 0))
+                num_resources = message.DynamicResourcesLength()
+                dynamic_resources = {}
+                for i in range(num_resources):
+                    dyn = message.DynamicResources(i)
+                    resource_id = decode(dyn.Key())
+                    dynamic_resources[resource_id] = dyn.Value()
+
+                # Update available resources for this local scheduler
+                client_id = binary_to_hex(message.DbClientId())
+                available_resources_by_id[client_id] = dynamic_resources
+
+                # Update local schedulers in cluster
+                local_scheduler_ids = {
+                    local_scheduler["DBClientID"]
+                    for local_scheduler in self.local_schedulers()
+                }
+
+                # Remove disconnected local schedulers
+                for local_scheduler_id in available_resources_by_id.keys():
+                    if local_scheduler_id not in local_scheduler_ids:
+                        del available_resources_by_id[local_scheduler_id]
+        else:
+            # Assumes the number of Redis clients does not change
+            subscribe_clients = [
+                redis_client.pubsub(ignore_subscribe_messages=True)
+                for redis_client in self.redis_clients
+            ]
+            for subscribe_client in subscribe_clients:
+                subscribe_client.subscribe(
+                    ray.gcs_utils.XRAY_HEARTBEAT_CHANNEL)
+
+            client_ids = {client["ClientID"] for client in self.client_table()}
+
+            while set(available_resources_by_id.keys()) != client_ids:
+                for subscribe_client in subscribe_clients:
+                    # Parse client message
+                    raw_message = subscribe_client.get_message()
+                    if (raw_message is None or raw_message["channel"] !=
+                            ray.gcs_utils.XRAY_HEARTBEAT_CHANNEL):
+                        continue
+                    data = raw_message["data"]
+                    gcs_entries = (
+                        ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
+                            data, 0))
+                    heartbeat_data = gcs_entries.Entries(0)
+                    message = (ray.gcs_utils.HeartbeatTableData.
+                               GetRootAsHeartbeatTableData(heartbeat_data, 0))
+                    # Calculate available resources for this client
+                    num_resources = message.ResourcesAvailableLabelLength()
+                    dynamic_resources = {}
+                    for i in range(num_resources):
+                        resource_id = decode(
+                            message.ResourcesAvailableLabel(i))
+                        dynamic_resources[resource_id] = (
+                            message.ResourcesAvailableCapacity(i))
+
+                    # Update available resources for this client
+                    client_id = ray.utils.binary_to_hex(message.ClientId())
+                    available_resources_by_id[client_id] = dynamic_resources
+
+                # Update clients in cluster
+                client_ids = {
+                    client["ClientID"]
+                    for client in self.client_table()
+                }
+
+                # Remove disconnected clients
+                for client_id in available_resources_by_id.keys():
+                    if client_id not in client_ids:
+                        del available_resources_by_id[client_id]
+
+        # Calculate total available resources
+        total_available_resources = defaultdict(int)
+        for available_resources in available_resources_by_id.values():
+            for resource_id, num_available in available_resources.items():
+                total_available_resources[resource_id] += num_available
+
+        return dict(total_available_resources)
+
+    def _error_messages(self, job_id):
+        """Get the error messages for a specific job.
+
+        Args:
+            job_id: The ID of the job to get the errors for.
+
+        Returns:
+            A list of the error messages for this job.
+        """
+        message = self.redis_client.execute_command(
+            "RAY.TABLE_LOOKUP", ray.gcs_utils.TablePrefix.ERROR_INFO, "",
+            job_id.id())
+
+        # If there are no errors, return early.
+        if message is None:
+            return []
+
+        gcs_entries = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
+            message, 0)
+        error_messages = []
+        for i in range(gcs_entries.EntriesLength()):
+            error_data = ray.gcs_utils.ErrorTableData.GetRootAsErrorTableData(
+                gcs_entries.Entries(i), 0)
+            assert job_id.id() == error_data.JobId()
+            error_message = {
+                "type": decode(error_data.Type()),
+                "message": decode(error_data.ErrorMessage()),
+                "timestamp": error_data.Timestamp(),
+            }
+            error_messages.append(error_message)
+        return error_messages
+
+    def error_messages(self, job_id=None):
+        """Get the error messages for all jobs or a specific job.
+
+        Args:
+            job_id: The specific job to get the errors for. If this is None,
+                then this method retrieves the errors for all jobs.
+
+        Returns:
+            A dictionary mapping job ID to a list of the error messages for
+                that job.
+        """
+        if not self.use_raylet:
+            raise Exception("The error_messages method is only supported in "
+                            "the raylet code path.")
+
+        if job_id is not None:
+            return self._error_messages(job_id)
+
+        error_table_keys = self.redis_client.keys(
+            ray.gcs_utils.TablePrefix_ERROR_INFO_string + "*")
+        job_ids = [
+            key[len(ray.gcs_utils.TablePrefix_ERROR_INFO_string):]
+            for key in error_table_keys
+        ]
+
+        return {
+            binary_to_hex(job_id): self._error_messages(ray.ObjectID(job_id))
+            for job_id in job_ids
+        }

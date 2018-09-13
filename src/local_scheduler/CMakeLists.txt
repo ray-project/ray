@@ -2,24 +2,9 @@ cmake_minimum_required(VERSION 3.4)
 
 project(local_scheduler)
 
-# Recursively include common
-include(${CMAKE_CURRENT_LIST_DIR}/../common/cmake/Common.cmake)
-
-if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
-  # Include plasma
-  list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_LIST_DIR}/../../thirdparty/pkg/arrow/python/cmake_modules)
-  find_package(Arrow)
-  find_package(Plasma)
-  include_directories(SYSTEM ${PLASMA_INCLUDE_DIR})
-endif()
-
-
 add_definitions(-fPIC)
 
 if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
-  if(APPLE)
-    SET(CMAKE_SHARED_LIBRARY_SUFFIX ".so")
-  endif(APPLE)
   include_directories("${PYTHON_INCLUDE_DIRS}")
   include_directories("${NUMPY_INCLUDE_DIR}")
 endif()
@@ -37,7 +22,7 @@ if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
   include_directories("${CMAKE_CURRENT_LIST_DIR}/../plasma/")
 endif()
 
-include_directories("${ARROW_DIR}/cpp/src/")
+include_directories("${ARROW_INCLUDE_DIR}")
 include_directories("${CMAKE_CURRENT_LIST_DIR}/../common/format/")
 
 # Compile flatbuffers
@@ -57,11 +42,12 @@ add_custom_command(
 
 add_custom_target(gen_local_scheduler_fbs DEPENDS ${LOCAL_SCHEDULER_FBS_OUTPUT_FILES})
 
-add_dependencies(gen_local_scheduler_fbs flatbuffers_ep)
+add_dependencies(gen_local_scheduler_fbs arrow_ep)
 
 add_library(local_scheduler_client STATIC local_scheduler_client.cc)
 
-add_dependencies(local_scheduler_client gen_local_scheduler_fbs)
+# local_scheduler_shared.h includes ray/gcs/client.h which requires gen_gcs_fbs & gen_node_manager_fbs.
+add_dependencies(local_scheduler_client gen_local_scheduler_fbs ${COMMON_FBS_OUTPUT_FILES} gen_gcs_fbs gen_node_manager_fbs)
 
 add_executable(local_scheduler local_scheduler.cc local_scheduler_algorithm.cc)
 target_link_libraries(local_scheduler local_scheduler_client common ${HIREDIS_LIB} ${PLASMA_STATIC_LIB} ray_static ${ARROW_STATIC_LIB} -lpthread ${Boost_SYSTEM_LIBRARY})
@@ -75,7 +61,8 @@ macro(get_local_scheduler_library LANG VAR)
 endmacro()
 
 macro(set_local_scheduler_library LANG)
-  get_local_scheduler_library(${LANG} LOCAL_SCHEDULER_LIBRARY_LANG)
+  get_local_scheduler_library(${LANG} LOCAL_SCHEDULER_LIBRARY_${LANG})
+  set(LOCAL_SCHEDULER_LIBRARY_LANG ${LOCAL_SCHEDULER_LIBRARY_${LANG}})
   include_directories("${CMAKE_CURRENT_LIST_DIR}/../common/lib/${LANG}/")
 
   file(GLOB LOCAL_SCHEDULER_LIBRARY_${LANG}_SRC
@@ -85,6 +72,9 @@ macro(set_local_scheduler_library LANG)
     ${LOCAL_SCHEDULER_LIBRARY_${LANG}_SRC})
 
     if(APPLE)
+      if ("${LANG}" STREQUAL "python")
+        SET_TARGET_PROPERTIES(${LOCAL_SCHEDULER_LIBRARY_LANG} PROPERTIES SUFFIX .so)
+      endif()
       target_link_libraries(${LOCAL_SCHEDULER_LIBRARY_LANG} "-undefined dynamic_lookup" local_scheduler_client common ray_static ${PLASMA_STATIC_LIB} ${ARROW_STATIC_LIB} ${Boost_SYSTEM_LIBRARY})
     else(APPLE)
       target_link_libraries(${LOCAL_SCHEDULER_LIBRARY_LANG} local_scheduler_client common ray_static ${PLASMA_STATIC_LIB} ${ARROW_STATIC_LIB} ${Boost_SYSTEM_LIBRARY})

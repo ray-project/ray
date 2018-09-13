@@ -27,7 +27,7 @@ if [[ "$platform" == "linux" ]]; then
   # First test Python 2.7.
 
   # Install miniconda.
-  wget https://repo.continuum.io/miniconda/Miniconda2-latest-Linux-x86_64.sh -O miniconda2.sh
+  wget https://repo.continuum.io/miniconda/Miniconda2-4.5.4-Linux-x86_64.sh -O miniconda2.sh
   bash miniconda2.sh -b -p $HOME/miniconda2
 
   # Find the right wheel by grepping for the Python version.
@@ -42,7 +42,7 @@ if [[ "$platform" == "linux" ]]; then
   # Now test Python 3.6.
 
   # Install miniconda.
-  wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda3.sh
+  wget https://repo.continuum.io/miniconda/Miniconda3-4.5.4-Linux-x86_64.sh -O miniconda3.sh
   bash miniconda3.sh -b -p $HOME/miniconda3
 
   # Find the right wheel by grepping for the Python version.
@@ -56,7 +56,7 @@ if [[ "$platform" == "linux" ]]; then
 
   # Check that the other wheels are present.
   NUMBER_OF_WHEELS=$(ls -1q $ROOT_DIR/../.whl/*.whl | wc -l)
-  if [[ "$NUMBER_OF_WHEELS" != "5" ]]; then
+  if [[ "$NUMBER_OF_WHEELS" != "4" ]]; then
     echo "Wrong number of wheels found."
     ls -l $ROOT_DIR/../.whl/
     exit 1

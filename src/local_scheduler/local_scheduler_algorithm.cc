@@ -389,16 +389,11 @@ void finish_killed_task(LocalSchedulerState *state,
   if (state->db != NULL) {
     Task *task = Task_alloc(execution_spec, TaskStatus::DONE,
                             get_db_client_id(state->db));
-#if !RAY_USE_NEW_GCS
     // In most cases, task_table_update would be appropriate, however, it is
     // possible in some cases that the task has not yet been added to the task
     // table (e.g., if it is an actor task that is queued locally because the
     // actor has not been created yet).
     task_table_add_task(state->db, task, NULL, NULL, NULL);
-#else
-    RAY_CHECK_OK(TaskTableAdd(&state->gcs_client, task));
-    Task_free(task);
-#endif
   }
 }
 
@@ -437,7 +432,7 @@ void insert_actor_task_queue(LocalSchedulerState *state,
   if (entry.frontier_dependencies.count(task_handle_id) == 0) {
     RAY_CHECK(task_entry.ExecutionDependencies().size() == 1);
     entry.frontier_dependencies[task_handle_id] =
-        task_entry.ExecutionDependencies()[1];
+        task_entry.ExecutionDependencies()[0];
   }
 
   /* As a sanity check, the counter of the new task should be greater than the
@@ -507,22 +502,12 @@ void queue_actor_task(LocalSchedulerState *state,
     if (from_global_scheduler) {
       /* If the task is from the global scheduler, it's already been added to
        * the task table, so just update the entry. */
-#if !RAY_USE_NEW_GCS
       task_table_update(state->db, task, NULL, NULL, NULL);
-#else
-      RAY_CHECK_OK(TaskTableAdd(&state->gcs_client, task));
-      Task_free(task);
-#endif
     } else {
       /* Otherwise, this is the first time the task has been seen in the
        * system (unless it's a resubmission of a previous task), so add the
        * entry. */
-#if !RAY_USE_NEW_GCS
       task_table_add_task(state->db, task, NULL, NULL, NULL);
-#else
-      RAY_CHECK_OK(TaskTableAdd(&state->gcs_client, task));
-      Task_free(task);
-#endif
     }
   }
 
@@ -1002,7 +987,6 @@ std::list<TaskExecutionSpec>::iterator queue_task(
   if (state->db != NULL) {
     Task *task =
         Task_alloc(task_entry, TaskStatus::QUEUED, get_db_client_id(state->db));
-#if !RAY_USE_NEW_GCS
     if (from_global_scheduler) {
       /* If the task is from the global scheduler, it's already been added to
        * the task table, so just update the entry. */
@@ -1012,10 +996,6 @@ std::list<TaskExecutionSpec>::iterator queue_task(
        * (unless it's a resubmission of a previous task), so add the entry. */
       task_table_add_task(state->db, task, NULL, NULL, NULL);
     }
-#else
-    RAY_CHECK_OK(TaskTableAdd(&state->gcs_client, task));
-    Task_free(task);
-#endif
   }
 
   /* Copy the spec and add it to the task queue. The allocated spec will be
@@ -1204,7 +1184,6 @@ void give_task_to_local_scheduler(LocalSchedulerState *state,
   RAY_CHECK(state->config.global_scheduler_exists);
   Task *task =
       Task_alloc(execution_spec, TaskStatus::SCHEDULED, local_scheduler_id);
-#if !RAY_USE_NEW_GCS
   auto retryInfo = RetryInfo{
       .num_retries = 0,  // This value is unused.
       .timeout = 0,      // This value is unused.
@@ -1212,10 +1191,6 @@ void give_task_to_local_scheduler(LocalSchedulerState *state,
   };
 
   task_table_add_task(state->db, task, &retryInfo, NULL, state);
-#else
-  RAY_CHECK_OK(TaskTableAdd(&state->gcs_client, task));
-  Task_free(task);
-#endif
 }
 
 void give_task_to_global_scheduler_retry(UniqueID id,
@@ -1252,7 +1227,6 @@ void give_task_to_global_scheduler(LocalSchedulerState *state,
   RAY_CHECK(state->config.global_scheduler_exists);
   Task *task = Task_alloc(execution_spec, TaskStatus::WAITING,
                           get_db_client_id(state->db));
-#if !RAY_USE_NEW_GCS
   RAY_CHECK(state->db != NULL);
   auto retryInfo = RetryInfo{
       .num_retries = 0,  // This value is unused.
@@ -1260,10 +1234,6 @@ void give_task_to_global_scheduler(LocalSchedulerState *state,
       .fail_callback = give_task_to_global_scheduler_retry,
   };
   task_table_add_task(state->db, task, &retryInfo, NULL, state);
-#else
-  RAY_CHECK_OK(TaskTableAdd(&state->gcs_client, task));
-  Task_free(task);
-#endif
 }
 
 bool resource_constraints_satisfied(LocalSchedulerState *state,
@@ -1338,16 +1308,11 @@ void handle_actor_task_submitted(LocalSchedulerState *state,
     algorithm_state->cached_submitted_actor_tasks.push_back(
         std::move(task_entry));
 
-#if !RAY_USE_NEW_GCS
     // Even if the task can't be assigned to a worker yet, we should still write
     // it to the task table. TODO(rkn): There's no need to do this more than
     // once, and we could run into problems if we have very large numbers of
     // tasks in this cache.
     task_table_add_task(state->db, task, NULL, NULL, NULL);
-#else
-    RAY_CHECK_OK(TaskTableAdd(&state->gcs_client, task));
-    Task_free(task);
-#endif
 
     return;
   }
@@ -1528,6 +1493,10 @@ void handle_actor_worker_disconnect(LocalSchedulerState *state,
 
   /* Attempt to dispatch some tasks because some resources may have freed up. */
   dispatch_all_tasks(state, algorithm_state);
+
+  /* Start a worker to replace the removed actor's worker and replenish the
+   * worker pool. */
+  start_worker(state);
 }
 
 /* NOTE(swang): For tasks that saved a checkpoint, we should consider

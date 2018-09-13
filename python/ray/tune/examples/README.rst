@@ -1,3 +1,4 @@
-# Ray Tune Examples
+Tune Examples
+=============
 
-Code examples for various schedulers and Ray Tune features.
+Code examples for various schedulers and Tune features.

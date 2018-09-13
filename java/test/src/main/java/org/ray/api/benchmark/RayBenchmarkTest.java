@@ -10,8 +10,8 @@ import org.junit.Assert;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
-import org.ray.api.RayRemote;
-import org.ray.util.logger.RayLog;
+import org.ray.api.annotation.RayRemote;
+import org.ray.runtime.util.logger.RayLog;
 
 public abstract class RayBenchmarkTest<T> implements Serializable {
 

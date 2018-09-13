@@ -4,8 +4,18 @@ namespace ray {
 
 namespace raylet {
 
-TaskDependencyManager::TaskDependencyManager(ObjectManagerInterface &object_manager)
-    : object_manager_(object_manager) {}
+TaskDependencyManager::TaskDependencyManager(
+    ObjectManagerInterface &object_manager,
+    ReconstructionPolicyInterface &reconstruction_policy,
+    boost::asio::io_service &io_service, const ClientID &client_id,
+    int64_t initial_lease_period_ms,
+    gcs::TableInterface<TaskID, TaskLeaseData> &task_lease_table)
+    : object_manager_(object_manager),
+      reconstruction_policy_(reconstruction_policy),
+      io_service_(io_service),
+      client_id_(client_id),
+      initial_lease_period_ms_(initial_lease_period_ms),
+      task_lease_table_(task_lease_table) {}
 
 bool TaskDependencyManager::CheckObjectLocal(const ObjectID &object_id) const {
   return local_objects_.count(object_id) == 1;
@@ -44,6 +54,7 @@ void TaskDependencyManager::HandleRemoteDependencyRequired(const ObjectID &objec
       // If we haven't already, request the object manager to pull it from a
       // remote node.
       RAY_CHECK_OK(object_manager_.Pull(object_id));
+      reconstruction_policy_.ListenAndMaybeReconstruct(object_id);
     }
   }
 }
@@ -54,7 +65,8 @@ void TaskDependencyManager::HandleRemoteDependencyCanceled(const ObjectID &objec
   if (!required) {
     auto it = required_objects_.find(object_id);
     if (it != required_objects_.end()) {
-      RAY_CHECK_OK(object_manager_.Cancel(object_id));
+      object_manager_.CancelPull(object_id);
+      reconstruction_policy_.Cancel(object_id);
       required_objects_.erase(it);
     }
   }
@@ -94,7 +106,7 @@ std::vector<TaskID> TaskDependencyManager::HandleObjectLocal(
 
 std::vector<TaskID> TaskDependencyManager::HandleObjectMissing(
     const ray::ObjectID &object_id) {
-  // Add the object to the table of locally available objects.
+  // Remove the object from the table of locally available objects.
   auto erased = local_objects_.erase(object_id);
   RAY_CHECK(erased == 1);
 
@@ -112,6 +124,9 @@ std::vector<TaskID> TaskDependencyManager::HandleObjectMissing(
         // missing.
         if (task_entry.num_missing_dependencies == 0) {
           waiting_task_ids.push_back(dependent_task_id);
+          // During normal execution we should be able to include the check
+          // RAY_CHECK(pending_tasks_.count(dependent_task_id) == 1);
+          // However, this invariant will not hold during unit test execution.
         }
         task_entry.num_missing_dependencies++;
       }
@@ -159,6 +174,7 @@ void TaskDependencyManager::UnsubscribeDependencies(const TaskID &task_id) {
   // Remove the task from the table of subscribed tasks.
   auto it = task_dependencies_.find(task_id);
   RAY_CHECK(it != task_dependencies_.end());
+
   const TaskDependencies task_entry = std::move(it->second);
   task_dependencies_.erase(it);
 
@@ -192,27 +208,84 @@ void TaskDependencyManager::UnsubscribeDependencies(const TaskID &task_id) {
   }
 }
 
+std::vector<TaskID> TaskDependencyManager::GetPendingTasks() const {
+  std::vector<TaskID> keys;
+  keys.reserve(pending_tasks_.size());
+  for (const auto &id_task_pair : pending_tasks_) {
+    keys.push_back(id_task_pair.first);
+  }
+  return keys;
+}
+
 void TaskDependencyManager::TaskPending(const Task &task) {
   TaskID task_id = task.GetTaskSpecification().TaskId();
 
   // Record that the task is pending execution.
-  pending_tasks_.insert(task_id);
-  // Find any subscribed tasks that are dependent on objects created by the
-  // pending task.
-  auto remote_task_entry = required_tasks_.find(task_id);
-  if (remote_task_entry != required_tasks_.end()) {
-    for (const auto &object_entry : remote_task_entry->second) {
-      // This object created by the pending task will appear locally once the
-      // task completes execution. Cancel any in-progress operations to make
-      // the object local.
-      HandleRemoteDependencyCanceled(object_entry.first);
+  auto inserted =
+      pending_tasks_.emplace(task_id, PendingTask(initial_lease_period_ms_, io_service_));
+  if (inserted.second) {
+    // This is the first time we've heard that this task is pending.  Find any
+    // subscribed tasks that are dependent on objects created by the pending
+    // task.
+    auto remote_task_entry = required_tasks_.find(task_id);
+    if (remote_task_entry != required_tasks_.end()) {
+      for (const auto &object_entry : remote_task_entry->second) {
+        // This object created by the pending task will appear locally once the
+        // task completes execution. Cancel any in-progress operations to make
+        // the object local.
+        HandleRemoteDependencyCanceled(object_entry.first);
+      }
     }
+
+    // Acquire the lease for the task's execution in the global lease table.
+    AcquireTaskLease(task_id);
   }
+}
+
+void TaskDependencyManager::AcquireTaskLease(const TaskID &task_id) {
+  auto it = pending_tasks_.find(task_id);
+  int64_t now_ms = current_time_ms();
+  if (it == pending_tasks_.end()) {
+    return;
+  }
+
+  // Check that we were able to renew the task lease before the previous one
+  // expired.
+  if (now_ms > it->second.expires_at) {
+    RAY_LOG(WARNING) << "Task lease to renew has already expired by "
+                     << (it->second.expires_at - now_ms) << "ms";
+  }
+
+  auto task_lease_data = std::make_shared<TaskLeaseDataT>();
+  task_lease_data->node_manager_id = client_id_.hex();
+  task_lease_data->acquired_at = current_sys_time_ms();
+  task_lease_data->timeout = it->second.lease_period;
+  RAY_CHECK_OK(task_lease_table_.Add(DriverID::nil(), task_id, task_lease_data, nullptr));
+
+  auto period = boost::posix_time::milliseconds(it->second.lease_period / 2);
+  it->second.lease_timer->expires_from_now(period);
+  it->second.lease_timer->async_wait(
+      [this, task_id](const boost::system::error_code &error) {
+        if (!error) {
+          AcquireTaskLease(task_id);
+        } else {
+          // Check that the error was due to the timer being canceled.
+          RAY_CHECK(error == boost::asio::error::operation_aborted);
+        }
+      });
+
+  it->second.expires_at = now_ms + it->second.lease_period;
+  it->second.lease_period *= 2;
 }
 
 void TaskDependencyManager::TaskCanceled(const TaskID &task_id) {
   // Record that the task is no longer pending execution.
-  pending_tasks_.erase(task_id);
+  auto it = pending_tasks_.find(task_id);
+  if (it == pending_tasks_.end()) {
+    return;
+  }
+  pending_tasks_.erase(it);
+
   // Find any subscribed tasks that are dependent on objects created by the
   // canceled task.
   auto remote_task_entry = required_tasks_.find(task_id);
@@ -221,6 +294,33 @@ void TaskDependencyManager::TaskCanceled(const TaskID &task_id) {
       // This object created by the task will no longer appear locally since
       // the task is canceled.  Try to make the object local if necessary.
       HandleRemoteDependencyRequired(object_entry.first);
+    }
+  }
+}
+
+void TaskDependencyManager::RemoveTasksAndRelatedObjects(
+    const std::unordered_set<TaskID> &task_ids) {
+  if (task_ids.empty()) {
+    return;
+  }
+
+  for (auto it = task_ids.begin(); it != task_ids.end(); it++) {
+    task_dependencies_.erase(*it);
+    required_tasks_.erase(*it);
+    pending_tasks_.erase(*it);
+  }
+
+  // TODO: the size of required_objects_ could be large, consider to add
+  // an index if this turns out to be a perf problem.
+  for (auto it = required_objects_.begin(); it != required_objects_.end();) {
+    const auto object_id = *it;
+    TaskID creating_task_id = ComputeTaskId(object_id);
+    if (task_ids.find(creating_task_id) != task_ids.end()) {
+      object_manager_.CancelPull(object_id);
+      reconstruction_policy_.Cancel(object_id);
+      it = required_objects_.erase(it);
+    } else {
+      it++;
     }
   }
 }

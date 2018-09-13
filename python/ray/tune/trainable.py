@@ -14,9 +14,9 @@ import time
 import uuid
 
 import ray
-from ray.tune import TuneError
 from ray.tune.logger import UnifiedLogger
-from ray.tune.result import DEFAULT_RESULTS_DIR
+from ray.tune.result import (DEFAULT_RESULTS_DIR, TIME_THIS_ITER_S,
+                             TIMESTEPS_THIS_ITER, DONE, TIMESTEPS_TOTAL)
 from ray.tune.trial import Resources
 
 
@@ -36,42 +36,29 @@ class Trainable(object):
 
     Note that, if you don't require checkpoint/restore functionality, then
     instead of implementing this class you can also get away with supplying
-    just a `my_train(config, reporter)` function and calling:
-
-    ``register_trainable("my_func", train)``
-
-    to register it for use with Tune. The function will be automatically
-    converted to this interface (sans checkpoint functionality).
-
-    Attributes:
-        config (obj): The hyperparam configuration for this trial.
-        logdir (str): Directory in which training outputs should be placed.
-        registry (obj): Tune object registry which holds user-registered
-            classes and objects by name.
+    just a ``my_train(config, reporter)`` function to the config.
+    The function will be automatically converted to this interface
+    (sans checkpoint functionality).
     """
 
-    def __init__(self, config=None, registry=None, logger_creator=None):
+    def __init__(self, config=None, logger_creator=None):
         """Initialize an Trainable.
+
+        Sets up logging and points ``self.logdir`` to a directory in which
+        training outputs should be placed.
 
         Subclasses should prefer defining ``_setup()`` instead of overriding
         ``__init__()`` directly.
 
         Args:
-            config (dict): Trainable-specific configuration data.
-            registry (obj): Object registry for user-defined envs, models, etc.
-                If unspecified, the default registry will be used.
+            config (dict): Trainable-specific configuration data. By default
+                will be saved as ``self.config``.
             logger_creator (func): Function that creates a ray.tune.Logger
                 object. If unspecified, a default logger is created.
         """
 
-        if registry is None:
-            from ray.tune.registry import get_registry
-            registry = get_registry()
-
-        self._initialize_ok = False
         self._experiment_id = uuid.uuid4().hex
         self.config = config or {}
-        self.registry = registry
 
         if logger_creator:
             self._result_logger = logger_creator(self.config)
@@ -86,9 +73,12 @@ class Trainable(object):
 
         self._iteration = 0
         self._time_total = 0.0
-        self._timesteps_total = 0
+        self._timesteps_total = None
+        self._time_since_restore = 0.0
+        self._timesteps_since_restore = 0
+        self._iterations_since_restore = 0
+        self._restored = False
         self._setup()
-        self._initialize_ok = True
         self._local_ip = ray.services.get_node_ip_address()
 
     @classmethod
@@ -111,52 +101,86 @@ class Trainable(object):
         """Runs one logical iteration of training.
 
         Subclasses should override ``_train()`` instead to return results.
-        This method auto-fills many fields, so only ``timesteps_this_iter``
-        is required to be present.
+        This class automatically fills the following fields in the result:
+
+            `done` (bool): training is terminated. Filled only if not provided.
+
+            `time_this_iter_s` (float): Time in seconds this iteration
+            took to run. This may be overriden in order to override the
+            system-computed time difference.
+
+            `time_total_s` (float): Accumulated time in seconds for this
+            entire experiment.
+
+            `experiment_id` (str): Unique string identifier
+            for this experiment. This id is preserved
+            across checkpoint / restore calls.
+
+            `training_iteration` (int): The index of this
+            training iteration, e.g. call to train().
+
+            `pid` (str): The pid of the training process.
+
+            `date` (str): A formatted date of when the result was processed.
+
+            `timestamp` (str): A UNIX timestamp of when the result
+            was processed.
+
+            `hostname` (str): Hostname of the machine hosting the training
+            process.
+
+            `node_ip` (str): Node ip of the machine hosting the training
+            process.
 
         Returns:
-            A TrainingResult that describes training progress.
+            A dict that describes training progress.
         """
-
-        if not self._initialize_ok:
-            raise ValueError(
-                "Trainable initialization failed, see previous errors")
 
         start = time.time()
         result = self._train()
+        result = result.copy()
+
         self._iteration += 1
-        if result.time_this_iter_s is not None:
-            time_this_iter = result.time_this_iter_s
+        self._iterations_since_restore += 1
+
+        if result.get(TIME_THIS_ITER_S) is not None:
+            time_this_iter = result[TIME_THIS_ITER_S]
         else:
             time_this_iter = time.time() - start
-
-        if result.timesteps_this_iter is None:
-            raise TuneError("Must specify timesteps_this_iter in result",
-                            result)
-
         self._time_total += time_this_iter
-        self._timesteps_total += result.timesteps_this_iter
+        self._time_since_restore += time_this_iter
 
-        # Include the negative loss to use as a stopping condition
-        if result.mean_loss is not None:
-            neg_loss = -result.mean_loss
-        else:
-            neg_loss = result.neg_mean_loss
+        result.setdefault(DONE, False)
+
+        # self._timesteps_total should only be tracked if increments provided
+        if result.get(TIMESTEPS_THIS_ITER):
+            if self._timesteps_total is None:
+                self._timesteps_total = 0
+            self._timesteps_total += result[TIMESTEPS_THIS_ITER]
+            self._timesteps_since_restore += result[TIMESTEPS_THIS_ITER]
+
+        # self._timesteps_total should not override user-provided total
+        result.setdefault(TIMESTEPS_TOTAL, self._timesteps_total)
+
+        # Provides auto-filled neg_mean_loss for avoiding regressions
+        if result.get("mean_loss"):
+            result.setdefault("neg_mean_loss", -result["mean_loss"])
 
         now = datetime.today()
-        result = result._replace(
+        result.update(
             experiment_id=self._experiment_id,
             date=now.strftime("%Y-%m-%d_%H-%M-%S"),
             timestamp=int(time.mktime(now.timetuple())),
             training_iteration=self._iteration,
-            timesteps_total=self._timesteps_total,
             time_this_iter_s=time_this_iter,
             time_total_s=self._time_total,
-            neg_mean_loss=neg_loss,
             pid=os.getpid(),
             hostname=os.uname()[1],
             node_ip=self._local_ip,
-            config=self.config)
+            config=self.config,
+            time_since_restore=self._time_since_restore,
+            timesteps_since_restore=self._timesteps_since_restore,
+            iterations_since_restore=self._iterations_since_restore)
 
         self._result_logger.on_result(result)
 
@@ -228,6 +252,7 @@ class Trainable(object):
         self._iteration = metadata[1]
         self._timesteps_total = metadata[2]
         self._time_total = metadata[3]
+        self._restored = True
 
     def restore_from_object(self, obj):
         """Restores training state from a checkpoint object.
@@ -248,30 +273,62 @@ class Trainable(object):
         self.restore(checkpoint_path)
         shutil.rmtree(tmpdir)
 
+    def reset_config(self, new_config):
+        """Resets configuration without restarting the trial.
+
+        Args:
+            new_config (dir): Updated hyperparameter configuration
+                for the trainable.
+
+        Returns:
+            True if configuration reset successfully else False.
+        """
+        return False
+
     def stop(self):
         """Releases all resources used by this trainable."""
 
-        if self._initialize_ok:
-            self._result_logger.close()
-            self._stop()
+        self._result_logger.close()
+        self._stop()
 
     def _train(self):
-        """Subclasses should override this to implement train()."""
+        """Subclasses should override this to implement train().
+
+        Returns:
+            A dict that describes training progress."""
 
         raise NotImplementedError
 
     def _save(self, checkpoint_dir):
-        """Subclasses should override this to implement save()."""
+        """Subclasses should override this to implement save().
+
+        Args:
+            checkpoint_dir (str): The directory where the checkpoint
+                can be stored.
+
+        Returns:
+            Checkpoint path that may be passed to restore(). Typically
+                would default to `checkpoint_dir`.
+        """
 
         raise NotImplementedError
 
     def _restore(self, checkpoint_path):
-        """Subclasses should override this to implement restore()."""
+        """Subclasses should override this to implement restore().
+
+        Args:
+            checkpoint_path (str): The directory where the checkpoint
+                is stored.
+        """
 
         raise NotImplementedError
 
     def _setup(self):
-        """Subclasses should override this for custom initialization."""
+        """Subclasses should override this for custom initialization.
+
+        Subclasses can access the hyperparameter configuration via
+        ``self.config``.
+        """
         pass
 
     def _stop(self):

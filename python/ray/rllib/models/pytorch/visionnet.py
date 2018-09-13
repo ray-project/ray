@@ -11,7 +11,7 @@ from ray.rllib.models.pytorch.misc import normc_initializer, valid_padding
 class VisionNetwork(Model):
     """Generic vision network"""
 
-    def _init(self, inputs, num_outputs, options):
+    def _build_layers(self, inputs, num_outputs, options):
         """TF visionnet in PyTorch.
 
         Params:
@@ -21,7 +21,7 @@ class VisionNetwork(Model):
         filters = options.get("conv_filters", [
             [16, [8, 8], 4],
             [32, [4, 4], 2],
-            [512, [10, 10], 1],
+            [512, [11, 11], 1],
         ])
         layers = []
         in_channels, in_size = inputs[0], inputs[1:]
@@ -65,5 +65,5 @@ class VisionNetwork(Model):
             value (PyTorch): value function for each state"""
         res = self.hidden_layers(obs)
         logits = self.logits(res)
-        value = self.value_branch(res)
+        value = self.value_branch(res).squeeze(1)
         return logits, value

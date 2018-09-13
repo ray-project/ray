@@ -37,7 +37,7 @@ Status SendCreateRequest(int sock,
   auto message = CreatePlasmaCreateRequest(
       fbb, fbb.CreateString(object_id.binary()), data_size, metadata_size);
   fbb.Finish(message);
-  return WriteMessage(sock, MessageType_PlasmaCreateRequest, fbb.GetSize(),
+  return WriteMessage(sock, MessageType::PlasmaCreateRequest, fbb.GetSize(),
                       fbb.GetBufferPointer());
 }
 
@@ -65,7 +65,7 @@ Status SendCreateReply(int sock,
       CreatePlasmaCreateReply(fbb, fbb.CreateString(object_id.binary()),
                               &plasma_object, (PlasmaError) error_code);
   fbb.Finish(message);
-  return WriteMessage(sock, MessageType_PlasmaCreateReply, fbb.GetSize(),
+  return WriteMessage(sock, MessageType::PlasmaCreateReply, fbb.GetSize(),
                       fbb.GetBufferPointer());
 }
 
@@ -92,7 +92,7 @@ Status SendSealRequest(int sock, ObjectID object_id, unsigned char *digest) {
   auto message = CreatePlasmaSealRequest(
       fbb, fbb.CreateString(object_id.binary()), digest_string);
   fbb.Finish(message);
-  return WriteMessage(sock, MessageType_PlasmaSealRequest, fbb.GetSize(),
+  return WriteMessage(sock, MessageType::PlasmaSealRequest, fbb.GetSize(),
                       fbb.GetBufferPointer());
 }
 
@@ -112,7 +112,7 @@ Status SendSealReply(int sock, ObjectID object_id, int error) {
   auto message = CreatePlasmaSealReply(
       fbb, fbb.CreateString(object_id.binary()), (PlasmaError) error);
   fbb.Finish(message);
-  return WriteMessage(sock, MessageType_PlasmaSealReply, fbb.GetSize(),
+  return WriteMessage(sock, MessageType::PlasmaSealReply, fbb.GetSize(),
                       fbb.GetBufferPointer());
 }
 
@@ -130,7 +130,7 @@ Status SendReleaseRequest(int sock, ObjectID object_id) {
   auto message =
       CreatePlasmaReleaseRequest(fbb, fbb.CreateString(object_id.binary()));
   fbb.Finish(message);
-  return WriteMessage(sock, MessageType_PlasmaReleaseRequest, fbb.GetSize(),
+  return WriteMessage(sock, MessageType::PlasmaReleaseRequest, fbb.GetSize(),
                       fbb.GetBufferPointer());
 }
 
@@ -146,7 +146,7 @@ Status SendReleaseReply(int sock, ObjectID object_id, int error) {
   auto message = CreatePlasmaReleaseReply(
       fbb, fbb.CreateString(object_id.binary()), (PlasmaError) error);
   fbb.Finish(message);
-  return WriteMessage(sock, MessageType_PlasmaReleaseReply, fbb.GetSize(),
+  return WriteMessage(sock, MessageType::PlasmaReleaseReply, fbb.GetSize(),
                       fbb.GetBufferPointer());
 }
 
@@ -164,7 +164,7 @@ Status SendDeleteRequest(int sock, ObjectID object_id) {
   auto message =
       CreatePlasmaDeleteRequest(fbb, fbb.CreateString(object_id.binary()));
   fbb.Finish(message);
-  return WriteMessage(sock, MessageType_PlasmaDeleteRequest, fbb.GetSize(),
+  return WriteMessage(sock, MessageType::PlasmaDeleteRequest, fbb.GetSize(),
                       fbb.GetBufferPointer());
 }
 
@@ -180,7 +180,7 @@ Status SendDeleteReply(int sock, ObjectID object_id, int error) {
   auto message = CreatePlasmaDeleteReply(
       fbb, fbb.CreateString(object_id.binary()), (PlasmaError) error);
   fbb.Finish(message);
-  return WriteMessage(sock, MessageType_PlasmaDeleteReply, fbb.GetSize(),
+  return WriteMessage(sock, MessageType::PlasmaDeleteReply, fbb.GetSize(),
                       fbb.GetBufferPointer());
 }
 
@@ -198,7 +198,7 @@ Status SendStatusRequest(int sock, ObjectID object_ids[], int64_t num_objects) {
   auto message = CreatePlasmaStatusRequest(
       fbb, to_flatbuffer(fbb, object_ids, num_objects));
   fbb.Finish(message);
-  return WriteMessage(sock, MessageType_PlasmaStatusRequest, fbb.GetSize(),
+  return WriteMessage(sock, MessageType::PlasmaStatusRequest, fbb.GetSize(),
                       fbb.GetBufferPointer());
 }
 
@@ -215,14 +215,14 @@ Status ReadStatusRequest(uint8_t *data,
 
 Status SendStatusReply(int sock,
                        ObjectID object_ids[],
-                       int object_status[],
+                       ObjectStatus object_status[],
                        int64_t num_objects) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message =
       CreatePlasmaStatusReply(fbb, to_flatbuffer(fbb, object_ids, num_objects),
                               fbb.CreateVector(object_status, num_objects));
   fbb.Finish(message);
-  return WriteMessage(sock, MessageType_PlasmaStatusReply, fbb.GetSize(),
+  return WriteMessage(sock, MessageType::PlasmaStatusReply, fbb.GetSize(),
                       fbb.GetBufferPointer());
 }
 
@@ -254,7 +254,7 @@ Status SendContainsRequest(int sock, ObjectID object_id) {
   auto message =
       CreatePlasmaContainsRequest(fbb, fbb.CreateString(object_id.binary()));
   fbb.Finish(message);
-  return WriteMessage(sock, MessageType_PlasmaContainsRequest, fbb.GetSize(),
+  return WriteMessage(sock, MessageType::PlasmaContainsRequest, fbb.GetSize(),
                       fbb.GetBufferPointer());
 }
 
@@ -270,7 +270,7 @@ Status SendContainsReply(int sock, ObjectID object_id, int has_object) {
   auto message = CreatePlasmaContainsReply(
       fbb, fbb.CreateString(object_id.binary()), has_object);
   fbb.Finish(message);
-  return WriteMessage(sock, MessageType_PlasmaContainsReply, fbb.GetSize(),
+  return WriteMessage(sock, MessageType::PlasmaContainsReply, fbb.GetSize(),
                       fbb.GetBufferPointer());
 }
 
@@ -288,7 +288,7 @@ Status SendConnectRequest(int sock) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = CreatePlasmaConnectRequest(fbb);
   fbb.Finish(message);
-  return WriteMessage(sock, MessageType_PlasmaConnectRequest, fbb.GetSize(),
+  return WriteMessage(sock, MessageType::PlasmaConnectRequest, fbb.GetSize(),
                       fbb.GetBufferPointer());
 }
 
@@ -300,7 +300,7 @@ Status SendConnectReply(int sock, int64_t memory_capacity) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = CreatePlasmaConnectReply(fbb, memory_capacity);
   fbb.Finish(message);
-  return WriteMessage(sock, MessageType_PlasmaConnectReply, fbb.GetSize(),
+  return WriteMessage(sock, MessageType::PlasmaConnectReply, fbb.GetSize(),
                       fbb.GetBufferPointer());
 }
 
@@ -317,7 +317,7 @@ Status SendEvictRequest(int sock, int64_t num_bytes) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = CreatePlasmaEvictRequest(fbb, num_bytes);
   fbb.Finish(message);
-  return WriteMessage(sock, MessageType_PlasmaEvictRequest, fbb.GetSize(),
+  return WriteMessage(sock, MessageType::PlasmaEvictRequest, fbb.GetSize(),
                       fbb.GetBufferPointer());
 }
 
@@ -332,7 +332,7 @@ Status SendEvictReply(int sock, int64_t num_bytes) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = CreatePlasmaEvictReply(fbb, num_bytes);
   fbb.Finish(message);
-  return WriteMessage(sock, MessageType_PlasmaEvictReply, fbb.GetSize(),
+  return WriteMessage(sock, MessageType::PlasmaEvictReply, fbb.GetSize(),
                       fbb.GetBufferPointer());
 }
 
@@ -353,7 +353,7 @@ Status SendGetRequest(int sock,
   auto message = CreatePlasmaGetRequest(
       fbb, to_flatbuffer(fbb, object_ids, num_objects), timeout_ms);
   fbb.Finish(message);
-  return WriteMessage(sock, MessageType_PlasmaGetRequest, fbb.GetSize(),
+  return WriteMessage(sock, MessageType::PlasmaGetRequest, fbb.GetSize(),
                       fbb.GetBufferPointer());
 }
 
@@ -387,7 +387,7 @@ Status SendGetReply(int sock,
       fbb, to_flatbuffer(fbb, object_ids, num_objects),
       fbb.CreateVectorOfStructs(objects.data(), num_objects));
   fbb.Finish(message);
-  return WriteMessage(sock, MessageType_PlasmaGetReply, fbb.GetSize(),
+  return WriteMessage(sock, MessageType::PlasmaGetReply, fbb.GetSize(),
                       fbb.GetBufferPointer());
 }
 
@@ -419,7 +419,7 @@ Status SendFetchRequest(int sock, ObjectID object_ids[], int64_t num_objects) {
   auto message = CreatePlasmaFetchRequest(
       fbb, to_flatbuffer(fbb, object_ids, num_objects));
   fbb.Finish(message);
-  return WriteMessage(sock, MessageType_PlasmaFetchRequest, fbb.GetSize(),
+  return WriteMessage(sock, MessageType::PlasmaFetchRequest, fbb.GetSize(),
                       fbb.GetBufferPointer());
 }
 
@@ -453,7 +453,7 @@ Status SendWaitRequest(int sock,
       CreatePlasmaWaitRequest(fbb, fbb.CreateVector(object_request_specs),
                               num_ready_objects, timeout_ms);
   fbb.Finish(message);
-  return WriteMessage(sock, MessageType_PlasmaWaitRequest, fbb.GetSize(),
+  return WriteMessage(sock, MessageType::PlasmaWaitRequest, fbb.GetSize(),
                       fbb.GetBufferPointer());
 }
 
@@ -494,7 +494,7 @@ Status SendWaitReply(int sock,
       fbb, fbb.CreateVector(object_replies.data(), num_ready_objects),
       num_ready_objects);
   fbb.Finish(message);
-  return WriteMessage(sock, MessageType_PlasmaWaitReply, fbb.GetSize(),
+  return WriteMessage(sock, MessageType::PlasmaWaitReply, fbb.GetSize(),
                       fbb.GetBufferPointer());
 }
 
@@ -519,7 +519,7 @@ Status SendSubscribeRequest(int sock) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = CreatePlasmaSubscribeRequest(fbb);
   fbb.Finish(message);
-  return WriteMessage(sock, MessageType_PlasmaSubscribeRequest, fbb.GetSize(),
+  return WriteMessage(sock, MessageType::PlasmaSubscribeRequest, fbb.GetSize(),
                       fbb.GetBufferPointer());
 }
 
@@ -534,7 +534,7 @@ Status SendDataRequest(int sock,
   auto message = CreatePlasmaDataRequest(
       fbb, fbb.CreateString(object_id.binary()), addr, port);
   fbb.Finish(message);
-  return WriteMessage(sock, MessageType_PlasmaDataRequest, fbb.GetSize(),
+  return WriteMessage(sock, MessageType::PlasmaDataRequest, fbb.GetSize(),
                       fbb.GetBufferPointer());
 }
 
@@ -559,7 +559,7 @@ Status SendDataReply(int sock,
   auto message = CreatePlasmaDataReply(
       fbb, fbb.CreateString(object_id.binary()), object_size, metadata_size);
   fbb.Finish(message);
-  return WriteMessage(sock, MessageType_PlasmaDataReply, fbb.GetSize(),
+  return WriteMessage(sock, MessageType::PlasmaDataReply, fbb.GetSize(),
                       fbb.GetBufferPointer());
 }
 

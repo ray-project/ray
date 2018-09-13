@@ -8,19 +8,8 @@ import sys
 import time
 import unittest
 
+import ray.gcs_utils
 import ray.services
-
-# Import flatbuffer bindings.
-from ray.core.generated.SubscribeToNotificationsReply \
-    import SubscribeToNotificationsReply
-from ray.core.generated.TaskReply import TaskReply
-from ray.core.generated.ResultTableReply import ResultTableReply
-
-OBJECT_INFO_PREFIX = "OI:"
-OBJECT_LOCATION_PREFIX = "OL:"
-OBJECT_SUBSCRIBE_PREFIX = "OS:"
-TASK_PREFIX = "TT:"
-OBJECT_CHANNEL_PREFIX = "OC:"
 
 
 def integerToAsciiHex(num, numbytes):
@@ -194,7 +183,7 @@ class TestGlobalStateStore(unittest.TestCase):
         # notifications.
         def check_object_notification(notification_message, object_id,
                                       object_size, manager_ids):
-            notification_object = (SubscribeToNotificationsReply.
+            notification_object = (ray.gcs_utils.SubscribeToNotificationsReply.
                                    GetRootAsSubscribeToNotificationsReply(
                                        notification_message, 0))
             self.assertEqual(notification_object.ObjectId(), object_id)
@@ -208,7 +197,8 @@ class TestGlobalStateStore(unittest.TestCase):
         data_size = 0xf1f0
         p = self.redis.pubsub()
         # Subscribe to an object ID.
-        p.psubscribe("{}manager_id1".format(OBJECT_CHANNEL_PREFIX))
+        p.psubscribe("{}manager_id1".format(
+            ray.gcs_utils.OBJECT_CHANNEL_PREFIX))
         self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id1",
                                    data_size, "hash1", "manager_id2")
         # Receive the acknowledgement message.
@@ -252,8 +242,9 @@ class TestGlobalStateStore(unittest.TestCase):
 
     def testResultTableAddAndLookup(self):
         def check_result_table_entry(message, task_id, is_put):
-            result_table_reply = ResultTableReply.GetRootAsResultTableReply(
-                message, 0)
+            result_table_reply = (
+                ray.gcs_utils.ResultTableReply.GetRootAsResultTableReply(
+                    message, 0))
             self.assertEqual(result_table_reply.TaskId(), task_id)
             self.assertEqual(result_table_reply.IsPut(), is_put)
 
@@ -315,12 +306,13 @@ class TestGlobalStateStore(unittest.TestCase):
         # make sure somebody will get a notification (checked in the redis
         # module)
         p = self.redis.pubsub()
-        p.psubscribe("{prefix}*:*".format(prefix=TASK_PREFIX))
+        p.psubscribe("{prefix}*:*".format(prefix=ray.gcs_utils.TASK_PREFIX))
 
         def check_task_reply(message, task_args, updated=False):
             (task_status, local_scheduler_id, execution_dependencies_string,
              spillback_count, task_spec) = task_args
-            task_reply_object = TaskReply.GetRootAsTaskReply(message, 0)
+            task_reply_object = ray.gcs_utils.TaskReply.GetRootAsTaskReply(
+                message, 0)
             self.assertEqual(task_reply_object.State(), task_status)
             self.assertEqual(task_reply_object.LocalSchedulerId(),
                              local_scheduler_id)
@@ -409,7 +401,8 @@ class TestGlobalStateStore(unittest.TestCase):
         # Receive the data.
         message = get_next_message(p)["data"]
         # Check that the notification object is correct.
-        notification_object = TaskReply.GetRootAsTaskReply(message, 0)
+        notification_object = ray.gcs_utils.TaskReply.GetRootAsTaskReply(
+            message, 0)
         self.assertEqual(notification_object.TaskId(), task_args[0])
         self.assertEqual(notification_object.State(), task_args[1])
         self.assertEqual(notification_object.LocalSchedulerId(), task_args[2])
@@ -422,32 +415,34 @@ class TestGlobalStateStore(unittest.TestCase):
         local_scheduler_id = "local_scheduler_id"
         # Subscribe to the task table.
         p = self.redis.pubsub()
-        p.psubscribe("{prefix}*:*".format(prefix=TASK_PREFIX))
+        p.psubscribe("{prefix}*:*".format(prefix=ray.gcs_utils.TASK_PREFIX))
         # Receive acknowledgment.
         self.assertEqual(get_next_message(p)["data"], 1)
         self.check_task_subscription(p, scheduling_state, local_scheduler_id)
         # unsubscribe to make sure there is only one subscriber at a given time
-        p.punsubscribe("{prefix}*:*".format(prefix=TASK_PREFIX))
+        p.punsubscribe("{prefix}*:*".format(prefix=ray.gcs_utils.TASK_PREFIX))
         # Receive acknowledgment.
         self.assertEqual(get_next_message(p)["data"], 0)
 
         p.psubscribe("{prefix}*:{state}".format(
-            prefix=TASK_PREFIX, state=scheduling_state))
+            prefix=ray.gcs_utils.TASK_PREFIX, state=scheduling_state))
         # Receive acknowledgment.
         self.assertEqual(get_next_message(p)["data"], 1)
         self.check_task_subscription(p, scheduling_state, local_scheduler_id)
         p.punsubscribe("{prefix}*:{state}".format(
-            prefix=TASK_PREFIX, state=scheduling_state))
+            prefix=ray.gcs_utils.TASK_PREFIX, state=scheduling_state))
         # Receive acknowledgment.
         self.assertEqual(get_next_message(p)["data"], 0)
 
         p.psubscribe("{prefix}{local_scheduler_id}:*".format(
-            prefix=TASK_PREFIX, local_scheduler_id=local_scheduler_id))
+            prefix=ray.gcs_utils.TASK_PREFIX,
+            local_scheduler_id=local_scheduler_id))
         # Receive acknowledgment.
         self.assertEqual(get_next_message(p)["data"], 1)
         self.check_task_subscription(p, scheduling_state, local_scheduler_id)
         p.punsubscribe("{prefix}{local_scheduler_id}:*".format(
-            prefix=TASK_PREFIX, local_scheduler_id=local_scheduler_id))
+            prefix=ray.gcs_utils.TASK_PREFIX,
+            local_scheduler_id=local_scheduler_id))
         # Receive acknowledgment.
         self.assertEqual(get_next_message(p)["data"], 0)
 

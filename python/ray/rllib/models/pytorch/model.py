@@ -8,9 +8,9 @@ import torch.nn as nn
 class Model(nn.Module):
     def __init__(self, obs_space, ac_space, options):
         super(Model, self).__init__()
-        self._init(obs_space, ac_space, options)
+        self._build_layers(obs_space, ac_space, options)
 
-    def _init(self, inputs, num_outputs, options):
+    def _build_layers(self, inputs, num_outputs, options):
         raise NotImplementedError
 
     def forward(self, obs):

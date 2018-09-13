@@ -1,9 +1,13 @@
-from __future__ import absolute_import, division, print_function
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
 
 import os
+import pytest
 import re
 import string
 import sys
+import threading
 import time
 import unittest
 from collections import defaultdict, namedtuple, OrderedDict
@@ -11,11 +15,8 @@ from collections import defaultdict, namedtuple, OrderedDict
 import numpy as np
 
 import ray
-import ray.test.test_functions as test_functions
+import ray.ray_constants as ray_constants
 import ray.test.test_utils
-
-if sys.version_info >= (3, 0):
-    from importlib import reload
 
 
 def assert_equal(obj1, obj2):
@@ -193,103 +194,105 @@ DICT_OBJECTS = (
 RAY_TEST_OBJECTS = BASE_OBJECTS + LIST_OBJECTS + TUPLE_OBJECTS + DICT_OBJECTS
 
 
-class SerializationTest(unittest.TestCase):
-    def tearDown(self):
-        ray.worker.cleanup()
+@pytest.fixture
+def ray_start():
+    # Start the Ray processes.
+    ray.init(num_cpus=1)
+    yield None
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
 
-    def testRecursiveObjects(self):
-        ray.init(num_workers=0)
 
-        class ClassA(object):
+def test_passing_arguments_by_value(ray_start):
+    @ray.remote
+    def f(x):
+        return x
+
+    # Check that we can pass arguments by value to remote functions and
+    # that they are uncorrupted.
+    for obj in RAY_TEST_OBJECTS:
+        assert_equal(obj, ray.get(f.remote(obj)))
+
+
+def test_ray_recursive_objects(ray_start):
+    class ClassA(object):
+        pass
+
+    # Make a list that contains itself.
+    lst = []
+    lst.append(lst)
+    # Make an object that contains itself as a field.
+    a1 = ClassA()
+    a1.field = a1
+    # Make two objects that contain each other as fields.
+    a2 = ClassA()
+    a3 = ClassA()
+    a2.field = a3
+    a3.field = a2
+    # Make a dictionary that contains itself.
+    d1 = {}
+    d1["key"] = d1
+    # Create a list of recursive objects.
+    recursive_objects = [lst, a1, a2, a3, d1]
+
+    # Check that exceptions are thrown when we serialize the recursive
+    # objects.
+    for obj in recursive_objects:
+        with pytest.raises(Exception):
+            ray.put(obj)
+
+
+def test_passing_arguments_by_value_out_of_the_box(ray_start):
+    @ray.remote
+    def f(x):
+        return x
+
+    # Test passing lambdas.
+
+    def temp():
+        return 1
+
+    assert ray.get(f.remote(temp))() == 1
+    assert ray.get(f.remote(lambda x: x + 1))(3) == 4
+
+    # Test sets.
+    assert ray.get(f.remote(set())) == set()
+    s = {1, (1, 2, "hi")}
+    assert ray.get(f.remote(s)) == s
+
+    # Test types.
+    assert ray.get(f.remote(int)) == int
+    assert ray.get(f.remote(float)) == float
+    assert ray.get(f.remote(str)) == str
+
+    class Foo(object):
+        def __init__(self):
             pass
 
-        # Make a list that contains itself.
-        lst = []
-        lst.append(lst)
-        # Make an object that contains itself as a field.
-        a1 = ClassA()
-        a1.field = a1
-        # Make two objects that contain each other as fields.
-        a2 = ClassA()
-        a3 = ClassA()
-        a2.field = a3
-        a3.field = a2
-        # Make a dictionary that contains itself.
-        d1 = {}
-        d1["key"] = d1
-        # Create a list of recursive objects.
-        recursive_objects = [lst, a1, a2, a3, d1]
+    # Make sure that we can put and get a custom type. Note that the result
+    # won't be "equal" to Foo.
+    ray.get(ray.put(Foo))
 
-        # Check that exceptions are thrown when we serialize the recursive
-        # objects.
-        for obj in recursive_objects:
-            self.assertRaises(Exception, lambda: ray.put(obj))
 
-    def testPassingArgumentsByValue(self):
-        ray.init(num_workers=1)
+def test_putting_object_that_closes_over_object_id(ray_start):
+    # This test is here to prevent a regression of
+    # https://github.com/ray-project/ray/issues/1317.
 
-        @ray.remote
-        def f(x):
-            return x
+    class Foo(object):
+        def __init__(self):
+            self.val = ray.put(0)
 
-        # Check that we can pass arguments by value to remote functions and
-        # that they are uncorrupted.
-        for obj in RAY_TEST_OBJECTS:
-            assert_equal(obj, ray.get(f.remote(obj)))
+        def method(self):
+            f
 
-    def testPassingArgumentsByValueOutOfTheBox(self):
-        ray.init(num_workers=1)
-
-        @ray.remote
-        def f(x):
-            return x
-
-        # Test passing lambdas.
-
-        def temp():
-            return 1
-
-        self.assertEqual(ray.get(f.remote(temp))(), 1)
-        self.assertEqual(ray.get(f.remote(lambda x: x + 1))(3), 4)
-
-        # Test sets.
-        self.assertEqual(ray.get(f.remote(set())), set())
-        s = {1, (1, 2, "hi")}
-        self.assertEqual(ray.get(f.remote(s)), s)
-
-        # Test types.
-        self.assertEqual(ray.get(f.remote(int)), int)
-        self.assertEqual(ray.get(f.remote(float)), float)
-        self.assertEqual(ray.get(f.remote(str)), str)
-
-        class Foo(object):
-            def __init__(self):
-                pass
-
-        # Make sure that we can put and get a custom type. Note that the result
-        # won't be "equal" to Foo.
-        ray.get(ray.put(Foo))
-
-    def testPuttingObjectThatClosesOverObjectID(self):
-        # This test is here to prevent a regression of
-        # https://github.com/ray-project/ray/issues/1317.
-        ray.init(num_workers=0)
-
-        class Foo(object):
-            def __init__(self):
-                self.val = ray.put(0)
-
-            def method(self):
-                f
-
-        f = Foo()
-        with self.assertRaises(ray.local_scheduler.common_error):
-            ray.put(f)
+    f = Foo()
+    with pytest.raises(ray.local_scheduler.common_error):
+        ray.put(f)
 
 
 class WorkerTest(unittest.TestCase):
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
 
     def testPythonWorkers(self):
         # Test the codepath for starting workers from the Python script,
@@ -306,7 +309,7 @@ class WorkerTest(unittest.TestCase):
             return x
 
         values = ray.get([f.remote(1) for i in range(num_workers * 2)])
-        self.assertEqual(values, [1] * (num_workers * 2))
+        assert values == [1] * (num_workers * 2)
 
     def testPutGet(self):
         ray.init(num_workers=0)
@@ -315,25 +318,25 @@ class WorkerTest(unittest.TestCase):
             value_before = i * 10**6
             objectid = ray.put(value_before)
             value_after = ray.get(objectid)
-            self.assertEqual(value_before, value_after)
+            assert value_before == value_after
 
         for i in range(100):
             value_before = i * 10**6 * 1.0
             objectid = ray.put(value_before)
             value_after = ray.get(objectid)
-            self.assertEqual(value_before, value_after)
+            assert value_before == value_after
 
         for i in range(100):
             value_before = "h" * i
             objectid = ray.put(value_before)
             value_after = ray.get(objectid)
-            self.assertEqual(value_before, value_after)
+            assert value_before == value_after
 
         for i in range(100):
             value_before = [1] * i
             objectid = ray.put(value_before)
             value_after = ray.get(objectid)
-            self.assertEqual(value_before, value_after)
+            assert value_before == value_after
 
 
 class APITest(unittest.TestCase):
@@ -343,7 +346,7 @@ class APITest(unittest.TestCase):
         ray.init(**kwargs)
 
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
 
     def testCustomSerializers(self):
         self.init_ray(num_workers=1)
@@ -363,8 +366,8 @@ class APITest(unittest.TestCase):
             serializer=custom_serializer,
             deserializer=custom_deserializer)
 
-        self.assertEqual(
-            ray.get(ray.put(Foo())), ((3, "string1", Foo.__name__), "string2"))
+        assert ray.get(ray.put(Foo())) == ((3, "string1", Foo.__name__),
+                                           "string2")
 
         class Bar(object):
             def __init__(self):
@@ -379,8 +382,7 @@ class APITest(unittest.TestCase):
         def f():
             return Bar()
 
-        self.assertEqual(
-            ray.get(f.remote()), ((3, "string1", Bar.__name__), "string2"))
+        assert ray.get(f.remote()) == ((3, "string1", Bar.__name__), "string2")
 
     def testRegisterClass(self):
         self.init_ray(num_workers=2)
@@ -395,15 +397,15 @@ class APITest(unittest.TestCase):
         # Test subtypes of dictionaries.
         value_before = OrderedDict([("hello", 1), ("world", 2)])
         object_id = ray.put(value_before)
-        self.assertEqual(value_before, ray.get(object_id))
+        assert value_before == ray.get(object_id)
 
         value_before = defaultdict(lambda: 0, [("hello", 1), ("world", 2)])
         object_id = ray.put(value_before)
-        self.assertEqual(value_before, ray.get(object_id))
+        assert value_before == ray.get(object_id)
 
         value_before = defaultdict(lambda: [], [("hello", 1), ("world", 2)])
         object_id = ray.put(value_before)
-        self.assertEqual(value_before, ray.get(object_id))
+        assert value_before == ray.get(object_id)
 
         # Test passing custom classes into remote functions from the driver.
         @ray.remote
@@ -411,7 +413,7 @@ class APITest(unittest.TestCase):
             return x
 
         foo = ray.get(f.remote(Foo(7)))
-        self.assertEqual(foo, Foo(7))
+        assert foo == Foo(7)
 
         regex = re.compile(r"\d+\.\d*")
         new_regex = ray.get(f.remote(regex))
@@ -419,7 +421,7 @@ class APITest(unittest.TestCase):
         # Ubuntu, so it is commented out for now:
         # self.assertEqual(regex, new_regex)
         # Instead, we do this:
-        self.assertEqual(regex.pattern, new_regex.pattern)
+        assert regex.pattern == new_regex.pattern
 
         # Test returning custom classes created on workers.
         @ray.remote
@@ -427,7 +429,7 @@ class APITest(unittest.TestCase):
             return SubQux(), Qux()
 
         subqux, qux = ray.get(g.remote())
-        self.assertEqual(subqux.objs[2].foo.value, 0)
+        assert subqux.objs[2].foo.value == 0
 
         # Test exporting custom class definitions from one worker to another
         # when the worker is blocked in a get.
@@ -443,7 +445,7 @@ class APITest(unittest.TestCase):
         def h2(x):
             return ray.get(h1.remote(x))
 
-        self.assertEqual(ray.get(h2.remote(10)).value, 10)
+        assert ray.get(h2.remote(10)).value == 10
 
         # Test registering multiple classes with the same name.
         @ray.remote(num_return_vals=3)
@@ -478,12 +480,12 @@ class APITest(unittest.TestCase):
             c1.method1()
             c2.method2()
 
-            self.assertFalse(hasattr(c0, "method1"))
-            self.assertFalse(hasattr(c0, "method2"))
-            self.assertFalse(hasattr(c1, "method0"))
-            self.assertFalse(hasattr(c1, "method2"))
-            self.assertFalse(hasattr(c2, "method0"))
-            self.assertFalse(hasattr(c2, "method1"))
+            assert not hasattr(c0, "method1")
+            assert not hasattr(c0, "method2")
+            assert not hasattr(c1, "method0")
+            assert not hasattr(c1, "method2")
+            assert not hasattr(c2, "method0")
+            assert not hasattr(c2, "method1")
 
         @ray.remote
         def k():
@@ -513,55 +515,66 @@ class APITest(unittest.TestCase):
             c1.method1()
             c2.method2()
 
-            self.assertFalse(hasattr(c0, "method1"))
-            self.assertFalse(hasattr(c0, "method2"))
-            self.assertFalse(hasattr(c1, "method0"))
-            self.assertFalse(hasattr(c1, "method2"))
-            self.assertFalse(hasattr(c2, "method0"))
-            self.assertFalse(hasattr(c2, "method1"))
+            assert not hasattr(c0, "method1")
+            assert not hasattr(c0, "method2")
+            assert not hasattr(c1, "method0")
+            assert not hasattr(c1, "method2")
+            assert not hasattr(c2, "method0")
+            assert not hasattr(c2, "method1")
 
     def testKeywordArgs(self):
-        reload(test_functions)
+        @ray.remote
+        def keyword_fct1(a, b="hello"):
+            return "{} {}".format(a, b)
+
+        @ray.remote
+        def keyword_fct2(a="hello", b="world"):
+            return "{} {}".format(a, b)
+
+        @ray.remote
+        def keyword_fct3(a, b, c="hello", d="world"):
+            return "{} {} {} {}".format(a, b, c, d)
+
         self.init_ray()
 
-        x = test_functions.keyword_fct1.remote(1)
-        self.assertEqual(ray.get(x), "1 hello")
-        x = test_functions.keyword_fct1.remote(1, "hi")
-        self.assertEqual(ray.get(x), "1 hi")
-        x = test_functions.keyword_fct1.remote(1, b="world")
-        self.assertEqual(ray.get(x), "1 world")
-        x = test_functions.keyword_fct1.remote(a=1, b="world")
-        self.assertEqual(ray.get(x), "1 world")
+        x = keyword_fct1.remote(1)
+        assert ray.get(x) == "1 hello"
+        x = keyword_fct1.remote(1, "hi")
+        assert ray.get(x) == "1 hi"
+        x = keyword_fct1.remote(1, b="world")
+        assert ray.get(x) == "1 world"
+        x = keyword_fct1.remote(a=1, b="world")
+        assert ray.get(x) == "1 world"
 
-        x = test_functions.keyword_fct2.remote(a="w", b="hi")
-        self.assertEqual(ray.get(x), "w hi")
-        x = test_functions.keyword_fct2.remote(b="hi", a="w")
-        self.assertEqual(ray.get(x), "w hi")
-        x = test_functions.keyword_fct2.remote(a="w")
-        self.assertEqual(ray.get(x), "w world")
-        x = test_functions.keyword_fct2.remote(b="hi")
-        self.assertEqual(ray.get(x), "hello hi")
-        x = test_functions.keyword_fct2.remote("w")
-        self.assertEqual(ray.get(x), "w world")
-        x = test_functions.keyword_fct2.remote("w", "hi")
-        self.assertEqual(ray.get(x), "w hi")
+        x = keyword_fct2.remote(a="w", b="hi")
+        assert ray.get(x) == "w hi"
+        x = keyword_fct2.remote(b="hi", a="w")
+        assert ray.get(x) == "w hi"
+        x = keyword_fct2.remote(a="w")
+        assert ray.get(x) == "w world"
+        x = keyword_fct2.remote(b="hi")
+        assert ray.get(x) == "hello hi"
+        x = keyword_fct2.remote("w")
+        assert ray.get(x) == "w world"
+        x = keyword_fct2.remote("w", "hi")
+        assert ray.get(x) == "w hi"
 
-        x = test_functions.keyword_fct3.remote(0, 1, c="w", d="hi")
-        self.assertEqual(ray.get(x), "0 1 w hi")
-        x = test_functions.keyword_fct3.remote(0, b=1, c="w", d="hi")
-        self.assertEqual(ray.get(x), "0 1 w hi")
-        x = test_functions.keyword_fct3.remote(a=0, b=1, c="w", d="hi")
-        self.assertEqual(ray.get(x), "0 1 w hi")
-        x = test_functions.keyword_fct3.remote(0, 1, d="hi", c="w")
-        self.assertEqual(ray.get(x), "0 1 w hi")
-        x = test_functions.keyword_fct3.remote(0, 1, c="w")
-        self.assertEqual(ray.get(x), "0 1 w world")
-        x = test_functions.keyword_fct3.remote(0, 1, d="hi")
-        self.assertEqual(ray.get(x), "0 1 hello hi")
-        x = test_functions.keyword_fct3.remote(0, 1)
-        self.assertEqual(ray.get(x), "0 1 hello world")
-        x = test_functions.keyword_fct3.remote(a=0, b=1)
-        self.assertEqual(ray.get(x), "0 1 hello world")
+        x = keyword_fct3.remote(0, 1, c="w", d="hi")
+        assert ray.get(x) == "0 1 w hi"
+        x = keyword_fct3.remote(0, b=1, c="w", d="hi")
+        assert ray.get(x) == "0 1 w hi"
+        x = keyword_fct3.remote(a=0, b=1, c="w", d="hi")
+        assert ray.get(x) == "0 1 w hi"
+        x = keyword_fct3.remote(0, 1, d="hi", c="w")
+        assert ray.get(x) == "0 1 w hi"
+        x = keyword_fct3.remote(0, 1, c="w")
+        assert ray.get(x) == "0 1 w world"
+        x = keyword_fct3.remote(0, 1, d="hi")
+        assert ray.get(x) == "0 1 hello hi"
+        x = keyword_fct3.remote(0, 1)
+        assert ray.get(x) == "0 1 hello world"
+        x = keyword_fct3.remote(a=0, b=1)
+        assert ray.get(x) == "0 1 hello world"
 
         # Check that we cannot pass invalid keyword arguments to functions.
         @ray.remote
@@ -573,38 +586,55 @@ class APITest(unittest.TestCase):
             return
 
         # Make sure we get an exception if too many arguments are passed in.
-        with self.assertRaises(Exception):
+        with pytest.raises(Exception):
             f1.remote(3)
 
-        with self.assertRaises(Exception):
+        with pytest.raises(Exception):
             f1.remote(x=3)
 
-        with self.assertRaises(Exception):
+        with pytest.raises(Exception):
             f2.remote(0, w=0)
 
-        with self.assertRaises(Exception):
+        with pytest.raises(Exception):
             f2.remote(3, x=3)
 
         # Make sure we get an exception if too many arguments are passed in.
-        with self.assertRaises(Exception):
+        with pytest.raises(Exception):
             f2.remote(1, 2, 3, 4)
 
         @ray.remote
         def f3(x):
             return x
 
-        self.assertEqual(ray.get(f3.remote(4)), 4)
+        assert ray.get(f3.remote(4)) == 4
 
     def testVariableNumberOfArgs(self):
-        reload(test_functions)
+        @ray.remote
+        def varargs_fct1(*a):
+            return " ".join(map(str, a))
+
+        @ray.remote
+        def varargs_fct2(a, *b):
+            return " ".join(map(str, b))
+
+        try:
+
+            @ray.remote
+            def kwargs_throw_exception(**c):
+                return ()
+
+            kwargs_exception_thrown = False
+        except Exception:
+            kwargs_exception_thrown = True
+
         self.init_ray()
 
-        x = test_functions.varargs_fct1.remote(0, 1, 2)
-        self.assertEqual(ray.get(x), "0 1 2")
-        x = test_functions.varargs_fct2.remote(0, 1, 2)
-        self.assertEqual(ray.get(x), "1 2")
+        x = varargs_fct1.remote(0, 1, 2)
+        assert ray.get(x) == "0 1 2"
+        x = varargs_fct2.remote(0, 1, 2)
+        assert ray.get(x) == "1 2"
 
-        self.assertTrue(test_functions.kwargs_exception_thrown)
+        assert kwargs_exception_thrown
 
         @ray.remote
         def f1(*args):
@@ -614,22 +644,25 @@ class APITest(unittest.TestCase):
         def f2(x, y, *args):
             return x, y, args
 
-        self.assertEqual(ray.get(f1.remote()), ())
-        self.assertEqual(ray.get(f1.remote(1)), (1, ))
-        self.assertEqual(ray.get(f1.remote(1, 2, 3)), (1, 2, 3))
-        with self.assertRaises(Exception):
+        assert ray.get(f1.remote()) == ()
+        assert ray.get(f1.remote(1)) == (1, )
+        assert ray.get(f1.remote(1, 2, 3)) == (1, 2, 3)
+        with pytest.raises(Exception):
             f2.remote()
-        with self.assertRaises(Exception):
+        with pytest.raises(Exception):
             f2.remote(1)
-        self.assertEqual(ray.get(f2.remote(1, 2)), (1, 2, ()))
-        self.assertEqual(ray.get(f2.remote(1, 2, 3)), (1, 2, (3, )))
-        self.assertEqual(ray.get(f2.remote(1, 2, 3, 4)), (1, 2, (3, 4)))
+        assert ray.get(f2.remote(1, 2)) == (1, 2, ())
+        assert ray.get(f2.remote(1, 2, 3)) == (1, 2, (3, ))
+        assert ray.get(f2.remote(1, 2, 3, 4)) == (1, 2, (3, 4))
 
     def testNoArgs(self):
-        reload(test_functions)
+        @ray.remote
+        def no_op():
+            pass
+
         self.init_ray()
 
-        ray.get(test_functions.no_op.remote())
+        ray.get(no_op.remote())
 
     def testDefiningRemoteFunctions(self):
         self.init_ray(num_cpus=3)
@@ -639,7 +672,7 @@ class APITest(unittest.TestCase):
         def f(x):
             return x + 1
 
-        self.assertEqual(ray.get(f.remote(0)), 1)
+        assert ray.get(f.remote(0)) == 1
 
         # Test that we can redefine the remote function.
         @ray.remote
@@ -648,7 +681,7 @@ class APITest(unittest.TestCase):
 
         while True:
             val = ray.get(f.remote(0))
-            self.assertTrue(val in [1, 10])
+            assert val in [1, 10]
             if val == 10:
                 break
             else:
@@ -694,9 +727,9 @@ class APITest(unittest.TestCase):
         def m(x):
             return ray.get(k2.remote(x))
 
-        self.assertEqual(ray.get(k.remote(1)), 2)
-        self.assertEqual(ray.get(k2.remote(1)), 2)
-        self.assertEqual(ray.get(m.remote(1)), 2)
+        assert ray.get(k.remote(1)) == 2
+        assert ray.get(k2.remote(1)) == 2
+        assert ray.get(m.remote(1)) == 2
 
     def testSubmitAPI(self):
         self.init_ray(num_gpus=1, resources={"Custom": 1}, num_workers=1)
@@ -747,25 +780,23 @@ class APITest(unittest.TestCase):
     def testGetMultiple(self):
         self.init_ray()
         object_ids = [ray.put(i) for i in range(10)]
-        self.assertEqual(ray.get(object_ids), list(range(10)))
+        assert ray.get(object_ids) == list(range(10))
 
         # Get a random choice of object IDs with duplicates.
         indices = list(np.random.choice(range(10), 5))
         indices += indices
         results = ray.get([object_ids[i] for i in indices])
-        self.assertEqual(results, indices)
+        assert results == indices
 
     def testGetMultipleExperimental(self):
         self.init_ray()
         object_ids = [ray.put(i) for i in range(10)]
 
         object_ids_tuple = tuple(object_ids)
-        self.assertEqual(
-            ray.experimental.get(object_ids_tuple), list(range(10)))
+        assert ray.experimental.get(object_ids_tuple) == list(range(10))
 
         object_ids_nparray = np.array(object_ids)
-        self.assertEqual(
-            ray.experimental.get(object_ids_nparray), list(range(10)))
+        assert ray.experimental.get(object_ids_nparray) == list(range(10))
 
     def testGetDict(self):
         self.init_ray()
@@ -774,7 +805,7 @@ class APITest(unittest.TestCase):
             d[str(i)] = i
         result = ray.experimental.get(d)
         expected = {str(i): i for i in range(10)}
-        self.assertEqual(result, expected)
+        assert result == expected
 
     def testWait(self):
         self.init_ray(num_cpus=1)
@@ -791,11 +822,11 @@ class APITest(unittest.TestCase):
             f.remote(0.5)
         ]
         ready_ids, remaining_ids = ray.wait(objectids)
-        self.assertEqual(len(ready_ids), 1)
-        self.assertEqual(len(remaining_ids), 3)
+        assert len(ready_ids) == 1
+        assert len(remaining_ids) == 3
         ready_ids, remaining_ids = ray.wait(objectids, num_returns=4)
-        self.assertEqual(set(ready_ids), set(objectids))
-        self.assertEqual(remaining_ids, [])
+        assert set(ready_ids) == set(objectids)
+        assert remaining_ids == []
 
         objectids = [
             f.remote(0.5),
@@ -806,9 +837,9 @@ class APITest(unittest.TestCase):
         start_time = time.time()
         ready_ids, remaining_ids = ray.wait(
             objectids, timeout=1750, num_returns=4)
-        self.assertLess(time.time() - start_time, 2)
-        self.assertEqual(len(ready_ids), 3)
-        self.assertEqual(len(remaining_ids), 1)
+        assert time.time() - start_time < 2
+        assert len(ready_ids) == 3
+        assert len(remaining_ids) == 1
         ray.wait(objectids)
         objectids = [
             f.remote(1.0),
@@ -818,33 +849,34 @@ class APITest(unittest.TestCase):
         ]
         start_time = time.time()
         ready_ids, remaining_ids = ray.wait(objectids, timeout=5000)
-        self.assertTrue(time.time() - start_time < 5)
-        self.assertEqual(len(ready_ids), 1)
-        self.assertEqual(len(remaining_ids), 3)
+        assert time.time() - start_time < 5
+        assert len(ready_ids) == 1
+        assert len(remaining_ids) == 3
 
         # Verify that calling wait with duplicate object IDs throws an
         # exception.
         x = ray.put(1)
-        self.assertRaises(Exception, lambda: ray.wait([x, x]))
+        with pytest.raises(Exception):
+            ray.wait([x, x])
 
         # Make sure it is possible to call wait with an empty list.
         ready_ids, remaining_ids = ray.wait([])
-        self.assertEqual(ready_ids, [])
-        self.assertEqual(remaining_ids, [])
+        assert ready_ids == []
+        assert remaining_ids == []
 
         # Test semantics of num_returns with no timeout.
         oids = [ray.put(i) for i in range(10)]
         (found, rest) = ray.wait(oids, num_returns=2)
-        self.assertEqual(len(found), 2)
-        self.assertEqual(len(rest), 8)
+        assert len(found) == 2
+        assert len(rest) == 8
 
         # Verify that incorrect usage raises a TypeError.
         x = ray.put(1)
-        with self.assertRaises(TypeError):
+        with pytest.raises(TypeError):
             ray.wait(x)
-        with self.assertRaises(TypeError):
+        with pytest.raises(TypeError):
             ray.wait(1)
-        with self.assertRaises(TypeError):
+        with pytest.raises(TypeError):
             ray.wait([1])
 
     def testWaitIterables(self):
@@ -858,8 +890,8 @@ class APITest(unittest.TestCase):
         objectids = (f.remote(1.0), f.remote(0.5), f.remote(0.5),
                      f.remote(0.5))
         ready_ids, remaining_ids = ray.experimental.wait(objectids)
-        self.assertEqual(len(ready_ids), 1)
-        self.assertEqual(len(remaining_ids), 3)
+        assert len(ready_ids) == 1
+        assert len(remaining_ids) == 3
 
         objectids = np.array(
             [f.remote(1.0),
@@ -867,8 +899,8 @@ class APITest(unittest.TestCase):
              f.remote(0.5),
              f.remote(0.5)])
         ready_ids, remaining_ids = ray.experimental.wait(objectids)
-        self.assertEqual(len(ready_ids), 1)
-        self.assertEqual(len(remaining_ids), 3)
+        assert len(ready_ids) == 1
+        assert len(remaining_ids) == 3
 
     def testMultipleWaitsAndGets(self):
         # It is important to use three workers here, so that the three tasks
@@ -932,8 +964,8 @@ class APITest(unittest.TestCase):
 
         res1 = get_state.remote()
         res2 = get_state.remote()
-        self.assertEqual(ray.get(res1), (1, 2, 3, 4))
-        self.assertEqual(ray.get(res2), (1, 2, 3, 4))
+        assert ray.get(res1) == (1, 2, 3, 4)
+        assert ray.get(res2) == (1, 2, 3, 4)
 
         # Clean up the path on the workers.
         def f(worker_info):
@@ -956,7 +988,7 @@ class APITest(unittest.TestCase):
         def get_path1():
             return sys.path
 
-        self.assertEqual("fake_directory", ray.get(get_path1.remote())[-1])
+        assert "fake_directory" == ray.get(get_path1.remote())[-1]
 
         def f(worker_info):
             sys.path.pop(-1)
@@ -970,13 +1002,13 @@ class APITest(unittest.TestCase):
         def get_path2():
             return sys.path
 
-        self.assertTrue("fake_directory" not in ray.get(get_path2.remote()))
+        assert "fake_directory" not in ray.get(get_path2.remote())
 
     @unittest.skipIf(
         os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
+        "This test does not work with xray (nor is it intended to).")
     def testLoggingAPI(self):
-        self.init_ray(driver_mode=ray.SILENT_MODE)
+        self.init_ray()
 
         def events():
             # This is a hack for getting the event log. It is not part of the
@@ -997,37 +1029,75 @@ class APITest(unittest.TestCase):
             print("Timing out of wait.")
 
         @ray.remote
-        def test_log_event():
-            ray.log_event("event_type1", contents={"key": "val"})
-
-        @ray.remote
         def test_log_span():
-            with ray.log_span("event_type2", contents={"key": "val"}):
+            with ray.profile("event_type2", extra_data={"key": "val"}):
                 pass
-
-        # Make sure that we can call ray.log_event in a remote function.
-        ray.get(test_log_event.remote())
-        # Wait for the event to appear in the event log.
-        wait_for_num_events(1)
-        self.assertEqual(len(events()), 1)
 
         # Make sure that we can call ray.log_span in a remote function.
         ray.get(test_log_span.remote())
 
         # Wait for the events to appear in the event log.
-        wait_for_num_events(2)
-        self.assertEqual(len(events()), 2)
+        wait_for_num_events(1)
+        assert len(events()) == 1
 
         @ray.remote
         def test_log_span_exception():
-            with ray.log_span("event_type2", contents={"key": "val"}):
+            with ray.log_span("event_type2", extra_data={"key": "val"}):
                 raise Exception("This failed.")
 
         # Make sure that logging a span works if an exception is thrown.
         test_log_span_exception.remote()
         # Wait for the events to appear in the event log.
-        wait_for_num_events(3)
-        self.assertEqual(len(events()), 3)
+        wait_for_num_events(2)
+        assert len(events()) == 2
+
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") != "1",
+        "This test only works with xray.")
+    def testProfilingAPI(self):
+        self.init_ray(num_cpus=2)
+
+        @ray.remote
+        def f():
+            with ray.profile(
+                    "custom_event",
+                    extra_data={"name": "custom name"}) as ray_prof:
+                ray_prof.set_attribute("key", "value")
+
+        ray.put(1)
+        object_id = f.remote()
+        ray.wait([object_id])
+        ray.get(object_id)
+
+        # Wait until all of the profiling information appears in the profile
+        # table.
+        timeout_seconds = 20
+        start_time = time.time()
+        while True:
+            if time.time() - start_time > timeout_seconds:
+                raise Exception("Timed out while waiting for information in "
+                                "profile table.")
+            profile_data = ray.global_state.chrome_tracing_dump()
+            event_types = {event["cat"] for event in profile_data}
+            expected_types = [
+                "get_task",
+                "task",
+                "task:deserialize_arguments",
+                "task:execute",
+                "task:store_outputs",
+                "wait_for_function",
+                "ray.get",
+                "ray.put",
+                "ray.wait",
+                "submit_task",
+                "fetch_and_run_function",
+                "register_remote_function",
+                "custom_event",  # This is the custom one from ray.profile.
+            ]
+
+            if all(expected_type in event_types
+                   for expected_type in expected_types):
+                break
 
     def testIdenticalFunctionNames(self):
         # Define a bunch of remote functions and make sure that we don't
@@ -1066,11 +1136,11 @@ class APITest(unittest.TestCase):
 
         results5 = [f.remote() for _ in range(num_calls)]
 
-        self.assertEqual(ray.get(results1), num_calls * [1])
-        self.assertEqual(ray.get(results2), num_calls * [2])
-        self.assertEqual(ray.get(results3), num_calls * [3])
-        self.assertEqual(ray.get(results4), num_calls * [4])
-        self.assertEqual(ray.get(results5), num_calls * [5])
+        assert ray.get(results1) == num_calls * [1]
+        assert ray.get(results2) == num_calls * [2]
+        assert ray.get(results3) == num_calls * [3]
+        assert ray.get(results4) == num_calls * [4]
+        assert ray.get(results5) == num_calls * [5]
 
         @ray.remote
         def g():
@@ -1093,22 +1163,131 @@ class APITest(unittest.TestCase):
             return 5
 
         result_values = ray.get([g.remote() for _ in range(num_calls)])
-        self.assertEqual(result_values, num_calls * [5])
+        assert result_values == num_calls * [5]
 
     def testIllegalAPICalls(self):
         self.init_ray()
 
         # Verify that we cannot call put on an ObjectID.
         x = ray.put(1)
-        with self.assertRaises(Exception):
+        with pytest.raises(Exception):
             ray.put(x)
         # Verify that we cannot call get on a regular value.
-        with self.assertRaises(Exception):
+        with pytest.raises(Exception):
             ray.get(3)
+
+    def testMultithreading(self):
+        self.init_ray()
+
+        @ray.remote
+        def f():
+            pass
+
+        def g(n):
+            for _ in range(1000 // n):
+                ray.get([f.remote() for _ in range(n)])
+            res = [ray.put(i) for i in range(1000 // n)]
+            ray.wait(res, len(res))
+
+        def test_multi_threading():
+            threads = [
+                threading.Thread(target=g, args=(n, ))
+                for n in [1, 5, 10, 100, 1000]
+            ]
+
+            [thread.start() for thread in threads]
+            [thread.join() for thread in threads]
+
+        @ray.remote
+        def test_multi_threading_in_worker():
+            test_multi_threading()
+
+        # test multi-threading in the driver
+        test_multi_threading()
+        # test multi-threading in the worker
+        ray.get(test_multi_threading_in_worker.remote())
+
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") != "1",
+        "This test only works with xray.")
+    def testFreeObjectsMultiNode(self):
+        ray.worker._init(
+            start_ray_local=True,
+            num_local_schedulers=3,
+            num_workers=1,
+            num_cpus=[1, 1, 1],
+            resources=[{
+                "Custom0": 1
+            }, {
+                "Custom1": 1
+            }, {
+                "Custom2": 1
+            }],
+            use_raylet=True)
+
+        @ray.remote(resources={"Custom0": 1})
+        def run_on_0():
+            return ray.worker.global_worker.plasma_client.store_socket_name
+
+        @ray.remote(resources={"Custom1": 1})
+        def run_on_1():
+            return ray.worker.global_worker.plasma_client.store_socket_name
+
+        @ray.remote(resources={"Custom2": 1})
+        def run_on_2():
+            return ray.worker.global_worker.plasma_client.store_socket_name
+
+        def create():
+            a = run_on_0.remote()
+            b = run_on_1.remote()
+            c = run_on_2.remote()
+            (l1, l2) = ray.wait([a, b, c], num_returns=3)
+            assert len(l1) == 3
+            assert len(l2) == 0
+            return (a, b, c)
+
+        def flush():
+            # Flush the Release History.
+            # Current Plasma Client Cache will maintain 64-item list.
+            # If the number changed, this will fail.
+            print("Start Flush!")
+            for i in range(64):
+                ray.get(
+                    [run_on_0.remote(),
+                     run_on_1.remote(),
+                     run_on_2.remote()])
+            print("Flush finished!")
+
+        def run_one_test(local_only):
+            (a, b, c) = create()
+            # The three objects should be generated on different object stores.
+            assert ray.get(a) != ray.get(b)
+            assert ray.get(a) != ray.get(c)
+            assert ray.get(c) != ray.get(b)
+            ray.internal.free([a, b, c], local_only=local_only)
+            flush()
+            return (a, b, c)
+
+        # Case 1: run this local_only=False. All 3 objects will be deleted.
+        (a, b, c) = run_one_test(False)
+        (l1, l2) = ray.wait([a, b, c], timeout=10, num_returns=1)
+        # All the objects are deleted.
+        assert len(l1) == 0
+        assert len(l2) == 3
+        # Case 2: run this local_only=True. Only 1 object will be deleted.
+        (a, b, c) = run_one_test(True)
+        (l1, l2) = ray.wait([a, b, c], timeout=10, num_returns=3)
+        # One object is deleted and 2 objects are not.
+        assert len(l1) == 2
+        assert len(l2) == 1
+        # The deleted object will have the same store with the driver.
+        local_return = ray.worker.global_worker.plasma_client.store_socket_name
+        for object_id in l1:
+            assert ray.get(object_id) != local_return
 
 
 @unittest.skipIf(
-    os.environ.get('RAY_USE_NEW_GCS', False),
+    os.environ.get("RAY_USE_NEW_GCS", False),
     "For now, RAY_USE_NEW_GCS supports 1 shard, and credis "
     "supports 1-node chain for that shard only.")
 class APITestSharded(APITest):
@@ -1121,13 +1300,21 @@ class APITestSharded(APITest):
         ray.worker._init(**kwargs)
 
 
-class PythonModeTest(unittest.TestCase):
+class LocalModeTest(unittest.TestCase):
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
 
-    def testPythonMode(self):
-        reload(test_functions)
-        ray.init(driver_mode=ray.PYTHON_MODE)
+    def testLocalMode(self):
+        @ray.remote
+        def local_mode_f():
+            return np.array([0, 0])
+
+        @ray.remote
+        def local_mode_g(x):
+            x[0] = 1
+            return x
+
+        ray.init(local_mode=True)
 
         @ray.remote
         def f():
@@ -1144,10 +1331,10 @@ class PythonModeTest(unittest.TestCase):
 
         # Make sure objects are immutable, this example is why we need to copy
         # arguments before passing them into remote functions in python mode
-        aref = test_functions.python_mode_f.remote()
+        aref = local_mode_f.remote()
         assert_equal(aref, np.array([0, 0]))
-        bref = test_functions.python_mode_g.remote(aref)
-        # Make sure python_mode_g does not mutate aref.
+        bref = local_mode_g.remote(aref)
+        # Make sure local_mode_g does not mutate aref.
         assert_equal(aref, np.array([0, 0]))
         assert_equal(bref, np.array([1, 0]))
 
@@ -1160,10 +1347,10 @@ class PythonModeTest(unittest.TestCase):
         assert_equal(ready, object_ids[:num_returns])
         assert_equal(remaining, object_ids[num_returns:])
 
-        # Test actors in PYTHON_MODE.
+        # Test actors in LOCAL_MODE.
 
         @ray.remote
-        class PythonModeTestClass(object):
+        class LocalModeTestClass(object):
             def __init__(self, array):
                 self.array = array
 
@@ -1177,7 +1364,7 @@ class PythonModeTest(unittest.TestCase):
                 array[0] = -1
                 self.array = array
 
-        test_actor = PythonModeTestClass.remote(np.arange(10))
+        test_actor = LocalModeTestClass.remote(np.arange(10))
         # Remote actor functions should return by value
         assert_equal(test_actor.get_array.remote(), np.arange(10))
 
@@ -1189,10 +1376,20 @@ class PythonModeTest(unittest.TestCase):
         test_array[0] = -1
         assert_equal(test_array, test_actor.get_array.remote())
 
+        # Check that actor handles work in Python mode.
+
+        @ray.remote
+        def use_actor_handle(handle):
+            array = np.ones(10)
+            handle.set_array.remote(array)
+            assert np.alltrue(array == ray.get(handle.get_array.remote()))
+
+        ray.get(use_actor_handle.remote(test_actor))
+
 
 class ResourcesTest(unittest.TestCase):
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
 
     def testResourceConstraints(self):
         num_workers = 20
@@ -1222,14 +1419,14 @@ class ResourcesTest(unittest.TestCase):
         start_time = time.time()
         ray.get([f.remote(0.5) for _ in range(10)])
         duration = time.time() - start_time
-        self.assertLess(duration, 0.5 + time_buffer)
-        self.assertGreater(duration, 0.5)
+        assert duration < 0.5 + time_buffer
+        assert duration > 0.5
 
         start_time = time.time()
         ray.get([f.remote(0.5) for _ in range(11)])
         duration = time.time() - start_time
-        self.assertLess(duration, 1 + time_buffer)
-        self.assertGreater(duration, 1)
+        assert duration < 1 + time_buffer
+        assert duration > 1
 
         @ray.remote(num_cpus=3)
         def f(n):
@@ -1238,14 +1435,14 @@ class ResourcesTest(unittest.TestCase):
         start_time = time.time()
         ray.get([f.remote(0.5) for _ in range(3)])
         duration = time.time() - start_time
-        self.assertLess(duration, 0.5 + time_buffer)
-        self.assertGreater(duration, 0.5)
+        assert duration < 0.5 + time_buffer
+        assert duration > 0.5
 
         start_time = time.time()
         ray.get([f.remote(0.5) for _ in range(4)])
         duration = time.time() - start_time
-        self.assertLess(duration, 1 + time_buffer)
-        self.assertGreater(duration, 1)
+        assert duration < 1 + time_buffer
+        assert duration > 1
 
         @ray.remote(num_gpus=1)
         def f(n):
@@ -1254,20 +1451,20 @@ class ResourcesTest(unittest.TestCase):
         start_time = time.time()
         ray.get([f.remote(0.5) for _ in range(2)])
         duration = time.time() - start_time
-        self.assertLess(duration, 0.5 + time_buffer)
-        self.assertGreater(duration, 0.5)
+        assert duration < 0.5 + time_buffer
+        assert duration > 0.5
 
         start_time = time.time()
         ray.get([f.remote(0.5) for _ in range(3)])
         duration = time.time() - start_time
-        self.assertLess(duration, 1 + time_buffer)
-        self.assertGreater(duration, 1)
+        assert duration < 1 + time_buffer
+        assert duration > 1
 
         start_time = time.time()
         ray.get([f.remote(0.5) for _ in range(4)])
         duration = time.time() - start_time
-        self.assertLess(duration, 1 + time_buffer)
-        self.assertGreater(duration, 1)
+        assert duration < 1 + time_buffer
+        assert duration > 1
 
     def testMultiResourceConstraints(self):
         num_workers = 20
@@ -1300,26 +1497,26 @@ class ResourcesTest(unittest.TestCase):
         start_time = time.time()
         ray.get([f.remote(0.5), g.remote(0.5)])
         duration = time.time() - start_time
-        self.assertLess(duration, 0.5 + time_buffer)
-        self.assertGreater(duration, 0.5)
+        assert duration < 0.5 + time_buffer
+        assert duration > 0.5
 
         start_time = time.time()
         ray.get([f.remote(0.5), f.remote(0.5)])
         duration = time.time() - start_time
-        self.assertLess(duration, 1 + time_buffer)
-        self.assertGreater(duration, 1)
+        assert duration < 1 + time_buffer
+        assert duration > 1
 
         start_time = time.time()
         ray.get([g.remote(0.5), g.remote(0.5)])
         duration = time.time() - start_time
-        self.assertLess(duration, 1 + time_buffer)
-        self.assertGreater(duration, 1)
+        assert duration < 1 + time_buffer
+        assert duration > 1
 
         start_time = time.time()
         ray.get([f.remote(0.5), f.remote(0.5), g.remote(0.5), g.remote(0.5)])
         duration = time.time() - start_time
-        self.assertLess(duration, 1 + time_buffer)
-        self.assertGreater(duration, 1)
+        assert duration < 1 + time_buffer
+        assert duration > 1
 
     def testGPUIDs(self):
         num_gpus = 10
@@ -1406,15 +1603,15 @@ class ResourcesTest(unittest.TestCase):
                                 "up.")
 
         list_of_ids = ray.get([f0.remote() for _ in range(10)])
-        self.assertEqual(list_of_ids, 10 * [[]])
+        assert list_of_ids == 10 * [[]]
 
         list_of_ids = ray.get([f1.remote() for _ in range(10)])
         set_of_ids = {tuple(gpu_ids) for gpu_ids in list_of_ids}
-        self.assertEqual(set_of_ids, {(i, ) for i in range(10)})
+        assert set_of_ids == {(i, ) for i in range(10)}
 
         list_of_ids = ray.get([f2.remote(), f4.remote(), f4.remote()])
         all_ids = [gpu_id for gpu_ids in list_of_ids for gpu_id in gpu_ids]
-        self.assertEqual(set(all_ids), set(range(10)))
+        assert set(all_ids) == set(range(10))
 
         remaining = [f5.remote() for _ in range(20)]
         for _ in range(10):
@@ -1425,7 +1622,7 @@ class ResourcesTest(unittest.TestCase):
             # should only be 2 tasks scheduled at a given time, so if we wait
             # for 2 tasks to finish, then it should take at least 0.1 seconds
             # for each pair of tasks to finish.
-            self.assertGreater(t2 - t1, 0.09)
+            assert t2 - t1 > 0.09
             list_of_ids = ray.get(ready)
             all_ids = [gpu_id for gpu_ids in list_of_ids for gpu_id in gpu_ids]
             # Commenting out the below assert because it seems to fail a lot.
@@ -1474,17 +1671,23 @@ class ResourcesTest(unittest.TestCase):
         ray.get(a1.test.remote())
 
     @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
+        os.environ.get("RAY_USE_XRAY") != "1",
+        "This test only works with xray.")
     def testZeroCPUs(self):
+        ray.init(num_cpus=0)
+
+        @ray.remote(num_cpus=0)
+        def f():
+            return 1
+
+        # The task should be able to execute.
+        ray.get(f.remote())
+
+    def testZeroCPUsActor(self):
         ray.worker._init(
             start_ray_local=True, num_local_schedulers=2, num_cpus=[0, 2])
 
         local_plasma = ray.worker.global_worker.plasma_client.store_socket_name
-
-        @ray.remote(num_cpus=0)
-        def f():
-            return ray.worker.global_worker.plasma_client.store_socket_name
 
         @ray.remote
         class Foo(object):
@@ -1492,9 +1695,8 @@ class ResourcesTest(unittest.TestCase):
                 return ray.worker.global_worker.plasma_client.store_socket_name
 
         # Make sure tasks and actors run on the remote local scheduler.
-        self.assertNotEqual(ray.get(f.remote()), local_plasma)
         a = Foo.remote()
-        self.assertNotEqual(ray.get(a.method.remote()), local_plasma)
+        assert ray.get(a.method.remote()) != local_plasma
 
     @unittest.skipIf(
         os.environ.get("RAY_USE_XRAY") != "1",
@@ -1543,10 +1745,10 @@ class ResourcesTest(unittest.TestCase):
         def test():
             pass
 
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             test.remote()
 
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             Foo2._submit([], {}, resources={"Custom": 1.5})
 
     def testMultipleLocalSchedulers(self):
@@ -1628,22 +1830,22 @@ class ResourcesTest(unittest.TestCase):
         def validate_names_and_results(names, results):
             for name, result in zip(names, ray.get(results)):
                 if name == "run_on_0":
-                    self.assertIn(result, [store_names[0]])
+                    assert result in [store_names[0]]
                 elif name == "run_on_1":
-                    self.assertIn(result, [store_names[1]])
+                    assert result in [store_names[1]]
                 elif name == "run_on_2":
-                    self.assertIn(result, [store_names[2]])
+                    assert result in [store_names[2]]
                 elif name == "run_on_0_1_2":
-                    self.assertIn(
-                        result,
-                        [store_names[0], store_names[1], store_names[2]])
+                    assert (result in [
+                        store_names[0], store_names[1], store_names[2]
+                    ])
                 elif name == "run_on_1_2":
-                    self.assertIn(result, [store_names[1], store_names[2]])
+                    assert result in [store_names[1], store_names[2]]
                 elif name == "run_on_0_2":
-                    self.assertIn(result, [store_names[0], store_names[2]])
+                    assert result in [store_names[0], store_names[2]]
                 else:
                     raise Exception("This should be unreachable.")
-                self.assertEqual(set(ray.get(results)), set(store_names))
+                assert set(ray.get(results)) == set(store_names)
 
         names, results = run_lots_of_tasks()
         validate_names_and_results(names, results)
@@ -1690,14 +1892,14 @@ class ResourcesTest(unittest.TestCase):
             return ray.worker.global_worker.plasma_client.store_socket_name
 
         # The f tasks should be scheduled on both local schedulers.
-        self.assertEqual(len(set(ray.get([f.remote() for _ in range(50)]))), 2)
+        assert len(set(ray.get([f.remote() for _ in range(50)]))) == 2
 
         local_plasma = ray.worker.global_worker.plasma_client.store_socket_name
 
         # The g tasks should be scheduled only on the second local scheduler.
         local_scheduler_ids = set(ray.get([g.remote() for _ in range(50)]))
-        self.assertEqual(len(local_scheduler_ids), 1)
-        self.assertNotEqual(list(local_scheduler_ids)[0], local_plasma)
+        assert len(local_scheduler_ids) == 1
+        assert list(local_scheduler_ids)[0] != local_plasma
 
         # Make sure that resource bookkeeping works when a task that uses a
         # custom resources gets blocked.
@@ -1742,21 +1944,21 @@ class ResourcesTest(unittest.TestCase):
             return ray.worker.global_worker.plasma_client.store_socket_name
 
         # The f and g tasks should be scheduled on both local schedulers.
-        self.assertEqual(len(set(ray.get([f.remote() for _ in range(50)]))), 2)
-        self.assertEqual(len(set(ray.get([g.remote() for _ in range(50)]))), 2)
+        assert len(set(ray.get([f.remote() for _ in range(50)]))) == 2
+        assert len(set(ray.get([g.remote() for _ in range(50)]))) == 2
 
         local_plasma = ray.worker.global_worker.plasma_client.store_socket_name
 
         # The h tasks should be scheduled only on the second local scheduler.
         local_scheduler_ids = set(ray.get([h.remote() for _ in range(50)]))
-        self.assertEqual(len(local_scheduler_ids), 1)
-        self.assertNotEqual(list(local_scheduler_ids)[0], local_plasma)
+        assert len(local_scheduler_ids) == 1
+        assert list(local_scheduler_ids)[0] != local_plasma
 
         # Make sure that tasks with unsatisfied custom resource requirements do
         # not get scheduled.
         ready_ids, remaining_ids = ray.wait(
             [j.remote(), k.remote()], timeout=500)
-        self.assertEqual(ready_ids, [])
+        assert ready_ids == []
 
     def testManyCustomResources(self):
         num_custom_resources = 10000
@@ -1800,7 +2002,7 @@ class CudaVisibleDevicesTest(unittest.TestCase):
         self.original_gpu_ids = os.environ.get("CUDA_VISIBLE_DEVICES", None)
 
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
         # Reset the environment variable.
         if self.original_gpu_ids is not None:
             os.environ["CUDA_VISIBLE_DEVICES"] = self.original_gpu_ids
@@ -1832,7 +2034,7 @@ class CudaVisibleDevicesTest(unittest.TestCase):
 
 class WorkerPoolTests(unittest.TestCase):
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
 
     def testNoWorkers(self):
         ray.init(num_workers=0)
@@ -1892,13 +2094,13 @@ class WorkerPoolTests(unittest.TestCase):
 
         pid1 = ray.get(f.remote())
         pid2 = ray.get(f.remote())
-        self.assertEqual(pid1, pid2)
+        assert pid1 == pid2
         ray.test.test_utils.wait_for_pid_to_exit(pid1)
 
 
 class SchedulingAlgorithm(unittest.TestCase):
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
 
     def attempt_to_load_balance(self,
                                 remote_function,
@@ -1918,7 +2120,7 @@ class SchedulingAlgorithm(unittest.TestCase):
                     and all(count >= minimum_count for count in counts)):
                 break
             attempts += 1
-        self.assertLess(attempts, num_attempts)
+        assert attempts < num_attempts
 
     def testLoadBalancing(self):
         # This test ensures that tasks are being assigned to all local
@@ -1951,6 +2153,7 @@ class SchedulingAlgorithm(unittest.TestCase):
 
         @ray.remote
         def f(x):
+            time.sleep(0.010)
             return ray.worker.global_worker.plasma_client.store_socket_name
 
         # This object will be local to one of the local schedulers. Make sure
@@ -1980,26 +2183,26 @@ def wait_for_num_objects(num_objects, timeout=10):
 
 
 @unittest.skipIf(
-    os.environ.get('RAY_USE_NEW_GCS', False),
+    os.environ.get("RAY_USE_NEW_GCS", False),
     "New GCS API doesn't have a Python API yet.")
 class GlobalStateAPI(unittest.TestCase):
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
 
     def testGlobalStateAPI(self):
-        with self.assertRaises(Exception):
+        with pytest.raises(Exception):
             ray.global_state.object_table()
 
-        with self.assertRaises(Exception):
+        with pytest.raises(Exception):
             ray.global_state.task_table()
 
-        with self.assertRaises(Exception):
+        with pytest.raises(Exception):
             ray.global_state.client_table()
 
-        with self.assertRaises(Exception):
+        with pytest.raises(Exception):
             ray.global_state.function_table()
 
-        with self.assertRaises(Exception):
+        with pytest.raises(Exception):
             ray.global_state.log_files()
 
         ray.init(num_cpus=5, num_gpus=3, resources={"CustomResource": 1})
@@ -2007,9 +2210,7 @@ class GlobalStateAPI(unittest.TestCase):
         resources = {"CPU": 5, "GPU": 3, "CustomResource": 1}
         assert ray.global_state.cluster_resources() == resources
 
-        self.assertEqual(ray.global_state.object_table(), {})
-
-        ID_SIZE = 20
+        assert ray.global_state.object_table() == {}
 
         driver_id = ray.experimental.state.binary_to_hex(
             ray.worker.global_worker.worker_id)
@@ -2019,52 +2220,29 @@ class GlobalStateAPI(unittest.TestCase):
         # One task is put in the task table which corresponds to this driver.
         wait_for_num_tasks(1)
         task_table = ray.global_state.task_table()
-        self.assertEqual(len(task_table), 1)
-        self.assertEqual(driver_task_id, list(task_table.keys())[0])
+        assert len(task_table) == 1
+        assert driver_task_id == list(task_table.keys())[0]
         if not ray.worker.global_worker.use_raylet:
-            self.assertEqual(task_table[driver_task_id]["State"],
-                             ray.experimental.state.TASK_STATUS_RUNNING)
+            assert (task_table[driver_task_id]["State"] ==
+                    ray.experimental.state.TASK_STATUS_RUNNING)
         if not ray.worker.global_worker.use_raylet:
-            self.assertEqual(task_table[driver_task_id]["TaskSpec"]["TaskID"],
-                             driver_task_id)
-            self.assertEqual(task_table[driver_task_id]["TaskSpec"]["ActorID"],
-                             ID_SIZE * "ff")
-            self.assertEqual(task_table[driver_task_id]["TaskSpec"]["Args"],
-                             [])
-            self.assertEqual(
-                task_table[driver_task_id]["TaskSpec"]["DriverID"], driver_id)
-            self.assertEqual(
-                task_table[driver_task_id]["TaskSpec"]["FunctionID"],
-                ID_SIZE * "ff")
-            self.assertEqual(
-                (task_table[driver_task_id]["TaskSpec"]["ReturnObjectIDs"]),
-                [])
-
+            task_spec = task_table[driver_task_id]["TaskSpec"]
         else:
-            self.assertEqual(len(task_table[driver_task_id]), 1)
-            self.assertEqual(
-                task_table[driver_task_id][0]["TaskSpec"]["TaskID"],
-                driver_task_id)
-            self.assertEqual(
-                task_table[driver_task_id][0]["TaskSpec"]["ActorID"],
-                ID_SIZE * "ff")
-            self.assertEqual(task_table[driver_task_id][0]["TaskSpec"]["Args"],
-                             [])
-            self.assertEqual(
-                task_table[driver_task_id][0]["TaskSpec"]["DriverID"],
-                driver_id)
-            self.assertEqual(
-                task_table[driver_task_id][0]["TaskSpec"]["FunctionID"],
-                ID_SIZE * "ff")
-            self.assertEqual(
-                (task_table[driver_task_id][0]["TaskSpec"]["ReturnObjectIDs"]),
-                [])
+            assert len(task_table[driver_task_id]) == 1
+            task_spec = task_table[driver_task_id][0]["TaskSpec"]
+
+        assert task_spec["TaskID"] == driver_task_id
+        assert task_spec["ActorID"] == ray_constants.ID_SIZE * "ff"
+        assert task_spec["Args"] == []
+        assert task_spec["DriverID"] == driver_id
+        assert task_spec["FunctionID"] == ray_constants.ID_SIZE * "ff"
+        assert task_spec["ReturnObjectIDs"] == []
 
         client_table = ray.global_state.client_table()
         node_ip_address = ray.worker.global_worker.node_ip_address
 
         if not ray.worker.global_worker.use_raylet:
-            self.assertEqual(len(client_table[node_ip_address]), 3)
+            assert len(client_table[node_ip_address]) == 3
             manager_client = [
                 c for c in client_table[node_ip_address]
                 if c["ClientType"] == "plasma_manager"
@@ -2085,7 +2263,7 @@ class GlobalStateAPI(unittest.TestCase):
         while time.time() - start_time < 10:
             wait_for_num_tasks(1 + 1)
             task_table = ray.global_state.task_table()
-            self.assertEqual(len(task_table), 1 + 1)
+            assert len(task_table) == 1 + 1
             task_id_set = set(task_table.keys())
             task_id_set.remove(driver_task_id)
             task_id = list(task_id_set)[0]
@@ -2100,17 +2278,16 @@ class GlobalStateAPI(unittest.TestCase):
             task_spec = task_table[task_id]["TaskSpec"]
         else:
             task_spec = task_table[task_id][0]["TaskSpec"]
-        self.assertEqual(task_spec["ActorID"], ID_SIZE * "ff")
-        self.assertEqual(task_spec["Args"], [1, "hi", x_id])
-        self.assertEqual(task_spec["DriverID"], driver_id)
-        self.assertEqual(task_spec["ReturnObjectIDs"], [result_id])
+        assert task_spec["ActorID"] == ray_constants.ID_SIZE * "ff"
+        assert task_spec["Args"] == [1, "hi", x_id]
+        assert task_spec["DriverID"] == driver_id
+        assert task_spec["ReturnObjectIDs"] == [result_id]
         function_table_entry = function_table[task_spec["FunctionID"]]
-        self.assertEqual(function_table_entry["Name"], "__main__.f")
-        self.assertEqual(function_table_entry["DriverID"], driver_id)
-        self.assertEqual(function_table_entry["Module"], "__main__")
+        assert function_table_entry["Name"] == "runtest.f"
+        assert function_table_entry["DriverID"] == driver_id
+        assert function_table_entry["Module"] == "runtest"
 
-        self.assertEqual(task_table[task_id],
-                         ray.global_state.task_table(task_id))
+        assert task_table[task_id] == ray.global_state.task_table(task_id)
 
         # Wait for two objects, one for the x_id and one for result_id.
         wait_for_num_objects(2)
@@ -2134,32 +2311,30 @@ class GlobalStateAPI(unittest.TestCase):
             wait_for_object_table()
 
         object_table = ray.global_state.object_table()
-        self.assertEqual(len(object_table), 2)
+        assert len(object_table) == 2
 
         if not ray.worker.global_worker.use_raylet:
-            self.assertEqual(object_table[x_id]["IsPut"], True)
-            self.assertEqual(object_table[x_id]["TaskID"], driver_task_id)
-            self.assertEqual(object_table[x_id]["ManagerIDs"],
-                             [manager_client["DBClientID"]])
+            db_client_id = manager_client["DBClientID"]
+            assert object_table[x_id]["IsPut"] is True
+            assert object_table[x_id]["TaskID"] == driver_task_id
+            assert object_table[x_id]["ManagerIDs"] == [db_client_id]
 
-            self.assertEqual(object_table[result_id]["IsPut"], False)
-            self.assertEqual(object_table[result_id]["TaskID"], task_id)
-            self.assertEqual(object_table[result_id]["ManagerIDs"],
-                             [manager_client["DBClientID"]])
+            assert object_table[result_id]["IsPut"] is False
+            assert object_table[result_id]["TaskID"] == task_id
+            assert object_table[result_id]["ManagerIDs"] == [db_client_id]
 
         else:
             assert len(object_table[x_id]) == 1
-            self.assertEqual(object_table[x_id][0]["IsEviction"], False)
-            self.assertEqual(object_table[x_id][0]["NumEvictions"], 0)
+            assert object_table[x_id][0]["IsEviction"] is False
+            assert object_table[x_id][0]["NumEvictions"] == 0
 
             assert len(object_table[result_id]) == 1
-            self.assertEqual(object_table[result_id][0]["IsEviction"], False)
-            self.assertEqual(object_table[result_id][0]["NumEvictions"], 0)
+            assert object_table[result_id][0]["IsEviction"] is False
+            assert object_table[result_id][0]["NumEvictions"] == 0
 
-        self.assertEqual(object_table[x_id],
-                         ray.global_state.object_table(x_id))
-        self.assertEqual(object_table[result_id],
-                         ray.global_state.object_table(result_id))
+        assert object_table[x_id] == ray.global_state.object_table(x_id)
+        object_table_entry = ray.global_state.object_table(result_id)
+        assert object_table[result_id] == object_table_entry
 
     def testLogFileAPI(self):
         ray.init(redirect_worker_output=True)
@@ -2189,11 +2364,11 @@ class GlobalStateAPI(unittest.TestCase):
                 break
             time.sleep(0.1)
 
-        self.assertEqual(found_message, True)
+        assert found_message is True
 
     @unittest.skipIf(
         os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
+        "This test does not work with xray (nor is it intended to).")
     def testTaskProfileAPI(self):
         ray.init(redirect_output=True)
 
@@ -2214,17 +2389,17 @@ class GlobalStateAPI(unittest.TestCase):
             if len(profiles) == num_calls and len(limited_profiles) == 1:
                 break
             time.sleep(0.1)
-        self.assertEqual(len(profiles), num_calls)
-        self.assertEqual(len(limited_profiles), 1)
+        assert len(profiles) == num_calls
+        assert len(limited_profiles) == 1
 
         # Make sure that each entry is properly formatted.
         for task_id, data in profiles.items():
-            self.assertIn("execute_start", data)
-            self.assertIn("execute_end", data)
-            self.assertIn("get_arguments_start", data)
-            self.assertIn("get_arguments_end", data)
-            self.assertIn("store_outputs_start", data)
-            self.assertIn("store_outputs_end", data)
+            assert "execute_start" in data
+            assert "execute_end" in data
+            assert "get_arguments_start" in data
+            assert "get_arguments_end" in data
+            assert "store_outputs_start" in data
+            assert "store_outputs_end" in data
 
     def testWorkers(self):
         num_workers = 3
@@ -2243,14 +2418,14 @@ class GlobalStateAPI(unittest.TestCase):
             worker_ids = set(ray.get([f.remote() for _ in range(10)]))
 
         worker_info = ray.global_state.workers()
-        self.assertEqual(len(worker_info), num_workers)
+        assert len(worker_info) >= num_workers
         for worker_id, info in worker_info.items():
-            self.assertIn("node_ip_address", info)
-            self.assertIn("local_scheduler_socket", info)
-            self.assertIn("plasma_manager_socket", info)
-            self.assertIn("plasma_store_socket", info)
-            self.assertIn("stderr_file", info)
-            self.assertIn("stdout_file", info)
+            assert "node_ip_address" in info
+            assert "local_scheduler_socket" in info
+            assert "plasma_manager_socket" in info
+            assert "plasma_store_socket" in info
+            assert "stderr_file" in info
+            assert "stdout_file" in info
 
     @unittest.skipIf(
         os.environ.get("RAY_USE_XRAY") == "1",
@@ -2359,6 +2534,22 @@ class GlobalStateAPI(unittest.TestCase):
         # Make sure that we can call this method (but it won't do anything in
         # this test case).
         ray.experimental.flush_evicted_objects_unsafe()
+
+
+class InitializationTest(unittest.TestCase):
+    def tearDown(self):
+        ray.shutdown()
+        assert not ray.is_initialized()
+
+    def testInitialized(self):
+        assert not ray.is_initialized()
+        ray.init(num_cpus=0)
+        assert ray.is_initialized()
+
+    def testInitializedLocalMode(self):
+        assert not ray.is_initialized()
+        ray.init(num_cpus=0, local_mode=True)
+        assert ray.is_initialized()
 
 
 if __name__ == "__main__":

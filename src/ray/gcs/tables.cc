@@ -3,6 +3,34 @@
 #include "common_protocol.h"
 #include "ray/gcs/client.h"
 
+namespace {
+
+static const std::string kTableAppendCommand = "RAY.TABLE_APPEND";
+static const std::string kChainTableAppendCommand = "RAY.CHAIN.TABLE_APPEND";
+
+static const std::string kTableAddCommand = "RAY.TABLE_ADD";
+static const std::string kChainTableAddCommand = "RAY.CHAIN.TABLE_ADD";
+
+std::string GetLogAppendCommand(const ray::gcs::CommandType command_type) {
+  if (command_type == ray::gcs::CommandType::kRegular) {
+    return kTableAppendCommand;
+  } else {
+    RAY_CHECK(command_type == ray::gcs::CommandType::kChain);
+    return kChainTableAppendCommand;
+  }
+}
+
+std::string GetTableAddCommand(const ray::gcs::CommandType command_type) {
+  if (command_type == ray::gcs::CommandType::kRegular) {
+    return kTableAddCommand;
+  } else {
+    RAY_CHECK(command_type == ray::gcs::CommandType::kChain);
+    return kChainTableAddCommand;
+  }
+}
+
+}  // namespace
+
 namespace ray {
 
 namespace gcs {
@@ -19,8 +47,9 @@ Status Log<ID, Data>::Append(const JobID &job_id, const ID &id,
   flatbuffers::FlatBufferBuilder fbb;
   fbb.ForceDefaults(true);
   fbb.Finish(Data::Pack(fbb, dataT.get()));
-  return context_->RunAsync("RAY.TABLE_APPEND", id, fbb.GetBufferPointer(), fbb.GetSize(),
-                            prefix_, pubsub_channel_, std::move(callback));
+  return GetRedisContext(id)->RunAsync(GetLogAppendCommand(command_type_), id,
+                                       fbb.GetBufferPointer(), fbb.GetSize(), prefix_,
+                                       pubsub_channel_, std::move(callback));
 }
 
 template <typename ID, typename Data>
@@ -42,8 +71,9 @@ Status Log<ID, Data>::AppendAt(const JobID &job_id, const ID &id,
   flatbuffers::FlatBufferBuilder fbb;
   fbb.ForceDefaults(true);
   fbb.Finish(Data::Pack(fbb, dataT.get()));
-  return context_->RunAsync("RAY.TABLE_APPEND", id, fbb.GetBufferPointer(), fbb.GetSize(),
-                            prefix_, pubsub_channel_, std::move(callback), log_length);
+  return GetRedisContext(id)->RunAsync(GetLogAppendCommand(command_type_), id,
+                                       fbb.GetBufferPointer(), fbb.GetSize(), prefix_,
+                                       pubsub_channel_, std::move(callback), log_length);
 }
 
 template <typename ID, typename Data>
@@ -66,8 +96,8 @@ Status Log<ID, Data>::Lookup(const JobID &job_id, const ID &id, const Callback &
     return true;
   };
   std::vector<uint8_t> nil;
-  return context_->RunAsync("RAY.TABLE_LOOKUP", id, nil.data(), nil.size(), prefix_,
-                            pubsub_channel_, std::move(callback));
+  return GetRedisContext(id)->RunAsync("RAY.TABLE_LOOKUP", id, nil.data(), nil.size(),
+                                       prefix_, pubsub_channel_, std::move(callback));
 }
 
 template <typename ID, typename Data>
@@ -107,7 +137,11 @@ Status Log<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
     return false;
   };
   subscribe_callback_index_ = 1;
-  return context_->SubscribeAsync(client_id, pubsub_channel_, std::move(callback));
+  for (auto &context : shard_contexts_) {
+    RAY_RETURN_NOT_OK(context->SubscribeAsync(client_id, pubsub_channel_, callback,
+                                              &subscribe_callback_index_));
+  }
+  return Status::OK();
 }
 
 template <typename ID, typename Data>
@@ -115,8 +149,9 @@ Status Log<ID, Data>::RequestNotifications(const JobID &job_id, const ID &id,
                                            const ClientID &client_id) {
   RAY_CHECK(subscribe_callback_index_ >= 0)
       << "Client requested notifications on a key before Subscribe completed";
-  return context_->RunAsync("RAY.TABLE_REQUEST_NOTIFICATIONS", id, client_id.data(),
-                            client_id.size(), prefix_, pubsub_channel_, nullptr);
+  return GetRedisContext(id)->RunAsync("RAY.TABLE_REQUEST_NOTIFICATIONS", id,
+                                       client_id.data(), client_id.size(), prefix_,
+                                       pubsub_channel_, nullptr);
 }
 
 template <typename ID, typename Data>
@@ -124,8 +159,9 @@ Status Log<ID, Data>::CancelNotifications(const JobID &job_id, const ID &id,
                                           const ClientID &client_id) {
   RAY_CHECK(subscribe_callback_index_ >= 0)
       << "Client canceled notifications on a key before Subscribe completed";
-  return context_->RunAsync("RAY.TABLE_CANCEL_NOTIFICATIONS", id, client_id.data(),
-                            client_id.size(), prefix_, pubsub_channel_, nullptr);
+  return GetRedisContext(id)->RunAsync("RAY.TABLE_CANCEL_NOTIFICATIONS", id,
+                                       client_id.data(), client_id.size(), prefix_,
+                                       pubsub_channel_, nullptr);
 }
 
 template <typename ID, typename Data>
@@ -140,15 +176,9 @@ Status Table<ID, Data>::Add(const JobID &job_id, const ID &id,
   flatbuffers::FlatBufferBuilder fbb;
   fbb.ForceDefaults(true);
   fbb.Finish(Data::Pack(fbb, dataT.get()));
-  if (command_type_ == CommandType::kRegular) {
-    return context_->RunAsync("RAY.TABLE_ADD", id, fbb.GetBufferPointer(), fbb.GetSize(),
-                              prefix_, pubsub_channel_, std::move(callback));
-  } else {
-    RAY_CHECK(command_type_ == CommandType::kChain);
-    return context_->RunAsync("RAY.CHAIN.TABLE_ADD", id, fbb.GetBufferPointer(),
-                              fbb.GetSize(), prefix_, pubsub_channel_,
-                              std::move(callback));
-  }
+  return GetRedisContext(id)->RunAsync(GetTableAddCommand(command_type_), id,
+                                       fbb.GetBufferPointer(), fbb.GetSize(), prefix_,
+                                       pubsub_channel_, std::move(callback));
 }
 
 template <typename ID, typename Data>
@@ -173,14 +203,85 @@ Status Table<ID, Data>::Lookup(const JobID &job_id, const ID &id, const Callback
 template <typename ID, typename Data>
 Status Table<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
                                   const Callback &subscribe,
+                                  const FailureCallback &failure,
                                   const SubscriptionCallback &done) {
   return Log<ID, Data>::Subscribe(
       job_id, client_id,
-      [subscribe](AsyncGcsClient *client, const ID &id, const std::vector<DataT> &data) {
-        RAY_CHECK(data.size() == 1);
-        subscribe(client, id, data[0]);
+      [subscribe, failure](AsyncGcsClient *client, const ID &id,
+                           const std::vector<DataT> &data) {
+        RAY_CHECK(data.empty() || data.size() == 1);
+        if (data.size() == 1) {
+          subscribe(client, id, data[0]);
+        } else {
+          if (failure != nullptr) {
+            failure(client, id);
+          }
+        }
       },
       done);
+}
+
+Status ErrorTable::PushErrorToDriver(const JobID &job_id, const std::string &type,
+                                     const std::string &error_message, double timestamp) {
+  auto data = std::make_shared<ErrorTableDataT>();
+  data->job_id = job_id.binary();
+  data->type = type;
+  data->error_message = error_message;
+  data->timestamp = timestamp;
+  return Append(job_id, job_id, data, [](ray::gcs::AsyncGcsClient *client,
+                                         const JobID &id, const ErrorTableDataT &data) {
+    RAY_LOG(DEBUG) << "Error message pushed callback";
+  });
+}
+
+Status ProfileTable::AddProfileEvent(const std::string &event_type,
+                                     const std::string &component_type,
+                                     const UniqueID &component_id,
+                                     const std::string &node_ip_address,
+                                     double start_time, double end_time,
+                                     const std::string &extra_data) {
+  auto data = std::make_shared<ProfileTableDataT>();
+
+  ProfileEventT profile_event;
+  profile_event.event_type = event_type;
+  profile_event.start_time = start_time;
+  profile_event.end_time = end_time;
+  profile_event.extra_data = extra_data;
+
+  data->component_type = component_type;
+  data->component_id = component_id.binary();
+  data->node_ip_address = node_ip_address;
+  data->profile_events.emplace_back(new ProfileEventT(profile_event));
+
+  return Append(JobID::nil(), component_id, data,
+                [](ray::gcs::AsyncGcsClient *client, const JobID &id,
+                   const ProfileTableDataT &data) {
+                  RAY_LOG(DEBUG) << "Profile message pushed callback";
+                });
+}
+
+Status ProfileTable::AddProfileEventBatch(const ProfileTableData &profile_events) {
+  auto data = std::make_shared<ProfileTableDataT>();
+  // There is some room for optimization here because the Append function will just
+  // call "Pack" and undo the "UnPack".
+  profile_events.UnPackTo(data.get());
+
+  return Append(JobID::nil(), from_flatbuf(*profile_events.component_id()), data,
+                [](ray::gcs::AsyncGcsClient *client, const JobID &id,
+                   const ProfileTableDataT &data) {
+                  RAY_LOG(DEBUG) << "Profile message pushed callback";
+                });
+}
+
+Status DriverTable::AppendDriverData(const JobID &driver_id, bool is_dead) {
+  auto data = std::make_shared<DriverTableDataT>();
+  data->driver_id = driver_id.binary();
+  data->is_dead = is_dead;
+  return Append(driver_id, driver_id, data,
+                [](ray::gcs::AsyncGcsClient *client, const JobID &id,
+                   const DriverTableDataT &data) {
+                  RAY_LOG(DEBUG) << "Driver entry added callback";
+                });
 }
 
 void ClientTable::RegisterClientAddedCallback(const ClientTableCallback &callback) {
@@ -238,10 +339,12 @@ void ClientTable::HandleNotification(AsyncGcsClient *client,
       if (client_added_callback_ != nullptr) {
         client_added_callback_(client, client_id, data);
       }
+      RAY_CHECK(removed_clients_.find(client_id) == removed_clients_.end());
     } else {
       if (client_removed_callback_ != nullptr) {
         client_removed_callback_(client, client_id, data);
       }
+      removed_clients_.insert(client_id);
     }
   }
 }
@@ -252,9 +355,13 @@ void ClientTable::HandleConnected(AsyncGcsClient *client, const ClientTableDataT
                                                << client_id_;
 }
 
-const ClientID &ClientTable::GetLocalClientId() { return client_id_; }
+const ClientID &ClientTable::GetLocalClientId() const { return client_id_; }
 
-const ClientTableDataT &ClientTable::GetLocalClient() { return local_client_; }
+const ClientTableDataT &ClientTable::GetLocalClient() const { return local_client_; }
+
+bool ClientTable::IsRemoved(const ClientID &client_id) const {
+  return removed_clients_.count(client_id) == 1;
+}
 
 Status ClientTable::Connect(const ClientTableDataT &local_client) {
   RAY_CHECK(!disconnected_) << "Tried to reconnect a disconnected client.";
@@ -314,7 +421,7 @@ ray::Status ClientTable::MarkDisconnected(const ClientID &dead_client_id) {
   return Append(JobID::nil(), client_log_key_, data, nullptr);
 }
 
-const ClientTableDataT &ClientTable::GetClient(const ClientID &client_id) {
+const ClientTableDataT &ClientTable::GetClient(const ClientID &client_id) const {
   RAY_CHECK(!client_id.is_nil());
   auto entry = client_cache_.find(client_id);
   if (entry != client_cache_.end()) {
@@ -322,8 +429,12 @@ const ClientTableDataT &ClientTable::GetClient(const ClientID &client_id) {
   } else {
     // If the requested client was not found, return a reference to the nil
     // client entry.
-    return client_cache_[ClientID::nil()];
+    return client_cache_.at(ClientID::nil());
   }
+}
+
+const std::unordered_map<ClientID, ClientTableDataT> &ClientTable::GetAllClients() const {
+  return client_cache_;
 }
 
 template class Log<ObjectID, ObjectTableData>;
@@ -332,8 +443,12 @@ template class Table<TaskID, ray::protocol::Task>;
 template class Table<TaskID, TaskTableData>;
 template class Log<ActorID, ActorTableData>;
 template class Log<TaskID, TaskReconstructionData>;
+template class Table<TaskID, TaskLeaseData>;
 template class Table<ClientID, HeartbeatTableData>;
+template class Log<JobID, ErrorTableData>;
 template class Log<UniqueID, ClientTableData>;
+template class Log<JobID, DriverTableData>;
+template class Log<UniqueID, ProfileTableData>;
 
 }  // namespace gcs
 

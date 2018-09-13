@@ -2,6 +2,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import random
+
 import boto3
 from botocore.config import Config
 
@@ -34,6 +36,9 @@ class AWSNodeProvider(NodeProvider):
         config = Config(retries={'max_attempts': BOTO_MAX_RETRIES})
         self.ec2 = boto3.resource(
             "ec2", region_name=provider_config["region"], config=config)
+
+        # Try availability zones round-robin, starting from random offset
+        self.subnet_idx = random.randint(0, 100)
 
         # Cache of node objects from the last nodes() call. This avoids
         # excessive DescribeInstances requests.
@@ -121,13 +126,39 @@ class AWSNodeProvider(NodeProvider):
                 "Key": k,
                 "Value": v,
             })
+        tag_specs = [{
+            "ResourceType": "instance",
+            "Tags": tag_pairs,
+        }]
+        user_tag_specs = conf.get("TagSpecifications", [])
+        # Allow users to add tags and override values of existing
+        # tags with their own. This only applies to the resource type
+        # "instance". All other resource types are appended to the list of
+        # tag specs.
+        for user_tag_spec in user_tag_specs:
+            if user_tag_spec["ResourceType"] == "instance":
+                for user_tag in user_tag_spec["Tags"]:
+                    exists = False
+                    for tag in tag_specs[0]["Tags"]:
+                        if user_tag["Key"] == tag["Key"]:
+                            exists = True
+                            tag["Value"] = user_tag["Value"]
+                            break
+                    if not exists:
+                        tag_specs[0]["Tags"] += [user_tag]
+            else:
+                tag_specs += [user_tag_spec]
+
+        # SubnetIds is not a real config key: we must resolve to a
+        # single SubnetId before invoking the AWS API.
+        subnet_ids = conf.pop("SubnetIds")
+        subnet_id = subnet_ids[self.subnet_idx % len(subnet_ids)]
+        self.subnet_idx += 1
         conf.update({
             "MinCount": 1,
             "MaxCount": count,
-            "TagSpecifications": conf.get("TagSpecifications", []) + [{
-                "ResourceType": "instance",
-                "Tags": tag_pairs,
-            }]
+            "SubnetId": subnet_id,
+            "TagSpecifications": tag_specs
         })
         self.ec2.create_instances(**conf)
 

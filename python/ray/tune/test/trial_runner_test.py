@@ -11,14 +11,17 @@ from ray.rllib import _register_all
 
 from ray.tune import Trainable, TuneError
 from ray.tune import register_env, register_trainable, run_experiments
-from ray.tune.registry import _default_registry, TRAINABLE_CLASS
-from ray.tune.result import DEFAULT_RESULTS_DIR, TrainingResult
+from ray.tune.ray_trial_executor import RayTrialExecutor
+from ray.tune.schedulers import TrialScheduler, FIFOScheduler
+from ray.tune.registry import _global_registry, TRAINABLE_CLASS
+from ray.tune.result import DEFAULT_RESULTS_DIR, TIMESTEPS_TOTAL, DONE
 from ray.tune.util import pin_in_object_store, get_pinned_object
 from ray.tune.experiment import Experiment
 from ray.tune.trial import Trial, Resources
 from ray.tune.trial_runner import TrialRunner
-from ray.tune.variant_generator import generate_trials, grid_search, \
-    RecursiveDependencyError
+from ray.tune.suggest import grid_search, BasicVariantGenerator
+from ray.tune.suggest.suggestion import _MockSuggestionAlgorithm
+from ray.tune.suggest.variant_generator import RecursiveDependencyError
 
 
 class TrainableFunctionApiTest(unittest.TestCase):
@@ -26,7 +29,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
         ray.init(num_cpus=4, num_gpus=0)
 
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
         _register_all()  # re-register the evicted objects
 
     def testPinObject(self):
@@ -55,11 +58,31 @@ class TrainableFunctionApiTest(unittest.TestCase):
             }
         })
         self.assertEqual(trial.status, Trial.TERMINATED)
-        self.assertEqual(trial.last_result.timesteps_total, 100)
+        self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], 100)
 
     def testRegisterEnv(self):
         register_env("foo", lambda: None)
         self.assertRaises(TypeError, lambda: register_env("foo", 2))
+
+    def testRegisterEnvOverwrite(self):
+        def train(config, reporter):
+            reporter(timesteps_total=100, done=True)
+
+        def train2(config, reporter):
+            reporter(timesteps_total=200, done=True)
+
+        register_trainable("f1", train)
+        register_trainable("f1", train2)
+        [trial] = run_experiments({
+            "foo": {
+                "run": "f1",
+                "config": {
+                    "script_min_iter_time_s": 0,
+                },
+            }
+        })
+        self.assertEqual(trial.status, Trial.TERMINATED)
+        self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], 200)
 
     def testRegisterTrainable(self):
         def train(config, reporter):
@@ -83,7 +106,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
                 return Resources(cpu=config["cpu"], gpu=config["gpu"])
 
             def _train(self):
-                return TrainingResult(timesteps_this_iter=1, done=True)
+                return dict(timesteps_this_iter=1, done=True)
 
         register_trainable("B", B)
 
@@ -254,7 +277,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
         self.assertRaises(TuneError, f)
 
-    def testBadReturn(self):
+    def testBadStoppingReturn(self):
         def train(config, reporter):
             reporter()
 
@@ -264,6 +287,9 @@ class TrainableFunctionApiTest(unittest.TestCase):
             run_experiments({
                 "foo": {
                     "run": "f1",
+                    "stop": {
+                        "time": 10
+                    },
                     "config": {
                         "script_min_iter_time_s": 0,
                     },
@@ -287,7 +313,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
             }
         })
         self.assertEqual(trial.status, Trial.TERMINATED)
-        self.assertEqual(trial.last_result.timesteps_total, 100)
+        self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], 100)
 
     def testAbruptReturn(self):
         def train(config, reporter):
@@ -303,7 +329,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
             }
         })
         self.assertEqual(trial.status, Trial.TERMINATED)
-        self.assertEqual(trial.last_result.timesteps_total, 100)
+        self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], 100)
 
     def testErrorReturn(self):
         def train(config, reporter):
@@ -338,7 +364,54 @@ class TrainableFunctionApiTest(unittest.TestCase):
             }
         })
         self.assertEqual(trial.status, Trial.TERMINATED)
-        self.assertEqual(trial.last_result.timesteps_total, 99)
+        self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], 99)
+
+    def testReportInfinity(self):
+        def train(config, reporter):
+            for i in range(100):
+                reporter(mean_accuracy=float('inf'))
+
+        register_trainable("f1", train)
+        [trial] = run_experiments({
+            "foo": {
+                "run": "f1",
+                "config": {
+                    "script_min_iter_time_s": 0,
+                },
+            }
+        })
+        self.assertEqual(trial.status, Trial.TERMINATED)
+        self.assertEqual(trial.last_result['mean_accuracy'], float('inf'))
+
+    def testReportTimeStep(self):
+        def train(config, reporter):
+            for i in range(100):
+                reporter(mean_accuracy=5)
+
+        [trial] = run_experiments({
+            "foo": {
+                "run": train,
+                "config": {
+                    "script_min_iter_time_s": 0,
+                },
+            }
+        })
+        self.assertIsNone(trial.last_result[TIMESTEPS_TOTAL])
+
+        def train3(config, reporter):
+            for i in range(10):
+                reporter(timesteps_total=5)
+
+        [trial3] = run_experiments({
+            "foo": {
+                "run": train3,
+                "config": {
+                    "script_min_iter_time_s": 0,
+                },
+            }
+        })
+        self.assertEqual(trial3.last_result[TIMESTEPS_TOTAL], 5)
+        self.assertEqual(trial3.last_result["timesteps_this_iter"], 0)
 
 
 class RunExperimentTest(unittest.TestCase):
@@ -346,7 +419,7 @@ class RunExperimentTest(unittest.TestCase):
         ray.init()
 
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
         _register_all()  # re-register the evicted objects
 
     def testDict(self):
@@ -371,7 +444,7 @@ class RunExperimentTest(unittest.TestCase):
         })
         for trial in trials:
             self.assertEqual(trial.status, Trial.TERMINATED)
-            self.assertEqual(trial.last_result.timesteps_total, 99)
+            self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], 99)
 
     def testExperiment(self):
         def train(config, reporter):
@@ -388,7 +461,7 @@ class RunExperimentTest(unittest.TestCase):
         })
         [trial] = run_experiments(exp1)
         self.assertEqual(trial.status, Trial.TERMINATED)
-        self.assertEqual(trial.last_result.timesteps_total, 99)
+        self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], 99)
 
     def testExperimentList(self):
         def train(config, reporter):
@@ -413,7 +486,72 @@ class RunExperimentTest(unittest.TestCase):
         trials = run_experiments([exp1, exp2])
         for trial in trials:
             self.assertEqual(trial.status, Trial.TERMINATED)
-            self.assertEqual(trial.last_result.timesteps_total, 99)
+            self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], 99)
+
+    def testSpecifyAlgorithm(self):
+        """Tests run_experiments works without specifying experiment."""
+
+        def train(config, reporter):
+            for i in range(100):
+                reporter(timesteps_total=i)
+
+        register_trainable("f1", train)
+
+        alg = BasicVariantGenerator()
+        alg.add_configurations({
+            "foo": {
+                "run": "f1",
+                "config": {
+                    "script_min_iter_time_s": 0
+                }
+            }
+        })
+        trials = run_experiments(search_alg=alg)
+        for trial in trials:
+            self.assertEqual(trial.status, Trial.TERMINATED)
+            self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], 99)
+
+    def testAutoregisterTrainable(self):
+        def train(config, reporter):
+            for i in range(100):
+                reporter(timesteps_total=i)
+
+        class B(Trainable):
+            def _train(self):
+                return dict(timesteps_this_iter=1, done=True)
+
+        register_trainable("f1", train)
+        trials = run_experiments({
+            "foo": {
+                "run": train,
+                "config": {
+                    "script_min_iter_time_s": 0
+                }
+            },
+            "bar": {
+                "run": B
+            }
+        })
+        for trial in trials:
+            self.assertEqual(trial.status, Trial.TERMINATED)
+
+    def testCheckpointAtEnd(self):
+        class train(Trainable):
+            def _train(self):
+                return dict(timesteps_this_iter=1, done=True)
+
+            def _save(self, path):
+                return path
+
+        trials = run_experiments({
+            "foo": {
+                "run": train,
+                "checkpoint_at_end": True
+            }
+        })
+        for trial in trials:
+            self.assertEqual(trial.status, Trial.TERMINATED)
+            self.assertTrue(trial.has_checkpoint())
 
 
 class VariantGeneratorTest(unittest.TestCase):
@@ -421,13 +559,18 @@ class VariantGeneratorTest(unittest.TestCase):
         ray.init()
 
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
         _register_all()  # re-register the evicted objects
 
+    def generate_trials(self, spec, name):
+        suggester = BasicVariantGenerator()
+        suggester.add_configurations({name: spec})
+        return suggester.next_trials()
+
     def testParseToTrials(self):
-        trials = generate_trials({
+        trials = self.generate_trials({
             "run": "PPO",
-            "repeat": 2,
+            "num_samples": 2,
             "max_failures": 5,
             "config": {
                 "env": "Pong-v0",
@@ -446,21 +589,21 @@ class VariantGeneratorTest(unittest.TestCase):
         self.assertEqual(trials[1].experiment_tag, "1")
 
     def testEval(self):
-        trials = generate_trials({
+        trials = self.generate_trials({
             "run": "PPO",
             "config": {
                 "foo": {
                     "eval": "2 + 2"
                 },
             },
-        })
+        }, "eval")
         trials = list(trials)
         self.assertEqual(len(trials), 1)
         self.assertEqual(trials[0].config, {"foo": 4})
         self.assertEqual(trials[0].experiment_tag, "0_foo=4")
 
     def testGridSearch(self):
-        trials = generate_trials({
+        trials = self.generate_trials({
             "run": "PPO",
             "config": {
                 "bar": {
@@ -470,7 +613,7 @@ class VariantGeneratorTest(unittest.TestCase):
                     "grid_search": [1, 2, 3]
                 },
             },
-        })
+        }, "grid_search")
         trials = list(trials)
         self.assertEqual(len(trials), 6)
         self.assertEqual(trials[0].config, {"bar": True, "foo": 1})
@@ -483,47 +626,47 @@ class VariantGeneratorTest(unittest.TestCase):
         self.assertEqual(trials[5].config, {"bar": False, "foo": 3})
 
     def testGridSearchAndEval(self):
-        trials = generate_trials({
+        trials = self.generate_trials({
             "run": "PPO",
             "config": {
                 "qux": lambda spec: 2 + 2,
                 "bar": grid_search([True, False]),
                 "foo": grid_search([1, 2, 3]),
             },
-        })
+        }, "grid_eval")
         trials = list(trials)
         self.assertEqual(len(trials), 6)
         self.assertEqual(trials[0].config, {"bar": True, "foo": 1, "qux": 4})
         self.assertEqual(trials[0].experiment_tag, "0_bar=True,foo=1,qux=4")
 
     def testConditionResolution(self):
-        trials = generate_trials({
+        trials = self.generate_trials({
             "run": "PPO",
             "config": {
                 "x": 1,
                 "y": lambda spec: spec.config.x + 1,
                 "z": lambda spec: spec.config.y + 1,
             },
-        })
+        }, "condition_resolution")
         trials = list(trials)
         self.assertEqual(len(trials), 1)
         self.assertEqual(trials[0].config, {"x": 1, "y": 2, "z": 3})
 
     def testDependentLambda(self):
-        trials = generate_trials({
+        trials = self.generate_trials({
             "run": "PPO",
             "config": {
                 "x": grid_search([1, 2]),
                 "y": lambda spec: spec.config.x * 100,
             },
-        })
+        }, "dependent_lambda")
         trials = list(trials)
         self.assertEqual(len(trials), 2)
         self.assertEqual(trials[0].config, {"x": 1, "y": 100})
         self.assertEqual(trials[1].config, {"x": 2, "y": 200})
 
     def testDependentGridSearch(self):
-        trials = generate_trials({
+        trials = self.generate_trials({
             "run": "PPO",
             "config": {
                 "x": grid_search([
@@ -532,7 +675,7 @@ class VariantGeneratorTest(unittest.TestCase):
                 ]),
                 "y": lambda spec: 1,
             },
-        })
+        }, "dependent_grid_search")
         trials = list(trials)
         self.assertEqual(len(trials), 2)
         self.assertEqual(trials[0].config, {"x": 100, "y": 1})
@@ -541,32 +684,62 @@ class VariantGeneratorTest(unittest.TestCase):
     def testRecursiveDep(self):
         try:
             list(
-                generate_trials({
+                self.generate_trials({
                     "run": "PPO",
                     "config": {
                         "foo": lambda spec: spec.config.foo,
                     },
-                }))
+                }, "recursive_dep"))
         except RecursiveDependencyError as e:
             assert "`foo` recursively depends on" in str(e), e
         else:
             assert False
 
+    def testMaxConcurrentSuggestions(self):
+        """Checks that next_trials() supports throttling."""
+        experiment_spec = {
+            "run": "PPO",
+            "num_samples": 6,
+        }
+        experiments = [Experiment.from_json("test", experiment_spec)]
+
+        searcher = _MockSuggestionAlgorithm(max_concurrent=4)
+        searcher.add_configurations(experiments)
+        trials = searcher.next_trials()
+        self.assertEqual(len(trials), 4)
+        self.assertEqual(searcher.next_trials(), [])
+
+        finished_trial = trials.pop()
+        searcher.on_trial_complete(finished_trial.trial_id)
+        self.assertEqual(len(searcher.next_trials()), 1)
+
+        finished_trial = trials.pop()
+        searcher.on_trial_complete(finished_trial.trial_id)
+
+        finished_trial = trials.pop()
+        searcher.on_trial_complete(finished_trial.trial_id)
+
+        finished_trial = trials.pop()
+        searcher.on_trial_complete(finished_trial.trial_id)
+        self.assertEqual(len(searcher.next_trials()), 1)
+        self.assertEqual(len(searcher.next_trials()), 0)
+
 
 class TrialRunnerTest(unittest.TestCase):
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
         _register_all()  # re-register the evicted objects
 
     def testTrialStatus(self):
         ray.init()
         trial = Trial("__fake")
+        trial_executor = RayTrialExecutor()
         self.assertEqual(trial.status, Trial.PENDING)
-        trial.start()
+        trial_executor.start_trial(trial)
         self.assertEqual(trial.status, Trial.RUNNING)
-        trial.stop()
+        trial_executor.stop_trial(trial)
         self.assertEqual(trial.status, Trial.TERMINATED)
-        trial.stop(error=True)
+        trial_executor.stop_trial(trial, error=True)
         self.assertEqual(trial.status, Trial.ERROR)
 
     def testExperimentTagTruncation(self):
@@ -575,6 +748,7 @@ class TrialRunnerTest(unittest.TestCase):
         def train(config, reporter):
             reporter(timesteps_total=1)
 
+        trial_executor = RayTrialExecutor()
         register_trainable("f1", train)
 
         experiments = {
@@ -588,23 +762,26 @@ class TrialRunnerTest(unittest.TestCase):
         }
 
         for name, spec in experiments.items():
-            for trial in generate_trials(spec, name):
-                trial.start()
+            trial_generator = BasicVariantGenerator()
+            trial_generator.add_configurations({name: spec})
+            for trial in trial_generator.next_trials():
+                trial_executor.start_trial(trial)
                 self.assertLessEqual(len(trial.logdir), 200)
-                trial.stop()
+                trial_executor.stop_trial(trial)
 
     def testTrialErrorOnStart(self):
         ray.init()
-        _default_registry.register(TRAINABLE_CLASS, "asdf", None)
+        trial_executor = RayTrialExecutor()
+        _global_registry.register(TRAINABLE_CLASS, "asdf", None)
         trial = Trial("asdf", resources=Resources(1, 0))
         try:
-            trial.start()
+            trial_executor.start_trial(trial)
         except Exception as e:
             self.assertIn("a class", str(e))
 
     def testExtraResources(self):
         ray.init(num_cpus=4, num_gpus=2)
-        runner = TrialRunner()
+        runner = TrialRunner(BasicVariantGenerator())
         kwargs = {
             "stopping_criterion": {
                 "training_iteration": 1
@@ -623,9 +800,32 @@ class TrialRunnerTest(unittest.TestCase):
         self.assertEqual(trials[0].status, Trial.TERMINATED)
         self.assertEqual(trials[1].status, Trial.PENDING)
 
+    def testFractionalGpus(self):
+        ray.init(num_cpus=4, num_gpus=1, use_raylet=True)
+        runner = TrialRunner(BasicVariantGenerator())
+        kwargs = {
+            "resources": Resources(cpu=1, gpu=0.5),
+        }
+        trials = [
+            Trial("__fake", **kwargs),
+            Trial("__fake", **kwargs),
+            Trial("__fake", **kwargs),
+            Trial("__fake", **kwargs)
+        ]
+        for t in trials:
+            runner.add_trial(t)
+
+        for _ in range(10):
+            runner.step()
+
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+        self.assertEqual(trials[1].status, Trial.RUNNING)
+        self.assertEqual(trials[2].status, Trial.PENDING)
+        self.assertEqual(trials[3].status, Trial.PENDING)
+
     def testResourceScheduler(self):
         ray.init(num_cpus=4, num_gpus=1)
-        runner = TrialRunner()
+        runner = TrialRunner(BasicVariantGenerator())
         kwargs = {
             "stopping_criterion": {
                 "training_iteration": 1
@@ -654,7 +854,7 @@ class TrialRunnerTest(unittest.TestCase):
 
     def testMultiStepRun(self):
         ray.init(num_cpus=4, num_gpus=2)
-        runner = TrialRunner()
+        runner = TrialRunner(BasicVariantGenerator())
         kwargs = {
             "stopping_criterion": {
                 "training_iteration": 5
@@ -683,14 +883,14 @@ class TrialRunnerTest(unittest.TestCase):
 
     def testErrorHandling(self):
         ray.init(num_cpus=4, num_gpus=2)
-        runner = TrialRunner()
+        runner = TrialRunner(BasicVariantGenerator())
         kwargs = {
             "stopping_criterion": {
                 "training_iteration": 1
             },
             "resources": Resources(cpu=1, gpu=1),
         }
-        _default_registry.register(TRAINABLE_CLASS, "asdf", None)
+        _global_registry.register(TRAINABLE_CLASS, "asdf", None)
         trials = [Trial("asdf", **kwargs), Trial("__fake", **kwargs)]
         for t in trials:
             runner.add_trial(t)
@@ -705,7 +905,7 @@ class TrialRunnerTest(unittest.TestCase):
 
     def testFailureRecoveryDisabled(self):
         ray.init(num_cpus=1, num_gpus=1)
-        runner = TrialRunner()
+        runner = TrialRunner(BasicVariantGenerator())
         kwargs = {
             "resources": Resources(cpu=1, gpu=1),
             "checkpoint_freq": 1,
@@ -727,7 +927,7 @@ class TrialRunnerTest(unittest.TestCase):
 
     def testFailureRecoveryEnabled(self):
         ray.init(num_cpus=1, num_gpus=1)
-        runner = TrialRunner()
+        runner = TrialRunner(BasicVariantGenerator())
         kwargs = {
             "resources": Resources(cpu=1, gpu=1),
             "checkpoint_freq": 1,
@@ -751,7 +951,7 @@ class TrialRunnerTest(unittest.TestCase):
 
     def testFailureRecoveryMaxFailures(self):
         ray.init(num_cpus=1, num_gpus=1)
-        runner = TrialRunner()
+        runner = TrialRunner(BasicVariantGenerator())
         kwargs = {
             "resources": Resources(cpu=1, gpu=1),
             "checkpoint_freq": 1,
@@ -780,7 +980,7 @@ class TrialRunnerTest(unittest.TestCase):
 
     def testCheckpointing(self):
         ray.init(num_cpus=1, num_gpus=1)
-        runner = TrialRunner()
+        runner = TrialRunner(BasicVariantGenerator())
         kwargs = {
             "stopping_criterion": {
                 "training_iteration": 1
@@ -793,8 +993,7 @@ class TrialRunnerTest(unittest.TestCase):
         runner.step()
         self.assertEqual(trials[0].status, Trial.RUNNING)
         self.assertEqual(ray.get(trials[0].runner.set_info.remote(1)), 1)
-
-        path = trials[0].checkpoint()
+        path = runner.trial_executor.save(trials[0])
         kwargs["restore_path"] = path
 
         runner.add_trial(Trial("__fake", **kwargs))
@@ -810,10 +1009,62 @@ class TrialRunnerTest(unittest.TestCase):
         self.assertEqual(ray.get(trials[1].runner.get_info.remote()), 1)
         self.addCleanup(os.remove, path)
 
+    def testRestoreMetricsAfterCheckpointing(self):
+        ray.init(num_cpus=1, num_gpus=1)
+        runner = TrialRunner(BasicVariantGenerator())
+        kwargs = {
+            "resources": Resources(cpu=1, gpu=1),
+        }
+        runner.add_trial(Trial("__fake", **kwargs))
+        trials = runner.get_trials()
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+        self.assertEqual(ray.get(trials[0].runner.set_info.remote(1)), 1)
+        path = runner.trial_executor.save(trials[0])
+        runner.trial_executor.stop_trial(trials[0])
+        kwargs["restore_path"] = path
+
+        runner.add_trial(Trial("__fake", **kwargs))
+        trials = runner.get_trials()
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.TERMINATED)
+        self.assertEqual(trials[1].status, Trial.RUNNING)
+        runner.step()
+        self.assertEqual(trials[1].last_result["timesteps_since_restore"], 10)
+        self.assertEqual(trials[1].last_result["iterations_since_restore"], 1)
+        self.assertGreater(trials[1].last_result["time_since_restore"], 0)
+        runner.step()
+        self.assertEqual(trials[1].last_result["timesteps_since_restore"], 20)
+        self.assertEqual(trials[1].last_result["iterations_since_restore"], 2)
+        self.assertGreater(trials[1].last_result["time_since_restore"], 0)
+        self.addCleanup(os.remove, path)
+
+    def testCheckpointingAtEnd(self):
+        ray.init(num_cpus=1, num_gpus=1)
+        runner = TrialRunner(BasicVariantGenerator())
+        kwargs = {
+            "stopping_criterion": {
+                "training_iteration": 2
+            },
+            "checkpoint_at_end": True,
+            "resources": Resources(cpu=1, gpu=1),
+        }
+        runner.add_trial(Trial("__fake", **kwargs))
+        trials = runner.get_trials()
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+        runner.step()
+        runner.step()
+        self.assertEqual(trials[0].last_result[DONE], True)
+        self.assertEqual(trials[0].has_checkpoint(), True)
+
     def testResultDone(self):
         """Tests that last_result is marked `done` after trial is complete."""
         ray.init(num_cpus=1, num_gpus=1)
-        runner = TrialRunner()
+        runner = TrialRunner(BasicVariantGenerator())
         kwargs = {
             "stopping_criterion": {
                 "training_iteration": 2
@@ -826,13 +1077,13 @@ class TrialRunnerTest(unittest.TestCase):
         runner.step()
         self.assertEqual(trials[0].status, Trial.RUNNING)
         runner.step()
-        self.assertNotEqual(trials[0].last_result.done, True)
+        self.assertNotEqual(trials[0].last_result[DONE], True)
         runner.step()
-        self.assertEqual(trials[0].last_result.done, True)
+        self.assertEqual(trials[0].last_result[DONE], True)
 
     def testPauseThenResume(self):
         ray.init(num_cpus=1, num_gpus=1)
-        runner = TrialRunner()
+        runner = TrialRunner(BasicVariantGenerator())
         kwargs = {
             "stopping_criterion": {
                 "training_iteration": 2
@@ -848,10 +1099,10 @@ class TrialRunnerTest(unittest.TestCase):
 
         self.assertEqual(ray.get(trials[0].runner.set_info.remote(1)), 1)
 
-        trials[0].pause()
+        runner.trial_executor.pause_trial(trials[0])
         self.assertEqual(trials[0].status, Trial.PAUSED)
 
-        trials[0].resume()
+        runner.trial_executor.resume_trial(trials[0])
         self.assertEqual(trials[0].status, Trial.RUNNING)
 
         runner.step()
@@ -861,9 +1112,39 @@ class TrialRunnerTest(unittest.TestCase):
         runner.step()
         self.assertEqual(trials[0].status, Trial.TERMINATED)
 
+    def testStepHook(self):
+        ray.init(num_cpus=4, num_gpus=2)
+        runner = TrialRunner(BasicVariantGenerator())
+
+        def on_step_begin(self):
+            self._update_avail_resources()
+            cnt = self.pre_step if hasattr(self, 'pre_step') else 0
+            setattr(self, 'pre_step', cnt + 1)
+
+        def on_step_end(self):
+            cnt = self.pre_step if hasattr(self, 'post_step') else 0
+            setattr(self, 'post_step', 1 + cnt)
+
+        import types
+        runner.trial_executor.on_step_begin = types.MethodType(
+            on_step_begin, runner.trial_executor)
+        runner.trial_executor.on_step_end = types.MethodType(
+            on_step_end, runner.trial_executor)
+
+        kwargs = {
+            "stopping_criterion": {
+                "training_iteration": 5
+            },
+            "resources": Resources(cpu=1, gpu=1),
+        }
+        runner.add_trial(Trial("__fake", **kwargs))
+        runner.step()
+        self.assertEqual(runner.trial_executor.pre_step, 1)
+        self.assertEqual(runner.trial_executor.post_step, 1)
+
     def testStopTrial(self):
         ray.init(num_cpus=4, num_gpus=2)
-        runner = TrialRunner()
+        runner = TrialRunner(BasicVariantGenerator())
         kwargs = {
             "stopping_criterion": {
                 "training_iteration": 5
@@ -903,6 +1184,121 @@ class TrialRunnerTest(unittest.TestCase):
         self.assertEqual(trials[1].status, Trial.RUNNING)
         self.assertEqual(trials[2].status, Trial.RUNNING)
         self.assertEqual(trials[-1].status, Trial.TERMINATED)
+
+    def testSearchAlgNotification(self):
+        """Checks notification of trial to the Search Algorithm."""
+        ray.init(num_cpus=4, num_gpus=2)
+        experiment_spec = {"run": "__fake", "stop": {"training_iteration": 2}}
+        experiments = [Experiment.from_json("test", experiment_spec)]
+        searcher = _MockSuggestionAlgorithm(max_concurrent=10)
+        searcher.add_configurations(experiments)
+        runner = TrialRunner(search_alg=searcher)
+        runner.step()
+        trials = runner.get_trials()
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.TERMINATED)
+
+        self.assertEqual(searcher.counter["result"], 1)
+        self.assertEqual(searcher.counter["complete"], 1)
+
+    def testSearchAlgFinished(self):
+        """Checks that SearchAlg is Finished before all trials are done."""
+        ray.init(num_cpus=4, num_gpus=2)
+        experiment_spec = {"run": "__fake", "stop": {"training_iteration": 1}}
+        experiments = [Experiment.from_json("test", experiment_spec)]
+        searcher = _MockSuggestionAlgorithm(max_concurrent=10)
+        searcher.add_configurations(experiments)
+        runner = TrialRunner(search_alg=searcher)
+        runner.step()
+        trials = runner.get_trials()
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+        self.assertTrue(searcher.is_finished())
+        self.assertFalse(runner.is_finished())
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.TERMINATED)
+        self.assertEqual(len(searcher.live_trials), 0)
+        self.assertTrue(searcher.is_finished())
+        self.assertTrue(runner.is_finished())
+
+    def testSearchAlgSchedulerInteraction(self):
+        """Checks that TrialScheduler killing trial will notify SearchAlg."""
+
+        class _MockScheduler(FIFOScheduler):
+            def on_trial_result(self, *args, **kwargs):
+                return TrialScheduler.STOP
+
+        ray.init(num_cpus=4, num_gpus=2)
+        experiment_spec = {"run": "__fake", "stop": {"training_iteration": 2}}
+        experiments = [Experiment.from_json("test", experiment_spec)]
+        searcher = _MockSuggestionAlgorithm(max_concurrent=10)
+        searcher.add_configurations(experiments)
+        runner = TrialRunner(search_alg=searcher, scheduler=_MockScheduler())
+        runner.step()
+        trials = runner.get_trials()
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+        self.assertTrue(searcher.is_finished())
+        self.assertFalse(runner.is_finished())
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.TERMINATED)
+        self.assertEqual(len(searcher.live_trials), 0)
+        self.assertTrue(searcher.is_finished())
+        self.assertTrue(runner.is_finished())
+
+    def testSearchAlgStalled(self):
+        """Checks that runner and searcher state is maintained when stalled."""
+        ray.init(num_cpus=4, num_gpus=2)
+        experiment_spec = {
+            "run": "__fake",
+            "num_samples": 3,
+            "stop": {
+                "training_iteration": 1
+            }
+        }
+        experiments = [Experiment.from_json("test", experiment_spec)]
+        searcher = _MockSuggestionAlgorithm(max_concurrent=1)
+        searcher.add_configurations(experiments)
+        runner = TrialRunner(search_alg=searcher)
+        runner.step()
+        trials = runner.get_trials()
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.TERMINATED)
+
+        trials = runner.get_trials()
+        runner.step()
+        self.assertEqual(trials[1].status, Trial.RUNNING)
+        self.assertEqual(len(searcher.live_trials), 1)
+
+        searcher.stall = True
+
+        runner.step()
+        self.assertEqual(trials[1].status, Trial.TERMINATED)
+        self.assertEqual(len(searcher.live_trials), 0)
+
+        self.assertTrue(all(trial.is_finished() for trial in trials))
+        self.assertFalse(searcher.is_finished())
+        self.assertFalse(runner.is_finished())
+
+        searcher.stall = False
+
+        runner.step()
+        trials = runner.get_trials()
+        self.assertEqual(trials[2].status, Trial.RUNNING)
+        self.assertEqual(len(searcher.live_trials), 1)
+
+        runner.step()
+        self.assertEqual(trials[2].status, Trial.TERMINATED)
+        self.assertEqual(len(searcher.live_trials), 0)
+        self.assertTrue(searcher.is_finished())
+        self.assertTrue(runner.is_finished())
 
 
 if __name__ == "__main__":

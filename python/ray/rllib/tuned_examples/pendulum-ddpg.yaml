@@ -42,26 +42,10 @@ pendulum-ddpg:
         learning_starts: 500
         sample_batch_size: 1
         train_batch_size: 64
-        smoothing_num_episodes: 10
-
-        # === Tensorflow ===
-        tf_session_args: {
-            "device_count": {
-                "CPU": 2
-            },
-            "log_device_placement": False,
-            "allow_soft_placement": True,
-            "gpu_options": {
-                "allow_growth": True
-            },
-            "inter_op_parallelism_threads": 1,
-            "intra_op_parallelism_threads": 1,
-        }
 
         # === Parallelism ===
         num_workers: 0
         num_gpus_per_worker: 0
-        optimizer_class: "LocalSyncReplayOptimizer"
-        optimizer_config: {}
+        optimizer_class: "SyncReplayOptimizer"
         per_worker_exploration: False
         worker_side_prioritization: False

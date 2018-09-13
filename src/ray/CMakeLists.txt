@@ -1,14 +1,12 @@
 cmake_minimum_required(VERSION 3.2)
-set(CMAKE_CXX_FLAGS "-g -Wall -Werror -std=c++11")
-
-include_directories(${CMAKE_CURRENT_LIST_DIR}/../common/thirdparty/ae)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -Wall -Werror -std=c++11")
 
 add_subdirectory(util)
 add_subdirectory(gcs)
 add_subdirectory(object_manager)
 add_subdirectory(raylet)
 
-include(${CMAKE_CURRENT_LIST_DIR}/../common/cmake/Common.cmake)
+include_directories(${CMAKE_SOURCE_DIR}/src/common/thirdparty/ae)
 
 set(AE_SRCS
   ${CMAKE_CURRENT_LIST_DIR}/../common/thirdparty/ae/ae.c
@@ -36,6 +34,7 @@ set(RAY_SRCS
   gcs/task_table.cc
   gcs/redis_context.cc
   gcs/asio.cc
+  util/logging.cc
   common/client_connection.cc
   object_manager/object_manager_client_connection.cc
   object_manager/connection_pool.cc
@@ -61,6 +60,21 @@ set(RAY_SRCS
   raylet/raylet.cc
 )
 
+set(RAY_LIB_STATIC_LINK_LIBS ${PLASMA_STATIC_LIB} ${ARROW_STATIC_LIB})
+set(RAY_LIB_DEPENDENCIES
+    arrow_ep
+    gen_gcs_fbs
+    gen_object_manager_fbs
+    gen_node_manager_fbs
+    gen_local_scheduler_fbs
+    ${COMMON_FBS_OUTPUT_FILES})
+
+if(RAY_USE_GLOG)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DRAY_USE_GLOG")
+  set(RAY_LIB_STATIC_LINK_LIBS ${RAY_LIB_STATIC_LINK_LIBS} ${GLOG_STATIC_LIB})
+  set(RAY_LIB_DEPENDENCIES ${RAY_LIB_DEPENDENCIES} glog)
+endif()
+
 install(FILES
   api.h
   id.h
@@ -77,6 +91,8 @@ install(
 
 ADD_RAY_LIB(ray
   SOURCES ${RAY_SRCS} ${AE_SRCS} ${HIREDIS_SRCS} ${UTIL_SRCS}
-    DEPENDENCIES gen_gcs_fbs gen_object_manager_fbs gen_node_manager_fbs
+    # TODO: When raylet replaces the old backend, please remove the dependency gen_local_scheduler_fbs.
+    # TODO: When remove the included Task.h from table.h, please remove the dependency gen_common_python_fbs.
+    DEPENDENCIES ${RAY_LIB_DEPENDENCIES}
     SHARED_LINK_LIBS ""
-    STATIC_LINK_LIBS ${PLASMA_STATIC_LIB} ${ARROW_STATIC_LIB})
+    STATIC_LINK_LIBS ${RAY_LIB_STATIC_LINK_LIBS})

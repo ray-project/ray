@@ -37,14 +37,19 @@ def _wait_for_nodes_to_join(num_nodes, timeout=20):
             ready = True
             # Check that for each node, a local scheduler and a plasma manager
             # are present.
-            for ip_address, clients in client_table.items():
-                client_types = [client["ClientType"] for client in clients]
-                if "local_scheduler" not in client_types:
-                    ready = False
-                if "plasma_manager" not in client_types:
-                    ready = False
-            if ready:
+            if ray.global_state.use_raylet:
+                # In raylet mode, this is a list of map.
+                # The GCS info will appear as a whole instead of part by part.
                 return
+            else:
+                for ip_address, clients in client_table.items():
+                    client_types = [client["ClientType"] for client in clients]
+                    if "local_scheduler" not in client_types:
+                        ready = False
+                    if "plasma_manager" not in client_types:
+                        ready = False
+                if ready:
+                    return
         if num_ready_nodes > num_nodes:
             # Too many nodes have joined. Something must be wrong.
             raise Exception("{} nodes have joined the cluster, but we were "
@@ -136,7 +141,7 @@ def wait_for_pid_to_exit(pid, timeout=20):
 
 def run_and_get_output(command):
     with tempfile.NamedTemporaryFile() as tmp:
-        p = subprocess.Popen(command, stdout=tmp)
+        p = subprocess.Popen(command, stdout=tmp, stderr=tmp)
         if p.wait() != 0:
             raise RuntimeError("ray start did not terminate properly")
         with open(tmp.name, 'r') as f:

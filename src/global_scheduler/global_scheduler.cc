@@ -7,6 +7,7 @@
 #include "global_scheduler.h"
 #include "global_scheduler_algorithm.h"
 #include "net.h"
+#include "ray/util/util.h"
 #include "state/db_client_table.h"
 #include "state/local_scheduler_table.h"
 #include "state/object_table.h"
@@ -41,7 +42,6 @@ void assign_task_to_local_scheduler_retry(UniqueID id,
     return;
   }
 
-#if !RAY_USE_NEW_GCS
   // The local scheduler is still alive. The failure is most likely due to the
   // task assignment getting published before the local scheduler subscribed to
   // the channel. Retry the assignment.
@@ -51,9 +51,6 @@ void assign_task_to_local_scheduler_retry(UniqueID id,
       .fail_callback = assign_task_to_local_scheduler_retry,
   };
   task_table_update(state->db, Task_copy(task), &retryInfo, NULL, user_context);
-#else
-  RAY_CHECK_OK(TaskTableAdd(&state->gcs_client, task));
-#endif
 }
 
 /**
@@ -76,16 +73,12 @@ void assign_task_to_local_scheduler(GlobalSchedulerState *state,
   RAY_LOG(DEBUG) << "Issuing a task table update for task = "
                  << Task_task_id(task);
 
-#if !RAY_USE_NEW_GCS
   auto retryInfo = RetryInfo{
       .num_retries = 0,  // This value is unused.
       .timeout = 0,      // This value is unused.
       .fail_callback = assign_task_to_local_scheduler_retry,
   };
   task_table_update(state->db, Task_copy(task), &retryInfo, NULL, state);
-#else
-  RAY_CHECK_OK(TaskTableAdd(&state->gcs_client, task));
-#endif
 
   /* Update the object table info to reflect the fact that the results of this
    * task will be created on the machine that the task was assigned to. This can
@@ -140,10 +133,6 @@ GlobalSchedulerState *GlobalSchedulerState_init(event_loop *loop,
                          "global_scheduler", node_ip_address,
                          std::vector<std::string>());
   db_attach(state->db, loop, false);
-
-  RAY_CHECK_OK(state->gcs_client.Connect(std::string(redis_primary_addr),
-                                         redis_primary_port));
-  RAY_CHECK_OK(state->gcs_client.context()->AttachToEventLoop(loop));
   state->policy_state = GlobalSchedulerPolicyState_init();
   return state;
 }
@@ -465,6 +454,10 @@ void start_server(const char *node_ip_address,
 }
 
 int main(int argc, char *argv[]) {
+  InitShutdownRAII ray_log_shutdown_raii(
+      ray::RayLog::StartRayLog, ray::RayLog::ShutDownRayLog, argv[0], RAY_INFO,
+      /*log_dir=*/"");
+  ray::RayLog::InstallFailureSignalHandler();
   signal(SIGTERM, signal_handler);
   /* IP address and port of the primary redis instance. */
   char *redis_primary_addr_port = NULL;

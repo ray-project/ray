@@ -9,15 +9,18 @@
 
 #include <string>
 
+#include "plasma/test-util.h"
+
 #include "common.h"
 #include "test/test_common.h"
 #include "event_loop.h"
 #include "io.h"
 
-#include "plasma/plasma.h"
-#include "plasma/client.h"
 #include "../plasma_manager.h"
-#include "plasma/protocol.h"
+#include "plasma/client.h"
+#include "../protocol.h"
+
+namespace fb = plasma::flatbuf;
 
 SUITE(plasma_manager_tests);
 
@@ -112,8 +115,8 @@ void destroy_plasma_mock(plasma_mock *mock) {
  * - Buffer a transfer request for the remote manager.
  * - Start and stop the event loop to make sure that we send the buffered
  *   request.
- * - Expect to see a MessageType_PlasmaDataRequest message on the remote manager
- *   with the correct object ID.
+ * - Expect to see a fb::MessageType::PlasmaDataRequest message on the remote
+ *   manager with the correct object ID.
  */
 TEST request_transfer_test(void) {
   plasma_mock *local_mock = init_plasma_mock(NULL);
@@ -128,8 +131,8 @@ TEST request_transfer_test(void) {
   event_loop_run(local_mock->loop);
   int read_fd = get_client_sock(remote_mock->read_conn);
   std::vector<uint8_t> request_data;
-  ARROW_CHECK_OK(plasma::PlasmaReceive(read_fd, MessageType_PlasmaDataRequest,
-                                       &request_data));
+  ARROW_CHECK_OK(plasma::PlasmaReceive(
+      read_fd, fb::MessageType::PlasmaDataRequest, &request_data));
   plasma::ObjectID object_id2;
   char *address;
   int port;
@@ -152,8 +155,8 @@ TEST request_transfer_test(void) {
  * - Buffer a transfer request for the remote managers.
  * - Start and stop the event loop after a timeout to make sure that we
  *   trigger the timeout on the first manager.
- * - Expect to see a MessageType_PlasmaDataRequest message on the second remote
- *   manager with the correct object ID.
+ * - Expect to see a fb::MessageType::PlasmaDataRequest message on the second
+ *   remote manager with the correct object ID.
  */
 TEST request_transfer_retry_test(void) {
   plasma_mock *local_mock = init_plasma_mock(NULL);
@@ -180,8 +183,8 @@ TEST request_transfer_retry_test(void) {
 
   int read_fd = get_client_sock(remote_mock2->read_conn);
   std::vector<uint8_t> request_data;
-  ARROW_CHECK_OK(plasma::PlasmaReceive(read_fd, MessageType_PlasmaDataRequest,
-                                       &request_data));
+  ARROW_CHECK_OK(plasma::PlasmaReceive(
+      read_fd, fb::MessageType::PlasmaDataRequest, &request_data));
   plasma::ObjectID object_id2;
   char *address;
   int port;
@@ -211,7 +214,7 @@ TEST read_write_object_chunk_test(void) {
   const int data_size = strlen(data) + 1;
   const int metadata_size = 0;
   PlasmaRequestBuffer remote_buf;
-  remote_buf.type = MessageType_PlasmaDataReply;
+  remote_buf.type = fb::MessageType::PlasmaDataReply;
   remote_buf.object_id = object_id;
   remote_buf.data = (uint8_t *) data;
   remote_buf.data_size = data_size;
@@ -254,8 +257,8 @@ TEST object_notifications_test(void) {
   int flags = fcntl(fd[1], F_GETFL, 0);
   RAY_CHECK(fcntl(fd[1], F_SETFL, flags | O_NONBLOCK) == 0);
 
-  ObjectID object_id = ObjectID::from_random();
-  ObjectInfoT info;
+  ObjectID object_id = plasma::random_object_id();
+  fb::ObjectInfoT info;
   info.object_id = object_id.binary();
   info.data_size = 10;
   info.metadata_size = 1;
@@ -269,7 +272,7 @@ TEST object_notifications_test(void) {
   ASSERT(!is_local);
 
   /* Check that the object is local after receiving an object notification. */
-  auto notification = plasma::create_object_info_buffer(&info);
+  auto notification = plasma::CreateObjectInfoBuffer(&info);
   int64_t size = *((int64_t *) notification.get());
   send(fd[1], notification.get(), sizeof(int64_t) + size, 0);
   process_object_notification(local_mock->loop, fd[0], local_mock->state, 0);
@@ -279,7 +282,7 @@ TEST object_notifications_test(void) {
   /* Check that the object is not local after receiving a notification about
    * the object deletion. */
   info.is_deletion = true;
-  notification = plasma::create_object_info_buffer(&info);
+  notification = plasma::CreateObjectInfoBuffer(&info);
   size = *((int64_t *) notification.get());
   send(fd[1], notification.get(), sizeof(int64_t) + size, 0);
   process_object_notification(local_mock->loop, fd[0], local_mock->state, 0);

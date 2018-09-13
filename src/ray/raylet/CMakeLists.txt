@@ -1,5 +1,3 @@
-include(${CMAKE_CURRENT_LIST_DIR}/../../common/cmake/Common.cmake)
-
 set(NODE_MANAGER_FBS_SRC "${CMAKE_CURRENT_LIST_DIR}/format/node_manager.fbs")
 set(OUTPUT_DIR ${CMAKE_CURRENT_LIST_DIR}/format/)
 
@@ -12,7 +10,7 @@ add_custom_command(
         # flatbuffers message Message, which can be used to store deserialized
         # messages in data structures. This is currently used for ObjectInfo for
         # example.
-        COMMAND ${FLATBUFFERS_COMPILER} -c -o ${OUTPUT_DIR} ${NODE_MANAGER_FBS_SRC} --cpp --gen-object-api --gen-mutable --scoped-enums
+        COMMAND ${FLATBUFFERS_COMPILER} -c -o ${OUTPUT_DIR} -I ${GCS_FBS_OUTPUT_DIRECTORY} ${NODE_MANAGER_FBS_SRC} --cpp --gen-object-api --gen-mutable --scoped-enums
         DEPENDS ${FBS_DEPENDS}
         COMMENT "Running flatc compiler on ${NODE_MANAGER_FBS_SRC}"
         VERBATIM)
@@ -23,7 +21,7 @@ add_custom_target(gen_node_manager_fbs DEPENDS ${NODE_MANAGER_FBS_OUTPUT_FILES})
 set(PYTHON_OUTPUT_DIR ${CMAKE_CURRENT_LIST_DIR}/../../../python/ray/core/generated/)
 add_custom_command(
     TARGET gen_node_manager_fbs
-    COMMAND ${FLATBUFFERS_COMPILER} -p -o ${PYTHON_OUTPUT_DIR} ${NODE_MANAGER_FBS_SRC}
+    COMMAND ${FLATBUFFERS_COMPILER} -p -o ${PYTHON_OUTPUT_DIR} -I ${GCS_FBS_OUTPUT_DIRECTORY} ${NODE_MANAGER_FBS_SRC}
     DEPENDS ${FBS_DEPENDS}
     COMMENT "Running flatc compiler on ${NODE_MANAGER_FBS_SRC}"
     VERBATIM)
@@ -37,7 +35,9 @@ ADD_RAY_TEST(worker_pool_test STATIC_LINK_LIBS ray_static ${PLASMA_STATIC_LIB} $
 ADD_RAY_TEST(task_test STATIC_LINK_LIBS ray_static gtest gtest_main gmock_main pthread ${Boost_SYSTEM_LIBRARY})
 ADD_RAY_TEST(lineage_cache_test STATIC_LINK_LIBS ray_static gtest gtest_main gmock_main pthread ${Boost_SYSTEM_LIBRARY})
 ADD_RAY_TEST(task_dependency_manager_test STATIC_LINK_LIBS ray_static gtest gtest_main gmock_main pthread ${Boost_SYSTEM_LIBRARY})
+ADD_RAY_TEST(reconstruction_policy_test STATIC_LINK_LIBS ray_static gtest gtest_main gmock_main pthread ${Boost_SYSTEM_LIBRARY})
 
+include_directories(${GCS_FBS_OUTPUT_DIRECTORY})
 add_library(rayletlib raylet.cc ${NODE_MANAGER_FBS_OUTPUT_FILES})
 target_link_libraries(rayletlib ray_static ${Boost_SYSTEM_LIBRARY})
 

@@ -1,347 +1,100 @@
-Ray RLlib: Scalable Reinforcement Learning
-==========================================
+RLlib: Scalable Reinforcement Learning
+======================================
 
-Ray RLlib is an RL execution toolkit built on the Ray distributed execution framework. RLlib implements a collection of distributed *policy optimizers* that make it easy to use a variety of training strategies with existing RL algorithms written in frameworks such as PyTorch, TensorFlow, and Theano.
+RLlib is an open-source library for reinforcement learning that offers both a collection of reference algorithms and scalable primitives for composing new ones.
 
-You can find the code for RLlib `here on GitHub <https://github.com/ray-project/ray/tree/master/python/ray/rllib>`__, and the paper `here <https://arxiv.org/abs/1712.09381>`__.
+.. image:: rllib-stack.svg
 
-RLlib's policy optimizers serve as the basis for RLlib's reference algorithms, which include:
-
-- Proximal Policy Optimization (`PPO <https://github.com/ray-project/ray/tree/master/python/ray/rllib/ppo>`__) which is a proximal variant of `TRPO <https://arxiv.org/abs/1502.05477>`__.
-
-- Policy Gradients (`PG <https://github.com/ray-project/ray/tree/master/python/ray/rllib/pg>`__).
-
-- Asynchronous Advantage Actor-Critic (`A3C <https://github.com/ray-project/ray/tree/master/python/ray/rllib/a3c>`__).
-
-- Deep Q Networks (`DQN <https://github.com/ray-project/ray/tree/master/python/ray/rllib/dqn>`__).
-
-- Deep Deterministic Policy Gradients (`DDPG <https://github.com/ray-project/ray/tree/master/python/ray/rllib/ddpg>`__).
-
-- Ape-X Distributed Prioritized Experience Replay, including both `DQN <https://github.com/ray-project/ray/blob/master/python/ray/rllib/dqn/apex.py>`__ and `DDPG <https://github.com/ray-project/ray/blob/master/python/ray/rllib/ddpg/apex.py>`__ variants.
-
-- Evolution Strategies (`ES <https://github.com/ray-project/ray/tree/master/python/ray/rllib/es>`__), as described in `this paper <https://arxiv.org/abs/1703.03864>`__.
-
-These algorithms can be run on any `OpenAI Gym MDP <https://github.com/openai/gym>`__,
-including custom ones written and registered by the user.
-
-.. note::
-
-    To use RLlib's policy optimizers outside of RLlib, see the `policy optimizers documentation <policy-optimizers.html>`__.
+Learn more about RLlib's design by reading the `ICML paper <https://arxiv.org/abs/1712.09381>`__.
 
 Installation
 ------------
 
-RLlib has extra dependencies on top of **ray**. First, you'll need into install either PyTorch or TensorFlow.
-For usage of PyTorch models, visit the `PyTorch website <http://pytorch.org/>`__
-for instructions on installing PyTorch.
+RLlib has extra dependencies on top of ``ray``. First, you'll need to install either `PyTorch <http://pytorch.org/>`__ or `TensorFlow <https://www.tensorflow.org>`__. Then, install the Ray RLlib module:
 
 .. code-block:: bash
 
   pip install tensorflow  # or tensorflow-gpu
-
-Then, install Ray with extra RLlib dependencies:
-
-.. code-block:: bash
-
-  pip install 'ray[rllib]'
+  pip install ray[rllib]
 
 You might also want to clone the Ray repo for convenient access to RLlib helper scripts:
 
 .. code-block:: bash
 
   git clone https://github.com/ray-project/ray
+  cd ray/python/ray/rllib
 
+Training APIs
+-------------
+* `Command-line <rllib-training.html>`__
+* `Python API <rllib-training.html#python-api>`__
+* `REST API <rllib-training.html#rest-api>`__
 
+Environments
+------------
+* `RLlib Environments Overview <rllib-env.html>`__
+* `OpenAI Gym <rllib-env.html#openai-gym>`__
+* `Vectorized <rllib-env.html#vectorized>`__
+* `Multi-Agent <rllib-env.html#multi-agent>`__
+* `Agent-Driven <rllib-env.html#agent-driven>`__
+* `Offline Data Ingest <rllib-env.html#offline-data>`__ 
+* `Batch Asynchronous <rllib-env.html#batch-asynchronous>`__
 
-Getting Started
----------------
+Algorithms
+----------
 
-At a high level, RLlib provides an ``Agent`` class which
-holds a policy for environment interaction. Through the agent interface, the policy can
-be trained, checkpointed, or an action computed.
+*  High-throughput architectures
 
-.. image:: rllib-api.svg
+   -  `Distributed Prioritized Experience Replay (Ape-X) <rllib-algorithms.html#distributed-prioritized-experience-replay-ape-x>`__
 
-You can train a simple DQN agent with the following command
+   -  `Importance Weighted Actor-Learner Architecture (IMPALA) <rllib-algorithms.html#importance-weighted-actor-learner-architecture-impala>`__
 
-.. code-block:: bash
+*  Gradient-based
 
-    python ray/python/ray/rllib/train.py --run DQN --env CartPole-v0
+   -  `Advantage Actor-Critic (A2C, A3C) <rllib-algorithms.html#advantage-actor-critic-a2c-a3c>`__
 
-By default, the results will be logged to a subdirectory of ``~/ray_results``.
-This subdirectory will contain a file ``params.json`` which contains the
-hyperparameters, a file ``result.json`` which contains a training summary
-for each episode and a TensorBoard file that can be used to visualize
-training process with TensorBoard by running
+   -  `Deep Deterministic Policy Gradients (DDPG) <rllib-algorithms.html#deep-deterministic-policy-gradients-ddpg>`__
 
-.. code-block:: bash
+   -  `Deep Q Networks (DQN, Rainbow) <rllib-algorithms.html#deep-q-networks-dqn-rainbow>`__
 
-     tensorboard --logdir=~/ray_results
+   -  `Policy Gradients <rllib-algorithms.html#policy-gradients>`__
 
+   -  `Proximal Policy Optimization (PPO) <rllib-algorithms.html#proximal-policy-optimization-ppo>`__
 
-The ``train.py`` script has a number of options you can show by running
+*  Derivative-free
 
-.. code-block:: bash
+   -  `Augmented Random Search (ARS) <rllib-algorithms.html#augmented-random-search-ars>`__
 
-    python ray/python/ray/rllib/train.py --help
+   -  `Evolution Strategies <rllib-algorithms.html#evolution-strategies>`__
 
-The most important options are for choosing the environment
-with ``--env`` (any OpenAI gym environment including ones registered by the user
-can be used) and for choosing the algorithm with ``--run``
-(available options are ``PPO``, ``PG``, ``A3C``, ``ES``, ``DDPG``, ``DDPG2``, ``DQN``, ``APEX``, and ``APEX_DDPG``).
+Models and Preprocessors
+------------------------
+* `RLlib Models and Preprocessors Overview <rllib-models.html>`__
+* `Built-in Models and Preprocessors <rllib-models.html#built-in-models-and-preprocessors>`__
+* `Custom Models <rllib-models.html#custom-models>`__
+* `Custom Preprocessors <rllib-models.html#custom-preprocessors>`__
+* `Customizing Policy Graphs <rllib-models.html#customizing-policy-graphs>`__
+* `Model-Based Rollouts <rllib-models.html#model-based-rollouts>`__
 
-Specifying Parameters
-~~~~~~~~~~~~~~~~~~~~~
-
-Each algorithm has specific hyperparameters that can be set with ``--config`` - see the
-``DEFAULT_CONFIG`` variable in
-`PPO <https://github.com/ray-project/ray/blob/master/python/ray/rllib/ppo/ppo.py>`__,
-`PG <https://github.com/ray-project/ray/blob/master/python/ray/rllib/pg/pg.py>`__,
-`A3C <https://github.com/ray-project/ray/blob/master/python/ray/rllib/a3c/a3c.py>`__,
-`ES <https://github.com/ray-project/ray/blob/master/python/ray/rllib/es/es.py>`__,
-`DQN <https://github.com/ray-project/ray/blob/master/python/ray/rllib/dqn/dqn.py>`__,
-`DDPG <https://github.com/ray-project/ray/blob/master/python/ray/rllib/ddpg/ddpg.py>`__,
-`DDPG2 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/ddpg2/ddpg.py>`__,
-`APEX <https://github.com/ray-project/ray/blob/master/python/ray/rllib/dqn/apex.py>`__, and
-`APEX_DDPG <https://github.com/ray-project/ray/blob/master/python/ray/rllib/ddpg/apex.py>`__.
-
-In an example below, we train A3C by specifying 8 workers through the config flag.
-function that creates the env to refer to it by name. The contents of the env_config agent config field will be passed to that function to allow the environment to be configured. The return type should be an OpenAI gym.Env. For example:
-
-
-.. code-block:: bash
-
-    python ray/python/ray/rllib/train.py --env=PongDeterministic-v4 \
-        --run=A3C --config '{"num_workers": 8}'
-
-Evaluating Trained Agents
-~~~~~~~~~~~~~~~~~~~~~~~~~
-
-In order to save checkpoints from which to evaluate agents,
-set ``--checkpoint-freq`` (number of training iterations between checkpoints)
-when running ``train.py``.
-
-
-An example of evaluating a previously trained DQN agent is as follows:
-
-.. code-block:: bash
-
-    python ray/python/ray/rllib/rollout.py \
-          ~/ray_results/default/DQN_CartPole-v0_0upjmdgr0/checkpoint-1 \
-          --run DQN --env CartPole-v0
-
-
-The ``rollout.py`` helper script reconstructs a DQN agent from the checkpoint
-located at ``~/ray_results/default/DQN_CartPole-v0_0upjmdgr0/checkpoint-1``
-and renders its behavior in the environment specified by ``--env``.
-
-Tuned Examples
+RLlib Concepts
 --------------
+* `Policy Graphs <rllib-concepts.html>`__
+* `Policy Evaluation <rllib-concepts.html#policy-evaluation>`__
+* `Policy Optimization <rllib-concepts.html#policy-optimization>`__
 
-Some good hyperparameters and settings are available in
-`the repository <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tuned_examples>`__
-(some of them are tuned to run on GPUs). If you find better settings or tune
-an algorithm on a different domain, consider submitting a Pull Request!
+Package Reference
+-----------------
+* `ray.rllib.agents <rllib-package-ref.html#module-ray.rllib.agents>`__
+* `ray.rllib.env <rllib-package-ref.html#module-ray.rllib.env>`__
+* `ray.rllib.evaluation <rllib-package-ref.html#module-ray.rllib.evaluation>`__
+* `ray.rllib.models <rllib-package-ref.html#module-ray.rllib.models>`__
+* `ray.rllib.optimizers <rllib-package-ref.html#module-ray.rllib.optimizers>`__
+* `ray.rllib.utils <rllib-package-ref.html#module-ray.rllib.utils>`__
 
-Python User API
+Troubleshooting
 ---------------
 
-The Python API provides the needed flexibility for applying RLlib to new problems. You will need to use this API if you wish to use custom environments, preprocesors, or models with RLlib.
-
-Here is an example of the basic usage:
-
-.. code-block:: python
-
-    import ray
-    import ray.rllib.ppo as ppo
-
-    ray.init()
-    config = ppo.DEFAULT_CONFIG.copy()
-    agent = ppo.PPOAgent(config=config, env="CartPole-v0")
-
-    # Can optionally call agent.restore(path) to load a checkpoint.
-
-    for i in range(1000):
-       # Perform one iteration of training the policy with PPO
-       result = agent.train()
-       print("result: {}".format(result))
-
-       if i % 100 == 0:
-           checkpoint = agent.save()
-           print("checkpoint saved at", checkpoint)
-
-Components: User-customizable and Internal
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-The following diagram provides a conceptual overview of data flow between different components in RLlib. We start with an ``Environment``, which given an action produces an observation. The observation is preprocessed by a ``Preprocessor`` and ``Filter`` (e.g. for running mean normalization) before being sent to a neural network ``Model``. The model output is in turn interpreted by an ``ActionDistribution`` to determine the next action.
-
-.. image:: rllib-components.svg
-
-The components highlighted in green above are *User-customizable*, which means RLlib provides APIs for swapping in user-defined implementations, as described in the next sections. The purple components are *RLlib internal*, which means they currently can only be modified by changing the RLlib source code.
-
-For more information about these components, also see the `RLlib Developer Guide <rllib-dev.html>`__.
-
-Custom Environments
-~~~~~~~~~~~~~~~~~~~
-
-To train against a custom environment, i.e. one not in the gym catalog, you
-can register a function that creates the env to refer to it by name. The contents of the
-``env_config`` agent config field will be passed to that function to allow the
-environment to be configured. The return type should be an `OpenAI gym.Env <https://github.com/openai/gym/blob/master/gym/core.py>`__. For example:
-
-.. code-block:: python
-
-    import ray
-    from ray.tune.registry import register_env
-    from ray.rllib import ppo
-
-    def env_creator(env_config):
-        import gym
-        return gym.make("CartPole-v0")  # or return your own custom env
-
-    env_creator_name = "custom_env"
-    register_env(env_creator_name, env_creator)
-
-    ray.init()
-    agent = ppo.PPOAgent(env=env_creator_name, config={
-        "env_config": {},  # config to pass to env creator
-    })
-
-For a code example of a custom env, see the `SimpleCorridor example <https://github.com/ray-project/ray/blob/master/examples/custom_env/custom_env.py>`__. For a more complex example, also see the `Carla RLlib env <https://github.com/ray-project/ray/blob/master/examples/carla/env.py>`__.
-
-Custom Preprocessors and Models
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-RLlib includes default preprocessors and models for common gym
-environments, but you can also specify your own as follows. At a high level, your neural
-network model needs to take an input tensor of the preprocessed observation shape and
-output a vector of the size specified in the constructor. The interfaces for
-these custom classes can be found in the
-`RLlib Developer Guide <rllib-dev.html>`__.
-
-.. code-block:: python
-
-    import ray
-    from ray.rllib.models import ModelCatalog, Model
-    from ray.rllib.models.preprocessors import Preprocessor
-
-    class MyPreprocessorClass(Preprocessor):
-        def _init(self):
-            self.shape = ...
-
-        def transform(self, observation):
-            return ...
-
-    class MyModelClass(Model):
-        def _init(self, inputs, num_outputs, options):
-            layer1 = slim.fully_connected(inputs, 64, ...)
-            layer2 = slim.fully_connected(inputs, 64, ...)
-            ...
-            return layerN, layerN_minus_1
-
-    ModelCatalog.register_custom_preprocessor("my_prep", MyPreprocessorClass)
-    ModelCatalog.register_custom_model("my_model", MyModelClass)
-
-    ray.init()
-    agent = ppo.PPOAgent(env="CartPole-v0", config={
-        "model": {
-            "custom_preprocessor": "my_prep",
-            "custom_model": "my_model",
-            "custom_options": {},  # extra options to pass to your classes
-        },
-    })
-
-For a full example of a custom model in code, see the `Carla RLlib model <https://github.com/ray-project/ray/blob/master/examples/carla/models.py>`__ and associated `training scripts <https://github.com/ray-project/ray/tree/master/examples/carla>`__. The ``CarlaModel`` class defined there operates over a composite (Tuple) observation space including both images and scalar measurements.
-
-Multi-Agent Models
-~~~~~~~~~~~~~~~~~~
-RLlib supports multi-agent training with PPO. Currently it supports both
-shared, i.e. all agents have the same model, and non-shared multi-agent models. However, it only supports shared
-rewards and does not yet support individual rewards for each agent.
-
-
-While Generalized Advantage Estimation is supported in multiagent scenarios,
-it is assumed that it possible for the estimator to access the observations of
-all of the agents.
-
-
-Important config parameters are described below
-
-.. code-block:: python
-
-    config["model"].update({"fcnet_hiddens": [256, 256]}) # dimension of value function
-    options = {"multiagent_obs_shapes": [3, 3], # length of each observation space
-               "multiagent_act_shapes": [1, 1], # length of each action space
-               "multiagent_shared_model": True, # whether the model should be shared
-               # list of dimensions of multiagent feedforward nets
-               "multiagent_fcnet_hiddens": [[32, 32]] * 2}
-    config["model"].update({"custom_options": options})
-
-For a full example of a multiagent model in code, see the
-`MultiAgent Pendulum <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/multiagent_mountaincar.py>`__.
-The ``MultiAgentPendulumEnv`` defined there operates
-over a composite (Tuple) enclosing a list of Boxes; each Box represents the
-observation of an agent. The action space is a list of Discrete actions, each
-element corresponding to half of the total torque. The environment will return a list of actions
-that can be iterated over and applied to each agent.
-
-External Data API
-~~~~~~~~~~~~~~~~~
-*coming soon!*
-
-
-Using RLlib with Ray Tune
--------------------------
-
-All Agents implemented in RLlib support the
-`tune Trainable <tune.html#ray.tune.trainable.Trainable>`__ interface.
-
-Here is an example of using the command-line interface with RLlib:
-
-.. code-block:: bash
-
-    python ray/python/ray/rllib/train.py -f tuned_examples/cartpole-grid-search-example.yaml
-
-Here is an example using the Python API. The same config passed to ``Agents`` may be placed
-in the ``config`` section of the experiments. RLlib agents automatically declare their
-resources requirements (e.g., based on ``num_workers``) to Tune, so you don't have to.
-
-.. code-block:: python
-
-    import ray
-    from ray.tune.tune import run_experiments
-    from ray.tune.variant_generator import grid_search
-
-
-    experiment = {
-        'cartpole-ppo': {
-            'run': 'PPO',
-            'env': 'CartPole-v0',
-            'stop': {
-                'episode_reward_mean': 200,
-                'time_total_s': 180
-            },
-            'config': {
-                'num_sgd_iter': grid_search([1, 4]),
-                'num_workers': 2,
-                'sgd_batchsize': grid_search([128, 256, 512])
-            }
-        },
-        # put additional experiments to run concurrently here
-    }
-
-    ray.init()
-    run_experiments(experiment)
-
-For an advanced example of using Population Based Training (PBT) with RLlib,
-see the `PPO + PBT Walker2D training example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/pbt_ppo_example.py>`__.
-
-Using Policy Optimizers outside of RLlib
-----------------------------------------
-
-See the `RLlib policy optimizers documentation <policy-optimizers.html>`__.
-
-Contributing to RLlib
----------------------
-
-See the `RLlib Developer Guide <rllib-dev.html>`__.
+If you encounter errors like
+`blas_thread_init: pthread_create: Resource temporarily unavailable` when using many workers,
+try setting ``OMP_NUM_THREADS=1``. Similarly, check configured system limits with
+`ulimit -a` for other resource limit errors.

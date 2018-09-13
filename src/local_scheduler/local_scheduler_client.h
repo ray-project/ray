@@ -1,6 +1,8 @@
 #ifndef LOCAL_SCHEDULER_CLIENT_H
 #define LOCAL_SCHEDULER_CLIENT_H
 
+#include <mutex>
+
 #include "common/task.h"
 #include "local_scheduler_shared.h"
 #include "ray/raylet/task_spec.h"
@@ -19,6 +21,10 @@ struct LocalSchedulerConnection {
   /// of that resource allocated for this worker.
   std::unordered_map<std::string, std::vector<std::pair<int64_t, double>>>
       resource_ids_;
+  /// A mutex to protect stateful operations of the local scheduler client.
+  std::mutex mutex;
+  /// A mutext to protect write operations of the local scheduler client.
+  std::mutex write_mutex;
 };
 
 /**
@@ -26,17 +32,22 @@ struct LocalSchedulerConnection {
  *
  * @param local_scheduler_socket The name of the socket to use to connect to the
  *        local scheduler.
+ * @param worker_id A unique ID to represent the worker.
  * @param is_worker Whether this client is a worker. If it is a worker, an
  *        additional message will be sent to register as one.
+ * @param driver_id The ID of the driver. This is non-nil if the client is a
+ *        driver.
  * @param use_raylet True if we should use the raylet code path and false
  *        otherwise.
  * @return The connection information.
  */
 LocalSchedulerConnection *LocalSchedulerConnection_init(
     const char *local_scheduler_socket,
-    UniqueID worker_id,
+    const UniqueID &worker_id,
     bool is_worker,
-    bool use_raylet);
+    const JobID &driver_id,
+    bool use_raylet,
+    const Language &language);
 
 /**
  * Disconnect from the local scheduler.
@@ -55,7 +66,7 @@ void LocalSchedulerConnection_free(LocalSchedulerConnection *conn);
  * @return Void.
  */
 void local_scheduler_submit(LocalSchedulerConnection *conn,
-                            TaskExecutionSpec &execution_spec);
+                            const TaskExecutionSpec &execution_spec);
 
 /// Submit a task using the raylet code path.
 ///
@@ -66,7 +77,7 @@ void local_scheduler_submit(LocalSchedulerConnection *conn,
 void local_scheduler_submit_raylet(
     LocalSchedulerConnection *conn,
     const std::vector<ObjectID> &execution_dependencies,
-    ray::raylet::TaskSpecification task_spec);
+    const ray::raylet::TaskSpecification &task_spec);
 
 /**
  * Notify the local scheduler that this client is disconnecting gracefully. This
@@ -210,5 +221,40 @@ std::pair<std::vector<ObjectID>, std::vector<ObjectID>> local_scheduler_wait(
     int num_returns,
     int64_t timeout_milliseconds,
     bool wait_local);
+
+/// Push an error to the relevant driver.
+///
+/// \param conn The connection information.
+/// \param The ID of the job that the error is for.
+/// \param The type of the error.
+/// \param The error message.
+/// \param The timestamp of the error.
+/// \return Void.
+void local_scheduler_push_error(LocalSchedulerConnection *conn,
+                                const JobID &job_id,
+                                const std::string &type,
+                                const std::string &error_message,
+                                double timestamp);
+
+/// Store some profile events in the GCS.
+///
+/// \param conn The connection information.
+/// \param profile_events A batch of profiling event information.
+/// \return Void.
+void local_scheduler_push_profile_events(
+    LocalSchedulerConnection *conn,
+    const ProfileTableDataT &profile_events);
+
+/// Free a list of objects from object stores.
+///
+/// \param conn The connection information.
+/// \param object_ids A list of ObjectsIDs to be deleted.
+/// \param local_only Whether keep this request with local object store
+/// or send it to all the object stores.
+/// \return Void.
+void local_scheduler_free_objects_in_object_store(
+    LocalSchedulerConnection *conn,
+    const std::vector<ray::ObjectID> &object_ids,
+    bool local_only);
 
 #endif

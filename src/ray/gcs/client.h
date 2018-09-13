@@ -24,20 +24,22 @@ class RAY_EXPORT AsyncGcsClient {
   /// Attach() must be called. To read and write from the GCS tables requires a
   /// further call to Connect() to the client table.
   ///
+  /// \param address The GCS IP address.
+  /// \param port The GCS port.
+  /// \param sharding If true, use sharded redis for the GCS.
   /// \param client_id The ID to assign to the client.
   /// \param command_type GCS command type.  If CommandType::kChain, chain-replicated
   /// versions of the tables might be used, if available.
-  AsyncGcsClient(const ClientID &client_id, CommandType command_type);
-  AsyncGcsClient(const ClientID &client_id);
-  AsyncGcsClient(CommandType command_type);
-  AsyncGcsClient();
+  AsyncGcsClient(const std::string &address, int port, const ClientID &client_id,
+                 CommandType command_type, bool is_test_client);
+  AsyncGcsClient(const std::string &address, int port, const ClientID &client_id,
+                 bool is_test_client);
+  AsyncGcsClient(const std::string &address, int port, CommandType command_type);
+  AsyncGcsClient(const std::string &address, int port, CommandType command_type,
+                 bool is_test_client);
+  AsyncGcsClient(const std::string &address, int port);
+  AsyncGcsClient(const std::string &address, int port, bool is_test_client);
 
-  /// Connect to the GCS.
-  ///
-  /// \param address The GCS IP address.
-  /// \param port The GCS port.
-  /// \return Status.
-  Status Connect(const std::string &address, int port);
   /// Attach this client to a plasma event loop. Note that only
   /// one event loop should be attached at a time.
   Status Attach(plasma::EventLoop &event_loop);
@@ -55,9 +57,12 @@ class RAY_EXPORT AsyncGcsClient {
   raylet::TaskTable &raylet_task_table();
   ActorTable &actor_table();
   TaskReconstructionLog &task_reconstruction_log();
+  TaskLeaseTable &task_lease_table();
   ClientTable &client_table();
   HeartbeatTable &heartbeat_table();
-  inline ErrorTable &error_table();
+  ErrorTable &error_table();
+  DriverTable &driver_table();
+  ProfileTable &profile_table();
 
   // We also need something to export generic code to run on workers from the
   // driver (to set the PYTHONPATH)
@@ -67,7 +72,8 @@ class RAY_EXPORT AsyncGcsClient {
   Status GetExport(const std::string &driver_id, int64_t export_index,
                    const GetExportCallback &done_callback);
 
-  std::shared_ptr<RedisContext> context() { return context_; }
+  std::vector<std::shared_ptr<RedisContext>> shard_contexts() { return shard_contexts_; }
+  std::shared_ptr<RedisContext> primary_context() { return primary_context_; }
 
  private:
   std::unique_ptr<FunctionTable> function_table_;
@@ -77,12 +83,20 @@ class RAY_EXPORT AsyncGcsClient {
   std::unique_ptr<raylet::TaskTable> raylet_task_table_;
   std::unique_ptr<ActorTable> actor_table_;
   std::unique_ptr<TaskReconstructionLog> task_reconstruction_log_;
+  std::unique_ptr<TaskLeaseTable> task_lease_table_;
   std::unique_ptr<HeartbeatTable> heartbeat_table_;
+  std::unique_ptr<ErrorTable> error_table_;
+  std::unique_ptr<ProfileTable> profile_table_;
   std::unique_ptr<ClientTable> client_table_;
-  std::shared_ptr<RedisContext> context_;
-  std::unique_ptr<RedisAsioClient> asio_async_client_;
-  std::unique_ptr<RedisAsioClient> asio_subscribe_client_;
-
+  // The following contexts write to the data shard
+  std::vector<std::shared_ptr<RedisContext>> shard_contexts_;
+  std::vector<std::unique_ptr<RedisAsioClient>> shard_asio_async_clients_;
+  std::vector<std::unique_ptr<RedisAsioClient>> shard_asio_subscribe_clients_;
+  // The following context writes everything to the primary shard
+  std::shared_ptr<RedisContext> primary_context_;
+  std::unique_ptr<DriverTable> driver_table_;
+  std::unique_ptr<RedisAsioClient> asio_async_auxiliary_client_;
+  std::unique_ptr<RedisAsioClient> asio_subscribe_auxiliary_client_;
   CommandType command_type_;
 };
 

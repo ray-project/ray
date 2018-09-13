@@ -3,7 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-from ray.rllib.optimizers import SampleBatch
+from ray.rllib.evaluation import SampleBatch
 
 from ray.rllib.utils.filter import MeanStdFilter
 
@@ -15,20 +15,21 @@ class _MockEvaluator(object):
         self._sample_count = sample_count
         self.obs_filter = MeanStdFilter(())
         self.rew_filter = MeanStdFilter(())
-        self.filters = {"obs_filter": self.obs_filter,
-                        "rew_filter": self.rew_filter}
+        self.filters = {
+            "obs_filter": self.obs_filter,
+            "rew_filter": self.rew_filter
+        }
 
     def sample(self):
         samples_dict = {"observations": [], "rewards": []}
         for i in range(self._sample_count):
             samples_dict["observations"].append(
                 self.obs_filter(np.random.randn()))
-            samples_dict["rewards"].append(
-                self.rew_filter(np.random.randn()))
+            samples_dict["rewards"].append(self.rew_filter(np.random.randn()))
         return SampleBatch(samples_dict)
 
     def compute_gradients(self, samples):
-        return self._grad * samples.count, {}
+        return self._grad * samples.count, {"batch_count": samples.count}
 
     def apply_gradients(self, grads):
         self._weights += self._grad

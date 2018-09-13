@@ -10,7 +10,7 @@ import torch.nn as nn
 class FullyConnectedNetwork(Model):
     """TODO(rliaw): Logits, Value should both be contained here"""
 
-    def _init(self, inputs, num_outputs, options):
+    def _build_layers(self, inputs, num_outputs, options):
         assert type(inputs) is int
         hiddens = options.get("fcnet_hiddens", [256, 256])
         fcnet_activation = options.get("fcnet_activation", "tanh")
@@ -56,5 +56,5 @@ class FullyConnectedNetwork(Model):
             value: value function for each state"""
         res = self.hidden_layers(obs)
         logits = self.logits(res)
-        value = self.value_branch(res).reshape(-1)
+        value = self.value_branch(res).squeeze(1)
         return logits, value

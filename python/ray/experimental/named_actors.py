@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import ray
 import ray.cloudpickle as pickle
+from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_put
 
 
 def _calculate_key(name):
@@ -29,9 +30,8 @@ def get_actor(name):
     Returns:
         The ActorHandle object corresponding to the name.
     """
-    worker = ray.worker.get_global_worker()
-    actor_hash = _calculate_key(name)
-    pickled_state = worker.redis_client.hget(actor_hash, name)
+    actor_name = _calculate_key(name)
+    pickled_state = _internal_kv_get(actor_name)
     if pickled_state is None:
         raise ValueError("The actor with name={} doesn't exist".format(name))
     handle = pickle.loads(pickled_state)
@@ -45,17 +45,16 @@ def register_actor(name, actor_handle):
        name: The name of the named actor.
        actor_handle: The actor object to be associated with this name
    """
-    worker = ray.worker.get_global_worker()
     if not isinstance(name, str):
         raise TypeError("The name argument must be a string.")
     if not isinstance(actor_handle, ray.actor.ActorHandle):
         raise TypeError("The actor_handle argument must be an ActorHandle "
                         "object.")
-    actor_hash = _calculate_key(name)
+    actor_name = _calculate_key(name)
     pickled_state = pickle.dumps(actor_handle)
 
     # Add the actor to Redis if it does not already exist.
-    updated = worker.redis_client.hsetnx(actor_hash, name, pickled_state)
-    if updated == 0:
+    already_exists = _internal_kv_put(actor_name, pickled_state)
+    if already_exists:
         raise ValueError(
             "Error: the actor with name={} already exists".format(name))

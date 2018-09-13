@@ -13,7 +13,6 @@ find \
     python test \
     -name '*.py' -type f \
     -not -path 'python/ray/cloudpickle/*' \
-    -not -path 'python/ray/dataframe/*' \
     -exec python -m pyupgrade {} +
 
 if ! git diff --quiet; then

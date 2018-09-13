@@ -4,7 +4,7 @@ from __future__ import print_function
 
 import unittest
 
-from ray.rllib.dqn.dqn_policy_graph import adjust_nstep
+from ray.rllib.agents.dqn.dqn_policy_graph import adjust_nstep
 
 
 class DQNTest(unittest.TestCase):

@@ -12,9 +12,8 @@ import random
 import numpy as np
 
 import ray
-from ray.tune import Trainable, TrainingResult, register_trainable, \
-    run_experiments
-from ray.tune.async_hyperband import AsyncHyperBandScheduler
+from ray.tune import Trainable, run_experiments
+from ray.tune.schedulers import AsyncHyperBandScheduler
 
 
 class MyTrainableClass(Trainable):
@@ -33,8 +32,8 @@ class MyTrainableClass(Trainable):
         v *= self.config["height"]
 
         # Here we use `episode_reward_mean`, but you can also report other
-        # objectives such as loss or accuracy (see tune/result.py).
-        return TrainingResult(episode_reward_mean=v, timesteps_this_iter=1)
+        # objectives such as loss or accuracy.
+        return {"episode_reward_mean": v}
 
     def _save(self, checkpoint_dir):
         path = os.path.join(checkpoint_dir, "checkpoint")
@@ -47,8 +46,6 @@ class MyTrainableClass(Trainable):
             self.timestep = json.loads(f.read())["timestep"]
 
 
-register_trainable("my_class", MyTrainableClass)
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -58,9 +55,10 @@ if __name__ == "__main__":
 
     # asynchronous hyperband early stopping, configured with
     # `episode_reward_mean` as the
-    # objective and `timesteps_total` as the time unit.
+    # objective and `training_iteration` as the time unit,
+    # which is automatically filled by Tune.
     ahb = AsyncHyperBandScheduler(
-        time_attr="timesteps_total",
+        time_attr="training_iteration",
         reward_attr="episode_reward_mean",
         grace_period=5,
         max_t=100)
@@ -68,11 +66,11 @@ if __name__ == "__main__":
     run_experiments(
         {
             "asynchyperband_test": {
-                "run": "my_class",
+                "run": MyTrainableClass,
                 "stop": {
                     "training_iteration": 1 if args.smoke_test else 99999
                 },
-                "repeat": 20,
+                "num_samples": 20,
                 "trial_resources": {
                     "cpu": 1,
                     "gpu": 0

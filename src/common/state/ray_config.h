@@ -12,11 +12,21 @@ class RayConfig {
 
   int64_t ray_protocol_version() const { return ray_protocol_version_; }
 
+  uint64_t handler_warning_timeout_ms() const {
+    return handler_warning_timeout_ms_;
+  }
+
   int64_t heartbeat_timeout_milliseconds() const {
     return heartbeat_timeout_milliseconds_;
   }
 
   int64_t num_heartbeats_timeout() const { return num_heartbeats_timeout_; }
+
+  uint64_t num_heartbeats_warning() const { return num_heartbeats_warning_; }
+
+  int64_t initial_reconstruction_timeout_milliseconds() const {
+    return initial_reconstruction_timeout_milliseconds_;
+  }
 
   int64_t get_timeout_milliseconds() const { return get_timeout_milliseconds_; }
 
@@ -88,6 +98,10 @@ class RayConfig {
     return actor_creation_num_spillbacks_warning_;
   }
 
+  int node_manager_forward_task_retry_timeout_milliseconds() const {
+    return node_manager_forward_task_retry_timeout_milliseconds_;
+  }
+
   int object_manager_pull_timeout_ms() const {
     return object_manager_pull_timeout_ms_;
   }
@@ -96,21 +110,20 @@ class RayConfig {
     return object_manager_push_timeout_ms_;
   }
 
-  int object_manager_max_sends() const { return object_manager_max_sends_; }
-
-  int object_manager_max_receives() const {
-    return object_manager_max_receives_;
-  }
-
   uint64_t object_manager_default_chunk_size() const {
     return object_manager_default_chunk_size_;
   }
 
+  int num_workers_per_process() const { return num_workers_per_process_; }
+
  private:
   RayConfig()
       : ray_protocol_version_(0x0000000000000000),
+        handler_warning_timeout_ms_(100),
         heartbeat_timeout_milliseconds_(100),
         num_heartbeats_timeout_(100),
+        num_heartbeats_warning_(5),
+        initial_reconstruction_timeout_milliseconds_(200),
         get_timeout_milliseconds_(1000),
         worker_get_request_size_(10000),
         worker_fetch_request_size_(10000),
@@ -135,19 +148,20 @@ class RayConfig {
         L3_cache_size_bytes_(100000000),
         max_tasks_to_spillback_(10),
         actor_creation_num_spillbacks_warning_(100),
-        // TODO: Setting this to large values results in latency, which needs to
-        // be addressed. This timeout is often on the critical path for object
-        // transfers.
-        object_manager_pull_timeout_ms_(20),
+        node_manager_forward_task_retry_timeout_milliseconds_(1000),
+        object_manager_pull_timeout_ms_(100),
         object_manager_push_timeout_ms_(10000),
-        object_manager_max_sends_(2),
-        object_manager_max_receives_(2),
-        object_manager_default_chunk_size_(100000000) {}
+        object_manager_default_chunk_size_(1000000),
+        num_workers_per_process_(1) {}
 
   ~RayConfig() {}
 
   /// In theory, this is used to detect Ray version mismatches.
   int64_t ray_protocol_version_;
+
+  /// The duration that a single handler on the event loop can take before a
+  /// warning is logged that the handler is taking too long.
+  uint64_t handler_warning_timeout_ms_;
 
   /// The duration between heartbeats. These are sent by the plasma manager and
   /// local scheduler.
@@ -156,6 +170,16 @@ class RayConfig {
   /// heartbeat intervals, the global scheduler or monitor process will report
   /// it as dead to the db_client table.
   int64_t num_heartbeats_timeout_;
+  /// For a raylet, if the last heartbeat was sent more than this many
+  /// heartbeat periods ago, then a warning will be logged that the heartbeat
+  /// handler is drifting.
+  uint64_t num_heartbeats_warning_;
+
+  /// The initial period for a task execution lease. The lease will expire this
+  /// many milliseconds after the first acquisition of the lease. Nodes that
+  /// require an object will not try to reconstruct the task until at least
+  /// this many milliseconds.
+  int64_t initial_reconstruction_timeout_milliseconds_;
 
   /// These are used by the worker to set timeouts and to batch requests when
   /// getting objects.
@@ -231,6 +255,10 @@ class RayConfig {
   /// a value of 100 corresponds to a warning every 10 seconds.
   int64_t actor_creation_num_spillbacks_warning_;
 
+  /// If a node manager attempts to forward a task to another node manager and
+  /// the forward fails, then it will resubmit the task after this duration.
+  int64_t node_manager_forward_task_retry_timeout_milliseconds_;
+
   /// Timeout, in milliseconds, to wait before retrying a failed pull in the
   /// ObjectManager.
   int object_manager_pull_timeout_ms_;
@@ -241,16 +269,14 @@ class RayConfig {
   /// 0: giving up retrying immediately.
   int object_manager_push_timeout_ms_;
 
-  /// Maximum number of concurrent sends allowed by the object manager.
-  int object_manager_max_sends_;
-
-  /// Maximum number of concurrent receives allowed by the object manager.
-  int object_manager_max_receives_;
-
   /// Default chunk size for multi-chunk transfers to use in the object manager.
   /// In the object manager, no single thread is permitted to transfer more
-  /// data than what is specified by the chunk size.
+  /// data than what is specified by the chunk size unless the number of object
+  /// chunks exceeds the number of available sending threads.
   uint64_t object_manager_default_chunk_size_;
+
+  /// Number of workers per process
+  int num_workers_per_process_;
 };
 
 #endif  // RAY_CONFIG_H

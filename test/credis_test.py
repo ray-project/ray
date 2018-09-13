@@ -13,28 +13,28 @@ def parse_client(addr_port_str):
     return redis.StrictRedis(host=redis_address, port=redis_port)
 
 
-@unittest.skipIf(not os.environ.get('RAY_USE_NEW_GCS', False),
+@unittest.skipIf(not os.environ.get("RAY_USE_NEW_GCS", False),
                  "Tests functionality of the new GCS.")
 class CredisTest(unittest.TestCase):
     def setUp(self):
         self.config = ray.init(num_workers=0)
 
     def tearDown(self):
-        ray.worker.cleanup()
+        ray.shutdown()
 
     def test_credis_started(self):
         assert "redis_address" in self.config
         primary = parse_client(self.config['redis_address'])
         assert primary.ping() is True
+        member = primary.lrange('RedisShards', 0, -1)[0]
+        shard = parse_client(member.decode())
 
         # Check that primary has loaded credis' master module.
         chain = primary.execute_command('MASTER.GET_CHAIN')
         assert len(chain) == 1
 
         # Check that the shard has loaded credis' member module.
-        member = primary.lrange('RedisShards', 0, -1)[0]
         assert chain[0] == member
-        shard = parse_client(member.decode())
         assert shard.execute_command('MEMBER.SN') == -1
 
 

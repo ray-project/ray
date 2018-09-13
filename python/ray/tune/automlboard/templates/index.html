@@ -1,0 +1,157 @@
+<html>
+<head>
+    <title>AutoMLBoard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    {% load staticfiles %}
+
+    <!-- jquery and bootstrap dependency -->
+    <script src="https://code.jquery.com/jquery-3.2.1.slim.min.js" integrity="sha384-KJ3o2DKtIkvYIK3UENzmM7KCkRr/rE9/Qpg6aAZGJwFDMVNA/GpGFF93hXpG5KkN" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.11.0/umd/popper.min.js" integrity="sha384-b/U6ypiBEHpOf/4+1nzFpr53nxSS+GLCkfwBdFNTxtclqqenISfwAzpKaMNFNmj4" crossorigin="anonymous"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0-beta/js/bootstrap.min.js" integrity="sha384-h0AbiXch4ZDo7tp9hKZ4TsHbi047NrKGLO3SEJAg45jXxnGIfYzk4Si90RDIqNm1" crossorigin="anonymous"></script>
+
+    <!-- bootstrap table dependency -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-table/1.12.1/bootstrap-table.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-table/1.12.1/bootstrap-table.min.js"></script>
+
+    <link rel="stylesheet" href="/static/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/static/css/App.css">
+    <link rel="stylesheet" href="/static/css/HomePage.css">
+    <link rel="stylesheet" href="/static/css/ExperimentView.css">
+    <script src="/static/js/ExperimentList.js"></script>
+    <link rel="stylesheet" href="/static/css/ExperimentList.css">
+
+    <!-- awesome dependency -->
+    <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.2.0/css/all.css" integrity="sha384-hWVjflwFxL6sNzntih27bfxkr27PmbbK/iSvJ+a4+0owXq79v+lsFkW54bOGbiDQ" crossorigin="anonymous">
+</head>
+<body>
+<nav class="navbar navbar-expand-lg navbar-dark bg-primary" style="margin-right: auto;margin-left: auto;">
+    <a class="navbar-brand" href="#" style="padding-left: 50px">AutoMLBoard</a>
+    <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarColor01" aria-controls="navbarColor01" aria-expanded="false" aria-label="Toggle navigation">
+        <span class="navbar-toggler-icon"></span>
+    </button>
+
+    <div class="collapse navbar-collapse" id="navbarColor01">
+        <ul class="navbar-nav mr-auto">
+            <li class="nav-item">
+                <a class="nav-link" href="/">Home <span class="sr-only">(current)</span></a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="https://github.com/ray-project/ray">Github <span class="sr-only">(current)</span></a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="http://ray.readthedocs.io/">Document</a>
+            </li>
+        </ul>
+    </div>
+</nav>
+<div class="container" style="max-width: none">
+    <div class="outer-container row" id = "row-main">
+        <div class="HomePage-experiment-list-container col-md-2 collapsed" id="sidebar">
+            <div>
+                <div class="collapsed-expander-container">
+                    <div class="experiment-list-outer-container">
+                        <div><h1 class="experiments-header">Experiments</h1>
+                            <div class="collapser-container" onclick="collapse_experiment_list()">
+                                <i class="collapser fa fa-chevron-right login-icon"></i>
+                            </div>
+                            <div class="experiment-list-container" style="height: 800px; overflow-y: visible">
+                                <ul class="nav nav-pills flex-column">
+                                    {% for job in recent_jobs %}
+                                        <tr>
+                                            <li class="nav-item">
+                                                <a class="nav-link" href="job?job_id={{ job.job_id }}">{{ job.job_id }}</a>
+                                            </li>
+                                        </tr>
+                                    {% endfor %}
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="experiment-view-container" id="content">
+            <div class="ExperimentPage">
+                <div>
+                    <div class="ExperimentView">
+                        <h1>Summary</h1>
+                        <hr class="divider"/>
+                        <span class="metadata" style="line-height: 40px">
+                                <span class="metadata-header">Log Path: </span>
+                                {{ log_dir }}
+                        </span>
+                        <br>
+                        <span class="metadata" style="line-height: 40px">
+                                <span class="metadata-header">Reload Interval: </span>
+                                {{ reload_interval }} s
+                        </span>
+                    </div>
+                    <div class="ExperimentView-runs">
+                        <div class="metadata" style="max-width: 900px; margin-top: 20px">
+                            <span class="metadata">
+                                <span class="metadata-header">Jobs:</span>
+                                {{ job_num }}
+                            </span>
+                            <span class="metadata" style="margin-right: 0px">
+                                <span class="metadata-header">Trials:
+                                </span>
+                                <span>{{ trial_num }} </span>
+                                <span class="badge badge-pill badge-info"
+                                      style="margin-left: 10px; border-radius: 0.3em">{{ running_num }} Running</span>
+                                <span class="badge badge-pill badge-success"
+                                      style="border-radius: 0.3em">{{ success_num }} Success</span>
+                                <span class="badge badge-pill badge-danger"
+                                      style="border-radius: 0.3em">{{ failed_num }} Failed</span>
+                            </span>
+                        </div>
+                            <table class="table table-hover"
+                                   id="job_table"
+                                   data-toggle="table"
+                                   data-show-columns="true"
+                                   data-minimum-count-columns="2"
+                                   data-id-field="id"
+                                   data-page-list="[10, 25, 50, 100, ALL]"
+                                   style="border: none; max-height: 800px">
+                                <thead>
+                                <tr>
+                                    <th class="bottom-row" data-field="Job ID" data-sortable="true">Job ID</th>
+                                    <th class="bottom-row" data-field="User" data-sortable="true">User</th>
+                                    <th class="bottom-row" data-field="Start Time" data-sortable="true">Start Time</th>
+                                    <th class="bottom-row" data-field="Status" data-sortable="true">Status (Succ / Run / Fail / Total)</th>
+                                    <th class="bottom-row" data-field="Progress" data-sortable="true">Progress</th>
+                                    <th class="bottom-row" data-field="Winner Trial" data-sortable="true">Winner Trial</th>
+                                    <th class="bottom-row" data-field="Winner Metric" data-sortable="true">Winner Metric</th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                {% for job in recent_jobs %}
+                                    <tr>
+                                        <td><a href="job?job_id={{ job.job_id }}">{{ job.job_id }}</a></td>
+                                        <td>{{ job.user }}</td>
+                                        <td>{{ job.start_time }}</td>
+                                        <td>{{ job.success_num }} / {{ job.running_num }}/ {{ job.failed_num }} / {{ job.total_num }}</td>
+                                        <td>
+                                            <div class="progress">
+                                                <div class="progress-bar bg-success" role="progressbar"
+                                                     style="width: {{ job.progress }}%;">
+                                                    <span class="sr-only">{{ job.progress }}</span>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td><a href="trial?trial_id={{ job.winner.trial_id }}&job_id={{ job.job_id }}">{{ job.winner.trial_id }}</td>
+                                        <td>{{ job.winner.metric}}</td>
+                                    </tr>
+                                {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="experiment-view-right"></div>
+    </div>
+</div>
+</body>
+</html>

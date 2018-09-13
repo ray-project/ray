@@ -165,7 +165,11 @@ static PyObject *PyObjectID_id(PyObject *self) {
 static PyObject *PyObjectID_hex(PyObject *self) {
   PyObjectID *s = (PyObjectID *) self;
   std::string hex_id = s->object_id.hex();
-  PyObject *result = PyUnicode_FromString(hex_id.c_str());
+#if PY_MAJOR_VERSION >= 3
+  PyObject *result = PyUnicode_FromStringAndSize(hex_id.data(), hex_id.size());
+#else
+  PyObject *result = PyBytes_FromStringAndSize(hex_id.data(), hex_id.size());
+#endif
   return result;
 }
 
@@ -458,7 +462,8 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
     self->task_spec = new ray::raylet::TaskSpecification(
         driver_id, parent_task_id, parent_counter, actor_creation_id,
         actor_creation_dummy_object_id, actor_id, actor_handle_id,
-        actor_counter, function_id, args, num_returns, required_resources);
+        actor_counter, function_id, args, num_returns, required_resources,
+        Language::PYTHON);
   }
 
   /* Set the task's execution dependencies. */
@@ -902,4 +907,13 @@ PyObject *check_simple_value(PyObject *self, PyObject *args) {
     Py_RETURN_TRUE;
   }
   Py_RETURN_FALSE;
+}
+
+PyObject *compute_task_id(PyObject *self, PyObject *args) {
+  ObjectID object_id;
+  if (!PyArg_ParseTuple(args, "O&", &PyObjectToUniqueID, &object_id)) {
+    return NULL;
+  }
+  TaskID task_id = ray::ComputeTaskId(object_id);
+  return PyObjectID_make(task_id);
 }

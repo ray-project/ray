@@ -4,7 +4,7 @@ namespace ray {
 
 ObjectBufferPool::ObjectBufferPool(const std::string &store_socket_name,
                                    uint64_t chunk_size, int release_delay)
-    : chunk_size_(chunk_size) {
+    : default_chunk_size_(chunk_size) {
   store_socket_name_ = store_socket_name;
   ARROW_CHECK_OK(store_client_.Connect(store_socket_name_.c_str(), "", release_delay));
 }
@@ -25,12 +25,13 @@ ObjectBufferPool::~ObjectBufferPool() {
 }
 
 uint64_t ObjectBufferPool::GetNumChunks(uint64_t data_size) {
-  return (data_size + chunk_size_ - 1) / chunk_size_;
+  return (data_size + default_chunk_size_ - 1) / default_chunk_size_;
 }
 
 uint64_t ObjectBufferPool::GetBufferLength(uint64_t chunk_index, uint64_t data_size) {
-  return (chunk_index + 1) * chunk_size_ > data_size ? data_size % chunk_size_
-                                                     : chunk_size_;
+  return (chunk_index + 1) * default_chunk_size_ > data_size
+             ? data_size % default_chunk_size_
+             : default_chunk_size_;
 }
 
 std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> ObjectBufferPool::GetChunk(
@@ -40,7 +41,7 @@ std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> ObjectBufferPool::Ge
   RAY_LOG(DEBUG) << "GetChunk " << object_id << " " << data_size << " " << metadata_size;
   if (get_buffer_state_.count(object_id) == 0) {
     plasma::ObjectBuffer object_buffer;
-    plasma::ObjectID plasma_id = ObjectID(object_id).to_plasma_id();
+    plasma::ObjectID plasma_id = object_id.to_plasma_id();
     ARROW_CHECK_OK(store_client_.Get(&plasma_id, 1, 0, &object_buffer));
     if (object_buffer.data == nullptr) {
       RAY_LOG(ERROR) << "Failed to get object";
@@ -70,14 +71,14 @@ void ObjectBufferPool::ReleaseGetChunk(const ObjectID &object_id, uint64_t chunk
   buffer_state.references--;
   RAY_LOG(DEBUG) << "ReleaseBuffer " << object_id << " " << buffer_state.references;
   if (buffer_state.references == 0) {
-    ARROW_CHECK_OK(store_client_.Release(ObjectID(object_id).to_plasma_id()));
+    ARROW_CHECK_OK(store_client_.Release(object_id.to_plasma_id()));
     get_buffer_state_.erase(object_id);
   }
 }
 
 void ObjectBufferPool::AbortGet(const ObjectID &object_id) {
   std::lock_guard<std::mutex> lock(pool_mutex_);
-  ARROW_CHECK_OK(store_client_.Release(ObjectID(object_id).to_plasma_id()));
+  ARROW_CHECK_OK(store_client_.Release(object_id.to_plasma_id()));
   get_buffer_state_.erase(object_id);
 }
 
@@ -88,7 +89,7 @@ std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> ObjectBufferPool::Cr
   RAY_LOG(DEBUG) << "CreateChunk " << object_id << " " << data_size << " "
                  << metadata_size;
   if (create_buffer_state_.count(object_id) == 0) {
-    const plasma::ObjectID plasma_id = ObjectID(object_id).to_plasma_id();
+    const plasma::ObjectID plasma_id = object_id.to_plasma_id();
     int64_t object_size = data_size - metadata_size;
     // Try to create shared buffer.
     std::shared_ptr<Buffer> data;
@@ -152,7 +153,7 @@ void ObjectBufferPool::SealChunk(const ObjectID &object_id, const uint64_t chunk
   RAY_LOG(DEBUG) << "SealChunk" << object_id << " "
                  << create_buffer_state_[object_id].num_seals_remaining;
   if (create_buffer_state_[object_id].num_seals_remaining == 0) {
-    const plasma::ObjectID plasma_id = ObjectID(object_id).to_plasma_id();
+    const plasma::ObjectID plasma_id = object_id.to_plasma_id();
     ARROW_CHECK_OK(store_client_.Seal(plasma_id));
     ARROW_CHECK_OK(store_client_.Release(plasma_id));
     create_buffer_state_.erase(object_id);
@@ -160,7 +161,7 @@ void ObjectBufferPool::SealChunk(const ObjectID &object_id, const uint64_t chunk
 }
 
 void ObjectBufferPool::AbortCreate(const ObjectID &object_id) {
-  const plasma::ObjectID plasma_id = ObjectID(object_id).to_plasma_id();
+  const plasma::ObjectID plasma_id = object_id.to_plasma_id();
   ARROW_CHECK_OK(store_client_.Release(plasma_id));
   ARROW_CHECK_OK(store_client_.Abort(plasma_id));
   create_buffer_state_.erase(object_id);
@@ -173,15 +174,24 @@ std::vector<ObjectBufferPool::ChunkInfo> ObjectBufferPool::BuildChunks(
   int64_t position = 0;
   while (space_remaining) {
     position = data_size - space_remaining;
-    if (space_remaining < chunk_size_) {
+    if (space_remaining < default_chunk_size_) {
       chunks.emplace_back(chunks.size(), data + position, space_remaining);
       space_remaining = 0;
     } else {
-      chunks.emplace_back(chunks.size(), data + position, chunk_size_);
-      space_remaining -= chunk_size_;
+      chunks.emplace_back(chunks.size(), data + position, default_chunk_size_);
+      space_remaining -= default_chunk_size_;
     }
   }
   return chunks;
+}
+
+void ObjectBufferPool::FreeObjects(const std::vector<ObjectID> &object_ids) {
+  std::vector<plasma::ObjectID> plasma_ids;
+  plasma_ids.reserve(object_ids.size());
+  for (const auto &id : object_ids) {
+    plasma_ids.push_back(id.to_plasma_id());
+  }
+  ARROW_CHECK_OK(store_client_.Delete(plasma_ids));
 }
 
 }  // namespace ray

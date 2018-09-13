@@ -4,10 +4,10 @@ from __future__ import print_function
 
 from types import FunctionType
 
-import numpy as np
-
 import ray
-from ray.local_scheduler import ObjectID
+import ray.cloudpickle as pickle
+from ray.experimental.internal_kv import _internal_kv_initialized, \
+    _internal_kv_get, _internal_kv_put
 
 TRAINABLE_CLASS = "trainable_class"
 ENV_CREATOR = "env_creator"
@@ -35,7 +35,7 @@ def register_trainable(name, trainable):
     if not issubclass(trainable, Trainable):
         raise TypeError("Second argument must be convertable to Trainable",
                         trainable)
-    _default_registry.register(TRAINABLE_CLASS, name, trainable)
+    _global_registry.register(TRAINABLE_CLASS, name, trainable)
 
 
 def register_env(name, env_creator):
@@ -48,62 +48,59 @@ def register_env(name, env_creator):
 
     if not isinstance(env_creator, FunctionType):
         raise TypeError("Second argument must be a function.", env_creator)
-    _default_registry.register(ENV_CREATOR, name, env_creator)
+    _global_registry.register(ENV_CREATOR, name, env_creator)
 
 
-def get_registry():
-    """Use this to access the registry. This requires ray to be initialized."""
+def _make_key(category, key):
+    """Generate a binary key for the given category and key.
 
-    _default_registry.flush_values_to_object_store()
+    Args:
+        category (str): The category of the item
+        key (str): The unique identifier for the item
 
-    # returns a registry copy that doesn't include the hard refs
-    return _Registry(_default_registry._all_objects)
-
-
-def _to_pinnable(obj):
-    """Converts obj to a form that can be pinned in object store memory.
-
-    Currently only numpy arrays are pinned in memory, if you have a strong
-    reference to the array value.
+    Returns:
+        The key to use for storing a the value.
     """
-
-    return (obj, np.zeros(1))
-
-
-def _from_pinnable(obj):
-    """Retrieve from _to_pinnable format."""
-
-    return obj[0]
+    return (b"TuneRegistry:" + category.encode("ascii") + b"/" +
+            key.encode("ascii"))
 
 
 class _Registry(object):
-    def __init__(self, objs=None):
-        self._all_objects = {} if objs is None else objs.copy()
-        self._refs = []  # hard refs that prevent eviction of objects
+    def __init__(self):
+        self._to_flush = {}
 
     def register(self, category, key, value):
         if category not in KNOWN_CATEGORIES:
             from ray.tune import TuneError
             raise TuneError("Unknown category {} not among {}".format(
                 category, KNOWN_CATEGORIES))
-        self._all_objects[(category, key)] = value
+        self._to_flush[(category, key)] = pickle.dumps(value)
+        if _internal_kv_initialized():
+            self.flush_values()
 
     def contains(self, category, key):
-        return (category, key) in self._all_objects
+        if _internal_kv_initialized():
+            value = _internal_kv_get(_make_key(category, key))
+            return value is not None
+        else:
+            return (category, key) in self._to_flush
 
     def get(self, category, key):
-        value = self._all_objects[(category, key)]
-        if type(value) == ObjectID:
-            return _from_pinnable(ray.get(value))
+        if _internal_kv_initialized():
+            value = _internal_kv_get(_make_key(category, key))
+            if value is None:
+                raise ValueError(
+                    "Registry value for {}/{} doesn't exist.".format(
+                        category, key))
+            return pickle.loads(value)
         else:
-            return value
+            return pickle.loads(self._to_flush[(category, key)])
 
-    def flush_values_to_object_store(self):
-        for k, v in self._all_objects.items():
-            if type(v) != ObjectID:
-                obj = ray.put(_to_pinnable(v))
-                self._all_objects[k] = obj
-                self._refs.append(ray.get(obj))
+    def flush_values(self):
+        for (category, key), value in self._to_flush.items():
+            _internal_kv_put(_make_key(category, key), value, overwrite=True)
+        self._to_flush.clear()
 
 
-_default_registry = _Registry()
+_global_registry = _Registry()
+ray.worker._post_init_hooks.append(_global_registry.flush_values)

@@ -11,10 +11,9 @@ try:
     import lz4.frame
     LZ4_ENABLED = True
 except ImportError:
-    print(
-        "WARNING: lz4 not available, disabling sample compression. "
-        "This will significantly impact RLlib performance. "
-        "To install lz4, run `pip install lz4`.")
+    print("WARNING: lz4 not available, disabling sample compression. "
+          "This will significantly impact RLlib performance. "
+          "To install lz4, run `pip install lz4`.")
     LZ4_ENABLED = False
 
 
@@ -39,6 +38,12 @@ def unpack(data):
         data = base64.b64decode(data)
         data = lz4.frame.decompress(data)
         data = pyarrow.deserialize(data)
+    return data
+
+
+def unpack_if_needed(data):
+    if isinstance(data, bytes):
+        data = unpack(data)
     return data
 
 
