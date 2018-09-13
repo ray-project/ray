@@ -192,6 +192,23 @@ class NodeManager {
   /// \return Void.
   void HandleWorkerUnblocked(std::shared_ptr<Worker> worker);
 
+  /// Handle a client that is blocked. This could be a worker or a driver. This
+  /// can be triggered when a client starts a get call or a wait call.
+  ///
+  /// \param client The client that is blocked.
+  /// \param required_object_ids The IDs that the client is blocked waiting for.
+  /// \return Void.
+  void HandleClientBlocked(const std::shared_ptr<LocalClientConnection> &client,
+                           const std::vector<ObjectID> &required_object_ids);
+
+  /// Handle a client that is unblocked. This could be a worker or a driver.
+  /// This can be triggered when a client is finished with a get call or a wait
+  /// call. It is ok to call this even if the client is not actually blocked.
+  ///
+  /// \param client The client that is unblocked.
+  /// \return Void.
+  void HandleClientUnblocked(const std::shared_ptr<LocalClientConnection> &client);
+
   /// Kill a worker.
   ///
   /// \param worker The worker to kill.
