@@ -265,6 +265,7 @@ class TestAsyncPlasma(unittest.TestCase):
     def setUp(self):
         # Start the Ray processes.
         ray.init(num_cpus=2)
+        async_api.set_debug(True)
 
     def tearDown(self):
         ray.disconnect()
