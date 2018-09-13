@@ -124,7 +124,7 @@ void kill_worker(LocalSchedulerState *state,
           force_kill_worker, (void *) worker);
       free_worker = false;
     }
-    RAY_LOG(DEBUG) << "Killed worker with pid " << worker->pid;
+    RAY_DLOG(INFO) << "Killed worker with pid " << worker->pid;
   }
 
   /* If this worker is still running a task and we aren't cleaning up, push an
@@ -151,7 +151,7 @@ void kill_worker(LocalSchedulerState *state,
     }
   }
 
-  RAY_LOG(DEBUG) << "Killed worker with pid " << worker->pid;
+  RAY_DLOG(INFO) << "Killed worker with pid " << worker->pid;
   if (free_worker) {
     /* Clean up the client socket after killing the worker so that the worker
      * can't receive the SIGPIPE before exiting. */
@@ -231,7 +231,7 @@ void LocalSchedulerState_free(LocalSchedulerState *state) {
 void start_worker(LocalSchedulerState *state) {
   /* We can't start a worker if we don't have the path to the worker script. */
   if (state->config.start_worker_command == NULL) {
-    RAY_LOG(DEBUG) << "No valid command to start worker provided. Cannot start "
+    RAY_DLOG(INFO) << "No valid command to start worker provided. Cannot start "
                    << "worker.";
     return;
   }
@@ -239,7 +239,7 @@ void start_worker(LocalSchedulerState *state) {
   pid_t pid = fork();
   if (pid != 0) {
     state->child_pids.push_back(pid);
-    RAY_LOG(DEBUG) << "Started worker with pid " << pid;
+    RAY_DLOG(INFO) << "Started worker with pid " << pid;
     return;
   }
 
@@ -810,7 +810,7 @@ void reconstruct_object_lookup_callback(
     bool never_created,
     const std::vector<DBClientID> &manager_ids,
     void *user_context) {
-  RAY_LOG(DEBUG) << "Manager count was " << manager_ids.size();
+  RAY_DLOG(INFO) << "Manager count was " << manager_ids.size();
   /* Only continue reconstruction if we find that the object doesn't exist on
    * any nodes. NOTE: This codepath is not responsible for checking if the
    * object table entry is up-to-date. */
@@ -845,7 +845,7 @@ void reconstruct_object_lookup_callback(
 
 void reconstruct_object(LocalSchedulerState *state,
                         ObjectID reconstruct_object_id) {
-  RAY_LOG(DEBUG) << "Starting reconstruction";
+  RAY_DLOG(INFO) << "Starting reconstruction";
   /* If the object is locally available, no need to reconstruct. */
   if (object_locally_available(state->algorithm_state, reconstruct_object_id)) {
     return;
@@ -875,7 +875,7 @@ void handle_client_register(
     worker->pid = message->worker_pid();
     /* Register worker process id with the scheduler. */
     /* Determine if this worker is one of our child processes. */
-    RAY_LOG(DEBUG) << "PID is " << worker->pid;
+    RAY_DLOG(INFO) << "PID is " << worker->pid;
     auto it = std::find(state->child_pids.begin(), state->child_pids.end(),
                         worker->pid);
     if (it != state->child_pids.end()) {
@@ -884,7 +884,7 @@ void handle_client_register(
        * cleanup. */
       worker->is_child = true;
       state->child_pids.erase(it);
-      RAY_LOG(DEBUG) << "Found matching child pid " << worker->pid;
+      RAY_DLOG(INFO) << "Found matching child pid " << worker->pid;
     }
   } else {
     /* Register the driver. Currently we don't do anything here. */
@@ -913,13 +913,13 @@ void handle_driver_removed_callback(WorkerID driver_id, void *user_context) {
       RAY_CHECK(state->actor_mapping.count(actor_id) == 1);
       if (state->actor_mapping[actor_id].driver_id == driver_id) {
         /* This actor was created by the removed driver, so kill the actor. */
-        RAY_LOG(DEBUG) << "Killing an actor for a removed driver.";
+        RAY_DLOG(INFO) << "Killing an actor for a removed driver.";
         kill_worker(state, *it, false, true);
       }
     } else if (task != NULL) {
       TaskSpec *spec = Task_task_execution_spec(task)->Spec();
       if (TaskSpec_driver_id(spec) == driver_id) {
-        RAY_LOG(DEBUG) << "Killing a worker executing a task for a removed "
+        RAY_DLOG(INFO) << "Killing a worker executing a task for a removed "
                        << "driver.";
         kill_worker(state, *it, false, true);
       }
@@ -1016,7 +1016,7 @@ void process_message(event_loop *loop,
   read_vector(client_sock, &type, state->input_buffer);
   uint8_t *input = state->input_buffer.data();
 
-  RAY_LOG(DEBUG) << "New event of type " << type;
+  RAY_DLOG(INFO) << "New event of type " << type;
 
   switch (type) {
   case static_cast<int64_t>(MessageType::SubmitTask): {
@@ -1121,7 +1121,7 @@ void process_message(event_loop *loop,
     reconstruct_object(state, object_id);
   } break;
   case static_cast<int64_t>(CommonMessageType::DISCONNECT_CLIENT): {
-    RAY_LOG(DEBUG) << "Disconnecting client on fd " << client_sock;
+    RAY_DLOG(INFO) << "Disconnecting client on fd " << client_sock;
     handle_client_disconnect(state, worker);
   } break;
   case static_cast<int64_t>(MessageType::NotifyUnblocked): {
@@ -1209,7 +1209,7 @@ void new_client_connection(event_loop *loop,
   state->workers.push_back(worker);
   event_loop_add_file(loop, new_socket, EVENT_LOOP_READ, process_message,
                       worker);
-  RAY_LOG(DEBUG) << "new connection with fd " << new_socket;
+  RAY_DLOG(INFO) << "new connection with fd " << new_socket;
 }
 
 /* We need this code so we can clean up when we get a SIGTERM signal. */
@@ -1217,7 +1217,7 @@ void new_client_connection(event_loop *loop,
 LocalSchedulerState *g_state = NULL;
 
 void signal_handler(int signal) {
-  RAY_LOG(DEBUG) << "Signal was " << signal;
+  RAY_DLOG(INFO) << "Signal was " << signal;
   if (signal == SIGTERM) {
     /* NOTE(swang): This call removes the SIGTERM handler to ensure that we
      * free the local scheduler state at most once. If another SIGTERM is
@@ -1245,7 +1245,7 @@ void handle_task_scheduled_callback(Task *original_task,
    * scheduling algorithm. */
   WorkerID driver_id = TaskSpec_driver_id(spec);
   if (!is_driver_alive(state, driver_id)) {
-    RAY_LOG(DEBUG) << "Ignoring scheduled task for removed driver.";
+    RAY_DLOG(INFO) << "Ignoring scheduled task for removed driver.";
     return;
   }
 

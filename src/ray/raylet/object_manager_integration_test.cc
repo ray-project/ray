@@ -98,7 +98,7 @@ class TestObjectManagerBase : public ::testing::Test {
 
   ObjectID WriteDataToClient(plasma::PlasmaClient &client, int64_t data_size) {
     ObjectID object_id = ObjectID::from_random();
-    RAY_LOG(DEBUG) << "ObjectID Created: " << object_id;
+    RAY_DLOG(INFO) << "ObjectID Created: " << object_id;
     uint8_t metadata[] = {5};
     int64_t metadata_size = sizeof(metadata);
     std::shared_ptr<Buffer> data;

@@ -182,7 +182,7 @@ void MergeLineageHelper(const TaskID &task_id, const Lineage &lineage_from,
 
 bool LineageCache::AddWaitingTask(const Task &task, const Lineage &uncommitted_lineage) {
   auto task_id = task.GetTaskSpecification().TaskId();
-  RAY_LOG(DEBUG) << "add waiting task " << task_id << " on " << client_id_;
+  RAY_DLOG(INFO) << "add waiting task " << task_id << " on " << client_id_;
   // Merge the uncommitted lineage into the lineage cache.
   MergeLineageHelper(task_id, uncommitted_lineage, lineage_,
                      [](const LineageEntry &entry) {
@@ -212,7 +212,7 @@ bool LineageCache::AddWaitingTask(const Task &task, const Lineage &uncommitted_l
 
 bool LineageCache::AddReadyTask(const Task &task) {
   const TaskID task_id = task.GetTaskSpecification().TaskId();
-  RAY_LOG(DEBUG) << "add ready task " << task_id << " on " << client_id_;
+  RAY_DLOG(INFO) << "add ready task " << task_id << " on " << client_id_;
 
   // Set the task to READY.
   if (lineage_.SetEntry(task, GcsStatus::UNCOMMITTED_READY)) {
@@ -254,7 +254,7 @@ uint64_t LineageCache::CountUnsubscribedLineage(const TaskID &task_id,
 }
 
 bool LineageCache::RemoveWaitingTask(const TaskID &task_id) {
-  RAY_LOG(DEBUG) << "remove waiting task " << task_id << " on " << client_id_;
+  RAY_DLOG(INFO) << "remove waiting task " << task_id << " on " << client_id_;
   auto entry = lineage_.GetEntryMutable(task_id);
   if (!entry) {
     // The task was already evicted.
@@ -430,7 +430,7 @@ bool LineageCache::UnsubscribeTask(const TaskID &task_id) {
 }
 
 boost::optional<LineageEntry> LineageCache::EvictTask(const TaskID &task_id) {
-  RAY_LOG(DEBUG) << "evicting task " << task_id << " on " << client_id_;
+  RAY_DLOG(INFO) << "evicting task " << task_id << " on " << client_id_;
   auto entry = lineage_.PopEntry(task_id);
   if (!entry) {
     // The entry has already been evicted. Check that the entry does not have
@@ -488,7 +488,7 @@ void LineageCache::EvictRemoteLineage(const TaskID &task_id) {
 }
 
 void LineageCache::HandleEntryCommitted(const TaskID &task_id) {
-  RAY_LOG(DEBUG) << "task committed: " << task_id;
+  RAY_DLOG(INFO) << "task committed: " << task_id;
   auto entry = EvictTask(task_id);
   if (!entry) {
     // The task has already been evicted due to a previous commit notification,

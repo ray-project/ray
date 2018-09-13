@@ -651,7 +651,7 @@ void redis_object_table_lookup_callback(redisAsyncContext *c,
                                         void *privdata) {
   REDIS_CALLBACK_HEADER(db, callback_data, r);
   redisReply *reply = (redisReply *) r;
-  RAY_LOG(DEBUG) << "Object table lookup callback";
+  RAY_DLOG(INFO) << "Object table lookup callback";
   RAY_CHECK(reply->type == REDIS_REPLY_NIL || reply->type == REDIS_REPLY_ARRAY);
 
   object_table_lookup_done_callback done_callback =
@@ -711,7 +711,7 @@ void object_table_redis_subscribe_to_notifications_callback(
   RAY_CHECK(reply->type == REDIS_REPLY_ARRAY);
   RAY_CHECK(reply->elements == 3);
   redisReply *message_type = reply->element[0];
-  RAY_LOG(DEBUG) << "Object table subscribe to notifications callback, message"
+  RAY_DLOG(INFO) << "Object table subscribe to notifications callback, message"
                  << message_type->str;
 
   if (strcmp(message_type->str, "message") == 0) {
@@ -1323,7 +1323,7 @@ void redis_local_scheduler_table_subscribe_callback(redisAsyncContext *c,
   RAY_CHECK(reply->type == REDIS_REPLY_ARRAY);
   RAY_CHECK(reply->elements == 3);
   redisReply *message_type = reply->element[0];
-  RAY_LOG(DEBUG) << "Local scheduler table subscribe callback, message "
+  RAY_DLOG(INFO) << "Local scheduler table subscribe callback, message "
                  << message_type->str;
 
   if (strcmp(message_type->str, "message") == 0) {
@@ -1387,7 +1387,7 @@ void redis_local_scheduler_table_send_info_callback(redisAsyncContext *c,
 
   redisReply *reply = (redisReply *) r;
   RAY_CHECK(reply->type == REDIS_REPLY_INTEGER);
-  RAY_LOG(DEBUG) << reply->integer << " subscribers received this publish.";
+  RAY_DLOG(INFO) << reply->integer << " subscribers received this publish.";
 
   RAY_CHECK(callback_data->done_callback == NULL);
   /* Clean up the timer and callback. */
@@ -1429,7 +1429,7 @@ void redis_local_scheduler_table_disconnect(DBHandle *db) {
       (size_t) fbb.GetSize());
   RAY_CHECK(reply->type != REDIS_REPLY_ERROR) << "reply->str is " << reply->str;
   RAY_CHECK(reply->type == REDIS_REPLY_INTEGER);
-  RAY_LOG(DEBUG) << reply->integer << " subscribers received this publish.";
+  RAY_DLOG(INFO) << reply->integer << " subscribers received this publish.";
   freeReplyObject(reply);
 }
 
@@ -1442,7 +1442,7 @@ void redis_driver_table_subscribe_callback(redisAsyncContext *c,
   RAY_CHECK(reply->type == REDIS_REPLY_ARRAY);
   RAY_CHECK(reply->elements == 3);
   redisReply *message_type = reply->element[0];
-  RAY_LOG(DEBUG) << "Driver table subscribe callback, message "
+  RAY_DLOG(INFO) << "Driver table subscribe callback, message "
                  << message_type->str;
 
   if (strcmp(message_type->str, "message") == 0) {
@@ -1489,7 +1489,7 @@ void redis_driver_table_send_driver_death_callback(redisAsyncContext *c,
 
   redisReply *reply = (redisReply *) r;
   RAY_CHECK(reply->type == REDIS_REPLY_INTEGER);
-  RAY_LOG(DEBUG) << reply->integer << " subscribers received this publish.";
+  RAY_DLOG(INFO) << reply->integer << " subscribers received this publish.";
   /* At the very least, the local scheduler that publishes this message should
    * also receive it. */
   RAY_CHECK(reply->integer >= 1);
@@ -1543,7 +1543,7 @@ void redis_publish_actor_creation_notification_callback(redisAsyncContext *c,
 
   redisReply *reply = (redisReply *) r;
   RAY_CHECK(reply->type == REDIS_REPLY_INTEGER);
-  RAY_LOG(DEBUG) << reply->integer << " subscribers received this publish.";
+  RAY_DLOG(INFO) << reply->integer << " subscribers received this publish.";
   // At the very least, the local scheduler that publishes this message should
   // also receive it.
   RAY_CHECK(reply->integer >= 1);
@@ -1579,7 +1579,7 @@ void redis_actor_notification_table_subscribe_callback(redisAsyncContext *c,
   RAY_CHECK(reply->type == REDIS_REPLY_ARRAY);
   RAY_CHECK(reply->elements == 3);
   redisReply *message_type = reply->element[0];
-  RAY_LOG(DEBUG) << "Local scheduler table subscribe callback, message "
+  RAY_DLOG(INFO) << "Local scheduler table subscribe callback, message "
                  << message_type->str;
 
   if (strcmp(message_type->str, "message") == 0) {

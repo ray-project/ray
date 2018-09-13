@@ -90,7 +90,7 @@ class TestObjectManagerBase : public ::testing::Test {
                                  " 1> /dev/null 2> /dev/null &" + " echo $! > " +
                                  store_pid;
 
-    RAY_LOG(DEBUG) << plasma_command;
+    RAY_DLOG(INFO) << plasma_command;
     int ec = system(plasma_command.c_str());
     RAY_CHECK(ec == 0);
     sleep(1);
@@ -160,7 +160,7 @@ class TestObjectManagerBase : public ::testing::Test {
 
   ObjectID WriteDataToClient(plasma::PlasmaClient &client, int64_t data_size,
                              ObjectID object_id) {
-    RAY_LOG(DEBUG) << "ObjectID Created: " << object_id;
+    RAY_DLOG(INFO) << "ObjectID Created: " << object_id;
     uint8_t metadata[] = {5};
     int64_t metadata_size = sizeof(metadata);
     std::shared_ptr<Buffer> data;
@@ -309,9 +309,9 @@ class TestObjectManager : public TestObjectManagerBase {
             const std::vector<ray::ObjectID> &remaining) {
           int64_t elapsed = (boost::posix_time::second_clock::local_time() - start_time)
                                 .total_milliseconds();
-          RAY_LOG(DEBUG) << "elapsed " << elapsed;
-          RAY_LOG(DEBUG) << "found " << found.size();
-          RAY_LOG(DEBUG) << "remaining " << remaining.size();
+          RAY_DLOG(INFO) << "elapsed " << elapsed;
+          RAY_DLOG(INFO) << "found " << found.size();
+          RAY_DLOG(INFO) << "remaining " << remaining.size();
           RAY_CHECK(found.size() == 1);
           // There's nothing more to test. A check will fail if unexpected behavior is
           // triggered.
@@ -380,9 +380,9 @@ class TestObjectManager : public TestObjectManagerBase {
             const std::vector<ray::ObjectID> &remaining) {
           int64_t elapsed = (boost::posix_time::second_clock::local_time() - start_time)
                                 .total_milliseconds();
-          RAY_LOG(DEBUG) << "elapsed " << elapsed;
-          RAY_LOG(DEBUG) << "found " << found.size();
-          RAY_LOG(DEBUG) << "remaining " << remaining.size();
+          RAY_DLOG(INFO) << "elapsed " << elapsed;
+          RAY_DLOG(INFO) << "found " << found.size();
+          RAY_DLOG(INFO) << "remaining " << remaining.size();
 
           // Ensure object order is preserved for all invocations.
           uint j = 0;
@@ -444,19 +444,19 @@ class TestObjectManager : public TestObjectManagerBase {
   void TestWaitComplete() { main_service.stop(); }
 
   void TestConnections() {
-    RAY_LOG(DEBUG) << "\n"
+    RAY_DLOG(INFO) << "\n"
                    << "Server client ids:"
                    << "\n";
     const ClientTableDataT &data = gcs_client_1->client_table().GetClient(client_id_1);
-    RAY_LOG(DEBUG) << (ClientID::from_binary(data.client_id) == ClientID::nil());
-    RAY_LOG(DEBUG) << "Server 1 ClientID=" << ClientID::from_binary(data.client_id);
-    RAY_LOG(DEBUG) << "Server 1 ClientIp=" << data.node_manager_address;
-    RAY_LOG(DEBUG) << "Server 1 ClientPort=" << data.node_manager_port;
+    RAY_DLOG(INFO) << (ClientID::from_binary(data.client_id) == ClientID::nil());
+    RAY_DLOG(INFO) << "Server 1 ClientID=" << ClientID::from_binary(data.client_id);
+    RAY_DLOG(INFO) << "Server 1 ClientIp=" << data.node_manager_address;
+    RAY_DLOG(INFO) << "Server 1 ClientPort=" << data.node_manager_port;
     ASSERT_EQ(client_id_1, ClientID::from_binary(data.client_id));
     const ClientTableDataT &data2 = gcs_client_1->client_table().GetClient(client_id_2);
-    RAY_LOG(DEBUG) << "Server 2 ClientID=" << ClientID::from_binary(data2.client_id);
-    RAY_LOG(DEBUG) << "Server 2 ClientIp=" << data2.node_manager_address;
-    RAY_LOG(DEBUG) << "Server 2 ClientPort=" << data2.node_manager_port;
+    RAY_DLOG(INFO) << "Server 2 ClientID=" << ClientID::from_binary(data2.client_id);
+    RAY_DLOG(INFO) << "Server 2 ClientIp=" << data2.node_manager_address;
+    RAY_DLOG(INFO) << "Server 2 ClientPort=" << data2.node_manager_port;
     ASSERT_EQ(client_id_2, ClientID::from_binary(data2.client_id));
   }
 };

@@ -372,7 +372,7 @@ void ObjectManager::ExecuteSendObject(const ClientID &client_id,
                                       const ObjectID &object_id, uint64_t data_size,
                                       uint64_t metadata_size, uint64_t chunk_index,
                                       const RemoteConnectionInfo &connection_info) {
-  RAY_LOG(DEBUG) << "ExecuteSendObject " << client_id << " " << object_id << " "
+  RAY_DLOG(INFO) << "ExecuteSendObject " << client_id << " " << object_id << " "
                  << chunk_index;
   ray::Status status;
   std::shared_ptr<SenderConnection> conn;
@@ -432,7 +432,7 @@ ray::Status ObjectManager::SendObjectData(const ObjectID &object_id,
 
   if (status.ok()) {
     connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::TRANSFER, conn);
-    RAY_LOG(DEBUG) << "SendCompleted " << client_id_ << " " << object_id << " "
+    RAY_DLOG(INFO) << "SendCompleted " << client_id_ << " " << object_id << " "
                    << config_.max_sends;
   }
   return status;
@@ -721,7 +721,7 @@ void ObjectManager::ExecuteReceiveObject(const ClientID &client_id,
                                          const ObjectID &object_id, uint64_t data_size,
                                          uint64_t metadata_size, uint64_t chunk_index,
                                          TcpClientConnection &conn) {
-  RAY_LOG(DEBUG) << "ExecuteReceiveObject " << client_id << " " << object_id << " "
+  RAY_DLOG(INFO) << "ExecuteReceiveObject " << client_id << " " << object_id << " "
                  << chunk_index;
 
   std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> chunk_status =
@@ -756,7 +756,7 @@ void ObjectManager::ExecuteReceiveObject(const ClientID &client_id,
     // TODO(hme): If the object isn't local, create a pull request for this chunk.
   }
   conn.ProcessMessages();
-  RAY_LOG(DEBUG) << "ReceiveCompleted " << client_id_ << " " << object_id << " "
+  RAY_DLOG(INFO) << "ReceiveCompleted " << client_id_ << " " << object_id << " "
                  << "/" << config_.max_receives;
 }
 

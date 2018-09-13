@@ -99,7 +99,7 @@ class TestObjectManagerBase : public ::testing::Test {
                                  " 1> /dev/null 2> /dev/null &" + " echo $! > " +
                                  store_pid;
 
-    RAY_LOG(DEBUG) << plasma_command;
+    RAY_DLOG(INFO) << plasma_command;
     int ec = system(plasma_command.c_str());
     RAY_CHECK(ec == 0);
     sleep(1);
@@ -171,7 +171,7 @@ class TestObjectManagerBase : public ::testing::Test {
 
   ObjectID WriteDataToClient(plasma::PlasmaClient &client, int64_t data_size) {
     ObjectID object_id = ObjectID::from_random();
-    RAY_LOG(DEBUG) << "ObjectID Created: " << object_id;
+    RAY_DLOG(INFO) << "ObjectID Created: " << object_id;
     uint8_t metadata[] = {5};
     int64_t metadata_size = sizeof(metadata);
     std::shared_ptr<Buffer> data;
@@ -306,7 +306,7 @@ class StressTestObjectManager : public TestObjectManagerBase {
     ASSERT_EQ(object_buffer_1.data->size(), object_buffer_2.data->size());
     ASSERT_EQ(object_buffer_1.metadata->size(), object_buffer_2.metadata->size());
     int64_t total_size = object_buffer_1.data->size() + object_buffer_1.metadata->size();
-    RAY_LOG(DEBUG) << "total_size " << total_size;
+    RAY_DLOG(INFO) << "total_size " << total_size;
     for (int i = -1; ++i < total_size;) {
       ASSERT_TRUE(data_1[i] == data_2[i]);
     }
@@ -422,23 +422,23 @@ class StressTestObjectManager : public TestObjectManagerBase {
   }
 
   void TestConnections() {
-    RAY_LOG(DEBUG) << "\n"
+    RAY_DLOG(INFO) << "\n"
                    << "Server client ids:"
                    << "\n";
     ClientID client_id_1 = gcs_client_1->client_table().GetLocalClientId();
     ClientID client_id_2 = gcs_client_2->client_table().GetLocalClientId();
-    RAY_LOG(DEBUG) << "Server 1: " << client_id_1 << "\n"
+    RAY_DLOG(INFO) << "Server 1: " << client_id_1 << "\n"
                    << "Server 2: " << client_id_2;
 
-    RAY_LOG(DEBUG) << "\n"
+    RAY_DLOG(INFO) << "\n"
                    << "All connected clients:"
                    << "\n";
     const ClientTableDataT &data = gcs_client_1->client_table().GetClient(client_id_1);
-    RAY_LOG(DEBUG) << "ClientID=" << ClientID::from_binary(data.client_id) << "\n"
+    RAY_DLOG(INFO) << "ClientID=" << ClientID::from_binary(data.client_id) << "\n"
                    << "ClientIp=" << data.node_manager_address << "\n"
                    << "ClientPort=" << data.node_manager_port;
     const ClientTableDataT &data2 = gcs_client_1->client_table().GetClient(client_id_2);
-    RAY_LOG(DEBUG) << "ClientID=" << ClientID::from_binary(data2.client_id) << "\n"
+    RAY_DLOG(INFO) << "ClientID=" << ClientID::from_binary(data2.client_id) << "\n"
                    << "ClientIp=" << data2.node_manager_address << "\n"
                    << "ClientPort=" << data2.node_manager_port;
   }

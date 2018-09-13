@@ -13,12 +13,10 @@ namespace ray {
 // which is independent of any libs.
 class CerrLog {
  public:
-  CerrLog(int severity) : severity_(severity), has_logged_(false) {}
+  CerrLog(int severity) : severity_(severity) {}
 
   virtual ~CerrLog() {
-    if (has_logged_) {
-      std::cerr << std::endl;
-    }
+    std::cerr << std::endl;
     if (severity_ == RAY_FATAL) {
       PrintBackTrace();
       std::abort();
@@ -26,22 +24,17 @@ class CerrLog {
   }
 
   std::ostream &Stream() {
-    has_logged_ = true;
     return std::cerr;
   }
 
   template <class T>
   CerrLog &operator<<(const T &t) {
-    if (severity_ != RAY_DEBUG) {
-      has_logged_ = true;
-      std::cerr << t;
-    }
+    std::cerr << t;
     return *this;
   }
 
  protected:
   const int severity_;
-  bool has_logged_;
 
   void PrintBackTrace() {
 #if defined(_EXECINFO_H) || !defined(_WIN32)
@@ -61,8 +54,6 @@ using namespace google;
 // Glog's severity map.
 static int GetMappedSeverity(int severity) {
   switch (severity) {
-  case RAY_DEBUG:
-    return GLOG_INFO;
   case RAY_INFO:
     return GLOG_INFO;
   case RAY_WARNING:

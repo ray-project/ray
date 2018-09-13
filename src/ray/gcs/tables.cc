@@ -230,7 +230,7 @@ Status ErrorTable::PushErrorToDriver(const JobID &job_id, const std::string &typ
   data->timestamp = timestamp;
   return Append(job_id, job_id, data, [](ray::gcs::AsyncGcsClient *client,
                                          const JobID &id, const ErrorTableDataT &data) {
-    RAY_LOG(DEBUG) << "Error message pushed callback";
+    RAY_DLOG(INFO) << "Error message pushed callback";
   });
 }
 
@@ -256,7 +256,7 @@ Status ProfileTable::AddProfileEvent(const std::string &event_type,
   return Append(JobID::nil(), component_id, data,
                 [](ray::gcs::AsyncGcsClient *client, const JobID &id,
                    const ProfileTableDataT &data) {
-                  RAY_LOG(DEBUG) << "Profile message pushed callback";
+                  RAY_DLOG(INFO) << "Profile message pushed callback";
                 });
 }
 
@@ -269,7 +269,7 @@ Status ProfileTable::AddProfileEventBatch(const ProfileTableData &profile_events
   return Append(JobID::nil(), from_flatbuf(*profile_events.component_id()), data,
                 [](ray::gcs::AsyncGcsClient *client, const JobID &id,
                    const ProfileTableDataT &data) {
-                  RAY_LOG(DEBUG) << "Profile message pushed callback";
+                  RAY_DLOG(INFO) << "Profile message pushed callback";
                 });
 }
 
@@ -280,7 +280,7 @@ Status DriverTable::AppendDriverData(const JobID &driver_id, bool is_dead) {
   return Append(driver_id, driver_id, data,
                 [](ray::gcs::AsyncGcsClient *client, const JobID &id,
                    const DriverTableDataT &data) {
-                  RAY_LOG(DEBUG) << "Driver entry added callback";
+                  RAY_DLOG(INFO) << "Driver entry added callback";
                 });
 }
 

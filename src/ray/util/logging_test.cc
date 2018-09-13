@@ -18,7 +18,7 @@ int64_t current_time_ms() {
 // This file just print some information using the logging macro.
 
 void PrintLog() {
-  RAY_LOG(DEBUG) << "This is the"
+  RAY_DLOG(INFO) << "This is the"
                  << " DEBUG"
                  << " message";
   RAY_LOG(INFO) << "This is the"
@@ -41,7 +41,7 @@ TEST(PrintLogTest, LogTestWithoutInit) {
 
 TEST(PrintLogTest, LogTestWithInit) {
   // Test empty app name.
-  RayLog::StartRayLog("", RAY_DEBUG);
+  RayLog::StartRayLog("", RAY_INFO);
   PrintLog();
   RayLog::ShutDownRayLog();
 }
@@ -53,7 +53,7 @@ TEST(LogPerfTest, PerfTest) {
 
   int64_t start_time = current_time_ms();
   for (int i = 0; i < rounds; ++i) {
-    RAY_LOG(DEBUG) << "This is the "
+    RAY_DLOG(INFO) << "This is the "
                    << "RAY_DEBUG message";
   }
   int64_t elapsed = current_time_ms() - start_time;

@@ -66,11 +66,11 @@ void assign_task_to_local_scheduler(GlobalSchedulerState *state,
                                     Task *task,
                                     DBClientID local_scheduler_id) {
   TaskSpec *spec = Task_task_execution_spec(task)->Spec();
-  RAY_LOG(DEBUG) << "assigning task to local_scheduler_id = "
+  RAY_DLOG(INFO) << "assigning task to local_scheduler_id = "
                  << local_scheduler_id;
   Task_set_state(task, TaskStatus::SCHEDULED);
   Task_set_local_scheduler(task, local_scheduler_id);
-  RAY_LOG(DEBUG) << "Issuing a task table update for task = "
+  RAY_DLOG(INFO) << "Issuing a task table update for task = "
                  << Task_task_id(task);
 
   auto retryInfo = RetryInfo{
@@ -185,7 +185,7 @@ void signal_handler(int signal) {
 
 void process_task_waiting(Task *waiting_task, void *user_context) {
   GlobalSchedulerState *state = (GlobalSchedulerState *) user_context;
-  RAY_LOG(DEBUG) << "Task waiting callback is called.";
+  RAY_DLOG(INFO) << "Task waiting callback is called.";
   bool successfully_assigned =
       handle_task_waiting(state, state->policy_state, waiting_task);
   /* If the task was not successfully submitted to a local scheduler, add the
@@ -252,7 +252,7 @@ std::unordered_map<DBClientID, LocalScheduler>::iterator remove_local_scheduler(
  */
 void process_new_db_client(DBClient *db_client, void *user_context) {
   GlobalSchedulerState *state = (GlobalSchedulerState *) user_context;
-  RAY_LOG(DEBUG) << "db client table callback for db client = "
+  RAY_DLOG(INFO) << "db client table callback for db client = "
                  << db_client->id;
   if (strncmp(db_client->client_type.c_str(), "local_scheduler",
               strlen("local_scheduler")) == 0) {
@@ -292,14 +292,14 @@ void object_table_subscribe_callback(ObjectID object_id,
                                      void *user_context) {
   /* Extract global scheduler state from the callback context. */
   GlobalSchedulerState *state = (GlobalSchedulerState *) user_context;
-  RAY_LOG(DEBUG) << "object table subscribe callback for OBJECT = "
+  RAY_DLOG(INFO) << "object table subscribe callback for OBJECT = "
                  << object_id;
 
   const std::vector<std::string> managers =
       db_client_table_get_ip_addresses(state->db, manager_ids);
-  RAY_LOG(DEBUG) << "\tManagers<" << managers.size() << ">:";
+  RAY_DLOG(INFO) << "\tManagers<" << managers.size() << ">:";
   for (size_t i = 0; i < managers.size(); i++) {
-    RAY_LOG(DEBUG) << "\t\t" << managers[i];
+    RAY_DLOG(INFO) << "\t\t" << managers[i];
   }
 
   if (state->scheduler_object_info_table.find(object_id) ==
@@ -309,11 +309,11 @@ void object_table_subscribe_callback(ObjectID object_id,
         state->scheduler_object_info_table[object_id];
     obj_info_entry.data_size = data_size;
 
-    RAY_LOG(DEBUG) << "New object added to object_info_table with id = "
+    RAY_DLOG(INFO) << "New object added to object_info_table with id = "
                    << object_id;
-    RAY_LOG(DEBUG) << "\tmanager locations:";
+    RAY_DLOG(INFO) << "\tmanager locations:";
     for (size_t i = 0; i < managers.size(); i++) {
-      RAY_LOG(DEBUG) << "\t\t" << managers[i];
+      RAY_DLOG(INFO) << "\t\t" << managers[i];
     }
   }
 
@@ -333,8 +333,8 @@ void local_scheduler_table_handler(DBClientID client_id,
   /* Extract global scheduler state from the callback context. */
   GlobalSchedulerState *state = (GlobalSchedulerState *) user_context;
   ARROW_UNUSED(state);
-  RAY_LOG(DEBUG) << "Local scheduler heartbeat from db_client_id " << client_id;
-  RAY_LOG(DEBUG) << "total workers = " << info.total_num_workers
+  RAY_DLOG(INFO) << "Local scheduler heartbeat from db_client_id " << client_id;
+  RAY_DLOG(INFO) << "total workers = " << info.total_num_workers
                  << ", task queue length = " << info.task_queue_length
                  << ", available workers = " << info.available_workers;
 
