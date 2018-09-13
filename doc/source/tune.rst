@@ -12,7 +12,7 @@ You can find the code for Tune `here on GitHub <https://github.com/ray-project/r
 Features
 --------
 
-*  Supports any deep learning framework, including PyTorch, Tensorflow, and Keras.
+*  Supports any deep learning framework, including PyTorch, TensorFlow, and Keras.
 
 *  Choose among scalable hyperparameter and model search techniques such as:
 
