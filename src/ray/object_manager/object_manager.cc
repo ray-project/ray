@@ -478,9 +478,8 @@ ray::Status ObjectManager::AddWaitRequest(const UniqueID &wait_id,
   }
 
   // Initialize fields.
-  active_wait_requests_.emplace(
-      wait_id, std::make_shared<WaitState>(*main_service_, timeout_ms, callback));
-  auto &wait_state = *active_wait_requests_.find(wait_id)->second;
+  active_wait_requests_.emplace(wait_id, WaitState(*main_service_, timeout_ms, callback));
+  auto &wait_state = active_wait_requests_.find(wait_id)->second;
   wait_state.object_id_order = object_ids;
   wait_state.timeout_ms = timeout_ms;
   wait_state.num_required_objects = num_required_objects;
@@ -496,7 +495,7 @@ ray::Status ObjectManager::AddWaitRequest(const UniqueID &wait_id,
 }
 
 ray::Status ObjectManager::LookupRemainingWaitObjects(const UniqueID &wait_id) {
-  auto &wait_state = *active_wait_requests_.find(wait_id)->second;
+  auto &wait_state = active_wait_requests_.find(wait_id)->second;
 
   if (wait_state.remaining.empty()) {
     WaitComplete(wait_id);
@@ -512,7 +511,7 @@ ray::Status ObjectManager::LookupRemainingWaitObjects(const UniqueID &wait_id) {
       RAY_RETURN_NOT_OK(object_directory_->LookupLocations(
           object_id, [this, wait_id](const std::vector<ClientID> &client_ids,
                                      const ObjectID &lookup_object_id) {
-            auto &wait_state = *active_wait_requests_.find(wait_id)->second;
+            auto &wait_state = active_wait_requests_.find(wait_id)->second;
             if (!client_ids.empty()) {
               wait_state.remaining.erase(lookup_object_id);
               wait_state.found.insert(lookup_object_id);
@@ -528,7 +527,7 @@ ray::Status ObjectManager::LookupRemainingWaitObjects(const UniqueID &wait_id) {
 }
 
 void ObjectManager::SubscribeRemainingWaitObjects(const UniqueID &wait_id) {
-  auto &wait_state = *active_wait_requests_.find(wait_id)->second;
+  auto &wait_state = active_wait_requests_.find(wait_id)->second;
   if (wait_state.found.size() >= wait_state.num_required_objects ||
       wait_state.timeout_ms == 0) {
     // Requirements already satisfied.
@@ -560,7 +559,7 @@ void ObjectManager::SubscribeRemainingWaitObjects(const UniqueID &wait_id) {
               // We never expect to handle a subscription notification for a wait that has
               // already completed.
               RAY_CHECK(object_id_wait_state != active_wait_requests_.end());
-              auto &wait_state = *object_id_wait_state->second;
+              auto &wait_state = object_id_wait_state->second;
               RAY_CHECK(wait_state.remaining.erase(subscribe_object_id));
               wait_state.found.insert(subscribe_object_id);
               wait_state.requested_objects.erase(subscribe_object_id);
@@ -580,12 +579,7 @@ void ObjectManager::SubscribeRemainingWaitObjects(const UniqueID &wait_id) {
             if (error_code.value() != 0) {
               return;
             }
-            if (active_wait_requests_.find(wait_id) != active_wait_requests_.end()) {
-              // This is possible if an object's subscrition callback is call first,
-              // then the timer goes off and the timer callback is post into the queue.
-              // In this case, WaitComplete is invoked already, so we're done.
-              WaitComplete(wait_id);
-            }
+            WaitComplete(wait_id);
           });
     }
   }
@@ -593,34 +587,40 @@ void ObjectManager::SubscribeRemainingWaitObjects(const UniqueID &wait_id) {
 
 void ObjectManager::WaitComplete(const UniqueID &wait_id) {
   auto iter = active_wait_requests_.find(wait_id);
-  RAY_CHECK(iter != active_wait_requests_.end());
-  auto wait_state = iter->second;
-  active_wait_requests_.erase(iter);
+  if (iter == active_wait_requests_.end()) {
+    // When a subscription callback is triggered, this function will be called.
+    // The timer may at the same time goes off and may be an interruption will
+    // post this function to main_service_ the second time. This check will
+    // avoid the duplicated call of this function.
+    return;
+  }
+  auto &wait_state = iter->second;
+  // If we complete with outstanding requests, then timeout_ms should be non-zero or -1
+  // (infinite wait time).
+  if (!wait_state.requested_objects.empty()) {
+    RAY_CHECK(wait_state.timeout_ms > 0 || wait_state.timeout_ms == -1);
+  }
+  // Unsubscribe to any objects that weren't found in the time allotted.
+  for (const auto &object_id : wait_state.requested_objects) {
+    RAY_CHECK_OK(object_directory_->UnsubscribeObjectLocations(wait_id, object_id));
+  }
   // Cancel the timer. This is okay even if the timer hasn't been started.
   // The timer handler will be given a non-zero error code. The handler
   // will do nothing on non-zero error codes.
-  wait_state->timeout_timer->cancel();
-  // If we complete with outstanding requests, then timeout_ms should be non-zero or -1
-  // (infinite wait time).
-  if (!wait_state->requested_objects.empty()) {
-    RAY_CHECK(wait_state->timeout_ms > 0 || wait_state->timeout_ms == -1);
-  }
-  // Unsubscribe to any objects that weren't found in the time allotted.
-  for (const auto &object_id : wait_state->requested_objects) {
-    RAY_CHECK_OK(object_directory_->UnsubscribeObjectLocations(wait_id, object_id));
-  }
+  wait_state.timeout_timer->cancel();
   // Order objects according to input order.
   std::vector<ObjectID> found;
   std::vector<ObjectID> remaining;
-  for (const auto &item : wait_state->object_id_order) {
-    if (found.size() < wait_state->num_required_objects &&
-        wait_state->found.count(item) > 0) {
+  for (const auto &item : wait_state.object_id_order) {
+    if (found.size() < wait_state.num_required_objects &&
+        wait_state.found.count(item) > 0) {
       found.push_back(item);
     } else {
       remaining.push_back(item);
     }
   }
-  wait_state->callback(found, remaining);
+  wait_state.callback(found, remaining);
+  active_wait_requests_.erase(wait_id);
 }
 
 std::shared_ptr<SenderConnection> ObjectManager::CreateSenderConnection(
