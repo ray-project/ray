@@ -82,7 +82,8 @@ def run_api():
     async def get_obj():
         return ray.put("foobar")
 
-    result = asyncio.get_event_loop().run_until_complete(async_api.get(get_obj()))
+    result = asyncio.get_event_loop().run_until_complete(
+        async_api.get(get_obj()))
     assert result == "foobar"
 
     # get from coroutine/future chains
@@ -98,7 +99,8 @@ def run_api():
             return await (recurrent_get(obj_id[0]))
         return obj_id
 
-    results = asyncio.get_event_loop().run_until_complete(recurrent_get(obj_id))
+    results = asyncio.get_event_loop().run_until_complete(
+        recurrent_get(obj_id))
     assert results == "qwerty"
 
 
