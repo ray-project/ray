@@ -114,10 +114,7 @@ class SGDWorker(object):
                 ray.worker.global_worker.plasma_client.store_socket_name)
             manager_socket = (
                 ray.worker.global_worker.plasma_client.manager_socket_name)
-            memcpy_plasma_module = plasma.build_plasma_tensorflow_op(
-                os.path.join(
-                    os.path.dirname(os.path.abspath(__file__)),
-                    "ops/memcpy_plasma_op.so"))
+            plasma.build_plasma_tensorflow_op()
 
             # For fetching grads -> plasma
             self.plasma_in_grads = []
@@ -131,7 +128,7 @@ class SGDWorker(object):
                 if round_robin_devices:
                     ix += 1  # round robin assignment
                 ix %= num_devices
-                with tf.device(self.models[ix].device):
+                with tf.device(self.models[ix].loss.device):
                     plasma_grad = plasma.tf_plasma_op.tensor_to_plasma(
                         [grad],
                         self.plasma_in_grads_oids[j],
@@ -152,6 +149,7 @@ class SGDWorker(object):
                     with tf.control_dependencies([self.plasma_in_grads[j]]):
                         grad_ph = plasma.tf_plasma_op.plasma_to_tensor(
                             self.plasma_out_grads_oids[j],
+                            dtype=tf.float32,
                             plasma_store_socket_name=store_socket,
                             plasma_manager_socket_name=manager_socket)
                 grad_ph = tf.reshape(grad_ph,
@@ -295,10 +293,7 @@ class ParameterServer(object):
             for p in plasma_ids:
                 if ray.worker.global_worker.plasma_client.contains(p):
                     self.timeline.start("get_buffers")
-                    [raw_grads
-                     ] = (ray.worker.global_worker.plasma_client.get_buffers(
-                         [p]))
-                    grads = np.frombuffer(raw_grads, dtype=np.float32)
+                    grads = ray.worker.global_worker.plasma_client.get(p)
                     self.accumulated += grads
                     self.acc_counter += 1
                     self.timeline.end("get_buffers")
@@ -310,8 +305,7 @@ class ParameterServer(object):
         self.timeline.start("add")
         self.timeline.start("get_buffers")
         oid = ray.pyarrow.plasma.ObjectID(grad_shard_id)
-        [raw_grads] = ray.worker.global_worker.plasma_client.get_buffers([oid])
-        grads = np.frombuffer(raw_grads, dtype=np.float32)
+        grads = ray.worker.global_worker.plasma_client.get(oid)
         self.timeline.end("get_buffers")
         self.accumulated += grads
         self.acc_counter += 1
