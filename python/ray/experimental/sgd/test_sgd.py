@@ -11,10 +11,9 @@ import tensorflow as tf
 from ray.experimental.sgd.example.test_model import TFBenchModel
 from ray.experimental.sgd.sgd import DistributedSGD
 
-
 if __name__ == "__main__":
     ray.init()
-    
+
     model_creator = (
         lambda worker_idx, device_idx: TFBenchModel(batch=1, use_cpus=True))
 

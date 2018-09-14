@@ -32,7 +32,9 @@ class SGDWorker(object):
 
         # TODO(ekl) support custom session
         tf_session_args = {
-            "device_count": {"CPU": num_devices},
+            "device_count": {
+                "CPU": num_devices
+            },
             "log_device_placement": False,
             "gpu_options": tf.GPUOptions(force_gpu_compatible=True),
             "inter_op_parallelism_threads": 128,
@@ -53,30 +55,40 @@ class SGDWorker(object):
                     model = model_creator(worker_index, device_idx)
                     self.models.append(model)
                     model.grads = [
-                        t for t in model.optimizer.compute_gradients(
-                            model.loss)
-                        if t[0] is not None]
+                        t
+                        for t in model.optimizer.compute_gradients(model.loss)
+                        if t[0] is not None
+                    ]
                     grad_ops.append(model.grads)
 
         if num_devices == 1:
-           assert not max_bytes, "Not supported with 1 GPU"
-           self.packed_grads_and_vars = grad_ops
+            assert not max_bytes, "Not supported with 1 GPU"
+            self.packed_grads_and_vars = grad_ops
         else:
             if max_bytes:
                 self.packed_grads_and_vars, packing_vals = (
                     modified_allreduce.sum_gradients_all_reduce(
-                        "", grad_ops, 1, all_reduce_alg, 1,
+                        "",
+                        grad_ops,
+                        1,
+                        all_reduce_alg,
+                        1,
                         list(range(num_devices)),
                         agg_small_grads_max_bytes=max_bytes))
             else:
                 self.packed_grads_and_vars = (
                     modified_allreduce.sum_gradients_all_reduce(
-                        "", grad_ops, 1, all_reduce_alg, 1,
+                        "",
+                        grad_ops,
+                        1,
+                        all_reduce_alg,
+                        1,
                         list(range(num_devices)),
                         agg_small_grads_max_bytes=0))
         self.per_device_grads = [
-            list(zip(*dev_gv))[0] for dev_gv in self.packed_grads_and_vars]
-        assert(len(self.per_device_grads) == num_devices)
+            list(zip(*dev_gv))[0] for dev_gv in self.packed_grads_and_vars
+        ]
+        assert (len(self.per_device_grads) == num_devices)
         self.num_grads = num_grads = len(self.packed_grads_and_vars[0])
         if max_bytes:
             print("Packed grads => {} tensors".format(num_grads))
@@ -85,8 +97,8 @@ class SGDWorker(object):
         nccl_noops = []
         for j in range(num_grads)[::-1]:
             with tf.control_dependencies(
-                    nccl_noops + [dev_grad[j]
-                    for dev_grad in self.per_device_grads]):
+                    nccl_noops +
+                [dev_grad[j] for dev_grad in self.per_device_grads]):
                 nccl_noops = [tf.no_op()]
 
         # You must fetch this otherwise the NCCL allreduce will hang
@@ -107,7 +119,8 @@ class SGDWorker(object):
             self.plasma_in_grads = []
             self.plasma_in_grads_oids = [
                 tf.placeholder(shape=[], dtype=tf.string)
-                for _ in range(num_grads)]
+                for _ in range(num_grads)
+            ]
             ix = 0
             for j in range(num_grads):
                 grad = self.per_device_grads[ix][j]
@@ -126,7 +139,8 @@ class SGDWorker(object):
             unpacked_gv = []
             self.plasma_out_grads_oids = [
                 tf.placeholder(shape=[], dtype=tf.string)
-                for _ in range(num_grads)]
+                for _ in range(num_grads)
+            ]
             packed_plasma_grads = []
             ix = 0
             for j in range(num_grads):
@@ -136,8 +150,8 @@ class SGDWorker(object):
                             self.plasma_out_grads_oids[j],
                             plasma_store_socket_name=store_socket,
                             plasma_manager_socket_name=manager_socket)
-                grad_ph = tf.reshape(
-                    grad_ph, self.packed_grads_and_vars[0][j][0].shape)
+                grad_ph = tf.reshape(grad_ph,
+                                     self.packed_grads_and_vars[0][j][0].shape)
                 print("Packed tensor", grad_ph)
                 packed_plasma_grads.append(grad_ph)
             for i in range(num_devices):
@@ -164,9 +178,10 @@ class SGDWorker(object):
         apply_ops = []
         to_apply = unpacked_gv[0]
         for ix, m in enumerate(self.models):
-            apply_ops.append(m.optimizer.apply_gradients(
-                [(g, v)
-                    for ((g, _), (_, v)) in zip(to_apply, unpacked_gv[ix])]))
+            apply_ops.append(
+                m.optimizer.apply_gradients(
+                    [(g, v)
+                     for ((g, _), (_, v)) in zip(to_apply, unpacked_gv[ix])]))
         self.apply_op = tf.group(*apply_ops)
         init_op = tf.group(tf.global_variables_initializer(),
                            tf.local_variables_initializer())
@@ -187,8 +202,11 @@ class SGDWorker(object):
         # We only need to fetch the first per_device_grad, since they are
         # averaged across all devices by allreduce.
         fetches = self.sess.run(
-            [self.models[0].loss, self.per_device_grads[0],
-             self.nccl_control_out], feed_dict=feed_dict)
+            [
+                self.models[0].loss, self.per_device_grads[0],
+                self.nccl_control_out
+            ],
+            feed_dict=feed_dict)
         if verbose:
             print("compute grad interior time", time.time() - start)
         return fetches
@@ -196,24 +214,27 @@ class SGDWorker(object):
     def apply_gradients(self, avg_grads, verbose):
         start = time.time()
         result = {
-            g: avg_grads[i] for (i, g) in enumerate(self.per_device_grads[0])
+            g: avg_grads[i]
+            for (i, g) in enumerate(self.per_device_grads[0])
         }
         self.sess.run(self.apply_op, feed_dict=result)
         if verbose:
             print("apply grad interior time", time.time() - start)
 
-    def ps_compute_apply(
-            self, out_grad_shard_oids, agg_grad_shard_oids,
-            tl_name="ps_compute_apply", write_timeline=False):
+    def ps_compute_apply(self,
+                         out_grad_shard_oids,
+                         agg_grad_shard_oids,
+                         tl_name="ps_compute_apply",
+                         write_timeline=False):
         feed_dict = {
             ph: oid
-            for (ph, oid)
-                in zip(self.plasma_in_grads_oids, out_grad_shard_oids)
+            for (ph,
+                 oid) in zip(self.plasma_in_grads_oids, out_grad_shard_oids)
         }
         feed_dict.update({
             ph: oid
-            for (ph, oid)
-                in zip(self.plasma_out_grads_oids, agg_grad_shard_oids)
+            for (ph,
+                 oid) in zip(self.plasma_out_grads_oids, agg_grad_shard_oids)
         })
         fetch(agg_grad_shard_oids)
         run_timeline(
@@ -268,9 +289,9 @@ class ParameterServer(object):
             for p in plasma_ids:
                 if ray.worker.global_worker.plasma_client.contains(p):
                     self.timeline.start("get_buffers")
-                    [raw_grads] = (
-                        ray.worker.global_worker.plasma_client.get_buffers(
-                            [p]))
+                    [raw_grads
+                     ] = (ray.worker.global_worker.plasma_client.get_buffers(
+                         [p]))
                     grads = np.frombuffer(raw_grads, dtype=np.float32)
                     self.accumulated += grads
                     self.acc_counter += 1
@@ -298,8 +319,7 @@ class ParameterServer(object):
         client = ray.worker.global_worker.plasma_client
         assert self.acc_counter == self.num_sgd_workers, self.acc_counter
         oid = ray.pyarrow.plasma.ObjectID(object_id)
-        buff = client.create(
-            oid, self.accumulated.nbytes)
+        buff = client.create(oid, self.accumulated.nbytes)
         wrapper = np.frombuffer(buff, dtype=np.float32)
         np.copyto(wrapper, self.accumulated)
         client.seal(oid)
@@ -354,10 +374,8 @@ def do_sgd_step(actors, verbose):
 
 def distributed_sgd_step(actors, ps_list, verbose, write_timeline):
     # Preallocate object ids that actors will write gradient shards to
-    grad_shard_oids_list = [
-        [np.random.bytes(20) for _ in ps_list]
-        for _ in actors
-    ]
+    grad_shard_oids_list = [[np.random.bytes(20) for _ in ps_list]
+                            for _ in actors]
     print("generated grad oids")
 
     # Preallocate object ids that param servers will write new weights to
@@ -366,8 +384,8 @@ def distributed_sgd_step(actors, ps_list, verbose, write_timeline):
 
     # Kick off the fused compute grad / update weights tf run for each actor
     for actor, grad_shard_oids in zip(actors, grad_shard_oids_list):
-        actor.ps_compute_apply.remote(grad_shard_oids, accum_shard_ids,
-        write_timeline=write_timeline)
+        actor.ps_compute_apply.remote(
+            grad_shard_oids, accum_shard_ids, write_timeline=write_timeline)
     print("Launched all ps_compute_applys on all actors")
 
     # Issue prefetch ops
@@ -417,7 +435,7 @@ def roundrobin_ps(ps_cls, sgd_workers, shard_shapes, spread_ps):
     ip_mapping = defaultdict(list)
 
     while (any(len(v) < min_placed for v in ip_mapping.values())
-              or (len(ip_mapping) < num_ips)):
+           or (len(ip_mapping) < num_ips)):
         print("generating new ps, ip map so far", ip_mapping)
         new_ps = create_ps()
         ps_ip = ray.get(new_ps.ip.remote())
@@ -442,15 +460,16 @@ def roundrobin_ps(ps_cls, sgd_workers, shard_shapes, spread_ps):
         else:
             print("saving ps...")
 
-    print("Final PS balance: ", Counter(ray.get([ps.ip.remote() for ps in final_list])))
+    print("Final PS balance: ",
+          Counter(ray.get([ps.ip.remote() for ps in final_list])))
     for i, ps in enumerate(final_list):
         ps.set_tid.remote(i)
     return final_list
 
 
 class DistributedSGD(object):
-    def __init__(
-            self, model_creator, num_workers, devices_per_worker, use_cpus):
+    def __init__(self, model_creator, num_workers, devices_per_worker,
+                 use_cpus):
         self.model_creator = model_creator
         if use_cpus:
             requests = {"num_cpus": devices_per_worker}
@@ -462,8 +481,10 @@ class DistributedSGD(object):
             print("Creating worker", worker_index)
             self.workers.append(
                 RemoteSGDWorker.remote(
-                    worker_index, model_creator,
-                    num_devices=devices_per_worker, use_cpus=use_cpus,
+                    worker_index,
+                    model_creator,
+                    num_devices=devices_per_worker,
+                    use_cpus=use_cpus,
                     verbose=True))
 
     def foreach_worker(self, fn):

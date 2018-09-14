@@ -12,12 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Model configurations for CNN benchmarks.
 """
 
 from . import resnet_model
-
 
 _model_name_to_imagenet_model = {
     'resnet50': resnet_model.create_resnet50_model,
@@ -28,34 +26,32 @@ _model_name_to_imagenet_model = {
     'resnet152_v2': resnet_model.create_resnet152_v2_model,
 }
 
-
-_model_name_to_cifar_model = {
-}
+_model_name_to_cifar_model = {}
 
 
 def _get_model_map(dataset_name):
-  if 'cifar10' == dataset_name:
-    return _model_name_to_cifar_model
-  elif dataset_name in ('imagenet', 'synthetic'):
-    return _model_name_to_imagenet_model
-  else:
-    raise ValueError('Invalid dataset name: %s' % dataset_name)
+    if 'cifar10' == dataset_name:
+        return _model_name_to_cifar_model
+    elif dataset_name in ('imagenet', 'synthetic'):
+        return _model_name_to_imagenet_model
+    else:
+        raise ValueError('Invalid dataset name: %s' % dataset_name)
 
 
 def get_model_config(model_name, dataset):
-  """Map model name to model network configuration."""
-  model_map = _get_model_map(dataset.name)
-  if model_name not in model_map:
-    raise ValueError('Invalid model name \'%s\' for dataset \'%s\'' %
-                     (model_name, dataset.name))
-  else:
-    return model_map[model_name]()
+    """Map model name to model network configuration."""
+    model_map = _get_model_map(dataset.name)
+    if model_name not in model_map:
+        raise ValueError('Invalid model name \'%s\' for dataset \'%s\'' %
+                         (model_name, dataset.name))
+    else:
+        return model_map[model_name]()
 
 
 def register_model(model_name, dataset_name, model_func):
-  """Register a new model that can be obtained with `get_model_config`."""
-  model_map = _get_model_map(dataset_name)
-  if model_name in model_map:
-    raise ValueError('Model "%s" is already registered for dataset "%s"' %
-                     (model_name, dataset_name))
-  model_map[model_name] = model_func
+    """Register a new model that can be obtained with `get_model_config`."""
+    model_map = _get_model_map(dataset_name)
+    if model_name in model_map:
+        raise ValueError('Model "%s" is already registered for dataset "%s"' %
+                         (model_name, dataset_name))
+    model_map[model_name] = model_func

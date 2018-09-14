@@ -18,7 +18,9 @@ def run_timeline(sess, ops, feed_dict={}, write_timeline=False, name=""):
         run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
         run_metadata = tf.RunMetadata()
         fetches = sess.run(
-            ops, options=run_options, run_metadata=run_metadata,
+            ops,
+            options=run_options,
+            run_metadata=run_metadata,
             feed_dict=feed_dict)
         trace = timeline.Timeline(step_stats=run_metadata.step_stats)
         outf = "timeline-{}-{}.json".format(name, os.getpid())
