@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import collections
 import os
+import math
 import time
 import traceback
 
@@ -181,11 +182,21 @@ class TrialRunner(object):
         for state, trials in sorted(states.items()):
             limit = limit_per_state[state]
             messages.append("{} trials:".format(state))
-            for t in sorted(trials, key=lambda t: t.experiment_tag)[:limit]:
-                messages.append(" - {}:\t{}".format(t, t.progress_string()))
+            sorted_trials = sorted(trials, key=lambda t: t.experiment_tag)
             if len(trials) > limit:
+                tail_length = math.floor(limit/2)
+                first = sorted_trials[:tail_length]
+                for t in first:
+                    messages.append(" - {}:\t{}".format(t, t.progress_string()))
                 messages.append(
-                    "  ... {} more not shown".format(len(trials) - limit))
+                    "  ... {} not shown".format(len(trials) - tail_length * 2))
+                last = sorted_trials[tail_length:]
+                for t in last:
+                    messages.append(" - {}:\t{}".format(t, t.progress_string()))
+            else:
+                for t in sorted_trials:
+                    messages.append(" - {}:\t{}".format(t, t.progress_string()))
+
         return "\n".join(messages) + "\n"
 
     def _debug_messages(self):
