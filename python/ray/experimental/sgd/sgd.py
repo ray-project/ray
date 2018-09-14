@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import logging
 import os
 import random
 import ray
@@ -15,6 +16,8 @@ import tensorflow.contrib.slim as slim
 
 from util import Timeline, fetch, run_timeline
 from tfbench import modified_allreduce
+
+logger = logging.getLogger(__name__)
 
 
 class SGDWorker(object):
@@ -91,7 +94,7 @@ class SGDWorker(object):
         assert (len(self.per_device_grads) == num_devices)
         self.num_grads = num_grads = len(self.packed_grads_and_vars[0])
         if max_bytes:
-            print("Packed grads => {} tensors".format(num_grads))
+            logger.info("Packed grads => {} tensors".format(num_grads))
 
         # Ops for reading grads with the right control deps
         nccl_noops = []
@@ -152,7 +155,7 @@ class SGDWorker(object):
                             plasma_manager_socket_name=manager_socket)
                 grad_ph = tf.reshape(grad_ph,
                                      self.packed_grads_and_vars[0][j][0].shape)
-                print("Packed tensor", grad_ph)
+                logger.info("Packed tensor", grad_ph)
                 packed_plasma_grads.append(grad_ph)
             for i in range(num_devices):
                 per_device = []
@@ -208,7 +211,7 @@ class SGDWorker(object):
             ],
             feed_dict=feed_dict)
         if verbose:
-            print("compute grad interior time", time.time() - start)
+            logger.info("compute grad interior time", time.time() - start)
         return fetches
 
     def apply_gradients(self, avg_grads, verbose):
@@ -219,7 +222,7 @@ class SGDWorker(object):
         }
         self.sess.run(self.apply_op, feed_dict=result)
         if verbose:
-            print("apply grad interior time", time.time() - start)
+            logger.info("apply grad interior time", time.time() - start)
 
     def ps_compute_apply(self,
                          out_grad_shard_oids,
@@ -302,9 +305,6 @@ class ParameterServer(object):
 
     def add(self, grad_shard_id):
         self.timeline.start("add")
-        # self.timeline.start("add_wait")
-        # ray.wait([ray.local_scheduler.ObjectID(grad_shard_id)])
-        # self.timeline.end("add_wait")
         self.timeline.start("get_buffers")
         oid = ray.pyarrow.plasma.ObjectID(grad_shard_id)
         [raw_grads] = ray.worker.global_worker.plasma_client.get_buffers([oid])
@@ -338,9 +338,9 @@ class ParameterServer(object):
             import psutil
             p = psutil.Process()
             p.cpu_affinity([cpu_id])
-            print("Setting CPU Affinity to: ", cpu_id)
+            logger.info("Setting CPU Affinity to: ", cpu_id)
         except Exception as e:
-            print(e)
+            logger.error(e)
 
 
 def average_gradients(grads):
@@ -356,7 +356,7 @@ def do_sgd_step(actors, verbose):
     losses = [f[0] for f in fetches]
     grads = [f[1] for f in fetches]
     if verbose:
-        print("compute all grads time", time.time() - start)
+        logger.info("compute all grads time", time.time() - start)
     start = time.time()
     if len(actors) == 1:
         assert len(grads) == 1
@@ -364,11 +364,11 @@ def do_sgd_step(actors, verbose):
     else:
         avg_grad = average_gradients(grads)
         if verbose:
-            print("grad reduce time", time.time() - start)
+            logger.info("grad reduce time", time.time() - start)
     start = time.time()
     ray.get([a.apply_gradients.remote(avg_grad, verbose) for a in actors])
     if verbose:
-        print("apply all grads time", time.time() - start)
+        logger.info("apply all grads time", time.time() - start)
     return np.mean(losses)
 
 
@@ -376,17 +376,17 @@ def distributed_sgd_step(actors, ps_list, verbose, write_timeline):
     # Preallocate object ids that actors will write gradient shards to
     grad_shard_oids_list = [[np.random.bytes(20) for _ in ps_list]
                             for _ in actors]
-    print("generated grad oids")
+    logger.info("generated grad oids")
 
     # Preallocate object ids that param servers will write new weights to
     accum_shard_ids = [np.random.bytes(20) for _ in ps_list]
-    print("generated accum oids")
+    logger.info("generated accum oids")
 
     # Kick off the fused compute grad / update weights tf run for each actor
     for actor, grad_shard_oids in zip(actors, grad_shard_oids_list):
         actor.ps_compute_apply.remote(
             grad_shard_oids, accum_shard_ids, write_timeline=write_timeline)
-    print("Launched all ps_compute_applys on all actors")
+    logger.info("Launched all ps_compute_applys on all actors")
 
     # Issue prefetch ops
     for j, (ps, weight_shard_oid) in list(
@@ -396,7 +396,7 @@ def distributed_sgd_step(actors, ps_list, verbose, write_timeline):
             to_fetch.append(grad_shard_oids[j])
         random.shuffle(to_fetch)
         ps.prefetch.remote(to_fetch)
-    print("Launched all prefetch ops")
+    logger.info("Launched all prefetch ops")
 
     # Aggregate the gradients produced by the actors. These operations
     # run concurrently with the actor methods above.
@@ -405,11 +405,11 @@ def distributed_sgd_step(actors, ps_list, verbose, write_timeline):
             enumerate(zip(ps_list, accum_shard_ids)))[::-1]:
         ps.add_spinwait.remote([gs[j] for gs in grad_shard_oids_list])
         ps_gets.append(ps.get.remote(weight_shard_oid))
-    print("Launched all aggregate ops")
+    logger.info("Launched all aggregate ops")
 
     if verbose:
         timelines = [ps.get_timeline.remote() for ps in ps_list]
-        print("launched timeline gets")
+        logger.info("launched timeline gets")
         timelines = ray.get(timelines)
         t0 = timelines[0]
         for t in timelines[1:]:
@@ -436,13 +436,13 @@ def roundrobin_ps(ps_cls, sgd_workers, shard_shapes, spread_ps):
 
     while (any(len(v) < min_placed for v in ip_mapping.values())
            or (len(ip_mapping) < num_ips)):
-        print("generating new ps, ip map so far", ip_mapping)
+        logger.info("generating new ps, ip map so far", ip_mapping)
         new_ps = create_ps()
         ps_ip = ray.get(new_ps.ip.remote())
         if spread_ps and ps_ip in worker_ips:
-            print("ignoring ps that is on same node as worker")
+            logger.info("ignoring ps that is on same node as worker")
         elif not spread_ps and ps_ip not in worker_ips:
-            print("ignoring ps that NOT on same node as some worker")
+            logger.info("ignoring ps that NOT on same node as some worker")
         else:
             ip_mapping[ps_ip] += [new_ps]
 
@@ -456,11 +456,11 @@ def roundrobin_ps(ps_cls, sgd_workers, shard_shapes, spread_ps):
     for ps in sum(candidates, []):
         if ps not in final_list:
             ps.__ray_terminate__.remote(ps._ray_actor_id.id())
-            print("removing a ps...")
+            logger.info("removing a ps...")
         else:
-            print("saving ps...")
+            logger.info("saving ps...")
 
-    print("Final PS balance: ",
+    logger.info("Final PS balance: ",
           Counter(ray.get([ps.ip.remote() for ps in final_list])))
     for i, ps in enumerate(final_list):
         ps.set_tid.remote(i)
@@ -478,7 +478,7 @@ class DistributedSGD(object):
         RemoteSGDWorker = ray.remote(**requests)(SGDWorker)
         self.workers = []
         for worker_index in range(num_workers):
-            print("Creating worker", worker_index)
+            logger.info("Creating worker", worker_index)
             self.workers.append(
                 RemoteSGDWorker.remote(
                     worker_index,

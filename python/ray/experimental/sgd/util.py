@@ -4,7 +4,10 @@ from __future__ import print_function
 
 import ray
 import json
+import logger
 import time
+
+logger = logging.getLogger(__name__)
 
 
 def fetch(oids):
@@ -25,7 +28,7 @@ def run_timeline(sess, ops, feed_dict={}, write_timeline=False, name=""):
         trace = timeline.Timeline(step_stats=run_metadata.step_stats)
         outf = "timeline-{}-{}.json".format(name, os.getpid())
         trace_file = open(outf, "w")
-        print("wrote tf timeline to", os.path.abspath(outf))
+        logger.info("wrote tf timeline to", os.path.abspath(outf))
         trace_file.write(trace.generate_chrome_trace_format())
     else:
         fetches = sess.run(ops, feed_dict=feed_dict)
@@ -90,7 +93,7 @@ class Timeline(object):
             })
         with open(filename, "w") as f:
             f.write(json.dumps(out))
-        print("Wrote chrome timeline to", filename)
+        logger.info("Wrote chrome timeline to", filename)
 
 
 if __name__ == "__main__":

@@ -17,6 +17,7 @@
 from __future__ import print_function
 
 import collections as pycoll
+import logger
 import re
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
@@ -24,6 +25,8 @@ import tensorflow as tf
 
 from tensorflow.contrib import nccl
 from tensorflow.contrib.all_reduce.python import all_reduce
+
+logger = logging.getLogger(__name__)
 
 AllReduceSpecTuple = pycoll.namedtuple('AllReduceSpecTuple',
                                        'alg shards limit')
@@ -433,10 +436,10 @@ def print_stats(sizes):
         "median": np.median(sizes),
         "total size": np.sum(sizes)
     }
-    print("Stats " +
+    logger.info("Stats " +
           ", ".join(["%s: %s" % (k, sizeof_fmt(v)) for k, v in stats.items()]))
     other_stats = {"len": len(sizes)}
-    print(", ".join(["%s: %f" % (k, v) for k, v in other_stats.items()]))
+    logger.info(", ".join(["%s: %f" % (k, v) for k, v in other_stats.items()]))
 
 
 def extract_ranges(index_list, range_size_limit=32):
@@ -548,7 +551,6 @@ def pack_small_tensors(tower_grads, max_bytes=0):
     # Check to make sure sizes are accurate; not entirely important
     assert all(g.dtype == tf.float32 for g in orig_grads)
     sizes = [4 * g.shape.num_elements() for g in orig_grads]
-    print("Before packing")
     print_stats(sizes)
     small_ranges = []
     large_indices = []
@@ -573,7 +575,6 @@ def pack_small_tensors(tower_grads, max_bytes=0):
     end_interval(cur_range, small_ranges, large_indices)
     new_sizes.insert(0, cur_size)
 
-    print("After packing")
     print_stats(new_sizes)
     num_gv = len(orig_grads)
     packing = {}
