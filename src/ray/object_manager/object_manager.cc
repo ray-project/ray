@@ -566,6 +566,18 @@ void ObjectManager::SubscribeRemainingWaitObjects(const UniqueID &wait_id) {
               RAY_CHECK_OK(object_directory_->UnsubscribeObjectLocations(
                   wait_id, subscribe_object_id));
               if (wait_state.found.size() >= wait_state.num_required_objects) {
+                // Test code.
+                if (wait_record_.find(wait_id) != wait_record_.end()) {
+                  RAY_LOG(ERROR) << "WaitComplete is called for the second time. "
+                                 << "wait_id=" << wait_id.hex() << ". "
+                                 << "Previous message is \"" << wait_record_[wait_id]
+                                 << "\". Current is in Subscription callback. ";
+                } else {
+                  // The first time to call WaitComplete for wait_id.
+                  std::ostringstream ostream;
+                  ostream << "First time to call WaitComplete in Subscription callback.";
+                  wait_record_[wait_id] = ostream.str();
+                }
                 WaitComplete(wait_id);
               }
             }
@@ -579,6 +591,25 @@ void ObjectManager::SubscribeRemainingWaitObjects(const UniqueID &wait_id) {
             if (error_code.value() != 0) {
               return;
             }
+            if (active_wait_requests_.find(wait_id) == active_wait_requests_.end()) {
+              // When a subscription callback is triggered first, this function will be
+              // called. The timer may at the same time goes off and may be an
+              // interruption will post this function to main_service_ the second time.
+              // This check will avoid the duplicated call of this function.
+              return;
+            }
+            // Test code.
+            if (wait_record_.find(wait_id) != wait_record_.end()) {
+              RAY_LOG(ERROR) << "WaitComplete is called for the second time. "
+                             << "wait_id=" << wait_id.hex() << ". "
+                             << "Previous message is \"" << wait_record_[wait_id]
+                             << "\". Current is in Timer callback. ";
+            } else {
+              // The first time to call WaitComplete for wait_id.
+              std::ostringstream ostream;
+              ostream << "First time to call WaitComplete in Timer callback.";
+              wait_record_[wait_id] = ostream.str();
+            }
             WaitComplete(wait_id);
           });
     }
@@ -587,13 +618,8 @@ void ObjectManager::SubscribeRemainingWaitObjects(const UniqueID &wait_id) {
 
 void ObjectManager::WaitComplete(const UniqueID &wait_id) {
   auto iter = active_wait_requests_.find(wait_id);
-  if (iter == active_wait_requests_.end()) {
-    // When a subscription callback is triggered, this function will be called.
-    // The timer may at the same time goes off and may be an interruption will
-    // post this function to main_service_ the second time. This check will
-    // avoid the duplicated call of this function.
-    return;
-  }
+  // Test code.
+  RAY_CHECK(iter != active_wait_requests_.end());
   auto &wait_state = iter->second;
   // If we complete with outstanding requests, then timeout_ms should be non-zero or -1
   // (infinite wait time).
