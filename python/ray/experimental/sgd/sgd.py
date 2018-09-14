@@ -113,7 +113,8 @@ class SGDWorker(object):
                 ray.worker.global_worker.plasma_client.store_socket_name)
             manager_socket = (
                 ray.worker.global_worker.plasma_client.manager_socket_name)
-            plasma.build_plasma_tensorflow_op()
+            if not plasma.tf_plasma_op:
+                plasma.build_plasma_tensorflow_op()
 
             # For fetching grads -> plasma
             self.plasma_in_grads = []
@@ -218,6 +219,7 @@ class SGDWorker(object):
             g: avg_grads[i]
             for (i, g) in enumerate(self.per_device_grads[0])
         }
+        print("APPLY DICT", result)
         self.sess.run(self.apply_op, feed_dict=result)
         logger.debug("apply grad interior time {}".format(time.time() - start))
 
