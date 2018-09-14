@@ -17,7 +17,7 @@
 from __future__ import print_function
 
 import collections as pycoll
-import logger
+import logging
 import re
 
 from six.moves import xrange  # pylint: disable=redefined-builtin

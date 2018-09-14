@@ -4,7 +4,7 @@ from __future__ import print_function
 
 import ray
 import json
-import logger
+import logging
 import time
 
 logger = logging.getLogger(__name__)

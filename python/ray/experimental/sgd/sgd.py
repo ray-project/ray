@@ -10,12 +10,13 @@ import time
 
 from tensorflow.python.client import timeline
 import numpy as np
+import pyarrow.plasma as plasma
 import tensorflow as tf
 import tensorflow.contrib.nccl as nccl
 import tensorflow.contrib.slim as slim
 
 from util import Timeline, fetch, run_timeline
-from tfbench import modified_allreduce
+from ray.experimental.sgd.modified_allreduce import sum_gradients_all_reduce
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +71,7 @@ class SGDWorker(object):
         else:
             if max_bytes:
                 self.packed_grads_and_vars, packing_vals = (
-                    modified_allreduce.sum_gradients_all_reduce(
+                    sum_gradients_all_reduce(
                         "",
                         grad_ops,
                         1,
@@ -80,7 +81,7 @@ class SGDWorker(object):
                         agg_small_grads_max_bytes=max_bytes))
             else:
                 self.packed_grads_and_vars, _ = (
-                    modified_allreduce.sum_gradients_all_reduce(
+                    sum_gradients_all_reduce(
                         "",
                         grad_ops,
                         1,
@@ -113,7 +114,7 @@ class SGDWorker(object):
                 ray.worker.global_worker.plasma_client.store_socket_name)
             manager_socket = (
                 ray.worker.global_worker.plasma_client.manager_socket_name)
-            memcpy_plasma_module = tf.load_op_library(
+            memcpy_plasma_module = plasma.build_plasma_tensorflow_op(
                 os.path.join(
                     os.path.dirname(os.path.abspath(__file__)),
                     "ops/memcpy_plasma_op.so"))
@@ -131,7 +132,7 @@ class SGDWorker(object):
                     ix += 1  # round robin assignment
                 ix %= num_devices
                 with tf.device(self.models[ix].device):
-                    plasma_grad = memcpy_plasma_module.tensor_to_plasma(
+                    plasma_grad = plasma.tf_plasma_op.tensor_to_plasma(
                         [grad],
                         self.plasma_in_grads_oids[j],
                         plasma_store_socket_name=store_socket,
@@ -149,7 +150,7 @@ class SGDWorker(object):
             for j in range(num_grads):
                 with tf.device(self.plasma_in_grads[j].device):
                     with tf.control_dependencies([self.plasma_in_grads[j]]):
-                        grad_ph = memcpy_plasma_module.plasma_to_tensor(
+                        grad_ph = plasma.tf_plasma_op.plasma_to_tensor(
                             self.plasma_out_grads_oids[j],
                             plasma_store_socket_name=store_socket,
                             plasma_manager_socket_name=manager_socket)
@@ -211,7 +212,8 @@ class SGDWorker(object):
             ],
             feed_dict=feed_dict)
         if verbose:
-            logger.info("compute grad interior time", time.time() - start)
+            logger.info(
+                "compute grad interior time {}".format(time.time() - start))
         return fetches
 
     def apply_gradients(self, avg_grads, verbose):
@@ -222,7 +224,8 @@ class SGDWorker(object):
         }
         self.sess.run(self.apply_op, feed_dict=result)
         if verbose:
-            logger.info("apply grad interior time", time.time() - start)
+            logger.info(
+                "apply grad interior time {}".format(time.time() - start))
 
     def ps_compute_apply(self,
                          out_grad_shard_oids,
@@ -338,7 +341,7 @@ class ParameterServer(object):
             import psutil
             p = psutil.Process()
             p.cpu_affinity([cpu_id])
-            logger.info("Setting CPU Affinity to: ", cpu_id)
+            logger.info("Setting CPU Affinity to: {}".format(cpu_id))
         except Exception as e:
             logger.error(e)
 
@@ -356,7 +359,7 @@ def do_sgd_step(actors, verbose):
     losses = [f[0] for f in fetches]
     grads = [f[1] for f in fetches]
     if verbose:
-        logger.info("compute all grads time", time.time() - start)
+        logger.info("compute all grads time {}".format(time.time() - start))
     start = time.time()
     if len(actors) == 1:
         assert len(grads) == 1
@@ -364,11 +367,11 @@ def do_sgd_step(actors, verbose):
     else:
         avg_grad = average_gradients(grads)
         if verbose:
-            logger.info("grad reduce time", time.time() - start)
+            logger.info("grad reduce time {}".format(time.time() - start))
     start = time.time()
     ray.get([a.apply_gradients.remote(avg_grad, verbose) for a in actors])
     if verbose:
-        logger.info("apply all grads time", time.time() - start)
+        logger.info("apply all grads time {}".format(time.time() - start))
     return np.mean(losses)
 
 
@@ -436,7 +439,7 @@ def roundrobin_ps(ps_cls, sgd_workers, shard_shapes, spread_ps):
 
     while (any(len(v) < min_placed for v in ip_mapping.values())
            or (len(ip_mapping) < num_ips)):
-        logger.info("generating new ps, ip map so far", ip_mapping)
+        logger.info("generating new ps, ip map so far {}".format(ip_mapping))
         new_ps = create_ps()
         ps_ip = ray.get(new_ps.ip.remote())
         if spread_ps and ps_ip in worker_ips:
@@ -469,7 +472,7 @@ def roundrobin_ps(ps_cls, sgd_workers, shard_shapes, spread_ps):
 
 class DistributedSGD(object):
     def __init__(self, model_creator, num_workers, devices_per_worker,
-                 use_cpus):
+                 use_cpus=False, use_plasma_op=False):
         self.model_creator = model_creator
         if use_cpus:
             requests = {"num_cpus": devices_per_worker}
@@ -478,12 +481,13 @@ class DistributedSGD(object):
         RemoteSGDWorker = ray.remote(**requests)(SGDWorker)
         self.workers = []
         for worker_index in range(num_workers):
-            logger.info("Creating worker", worker_index)
+            logger.info("Creating worker {}".format(worker_index))
             self.workers.append(
                 RemoteSGDWorker.remote(
                     worker_index,
                     model_creator,
                     num_devices=devices_per_worker,
+                    plasma_op=use_plasma_op,
                     use_cpus=use_cpus,
                     verbose=True))
 
