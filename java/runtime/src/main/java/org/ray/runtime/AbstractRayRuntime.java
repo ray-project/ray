@@ -308,6 +308,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     }
     RayActorImpl actorImpl = (RayActorImpl)actor;
     TaskSpec spec = createTaskSpec(func, actorImpl, args, false);
+    spec.getExecutionDependencies().add(((RayActorImpl) actor).getTaskCursor());
     actorImpl.setTaskCursor(spec.returnIds[1]);
     rayletClient.submitTask(spec);
     return new RayObjectImpl(spec.returnIds[0]);
@@ -375,15 +376,15 @@ public abstract class AbstractRayRuntime implements RayRuntime {
         taskId,
         current.taskId,
         -1,
+        actorCreationId,
         actor.getId(),
+        actor.getHandleId(),
         actor.increaseTaskCounter(),
         funcId,
         ArgumentsBuilder.wrap(args),
         returnIds,
-        actor.getHandleId(),
-        actorCreationId,
         ResourceUtil.getResourcesMapFromArray(rayMethod.remoteAnnotation),
-        actor.getTaskCursor()
+        null
     );
   }
 
