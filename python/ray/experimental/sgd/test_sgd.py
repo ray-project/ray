@@ -11,7 +11,6 @@ import tensorflow as tf
 from ray.experimental.sgd.tfbench.test_model import TFBenchModel
 from ray.experimental.sgd.sgd import DistributedSGD
 
-
 if __name__ == "__main__":
     ray.init()
 
@@ -19,7 +18,10 @@ if __name__ == "__main__":
         lambda worker_idx, device_idx: TFBenchModel(batch=1, use_cpus=True))
 
     sgd = DistributedSGD(
-        model_creator, num_workers=2, devices_per_worker=2, use_cpus=True,
+        model_creator,
+        num_workers=2,
+        devices_per_worker=2,
+        use_cpus=True,
         use_plasma_op=True)
 
     for _ in range(100):

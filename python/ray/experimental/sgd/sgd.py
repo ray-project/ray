@@ -16,7 +16,8 @@ import tensorflow.contrib.nccl as nccl
 import tensorflow.contrib.slim as slim
 
 from util import Timeline, fetch, run_timeline
-from ray.experimental.sgd.modified_allreduce import sum_gradients_all_reduce
+from ray.experimental.sgd.modified_allreduce import sum_gradients_all_reduce, \
+    unpack_small_tensors
 
 logger = logging.getLogger(__name__)
 
@@ -28,9 +29,8 @@ class SGDWorker(object):
                  all_reduce_alg="simple",
                  num_devices=1,
                  use_cpus=False,
-                 max_bytes=0,
-                 plasma_op=False,
-                 verbose=False):
+                 max_bytes=60000000,
+                 plasma_op=False):
         self.worker_index = worker_index
         assert num_devices > 0
 
@@ -80,15 +80,14 @@ class SGDWorker(object):
                         list(range(num_devices)),
                         agg_small_grads_max_bytes=max_bytes))
             else:
-                self.packed_grads_and_vars, _ = (
-                    sum_gradients_all_reduce(
-                        "",
-                        grad_ops,
-                        1,
-                        all_reduce_alg,
-                        1,
-                        list(range(num_devices)),
-                        agg_small_grads_max_bytes=0))
+                self.packed_grads_and_vars, _ = (sum_gradients_all_reduce(
+                    "",
+                    grad_ops,
+                    1,
+                    all_reduce_alg,
+                    1,
+                    list(range(num_devices)),
+                    agg_small_grads_max_bytes=0))
         self.per_device_grads = [
             list(zip(*dev_gv))[0] for dev_gv in self.packed_grads_and_vars
         ]
@@ -119,7 +118,7 @@ class SGDWorker(object):
             # For fetching grads -> plasma
             self.plasma_in_grads = []
             self.plasma_in_grads_oids = [
-                tf.placeholder(shape=[], dtype=tf.string)
+                tf.placeholder(shape=[], dtype=tf.string, name="in_grad_oids")
                 for _ in range(num_grads)
             ]
             ix = 0
@@ -139,7 +138,8 @@ class SGDWorker(object):
             # For applying grads <- plasma
             unpacked_gv = []
             self.plasma_out_grads_oids = [
-                tf.placeholder(shape=[], dtype=tf.string)
+                tf.placeholder(
+                    shape=[], dtype=tf.string, name="grad_out_oids")
                 for _ in range(num_grads)
             ]
             packed_plasma_grads = []
@@ -154,7 +154,7 @@ class SGDWorker(object):
                             plasma_manager_socket_name=manager_socket)
                 grad_ph = tf.reshape(grad_ph,
                                      self.packed_grads_and_vars[0][j][0].shape)
-                logger.info("Packed tensor", grad_ph)
+                logger.debug("Packed tensor {}".format(grad_ph))
                 packed_plasma_grads.append(grad_ph)
             for i in range(num_devices):
                 per_device = []
@@ -164,8 +164,7 @@ class SGDWorker(object):
                 unpacked_gv.append(per_device)
 
             if max_bytes:
-                unpacked_gv = allreduce.unpack_small_tensors(
-                    unpacked_gv, packing_vals)
+                unpacked_gv = unpack_small_tensors(unpacked_gv, packing_vals)
 
         elif max_bytes:
             unpacked_gv = allreduce.unpack_small_tensors(
@@ -195,7 +194,7 @@ class SGDWorker(object):
     def foreach_worker(self, fn):
         return fn(self)
 
-    def compute_gradients(self, verbose):
+    def compute_gradients(self):
         start = time.time()
         feed_dict = {}
         # Aggregate feed dicts for each model on this worker.
@@ -209,21 +208,18 @@ class SGDWorker(object):
                 self.nccl_control_out
             ],
             feed_dict=feed_dict)
-        if verbose:
-            logger.info(
-                "compute grad interior time {}".format(time.time() - start))
+        logger.debug(
+            "compute grad interior time {}".format(time.time() - start))
         return fetches
 
-    def apply_gradients(self, avg_grads, verbose):
+    def apply_gradients(self, avg_grads):
         start = time.time()
         result = {
             g: avg_grads[i]
             for (i, g) in enumerate(self.per_device_grads[0])
         }
         self.sess.run(self.apply_op, feed_dict=result)
-        if verbose:
-            logger.info(
-                "apply grad interior time {}".format(time.time() - start))
+        logger.debug("apply grad interior time {}".format(time.time() - start))
 
     def ps_compute_apply(self,
                          out_grad_shard_oids,
@@ -316,10 +312,7 @@ class ParameterServer(object):
         client = ray.worker.global_worker.plasma_client
         assert self.acc_counter == self.num_sgd_workers, self.acc_counter
         oid = ray.pyarrow.plasma.ObjectID(object_id)
-        buff = client.create(oid, self.accumulated.nbytes)
-        wrapper = np.frombuffer(buff, dtype=np.float32)
-        np.copyto(wrapper, self.accumulated)
-        client.seal(oid)
+        client.put(self.accumulate.flatten(), object_id=oid)
         self.accumulated = np.zeros_like(self.accumulated)
         self.acc_counter = 0
         self.timeline.end("get")
@@ -347,29 +340,26 @@ def average_gradients(grads):
     return out
 
 
-def do_sgd_step(actors, verbose):
+def do_sgd_step(actors):
     start = time.time()
-    fetches = ray.get([a.compute_gradients.remote(verbose) for a in actors])
+    fetches = ray.get([a.compute_gradients.remote() for a in actors])
     losses = [f[0] for f in fetches]
     grads = [f[1] for f in fetches]
-    if verbose:
-        logger.info("compute all grads time {}".format(time.time() - start))
+    logger.debug("compute all grads time {}".format(time.time() - start))
     start = time.time()
     if len(actors) == 1:
         assert len(grads) == 1
         avg_grad = grads[0]
     else:
         avg_grad = average_gradients(grads)
-        if verbose:
-            logger.info("grad reduce time {}".format(time.time() - start))
+        logger.debug("grad reduce time {}".format(time.time() - start))
     start = time.time()
-    ray.get([a.apply_gradients.remote(avg_grad, verbose) for a in actors])
-    if verbose:
-        logger.info("apply all grads time {}".format(time.time() - start))
+    ray.get([a.apply_gradients.remote(avg_grad) for a in actors])
+    logger.debug("apply all grads time {}".format(time.time() - start))
     return np.mean(losses)
 
 
-def distributed_sgd_step(actors, ps_list, verbose, write_timeline):
+def distributed_sgd_step(actors, ps_list, write_timeline):
     # Preallocate object ids that actors will write gradient shards to
     grad_shard_oids_list = [[np.random.bytes(20) for _ in ps_list]
                             for _ in actors]
@@ -404,7 +394,7 @@ def distributed_sgd_step(actors, ps_list, verbose, write_timeline):
         ps_gets.append(ps.get.remote(weight_shard_oid))
     logger.info("Launched all aggregate ops")
 
-    if verbose:
+    if write_timeline:
         timelines = [ps.get_timeline.remote() for ps in ps_list]
         logger.info("launched timeline gets")
         timelines = ray.get(timelines)
@@ -452,21 +442,25 @@ def roundrobin_ps(ps_cls, sgd_workers, shard_shapes, spread_ps):
 
     for ps in sum(candidates, []):
         if ps not in final_list:
-            ps.__ray_terminate__.remote(ps._ray_actor_id.id())
+            ps.__ray_terminate__.remote()
             logger.info("removing a ps...")
         else:
             logger.info("saving ps...")
 
     logger.info("Final PS balance: ",
-          Counter(ray.get([ps.ip.remote() for ps in final_list])))
+                Counter(ray.get([ps.ip.remote() for ps in final_list])))
     for i, ps in enumerate(final_list):
         ps.set_tid.remote(i)
     return final_list
 
 
 class DistributedSGD(object):
-    def __init__(self, model_creator, num_workers, devices_per_worker,
-                 use_cpus=False, use_plasma_op=False):
+    def __init__(self,
+                 model_creator,
+                 num_workers,
+                 devices_per_worker,
+                 use_cpus=False,
+                 use_plasma_op=False):
         self.model_creator = model_creator
         if use_cpus:
             requests = {"num_cpus": devices_per_worker}
@@ -482,8 +476,7 @@ class DistributedSGD(object):
                     model_creator,
                     num_devices=devices_per_worker,
                     plasma_op=use_plasma_op,
-                    use_cpus=use_cpus,
-                    verbose=True))
+                    use_cpus=use_cpus))
 
     def foreach_worker(self, fn):
         results = ray.get([w.foreach_worker.remote(fn) for w in self.workers])
@@ -497,4 +490,4 @@ class DistributedSGD(object):
         return r
 
     def step(self):
-        return do_sgd_step(self.workers, True)
+        return do_sgd_step(self.workers)

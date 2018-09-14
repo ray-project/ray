@@ -18,6 +18,7 @@ from __future__ import print_function
 
 import collections as pycoll
 import logging
+import numpy as np
 import re
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
@@ -436,8 +437,8 @@ def print_stats(sizes):
         "median": np.median(sizes),
         "total size": np.sum(sizes)
     }
-    logger.info("Stats " +
-          ", ".join(["%s: %s" % (k, sizeof_fmt(v)) for k, v in stats.items()]))
+    logger.info("Stats " + ", ".join(
+        ["%s: %s" % (k, sizeof_fmt(v)) for k, v in stats.items()]))
     other_stats = {"len": len(sizes)}
     logger.info(", ".join(["%s: %f" % (k, v) for k, v in other_stats.items()]))
 
