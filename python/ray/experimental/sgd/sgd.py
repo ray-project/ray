@@ -76,7 +76,7 @@ class SGDWorker(object):
                         list(range(num_devices)),
                         agg_small_grads_max_bytes=max_bytes))
             else:
-                self.packed_grads_and_vars = (
+                self.packed_grads_and_vars, _ = (
                     modified_allreduce.sum_gradients_all_reduce(
                         "",
                         grad_ops,
