@@ -190,7 +190,7 @@ class TrialRunner(object):
                     messages.append(" - {}:\t{}".format(t, t.progress_string()))
                 messages.append(
                     "  ... {} not shown".format(len(trials) - tail_length * 2))
-                last = sorted_trials[tail_length:]
+                last = sorted_trials[-tail_length:]
                 for t in last:
                     messages.append(" - {}:\t{}".format(t, t.progress_string()))
             else:
