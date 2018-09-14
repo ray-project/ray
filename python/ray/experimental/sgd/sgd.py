@@ -168,7 +168,7 @@ class SGDWorker(object):
                 unpacked_gv = unpack_small_tensors(unpacked_gv, packing_vals)
 
         elif max_bytes:
-            unpacked_gv = allreduce.unpack_small_tensors(
+            unpacked_gv = unpack_small_tensors(
                 self.packed_grads_and_vars, packing_vals)
         else:
             unpacked_gv = self.packed_grads_and_vars
@@ -219,7 +219,6 @@ class SGDWorker(object):
             g: avg_grads[i]
             for (i, g) in enumerate(self.per_device_grads[0])
         }
-        print("APPLY DICT", result)
         self.sess.run(self.apply_op, feed_dict=result)
         logger.debug("apply grad interior time {}".format(time.time() - start))
 
@@ -479,6 +478,8 @@ class DistributedSGD(object):
                     num_devices=devices_per_worker,
                     plasma_op=use_plasma_op,
                     use_cpus=use_cpus))
+        assert not use_plasma_op, \
+            "TODO: when use_plasma_op is true, we must run in PS mode"
 
     def foreach_worker(self, fn):
         results = ray.get([w.foreach_worker.remote(fn) for w in self.workers])

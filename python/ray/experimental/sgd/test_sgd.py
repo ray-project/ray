@@ -22,7 +22,7 @@ if __name__ == "__main__":
         num_workers=2,
         devices_per_worker=2,
         use_cpus=True,
-        use_plasma_op=True)
+        use_plasma_op=False)
 
     for _ in range(100):
         loss = sgd.step()
