@@ -1528,7 +1528,8 @@ def _init(address_info=None,
           plasma_directory=None,
           huge_pages=False,
           include_webui=True,
-          use_raylet=None):
+          use_raylet=None,
+          plasma_store_socket_name=None):
     """Helper method to connect to an existing Ray cluster or start a new one.
 
     This method handles two cases. Either a Ray cluster already exists and we
@@ -1584,6 +1585,8 @@ def _init(address_info=None,
         include_webui: Boolean flag indicating whether to start the web
             UI, which is a Jupyter notebook.
         use_raylet: True if the new raylet code path should be used.
+        plasma_store_socket_name (str): If provided, it will specify the socket
+            name used by the plasma store.
 
     Returns:
         Address information about the started processes.
@@ -1658,7 +1661,8 @@ def _init(address_info=None,
             plasma_directory=plasma_directory,
             huge_pages=huge_pages,
             include_webui=include_webui,
-            use_raylet=use_raylet)
+            use_raylet=use_raylet,
+            plasma_store_socket_name=plasma_store_socket_name)
     else:
         if redis_address is None:
             raise Exception("When connecting to an existing cluster, "
@@ -1750,7 +1754,8 @@ def init(redis_address=None,
          use_raylet=None,
          configure_logging=True,
          logging_level=logging.INFO,
-         logging_format=ray_constants.LOGGER_FORMAT):
+         logging_format=ray_constants.LOGGER_FORMAT,
+         plasma_store_socket_name=None):
     """Connect to an existing Ray cluster or start one and connect to it.
 
     This method handles two cases. Either a Ray cluster already exists and we
@@ -1815,6 +1820,8 @@ def init(redis_address=None,
         logging_level: Logging level, default will be loging.INFO.
         logging_format: Logging format, default will be "%(message)s"
             which means only contains the message.
+        plasma_store_socket_name (str): If provided, it will specify the socket
+            name used by the plasma store.
 
     Returns:
         Address information about the started processes.
@@ -1863,7 +1870,8 @@ def init(redis_address=None,
         huge_pages=huge_pages,
         include_webui=include_webui,
         object_store_memory=object_store_memory,
-        use_raylet=use_raylet)
+        use_raylet=use_raylet,
+        plasma_store_socket_name=plasma_store_socket_name)
     for hook in _post_init_hooks:
         hook()
     return ret

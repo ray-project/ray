@@ -1080,7 +1080,8 @@ def start_objstore(node_ip_address,
                    cleanup=True,
                    plasma_directory=None,
                    huge_pages=False,
-                   use_raylet=False):
+                   use_raylet=False,
+                   plasma_store_socket_name=None):
     """This method starts an object store process.
 
     Args:
@@ -1152,7 +1153,8 @@ def start_objstore(node_ip_address,
         stdout_file=store_stdout_file,
         stderr_file=store_stderr_file,
         plasma_directory=plasma_directory,
-        huge_pages=huge_pages)
+        huge_pages=huge_pages,
+        socket_name=plasma_store_socket_name)
     # Start the plasma manager.
     if not use_raylet:
         if object_manager_port is not None:
@@ -1321,7 +1323,8 @@ def start_ray_processes(address_info=None,
                         plasma_directory=None,
                         huge_pages=False,
                         autoscaling_config=None,
-                        use_raylet=False):
+                        use_raylet=False,
+                        plasma_store_socket_name=None):
     """Helper method to start Ray processes.
 
     Args:
@@ -1379,6 +1382,8 @@ def start_ray_processes(address_info=None,
         autoscaling_config: path to autoscaling config file.
         use_raylet: True if the new raylet code path should be used. This is
             not supported yet.
+        plasma_store_socket_name (str): If provided, it will specify the socket
+            name used by the plasma store.
 
     Returns:
         A dictionary of the address information for the processes that were
@@ -1510,7 +1515,8 @@ def start_ray_processes(address_info=None,
             cleanup=cleanup,
             plasma_directory=plasma_directory,
             huge_pages=huge_pages,
-            use_raylet=use_raylet)
+            use_raylet=use_raylet,
+            plasma_store_socket_name=plasma_store_socket_name)
         object_store_addresses.append(object_store_address)
         time.sleep(0.1)
 
@@ -1622,7 +1628,8 @@ def start_ray_node(node_ip_address,
                    resources=None,
                    plasma_directory=None,
                    huge_pages=False,
-                   use_raylet=False):
+                   use_raylet=False,
+                   plasma_store_socket_name=None):
     """Start the Ray processes for a single node.
 
     This assumes that the Ray processes on some master node have already been
@@ -1657,6 +1664,8 @@ def start_ray_node(node_ip_address,
             Store with hugetlbfs support. Requires plasma_directory.
         use_raylet: True if the new raylet code path should be used. This is
             not supported yet.
+        plasma_store_socket_name (str): If provided, it will specify the socket
+            name used by the plasma store.
 
     Returns:
         A dictionary of the address information for the processes that were
@@ -1680,7 +1689,8 @@ def start_ray_node(node_ip_address,
         resources=resources,
         plasma_directory=plasma_directory,
         huge_pages=huge_pages,
-        use_raylet=use_raylet)
+        use_raylet=use_raylet,
+        plasma_store_socket_name=plasma_store_socket_name)
 
 
 def start_ray_head(address_info=None,
@@ -1703,7 +1713,8 @@ def start_ray_head(address_info=None,
                    plasma_directory=None,
                    huge_pages=False,
                    autoscaling_config=None,
-                   use_raylet=False):
+                   use_raylet=False,
+                   plasma_store_socket_name=None):
     """Start Ray in local mode.
 
     Args:
@@ -1755,6 +1766,8 @@ def start_ray_head(address_info=None,
         autoscaling_config: path to autoscaling config file.
         use_raylet: True if the new raylet code path should be used. This is
             not supported yet.
+        plasma_store_socket_name (str): If provided, it will specify the socket
+            name used by the plasma store.
 
     Returns:
         A dictionary of the address information for the processes that were
@@ -1784,4 +1797,5 @@ def start_ray_head(address_info=None,
         plasma_directory=plasma_directory,
         huge_pages=huge_pages,
         autoscaling_config=autoscaling_config,
-        use_raylet=use_raylet)
+        use_raylet=use_raylet,
+        plasma_store_socket_name=plasma_store_socket_name)

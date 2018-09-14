@@ -26,7 +26,8 @@ def start_plasma_store(plasma_store_memory=DEFAULT_PLASMA_STORE_MEMORY,
                        stdout_file=None,
                        stderr_file=None,
                        plasma_directory=None,
-                       huge_pages=False):
+                       huge_pages=False,
+                       socket_name=None):
     """Start a plasma store process.
 
     Args:
@@ -42,6 +43,8 @@ def start_plasma_store(plasma_store_memory=DEFAULT_PLASMA_STORE_MEMORY,
             be created.
         huge_pages: a boolean flag indicating whether to start the
             Object Store with hugetlbfs support. Requires plasma_directory.
+        socket_name (str): If provided, it will specify the socket
+            name used by the plasma store.
 
     Return:
         A tuple of the name of the plasma store socket and the process ID of
@@ -65,7 +68,7 @@ def start_plasma_store(plasma_store_memory=DEFAULT_PLASMA_STORE_MEMORY,
     plasma_store_executable = os.path.join(
         os.path.abspath(os.path.dirname(__file__)),
         "../core/src/plasma/plasma_store_server")
-    plasma_store_name = get_object_store_socket_name()
+    plasma_store_name = socket_name or get_object_store_socket_name()
     command = [
         plasma_store_executable, "-s", plasma_store_name, "-m",
         str(plasma_store_memory)
