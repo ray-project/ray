@@ -13,31 +13,8 @@ import tensorflow as tf
 import tensorflow.contrib.nccl as nccl
 import tensorflow.contrib.slim as slim
 
-from chrome_timeline import Timeline
-from tfbench import allreduce
-
-
-def fetch(oids):
-    for o in oids:
-        plasma_id = ray.pyarrow.plasma.ObjectID(o)
-        ray.worker.global_worker.plasma_client.fetch([plasma_id])
-
-
-def run_timeline(sess, ops, feed_dict={}, write_timeline=False, name=""):
-    if write_timeline:
-        run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
-        run_metadata = tf.RunMetadata()
-        fetches = sess.run(
-            ops, options=run_options, run_metadata=run_metadata,
-            feed_dict=feed_dict)
-        trace = timeline.Timeline(step_stats=run_metadata.step_stats)
-        outf = "timeline-{}-{}.json".format(name, os.getpid())
-        trace_file = open(outf, "w")
-        print("wrote tf timeline to", os.path.abspath(outf))
-        trace_file.write(trace.generate_chrome_trace_format())
-    else:
-        fetches = sess.run(ops, feed_dict=feed_dict)
-    return fetches
+from util import Timeline, fetch, run_timeline
+from tfbench import modified_allreduce
 
 
 class SGDWorker(object):
@@ -86,7 +63,6 @@ class SGDWorker(object):
            self.packed_grads_and_vars = grad_ops
         else:
             if max_bytes:
-                from tfbench import modified_allreduce
                 self.packed_grads_and_vars, packing_vals = (
                     modified_allreduce.sum_gradients_all_reduce(
                         "", grad_ops, 1, all_reduce_alg, 1,
@@ -94,9 +70,10 @@ class SGDWorker(object):
                         agg_small_grads_max_bytes=max_bytes))
             else:
                 self.packed_grads_and_vars = (
-                    allreduce.sum_gradients_all_reduce(
+                    modified_allreduce.sum_gradients_all_reduce(
                         "", grad_ops, 1, all_reduce_alg, 1,
-                        list(range(num_devices))))
+                        list(range(num_devices)),
+                        agg_small_grads_max_bytes=0))
         self.per_device_grads = [
             list(zip(*dev_gv))[0] for dev_gv in self.packed_grads_and_vars]
         assert(len(self.per_device_grads) == num_devices)

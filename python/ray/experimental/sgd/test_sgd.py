@@ -8,8 +8,8 @@ import argparse
 import numpy as np
 import tensorflow as tf
 
-from test_model import TFBenchModel
-from sgd import DistributedSGD
+from ray.experimental.sgd.example.test_model import TFBenchModel
+from ray.experimental.sgd.sgd import DistributedSGD
 
 
 if __name__ == "__main__":

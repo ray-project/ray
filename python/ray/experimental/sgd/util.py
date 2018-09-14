@@ -7,6 +7,29 @@ import json
 import time
 
 
+def fetch(oids):
+    for o in oids:
+        plasma_id = ray.pyarrow.plasma.ObjectID(o)
+        ray.worker.global_worker.plasma_client.fetch([plasma_id])
+
+
+def run_timeline(sess, ops, feed_dict={}, write_timeline=False, name=""):
+    if write_timeline:
+        run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+        run_metadata = tf.RunMetadata()
+        fetches = sess.run(
+            ops, options=run_options, run_metadata=run_metadata,
+            feed_dict=feed_dict)
+        trace = timeline.Timeline(step_stats=run_metadata.step_stats)
+        outf = "timeline-{}-{}.json".format(name, os.getpid())
+        trace_file = open(outf, "w")
+        print("wrote tf timeline to", os.path.abspath(outf))
+        trace_file.write(trace.generate_chrome_trace_format())
+    else:
+        fetches = sess.run(ops, feed_dict=feed_dict)
+    return fetches
+
+
 class Timeline(object):
     def __init__(self, tid):
         self.events = []
