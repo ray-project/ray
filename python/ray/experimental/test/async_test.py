@@ -259,27 +259,28 @@ class TestAsyncPlasma(unittest.TestCase):
     """
 
     # It is the correct result of this test (in the form of sha1sum).
-    answer = b'U\x16\xc5c\x0fa\xdcx\x03\x1e\xf7\xd8&{\xece' \
-             b'\x85-.O\x12\xed\x11[\xdc\xe6\xcc\xdf\x90\x91\xc7\xf7'
+    answer = b'3Z_\xc9\x8e/\x9b\xc0\xb3\xa9\xdc}\xdd' \
+             b'\xe5\xbe\xf3\x92\xfe%\xa6X&t;\x0fmJ@\xf1C\xcdF'
 
     def setUp(self):
         # Start the Ray processes.
-        ray.init(num_cpus=2)
+        ray.init(num_cpus=4)
 
     def tearDown(self):
         ray.disconnect()
 
     def test_baseline(self):
-        inputs, stages = gen_hashflow(0, 16, 16)
+        inputs, stages = gen_hashflow(0, 4, 16)
         ground_truth = default_hashflow_solution(inputs, stages, True)
+        print(ground_truth)
         self.assertEqual(ground_truth, self.answer)
 
     def test_async_get(self):
-        inputs, stages = gen_hashflow(0, 16, 16)
+        inputs, stages = gen_hashflow(0, 4, 16)
         result = async_hashflow_solution_get(inputs, stages, use_delay=True)
         self.assertEqual(result, self.answer)
 
     def test_async_wait(self):
-        inputs, stages = gen_hashflow(0, 16, 16)
+        inputs, stages = gen_hashflow(0, 4, 16)
         result = async_hashflow_solution_wait(inputs, stages, use_delay=True)
         self.assertEqual(result, self.answer)
