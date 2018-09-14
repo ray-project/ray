@@ -216,7 +216,7 @@ def wait_and_solve(inputs, node, use_delay, loop):
 
 @pytest.fixture
 def async_hashflow_solution_get(inputs, stages, use_delay=False):
-    with PlasmaEventLoopUseEpoll() as loop:
+    with PlasmaEventLoopUsePoll() as loop:
         inputs = list(map(ray.put, inputs))
         for i, stage in enumerate(stages):
             new_inputs = []
@@ -237,7 +237,7 @@ def async_hashflow_solution_wait(inputs, stages, use_delay=False):
         result = await coro
         return result[0]
 
-    with PlasmaEventLoopUseEpoll() as loop:
+    with PlasmaEventLoopUsePoll() as loop:
         inputs = list(map(ray.put, inputs))
         for i, stage in enumerate(stages):
             new_inputs = []
@@ -265,7 +265,6 @@ class TestAsyncPlasma(unittest.TestCase):
     def setUp(self):
         # Start the Ray processes.
         ray.init(num_cpus=2)
-        async_api.set_debug(True)
 
     def tearDown(self):
         ray.disconnect()
