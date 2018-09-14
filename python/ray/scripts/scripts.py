@@ -275,6 +275,12 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
                   .format(address_info["redis_address"],
                           gateway_socat_port,
                           gateway_data_port))
+            
+            print("You can debug a gateway by running\n\n"
+                  "    python python/ray/gateway.py -s {} -m {} -a {} -p 1234 --debug\n"
+                  .format(address_info["object_store_addresses"][0].name,
+                          address_info["raylet_socket_names"][0],
+                          address_info["redis_address"].split(":")[0]))
 
         print("If you wish to terminate the processes that have been started"
               ", run\n\n"

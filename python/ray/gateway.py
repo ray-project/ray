@@ -95,11 +95,17 @@ def index():
     is_flag=True,
     default=False,
     help="Start Flask server in debug mode")
+@click.option(
+    "--use-reloader",
+    is_flag=True,
+    default=False,
+    help="Reload on file changes")
 def start(plasma_store_socket_name,
           plasma_manager_socket_name,
           address,
           port,
-          debug):
+          debug,
+          use_reloader):
     global plasma_client
     plasma_client = ray.pyarrow.plasma.connect(
         plasma_store_socket_name,
@@ -107,7 +113,8 @@ def start(plasma_store_socket_name,
         64)
     app.run(host=address,
             port=port,
-            debug=debug)
+            debug=debug,
+            use_reloader=use_reloader)
 
 
 if __name__ == '__main__':

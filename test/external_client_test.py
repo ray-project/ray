@@ -67,7 +67,7 @@ def testRemoteFunctionExternalClient(ray_start):
     def f():
         time.sleep(1)
         return 1
-    
+
     results = ray.get([f.remote() for i in range(4)])
     for i in range(4):
         assert results[i] == 1

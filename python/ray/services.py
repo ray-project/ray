@@ -1030,8 +1030,9 @@ def start_gateway(node_ip_address,
             default.
     """
     # TODO (dsuo): move to gateway.py
+    # TODO (dsuo): remove verbose mode in socat
     command = [
-        "socat", "TCP-LISTEN:" + str(gateway_socat_port) + ",reuseaddr,fork",
+        "socat", "-v", "TCP-LISTEN:" + str(gateway_socat_port) + ",reuseaddr,fork",
         "UNIX-CONNECT:" + raylet_name
     ]
     p = subprocess.Popen(command, stdout=stdout_file, stderr=stderr_file)

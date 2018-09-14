@@ -661,6 +661,7 @@ class Worker(object):
                 task_index = self.task_index
                 self.task_index += 1
             # Submit the task to local scheduler.
+            import pdb; pdb.set_trace()
             task = ray.local_scheduler.Task(
                 driver_id, ray.ObjectID(
                     function_id.id()), args_for_local_scheduler,
@@ -1707,19 +1708,19 @@ def _init(address_info=None,
     if driver_mode == LOCAL_MODE:
         driver_address_info = {}
     elif driver_mode == EXTERNAL_CLIENT_MODE and use_raylet:
+        global_worker.external_client = ExternalClient(
+            gateway_address=address_info["redis_address"].split(":")[0],
+            gateway_socat_port=gateway_socat_port,
+            gateway_data_port=gateway_data_port
+        )
+
         driver_address_info = {
             "node_ip_address": address_info["node_ip_address"],
             "redis_address": address_info["redis_address"],
             "gateway_socat_port": gateway_socat_port,
             "gateway_data_port": gateway_data_port,
-            "raylet_socket_name": address_info["raylet_socket_names"][0]
+            "raylet_socket_name": global_worker.external_client.client_socket_name
         }
-
-        global_worker.external_client = ExternalClient(
-            gateway_address=driver_address_info["redis_address"].split(":")[0],
-            gateway_socat_port=driver_address_info["gateway_socat_port"],
-            gateway_data_port=driver_address_info["gateway_data_port"],
-        )
     else:
         driver_address_info = {
             "node_ip_address": node_ip_address,

@@ -1,4 +1,5 @@
-import subprocess
+import os
+from subprocess import Popen, PIPE
 
 # TODO (dsuo): eventually remove this dependency
 import requests
@@ -28,21 +29,30 @@ class ExternalClient(object):
         self.gateway_address = gateway_address
         self.gateway_socat_port = gateway_socat_port
         self.gateway_data_port = gateway_data_port
-        self.client_socket_name = "/tmp/ray_external_client" + \
-            str(np.random.randint(0, 99999999)).zfill(8)
+        self.client_name = "external_client" + \
+                str(np.random.randint(0, 99999999)).zfill(8)
+        self.client_socket_name = "/tmp/ray_" + self.client_name
         self.url = "http://{}:{}".format(
             self.gateway_address,
             self.gateway_data_port)
 
         # TODO (dsuo): should move to connect()
+        # TODO (dsuo): remove verbose mode
         command = [
-            "socat", "UNIX-LISTEN:" + self.client_socket_name +
+            "socat", "-v", "UNIX-LISTEN:" + self.client_socket_name +
             ",reuseaddr,fork", "TCP:" + self.gateway_address + ":" +
             str(self.gateway_socat_port)
         ]
 
         # TODO (dsuo): handle cleanup, logging, etc
-        subprocess.Popen(command, stdout=None, stderr=None)
+        raylogs = "/tmp/raylogs"
+        if not os.path.exists(raylogs):
+            os.makedirs(raylogs)
+
+        outfile = os.path.join(raylogs, self.client_name + ".out")
+        errfile = os.path.join(raylogs, self.client_name + ".err")
+        with open(outfile, "w") as out, open(errfile, "w") as err:
+            Popen(command, stdout=out, stderr=err)
 
     def put(self, value, object_id):
         """TODO (dsuo): Add comments
