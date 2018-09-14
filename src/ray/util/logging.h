@@ -35,9 +35,8 @@ namespace ray {
 
 #define RAY_LOG_INTERNAL(level) ::ray::RayLog(__FILE__, __LINE__, level)
 
-#define RAY_LOG(level)                            \
-  if (ray::RayLog::IsLevelEnabled(RAY_##level))   \
-    RAY_LOG_INTERNAL(RAY_##level)
+#define RAY_LOG(level) \
+  if (ray::RayLog::IsLevelEnabled(RAY_##level)) RAY_LOG_INTERNAL(RAY_##level)
 
 #define RAY_IGNORE_EXPR(expr) ((void)(expr))
 
