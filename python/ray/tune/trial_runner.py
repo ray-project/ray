@@ -331,6 +331,7 @@ class TrialRunner(object):
                 self._search_alg.on_trial_complete(
                     trial.trial_id, result=result)
             except Exception:
+                error_msg = traceback.format_exc()
                 logger.exception("Error processing event.")
                 self._scheduler_alg.on_trial_error(self, trial)
                 self._search_alg.on_trial_complete(trial.trial_id, error=True)
