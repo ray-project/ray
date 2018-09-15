@@ -4,6 +4,7 @@ from __future__ import print_function
 
 from datetime import datetime
 
+import copy
 import gzip
 import io
 import os
@@ -78,7 +79,7 @@ class Trainable(object):
         self._timesteps_since_restore = 0
         self._iterations_since_restore = 0
         self._restored = False
-        self._setup(self.config)
+        self._setup(copy.deep_copy(self.config))
         self._local_ip = ray.services.get_node_ip_address()
 
     @classmethod
@@ -318,7 +319,7 @@ class Trainable(object):
 
         Args:
             config (dict): Hyperparameters and other configs given.
-                The same object as `self.config`.
+                Copy of `self.config`.
         """
         pass
 
