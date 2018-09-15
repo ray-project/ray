@@ -4,8 +4,10 @@ from __future__ import print_function
 """Ray constants used in the Python code."""
 
 import os
-
-import ray
+# Some tests fail because of circular reference of the `ray` module.
+# `ray` module is the top module and shouldn't been imported by submodules
+# in principle.
+from ray.local_scheduler import ObjectID
 
 
 def env_integer(key, default):
@@ -15,9 +17,7 @@ def env_integer(key, default):
 
 
 ID_SIZE = 20
-from ray.local_scheduler import ObjectID
-ray.ObjectID = ObjectID
-NIL_JOB_ID = ray.ObjectID(ID_SIZE * b"\xff")
+NIL_JOB_ID = ObjectID(ID_SIZE * b"\xff")
 
 # If a remote function or actor (or some other export) has serialized size
 # greater than this quantity, print an warning.
