@@ -820,7 +820,8 @@ def start_ui(redis_address, stdout_file=None, stderr_file=None, cleanup=True):
     new_env["REDIS_ADDRESS"] = redis_address
     # We generate the token used for authentication ourselves to avoid
     # querying the jupyter server.
-    new_notebook_directory, webui_url, token = get_random_ipython_notebook_path(port)
+    new_notebook_directory, webui_url, token = (
+        get_random_ipython_notebook_path(port))
 
     command = [
         "jupyter", "notebook", "--no-browser", "--port={}".format(port),
@@ -1390,7 +1391,8 @@ def start_ray_processes(address_info=None,
             started.
     """
     logger.info(
-        "Process STDOUT and STDERR is being redirected to {}.".format(get_logs_dir_path()))
+        "Process STDOUT and STDERR is being redirected to {}.".format(
+            get_logs_dir_path()))
 
     if resources is None:
         resources = {}
@@ -1437,7 +1439,8 @@ def start_ray_processes(address_info=None,
         time.sleep(0.1)
 
         # Start monitoring the processes.
-        monitor_stdout_file, monitor_stderr_file = new_monitor_log_file(redirect_output)
+        monitor_stdout_file, monitor_stderr_file = new_monitor_log_file(
+            redirect_output)
         start_monitor(
             redis_address,
             node_ip_address,
@@ -1462,7 +1465,8 @@ def start_ray_processes(address_info=None,
 
     # Start the log monitor, if necessary.
     if include_log_monitor:
-        log_monitor_stdout_file, log_monitor_stderr_file = new_log_monitor_log_file()
+        log_monitor_stdout_file, log_monitor_stderr_file = (
+            new_log_monitor_log_file())
         start_log_monitor(
             redis_address,
             node_ip_address,
@@ -1472,7 +1476,8 @@ def start_ray_processes(address_info=None,
 
     # Start the global scheduler, if necessary.
     if include_global_scheduler and not use_raylet:
-        global_scheduler_stdout_file, global_scheduler_stderr_file = new_global_scheduler_log_file(redirect_output)
+        global_scheduler_stdout_file, global_scheduler_stderr_file = (
+            new_global_scheduler_log_file(redirect_output))
         start_global_scheduler(
             redis_address,
             node_ip_address,
@@ -1501,8 +1506,10 @@ def start_ray_processes(address_info=None,
     # Start any object stores that do not yet exist.
     for i in range(num_local_schedulers - len(object_store_addresses)):
         # Start Plasma.
-        plasma_store_stdout_file, plasma_store_stderr_file = new_plasma_store_log_file(i, redirect_output)
-        plasma_manager_stdout_file, plasma_manager_stderr_file = new_plasma_manager_log_file(i, redirect_output)
+        plasma_store_stdout_file, plasma_store_stderr_file = (
+            new_plasma_store_log_file(i, redirect_output))
+        plasma_manager_stdout_file, plasma_manager_stderr_file = (
+            new_plasma_manager_log_file(i, redirect_output))
         object_store_address = start_objstore(
             node_ip_address,
             redis_address,
@@ -1540,8 +1547,9 @@ def start_ray_processes(address_info=None,
             # Start the local scheduler. Note that if we do not wish to
             # redirect the worker output, then we cannot redirect the local
             # scheduler output.
-            local_scheduler_stdout_file, local_scheduler_stderr_file = new_local_scheduler_log_file(
-                i, redirect_output=redirect_output)
+            local_scheduler_stdout_file, local_scheduler_stderr_file = (
+                new_local_scheduler_log_file(
+                    i, redirect_output=redirect_output))
             local_scheduler_name = start_local_scheduler(
                 redis_address,
                 node_ip_address,
@@ -1585,7 +1593,8 @@ def start_ray_processes(address_info=None,
             object_store_address = object_store_addresses[i]
             local_scheduler_name = local_scheduler_socket_names[i]
             for j in range(num_local_scheduler_workers):
-                worker_stdout_file, worker_stderr_file = new_worker_log_file(i, j, redirect_output)
+                worker_stdout_file, worker_stderr_file = new_worker_log_file(
+                    i, j, redirect_output)
                 start_worker(
                     node_ip_address,
                     object_store_address.name,

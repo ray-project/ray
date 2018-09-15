@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 RAY_TEMPDIR = 'RAY_TEMPDIR'
 RAY_OBJECT_STORE_SOCKET_NAME = 'RAY_OBJECT_STORE_SOCKET_NAME'
 
-_incremental_dict = collections.defaultdict(lambda :0)
+_incremental_dict = collections.defaultdict(lambda: 0)
 
 
 def make_inc_temp(suffix="", prefix="", dir=None):
@@ -128,7 +128,7 @@ def get_local_scheduler_socket_name(suffix=None):
 
     if suffix is None:
         raylet_socket_name = make_inc_temp(prefix='scheduler_',
-                                             dir=sockets_dir)
+                                           dir=sockets_dir)
     else:
         raylet_socket_name = os.path.join(sockets_dir,
                                           'scheduler_{}'.format(suffix))
@@ -143,7 +143,7 @@ def get_random_ipython_notebook_path(port):
     # We copy the notebook file so that the original doesn't get modified by
     # the user.
     notebook_name = make_inc_temp(suffix='.ipynb', prefix='ray_ui_',
-                                    dir=temp_root)
+                                  dir=temp_root)
     new_notebook_filepath = os.path.join(get_logs_dir_path(), notebook_name)
     shutil.copy(notebook_filepath, new_notebook_filepath)
     new_notebook_directory = os.path.dirname(new_notebook_filepath)
