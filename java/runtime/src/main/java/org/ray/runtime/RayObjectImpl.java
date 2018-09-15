@@ -3,6 +3,7 @@ package org.ray.runtime;
 import java.io.Serializable;
 import org.ray.api.Ray;
 import org.ray.api.RayObject;
+import org.ray.api.exception.RayException;
 import org.ray.api.id.UniqueId;
 
 public final class RayObjectImpl<T> implements RayObject<T>, Serializable {
@@ -15,7 +16,11 @@ public final class RayObjectImpl<T> implements RayObject<T>, Serializable {
 
   @Override
   public T get() {
-    return Ray.get(id);
+    Object res = Ray.get(id);
+    if (res instanceof RayException) {
+      throw (RayException) res;
+    }
+    return (T) res;
   }
 
   @Override

@@ -1,24 +1,19 @@
 package org.ray.cli;
 
 import com.beust.jcommander.JCommander;
-import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-import net.lingala.zip4j.core.ZipFile;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.config.PathConfig;
 import org.ray.runtime.config.RayParameters;
 import org.ray.runtime.config.RunMode;
-import org.ray.runtime.functionmanager.NativeRemoteFunctionManager;
-import org.ray.runtime.functionmanager.RemoteFunctionManager;
 import org.ray.runtime.gcs.KeyValueStoreLink;
 import org.ray.runtime.gcs.RedisClient;
 import org.ray.runtime.gcs.StateStoreProxy;
 import org.ray.runtime.gcs.StateStoreProxyImpl;
 import org.ray.runtime.runner.RunManager;
 import org.ray.runtime.runner.worker.DefaultDriver;
-import org.ray.runtime.util.FileUtil;
 import org.ray.runtime.util.config.ConfigReader;
 import org.ray.runtime.util.logger.RayLog;
 
@@ -140,64 +135,18 @@ public class RayCli {
     ConfigReader config = new ConfigReader(configPath, "ray.java.start.deploy=true");
     PathConfig paths = new PathConfig(config);
     RayParameters params = new RayParameters(config);
-
     params.redis_address = cmdSubmit.redisAddress;
     params.run_mode = RunMode.CLUSTER;
-
 
     KeyValueStoreLink kvStore = new RedisClient();
     kvStore.setAddr(cmdSubmit.redisAddress);
     StateStoreProxy stateStoreProxy = new StateStoreProxyImpl(kvStore);
     stateStoreProxy.initializeGlobalState();
 
-    RemoteFunctionManager functionManager = new NativeRemoteFunctionManager(kvStore);
-
-    // Register app to Redis. 
-    byte[] zip = FileUtil.fileToBytes(cmdSubmit.packageZip);
-
-    String packageName = cmdSubmit.packageZip.substring(
-        cmdSubmit.packageZip.lastIndexOf('/') + 1,
-        cmdSubmit.packageZip.lastIndexOf('.'));
-
-    UniqueId resourceId = functionManager.registerResource(zip);
-
     // Init RayLog before using it.
     RayLog.init(params.log_dir);
-
-    RayLog.rapp.debug(
-        "registerResource " + resourceId + " for package " + packageName + " done");
-
     UniqueId appId = params.driver_id;
-    functionManager.registerApp(appId, resourceId);
-    RayLog.rapp.debug("registerApp " + appId + " for resouorce " + resourceId + " done");
-  
-    // Unzip the package file.
     String appDir = "/tmp/" + cmdSubmit.className;
-    String extPath = appDir + "/" + packageName;
-    if (!FileUtil.createDir(extPath, false)) {
-      throw new RuntimeException("create dir " + extPath + " failed ");
-    }
-
-    ZipFile zipFile = new ZipFile(cmdSubmit.packageZip);
-    zipFile.extractAll(extPath);
-
-    // Build the args for driver process.
-    File originDirFile = new File(extPath);
-    File[] topFiles = originDirFile.listFiles();
-    String topDir = null;
-    for (File file : topFiles) {
-      if (file.isDirectory()) {
-        topDir = file.getName();
-      }
-    }
-    RayLog.rapp.debug("topDir of app classes: " + topDir);
-    if (topDir == null) {
-      RayLog.rapp.error("Can't find topDir of app classes, the app directory " + appDir);
-      return;
-    }
-
-    String additionalClassPath = appDir + "/" + packageName  + "/" + topDir + "/*";
-    RayLog.rapp.debug("Find app class path  " + additionalClassPath);
 
     // Start driver process.
     RunManager runManager = new RunManager(params, paths, config);
@@ -209,18 +158,15 @@ public class RayCli {
         params.node_ip_address,
         cmdSubmit.className,
         cmdSubmit.classArgs,
-        additionalClassPath,
+        "",
         null);
 
-    if (null == proc) { 
-      RayLog.rapp.error(
-          "Create process for app " + packageName + " in local directory " + appDir
-          + " failed");
+    if (null == proc) {
+      RayLog.rapp.error("Failed to start driver.");
       return;
     }
 
-    RayLog.rapp
-    .info("Create app " + appDir + " for package " + packageName + " succeeded");
+    RayLog.rapp.info("Driver started.");
   }
 
   private static String getConfigPath(String config) {

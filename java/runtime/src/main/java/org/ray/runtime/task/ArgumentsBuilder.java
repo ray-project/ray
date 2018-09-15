@@ -43,9 +43,8 @@ public class ArgumentsBuilder {
    * Convert task spec arguments to real function arguments.
    */
   public static Object[] unwrap(TaskSpec task, ClassLoader classLoader) {
-    // Ignore the last arg, which is the class name
-    Object[] realArgs = new Object[task.args.length - 1];
-    for (int i = 0; i < task.args.length - 1; i++) {
+    Object[] realArgs = new Object[task.args.length];
+    for (int i = 0; i < task.args.length; i++) {
       FunctionArg arg = task.args[i];
       if (arg.id == null) {
         // pass by value

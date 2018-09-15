@@ -8,7 +8,6 @@ import org.ray.api.RayObject;
 import org.ray.api.WaitResult;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.RayDevRuntime;
-import org.ray.runtime.functionmanager.LocalFunctionManager;
 import org.ray.runtime.objectstore.MockObjectStore;
 import org.ray.runtime.task.FunctionArg;
 import org.ray.runtime.task.TaskSpec;
@@ -20,17 +19,12 @@ public class MockRayletClient implements RayletClient {
 
   private final Map<UniqueId, Map<UniqueId, TaskSpec>> waitTasks = new ConcurrentHashMap<>();
   private final MockObjectStore store;
-  private LocalFunctionManager functions = null;
   private final RayDevRuntime runtime;
 
   public MockRayletClient(RayDevRuntime runtime, MockObjectStore store) {
     this.runtime = runtime;
     this.store = store;
     store.registerScheduler(this);
-  }
-
-  public void setLocalFunctionManager(LocalFunctionManager mgr) {
-    functions = mgr;
   }
 
   public void onObjectPut(UniqueId id) {

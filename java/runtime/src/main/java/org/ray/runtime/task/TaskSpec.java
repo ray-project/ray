@@ -5,6 +5,8 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import org.ray.api.id.UniqueId;
+import org.ray.runtime.functionmanager.FunctionDescriptor;
+import org.ray.runtime.util.ResourceUtil;
 
 /**
  * Represents necessary information of a task for scheduling and executing.
@@ -36,9 +38,6 @@ public class TaskSpec {
   // Number of tasks that have been submitted to this actor so far.
   public final int actorCounter;
 
-  // Function ID of the task.
-  public final UniqueId functionId;
-
   // Task arguments.
   public final FunctionArg[] args;
 
@@ -48,7 +47,9 @@ public class TaskSpec {
   // The task's resource demands.
   public final Map<String, Double> resources;
 
-  public final List<String> functionDesc;
+  // Function descriptor is a list of strings that can uniquely identify a function.
+  // It will be sent to worker and used to load the target callable function.
+  public final FunctionDescriptor functionDesc;
 
   private List<UniqueId> executionDependencies;
 
@@ -62,8 +63,8 @@ public class TaskSpec {
 
   public TaskSpec(UniqueId driverId, UniqueId taskId, UniqueId parentTaskId, int parentCounter,
       UniqueId actorCreationId, UniqueId actorId, UniqueId actorHandleId, int actorCounter,
-      UniqueId functionId, FunctionArg[] args, UniqueId[] returnIds,
-      Map<String, Double> resources, List<String> functionDesc) {
+      FunctionArg[] args, UniqueId[] returnIds,
+      Map<String, Double> resources, FunctionDescriptor functionDesc) {
     this.driverId = driverId;
     this.taskId = taskId;
     this.parentTaskId = parentTaskId;
@@ -72,7 +73,6 @@ public class TaskSpec {
     this.actorId = actorId;
     this.actorHandleId = actorHandleId;
     this.actorCounter = actorCounter;
-    this.functionId = functionId;
     this.args = args;
     this.returnIds = returnIds;
     this.resources = resources;
@@ -95,10 +95,9 @@ public class TaskSpec {
         ", actorId=" + actorId +
         ", actorHandleId=" + actorHandleId +
         ", actorCounter=" + actorCounter +
-        ", functionId=" + functionId +
         ", args=" + Arrays.toString(args) +
         ", returnIds=" + Arrays.toString(returnIds) +
-        ", resources=" + resources +
+        ", resources=" + ResourceUtil.getResourcesStringFromMap(resources) +
         ", functionDesc=" + functionDesc +
         '}';
   }

@@ -1,5 +1,6 @@
 package org.ray.runtime.raylet;
 
+import com.google.common.base.Preconditions;
 import com.google.flatbuffers.FlatBufferBuilder;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -15,6 +16,7 @@ import org.ray.runtime.generated.ResourcePair;
 import org.ray.runtime.generated.TaskInfo;
 import org.ray.runtime.generated.TaskLanguage;
 import org.ray.runtime.task.FunctionArg;
+import org.ray.runtime.functionmanager.FunctionDescriptor;
 import org.ray.runtime.task.TaskSpec;
 import org.ray.runtime.util.UniqueIdHelper;
 import org.ray.runtime.util.logger.RayLog;
@@ -120,7 +122,6 @@ public class RayletClientImpl implements RayletClient {
     UniqueId actorId = UniqueId.fromByteBuffer(info.actorIdAsByteBuffer());
     UniqueId actorHandleId = UniqueId.fromByteBuffer(info.actorHandleIdAsByteBuffer());
     int actorCounter = info.actorCounter();
-    UniqueId functionId = UniqueId.fromByteBuffer(info.functionIdAsByteBuffer());
     // Deserialize args
     FunctionArg[] args = new FunctionArg[info.argsLength()];
     for (int i = 0; i < info.argsLength(); i++) {
@@ -148,9 +149,13 @@ public class RayletClientImpl implements RayletClient {
     for (int i = 0; i < info.requiredResourcesLength(); i++) {
       resources.put(info.requiredResources(i).key(), info.requiredResources(i).value());
     }
-    //TODO
+    // Deserialize function descriptor
+    Preconditions.checkArgument(info.functionDescLength() == 3);
+    FunctionDescriptor functionDescriptor = new FunctionDescriptor(
+        info.functionDesc(0), info.functionDesc(1), info.functionDesc(2)
+    );
     return new TaskSpec(driverId, taskId, parentTaskId, parentCounter, actorCreationId, actorId,
-        actorHandleId, actorCounter, functionId, args, returnIds, resources, null);
+        actorHandleId, actorCounter, args, returnIds, resources, functionDescriptor);
   }
 
   private static ByteBuffer convertTaskSpecToFlatbuffer(TaskSpec task) {
@@ -167,7 +172,7 @@ public class RayletClientImpl implements RayletClient {
     final int actorIdOffset = fbb.createString(task.actorId.toByteBuffer());
     final int actorHandleIdOffset = fbb.createString(task.actorHandleId.toByteBuffer());
     final int actorCounter = task.actorCounter;
-    final int functionIdOffset = fbb.createString(task.functionId.toByteBuffer());
+    final int functionIdOffset = fbb.createString(UniqueId.NIL.toByteBuffer());
     // Serialize args
     int[] argsOffsets = new int[task.args.length];
     for (int i = 0; i < argsOffsets.length; i++) {
@@ -204,8 +209,12 @@ public class RayletClientImpl implements RayletClient {
           ResourcePair.createResourcePair(fbb, keyOffset, entry.getValue());
     }
     int requiredResourcesOffset = fbb.createVectorOfTables(requiredResourcesOffsets);
-    //TODO
-    int functionDescOffset = fbb.createVectorOfTables(new int[0]);
+    int[] functionDescOffsets = new int[] {
+        fbb.createString(task.functionDesc.className),
+        fbb.createString(task.functionDesc.name),
+        fbb.createString(task.functionDesc.typeDescriptor)
+    };
+    int functionDescOffset = fbb.createVectorOfTables(functionDescOffsets);
 
     int root = TaskInfo.createTaskInfo(
         fbb, driverIdOffset, taskIdOffset,

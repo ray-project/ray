@@ -1,18 +1,21 @@
 package org.ray.runtime;
 
-import org.apache.commons.lang3.tuple.Pair;
 import org.ray.api.exception.RayException;
 import org.ray.api.id.UniqueId;
-import org.ray.runtime.functionmanager.RayMethod;
+import org.ray.runtime.functionmanager.RayFunction;
 import org.ray.runtime.task.ArgumentsBuilder;
 import org.ray.runtime.task.TaskSpec;
 import org.ray.runtime.util.logger.RayLog;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * The worker, which pulls tasks from {@code org.ray.spi.LocalSchedulerProxy} and executes them
  * continuously.
  */
 public class Worker {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(Worker.class);
 
   private final AbstractRayRuntime runtime;
 
@@ -22,7 +25,7 @@ public class Worker {
 
   public void loop() {
     while (true) {
-      RayLog.core.info(Thread.currentThread().getName() + ":fetching new task...");
+      LOGGER.info("Fetching new task in thread {}.", Thread.currentThread().getName());
       TaskSpec task = runtime.getRayletClient().getTask();
       execute(task);
     }
@@ -32,27 +35,25 @@ public class Worker {
    * Execute a task.
    */
   public void execute(TaskSpec spec) {
-    RayLog.core.info("Executing task {}", spec.taskId);
+    LOGGER.info("Executing task {}", spec.taskId);
+    LOGGER.debug("Executing task {}", spec);
     UniqueId returnId = spec.returnIds[0];
     ClassLoader oldLoader = Thread.currentThread().getContextClassLoader();
     try {
       // Get method
-      Pair<ClassLoader, RayMethod> pair = runtime.getLocalFunctionManager().getMethod(
-          spec.driverId, spec.actorId, spec.functionId, spec.args);
-      ClassLoader classLoader = pair.getLeft();
-      RayMethod method = pair.getRight();
+      RayFunction rayFunction = runtime.getFunctionManager().getFunction(spec.driverId, spec.functionDesc);
       // Set context
-      WorkerContext.prepare(spec, classLoader);
-      Thread.currentThread().setContextClassLoader(classLoader);
+      WorkerContext.prepare(spec, rayFunction.classLoader);
+      Thread.currentThread().setContextClassLoader(rayFunction.classLoader);
       // Get local actor object and arguments.
       Object actor = spec.isActorTask() ? runtime.localActors.get(spec.actorId) : null;
-      Object[] args = ArgumentsBuilder.unwrap(spec, classLoader);
+      Object[] args = ArgumentsBuilder.unwrap(spec, rayFunction.classLoader);
       // Execute the task.
       Object result;
-      if (!method.isConstructor()) {
-        result = method.getMethod().invoke(actor, args);
+      if (!rayFunction.isConstructor()) {
+        result = rayFunction.getMethod().invoke(actor, args);
       } else {
-        result = method.getConstructor().newInstance(args);
+        result = rayFunction.getConstructor().newInstance(args);
       }
       // Set result
       if (!spec.isActorCreationTask()) {

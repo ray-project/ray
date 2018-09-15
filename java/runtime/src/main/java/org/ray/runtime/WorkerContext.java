@@ -46,7 +46,6 @@ public class WorkerContext {
         null,
         null,
         null,
-        null,
         null
     );
     prepare(dummy, null);
