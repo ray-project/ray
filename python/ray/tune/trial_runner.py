@@ -4,7 +4,6 @@ from __future__ import print_function
 
 import collections
 import os
-import math
 import re
 import time
 import traceback
