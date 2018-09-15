@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import logging
 import time
 import threading
 import traceback
@@ -9,6 +10,8 @@ import traceback
 from ray.tune import TuneError
 from ray.tune.trainable import Trainable
 from ray.tune.result import TIMESTEPS_TOTAL
+
+logger = logging.getLogger(__name__)
 
 
 class StatusReporter(object):
@@ -74,7 +77,7 @@ class _RunnerThread(threading.Thread):
             self._entrypoint(*self._entrypoint_args)
         except Exception as e:
             self._status_reporter._error = e
-            print("Runner thread raised: {}".format(traceback.format_exc()))
+            logger.exception("Runner Thread raised error.")
             raise e
         finally:
             self._status_reporter._done = True
