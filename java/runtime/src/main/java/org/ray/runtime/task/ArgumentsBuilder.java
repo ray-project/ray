@@ -33,10 +33,13 @@ public class ArgumentsBuilder {
       } else if (checkSimpleValue(arg)) {
         data = Serializer.encode(arg);
       } else {
-        RayObject obj = Ray.put(arg);
-        id = obj.getId();
+        id = Ray.put(arg).getId();
       }
-      ret[i] = new FunctionArg(id, data);
+      if (id != null) {
+        ret[i] = FunctionArg.passByReference(id);
+      } else {
+        ret[i] = FunctionArg.passByValue(data);
+      }
     }
     return ret;
   }
@@ -50,14 +53,13 @@ public class ArgumentsBuilder {
     List<Integer> indices = new ArrayList<>();
     for (int i = 0; i < task.args.length; i++) {
       FunctionArg arg = task.args[i];
-      if (arg.id == null) {
-        // pass by value
-        Object obj = Serializer.decode(arg.data, classLoader);
-        realArgs[i] = obj;
-      } else if (arg.data == null) {
+      if (arg.id != null) {
         // pass by reference
         idsToFetch.add(arg.id);
         indices.add(i);
+      } else {
+        // pass by value
+        realArgs[i] = Serializer.decode(arg.data, classLoader);
       }
     }
     List<Object> objects = Ray.get(idsToFetch);

@@ -19,9 +19,23 @@ public class FunctionArg {
    */
   public final byte[] data;
 
-  public FunctionArg(UniqueId id, byte[] data) {
+  private FunctionArg(UniqueId id, byte[] data) {
     this.id = id;
     this.data = data;
+  }
+
+  /**
+   * Create a FunctionArg that will be passed by reference.
+   */
+  public static FunctionArg passByReference(UniqueId id) {
+    return new FunctionArg(id, null);
+  }
+
+  /**
+   * Create a FunctionArg that will be passed by value.
+   */
+  public static FunctionArg passByValue(byte[] data) {
+    return new FunctionArg(null, data);
   }
 
   @Override

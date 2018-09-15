@@ -125,20 +125,20 @@ public class RayletClientImpl implements RayletClient {
     // Deserialize args
     FunctionArg[] args = new FunctionArg[info.argsLength()];
     for (int i = 0; i < info.argsLength(); i++) {
-      UniqueId id = null;
-      byte[] data = null;
       Arg arg = info.args(i);
       if (arg.objectIdsLength() > 0) {
         Preconditions.checkArgument(arg.objectIdsLength() == 1,
             "This arg has more than one id: {}", arg.objectIdsLength());
-        id = UniqueId.fromByteBuffer(arg.objectIdAsByteBuffer(0));
+        UniqueId id = UniqueId.fromByteBuffer(arg.objectIdAsByteBuffer(0));
+        args[i] = FunctionArg.passByReference(id);
       }
-      ByteBuffer lbb = arg.dataAsByteBuffer();
-      if (lbb != null && lbb.remaining() > 0) {
-        data = new byte[lbb.remaining()];
+      else {
+        ByteBuffer lbb = arg.dataAsByteBuffer();
+        Preconditions.checkState(lbb != null && lbb.remaining() > 0);
+        byte[] data = new byte[lbb.remaining()];
         lbb.get(data);
+        args[i] = FunctionArg.passByValue(data);
       }
-      args[i] = new FunctionArg(id, data);
     }
     // Deserialize return ids
     UniqueId[] returnIds = new UniqueId[info.returnsLength()];
