@@ -7,6 +7,8 @@ import json
 import numpy as np
 import os
 import pickle
+import tempfile
+from datetime import datetime
 
 import tensorflow as tf
 from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
@@ -16,8 +18,7 @@ from ray.tune.registry import ENV_CREATOR, _global_registry
 from ray.tune.trainable import Trainable
 from ray.tune.logger import UnifiedLogger
 from ray.tune.result import DEFAULT_RESULTS_DIR
-from datetime import datetime
-import tempfile
+
 
 COMMON_CONFIG = {
     # Discount factor of the MDP
@@ -197,9 +198,8 @@ class Agent(Trainable):
 
         # Create a default logger creator if no logger_creator is specified
         if logger_creator is None:
-            logdir_prefix = self._agent_name + "_" + \
-                            self._env_id + "_" + \
-                            datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
+            timestr = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
+            logdir_prefix = '_'.join([self._agent_name, self._env_id, timestr])
 
             def default_logger_creator(config):
                 """Creates a Unified logger with a default logdir prefix
