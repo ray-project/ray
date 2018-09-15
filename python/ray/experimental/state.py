@@ -530,10 +530,9 @@ class GlobalState(object):
                 # have previously been inserted, and
                 # it cannot have previously been removed.
                 if not client.IsInsertion():
-                    assert client_id in node_info, \
-                        "Client removed not found!"
-                    assert node_info[client_id]["IsInsertion"], \
-                        "Unexpected duplicate removal of client..."
+                    assert client_id in node_info, "Client removed not found!"
+                    assert node_info[client_id]["IsInsertion"], (
+                        "Unexpected duplicate removal of client.")
 
                 node_info[client_id] = {
                     "ClientID": client_id,
