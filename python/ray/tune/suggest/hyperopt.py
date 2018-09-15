@@ -7,9 +7,9 @@ import copy
 import logging
 
 try:
-    import hyperopt as hpo
     hyperopt_logger = logging.getLogger("hyperopt")
     hyperopt_logger.setLevel(logging.WARNING)
+    import hyperopt as hpo
 except Exception as e:
     hpo = None
 
