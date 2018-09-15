@@ -136,9 +136,8 @@ class _Bracket():
                 if cutoff is not None and cur_rew < cutoff:
                     action = TrialScheduler.STOP
                 if cur_rew is None:
-                    logger.warning(
-                        "Reward attribute is None! Consider"
-                        " reporting using a different field.")
+                    logger.warning("Reward attribute is None! Consider"
+                                   " reporting using a different field.")
                 else:
                     recorded[trial.trial_id] = cur_rew
                 break

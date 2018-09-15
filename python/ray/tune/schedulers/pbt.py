@@ -73,7 +73,7 @@ def explore(config, mutations, resample_probability, custom_explore_fn):
         assert new_config is not None, \
             "Custom explore fn failed to return new config"
     logger.info("[explore] perturbed config from {} -> {}".format(
-                    config, new_config))
+        config, new_config))
     return new_config
 
 
