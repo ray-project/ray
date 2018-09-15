@@ -20,7 +20,7 @@ MAX_DEBUG_TRIALS = 20
 
 def _naturalize(string):
     """Provides a natural representation for string for nice sorting."""
-    splits = re.split('([0-9]+)', string)
+    splits = re.split("([0-9]+)", string)
     return [int(text) if text.isdigit() else text.lower() for text in splits]
 
 
