@@ -4,8 +4,12 @@ from __future__ import print_function
 
 import numpy as np
 import copy
+import logging
+
 try:
     import hyperopt as hpo
+    hyperopt_logger = logging.getLogger("hyperopt")
+    hyperopt_logger.setLevel(logging.WARNING)
 except Exception as e:
     hpo = None
 
