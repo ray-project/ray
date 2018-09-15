@@ -1541,7 +1541,7 @@ def start_ray_processes(address_info=None,
             # redirect the worker output, then we cannot redirect the local
             # scheduler output.
             local_scheduler_stdout_file, local_scheduler_stderr_file = new_local_scheduler_log_file(
-                i, redirect_output=redirect_worker_output)
+                i, redirect_output=redirect_output)
             local_scheduler_name = start_local_scheduler(
                 redis_address,
                 node_ip_address,

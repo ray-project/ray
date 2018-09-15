@@ -2,18 +2,6 @@ cmake_minimum_required(VERSION 3.4)
 
 project(local_scheduler)
 
-# Recursively include common
-include(${CMAKE_CURRENT_LIST_DIR}/../common/cmake/Common.cmake)
-
-if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
-  # Include plasma
-  list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_LIST_DIR}/../../thirdparty/pkg/arrow/python/cmake_modules)
-  find_package(Arrow)
-  find_package(Plasma)
-  include_directories(SYSTEM ${PLASMA_INCLUDE_DIR})
-endif()
-
-
 add_definitions(-fPIC)
 
 if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
@@ -34,7 +22,7 @@ if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
   include_directories("${CMAKE_CURRENT_LIST_DIR}/../plasma/")
 endif()
 
-include_directories("${ARROW_DIR}/cpp/src/")
+include_directories("${ARROW_INCLUDE_DIR}")
 include_directories("${CMAKE_CURRENT_LIST_DIR}/../common/format/")
 
 # Compile flatbuffers
@@ -54,7 +42,7 @@ add_custom_command(
 
 add_custom_target(gen_local_scheduler_fbs DEPENDS ${LOCAL_SCHEDULER_FBS_OUTPUT_FILES})
 
-add_dependencies(gen_local_scheduler_fbs flatbuffers_ep)
+add_dependencies(gen_local_scheduler_fbs arrow_ep)
 
 add_library(local_scheduler_client STATIC local_scheduler_client.cc)
 
