@@ -5,7 +5,6 @@ from __future__ import print_function
 import logging
 import os
 import random
-import ray
 import time
 
 from tensorflow.python.client import timeline
@@ -15,7 +14,8 @@ import tensorflow as tf
 import tensorflow.contrib.nccl as nccl
 import tensorflow.contrib.slim as slim
 
-from util import Timeline, fetch, run_timeline
+import ray
+from ray.experimental.sgd.util import Timeline, fetch, run_timeline
 from ray.experimental.sgd.modified_allreduce import sum_gradients_all_reduce, \
     unpack_small_tensors
 
@@ -168,8 +168,8 @@ class SGDWorker(object):
                 unpacked_gv = unpack_small_tensors(unpacked_gv, packing_vals)
 
         elif max_bytes:
-            unpacked_gv = unpack_small_tensors(
-                self.packed_grads_and_vars, packing_vals)
+            unpacked_gv = unpack_small_tensors(self.packed_grads_and_vars,
+                                               packing_vals)
         else:
             unpacked_gv = self.packed_grads_and_vars
 

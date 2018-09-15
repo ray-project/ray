@@ -2,12 +2,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import ray
-
 import argparse
 import numpy as np
 import tensorflow as tf
 
+import ray
 from ray.experimental.sgd.tfbench.test_model import TFBenchModel
 from ray.experimental.sgd.sgd import DistributedSGD
 

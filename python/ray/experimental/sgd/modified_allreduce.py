@@ -1,3 +1,6 @@
+# This file is adapted from https://github.com/tensorflow/benchmarks
+# /blob/master/scripts/tf_cnn_benchmarks/allreduce.py
+#
 # Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");

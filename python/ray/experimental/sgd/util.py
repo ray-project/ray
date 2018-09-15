@@ -2,10 +2,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import ray
 import json
 import logging
 import time
+
+import ray
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +23,8 @@ def fetch(oids):
             ray.worker.global_worker.plasma_client.fetch([plasma_id])
 
 
-def run_timeline(sess, ops, feed_dict={}, write_timeline=False, name=""):
+def run_timeline(sess, ops, feed_dict=None, write_timeline=False, name=""):
+    feed_dict = feed_dict or {}
     if write_timeline:
         run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
         run_metadata = tf.RunMetadata()
