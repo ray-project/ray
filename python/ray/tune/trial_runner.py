@@ -271,6 +271,7 @@ class TrialRunner(object):
                         " trial state from last checkpoint.")
             self.trial_executor.restart_trial(trial, error_msg)
         except Exception:
+            error_msg = traceback.format_exc()
             logger.warning("Error recovering trial from checkpoint, abort.")
             self.trial_executor.stop_trial(trial, True, error_msg=error_msg)
 

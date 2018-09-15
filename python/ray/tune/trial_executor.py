@@ -75,6 +75,7 @@ class TrialExecutor(object):
             trial.result_logger.flush()
             self.start_trial(trial)
         except Exception:
+            error_msg = traceback.format_exc()
             logger.exception("Error recovering trial from checkpoint, abort.")
             self.stop_trial(trial, error=True, error_msg=error_msg)
 
