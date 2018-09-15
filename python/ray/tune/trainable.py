@@ -79,7 +79,7 @@ class Trainable(object):
         self._timesteps_since_restore = 0
         self._iterations_since_restore = 0
         self._restored = False
-        self._setup(copy.deep_copy(self.config))
+        self._setup(copy.deepcopy(self.config))
         self._local_ip = ray.services.get_node_ip_address()
 
     @classmethod
