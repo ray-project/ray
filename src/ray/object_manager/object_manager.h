@@ -338,9 +338,6 @@ class ObjectManager : public ObjectManagerInterface {
   /// A set of active wait requests.
   std::unordered_map<UniqueID, WaitState> active_wait_requests_;
 
-  /// Test code to record wait_id.
-  std::unordered_map<UniqueID, std::string> wait_record_;
-
   /// Maintains a map of push requests that have not been fulfilled due to an object not
   /// being local. Objects are removed from this map after push_timeout_ms have elapsed.
   std::unordered_map<
