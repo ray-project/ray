@@ -15,6 +15,8 @@ def env_integer(key, default):
 
 
 ID_SIZE = 20
+from ray.local_scheduler import ObjectID
+ray.ObjectID = ObjectID
 NIL_JOB_ID = ray.ObjectID(ID_SIZE * b"\xff")
 
 # If a remote function or actor (or some other export) has serialized size
