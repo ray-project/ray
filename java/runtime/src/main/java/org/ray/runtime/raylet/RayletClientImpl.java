@@ -11,12 +11,12 @@ import java.util.Map;
 import org.ray.api.RayObject;
 import org.ray.api.WaitResult;
 import org.ray.api.id.UniqueId;
+import org.ray.runtime.functionmanager.FunctionDescriptor;
 import org.ray.runtime.generated.Arg;
 import org.ray.runtime.generated.ResourcePair;
 import org.ray.runtime.generated.TaskInfo;
 import org.ray.runtime.generated.TaskLanguage;
 import org.ray.runtime.task.FunctionArg;
-import org.ray.runtime.functionmanager.FunctionDescriptor;
 import org.ray.runtime.task.TaskSpec;
 import org.ray.runtime.util.UniqueIdHelper;
 import org.ray.runtime.util.logger.RayLog;
@@ -26,7 +26,7 @@ public class RayletClientImpl implements RayletClient {
   private static final int TASK_SPEC_BUFFER_SIZE = 2 * 1024 * 1024;
 
   /**
-   * The direct buffers used to hold flatbuffer-serialized task specs
+   * Direct buffers that are used to hold flatbuffer-serialized task specs.
    */
   private static ThreadLocal<ByteBuffer> taskSpecBuffer = ThreadLocal.withInitial(() ->
       ByteBuffer.allocateDirect(TASK_SPEC_BUFFER_SIZE).order(ByteOrder.LITTLE_ENDIAN)
@@ -179,7 +179,7 @@ public class RayletClientImpl implements RayletClient {
       int objectIdOffset = 0;
       int dataOffset = 0;
       if (task.args[i].id != null) {
-        int[] idOffsets = new int[] { fbb.createString(task.args[i].id.toByteBuffer()) };
+        int[] idOffsets = new int[]{fbb.createString(task.args[i].id.toByteBuffer())};
         objectIdOffset = fbb.createVectorOfTables(idOffsets);
       } else {
         objectIdOffset = fbb.createVectorOfTables(new int[0]);
@@ -209,7 +209,7 @@ public class RayletClientImpl implements RayletClient {
           ResourcePair.createResourcePair(fbb, keyOffset, entry.getValue());
     }
     int requiredResourcesOffset = fbb.createVectorOfTables(requiredResourcesOffsets);
-    int[] functionDescOffsets = new int[] {
+    int[] functionDescOffsets = new int[]{
         fbb.createString(task.functionDesc.className),
         fbb.createString(task.functionDesc.name),
         fbb.createString(task.functionDesc.typeDescriptor)
@@ -247,7 +247,6 @@ public class RayletClientImpl implements RayletClient {
   public void destroy() {
     nativeDestroy(client);
   }
-
 
   /// Native method declarations.
   ///

@@ -21,11 +21,12 @@ public class RayFunction {
   public final ClassLoader classLoader;
 
   /**
-   * Function's metadata
+   * Function's metadata.
    */
   public final FunctionDescriptor functionDescriptor;
 
-  public RayFunction(Executable executable, ClassLoader classLoader, FunctionDescriptor functionDescriptor) {
+  public RayFunction(Executable executable, ClassLoader classLoader,
+      FunctionDescriptor functionDescriptor) {
     this.executable = executable;
     this.classLoader = classLoader;
     this.functionDescriptor = functionDescriptor;

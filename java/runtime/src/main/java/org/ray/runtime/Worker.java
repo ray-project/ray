@@ -41,7 +41,8 @@ public class Worker {
     ClassLoader oldLoader = Thread.currentThread().getContextClassLoader();
     try {
       // Get method
-      RayFunction rayFunction = runtime.getFunctionManager().getFunction(spec.driverId, spec.functionDesc);
+      RayFunction rayFunction = runtime.getFunctionManager()
+          .getFunction(spec.driverId, spec.functionDesc);
       // Set context
       WorkerContext.prepare(spec, rayFunction.classLoader);
       Thread.currentThread().setContextClassLoader(rayFunction.classLoader);

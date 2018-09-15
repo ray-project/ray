@@ -36,7 +36,7 @@ public class WorkerContext {
 
     TaskSpec dummy = new TaskSpec(
         params.driver_id,
-        params.worker_mode == WorkerMode.DRIVER? UniqueId.randomId() : UniqueId.NIL,
+        params.worker_mode == WorkerMode.DRIVER ? UniqueId.randomId() : UniqueId.NIL,
         UniqueId.NIL,
         0,
         UniqueId.NIL,
