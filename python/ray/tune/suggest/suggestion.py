@@ -39,6 +39,7 @@ class SuggestionAlgorithm(SearchAlgorithm):
         """
         self._parser = make_parser()
         self._trial_generator = []
+        self._counter = 0
         self._finished = False
 
     def add_configurations(self, experiments):
@@ -91,11 +92,14 @@ class SuggestionAlgorithm(SearchAlgorithm):
                     break
             spec = copy.deepcopy(experiment_spec)
             spec["config"] = suggested_config
+            self._counter += 1
+            tag = "{0}_{1}".format(
+                str(self._counter), format_vars(spec["config"]))
             yield create_trial_from_spec(
                 spec,
                 output_path,
                 self._parser,
-                experiment_tag=format_vars(spec["config"]),
+                experiment_tag=tag,
                 trial_id=trial_id)
 
     def is_finished(self):
