@@ -64,9 +64,7 @@ class Trainable(object):
             self._result_logger = logger_creator(self.config)
             self.logdir = self._result_logger.logdir
         else:
-            logdir_prefix = self._agent_name + "_" + \
-                            self._env_id + "_" + \
-                            datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
+            logdir_prefix = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
             if not os.path.exists(DEFAULT_RESULTS_DIR):
                 os.makedirs(DEFAULT_RESULTS_DIR)
             self.logdir = tempfile.mkdtemp(
