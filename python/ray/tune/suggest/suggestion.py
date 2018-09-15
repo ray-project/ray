@@ -94,8 +94,7 @@ class SuggestionAlgorithm(SearchAlgorithm):
             spec["config"] = suggested_config
             self._counter += 1
             tag = "{0}_{1}".format(
-                str(self._counter),
-                format_vars(spec["config"]))
+                str(self._counter), format_vars(spec["config"]))
             yield create_trial_from_spec(
                 spec,
                 output_path,
