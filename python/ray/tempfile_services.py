@@ -1,5 +1,7 @@
 import binascii
+import collections
 import datetime
+import errno
 import logging
 import os
 import shutil
@@ -11,6 +13,25 @@ logger = logging.getLogger(__name__)
 
 RAY_TEMPDIR = 'RAY_TEMPDIR'
 RAY_OBJECT_STORE_SOCKET_NAME = 'RAY_OBJECT_STORE_SOCKET_NAME'
+
+_incremental_dict = collections.defaultdict(lambda :0)
+
+
+def make_inc_temp(suffix="", prefix="", dir=None):
+    """Return a incremental temporary file name. The file is not created."""
+
+    if dir is None:
+        dir = tempfile.gettempdir()
+
+    index = _incremental_dict[suffix, prefix, dir]
+    for seq in range(tempfile.TMP_MAX):
+        index += 1
+        file = os.path.join(dir, prefix + str(index) + suffix)
+        if not os.path.exists(file):
+            _incremental_dict[suffix, prefix, dir] = index  # Save the index.
+            return file
+
+    raise FileExistsError(errno.EEXIST, "No usable temporary filename found")
 
 
 def try_to_create_directory(directory_path):
@@ -39,9 +60,7 @@ if RAY_TEMPDIR in os.environ:
 else:
     # Change the default root by providing the directory named by the
     # TMPDIR environment variable.
-    temp_dir = tempfile.TemporaryDirectory(
-        prefix='ray_{pid}_'.format(pid=os.getpid()))
-    temp_root = temp_dir.name
+    temp_root = tempfile.mkdtemp(prefix='ray_{pid}_'.format(pid=os.getpid()))
 
 
 def get_logs_dir_path():
@@ -76,7 +95,7 @@ def get_raylet_socket_name(suffix=None):
     sockets_dir = get_sockets_dir_path()
 
     if suffix is None:
-        raylet_socket_name = tempfile.mktemp(prefix='raylet_', dir=sockets_dir)
+        raylet_socket_name = make_inc_temp(prefix='raylet_', dir=sockets_dir)
     else:
         raylet_socket_name = os.path.join(sockets_dir,
                                           'raylet_{}'.format(suffix))
@@ -89,12 +108,12 @@ def get_object_store_socket_name():
         return os.path.join(sockets_dir,
                             os.environ[RAY_OBJECT_STORE_SOCKET_NAME])
     else:
-        return tempfile.mktemp(prefix='plasma_store_', dir=sockets_dir)
+        return make_inc_temp(prefix='plasma_store_', dir=sockets_dir)
 
 
 def get_plasma_manager_socket_name():
     sockets_dir = get_sockets_dir_path()
-    return tempfile.mktemp(prefix='plasma_manager_', dir=sockets_dir)
+    return make_inc_temp(prefix='plasma_manager_', dir=sockets_dir)
 
 
 def get_local_scheduler_socket_name(suffix=None):
@@ -108,7 +127,7 @@ def get_local_scheduler_socket_name(suffix=None):
     sockets_dir = get_sockets_dir_path()
 
     if suffix is None:
-        raylet_socket_name = tempfile.mktemp(prefix='scheduler_',
+        raylet_socket_name = make_inc_temp(prefix='scheduler_',
                                              dir=sockets_dir)
     else:
         raylet_socket_name = os.path.join(sockets_dir,
@@ -123,7 +142,7 @@ def get_random_ipython_notebook_path(port):
         os.path.dirname(os.path.abspath(__file__)), "WebUI.ipynb")
     # We copy the notebook file so that the original doesn't get modified by
     # the user.
-    notebook_name = tempfile.mktemp(suffix='.ipynb', prefix='ray_ui_',
+    notebook_name = make_inc_temp(suffix='.ipynb', prefix='ray_ui_',
                                     dir=temp_root)
     new_notebook_filepath = os.path.join(get_logs_dir_path(), notebook_name)
     shutil.copy(notebook_filepath, new_notebook_filepath)
@@ -135,7 +154,7 @@ def get_random_ipython_notebook_path(port):
 
 
 def get_random_temp_redis_config_path():
-    redis_config_name = tempfile.mktemp(prefix='redis_conf_', dir=temp_root)
+    redis_config_name = make_inc_temp(prefix='redis_conf_', dir=temp_root)
     return redis_config_name
 
 
@@ -166,8 +185,8 @@ def new_log_files(name, redirect_output):
     date_str = datetime.datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
     prefix = '{}-{}-'.format(name, date_str)
 
-    log_stdout = tempfile.mktemp(suffix='.out', prefix=prefix, dir=logs_dir)
-    log_stderr = tempfile.mktemp(suffix='.err', prefix=prefix, dir=logs_dir)
+    log_stdout = make_inc_temp(suffix='.out', prefix=prefix, dir=logs_dir)
+    log_stderr = make_inc_temp(suffix='.err', prefix=prefix, dir=logs_dir)
     # Line-buffer the output (mode 1)
     log_stdout_file = open(log_stdout, "a", buffering=1)
     log_stderr_file = open(log_stderr, "a", buffering=1)
