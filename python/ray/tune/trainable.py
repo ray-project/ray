@@ -234,7 +234,8 @@ class Trainable(object):
                 "data": data,
             })
             if len(compressed) > 10e6:  # getting pretty large
-                logger.info("Checkpoint size is {} bytes".format(len(compressed)))
+                logger.info("Checkpoint size is {} bytes".format(
+                    len(compressed)))
             f.write(compressed)
 
         shutil.rmtree(tmpdir)

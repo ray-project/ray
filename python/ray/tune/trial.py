@@ -277,7 +277,8 @@ class Trial(object):
         if self.verbose and (terminate or time.time() - self.last_debug >
                              DEBUG_PRINT_INTERVAL):
             logger.info("Result for {}:".format(self))
-            logger.info("  {}".format(pretty_print(result).replace("\n", "\n  ")))
+            logger.info("  {}".format(
+                pretty_print(result).replace("\n", "\n  ")))
             self.last_debug = time.time()
         self.last_result = result
         self.result_logger.on_result(self.last_result)

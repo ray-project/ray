@@ -254,6 +254,7 @@ class TrialRunner(object):
                     decision)
         except Exception:
             logger.exception("Error processing event.")
+            error_msg = traceback.format_exc()
             if trial.status == Trial.RUNNING:
                 if trial.has_checkpoint() and \
                         trial.num_failures < trial.max_failures:

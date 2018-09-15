@@ -4,7 +4,6 @@ from __future__ import division
 from __future__ import print_function
 
 import logging
-import traceback
 
 from ray.tune.trial import Trial, Checkpoint
 
@@ -69,7 +68,8 @@ class TrialExecutor(object):
             error_msg (str): Optional error message.
         """
         try:
-            logger.info("Attempting to recover trial state from last checkpoint")
+            logger.info(
+                "Attempting to recover trial state from last checkpoint")
             self.stop_trial(
                 trial, error=True, error_msg=error_msg, stop_logger=False)
             trial.result_logger.flush()

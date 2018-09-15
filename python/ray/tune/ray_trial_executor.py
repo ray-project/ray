@@ -116,12 +116,14 @@ class RayTrialExecutor(TrialExecutor):
             self._start_trial(trial, checkpoint_obj)
         except Exception:
             logger.exception("Error stopping runner - retrying...")
+            error_msg = traceback.format_exc()
             time.sleep(2)
             self._stop_trial(trial, error=True, error_msg=error_msg)
             try:
                 self._start_trial(trial)
             except Exception:
                 logger.exception("Error starting runner, aborting!")
+                error_msg = traceback.format_exc()
                 self._stop_trial(trial, error=True, error_msg=error_msg)
                 # note that we don't return the resources, since they may
                 # have been lost

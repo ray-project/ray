@@ -26,7 +26,6 @@ except ImportError:
                      "Be sure to install it on the client side.")
 
 
-
 class TuneClient(object):
     """Client to interact with ongoing Tune experiment.
 

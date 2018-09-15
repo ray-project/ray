@@ -5,7 +5,6 @@ from __future__ import print_function
 import logging
 import time
 import threading
-import traceback
 
 from ray.tune import TuneError
 from ray.tune.trainable import Trainable

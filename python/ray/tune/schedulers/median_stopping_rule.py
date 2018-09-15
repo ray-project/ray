@@ -74,7 +74,8 @@ class MedianStoppingRule(FIFOScheduler):
                 trial, best_result, median_result, time))
         if best_result < median_result and time > self._grace_period:
             if self._verbose:
-                logger.info("MedianStoppingRule: early stopping {}".format(trial))
+                logger.info("MedianStoppingRule: "
+                            "early stopping {}".format(trial))
             self._stopped_trials.add(trial)
             if self._hard_stop:
                 return TrialScheduler.STOP

@@ -161,7 +161,8 @@ class Experiment(object):
             return run_object
         elif isinstance(run_object, types.FunctionType):
             if run_object.__name__ == "<lambda>":
-                logger.warning("Not auto-registering lambdas - resolving as variant.")
+                logger.warning(
+                    "Not auto-registering lambdas - resolving as variant.")
                 return run_object
             else:
                 name = run_object.__name__

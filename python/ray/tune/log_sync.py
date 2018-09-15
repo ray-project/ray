@@ -76,7 +76,8 @@ class _LogSyncer(object):
         self.sync_process = None
         self.local_ip = ray.services.get_node_ip_address()
         self.worker_ip = None
-        logger.info("Created LogSyncer for {} -> {}".format(local_dir, remote_dir))
+        logger.info("Created LogSyncer for {} -> {}".format(
+            local_dir, remote_dir))
 
     def set_worker_ip(self, worker_ip):
         """Set the worker ip to sync logs from."""
