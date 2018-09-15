@@ -128,8 +128,9 @@ public class RayletClientImpl implements RayletClient {
       UniqueId id = null;
       byte[] data = null;
       Arg arg = info.args(i);
-      int idCount = arg.objectIdsLength();
-      if (idCount > 0) {
+      if (arg.objectIdsLength() > 0) {
+        Preconditions.checkArgument(arg.objectIdsLength() == 1,
+            "This arg has more than one id: {}", arg.objectIdsLength());
         id = UniqueId.fromByteBuffer(arg.objectIdAsByteBuffer(0));
       }
       ByteBuffer lbb = arg.dataAsByteBuffer();

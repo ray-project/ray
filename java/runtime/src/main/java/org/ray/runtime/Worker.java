@@ -10,7 +10,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * The worker, which pulls tasks from {@code org.ray.spi.LocalSchedulerProxy} and executes them
+ * The worker, which pulls tasks from {@link org.ray.runtime.raylet.RayletClient} and executes them
  * continuously.
  */
 public class Worker {

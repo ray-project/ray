@@ -17,6 +17,9 @@ import org.ray.api.function.RayFunc;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.util.LambdaUtils;
 
+/**
+ * Manages functions by driver id.
+ */
 public class FunctionManager {
 
   static final String CONSTRUCTOR_NAME = "<init>";
@@ -71,7 +74,7 @@ public class FunctionManager {
   }
 
   /**
-   * Represents all functions that belong to one driver.
+   * Manages all functions that belong to one driver.
    */
   static class DriverFunctionTable {
 

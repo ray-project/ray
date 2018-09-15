@@ -63,7 +63,7 @@ table TaskInfo {
   // The language that this task belongs to
   language: TaskLanguage;
   // Function descriptor, which is a list of strings that can
-  // uniquely describe this function.
+  // uniquely describe a function.
   // For a Python function, it should be: [module_name, class_name, function_name]
   // For a Java function, it should be: [class_name, method_name, type_descriptor]
   function_desc: [string];

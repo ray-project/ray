@@ -1,5 +1,7 @@
 package org.ray.runtime.task;
 
+import java.util.ArrayList;
+import java.util.List;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
@@ -44,6 +46,8 @@ public class ArgumentsBuilder {
    */
   public static Object[] unwrap(TaskSpec task, ClassLoader classLoader) {
     Object[] realArgs = new Object[task.args.length];
+    List<UniqueId> idsToFetch = new ArrayList<>();
+    List<Integer> indices = new ArrayList<>();
     for (int i = 0; i < task.args.length; i++) {
       FunctionArg arg = task.args[i];
       if (arg.id == null) {
@@ -52,8 +56,13 @@ public class ArgumentsBuilder {
         realArgs[i] = obj;
       } else if (arg.data == null) {
         // pass by reference
-        realArgs[i] = Ray.get(arg.id);
+        idsToFetch.add(arg.id);
+        indices.add(i);
       }
+    }
+    List<Object> objects = Ray.get(idsToFetch);
+    for (int i = 0; i < objects.size(); i++) {
+      realArgs[indices.get(i)] = objects.get(i);
     }
     return realArgs;
   }
