@@ -78,7 +78,7 @@ class Trainable(object):
         self._timesteps_since_restore = 0
         self._iterations_since_restore = 0
         self._restored = False
-        self._setup()
+        self._setup(self.config)
         self._local_ip = ray.services.get_node_ip_address()
 
     @classmethod
@@ -138,6 +138,8 @@ class Trainable(object):
 
         start = time.time()
         result = self._train()
+        assert isinstance(result, dict), "_train() needs to return a dict."
+
         result = result.copy()
 
         self._iteration += 1
@@ -311,11 +313,12 @@ class Trainable(object):
 
         raise NotImplementedError
 
-    def _setup(self):
+    def _setup(self, config):
         """Subclasses should override this for custom initialization.
 
-        Subclasses can access the hyperparameter configuration via
-        ``self.config``.
+        Args:
+            config (dict): Hyperparameters and other configs given.
+                The same object as `self.config`.
         """
         pass
 
