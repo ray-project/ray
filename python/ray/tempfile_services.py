@@ -18,18 +18,24 @@ _incremental_dict = collections.defaultdict(lambda: 0)
 _temp_root = None
 
 
-def make_inc_temp(suffix="", prefix="", dir=None):
-    """Return a incremental temporary file name. The file is not created."""
+def make_inc_temp(suffix="", prefix="", directory_name=None):
+    """Return a incremental temporary file name. The file is not created.
 
-    if dir is None:
-        dir = tempfile.gettempdir()
+    Args:
+        suffix (str): The suffix of the temp file.
+        prefix (str): The prefix of the temp file.
+        directory_name (str) : The base directory of the temp file.
+    """
+    if directory_name is None:
+        directory_name = tempfile.gettempdir()
 
-    index = _incremental_dict[suffix, prefix, dir]
+    index = _incremental_dict[suffix, prefix, directory_name]
     for seq in range(tempfile.TMP_MAX):
         index += 1
-        file = os.path.join(dir, prefix + str(index) + suffix)
+        file = os.path.join(directory_name, prefix + str(index) + suffix)
         if not os.path.exists(file):
-            _incremental_dict[suffix, prefix, dir] = index  # Save the index.
+            _incremental_dict[suffix, prefix,
+                              directory_name] = index  # Save the index.
             return file
 
     raise FileExistsError(errno.EEXIST, "No usable temporary filename found")
@@ -61,7 +67,7 @@ def get_temp_root():
     global _temp_root
     if _temp_root is None:
         _temp_root = make_inc_temp(
-            prefix='ray_{pid}_'.format(pid=os.getpid()), dir='/tmp')
+            prefix='ray_{pid}_'.format(pid=os.getpid()), directory_name='/tmp')
     try_to_create_directory(_temp_root)
     return _temp_root
 
@@ -104,7 +110,8 @@ def get_raylet_socket_name(suffix=None):
     sockets_dir = get_sockets_dir_path()
 
     if suffix is None:
-        raylet_socket_name = make_inc_temp(prefix='raylet_', dir=sockets_dir)
+        raylet_socket_name = make_inc_temp(
+            prefix='raylet_', directory_name=sockets_dir)
     else:
         raylet_socket_name = os.path.join(sockets_dir,
                                           'raylet_{}'.format(suffix))
@@ -117,12 +124,13 @@ def get_object_store_socket_name():
         return os.path.join(sockets_dir,
                             os.environ[RAY_OBJECT_STORE_SOCKET_NAME])
     else:
-        return make_inc_temp(prefix='plasma_store_', dir=sockets_dir)
+        return make_inc_temp(
+            prefix='plasma_store_', directory_name=sockets_dir)
 
 
 def get_plasma_manager_socket_name():
     sockets_dir = get_sockets_dir_path()
-    return make_inc_temp(prefix='plasma_manager_', dir=sockets_dir)
+    return make_inc_temp(prefix='plasma_manager_', directory_name=sockets_dir)
 
 
 def get_local_scheduler_socket_name(suffix=None):
@@ -137,7 +145,7 @@ def get_local_scheduler_socket_name(suffix=None):
 
     if suffix is None:
         raylet_socket_name = make_inc_temp(
-            prefix='scheduler_', dir=sockets_dir)
+            prefix='scheduler_', directory_name=sockets_dir)
     else:
         raylet_socket_name = os.path.join(sockets_dir,
                                           'scheduler_{}'.format(suffix))
@@ -152,7 +160,7 @@ def get_random_ipython_notebook_path(port):
     # We copy the notebook file so that the original doesn't get modified by
     # the user.
     notebook_name = make_inc_temp(
-        suffix='.ipynb', prefix='ray_ui_', dir=get_temp_root())
+        suffix='.ipynb', prefix='ray_ui_', directory_name=get_temp_root())
     new_notebook_filepath = os.path.join(get_logs_dir_path(), notebook_name)
     shutil.copy(notebook_filepath, new_notebook_filepath)
     new_notebook_directory = os.path.dirname(new_notebook_filepath)
@@ -163,8 +171,9 @@ def get_random_ipython_notebook_path(port):
 
 
 def get_random_temp_redis_config_path():
+    """Get a temp name of the redis config file."""
     redis_config_name = make_inc_temp(
-        prefix='redis_conf_', dir=get_temp_root())
+        prefix='redis_conf_', directory_name=get_temp_root())
     return redis_config_name
 
 
@@ -195,8 +204,10 @@ def new_log_files(name, redirect_output):
     date_str = datetime.datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
     prefix = '{}-{}-'.format(name, date_str)
 
-    log_stdout = make_inc_temp(suffix='.out', prefix=prefix, dir=logs_dir)
-    log_stderr = make_inc_temp(suffix='.err', prefix=prefix, dir=logs_dir)
+    log_stdout = make_inc_temp(
+        suffix='.out', prefix=prefix, directory_name=logs_dir)
+    log_stderr = make_inc_temp(
+        suffix='.err', prefix=prefix, directory_name=logs_dir)
     # Line-buffer the output (mode 1)
     log_stdout_file = open(log_stdout, "a", buffering=1)
     log_stderr_file = open(log_stderr, "a", buffering=1)
@@ -204,6 +215,7 @@ def new_log_files(name, redirect_output):
 
 
 def new_redis_log_file(redirect_output, shard_number=None):
+    """Create new logging files for redis"""
     if shard_number is None:
         redis_stdout_file, redis_stderr_file = new_log_files(
             "redis", redirect_output)
@@ -214,6 +226,7 @@ def new_redis_log_file(redirect_output, shard_number=None):
 
 
 def new_raylet_log_file(local_scheduler_index, redirect_output):
+    """Create new logging files for raylet."""
     raylet_stdout_file, raylet_stderr_file = new_log_files(
         "raylet_{}".format(local_scheduler_index),
         redirect_output=redirect_output)
@@ -221,6 +234,7 @@ def new_raylet_log_file(local_scheduler_index, redirect_output):
 
 
 def new_local_scheduler_log_file(local_scheduler_index, redirect_output):
+    """Create new logging files for local scheduler."""
     local_scheduler_stdout_file, local_scheduler_stderr_file = (new_log_files(
         "local_scheduler_{}".format(local_scheduler_index),
         redirect_output=redirect_output))
@@ -228,12 +242,14 @@ def new_local_scheduler_log_file(local_scheduler_index, redirect_output):
 
 
 def new_webui_log_file():
+    """Create new logging files for web ui."""
     ui_stdout_file, ui_stderr_file = new_log_files(
         "webui", redirect_output=True)
     return ui_stdout_file, ui_stderr_file
 
 
 def new_worker_log_file(local_scheduler_index, worker_index, redirect_output):
+    """Create new logging files for workers with local scheduler index."""
     worker_stdout_file, worker_stderr_file = new_log_files(
         "worker_{}_{}".format(local_scheduler_index, worker_index),
         redirect_output)
@@ -241,35 +257,41 @@ def new_worker_log_file(local_scheduler_index, worker_index, redirect_output):
 
 
 def new_worker_redirected_log_file():
+    """Create new logging files for workers to redirect its output."""
     worker_stdout_file, worker_stderr_file = new_log_files("worker", True)
     return worker_stdout_file, worker_stderr_file
 
 
 def new_log_monitor_log_file():
+    """Create new logging files for the log monitor."""
     log_monitor_stdout_file, log_monitor_stderr_file = new_log_files(
         "log_monitor", redirect_output=True)
     return log_monitor_stdout_file, log_monitor_stderr_file
 
 
 def new_global_scheduler_log_file(redirect_output):
+    """Create new logging files for the new global scheduler."""
     global_scheduler_stdout_file, global_scheduler_stderr_file = (
         new_log_files("global_scheduler", redirect_output))
     return global_scheduler_stdout_file, global_scheduler_stderr_file
 
 
 def new_plasma_store_log_file(local_scheduler_index, redirect_output):
+    """Create new logging files for the plasma store."""
     plasma_store_stdout_file, plasma_store_stderr_file = new_log_files(
         "plasma_store_{}".format(local_scheduler_index), redirect_output)
     return plasma_store_stdout_file, plasma_store_stderr_file
 
 
 def new_plasma_manager_log_file(local_scheduler_index, redirect_output):
+    """Create new logging files for the plasma manager."""
     plasma_manager_stdout_file, plasma_manager_stderr_file = new_log_files(
         "plasma_manager_{}".format(local_scheduler_index), redirect_output)
     return plasma_manager_stdout_file, plasma_manager_stderr_file
 
 
 def new_monitor_log_file(redirect_output):
+    """Create new logging files for the monitor."""
     monitor_stdout_file, monitor_stderr_file = new_log_files(
         "monitor", redirect_output)
     return monitor_stdout_file, monitor_stderr_file
