@@ -822,9 +822,11 @@ def start_ui(redis_address, stdout_file=None, stderr_file=None, cleanup=True):
     # We generate the token used for authentication ourselves to avoid
     # querying the jupyter server.
     token = ray.utils.decode(binascii.hexlify(os.urandom(24)))
+    # The --ip=0.0.0.0 flag is intended to enable connecting to a notebook
+    # running within a docker container (from the outside).
     command = [
         "jupyter", "notebook", "--no-browser", "--port={}".format(port),
-        "--NotebookApp.iopub_data_rate_limit=10000000000",
+        "--ip=0.0.0.0", "--NotebookApp.iopub_data_rate_limit=10000000000",
         "--NotebookApp.open_browser=False",
         "--NotebookApp.token={}".format(token)
     ]
