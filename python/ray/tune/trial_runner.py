@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import logging
 import os
 import re
 import time
@@ -16,6 +17,8 @@ from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.web_server import TuneServer
 
 MAX_DEBUG_TRIALS = 20
+
+logger = logging.getLogger(__name__)
 
 
 def _naturalize(string):
@@ -92,7 +95,7 @@ class TrialRunner(object):
         """Returns whether all trials have finished running."""
 
         if self._total_time > self._global_time_limit:
-            print("Exceeded global time limit {} / {}".format(
+            logger.warning("Exceeded global time limit {} / {}".format(
                 self._total_time, self._global_time_limit))
             return True
 
@@ -270,8 +273,8 @@ class TrialRunner(object):
                 assert False, "Invalid scheduling decision: {}".format(
                     decision)
         except Exception:
+            logger.exception("Error processing event.")
             error_msg = traceback.format_exc()
-            print("Error processing event:", error_msg)
             if trial.status == Trial.RUNNING:
                 if trial.has_checkpoint() and \
                         trial.num_failures < trial.max_failures:
@@ -284,11 +287,12 @@ class TrialRunner(object):
 
     def _try_recover(self, trial, error_msg):
         try:
-            print("Attempting to recover trial state from last checkpoint")
+            logger.info("Attempting to recover"
+                        " trial state from last checkpoint.")
             self.trial_executor.restart_trial(trial, error_msg)
         except Exception:
             error_msg = traceback.format_exc()
-            print("Error recovering trial from checkpoint, abort:", error_msg)
+            logger.warning("Error recovering trial from checkpoint, abort.")
             self.trial_executor.stop_trial(trial, True, error_msg=error_msg)
 
     def _update_trial_queue(self, blocking=False, timeout=600):
@@ -307,7 +311,7 @@ class TrialRunner(object):
             start = time.time()
             while (not trials and not self.is_finished()
                    and time.time() - start < timeout):
-                print("Blocking for next trial...")
+                logger.info("Blocking for next trial...")
                 trials = self._search_alg.next_trials()
                 time.sleep(1)
 
@@ -349,7 +353,7 @@ class TrialRunner(object):
                     trial.trial_id, result=result)
             except Exception:
                 error_msg = traceback.format_exc()
-                print("Error processing event:", error_msg)
+                logger.exception("Error processing event.")
                 self._scheduler_alg.on_trial_error(self, trial)
                 self._search_alg.on_trial_complete(trial.trial_id, error=True)
                 error = True

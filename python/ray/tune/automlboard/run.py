@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import logging
 import os
 import re
 import django
@@ -11,6 +12,7 @@ from django.core.management import execute_from_command_line
 from common.exception import DatabaseError
 
 root_path = os.path.dirname(os.path.abspath(__file__))
+logger = logging.getLogger(__name__)
 
 
 def run_board(args):
@@ -33,7 +35,7 @@ def run_board(args):
     service.run()
 
     # frontend service
-    print("Try to start automlboard on port %s\n" % args.port)
+    logger.info("Try to start automlboard on port %s\n" % args.port)
     command = [
         os.path.join(root_path, 'manage.py'), 'runserver',
         '0.0.0.0:%s' % args.port, '--noreload'
@@ -64,12 +66,12 @@ def init_config(args):
             os.environ["AUTOMLBOARD_DB_HOST"] = match.group(4)
             os.environ["AUTOMLBOARD_DB_PORT"] = match.group(5)
             os.environ["AUTOMLBOARD_DB_NAME"] = match.group(6)
-            print("Using %s as the database backend." % match.group(1))
+            logger.info("Using %s as the database backend." % match.group(1))
         except BaseException as e:
             raise DatabaseError(e)
     else:
-        print("Using sqlite3 as the database backend, "
-              "information will be stored in automlboard.db")
+        logger.info("Using sqlite3 as the database backend, "
+                    "information will be stored in automlboard.db")
 
     os.environ.setdefault("DJANGO_SETTINGS_MODULE",
                           "ray.tune.automlboard.settings")

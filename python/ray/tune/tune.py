@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import logging
 import time
 
 from ray.tune.error import TuneError
@@ -12,6 +13,8 @@ from ray.tune.trial_runner import TrialRunner
 from ray.tune.schedulers import (HyperBandScheduler, AsyncHyperBandScheduler,
                                  FIFOScheduler, MedianStoppingRule)
 from ray.tune.web_server import TuneServer
+
+logger = logging.getLogger(__name__)
 
 _SCHEDULERS = {
     "FIFO": FIFOScheduler,
@@ -95,16 +98,16 @@ def run_experiments(experiments=None,
         queue_trials=queue_trials,
         trial_executor=trial_executor)
 
-    print(runner.debug_string(max_debug=99999))
+    logger.info(runner.debug_string(max_debug=99999))
 
     last_debug = 0
     while not runner.is_finished():
         runner.step()
         if time.time() - last_debug > DEBUG_PRINT_INTERVAL:
-            print(runner.debug_string())
+            logger.info(runner.debug_string())
             last_debug = time.time()
 
-    print(runner.debug_string(max_debug=99999))
+    logger.info(runner.debug_string(max_debug=99999))
 
     errored_trials = []
     for trial in runner.get_trials():

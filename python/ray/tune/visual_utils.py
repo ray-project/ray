@@ -4,11 +4,13 @@ from __future__ import print_function
 
 import pandas as pd
 from pandas.api.types import is_string_dtype, is_numeric_dtype
-
+import logging
 import os
 import os.path as osp
 import numpy as np
 import json
+
+logger = logging.getLogger(__name__)
 
 
 def _flatten_dict(dt):
@@ -35,7 +37,7 @@ def _parse_results(res_path):
                 pass
         res_dict = _flatten_dict(json.loads(line.strip()))
     except Exception as e:
-        print("Importing %s failed...Perhaps empty?" % res_path, e)
+        logger.exception("Importing %s failed...Perhaps empty?" % res_path)
     return res_dict
 
 
@@ -44,7 +46,7 @@ def _parse_configs(cfg_path):
         with open(cfg_path) as f:
             cfg_dict = _flatten_dict(json.load(f))
     except Exception as e:
-        print(e)
+        logger.exception("Config parsing failed.")
     return cfg_dict
 
 

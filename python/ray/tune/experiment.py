@@ -3,12 +3,15 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
+import logging
 import six
 import types
 
 from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.error import TuneError
 from ray.tune.registry import register_trainable
+
+logger = logging.getLogger(__name__)
 
 
 class Experiment(object):
@@ -158,7 +161,8 @@ class Experiment(object):
             return run_object
         elif isinstance(run_object, types.FunctionType):
             if run_object.__name__ == "<lambda>":
-                print("Not auto-registering lambdas - resolving as variant.")
+                logger.warning(
+                    "Not auto-registering lambdas - resolving as variant.")
                 return run_object
             else:
                 name = run_object.__name__
@@ -202,8 +206,8 @@ def convert_to_experiment_list(experiments):
     if (type(exp_list) is list
             and all(isinstance(exp, Experiment) for exp in exp_list)):
         if len(exp_list) > 1:
-            print("Warning: All experiments will be"
-                  " using the same Search Algorithm.")
+            logger.warning("All experiments will be "
+                           "using the same SearchAlgorithm.")
     else:
         raise TuneError("Invalid argument: {}".format(experiments))
 
