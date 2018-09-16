@@ -20,6 +20,8 @@ set(OUTPUT_DIR ${CMAKE_CURRENT_LIST_DIR}/format/)
 set(COMMON_FBS_OUTPUT_FILES
   "${OUTPUT_DIR}/common_generated.h")
 
+add_custom_target(gen_common_fbs DEPENDS ${COMMON_FBS_OUTPUT_FILES})
+
 add_custom_command(
   OUTPUT ${COMMON_FBS_OUTPUT_FILES}
   # The --gen-object-api flag generates a C++ class MessageT for each
