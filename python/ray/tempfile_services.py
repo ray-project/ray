@@ -15,6 +15,7 @@ RAY_TEMPDIR = 'RAY_TEMPDIR'
 RAY_OBJECT_STORE_SOCKET_NAME = 'RAY_OBJECT_STORE_SOCKET_NAME'
 
 _incremental_dict = collections.defaultdict(lambda: 0)
+_temp_root = None
 
 
 def make_inc_temp(suffix="", prefix="", dir=None):
@@ -54,32 +55,40 @@ def try_to_create_directory(directory_path):
         os.chmod(directory_path, 0o0777)
 
 
-if RAY_TEMPDIR in os.environ:
-    temp_root = os.environ[RAY_TEMPDIR]
-    try_to_create_directory(temp_root)
-else:
-    # Change the default root by providing the directory named by the
-    # TMPDIR environment variable.
-    temp_root = tempfile.mkdtemp(prefix='ray_{pid}_'.format(pid=os.getpid()))
+def get_temp_root():
+    """Get the path of the temporary root. If not existing, it will be created.
+    """
+    global _temp_root
+    if _temp_root is None:
+        _temp_root = make_inc_temp(
+            prefix='ray_{pid}_'.format(pid=os.getpid()), dir='/tmp')
+    try_to_create_directory(_temp_root)
+    return _temp_root
+
+
+def set_temp_root(path):
+    """Set the path of the temporary root. It will be created lazily."""
+    global _temp_root
+    _temp_root = path
 
 
 def get_logs_dir_path():
     """Get a temp dir for logging."""
-    logs_dir = os.path.join(temp_root, 'logs')
+    logs_dir = os.path.join(get_temp_root(), 'logs')
     try_to_create_directory(logs_dir)
     return logs_dir
 
 
 def get_rl_dir_path():
     """Get a temp dir that will be used by some of the RL algorithms."""
-    rl_dir = os.path.join(temp_root, 'ray')
+    rl_dir = os.path.join(get_temp_root(), 'ray')
     try_to_create_directory(rl_dir)
     return rl_dir
 
 
 def get_sockets_dir_path():
     """Get a temp dir for sockets"""
-    sockets_dir = os.path.join(temp_root, 'sockets')
+    sockets_dir = os.path.join(get_temp_root(), 'sockets')
     try_to_create_directory(sockets_dir)
     return sockets_dir
 
@@ -143,7 +152,7 @@ def get_random_ipython_notebook_path(port):
     # We copy the notebook file so that the original doesn't get modified by
     # the user.
     notebook_name = make_inc_temp(
-        suffix='.ipynb', prefix='ray_ui_', dir=temp_root)
+        suffix='.ipynb', prefix='ray_ui_', dir=get_temp_root())
     new_notebook_filepath = os.path.join(get_logs_dir_path(), notebook_name)
     shutil.copy(notebook_filepath, new_notebook_filepath)
     new_notebook_directory = os.path.dirname(new_notebook_filepath)
@@ -154,7 +163,8 @@ def get_random_ipython_notebook_path(port):
 
 
 def get_random_temp_redis_config_path():
-    redis_config_name = make_inc_temp(prefix='redis_conf_', dir=temp_root)
+    redis_config_name = make_inc_temp(
+        prefix='redis_conf_', dir=get_temp_root())
     return redis_config_name
 
 
