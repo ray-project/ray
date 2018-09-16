@@ -3,10 +3,13 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import logging
 import numpy as np
 
 from ray.tune.trial import Trial
 from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
+
+logger = logging.getLogger(__name__)
 
 
 class MedianStoppingRule(FIFOScheduler):
@@ -67,11 +70,12 @@ class MedianStoppingRule(FIFOScheduler):
         median_result = self._get_median_result(time)
         best_result = self._best_result(trial)
         if self._verbose:
-            print("Trial {} best res={} vs median res={} at t={}".format(
+            logger.info("Trial {} best res={} vs median res={} at t={}".format(
                 trial, best_result, median_result, time))
         if best_result < median_result and time > self._grace_period:
             if self._verbose:
-                print("MedianStoppingRule: early stopping {}".format(trial))
+                logger.info("MedianStoppingRule: "
+                            "early stopping {}".format(trial))
             self._stopped_trials.add(trial)
             if self._hard_stop:
                 return TrialScheduler.STOP
