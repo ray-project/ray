@@ -814,10 +814,11 @@ def start_ui(redis_address, stdout_file=None, stderr_file=None, cleanup=True):
     # querying the jupyter server.
     new_notebook_directory, webui_url, token = (
         get_random_ipython_notebook_path(port))
-
+    # The --ip=0.0.0.0 flag is intended to enable connecting to a notebook
+    # running within a docker container (from the outside).
     command = [
         "jupyter", "notebook", "--no-browser", "--port={}".format(port),
-        "--NotebookApp.iopub_data_rate_limit=10000000000",
+        "--ip=0.0.0.0", "--NotebookApp.iopub_data_rate_limit=10000000000",
         "--NotebookApp.open_browser=False",
         "--NotebookApp.token={}".format(token)
     ]

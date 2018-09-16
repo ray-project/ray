@@ -90,10 +90,6 @@ add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/src/global_scheduler/)
 # final target copy_ray
 add_custom_target(copy_ray ALL)
 
-# Make sure redis-server is ready before copying.
-add_dependencies(copy_ray copy_redis)
-add_dependencies(copy_ray ray_redis_module)
-
 # copy plasma_store_server
 add_custom_command(TARGET copy_ray POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E
@@ -131,7 +127,7 @@ if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
     list(APPEND build_ray_file_list ${CMAKE_BINARY_DIR}/${file})
   endforeach()
 
-  add_custom_target(copy_ray_files DEPENDS ${build_ray_file_list})
+  add_custom_target(copy_ray_files DEPENDS ${build_ray_file_list} copy_redis ray_redis_module)
   add_dependencies(copy_ray copy_ray_files)
 
   # Make sure that the Python extensions are built before copying the files.
@@ -160,4 +156,3 @@ if ("${CMAKE_RAY_LANG_JAVA}" STREQUAL "YES")
   add_custom_command(TARGET copy_ray POST_BUILD
     COMMAND bash -c "cp ${ARROW_HOME}/lib/libplasma_java.* ${CMAKE_CURRENT_BINARY_DIR}/src/plasma")
 endif()
-

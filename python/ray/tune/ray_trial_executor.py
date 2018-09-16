@@ -3,6 +3,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import logging
 import os
 import time
 import traceback
@@ -11,6 +12,8 @@ import ray
 from ray.tune.logger import NoopLogger
 from ray.tune.trial import Trial, Resources, Checkpoint
 from ray.tune.trial_executor import TrialExecutor
+
+logger = logging.getLogger(__name__)
 
 
 class RayTrialExecutor(TrialExecutor):
@@ -97,7 +100,7 @@ class RayTrialExecutor(TrialExecutor):
                 _, unfinished = ray.wait(
                     stop_tasks, num_returns=2, timeout=250)
         except Exception:
-            print("Error stopping runner:", traceback.format_exc())
+            logger.exception("Error stopping runner.")
             trial.status = Trial.ERROR
         finally:
             trial.runner = None
@@ -112,15 +115,15 @@ class RayTrialExecutor(TrialExecutor):
         try:
             self._start_trial(trial, checkpoint_obj)
         except Exception:
+            logger.exception("Error stopping runner - retrying...")
             error_msg = traceback.format_exc()
-            print("Error starting runner, retrying:", error_msg)
             time.sleep(2)
             self._stop_trial(trial, error=True, error_msg=error_msg)
             try:
                 self._start_trial(trial)
             except Exception:
+                logger.exception("Error starting runner, aborting!")
                 error_msg = traceback.format_exc()
-                print("Error starting runner, abort:", error_msg)
                 self._stop_trial(trial, error=True, error_msg=error_msg)
                 # note that we don't return the resources, since they may
                 # have been lost
@@ -245,12 +248,13 @@ class RayTrialExecutor(TrialExecutor):
             can_overcommit = False  # requested resource is already saturated
 
         if can_overcommit:
-            print("WARNING:tune:allowing trial to start even though the "
-                  "cluster does not have enough free resources. Trial actors "
-                  "may appear to hang until enough resources are added to the "
-                  "cluster (e.g., via autoscaling). You can disable this "
-                  "behavior by specifying `queue_trials=False` in "
-                  "ray.tune.run_experiments().")
+            logger.warning(
+                "Allowing trial to start even though the "
+                "cluster does not have enough free resources. Trial actors "
+                "may appear to hang until enough resources are added to the "
+                "cluster (e.g., via autoscaling). You can disable this "
+                "behavior by specifying `queue_trials=False` in "
+                "ray.tune.run_experiments().")
             return True
 
         return False
@@ -286,7 +290,7 @@ class RayTrialExecutor(TrialExecutor):
         if checkpoint is None or checkpoint.value is None:
             return True
         if trial.runner is None:
-            print("Unable to restore - no runner")
+            logger.error("Unable to restore - no runner.")
             trial.status = Trial.ERROR
             return False
         try:
@@ -298,6 +302,6 @@ class RayTrialExecutor(TrialExecutor):
                 ray.get(trial.runner.restore.remote(value))
             return True
         except Exception:
-            print("Error restoring runner:", traceback.format_exc())
+            logger.exception("Error restoring runner.")
             trial.status = Trial.ERROR
             return False

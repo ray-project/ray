@@ -67,7 +67,7 @@ set(RAY_LIB_DEPENDENCIES
     gen_object_manager_fbs
     gen_node_manager_fbs
     gen_local_scheduler_fbs
-    ${COMMON_FBS_OUTPUT_FILES})
+    gen_common_fbs)
 
 if(RAY_USE_GLOG)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DRAY_USE_GLOG")

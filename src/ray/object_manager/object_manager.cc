@@ -579,6 +579,13 @@ void ObjectManager::SubscribeRemainingWaitObjects(const UniqueID &wait_id) {
             if (error_code.value() != 0) {
               return;
             }
+            if (active_wait_requests_.find(wait_id) == active_wait_requests_.end()) {
+              // When a subscription callback is triggered first, WaitComplete will be
+              // called. The timer may at the same time goes off and may be an
+              // interruption will post WaitComplete to main_service_ the second time.
+              // This check will avoid the duplicated call of this function.
+              return;
+            }
             WaitComplete(wait_id);
           });
     }
@@ -586,7 +593,9 @@ void ObjectManager::SubscribeRemainingWaitObjects(const UniqueID &wait_id) {
 }
 
 void ObjectManager::WaitComplete(const UniqueID &wait_id) {
-  auto &wait_state = active_wait_requests_.find(wait_id)->second;
+  auto iter = active_wait_requests_.find(wait_id);
+  RAY_CHECK(iter != active_wait_requests_.end());
+  auto &wait_state = iter->second;
   // If we complete with outstanding requests, then timeout_ms should be non-zero or -1
   // (infinite wait time).
   if (!wait_state.requested_objects.empty()) {
