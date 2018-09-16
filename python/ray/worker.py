@@ -27,6 +27,7 @@ import ray.remote_function
 import ray.serialization as serialization
 import ray.services as services
 import ray.signature
+import ray.tempfile_services as tempfile_services
 import ray.local_scheduler
 import ray.plasma
 import ray.ray_constants as ray_constants
@@ -1529,7 +1530,8 @@ def _init(address_info=None,
           huge_pages=False,
           include_webui=True,
           use_raylet=None,
-          plasma_store_socket_name=None):
+          plasma_store_socket_name=None,
+          temp_dir=None):
     """Helper method to connect to an existing Ray cluster or start a new one.
 
     This method handles two cases. Either a Ray cluster already exists and we
@@ -1587,6 +1589,8 @@ def _init(address_info=None,
         use_raylet: True if the new raylet code path should be used.
         plasma_store_socket_name (str): If provided, it will specify the socket
             name used by the plasma store.
+        temp_dir (str): If provided, it will specify the root temporary
+            directory for the Ray process.
 
     Returns:
         Address information about the started processes.
@@ -1662,7 +1666,8 @@ def _init(address_info=None,
             huge_pages=huge_pages,
             include_webui=include_webui,
             use_raylet=use_raylet,
-            plasma_store_socket_name=plasma_store_socket_name)
+            plasma_store_socket_name=plasma_store_socket_name,
+            temp_dir=temp_dir)
     else:
         if redis_address is None:
             raise Exception("When connecting to an existing cluster, "
@@ -1728,7 +1733,8 @@ def _init(address_info=None,
         object_id_seed=object_id_seed,
         mode=driver_mode,
         worker=global_worker,
-        use_raylet=use_raylet)
+        use_raylet=use_raylet,
+        temp_dir=temp_dir)
     return address_info
 
 
@@ -1755,7 +1761,8 @@ def init(redis_address=None,
          configure_logging=True,
          logging_level=logging.INFO,
          logging_format=ray_constants.LOGGER_FORMAT,
-         plasma_store_socket_name=None):
+         plasma_store_socket_name=None,
+         temp_dir=None):
     """Connect to an existing Ray cluster or start one and connect to it.
 
     This method handles two cases. Either a Ray cluster already exists and we
@@ -1822,6 +1829,8 @@ def init(redis_address=None,
             which means only contains the message.
         plasma_store_socket_name (str): If provided, it will specify the socket
             name used by the plasma store.
+        temp_dir (str): If provided, it will specify the root temporary
+            directory for the Ray process.
 
     Returns:
         Address information about the started processes.
@@ -1871,7 +1880,8 @@ def init(redis_address=None,
         include_webui=include_webui,
         object_store_memory=object_store_memory,
         use_raylet=use_raylet,
-        plasma_store_socket_name=plasma_store_socket_name)
+        plasma_store_socket_name=plasma_store_socket_name,
+        temp_dir=temp_dir)
     for hook in _post_init_hooks:
         hook()
     return ret
@@ -2067,7 +2077,8 @@ def connect(info,
             object_id_seed=None,
             mode=WORKER_MODE,
             worker=global_worker,
-            use_raylet=False):
+            use_raylet=False,
+            temp_dir=None):
     """Connect this worker to the local scheduler, to Plasma, and to Redis.
 
     Args:
@@ -2078,6 +2089,8 @@ def connect(info,
         mode: The mode of the worker. One of SCRIPT_MODE, WORKER_MODE, and
             LOCAL_MODE.
         use_raylet: True if the new raylet code path should be used.
+        temp_dir (str): If provided, it will specify the root temporary
+            directory for the Ray process.
     """
     # Do some basic checking to make sure we didn't call ray.init twice.
     error_message = "Perhaps you called ray.init twice by accident?"
@@ -2086,7 +2099,7 @@ def connect(info,
     assert worker.cached_remote_functions_and_actors is not None, error_message
     # Initialize some fields.
     worker.worker_id = random_string()
-
+    tempfile_services.set_temp_root(temp_dir)
     # When tasks are executed on remote workers in the context of multiple
     # drivers, the task driver ID is used to keep track of which driver is
     # responsible for the task so that error messages will be propagated to
@@ -2143,8 +2156,8 @@ def connect(info,
         else:
             redirect_worker_output = 0
         if redirect_worker_output:
-            log_stdout_file, log_stderr_file = services.new_log_files(
-                "worker", True)
+            log_stdout_file, log_stderr_file = (
+                tempfile_services.new_worker_redirected_log_file())
             sys.stdout = log_stdout_file
             sys.stderr = log_stderr_file
             services.record_log_files_in_redis(

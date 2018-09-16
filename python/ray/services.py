@@ -25,7 +25,7 @@ import ray.local_scheduler
 import ray.plasma
 
 from ray.tempfile_services import (
-    get_logs_dir_path, get_random_ipython_notebook_path,
+    set_temp_root, get_logs_dir_path, get_random_ipython_notebook_path,
     get_raylet_socket_name, get_random_temp_redis_config_path,
     new_redis_log_file, new_raylet_log_file, new_local_scheduler_log_file,
     new_webui_log_file, new_worker_log_file, new_log_monitor_log_file,
@@ -1317,7 +1317,8 @@ def start_ray_processes(address_info=None,
                         huge_pages=False,
                         autoscaling_config=None,
                         use_raylet=False,
-                        plasma_store_socket_name=None):
+                        plasma_store_socket_name=None,
+                        temp_dir=None):
     """Helper method to start Ray processes.
 
     Args:
@@ -1377,11 +1378,16 @@ def start_ray_processes(address_info=None,
             not supported yet.
         plasma_store_socket_name (str): If provided, it will specify the socket
             name used by the plasma store.
+        temp_dir (str): If provided, it will specify the root temporary
+            directory for the Ray process.
 
     Returns:
         A dictionary of the address information for the processes that were
             started.
     """
+
+    set_temp_root(temp_dir)
+
     logger.info("Process STDOUT and STDERR is being redirected to {}.".format(
         get_logs_dir_path()))
 
@@ -1629,7 +1635,8 @@ def start_ray_node(node_ip_address,
                    plasma_directory=None,
                    huge_pages=False,
                    use_raylet=False,
-                   plasma_store_socket_name=None):
+                   plasma_store_socket_name=None,
+                   temp_dir=None):
     """Start the Ray processes for a single node.
 
     This assumes that the Ray processes on some master node have already been
@@ -1666,6 +1673,8 @@ def start_ray_node(node_ip_address,
             not supported yet.
         plasma_store_socket_name (str): If provided, it will specify the socket
             name used by the plasma store.
+        temp_dir (str): If provided, it will specify the root temporary
+            directory for the Ray process.
 
     Returns:
         A dictionary of the address information for the processes that were
@@ -1690,7 +1699,8 @@ def start_ray_node(node_ip_address,
         plasma_directory=plasma_directory,
         huge_pages=huge_pages,
         use_raylet=use_raylet,
-        plasma_store_socket_name=plasma_store_socket_name)
+        plasma_store_socket_name=plasma_store_socket_name,
+        temp_dir=temp_dir)
 
 
 def start_ray_head(address_info=None,
@@ -1714,7 +1724,8 @@ def start_ray_head(address_info=None,
                    huge_pages=False,
                    autoscaling_config=None,
                    use_raylet=False,
-                   plasma_store_socket_name=None):
+                   plasma_store_socket_name=None,
+                   temp_dir=None):
     """Start Ray in local mode.
 
     Args:
@@ -1768,6 +1779,8 @@ def start_ray_head(address_info=None,
             not supported yet.
         plasma_store_socket_name (str): If provided, it will specify the socket
             name used by the plasma store.
+        temp_dir (str): If provided, it will specify the root temporary
+            directory for the Ray process.
 
     Returns:
         A dictionary of the address information for the processes that were
@@ -1798,4 +1811,5 @@ def start_ray_head(address_info=None,
         huge_pages=huge_pages,
         autoscaling_config=autoscaling_config,
         use_raylet=use_raylet,
-        plasma_store_socket_name=plasma_store_socket_name)
+        plasma_store_socket_name=plasma_store_socket_name,
+        temp_dir=temp_dir)

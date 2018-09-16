@@ -240,6 +240,11 @@ def new_worker_log_file(local_scheduler_index, worker_index, redirect_output):
     return worker_stdout_file, worker_stderr_file
 
 
+def new_worker_redirected_log_file():
+    worker_stdout_file, worker_stderr_file = new_log_files("worker", True)
+    return worker_stdout_file, worker_stderr_file
+
+
 def new_log_monitor_log_file():
     log_monitor_stdout_file, log_monitor_stderr_file = new_log_files(
         "log_monitor", redirect_output=True)
