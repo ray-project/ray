@@ -127,8 +127,8 @@ def get_local_scheduler_socket_name(suffix=None):
     sockets_dir = get_sockets_dir_path()
 
     if suffix is None:
-        raylet_socket_name = make_inc_temp(prefix='scheduler_',
-                                           dir=sockets_dir)
+        raylet_socket_name = make_inc_temp(
+            prefix='scheduler_', dir=sockets_dir)
     else:
         raylet_socket_name = os.path.join(sockets_dir,
                                           'scheduler_{}'.format(suffix))
@@ -142,14 +142,14 @@ def get_random_ipython_notebook_path(port):
         os.path.dirname(os.path.abspath(__file__)), "WebUI.ipynb")
     # We copy the notebook file so that the original doesn't get modified by
     # the user.
-    notebook_name = make_inc_temp(suffix='.ipynb', prefix='ray_ui_',
-                                  dir=temp_root)
+    notebook_name = make_inc_temp(
+        suffix='.ipynb', prefix='ray_ui_', dir=temp_root)
     new_notebook_filepath = os.path.join(get_logs_dir_path(), notebook_name)
     shutil.copy(notebook_filepath, new_notebook_filepath)
     new_notebook_directory = os.path.dirname(new_notebook_filepath)
     token = ray.utils.decode(binascii.hexlify(os.urandom(24)))
-    webui_url = ("http://localhost:{}/notebooks/{}?token={}"
-                 .format(port, notebook_name, token))
+    webui_url = ("http://localhost:{}/notebooks/{}?token={}".format(
+        port, notebook_name, token))
     return new_notebook_directory, webui_url, token
 
 
@@ -211,16 +211,15 @@ def new_raylet_log_file(local_scheduler_index, redirect_output):
 
 
 def new_local_scheduler_log_file(local_scheduler_index, redirect_output):
-    local_scheduler_stdout_file, local_scheduler_stderr_file = (
-        new_log_files(
-            "local_scheduler_{}".format(local_scheduler_index),
-            redirect_output=redirect_output))
+    local_scheduler_stdout_file, local_scheduler_stderr_file = (new_log_files(
+        "local_scheduler_{}".format(local_scheduler_index),
+        redirect_output=redirect_output))
     return local_scheduler_stdout_file, local_scheduler_stderr_file
 
 
 def new_webui_log_file():
-    ui_stdout_file, ui_stderr_file = new_log_files("webui",
-                                                   redirect_output=True)
+    ui_stdout_file, ui_stderr_file = new_log_files(
+        "webui", redirect_output=True)
     return ui_stdout_file, ui_stderr_file
 
 
