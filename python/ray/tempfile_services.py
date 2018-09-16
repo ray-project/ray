@@ -10,10 +10,6 @@ import tempfile
 import ray.utils
 
 logger = logging.getLogger(__name__)
-
-RAY_TEMPDIR = 'RAY_TEMPDIR'
-RAY_OBJECT_STORE_SOCKET_NAME = 'RAY_OBJECT_STORE_SOCKET_NAME'
-
 _incremental_dict = collections.defaultdict(lambda: 0)
 _temp_root = None
 
@@ -120,12 +116,7 @@ def get_raylet_socket_name(suffix=None):
 
 def get_object_store_socket_name():
     sockets_dir = get_sockets_dir_path()
-    if RAY_OBJECT_STORE_SOCKET_NAME in os.environ:
-        return os.path.join(sockets_dir,
-                            os.environ[RAY_OBJECT_STORE_SOCKET_NAME])
-    else:
-        return make_inc_temp(
-            prefix='plasma_store_', directory_name=sockets_dir)
+    return make_inc_temp(prefix='plasma_store_', directory_name=sockets_dir)
 
 
 def get_plasma_manager_socket_name():
