@@ -163,9 +163,11 @@ ray::Status NodeManager::RegisterGcs() {
       task_lease_notification_callback, task_lease_empty_callback, nullptr));
 
   // Register a callback for actor creation notifications.
-  auto actor_creation_callback = [this](
-      gcs::AsyncGcsClient *client, const ActorID &actor_id,
-      const std::vector<ActorTableDataT> &data) { HandleActorCreation(actor_id, data); };
+  auto actor_creation_callback = [this](gcs::AsyncGcsClient *client,
+                                        const ActorID &actor_id,
+                                        const std::vector<ActorTableDataT> &data) {
+    HandleActorCreation(actor_id, data);
+  };
 
   RAY_RETURN_NOT_OK(gcs_client_->actor_table().Subscribe(
       UniqueID::nil(), UniqueID::nil(), actor_creation_callback, nullptr));
@@ -177,10 +179,9 @@ ray::Status NodeManager::RegisterGcs() {
   };
   gcs_client_->client_table().RegisterClientAddedCallback(node_manager_client_added);
   // Register a callback on the client table for removed clients.
-  auto node_manager_client_removed = [this](
-      gcs::AsyncGcsClient *client, const UniqueID &id, const ClientTableDataT &data) {
-    ClientRemoved(data);
-  };
+  auto node_manager_client_removed =
+      [this](gcs::AsyncGcsClient *client, const UniqueID &id,
+             const ClientTableDataT &data) { ClientRemoved(data); };
   gcs_client_->client_table().RegisterClientRemovedCallback(node_manager_client_removed);
 
   // Subscribe to node manager heartbeats.
@@ -195,11 +196,11 @@ ray::Status NodeManager::RegisterGcs() {
       }));
 
   // Subscribe to driver table updates.
-  const auto driver_table_handler = [this](
-      gcs::AsyncGcsClient *client, const ClientID &client_id,
-      const std::vector<DriverTableDataT> &driver_data) {
-    HandleDriverTableUpdate(client_id, driver_data);
-  };
+  const auto driver_table_handler =
+      [this](gcs::AsyncGcsClient *client, const ClientID &client_id,
+             const std::vector<DriverTableDataT> &driver_data) {
+        HandleDriverTableUpdate(client_id, driver_data);
+      };
   RAY_RETURN_NOT_OK(gcs_client_->driver_table().Subscribe(JobID::nil(), UniqueID::nil(),
                                                           driver_table_handler, nullptr));
 
@@ -1388,7 +1389,6 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id) {
         // Use a copy of the cached task spec to re-execute the task.
         const Task task = lineage_cache_.GetTask(task_id);
         ResubmitTask(task);
-
       }));
 }
 
@@ -1553,9 +1553,8 @@ ray::Status NodeManager::ForwardTask(const Task &task, const ClientID &node_id) 
     // lineage cache since the receiving node is now responsible for writing
     // the task to the GCS.
     if (!lineage_cache_.RemoveWaitingTask(task_id)) {
-      RAY_LOG(WARNING) << "Task " << task_id << " already removed from the lineage "
-                                                "cache. This is most likely due to "
-                                                "reconstruction.";
+      RAY_LOG(WARNING) << "Task " << task_id << " already removed from the lineage cache."
+                       << " This is most likely due to reconstruction.";
     }
     // Mark as forwarded so that the task and its lineage is not re-forwarded
     // in the future to the receiving node.
