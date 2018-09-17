@@ -1,17 +1,14 @@
-This directory contains the java worker, with the following components.
-
--  java/api: Ray API definition
--  java/common: utilities
--  java/runtime-common: common implementation of the runtime in worker
--  java/runtime-dev: a pure-java mock implementation of the runtime for
-   fast development
--  java/runtime-native: a native implementation of the runtime
--  java/test: various tests
--  src/local\_scheduler/lib/java: JNI client library for local scheduler
--  src/plasma/lib/java: JNI client library for plasma storage
-
 Quick start
 ===========
+
+Configuration
+-------------
+Ray will read your configurations in the following order:
+
+* Java system properties: for example ``-Dray.home=/path/to/ray``.
+* A ``ray.conf`` file in the classpath:`example <https://github.com/ray-project/ray/java/example.conf>`_.
+
+For all available config items, see `this file <https://github.com/ray-project/ray/java/runtime/src/main/resources/ray.default.conf>`_.
 
 Starting Ray
 ------------
