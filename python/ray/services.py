@@ -28,10 +28,11 @@ from ray.tempfile_services import (
     # Keep `new_log_files` for compatibility.
     new_log_files,
     set_temp_root,
+    get_temp_root,
     get_logs_dir_path,
-    get_random_ipython_notebook_path,
+    get_ipython_notebook_path,
     get_raylet_socket_name,
-    get_random_temp_redis_config_path,
+    get_temp_redis_config_path,
     new_redis_log_file,
     new_raylet_log_file,
     new_local_scheduler_log_file,
@@ -582,7 +583,7 @@ def _make_temp_redis_config(node_ip_address):
         node_ip_address: The IP address of this node. This should not be
             127.0.0.1.
     """
-    redis_config_name = get_random_temp_redis_config_path()
+    redis_config_name = get_temp_redis_config_path()
     with open(redis_config_name, 'w') as f:
         # This allows redis clients on the same machine to connect using the
         # node's IP address as opposed to just 127.0.0.1. This is only relevant
@@ -824,7 +825,7 @@ def start_ui(redis_address, stdout_file=None, stderr_file=None, cleanup=True):
     # We generate the token used for authentication ourselves to avoid
     # querying the jupyter server.
     new_notebook_directory, webui_url, token = (
-        get_random_ipython_notebook_path(port))
+        get_ipython_notebook_path(port))
     # The --ip=0.0.0.0 flag is intended to enable connecting to a notebook
     # running within a docker container (from the outside).
     command = [
@@ -1031,9 +1032,11 @@ def start_raylet(redis_address,
                             "--node-ip-address={} "
                             "--object-store-name={} "
                             "--raylet-name={} "
-                            "--redis-address={}".format(
+                            "--redis-address={} "
+                            "--temp-dir={}".format(
                                 sys.executable, worker_path, node_ip_address,
-                                plasma_store_name, raylet_name, redis_address))
+                                plasma_store_name, raylet_name, redis_address,
+                                get_temp_root()))
 
     command = [
         RAYLET_EXECUTABLE,
@@ -1236,7 +1239,8 @@ def start_worker(node_ip_address,
         "--object-store-name=" + object_store_name,
         "--object-store-manager-name=" + object_store_manager_name,
         "--local-scheduler-name=" + local_scheduler_name,
-        "--redis-address=" + str(redis_address)
+        "--redis-address=" + str(redis_address),
+        "--temp-dir=" + get_temp_root()
     ]
     p = subprocess.Popen(command, stdout=stdout_file, stderr=stderr_file)
     if cleanup:

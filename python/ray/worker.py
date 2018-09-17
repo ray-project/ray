@@ -1620,6 +1620,10 @@ def _init(address_info=None,
     node_ip_address = address_info.get("node_ip_address")
     redis_address = address_info.get("redis_address")
 
+    # Because the code will be branched soon, we have to create the temp root
+    # here.
+    tempfile_services.set_temp_root(temp_dir)
+
     # Start any services that do not yet exist.
     if driver_mode == LOCAL_MODE:
         # If starting Ray in LOCAL_MODE, don't start any other processes.
@@ -1667,7 +1671,7 @@ def _init(address_info=None,
             include_webui=include_webui,
             use_raylet=use_raylet,
             plasma_store_socket_name=plasma_store_socket_name,
-            temp_dir=temp_dir)
+            temp_dir=tempfile_services.get_temp_root())
     else:
         if redis_address is None:
             raise Exception("When connecting to an existing cluster, "
@@ -1728,13 +1732,14 @@ def _init(address_info=None,
         else:
             driver_address_info["raylet_socket_name"] = (
                 address_info["raylet_socket_names"][0])
+
+    # We did not pass `temp_dir` here because it has been specified above.
     connect(
         driver_address_info,
         object_id_seed=object_id_seed,
         mode=driver_mode,
         worker=global_worker,
-        use_raylet=use_raylet,
-        temp_dir=temp_dir)
+        use_raylet=use_raylet)
     return address_info
 
 
@@ -2089,7 +2094,7 @@ def connect(info,
         mode: The mode of the worker. One of SCRIPT_MODE, WORKER_MODE, and
             LOCAL_MODE.
         use_raylet: True if the new raylet code path should be used.
-        temp_dir (str): If provided, it will specify the root temporary
+        temp_dir (str): If provided, it will **override** the root temporary
             directory for the Ray process.
     """
     # Do some basic checking to make sure we didn't call ray.init twice.
@@ -2099,7 +2104,9 @@ def connect(info,
     assert worker.cached_remote_functions_and_actors is not None, error_message
     # Initialize some fields.
     worker.worker_id = random_string()
-    tempfile_services.set_temp_root(temp_dir)
+    if temp_dir is not None:
+        # Override the temporary directory.
+        tempfile_services.set_temp_root(temp_dir)
     # When tasks are executed on remote workers in the context of multiple
     # drivers, the task driver ID is used to keep track of which driver is
     # responsible for the task so that error messages will be propagated to

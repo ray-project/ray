@@ -8,7 +8,7 @@ import subprocess
 import sys
 import time
 
-from ray.tempfile_services import get_local_scheduler_socket_name
+from ray.tempfile_services import get_local_scheduler_socket_name, get_temp_root
 
 
 def start_local_scheduler(plasma_store_name,
@@ -85,11 +85,12 @@ def start_local_scheduler(plasma_store_name,
                                 "--object-store-name={} "
                                 "--object-store-manager-name={} "
                                 "--local-scheduler-name={} "
-                                "--redis-address={}".format(
+                                "--redis-address={} "
+                                "--temp-dir={}".format(
                                     sys.executable, worker_path,
                                     node_ip_address, plasma_store_name,
                                     plasma_manager_name, local_scheduler_name,
-                                    redis_address))
+                                    redis_address, get_temp_root()))
         command += ["-w", start_worker_command]
     if redis_address is not None:
         command += ["-r", redis_address]

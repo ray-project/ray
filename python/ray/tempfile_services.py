@@ -14,7 +14,7 @@ _incremental_dict = collections.defaultdict(lambda: 0)
 _temp_root = None
 
 
-def make_inc_temp(suffix="", prefix="", directory_name=None):
+def make_inc_temp(suffix="", prefix="", directory_name="/tmp"):
     """Return a incremental temporary file name. The file is not created.
 
     Args:
@@ -22,14 +22,16 @@ def make_inc_temp(suffix="", prefix="", directory_name=None):
         prefix (str): The prefix of the temp file.
         directory_name (str) : The base directory of the temp file.
     """
-    if directory_name is None:
-        directory_name = tempfile.gettempdir()
-
     index = _incremental_dict[suffix, prefix, directory_name]
     for seq in range(tempfile.TMP_MAX):
-        index += 1
-        file = os.path.join(directory_name, prefix + str(index) + suffix)
+        if index == 0:
+            file = os.path.join(directory_name, prefix + suffix)
+        else:
+            file = os.path.join(directory_name,
+                                prefix + "_" + str(index) + suffix)
+
         if not os.path.exists(file):
+            index += 1
             _incremental_dict[suffix, prefix,
                               directory_name] = index  # Save the index.
             return file
@@ -61,9 +63,15 @@ def get_temp_root():
     """Get the path of the temporary root. If not existing, it will be created.
     """
     global _temp_root
+
+    date_str = datetime.datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
+
+    # Lazy creation. Avoid creating directories never used.
     if _temp_root is None:
         _temp_root = make_inc_temp(
-            prefix='ray_{pid}_'.format(pid=os.getpid()), directory_name='/tmp')
+            prefix="ray_{pid}_{date_str}".format(
+                pid=os.getpid(), date_str=date_str),
+            directory_name="/tmp")
     try_to_create_directory(_temp_root)
     return _temp_root
 
@@ -76,55 +84,38 @@ def set_temp_root(path):
 
 def get_logs_dir_path():
     """Get a temp dir for logging."""
-    logs_dir = os.path.join(get_temp_root(), 'logs')
+    logs_dir = os.path.join(get_temp_root(), "logs")
     try_to_create_directory(logs_dir)
     return logs_dir
 
 
-def get_rl_dir_path():
-    """Get a temp dir that will be used by some of the RL algorithms."""
-    rl_dir = os.path.join(get_temp_root(), 'ray')
-    try_to_create_directory(rl_dir)
-    return rl_dir
-
-
 def get_sockets_dir_path():
     """Get a temp dir for sockets"""
-    sockets_dir = os.path.join(get_temp_root(), 'sockets')
+    sockets_dir = os.path.join(get_temp_root(), "sockets")
     try_to_create_directory(sockets_dir)
     return sockets_dir
 
 
-def get_raylet_socket_name(suffix=None):
-    """Get a socket name for raylet.
-
-    This function could be unsafe. The socket name may
-    refer to a file that did not exist at some point, but by the time
-    you get around to creating it, someone else may have beaten you to
-    the punch.
-    """
+def get_raylet_socket_name(suffix=''):
+    """Get a socket name for raylet."""
     sockets_dir = get_sockets_dir_path()
 
-    if suffix is None:
-        raylet_socket_name = make_inc_temp(
-            prefix='raylet_', directory_name=sockets_dir)
-    else:
-        raylet_socket_name = os.path.join(sockets_dir,
-                                          'raylet_{}'.format(suffix))
+    raylet_socket_name = make_inc_temp(
+        prefix="raylet", directory_name=sockets_dir, suffix=suffix)
     return raylet_socket_name
 
 
 def get_object_store_socket_name():
     sockets_dir = get_sockets_dir_path()
-    return make_inc_temp(prefix='plasma_store_', directory_name=sockets_dir)
+    return make_inc_temp(prefix="plasma_store", directory_name=sockets_dir)
 
 
 def get_plasma_manager_socket_name():
     sockets_dir = get_sockets_dir_path()
-    return make_inc_temp(prefix='plasma_manager_', directory_name=sockets_dir)
+    return make_inc_temp(prefix="plasma_manager", directory_name=sockets_dir)
 
 
-def get_local_scheduler_socket_name(suffix=None):
+def get_local_scheduler_socket_name(suffix=""):
     """Get a socket name for local scheduler.
 
     This function could be unsafe. The socket name may
@@ -133,25 +124,21 @@ def get_local_scheduler_socket_name(suffix=None):
     the punch.
     """
     sockets_dir = get_sockets_dir_path()
+    raylet_socket_name = make_inc_temp(
+        prefix="scheduler", directory_name=sockets_dir, suffix=suffix)
 
-    if suffix is None:
-        raylet_socket_name = make_inc_temp(
-            prefix='scheduler_', directory_name=sockets_dir)
-    else:
-        raylet_socket_name = os.path.join(sockets_dir,
-                                          'scheduler_{}'.format(suffix))
     return raylet_socket_name
 
 
-def get_random_ipython_notebook_path(port):
-    """Get a new random ipython notebook path"""
+def get_ipython_notebook_path(port):
+    """Get a new ipython notebook path"""
 
     notebook_filepath = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "WebUI.ipynb")
     # We copy the notebook file so that the original doesn't get modified by
     # the user.
     notebook_name = make_inc_temp(
-        suffix='.ipynb', prefix='ray_ui_', directory_name=get_temp_root())
+        suffix=".ipynb", prefix="ray_ui", directory_name=get_temp_root())
     new_notebook_filepath = os.path.join(get_logs_dir_path(), notebook_name)
     shutil.copy(notebook_filepath, new_notebook_filepath)
     new_notebook_directory = os.path.dirname(new_notebook_filepath)
@@ -161,10 +148,10 @@ def get_random_ipython_notebook_path(port):
     return new_notebook_directory, webui_url, token
 
 
-def get_random_temp_redis_config_path():
+def get_temp_redis_config_path():
     """Get a temp name of the redis config file."""
     redis_config_name = make_inc_temp(
-        prefix='redis_conf_', directory_name=get_temp_root())
+        prefix="redis_conf", directory_name=get_temp_root())
     return redis_config_name
 
 
@@ -189,16 +176,15 @@ def new_log_files(name, redirect_output):
     # Create a directory to be used for process log files.
     logs_dir = get_logs_dir_path()
     # Create another directory that will be used by some of the RL algorithms.
-    # TODO: Move it into where we need such a directory.
-    get_rl_dir_path()
 
-    date_str = datetime.datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
-    prefix = '{}-{}-'.format(name, date_str)
+    # TODO(suquark): This is done by the old code.
+    # We should be able to control its path later.
+    try_to_create_directory("/tmp/ray")
 
     log_stdout = make_inc_temp(
-        suffix='.out', prefix=prefix, directory_name=logs_dir)
+        suffix=".out", prefix=name, directory_name=logs_dir)
     log_stderr = make_inc_temp(
-        suffix='.err', prefix=prefix, directory_name=logs_dir)
+        suffix=".err", prefix=name, directory_name=logs_dir)
     # Line-buffer the output (mode 1)
     log_stdout_file = open(log_stdout, "a", buffering=1)
     log_stderr_file = open(log_stderr, "a", buffering=1)
@@ -212,7 +198,7 @@ def new_redis_log_file(redirect_output, shard_number=None):
             "redis", redirect_output)
     else:
         redis_stdout_file, redis_stderr_file = new_log_files(
-            "redis-{}".format(shard_number), redirect_output)
+            "redis-shard-{}".format(shard_number), redirect_output)
     return redis_stdout_file, redis_stderr_file
 
 
@@ -225,7 +211,10 @@ def new_raylet_log_file(local_scheduler_index, redirect_output):
 
 
 def new_local_scheduler_log_file(local_scheduler_index, redirect_output):
-    """Create new logging files for local scheduler."""
+    """Create new logging files for local scheduler.
+
+    It is only used in non-raylet versions.
+    """
     local_scheduler_stdout_file, local_scheduler_stderr_file = (new_log_files(
         "local_scheduler_{}".format(local_scheduler_index),
         redirect_output=redirect_output))
@@ -240,7 +229,10 @@ def new_webui_log_file():
 
 
 def new_worker_log_file(local_scheduler_index, worker_index, redirect_output):
-    """Create new logging files for workers with local scheduler index."""
+    """Create new logging files for workers with local scheduler index.
+
+    It is only used in non-raylet versions.
+    """
     worker_stdout_file, worker_stderr_file = new_log_files(
         "worker_{}_{}".format(local_scheduler_index, worker_index),
         redirect_output)
@@ -261,7 +253,10 @@ def new_log_monitor_log_file():
 
 
 def new_global_scheduler_log_file(redirect_output):
-    """Create new logging files for the new global scheduler."""
+    """Create new logging files for the new global scheduler.
+
+    It is only used in non-raylet versions.
+    """
     global_scheduler_stdout_file, global_scheduler_stderr_file = (
         new_log_files("global_scheduler", redirect_output))
     return global_scheduler_stdout_file, global_scheduler_stderr_file

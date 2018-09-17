@@ -53,6 +53,12 @@ parser.add_argument(
     type=str,
     default=ray_constants.LOGGER_FORMAT,
     help=ray_constants.LOGGER_FORMAT_HELP)
+parser.add_argument(
+    "--temp-dir",
+    required=False,
+    type=str,
+    default=None,
+    help="Specify the path of the temporary directory use by Ray process.")
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -71,7 +77,10 @@ if __name__ == "__main__":
         format=args.logging_format)
 
     ray.worker.connect(
-        info, mode=ray.WORKER_MODE, use_raylet=(args.raylet_name is not None))
+        info,
+        mode=ray.WORKER_MODE,
+        use_raylet=(args.raylet_name is not None),
+        temp_dir=args.temp_dir)
 
     error_explanation = """
   This error is unexpected and should not have happened. Somehow a worker
