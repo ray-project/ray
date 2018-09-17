@@ -25,12 +25,23 @@ import ray.local_scheduler
 import ray.plasma
 
 from ray.tempfile_services import (
-    set_temp_root, get_logs_dir_path, get_random_ipython_notebook_path,
-    get_raylet_socket_name, get_random_temp_redis_config_path,
-    new_redis_log_file, new_raylet_log_file, new_local_scheduler_log_file,
-    new_webui_log_file, new_worker_log_file, new_log_monitor_log_file,
-    new_global_scheduler_log_file, new_plasma_store_log_file,
-    new_plasma_manager_log_file, new_monitor_log_file)
+    # Keep `new_log_files` for compatibility.
+    new_log_files,
+    set_temp_root,
+    get_logs_dir_path,
+    get_random_ipython_notebook_path,
+    get_raylet_socket_name,
+    get_random_temp_redis_config_path,
+    new_redis_log_file,
+    new_raylet_log_file,
+    new_local_scheduler_log_file,
+    new_webui_log_file,
+    new_worker_log_file,
+    new_log_monitor_log_file,
+    new_global_scheduler_log_file,
+    new_plasma_store_log_file,
+    new_plasma_manager_log_file,
+    new_monitor_log_file)
 
 PROCESS_TYPE_MONITOR = "monitor"
 PROCESS_TYPE_LOG_MONITOR = "log_monitor"

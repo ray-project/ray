@@ -181,14 +181,12 @@ def cli(logging_level, logging_format):
     "--plasma-store-socket-name",
     is_flag=True,
     default=False,
-    help="manually specify the name of the socket of the plasma store"
-)
+    help="manually specify the name of the socket of the plasma store")
 @click.option(
     "--temp-dir",
     is_flag=True,
     default=None,
-    help="manually specify the root temporary dir the Ray process"
-)
+    help="manually specify the root temporary dir the Ray process")
 def start(node_ip_address, redis_address, redis_port, num_redis_shards,
           redis_max_clients, redis_shard_ports, object_manager_port,
           object_store_memory, num_workers, num_cpus, num_gpus, resources,
