@@ -20,6 +20,7 @@ def _get_raylet_pid(raylet_socket):
     all_processes_split = output.decode("ascii").split("\n")
     search_term = "python/ray/core/src/ray/raylet/raylet {}".format(
         raylet_socket)
+    print([x for x in all_processes_split if search_term in x])
     return [
         x.strip().split(" ")[0] for x in all_processes_split
         if search_term in x
