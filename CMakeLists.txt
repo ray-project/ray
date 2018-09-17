@@ -154,5 +154,5 @@ if ("${CMAKE_RAY_LANG_JAVA}" STREQUAL "YES")
 
   # copy libplasma_java files
   add_custom_command(TARGET copy_ray POST_BUILD
-    COMMAND bash -c "cp ${ARROW_HOME}/lib/libplasma_java.* ${CMAKE_CURRENT_BINARY_DIR}/src/plasma")
+    COMMAND bash -c "cp ${ARROW_LIBRARY_DIR}/libplasma_java.* ${CMAKE_CURRENT_BINARY_DIR}/src/plasma")
 endif()
