@@ -29,9 +29,8 @@ def make_inc_temp(suffix="", prefix="", directory_name="/tmp"):
         else:
             file = os.path.join(directory_name,
                                 prefix + "_" + str(index) + suffix)
-
+        index += 1
         if not os.path.exists(file):
-            index += 1
             _incremental_dict[suffix, prefix,
                               directory_name] = index  # Save the index.
             return file
