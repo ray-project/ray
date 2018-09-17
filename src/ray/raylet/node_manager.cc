@@ -546,6 +546,8 @@ void NodeManager::ProcessClientMessage(
   } break;
   case protocol::MessageType::DisconnectClient: {
     ProcessDisconnectClientMessage(client);
+    // We don't need to receive future messages from this client,
+    // because it's already disconnected.
     return;
   } break;
   case protocol::MessageType::SubmitTask: {
