@@ -137,7 +137,8 @@ class CartPoleStatelessEnv(gym.Env):
             self.track.set_color(0, 0, 0)
             self.viewer.add_geom(self.track)
 
-        if self.state is None: return None
+        if self.state is None:
+            return None
 
         x = self.state
         cartx = x[0] * scale + screen_width / 2.0  # MIDDLE OF CART
@@ -147,7 +148,8 @@ class CartPoleStatelessEnv(gym.Env):
         return self.viewer.render(return_rgb_array=mode == 'rgb_array')
 
     def close(self):
-        if self.viewer: self.viewer.close()
+        if self.viewer:
+            self.viewer.close()
 
 
 if __name__ == "__main__":
@@ -156,15 +158,16 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    tune.register_env(
-        "cartpole_stateless", lambda _: CartPoleStatelessEnv())
+    tune.register_env("cartpole_stateless", lambda _: CartPoleStatelessEnv())
 
     ray.init()
     tune.run_experiments({
         "test": {
             "env": "cartpole_stateless",
             "run": "PG",
-            "stop": {"episode_reward_mean": args.stop},
+            "stop": {
+                "episode_reward_mean": args.stop
+            },
             "config": {
                 "model": {
                     "use_lstm": False,
