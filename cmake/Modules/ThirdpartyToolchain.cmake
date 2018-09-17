@@ -179,6 +179,7 @@ if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
   # clean the arrow_ep/python/build/lib.xxxxx directory,
   # or when you build with another python version, it creates multiple lib.xxxx directories
   set_property(DIRECTORY APPEND PROPERTY ADDITIONAL_MAKE_CLEAN_FILES "${ARROW_SOURCE_DIR}/python/build/")
+  set_property(DIRECTORY APPEND PROPERTY ADDITIONAL_MAKE_CLEAN_FILES "${CMAKE_SOURCE_DIR}/python/ray/pyarrow_files/pyarrow")
 
   # here we use externalProject to process pyarrow building
   # add_custom_command would have problem with setup.py
@@ -189,6 +190,6 @@ if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
     BUILD_IN_SOURCE 1
     CONFIGURE_COMMAND cd ${ARROW_SOURCE_DIR}/python && ${CMAKE_COMMAND} -E env ${pyarrow_ENV} ${PYTHON_EXECUTABLE} setup.py build
     BUILD_COMMAND cd ${ARROW_SOURCE_DIR}/python && ${CMAKE_COMMAND} -E env ${pyarrow_ENV} ${PYTHON_EXECUTABLE} setup.py build_ext
-    INSTALL_COMMAND bash -c "cp -r \$(find ${ARROW_SOURCE_DIR}/python/build/ -maxdepth 1 -type d -print | grep -m1 'lib')/pyarrow ${CMAKE_SOURCE_DIR}/python/ray/pyarrow_files/")
+    INSTALL_COMMAND bash -c "cp -rf \$(find ${ARROW_SOURCE_DIR}/python/build/ -maxdepth 1 -type d -print | grep -m1 'lib')/pyarrow ${CMAKE_SOURCE_DIR}/python/ray/pyarrow_files/")
 
 endif ()
