@@ -25,8 +25,6 @@ import ray.local_scheduler
 import ray.plasma
 
 from ray.tempfile_services import (
-    # Keep `new_log_files` for compatibility.
-    new_log_files,
     set_temp_root,
     get_temp_root,
     get_logs_dir_path,
