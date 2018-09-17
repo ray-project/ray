@@ -266,6 +266,24 @@ class NodeManager {
   /// \return True if the invariants are satisfied and false otherwise.
   bool CheckDependencyManagerInvariant() const;
 
+  void ProcessRegisterClientRequestMessage(
+      const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data);
+
+  void ProcessGetTaskMessage(const std::shared_ptr<LocalClientConnection> &client);
+
+  void ProcessDisconnectClientMessage(
+      const std::shared_ptr<LocalClientConnection> &client);
+
+  void ProcessSubmitTaskMessage(const uint8_t *message_data);
+
+  void ProcessReconstructObjectsMessage(
+      const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data);
+
+  void ProcessWaitRequestMessage(const std::shared_ptr<LocalClientConnection> &client,
+                                 const uint8_t *message_data);
+
+  void ProcessPushErrorRequestMessage(const uint8_t *message_data);
+
   boost::asio::io_service &io_service_;
   ObjectManager &object_manager_;
   /// A Plasma object store client. This is used exclusively for creating new
