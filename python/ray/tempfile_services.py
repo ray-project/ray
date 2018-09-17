@@ -69,7 +69,7 @@ def get_temp_root():
     # Lazy creation. Avoid creating directories never used.
     if _temp_root is None:
         _temp_root = make_inc_temp(
-            prefix="ray_{pid}_{date_str}".format(
+            prefix="ray_{pid}@{date_str}".format(
                 pid=os.getpid(), date_str=date_str),
             directory_name="/tmp")
     try_to_create_directory(_temp_root)
@@ -198,14 +198,14 @@ def new_redis_log_file(redirect_output, shard_number=None):
             "redis", redirect_output)
     else:
         redis_stdout_file, redis_stderr_file = new_log_files(
-            "redis-shard-{}".format(shard_number), redirect_output)
+            "redis-shard[{}]".format(shard_number), redirect_output)
     return redis_stdout_file, redis_stderr_file
 
 
 def new_raylet_log_file(local_scheduler_index, redirect_output):
     """Create new logging files for raylet."""
     raylet_stdout_file, raylet_stderr_file = new_log_files(
-        "raylet_{}".format(local_scheduler_index),
+        "raylet[{}]".format(local_scheduler_index),
         redirect_output=redirect_output)
     return raylet_stdout_file, raylet_stderr_file
 
@@ -216,7 +216,7 @@ def new_local_scheduler_log_file(local_scheduler_index, redirect_output):
     It is only used in non-raylet versions.
     """
     local_scheduler_stdout_file, local_scheduler_stderr_file = (new_log_files(
-        "local_scheduler_{}".format(local_scheduler_index),
+        "local_scheduler[{}]".format(local_scheduler_index),
         redirect_output=redirect_output))
     return local_scheduler_stdout_file, local_scheduler_stderr_file
 
@@ -234,7 +234,7 @@ def new_worker_log_file(local_scheduler_index, worker_index, redirect_output):
     It is only used in non-raylet versions.
     """
     worker_stdout_file, worker_stderr_file = new_log_files(
-        "worker_{}_{}".format(local_scheduler_index, worker_index),
+        "worker[{}][{}]".format(local_scheduler_index, worker_index),
         redirect_output)
     return worker_stdout_file, worker_stderr_file
 
@@ -265,14 +265,14 @@ def new_global_scheduler_log_file(redirect_output):
 def new_plasma_store_log_file(local_scheduler_index, redirect_output):
     """Create new logging files for the plasma store."""
     plasma_store_stdout_file, plasma_store_stderr_file = new_log_files(
-        "plasma_store_{}".format(local_scheduler_index), redirect_output)
+        "plasma_store[{}]".format(local_scheduler_index), redirect_output)
     return plasma_store_stdout_file, plasma_store_stderr_file
 
 
 def new_plasma_manager_log_file(local_scheduler_index, redirect_output):
     """Create new logging files for the plasma manager."""
     plasma_manager_stdout_file, plasma_manager_stderr_file = new_log_files(
-        "plasma_manager_{}".format(local_scheduler_index), redirect_output)
+        "plasma_manager[{}]".format(local_scheduler_index), redirect_output)
     return plasma_manager_stdout_file, plasma_manager_stderr_file
 
 
