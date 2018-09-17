@@ -8,7 +8,7 @@ by a LSTM policy."""
 import argparse
 import math
 import gym
-from gym import spaces, logger
+from gym import spaces
 from gym.utils import seeding
 import numpy as np
 
@@ -68,16 +68,16 @@ class CartPoleStatelessEnv(gym.Env):
             self.length *
             (4.0 / 3.0 - self.masspole * costheta * costheta / self.total_mass)
         )
-        xacc = temp - self.polemass_length * thetaacc * costheta / self.total_mass
+        xacc = (temp -
+                self.polemass_length * thetaacc * costheta / self.total_mass)
         x = x + self.tau * x_dot
         x_dot = x_dot + self.tau * xacc
         theta = theta + self.tau * theta_dot
         theta_dot = theta_dot + self.tau * thetaacc
         self.state = (x, x_dot, theta, theta_dot)
-        done =  x < -self.x_threshold \
-                or x > self.x_threshold \
-                or theta < -self.theta_threshold_radians \
-                or theta > self.theta_threshold_radians
+        done = (x < -self.x_threshold or x > self.x_threshold
+                or theta < -self.theta_threshold_radians
+                or theta > self.theta_threshold_radians)
         done = bool(done)
 
         if not done:
@@ -115,13 +115,15 @@ class CartPoleStatelessEnv(gym.Env):
         if self.viewer is None:
             from gym.envs.classic_control import rendering
             self.viewer = rendering.Viewer(screen_width, screen_height)
-            l, r, t, b = -cartwidth / 2, cartwidth / 2, cartheight / 2, -cartheight / 2
+            l, r, t, b = (-cartwidth / 2, cartwidth / 2, cartheight / 2,
+                          -cartheight / 2)
             axleoffset = cartheight / 4.0
             cart = rendering.FilledPolygon([(l, b), (l, t), (r, t), (r, b)])
             self.carttrans = rendering.Transform()
             cart.add_attr(self.carttrans)
             self.viewer.add_geom(cart)
-            l, r, t, b = -polewidth / 2, polewidth / 2, polelen - polewidth / 2, -polewidth / 2
+            l, r, t, b = (-polewidth / 2, polewidth / 2,
+                          polelen - polewidth / 2, -polewidth / 2)
             pole = rendering.FilledPolygon([(l, b), (l, t), (r, t), (r, b)])
             pole.set_color(.8, .6, .4)
             self.poletrans = rendering.Transform(translation=(0, axleoffset))
