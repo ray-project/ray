@@ -156,9 +156,11 @@ class LSTM(Model):
             self.state_in = [c_in, h_in]
 
         # Setup LSTM outputs
+        state_in = rnn.LSTMStateTuple(c_in, h_in)
         lstm_out, lstm_state = tf.nn.dynamic_rnn(
             lstm,
             last_layer,
+            initial_state=state_in,
             sequence_length=self.seq_lens,
             time_major=False,
             dtype=tf.float32)
