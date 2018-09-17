@@ -8,7 +8,8 @@ import subprocess
 import sys
 import time
 
-from ray.tempfile_services import get_local_scheduler_socket_name, get_temp_root
+from ray.tempfile_services import (get_local_scheduler_socket_name,
+                                   get_temp_root)
 
 
 def start_local_scheduler(plasma_store_name,
