@@ -8,6 +8,7 @@ import pytest
 import time
 
 import ray
+import ray.tempfile_services
 import ray.ray_constants as ray_constants
 
 
@@ -164,10 +165,12 @@ def ray_start_reconstruction(request):
     plasma_addresses = []
     objstore_memory = plasma_store_memory // num_local_schedulers
     for i in range(num_local_schedulers):
-        store_stdout_file, store_stderr_file = ray.services.new_log_files(
-            "plasma_store_{}".format(i), True)
-        manager_stdout_file, manager_stderr_file = (ray.services.new_log_files(
-            "plasma_manager_{}".format(i), True))
+        store_stdout_file, store_stderr_file = (
+            ray.tempfile_services.new_log_files("plasma_store_{}".format(i),
+                                                True))
+        manager_stdout_file, manager_stderr_file = ((
+            ray.tempfile_services.new_log_files("plasma_manager_{}".format(i),
+                                                True)))
         plasma_addresses.append(
             ray.services.start_objstore(
                 node_ip_address,
