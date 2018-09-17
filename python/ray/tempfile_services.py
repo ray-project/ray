@@ -144,7 +144,7 @@ def get_ipython_notebook_path(port):
     new_notebook_directory = os.path.dirname(new_notebook_filepath)
     token = ray.utils.decode(binascii.hexlify(os.urandom(24)))
     webui_url = ("http://localhost:{}/notebooks/{}?token={}".format(
-        port, notebook_name, token))
+        port, os.path.basename(notebook_name), token))
     return new_notebook_directory, webui_url, token
 
 
