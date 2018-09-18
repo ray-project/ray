@@ -471,13 +471,15 @@ def teardown(cluster_config_file, yes, workers_only, cluster_name):
     default=False,
     help=("Start the cluster if needed."))
 @click.option(
+    "--tmux", is_flag=True, default=False, help=("Run the command in tmux."))
+@click.option(
     "--cluster-name",
     "-n",
     required=False,
     type=str,
     help=("Override the configured cluster name."))
-def attach(cluster_config_file, start, cluster_name):
-    attach_cluster(cluster_config_file, start, cluster_name)
+def attach(cluster_config_file, start, tmux, cluster_name):
+    attach_cluster(cluster_config_file, start, tmux, cluster_name)
 
 
 @cli.command()
@@ -527,10 +529,7 @@ def rsync_up(cluster_config_file, source, target, cluster_name):
     default=False,
     help=("Run the command in a screen."))
 @click.option(
-    "--tmux",
-    is_flag=True,
-    default=False,
-    help=("Run the command in tmux."))
+    "--tmux", is_flag=True, default=False, help=("Run the command in tmux."))
 @click.option(
     "--cluster-name",
     "-n",

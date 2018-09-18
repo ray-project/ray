@@ -210,17 +210,18 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
                                        provider.external_ip(head_node)))
 
 
-def attach_cluster(config_file, start, override_cluster_name):
+def attach_cluster(config_file, start, use_tmux, override_cluster_name):
     """Attaches to a screen for the specified cluster.
 
     Arguments:
         config_file: path to the cluster yaml
         start: whether to start the cluster if it isn't up
+        use_tmux: whether to use tmux as multiplexer
         override_cluster_name: set the name of the cluster
     """
-
-    exec_cluster(config_file, "screen -L -xRR", False, False,
-                 False, start, override_cluster_name, None)
+    cmd = "tmux attach || tmux new" if use_tmux else "screen -L -xRR"
+    exec_cluster(config_file, cmd, False, False, False, start,
+                 override_cluster_name, None)
 
 
 def exec_cluster(config_file, cmd, screen, tmux, stop, start,
@@ -255,8 +256,13 @@ def exec_cluster(config_file, cmd, screen, tmux, stop, start,
     if stop:
         cmd += ("; ray stop; ray teardown ~/ray_bootstrap_config.yaml --yes "
                 "--workers-only; sudo shutdown -h now")
-    _exec(updater, cmd, screen, tmux,
-          expect_error=stop, port_forward=port_forward)
+    _exec(
+        updater,
+        cmd,
+        screen,
+        tmux,
+        expect_error=stop,
+        port_forward=port_forward)
 
 
 def _exec(updater, cmd, screen, tmux, expect_error=False, port_forward=None):
