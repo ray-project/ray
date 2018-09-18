@@ -136,7 +136,7 @@ class Trial(object):
         self.experiment_tag = experiment_tag
         self.resources = (
             resources
-            or self._get_trainable_cls().default_resource_request(self.config))
+            or self.get_trainable_cls().default_resource_request(self.config))
         self.stopping_criterion = stopping_criterion or {}
         self.upload_dir = upload_dir
         self.verbose = True
@@ -283,9 +283,12 @@ class Trial(object):
         self.last_result = result
         self.result_logger.on_result(self.last_result)
 
-    def _get_trainable_cls(self):
+    def get_trainable_cls(self):
         return ray.tune.registry._global_registry.get(
             ray.tune.registry.TRAINABLE_CLASS, self.trainable_name)
+
+    def get_resources_dict(self):
+        return self.resources._asdict()
 
     def set_verbose(self, verbose):
         self.verbose = verbose

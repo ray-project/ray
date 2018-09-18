@@ -72,6 +72,7 @@ class UnifiedLogger(Logger):
 
     def on_result(self, result):
         for logger in self._loggers:
+            # TODO: don't overload logger
             logger.on_result(result)
         self._log_syncer.set_worker_ip(result.get(NODE_IP))
         self._log_syncer.sync_if_needed()

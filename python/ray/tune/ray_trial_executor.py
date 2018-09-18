@@ -16,6 +16,11 @@ from ray.tune.trial_executor import TrialExecutor
 logger = logging.getLogger(__name__)
 
 
+class _RayTrialState():
+    def __init__(self, trial):
+        self.trial = trial
+
+
 class RayTrialExecutor(TrialExecutor):
     """An implemention of TrialExecutor based on Ray."""
 
@@ -31,9 +36,8 @@ class RayTrialExecutor(TrialExecutor):
         self._resources_initialized = False
 
     def _setup_runner(self, trial):
-        cls = ray.remote(
-            num_cpus=trial.resources.cpu,
-            num_gpus=trial.resources.gpu)(trial._get_trainable_cls())
+        cls = ray.remote(**trial.get_resources_dict())(
+            trial._get_trainable_cls())
 
         trial.init_logger()
         remote_logdir = trial.logdir
