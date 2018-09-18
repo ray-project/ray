@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-# ==============================================================================
+# =============================================================================
 """CNN builder."""
 
 from __future__ import print_function
@@ -56,7 +56,7 @@ class ConvNetBuilder(object):
         self.aux_top_size = 0
 
     def get_custom_getter(self):
-        """Returns a custom getter that this class's methods must be called under.
+        """Returns a custom getter that this class's methods must be called
 
     All methods of this class must be called under a variable scope that was
     passed this custom getter. Example:
@@ -75,21 +75,13 @@ class ConvNetBuilder(object):
     """
 
         def inner_custom_getter(getter, *args, **kwargs):
-            """Custom getter that forces variables to have type self.variable_type."""
             if not self.use_tf_layers:
                 return getter(*args, **kwargs)
             requested_dtype = kwargs['dtype']
             if not (requested_dtype == tf.float32
                     and self.variable_dtype == tf.float16):
-                # Only change the variable dtype if doing so does not decrease variable
-                # precision.
                 kwargs['dtype'] = self.variable_dtype
             var = getter(*args, **kwargs)
-            # This if statement is needed to guard the cast, because batch norm
-            # assigns directly to the return value of this custom getter. The cast
-            # makes the return value not a variable so it cannot be assigned. Batch
-            # norm variables are always in fp32 so this if statement is never
-            # triggered for them.
             if var.dtype.base_dtype != requested_dtype:
                 var = tf.cast(var, requested_dtype)
             return var
@@ -112,10 +104,6 @@ class ConvNetBuilder(object):
         self.top_size = saved_top_size
 
     def get_variable(self, name, shape, dtype, cast_dtype, *args, **kwargs):
-        # TODO(reedwm): Currently variables and gradients are transferred to other
-        # devices and machines as type `dtype`, not `cast_dtype`. In particular,
-        # this means in fp16 mode, variables are transferred as fp32 values, not
-        # fp16 values, which uses extra bandwidth.
         var = tf.get_variable(name, shape, dtype, *args, **kwargs)
         return tf.cast(var, cast_dtype)
 
@@ -135,10 +123,6 @@ class ConvNetBuilder(object):
             weights_shape = [
                 kernel_size[0], kernel_size[1], num_channels_in, filters
             ]
-            # We use the name 'conv2d/kernel' so the variable has the same name as its
-            # tf.layers equivalent. This way, if a checkpoint is written when
-            # self.use_tf_layers == True, it can be loaded when
-            # self.use_tf_layers == False, and vice versa.
             weights = self.get_variable(
                 'conv2d/kernel',
                 weights_shape,
@@ -385,7 +369,7 @@ class ConvNetBuilder(object):
                         self.mpool(*args, **kwargs)
                     elif ltype == 'apool':
                         self.apool(*args, **kwargs)
-                    elif ltype == 'share':  # Share matching layer from previous column
+                    elif ltype == 'share':
                         self.top_layer = col_layers[c - 1][l]
                         self.top_size = col_layer_sizes[c - 1][l]
                     else:
@@ -427,9 +411,6 @@ class ConvNetBuilder(object):
     def _batch_norm_without_layers(self, input_layer, decay, use_scale,
                                    epsilon):
         """Batch normalization on `input_layer` without tf.layers."""
-        # We make this function as similar as possible to the
-        # tf.contrib.layers.batch_norm, to minimize the differences between using
-        # layers and not using layers.
         shape = input_layer.shape
         num_channels = shape[3] if self.data_format == 'NHWC' else shape[1]
         beta = self.get_variable(
@@ -445,9 +426,6 @@ class ConvNetBuilder(object):
                 initializer=tf.ones_initializer())
         else:
             gamma = tf.constant(1.0, tf.float32, [num_channels])
-        # For moving variables, we use tf.get_variable instead of self.get_variable,
-        # since self.get_variable returns the result of tf.cast which we cannot
-        # assign to.
         moving_mean = tf.get_variable(
             'moving_mean', [num_channels],
             tf.float32,

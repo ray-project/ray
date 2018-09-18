@@ -4,7 +4,9 @@ from __future__ import print_function
 
 import json
 import logging
+import os
 import time
+import tensorflow as tf
 
 import ray
 
@@ -33,7 +35,7 @@ def run_timeline(sess, ops, feed_dict=None, write_timeline=False, name=""):
             options=run_options,
             run_metadata=run_metadata,
             feed_dict=feed_dict)
-        trace = timeline.Timeline(step_stats=run_metadata.step_stats)
+        trace = Timeline(step_stats=run_metadata.step_stats)
         outf = "timeline-{}-{}.json".format(name, os.getpid())
         trace_file = open(outf, "w")
         logger.info("wrote tf timeline to", os.path.abspath(outf))

@@ -304,11 +304,7 @@ class ResnetModel(model_lib.Model):
         cnn.spatial_mean()
 
     def get_learning_rate(self, global_step, batch_size):
-        num_batches_per_epoch = (
-            float(datasets.IMAGENET_NUM_TRAIN_IMAGES) / batch_size)
-        boundaries = [int(num_batches_per_epoch * x) for x in [30, 60]]
-        values = [0.1, 0.01, 0.001]
-        return tf.train.piecewise_constant(global_step, boundaries, values)
+        raise NotImplementedError
 
 
 def create_resnet50_model():
@@ -365,7 +361,6 @@ class ResnetCifar10Model(model_lib.Model):
             # reshape to batch_size x 16 x 32 x 32
             residual_block(cnn, 16, 1, self.pre_activation)
         for i in xrange(self.layer_counts[1]):
-            # Subsampling is performed at the first convolution with a stride of 2
             stride = 2 if i == 0 else 1
             # reshape to batch_size x 32 x 16 x 16
             residual_block(cnn, 32, stride, self.pre_activation)

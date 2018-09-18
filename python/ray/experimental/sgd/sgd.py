@@ -3,16 +3,12 @@ from __future__ import division
 from __future__ import print_function
 
 import logging
-import os
 import random
 import time
 
-from tensorflow.python.client import timeline
 import numpy as np
 import pyarrow.plasma as plasma
 import tensorflow as tf
-import tensorflow.contrib.nccl as nccl
-import tensorflow.contrib.slim as slim
 
 import ray
 from ray.experimental.sgd.util import Timeline, fetch, run_timeline
@@ -99,9 +95,10 @@ class SGDWorker(object):
         # Ops for reading grads with the right control deps
         nccl_noops = []
         for j in range(num_grads)[::-1]:
-            with tf.control_dependencies(
-                    nccl_noops +
-                [dev_grad[j] for dev_grad in self.per_device_grads]):
+            deps = nccl_noops + [
+                dev_grad[j] for dev_grad in self.per_device_grads
+            ]
+            with tf.control_dependencies(deps):
                 nccl_noops = [tf.no_op()]
 
         # You must fetch this otherwise the NCCL allreduce will hang
@@ -406,53 +403,6 @@ def distributed_sgd_step(actors, ps_list, write_timeline):
     else:
         # Wait for at least the ps gets to finish
         ray.get(ps_gets)
-
-
-def roundrobin_ps(ps_cls, sgd_workers, shard_shapes, spread_ps):
-    worker_ips = ray.get([w.ip.remote() for w in sgd_workers])
-    num_ips = len(set(worker_ips))
-    num_workers = len(sgd_workers)
-    min_placed = np.ceil(len(shard_shapes) / num_ips)
-    from collections import Counter, defaultdict
-    tid_counter = [0]
-
-    def create_ps():
-        tid_counter[0] += 1
-        return RemotePS.remote(num_workers, tid_counter[0])
-
-    ip_mapping = defaultdict(list)
-
-    while (any(len(v) < min_placed for v in ip_mapping.values())
-           or (len(ip_mapping) < num_ips)):
-        logger.info("generating new ps, ip map so far {}".format(ip_mapping))
-        new_ps = create_ps()
-        ps_ip = ray.get(new_ps.ip.remote())
-        if spread_ps and ps_ip in worker_ips:
-            logger.info("ignoring ps that is on same node as worker")
-        elif not spread_ps and ps_ip not in worker_ips:
-            logger.info("ignoring ps that NOT on same node as some worker")
-        else:
-            ip_mapping[ps_ip] += [new_ps]
-
-    final_list = []
-    candidates = list(ip_mapping.values())
-    for i, s in enumerate(shard_shapes):
-        ps = candidates[i % num_ips][i // num_ips]
-        final_list += [ps]
-        ps.initialize.remote(s)
-
-    for ps in sum(candidates, []):
-        if ps not in final_list:
-            ps.__ray_terminate__.remote()
-            logger.info("removing a ps...")
-        else:
-            logger.info("saving ps...")
-
-    logger.info("Final PS balance: ",
-                Counter(ray.get([ps.ip.remote() for ps in final_list])))
-    for i, ps in enumerate(final_list):
-        ps.set_tid.remote(i)
-    return final_list
 
 
 class DistributedSGD(object):

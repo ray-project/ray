@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-# ==============================================================================
+# =============================================================================
 """Base model configuration for CNN benchmarks."""
 import tensorflow as tf
 
@@ -34,8 +34,6 @@ class Model(object):
         self.default_batch_size = batch_size
         self.learning_rate = learning_rate
         self.layer_counts = layer_counts
-        # TODO(reedwm) Set custom loss scales for each model instead of using the
-        # default of 128.
         self.fp16_loss_scale = fp16_loss_scale
 
     def get_model(self):
@@ -68,7 +66,7 @@ class Model(object):
         raise ValueError('Must be implemented in derived classes')
 
     def skip_final_affine_layer(self):
-        """Returns if the caller of this class should skip the final affine layer.
+        """Returns if the caller of this class should skip the final affine
 
     Normally, this class adds a final affine layer to the model after calling
     self.add_inference(), to generate the logits. If a subclass override this
@@ -115,7 +113,4 @@ class Model(object):
                 aux_logits = tf.cast(aux_logits, tf.float32)
         return logits, aux_logits
 
-    # Subclasses can override this to define their own loss function. By default,
-    # benchmark_cnn.py defines its own loss function. If overridden, it must have
-    # the same signature as benchmark_cnn.loss_function.
     loss_function = None

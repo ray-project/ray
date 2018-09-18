@@ -239,8 +239,7 @@ def build_trivial_sum(scaled_grads):
     return scaled_grads
 
 
-def aggregate_single_gradient_using_copy(grad_and_vars, use_mean,
-                                         check_inf_nan):
+def aggregate_single_gradient(grad_and_vars, use_mean, check_inf_nan):
     """Calculate the average gradient for a shared variable across all towers.
 
   Note that this function provides a synchronization point across all towers.
@@ -291,7 +290,7 @@ def aggregate_gradients_using_copy_with_device_selection(
     has_nan_or_inf_list = []
     for i, single_grads in enumerate(zip(*tower_grads)):
         with tf.device(avail_devices[i % len(avail_devices)]):
-            grad_and_var, has_nan_or_inf = aggregate_single_gradient_using_copy(
+            grad_and_var, has_nan_or_inf = aggregate_single_gradient(
                 single_grads, use_mean, check_inf_nan)
             agg_grads.append(grad_and_var)
             has_nan_or_inf_list.append(has_nan_or_inf)
@@ -331,7 +330,7 @@ def sum_grad_and_var_all_reduce(grad_and_vars,
             summed_grads = all_reduce.build_shuffle_then_shuffle(
                 scaled_grads,
                 aux_devices,
-                # TODO(tucker): devise a way of better specifying the device set
+                # TODO(tucker): devise a way of better specifying the device
                 # for the second level.
                 [aux_devices[0]],
                 tf.add_n)
