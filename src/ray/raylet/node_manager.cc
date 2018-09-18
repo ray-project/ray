@@ -341,8 +341,8 @@ void NodeManager::ClientAdded(const ClientTableDataT &client_data) {
                  << client_info.node_manager_port;
 
   boost::asio::ip::tcp::socket socket(io_service_);
-  auto status = TcpConnect(socket, client_info.node_manager_address,
-                           client_info.node_manager_port);
+  auto status =
+      TcpConnect(socket, client_info.node_manager_address, client_info.node_manager_port);
   // ClientTable is Log<ActorID, ActorTableData>, which has multiple entries for
   // a disconnected client. The first one has is_insertion=true and the second
   // one has is_insertion=false. We must make sure this is not a close client.
