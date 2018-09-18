@@ -219,8 +219,8 @@ def attach_cluster(config_file, start, override_cluster_name):
         override_cluster_name: set the name of the cluster
     """
 
-    exec_cluster(config_file, "screen -L -xRR", False, False, start,
-                 override_cluster_name, None)
+    exec_cluster(config_file, "screen -L -xRR", False, False,
+                 False, start, override_cluster_name, None)
 
 
 def exec_cluster(config_file, cmd, screen, tmux, stop, start,
