@@ -172,7 +172,7 @@ def ray_start_reconstruction(request):
             ray.tempfile_services.new_log_files("plasma_manager_{}".format(i),
                                                 True)))
         plasma_addresses.append(
-            ray.services.start_objstore(
+            ray.services.start_plasma_store(
                 node_ip_address,
                 redis_address,
                 objstore_memory=objstore_memory,

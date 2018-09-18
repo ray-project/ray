@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import json
 import logging
+import multiprocessing
 import os
 import random
 import resource
@@ -14,7 +15,6 @@ import sys
 import threading
 import time
 from collections import OrderedDict, namedtuple
-import psutil
 import redis
 
 import pyarrow
@@ -862,7 +862,7 @@ def check_and_update_resources(resources, use_raylet):
     if "CPU" not in resources:
         # By default, use the number of hardware execution threads for the
         # number of cores.
-        resources["CPU"] = psutil.cpu_count()
+        resources["CPU"] = multiprocessing.cpu_count()
 
     # See if CUDA_VISIBLE_DEVICES has already been set.
     gpu_ids = ray.utils.get_cuda_visible_devices()
@@ -1003,7 +1003,7 @@ def start_raylet(redis_address,
     # Limit the number of workers that can be started in parallel by the
     # raylet. However, make sure it is at least 1.
     maximum_startup_concurrency = max(
-        1, min(psutil.cpu_count(), static_resources["CPU"]))
+        1, min(multiprocessing.cpu_count(), static_resources["CPU"]))
 
     # Format the resource argument in a form like 'CPU,1.0,GPU,0,Custom,3'.
     resource_argument = ",".join([
@@ -1065,19 +1065,19 @@ def start_raylet(redis_address,
     return raylet_name
 
 
-def start_objstore(node_ip_address,
-                   redis_address,
-                   object_manager_port=None,
-                   store_stdout_file=None,
-                   store_stderr_file=None,
-                   manager_stdout_file=None,
-                   manager_stderr_file=None,
-                   objstore_memory=None,
-                   cleanup=True,
-                   plasma_directory=None,
-                   huge_pages=False,
-                   use_raylet=False,
-                   plasma_store_socket_name=None):
+def start_plasma_store(node_ip_address,
+                       redis_address,
+                       object_manager_port=None,
+                       store_stdout_file=None,
+                       store_stderr_file=None,
+                       manager_stdout_file=None,
+                       manager_stderr_file=None,
+                       objstore_memory=None,
+                       cleanup=True,
+                       plasma_directory=None,
+                       huge_pages=False,
+                       use_raylet=False,
+                       plasma_store_socket_name=None):
     """This method starts an object store process.
 
     Args:
@@ -1114,7 +1114,7 @@ def start_objstore(node_ip_address,
     """
     if objstore_memory is None:
         # Compute a fraction of the system memory for the Plasma store to use.
-        system_memory = psutil.virtual_memory().total
+        system_memory = ray.utils.get_system_memory()
         if sys.platform == "linux" or sys.platform == "linux2":
             # On linux we use /dev/shm, its size is half the size of the
             # physical memory. To not overflow it, we set the plasma memory
@@ -1143,6 +1143,8 @@ def start_objstore(node_ip_address,
         else:
             objstore_memory = int(system_memory * 0.8)
     # Start the Plasma store.
+    logger.info("Starting the Plasma object store with {0:.2f} GB memory."
+                .format(objstore_memory // 10**9))
     plasma_store_name, p1 = ray.plasma.start_plasma_store(
         plasma_store_memory=objstore_memory,
         use_profiler=RUN_PLASMA_STORE_PROFILER,
@@ -1407,7 +1409,7 @@ def start_ray_processes(address_info=None,
         for resource_dict in resources:
             cpus = resource_dict.get("CPU")
             workers_per_local_scheduler.append(cpus if cpus is not None else
-                                               psutil.cpu_count())
+                                               multiprocessing.cpu_count())
 
     if address_info is None:
         address_info = {}
@@ -1511,7 +1513,7 @@ def start_ray_processes(address_info=None,
             new_plasma_store_log_file(i, redirect_output))
         plasma_manager_stdout_file, plasma_manager_stderr_file = (
             new_plasma_manager_log_file(i, redirect_output))
-        object_store_address = start_objstore(
+        object_store_address = start_plasma_store(
             node_ip_address,
             redis_address,
             object_manager_port=object_manager_ports[i],
@@ -1550,7 +1552,7 @@ def start_ray_processes(address_info=None,
             # scheduler output.
             local_scheduler_stdout_file, local_scheduler_stderr_file = (
                 new_local_scheduler_log_file(
-                    i, redirect_output=redirect_output))
+                    i, redirect_output=redirect_worker_output))
             local_scheduler_name = start_local_scheduler(
                 redis_address,
                 node_ip_address,

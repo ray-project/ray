@@ -32,8 +32,8 @@ through ``ray.init``, do the following.
   ray.init(num_cpus=8, num_gpus=1)
 
 If the number of CPUs is unspecified, Ray will automatically determine the
-number by running ``psutil.cpu_count()``. If the number of GPUs is unspecified,
-Ray will attempt to automatically detect the number of GPUs.
+number by running ``multiprocessing.cpu_count()``. If the number of GPUs is
+unspecified, Ray will attempt to automatically detect the number of GPUs.
 
 Specifying a task's CPU and GPU requirements
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
