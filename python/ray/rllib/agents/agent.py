@@ -38,7 +38,7 @@ COMMON_CONFIG = {
     # Whether to synchronize the statistics of remote filters.
     "synchronize_filters": True,
     # Whether to clip rewards prior to experience postprocessing
-    "clip_rewards": True,
+    "clip_rewards": False,
     # Whether to use rllib or deepmind preprocessors
     "preprocessor_pref": "deepmind",
     # Arguments to pass to the env creator
