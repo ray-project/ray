@@ -334,21 +334,29 @@ void NodeManager::ClientAdded(const ClientTableDataT &client_data) {
     return;
   }
 
-  ResourceSet resources_total(client_data.resources_total_label,
-                              client_data.resources_total_capacity);
-  this->cluster_resource_map_.emplace(client_id, SchedulingResources(resources_total));
-
   // Establish a new NodeManager connection to this GCS client.
   auto client_info = gcs_client_->client_table().GetClient(client_id);
-  RAY_LOG(DEBUG) << "[ClientAdded] CONNECTING TO: "
+  RAY_LOG(DEBUG) << "[ClientAdded] TRY TO CONNECTING TO: "
                  << " " << client_info.node_manager_address << " "
                  << client_info.node_manager_port;
 
   boost::asio::ip::tcp::socket socket(io_service_);
-  RAY_CHECK_OK(TcpConnect(socket, client_info.node_manager_address,
-                          client_info.node_manager_port));
+  auto status = TcpConnect(socket, client_info.node_manager_address,
+                           client_info.node_manager_port);
+  // ClientTable is Log<ActorID, ActorTableData>, which has multiple entries for
+  // a disconnected client. The first one has is_insertion=true and the second
+  // one has is_insertion=false. We must make sure this is not a close client.
+  if (!status.ok()) {
+    return;
+  }
+
+  // The client is connected.
   auto server_conn = TcpServerConnection(std::move(socket));
   remote_server_connections_.emplace(client_id, std::move(server_conn));
+
+  ResourceSet resources_total(client_data.resources_total_label,
+                              client_data.resources_total_capacity);
+  this->cluster_resource_map_.emplace(client_id, SchedulingResources(resources_total));
 }
 
 void NodeManager::ClientRemoved(const ClientTableDataT &client_data) {
