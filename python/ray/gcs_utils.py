@@ -49,6 +49,18 @@ OBJECT_INFO_PREFIX = "OI:"
 OBJECT_LOCATION_PREFIX = "OL:"
 FUNCTION_PREFIX = "RemoteFunction:"
 
+# These prefixes must be kept up-to-date with the definitions in
+# common/state/redis.cc
+LOCAL_SCHEDULER_INFO_CHANNEL = b"local_schedulers"
+PLASMA_MANAGER_HEARTBEAT_CHANNEL = b"plasma_managers"
+DRIVER_DEATH_CHANNEL = b"driver_deaths"
+
+# xray heartbeats
+XRAY_HEARTBEAT_CHANNEL = str(TablePubsub.HEARTBEAT).encode("ascii")
+
+# xray driver updates
+XRAY_DRIVER_CHANNEL = str(TablePubsub.DRIVER).encode("ascii")
+
 # These prefixes must be kept up-to-date with the TablePrefix enum in gcs.fbs.
 # TODO(rkn): We should use scoped enums, in which case we should be able to
 # just access the flatbuffer generated values.

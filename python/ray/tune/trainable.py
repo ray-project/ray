@@ -6,6 +6,7 @@ from datetime import datetime
 
 import gzip
 import io
+import logging
 import os
 import pickle
 import shutil
@@ -18,6 +19,8 @@ from ray.tune.logger import UnifiedLogger
 from ray.tune.result import (DEFAULT_RESULTS_DIR, TIME_THIS_ITER_S,
                              TIMESTEPS_THIS_ITER, DONE, TIMESTEPS_TOTAL)
 from ray.tune.trial import Resources
+
+logger = logging.getLogger(__name__)
 
 
 class Trainable(object):
@@ -57,7 +60,6 @@ class Trainable(object):
                 object. If unspecified, a default logger is created.
         """
 
-        self._initialize_ok = False
         self._experiment_id = uuid.uuid4().hex
         self.config = config or {}
 
@@ -80,7 +82,6 @@ class Trainable(object):
         self._iterations_since_restore = 0
         self._restored = False
         self._setup()
-        self._initialize_ok = True
         self._local_ip = ray.services.get_node_ip_address()
 
     @classmethod
@@ -137,10 +138,6 @@ class Trainable(object):
         Returns:
             A dict that describes training progress.
         """
-
-        if not self._initialize_ok:
-            raise ValueError(
-                "Trainable initialization failed, see previous errors")
 
         start = time.time()
         result = self._train()
@@ -237,7 +234,8 @@ class Trainable(object):
                 "data": data,
             })
             if len(compressed) > 10e6:  # getting pretty large
-                print("Checkpoint size is {} bytes".format(len(compressed)))
+                logger.info("Checkpoint size is {} bytes".format(
+                    len(compressed)))
             f.write(compressed)
 
         shutil.rmtree(tmpdir)
@@ -279,12 +277,23 @@ class Trainable(object):
         self.restore(checkpoint_path)
         shutil.rmtree(tmpdir)
 
+    def reset_config(self, new_config):
+        """Resets configuration without restarting the trial.
+
+        Args:
+            new_config (dir): Updated hyperparameter configuration
+                for the trainable.
+
+        Returns:
+            True if configuration reset successfully else False.
+        """
+        return False
+
     def stop(self):
         """Releases all resources used by this trainable."""
 
-        if self._initialize_ok:
-            self._result_logger.close()
-            self._stop()
+        self._result_logger.close()
+        self._stop()
 
     def _train(self):
         """Subclasses should override this to implement train().

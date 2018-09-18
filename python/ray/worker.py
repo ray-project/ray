@@ -233,6 +233,7 @@ class Worker(object):
         self.cached_remote_functions_and_actors = []
         self.cached_functions_to_run = []
         self.fetch_and_register_actor = None
+        self.actor_init_error = None
         self.make_actor = None
         self.actors = {}
         self.actor_task_counter = 0
@@ -253,6 +254,17 @@ class Worker(object):
         self.serialization_context_map = {}
         # Identity of the driver that this worker is processing.
         self.task_driver_id = None
+
+    def mark_actor_init_failed(self, error):
+        """Called to mark this actor as failed during initialization."""
+
+        self.actor_init_error = error
+
+    def reraise_actor_init_error(self):
+        """Raises any previous actor initialization error."""
+
+        if self.actor_init_error is not None:
+            raise self.actor_init_error
 
     def get_serialization_context(self, driver_id):
         """Get the SerializationContext of the driver that this worker is processing.
@@ -907,6 +919,8 @@ class Worker(object):
 
         # Get task arguments from the object store.
         try:
+            if function_name != "__ray_terminate__":
+                self.reraise_actor_init_error()
             with profiling.profile("task:deserialize_arguments", worker=self):
                 arguments = self._get_arguments_for_execution(
                     function_name, args)
@@ -973,6 +987,9 @@ class Worker(object):
                 "function_id": function_id.id(),
                 "function_name": function_name
             })
+        # Mark the actor init as failed
+        if self.actor_id != NIL_ACTOR_ID and function_name == "__init__":
+            self.mark_actor_init_failed(error)
 
     def _become_actor(self, task):
         """Turn this worker into an actor.
@@ -1941,21 +1958,11 @@ def print_error_messages_raylet(worker):
     worker.error_message_pubsub_client.subscribe(error_pubsub_channel)
     # worker.error_message_pubsub_client.psubscribe("*")
 
-    # Keep a set of all the error messages that we've seen so far in order to
-    # avoid printing the same error message repeatedly. This is especially
-    # important when running a script inside of a tool like screen where
-    # scrolling is difficult.
-    old_error_messages = set()
-
     # Get the exports that occurred before the call to subscribe.
     with worker.lock:
         error_messages = global_state.error_messages(worker.task_driver_id)
         for error_message in error_messages:
-            if error_message not in old_error_messages:
-                logger.error(error_message)
-                old_error_messages.add(error_message)
-            else:
-                logger.error("Suppressing duplicate error message.")
+            logger.error(error_message)
 
     try:
         for msg in worker.error_message_pubsub_client.listen():
@@ -1973,12 +1980,7 @@ def print_error_messages_raylet(worker):
                 continue
 
             error_message = ray.utils.decode(error_data.ErrorMessage())
-
-            if error_message not in old_error_messages:
-                logger.error(error_message)
-                old_error_messages.add(error_message)
-            else:
-                logger.error("Suppressing duplicate error message.")
+            logger.error(error_message)
 
     except redis.ConnectionError:
         # When Redis terminates the listen call will throw a ConnectionError,

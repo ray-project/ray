@@ -12,9 +12,8 @@
   <groupId>org.ray</groupId>
   <artifactId>ray-cli</artifactId>
 
-  <name>java cli for ray</name>
+  <name>java cli</name>
   <description>java cli for ray</description>
-  <url></url>
 
   <packaging>jar</packaging>
 
@@ -26,25 +25,21 @@
     </dependency>
     <dependency>
       <groupId>org.ray</groupId>
-      <artifactId>ray-runtime-native</artifactId>
+      <artifactId>ray-runtime</artifactId>
       <version>${project.version}</version>
     </dependency>
     <dependency>
       <groupId>de.ruedigermoeller</groupId>
       <artifactId>fst</artifactId>
     </dependency>
-
     <dependency>
       <groupId>com.github.davidmoten</groupId>
       <artifactId>flatbuffers-java</artifactId>
     </dependency>
-
     <dependency>
       <groupId>redis.clients</groupId>
       <artifactId>jedis</artifactId>
     </dependency>
-
-    <!-- https://mvnrepository.com/artifact/com.beust/jcommander -->
     <dependency>
       <groupId>com.beust</groupId>
       <artifactId>jcommander</artifactId>
@@ -71,8 +66,8 @@
             </goals>
           </execution>
         </executions>
-      </plugin>     
-	  <plugin>
+      </plugin>
+      <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-dependency-plugin</artifactId>
         <executions>
@@ -92,7 +87,5 @@
         </executions>
       </plugin>
     </plugins>
-
   </build>
-
 </project>

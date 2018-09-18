@@ -7,7 +7,7 @@ import org.junit.Assert;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.ray.api.id.UniqueId;
-import org.ray.core.UniqueIdHelper;
+import org.ray.runtime.util.UniqueIdHelper;
 
 @RunWith(MyRunner.class)
 public class UniqueIdTest {

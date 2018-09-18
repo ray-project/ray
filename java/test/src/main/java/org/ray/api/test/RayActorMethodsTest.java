@@ -3,7 +3,7 @@ package org.ray.api.test;
 import org.junit.Assert;
 import org.junit.Test;
 import org.ray.api.annotation.RayRemote;
-import org.ray.spi.model.RayActorMethods;
+import org.ray.runtime.functionmanager.RayActorMethods;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

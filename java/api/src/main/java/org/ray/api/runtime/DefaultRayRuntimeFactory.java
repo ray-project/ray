@@ -10,7 +10,7 @@ public class DefaultRayRuntimeFactory implements RayRuntimeFactory {
   @Override
   public RayRuntime createRayRuntime() {
     try {
-      Method m = Class.forName("org.ray.core.AbstractRayRuntime").getDeclaredMethod("init");
+      Method m = Class.forName("org.ray.runtime.AbstractRayRuntime").getDeclaredMethod("init");
       m.setAccessible(true);
       RayRuntime runtime = (RayRuntime) m.invoke(null);
       m.setAccessible(false);

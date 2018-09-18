@@ -49,7 +49,7 @@ matrix:
         - export PATH="$HOME/miniconda/bin:$PATH"
         - cd doc
         - pip install -q -r requirements-doc.txt
-        - pip install yapf
+        - pip install yapf==0.23.0
         - sphinx-build -W -b html -d _build/doctrees source _build/html
         - cd ..
         # Run Python linting, ignore dict vs {} (C408), others are defaults
@@ -131,6 +131,7 @@ matrix:
         # - python -m pytest -v python/ray/local_scheduler/test/test.py
         # - python -m pytest -v python/ray/global_scheduler/test/test.py
 
+        - python -m pytest -v python/ray/test/test_global_state.py
         - python -m pytest -v python/ray/test/test_queue.py
         - python -m pytest -v test/xray_test.py
 
@@ -159,6 +160,7 @@ matrix:
         - python -m pytest -v python/ray/tune/test/experiment_test.py
         - python -m pytest -v python/ray/tune/test/tune_server_test.py
         - python -m pytest -v python/ray/tune/test/ray_trial_executor_test.py
+        - python -m pytest -v python/ray/tune/test/automl_searcher_test.py
 
         # ray rllib tests
         - python -m pytest -v python/ray/rllib/test/test_catalog.py
@@ -204,6 +206,7 @@ script:
   - python -m pytest -v python/ray/local_scheduler/test/test.py
   - python -m pytest -v python/ray/global_scheduler/test/test.py
 
+  - python -m pytest -v python/ray/test/test_global_state.py
   - python -m pytest -v python/ray/test/test_queue.py
   - python -m pytest -v test/xray_test.py
 
@@ -232,6 +235,7 @@ script:
   - python -m pytest -v python/ray/tune/test/experiment_test.py
   - python -m pytest -v python/ray/tune/test/tune_server_test.py
   - python -m pytest -v python/ray/tune/test/ray_trial_executor_test.py
+  - python -m pytest -v python/ray/tune/test/automl_searcher_test.py
 
   # ray rllib tests
   - python -m pytest -v python/ray/rllib/test/test_catalog.py

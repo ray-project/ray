@@ -10,7 +10,7 @@ import ray
 from ray.experimental.queue import Queue, Empty, Full
 
 
-def start_ray():
+def setup_module():
     if not ray.worker.global_worker.connected:
         ray.init()
 
@@ -28,7 +28,6 @@ def put_async(queue, item, block, timeout, sleep):
 
 
 def test_simple_use():
-    start_ray()
     q = Queue()
 
     items = list(range(10))
@@ -41,7 +40,6 @@ def test_simple_use():
 
 
 def test_async():
-    start_ray()
     q = Queue()
 
     items = set(range(10))
@@ -56,7 +54,6 @@ def test_async():
 
 
 def test_put():
-    start_ray()
     q = Queue(1)
 
     item = 0
@@ -87,7 +84,6 @@ def test_put():
 
 
 def test_get():
-    start_ray()
     q = Queue()
 
     item = 0
@@ -113,7 +109,6 @@ def test_get():
 
 
 def test_qsize():
-    start_ray()
     q = Queue()
 
     items = list(range(10))

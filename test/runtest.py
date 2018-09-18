@@ -2063,7 +2063,15 @@ class WorkerPoolTests(unittest.TestCase):
             object_ids = [f.remote(i, j) for j in range(2)]
             return ray.get(object_ids)
 
-        ray.get([g.remote(i) for i in range(4)])
+        @ray.remote
+        def h(i):
+            # Each instance of g submits and blocks on the result of another
+            # remote task using ray.wait.
+            object_ids = [f.remote(i, j) for j in range(2)]
+            return ray.wait(object_ids, num_returns=len(object_ids))
+
+        if os.environ.get("RAY_USE_XRAY") == "1":
+            ray.get([h.remote(i) for i in range(4)])
 
         @ray.remote
         def _sleep(i):
@@ -2516,6 +2524,8 @@ class GlobalStateAPI(unittest.TestCase):
 
             if tables_ready:
                 break
+            # this test case is blocked sometimes, add this may fix the problem
+            time.sleep(0.1)
 
         # Flush the tables.
         ray.experimental.flush_redis_unsafe()
@@ -2529,6 +2539,7 @@ class GlobalStateAPI(unittest.TestCase):
         ray.get([f.remote() for _ in range(10)])
 
         while len(ray.global_state.task_table()) != 0:
+            time.sleep(0.1)
             ray.experimental.flush_finished_tasks_unsafe()
 
         # Make sure that we can call this method (but it won't do anything in

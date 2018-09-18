@@ -168,6 +168,9 @@ class _MockTrialExecutor(TrialExecutor):
     def save(self, trial, type=Checkpoint.DISK):
         return trial.trainable_name
 
+    def reset_trial(self, trial, new_config, new_experiment_tag):
+        return False
+
 
 class _MockTrialRunner():
     def __init__(self, scheduler):
