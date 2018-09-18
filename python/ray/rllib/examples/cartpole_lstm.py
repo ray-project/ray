@@ -172,7 +172,7 @@ if __name__ == "__main__":
             },
             "config": {
                 "model": {
-                    "use_lstm": False,
+                    "use_lstm": True,
                 },
             },
         }
