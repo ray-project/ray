@@ -223,14 +223,15 @@ def attach_cluster(config_file, start, override_cluster_name):
                  override_cluster_name, None)
 
 
-def exec_cluster(config_file, cmd, screen, stop, start, override_cluster_name,
-                 port_forward):
+def exec_cluster(config_file, cmd, screen, tmux, stop, start,
+                 override_cluster_name, port_forward):
     """Runs a command on the specified cluster.
 
     Arguments:
         config_file: path to the cluster yaml
         cmd: command to run
         screen: whether to run in a screen
+        tmux: whether to run in a tmux session
         stop: whether to stop the cluster after command run
         start: whether to start the cluster if it isn't up
         override_cluster_name: set the name of the cluster
@@ -254,14 +255,22 @@ def exec_cluster(config_file, cmd, screen, stop, start, override_cluster_name,
     if stop:
         cmd += ("; ray stop; ray teardown ~/ray_bootstrap_config.yaml --yes "
                 "--workers-only; sudo shutdown -h now")
-    _exec(updater, cmd, screen, expect_error=stop, port_forward=port_forward)
+    _exec(updater, cmd, screen, tmux,
+          expect_error=stop, port_forward=port_forward)
 
 
-def _exec(updater, cmd, screen, expect_error=False, port_forward=None):
+def _exec(updater, cmd, screen, tmux, expect_error=False, port_forward=None):
     if cmd:
         if screen:
             cmd = [
                 "screen", "-L", "-dm", "bash", "-c",
+                quote(cmd + "; exec bash")
+            ]
+            cmd = " ".join(cmd)
+        elif tmux:
+            # TODO: Consider providing named session functionality
+            cmd = [
+                "tmux", "new", "-d", "bash", "-c",
                 quote(cmd + "; exec bash")
             ]
             cmd = " ".join(cmd)
