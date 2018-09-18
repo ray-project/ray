@@ -1,4 +1,4 @@
-"""Stateless variant of the CartPole gym environment.
+"""Partially observed variant of the CartPole gym environment.
 
 https://github.com/openai/gym/blob/master/gym/envs/classic_control/cartpole.py
 
