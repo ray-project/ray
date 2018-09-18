@@ -68,7 +68,7 @@ def get_temp_root():
     # Lazy creation. Avoid creating directories never used.
     if _temp_root is None:
         _temp_root = make_inc_temp(
-            prefix="ray_{pid}@{date_str}".format(
+            prefix="ray-{pid}@{date_str}".format(
                 pid=os.getpid(), date_str=date_str),
             directory_name="/tmp")
     try_to_create_directory(_temp_root)
@@ -238,9 +238,10 @@ def new_worker_log_file(local_scheduler_index, worker_index, redirect_output):
     return worker_stdout_file, worker_stderr_file
 
 
-def new_worker_redirected_log_file():
+def new_worker_redirected_log_file(worker_id):
     """Create new logging files for workers to redirect its output."""
-    worker_stdout_file, worker_stderr_file = new_log_files("worker", True)
+    worker_stdout_file, worker_stderr_file = (new_log_files(
+        "worker-" + worker_id.hex(), True))
     return worker_stdout_file, worker_stderr_file
 
 

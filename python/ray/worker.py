@@ -2164,7 +2164,8 @@ def connect(info,
             redirect_worker_output = 0
         if redirect_worker_output:
             log_stdout_file, log_stderr_file = (
-                tempfile_services.new_worker_redirected_log_file())
+                tempfile_services.new_worker_redirected_log_file(
+                    worker.worker_id))
             sys.stdout = log_stdout_file
             sys.stderr = log_stderr_file
             services.record_log_files_in_redis(

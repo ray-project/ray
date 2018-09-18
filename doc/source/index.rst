@@ -118,6 +118,7 @@ Ray comes with libraries that accelerate deep learning and reinforcement learnin
    plasma-object-store.rst
    resources.rst
    redis-memory-management.rst
+   tempfile.rst
 
 .. toctree::
    :maxdepth: 1
