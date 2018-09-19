@@ -343,20 +343,28 @@ void NodeManager::ClientAdded(const ClientTableDataT &client_data) {
   boost::asio::ip::tcp::socket socket(io_service_);
   auto status =
       TcpConnect(socket, client_info.node_manager_address, client_info.node_manager_port);
-  // ClientTable is Log<ActorID, ActorTableData>, which has multiple entries for
-  // a disconnected client. The first one has is_insertion=true and the second
-  // one has is_insertion=false. We must make sure this is not a close client.
-  if (!status.ok()) {
+  // ClientTable is Log<ActorID, ActorTableData>, a disconnected client has 2 entries.
+  // The first one has is_insertion=true and the second one has is_insertion=false.
+  // When a new raylet starts, ClientAdded will be called with the disconnected client's
+  // first entry, which will cause IOError and "Connection refused".
+  if (status.code() == StatusCode::IOError) {
+    // Do we need to check this? If the error message changes this will fail.
+    RAY_CHECK(status.message() == "Connection refused");
+    RAY_LOG(WARNING) << "ClientAdded: " << status.message()
+                     << " (conde=" << static_cast<int>(status.code()) << ")"
+                     << " which may be caused by a disconnected client.";
+
     return;
   }
 
   // The client is connected.
+  RAY_CHECK(status.ok());
   auto server_conn = TcpServerConnection(std::move(socket));
   remote_server_connections_.emplace(client_id, std::move(server_conn));
 
   ResourceSet resources_total(client_data.resources_total_label,
                               client_data.resources_total_capacity);
-  this->cluster_resource_map_.emplace(client_id, SchedulingResources(resources_total));
+  cluster_resource_map_.emplace(client_id, SchedulingResources(resources_total));
 }
 
 void NodeManager::ClientRemoved(const ClientTableDataT &client_data) {
