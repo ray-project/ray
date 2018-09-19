@@ -134,7 +134,6 @@ setup(
         "funcsigs",
         "click",
         "colorama",
-        "psutil",
         "pytest",
         "pyyaml",
         "redis",

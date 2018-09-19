@@ -2,8 +2,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import multiprocessing
 import os
-import psutil
 import random
 import subprocess
 import sys
@@ -108,7 +108,7 @@ def start_local_scheduler(plasma_store_name,
             for resource_name, resource_quantity in static_resources.items()
         ])
     else:
-        resource_argument = "CPU,{}".format(psutil.cpu_count())
+        resource_argument = "CPU,{}".format(multiprocessing.cpu_count())
     command += ["-c", resource_argument]
 
     if use_valgrind:
