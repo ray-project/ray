@@ -357,12 +357,12 @@ class ConvNetBuilder(object):
             for c, col in enumerate(cols):
                 col_layers.append([])
                 col_layer_sizes.append([])
-                for l, layer in enumerate(col):
+                for lx, layer in enumerate(col):
                     ltype, args = layer[0], layer[1:]
                     kwargs = {
                         'input_layer': input_layer,
                         'num_channels_in': in_size
-                    } if l == 0 else {}
+                    } if lx == 0 else {}
                     if ltype == 'conv':
                         self.conv(*args, **kwargs)
                     elif ltype == 'mpool':
@@ -370,8 +370,8 @@ class ConvNetBuilder(object):
                     elif ltype == 'apool':
                         self.apool(*args, **kwargs)
                     elif ltype == 'share':
-                        self.top_layer = col_layers[c - 1][l]
-                        self.top_size = col_layer_sizes[c - 1][l]
+                        self.top_layer = col_layers[c - 1][lx]
+                        self.top_size = col_layer_sizes[c - 1][lx]
                     else:
                         raise KeyError(
                             'Invalid layer type for inception module: \'%s\'' %
@@ -381,7 +381,7 @@ class ConvNetBuilder(object):
             catdim = 3 if self.data_format == 'NHWC' else 1
             self.top_layer = tf.concat([layers[-1] for layers in col_layers],
                                        catdim)
-            self.top_size = sum([sizes[-1] for sizes in col_layer_sizes])
+            self.top_size = sum(sizes[-1] for sizes in col_layer_sizes)
             return self.top_layer
 
     def spatial_mean(self, keep_dims=False):
