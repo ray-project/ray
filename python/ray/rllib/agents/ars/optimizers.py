@@ -38,8 +38,8 @@ class SGD(Optimizer):
 
 
 class Adam(Optimizer):
-    def __init__(self, policy, stepsize, beta1=0.9,
-                 beta2=0.999, epsilon=1e-08):
+    def __init__(self, policy, stepsize, beta1=0.9, beta2=0.999,
+                 epsilon=1e-08):
         Optimizer.__init__(self, policy)
         self.stepsize = stepsize
         self.beta1 = beta1
