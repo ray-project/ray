@@ -94,6 +94,9 @@ class Worker(object):
                 config["observation_filter"], config["fcnet_hiddens"],
                 **policy_params)
 
+    def get_filters(self):
+        return self.policy.get_filter()
+
     def rollout(self, timestep_limit, add_noise=False):
         rollout_rewards, rollout_length = policies.rollout(
             self.policy,
@@ -219,7 +222,9 @@ class ARSAgent(Agent):
                 num_episodes += sum(len(pair) for pair in result.noisy_lengths)
                 num_timesteps += sum(
                     sum(pair) for pair in result.noisy_lengths)
-        return results, num_episodes, num_timesteps
+        # grab the filters from the workers
+        filters = [ray.get(worker.get_filters.remote()) for worker in self.workers]
+        return results, num_episodes, num_timesteps, filters
 
     def _train(self):
         config = self.config
@@ -232,7 +237,7 @@ class ARSAgent(Agent):
         theta_id = ray.put(theta)
         # Use the actors to do rollouts, note that we pass in the ID of the
         # policy weights.
-        results, num_episodes, num_timesteps = self._collect_results(
+        results, num_episodes, num_timesteps, filters = self._collect_results(
             theta_id, config["num_deltas"])
 
         all_noise_indices = []
@@ -294,6 +299,10 @@ class ARSAgent(Agent):
         # Set the new weights in the local copy of the policy.
         self.policy.set_weights(theta)
 
+        # Now sync the filters
+        for new_filter in filters:
+            self.policy.get_filter().sync(new_filter)
+
         step_tend = time.time()
         tlogger.record_tabular("EvalEpRewMean", eval_returns.mean())
         tlogger.record_tabular("EvalEpRewStd", eval_returns.std())
@@ -337,7 +346,8 @@ class ARSAgent(Agent):
         checkpoint_path = os.path.join(checkpoint_dir,
                                        "checkpoint-{}".format(self.iteration))
         weights = self.policy.get_weights()
-        objects = [weights, self.episodes_so_far, self.timesteps_so_far]
+        objects = [weights, self.episodes_so_far,
+                   self.timesteps_so_far, filter]
         pickle.dump(objects, open(checkpoint_path, "wb"))
         return checkpoint_path
 
@@ -346,6 +356,7 @@ class ARSAgent(Agent):
         self.policy.set_weights(objects[0])
         self.episodes_so_far = objects[1]
         self.timesteps_so_far = objects[2]
+        self.policy.set_filter(objects[3])
 
     def compute_action(self, observation):
         return self.policy.compute(observation, update=True)[0]
