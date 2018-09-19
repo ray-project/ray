@@ -42,12 +42,12 @@ add_custom_command(
 
 add_custom_target(gen_local_scheduler_fbs DEPENDS ${LOCAL_SCHEDULER_FBS_OUTPUT_FILES})
 
-add_dependencies(gen_local_scheduler_fbs arrow_ep)
+add_dependencies(gen_local_scheduler_fbs arrow)
 
 add_library(local_scheduler_client STATIC local_scheduler_client.cc)
 
 # local_scheduler_shared.h includes ray/gcs/client.h which requires gen_gcs_fbs & gen_node_manager_fbs.
-add_dependencies(local_scheduler_client hiredis gen_local_scheduler_fbs ${COMMON_FBS_OUTPUT_FILES} gen_gcs_fbs gen_node_manager_fbs)
+add_dependencies(local_scheduler_client common hiredis gen_local_scheduler_fbs ${COMMON_FBS_OUTPUT_FILES} gen_gcs_fbs gen_node_manager_fbs)
 
 add_executable(local_scheduler local_scheduler.cc local_scheduler_algorithm.cc)
 add_dependencies(local_scheduler hiredis)

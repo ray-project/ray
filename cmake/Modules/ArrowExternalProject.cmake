@@ -73,7 +73,7 @@ endif()
 
 ExternalProject_Add(arrow_ep
   PREFIX external/arrow
-  DEPENDS flatbuffers_ep boost_ep
+  DEPENDS flatbuffers boost
   GIT_REPOSITORY ${arrow_URL}
   GIT_TAG ${arrow_TAG}
   ${ARROW_CONFIGURE}

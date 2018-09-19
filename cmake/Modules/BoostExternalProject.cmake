@@ -10,10 +10,14 @@
 # boost is a stable library in ray, and it supports to find
 # the boost pre-built in environment to speed up build process
 if (DEFINED ENV{BOOST_ROOT})
-  message(STATUS "Find BOOST_ROOT: ${BOOST_ROOT}")
   set(Boost_USE_STATIC_LIBS ON)
   set(BOOST_ROOT "$ENV{BOOST_ROOT}")
-  find_package(Boost COMPONENTS system filesystem REQUIRED)
+  message(STATUS "Find BOOST_ROOT: ${BOOST_ROOT}")
+#  find_package(Boost COMPONENTS system filesystem REQUIRED)
+  set(Boost_INCLUDE_DIR ${BOOST_ROOT}/include)
+  set(Boost_LIBRARY_DIR ${BOOST_ROOT}/lib)
+  set(Boost_SYSTEM_LIBRARY ${Boost_LIBRARY_DIR}/${CMAKE_STATIC_LIBRARY_PREFIX}boost_system${CMAKE_STATIC_LIBRARY_SUFFIX})
+  set(Boost_FILESYSTEM_LIBRARY ${Boost_LIBRARY_DIR}/${CMAKE_STATIC_LIBRARY_PREFIX}boost_filesystem${CMAKE_STATIC_LIBRARY_SUFFIX})
 
   add_custom_target(boost_ep)
 else()

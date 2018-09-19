@@ -96,7 +96,7 @@ add_library(common STATIC
   thirdparty/ae/ae.c
   thirdparty/sha256.c)
 
-add_dependencies(common arrow_ep)
+add_dependencies(common arrow)
 
 if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
   add_dependencies(common gen_common_python_fbs)

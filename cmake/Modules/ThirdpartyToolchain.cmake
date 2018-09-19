@@ -47,6 +47,16 @@ message(STATUS "Boost system library: ${Boost_SYSTEM_LIBRARY}")
 message(STATUS "Boost filesystem library: ${Boost_FILESYSTEM_LIBRARY}")
 include_directories(${Boost_INCLUDE_DIR})
 
+ADD_THIRDPARTY_LIB(boost_system
+  STATIC_LIB ${Boost_SYSTEM_LIBRARY})
+ADD_THIRDPARTY_LIB(boost_filesystem
+  STATIC_LIB ${Boost_FILESYSTEM_LIBRARY})
+
+add_dependencies(boost_system boost_ep)
+add_dependencies(boost_filesystem boost_ep)
+
+add_custom_target(boost DEPENDS boost_system boost_filesystem)
+
 # flatbuffers
 include(FlatBuffersExternalProject)
 
