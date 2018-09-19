@@ -96,7 +96,7 @@ class PolicyEvaluator(EvaluatorInterface):
                  compress_observations=False,
                  num_envs=1,
                  observation_filter="NoFilter",
-                 clip_rewards=False,
+                 clip_rewards=None,
                  env_config=None,
                  model_config=None,
                  policy_config=None,
@@ -150,7 +150,8 @@ class PolicyEvaluator(EvaluatorInterface):
                 if the env already implements VectorEnv.
             observation_filter (str): Name of observation filter to use.
             clip_rewards (bool): Whether to clip rewards to [-1, 1] prior to
-                experience postprocessing.
+                experience postprocessing. Setting to None means clip for Atari
+                only.
             env_config (dict): Config to pass to the env creator.
             model_config (dict): Config to use when creating the policy model.
             policy_config (dict): Config to pass to the policy. In the
@@ -185,6 +186,9 @@ class PolicyEvaluator(EvaluatorInterface):
         elif is_atari(self.env) and \
                 "custom_preprocessor" not in model_config and \
                 preprocessor_pref == "deepmind":
+
+            if clip_rewards is None:
+                clip_rewards = True
 
             def wrap(env):
                 env = wrap_deepmind(
