@@ -11,7 +11,7 @@ First we introduce the concept of a session of Ray.
 
 A session contains a set of processes. A session is created by executing
 ``ray start`` command or call ``ray.init()`` in a Python script and ended by
-executiong ``ray stop`` or call ``ray.shutdown()``.
+executing ``ray stop`` or call ``ray.shutdown()``.
 
 For each session, Ray will create a *root temporary directory* to place all its
 temporary files. The path is ``/tmp/ray/session_{datetime}_{pid}`` by default.
@@ -74,7 +74,7 @@ Plasma object store sockets can be used to share objects with other programs usi
 You are allowed to specify the plasma object store socket in one of these ways:
 
 * Pass ``--plasma-store-socket-name={your socket path}`` to ``ray start``
-* Specify `plasma_store_socket_name` when call `ray.init()`
+* Specify ``plasma_store_socket_name`` when call ``ray.init()``
 
 The path you specified will be given as it is without being affected any other paths.
 
