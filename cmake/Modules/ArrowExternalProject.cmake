@@ -73,9 +73,8 @@ else()
     -DARROW_WITH_ZLIB=OFF)
 endif ()
 if (APPLE)
-  find_package(BISON)
   set(ARROW_CMAKE_ARGS ${ARROW_CMAKE_ARGS}
-    -DBISON_EXECUTABLE=${BISON_EXECUTABLE})
+    -DBISON_EXECUTABLE=/usr/local/opt/bison/bin/bison)
 endif()
 
 if ("${CMAKE_RAY_LANG_JAVA}" STREQUAL "YES")
