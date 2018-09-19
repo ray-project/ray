@@ -94,7 +94,7 @@ class Worker(object):
                 config["observation_filter"], config["fcnet_hiddens"],
                 **policy_params)
 
-    def get_filters(self):
+    def get_filter(self):
         return self.policy.get_filter()
 
     def rollout(self, timestep_limit, add_noise=False):
@@ -223,7 +223,7 @@ class ARSAgent(Agent):
                 num_timesteps += sum(
                     sum(pair) for pair in result.noisy_lengths)
         # grab the filters from the workers
-        filters = [ray.get(worker.get_filters.remote()) for worker in self.workers]
+        filters = [ray.get(worker.get_filter.remote()) for worker in self.workers]
         return results, num_episodes, num_timesteps, filters
 
     def _train(self):
@@ -346,6 +346,7 @@ class ARSAgent(Agent):
         checkpoint_path = os.path.join(checkpoint_dir,
                                        "checkpoint-{}".format(self.iteration))
         weights = self.policy.get_weights()
+        filter = self.policy.get_filter()
         objects = [weights, self.episodes_so_far,
                    self.timesteps_so_far, filter]
         pickle.dump(objects, open(checkpoint_path, "wb"))
