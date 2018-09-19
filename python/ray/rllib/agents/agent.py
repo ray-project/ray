@@ -19,7 +19,6 @@ from ray.tune.trainable import Trainable
 from ray.tune.logger import UnifiedLogger
 from ray.tune.result import DEFAULT_RESULTS_DIR
 
-
 COMMON_CONFIG = {
     # Discount factor of the MDP
     "gamma": 0.99,
