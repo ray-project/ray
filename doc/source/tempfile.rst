@@ -24,6 +24,8 @@ You are allowed to change the *root temporary directory* in one of these ways:
 You can also use ``default_worker.py --temp-dir={your temp path}`` to
 start a new worker with given *root temporary directory*.
 
+The *root temporary directory* you specified will be given as it is
+without pids or datetime attached.
 
 Layout of Temporary Files
 -------------------------
@@ -72,6 +74,7 @@ You are allowed to specify the plasma object store socket in one of these ways:
 * Pass ``--plasma-store-socket-name={your socket path}`` to ``ray start``
 * Specify `plasma_store_socket_name` when call `ray.init()`
 
+The path you specified will be given as it is without being affected any other paths.
 
 Notes
 -----
