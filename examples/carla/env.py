@@ -6,7 +6,7 @@ from __future__ import print_function
 
 from datetime import datetime
 import atexit
-#import cv2
+import cv2
 import os
 import json
 import random
