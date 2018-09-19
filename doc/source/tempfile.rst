@@ -10,21 +10,24 @@ Location of Temporary Files
 First we introduce the concept of a session of Ray.
 
 A session contains a set of processes. A session is created by executing
-``ray start`` command or call `ray.init()` in a Python script and ended by
-executiong ``ray stop`` or call `ray.shutdown()`.
+``ray start`` command or call ``ray.init()`` in a Python script and ended by
+executiong ``ray stop`` or call ``ray.shutdown()``.
 
 For each session, Ray will create a *root temporary directory* to place all its
-temporary files. The path is `/tmp/ray_{ray_pid}@{datetime}` by default.
+temporary files. The path is ``/tmp/ray/session_{datetime}_{pid}`` by default.
+The pid belongs to the startup process (the process calling ``ray.init()`` or
+the Ray process executed by a shell in ``ray start``).
+You can sort by their names to find the latest session.
 
 You are allowed to change the *root temporary directory* in one of these ways:
 
 * Pass ``--temp-dir={your temp path}`` to ``ray start``
-* Specify `temp_dir` when call `ray.init()`
+* Specify ``temp_dir`` when call ``ray.init()``
 
 You can also use ``default_worker.py --temp-dir={your temp path}`` to
 start a new worker with given *root temporary directory*.
 
-The *root temporary directory* you specified will be given as it is
+The *root temporary directory* you specified will be given as it is,
 without pids or datetime attached.
 
 Layout of Temporary Files
@@ -34,34 +37,33 @@ A typical layout of temporary files could look like this:
 
 .. code-block:: text
 
-  ray-{pid}@{datetime}
-  ├── logs  # for logging
-  │   ├── global_scheduler.err
-  │   ├── global_scheduler.out
-  │   ├── local_scheduler[0].err  # array of local schedulers
-  │   ├── local_scheduler[0].out
-  │   ├── log_monitor.err
-  │   ├── log_monitor.out
-  │   ├── monitor.err
-  │   ├── monitor.out
-  │   ├── plasma_manager[0].err  # array of plasma managers
-  │   ├── plasma_manager[0].out
-  │   ├── plasma_store[0].err  # array of plasma stores
-  │   ├── plasma_store[0].out
-  │   ├── redis-shard[0].err # array of redis shards
-  │   ├── redis-shard[0].out
-  │   ├── redis.err  # redis
-  │   ├── redis.out
-  │   ├── webui.err  # web ui
-  │   ├── webui.out
-  │   ├── worker-{worker_id}.err  # redirected output of workers
-  │   ├── worker-{worker_id}.out
-  │   └── {other workers}
-  ├── ray_ui.ipynb
-  └── sockets # for sockets
-      ├── plasma_manager
-      ├── plasma_store
-      └── scheduler
+  /tmp
+  └── ray
+      └── session_{datetime}_{pid}
+          ├── logs
+          │   ├── log_monitor.err
+          │   ├── log_monitor.out
+          │   ├── monitor.err
+          │   ├── monitor.out
+          │   ├── plasma_manager[0].err  # array of plasma managers' outputs
+          │   ├── plasma_manager[0].out
+          │   ├── plasma_store[0].err  # array of plasma stores' outputs
+          │   ├── plasma_store[0].out
+          │   ├── raylet[0].err  # array of raylets' outputs
+          │   ├── raylet[0].out
+          │   ├── redis-shard[0].err   # array of redis shards' outputs
+          │   ├── redis-shard[0].out
+          │   ├── redis.err  # redis
+          │   ├── redis.out
+          │   ├── webui.err  # ipython notebook web ui
+          │   ├── webui.out
+          │   ├── worker-{worker_id}.err  # redirected output of workers
+          │   ├── worker-{worker_id}.out
+          │   └── {other workers}
+          ├── ray_ui.ipynb  # ipython notebook file
+          └── sockets  # for logging
+              ├── plasma_store
+              └── raylet
 
 
 Plasma Object Store Socket

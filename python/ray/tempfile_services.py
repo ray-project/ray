@@ -68,9 +68,9 @@ def get_temp_root():
     # Lazy creation. Avoid creating directories never used.
     if _temp_root is None:
         _temp_root = make_inc_temp(
-            prefix="ray-{pid}@{date_str}".format(
+            prefix="session_{date_str}_{pid}".format(
                 pid=os.getpid(), date_str=date_str),
-            directory_name="/tmp")
+            directory_name="/tmp/ray")
     try_to_create_directory(_temp_root)
     return _temp_root
 
