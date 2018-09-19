@@ -180,7 +180,7 @@ class ARSAgent(Agent):
                 self.sess, env.action_space, preprocessor,
                 self.config["observation_filter"],
                 self.config["fcnet_hiddens"], **policy_params)
-        self.optimizer = optimizers.Adam(self.policy, self.config["stepsize"])
+        self.optimizer = optimizers.SGD(self.policy, self.config["stepsize"])
 
         self.deltas_used = self.config["deltas_used"]
         self.num_deltas = self.config["num_deltas"]
