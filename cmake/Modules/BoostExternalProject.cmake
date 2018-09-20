@@ -9,7 +9,7 @@
 
 # boost is a stable library in ray, and it supports to find
 # the boost pre-built in environment to speed up build process
-if (DEFINED ENV{BOOST_ROOT})
+if (DEFINED ENV{BOOST_ROOT} AND EXISTS ENV{BOOST_ROOT})
   set(Boost_USE_STATIC_LIBS ON)
   set(BOOST_ROOT "$ENV{BOOST_ROOT}")
   message(STATUS "Find BOOST_ROOT: ${BOOST_ROOT}")
