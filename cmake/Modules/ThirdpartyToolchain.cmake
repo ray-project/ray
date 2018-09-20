@@ -150,19 +150,6 @@ ADD_THIRDPARTY_LIB(plasma STATIC_LIB ${PLASMA_STATIC_LIB})
 add_dependencies(plasma plasma_ep)
 
 if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
-  # Apache parquet cpp
-  include(ParquetExternalProject)
-
-  message(STATUS "Parquet home: ${PARQUET_HOME}")
-  message(STATUS "Parquet include dir: ${PARQUET_INCLUDE_DIR}")
-  message(STATUS "Parquet static library: ${PARQUET_STATIC_LIB}")
-  message(STATUS "Parquet shared library: ${PARQUET_SHARED_LIB}")
-  include_directories(SYSTEM ${PARQUET_INCLUDE_DIR})
-
-  ADD_THIRDPARTY_LIB(parquet STATIC_LIB ${PARQUET_STATIC_LIB})
-
-  add_dependencies(parquet parquet_ep)
-
   # pyarrow
   find_package(PythonInterp REQUIRED)
   message(STATUS "PYTHON_EXECUTABLE for pyarrow: ${PYTHON_EXECUTABLE}")
@@ -185,7 +172,7 @@ if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
   # add_custom_command would have problem with setup.py
   ExternalProject_Add(pyarrow_ext
     PREFIX external/pyarrow
-    DEPENDS parquet_ep
+    DEPENDS arrow_ep
     DOWNLOAD_COMMAND ""
     BUILD_IN_SOURCE 1
     CONFIGURE_COMMAND cd ${ARROW_SOURCE_DIR}/python && ${CMAKE_COMMAND} -E env ${pyarrow_ENV} ${PYTHON_EXECUTABLE} setup.py build
