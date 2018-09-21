@@ -35,6 +35,7 @@ DEFAULT_CONFIG = with_common_config({
     'observation_filter': "MeanStdFilter",
     'noise_size': 250000000,
     'eval_prob': 0.03,  # probability of evaluating the parameter rewards
+    'report_length': 10, # how many of the last rewards we average over
     'env_config': {},
     'offset': 0,
     'policy_type': "LinearPolicy",  # ["LinearPolicy", "MLPPolicy"]
@@ -184,6 +185,7 @@ class ARSAgent(Agent):
 
         self.rollouts_used = self.config["rollouts_used"]
         self.num_rollouts = self.config["num_rollouts"]
+        self.report_length = self.config["report_length"]
 
         # Create the shared noise table.
         print("Creating shared noise table.")
@@ -199,6 +201,7 @@ class ARSAgent(Agent):
 
         self.episodes_so_far = 0
         self.timesteps_so_far = 0
+        self.reward_list = []
         self.tstart = time.time()
 
     def _collect_results(self, theta_id, min_episodes):
@@ -293,9 +296,14 @@ class ARSAgent(Agent):
         theta, update_ratio = self.optimizer.update(-g)
         # Set the new weights in the local copy of the policy.
         self.policy.set_weights(theta)
+        # update the reward list
+        if len(all_eval_returns) > 0:
+            self.reward_list.append(eval_returns.mean())
 
         step_tend = time.time()
-        tlogger.record_tabular("EvalEpRewMean", eval_returns.mean())
+        print(eval_returns)
+        tlogger.record_tabular("Last 10 iters reward mean",
+                               np.mean(self.reward_list[self.report_length:]))
         tlogger.record_tabular("EvalEpRewStd", eval_returns.std())
         tlogger.record_tabular("EvalEpLenMean", eval_lengths.mean())
 

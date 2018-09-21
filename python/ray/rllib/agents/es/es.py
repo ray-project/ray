@@ -179,6 +179,7 @@ class ESAgent(Agent):
 
         self.episodes_so_far = 0
         self.timesteps_so_far = 0
+        self.reward_list = []
         self.tstart = time.time()
 
     def _collect_results(self, theta_id, min_episodes, min_timesteps):
@@ -264,9 +265,13 @@ class ESAgent(Agent):
                                                     config["l2_coeff"] * theta)
         # Set the new weights in the local copy of the policy.
         self.policy.set_weights(theta)
+        # Store the rewards
+        if len(all_eval_returns) > 0:
+            self.reward_list.append(np.mean(eval_returns))
 
         step_tend = time.time()
-        tlogger.record_tabular("EvalEpRewMean", eval_returns.mean())
+        tlogger.record_tabular("Avg. Reward of last 10 evals",
+                               np.mean(self.reward_list[-10:]))
         tlogger.record_tabular("EvalEpRewStd", eval_returns.std())
         tlogger.record_tabular("EvalEpLenMean", eval_lengths.mean())
 
@@ -300,7 +305,7 @@ class ESAgent(Agent):
         }
 
         result = dict(
-            episode_reward_mean=eval_returns.mean(),
+            episode_reward_mean=np.mean(self.reward_list[-10:]),
             episode_len_mean=eval_lengths.mean(),
             timesteps_this_iter=noisy_lengths.sum(),
             info=info)
