@@ -35,7 +35,7 @@ DEFAULT_CONFIG = with_common_config({
     'observation_filter': "MeanStdFilter",
     'noise_size': 250000000,
     'eval_prob': 0.03,  # probability of evaluating the parameter rewards
-    'report_length': 10, # how many of the last rewards we average over
+    'report_length': 10,  # how many of the last rewards we average over
     'env_config': {},
     'offset': 0,
     'policy_type': "LinearPolicy",  # ["LinearPolicy", "MLPPolicy"]
@@ -181,7 +181,8 @@ class ARSAgent(Agent):
                 self.sess, env.action_space, preprocessor,
                 self.config["observation_filter"],
                 self.config["fcnet_hiddens"], **policy_params)
-        self.optimizer = optimizers.SGD(self.policy, self.config["sgd_stepsize"])
+        self.optimizer = optimizers.SGD(self.policy,
+                                        self.config["sgd_stepsize"])
 
         self.rollouts_used = self.config["rollouts_used"]
         self.num_rollouts = self.config["num_rollouts"]
@@ -301,8 +302,6 @@ class ARSAgent(Agent):
             self.reward_list.append(eval_returns.mean())
 
         step_tend = time.time()
-        tlogger.record_tabular("EvalEpRewStd", eval_returns.std())
-        tlogger.record_tabular("EvalEpLenMean", eval_lengths.mean())
 
         tlogger.record_tabular("NoisyEpRewMean", noisy_returns.mean())
         tlogger.record_tabular("NoisyEpRewStd", noisy_returns.std())
@@ -325,7 +324,8 @@ class ARSAgent(Agent):
             "time_elapsed": step_tend - self.tstart
         }
         result = dict(
-            episode_reward_mean=np.mean(self.reward_list[-self.report_length:]),
+            episode_reward_mean=np.mean(
+                self.reward_list[-self.report_length:]),
             episode_len_mean=eval_lengths.mean(),
             timesteps_this_iter=noisy_lengths.sum(),
             info=info)
