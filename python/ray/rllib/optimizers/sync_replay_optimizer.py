@@ -92,13 +92,11 @@ class SyncReplayOptimizer(PolicyOptimizer):
 
             for policy_id, s in batch.policy_batches.items():
                 for row in s.rows():
-                    if "weights" not in row:
-                        row["weights"] = np.ones_like(row["rewards"])
                     self.replay_buffers[policy_id].add(
                         pack_if_needed(row["obs"]),
                         row["actions"], row["rewards"],
                         pack_if_needed(row["new_obs"]), row["dones"],
-                        row["weights"])
+                        weight=None)
 
         if self.num_steps_sampled >= self.replay_starts:
             self._optimize()
