@@ -78,6 +78,22 @@ else:
     PY3 = True
 
 
+# Container for the global namespace to ensure consistent unpickling of
+# functions defined in dynamic modules (modules not registed in sys.modules).
+_dynamic_modules_globals = weakref.WeakValueDictionary()
+
+
+class _DynamicModuleFuncGlobals(dict):
+    """Global variables referenced by a function defined in a dynamic module
+
+    To avoid leaking references we store such context in a WeakValueDictionary
+    instance.  However instances of python builtin types such as dict cannot
+    be used directly as values in such a construct, hence the need for a
+    derived class.
+    """
+    pass
+
+
 def _make_cell_set_template_code():
     """Get the Python compiler to emit LOAD_FAST(arg); STORE_DEREF
 
@@ -566,7 +582,7 @@ class CloudPickler(Pickler):
             'name': func.__name__,
             'doc': func.__doc__,
         }
-        if hasattr(func, '__annotations__'):
+        if hasattr(func, '__annotations__') and sys.version_info >= (3, 7):
             state['annotations'] = func.__annotations__
         if hasattr(func, '__qualname__'):
             state['qualname'] = func.__qualname__
@@ -1090,12 +1106,17 @@ def _make_skel_func(code, cell_count, base_globals=None):
     if base_globals is None:
         base_globals = {}
     elif isinstance(base_globals, str):
+        base_globals_name = base_globals
         if sys.modules.get(base_globals, None) is not None:
-            # this checks if we can import the previous environment the object
+            # This checks if we can import the previous environment the object
             # lived in
             base_globals = vars(sys.modules[base_globals])
         else:
-            base_globals = {}
+            base_globals = _dynamic_modules_globals.get(
+                    base_globals_name, None)
+            if base_globals is None:
+                base_globals = _DynamicModuleFuncGlobals()
+            _dynamic_modules_globals[base_globals_name] = base_globals
 
     base_globals['__builtins__'] = __builtins__
 
