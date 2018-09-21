@@ -122,8 +122,8 @@ class HyperBandScheduler(FIFOScheduler):
                     cur_bracket = Bracket(self._time_attr, self._get_n0(s),
                                           self._get_r0(s), self._max_t_attr,
                                           self._eta, s)
-                cur_band.append(cur_bracket)
-                self._state["bracket"] = cur_bracket
+                    cur_band.append(cur_bracket)
+                    self._state["bracket"] = cur_bracket
 
         self._state["bracket"].add_trial(trial)
         self._trial_info[trial] = cur_bracket, self._state["band_idx"]
