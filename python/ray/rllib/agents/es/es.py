@@ -37,6 +37,7 @@ DEFAULT_CONFIG = {
     "stepsize": 0.01,
     "observation_filter": "MeanStdFilter",
     "noise_size": 250000000,
+    "report_length": 10,
     "env": None,
     "env_config": {},
 }
@@ -164,6 +165,7 @@ class ESAgent(Agent):
             self.sess, env.action_space, preprocessor,
             self.config["observation_filter"], **policy_params)
         self.optimizer = optimizers.Adam(self.policy, self.config["stepsize"])
+        self.report_length = self.config["report_length"]
 
         # Create the shared noise table.
         print("Creating shared noise table.")
@@ -270,8 +272,6 @@ class ESAgent(Agent):
             self.reward_list.append(np.mean(eval_returns))
 
         step_tend = time.time()
-        tlogger.record_tabular("Avg. Reward of last 10 evals",
-                               np.mean(self.reward_list[-10:]))
         tlogger.record_tabular("EvalEpRewStd", eval_returns.std())
         tlogger.record_tabular("EvalEpLenMean", eval_lengths.mean())
 
@@ -304,8 +304,9 @@ class ESAgent(Agent):
             "time_elapsed": step_tend - self.tstart
         }
 
+        reward_mean = np.mean(self.reward_list[-self.report_length:])
         result = dict(
-            episode_reward_mean=np.mean(self.reward_list[-10:]),
+            episode_reward_mean=reward_mean,
             episode_len_mean=eval_lengths.mean(),
             timesteps_this_iter=noisy_lengths.sum(),
             info=info)

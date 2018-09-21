@@ -301,9 +301,6 @@ class ARSAgent(Agent):
             self.reward_list.append(eval_returns.mean())
 
         step_tend = time.time()
-        print(eval_returns)
-        tlogger.record_tabular("Last 10 iters reward mean",
-                               np.mean(self.reward_list[self.report_length:]))
         tlogger.record_tabular("EvalEpRewStd", eval_returns.std())
         tlogger.record_tabular("EvalEpLenMean", eval_lengths.mean())
 
@@ -327,9 +324,8 @@ class ARSAgent(Agent):
             "time_elapsed_this_iter": step_tend - step_tstart,
             "time_elapsed": step_tend - self.tstart
         }
-
         result = dict(
-            episode_reward_mean=eval_returns.mean(),
+            episode_reward_mean=np.mean(self.reward_list[-self.report_length:]),
             episode_len_mean=eval_lengths.mean(),
             timesteps_this_iter=noisy_lengths.sum(),
             info=info)

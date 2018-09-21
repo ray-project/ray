@@ -13,3 +13,4 @@ swimmer-ars:
         eval_prob: 0.2
         offset: 0
         observation_filter: NoFilter
+        'report_length': 3
