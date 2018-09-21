@@ -28,10 +28,10 @@ Result = namedtuple("Result", [
 
 DEFAULT_CONFIG = with_common_config({
     'noise_stdev': 0.02,  # std deviation of parameter noise
-    'num_deltas': 32,  # number of perturbations to try
-    'deltas_used': 32,  # number of perturbations to keep in gradient estimate
+    'num_rollouts': 32,  # number of perturbations to try
+    'rollouts_used': 32,  # number of perturbations to keep in gradient estimate
     'num_workers': 2,
-    'stepsize': 0.01,  # sgd step-size
+    'sgd_stepsize': 0.01,  # sgd step-size
     'observation_filter': "MeanStdFilter",
     'noise_size': 250000000,
     'eval_prob': 0.03,  # probability of evaluating the parameter rewards
@@ -180,10 +180,10 @@ class ARSAgent(Agent):
                 self.sess, env.action_space, preprocessor,
                 self.config["observation_filter"],
                 self.config["fcnet_hiddens"], **policy_params)
-        self.optimizer = optimizers.SGD(self.policy, self.config["stepsize"])
+        self.optimizer = optimizers.SGD(self.policy, self.config["sgd_stepsize"])
 
-        self.deltas_used = self.config["deltas_used"]
-        self.num_deltas = self.config["num_deltas"]
+        self.rollouts_used = self.config["rollouts_used"]
+        self.num_rollouts = self.config["num_rollouts"]
 
         # Create the shared noise table.
         print("Creating shared noise table.")
@@ -233,7 +233,7 @@ class ARSAgent(Agent):
         # Use the actors to do rollouts, note that we pass in the ID of the
         # policy weights.
         results, num_episodes, num_timesteps = self._collect_results(
-            theta_id, config["num_deltas"])
+            theta_id, config["num_rollouts"])
 
         all_noise_indices = []
         all_training_returns = []
@@ -265,12 +265,12 @@ class ARSAgent(Agent):
         noisy_lengths = np.array(all_training_lengths)
 
         # keep only the best returns
-        # select top performing directions if deltas_used < num_deltas
+        # select top performing directions if rollouts_used < num_rollouts
         max_rewards = np.max(noisy_returns, axis=1)
-        if self.deltas_used > self.num_deltas:
-            self.deltas_used = self.num_deltas
+        if self.rollouts_used > self.num_rollouts:
+            self.rollouts_used = self.num_rollouts
 
-        percentile = 100 * (1 - (self.deltas_used / self.num_deltas))
+        percentile = 100 * (1 - (self.rollouts_used / self.num_rollouts))
         idx = np.arange(max_rewards.size)[
             max_rewards >= np.percentile(max_rewards, percentile)]
         noise_idx = noise_indices[idx]
