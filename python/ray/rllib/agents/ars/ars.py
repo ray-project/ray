@@ -94,8 +94,21 @@ class Worker(object):
                 config["observation_filter"], config["fcnet_hiddens"],
                 **policy_params)
 
-    def get_filter(self):
-        return self.policy.get_filter()
+    @property
+    def filters(self):
+        return {"default": self.policy.get_filter()}
+
+    def sync_filters(self, new_filters):
+        for k in self.filters:
+            self.filters[k].sync(new_filters[k])
+
+    def get_filters(self, flush_after=False):
+        return_filters = {}
+        for k, f in self.filters.items():
+            return_filters[k] = f.as_serializable()
+            if flush_after:
+                f.clear_buffer()
+        return return_filters
 
     def rollout(self, timestep_limit, add_noise=False):
         rollout_rewards, rollout_length = policies.rollout(
@@ -202,6 +215,7 @@ class ARSAgent(Agent):
 
         self.episodes_so_far = 0
         self.timesteps_so_far = 0
+        self.reward_list = []
         self.tstart = time.time()
 
     def _collect_results(self, theta_id, min_episodes):
@@ -302,11 +316,14 @@ class ARSAgent(Agent):
         self.policy.set_weights(theta)
 
         # Now sync the filters
-        for new_filter in filters:
-            self.policy.get_filter().sync(new_filter)
+        FilterManager.synchronize({"default": self.policy.get_filter()}, self.workers)
 
         step_tend = time.time()
-        tlogger.record_tabular("EvalEpRewMean", eval_returns.mean())
+
+        # keep track of the rewards
+        self.reward_list.append(eval_returns.mean())
+        tlogger.record_tabular("Mean of last 10 rewards",
+                               np.mean(self.reward_list[-10:]))
         tlogger.record_tabular("EvalEpRewStd", eval_returns.std())
         tlogger.record_tabular("EvalEpLenMean", eval_lengths.mean())
 
@@ -332,7 +349,7 @@ class ARSAgent(Agent):
         }
 
         result = dict(
-            episode_reward_mean=eval_returns.mean(),
+            episode_reward_mean=np.mean(self.reward_list[-10:]),
             episode_len_mean=eval_lengths.mean(),
             timesteps_this_iter=noisy_lengths.sum(),
             info=info)
