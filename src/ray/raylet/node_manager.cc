@@ -348,7 +348,6 @@ void NodeManager::ClientAdded(const ClientTableDataT &client_data) {
   // will be called with the disconnected client's first entry, which will cause
   // IOError and "Connection refused".
   if (!status.ok()) {
-    RAY_CHECK(status.message() == "Connection refused");
     RAY_LOG(WARNING) << "Failed to connect to client " << client_id
                      << " in ClientAdded. TcpConnect returned status: "
                      << status.ToString() << ". This may be caused by "
