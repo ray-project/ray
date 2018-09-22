@@ -41,8 +41,8 @@ DEFAULT_CONFIG = with_common_config({
     # PPO clip parameter
     "clip_param": 0.3,
     # Clip param for the value function. Note that this is sensitive to the
-    # scale of the rewards
-    "vf_clip_param": 0.3,
+    # scale of the rewards. If your expected V is large, increase this.
+    "vf_clip_param": 10.0,
     # Target value for KL divergence
     "kl_target": 0.01,
     # Number of GPUs to use for SGD
