@@ -20,6 +20,7 @@ from ray.rllib.agents.ars import optimizers
 from ray.rllib.agents.ars import policies
 from ray.rllib.agents.es import tabular_logger as tlogger
 from ray.rllib.agents.ars import utils
+from ray.rllib.utils import FilterManager
 
 Result = namedtuple("Result", [
     "noise_indices", "noisy_returns", "sign_noisy_returns", "noisy_lengths",
@@ -236,11 +237,8 @@ class ARSAgent(Agent):
                 num_episodes += sum(len(pair) for pair in result.noisy_lengths)
                 num_timesteps += sum(
                     sum(pair) for pair in result.noisy_lengths)
-        # grab the filters from the workers
-        filters = [
-            ray.get(worker.get_filter.remote()) for worker in self.workers
-        ]
-        return results, num_episodes, num_timesteps, filters
+
+        return results, num_episodes, num_timesteps
 
     def _train(self):
         config = self.config
@@ -253,7 +251,7 @@ class ARSAgent(Agent):
         theta_id = ray.put(theta)
         # Use the actors to do rollouts, note that we pass in the ID of the
         # policy weights.
-        results, num_episodes, num_timesteps, filters = self._collect_results(
+        results, num_episodes, num_timesteps = self._collect_results(
             theta_id, config["num_deltas"])
 
         all_noise_indices = []
@@ -316,7 +314,8 @@ class ARSAgent(Agent):
         self.policy.set_weights(theta)
 
         # Now sync the filters
-        FilterManager.synchronize({"default": self.policy.get_filter()}, self.workers)
+        FilterManager.synchronize({"default":
+                                       self.policy.get_filter()}, self.workers)
 
         step_tend = time.time()
 
@@ -378,6 +377,7 @@ class ARSAgent(Agent):
         self.episodes_so_far = objects[1]
         self.timesteps_so_far = objects[2]
         self.policy.set_filter(objects[3])
+        self.sync_filters(objects[3])
 
     def compute_action(self, observation):
         return self.policy.compute(observation, update=True)[0]
