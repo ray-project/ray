@@ -312,7 +312,7 @@ void NodeManager::Heartbeat() {
 }
 
 void NodeManager::ClientAdded(const ClientTableDataT &client_data) {
-  ClientID client_id = ClientID::from_binary(client_data.client_id);
+  const ClientID client_id = ClientID::from_binary(client_data.client_id);
 
   RAY_LOG(DEBUG) << "[ClientAdded] received callback from client id " << client_id;
   if (client_id == gcs_client_->client_table().GetLocalClientId()) {
@@ -336,8 +336,8 @@ void NodeManager::ClientAdded(const ClientTableDataT &client_data) {
 
   // Establish a new NodeManager connection to this GCS client.
   auto client_info = gcs_client_->client_table().GetClient(client_id);
-  RAY_LOG(DEBUG) << "[ClientAdded] TRY TO CONNECTING TO: "
-                 << " " << client_info.node_manager_address << " "
+  RAY_LOG(DEBUG) << "[ClientAdded] Trying to connect to client " << client_id
+                 << " at " << client_info.node_manager_address << ":"
                  << client_info.node_manager_port;
 
   boost::asio::ip::tcp::socket socket(io_service_);
@@ -347,18 +347,16 @@ void NodeManager::ClientAdded(const ClientTableDataT &client_data) {
   // The first one has is_insertion=true and the second one has is_insertion=false.
   // When a new raylet starts, ClientAdded will be called with the disconnected client's
   // first entry, which will cause IOError and "Connection refused".
-  if (status.code() == StatusCode::IOError) {
-    // Do we need to check this? If the error message changes this will fail.
+  if (!status.ok()) {
     RAY_CHECK(status.message() == "Connection refused");
-    RAY_LOG(WARNING) << "ClientAdded: " << status.message()
-                     << " (conde=" << static_cast<int>(status.code()) << ")"
-                     << " which may be caused by a disconnected client.";
-
+    RAY_LOG(WARNING) << "Failed to connect to client " << client_id
+                     << " in ClientAdded. TcpConnect returned status: "
+                     << status.ToString() << ". This may be caused by "
+                     << "trying to connect to a node manager that has failed.";
     return;
   }
 
   // The client is connected.
-  RAY_CHECK(status.ok());
   auto server_conn = TcpServerConnection(std::move(socket));
   remote_server_connections_.emplace(client_id, std::move(server_conn));
 
