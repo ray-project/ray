@@ -37,6 +37,7 @@ DEFAULT_CONFIG = {
     "stepsize": 0.01,
     "observation_filter": "MeanStdFilter",
     "noise_size": 250000000,
+    "report_length": 10,
     "env": None,
     "env_config": {},
 }
@@ -167,6 +168,7 @@ class ESAgent(Agent):
             self.sess, env.action_space, preprocessor,
             self.config["observation_filter"], **policy_params)
         self.optimizer = optimizers.Adam(self.policy, self.config["stepsize"])
+        self.report_length = self.config["report_length"]
 
         # Create the shared noise table.
         print("Creating shared noise table.")
@@ -182,6 +184,7 @@ class ESAgent(Agent):
 
         self.episodes_so_far = 0
         self.timesteps_so_far = 0
+        self.reward_list = []
         self.tstart = time.time()
 
     def _collect_results(self, theta_id, min_episodes, min_timesteps):
@@ -271,13 +274,15 @@ class ESAgent(Agent):
                                                     config["l2_coeff"] * theta)
         # Set the new weights in the local copy of the policy.
         self.policy.set_weights(theta)
+        # Store the rewards
+        if len(all_eval_returns) > 0:
+            self.reward_list.append(np.mean(eval_returns))
 
         # Now sync the filters
         for new_filter in filters:
             self.policy.get_filter().sync(new_filter)
 
         step_tend = time.time()
-        tlogger.record_tabular("EvalEpRewMean", eval_returns.mean())
         tlogger.record_tabular("EvalEpRewStd", eval_returns.std())
         tlogger.record_tabular("EvalEpLenMean", eval_lengths.mean())
 
@@ -310,8 +315,9 @@ class ESAgent(Agent):
             "time_elapsed": step_tend - self.tstart
         }
 
+        reward_mean = np.mean(self.reward_list[-self.report_length:])
         result = dict(
-            episode_reward_mean=eval_returns.mean(),
+            episode_reward_mean=reward_mean,
             episode_len_mean=eval_lengths.mean(),
             timesteps_this_iter=noisy_lengths.sum(),
             info=info)
