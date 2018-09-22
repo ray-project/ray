@@ -48,7 +48,7 @@ CONFIGS = {
         "num_workers": 1
     },
     "ARS": {
-        "num_rollouts": 10
+        "num_rollouts": 10,
         "num_workers": 2,
         "observation_filter": "MeanStdFilter"
     }
@@ -89,7 +89,7 @@ def test(use_object_store, alg_name, failures):
 if __name__ == "__main__":
     failures = []
     for use_object_store in [False, True]:
-        for name in ["ES", "DQN", "DDPG", "PPO", "A3C", "APEX_DDPG"]:
+        for name in ["ES", "DQN", "DDPG", "PPO", "A3C", "APEX_DDPG", "ARS"]:
             test(use_object_store, name, failures)
 
     assert not failures, failures

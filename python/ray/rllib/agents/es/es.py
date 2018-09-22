@@ -20,6 +20,7 @@ from ray.rllib.agents.es import policies
 from ray.rllib.agents.es import tabular_logger as tlogger
 from ray.rllib.agents.es import utils
 from ray.rllib.utils import merge_dicts
+from ray.rllib.utils import FilterManager
 
 Result = namedtuple("Result", [
     "noise_indices", "noisy_returns", "sign_noisy_returns", "noisy_lengths",
@@ -85,8 +86,21 @@ class Worker(object):
             self.sess, self.env.action_space, self.preprocessor,
             config["observation_filter"], **policy_params)
 
-    def get_filter(self):
-        return self.policy.get_filter()
+    @property
+    def filters(self):
+        return {"default": self.policy.get_filter()}
+
+    def sync_filters(self, new_filters):
+        for k in self.filters:
+            self.filters[k].sync(new_filters[k])
+
+    def get_filters(self, flush_after=False):
+        return_filters = {}
+        for k, f in self.filters.items():
+            return_filters[k] = f.as_serializable()
+            if flush_after:
+                f.clear_buffer()
+        return return_filters
 
     def rollout(self, timestep_limit, add_noise=True):
         rollout_rewards, rollout_length = policies.rollout(
@@ -205,11 +219,8 @@ class ESAgent(Agent):
                 num_episodes += sum(len(pair) for pair in result.noisy_lengths)
                 num_timesteps += sum(
                     sum(pair) for pair in result.noisy_lengths)
-        # grab the filters from the workers
-        filters = [
-            ray.get(worker.get_filter.remote()) for worker in self.workers
-        ]
-        return results, num_episodes, num_timesteps, filters
+
+        return results, num_episodes, num_timesteps
 
     def _train(self):
         config = self.config
@@ -222,7 +233,7 @@ class ESAgent(Agent):
         theta_id = ray.put(theta)
         # Use the actors to do rollouts, note that we pass in the ID of the
         # policy weights.
-        results, num_episodes, num_timesteps, filters = self._collect_results(
+        results, num_episodes, num_timesteps = self._collect_results(
             theta_id, config["episodes_per_batch"], config["train_batch_size"])
 
         all_noise_indices = []
@@ -279,8 +290,9 @@ class ESAgent(Agent):
             self.reward_list.append(np.mean(eval_returns))
 
         # Now sync the filters
-        for new_filter in filters:
-            self.policy.get_filter().sync(new_filter)
+        FilterManager.synchronize({
+            "default": self.policy.get_filter()
+        }, self.workers)
 
         step_tend = time.time()
         tlogger.record_tabular("EvalEpRewStd", eval_returns.std())
@@ -346,6 +358,9 @@ class ESAgent(Agent):
         self.episodes_so_far = objects[1]
         self.timesteps_so_far = objects[2]
         self.policy.set_filter(objects[3])
+        FilterManager.synchronize({
+            "default": self.policy.get_filter()
+        }, self.workers)
 
     def compute_action(self, observation):
         return self.policy.compute(observation, update=False)[0]
