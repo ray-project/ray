@@ -336,8 +336,8 @@ void NodeManager::ClientAdded(const ClientTableDataT &client_data) {
 
   // Establish a new NodeManager connection to this GCS client.
   auto client_info = gcs_client_->client_table().GetClient(client_id);
-  RAY_LOG(DEBUG) << "[ClientAdded] Trying to connect to client " << client_id
-                 << " at " << client_info.node_manager_address << ":"
+  RAY_LOG(DEBUG) << "[ClientAdded] Trying to connect to client " << client_id << " at "
+                 << client_info.node_manager_address << ":"
                  << client_info.node_manager_port;
 
   boost::asio::ip::tcp::socket socket(io_service_);
