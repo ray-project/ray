@@ -4,9 +4,7 @@ from __future__ import print_function
 """Ray constants used in the Python code."""
 
 import os
-# Some tests fail because of circular reference of the `ray` module.
-# `ray` module is the top module and shouldn't been imported by submodules
-# in principle.
+
 from ray.local_scheduler import ObjectID
 
 

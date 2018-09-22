@@ -1620,10 +1620,6 @@ def _init(address_info=None,
     node_ip_address = address_info.get("node_ip_address")
     redis_address = address_info.get("redis_address")
 
-    # Because the code will be branched soon, we have to create the temp root
-    # here.
-    tempfile_services.set_temp_root(temp_dir)
-
     # Start any services that do not yet exist.
     if driver_mode == LOCAL_MODE:
         # If starting Ray in LOCAL_MODE, don't start any other processes.
@@ -1671,7 +1667,7 @@ def _init(address_info=None,
             include_webui=include_webui,
             use_raylet=use_raylet,
             plasma_store_socket_name=plasma_store_socket_name,
-            temp_dir=tempfile_services.get_temp_root())
+            temp_dir=temp_dir)
     else:
         if redis_address is None:
             raise Exception("When connecting to an existing cluster, "
@@ -1706,6 +1702,12 @@ def _init(address_info=None,
         # Get the node IP address if one is not provided.
         if node_ip_address is None:
             node_ip_address = services.get_node_ip_address(redis_address)
+        if temp_dir is not None:
+            raise Exception("When connecting to an existing cluster, "
+                            "temp_dir must not be provided.")
+        if plasma_store_socket_name is not None:
+            raise Exception("When connecting to an existing cluster, "
+                            "plasma_store_socket_name must not be provided.")
         # Get the address info of the processes to connect to from Redis.
         address_info = get_address_info_from_redis(
             redis_address, node_ip_address, use_raylet=use_raylet)
@@ -1733,7 +1735,8 @@ def _init(address_info=None,
             driver_address_info["raylet_socket_name"] = (
                 address_info["raylet_socket_names"][0])
 
-    # We did not pass `temp_dir` here because it has been specified above.
+    # We only pass `temp_dir` to a worker (WORKER_MODE).
+    # It can't be a worker here.
     connect(
         driver_address_info,
         object_id_seed=object_id_seed,

@@ -21,6 +21,11 @@ def make_inc_temp(suffix="", prefix="", directory_name="/tmp"):
         suffix (str): The suffix of the temp file.
         prefix (str): The prefix of the temp file.
         directory_name (str) : The base directory of the temp file.
+
+    Returns:
+        A string of file name. If there existing a file having the same name,
+        the returned name will look like
+        "{directory_name}/{prefix}-{unique_index}{suffix}"
     """
     index = _incremental_dict[suffix, prefix, directory_name]
     for seq in range(tempfile.TMP_MAX):
@@ -89,13 +94,13 @@ def get_logs_dir_path():
 
 
 def get_sockets_dir_path():
-    """Get a temp dir for sockets"""
+    """Get a temp dir for sockets."""
     sockets_dir = os.path.join(get_temp_root(), "sockets")
     try_to_create_directory(sockets_dir)
     return sockets_dir
 
 
-def get_raylet_socket_name(suffix=''):
+def get_raylet_socket_name(suffix=""):
     """Get a socket name for raylet."""
     sockets_dir = get_sockets_dir_path()
 
@@ -105,11 +110,13 @@ def get_raylet_socket_name(suffix=''):
 
 
 def get_object_store_socket_name():
+    """Get a socket name for plasma object store."""
     sockets_dir = get_sockets_dir_path()
     return make_inc_temp(prefix="plasma_store", directory_name=sockets_dir)
 
 
 def get_plasma_manager_socket_name():
+    """Get a socket name for plasma manager."""
     sockets_dir = get_sockets_dir_path()
     return make_inc_temp(prefix="plasma_manager", directory_name=sockets_dir)
 
