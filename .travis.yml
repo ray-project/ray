@@ -243,6 +243,9 @@ script:
   - python -m pytest -v python/ray/rllib/test/test_optimizers.py
   - python -m pytest -v python/ray/rllib/test/test_evaluators.py
 
+  # ray temp file tests
+  - python -m pytest -v python/ray/test/tempfile_test.py
+
 deploy:
   - provider: s3
     access_key_id: AKIAJ2L7XDUSZVTXI5QA
