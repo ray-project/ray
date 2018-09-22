@@ -343,10 +343,10 @@ void NodeManager::ClientAdded(const ClientTableDataT &client_data) {
   boost::asio::ip::tcp::socket socket(io_service_);
   auto status =
       TcpConnect(socket, client_info.node_manager_address, client_info.node_manager_port);
-  // ClientTable is Log<ActorID, ActorTableData>, a disconnected client has 2 entries.
-  // The first one has is_insertion=true and the second one has is_insertion=false.
-  // When a new raylet starts, ClientAdded will be called with the disconnected client's
-  // first entry, which will cause IOError and "Connection refused".
+  // A disconnected client has 2 entries in the client table (one for being
+  // inserted and one for being removed). When a new raylet starts, ClientAdded
+  // will be called with the disconnected client's first entry, which will cause
+  // IOError and "Connection refused".
   if (!status.ok()) {
     RAY_CHECK(status.message() == "Connection refused");
     RAY_LOG(WARNING) << "Failed to connect to client " << client_id
