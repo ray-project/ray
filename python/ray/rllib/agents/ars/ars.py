@@ -28,8 +28,8 @@ Result = namedtuple("Result", [
 
 DEFAULT_CONFIG = with_common_config({
     'noise_stdev': 0.02,  # std deviation of parameter noise
-    'num_rollouts': 32,  # number of perturbations to try
-    'rollouts_used': 32,  # number of perturbations to keep in gradient estimate
+    'num_rollouts': 32,  # number of perturbs to try
+    'rollouts_used': 32,  # number of perturbs to keep in gradient estimate
     'num_workers': 2,
     'sgd_stepsize': 0.01,  # sgd step-size
     'observation_filter': "MeanStdFilter",
