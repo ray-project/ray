@@ -543,6 +543,9 @@ def exec_cmd(cluster_config_file, cmd, screen, tmux, stop, start, cluster_name,
     assert not (screen and tmux), "Can specify only one of `screen` or `tmux`."
     exec_cluster(cluster_config_file, cmd, screen, tmux, stop, start,
                  cluster_name, port_forward)
+    if tmux:
+        logger.info("Use `ray attach {} --tmux` "
+                    "to check on command status.".format(cluster_config_file))
 
 
 @cli.command()
