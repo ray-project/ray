@@ -58,11 +58,6 @@ bash "$TP_SCRIPT_DIR/build_credis.sh"
 #bash "$TP_SCRIPT_DIR/build_arrow.sh" $PYTHON_EXECUTABLE
 
 ##############################################
-# parquet (skipped as it is inlined in build_arrow.sh)
-##############################################
-# bash "$TP_SCRIPT_DIR/build_parquet.sh"
-
-##############################################
 # catapult
 ##############################################
 # Clone catapult and build the static HTML needed for the UI.
