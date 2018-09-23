@@ -4,7 +4,8 @@ pendulum-ppo:
     run: PPO
     config:
         train_batch_size: 2048
-        num_workers: 4
+        vf_clip_param: 10.0
+        num_workers: 2
         lambda: 0.1
         gamma: 0.95
         lr: 0.0003
