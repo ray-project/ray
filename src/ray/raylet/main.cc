@@ -19,7 +19,7 @@ int main(int argc, char *argv[]) {
                                          ray::RayLog::ShutDownRayLog, argv[0], RAY_INFO,
                                          /*log_dir=*/"");
   ray::RayLog::InstallFailureSignalHandler();
-  RAY_CHECK(argc == 11);
+  RAY_CHECK(argc == 11 || argc == 12);
 
   const std::string raylet_socket_name = std::string(argv[1]);
   const std::string store_socket_name = std::string(argv[2]);
@@ -31,6 +31,12 @@ int main(int argc, char *argv[]) {
   const std::string static_resource_list = std::string(argv[8]);
   const std::string python_worker_command = std::string(argv[9]);
   const std::string java_worker_command = std::string(argv[10]);
+
+  std::string _redis_password = "";
+  if (argc == 12) {
+    _redis_password = std::string(argv[11]);
+  }
+  const std::string redis_password = _redis_password;
 
   // Configuration for the node manager.
   ray::raylet::NodeManagerConfig node_manager_config;
@@ -92,7 +98,8 @@ int main(int argc, char *argv[]) {
                  << "object_chunk_size = " << object_manager_config.object_chunk_size;
 
   //  initialize mock gcs & object directory
-  auto gcs_client = std::make_shared<ray::gcs::AsyncGcsClient>(redis_address, redis_port);
+  auto gcs_client = std::make_shared<ray::gcs::AsyncGcsClient>(redis_address, redis_port,
+                                                               redis_password);
   RAY_LOG(DEBUG) << "Initializing GCS client "
                  << gcs_client->client_table().GetLocalClientId();
 
@@ -100,8 +107,8 @@ int main(int argc, char *argv[]) {
   boost::asio::io_service main_service;
 
   ray::raylet::Raylet server(main_service, raylet_socket_name, node_ip_address,
-                             redis_address, redis_port, node_manager_config,
-                             object_manager_config, gcs_client);
+                             redis_address, redis_port, redis_password,
+                             node_manager_config, object_manager_config, gcs_client);
 
   // Destroy the Raylet on a SIGTERM. The pointer to main_service is
   // guaranteed to be valid since this function will run the event loop

@@ -1223,12 +1223,13 @@ def _initialize_serialization(driver_id, worker=global_worker):
 
 def get_address_info_from_redis_helper(redis_address,
                                        node_ip_address,
-                                       use_raylet=False):
+                                       use_raylet=False,
+                                       redis_password=None):
     redis_ip_address, redis_port = redis_address.split(":")
     # For this command to work, some other client (on the same machine as
     # Redis) must have run "CONFIG SET protected-mode no".
     redis_client = redis.StrictRedis(
-        host=redis_ip_address, port=int(redis_port))
+        host=redis_ip_address, port=int(redis_port), password=redis_password)
 
     if not use_raylet:
         # The client table prefix must be kept in sync with the file
@@ -1332,12 +1333,16 @@ def get_address_info_from_redis_helper(redis_address,
 def get_address_info_from_redis(redis_address,
                                 node_ip_address,
                                 num_retries=5,
-                                use_raylet=False):
+                                use_raylet=False,
+                                redis_password=None):
     counter = 0
     while True:
         try:
             return get_address_info_from_redis_helper(
-                redis_address, node_ip_address, use_raylet=use_raylet)
+                redis_address,
+                node_ip_address,
+                use_raylet=use_raylet,
+                redis_password=None)
         except Exception:
             if counter == num_retries:
                 raise
@@ -1405,6 +1410,7 @@ def _init(address_info=None,
           resources=None,
           num_redis_shards=None,
           redis_max_clients=None,
+          redis_password=None,
           plasma_directory=None,
           huge_pages=False,
           include_webui=True,
@@ -1460,6 +1466,8 @@ def _init(address_info=None,
             the primary Redis shard.
         redis_max_clients: If provided, attempt to configure Redis with this
             maxclients number.
+        redis_password (str): Prevents external clients without the password
+            from connecting to Redis if provided.
         plasma_directory: A directory where the Plasma memory mapped files will
             be created.
         huge_pages: Boolean flag indicating whether to start the Object
@@ -1544,6 +1552,7 @@ def _init(address_info=None,
             resources=resources,
             num_redis_shards=num_redis_shards,
             redis_max_clients=redis_max_clients,
+            redis_password=redis_password,
             plasma_directory=plasma_directory,
             huge_pages=huge_pages,
             include_webui=include_webui,
@@ -1596,7 +1605,10 @@ def _init(address_info=None,
             node_ip_address = services.get_node_ip_address(redis_address)
         # Get the address info of the processes to connect to from Redis.
         address_info = get_address_info_from_redis(
-            redis_address, node_ip_address, use_raylet=use_raylet)
+            redis_address,
+            node_ip_address,
+            use_raylet=use_raylet,
+            redis_password=redis_password)
 
     # Connect this driver to Redis, the object store, and the local scheduler.
     # Choose the first object store and local scheduler if there are multiple.
@@ -1628,7 +1640,8 @@ def _init(address_info=None,
         object_id_seed=object_id_seed,
         mode=driver_mode,
         worker=global_worker,
-        use_raylet=use_raylet)
+        use_raylet=use_raylet,
+        redis_password=redis_password)
     return address_info
 
 
@@ -1647,6 +1660,7 @@ def init(redis_address=None,
          ignore_reinit_error=False,
          num_redis_shards=None,
          redis_max_clients=None,
+         redis_password=None,
          plasma_directory=None,
          huge_pages=False,
          include_webui=True,
@@ -1709,6 +1723,8 @@ def init(redis_address=None,
             the primary Redis shard.
         redis_max_clients: If provided, attempt to configure Redis with this
             maxclients number.
+        redis_password (str): Prevents external clients without the password
+            from connecting to Redis if provided.
         plasma_directory: A directory where the Plasma memory mapped files will
             be created.
         huge_pages: Boolean flag indicating whether to start the Object
@@ -1772,6 +1788,7 @@ def init(redis_address=None,
         resources=resources,
         num_redis_shards=num_redis_shards,
         redis_max_clients=redis_max_clients,
+        redis_password=redis_password,
         plasma_directory=plasma_directory,
         huge_pages=huge_pages,
         include_webui=include_webui,
@@ -1975,7 +1992,8 @@ def connect(info,
             object_id_seed=None,
             mode=WORKER_MODE,
             worker=global_worker,
-            use_raylet=False):
+            use_raylet=False,
+            redis_password=None):
     """Connect this worker to the local scheduler, to Plasma, and to Redis.
 
     Args:
@@ -1986,6 +2004,8 @@ def connect(info,
         mode: The mode of the worker. One of SCRIPT_MODE, WORKER_MODE, and
             LOCAL_MODE.
         use_raylet: True if the new raylet code path should be used.
+        redis_password (str): Prevents external clients without the password
+            from connecting to Redis if provided.
     """
     # Do some basic checking to make sure we didn't call ray.init twice.
     error_message = "Perhaps you called ray.init twice by accident?"
@@ -2019,7 +2039,10 @@ def connect(info,
     # Create a Redis client.
     redis_ip_address, redis_port = info["redis_address"].split(":")
     worker.redis_client = thread_safe_client(
-        redis.StrictRedis(host=redis_ip_address, port=int(redis_port)))
+        redis.StrictRedis(
+            host=redis_ip_address,
+            port=int(redis_port),
+            password=redis_password))
 
     # For driver's check that the version information matches the version
     # information that the Ray cluster was started with.
@@ -2060,7 +2083,8 @@ def connect(info,
                 [log_stdout_file, log_stderr_file])
 
     # Create an object for interfacing with the global state.
-    global_state._initialize_global_state(redis_ip_address, int(redis_port))
+    global_state._initialize_global_state(
+        redis_ip_address, int(redis_port), redis_password=redis_password)
 
     # Register the worker with Redis.
     if mode == SCRIPT_MODE:

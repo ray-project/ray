@@ -2,6 +2,8 @@
 
 #include "ray/gcs/redis_context.h"
 
+static std::string default_password = "";
+
 static void GetRedisShards(redisContext *context, std::vector<std::string> &addresses,
                            std::vector<int> &ports) {
   // Get the total number of Redis shards in the system.
@@ -71,10 +73,12 @@ namespace gcs {
 
 AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
                                const ClientID &client_id, CommandType command_type,
-                               bool is_test_client = false) {
+                               bool is_test_client = false,
+                               const std::string &password = default_password) {
   primary_context_ = std::make_shared<RedisContext>();
 
-  RAY_CHECK_OK(primary_context_->Connect(address, port, /*sharding=*/true));
+  RAY_CHECK_OK(
+      primary_context_->Connect(address, port, /*sharding=*/true, /*password=*/password));
 
   if (!is_test_client) {
     // Moving sharding into constructor defaultly means that sharding = true.
@@ -94,12 +98,13 @@ AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
 
     RAY_CHECK(shard_contexts_.size() == addresses.size());
     for (size_t i = 0; i < addresses.size(); ++i) {
-      RAY_CHECK_OK(
-          shard_contexts_[i]->Connect(addresses[i], ports[i], /*sharding=*/true));
+      RAY_CHECK_OK(shard_contexts_[i]->Connect(addresses[i], ports[i], /*sharding=*/true,
+                                               /*password=*/password));
     }
   } else {
     shard_contexts_.push_back(std::make_shared<RedisContext>());
-    RAY_CHECK_OK(shard_contexts_[0]->Connect(address, port, /*sharding=*/true));
+    RAY_CHECK_OK(shard_contexts_[0]->Connect(address, port, /*sharding=*/true,
+                                             /*password=*/password));
   }
 
   client_table_.reset(new ClientTable({primary_context_}, this, client_id));
@@ -126,12 +131,15 @@ AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
 // Use of kChain currently only applies to Table::Add which affects only the
 // task table, and when RAY_USE_NEW_GCS is set at compile time.
 AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
-                               const ClientID &client_id, bool is_test_client = false)
+                               const ClientID &client_id, bool is_test_client = false,
+                               const std::string &password = "")
     : AsyncGcsClient(address, port, client_id, CommandType::kChain, is_test_client) {}
 #else
 AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
-                               const ClientID &client_id, bool is_test_client = false)
-    : AsyncGcsClient(address, port, client_id, CommandType::kRegular, is_test_client) {}
+                               const ClientID &client_id, bool is_test_client = false,
+                               const std::string &password = "")
+    : AsyncGcsClient(address, port, client_id, CommandType::kRegular, is_test_client,
+                     password) {}
 #endif  // RAY_USE_NEW_GCS
 
 AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
@@ -143,8 +151,9 @@ AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
     : AsyncGcsClient(address, port, ClientID::from_random(), command_type,
                      is_test_client) {}
 
-AsyncGcsClient::AsyncGcsClient(const std::string &address, int port)
-    : AsyncGcsClient(address, port, ClientID::from_random()) {}
+AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
+                               const std::string &password = default_password)
+    : AsyncGcsClient(address, port, ClientID::from_random(), false, password) {}
 
 AsyncGcsClient::AsyncGcsClient(const std::string &address, int port, bool is_test_client)
     : AsyncGcsClient(address, port, ClientID::from_random(), is_test_client) {}

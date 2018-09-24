@@ -19,7 +19,7 @@ class Monitor {
   /// \param redis_address The GCS Redis address to connect to.
   /// \param redis_port The GCS Redis port to connect to.
   Monitor(boost::asio::io_service &io_service, const std::string &redis_address,
-          int redis_port);
+          int redis_port, const std::string &redis_password);
 
   /// Start the monitor. Listen for heartbeats from Raylets and mark Raylets
   /// that do not send a heartbeat within a given period as dead.

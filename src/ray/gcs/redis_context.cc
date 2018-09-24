@@ -135,7 +135,30 @@ RedisContext::~RedisContext() {
   }
 }
 
-Status RedisContext::Connect(const std::string &address, int port, bool sharding) {
+static std::string default_password = "";
+
+Status authenticate_redis(redisContext *context, const std::string &password) {
+  if (password == "") {
+    return Status::OK();
+  }
+  std::string auth_command = "AUTH " + password;
+  redisReply *reply =
+      reinterpret_cast<redisReply *>(redisCommand(context, auth_command.c_str()));
+  REDIS_CHECK_ERROR(context, reply);
+  freeReplyObject(reply);
+  return Status::OK();
+}
+
+void authenticate_redis(redisAsyncContext *context, const std::string &password) {
+  if (password == "") {
+    return;
+  }
+  std::string auth_command = "AUTH " + password;
+  redisAsyncCommand(context, NULL, NULL, auth_command.c_str());
+}
+
+Status RedisContext::Connect(const std::string &address, int port, bool sharding,
+                             const std::string &password = default_password) {
   int connection_attempts = 0;
   context_ = redisConnect(address.c_str(), port);
   while (context_ == nullptr || context_->err) {
@@ -155,6 +178,8 @@ Status RedisContext::Connect(const std::string &address, int port, bool sharding
     context_ = redisConnect(address.c_str(), port);
     connection_attempts += 1;
   }
+  RAY_CHECK_OK(authenticate_redis(context_, password));
+
   redisReply *reply = reinterpret_cast<redisReply *>(
       redisCommand(context_, "CONFIG SET notify-keyspace-events Kl"));
   REDIS_CHECK_ERROR(context_, reply);
@@ -166,12 +191,16 @@ Status RedisContext::Connect(const std::string &address, int port, bool sharding
     RAY_LOG(FATAL) << "Could not establish connection to redis " << address << ":"
                    << port;
   }
+  authenticate_redis(async_context_, password);
+
   // Connect to subscribe context
   subscribe_context_ = redisAsyncConnect(address.c_str(), port);
   if (subscribe_context_ == nullptr || subscribe_context_->err) {
     RAY_LOG(FATAL) << "Could not establish subscribe connection to redis " << address
                    << ":" << port;
   }
+  authenticate_redis(subscribe_context_, password);
+
   return Status::OK();
 }
 

@@ -29,6 +29,7 @@ class Raylet {
   /// \param node_ip_address The IP address of this node.
   /// \param redis_address The IP address of the redis instance we are connecting to.
   /// \param redis_port The port of the redis instance we are connecting to.
+  /// \param redis_password The password of the redis instance we are connecting to.
   /// \param node_manager_config Configuration to initialize the node manager.
   /// scheduler with.
   /// \param object_manager_config Configuration to initialize the object
@@ -36,7 +37,8 @@ class Raylet {
   /// \param gcs_client A client connection to the GCS.
   Raylet(boost::asio::io_service &main_service, const std::string &socket_name,
          const std::string &node_ip_address, const std::string &redis_address,
-         int redis_port, const NodeManagerConfig &node_manager_config,
+         int redis_port, const std::string &redis_password,
+         const NodeManagerConfig &node_manager_config,
          const ObjectManagerConfig &object_manager_config,
          std::shared_ptr<gcs::AsyncGcsClient> gcs_client);
 
@@ -49,6 +51,7 @@ class Raylet {
                           const std::string &raylet_socket_name,
                           const std::string &object_store_socket_name,
                           const std::string &redis_address, int redis_port,
+                          const std::string &redis_password,
                           boost::asio::io_service &io_service, const NodeManagerConfig &);
 
   ray::Status RegisterPeriodicTimer(boost::asio::io_service &io_service);

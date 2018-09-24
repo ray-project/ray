@@ -90,6 +90,11 @@ def cli(logging_level, logging_format):
     help=("If provided, attempt to configure Redis with this "
           "maximum number of clients."))
 @click.option(
+    "--redis-password",
+    required=False,
+    type=str,
+    help="If provided, configure Redis with this password")
+@click.option(
     "--redis-shard-ports",
     required=False,
     type=str,
@@ -190,10 +195,11 @@ def cli(logging_level, logging_format):
     default=None,
     help="manually specify the root temporary dir of the Ray process")
 def start(node_ip_address, redis_address, redis_port, num_redis_shards,
-          redis_max_clients, redis_shard_ports, object_manager_port,
-          object_store_memory, num_workers, num_cpus, num_gpus, resources,
-          head, no_ui, block, plasma_directory, huge_pages, autoscaling_config,
-          use_raylet, no_redirect_worker_output, no_redirect_output,
+          redis_max_clients, redis_password, redis_shard_ports,
+          object_manager_port, object_store_memory, num_workers, num_cpus,
+          num_gpus, resources, head, no_ui, block, plasma_directory,
+          huge_pages, autoscaling_config, use_raylet,
+          no_redirect_worker_output, no_redirect_output,
           plasma_store_socket_name, raylet_socket_name, temp_dir):
     # Convert hostnames to numerical IP address.
     if node_ip_address is not None:
@@ -269,6 +275,7 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             num_redis_shards=num_redis_shards,
             redis_max_clients=redis_max_clients,
             redis_protected_mode=False,
+            redis_password=redis_password,
             include_webui=(not no_ui),
             plasma_directory=plasma_directory,
             huge_pages=huge_pages,
@@ -315,10 +322,12 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
 
         # Wait for the Redis server to be started. And throw an exception if we
         # can't connect to it.
-        services.wait_for_redis_to_start(redis_ip_address, int(redis_port))
+        services.wait_for_redis_to_start(
+            redis_ip_address, int(redis_port), password=redis_password)
 
         # Create a Redis client.
-        redis_client = services.create_redis_client(redis_address)
+        redis_client = services.create_redis_client(
+            redis_address, password=redis_password)
 
         # Check that the verion information on this node matches the version
         # information that the cluster was started with.
