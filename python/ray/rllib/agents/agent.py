@@ -41,8 +41,9 @@ COMMON_CONFIG = {
     "observation_filter": "NoFilter",
     # Whether to synchronize the statistics of remote filters.
     "synchronize_filters": True,
-    # Whether to clip rewards prior to experience postprocessing
-    "clip_rewards": False,
+    # Whether to clip rewards prior to experience postprocessing. Setting to
+    # None means clip for Atari only.
+    "clip_rewards": None,
     # Whether to use rllib or deepmind preprocessors
     "preprocessor_pref": "deepmind",
     # Arguments to pass to the env creator
