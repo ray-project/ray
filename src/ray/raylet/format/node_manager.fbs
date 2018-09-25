@@ -26,6 +26,9 @@ enum MessageType:int {
   // Notify the local scheduler that this client is disconnecting unexpectedly.
   // This is sent from a worker to a local scheduler.
   DisconnectClient,
+  // Notify the local scheduler that this client is disconnecting gracefully.
+  // This is sent from a worker to a local scheduler.
+  IntentionalDisconnectClient,
   // Get a new task from the local scheduler. This is sent from a worker to a
   // local scheduler.
   GetTask,
@@ -70,9 +73,6 @@ enum MessageType:int {
   PushProfileEventsRequest,
   // Free the objects in objects store.
   FreeObjectsInObjectStoreRequest,
-  // Notify the local scheduler that this client is disconnecting gracefully.
-  // This is sent from a worker to a local scheduler.
-  IntentionalDisconnectClient,
 }
 
 table TaskExecutionSpecification {
