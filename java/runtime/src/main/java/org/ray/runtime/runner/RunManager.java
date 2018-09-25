@@ -110,7 +110,7 @@ public class RunManager {
         "",
         ip,
         redisAddress,
-        false,
+        true,
         false,
         null
     );
@@ -131,7 +131,10 @@ public class RunManager {
       RunInfo.ProcessType pt, String mainClass, String additionalClassPaths,
       String additionalConfigs,
       String additionalJvmArgs, String ip, String redisAddr, String agentlibAddr) {
-    String cmd = "java -ea -noverify " + params.jvm_parameters + " ";
+    String cmd = "java -ea -noverify";
+    if (!params.jvm_parameters.isEmpty()) {
+      cmd += " " + params.jvm_parameters;
+    }
     if (agentlibAddr != null && !agentlibAddr.equals("")) {
       cmd += " -agentlib:jdwp=transport=dt_socket,address=" + agentlibAddr + ",server=y,suspend=n";
     }
