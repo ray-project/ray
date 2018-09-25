@@ -562,6 +562,14 @@ void NodeManager::ProcessClientMessage(
     // because it's already disconnected.
     return;
   } break;
+  case protocol::MessageType::IntentionalDisconnectClient: {
+    if (registered_worker) {
+      registered_worker->MarkDead();
+    }
+    // We don't need to receive future messages from this client,
+    // because it's already disconnected.
+    return;
+  } break;
   case protocol::MessageType::SubmitTask: {
     ProcessSubmitTaskMessage(message_data);
   } break;
@@ -638,7 +646,7 @@ void NodeManager::ProcessGetTaskMessage(
 
 void NodeManager::ProcessDisconnectClientMessage(
     const std::shared_ptr<LocalClientConnection> &client) {
-  RAY_LOG(INFO) << "[NodeManager] ProcessDisconnectClientMessage Started!";
+  RAY_LOG(INFO) << "ProcessDisconnectClientMessage Started!";
   // Remove the dead worker from the pool and stop listening for messages.
   const std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
 

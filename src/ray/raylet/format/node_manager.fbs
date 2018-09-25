@@ -23,7 +23,7 @@ enum MessageType:int {
   // Send a reply confirming the successful registration of a worker or driver.
   // This is sent from the local scheduler to a worker or driver.
   RegisterClientReply,
-  // Notify the local scheduler that this client is disconnecting gracefully.
+  // Notify the local scheduler that this client is disconnecting unexpectedly.
   // This is sent from a worker to a local scheduler.
   DisconnectClient,
   // Get a new task from the local scheduler. This is sent from a worker to a
@@ -70,6 +70,9 @@ enum MessageType:int {
   PushProfileEventsRequest,
   // Free the objects in objects store.
   FreeObjectsInObjectStoreRequest,
+  // Notify the local scheduler that this client is disconnecting gracefully.
+  // This is sent from a worker to a local scheduler.
+  IntentionalDisconnectClient,
 }
 
 table TaskExecutionSpecification {
@@ -183,7 +186,7 @@ table PushErrorRequest {
 }
 
 table FreeObjectsRequest {
-  // Whether keep this request with local object store 
+  // Whether keep this request with local object store
   // or send it to all the object stores.
   local_only: bool;
   // List of object ids we'll delete from object store.

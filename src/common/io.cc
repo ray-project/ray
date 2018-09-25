@@ -335,6 +335,10 @@ void read_message(int fd, int64_t *type, int64_t *length, uint8_t **bytes) {
 
 disconnected:
   /* Handle the case in which the socket is closed. */
+  // RAY_LOG(INFO) << "Socket Disconnected in read_message "
+  //               << static_cast<int64_t>(MessageType::DisconnectClient);
+  RAY_LOG(INFO) << "Socket Disconnected in read_message "
+                << static_cast<int64_t>(CommonMessageType::DISCONNECT_CLIENT);
   *type = static_cast<int64_t>(CommonMessageType::DISCONNECT_CLIENT);
   *length = 0;
   *bytes = NULL;
