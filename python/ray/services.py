@@ -1098,8 +1098,10 @@ def start_raylet(redis_address,
 
     if cleanup:
         all_processes[PROCESS_TYPE_RAYLET].append(pid)
-    record_log_files_in_redis(redis_address, node_ip_address,
-                              [stdout_file, stderr_file])
+    record_log_files_in_redis(
+        redis_address,
+        node_ip_address, [stdout_file, stderr_file],
+        password=redis_password)
 
     return raylet_name
 
