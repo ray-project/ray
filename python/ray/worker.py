@@ -1766,6 +1766,11 @@ def init(redis_address=None,
         # This environment variable is used in our testing setup.
         logger.info("Detected environment variable 'RAY_USE_XRAY'.")
         use_raylet = True
+    if not use_raylet and redis_password is not None:
+        raise Exception("Setting the 'redis_password' argument is not "
+                        "supported in legacy Ray. To run Ray with "
+                        "password-protected Redis ports, set "
+                        "'use_raylet=True'.")
 
     # Convert hostnames to numerical IP address.
     if node_ip_address is not None:
