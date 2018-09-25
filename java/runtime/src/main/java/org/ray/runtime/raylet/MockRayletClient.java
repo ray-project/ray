@@ -1,5 +1,6 @@
 package org.ray.runtime.raylet;
 
+import com.google.common.collect.ImmutableList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -82,12 +83,15 @@ public class MockRayletClient implements RayletClient {
 
   @Override
   public UniqueId generateTaskId(UniqueId driverId, UniqueId parentTaskId, int taskIndex) {
-    throw new RuntimeException("Not implemented here.");
+    return UniqueId.randomId();
   }
 
   @Override
   public <T> WaitResult<T> wait(List<RayObject<T>> waitFor, int numReturns, int timeoutMs) {
-    throw new RuntimeException("Not implemented here.");
+    return new WaitResult<T>(
+        waitFor,
+        ImmutableList.of()
+    );
   }
 
   @Override
