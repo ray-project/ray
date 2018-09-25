@@ -42,11 +42,11 @@ class TestRedisPassword(object):
         redis_ip, redis_port = redis_address.split(":")
 
         redis_client = redis.StrictRedis(
-                host=redis_ip, port=redis_port, password=self.PASSWORD)
+            host=redis_ip, port=redis_port, password=self.PASSWORD)
 
         assert redis_client.ping()
 
         redis_client = redis.StrictRedis(
-                host=redis_ip, port=redis_port, password=None)
+            host=redis_ip, port=redis_port, password=None)
         with pytest.raises(redis.ResponseError):
             redis_client.ping()
