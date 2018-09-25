@@ -142,11 +142,11 @@ public class RunManager {
     cmd += " -Djava.library.path=" + StringUtil.mergeArray(paths.java_jnilib_paths, ":");
     cmd += " -classpath " + StringUtil.mergeArray(paths.java_class_paths, ":");
 
-    if (additionalClassPaths.length() > 0) {
+    if (!additionalClassPaths.isEmpty()) {
       cmd += ":" + additionalClassPaths;
     }
 
-    if (additionalJvmArgs.length() > 0) {
+    if (!additionalJvmArgs.isEmpty()) {
       cmd += " " + additionalJvmArgs;
     }
 
@@ -160,7 +160,7 @@ public class RunManager {
         + section + "log_dir=" + params.log_dir + ";"
         + section + "run_mode=" + params.run_mode;
 
-    if (additionalConfigs.length() > 0) {
+    if (!additionalConfigs.isEmpty()) {
       cmd += ";" + additionalConfigs;
     }
 
