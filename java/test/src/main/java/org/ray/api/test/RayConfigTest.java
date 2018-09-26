@@ -14,12 +14,7 @@ public class RayConfigTest {
     RayConfig rayConfig = RayConfig.create();
 
     Assert.assertEquals("/path/to/ray", rayConfig.rayHome);
-<<<<<<< HEAD
     Assert.assertEquals( WorkerMode.DRIVER, rayConfig.workerMode);
     Assert.assertEquals(RunMode.CLUSTER, rayConfig.runMode);
-=======
-    Assert.assertEquals(WorkerMode.DRIVER, rayConfig.workerMode);
-    Assert.assertEquals(RunMode.SINGLE_BOX, rayConfig.runMode);
->>>>>>> Fix checkstyle failure.
   }
 }
