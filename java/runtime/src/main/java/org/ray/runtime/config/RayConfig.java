@@ -228,6 +228,7 @@ public class RayConfig {
    * 3. `ray.default.conf` file.
   */
   public static RayConfig create() {
+    ConfigFactory.invalidateCaches();
     Config config = ConfigFactory.systemProperties()
         .withFallback(ConfigFactory.load(CUSTOM_CONFIG_FILE))
         .withFallback(ConfigFactory.load(DEFAULT_CONFIG_FILE));
