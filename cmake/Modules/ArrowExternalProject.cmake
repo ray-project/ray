@@ -23,11 +23,6 @@ set(ARROW_INSTALL_PREFIX ${CMAKE_CURRENT_BINARY_DIR}/external/arrow-install)
 set(ARROW_HOME ${ARROW_INSTALL_PREFIX})
 set(ARROW_SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/external/arrow/src/arrow_ep)
 
-# The following is needed because in CentOS, the lib directory is named lib64
-if(EXISTS "/etc/redhat-release" AND CMAKE_SIZEOF_VOID_P EQUAL 8)
-  set(LIB_SUFFIX 64)
-endif()
-
 set(ARROW_INCLUDE_DIR ${ARROW_HOME}/include)
 set(ARROW_LIBRARY_DIR ${ARROW_HOME}/lib${LIB_SUFFIX})
 set(ARROW_SHARED_LIB ${ARROW_LIBRARY_DIR}/libarrow${CMAKE_SHARED_LIBRARY_SUFFIX})

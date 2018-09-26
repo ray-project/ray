@@ -4,6 +4,11 @@
 # we have to turn it on for dependencies too
 set(EP_CXX_FLAGS "${EP_CXX_FLAGS} -D_GLIBCXX_USE_CXX11_ABI=0")
 
+# The following is needed because in CentOS, the lib directory is named lib64
+if(EXISTS "/etc/redhat-release" AND CMAKE_SIZEOF_VOID_P EQUAL 8)
+  set(LIB_SUFFIX 64)
+endif()
+
 if(RAY_BUILD_TESTS OR RAY_BUILD_BENCHMARKS)
   add_custom_target(unittest ctest -L unittest)
 

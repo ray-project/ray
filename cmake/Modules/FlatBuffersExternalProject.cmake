@@ -10,11 +10,6 @@
 #  - FLATBUFFERS_COMPILER
 #  - FBS_DEPENDS, to keep compatible
 
-# The following is needed because in CentOS, the lib directory is named lib64
-if(EXISTS "/etc/redhat-release" AND CMAKE_SIZEOF_VOID_P EQUAL 8)
-  set(LIB_SUFFIX 64)
-endif()
-
 if(DEFINED ENV{FLATBUFFERS_HOME} AND EXISTS $ENV{FLATBUFFERS_HOME})
   set(FLATBUFFERS_HOME "$ENV{FLATBUFFERS_HOME}")
   set(FLATBUFFERS_INCLUDE_DIR "${FLATBUFFERS_HOME}/include")
