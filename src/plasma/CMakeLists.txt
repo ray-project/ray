@@ -2,8 +2,8 @@ cmake_minimum_required(VERSION 3.4)
 
 project(plasma)
 
-# Recursively include common
-include(${CMAKE_CURRENT_LIST_DIR}/../common/cmake/Common.cmake)
+include_directories(${CMAKE_CURRENT_LIST_DIR})
+include_directories(${CMAKE_CURRENT_LIST_DIR}/thirdparty)
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} --std=c99 -O3")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --std=c++11 -O3 -Werror -Wall")
@@ -12,8 +12,7 @@ if(UNIX AND NOT APPLE)
   link_libraries(rt)
 endif()
 
-include_directories("${ARROW_DIR}/cpp/src/")
-# include_directories("${CMAKE_CURRENT_LIST_DIR}/../")
+include_directories("${ARROW_INCLUDE_DIR}")
 
 set(PLASMA_FBS_SRC "${CMAKE_CURRENT_LIST_DIR}/format/plasma.fbs" "${CMAKE_CURRENT_LIST_DIR}/format/common.fbs")
 set(OUTPUT_DIR ${CMAKE_CURRENT_LIST_DIR}/format/)
@@ -23,14 +22,14 @@ set(PLASMA_FBS_OUTPUT_FILES
   "${OUTPUT_DIR}/common_generated.h")
 
 add_custom_target(gen_plasma_fbs DEPENDS ${PLASMA_FBS_OUTPUT_FILES})
-add_dependencies(gen_plasma_fbs flatbuffers_ep)
+add_dependencies(gen_plasma_fbs arrow_ep)
 
 # Copy the fbs files from Arrow project to local directory.
 add_custom_command(
   OUTPUT ${PLASMA_FBS_SRC}
   COMMAND mkdir -p ${CMAKE_CURRENT_LIST_DIR}/format/
-  COMMAND cp ${CMAKE_CURRENT_LIST_DIR}/../../thirdparty/build/arrow/cpp/src/plasma/format/plasma.fbs ${CMAKE_CURRENT_LIST_DIR}/format/
-  COMMAND cp ${CMAKE_CURRENT_LIST_DIR}/../../thirdparty/build/arrow/cpp/src/plasma/format/common.fbs ${CMAKE_CURRENT_LIST_DIR}/format/
+  COMMAND cp ${ARROW_SOURCE_DIR}/cpp/src/plasma/format/plasma.fbs ${CMAKE_CURRENT_LIST_DIR}/format/
+  COMMAND cp ${ARROW_SOURCE_DIR}/cpp/src/plasma/format/common.fbs ${CMAKE_CURRENT_LIST_DIR}/format/
   COMMENT "Copying ${PLASMA_FBS_SRC} to local"
   VERBATIM)
 

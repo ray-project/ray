@@ -2,9 +2,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import logging
 import numpy as np
 
 from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
+
+logger = logging.getLogger(__name__)
 
 
 class AsyncHyperBandScheduler(FIFOScheduler):
@@ -133,8 +136,8 @@ class _Bracket():
                 if cutoff is not None and cur_rew < cutoff:
                     action = TrialScheduler.STOP
                 if cur_rew is None:
-                    print("Reward attribute is None! Consider"
-                          " reporting using a different field.")
+                    logger.warning("Reward attribute is None! Consider"
+                                   " reporting using a different field.")
                 else:
                     recorded[trial.trial_id] = cur_rew
                 break

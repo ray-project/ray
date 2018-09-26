@@ -41,7 +41,9 @@ public class PlasmaFreeTest {
       Ray.call(PlasmaFreeTest::hello).get();
     }
 
-    waitResult = Ray.wait(waitFor, 1, 2 * 1000);
+    // Check if the object has been evicted. Don't give ray.wait enough
+    // time to reconstruct the object.
+    waitResult = Ray.wait(waitFor, 1, 0);
     readyOnes = waitResult.getReady();
     unreadyOnes = waitResult.getUnready();
     Assert.assertEquals(0, readyOnes.size());

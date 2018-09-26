@@ -53,6 +53,10 @@ class MyTrainableClass(Trainable):
             self.timestep = data["timestep"]
             self.current_value = data["value"]
 
+    def reset_config(self, new_config):
+        self.config = new_config
+        return True
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

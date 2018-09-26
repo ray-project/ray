@@ -7,6 +7,7 @@ from datetime import datetime
 import copy
 import gzip
 import io
+import logging
 import os
 import pickle
 import shutil
@@ -19,6 +20,8 @@ from ray.tune.logger import UnifiedLogger
 from ray.tune.result import (DEFAULT_RESULTS_DIR, TIME_THIS_ITER_S,
                              TIMESTEPS_THIS_ITER, DONE, TIMESTEPS_TOTAL)
 from ray.tune.trial import Resources
+
+logger = logging.getLogger(__name__)
 
 
 class Trainable(object):
@@ -234,7 +237,8 @@ class Trainable(object):
                 "data": data,
             })
             if len(compressed) > 10e6:  # getting pretty large
-                print("Checkpoint size is {} bytes".format(len(compressed)))
+                logger.info("Checkpoint size is {} bytes".format(
+                    len(compressed)))
             f.write(compressed)
 
         shutil.rmtree(tmpdir)
@@ -275,6 +279,18 @@ class Trainable(object):
 
         self.restore(checkpoint_path)
         shutil.rmtree(tmpdir)
+
+    def reset_config(self, new_config):
+        """Resets configuration without restarting the trial.
+
+        Args:
+            new_config (dir): Updated hyperparameter configuration
+                for the trainable.
+
+        Returns:
+            True if configuration reset successfully else False.
+        """
+        return False
 
     def stop(self):
         """Releases all resources used by this trainable."""

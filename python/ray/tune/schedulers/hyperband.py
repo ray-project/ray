@@ -4,9 +4,12 @@ from __future__ import print_function
 
 import collections
 import numpy as np
+import logging
 
 from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
 from ray.tune.trial import Trial
+
+logger = logging.getLogger(__name__)
 
 
 # Implementation notes:
@@ -112,7 +115,7 @@ class HyperBandScheduler(FIFOScheduler):
                 s = len(cur_band)
                 assert s < self._s_max_1, "Current band is filled!"
                 if self._get_r0(s) == 0:
-                    print("Bracket too small - Retrying...")
+                    logger.info("Bracket too small - Retrying...")
                     cur_bracket = None
                 else:
                     retry = False

@@ -59,10 +59,10 @@ class NodeManager {
   ///
   /// \param client The client that sent the message.
   /// \param message_type The message type (e.g., a flatbuffer enum).
-  /// \param message A pointer to the message data.
+  /// \param message_data A pointer to the message data.
   /// \return Void.
   void ProcessClientMessage(const std::shared_ptr<LocalClientConnection> &client,
-                            int64_t message_type, const uint8_t *message);
+                            int64_t message_type, const uint8_t *message_data);
 
   /// Handle a new node manager connection.
   ///
@@ -192,6 +192,23 @@ class NodeManager {
   /// \return Void.
   void HandleWorkerUnblocked(std::shared_ptr<Worker> worker);
 
+  /// Handle a client that is blocked. This could be a worker or a driver. This
+  /// can be triggered when a client starts a get call or a wait call.
+  ///
+  /// \param client The client that is blocked.
+  /// \param required_object_ids The IDs that the client is blocked waiting for.
+  /// \return Void.
+  void HandleClientBlocked(const std::shared_ptr<LocalClientConnection> &client,
+                           const std::vector<ObjectID> &required_object_ids);
+
+  /// Handle a client that is unblocked. This could be a worker or a driver.
+  /// This can be triggered when a client is finished with a get call or a wait
+  /// call. It is ok to call this even if the client is not actually blocked.
+  ///
+  /// \param client The client that is unblocked.
+  /// \return Void.
+  void HandleClientUnblocked(const std::shared_ptr<LocalClientConnection> &client);
+
   /// Kill a worker.
   ///
   /// \param worker The worker to kill.
@@ -248,6 +265,55 @@ class NodeManager {
   ///
   /// \return True if the invariants are satisfied and false otherwise.
   bool CheckDependencyManagerInvariant() const;
+
+  /// Process client message of RegisterClientRequest
+  //
+  /// \param client The client that sent the message.
+  /// \param message_data A pointer to the message data.
+  /// \return Void.
+  void ProcessRegisterClientRequestMessage(
+      const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data);
+
+  /// Process client message of GetTask
+  //
+  /// \param client The client that sent the message.
+  /// \return Void.
+  void ProcessGetTaskMessage(const std::shared_ptr<LocalClientConnection> &client);
+
+  /// Process client message of DisconnectClient
+  //
+  /// \param client The client that sent the message.
+  /// \return Void.
+  void ProcessDisconnectClientMessage(
+      const std::shared_ptr<LocalClientConnection> &client);
+
+  /// Process client message of SubmitTask
+  //
+  /// \param message_data A pointer to the message data.
+  /// \return Void.
+  void ProcessSubmitTaskMessage(const uint8_t *message_data);
+
+  /// Process client message of ReconstructObjects
+  //
+  /// \param client The client that sent the message.
+  /// \param message_data A pointer to the message data.
+  /// \return Void.
+  void ProcessReconstructObjectsMessage(
+      const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data);
+
+  /// Process client message of WaitRequest
+  //
+  /// \param client The client that sent the message.
+  /// \param message_data A pointer to the message data.
+  /// \return Void.
+  void ProcessWaitRequestMessage(const std::shared_ptr<LocalClientConnection> &client,
+                                 const uint8_t *message_data);
+
+  /// Process client message of PushErrorRequest
+  //
+  /// \param message_data A pointer to the message data.
+  /// \return Void.
+  void ProcessPushErrorRequestMessage(const uint8_t *message_data);
 
   boost::asio::io_service &io_service_;
   ObjectManager &object_manager_;

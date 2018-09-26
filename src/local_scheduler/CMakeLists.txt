@@ -2,18 +2,6 @@ cmake_minimum_required(VERSION 3.4)
 
 project(local_scheduler)
 
-# Recursively include common
-include(${CMAKE_CURRENT_LIST_DIR}/../common/cmake/Common.cmake)
-
-if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
-  # Include plasma
-  list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_LIST_DIR}/../../thirdparty/pkg/arrow/python/cmake_modules)
-  find_package(Arrow)
-  find_package(Plasma)
-  include_directories(SYSTEM ${PLASMA_INCLUDE_DIR})
-endif()
-
-
 add_definitions(-fPIC)
 
 if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
@@ -34,7 +22,7 @@ if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
   include_directories("${CMAKE_CURRENT_LIST_DIR}/../plasma/")
 endif()
 
-include_directories("${ARROW_DIR}/cpp/src/")
+include_directories("${ARROW_INCLUDE_DIR}")
 include_directories("${CMAKE_CURRENT_LIST_DIR}/../common/format/")
 
 # Compile flatbuffers
@@ -54,17 +42,19 @@ add_custom_command(
 
 add_custom_target(gen_local_scheduler_fbs DEPENDS ${LOCAL_SCHEDULER_FBS_OUTPUT_FILES})
 
-add_dependencies(gen_local_scheduler_fbs flatbuffers_ep)
+add_dependencies(gen_local_scheduler_fbs arrow)
 
 add_library(local_scheduler_client STATIC local_scheduler_client.cc)
 
 # local_scheduler_shared.h includes ray/gcs/client.h which requires gen_gcs_fbs & gen_node_manager_fbs.
-add_dependencies(local_scheduler_client gen_local_scheduler_fbs ${COMMON_FBS_OUTPUT_FILES} gen_gcs_fbs gen_node_manager_fbs)
+add_dependencies(local_scheduler_client common hiredis gen_local_scheduler_fbs ${COMMON_FBS_OUTPUT_FILES} gen_gcs_fbs gen_node_manager_fbs)
 
 add_executable(local_scheduler local_scheduler.cc local_scheduler_algorithm.cc)
+add_dependencies(local_scheduler hiredis)
 target_link_libraries(local_scheduler local_scheduler_client common ${HIREDIS_LIB} ${PLASMA_STATIC_LIB} ray_static ${ARROW_STATIC_LIB} -lpthread ${Boost_SYSTEM_LIBRARY})
 
 add_executable(local_scheduler_tests test/local_scheduler_tests.cc local_scheduler.cc local_scheduler_algorithm.cc)
+add_dependencies(local_scheduler_tests hiredis)
 target_link_libraries(local_scheduler_tests local_scheduler_client common ${HIREDIS_LIB} ${PLASMA_STATIC_LIB} ray_static ${ARROW_STATIC_LIB} -lpthread ${Boost_SYSTEM_LIBRARY})
 target_compile_options(local_scheduler_tests PUBLIC "-DLOCAL_SCHEDULER_TEST")
 
