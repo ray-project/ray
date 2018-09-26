@@ -15,6 +15,6 @@ public class RayConfigTest {
 
     Assert.assertEquals("/path/to/ray", rayConfig.rayHome);
     Assert.assertEquals( WorkerMode.DRIVER, rayConfig.workerMode);
-    Assert.assertEquals(RunMode.SINGLE_BOX, rayConfig.runMode);
+    Assert.assertEquals(RunMode.CLUSTER, rayConfig.runMode);
   }
 }
