@@ -3,7 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import pytest
 import re
 import string
 import sys
@@ -357,21 +356,16 @@ def test_custom_serializers(shutdown_only):
         return serialized_obj, "string2"
 
     ray.register_custom_serializer(
-        Foo,
-        serializer=custom_serializer,
-        deserializer=custom_deserializer)
+        Foo, serializer=custom_serializer, deserializer=custom_deserializer)
 
-    assert ray.get(ray.put(Foo())) == ((3, "string1", Foo.__name__),
-                                       "string2")
+    assert ray.get(ray.put(Foo())) == ((3, "string1", Foo.__name__), "string2")
 
     class Bar(object):
         def __init__(self):
             self.x = 3
 
     ray.register_custom_serializer(
-        Bar,
-        serializer=custom_serializer,
-        deserializer=custom_deserializer)
+        Bar, serializer=custom_serializer, deserializer=custom_deserializer)
 
     @ray.remote
     def f():
@@ -625,7 +619,7 @@ def test_variable_number_of_args(shutdown_only):
     except Exception:
         kwargs_exception_thrown = True
 
-    self.init_ray()
+    ray.init(num_cpus=1)
 
     x = varargs_fct1.remote(0, 1, 2)
     assert ray.get(x) == "0 1 2"
@@ -653,7 +647,6 @@ def test_variable_number_of_args(shutdown_only):
     assert ray.get(f2.remote(1, 2, 3)) == (1, 2, (3, ))
     assert ray.get(f2.remote(1, 2, 3, 4)) == (1, 2, (3, 4))
 
-
     def testNoArgs(self):
         @ray.remote
         def no_op():
@@ -665,7 +658,7 @@ def test_variable_number_of_args(shutdown_only):
 
 
 def test_defining_remote_functions(shutdown_only):
-    self.init_ray(num_cpus=3)
+    ray.init(num_cpus=3)
 
     # Test that we can define a remote function in the shell.
     @ray.remote
@@ -730,7 +723,6 @@ def test_defining_remote_functions(shutdown_only):
     assert ray.get(k.remote(1)) == 2
     assert ray.get(k2.remote(1)) == 2
     assert ray.get(m.remote(1)) == 2
-
 
     def test_submit_api(shutdown_only):
         ray.init(num_cpus=1, num_gpus=1, resources={"Custom": 1})
@@ -820,12 +812,7 @@ def test_wait(shutdown_only):
         time.sleep(delay)
         return 1
 
-    objectids = [
-        f.remote(1.0),
-        f.remote(0.5),
-        f.remote(0.5),
-        f.remote(0.5)
-    ]
+    objectids = [f.remote(1.0), f.remote(0.5), f.remote(0.5), f.remote(0.5)]
     ready_ids, remaining_ids = ray.wait(objectids)
     assert len(ready_ids) == 1
     assert len(remaining_ids) == 3
@@ -833,25 +820,14 @@ def test_wait(shutdown_only):
     assert set(ready_ids) == set(objectids)
     assert remaining_ids == []
 
-    objectids = [
-        f.remote(0.5),
-        f.remote(0.5),
-        f.remote(0.5),
-        f.remote(0.5)
-    ]
+    objectids = [f.remote(0.5), f.remote(0.5), f.remote(0.5), f.remote(0.5)]
     start_time = time.time()
-    ready_ids, remaining_ids = ray.wait(
-        objectids, timeout=1750, num_returns=4)
+    ready_ids, remaining_ids = ray.wait(objectids, timeout=1750, num_returns=4)
     assert time.time() - start_time < 2
     assert len(ready_ids) == 3
     assert len(remaining_ids) == 1
     ray.wait(objectids)
-    objectids = [
-        f.remote(1.0),
-        f.remote(0.5),
-        f.remote(0.5),
-        f.remote(0.5)
-    ]
+    objectids = [f.remote(1.0), f.remote(0.5), f.remote(0.5), f.remote(0.5)]
     start_time = time.time()
     ready_ids, remaining_ids = ray.wait(objectids, timeout=5000)
     assert time.time() - start_time < 5
@@ -893,8 +869,7 @@ def test_wait_iterables(shutdown_only):
         time.sleep(delay)
         return 1
 
-    objectids = (f.remote(1.0), f.remote(0.5), f.remote(0.5),
-                 f.remote(0.5))
+    objectids = (f.remote(1.0), f.remote(0.5), f.remote(0.5), f.remote(0.5))
     ready_ids, remaining_ids = ray.experimental.wait(objectids)
     assert len(ready_ids) == 1
     assert len(remaining_ids) == 3
@@ -1014,7 +989,7 @@ def test_running_function_on_all_workers(shutdown_only):
     assert "fake_directory" not in ray.get(get_path2.remote())
 
 
-@unittest.skipIf(
+@pytest.mark.skipif(
     os.environ.get("RAY_USE_XRAY") == "1",
     "This test does not work with xray (nor is it intended to).")
 def test_logging_api(shutdown_only):
@@ -1062,9 +1037,8 @@ def test_logging_api(shutdown_only):
     assert len(events()) == 2
 
 
-@unittest.skipIf(
-    os.environ.get("RAY_USE_XRAY") != "1",
-    "This test only works with xray.")
+@pytest.mark.skipif(
+    os.environ.get("RAY_USE_XRAY") != "1", "This test only works with xray.")
 def test_profiling_api(shutdown_only):
     ray.init(num_cpus=2)
 
@@ -1222,9 +1196,8 @@ def test_multithreading(shutdown_only):
     ray.get(test_multi_threading_in_worker.remote())
 
 
-@unittest.skipIf(
-    os.environ.get("RAY_USE_XRAY") != "1",
-    "This test only works with xray.")
+@pytest.mark.skipif(
+    os.environ.get("RAY_USE_XRAY") != "1", "This test only works with xray.")
 def test_free_objects_multi_node(shutdown_only):
     ray.worker._init(
         start_ray_local=True,
@@ -1267,10 +1240,7 @@ def test_free_objects_multi_node(shutdown_only):
         # If the number changed, this will fail.
         print("Start Flush!")
         for i in range(64):
-            ray.get(
-                [run_on_0.remote(),
-                 run_on_1.remote(),
-                 run_on_2.remote()])
+            ray.get([run_on_0.remote(), run_on_1.remote(), run_on_2.remote()])
         print("Flush finished!")
 
     def run_one_test(local_only):
@@ -1666,9 +1636,8 @@ def test_gpu_ids(shutdown_only):
     ray.get(a1.test.remote())
 
 
-@unittest.skipIf(
-    os.environ.get("RAY_USE_XRAY") != "1",
-    "This test only works with xray.")
+@pytest.mark.skipif(
+    os.environ.get("RAY_USE_XRAY") != "1", "This test only works with xray.")
 def test_zero_cpus(shutdown_only):
     ray.init(num_cpus=0)
 
@@ -1696,9 +1665,8 @@ def test_zero_cpus_actor(shutdown_only):
     assert ray.get(a.method.remote()) != local_plasma
 
 
-@unittest.skipIf(
-    os.environ.get("RAY_USE_XRAY") != "1",
-    "This test only works with xray.")
+@pytest.mark.skipif(
+    os.environ.get("RAY_USE_XRAY") != "1", "This test only works with xray.")
 def test_fractional_resources(shutdown_only):
     ray.init(num_cpus=6, num_gpus=3, resources={"Custom": 1})
 
@@ -1957,8 +1925,7 @@ def test_two_custom_resources(shutdown_only):
 
     # Make sure that tasks with unsatisfied custom resource requirements do
     # not get scheduled.
-    ready_ids, remaining_ids = ray.wait(
-        [j.remote(), k.remote()], timeout=500)
+    ready_ids, remaining_ids = ray.wait([j.remote(), k.remote()], timeout=500)
     assert ready_ids == []
 
 
@@ -2303,9 +2270,8 @@ def test_global_state_api(shutdown_only):
         start_time = time.time()
         while time.time() - start_time < timeout:
             object_table = ray.global_state.object_table()
-            tables_ready = (
-                object_table[x_id]["ManagerIDs"] is not None
-                and object_table[result_id]["ManagerIDs"] is not None)
+            tables_ready = (object_table[x_id]["ManagerIDs"] is not None and
+                            object_table[result_id]["ManagerIDs"] is not None)
             if tables_ready:
                 return
             time.sleep(0.1)
@@ -2482,8 +2448,7 @@ def test_dump_trace_file(shutdown_only):
     ray.get([actor.method.remote() for actor in actors])
 
     path = os.path.join("/tmp/ray_test_trace")
-    task_info = ray.global_state.task_profiles(
-        100, start=0, end=time.time())
+    task_info = ray.global_state.task_profiles(100, start=0, end=time.time())
     ray.global_state.dump_catapult_trace(path, task_info)
 
     # TODO(rkn): This test is not perfect because it does not verify that
