@@ -655,12 +655,15 @@ void NodeManager::ProcessDisconnectClientMessage(
   // Remove the dead worker from the pool and stop listening for messages.
   const std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
 
+  RAY_LOG(INFO) << "Worker? " << worker;
   if (worker) {
     // The client is a worker. Handle the case where the worker is killed
     // while executing a task. Clean up the assigned task's resources, push
     // an error to the driver.
     // (See design_docs/task_states.rst for the state transition diagram.)
     const TaskID &task_id = worker->GetAssignedTaskId();
+    RAY_LOG(INFO) << "Task ID "<< !task_id.is_nil();
+    RAY_LOG(INFO) << "Worker Dead? "<< !worker->IsDead();
     if (!task_id.is_nil() && !worker->IsDead()) {
       // If the worker was killed intentionally, e.g., when the driver that created
       // the task that this worker is currently executing exits, the task for this
