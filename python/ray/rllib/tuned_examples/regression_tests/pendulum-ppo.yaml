@@ -15,4 +15,4 @@ pendulum-ppo:
         num_sgd_iter: 10
         model:
             fcnet_hiddens: [64, 64]
-            squash_to_range: True
+        batch_mode: complete_episodes
