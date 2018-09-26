@@ -1,6 +1,5 @@
 package org.ray.runtime.util.logger;
 
-import org.ray.runtime.util.SystemUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -21,24 +20,8 @@ public class RayLog {
    */
   public static Logger rapp;
 
-  /**
-   * Initialize loggers
-   * @param logDir directory of the log files.
-   */
-  public static void init(String logDir) {
-    String loggingPath = System.getProperty("logging.path");
-    if (loggingPath == null) {
-      System.setProperty("logging.path", logDir);
-    }
-    String loggingFileName = System.getProperty("logging.file.name");
-    if (loggingFileName != null && loggingFileName.contains("*pid_suffix*")) {
-      loggingFileName = loggingFileName.replaceAll("\\*pid_suffix\\*",
-              String.valueOf(SystemUtil.pid()));
-      System.setProperty("logging.file.name", loggingFileName);
-    }
-
+  public static void init() {
     core = LoggerFactory.getLogger("core");
-
     rapp = core;
   }
 }

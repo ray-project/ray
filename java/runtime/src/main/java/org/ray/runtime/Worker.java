@@ -44,7 +44,8 @@ public class Worker {
       RayFunction rayFunction = runtime.getFunctionManager()
           .getFunction(spec.driverId, spec.functionDescriptor);
       // Set context
-      WorkerContext.prepare(spec, rayFunction.classLoader);
+      runtime.getWorkerContext().setCurrentTask(spec);
+      runtime.getWorkerContext().setCurrentClassLoader(rayFunction.classLoader);
       Thread.currentThread().setContextClassLoader(rayFunction.classLoader);
       // Get local actor object and arguments.
       Object actor = spec.isActorTask() ? runtime.localActors.get(spec.actorId) : null;
