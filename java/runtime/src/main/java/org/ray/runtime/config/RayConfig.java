@@ -16,6 +16,7 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Configurations of Ray runtime.
+ * See `ray.default.conf` for the meaning of each field.
  */
 public class RayConfig {
 
