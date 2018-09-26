@@ -566,6 +566,7 @@ void NodeManager::ProcessClientMessage(
     if (registered_worker) {
       registered_worker->MarkDead();
     }
+    ProcessDisconnectClientMessage(client);
     // We don't need to receive future messages from this client,
     // because it's already disconnected.
     return;
