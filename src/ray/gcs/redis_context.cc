@@ -10,6 +10,7 @@ extern "C" {
 #include "hiredis/hiredis.h"
 }
 
+#include "ray/constants.h"
 // TODO(pcm): Integrate into the C++ tree.
 #include "state/ray_config.h"
 
@@ -135,7 +136,7 @@ RedisContext::~RedisContext() {
   }
 }
 
-static std::string default_password = "";
+static std::string redis_default_password = "";
 
 Status authenticate_redis(redisContext *context, const std::string &password) {
   if (password == "") {
@@ -158,7 +159,7 @@ void authenticate_redis(redisAsyncContext *context, const std::string &password)
 }
 
 Status RedisContext::Connect(const std::string &address, int port, bool sharding,
-                             const std::string &password = default_password) {
+                             const std::string &password = redis_default_password) {
   int connection_attempts = 0;
   context_ = redisConnect(address.c_str(), port);
   while (context_ == nullptr || context_->err) {
