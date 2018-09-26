@@ -1511,8 +1511,12 @@ def start_ray_processes(address_info=None,
         # Start Plasma.
         plasma_store_stdout_file, plasma_store_stderr_file = (
             new_plasma_store_log_file(i, redirect_output))
+
+        # If we use raylet, plasma manager won't be started and we don't need
+        # to create temp files for them.
         plasma_manager_stdout_file, plasma_manager_stderr_file = (
-            new_plasma_manager_log_file(i, redirect_output))
+            new_plasma_manager_log_file(i, redirect_output and not use_raylet))
+
         object_store_address = start_plasma_store(
             node_ip_address,
             redis_address,

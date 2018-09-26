@@ -49,7 +49,7 @@ A typical layout of temporary files could look like this:
           │   ├── plasma_manager[0].out
           │   ├── plasma_store[0].err  # array of plasma stores' outputs
           │   ├── plasma_store[0].out
-          │   ├── raylet[0].err  # array of raylets' outputs
+          │   ├── raylet[0].err  # array of raylets' outputs. Control it with `--no-redirect-worker-output` (in Ray's command line) or `redirect_worker_output` (in ray.init())
           │   ├── raylet[0].out
           │   ├── redis-shard[0].err   # array of redis shards' outputs
           │   ├── redis-shard[0].out
@@ -63,7 +63,7 @@ A typical layout of temporary files could look like this:
           ├── ray_ui.ipynb  # ipython notebook file
           └── sockets  # for logging
               ├── plasma_store
-              └── raylet
+              └── raylet  # this could be deleted by Ray's shutdown cleanup.
 
 
 Plasma Object Store Socket
