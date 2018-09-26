@@ -2076,8 +2076,7 @@ def test_max_call_tasks(shutdown_only):
     ray.test.test_utils.wait_for_pid_to_exit(pid1)
 
 
-def attempt_to_load_balance(self,
-                            remote_function,
+def attempt_to_load_balance(remote_function,
                             args,
                             total_tasks,
                             num_local_schedulers,
