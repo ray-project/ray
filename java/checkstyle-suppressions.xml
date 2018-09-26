@@ -3,6 +3,7 @@
 "http://www.puppycrawl.com/dtds/suppressions_1_1.dtd">
 
 <suppressions>
+  <suppress checks="OperatorWrap" files=".*" />
   <suppress checks="MemberNameCheck" files="PathConfig.java"/>
   <suppress checks="MemberNameCheck" files="RayParameters.java"/>
   <suppress checks="AbbreviationAsWordInNameCheck" files="RayParameters.java"/>

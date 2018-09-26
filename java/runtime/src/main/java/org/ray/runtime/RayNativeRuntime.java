@@ -8,9 +8,6 @@ import org.apache.arrow.plasma.PlasmaClient;
 import org.ray.runtime.config.PathConfig;
 import org.ray.runtime.config.RayParameters;
 import org.ray.runtime.config.WorkerMode;
-import org.ray.runtime.functionmanager.NativeRemoteFunctionManager;
-import org.ray.runtime.functionmanager.NopRemoteFunctionManager;
-import org.ray.runtime.functionmanager.RemoteFunctionManager;
 import org.ray.runtime.gcs.AddressInfo;
 import org.ray.runtime.gcs.KeyValueStoreLink;
 import org.ray.runtime.gcs.RedisClient;
@@ -61,10 +58,6 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
       }
     }
 
-    // initialize remote function manager
-    RemoteFunctionManager funcMgr = params.run_mode.isDevPathManager()
-        ? new NopRemoteFunctionManager(params.driver_id) : new NativeRemoteFunctionManager(kvStore);
-
     // initialize worker context
     if (params.worker_mode == WorkerMode.DRIVER) {
       // TODO: The relationship between workerID, driver_id and dummy_task.driver_id should be
@@ -96,7 +89,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
               WorkerContext.currentTask().taskId
       );
 
-      init(rayletClient, plink, funcMgr, pathConfig);
+      init(rayletClient, plink, pathConfig);
 
       // register
       registerWorker(isWorker, params.node_ip_address, params.object_store_name,
