@@ -31,13 +31,15 @@ import org.ray.runtime.util.logger.RayLog;
  */
 public abstract class AbstractRayRuntime implements RayRuntime {
 
+  private static final int GET_TIMEOUT_MS = 1000;
+  private static final int FETCH_BATCH_SIZE = 1000;
+
   protected RayConfig rayConfig;
   protected WorkerContext workerContext;
   protected Worker worker;
   protected RayletClient rayletClient;
   protected ObjectStoreProxy objectStoreProxy;
   protected FunctionManager functionManager;
-
 
   /**
    * Actor ID -> local actor instance.
@@ -90,14 +92,14 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
       // Do an initial fetch for remote objects.
       List<List<UniqueId>> fetchBatches =
-          splitIntoBatches(objectIds, rayConfig.fetchBatchSize);
+          splitIntoBatches(objectIds, FETCH_BATCH_SIZE);
       for (List<UniqueId> batch : fetchBatches) {
         rayletClient.reconstructObjects(batch, true);
       }
 
       // Get the objects. We initially try to get the objects immediately.
       List<Pair<T, GetStatus>> ret = objectStoreProxy
-          .get(objectIds, rayConfig.defaultFirstCheckTimeoutMs, false);
+          .get(objectIds, GET_TIMEOUT_MS, false);
       assert ret.size() == numObjectIds;
 
       // Mapping the object IDs that we haven't gotten yet to their original index in objectIds.
@@ -114,14 +116,14 @@ public abstract class AbstractRayRuntime implements RayRuntime {
       while (unreadys.size() > 0) {
         List<UniqueId> unreadyList = new ArrayList<>(unreadys.keySet());
         List<List<UniqueId>> reconstructBatches =
-            splitIntoBatches(unreadyList, rayConfig.fetchBatchSize);
+            splitIntoBatches(unreadyList, FETCH_BATCH_SIZE);
 
         for (List<UniqueId> batch : reconstructBatches) {
           rayletClient.reconstructObjects(batch, false);
         }
 
         List<Pair<T, GetStatus>> results = objectStoreProxy
-            .get(unreadyList, rayConfig.defaultGetCheckIntervalMs, false);
+            .get(unreadyList, GET_TIMEOUT_MS, false);
 
         // Remove any entries for objects we received during this iteration so we
         // don't retrieve the same object twice.

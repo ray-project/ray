@@ -46,10 +46,6 @@ public class RayConfig {
 
   public final String rayletSocketName;
 
-  public final int defaultFirstCheckTimeoutMs;
-  public final int defaultGetCheckIntervalMs;
-  public final int fetchBatchSize;
-
   public final String redisServerExecutablePath;
   public final String redisModulePath;
   public final String plasmaStoreExecutablePath;
@@ -147,11 +143,6 @@ public class RayConfig {
     // raylet socket name
     rayletSocketName = config.getString("ray.raylet.socket-name");
 
-    // runtime configurations
-    defaultFirstCheckTimeoutMs = config.getInt("ray.runtime.default-first-check-timeout-ms");
-    defaultGetCheckIntervalMs = config.getInt("ray.runtime.default-get-check-interval-ms");
-    fetchBatchSize = config.getInt("ray.runtime.fetch-batch-size");
-
     // library path
     this.libraryPath = new ImmutableList.Builder<String>().add(
         rayHome + "/build/src/plasma",
@@ -212,9 +203,6 @@ public class RayConfig {
         + ", objectStoreSocketName='" + objectStoreSocketName + '\''
         + ", objectStoreSize=" + objectStoreSize
         + ", rayletSocketName='" + rayletSocketName + '\''
-        + ", defaultFirstCheckTimeoutMs=" + defaultFirstCheckTimeoutMs
-        + ", defaultGetCheckIntervalMs=" + defaultGetCheckIntervalMs
-        + ", fetchBatchSize=" + fetchBatchSize
         + ", redisServerExecutablePath='" + redisServerExecutablePath + '\''
         + ", plasmaStoreExecutablePath='" + plasmaStoreExecutablePath + '\''
         + ", rayletExecutablePath='" + rayletExecutablePath + '\''

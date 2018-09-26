@@ -5,10 +5,10 @@ Configuration
 -------------
 Ray will read your configurations in the following order:
 
-* Java system properties: for example ``-Dray.home=/path/to/ray``.
-* A ``ray.conf`` file in the classpath:`example <https://github.com/ray-project/ray/java/example.conf>`_.
+* Java system properties: e.g., ``-Dray.home=/path/to/ray``.
+* A ``ray.conf`` file in the classpath: `example <https://github.com/ray-project/ray/java/example.conf>`_.
 
-For all available config items, see `this file <https://github.com/ray-project/ray/java/runtime/src/main/resources/ray.default.conf>`_.
+For all available config items and default values, see `this file <https://github.com/ray-project/ray/java/runtime/src/main/resources/ray.default.conf>`_.
 
 Starting Ray
 ------------
