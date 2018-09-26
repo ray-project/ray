@@ -794,7 +794,7 @@ def test_get_multiple_experimental(shutdown_only):
     assert ray.experimental.get(object_ids_nparray) == list(range(10))
 
 
-def test_get_dict(self):
+def test_get_dict(shutdown_only):
     ray.init(num_cpus=1)
     d = {str(i): ray.put(i) for i in range(5)}
     for i in range(5, 10):
@@ -991,7 +991,7 @@ def test_running_function_on_all_workers(shutdown_only):
 
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_XRAY") == "1",
-    "This test does not work with xray (nor is it intended to).")
+    reason="This test does not work with xray (nor is it intended to).")
 def test_logging_api(shutdown_only):
     ray.init(num_cpus=1)
 
@@ -1038,7 +1038,8 @@ def test_logging_api(shutdown_only):
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") != "1", "This test only works with xray.")
+    os.environ.get("RAY_USE_XRAY") != "1",
+    reason="This test only works with xray.")
 def test_profiling_api(shutdown_only):
     ray.init(num_cpus=2)
 
@@ -1197,7 +1198,8 @@ def test_multithreading(shutdown_only):
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") != "1", "This test only works with xray.")
+    os.environ.get("RAY_USE_XRAY") != "1",
+    reason="This test only works with xray.")
 def test_free_objects_multi_node(shutdown_only):
     ray.worker._init(
         start_ray_local=True,
@@ -1637,7 +1639,8 @@ def test_gpu_ids(shutdown_only):
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") != "1", "This test only works with xray.")
+    os.environ.get("RAY_USE_XRAY") != "1",
+    reason="This test only works with xray.")
 def test_zero_cpus(shutdown_only):
     ray.init(num_cpus=0)
 
@@ -1666,7 +1669,8 @@ def test_zero_cpus_actor(shutdown_only):
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") != "1", "This test only works with xray.")
+    os.environ.get("RAY_USE_XRAY") != "1",
+    reason="This test only works with xray.")
 def test_fractional_resources(shutdown_only):
     ray.init(num_cpus=6, num_gpus=3, resources={"Custom": 1})
 
@@ -2159,7 +2163,7 @@ def wait_for_num_objects(num_objects, timeout=10):
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS", False),
+    os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="New GCS API doesn't have a Python API yet.")
 def test_global_state_api(shutdown_only):
     with pytest.raises(Exception):
@@ -2309,7 +2313,7 @@ def test_global_state_api(shutdown_only):
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS", False),
+    os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="New GCS API doesn't have a Python API yet.")
 def test_log_file_api(shutdown_only):
     ray.init(num_cpus=1, redirect_worker_output=True)
@@ -2343,11 +2347,11 @@ def test_log_file_api(shutdown_only):
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS", False),
+    os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="New GCS API doesn't have a Python API yet.")
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_XRAY") == "1",
-    "This test does not work with xray (nor is it intended to).")
+    reason="This test does not work with xray (nor is it intended to).")
 def test_task_profile_api(self):
     ray.init(num_cpus=1, redirect_output=True)
 
@@ -2382,7 +2386,7 @@ def test_task_profile_api(self):
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS", False),
+    os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="New GCS API doesn't have a Python API yet.")
 def test_workers(shutdown_only):
     num_workers = 3
@@ -2412,11 +2416,11 @@ def test_workers(shutdown_only):
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS", False),
+    os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="New GCS API doesn't have a Python API yet.")
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_XRAY") == "1",
-    "This test does not work with xray yet.")
+    reason="This test does not work with xray yet.")
 def test_dump_trace_file(shutdown_only):
     ray.init(num_cpus=1, redirect_output=True)
 
@@ -2456,11 +2460,11 @@ def test_dump_trace_file(shutdown_only):
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS", False),
+    os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="New GCS API doesn't have a Python API yet.")
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_XRAY") == "1",
-    "This test does not work with xray yet.")
+    reason="This test does not work with xray yet.")
 def test_flush_api(shutdown_only):
     ray.init(num_cpus=1)
 
