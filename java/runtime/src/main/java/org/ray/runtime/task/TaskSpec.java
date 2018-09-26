@@ -49,7 +49,7 @@ public class TaskSpec {
 
   // Function descriptor is a list of strings that can uniquely identify a function.
   // It will be sent to worker and used to load the target callable function.
-  public final FunctionDescriptor functionDesc;
+  public final FunctionDescriptor functionDescriptor;
 
   private List<UniqueId> executionDependencies;
 
@@ -64,7 +64,7 @@ public class TaskSpec {
   public TaskSpec(UniqueId driverId, UniqueId taskId, UniqueId parentTaskId, int parentCounter,
       UniqueId actorCreationId, UniqueId actorId, UniqueId actorHandleId, int actorCounter,
       FunctionArg[] args, UniqueId[] returnIds,
-      Map<String, Double> resources, FunctionDescriptor functionDesc) {
+      Map<String, Double> resources, FunctionDescriptor functionDescriptor) {
     this.driverId = driverId;
     this.taskId = taskId;
     this.parentTaskId = parentTaskId;
@@ -76,7 +76,7 @@ public class TaskSpec {
     this.args = args;
     this.returnIds = returnIds;
     this.resources = resources;
-    this.functionDesc = functionDesc;
+    this.functionDescriptor = functionDescriptor;
     this.executionDependencies = new ArrayList<>();
   }
 
@@ -98,7 +98,7 @@ public class TaskSpec {
         ", args=" + Arrays.toString(args) +
         ", returnIds=" + Arrays.toString(returnIds) +
         ", resources=" + ResourceUtil.getResourcesStringFromMap(resources) +
-        ", functionDesc=" + functionDesc +
+        ", functionDescriptor=" + functionDescriptor +
         '}';
   }
 }

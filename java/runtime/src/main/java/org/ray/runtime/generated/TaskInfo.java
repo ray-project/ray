@@ -49,8 +49,8 @@ public final class TaskInfo extends Table {
   public ResourcePair requiredResources(ResourcePair obj, int j) { int o = __offset(30); return o != 0 ? obj.__assign(__indirect(__vector(o) + j * 4), bb) : null; }
   public int requiredResourcesLength() { int o = __offset(30); return o != 0 ? __vector_len(o) : 0; }
   public int language() { int o = __offset(32); return o != 0 ? bb.getInt(o + bb_pos) : 0; }
-  public String functionDesc(int j) { int o = __offset(34); return o != 0 ? __string(__vector(o) + j * 4) : null; }
-  public int functionDescLength() { int o = __offset(34); return o != 0 ? __vector_len(o) : 0; }
+  public String functionDescriptor(int j) { int o = __offset(34); return o != 0 ? __string(__vector(o) + j * 4) : null; }
+  public int functionDescriptorLength() { int o = __offset(34); return o != 0 ? __vector_len(o) : 0; }
 
   public static int createTaskInfo(FlatBufferBuilder builder,
       int driver_idOffset,
@@ -68,9 +68,9 @@ public final class TaskInfo extends Table {
       int returnsOffset,
       int required_resourcesOffset,
       int language,
-      int function_descOffset) {
+      int function_descriptorOffset) {
     builder.startObject(16);
-    TaskInfo.addFunctionDesc(builder, function_descOffset);
+    TaskInfo.addFunctionDescriptor(builder, function_descriptorOffset);
     TaskInfo.addLanguage(builder, language);
     TaskInfo.addRequiredResources(builder, required_resourcesOffset);
     TaskInfo.addReturns(builder, returnsOffset);
@@ -111,9 +111,9 @@ public final class TaskInfo extends Table {
   public static int createRequiredResourcesVector(FlatBufferBuilder builder, int[] data) { builder.startVector(4, data.length, 4); for (int i = data.length - 1; i >= 0; i--) builder.addOffset(data[i]); return builder.endVector(); }
   public static void startRequiredResourcesVector(FlatBufferBuilder builder, int numElems) { builder.startVector(4, numElems, 4); }
   public static void addLanguage(FlatBufferBuilder builder, int language) { builder.addInt(14, language, 0); }
-  public static void addFunctionDesc(FlatBufferBuilder builder, int functionDescOffset) { builder.addOffset(15, functionDescOffset, 0); }
-  public static int createFunctionDescVector(FlatBufferBuilder builder, int[] data) { builder.startVector(4, data.length, 4); for (int i = data.length - 1; i >= 0; i--) builder.addOffset(data[i]); return builder.endVector(); }
-  public static void startFunctionDescVector(FlatBufferBuilder builder, int numElems) { builder.startVector(4, numElems, 4); }
+  public static void addFunctionDescriptor(FlatBufferBuilder builder, int functionDescriptorOffset) { builder.addOffset(15, functionDescriptorOffset, 0); }
+  public static int createFunctionDescriptorVector(FlatBufferBuilder builder, int[] data) { builder.startVector(4, data.length, 4); for (int i = data.length - 1; i >= 0; i--) builder.addOffset(data[i]); return builder.endVector(); }
+  public static void startFunctionDescriptorVector(FlatBufferBuilder builder, int numElems) { builder.startVector(4, numElems, 4); }
   public static int endTaskInfo(FlatBufferBuilder builder) {
     int o = builder.endObject();
     return o;

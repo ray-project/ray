@@ -42,7 +42,7 @@ public class Worker {
     try {
       // Get method
       RayFunction rayFunction = runtime.getFunctionManager()
-          .getFunction(spec.driverId, spec.functionDesc);
+          .getFunction(spec.driverId, spec.functionDescriptor);
       // Set context
       WorkerContext.prepare(spec, rayFunction.classLoader);
       Thread.currentThread().setContextClassLoader(rayFunction.classLoader);

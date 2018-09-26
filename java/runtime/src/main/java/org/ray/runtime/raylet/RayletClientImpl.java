@@ -150,9 +150,9 @@ public class RayletClientImpl implements RayletClient {
       resources.put(info.requiredResources(i).key(), info.requiredResources(i).value());
     }
     // Deserialize function descriptor
-    Preconditions.checkArgument(info.functionDescLength() == 3);
+    Preconditions.checkArgument(info.functionDescriptorLength() == 3);
     FunctionDescriptor functionDescriptor = new FunctionDescriptor(
-        info.functionDesc(0), info.functionDesc(1), info.functionDesc(2)
+        info.functionDescriptor(0), info.functionDescriptor(1), info.functionDescriptor(2)
     );
     return new TaskSpec(driverId, taskId, parentTaskId, parentCounter, actorCreationId, actorId,
         actorHandleId, actorCounter, args, returnIds, resources, functionDescriptor);
@@ -209,12 +209,12 @@ public class RayletClientImpl implements RayletClient {
           ResourcePair.createResourcePair(fbb, keyOffset, entry.getValue());
     }
     int requiredResourcesOffset = fbb.createVectorOfTables(requiredResourcesOffsets);
-    int[] functionDescOffsets = new int[]{
-        fbb.createString(task.functionDesc.className),
-        fbb.createString(task.functionDesc.name),
-        fbb.createString(task.functionDesc.typeDescriptor)
+    int[] functionDescriptorOffsets = new int[]{
+        fbb.createString(task.functionDescriptor.className),
+        fbb.createString(task.functionDescriptor.name),
+        fbb.createString(task.functionDescriptor.typeDescriptor)
     };
-    int functionDescOffset = fbb.createVectorOfTables(functionDescOffsets);
+    int functionDescriptorOffset = fbb.createVectorOfTables(functionDescriptorOffsets);
 
     int root = TaskInfo.createTaskInfo(
         fbb, driverIdOffset, taskIdOffset,
@@ -222,7 +222,8 @@ public class RayletClientImpl implements RayletClient {
         actorCreateIdOffset, actorCreateDummyIdOffset,
         actorIdOffset, actorHandleIdOffset, actorCounter,
         false, functionIdOffset,
-        argsOffset, returnsOffset, requiredResourcesOffset, TaskLanguage.JAVA, functionDescOffset);
+        argsOffset, returnsOffset, requiredResourcesOffset, TaskLanguage.JAVA,
+        functionDescriptorOffset);
     fbb.finish(root);
     ByteBuffer buffer = fbb.dataBuffer();
 
