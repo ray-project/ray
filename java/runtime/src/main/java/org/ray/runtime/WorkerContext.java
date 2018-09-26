@@ -32,7 +32,7 @@ public class WorkerContext {
   private int currentTaskCallCount;
 
   public WorkerContext(WorkerMode workerMode, UniqueId driverId) {
-    workerId = UniqueId.randomId();
+    workerId = workerMode == WorkerMode.DRIVER ? driverId : UniqueId.randomId();
     currentTaskPutCount = 0;
     currentTaskCallCount = 0;
     currentClassLoader = null;

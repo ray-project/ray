@@ -74,13 +74,6 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     }
     kvStore = new RedisClient(rayConfig.getRedisAddress());
 
-    // initialize worker context
-    if (rayConfig.workerMode == WorkerMode.DRIVER) {
-      // TODO: The relationship between workerID, driver_id and dummy_task.driver_id should be
-      // recheck carefully
-      workerContext.setWorkerId(rayConfig.driverId);
-    }
-
     ObjectStoreLink store = new PlasmaClient(rayConfig.objectStoreSocketName, "", 0);
     objectStoreProxy = new ObjectStoreProxy(this, store);
 
