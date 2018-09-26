@@ -95,19 +95,6 @@ ADD_THIRDPARTY_LIB(plasma STATIC_LIB ${PLASMA_STATIC_LIB})
 add_dependencies(plasma plasma_ep)
 
 if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
-  # pyarrow
-  find_package(PythonInterp REQUIRED)
-  message(STATUS "PYTHON_EXECUTABLE for pyarrow: ${PYTHON_EXECUTABLE}")
-
-  set(pyarrow_ENV
-    "PKG_CONFIG_PATH=${ARROW_LIBRARY_DIR}/pkgconfig"
-    "PYARROW_WITH_PLASMA=1"
-    "PYARROW_WITH_TENSORFLOW=1"
-    "PYARROW_BUNDLE_ARROW_CPP=1"
-    "PARQUET_HOME=${PARQUET_HOME}"
-    "PYARROW_WITH_PARQUET=1"
-  )
-
   # clean the arrow_ep/python/build/lib.xxxxx directory,
   # or when you build with another python version, it creates multiple lib.xxxx directories
   set_property(DIRECTORY APPEND PROPERTY ADDITIONAL_MAKE_CLEAN_FILES "${ARROW_SOURCE_DIR}/python/build/")
@@ -115,13 +102,33 @@ if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
 
   # here we use externalProject to process pyarrow building
   # add_custom_command would have problem with setup.py
-  ExternalProject_Add(pyarrow_ext
-    PREFIX external/pyarrow
-    DEPENDS arrow_ep
-    DOWNLOAD_COMMAND ""
-    BUILD_IN_SOURCE 1
-    CONFIGURE_COMMAND cd ${ARROW_SOURCE_DIR}/python && ${CMAKE_COMMAND} -E env ${pyarrow_ENV} ${PYTHON_EXECUTABLE} setup.py build
-    BUILD_COMMAND cd ${ARROW_SOURCE_DIR}/python && ${CMAKE_COMMAND} -E env ${pyarrow_ENV} ${PYTHON_EXECUTABLE} setup.py build_ext
-    INSTALL_COMMAND bash -c "cp -rf \$(find ${ARROW_SOURCE_DIR}/python/build/ -maxdepth 1 -type d -print | grep -m1 'lib')/pyarrow ${CMAKE_SOURCE_DIR}/python/ray/pyarrow_files/")
+  if(EXISTS ${ARROW_SOURCE_DIR}/python/build/)
+    # if we did not run `make clean`, skip the rebuild of pyarrow
+    add_custom_target(pyarrow_ext)
+  else()
+    # pyarrow
+    find_package(PythonInterp REQUIRED)
+    message(STATUS "PYTHON_EXECUTABLE for pyarrow: ${PYTHON_EXECUTABLE}")
+
+    # PYARROW_PARALLEL= , so it will add -j to pyarrow build
+    set(pyarrow_ENV
+      "PKG_CONFIG_PATH=${ARROW_LIBRARY_DIR}/pkgconfig"
+      "PYARROW_WITH_PLASMA=1"
+      "PYARROW_WITH_TENSORFLOW=1"
+      "PYARROW_BUNDLE_ARROW_CPP=1"
+      "PARQUET_HOME=${PARQUET_HOME}"
+      "PYARROW_WITH_PARQUET=1"
+      "PYARROW_PARALLEL=")
+
+    ExternalProject_Add(pyarrow_ext
+      PREFIX external/pyarrow
+      DEPENDS arrow_ep
+      DOWNLOAD_COMMAND ""
+      BUILD_IN_SOURCE 1
+      CONFIGURE_COMMAND cd ${ARROW_SOURCE_DIR}/python && ${CMAKE_COMMAND} -E env ${pyarrow_ENV} ${PYTHON_EXECUTABLE} setup.py build
+      BUILD_COMMAND cd ${ARROW_SOURCE_DIR}/python && ${CMAKE_COMMAND} -E env ${pyarrow_ENV} ${PYTHON_EXECUTABLE} setup.py build_ext
+      INSTALL_COMMAND bash -c "cp -rf \$(find ${ARROW_SOURCE_DIR}/python/build/ -maxdepth 1 -type d -print | grep -m1 'lib')/pyarrow ${CMAKE_SOURCE_DIR}/python/ray/pyarrow_files/")
+
+  endif()
 
 endif ()
