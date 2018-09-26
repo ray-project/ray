@@ -543,10 +543,10 @@ void NodeManager::ProcessClientMessage(
   if (registered_worker && registered_worker->IsDead()) {
     // For a worker that is marked as dead (because the driver has died already),
     // all the messages are ignored except DisconnectClient.
-    if (static_cast<protocol::MessageType>(message_type) !=
-        protocol::MessageType::DisconnectClient &&
-        static_cast<protocol::MessageType>(message_type) !=
-        protocol::MessageType::IntentionalDisconnectClient) {
+    if ((static_cast<protocol::MessageType>(message_type) !=
+        protocol::MessageType::DisconnectClient) &&
+        (static_cast<protocol::MessageType>(message_type) !=
+        protocol::MessageType::IntentionalDisconnectClient)) {
       // Listen for more messages.
       client->ProcessMessages();
       return;
