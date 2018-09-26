@@ -8,6 +8,7 @@ import logging
 import time
 import tempfile
 import os
+from numbers import Number
 
 import ray
 from ray.tune import TuneError
@@ -34,11 +35,11 @@ class Resources(
     """Ray resources required to schedule a trial.
 
     Attributes:
-        cpu (int): Number of CPUs to allocate to the trial.
-        gpu (int): Number of GPUs to allocate to the trial.
-        extra_cpu (int): Extra CPUs to reserve in case the trial needs to
+        cpu (float): Number of CPUs to allocate to the trial.
+        gpu (float): Number of GPUs to allocate to the trial.
+        extra_cpu (float): Extra CPUs to reserve in case the trial needs to
             launch additional Ray actors that use CPUs.
-        extra_gpu (int): Extra GPUs to reserve in case the trial needs to
+        extra_gpu (float): Extra GPUs to reserve in case the trial needs to
             launch additional Ray actors that use GPUs.
 
     """
@@ -46,6 +47,8 @@ class Resources(
     __slots__ = ()
 
     def __new__(cls, cpu, gpu, extra_cpu=0, extra_gpu=0):
+        for entry in [cpu, gpu, extra_cpu, extra_gpu]:
+            assert isinstance(entry, Number), "Improper resource value."
         return super(Resources, cls).__new__(cls, cpu, gpu, extra_cpu,
                                              extra_gpu)
 
