@@ -51,7 +51,6 @@ class HyperOptSearch(SuggestionAlgorithm):
         >>> }
         >>> algo = HyperOptSearch(
         >>>     space, max_concurrent=4, reward_attr="neg_mean_loss")
-        >>> algo.add_configurations(config)
     """
 
     def __init__(self,
