@@ -6,15 +6,16 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.apache.commons.lang3.tuple.Pair;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.WaitResult;
 import org.ray.api.function.RayFunc;
 import org.ray.api.id.UniqueId;
 import org.ray.api.runtime.RayRuntime;
+import org.ray.runtime.config.RayConfig;
 import org.ray.runtime.functionmanager.FunctionManager;
 import org.ray.runtime.functionmanager.RayFunction;
-import org.ray.runtime.config.RayConfig;
 import org.ray.runtime.objectstore.ObjectStoreProxy;
 import org.ray.runtime.objectstore.ObjectStoreProxy.GetStatus;
 import org.ray.runtime.raylet.RayletClient;
@@ -24,7 +25,6 @@ import org.ray.runtime.util.ResourceUtil;
 import org.ray.runtime.util.UniqueIdHelper;
 import org.ray.runtime.util.exception.TaskExecutionException;
 import org.ray.runtime.util.logger.RayLog;
-import org.apache.commons.lang3.tuple.Pair;
 
 /**
  * Core functionality to implement Ray APIs.
