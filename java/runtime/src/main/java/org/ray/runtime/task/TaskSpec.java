@@ -1,8 +1,11 @@
 package org.ray.runtime.task;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 import org.ray.api.id.UniqueId;
+import org.ray.runtime.functionmanager.FunctionDescriptor;
 import org.ray.runtime.util.ResourceUtil;
 
 /**
@@ -11,102 +14,91 @@ import org.ray.runtime.util.ResourceUtil;
 public class TaskSpec {
 
   // ID of the driver that created this task.
-  public UniqueId driverId;
+  public final UniqueId driverId;
 
   // Task ID of the task.
-  public UniqueId taskId;
+  public final UniqueId taskId;
 
   // Task ID of the parent task.
-  public UniqueId parentTaskId;
+  public final UniqueId parentTaskId;
 
   // A count of the number of tasks submitted by the parent task before this one.
-  public int parentCounter;
+  public final int parentCounter;
+
+  // Id for createActor a target actor
+  public final UniqueId actorCreationId;
 
   // Actor ID of the task. This is the actor that this task is executed on
   // or NIL_ACTOR_ID if the task is just a normal task.
-  public UniqueId actorId;
-
-  // Number of tasks that have been submitted to this actor so far.
-  public int actorCounter;
-
-  // Function ID of the task.
-  public UniqueId functionId;
-
-  // Task arguments.
-  public FunctionArg[] args;
-
-  // return ids
-  public UniqueId[] returnIds;
+  public final UniqueId actorId;
 
   // ID per actor client for session consistency
-  public UniqueId actorHandleId;
+  public final UniqueId actorHandleId;
 
-  // Id for createActor a target actor
-  public UniqueId createActorId;
+  // Number of tasks that have been submitted to this actor so far.
+  public final int actorCounter;
+
+  // Task arguments.
+  public final FunctionArg[] args;
+
+  // return ids
+  public final UniqueId[] returnIds;
 
   // The task's resource demands.
-  public Map<String, Double> resources;
+  public final Map<String, Double> resources;
 
-  public UniqueId cursorId;
+  // Function descriptor is a list of strings that can uniquely identify a function.
+  // It will be sent to worker and used to load the target callable function.
+  public final FunctionDescriptor functionDescriptor;
 
-  public TaskSpec() {}
-
-  public TaskSpec(UniqueId driverId, UniqueId taskId, UniqueId parentTaskId, int parentCounter,
-      UniqueId actorId, int actorCounter, UniqueId functionId, FunctionArg[] args,
-      UniqueId[] returnIds, UniqueId actorHandleId, UniqueId createActorId,
-      Map<String, Double> resources, UniqueId cursorId) {
-    this.driverId = driverId;
-    this.taskId = taskId;
-    this.parentTaskId = parentTaskId;
-    this.parentCounter = parentCounter;
-    this.actorId = actorId;
-    this.actorCounter = actorCounter;
-    this.functionId = functionId;
-    this.args = args;
-    this.returnIds = returnIds;
-    this.actorHandleId = actorHandleId;
-    this.createActorId = createActorId;
-    this.resources = resources;
-    this.cursorId = cursorId;
-
-    if (!this.resources.containsKey(ResourceUtil.CPU_LITERAL)) {
-      this.resources.put(ResourceUtil.CPU_LITERAL, 0.0);
-    }
-
-    if (!this.resources.containsKey(ResourceUtil.GPU_LITERAL)) {
-      this.resources.put(ResourceUtil.GPU_LITERAL, 0.0);
-    }
-  }
-
-  @Override
-  public String toString() {
-    StringBuilder builder = new StringBuilder();
-    builder.append("\ttaskId: ").append(taskId).append("\n");
-    builder.append("\tdriverId: ").append(driverId).append("\n");
-    builder.append("\tparentCounter: ").append(parentCounter).append("\n");
-    builder.append("\tactorId: ").append(actorId).append("\n");
-    builder.append("\tactorCounter: ").append(actorCounter).append("\n");
-    builder.append("\tfunctionId: ").append(functionId).append("\n");
-    builder.append("\treturnIds: ").append(Arrays.toString(returnIds)).append("\n");
-    builder.append("\tactorHandleId: ").append(actorHandleId).append("\n");
-    builder.append("\tcreateActorId: ").append(createActorId).append("\n");
-    builder.append("\tresources: ")
-        .append(ResourceUtil.getResourcesFromatStringFromMap(resources)).append("\n");
-    builder.append("\tcursorId: ").append(cursorId).append("\n");
-    builder.append("\targs:\n");
-    for (FunctionArg arg : args) {
-      builder.append("\t\t");
-      arg.toString(builder);
-      builder.append("\n");
-    }
-    return builder.toString();
-  }
+  private List<UniqueId> executionDependencies;
 
   public boolean isActorTask() {
     return !actorId.isNil();
   }
 
   public boolean isActorCreationTask() {
-    return !createActorId.isNil();
+    return !actorCreationId.isNil();
+  }
+
+  public TaskSpec(UniqueId driverId, UniqueId taskId, UniqueId parentTaskId, int parentCounter,
+      UniqueId actorCreationId, UniqueId actorId, UniqueId actorHandleId, int actorCounter,
+      FunctionArg[] args, UniqueId[] returnIds,
+      Map<String, Double> resources, FunctionDescriptor functionDescriptor) {
+    this.driverId = driverId;
+    this.taskId = taskId;
+    this.parentTaskId = parentTaskId;
+    this.parentCounter = parentCounter;
+    this.actorCreationId = actorCreationId;
+    this.actorId = actorId;
+    this.actorHandleId = actorHandleId;
+    this.actorCounter = actorCounter;
+    this.args = args;
+    this.returnIds = returnIds;
+    this.resources = resources;
+    this.functionDescriptor = functionDescriptor;
+    this.executionDependencies = new ArrayList<>();
+  }
+
+  public List<UniqueId> getExecutionDependencies() {
+    return executionDependencies;
+  }
+
+  @Override
+  public String toString() {
+    return "TaskSpec{" +
+        "driverId=" + driverId +
+        ", taskId=" + taskId +
+        ", parentTaskId=" + parentTaskId +
+        ", parentCounter=" + parentCounter +
+        ", actorCreationId=" + actorCreationId +
+        ", actorId=" + actorId +
+        ", actorHandleId=" + actorHandleId +
+        ", actorCounter=" + actorCounter +
+        ", args=" + Arrays.toString(args) +
+        ", returnIds=" + Arrays.toString(returnIds) +
+        ", resources=" + ResourceUtil.getResourcesStringFromMap(resources) +
+        ", functionDescriptor=" + functionDescriptor +
+        '}';
   }
 }

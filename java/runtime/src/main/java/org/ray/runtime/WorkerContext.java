@@ -34,15 +34,20 @@ public class WorkerContext {
     WorkerContext ctx = new WorkerContext();
     currentWorkerCtx.set(ctx);
 
-    TaskSpec dummy = new TaskSpec();
-    dummy.parentTaskId = UniqueId.NIL;
-    if (params.worker_mode == WorkerMode.DRIVER) {
-      dummy.taskId = UniqueId.randomId();
-    } else {
-      dummy.taskId = UniqueId.NIL;
-    }
-    dummy.actorId = UniqueId.NIL;
-    dummy.driverId = params.driver_id;
+    TaskSpec dummy = new TaskSpec(
+        params.driver_id,
+        params.worker_mode == WorkerMode.DRIVER ? UniqueId.randomId() : UniqueId.NIL,
+        UniqueId.NIL,
+        0,
+        UniqueId.NIL,
+        UniqueId.NIL,
+        UniqueId.NIL,
+        0,
+        null,
+        null,
+        null,
+        null
+    );
     prepare(dummy, null);
 
     return ctx;

@@ -66,5 +66,12 @@
       <groupId>org.ow2.asm</groupId>
       <artifactId>asm</artifactId>
     </dependency>
+
+    <!-- test dependencies -->
+    <dependency>
+      <groupId>junit</groupId>
+      <artifactId>junit</artifactId>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
 </project>

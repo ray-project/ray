@@ -17,15 +17,13 @@ import org.ray.api.id.UniqueId;
 import org.ray.api.runtime.RayRuntime;
 import org.ray.runtime.config.PathConfig;
 import org.ray.runtime.config.RayParameters;
-import org.ray.runtime.functionmanager.LocalFunctionManager;
-import org.ray.runtime.functionmanager.RayMethod;
-import org.ray.runtime.functionmanager.RemoteFunctionManager;
+import org.ray.runtime.functionmanager.FunctionManager;
+import org.ray.runtime.functionmanager.RayFunction;
 import org.ray.runtime.objectstore.ObjectStoreProxy;
 import org.ray.runtime.objectstore.ObjectStoreProxy.GetStatus;
 import org.ray.runtime.raylet.RayletClient;
 import org.ray.runtime.task.ArgumentsBuilder;
 import org.ray.runtime.task.TaskSpec;
-import org.ray.runtime.util.MethodId;
 import org.ray.runtime.util.ResourceUtil;
 import org.ray.runtime.util.UniqueIdHelper;
 import org.ray.runtime.util.config.ConfigReader;
@@ -44,8 +42,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   protected Worker worker;
   protected RayletClient rayletClient;
   protected ObjectStoreProxy objectStoreProxy;
-  protected LocalFunctionManager functions;
-  protected RemoteFunctionManager remoteFunctionManager;
+  protected FunctionManager functionManager;
   protected PathConfig pathConfig;
 
   /**
@@ -121,13 +118,11 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   protected void init(
       RayletClient slink,
       ObjectStoreLink plink,
-      RemoteFunctionManager remoteLoader,
       PathConfig pathManager
   ) {
-    remoteFunctionManager = remoteLoader;
     pathConfig = pathManager;
 
-    functions = new LocalFunctionManager(remoteLoader);
+    functionManager = new FunctionManager();
     rayletClient = slink;
 
     objectStoreProxy = new ObjectStoreProxy(plink);
@@ -308,6 +303,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     }
     RayActorImpl actorImpl = (RayActorImpl)actor;
     TaskSpec spec = createTaskSpec(func, actorImpl, args, false);
+    spec.getExecutionDependencies().add(((RayActorImpl) actor).getTaskCursor());
     actorImpl.setTaskCursor(spec.returnIds[1]);
     rayletClient.submitTask(spec);
     return new RayObjectImpl(spec.returnIds[0]);
@@ -357,33 +353,20 @@ public abstract class AbstractRayRuntime implements RayRuntime {
       actorCreationId = returnIds[0];
     }
 
-    MethodId methodId = MethodId.fromSerializedLambda(func);
-
-    // NOTE: we append the class name at the end of arguments,
-    // so that we can look up the method based on the class name.
-    // TODO(hchen): move class name to task spec.
-    args = Arrays.copyOf(args, args.length + 1);
-    args[args.length - 1] = methodId.className;
-
-    RayMethod rayMethod = functions.getMethod(
-        current.driverId, actor.getId(), new UniqueId(methodId.getSha1Hash()), methodId.className
-    ).getRight();
-    UniqueId funcId = rayMethod.getFuncId();
-
+    RayFunction rayFunction = functionManager.getFunction(current.driverId, func);
     return new TaskSpec(
         current.driverId,
         taskId,
         current.taskId,
         -1,
+        actorCreationId,
         actor.getId(),
+        actor.getHandleId(),
         actor.increaseTaskCounter(),
-        funcId,
         ArgumentsBuilder.wrap(args),
         returnIds,
-        actor.getHandleId(),
-        actorCreationId,
-        ResourceUtil.getResourcesMapFromArray(rayMethod.remoteAnnotation),
-        actor.getTaskCursor()
+        ResourceUtil.getResourcesMapFromArray(rayFunction.getRayRemoteAnnotation()),
+        rayFunction.getFunctionDescriptor()
     );
   }
 
@@ -399,8 +382,8 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     return rayletClient;
   }
 
-  public LocalFunctionManager getLocalFunctionManager() {
-    return functions;
+  public FunctionManager getFunctionManager() {
+    return functionManager;
   }
 }
 
