@@ -374,14 +374,16 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
         register_trainable("f1", train)
 
-        [trial] = run_experiments({
-            "foo": {
-                "run": "f1",
-                "config": {
-                    "script_min_iter_time_s": 0,
-                },
-            }
-        }, raise_on_failed_trial=False)
+        [trial] = run_experiments(
+            {
+                "foo": {
+                    "run": "f1",
+                    "config": {
+                        "script_min_iter_time_s": 0,
+                    },
+                }
+            },
+            raise_on_failed_trial=False)
         self.assertEqual(trial.status, Trial.ERROR)
 
     def testReportInfinity(self):
