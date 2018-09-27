@@ -258,6 +258,6 @@ class DQNAgent(Agent):
         return state
 
     def __setstate__(self, state):
-        Agent.__setstate__(state)
+        Agent.__setstate__(self, state)
         self.num_target_updates = state["num_target_updates"]
         self.last_target_update_ts = state["last_target_update_ts"]
