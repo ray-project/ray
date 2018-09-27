@@ -12,7 +12,7 @@ import pickle
 import time
 
 import ray
-from ray.rllib.agents import Agent
+from ray.rllib.agents import Agent, with_common_config
 from ray.tune.trial import Resources
 
 from ray.rllib.agents.es import optimizers
@@ -26,7 +26,7 @@ Result = namedtuple("Result", [
     "eval_returns", "eval_lengths"
 ])
 
-DEFAULT_CONFIG = {
+DEFAULT_CONFIG = with_common_config({
     "l2_coeff": 0.005,
     "noise_stdev": 0.02,
     "episodes_per_batch": 1000,
@@ -40,7 +40,8 @@ DEFAULT_CONFIG = {
     "report_length": 10,
     "env": None,
     "env_config": {},
-}
+    "model": {},
+})
 
 
 @ray.remote
