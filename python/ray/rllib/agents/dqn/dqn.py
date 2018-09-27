@@ -249,25 +249,15 @@ class DQNAgent(Agent):
             }, **self.optimizer.stats()))
         return result
 
-    def _save(self, checkpoint_dir):
-        checkpoint_path = os.path.join(checkpoint_dir,
-                                       "checkpoint-{}".format(self.iteration))
-        extra_data = [
-            self.local_evaluator.save(),
-            ray.get([e.save.remote() for e in self.remote_evaluators]),
-            self.optimizer.save(), self.num_target_updates,
-            self.last_target_update_ts
-        ]
-        pickle.dump(extra_data, open(checkpoint_path + ".extra_data", "wb"))
-        return checkpoint_path
+    def __getstate__(self):
+        state = Agent.__getstate__(self)
+        state.update({
+            "num_target_updates": self.num_target_updates,
+            "last_target_update_ts": self.last_target_update_ts,
+        })
+        return state
 
-    def _restore(self, checkpoint_path):
-        extra_data = pickle.load(open(checkpoint_path + ".extra_data", "rb"))
-        self.local_evaluator.restore(extra_data[0])
-        ray.get([
-            e.restore.remote(d)
-            for (d, e) in zip(extra_data[1], self.remote_evaluators)
-        ])
-        self.optimizer.restore(extra_data[2])
-        self.num_target_updates = extra_data[3]
-        self.last_target_update_ts = extra_data[4]
+    def __setstate__(self, state):
+        Agent.__setstate__(state)
+        self.num_target_updates = state["num_target_updates"]
+        self.last_target_update_ts = state["last_target_update_ts"]
