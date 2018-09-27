@@ -35,8 +35,6 @@ class Resources(
                                  "extra_gpu", "custom_resources"])):
     """Ray resources required to schedule a trial.
 
-    TODO: Custom resources.
-
     Attributes:
         cpu (float): Number of CPUs to allocate to the trial.
         gpu (float): Number of GPUs to allocate to the trial.
@@ -65,6 +63,39 @@ class Resources(
     def gpu_total(self):
         return self.gpu + self.extra_gpu
 
+    def get(self, key):
+        return self.custom_resources.get(key, 0)
+
+    def is_valid(self):
+        all_values = [self.cpu, self.gpu, self.extra_cpu, self.extra_gpu]
+        all_values += list(self.custom_resources.values())
+        return all(v >= 0 for v in all_values)
+
+    @classmethod
+    def combine(cls, original, additional):
+        assert original.extra_cpu == 0
+        assert original.extra_gpu == 0
+        new_customs = {
+            name: (original.resource_value(name) + given_res)
+            for name, given_res in additional.custom_resources.items()
+        }
+        return Resources(
+            original.cpu + additional.cpu_total(),
+            original.gpu + additional.gpu_total()
+            custom_resources=new_customs)
+
+    @classmethod
+    def subtract(cls, original, to_remove):
+        assert original.extra_cpu == 0
+        assert original.extra_gpu == 0
+        new_customs = {
+            name: (original.resource_value(name) - given_res)
+            for name, given_res in additional.custom_resources.items()
+        }
+        return Resources(
+            original.cpu - additional.cpu_total(),
+            original.gpu - additional.gpu_total()
+            custom_resources=new_customs)
 
 def has_trainable(trainable_name):
     return ray.tune.registry._global_registry.contains(

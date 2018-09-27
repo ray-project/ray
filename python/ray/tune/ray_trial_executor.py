@@ -33,7 +33,8 @@ class RayTrialExecutor(TrialExecutor):
     def _setup_runner(self, trial):
         cls = ray.remote(
             num_cpus=trial.resources.cpu,
-            num_gpus=trial.resources.gpu)(trial._get_trainable_cls())
+            num_gpus=trial.resources.gpu,
+            resources=trial.resources.custom_resources)(trial._get_trainable_cls())
 
         trial.init_logger()
         remote_logdir = trial.logdir
@@ -201,31 +202,26 @@ class RayTrialExecutor(TrialExecutor):
         return result
 
     def _commit_resources(self, resources):
-        committed_custom_res = self._committed_resources.custom_resources
-        custom_resources = {k: (committed + resources.custom_resources.get(k, 0))
-                            for k, committed in committed_custom_res.items()}
-        self._committed_resources = Resources(
-            self._committed_resources.cpu + resources.cpu_total(),
-            self._committed_resources.gpu + resources.gpu_total()
-            custom_resources=custom_resources)
+        self._committed_resources = Resources.combine(
+            self._committed_resources, resources)
 
     def _return_resources(self, resources):
-        committed_custom_res = self._committed_resources.custom_resources
-        custom_resources = {k: (committed - resources.custom_resources.get(k, 0))
-                            for k, committed in committed_custom_res.items()}
-        self._committed_resources = Resources(
-            self._committed_resources.cpu - resources.cpu_total(),
-            self._committed_resources.gpu - resources.gpu_total())
-        assert self._committed_resources.cpu >= 0
-        assert self._committed_resources.gpu >= 0
+        self._committed_resources = Resources.subtract(
+            self._committed_resources, resources)
+        assert (self._committed_resources.is_valid(),
+                "Resource invalid: {}".format(resources))
 
     def _update_avail_resources(self):
-        clients = ray.global_state.client_table()
+        resources = {}
         if ray.worker.global_worker.use_raylet:
             # TODO(rliaw): Remove once raylet flag is swapped
-            num_cpus = sum(cl['Resources']['CPU'] for cl in clients)
-            num_gpus = sum(cl['Resources'].get('GPU', 0) for cl in clients)
+
+            # TODO(rliaw): Ensure this works after node removal
+            resources = ray.global_state.available_resources()
+            num_cpus = resources.pop("CPU")
+            num_gpus = resources.pop("GPU")
         else:
+            clients = ray.global_state.client_table()
             local_schedulers = [
                 entry for client in clients.values() for entry in client
                 if (entry['ClientType'] == 'local_scheduler'
@@ -233,25 +229,29 @@ class RayTrialExecutor(TrialExecutor):
             ]
             num_cpus = sum(ls['CPU'] for ls in local_schedulers)
             num_gpus = sum(ls.get('GPU', 0) for ls in local_schedulers)
-        self._avail_resources = Resources(int(num_cpus), int(num_gpus))
+        self._avail_resources = Resources(
+            num_cpus, num_gpus, custom_resources=resources)
         self._resources_initialized = True
 
     def has_resources(self, resources):
         """Returns whether this runner has at least the specified resources."""
+        currently_available = Resources.subtract(
+            self._avail_resources, self._committed_resources)
+        assert currently_available.extra_gpu == 0
+        assert currently_available.extra_cpu == 0
 
-        cpu_avail = self._avail_resources.cpu - self._committed_resources.cpu
-        gpu_avail = self._avail_resources.gpu - self._committed_resources.gpu
-
-        have_space = (resources.cpu_total() <= cpu_avail
-                      and resources.gpu_total() <= gpu_avail)
+        leftover = Resources.subtract(currently_available, resources)
+        have_space = leftover.is_valid()
 
         if have_space:
             return True
 
         can_overcommit = self._queue_trials
 
-        if (resources.cpu_total() > 0 and cpu_avail <= 0) or \
-           (resources.gpu_total() > 0 and gpu_avail <= 0):
+        if (resources.cpu_total() > 0 and leftover.cpu <= 0) or \
+           (resources.gpu_total() > 0 and leftover.gpu <= 0) or \
+           any(requested > 0 and leftover.get(name) <= 0
+               for name, requested in resources.custom_resources.items()):
             can_overcommit = False  # requested resource is already saturated
 
         if can_overcommit:
@@ -270,9 +270,16 @@ class RayTrialExecutor(TrialExecutor):
         """Returns a human readable message for printing to the console."""
 
         if self._resources_initialized:
-            return "Resources requested: {}/{} CPUs, {}/{} GPUs".format(
+            status = "Resources requested: {}/{} CPUs, {}/{} GPUs".format(
                 self._committed_resources.cpu, self._avail_resources.cpu,
                 self._committed_resources.gpu, self._avail_resources.gpu)
+            customs = ",".join(["{}/{} {}".format(
+                self._committed_resources.get(name),
+                self._avail_resources.get(name),
+                name) for name in self._avail_resources])
+            if customs:
+                status = ", ".join([status, customs])
+            return status
         else:
             return ""
 
