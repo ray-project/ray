@@ -211,10 +211,6 @@ class HyperBandScheduler(FIFOScheduler):
         """Cleans up trial info from bracket if trial errored early."""
         self.on_trial_remove(trial_runner, trial)
 
-    def _get_non_empty_hyperbands(self):
-        return [filter(lambda b: b is not None, hyperband)
-                for hyperband in self._hyperbands]
-
     def choose_trial_to_run(self, trial_runner):
         """Fair scheduling within iteration by completion percentage.
 
@@ -223,9 +219,12 @@ class HyperBandScheduler(FIFOScheduler):
         then look into next iteration.
         """
 
-        for hyperband in self._get_non_empty_hyperbands():
+        for hyperband in self._hyperbands:
+            # band will have None entries if no resources
+            # are to be allocated to that bracket.
+            scrubbed = [b for b in hyperband if b is not None]
             for bracket in sorted(
-                    hyperband, key=lambda b: b.completion_percentage()):
+                    scrubbed, key=lambda b: b.completion_percentage()):
                 for trial in bracket.current_trials():
                     if (trial.status == Trial.PENDING
                             and trial_runner.has_resources(trial.resources)):
