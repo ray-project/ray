@@ -201,11 +201,18 @@ class RayTrialExecutor(TrialExecutor):
         return result
 
     def _commit_resources(self, resources):
+        committed_custom_res = self._committed_resources.custom_resources
+        custom_resources = {k: (committed + resources.custom_resources.get(k, 0))
+                            for k, committed in committed_custom_res.items()}
         self._committed_resources = Resources(
             self._committed_resources.cpu + resources.cpu_total(),
-            self._committed_resources.gpu + resources.gpu_total())
+            self._committed_resources.gpu + resources.gpu_total()
+            custom_resources=custom_resources)
 
     def _return_resources(self, resources):
+        committed_custom_res = self._committed_resources.custom_resources
+        custom_resources = {k: (committed - resources.custom_resources.get(k, 0))
+                            for k, committed in committed_custom_res.items()}
         self._committed_resources = Resources(
             self._committed_resources.cpu - resources.cpu_total(),
             self._committed_resources.gpu - resources.gpu_total())

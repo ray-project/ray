@@ -31,7 +31,8 @@ def date_str():
 
 
 class Resources(
-        namedtuple("Resources", ["cpu", "gpu", "extra_cpu", "extra_gpu"])):
+        namedtuple("Resources", ["cpu", "gpu", "extra_cpu",
+                                 "extra_gpu", "custom_resources"])):
     """Ray resources required to schedule a trial.
 
     TODO: Custom resources.
@@ -48,11 +49,11 @@ class Resources(
 
     __slots__ = ()
 
-    def __new__(cls, cpu, gpu, extra_cpu=0, extra_gpu=0):
+    def __new__(cls, cpu, gpu, extra_cpu=0, extra_gpu=0, custom_resources=None):
         for entry in [cpu, gpu, extra_cpu, extra_gpu]:
             assert isinstance(entry, Number), "Improper resource value."
         return super(Resources, cls).__new__(cls, cpu, gpu, extra_cpu,
-                                             extra_gpu)
+                                             extra_gpu, custom_resources)
 
     def summary_string(self):
         return "{} CPUs, {} GPUs".format(self.cpu + self.extra_cpu,
