@@ -31,7 +31,6 @@ run_experiments({
     "carla-dqn": {
         "run": "DQN",
         "env": "carla_env",
-        "trial_resources": {"cpu": 4, "gpu": 1},
         "config": {
             "env_config": env_config,
             "model": {
@@ -49,9 +48,6 @@ run_experiments({
             "learning_starts": 1000,
             "schedule_max_timesteps": 100000,
             "gamma": 0.8,
-            "tf_session_args": {
-              "gpu_options": {"allow_growth": True},
-            },
         },
     },
 })
