@@ -476,8 +476,13 @@ def teardown(cluster_config_file, yes, workers_only, cluster_name):
     required=False,
     type=str,
     help=("Override the configured cluster name."))
-def attach(cluster_config_file, start, cluster_name):
-    attach_cluster(cluster_config_file, start, cluster_name)
+@click.option(
+    "--new",
+    "-N",
+    is_flag=True,
+    help=("Force creation of a new screen."))
+def attach(cluster_config_file, start, cluster_name, new):
+    attach_cluster(cluster_config_file, start, cluster_name, new)
 
 
 @cli.command()
