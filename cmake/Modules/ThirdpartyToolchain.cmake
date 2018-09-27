@@ -1,6 +1,4 @@
-set(GFLAGS_VERSION "2.2.0")
-set(GTEST_VERSION "1.8.0")
-set(GBENCHMARK_VERSION "1.1.0")
+# include all ray third party dependencies
 
 # Because we use the old C++ ABI to be compatible with TensorFlow,
 # we have to turn it on for dependencies too
@@ -9,43 +7,11 @@ set(EP_CXX_FLAGS "${EP_CXX_FLAGS} -D_GLIBCXX_USE_CXX11_ABI=0")
 if(RAY_BUILD_TESTS OR RAY_BUILD_BENCHMARKS)
   add_custom_target(unittest ctest -L unittest)
 
-  if(APPLE)
-    set(GTEST_CMAKE_CXX_FLAGS "-fPIC -DGTEST_USE_OWN_TR1_TUPLE=1 -Wno-unused-value -Wno-ignored-attributes")
-  elseif(NOT MSVC)
-    set(GTEST_CMAKE_CXX_FLAGS "-fPIC")
-  endif()
-  if(CMAKE_BUILD_TYPE)
-    string(TOUPPER ${CMAKE_BUILD_TYPE} UPPERCASE_BUILD_TYPE)
-  endif()
-  set(GTEST_CMAKE_CXX_FLAGS "${EP_CXX_FLAGS} ${CMAKE_CXX_FLAGS_${UPPERCASE_BUILD_TYPE}} ${GTEST_CMAKE_CXX_FLAGS}")
-
-  set(GTEST_PREFIX "${CMAKE_CURRENT_BINARY_DIR}/external/googletest/src/googletest_ep")
-  set(GTEST_INCLUDE_DIR "${GTEST_PREFIX}/include")
-  set(GTEST_STATIC_LIB
-    "${GTEST_PREFIX}/lib/${CMAKE_STATIC_LIBRARY_PREFIX}gtest${CMAKE_STATIC_LIBRARY_SUFFIX}")
-  set(GTEST_MAIN_STATIC_LIB
-    "${GTEST_PREFIX}/lib/${CMAKE_STATIC_LIBRARY_PREFIX}gtest_main${CMAKE_STATIC_LIBRARY_SUFFIX}")
-  set(GMOCK_MAIN_STATIC_LIB
-    "${GTEST_PREFIX}/lib/${CMAKE_STATIC_LIBRARY_PREFIX}gmock_main${CMAKE_STATIC_LIBRARY_SUFFIX}")
-  set(GTEST_CMAKE_ARGS -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
-                       -DCMAKE_INSTALL_PREFIX=${GTEST_PREFIX}
-                       -DCMAKE_CXX_FLAGS=${GTEST_CMAKE_CXX_FLAGS})
-  if (MSVC AND NOT ARROW_USE_STATIC_CRT)
-    set(GTEST_CMAKE_ARGS ${GTEST_CMAKE_ARGS} -Dgtest_force_shared_crt=ON)
-  endif()
-
-  set(GTEST_URL_MD5 "16877098823401d1bf2ed7891d7dce36")
-
-  ExternalProject_Add(googletest_ep
-    PREFIX external/googletest
-    URL "https://github.com/google/googletest/archive/release-${GTEST_VERSION}.tar.gz"
-    URL_MD5 ${GTEST_URL_MD5}
-    BUILD_BYPRODUCTS ${GTEST_STATIC_LIB} ${GTEST_MAIN_STATIC_LIB} ${GMOCK_MAIN_STATIC_LIB}
-    CMAKE_ARGS ${GTEST_CMAKE_ARGS}
-    ${EP_LOG_OPTIONS})
-
+  include(GtestExternalProject)
   message(STATUS "GTest include dir: ${GTEST_INCLUDE_DIR}")
   message(STATUS "GTest static library: ${GTEST_STATIC_LIB}")
+  message(STATUS "GTest static main library: ${GTEST_MAIN_STATIC_LIB}")
+  message(STATUS "GMock static main library: ${GMOCK_MAIN_STATIC_LIB}")
   include_directories(SYSTEM ${GTEST_INCLUDE_DIR})
   ADD_THIRDPARTY_LIB(gtest
     STATIC_LIB ${GTEST_STATIC_LIB})
@@ -60,43 +26,12 @@ if(RAY_BUILD_TESTS OR RAY_BUILD_BENCHMARKS)
 endif()
 
 if(RAY_USE_GLOG)
-  message(STATUS "Starting to build glog")
-  set(GLOG_VERSION "0.3.5")
-  # keep the url md5 equals with the version, `md5 v0.3.5.tar.gz`
-  set(GLOG_URL_MD5 "5df6d78b81e51b90ac0ecd7ed932b0d4")
-  set(GLOG_CMAKE_CXX_FLAGS "${EP_CXX_FLAGS} -fPIC")
-  if(APPLE)
-    set(GLOG_CMAKE_CXX_FLAGS "${GLOG_CMAKE_CXX_FLAGS} -mmacosx-version-min=10.12")
-  endif()
+  include(GlogExternalProject)
+  message(STATUS "Glog home: ${GLOG_HOME}")
+  message(STATUS "Glog include dir: ${GLOG_INCLUDE_DIR}")
+  message(STATUS "Glog static lib: ${GLOG_STATIC_LIB}")
 
-  set(GLOG_URL "https://github.com/google/glog/archive/v${GLOG_VERSION}.tar.gz")
-  set(GLOG_PREFIX "${CMAKE_CURRENT_BINARY_DIR}/external/glog/src/glog_ep")
-  set(GLOG_HOME "${GLOG_PREFIX}")
-  set(GLOG_INCLUDE_DIR "${GLOG_PREFIX}/include")
-  set(GLOG_STATIC_LIB "${GLOG_PREFIX}/lib/libglog.a")
-
-
-  set(GLOG_CMAKE_ARGS -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
-                        -DCMAKE_INSTALL_PREFIX=${GLOG_PREFIX}
-                        -DBUILD_SHARED_LIBS=OFF
-                        -DBUILD_TESTING=OFF
-                        -DWITH_GFLAGS=OFF
-                        -DCMAKE_CXX_FLAGS_${UPPERCASE_BUILD_TYPE}=${GLOG_CMAKE_CXX_FLAGS}
-                        -DCMAKE_C_FLAGS_${UPPERCASE_BUILD_TYPE}=${EP_C_FLAGS}
-                        -DCMAKE_CXX_FLAGS=${GLOG_CMAKE_CXX_FLAGS})
-
-  ExternalProject_Add(glog_ep
-    PREFIX external/glog
-    URL ${GLOG_URL}
-    URL_MD5 ${GLOG_URL_MD5}
-    ${EP_LOG_OPTIONS}
-    BUILD_IN_SOURCE 1
-    BUILD_BYPRODUCTS "${GLOG_STATIC_LIB}"
-    CMAKE_ARGS ${GLOG_CMAKE_ARGS})
-
-  message(STATUS "GLog include dir: ${GLOG_INCLUDE_DIR}")
-  message(STATUS "GLog static library: ${GLOG_STATIC_LIB}")
-  include_directories(SYSTEM ${GLOG_INCLUDE_DIR})
+  include_directories(${GLOG_INCLUDE_DIR})
   ADD_THIRDPARTY_LIB(glog
     STATIC_LIB ${GLOG_STATIC_LIB})
 
@@ -111,6 +46,16 @@ message(STATUS "Boost include dir: ${Boost_INCLUDE_DIR}")
 message(STATUS "Boost system library: ${Boost_SYSTEM_LIBRARY}")
 message(STATUS "Boost filesystem library: ${Boost_FILESYSTEM_LIBRARY}")
 include_directories(${Boost_INCLUDE_DIR})
+
+ADD_THIRDPARTY_LIB(boost_system
+  STATIC_LIB ${Boost_SYSTEM_LIBRARY})
+ADD_THIRDPARTY_LIB(boost_filesystem
+  STATIC_LIB ${Boost_FILESYSTEM_LIBRARY})
+
+add_dependencies(boost_system boost_ep)
+add_dependencies(boost_filesystem boost_ep)
+
+add_custom_target(boost DEPENDS boost_system boost_filesystem)
 
 # flatbuffers
 include(FlatBuffersExternalProject)

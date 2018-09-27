@@ -40,6 +40,9 @@ DEFAULT_CONFIG = with_common_config({
     "entropy_coeff": 0.0,
     # PPO clip parameter
     "clip_param": 0.3,
+    # Clip param for the value function. Note that this is sensitive to the
+    # scale of the rewards. If your expected V is large, increase this.
+    "vf_clip_param": 10.0,
     # Target value for KL divergence
     "kl_target": 0.01,
     # Number of GPUs to use for SGD

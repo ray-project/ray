@@ -1,5 +1,7 @@
 package org.ray.runtime.task;
 
+import java.util.ArrayList;
+import java.util.List;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
@@ -31,10 +33,13 @@ public class ArgumentsBuilder {
       } else if (checkSimpleValue(arg)) {
         data = Serializer.encode(arg);
       } else {
-        RayObject obj = Ray.put(arg);
-        id = obj.getId();
+        id = Ray.put(arg).getId();
       }
-      ret[i] = new FunctionArg(id, data);
+      if (id != null) {
+        ret[i] = FunctionArg.passByReference(id);
+      } else {
+        ret[i] = FunctionArg.passByValue(data);
+      }
     }
     return ret;
   }
@@ -43,18 +48,23 @@ public class ArgumentsBuilder {
    * Convert task spec arguments to real function arguments.
    */
   public static Object[] unwrap(TaskSpec task, ClassLoader classLoader) {
-    // Ignore the last arg, which is the class name
-    Object[] realArgs = new Object[task.args.length - 1];
-    for (int i = 0; i < task.args.length - 1; i++) {
+    Object[] realArgs = new Object[task.args.length];
+    List<UniqueId> idsToFetch = new ArrayList<>();
+    List<Integer> indices = new ArrayList<>();
+    for (int i = 0; i < task.args.length; i++) {
       FunctionArg arg = task.args[i];
-      if (arg.id == null) {
-        // pass by value
-        Object obj = Serializer.decode(arg.data, classLoader);
-        realArgs[i] = obj;
-      } else if (arg.data == null) {
+      if (arg.id != null) {
         // pass by reference
-        realArgs[i] = Ray.get(arg.id);
+        idsToFetch.add(arg.id);
+        indices.add(i);
+      } else {
+        // pass by value
+        realArgs[i] = Serializer.decode(arg.data, classLoader);
       }
+    }
+    List<Object> objects = Ray.get(idsToFetch);
+    for (int i = 0; i < objects.size(); i++) {
+      realArgs[indices.get(i)] = objects.get(i);
     }
     return realArgs;
   }

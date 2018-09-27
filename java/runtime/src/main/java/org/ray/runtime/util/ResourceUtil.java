@@ -37,6 +37,9 @@ public class ResourceUtil {
    * @return The format resources string, like "{CPU:4, GPU:0}".
    */
   public static String getResourcesFromatStringFromMap(Map<String, Double> resources) {
+    if (resources == null) {
+      return "{}";
+    }
     StringBuilder builder = new StringBuilder();
     builder.append("{");
     int count = 1;
@@ -89,6 +92,9 @@ public class ResourceUtil {
       String[] items = resources.split(",");
       for (String item : items) {
         String trimItem = item.trim();
+        if (trimItem.isEmpty()) {
+          continue;
+        }
         String[] resourcePair = trimItem.split(":");
 
         if (resourcePair.length != 2) {

@@ -5,7 +5,7 @@ import java.util.List;
 import org.apache.arrow.plasma.ObjectStoreLink;
 import org.apache.commons.lang3.tuple.Pair;
 import org.ray.api.id.UniqueId;
-import org.ray.runtime.WorkerContext;
+import org.ray.runtime.AbstractRayRuntime;
 import org.ray.runtime.util.Serializer;
 import org.ray.runtime.util.exception.TaskExecutionException;
 
@@ -15,12 +15,14 @@ import org.ray.runtime.util.exception.TaskExecutionException;
  */
 public class ObjectStoreProxy {
 
+  private final AbstractRayRuntime runtime;
   private final ObjectStoreLink store;
   private final int getTimeoutMs = 1000;
 
-  public ObjectStoreProxy(ObjectStoreLink store) {
+  public ObjectStoreProxy(AbstractRayRuntime runtime, ObjectStoreLink store) {
+    this.runtime = runtime;
     this.store = store;
-  } 
+  }
 
   public <T> Pair<T, GetStatus> get(UniqueId objectId, boolean isMetadata)
       throws TaskExecutionException {
@@ -31,7 +33,7 @@ public class ObjectStoreProxy {
       throws TaskExecutionException {
     byte[] obj = store.get(id.getBytes(), timeoutMs, isMetadata);
     if (obj != null) {
-      T t = Serializer.decode(obj, WorkerContext.currentClassLoader());
+      T t = Serializer.decode(obj, runtime.getWorkerContext().getCurrentClassLoader());
       store.release(id.getBytes());
       if (t instanceof TaskExecutionException) {
         throw (TaskExecutionException) t;
@@ -54,7 +56,7 @@ public class ObjectStoreProxy {
     for (int i = 0; i < objs.size(); i++) {
       byte[] obj = objs.get(i);
       if (obj != null) {
-        T t = Serializer.decode(obj, WorkerContext.currentClassLoader());
+        T t = Serializer.decode(obj, runtime.getWorkerContext().getCurrentClassLoader());
         store.release(ids.get(i).getBytes());
         if (t instanceof TaskExecutionException) {
           throw (TaskExecutionException) t;
