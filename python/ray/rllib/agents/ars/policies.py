@@ -57,11 +57,6 @@ class GenericPolicy(object):
     def __init__(self, sess, action_space, preprocessor, observation_filter,
                  action_noise_std, options):
 
-        if len(preprocessor.shape) > 1:
-            raise UnsupportedSpaceException(
-                "Observation space {} is not supported with ARS.".format(
-                    preprocessor.shape))
-
         self.sess = sess
         self.action_space = action_space
         self.action_noise_std = action_noise_std
