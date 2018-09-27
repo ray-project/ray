@@ -366,6 +366,24 @@ class TrainableFunctionApiTest(unittest.TestCase):
         self.assertEqual(trial.status, Trial.TERMINATED)
         self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], 99)
 
+    def testNoRaiseFlag(self):
+        def train(config, reporter):
+            # Finish this trial without any metric,
+            # which leads to a failed trial
+            return
+
+        register_trainable("f1", train)
+
+        [trial] = run_experiments({
+            "foo": {
+                "run": "f1",
+                "config": {
+                    "script_min_iter_time_s": 0,
+                },
+            }
+        }, raise_on_failed_trial=False)
+        self.assertEqual(trial.status, Trial.ERROR)
+
     def testReportInfinity(self):
         def train(config, reporter):
             for i in range(100):
