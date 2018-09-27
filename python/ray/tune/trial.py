@@ -34,6 +34,8 @@ class Resources(
         namedtuple("Resources", ["cpu", "gpu", "extra_cpu", "extra_gpu"])):
     """Ray resources required to schedule a trial.
 
+    TODO: Custom resources.
+
     Attributes:
         cpu (float): Number of CPUs to allocate to the trial.
         gpu (float): Number of GPUs to allocate to the trial.
