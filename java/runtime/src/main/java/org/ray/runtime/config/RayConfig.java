@@ -57,7 +57,7 @@ public class RayConfig {
       Preconditions.checkArgument(redisAddress != null,
           "Redis address must be set in worker mode.");
     } else {
-      Preconditions.checkArgument(!rayHome.isEmpty(),
+      Preconditions.checkArgument(!this.rayHome.isEmpty(),
           "'ray.home' must be set in driver mode");
     }
   }
@@ -84,12 +84,12 @@ public class RayConfig {
     // run mode
     runMode = config.getEnum(RunMode.class, "ray.run-mode");
     // ray home
-    String rayHome = config.getString("ray.home");
-    if (!rayHome.startsWith("/")) {
+    String localRayHome = config.getString("ray.home");
+    if (!localRayHome.startsWith("/")) {
       // If ray.home isn't an absolute path, prepend it with current work dir.
-      rayHome = System.getProperty("user.dir") + "/" + rayHome;
+      localRayHome = System.getProperty("user.dir") + "/" + localRayHome;
     }
-    this.rayHome = removeTrailingSlash(rayHome);
+    this.rayHome = removeTrailingSlash(localRayHome);
     // node ip
     String nodeIp = config.getString("ray.node-ip");
     if (nodeIp.isEmpty()) {
@@ -146,14 +146,15 @@ public class RayConfig {
 
     // library path
     this.libraryPath = new ImmutableList.Builder<String>().add(
-        rayHome + "/build/src/plasma",
-        rayHome + "/build/src/local_scheduler"
+        this.rayHome + "/build/src/plasma",
+        this.rayHome + "/build/src/local_scheduler"
     ).addAll(customLibraryPath).build();
 
-    redisServerExecutablePath = rayHome + "/build/src/common/thirdparty/redis/src/redis-server";
-    redisModulePath = rayHome + "/build/src/common/redis_module/libray_redis_module.so";
-    plasmaStoreExecutablePath = rayHome + "/build/src/plasma/plasma_store_server";
-    rayletExecutablePath = rayHome + "/build/src/ray/raylet/raylet";
+    redisServerExecutablePath = this.rayHome +
+        "/build/src/common/thirdparty/redis/src/redis-server";
+    redisModulePath = this.rayHome + "/build/src/common/redis_module/libray_redis_module.so";
+    plasmaStoreExecutablePath = this.rayHome + "/build/src/plasma/plasma_store_server";
+    rayletExecutablePath = this.rayHome + "/build/src/ray/raylet/raylet";
 
     // validate config
     validate();
@@ -186,7 +187,7 @@ public class RayConfig {
   @Override
   public String toString() {
     return "RayConfig{"
-        + "rayHome='" + rayHome + '\''
+        + "rayHome='" + this.rayHome + '\''
         + ", nodeIp='" + nodeIp + '\''
         + ", workerMode=" + workerMode
         + ", runMode=" + runMode
