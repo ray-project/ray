@@ -249,11 +249,6 @@ class DQNAgent(Agent):
             }, **self.optimizer.stats()))
         return result
 
-    def _stop(self):
-        # workaround for https://github.com/ray-project/ray/issues/1516
-        for ev in self.remote_evaluators:
-            ev.__ray_terminate__.remote()
-
     def _save(self, checkpoint_dir):
         checkpoint_path = os.path.join(checkpoint_dir,
                                        "checkpoint-{}".format(self.iteration))
