@@ -125,6 +125,10 @@ class PPOAgent(Agent):
                 "Minibatch size {} must be <= train batch size {}.".format(
                     self.config["sgd_minibatch_size"],
                     self.config["train_batch_size"]))
+        if (self.config["batch_mode"] == "truncate_episodes"
+                and not self.config["use_gae"]):
+            raise ValueError(
+                "Episode truncation is not supported without a value function")
 
     def _train(self):
         prev_steps = self.optimizer.num_steps_sampled
