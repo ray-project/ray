@@ -57,7 +57,7 @@ public class RayConfig {
       Preconditions.checkArgument(redisAddress != null,
           "Redis address must be set in worker mode.");
     } else {
-      Preconditions.checkArgument(!this.rayHome.isEmpty(),
+      Preconditions.checkArgument(!rayHome.isEmpty(),
           "'ray.home' must be set in driver mode");
     }
   }
@@ -89,7 +89,7 @@ public class RayConfig {
       // If ray.home isn't an absolute path, prepend it with current work dir.
       localRayHome = System.getProperty("user.dir") + "/" + localRayHome;
     }
-    this.rayHome = removeTrailingSlash(localRayHome);
+    rayHome = removeTrailingSlash(localRayHome);
     // node ip
     String nodeIp = config.getString("ray.node-ip");
     if (nodeIp.isEmpty()) {
@@ -146,15 +146,15 @@ public class RayConfig {
 
     // library path
     this.libraryPath = new ImmutableList.Builder<String>().add(
-        this.rayHome + "/build/src/plasma",
-        this.rayHome + "/build/src/local_scheduler"
+        rayHome + "/build/src/plasma",
+        rayHome + "/build/src/local_scheduler"
     ).addAll(customLibraryPath).build();
 
-    redisServerExecutablePath = this.rayHome +
+    redisServerExecutablePath = rayHome +
         "/build/src/common/thirdparty/redis/src/redis-server";
-    redisModulePath = this.rayHome + "/build/src/common/redis_module/libray_redis_module.so";
-    plasmaStoreExecutablePath = this.rayHome + "/build/src/plasma/plasma_store_server";
-    rayletExecutablePath = this.rayHome + "/build/src/ray/raylet/raylet";
+    redisModulePath = rayHome + "/build/src/common/redis_module/libray_redis_module.so";
+    plasmaStoreExecutablePath = rayHome + "/build/src/plasma/plasma_store_server";
+    rayletExecutablePath = rayHome + "/build/src/ray/raylet/raylet";
 
     // validate config
     validate();
@@ -187,7 +187,7 @@ public class RayConfig {
   @Override
   public String toString() {
     return "RayConfig{"
-        + "rayHome='" + this.rayHome + '\''
+        + "rayHome='" + rayHome + '\''
         + ", nodeIp='" + nodeIp + '\''
         + ", workerMode=" + workerMode
         + ", runMode=" + runMode
