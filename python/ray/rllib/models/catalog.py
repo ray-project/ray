@@ -52,7 +52,7 @@ class ModelCatalog(object):
         >>> observation = prep.transform(raw_observation)
 
         >>> dist_cls, dist_dim = ModelCatalog.get_action_dist(env.action_space)
-        >>> model = ModelCatalog.get_model(inputs, dist_dim)
+        >>> model = ModelCatalog.get_model(inputs, dist_dim, options)
         >>> dist = dist_cls(model.outputs)
         >>> action = dist.sample()
     """
@@ -139,11 +139,7 @@ class ModelCatalog(object):
                                       " not supported".format(action_space))
 
     @staticmethod
-    def get_model(inputs,
-                  num_outputs,
-                  options=None,
-                  state_in=None,
-                  seq_lens=None):
+    def get_model(inputs, num_outputs, options, state_in=None, seq_lens=None):
         """Returns a suitable model conforming to given input and output specs.
 
         Args:
@@ -157,7 +153,6 @@ class ModelCatalog(object):
             model (Model): Neural network model.
         """
 
-        options = options or {}
         model = ModelCatalog._get_model(inputs, num_outputs, options, state_in,
                                         seq_lens)
 

@@ -39,7 +39,7 @@ def rollout(policy, env, timestep_limit=None, add_noise=False):
 
 class GenericPolicy(object):
     def __init__(self, sess, action_space, preprocessor, observation_filter,
-                 action_noise_std):
+                 model_options, action_noise_std):
         self.sess = sess
         self.action_space = action_space
         self.action_noise_std = action_noise_std
@@ -52,7 +52,7 @@ class GenericPolicy(object):
         # Policy network.
         dist_class, dist_dim = ModelCatalog.get_action_dist(
             self.action_space, dist_type="deterministic")
-        model = ModelCatalog.get_model(self.inputs, dist_dim)
+        model = ModelCatalog.get_model(self.inputs, dist_dim, model_options)
         dist = dist_class(model.outputs)
         self.sampler = dist.sample()
 

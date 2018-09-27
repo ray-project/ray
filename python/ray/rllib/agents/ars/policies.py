@@ -54,13 +54,8 @@ def rollout(policy, env, timestep_limit=None, add_noise=False, offset=0):
 
 
 class GenericPolicy(object):
-    def __init__(self,
-                 sess,
-                 action_space,
-                 preprocessor,
-                 observation_filter,
-                 action_noise_std,
-                 options={}):
+    def __init__(self, sess, action_space, preprocessor, observation_filter,
+                 action_noise_std, options):
 
         if len(preprocessor.shape) > 1:
             raise UnsupportedSpaceException(
@@ -80,7 +75,7 @@ class GenericPolicy(object):
         dist_class, dist_dim = ModelCatalog.get_action_dist(
             action_space, dist_type="deterministic")
 
-        model = ModelCatalog.get_model(self.inputs, dist_dim, options=options)
+        model = ModelCatalog.get_model(self.inputs, dist_dim, options)
         dist = dist_class(model.outputs)
         self.sampler = dist.sample()
 
@@ -110,27 +105,16 @@ class GenericPolicy(object):
 
 class LinearPolicy(GenericPolicy):
     def __init__(self, sess, action_space, preprocessor, observation_filter,
-                 action_noise_std):
-        options = {"custom_model": "LinearNetwork"}
-        GenericPolicy.__init__(
-            self,
-            sess,
-            action_space,
-            preprocessor,
-            observation_filter,
-            action_noise_std,
-            options=options)
+                 model_options, action_noise_std):
+        GenericPolicy.__init__(self, sess, action_space, preprocessor,
+                               observation_filter, action_noise_std,
+                               model_options)
 
 
 class MLPPolicy(GenericPolicy):
     def __init__(self, sess, action_space, preprocessor, observation_filter,
-                 fcnet_hiddens, action_noise_std):
-        options = {"fcnet_hiddens": fcnet_hiddens}
-        GenericPolicy.__init__(
-            self,
-            sess,
-            action_space,
-            preprocessor,
-            observation_filter,
-            action_noise_std,
-            options=options)
+                 model_options, fcnet_hiddens, action_noise_std):
+        model_options.update({"fcnet_hiddens": fcnet_hiddens})
+        GenericPolicy.__init__(self, sess, action_space, preprocessor,
+                               observation_filter, action_noise_std,
+                               model_options)

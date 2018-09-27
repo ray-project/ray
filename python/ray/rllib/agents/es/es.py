@@ -83,7 +83,7 @@ class Worker(object):
         self.sess = utils.make_session(single_threaded=True)
         self.policy = policies.GenericPolicy(
             self.sess, self.env.action_space, self.preprocessor,
-            config["observation_filter"], **policy_params)
+            config["observation_filter"], config["model"], **policy_params)
 
     def rollout(self, timestep_limit, add_noise=True):
         rollout_rewards, rollout_length = policies.rollout(

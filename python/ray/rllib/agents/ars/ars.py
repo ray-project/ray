@@ -175,11 +175,12 @@ class ARSAgent(Agent):
         if self.config["policy_type"] == "LinearPolicy":
             self.policy = policies.LinearPolicy(
                 self.sess, env.action_space, preprocessor,
-                self.config["observation_filter"], **policy_params)
+                self.config["observation_filter"], self.config["model"],
+                **policy_params)
         else:
             self.policy = policies.MLPPolicy(
                 self.sess, env.action_space, preprocessor,
-                self.config["observation_filter"],
+                self.config["observation_filter"], self.config["model"],
                 self.config["fcnet_hiddens"], **policy_params)
         self.optimizer = optimizers.SGD(self.policy,
                                         self.config["sgd_stepsize"])
