@@ -289,12 +289,6 @@ docker run  -e "RAY_USE_XRAY=1" --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     --smoke-test
 
 docker run  -e "RAY_USE_XRAY=1" --rm --shm-size=10G --memory=10G $DOCKER_SHA \
-    python /ray/python/ray/rllib/examples/legacy_multiagent/multiagent_mountaincar.py
-
-docker run  -e "RAY_USE_XRAY=1" --rm --shm-size=10G --memory=10G $DOCKER_SHA \
-    python /ray/python/ray/rllib/examples/legacy_multiagent/multiagent_pendulum.py
-
-docker run  -e "RAY_USE_XRAY=1" --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/examples/multiagent_cartpole.py --num-iters=2
 
 docker run  -e "RAY_USE_XRAY=1" --rm --shm-size=10G --memory=10G $DOCKER_SHA \
