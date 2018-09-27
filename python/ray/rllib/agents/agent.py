@@ -9,8 +9,9 @@ import os
 import pickle
 import tempfile
 from datetime import datetime
-
 import tensorflow as tf
+
+import ray
 from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.utils import FilterManager, deep_update, merge_dicts
