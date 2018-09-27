@@ -88,12 +88,12 @@ class Worker(object):
         if config["policy_type"] == "LinearPolicy":
             self.policy = policies.LinearPolicy(
                 self.sess, self.env.action_space, self.preprocessor,
-                config["observation_filter"], **policy_params)
+                config["observation_filter"], config["model"], **policy_params)
         else:
             self.policy = policies.MLPPolicy(
                 self.sess, self.env.action_space, self.preprocessor,
-                config["observation_filter"], config["fcnet_hiddens"],
-                **policy_params)
+                config["observation_filter"], config["model"],
+                config["fcnet_hiddens"], **policy_params)
 
     def rollout(self, timestep_limit, add_noise=False):
         rollout_rewards, rollout_length = policies.rollout(
