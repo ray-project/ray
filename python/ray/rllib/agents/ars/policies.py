@@ -73,7 +73,7 @@ class GenericPolicy(object):
 
         # Policy network.
         dist_class, dist_dim = ModelCatalog.get_action_dist(
-            action_space, dist_type="deterministic")
+            action_space, options, dist_type="deterministic")
 
         model = ModelCatalog.get_model(self.inputs, dist_dim, options)
         dist = dist_class(model.outputs)
