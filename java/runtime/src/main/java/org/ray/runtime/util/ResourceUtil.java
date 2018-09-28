@@ -26,7 +26,7 @@ public class ResourceUtil {
       }
     }
     if (!resourceMap.containsKey(CPU_LITERAL)) {
-      resourceMap.put(CPU_LITERAL, 1.0);
+      resourceMap.put(CPU_LITERAL, 0.0);
     }
     return resourceMap;
   }
