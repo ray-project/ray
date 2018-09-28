@@ -6,6 +6,7 @@ from datetime import datetime
 
 import gzip
 import io
+import logging
 import os
 import pickle
 import shutil
@@ -18,6 +19,8 @@ from ray.tune.logger import UnifiedLogger
 from ray.tune.result import (DEFAULT_RESULTS_DIR, TIME_THIS_ITER_S,
                              TIMESTEPS_THIS_ITER, DONE, TIMESTEPS_TOTAL)
 from ray.tune.trial import Resources
+
+logger = logging.getLogger(__name__)
 
 
 class Trainable(object):
@@ -231,7 +234,8 @@ class Trainable(object):
                 "data": data,
             })
             if len(compressed) > 10e6:  # getting pretty large
-                print("Checkpoint size is {} bytes".format(len(compressed)))
+                logger.info("Checkpoint size is {} bytes".format(
+                    len(compressed)))
             f.write(compressed)
 
         shutil.rmtree(tmpdir)

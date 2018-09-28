@@ -20,6 +20,8 @@ set(OUTPUT_DIR ${CMAKE_CURRENT_LIST_DIR}/format/)
 set(COMMON_FBS_OUTPUT_FILES
   "${OUTPUT_DIR}/common_generated.h")
 
+add_custom_target(gen_common_fbs DEPENDS ${COMMON_FBS_OUTPUT_FILES})
+
 add_custom_command(
   OUTPUT ${COMMON_FBS_OUTPUT_FILES}
   # The --gen-object-api flag generates a C++ class MessageT for each
@@ -94,7 +96,7 @@ add_library(common STATIC
   thirdparty/ae/ae.c
   thirdparty/sha256.c)
 
-add_dependencies(common arrow_ep)
+add_dependencies(common arrow)
 
 if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
   add_dependencies(common gen_common_python_fbs)
