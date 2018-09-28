@@ -453,21 +453,18 @@ def adjust_nstep(n_step, gamma, obs, actions, rewards, new_obs, dones):
 
     The ith new_obs is also adjusted to point to the (i+n_step-1)'th new obs.
 
-    If the episode finishes, the reward will be truncated. After this rewrite,
-    all the arrays will be shortened by (n_step - 1).
+    At the end of the trajectory, n is truncated to fit in the traj length.
     """
-    for i in range(len(rewards) - n_step + 1):
-        if dones[i]:
-            continue  # episode end
+
+    assert not any(dones[:-1]), "Unexpected done in middle of trajectory"
+
+    traj_length = len(rewards)
+    for i in range(traj_length):
         for j in range(1, n_step):
-            new_obs[i] = new_obs[i + j]
-            rewards[i] += gamma**j * rewards[i + j]
-            if dones[i + j]:
-                break  # episode end
-    # truncate ends of the trajectory
-    new_len = len(obs) - n_step + 1
-    for arr in [obs, actions, rewards, new_obs, dones]:
-        del arr[new_len:]
+            if i + j < traj_length:
+                new_obs[i] = new_obs[i + j]
+                dones[i] = dones[i + j]
+                rewards[i] += gamma**j * rewards[i + j]
 
 
 def _postprocess_dqn(policy_graph, sample_batch):
