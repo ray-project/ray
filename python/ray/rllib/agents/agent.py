@@ -233,10 +233,10 @@ class Agent(Trainable):
 
         return Trainable.train(self)
 
-    def _setup(self):
+    def _setup(self, config):
         env = self._env_id
         if env:
-            self.config["env"] = env
+            config["env"] = env
             if _global_registry.contains(ENV_CREATOR, env):
                 self.env_creator = _global_registry.get(ENV_CREATOR, env)
             else:
@@ -247,7 +247,7 @@ class Agent(Trainable):
 
         # Merge the supplied config with the class default
         merged_config = self._default_config.copy()
-        merged_config = deep_update(merged_config, self.config,
+        merged_config = deep_update(merged_config, config,
                                     self._allow_unknown_configs,
                                     self._allow_unknown_subkeys)
         self.config = merged_config
