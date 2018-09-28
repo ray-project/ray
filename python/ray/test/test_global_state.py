@@ -42,7 +42,7 @@ class TestAvailableResources(object):
 
     def test_no_tasks(self):
         cluster_resources = ray.global_state.cluster_resources()
-        available_resources = ray.global_state.cluster_resources()
+        available_resources = ray.global_state.available_resources()
         assert cluster_resources == available_resources
 
     @pytest.mark.timeout(10)

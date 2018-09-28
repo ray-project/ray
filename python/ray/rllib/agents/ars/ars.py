@@ -28,13 +28,14 @@ Result = namedtuple("Result", [
 
 DEFAULT_CONFIG = with_common_config({
     'noise_stdev': 0.02,  # std deviation of parameter noise
-    'num_deltas': 32,  # number of perturbations to try
-    'deltas_used': 32,  # number of perturbations to keep in gradient estimate
+    'num_rollouts': 32,  # number of perturbs to try
+    'rollouts_used': 32,  # number of perturbs to keep in gradient estimate
     'num_workers': 2,
-    'stepsize': 0.01,  # sgd step-size
+    'sgd_stepsize': 0.01,  # sgd step-size
     'observation_filter': "MeanStdFilter",
     'noise_size': 250000000,
     'eval_prob': 0.03,  # probability of evaluating the parameter rewards
+    'report_length': 10,  # how many of the last rewards we average over
     'env_config': {},
     'offset': 0,
     'policy_type': "LinearPolicy",  # ["LinearPolicy", "MLPPolicy"]
@@ -180,10 +181,12 @@ class ARSAgent(Agent):
                 self.sess, env.action_space, preprocessor,
                 self.config["observation_filter"],
                 self.config["fcnet_hiddens"], **policy_params)
-        self.optimizer = optimizers.Adam(self.policy, self.config["stepsize"])
+        self.optimizer = optimizers.SGD(self.policy,
+                                        self.config["sgd_stepsize"])
 
-        self.deltas_used = self.config["deltas_used"]
-        self.num_deltas = self.config["num_deltas"]
+        self.rollouts_used = self.config["rollouts_used"]
+        self.num_rollouts = self.config["num_rollouts"]
+        self.report_length = self.config["report_length"]
 
         # Create the shared noise table.
         print("Creating shared noise table.")
@@ -199,6 +202,7 @@ class ARSAgent(Agent):
 
         self.episodes_so_far = 0
         self.timesteps_so_far = 0
+        self.reward_list = []
         self.tstart = time.time()
 
     def _collect_results(self, theta_id, min_episodes):
@@ -233,7 +237,7 @@ class ARSAgent(Agent):
         # Use the actors to do rollouts, note that we pass in the ID of the
         # policy weights.
         results, num_episodes, num_timesteps = self._collect_results(
-            theta_id, config["num_deltas"])
+            theta_id, config["num_rollouts"])
 
         all_noise_indices = []
         all_training_returns = []
@@ -265,12 +269,12 @@ class ARSAgent(Agent):
         noisy_lengths = np.array(all_training_lengths)
 
         # keep only the best returns
-        # select top performing directions if deltas_used < num_deltas
+        # select top performing directions if rollouts_used < num_rollouts
         max_rewards = np.max(noisy_returns, axis=1)
-        if self.deltas_used > self.num_deltas:
-            self.deltas_used = self.num_deltas
+        if self.rollouts_used > self.num_rollouts:
+            self.rollouts_used = self.num_rollouts
 
-        percentile = 100 * (1 - (self.deltas_used / self.num_deltas))
+        percentile = 100 * (1 - (self.rollouts_used / self.num_rollouts))
         idx = np.arange(max_rewards.size)[
             max_rewards >= np.percentile(max_rewards, percentile)]
         noise_idx = noise_indices[idx]
@@ -293,11 +297,11 @@ class ARSAgent(Agent):
         theta, update_ratio = self.optimizer.update(-g)
         # Set the new weights in the local copy of the policy.
         self.policy.set_weights(theta)
+        # update the reward list
+        if len(all_eval_returns) > 0:
+            self.reward_list.append(eval_returns.mean())
 
         step_tend = time.time()
-        tlogger.record_tabular("EvalEpRewMean", eval_returns.mean())
-        tlogger.record_tabular("EvalEpRewStd", eval_returns.std())
-        tlogger.record_tabular("EvalEpLenMean", eval_lengths.mean())
 
         tlogger.record_tabular("NoisyEpRewMean", noisy_returns.mean())
         tlogger.record_tabular("NoisyEpRewStd", noisy_returns.std())
@@ -319,9 +323,9 @@ class ARSAgent(Agent):
             "time_elapsed_this_iter": step_tend - step_tstart,
             "time_elapsed": step_tend - self.tstart
         }
-
         result = dict(
-            episode_reward_mean=eval_returns.mean(),
+            episode_reward_mean=np.mean(
+                self.reward_list[-self.report_length:]),
             episode_len_mean=eval_lengths.mean(),
             timesteps_this_iter=noisy_lengths.sum(),
             info=info)
