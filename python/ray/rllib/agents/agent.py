@@ -4,7 +4,6 @@ from __future__ import print_function
 
 import copy
 import json
-import numpy as np
 import os
 import pickle
 import tempfile

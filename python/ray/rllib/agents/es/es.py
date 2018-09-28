@@ -7,8 +7,6 @@ from __future__ import print_function
 
 from collections import namedtuple
 import numpy as np
-import os
-import pickle
 import time
 
 import ray
@@ -206,7 +204,6 @@ class ESAgent(Agent):
     def _train(self):
         config = self.config
 
-        step_tstart = time.time()
         theta = self.policy.get_weights()
         assert theta.dtype == np.float32
 
@@ -269,7 +266,6 @@ class ESAgent(Agent):
         if len(all_eval_returns) > 0:
             self.reward_list.append(np.mean(eval_returns))
 
-        step_tend = time.time()
         tlogger.record_tabular("EvalEpRewStd", eval_returns.std())
         tlogger.record_tabular("EvalEpLenMean", eval_lengths.mean())
 

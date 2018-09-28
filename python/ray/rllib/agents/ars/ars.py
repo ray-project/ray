@@ -8,8 +8,6 @@ from __future__ import print_function
 
 from collections import namedtuple
 import numpy as np
-import os
-import pickle
 import time
 
 import ray
@@ -227,7 +225,6 @@ class ARSAgent(Agent):
     def _train(self):
         config = self.config
 
-        step_tstart = time.time()
         theta = self.policy.get_weights()
         assert theta.dtype == np.float32
 
@@ -298,8 +295,6 @@ class ARSAgent(Agent):
         # update the reward list
         if len(all_eval_returns) > 0:
             self.reward_list.append(eval_returns.mean())
-
-        step_tend = time.time()
 
         tlogger.record_tabular("NoisyEpRewMean", noisy_returns.mean())
         tlogger.record_tabular("NoisyEpRewStd", noisy_returns.std())
