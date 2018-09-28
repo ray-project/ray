@@ -25,6 +25,8 @@ By default, Tune uses the `default search space and variant generation process <
     :noindex:
 
 
+Note that other search algorithms will not necessarily extend this class and may require a different search space declaration than the default Tune format.
+
 HyperOpt Search (Tree-structured Parzen Estimators)
 ---------------------------------------------------
 
@@ -47,6 +49,7 @@ An example of this can be found in `hyperopt_example.py <https://github.com/ray-
     :show-inheritance:
     :noindex:
 
+Note that this class does not extend ``ray.tune.suggest.BasicVariantGenerator``, so you will not be able to use Tune's default variant generation/search space declaration when using HyperOptSearch.
 
 Contributing a New Algorithm
 ----------------------------
