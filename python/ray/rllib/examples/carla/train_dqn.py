@@ -25,6 +25,13 @@ register_env(env_name, lambda env_config: CarlaEnv(env_config))
 register_carla_model()
 
 ray.init()
+
+
+def shape_out(spec):
+    return (spec.config.env_config.framestack *
+            (spec.config.env_config.use_depth_camera and 1 or 3))
+
+
 run_experiments({
     "carla-dqn": {
         "run": "DQN",
@@ -37,7 +44,7 @@ run_experiments({
                     "image_shape": [
                         80,
                         80,
-                        lambda spec: spec.config.env_config.framestack * (spec.config.env_config.use_depth_camera and 1 or 3),
+                        shape_out,
                     ],
                 },
                 "conv_filters": [

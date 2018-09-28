@@ -13,4 +13,4 @@ swimmer-ars:
         observation_filter: NoFilter
         report_length: 3
         model:
-            fcnet_hiddens: []
+            fcnet_hiddens: []  # a linear policy

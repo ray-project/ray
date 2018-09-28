@@ -148,9 +148,6 @@ class ARSAgent(Agent):
         return Resources(cpu=1, gpu=0, extra_cpu=cf["num_workers"])
 
     def _init(self):
-        # register the linear network
-        utils.register_linear_network()
-
         env = self.env_creator(self.config["env_config"])
         from ray.rllib import models
         preprocessor = models.ModelCatalog.get_preprocessor(env)
