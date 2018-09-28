@@ -351,8 +351,8 @@ class Agent(Trainable):
     def _save(self, checkpoint_dir):
         checkpoint_path = os.path.join(checkpoint_dir,
                                        "checkpoint-{}".format(self.iteration))
-        pickle.dump(
-            self.__getstate__(), open(checkpoint_path + ".agent_state", "wb"))
+        pickle.dump(self.__getstate__(),
+                    open(checkpoint_path + ".agent_state", "wb"))
         return checkpoint_path
 
     def _restore(self, checkpoint_path):
