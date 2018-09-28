@@ -60,7 +60,6 @@ class GenericPolicy(object):
                  observation_filter,
                  model_config,
                  action_noise_std=0.0):
-
         self.sess = sess
         self.action_space = action_space
         self.action_noise_std = action_noise_std
