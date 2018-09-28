@@ -84,12 +84,12 @@ public class RayConfig {
     // run mode
     runMode = config.getEnum(RunMode.class, "ray.run-mode");
     // ray home
-    String rayHome = config.getString("ray.home");
-    if (!rayHome.startsWith("/")) {
+    String localRayHome = config.getString("ray.home");
+    if (!localRayHome.startsWith("/")) {
       // If ray.home isn't an absolute path, prepend it with current work dir.
-      rayHome = System.getProperty("user.dir") + "/" + rayHome;
+      localRayHome = System.getProperty("user.dir") + "/" + localRayHome;
     }
-    this.rayHome = removeTrailingSlash(rayHome);
+    rayHome = removeTrailingSlash(localRayHome);
     // node ip
     String nodeIp = config.getString("ray.node-ip");
     if (nodeIp.isEmpty()) {
@@ -150,7 +150,8 @@ public class RayConfig {
         rayHome + "/build/src/local_scheduler"
     ).addAll(customLibraryPath).build();
 
-    redisServerExecutablePath = rayHome + "/build/src/common/thirdparty/redis/src/redis-server";
+    redisServerExecutablePath = rayHome +
+        "/build/src/common/thirdparty/redis/src/redis-server";
     redisModulePath = rayHome + "/build/src/common/redis_module/libray_redis_module.so";
     plasmaStoreExecutablePath = rayHome + "/build/src/plasma/plasma_store_server";
     rayletExecutablePath = rayHome + "/build/src/ray/raylet/raylet";
