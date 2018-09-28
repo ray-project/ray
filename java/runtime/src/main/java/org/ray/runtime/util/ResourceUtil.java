@@ -18,15 +18,16 @@ public class ResourceUtil {
    */
   public static Map<String, Double> getResourcesMapFromArray(RayRemote remoteAnnotation) {
     Map<String, Double> resourceMap = new HashMap<>();
-    if (remoteAnnotation == null) {
-      return resourceMap;
-    }
-    for (ResourceItem item : remoteAnnotation.resources()) {
-      if (!item.name().isEmpty()) {
-        resourceMap.put(item.name(), item.value());
+    if (remoteAnnotation != null) {
+      for (ResourceItem item : remoteAnnotation.resources()) {
+        if (!item.name().isEmpty()) {
+          resourceMap.put(item.name(), item.value());
+        }
       }
     }
-
+    if (!resourceMap.containsKey(CPU_LITERAL)) {
+      resourceMap.put(CPU_LITERAL, 0.0);
+    }
     return resourceMap;
   }
 

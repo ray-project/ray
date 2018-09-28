@@ -1,5 +1,6 @@
 package org.ray.runtime;
 
+import java.util.HashMap;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.config.WorkerMode;
 import org.ray.runtime.task.TaskSpec;
@@ -83,7 +84,7 @@ public class WorkerContext {
         0,
         null,
         null,
-        null,
+        new HashMap<>(),
         null);
   }
 }
