@@ -27,19 +27,17 @@ Result = namedtuple("Result", [
 ])
 
 DEFAULT_CONFIG = with_common_config({
-    'noise_stdev': 0.02,  # std deviation of parameter noise
-    'num_rollouts': 32,  # number of perturbs to try
-    'rollouts_used': 32,  # number of perturbs to keep in gradient estimate
-    'num_workers': 2,
-    'sgd_stepsize': 0.01,  # sgd step-size
-    'observation_filter': "MeanStdFilter",
-    'noise_size': 250000000,
-    'eval_prob': 0.03,  # probability of evaluating the parameter rewards
-    'report_length': 10,  # how many of the last rewards we average over
-    'env_config': {},
-    'offset': 0,
-    'policy_type': "LinearPolicy",  # ["LinearPolicy", "MLPPolicy"]
-    "fcnet_hiddens": [32, 32],  # fcnet structure of MLPPolicy
+    "noise_stdev": 0.02,  # std deviation of parameter noise
+    "num_rollouts": 32,  # number of perturbs to try
+    "rollouts_used": 32,  # number of perturbs to keep in gradient estimate
+    "num_workers": 2,
+    "sgd_stepsize": 0.01,  # sgd step-size
+    "observation_filter": "MeanStdFilter",
+    "noise_size": 250000000,
+    "eval_prob": 0.03,  # probability of evaluating the parameter rewards
+    "report_length": 10,  # how many of the last rewards we average over
+    "env_config": {},
+    "offset": 0,
 })
 
 
@@ -69,15 +67,9 @@ class SharedNoiseTable(object):
 
 @ray.remote
 class Worker(object):
-    def __init__(self,
-                 config,
-                 policy_params,
-                 env_creator,
-                 noise,
-                 min_task_runtime=0.2):
+    def __init__(self, config, env_creator, noise, min_task_runtime=0.2):
         self.min_task_runtime = min_task_runtime
         self.config = config
-        self.policy_params = policy_params
         self.noise = SharedNoiseTable(noise)
 
         self.env = env_creator(config["env_config"])
@@ -85,15 +77,9 @@ class Worker(object):
         self.preprocessor = models.ModelCatalog.get_preprocessor(self.env)
 
         self.sess = utils.make_session(single_threaded=True)
-        if config["policy_type"] == "LinearPolicy":
-            self.policy = policies.LinearPolicy(
-                self.sess, self.env.action_space, self.preprocessor,
-                config["observation_filter"], config["model"], **policy_params)
-        else:
-            self.policy = policies.MLPPolicy(
-                self.sess, self.env.action_space, self.preprocessor,
-                config["observation_filter"], config["model"],
-                config["fcnet_hiddens"], **policy_params)
+        self.policy = policies.GenericPolicy(
+            self.sess, self.env.action_space, self.preprocessor,
+            config["observation_filter"], config["model"])
 
     def rollout(self, timestep_limit, add_noise=False):
         rollout_rewards, rollout_length = policies.rollout(
@@ -162,8 +148,6 @@ class ARSAgent(Agent):
         return Resources(cpu=1, gpu=0, extra_cpu=cf["num_workers"])
 
     def _init(self):
-        policy_params = {"action_noise_std": 0.0}
-
         # register the linear network
         utils.register_linear_network()
 
@@ -172,16 +156,9 @@ class ARSAgent(Agent):
         preprocessor = models.ModelCatalog.get_preprocessor(env)
 
         self.sess = utils.make_session(single_threaded=False)
-        if self.config["policy_type"] == "LinearPolicy":
-            self.policy = policies.LinearPolicy(
-                self.sess, env.action_space, preprocessor,
-                self.config["observation_filter"], self.config["model"],
-                **policy_params)
-        else:
-            self.policy = policies.MLPPolicy(
-                self.sess, env.action_space, preprocessor,
-                self.config["observation_filter"], self.config["model"],
-                self.config["fcnet_hiddens"], **policy_params)
+        self.policy = policies.GenericPolicy(
+            self.sess, env.action_space, preprocessor,
+            self.config["observation_filter"], self.config["model"])
         self.optimizer = optimizers.SGD(self.policy,
                                         self.config["sgd_stepsize"])
 
@@ -197,8 +174,8 @@ class ARSAgent(Agent):
         # Create the actors.
         print("Creating actors.")
         self.workers = [
-            Worker.remote(self.config, policy_params, self.env_creator,
-                          noise_id) for _ in range(self.config["num_workers"])
+            Worker.remote(self.config, self.env_creator, noise_id)
+            for _ in range(self.config["num_workers"])
         ]
 
         self.episodes_so_far = 0

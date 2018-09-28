@@ -54,7 +54,9 @@ run_experiments({
             "sgd_batchsize": 32,
             "devices": ["/gpu:0"],
             "tf_session_args": {
-              "gpu_options": {"allow_growth": True}
+                "gpu_options": {
+                    "allow_growth": True
+                }
             }
         },
     },

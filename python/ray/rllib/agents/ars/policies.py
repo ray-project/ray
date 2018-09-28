@@ -11,7 +11,6 @@ import tensorflow as tf
 
 import ray
 from ray.rllib.utils.filter import get_filter
-from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.models import ModelCatalog
 
 
@@ -54,13 +53,13 @@ def rollout(policy, env, timestep_limit=None, add_noise=False, offset=0):
 
 
 class GenericPolicy(object):
-    def __init__(self, sess, action_space, preprocessor, observation_filter,
-                 action_noise_std, options):
-
-        if len(preprocessor.shape) > 1:
-            raise UnsupportedSpaceException(
-                "Observation space {} is not supported with ARS.".format(
-                    preprocessor.shape))
+    def __init__(self,
+                 sess,
+                 action_space,
+                 preprocessor,
+                 observation_filter,
+                 model_config,
+                 action_noise_std=0.0):
 
         self.sess = sess
         self.action_space = action_space
@@ -73,9 +72,9 @@ class GenericPolicy(object):
 
         # Policy network.
         dist_class, dist_dim = ModelCatalog.get_action_dist(
-            action_space, options, dist_type="deterministic")
+            action_space, model_config, dist_type="deterministic")
 
-        model = ModelCatalog.get_model(self.inputs, dist_dim, options)
+        model = ModelCatalog.get_model(self.inputs, dist_dim, model_config)
         dist = dist_class(model.outputs)
         self.sampler = dist.sample()
 
@@ -101,20 +100,3 @@ class GenericPolicy(object):
 
     def get_weights(self):
         return self.variables.get_flat()
-
-
-class LinearPolicy(GenericPolicy):
-    def __init__(self, sess, action_space, preprocessor, observation_filter,
-                 model_options, action_noise_std):
-        GenericPolicy.__init__(self, sess, action_space, preprocessor,
-                               observation_filter, action_noise_std,
-                               model_options)
-
-
-class MLPPolicy(GenericPolicy):
-    def __init__(self, sess, action_space, preprocessor, observation_filter,
-                 model_options, fcnet_hiddens, action_noise_std):
-        model_options.update({"fcnet_hiddens": fcnet_hiddens})
-        GenericPolicy.__init__(self, sess, action_space, preprocessor,
-                               observation_filter, action_noise_std,
-                               model_options)

@@ -35,10 +35,9 @@ run_experiments({
                 "custom_model": "carla",
                 "custom_options": {
                     "image_shape": [
-                        80, 80,
-                        lambda spec: spec.config.env_config.framestack * (
-                            spec.config.env_config.use_depth_camera and 1 or 3
-                        ),
+                        80,
+                        80,
+                        lambda spec: spec.config.env_config.framestack * (spec.config.env_config.use_depth_camera and 1 or 3),
                     ],
                 },
                 "conv_filters": [
@@ -52,7 +51,9 @@ run_experiments({
             "schedule_max_timesteps": 100000,
             "gamma": 0.8,
             "tf_session_args": {
-              "gpu_options": {"allow_growth": True},
+                "gpu_options": {
+                    "allow_growth": True
+                },
             },
         },
     },

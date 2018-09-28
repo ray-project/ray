@@ -34,7 +34,8 @@ run_experiments({
                 "custom_model": "carla",
                 "custom_options": {
                     "image_shape": [
-                        env_config["x_res"], env_config["y_res"], 6],
+                        env_config["x_res"], env_config["y_res"], 6
+                    ],
                 },
                 "conv_filters": [
                     [16, [8, 8], 4],
