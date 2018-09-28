@@ -71,7 +71,7 @@ Example:
   RayObject<String> fooObject = Ray.put("foo");
 
 ``RayObject<T>.get``
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~
 
 .. code:: java
 
