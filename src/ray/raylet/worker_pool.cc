@@ -138,7 +138,7 @@ void WorkerPool::StartWorkerProcess(const Language &language) {
   int rv = execvp(worker_command_args[0],
                   const_cast<char *const *>(worker_command_args.data()));
   // The worker failed to start. This is a fatal error.
-  RAY_LOG(FATAL) << "Failed to start worker with return value " << rv;
+  RAY_LOG(FATAL) << "Failed to start worker: " << strerror(errno);
 }
 
 void WorkerPool::RegisterWorker(std::shared_ptr<Worker> worker) {
