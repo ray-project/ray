@@ -16,10 +16,10 @@ any other Ray APIs.
 The ``@RayRemote`` annotation can be used to decorate static java
 methods and classes.
 
--  When the annotation is used on a static method, the target method becomes
+When the annotation is used on a static method, the target method becomes
 a remote function.
 
--  When the annotation is used on a class, the class becomes an actor class.
+When the annotation is used on a class, the class becomes an actor class.
 An actor is the encapsulation of state shared among many remote functions.
 
 ``Ray.call``
