@@ -7,28 +7,19 @@ Basic API
 ``Ray.init()``
 ~~~~~~~~~~~~~~
 
-``Ray.init`` should be invoked before any other Ray functions to initialize
-the runtime.
+``Ray.init`` is used to initialize Ray runtime. It should be called befored using
+any other Ray APIs.
 
 ``@RayRemote``
 ~~~~~~~~~~~~~~
 
 The ``@RayRemote`` annotation can be used to decorate static java
-methods and classes. The former indicates that a target function is a remote
-function, which is valid with the following requirements:
+methods and classes.
 
-- It must be a public static method.
-- The method must be deterministic for task reconstruction to behave correctly.
-
-When the annotation is used for a class, the class becomes an actor class
-(an encapsulation of state shared among many remote functions). The
-member functions can be invoked using ``Ray.call``. The requirements for
-an actor class are as follows:
-
-- Any inner class must be public static.
-- It must not have any static fields or methods, as the semantic is undefined
-  with multiple instances of this same class on different machines.
-- All methods that will be invoked remotely must be ``public``.
+-  When the annotation is used on a static method, the target method becomes
+a remote function.
+-  When the annotation is used on a class, the class becomes an actor class.
+An actor is the encapsulation of state shared among many remote functions.
 
 ``Ray.call``
 ~~~~~~~~~~~~
@@ -57,6 +48,7 @@ Example:
 
     @RayRemote
     public static String echo(String str) { return str; }
+
   }
 
   RayObject<String> res = Ray.call(Echo::echo, "hello");
@@ -113,8 +105,10 @@ Example:
 .. code:: java
 
   WaitResult<String> waitResult = Ray.wait(waitList, 5, 1000);
-  List<RayObject<String>> ready = waitResult.getReady();  // `ready` is a list of objects that is already in local object store.
-  List<RayObject<String>> unready = waitResult.getUnready();  // `unready` is the remaining objects that aren't in local object store.
+  // `ready` is a list of objects that is already in local object store.
+  List<RayObject<String>> ready = waitResult.getReady();
+  // `unready` is the remaining objects that aren't in local object store.
+  List<RayObject<String>> unready = waitResult.getUnready();
 
 Actor Support
 -------------
@@ -147,13 +141,13 @@ To create an actor instance, use ``Ray.createActor()``.
     RayActor<Adder> adder = Ray.createActor(Adder::new, 0);
 
 Similar to ``Ray.call``, the first parameter of ``Ray.createActor`` is a method that returns an instance
-of the Actor class (it can be either a constructor, or any factory method). The rest of the parameters are
+of the Actor class (the method can be either a constructor, or any factory methods). The rest of the parameters are
 the arguments of the method.
 
 Call Actor Methods
 ~~~~~~~~~~~~~~~~~~
 
-``Ray.call`` is also used to call actor methods, where the actor instance must be the first parameter.
+``Ray.call`` is also used to call actor methods, where the actor instance must be the first parameter after the remote function.
 
 .. code:: java
 
