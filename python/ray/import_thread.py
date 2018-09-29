@@ -88,7 +88,8 @@ class ImportThread(object):
         if key.startswith(b"RemoteFunction"):
             with profiling.profile(
                     "register_remote_function", worker=self.worker):
-                self.fetch_and_register_remote_function(key)
+                self.worker.function_manager.fetch_and_register_remote_function(
+                    key)
         elif key.startswith(b"FunctionsToRun"):
             with profiling.profile(
                     "fetch_and_run_function", worker=self.worker):
@@ -102,58 +103,6 @@ class ImportThread(object):
         # fetching actor classes here.
         else:
             raise Exception("This code should be unreachable.")
-
-    def fetch_and_register_remote_function(self, key):
-        """Import a remote function."""
-        from ray.worker import FunctionExecutionInfo
-        (driver_id, function_id_str, function_name, serialized_function,
-         num_return_vals, module, resources,
-         max_calls) = self.redis_client.hmget(key, [
-             "driver_id", "function_id", "name", "function", "num_return_vals",
-             "module", "resources", "max_calls"
-         ])
-        function_id = ray.ObjectID(function_id_str)
-        function_name = utils.decode(function_name)
-        max_calls = int(max_calls)
-        module = utils.decode(module)
-
-        # This is a placeholder in case the function can't be unpickled. This
-        # will be overwritten if the function is successfully registered.
-        def f():
-            raise Exception("This function was not imported properly.")
-
-        self.worker.function_execution_info[driver_id][function_id.id()] = (
-            FunctionExecutionInfo(
-                function=f, function_name=function_name, max_calls=max_calls))
-        self.worker.num_task_executions[driver_id][function_id.id()] = 0
-
-        try:
-            function = pickle.loads(serialized_function)
-        except Exception:
-            # If an exception was thrown when the remote function was imported,
-            # we record the traceback and notify the scheduler of the failure.
-            traceback_str = utils.format_error_message(traceback.format_exc())
-            # Log the error message.
-            utils.push_error_to_driver(
-                self.worker,
-                ray_constants.REGISTER_REMOTE_FUNCTION_PUSH_ERROR,
-                traceback_str,
-                driver_id=driver_id,
-                data={
-                    "function_id": function_id.id(),
-                    "function_name": function_name
-                })
-        else:
-            # TODO(rkn): Why is the below line necessary?
-            function.__module__ = module
-            self.worker.function_execution_info[driver_id][
-                function_id.id()] = (FunctionExecutionInfo(
-                    function=function,
-                    function_name=function_name,
-                    max_calls=max_calls))
-            # Add the function to the function table.
-            self.redis_client.rpush(b"FunctionTable:" + function_id.id(),
-                                    self.worker.worker_id)
 
     def fetch_and_execute_function_to_run(self, key):
         """Run on arbitrary function on the worker."""
