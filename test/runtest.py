@@ -409,7 +409,7 @@ def test_register_class(shutdown_only):
     new_regex = ray.get(f.remote(regex))
     # This seems to fail on the system Python 3 that comes with
     # Ubuntu, so it is commented out for now:
-    # self.assertEqual(regex, new_regex)
+    # assert regex == new_regex
     # Instead, we do this:
     assert regex.pattern == new_regex.pattern
 
@@ -1593,7 +1593,7 @@ def test_gpu_ids(shutdown_only):
         list_of_ids = ray.get(ready)
         all_ids = [gpu_id for gpu_ids in list_of_ids for gpu_id in gpu_ids]
         # Commenting out the below assert because it seems to fail a lot.
-        # self.assertEqual(set(all_ids), set(range(10)))
+        # assert set(all_ids) == set(range(10))
 
     # Test that actors have CUDA_VISIBLE_DEVICES set properly.
 
@@ -2352,7 +2352,7 @@ def test_log_file_api(shutdown_only):
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_XRAY") == "1",
     reason="This test does not work with xray (nor is it intended to).")
-def test_task_profile_api(self):
+def test_task_profile_api():
     ray.init(num_cpus=1, redirect_output=True)
 
     @ray.remote
