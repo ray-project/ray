@@ -11,34 +11,11 @@ from ray.rllib.agents.a3c.a3c_tf_policy_graph import A3CPolicyGraph
 from ray.rllib.agents.agent import Agent, with_common_config
 from ray.rllib.optimizers import AsyncGradientsOptimizer
 from ray.rllib.utils import merge_dicts
+from ray.rllib.utils.timer import setup_custom_logger
 from ray.tune.trial import Resources
 
 import logging, sys
 import datetime as dt
-
-class MyFormatter(logging.Formatter):
-    converter=dt.datetime.fromtimestamp
-    def formatTime(self, record, datefmt=None):
-        ct = self.converter(record.created)
-        if datefmt:
-            s = ct.strftime(datefmt)[:-3]
-        else:
-            t = ct.strftime("%Y-%m-%d %H:%M:%S")
-            s = "%s,%03d" % (t, record.msecs)[:-3]
-        return s
-
-def setup_custom_logger(name):
-    handler = logging.FileHandler('{fn}.txt'.format(fn=name), mode='w')
-    screen_handler = logging.StreamHandler(stream=sys.stdout)
-    logger = logging.getLogger(name)
-    logger.setLevel(logging.DEBUG)
-    logger.addHandler(handler)
-    logger.addHandler(screen_handler)
-
-    formatter = MyFormatter(fmt='[%(asctime)s %(filename)s] %(levelname)-8s %(message)s',datefmt='%Y-%m-%d,%H:%M:%S.%f')
-    handler.setFormatter(formatter)
-    screen_handler.setFormatter(formatter)
-    return logger
 
 _LOGGER = setup_custom_logger(__name__)
 

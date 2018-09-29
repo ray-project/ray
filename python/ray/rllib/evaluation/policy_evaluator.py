@@ -20,10 +20,13 @@ from ray.rllib.evaluation.sample_batch import MultiAgentBatch, \
 from ray.rllib.evaluation.sampler import AsyncSampler, SyncSampler
 from ray.rllib.utils.compression import pack
 from ray.rllib.utils.filter import get_filter
+from ray.rllib.utils.timer import setup_custom_logger
 from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 
+
+_LOGGER = setup_custom_logger(__name__)
 
 class PolicyEvaluator(EvaluatorInterface):
     """Common ``PolicyEvaluator`` implementation that wraps a ``PolicyGraph``.
@@ -451,6 +454,8 @@ class PolicyEvaluator(EvaluatorInterface):
                         self.policy_map[pid].compute_apply(batch))
             return info_out
         else:
+            _LOGGER.debug(self.policy_map)
+            _LOGGER.debug(self.policy_map[DEFAULT_POLICY_ID])
             grad_fetch, apply_fetch = (
                 self.policy_map[DEFAULT_POLICY_ID].compute_apply(samples))
             return grad_fetch
