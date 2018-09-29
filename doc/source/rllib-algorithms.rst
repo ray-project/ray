@@ -88,9 +88,20 @@ Tuned examples: `Pendulum-v0 <https://github.com/ray-project/ray/blob/master/pyt
 Deep Q Networks (DQN, Rainbow)
 ------------------------------
 `[paper] <https://arxiv.org/abs/1312.5602>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/python/ray/rllib/agents/dqn/dqn.py>`__
-RLlib DQN is implemented using the SyncReplayOptimizer. The algorithm can be scaled by increasing the number of workers, using the AsyncGradientsOptimizer for async DQN, or using Ape-X. Memory usage is reduced by compressing samples in the replay buffer with LZ4. All of the DQN improvements evaluated in `Rainbow <https://arxiv.org/abs/1710.02298>`__ are available, though not all are enabled by default. For more details, see these `DQN ablation experiments <https://github.com/ray-project/ray/pull/2701#issuecomment-415651381>`__.
+RLlib DQN is implemented using the SyncReplayOptimizer. The algorithm can be scaled by increasing the number of workers, using the AsyncGradientsOptimizer for async DQN, or using Ape-X. Memory usage is reduced by compressing samples in the replay buffer with LZ4. All of the DQN improvements evaluated in `Rainbow <https://arxiv.org/abs/1710.02298>`__ are available, though not all are enabled by default.
 
 Tuned examples: `PongDeterministic-v4 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tuned_examples/pong-dqn.yaml>`__, `Rainbow configuration <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tuned_examples/pong-rainbow.yaml>`__
+
+**Atari results**: `more details <https://github.com/ray-project/rl-experiments>`__
+
+=============  ========================  =============================  ==============================  ===============================
+ Atari env     RLlib DQN                 RLlib Dueling DDQN             RLlib Dist. DQN                 Hessel et al. DQN              
+=============  ========================  =============================  ==============================  ===============================
+BeamRider      2869                      1910                           4447                            ~2000                          
+Breakout       287                       312                            410                             ~150                           
+Qbert          3921                      7968                           15780                           ~4000                          
+SpaceInvaders  650                       1001                           1025                            ~500                           
+=============  ========================  =============================  ==============================  ===============================
 
 Policy Gradients
 ----------------
