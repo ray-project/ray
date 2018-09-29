@@ -30,7 +30,7 @@ Tuned examples: `PongNoFrameskip-v4 <https://github.com/ray-project/ray/blob/mas
 **Atari results @10M steps**: `more details <https://github.com/ray-project/rl-experiments>`__
 
 =============  ==================================  ====================================
- Atari env     RLlib IMPALA 32-workers @10M steps  Mnih et al A3C 16-workers @10M steps
+ Atari env     RLlib IMPALA 32-workers             Mnih et al A3C 16-workers
 =============  ==================================  ====================================
 BeamRider      2071                                ~3000
 Breakout       385                                 ~150
@@ -64,13 +64,13 @@ RLlib implements A2C and A3C using SyncSamplesOptimizer and AsyncGradientsOptimi
 
 Tuned examples: `PongDeterministic-v4 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tuned_examples/pong-a3c.yaml>`__, `PyTorch version <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tuned_examples/pong-a3c-pytorch.yaml>`__, `{BeamRider,Breakout,Qbert,SpaceInvaders}NoFrameskip-v4 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tuned_examples/atari-a2c.yaml>`__
 
-**Atari results @10M steps**: `more details <https://github.com/ray-project/rl-experiments>`__
-
 .. tip::
     In most cases, `IMPALA <#importance-weighted-actor-learner-architecture-impala>`__ will outperform A2C / A3C.
 
+**Atari results @10M steps**: `more details <https://github.com/ray-project/rl-experiments>`__
+
 =============  ========================  ==============================
- Atari env     RLlib A2C 5-workers @10M  Mnih et al A3C 16-workers @10M
+ Atari env     RLlib A2C 5-workers       Mnih et al A3C 16-workers
 =============  ========================  ==============================
 BeamRider      1401                      ~3000
 Breakout       374                       ~150
