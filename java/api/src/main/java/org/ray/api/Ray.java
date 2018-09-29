@@ -16,24 +16,19 @@ public final class Ray extends RayCall {
    * Initialize Ray runtime with the default runtime implementation.
    */
   public static void init() {
-    try {
-      Class clz = Class.forName("org.ray.runtime.DefaultRayRuntimeFactory");
-      RayRuntimeFactory factory = (RayRuntimeFactory) clz.newInstance();
-      init(factory);
-    } catch (Exception e) {
-      throw new RuntimeException("Failed to initialize Ray runtime.", e);
-    }
-
+    init(null);
   }
 
-  /**
-   * Initialize Ray runtime with a custom runtime implementation.
-   *
-   * @param factory A factory that produces the runtime instance.
-   */
-  public static synchronized void init(RayRuntimeFactory factory) {
-    if (runtime == null) {
-      runtime = factory.createRayRuntime();
+  public static void init(String config) {
+    try {
+      if (runtime == null) {
+        Class clz = Class.forName("org.ray.runtime.DefaultRayRuntimeFactory");
+        RayRuntimeFactory factory = (RayRuntimeFactory) clz.newInstance();
+
+        runtime = factory.createRayRuntime(config);
+      }
+    } catch (Exception e) {
+      throw new RuntimeException("Failed to initialize Ray runtime.", e);
     }
   }
 

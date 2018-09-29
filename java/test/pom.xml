@@ -53,27 +53,10 @@
         <configuration>
           <testSourceDirectory>${basedir}/src/main/java/</testSourceDirectory>
           <testClassesDirectory>${project.build.directory}/classes/</testClassesDirectory>
+          <additionalClasspathElements>
+            <additionalClasspathElement>${project.basedir}/../conf</additionalClasspathElement>
+          </additionalClasspathElements>
         </configuration>
-      </plugin>
-
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-dependency-plugin</artifactId>
-        <executions>
-          <execution>
-            <id>copy-dependencies</id>
-            <phase>package</phase>
-            <goals>
-              <goal>copy-dependencies</goal>
-            </goals>
-            <configuration>
-              <outputDirectory>${basedir}/lib</outputDirectory>
-              <overWriteReleases>false</overWriteReleases>
-              <overWriteSnapshots>false</overWriteSnapshots>
-              <overWriteIfNewer>true</overWriteIfNewer>
-            </configuration>
-          </execution>
-        </executions>
       </plugin>
     </plugins>
   </build>

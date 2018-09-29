@@ -2,7 +2,6 @@ package org.ray.runtime.config;
 
 
 import com.google.common.base.Preconditions;
-import com.google.common.collect.ImmutableList;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigException;
 import com.typesafe.config.ConfigFactory;
@@ -20,10 +19,9 @@ import org.slf4j.LoggerFactory;
  */
 public class RayConfig {
 
-  private static final Logger LOGGER = LoggerFactory.getLogger(RayConfig.class);
+  private Logger logger = LoggerFactory.getLogger(RayConfig.class);
 
-  public static final String DEFAULT_CONFIG_FILE = "ray.default.conf";
-  public static final String CUSTOM_CONFIG_FILE = "ray.conf";
+  private static final String DEFAULT_CONFIG_FILE = "ray.default.conf";
 
   public final String rayHome;
   public final String nodeIp;
@@ -32,9 +30,9 @@ public class RayConfig {
   public final Map<String, Double> resources;
   public final UniqueId driverId;
   public final String logDir;
-  public final boolean redirectOutput;
   public final List<String> libraryPath;
   public final List<String> classpath;
+  public final List<String> jvmParameters;
 
   private String redisAddress;
   private String redisIp;
@@ -52,6 +50,8 @@ public class RayConfig {
   public final String plasmaStoreExecutablePath;
   public final String rayletExecutablePath;
   public final String driverResourcePath;
+
+  private Config config;
 
   private void validate() {
     if (workerMode == WorkerMode.WORKER) {
@@ -72,10 +72,14 @@ public class RayConfig {
   }
 
   public RayConfig(Config config) {
+    // keep the config, so the user could set his own properties
+    // and get the key-value in RayConfig
+    this.config = config;
+
     // worker mode
     WorkerMode localWorkerMode;
     try {
-      localWorkerMode = config.getEnum(WorkerMode.class, "ray.worker.mode");
+      localWorkerMode = config.getEnum(WorkerMode.class, "ray.mode");
     } catch (ConfigException.Missing e) {
       localWorkerMode = WorkerMode.DRIVER;
     }
@@ -103,12 +107,12 @@ public class RayConfig {
     if (isDriver) {
       if (!resources.containsKey("CPU")) {
         int numCpu = Runtime.getRuntime().availableProcessors();
-        LOGGER.warn("No CPU resource is set in configuration, "
+        logger.warn("No CPU resource is set in configuration, "
             + "setting it to the number of CPU cores: {}", numCpu);
         resources.put("CPU", numCpu * 1.0);
       }
       if (!resources.containsKey("GPU")) {
-        LOGGER.warn("No GPU resource is set in configuration, setting it to 0");
+        logger.warn("No GPU resource is set in configuration, setting it to 0");
         resources.put("GPU", 0.0);
       }
     }
@@ -121,12 +125,14 @@ public class RayConfig {
     }
     // log dir
     logDir = removeTrailingSlash(config.getString("ray.log-dir"));
-    // redirect output
-    redirectOutput = config.getBoolean("ray.redirect-output");
-    // custom library path
-    List<String> customLibraryPath = config.getStringList("ray.library.path");
-    // custom classpath
-    classpath = config.getStringList("ray.classpath");
+
+    // worker
+    // native library path
+    this.libraryPath = config.getStringList("ray.worker.library.path");
+    // class path for worker
+    this.classpath = config.getStringList("ray.worker.classpath");
+    // worker custom jvm properties
+    this.jvmParameters = config.getStringList("ray.worker.jvm-parameters");
 
     // redis configurations
     String redisAddress = config.getString("ray.redis.address");
@@ -145,17 +151,17 @@ public class RayConfig {
     // raylet socket name
     rayletSocketName = config.getString("ray.raylet.socket-name");
 
-    // library path
-    this.libraryPath = new ImmutableList.Builder<String>().add(
-        rayHome + "/build/src/plasma",
-        rayHome + "/build/src/local_scheduler"
-    ).addAll(customLibraryPath).build();
+    // redis server binary file
+    this.redisServerExecutablePath = config.getString("ray.redis.redis-server");
 
-    redisServerExecutablePath = rayHome +
-        "/build/src/common/thirdparty/redis/src/redis-server";
-    redisModulePath = rayHome + "/build/src/common/redis_module/libray_redis_module.so";
-    plasmaStoreExecutablePath = rayHome + "/build/src/plasma/plasma_store_server";
-    rayletExecutablePath = rayHome + "/build/src/ray/raylet/raylet";
+    // redis module file
+    this.redisModulePath = config.getString("ray.redis.redis-module");
+
+    // plasma store binary file
+    this.plasmaStoreExecutablePath = config.getString("ray.object-store.plasma-store");
+
+    // raylet binary file
+    this.rayletExecutablePath = config.getString("ray.raylet.raylet-bin");
 
     // driver resource path
     String localDriverResourcePath;
@@ -171,7 +177,7 @@ public class RayConfig {
 
     // validate config
     validate();
-    LOGGER.debug("Created config: {}", this);
+    logger.debug("Created config: {}", this);
   }
 
   public void setRedisAddress(String redisAddress) {
@@ -207,9 +213,9 @@ public class RayConfig {
         + ", resources=" + resources
         + ", driverId=" + driverId
         + ", logDir='" + logDir + '\''
-        + ", redirectOutput=" + redirectOutput
         + ", libraryPath=" + libraryPath
         + ", classpath=" + classpath
+        + ", jvmParameters=" + jvmParameters
         + ", redisAddress='" + redisAddress + '\''
         + ", redisIp='" + redisIp + '\''
         + ", redisPort=" + redisPort
@@ -224,18 +230,26 @@ public class RayConfig {
         + '}';
   }
 
+  public Config getConfig() {
+    return config;
+  }
+
   /**
    * Create a RayConfig by reading configuration in the following order:
    * 1. System properties.
-   * 2. `ray.conf` file.
+   * 2. `@{config}.conf` file.
    * 3. `ray.default.conf` file.
   */
-  public static RayConfig create() {
+  public static RayConfig create(String config) {
     ConfigFactory.invalidateCaches();
-    Config config = ConfigFactory.systemProperties()
-        .withFallback(ConfigFactory.load(CUSTOM_CONFIG_FILE))
-        .withFallback(ConfigFactory.load(DEFAULT_CONFIG_FILE));
-    return new RayConfig(config);
+    Config defaultConfig = ConfigFactory.parseResources(DEFAULT_CONFIG_FILE);
+    if (config == null) {
+      return new RayConfig(ConfigFactory.systemProperties()
+          .withFallback(defaultConfig).resolve());
+    } else {
+      return new RayConfig(ConfigFactory.load(config)
+          .withFallback(defaultConfig).resolve());
+    }
   }
 
 }

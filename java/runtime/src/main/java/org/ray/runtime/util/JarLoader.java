@@ -21,8 +21,7 @@ import org.slf4j.LoggerFactory;
  * load and unload jars from a dir.
  */
 public class JarLoader {
-
-  private static final Logger LOGGER = LoggerFactory.getLogger(JarLoader.class);
+  private static Logger logger = LoggerFactory.getLogger(JarLoader.class);
 
   public static URLClassLoader loadJars(String dir, boolean explicitLoad) {
     // get all jars
@@ -45,7 +44,7 @@ public class JarLoader {
 
     for (File appJar : appJars) {
       try {
-        LOGGER.info("succeeded to load jar {}.", appJar.getAbsolutePath());
+        logger.info("succeeded to load jar {}.", appJar.getAbsolutePath());
         JarFile jar = new JarFile(appJar.getAbsolutePath());
         jars.add(jar);
         urls.add(appJar.toURI().toURL());

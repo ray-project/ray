@@ -5,5 +5,5 @@ package org.ray.api.runtime;
  */
 public interface RayRuntimeFactory {
 
-  RayRuntime createRayRuntime();
+  RayRuntime createRayRuntime(String config);
 }

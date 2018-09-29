@@ -24,12 +24,14 @@ import org.ray.runtime.task.TaskSpec;
 import org.ray.runtime.util.ResourceUtil;
 import org.ray.runtime.util.UniqueIdHelper;
 import org.ray.runtime.util.exception.TaskExecutionException;
-import org.ray.runtime.util.logger.RayLog;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Core functionality to implement Ray APIs.
  */
 public abstract class AbstractRayRuntime implements RayRuntime {
+  private Logger logger = LoggerFactory.getLogger(AbstractRayRuntime.class);
 
   private static final int GET_TIMEOUT_MS = 1000;
   private static final int FETCH_BATCH_SIZE = 1000;
@@ -72,7 +74,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   public <T> void put(UniqueId objectId, T obj) {
     UniqueId taskId = workerContext.getCurrentTask().taskId;
-    RayLog.core.info("Putting object {}, for task {} ", objectId, taskId);
+    logger.info("Putting object {}, for task {} ", objectId, taskId);
     objectStoreProxy.put(objectId, obj, null);
   }
 
@@ -137,7 +139,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
         }
       }
 
-      RayLog.core
+      logger
           .debug("Task " + taskId + " Objects " + Arrays.toString(objectIds.toArray()) + " get");
       List<T> finalRet = new ArrayList<>();
 
@@ -147,7 +149,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
       return finalRet;
     } catch (TaskExecutionException e) {
-      RayLog.core.error("Task " + taskId + " Objects " + Arrays.toString(objectIds.toArray())
+      logger.error("Task " + taskId + " Objects " + Arrays.toString(objectIds.toArray())
           + " get with Exception", e);
       throw e;
     } finally {

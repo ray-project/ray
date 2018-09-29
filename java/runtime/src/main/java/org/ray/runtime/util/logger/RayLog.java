@@ -1,27 +1,19 @@
 package org.ray.runtime.util.logger;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.ray.runtime.util.SystemUtil;
 
 /**
  * loggers in Ray.
- *   1. core logger is used for internal Ray status logging.
- *   2. rapp for ray applications logging.
+ *   help set the pid for worker log name
  */
 public class RayLog {
 
-  /**
-   * for ray itself.
-   */
-  public static Logger core;
-
-  /**
-   * for ray app.
-   */
-  public static Logger rapp;
-
   public static void init() {
-    core = LoggerFactory.getLogger("core");
-    rapp = core;
+    String loggingFileName = System.getProperty("ray.logging.file.name");
+    if (loggingFileName != null && loggingFileName.contains("*pid_suffix*")) {
+      loggingFileName = loggingFileName.replaceAll("\\*pid_suffix\\*",
+          String.valueOf(SystemUtil.pid()));
+      System.setProperty("ray.logging.file.name", loggingFileName);
+    }
   }
 }

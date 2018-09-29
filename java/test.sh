@@ -7,7 +7,7 @@ set -e
 set -x
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
-$ROOT_DIR/../build.sh -l java
+#$ROOT_DIR/../build.sh -l java
 
 pushd $ROOT_DIR/../java
 mvn clean install -Dmaven.test.skip

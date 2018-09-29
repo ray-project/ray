@@ -7,9 +7,11 @@ import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.net.ServerSocket;
 import java.util.Enumeration;
-import org.ray.runtime.util.logger.RayLog;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class NetworkUtil {
+  private static Logger logger = LoggerFactory.getLogger(NetworkUtil.class);
 
   public static String getIpAddress(String interfaceName) {
     try {
@@ -35,9 +37,9 @@ public class NetworkUtil {
           return addr.getHostAddress();
         }
       }
-      RayLog.core.warn("You need to correctly specify [ray.java] net_interface in config.");
+      logger.warn("You need to correctly specify [ray.java] net_interface in config.");
     } catch (Exception e) {
-      RayLog.core.error("Can't get ip address, use 127.0.0.1 as default.", e);
+      logger.error("Can't get ip address, use 127.0.0.1 as default.", e);
     }
 
     return "127.0.0.1";
