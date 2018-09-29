@@ -13,7 +13,7 @@ apex:
         num_atoms: 1
         noisy: false
         prioritized_replay: false
-        n_step: 1
+        n_step: 3
         lr: .0001
         adam_epsilon: .00015
         hiddens: [512]

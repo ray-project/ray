@@ -12,15 +12,26 @@ Ape-X variations of DQN and DDPG (`APEX_DQN <https://github.com/ray-project/ray/
 
 Tuned examples: `PongNoFrameskip-v4 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tuned_examples/pong-apex.yaml>`__, `Pendulum-v0 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tuned_examples/pendulum-apex-ddpg.yaml>`__, `MountainCarContinuous-v0 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tuned_examples/mountaincarcontinuous-apex-ddpg.yaml>`__, `{BeamRider,Breakout,Qbert,SpaceInvaders}NoFrameskip-v4 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tuned_examples/atari-apex.yaml>`__.
 
-**Atari results**: `more details <https://github.com/ray-project/rl-experiments>`__
+**Atari results @10M steps**: `more details <https://github.com/ray-project/rl-experiments>`__
 
 =============  ================================  ========================================
- Atari env     RLlib Ape-X 8-workers @2 hours    Mnih et al Async DQN 16-workers @2 hours
+ Atari env     RLlib Ape-X 8-workers             Mnih et al Async DQN 16-workers
 =============  ================================  ========================================
-BeamRider      4235                              ~3000                             
-Breakout       306                               ~20                               
-Qbert          2073                              ~1000                             
-SpaceInvaders  652                               ~500                              
+BeamRider      6134                              ~6000
+Breakout       123                               ~50
+Qbert          15302                             ~1200
+SpaceInvaders  686                               ~600
+=============  ================================  ========================================
+
+**Scalability**:
+
+=============  ================================  ========================================
+ Atari env     RLlib Ape-X 8-workers @1 hour     Mnih et al Async DQN 16-workers @1 hour
+=============  ================================  ========================================
+BeamRider      4873                              ~1000
+Breakout       77                                ~10
+Qbert          4083                              ~500
+SpaceInvaders  646                               ~300
 =============  ================================  ========================================
 
 .. figure:: apex.png
@@ -59,7 +70,6 @@ SpaceInvaders  843                              ~300
 =============  ===============================  =================================
 
 .. figure:: impala.png
-   :align: center
 
    IMPALA solves Atari several times faster than A2C / A3C, with similar sample efficiency. Here IMPALA scales from 16 to 128 workers to solve PongNoFrameskip-v4 in ~8 minutes.
 
@@ -142,7 +152,6 @@ SpaceInvaders  671             944             ~800
 
 .. figure:: ppo.png
    :width: 500px
-   :align: center
 
    RLlib's multi-GPU PPO scales to multiple GPUs and hundreds of CPUs on solving the Humanoid-v1 task. Here we compare against a reference MPI-based implementation.
 
@@ -167,6 +176,5 @@ Tuned examples: `Humanoid-v1 <https://github.com/ray-project/ray/blob/master/pyt
 
 .. figure:: es.png
    :width: 500px
-   :align: center
 
    RLlib's ES implementation scales further and is faster than a reference Redis implementation on solving the Humanoid-v1 task.
