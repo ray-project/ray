@@ -27,7 +27,7 @@ In IMPALA, a central learner runs SGD in a tight loop while asynchronously pulli
 
 Tuned examples: `PongNoFrameskip-v4 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tuned_examples/pong-impala.yaml>`__, `vectorized configuration <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tuned_examples/pong-impala-vectorized.yaml>`__, `{BeamRider,Breakout,Qbert,SpaceInvaders}NoFrameskip-v4 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tuned_examples/atari-impala.yaml>`__
 
-**Atari results**: `more details <https://github.com/ray-project/rl-experiments>`__
+**Atari results @10M steps**: `more details <https://github.com/ray-project/rl-experiments>`__
 
 =============  ==================================  ====================================
  Atari env     RLlib IMPALA 32-workers @10M steps  Mnih et al A3C 16-workers @10M steps
@@ -64,7 +64,7 @@ RLlib implements A2C and A3C using SyncSamplesOptimizer and AsyncGradientsOptimi
 
 Tuned examples: `PongDeterministic-v4 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tuned_examples/pong-a3c.yaml>`__, `PyTorch version <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tuned_examples/pong-a3c-pytorch.yaml>`__, `{BeamRider,Breakout,Qbert,SpaceInvaders}NoFrameskip-v4 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tuned_examples/atari-a2c.yaml>`__
 
-**Atari results**: `more details <https://github.com/ray-project/rl-experiments>`__
+**Atari results @10M steps**: `more details <https://github.com/ray-project/rl-experiments>`__
 
 .. tip::
     In most cases, `IMPALA <#importance-weighted-actor-learner-architecture-impala>`__ will outperform A2C / A3C.
@@ -92,7 +92,7 @@ RLlib DQN is implemented using the SyncReplayOptimizer. The algorithm can be sca
 
 Tuned examples: `PongDeterministic-v4 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tuned_examples/pong-dqn.yaml>`__, `Rainbow configuration <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tuned_examples/pong-rainbow.yaml>`__, `{BeamRider,Breakout,Qbert,SpaceInvaders}NoFrameskip-v4 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tuned_examples/atari-basic-dqn.yaml>`__, `with Dueling and Double-Q <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tuned_examples/atari-duel-ddqn.yaml>`__, `with Distributional DQN <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tuned_examples/atari-dist-dqn.yaml>`__.
 
-**Atari results**: `more details <https://github.com/ray-project/rl-experiments>`__
+**Atari results @10M steps**: `more details <https://github.com/ray-project/rl-experiments>`__
 
 =============  ========================  =============================  ==============================  ===============================
  Atari env     RLlib DQN                 RLlib Dueling DDQN             RLlib Dist. DQN                 Hessel et al. DQN              
