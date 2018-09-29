@@ -118,12 +118,18 @@ void WorkerPool::StartWorkerProcess(const Language &language) {
 
   // Launch the process to create the worker.
   pid_t pid = fork();
-  if (pid != 0) {
+  if (pid < 0) {
+    // Failure case.
+    RAY_LOG(FATAL) << "Failed to create new process: " << strerror(errno);
+    return;
+  } else if (pid > 0) {
+    // Parent process case.
     RAY_LOG(DEBUG) << "Started worker process with pid " << pid;
     starting_worker_processes_.emplace(std::make_pair(pid, num_workers_per_process_));
     return;
   }
 
+  // Child process case.
   // Reset the SIGCHLD handler for the worker.
   signal(SIGCHLD, SIG_DFL);
 
@@ -138,9 +144,8 @@ void WorkerPool::StartWorkerProcess(const Language &language) {
   int rv = execvp(worker_command_args[0],
                   const_cast<char *const *>(worker_command_args.data()));
   // The worker failed to start. This is a fatal error.
-  if (rv < 0) {
-    RAY_LOG(FATAL) << "Failed to start worker: " << strerror(errno);
-  }
+  RAY_LOG(FATAL) << "Failed to start worker with return value " << rv
+                 << ": " << strerror(errno);
 }
 
 void WorkerPool::RegisterWorker(std::shared_ptr<Worker> worker) {
