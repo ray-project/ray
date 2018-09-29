@@ -29,14 +29,14 @@ Tuned examples: `PongNoFrameskip-v4 <https://github.com/ray-project/ray/blob/mas
 
 **Atari results**: `more details <https://github.com/ray-project/rl-experiments>`__
 
-=============  ============================  ==============================
- Atari env     RLlib IMPALA 32-workers @10M  Mnih et al A3C 16-workers @10M
-=============  ============================  ==============================
-BeamRider      2071                          ~3000
-Breakout       385                           ~150
-Qbert          4068                          ~1000
-SpaceInvaders  719                           ~600
-=============  ============================  ==============================
+=============  ==================================  ====================================
+ Atari env     RLlib IMPALA 32-workers @10M steps  Mnih et al A3C 16-workers @10M steps
+=============  ==================================  ====================================
+BeamRider      2071                                ~3000
+Breakout       385                                 ~150
+Qbert          4068                                ~1000
+SpaceInvaders  719                                 ~600
+=============  ==================================  ====================================
 
 **Scalability:**
 
