@@ -129,9 +129,10 @@ class TestPolicyEvaluator(unittest.TestCase):
                 "num_workers": 2,
                 "sample_batch_size": 5
             })
-        results = pg.optimizer.foreach_evaluator(lambda ev: ev.batch_steps)
+        results = pg.optimizer.foreach_evaluator(
+            lambda ev: ev.sample_batch_size)
         results2 = pg.optimizer.foreach_evaluator_with_index(
-            lambda ev, i: (i, ev.batch_steps))
+            lambda ev, i: (i, ev.sample_batch_size))
         self.assertEqual(results, [5, 5, 5])
         self.assertEqual(results2, [(0, 5), (1, 5), (2, 5)])
 
@@ -198,7 +199,7 @@ class TestPolicyEvaluator(unittest.TestCase):
             env_creator=lambda cfg: MockEnv(episode_length=20, config=cfg),
             policy_graph=MockPolicyGraph,
             batch_mode="truncate_episodes",
-            batch_steps=16,
+            batch_steps=2,
             num_envs=8)
         for _ in range(8):
             batch = ev.sample()
@@ -216,21 +217,12 @@ class TestPolicyEvaluator(unittest.TestCase):
             indices.append(env.unwrapped.config.vector_index)
         self.assertEqual(indices, [0, 1, 2, 3, 4, 5, 6, 7])
 
-    def testBatchDivisibilityCheck(self):
-        self.assertRaises(
-            ValueError,
-            lambda: PolicyEvaluator(
-                env_creator=lambda _: MockEnv(episode_length=8),
-                policy_graph=MockPolicyGraph,
-                batch_mode="truncate_episodes",
-                batch_steps=15, num_envs=4))
-
-    def testBatchesSmallerWhenVectorized(self):
+    def testBatchesLargerWhenVectorized(self):
         ev = PolicyEvaluator(
             env_creator=lambda _: MockEnv(episode_length=8),
             policy_graph=MockPolicyGraph,
             batch_mode="truncate_episodes",
-            batch_steps=16,
+            batch_steps=4,
             num_envs=4)
         batch = ev.sample()
         self.assertEqual(batch.count, 16)
