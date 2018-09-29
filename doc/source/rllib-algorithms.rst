@@ -40,6 +40,15 @@ SpaceInvaders  719                           ~600
 
 **Scalability:**
 
+=============  ============================  =============================
+ Atari env     RLlib IMPALA 32-workers @1h   Mnih et al A3C 16-workers @1h
+=============  ============================  =============================
+BeamRider      3181                          ~1000
+Breakout       538                           ~10
+Qbert          10850                         ~500
+SpaceInvaders  843                           ~300
+=============  ============================  =============================
+
 .. figure:: impala.png
    :align: center
 
