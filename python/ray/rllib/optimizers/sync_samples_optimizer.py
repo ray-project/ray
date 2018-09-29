@@ -8,6 +8,7 @@ from ray.rllib.evaluation.sample_batch import SampleBatch
 from ray.rllib.utils.filter import RunningStat
 from ray.rllib.utils.timer import TimerStat, setup_custom_logger
 
+import time
 _LOGGER = setup_custom_logger(__name__)
 
 class SyncSamplesOptimizer(PolicyOptimizer):
@@ -61,6 +62,7 @@ class SyncSamplesOptimizer(PolicyOptimizer):
         with self.grad_timer:
             for i in range(self.num_sgd_iter):
                 fetches = self.local_evaluator.compute_apply(samples)
+                _LOGGER.debug("local eval compute apply: {}".format(self.local_evaluator.compute_apply))
                 if "stats" in fetches:
                     self.learner_stats = fetches["stats"]
                 if self.num_sgd_iter > 1:

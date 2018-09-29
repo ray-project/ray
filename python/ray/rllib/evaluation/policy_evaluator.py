@@ -25,7 +25,7 @@ from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 
-
+import time
 _LOGGER = setup_custom_logger(__name__)
 
 class PolicyEvaluator(EvaluatorInterface):
@@ -302,7 +302,7 @@ class PolicyEvaluator(EvaluatorInterface):
         Return:
             SampleBatch|MultiAgentBatch from evaluating the current policies.
         """
-
+        sample_start = time.time()
         batches = [self.sampler.get_data()]
         steps_so_far = batches[0].count
 
@@ -319,8 +319,11 @@ class PolicyEvaluator(EvaluatorInterface):
             batches.append(batch)
         batches.extend(self.sampler.get_extra_batches())
         batch = batches[0].concat_samples(batches)
+        _LOGGER.debug("Sampled batches in {}s".format(time.time()-sample_start))
 
         if self.compress_observations:
+            _LOGGER.debug("Compressing sampled observations")
+            compress_start= time.time()
             if isinstance(batch, MultiAgentBatch):
                 for data in batch.policy_batches.values():
                     data["obs"] = [pack(o) for o in data["obs"]]
@@ -328,6 +331,7 @@ class PolicyEvaluator(EvaluatorInterface):
             else:
                 batch["obs"] = [pack(o) for o in batch["obs"]]
                 batch["new_obs"] = [pack(o) for o in batch["new_obs"]]
+            _LOGGER.debug("Compressed batches in {}s".format(time.time()-compress_start))
 
         return batch
 
@@ -454,8 +458,9 @@ class PolicyEvaluator(EvaluatorInterface):
                         self.policy_map[pid].compute_apply(batch))
             return info_out
         else:
-            _LOGGER.debug(self.policy_map)
-            _LOGGER.debug(self.policy_map[DEFAULT_POLICY_ID])
+            # _LOGGER.debug(self.policy_map)
+            # _LOGGER.debug(self.policy_map[DEFAULT_POLICY_ID])
+            # _LOGGER.debug(self.policy_map[DEFAULT_POLICY_ID].compute_apply)
             grad_fetch, apply_fetch = (
                 self.policy_map[DEFAULT_POLICY_ID].compute_apply(samples))
             return grad_fetch
