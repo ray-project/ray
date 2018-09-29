@@ -222,7 +222,8 @@ void NodeManager::KillWorker(std::shared_ptr<Worker> worker) {
   retry_timer->expires_from_now(retry_duration);
   retry_timer->async_wait([retry_timer, worker](const boost::system::error_code &error) {
     RAY_LOG(DEBUG) << "Send SIGKILL to worker, pid=" << worker->Pid();
-    // Force kill worker.
+    // Force kill worker. TODO(rkn): Is there some small danger that the worker
+    // has already died and the PID has been reassigned to a different process?
     kill(worker->Pid(), SIGKILL);
   });
 }
@@ -638,8 +639,22 @@ void NodeManager::ProcessGetTaskMessage(
 
 void NodeManager::ProcessDisconnectClientMessage(
     const std::shared_ptr<LocalClientConnection> &client) {
-  // Remove the dead worker from the pool and stop listening for messages.
   const std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
+  const std::shared_ptr<Worker> driver = worker_pool_.GetRegisteredDriver(client);
+  // This client can't be a worker and a driver.
+  RAY_CHECK(worker == nullptr || driver == nullptr);
+
+  // If both worker and driver are null, then this method has already been
+  // called, so just return.
+  if (worker == nullptr && driver == nullptr) {
+    return;
+  }
+
+  // If the client is blocked, we need to process the fact that it is no longer
+  // blocked. This won't do anything if the client is not blocked.
+  HandleClientUnblocked(client);
+
+  // Remove the dead client from the pool and stop listening for messages.
 
   if (worker) {
     // The client is a worker. Handle the case where the worker is killed
@@ -651,17 +666,15 @@ void NodeManager::ProcessDisconnectClientMessage(
       // If the worker was killed intentionally, e.g., when the driver that created
       // the task that this worker is currently executing exits, the task for this
       // worker has already been removed from queue, so the following are skipped.
-      auto const &running_tasks = local_queues_.GetRunningTasks();
-      // TODO(rkn): This is too heavyweight just to get the task's driver ID.
-      auto const it = std::find_if(
-          running_tasks.begin(), running_tasks.end(), [task_id](const Task &task) {
-            return task.GetTaskSpecification().TaskId() == task_id;
-          });
-      RAY_CHECK(running_tasks.size() != 0);
-      RAY_CHECK(it != running_tasks.end());
-      const TaskSpecification &spec = it->GetTaskSpecification();
-      const JobID job_id = spec.DriverId();
+      task_dependency_manager_.TaskCanceled(task_id);
+      // task_dependency_manager_.UnsubscribeDependencies(current_task_id);
+      const Task &task = local_queues_.RemoveTask(task_id);
+      const TaskSpecification &spec = task.GetTaskSpecification();
+      // Handle the task failure in order to raise an exception in the
+      // application.
+      TreatTaskAsFailed(spec);
 
+      const JobID &job_id = worker->GetAssignedDriverId();
       // TODO(rkn): Define this constant somewhere else.
       std::string type = "worker_died";
       std::ostringstream error_message;
@@ -669,18 +682,12 @@ void NodeManager::ProcessDisconnectClientMessage(
                     << ".";
       RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
           job_id, type, error_message.str(), current_time_ms()));
-
-      // Handle the task failure in order to raise an exception in the
-      // application.
-      TreatTaskAsFailed(spec);
-      task_dependency_manager_.TaskCanceled(spec.TaskId());
-      local_queues_.RemoveTask(spec.TaskId());
     }
 
     worker_pool_.DisconnectWorker(worker);
 
     // If the worker was an actor, add it to the list of dead actors.
-    const ActorID actor_id = worker->GetActorId();
+    const ActorID &actor_id = worker->GetActorId();
     if (!actor_id.is_nil()) {
       // TODO(rkn): Consider broadcasting a message to all of the other
       // node managers so that they can mark the actor as dead.
@@ -715,7 +722,6 @@ void NodeManager::ProcessDisconnectClientMessage(
     // The client is a driver.
     RAY_CHECK_OK(gcs_client_->driver_table().AppendDriverData(client->GetClientID(),
                                                               /*is_dead=*/true));
-    const std::shared_ptr<Worker> driver = worker_pool_.GetRegisteredDriver(client);
     RAY_CHECK(driver);
     auto driver_id = driver->GetAssignedTaskId();
     RAY_CHECK(!driver_id.is_nil());
@@ -725,6 +731,10 @@ void NodeManager::ProcessDisconnectClientMessage(
     RAY_LOG(DEBUG) << "Driver (pid=" << driver->Pid() << ") is disconnected. "
                    << "driver_id: " << driver->GetAssignedDriverId();
   }
+
+  // TODO(rkn): Tell the object manager that this client has disconnected so
+  // that it can clean up the wait requests for this client. Currently I think
+  // these can be leaked.
 }
 
 void NodeManager::ProcessSubmitTaskMessage(const uint8_t *message_data) {
@@ -798,12 +808,20 @@ void NodeManager::ProcessWaitRequestMessage(
         flatbuffers::Offset<protocol::WaitReply> wait_reply = protocol::CreateWaitReply(
             fbb, to_flatbuf(fbb, found), to_flatbuf(fbb, remaining));
         fbb.Finish(wait_reply);
-        RAY_CHECK_OK(
-            client->WriteMessage(static_cast<int64_t>(protocol::MessageType::WaitReply),
-                                 fbb.GetSize(), fbb.GetBufferPointer()));
-        // The client is unblocked now because the wait call has returned.
-        if (client_blocked) {
-          HandleClientUnblocked(client);
+
+        auto status = client->WriteMessage(
+            static_cast<int64_t>(protocol::MessageType::WaitReply), fbb.GetSize(),
+            fbb.GetBufferPointer());
+        if (status.ok()) {
+          // The client is unblocked now because the wait call has returned.
+          if (client_blocked) {
+            HandleClientUnblocked(client);
+          }
+        } else {
+          // We failed to write to the client, so disconnect the client.
+          RAY_LOG(WARNING) << "Failed to send WaitReply to client, so disconnecting client";
+          // We failed to send the reply to the client, so disconnect the worker.
+          ProcessDisconnectClientMessage(client);
         }
       });
   RAY_CHECK_OK(status);
@@ -1308,9 +1326,7 @@ void NodeManager::AssignTask(Task &task) {
   } else {
     RAY_LOG(WARNING) << "Failed to send task to worker, disconnecting client";
     // We failed to send the task to the worker, so disconnect the worker.
-    ProcessClientMessage(worker->Connection(),
-                         static_cast<int64_t>(protocol::MessageType::DisconnectClient),
-                         nullptr);
+    ProcessDisconnectClientMessage(worker->Connection());
     // Queue this task for future assignment. The task will be assigned to a
     // worker once one becomes available.
     // (See design_docs/task_states.rst for the state transition diagram.)

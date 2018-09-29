@@ -4,9 +4,10 @@ from __future__ import print_function
 
 import pytest
 import os
-import ray
+import signal
 import time
 
+import ray
 import pyarrow as pa
 
 
@@ -21,6 +22,65 @@ def ray_start_workers_separate():
     yield None
     # The code after the yield will run as teardown code.
     ray.shutdown()
+
+
+@pytest.fixture
+def shutdown_only():
+    yield None
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
+
+
+# This test checks that when a worker dies in the middle of a get, the
+# plasma store and raylet will not die.
+@pytest.mark.skipif(
+    os.environ.get("RAY_USE_XRAY") != "1",
+    reason="This test only works with xray.")
+@pytest.mark.skipif(
+    os.environ.get("RAY_USE_NEW_GCS") == "on",
+    reason="Not working with new GCS API.")
+def test_dying_worker_get_raylet(shutdown_only):
+    # Start the Ray processes.
+    ray.init(num_cpus=2)
+
+    @ray.remote
+    def sleep_forever():
+        time.sleep(10 ** 6)
+
+    @ray.remote
+    def get_worker_pid():
+        return os.getpid()
+
+    x_id = sleep_forever.remote()
+    time.sleep(0.01)  # Try to wait for the sleep task to get scheduled.
+    # Get the PID of the other worker.
+    worker_pid = ray.get(get_worker_pid.remote())
+
+    @ray.remote
+    def f(id_in_a_list):
+        ray.get(id_in_a_list[0])
+
+    # Have the worker wait in a get call.
+    result_id = f.remote([x_id])
+
+    # Kill the worker.
+    time.sleep(1)
+
+    # Make sure the task hasn't finished.
+    ready_ids, _ = ray.wait([result_id], timeout=0)
+    assert len(ready_ids) == 0
+
+    os.kill(worker_pid, signal.SIGKILL)
+
+    time.sleep(0.1)
+
+    # Seal the object so the store attempts to notify the worker that the
+    # get has been fulfilled.
+    ray.worker.global_worker.put_object(x_id, 1)
+    time.sleep(0.1)
+
+    # Make sure that nothing has died.
+    assert ray.services.all_processes_alive()
 
 
 # This test checks that when a worker dies in the middle of a get, the
@@ -57,6 +117,53 @@ def test_dying_worker_get(ray_start_workers_separate):
     # Make sure that nothing has died.
     assert ray.services.all_processes_alive(
         exclude=[ray.services.PROCESS_TYPE_WORKER])
+
+
+# This test checks that when a worker dies in the middle of a wait, the
+# plasma store and raylet will not die.
+@pytest.mark.skipif(
+    os.environ.get("RAY_USE_XRAY") != "1",
+    reason="This test only works with xray.")
+@pytest.mark.skipif(
+    os.environ.get("RAY_USE_NEW_GCS") == "on",
+    reason="Not working with new GCS API.")
+def test_dying_worker_wait_raylet(shutdown_only):
+    ray.init(num_cpus=2)
+
+    @ray.remote
+    def sleep_forever():
+        time.sleep(10 ** 6)
+
+    @ray.remote
+    def get_pid():
+        return os.getpid()
+
+    x_id = sleep_forever.remote()
+    # Get the PID of the worker that block_in_wait will run on (sleep a little
+    # to make sure that sleep_forever has already started).
+    time.sleep(0.1)
+    worker_pid = ray.get(get_pid.remote())
+
+    @ray.remote
+    def block_in_wait(object_id_in_list):
+        ray.wait(object_id_in_list)
+
+    # Have the worker wait in a get call.
+    block_in_wait.remote([x_id])
+
+
+    # Kill the worker.
+    time.sleep(0.1)
+
+    os.kill(worker_pid, signal.SIGKILL)
+    time.sleep(0.1)
+
+    # Create the object.
+    ray.worker.global_worker.put_object(x_id, 1)
+    time.sleep(0.1)
+
+    # Make sure that nothing has died.
+    assert ray.services.all_processes_alive()
 
 
 # This test checks that when a worker dies in the middle of a wait, the
