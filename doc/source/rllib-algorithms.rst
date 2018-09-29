@@ -12,18 +12,16 @@ Ape-X variations of DQN and DDPG (`APEX_DQN <https://github.com/ray-project/ray/
 
 Tuned examples: `PongNoFrameskip-v4 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tuned_examples/pong-apex.yaml>`__, `Pendulum-v0 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tuned_examples/pendulum-apex-ddpg.yaml>`__, `MountainCarContinuous-v0 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tuned_examples/mountaincarcontinuous-apex-ddpg.yaml>`__, `{BeamRider,Breakout,Qbert,SpaceInvaders}NoFrameskip-v4 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tuned_examples/atari-apex.yaml>`__.
 
-**Atari results @2 hours**: `more details <https://github.com/ray-project/rl-experiments>`__
+**Atari results**: `more details <https://github.com/ray-project/rl-experiments>`__
 
-=============  ================================  ==================================
- Atari env     RLlib Ape-X 8-workers             Mnih et al DQN 16-workers         
-=============  ================================  ==================================
+=============  ================================  ========================================
+ Atari env     RLlib Ape-X 8-workers @2 hours    Mnih et al Async DQN 16-workers @2 hours
+=============  ================================  ========================================
 BeamRider      4235                              ~3000                             
 Breakout       306                               ~20                               
 Qbert          2073                              ~1000                             
 SpaceInvaders  652                               ~500                              
-=============  ================================  ==================================
-
-**Scalability:**
+=============  ================================  ========================================
 
 .. figure:: apex.png
 
@@ -146,7 +144,7 @@ SpaceInvaders  671             944             ~800
    :width: 500px
    :align: center
 
-   RLlib's multi-GPU PPO scales to multiple GPUs and hundreds of CPUs. Here we compare against a reference MPI-based implementation.
+   RLlib's multi-GPU PPO scales to multiple GPUs and hundreds of CPUs on solving the Humanoid-v1 task. Here we compare against a reference MPI-based implementation.
 
 Derivative-free
 ~~~~~~~~~~~~~~~
@@ -171,4 +169,4 @@ Tuned examples: `Humanoid-v1 <https://github.com/ray-project/ray/blob/master/pyt
    :width: 500px
    :align: center
 
-   RLlib's ES implementation scales further and is faster than a reference Redis implementation.
+   RLlib's ES implementation scales further and is faster than a reference Redis implementation on solving the Humanoid-v1 task.
