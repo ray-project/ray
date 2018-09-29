@@ -43,7 +43,7 @@ class TaskBuilder {
              ActorHandleID actor_handle_id,
              int64_t actor_counter,
              bool is_actor_checkpoint_method,
-             FunctionID function_id,
+             const ray::FunctionDescriptor &function_descriptor,
              int64_t num_returns) {
     driver_id_ = driver_id;
     parent_task_id_ = parent_task_id;
@@ -54,7 +54,7 @@ class TaskBuilder {
     actor_handle_id_ = actor_handle_id;
     actor_counter_ = actor_counter;
     is_actor_checkpoint_method_ = is_actor_checkpoint_method;
-    function_id_ = function_id;
+    function_descriptor_ = function_descriptor;
     num_returns_ = num_returns;
 
     /* Compute hashes. */
@@ -69,7 +69,11 @@ class TaskBuilder {
     sha256_update(&ctx, (BYTE *) &actor_counter, sizeof(actor_counter));
     sha256_update(&ctx, (BYTE *) &is_actor_checkpoint_method,
                   sizeof(is_actor_checkpoint_method));
-    sha256_update(&ctx, (BYTE *) &function_id, sizeof(function_id));
+    for (auto const &str : function_descriptor.GetDescriptorVector()) {
+      if (!str.empty()) {
+        sha256_update(&ctx, (BYTE *) str.c_str(), str.length());
+      }
+    }
   }
 
   void NextReferenceArgument(ObjectID object_ids[], int num_object_ids) {
@@ -113,9 +117,10 @@ class TaskBuilder {
         to_flatbuf(fbb, actor_creation_id_),
         to_flatbuf(fbb, actor_creation_dummy_object_id_),
         to_flatbuf(fbb, actor_id_), to_flatbuf(fbb, actor_handle_id_),
-        actor_counter_, is_actor_checkpoint_method_,
-        to_flatbuf(fbb, function_id_), arguments, fbb.CreateVector(returns),
-        map_to_flatbuf(fbb, resource_map_));
+        actor_counter_, is_actor_checkpoint_method_, arguments,
+        fbb.CreateVector(returns), map_to_flatbuf(fbb, resource_map_),
+        TaskLanguage::PYTHON,
+        string_vec_to_flatbuf(fbb, function_descriptor_.GetDescriptorVector()));
     /* Finish the TaskInfo. */
     fbb.Finish(message);
     *size = fbb.GetSize();
@@ -142,7 +147,7 @@ class TaskBuilder {
   ActorID actor_handle_id_;
   int64_t actor_counter_;
   bool is_actor_checkpoint_method_;
-  FunctionID function_id_;
+  ray::FunctionDescriptor function_descriptor_;
   int64_t num_returns_;
   std::unordered_map<std::string, double> resource_map_;
 };
@@ -167,31 +172,24 @@ bool ActorID_equal(ActorID first_id, ActorID second_id) {
   return first_id == second_id;
 }
 
-bool FunctionID_equal(FunctionID first_id, FunctionID second_id) {
-  return first_id == second_id;
-}
-
-bool FunctionID_is_nil(FunctionID id) {
-  return id.is_nil();
-}
-
 /* Functions for building tasks. */
 
-void TaskSpec_start_construct(TaskBuilder *builder,
-                              UniqueID driver_id,
-                              TaskID parent_task_id,
-                              int64_t parent_counter,
-                              ActorID actor_creation_id,
-                              ObjectID actor_creation_dummy_object_id,
-                              ActorID actor_id,
-                              ActorID actor_handle_id,
-                              int64_t actor_counter,
-                              bool is_actor_checkpoint_method,
-                              FunctionID function_id,
-                              int64_t num_returns) {
+void TaskSpec_start_construct(
+    TaskBuilder *builder,
+    UniqueID driver_id,
+    TaskID parent_task_id,
+    int64_t parent_counter,
+    ActorID actor_creation_id,
+    ObjectID actor_creation_dummy_object_id,
+    ActorID actor_id,
+    ActorID actor_handle_id,
+    int64_t actor_counter,
+    bool is_actor_checkpoint_method,
+    const ray::FunctionDescriptor &function_descriptor,
+    int64_t num_returns) {
   builder->Start(driver_id, parent_task_id, parent_counter, actor_creation_id,
                  actor_creation_dummy_object_id, actor_id, actor_handle_id,
-                 actor_counter, is_actor_checkpoint_method, function_id,
+                 actor_counter, is_actor_checkpoint_method, function_descriptor,
                  num_returns);
 }
 
@@ -225,10 +223,17 @@ TaskID TaskSpec_task_id(const TaskSpec *spec) {
   return from_flatbuf(*message->task_id());
 }
 
-FunctionID TaskSpec_function(TaskSpec *spec) {
+FunctionID TaskSpec_function_id(TaskSpec *spec) {
+  return TaskSpec_function(spec).GetFunctionId();
+}
+
+ray::FunctionDescriptor TaskSpec_function(TaskSpec *spec) {
   RAY_CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskInfo>(spec);
-  return from_flatbuf(*message->function_id());
+  ray::FunctionDescriptor function_descriptor;
+  function_descriptor.SetDescriptorVector(
+      string_vec_from_flatbuf(*message->function_descriptor()));
+  return function_descriptor;
 }
 
 ActorID TaskSpec_actor_id(TaskSpec *spec) {

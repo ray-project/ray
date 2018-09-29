@@ -6,6 +6,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "common/function_descriptor.h"
 #include "format/common_generated.h"
 #include "ray/id.h"
 #include "ray/raylet/scheduling_resources.h"
@@ -91,17 +92,18 @@ class TaskSpecification {
   /// \param parent_task_id The task ID of the task that spawned this task.
   /// \param parent_counter The number of tasks that this task's parent spawned
   /// before this task.
-  /// \param function_id The ID of the function this task should execute.
+  /// \param function_descriptor The function descriptor.
   /// \param task_arguments The list of task arguments.
   /// \param num_returns The number of values returned by the task.
   /// \param required_resources The task's resource demands.
   /// \param language The language of the worker that must execute the function.
   TaskSpecification(const UniqueID &driver_id, const TaskID &parent_task_id,
-                    int64_t parent_counter, const FunctionID &function_id,
+                    int64_t parent_counter,
                     const std::vector<std::shared_ptr<TaskArgument>> &task_arguments,
                     int64_t num_returns,
                     const std::unordered_map<std::string, double> &required_resources,
-                    const Language &language);
+                    const Language &language,
+                    const FunctionDescriptor &function_descriptor);
 
   // TODO(swang): Define an actor task constructor.
   /// Create a task specification from the raw fields.
@@ -136,7 +138,8 @@ class TaskSpecification {
       int64_t num_returns,
       const std::unordered_map<std::string, double> &required_resources,
       const std::unordered_map<std::string, double> &required_placement_resources,
-      const Language &language);
+      const Language &language,
+      const FunctionDescriptor &function_descriptor);
 
   /// Deserialize a task specification from a flatbuffer's string data.
   ///
@@ -158,6 +161,7 @@ class TaskSpecification {
   UniqueID DriverId() const;
   TaskID ParentTaskId() const;
   int64_t ParentCounter() const;
+  ray::FunctionDescriptor FunctionDescriptor() const;
   FunctionID FunctionId() const;
   int64_t NumArgs() const;
   int64_t NumReturns() const;

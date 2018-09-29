@@ -80,4 +80,12 @@ const std::unordered_map<std::string, double> map_from_flatbuf(
     const flatbuffers::Vector<flatbuffers::Offset<ResourcePair>>
         &resource_vector);
 
+std::vector<std::string> string_vec_from_flatbuf(
+    const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>
+        &flatbuf_vec);
+
+flatbuffers::Offset<
+    flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
+string_vec_to_flatbuf(flatbuffers::FlatBufferBuilder &fbb,
+                      const std::vector<std::string> &string_vector);
 #endif

@@ -5,11 +5,11 @@
 
 #include <stddef.h>
 #include <stdint.h>
-#include "common.h"
-
 #include <string>
 
+#include "common.h"
 #include "format/common_generated.h"
+#include "function_descriptor.h"
 
 using namespace ray;
 
@@ -158,23 +158,6 @@ bool TaskID_is_nil(TaskID id);
  */
 bool ActorID_equal(ActorID first_id, ActorID second_id);
 
-/**
- * Compare two function IDs.
- *
- * @param first_id The first function ID to compare.
- * @param second_id The first function ID to compare.
- * @return True if the function IDs are the same and false otherwise.
- */
-bool FunctionID_equal(FunctionID first_id, FunctionID second_id);
-
-/**
- * Compare a function ID to the nil ID.
- *
- * @param id The function ID to compare to nil.
- * @return True if the function ID is equal to nil.
- */
-bool FunctionID_is_nil(FunctionID id);
-
 /* Construct and modify task specifications. */
 
 TaskBuilder *make_task_builder(void);
@@ -209,18 +192,19 @@ void free_task_builder(TaskBuilder *builder);
           ignoring object ID arguments.
  * @return The partially constructed task_spec.
  */
-void TaskSpec_start_construct(TaskBuilder *B,
-                              UniqueID driver_id,
-                              TaskID parent_task_id,
-                              int64_t parent_counter,
-                              ActorID actor_creation_id,
-                              ObjectID actor_creation_dummy_object_id,
-                              ActorID actor_id,
-                              ActorHandleID actor_handle_id,
-                              int64_t actor_counter,
-                              bool is_actor_checkpoint_method,
-                              FunctionID function_id,
-                              int64_t num_returns);
+void TaskSpec_start_construct(
+    TaskBuilder *B,
+    UniqueID driver_id,
+    TaskID parent_task_id,
+    int64_t parent_counter,
+    ActorID actor_creation_id,
+    ObjectID actor_creation_dummy_object_id,
+    ActorID actor_id,
+    ActorHandleID actor_handle_id,
+    int64_t actor_counter,
+    bool is_actor_checkpoint_method,
+    const ray::FunctionDescriptor &function_descriptor,
+    int64_t num_returns);
 
 /**
  * Finish constructing a task_spec. This computes the task ID and the object IDs
@@ -238,7 +222,15 @@ TaskSpec *TaskSpec_finish_construct(TaskBuilder *builder, int64_t *size);
  * @param spec The task_spec in question.
  * @return The function ID of the function to execute in this task.
  */
-FunctionID TaskSpec_function(TaskSpec *spec);
+FunctionID TaskSpec_function_id(TaskSpec *spec);
+
+/**
+ * Return the function descriptor of the task.
+ *
+ * @param spec The task_spec in question.
+ * @return The function descriptor of the function to execute in this task.
+ */
+ray::FunctionDescriptor TaskSpec_function(TaskSpec *spec);
 
 /**
  * Return the actor ID of the task.

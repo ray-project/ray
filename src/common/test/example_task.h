@@ -12,10 +12,11 @@ static inline TaskExecutionSpec example_task_execution_spec_with_args(
     int64_t num_returns,
     ObjectID arg_ids[]) {
   TaskID parent_task_id = TaskID::from_random();
-  FunctionID func_id = FunctionID::from_random();
+  FunctionDescriptor function_descriptor(UniqueID::from_random());
   TaskSpec_start_construct(g_task_builder, UniqueID::nil(), parent_task_id, 0,
                            ActorID::nil(), ObjectID::nil(), ActorID::nil(),
-                           ActorID::nil(), 0, false, func_id, num_returns);
+                           ActorID::nil(), 0, false, function_descriptor,
+                           num_returns);
   for (int64_t i = 0; i < num_args; ++i) {
     ObjectID arg_id;
     if (arg_ids == NULL) {

@@ -8,6 +8,7 @@ import sys
 import unittest
 
 import ray.local_scheduler as local_scheduler
+from ray.local_scheduler import Task
 import ray.ray_constants as ray_constants
 
 
@@ -155,6 +156,7 @@ class TestTask(unittest.TestCase):
         driver_id = random_driver_id()
         parent_id = random_task_id()
         function_id = random_function_id()
+        function_descriptor = Task.function_descriptor_from_id(function_id)
         object_ids = [random_object_id() for _ in range(256)]
         args_list = [[], 1 * [1], 10 * [1], 100 * [1], 1000 * [1], 1 * ["a"],
                      10 * ["a"], 100 * ["a"], 1000 * ["a"], [
@@ -169,8 +171,8 @@ class TestTask(unittest.TestCase):
                      object_ids + 100 * ["a"] + object_ids]
         for args in args_list:
             for num_return_vals in [0, 1, 2, 3, 5, 10, 100]:
-                task = local_scheduler.Task(driver_id, function_id, args,
-                                            num_return_vals, parent_id, 0)
+                task = Task(driver_id, function_descriptor, args,
+                            num_return_vals, parent_id, 0)
                 self.check_task(task, function_id, num_return_vals, args)
                 data = local_scheduler.task_to_string(task)
                 task2 = local_scheduler.task_from_string(data)
