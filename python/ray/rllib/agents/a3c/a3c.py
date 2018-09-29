@@ -13,6 +13,36 @@ from ray.rllib.optimizers import AsyncGradientsOptimizer
 from ray.rllib.utils import merge_dicts
 from ray.tune.trial import Resources
 
+import logging, sys
+import datetime as dt
+
+class MyFormatter(logging.Formatter):
+    converter=dt.datetime.fromtimestamp
+    def formatTime(self, record, datefmt=None):
+        ct = self.converter(record.created)
+        if datefmt:
+            s = ct.strftime(datefmt)[:-3]
+        else:
+            t = ct.strftime("%Y-%m-%d %H:%M:%S")
+            s = "%s,%03d" % (t, record.msecs)[:-3]
+        return s
+
+def setup_custom_logger(name):
+    handler = logging.FileHandler('{fn}.txt'.format(fn=name), mode='w')
+    screen_handler = logging.StreamHandler(stream=sys.stdout)
+    logger = logging.getLogger(name)
+    logger.setLevel(logging.DEBUG)
+    logger.addHandler(handler)
+    logger.addHandler(screen_handler)
+
+    formatter = MyFormatter(fmt='[%(asctime)s %(filename)s] %(levelname)-8s %(message)s',datefmt='%Y-%m-%d,%H:%M:%S.%f')
+    handler.setFormatter(formatter)
+    screen_handler.setFormatter(formatter)
+    return logger
+
+_LOGGER = setup_custom_logger(__name__)
+
+
 DEFAULT_CONFIG = with_common_config({
     # Size of rollout batch
     "sample_batch_size": 10,
@@ -80,19 +110,21 @@ class A3CAgent(Agent):
             extra_gpu=cf["use_gpu_for_workers"] and cf["num_workers"] or 0)
 
     def _init(self):
+        _LOGGER.info("Constructing A3C agent")
         if self.config["use_pytorch"]:
             from ray.rllib.agents.a3c.a3c_torch_policy_graph import \
                 A3CTorchPolicyGraph
             policy_cls = A3CTorchPolicyGraph
         else:
             policy_cls = self._policy_graph
-
+    
         self.local_evaluator = self.make_local_evaluator(
             self.env_creator, policy_cls)
         self.remote_evaluators = self.make_remote_evaluators(
             self.env_creator, policy_cls, self.config["num_workers"],
             {"num_gpus": 1 if self.config["use_gpu_for_workers"] else 0})
         self.optimizer = self._make_optimizer()
+        _LOGGER.info("Done constructing A3C agent")
 
     def _make_optimizer(self):
         return AsyncGradientsOptimizer(self.local_evaluator,
@@ -102,11 +134,21 @@ class A3CAgent(Agent):
     def _train(self):
         prev_steps = self.optimizer.num_steps_sampled
         start = time.time()
+        _LOGGER.info("Starting training iteration with {prev_count} past steps".format(prev_count=prev_steps))
         while time.time() - start < self.config["min_iter_time_s"]:
             self.optimizer.step()
+        _LOGGER.info("Ending training iteration. {et}s elapsed".format(et=time.time()-start))
+
+        metric_start = time.time()
+        _LOGGER.info("Collecting metrics...")
         result = self.optimizer.collect_metrics()
+        _LOGGER.info("Collected metrics in {elapsed}s".format(elapsed=time.time()-metric_start))
+
+        update_start = time.time()
+        _LOGGER.info("updating result...")
         result.update(timesteps_this_iter=self.optimizer.num_steps_sampled -
                       prev_steps)
+        _LOGGER.info("Updated results in {elapsed}s".format(elapsed=time.time()-update_start))
         return result
 
     def _stop(self):

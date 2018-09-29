@@ -8,6 +8,35 @@ from ray.rllib.evaluation.sample_batch import SampleBatch
 from ray.rllib.utils.filter import RunningStat
 from ray.rllib.utils.timer import TimerStat
 
+import time
+import logging, sys
+import datetime as dt
+
+class MyFormatter(logging.Formatter):
+    converter=dt.datetime.fromtimestamp
+    def formatTime(self, record, datefmt=None):
+        ct = self.converter(record.created)
+        if datefmt:
+            s = ct.strftime(datefmt)[:-3]
+        else:
+            t = ct.strftime("%Y-%m-%d %H:%M:%S")
+            s = "%s,%03d" % (t, record.msecs)[:-3]
+        return s
+
+def setup_custom_logger(name):
+    handler = logging.FileHandler('{fn}.txt'.format(fn=name), mode='w')
+    screen_handler = logging.StreamHandler(stream=sys.stdout)
+    logger = logging.getLogger(name)
+    logger.setLevel(logging.DEBUG)
+    logger.addHandler(handler)
+    logger.addHandler(screen_handler)
+
+    formatter = MyFormatter(fmt='[%(asctime)s %(filename)s] %(levelname)-8s %(message)s',datefmt='%Y-%m-%d,%H:%M:%S.%f')
+    handler.setFormatter(formatter)
+    screen_handler.setFormatter(formatter)
+    return logger
+
+_LOGGER = setup_custom_logger(__name__)
 
 class SyncSamplesOptimizer(PolicyOptimizer):
     """A simple synchronous RL optimizer.
@@ -27,15 +56,23 @@ class SyncSamplesOptimizer(PolicyOptimizer):
         self.learner_stats = {}
 
     def step(self):
+        _LOGGER.info("sync optimizer stepping")
+        start = time.time()
         with self.update_weights_timer:
             if self.remote_evaluators:
                 weights = ray.put(self.local_evaluator.get_weights())
                 for e in self.remote_evaluators:
                     e.set_weights.remote(weights)
 
+        if not self.remote_evaluators:
+            _LOGGER.debug("Using local evaluator")
+            _LOGGER.debug("{} | {}".format(self.local_evaluator, type(self.local_evaluator)))
+
         with self.sample_timer:
             samples = []
-            while sum(s.count for s in samples) < self.train_batch_size:
+            sample_start = time.time()
+            _LOGGER.debug("starting sample evaluation: train_batch_size = {}".format(self.train_batch_size))
+            while sum(s.count for s in samples) < self.train_batch_size: # inefficient bc count (?)
                 if self.remote_evaluators:
                     samples.extend(
                         ray.get([
@@ -43,9 +80,12 @@ class SyncSamplesOptimizer(PolicyOptimizer):
                         ]))
                 else:
                     samples.append(self.local_evaluator.sample())
+            _LOGGER.debug("completed sample evaluation in {}s".format(time.time() - sample_start))
             samples = SampleBatch.concat_samples(samples)
+            _LOGGER.debug("concatenated samples")
             self.sample_timer.push_units_processed(samples.count)
 
+        grad_start = time.time()
         with self.grad_timer:
             for i in range(self.num_sgd_iter):
                 fetches = self.local_evaluator.compute_apply(samples)
@@ -54,9 +94,12 @@ class SyncSamplesOptimizer(PolicyOptimizer):
                 if self.num_sgd_iter > 1:
                     print(i, fetches)
             self.grad_timer.push_units_processed(samples.count)
+        _LOGGER.debug("SGD run in {}s".format(time.time() - grad_start))
 
         self.num_steps_sampled += samples.count
         self.num_steps_trained += samples.count
+
+        _LOGGER.info("end sync optimizer stepping. {} steps trained in {}s\n".format(samples.count, time.time() - start))
         return fetches
 
     def stats(self):
