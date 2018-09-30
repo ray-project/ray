@@ -187,12 +187,6 @@ class Worker(object):
         connected (bool): True if Ray has been started and False otherwise.
         mode: The mode of the worker. One of SCRIPT_MODE, LOCAL_MODE, and
             WORKER_MODE.
-        cached_remote_functions_and_actors: A list of information for exporting
-            remote functions and actor classes definitions that were defined
-            before the worker called connect. When the worker eventually does
-            call connect, if it is a driver, it will export these functions and
-            actors. If cached_remote_functions_and_actors is None, that means
-            that connect has been called already.
         cached_functions_to_run (List): A list of functions to run on all of
             the workers that should be exported as soon as connect is called.
         profiler: the profiler used to aggregate profiling information.
@@ -213,12 +207,9 @@ class Worker(object):
         # counter is incremented every time the function is executed on this
         # worker. When the counter reaches the maximum number of executions
         # allowed for a particular function, the worker is killed.
-        self.num_task_executions = collections.defaultdict(lambda: {})
         self.connected = False
         self.mode = None
-        self.cached_remote_functions_and_actors = []
         self.cached_functions_to_run = []
-        self.fetch_and_register_actor = None
         self.actor_init_error = None
         self.make_actor = None
         self.actors = {}
@@ -904,7 +895,7 @@ class Worker(object):
             time.sleep(0.001)
 
         with self.lock:
-            self.fetch_and_register_actor(key, self)
+            self.function_manager.fetch_and_register_actor(key)
 
     def _wait_for_and_process_task(self, task):
         """Wait for a task to be ready and process the task.
@@ -952,10 +943,10 @@ class Worker(object):
             self.profiler.flush_profile_data()
 
         # Increase the task execution counter.
-        self.num_task_executions[driver_id][function_id.id()] += 1
+        self.function_manager.increase_task_counter(driver_id, function_id.id())
 
         reached_max_executions = (
-            self.num_task_executions[driver_id][function_id.id()] == self.
+            self.function_manager.get_task_counter(driver_id, function_id.id())  ==
             execution_info.max_calls)
         if reached_max_executions:
             self.local_scheduler_client.disconnect()
@@ -1961,7 +1952,6 @@ def connect(info,
     error_message = "Perhaps you called ray.init twice by accident?"
     assert not worker.connected, error_message
     assert worker.cached_functions_to_run is not None, error_message
-    assert worker.cached_remote_functions_and_actors is not None, error_message
     # Initialize some fields.
     worker.worker_id = random_string()
 
@@ -2198,19 +2188,9 @@ def connect(info,
         # Export cached functions_to_run.
         for function in worker.cached_functions_to_run:
             worker.run_function_on_all_workers(function)
-        # Export cached remote functions to the workers.
+        # Export cached remote functions and actors to the workers.
         worker.function_manager.export_cached()
-        for cached_type, info in worker.cached_remote_functions_and_actors:
-            if cached_type == "remote_function":
-                info._export()
-            elif cached_type == "actor":
-                (key, actor_class_info) = info
-                ray.actor.publish_actor_class_to_key(key, actor_class_info,
-                                                     worker)
-            else:
-                assert False, "This code should be unreachable."
     worker.cached_functions_to_run = None
-    worker.cached_remote_functions_and_actors = None
 
 
 def disconnect(worker=global_worker):
@@ -2221,7 +2201,7 @@ def disconnect(worker=global_worker):
     # tests.
     worker.connected = False
     worker.cached_functions_to_run = []
-    worker.cached_remote_functions_and_actors = []
+    worker.function_manager.reset_cache()
     worker.serialization_context_map.clear()
 
 
