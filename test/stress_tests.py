@@ -166,11 +166,9 @@ def ray_start_reconstruction(request):
     objstore_memory = plasma_store_memory // num_local_schedulers
     for i in range(num_local_schedulers):
         store_stdout_file, store_stderr_file = (
-            ray.tempfile_services.new_log_files("plasma_store_{}".format(i),
-                                                True))
-        manager_stdout_file, manager_stderr_file = ((
-            ray.tempfile_services.new_log_files("plasma_manager_{}".format(i),
-                                                True)))
+            ray.tempfile_services.new_plasma_store_log_file(i, True))
+        manager_stdout_file, manager_stderr_file = (
+            ray.tempfile_services.new_plasma_manager_log_file(i, True))
         plasma_addresses.append(
             ray.services.start_plasma_store(
                 node_ip_address,

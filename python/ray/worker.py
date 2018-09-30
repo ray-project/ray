@@ -2085,8 +2085,7 @@ def connect(info,
             object_id_seed=None,
             mode=WORKER_MODE,
             worker=global_worker,
-            use_raylet=False,
-            temp_dir=None):
+            use_raylet=False):
     """Connect this worker to the local scheduler, to Plasma, and to Redis.
 
     Args:
@@ -2097,8 +2096,6 @@ def connect(info,
         mode: The mode of the worker. One of SCRIPT_MODE, WORKER_MODE, and
             LOCAL_MODE.
         use_raylet: True if the new raylet code path should be used.
-        temp_dir (str): If provided, it will **override** the root temporary
-            directory for the Ray process.
     """
     # Do some basic checking to make sure we didn't call ray.init twice.
     error_message = "Perhaps you called ray.init twice by accident?"
@@ -2107,9 +2104,7 @@ def connect(info,
     assert worker.cached_remote_functions_and_actors is not None, error_message
     # Initialize some fields.
     worker.worker_id = random_string()
-    if temp_dir is not None:
-        # Override the temporary directory.
-        tempfile_services.set_temp_root(temp_dir)
+
     # When tasks are executed on remote workers in the context of multiple
     # drivers, the task driver ID is used to keep track of which driver is
     # responsible for the task so that error messages will be propagated to

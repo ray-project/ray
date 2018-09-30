@@ -6,21 +6,21 @@ import ray.tempfile_services as tempfile_services
 
 
 def test_conn_cluster():
-    try:
+    with pytest.raises(Exception) as exc_info:
         ray.init(
-            redis_address="127.0.0.1:6379", temp_dir="/tmp/this_should_fail")
-    except Exception:
-        pass
-    else:
-        pytest.fail("This test should raise an exception.")
+            redis_address="127.0.0.1:6379",
+            plasma_store_socket_name="/tmp/this_should_fail")
 
-    try:
+    assert exc_info.value.args[0] == (
+        "When connecting to an existing cluster, "
+        "plasma_store_socket_name must not be provided.")
+
+    with pytest.raises(Exception) as exc_info:
         ray.init(
             redis_address="127.0.0.1:6379", temp_dir="/tmp/this_should_fail")
-    except Exception:
-        pass
-    else:
-        pytest.fail("This test should raise an exception.")
+    assert exc_info.value.args[0] == (
+        "When connecting to an existing cluster, "
+        "temp_dir must not be provided.")
 
 
 def test_tempdir():

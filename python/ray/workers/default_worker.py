@@ -9,6 +9,7 @@ import traceback
 import ray
 import ray.actor
 import ray.ray_constants as ray_constants
+import ray.tempfile_services as tempfile_services
 
 parser = argparse.ArgumentParser(
     description=("Parse addresses for the worker "
@@ -76,11 +77,13 @@ if __name__ == "__main__":
         level=logging.getLevelName(args.logging_level.upper()),
         format=args.logging_format)
 
+    # Override the temporary directory.
+    tempfile_services.set_temp_root(args.temp_dir)
+
     ray.worker.connect(
         info,
         mode=ray.WORKER_MODE,
-        use_raylet=(args.raylet_name is not None),
-        temp_dir=args.temp_dir)
+        use_raylet=(args.raylet_name is not None))
 
     error_explanation = """
   This error is unexpected and should not have happened. Somehow a worker

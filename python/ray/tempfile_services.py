@@ -14,7 +14,7 @@ _incremental_dict = collections.defaultdict(lambda: 0)
 _temp_root = None
 
 
-def make_inc_temp(suffix="", prefix="", directory_name="/tmp"):
+def make_inc_temp(suffix="", prefix="", directory_name="/tmp/ray"):
     """Return a incremental temporary file name. The file is not created.
 
     Args:
