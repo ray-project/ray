@@ -16,5 +16,11 @@ public class RayConfigTest {
     Assert.assertEquals("/path/to/ray", rayConfig.rayHome);
     Assert.assertEquals(WorkerMode.DRIVER, rayConfig.workerMode);
     Assert.assertEquals(RunMode.CLUSTER, rayConfig.runMode);
+
+    System.setProperty("ray.home", "");
+    rayConfig = RayConfig.create();
+    Assert.assertEquals(System.getProperty("user.dir"), rayConfig.rayHome);
+    Assert.assertEquals(System.getProperty("user.dir") +
+        "/build/src/common/thirdparty/redis/src/redis-server", rayConfig.redisServerExecutablePath);
   }
 }

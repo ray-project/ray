@@ -471,6 +471,8 @@ def teardown(cluster_config_file, yes, workers_only, cluster_name):
     default=False,
     help=("Start the cluster if needed."))
 @click.option(
+    "--tmux", is_flag=True, default=False, help=("Run the command in tmux."))
+@click.option(
     "--cluster-name",
     "-n",
     required=False,
@@ -481,8 +483,8 @@ def teardown(cluster_config_file, yes, workers_only, cluster_name):
     "-N",
     is_flag=True,
     help=("Force creation of a new screen."))
-def attach(cluster_config_file, start, cluster_name, new):
-    attach_cluster(cluster_config_file, start, cluster_name, new)
+def attach(cluster_config_file, start, tmux, cluster_name, new):
+    attach_cluster(cluster_config_file, start, tmux, cluster_name, new)
 
 
 @cli.command()
@@ -532,6 +534,8 @@ def rsync_up(cluster_config_file, source, target, cluster_name):
     default=False,
     help=("Run the command in a screen."))
 @click.option(
+    "--tmux", is_flag=True, default=False, help=("Run the command in tmux."))
+@click.option(
     "--cluster-name",
     "-n",
     required=False,
@@ -539,10 +543,14 @@ def rsync_up(cluster_config_file, source, target, cluster_name):
     help=("Override the configured cluster name."))
 @click.option(
     "--port-forward", required=False, type=int, help=("Port to forward."))
-def exec_cmd(cluster_config_file, cmd, screen, stop, start, cluster_name,
+def exec_cmd(cluster_config_file, cmd, screen, tmux, stop, start, cluster_name,
              port_forward):
-    exec_cluster(cluster_config_file, cmd, screen, stop, start, cluster_name,
-                 port_forward)
+    assert not (screen and tmux), "Can specify only one of `screen` or `tmux`."
+    exec_cluster(cluster_config_file, cmd, screen, tmux, stop, start,
+                 cluster_name, port_forward)
+    if tmux:
+        logger.info("Use `ray attach {} --tmux` "
+                    "to check on command status.".format(cluster_config_file))
 
 
 @cli.command()
