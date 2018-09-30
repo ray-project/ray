@@ -1,4 +1,5 @@
 import os
+import shutil
 import time
 import pytest
 import ray
@@ -6,38 +7,61 @@ import ray.tempfile_services as tempfile_services
 
 
 def test_conn_cluster():
+    # plasma_store_socket_name
     with pytest.raises(Exception) as exc_info:
         ray.init(
-            redis_address="127.0.0.1:6379",
+            use_raylet=True, redis_address="127.0.0.1:6379",
             plasma_store_socket_name="/tmp/this_should_fail")
-
     assert exc_info.value.args[0] == (
         "When connecting to an existing cluster, "
         "plasma_store_socket_name must not be provided.")
 
+    # raylet_socket_path
     with pytest.raises(Exception) as exc_info:
         ray.init(
-            redis_address="127.0.0.1:6379", temp_dir="/tmp/this_should_fail")
+            use_raylet=True, redis_address="127.0.0.1:6379",
+            raylet_socket_path="/tmp/this_should_fail")
+    assert exc_info.value.args[0] == (
+        "When connecting to an existing cluster, "
+        "raylet_socket_path must not be provided.")
+
+    # temp_dir
+    with pytest.raises(Exception) as exc_info:
+        ray.init(
+            use_raylet=True, redis_address="127.0.0.1:6379",
+            temp_dir="/tmp/this_should_fail")
     assert exc_info.value.args[0] == (
         "When connecting to an existing cluster, "
         "temp_dir must not be provided.")
 
 
 def test_tempdir():
-    ray.init(temp_dir="/tmp/i_am_a_temp_dir")
+    ray.init(use_raylet=True, temp_dir="/tmp/i_am_a_temp_dir")
     assert os.path.exists(
         "/tmp/i_am_a_temp_dir"), "Specified temp dir not found."
     ray.shutdown()
+    shutil.rmtree("/tmp/i_am_a_temp_dir", ignore_errors=True)
+
+
+def test_raylet_socket_path():
+    ray.init(
+        use_raylet=True,
+        raylet_socket_path="/tmp/i_am_a_temp_socket")
+    assert os.path.exists(
+        "/tmp/i_am_a_temp_socket"), "Specified socket path not found."
+    ray.shutdown()
     try:
-        os.rmdir("/tmp/i_am_a_temp_dir")
+        os.remove("/tmp/i_am_a_temp_socket")
     except Exception:
         pass
 
 
 def test_temp_plasma_store_socket():
-    ray.init(plasma_store_socket_name="/tmp/i_am_a_temp_socket")
+    ray.init(
+        use_raylet=True,
+        plasma_store_socket_name="/tmp/i_am_a_temp_socket")
     assert os.path.exists(
-        "/tmp/i_am_a_temp_socket"), "Specified temp dir not found."
+        "/tmp/i_am_a_temp_socket"), "Specified socket path not found."
     ray.shutdown()
     try:
         os.remove("/tmp/i_am_a_temp_socket")
