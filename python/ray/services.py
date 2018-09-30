@@ -1049,21 +1049,16 @@ def start_raylet(redis_address,
     ]
 
     if use_valgrind:
-        pid = subprocess.Popen(
-            [
-                "valgrind", "--track-origins=yes", "--leak-check=full",
-                "--show-leak-kinds=all", "--leak-check-heuristics=stdstring",
-                "--error-exitcode=1"
-            ] + command,
-            stdout=stdout_file,
-            stderr=stderr_file)
+        command = (["valgrind", "--track-origins=yes", "--leak-check=full",
+                    "--show-leak-kinds=all",
+                    "--leak-check-heuristics=stdstring",
+                    "--error-exitcode=1"] + command)
     elif use_profiler:
-        pid = subprocess.Popen(
-            ["valgrind", "--tool=callgrind"] + command,
-            stdout=stdout_file,
-            stderr=stderr_file)
-    else:
-        pid = subprocess.Popen(command, stdout=stdout_file, stderr=stderr_file)
+        command = ["valgrind", "--tool=callgrind"] + command
+
+    import IPython
+    IPython.embed()
+    pid = subprocess.Popen(command, stdout=stdout_file, stderr=stderr_file)
 
     if cleanup:
         all_processes[PROCESS_TYPE_RAYLET].append(pid)
@@ -1327,7 +1322,8 @@ def start_ray_processes(address_info=None,
                         plasma_directory=None,
                         huge_pages=False,
                         autoscaling_config=None,
-                        use_raylet=False):
+                        use_raylet=False,
+                        raylet_valgrind=False):
     """Helper method to start Ray processes.
 
     Args:
@@ -1385,6 +1381,8 @@ def start_ray_processes(address_info=None,
         autoscaling_config: path to autoscaling config file.
         use_raylet: True if the new raylet code path should be used. This is
             not supported yet.
+        raylet_valgrind: True if the raylet should be started inside of
+            valgrind and false otherwise.
 
     Returns:
         A dictionary of the address information for the processes that were
@@ -1581,6 +1579,7 @@ def start_ray_processes(address_info=None,
                     worker_path,
                     resources=resources[i],
                     num_workers=workers_per_local_scheduler[i],
+                    use_valgrind=raylet_valgrind,
                     stdout_file=raylet_stdout_file,
                     stderr_file=raylet_stderr_file,
                     cleanup=cleanup))
@@ -1637,7 +1636,8 @@ def start_ray_node(node_ip_address,
                    resources=None,
                    plasma_directory=None,
                    huge_pages=False,
-                   use_raylet=False):
+                   use_raylet=False,
+                   raylet_valgrind=False):
     """Start the Ray processes for a single node.
 
     This assumes that the Ray processes on some master node have already been
@@ -1672,6 +1672,8 @@ def start_ray_node(node_ip_address,
             Store with hugetlbfs support. Requires plasma_directory.
         use_raylet: True if the new raylet code path should be used. This is
             not supported yet.
+        raylet_valgrind: True if the raylet should be started inside of
+            valgrind and false otherwise.
 
     Returns:
         A dictionary of the address information for the processes that were
@@ -1695,7 +1697,8 @@ def start_ray_node(node_ip_address,
         resources=resources,
         plasma_directory=plasma_directory,
         huge_pages=huge_pages,
-        use_raylet=use_raylet)
+        use_raylet=use_raylet,
+        raylet_valgrind=raylet_valgrind)
 
 
 def start_ray_head(address_info=None,
@@ -1718,7 +1721,8 @@ def start_ray_head(address_info=None,
                    plasma_directory=None,
                    huge_pages=False,
                    autoscaling_config=None,
-                   use_raylet=False):
+                   use_raylet=False,
+                   raylet_valgrind=False):
     """Start Ray in local mode.
 
     Args:
@@ -1770,6 +1774,8 @@ def start_ray_head(address_info=None,
         autoscaling_config: path to autoscaling config file.
         use_raylet: True if the new raylet code path should be used. This is
             not supported yet.
+        raylet_valgrind: True if the raylet should be started inside of
+            valgrind and false otherwise.
 
     Returns:
         A dictionary of the address information for the processes that were
@@ -1799,7 +1805,8 @@ def start_ray_head(address_info=None,
         plasma_directory=plasma_directory,
         huge_pages=huge_pages,
         autoscaling_config=autoscaling_config,
-        use_raylet=use_raylet)
+        use_raylet=use_raylet,
+        raylet_valgrind=raylet_valgrind)
 
 
 def try_to_create_directory(directory_path):

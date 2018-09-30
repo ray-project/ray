@@ -1528,7 +1528,8 @@ def _init(address_info=None,
           plasma_directory=None,
           huge_pages=False,
           include_webui=True,
-          use_raylet=None):
+          use_raylet=None,
+          raylet_valgrind=False):
     """Helper method to connect to an existing Ray cluster or start a new one.
 
     This method handles two cases. Either a Ray cluster already exists and we
@@ -1584,6 +1585,8 @@ def _init(address_info=None,
         include_webui: Boolean flag indicating whether to start the web
             UI, which is a Jupyter notebook.
         use_raylet: True if the new raylet code path should be used.
+        raylet_valgrind: True if the raylet should be started inside of
+            valgrind and false otherwise.
 
     Returns:
         Address information about the started processes.
@@ -1658,7 +1661,8 @@ def _init(address_info=None,
             plasma_directory=plasma_directory,
             huge_pages=huge_pages,
             include_webui=include_webui,
-            use_raylet=use_raylet)
+            use_raylet=use_raylet,
+            raylet_valgrind=raylet_valgrind)
     else:
         if redis_address is None:
             raise Exception("When connecting to an existing cluster, "
@@ -1690,6 +1694,9 @@ def _init(address_info=None,
         if huge_pages:
             raise Exception("When connecting to an existing cluster, "
                             "huge_pages must not be provided.")
+        if raylet_valgrind:
+            raise Exception("When connecting to an existing cluster, "
+                            "raylet_valgrind must not be provided.")
         # Get the node IP address if one is not provided.
         if node_ip_address is None:
             node_ip_address = services.get_node_ip_address(redis_address)
