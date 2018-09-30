@@ -201,7 +201,7 @@ Sometimes, it is necessary to coordinate between pieces of code that live in dif
           return self.count
 
     # on the driver
-    counter = Counter.remote(initial_args)
+    counter = Counter.remote()
     named_actors.register_actor("global_counter", counter)
     print(ray.get(counter.get.remote()))  # get the latest count
 
