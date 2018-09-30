@@ -2352,7 +2352,7 @@ def test_log_file_api(shutdown_only):
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_XRAY") == "1",
     reason="This test does not work with xray (nor is it intended to).")
-def test_task_profile_api():
+def test_task_profile_api(shutdown_only):
     ray.init(num_cpus=1, redirect_output=True)
 
     @ray.remote
