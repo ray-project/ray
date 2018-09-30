@@ -2,10 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
-import pickle
-
-import ray
 from ray.rllib.agents import Agent, with_common_config
 from ray.rllib.agents.ppo.ppo_policy_graph import PPOPolicyGraph
 from ray.rllib.utils import merge_dicts
@@ -134,25 +130,3 @@ class PPOAgent(Agent):
             timesteps_this_iter=self.optimizer.num_steps_sampled - prev_steps,
             info=dict(fetches, **res.get("info", {})))
         return res
-
-    def _stop(self):
-        # workaround for https://github.com/ray-project/ray/issues/1516
-        for ev in self.remote_evaluators:
-            ev.__ray_terminate__.remote()
-
-    def _save(self, checkpoint_dir):
-        checkpoint_path = os.path.join(checkpoint_dir,
-                                       "checkpoint-{}".format(self.iteration))
-        agent_state = ray.get(
-            [a.save.remote() for a in self.remote_evaluators])
-        extra_data = [self.local_evaluator.save(), agent_state]
-        pickle.dump(extra_data, open(checkpoint_path + ".extra_data", "wb"))
-        return checkpoint_path
-
-    def _restore(self, checkpoint_path):
-        extra_data = pickle.load(open(checkpoint_path + ".extra_data", "rb"))
-        self.local_evaluator.restore(extra_data[0])
-        ray.get([
-            a.restore.remote(o)
-            for (a, o) in zip(self.remote_evaluators, extra_data[1])
-        ])
