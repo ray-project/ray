@@ -559,8 +559,10 @@ class HyperbandSuite(unittest.TestCase):
     def testFilterNoneBracket(self):
         sched, runner = self.schedulerSetup(100, 20)
         # `sched' should contains None brackets
-        non_brackets = [b for hyperband in sched._hyperbands
-                        for b in hyperband if b is None]
+        non_brackets = [
+            b for hyperband in sched._hyperbands for b in hyperband
+            if b is None
+        ]
         self.assertTrue(non_brackets)
         # Make sure `choose_trial_to_run' still works
         trial = sched.choose_trial_to_run(runner)
