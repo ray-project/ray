@@ -209,6 +209,7 @@ Sometimes, it is necessary to coordinate between pieces of code that live in dif
     counter = named_actors.get_actor("global_counter")
     counter.inc.remote(1)  # async call to increment the global count
 
+Ray actors provide high levels of performance, so in more complex cases they can be used implement communication patterns such as parameter servers and allreduce.
 
 REST API
 --------
