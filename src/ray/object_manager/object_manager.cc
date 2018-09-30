@@ -466,9 +466,6 @@ ray::Status ObjectManager::AddWaitRequest(const UniqueID &wait_id,
                                           int64_t timeout_ms,
                                           uint64_t num_required_objects, bool wait_local,
                                           const WaitCallback &callback) {
-  if (wait_local) {
-    return ray::Status::NotImplemented("Wait for local objects is not yet implemented.");
-  }
 
   RAY_CHECK(timeout_ms >= 0 || timeout_ms == -1);
   RAY_CHECK(num_required_objects != 0);

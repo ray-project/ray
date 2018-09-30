@@ -50,7 +50,7 @@ public class RayletClientImpl implements RayletClient {
       ids.add(element.getId());
     }
 
-    boolean[] ready = nativeWaitObject(client, getIdBytes(ids), numReturns, timeoutMs, false);
+    boolean[] ready = nativeWaitObject(client, getIdBytes(ids), numReturns, timeoutMs, true);
     List<RayObject<T>> readyList = new ArrayList<>();
     List<RayObject<T>> unreadyList = new ArrayList<>();
 

@@ -303,7 +303,7 @@ class TestObjectManager : public TestObjectManagerBase {
     UniqueID wait_id = UniqueID::from_random();
 
     RAY_CHECK_OK(server1->object_manager_.AddWaitRequest(
-        wait_id, object_ids, timeout_ms, required_objects, false,
+        wait_id, object_ids, timeout_ms, required_objects, true,
         [this, sub_id, object_1, object_ids, start_time](
             const std::vector<ray::ObjectID> &found,
             const std::vector<ray::ObjectID> &remaining) {

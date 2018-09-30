@@ -2613,7 +2613,7 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
         timeout = timeout if timeout is not None else 2**30
         if worker.use_raylet:
             ready_ids, remaining_ids = worker.local_scheduler_client.wait(
-                object_ids, num_returns, timeout, False)
+                object_ids, num_returns, timeout, True)
         else:
             object_id_strs = [
                 plasma.ObjectID(object_id.id()) for object_id in object_ids
