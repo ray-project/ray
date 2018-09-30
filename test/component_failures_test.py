@@ -45,7 +45,7 @@ def test_dying_worker_get_raylet(shutdown_only):
 
     @ray.remote
     def sleep_forever():
-        time.sleep(10 ** 6)
+        time.sleep(10**6)
 
     @ray.remote
     def get_worker_pid():
@@ -132,7 +132,7 @@ def test_dying_worker_wait_raylet(shutdown_only):
 
     @ray.remote
     def sleep_forever():
-        time.sleep(10 ** 6)
+        time.sleep(10**6)
 
     @ray.remote
     def get_pid():
@@ -150,7 +150,6 @@ def test_dying_worker_wait_raylet(shutdown_only):
 
     # Have the worker wait in a get call.
     block_in_wait.remote([x_id])
-
 
     # Kill the worker.
     time.sleep(0.1)

@@ -809,9 +809,9 @@ void NodeManager::ProcessWaitRequestMessage(
             fbb, to_flatbuf(fbb, found), to_flatbuf(fbb, remaining));
         fbb.Finish(wait_reply);
 
-        auto status = client->WriteMessage(
-            static_cast<int64_t>(protocol::MessageType::WaitReply), fbb.GetSize(),
-            fbb.GetBufferPointer());
+        auto status =
+            client->WriteMessage(static_cast<int64_t>(protocol::MessageType::WaitReply),
+                                 fbb.GetSize(), fbb.GetBufferPointer());
         if (status.ok()) {
           // The client is unblocked now because the wait call has returned.
           if (client_blocked) {
@@ -819,7 +819,8 @@ void NodeManager::ProcessWaitRequestMessage(
           }
         } else {
           // We failed to write to the client, so disconnect the client.
-          RAY_LOG(WARNING) << "Failed to send WaitReply to client, so disconnecting client";
+          RAY_LOG(WARNING)
+              << "Failed to send WaitReply to client, so disconnecting client";
           // We failed to send the reply to the client, so disconnect the worker.
           ProcessDisconnectClientMessage(client);
         }
