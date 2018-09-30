@@ -81,9 +81,7 @@ if __name__ == "__main__":
     tempfile_services.set_temp_root(args.temp_dir)
 
     ray.worker.connect(
-        info,
-        mode=ray.WORKER_MODE,
-        use_raylet=(args.raylet_name is not None))
+        info, mode=ray.WORKER_MODE, use_raylet=(args.raylet_name is not None))
 
     error_explanation = """
   This error is unexpected and should not have happened. Somehow a worker

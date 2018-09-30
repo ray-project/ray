@@ -100,7 +100,7 @@ def get_sockets_dir_path():
     return sockets_dir
 
 
-def get_raylet_socket_path(suffix=""):
+def get_raylet_socket_name(suffix=""):
     """Get a socket name for raylet."""
     sockets_dir = get_sockets_dir_path()
 
