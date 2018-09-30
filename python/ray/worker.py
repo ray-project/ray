@@ -3,7 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 import atexit
-import collections
 import colorama
 import hashlib
 import inspect
@@ -809,8 +808,8 @@ class Worker(object):
                 arguments = self._get_arguments_for_execution(
                     function_name, args)
         except (RayGetError, RayGetArgumentError) as e:
-            self._handle_process_task_failure(function_id, function_name, return_object_ids,
-                                              e, None)
+            self._handle_process_task_failure(function_id, function_name,
+                                              return_object_ids, e, None)
             return
         except Exception as e:
             self._handle_process_task_failure(
@@ -833,8 +832,9 @@ class Worker(object):
             task_exception = task.actor_id().id() == NIL_ACTOR_ID
             traceback_str = ray.utils.format_error_message(
                 traceback.format_exc(), task_exception=task_exception)
-            self._handle_process_task_failure(function_id, function_name,return_object_ids,
-                                              e, traceback_str)
+            self._handle_process_task_failure(function_id, function_name,
+                                              return_object_ids, e,
+                                              traceback_str)
             return
 
         # Store the outputs in the local object store.
@@ -852,8 +852,8 @@ class Worker(object):
                 function_id, function_name, return_object_ids, e,
                 ray.utils.format_error_message(traceback.format_exc()))
 
-    def _handle_process_task_failure(self, function_id, function_name, return_object_ids,
-                                     error, backtrace):
+    def _handle_process_task_failure(self, function_id, function_name,
+                                     return_object_ids, error, backtrace):
         failure_object = RayTaskError(function_name, error, backtrace)
         failure_objects = [
             failure_object for _ in range(len(return_object_ids))
@@ -943,11 +943,11 @@ class Worker(object):
             self.profiler.flush_profile_data()
 
         # Increase the task execution counter.
-        self.function_manager.increase_task_counter(driver_id, function_id.id())
+        self.function_manager.increase_task_counter(driver_id,
+                                                    function_id.id())
 
-        reached_max_executions = (
-            self.function_manager.get_task_counter(driver_id, function_id.id())  ==
-            execution_info.max_calls)
+        reached_max_executions = (self.function_manager.get_task_counter(
+                driver_id, function_id.id()) == execution_info.max_calls)
         if reached_max_executions:
             self.local_scheduler_client.disconnect()
             os._exit(0)

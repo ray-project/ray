@@ -5,7 +5,6 @@ from __future__ import print_function
 import copy
 import hashlib
 import inspect
-import json
 import traceback
 
 import ray.cloudpickle as pickle
@@ -15,11 +14,8 @@ import ray.ray_constants as ray_constants
 import ray.signature as signature
 import ray.worker
 from ray.utils import (
-    decode,
     _random_string,
-    check_oversized_pickle,
     is_cython,
-    push_error_to_driver,
 )
 
 DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS = 1
@@ -109,6 +105,53 @@ def set_actor_checkpoint(worker, actor_id, checkpoint_index, checkpoint,
             "checkpoint": checkpoint,
             "frontier": frontier,
         })
+
+
+def save_and_log_checkpoint(worker, actor):
+    """Save a checkpoint on the actor and log any errors.
+     Args:
+        worker: The worker to use to log errors.
+        actor: The actor to checkpoint.
+        checkpoint_index: The number of tasks that have executed so far.
+    """
+    try:
+        actor.__ray_checkpoint__()
+    except Exception:
+        traceback_str = ray.utils.format_error_message(traceback.format_exc())
+        # Log the error message.
+        ray.utils.push_error_to_driver(
+            worker,
+            ray_constants.CHECKPOINT_PUSH_ERROR,
+            traceback_str,
+            driver_id=worker.task_driver_id.id(),
+            data={
+                "actor_class": actor.__class__.__name__,
+                "function_name": actor.__ray_checkpoint__.__name__
+            })
+
+
+def restore_and_log_checkpoint(worker, actor):
+    """Restore an actor from a checkpoint and log any errors.
+     Args:
+        worker: The worker to use to log errors.
+        actor: The actor to restore.
+    """
+    checkpoint_resumed = False
+    try:
+        checkpoint_resumed = actor.__ray_checkpoint_restore__()
+    except Exception:
+        traceback_str = ray.utils.format_error_message(traceback.format_exc())
+        # Log the error message.
+        ray.utils.push_error_to_driver(
+            worker,
+            ray_constants.CHECKPOINT_PUSH_ERROR,
+            traceback_str,
+            driver_id=worker.task_driver_id.id(),
+            data={
+                "actor_class": actor.__class__.__name__,
+                "function_name": actor.__ray_checkpoint_restore__.__name__
+            })
+    return checkpoint_resumed
 
 
 def get_actor_checkpoint(worker, actor_id):
@@ -250,7 +293,8 @@ class ActorClass(object):
             # don't support, there may not be much the user can do about it.
             signature.check_signature_supported(method, warn=True)
             self._method_signatures[method_name] = signature.extract_signature(
-                method, ignore_first=not FunctionManager.is_classmethod(method))
+                method,
+                ignore_first=not FunctionManager.is_classmethod(method))
 
             # Set the default number of return values for this method.
             if hasattr(method, "__ray_num_return_vals__"):
@@ -327,9 +371,9 @@ class ActorClass(object):
         else:
             # Export the actor.
             if not self._exported:
-                worker.function_manager.export_actor_class(self._class_id, self._modified_class,
-                                   self._actor_method_names,
-                                   self._checkpoint_interval)
+                worker.function_manager.export_actor_class(
+                    self._class_id, self._modified_class,
+                    self._actor_method_names, self._checkpoint_interval)
                 self._exported = True
 
             resources = ray.utils.resources_from_resource_arguments(
@@ -779,5 +823,6 @@ def make_actor(cls, num_cpus, num_gpus, resources, actor_method_cpus,
 
     return ActorClass(Class, class_id, checkpoint_interval, num_cpus, num_gpus,
                       resources, actor_method_cpus)
+
 
 ray.worker.global_worker.make_actor = make_actor
