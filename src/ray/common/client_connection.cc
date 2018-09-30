@@ -130,8 +130,6 @@ template <class T>
 void ClientConnection<T>::ProcessMessageHeader(const boost::system::error_code &error) {
   if (error) {
     // If there was an error, disconnect the client.
-    RAY_LOG(INFO) << "Error handling happening..."
-                  << static_cast<int64_t>(protocol::MessageType::DisconnectClient);
     read_type_ = static_cast<int64_t>(protocol::MessageType::DisconnectClient);
     read_length_ = 0;
     ProcessMessage(error);
