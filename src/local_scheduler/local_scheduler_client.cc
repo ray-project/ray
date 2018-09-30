@@ -57,8 +57,6 @@ void local_scheduler_disconnect_client(LocalSchedulerConnection *conn) {
   auto message = ray::local_scheduler::protocol::CreateDisconnectClient(fbb);
   fbb.Finish(message);
   if(conn->use_raylet) {
-    RAY_LOG(INFO) << "Intentionally disconnecting client "
-                  << static_cast<int64_t>(MessageType::IntentionalDisconnectClient);
     write_message(conn->conn, static_cast<int64_t>(MessageType::IntentionalDisconnectClient),
                   fbb.GetSize(), fbb.GetBufferPointer(), &conn->write_mutex);
   } else {
