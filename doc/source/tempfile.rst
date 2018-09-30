@@ -45,14 +45,14 @@ A typical layout of temporary files could look like this:
           │   ├── log_monitor.out
           │   ├── monitor.err
           │   ├── monitor.out
-          │   ├── plasma_manager[0].err  # array of plasma managers' outputs
-          │   ├── plasma_manager[0].out
-          │   ├── plasma_store[0].err  # array of plasma stores' outputs
-          │   ├── plasma_store[0].out
-          │   ├── raylet[0].err  # array of raylets' outputs. Control it with `--no-redirect-worker-output` (in Ray's command line) or `redirect_worker_output` (in ray.init())
-          │   ├── raylet[0].out
-          │   ├── redis-shard[0].err   # array of redis shards' outputs
-          │   ├── redis-shard[0].out
+          │   ├── plasma_manager_0.err  # array of plasma managers' outputs
+          │   ├── plasma_manager_0.out
+          │   ├── plasma_store_0.err  # array of plasma stores' outputs
+          │   ├── plasma_store_0.out
+          │   ├── raylet_0.err  # array of raylets' outputs. Control it with `--no-redirect-worker-output` (in Ray's command line) or `redirect_worker_output` (in ray.init())
+          │   ├── raylet_0.out
+          │   ├── redis-shard_0.err   # array of redis shards' outputs
+          │   ├── redis-shard_0.out
           │   ├── redis.err  # redis
           │   ├── redis.out
           │   ├── webui.err  # ipython notebook web ui
