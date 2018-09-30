@@ -479,10 +479,7 @@ def teardown(cluster_config_file, yes, workers_only, cluster_name):
     type=str,
     help=("Override the configured cluster name."))
 @click.option(
-    "--new",
-    "-N",
-    is_flag=True,
-    help=("Force creation of a new screen."))
+    "--new", "-N", is_flag=True, help=("Force creation of a new screen."))
 def attach(cluster_config_file, start, tmux, cluster_name, new):
     attach_cluster(cluster_config_file, start, tmux, cluster_name, new)
 
