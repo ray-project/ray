@@ -1531,6 +1531,7 @@ def _init(address_info=None,
           include_webui=True,
           use_raylet=None,
           plasma_store_socket_name=None,
+          raylet_socket_path=None,
           temp_dir=None):
     """Helper method to connect to an existing Ray cluster or start a new one.
 
@@ -1589,6 +1590,8 @@ def _init(address_info=None,
         use_raylet: True if the new raylet code path should be used.
         plasma_store_socket_name (str): If provided, it will specify the socket
             name used by the plasma store.
+        raylet_socket_path (str): If provided, it will specify the socket path
+            used by the raylet process.
         temp_dir (str): If provided, it will specify the root temporary
             directory for the Ray process.
 
@@ -1667,6 +1670,7 @@ def _init(address_info=None,
             include_webui=include_webui,
             use_raylet=use_raylet,
             plasma_store_socket_name=plasma_store_socket_name,
+            raylet_socket_path=raylet_socket_path,
             temp_dir=temp_dir)
     else:
         if redis_address is None:
@@ -1699,15 +1703,18 @@ def _init(address_info=None,
         if huge_pages:
             raise Exception("When connecting to an existing cluster, "
                             "huge_pages must not be provided.")
-        # Get the node IP address if one is not provided.
-        if node_ip_address is None:
-            node_ip_address = services.get_node_ip_address(redis_address)
         if temp_dir is not None:
             raise Exception("When connecting to an existing cluster, "
                             "temp_dir must not be provided.")
         if plasma_store_socket_name is not None:
             raise Exception("When connecting to an existing cluster, "
                             "plasma_store_socket_name must not be provided.")
+        if raylet_socket_path is not None:
+            raise Exception("When connecting to an existing cluster, "
+                            "raylet_socket_path must not be provided.")
+        # Get the node IP address if one is not provided.
+        if node_ip_address is None:
+            node_ip_address = services.get_node_ip_address(redis_address)
         # Get the address info of the processes to connect to from Redis.
         address_info = get_address_info_from_redis(
             redis_address, node_ip_address, use_raylet=use_raylet)
@@ -1770,6 +1777,7 @@ def init(redis_address=None,
          logging_level=logging.INFO,
          logging_format=ray_constants.LOGGER_FORMAT,
          plasma_store_socket_name=None,
+         raylet_socket_path=None,
          temp_dir=None):
     """Connect to an existing Ray cluster or start one and connect to it.
 
@@ -1837,6 +1845,8 @@ def init(redis_address=None,
             which means only contains the message.
         plasma_store_socket_name (str): If provided, it will specify the socket
             name used by the plasma store.
+        raylet_socket_path (str): If provided, it will specify the socket path
+            used by the raylet process.
         temp_dir (str): If provided, it will specify the root temporary
             directory for the Ray process.
 
@@ -1889,6 +1899,7 @@ def init(redis_address=None,
         object_store_memory=object_store_memory,
         use_raylet=use_raylet,
         plasma_store_socket_name=plasma_store_socket_name,
+        raylet_socket_path=raylet_socket_path,
         temp_dir=temp_dir)
     for hook in _post_init_hooks:
         hook()

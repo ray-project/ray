@@ -25,7 +25,7 @@ import ray.local_scheduler
 import ray.plasma
 
 from ray.tempfile_services import (
-    get_ipython_notebook_path, get_logs_dir_path, get_raylet_socket_name,
+    get_ipython_notebook_path, get_logs_dir_path, get_raylet_socket_path,
     get_temp_redis_config_path, get_temp_root, new_global_scheduler_log_file,
     new_local_scheduler_log_file, new_log_monitor_log_file,
     new_monitor_log_file, new_plasma_manager_log_file,
@@ -961,6 +961,7 @@ def start_local_scheduler(redis_address,
 
 def start_raylet(redis_address,
                  node_ip_address,
+                 raylet_name,
                  plasma_store_name,
                  worker_path,
                  resources=None,
@@ -978,6 +979,7 @@ def start_raylet(redis_address,
             scheduler is running on.
         plasma_store_name (str): The name of the plasma store socket to connect
             to.
+        raylet_name (str): The name of the raylet socket to create.
         worker_path (str): The path of the script to use when the local
             scheduler starts up new workers.
         use_valgrind (bool): True if the raylet should be started inside
@@ -1013,7 +1015,6 @@ def start_raylet(redis_address,
     ])
 
     gcs_ip_address, gcs_port = redis_address.split(":")
-    raylet_name = get_raylet_socket_name()
 
     # Create the command that the Raylet will use to start workers.
     start_worker_command = ("{} {} "
@@ -1324,6 +1325,7 @@ def start_ray_processes(address_info=None,
                         autoscaling_config=None,
                         use_raylet=False,
                         plasma_store_socket_name=None,
+                        raylet_socket_path=None,
                         temp_dir=None):
     """Helper method to start Ray processes.
 
@@ -1384,6 +1386,8 @@ def start_ray_processes(address_info=None,
             not supported yet.
         plasma_store_socket_name (str): If provided, it will specify the socket
             name used by the plasma store.
+        raylet_socket_path (str): If provided, it will specify the socket path
+            used by the raylet process.
         temp_dir (str): If provided, it will specify the root temporary
             directory for the Ray process.
 
@@ -1585,6 +1589,7 @@ def start_ray_processes(address_info=None,
                 start_raylet(
                     redis_address,
                     node_ip_address,
+                    raylet_socket_path or get_raylet_socket_path(),
                     object_store_addresses[i].name,
                     worker_path,
                     resources=resources[i],
@@ -1646,6 +1651,7 @@ def start_ray_node(node_ip_address,
                    huge_pages=False,
                    use_raylet=False,
                    plasma_store_socket_name=None,
+                   raylet_socket_path=None,
                    temp_dir=None):
     """Start the Ray processes for a single node.
 
@@ -1683,6 +1689,8 @@ def start_ray_node(node_ip_address,
             not supported yet.
         plasma_store_socket_name (str): If provided, it will specify the socket
             name used by the plasma store.
+        raylet_socket_path (str): If provided, it will specify the socket path
+            used by the raylet process.
         temp_dir (str): If provided, it will specify the root temporary
             directory for the Ray process.
 
@@ -1710,6 +1718,7 @@ def start_ray_node(node_ip_address,
         huge_pages=huge_pages,
         use_raylet=use_raylet,
         plasma_store_socket_name=plasma_store_socket_name,
+        raylet_socket_path=raylet_socket_path,
         temp_dir=temp_dir)
 
 
@@ -1735,6 +1744,7 @@ def start_ray_head(address_info=None,
                    autoscaling_config=None,
                    use_raylet=False,
                    plasma_store_socket_name=None,
+                   raylet_socket_path=None,
                    temp_dir=None):
     """Start Ray in local mode.
 
@@ -1789,6 +1799,8 @@ def start_ray_head(address_info=None,
             not supported yet.
         plasma_store_socket_name (str): If provided, it will specify the socket
             name used by the plasma store.
+        raylet_socket_path (str): If provided, it will specify the socket path
+            used by the raylet process.
         temp_dir (str): If provided, it will specify the root temporary
             directory for the Ray process.
 
@@ -1822,4 +1834,5 @@ def start_ray_head(address_info=None,
         autoscaling_config=autoscaling_config,
         use_raylet=use_raylet,
         plasma_store_socket_name=plasma_store_socket_name,
+        raylet_socket_path=raylet_socket_path,
         temp_dir=temp_dir)

@@ -179,19 +179,22 @@ def cli(logging_level, logging_format):
     help="do not redirect non-worker stdout and stderr to files")
 @click.option(
     "--plasma-store-socket-name",
-    is_flag=True,
     default=None,
-    help="manually specify the name of the socket of the plasma store")
+    help="manually specify the socket name of the plasma store")
+@click.option(
+    "--raylet-socket-path",
+    default=None,
+    help="manually specify the socket path of the raylet process")
 @click.option(
     "--temp-dir",
     default=None,
-    help="manually specify the root temporary dir the Ray process")
+    help="manually specify the root temporary dir of the Ray process")
 def start(node_ip_address, redis_address, redis_port, num_redis_shards,
           redis_max_clients, redis_shard_ports, object_manager_port,
           object_store_memory, num_workers, num_cpus, num_gpus, resources,
           head, no_ui, block, plasma_directory, huge_pages, autoscaling_config,
           use_raylet, no_redirect_worker_output, no_redirect_output,
-          plasma_store_socket_name, temp_dir):
+          plasma_store_socket_name, raylet_socket_path, temp_dir):
     # Convert hostnames to numerical IP address.
     if node_ip_address is not None:
         node_ip_address = services.address_to_ip(node_ip_address)
@@ -272,6 +275,7 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             autoscaling_config=autoscaling_config,
             use_raylet=use_raylet,
             plasma_store_socket_name=plasma_store_socket_name,
+            raylet_socket_path=raylet_socket_path,
             temp_dir=temp_dir)
         logger.info(address_info)
         logger.info(
@@ -343,6 +347,7 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             huge_pages=huge_pages,
             use_raylet=use_raylet,
             plasma_store_socket_name=plasma_store_socket_name,
+            raylet_socket_path=raylet_socket_path,
             temp_dir=temp_dir)
         logger.info(address_info)
         logger.info("\nStarted Ray on this node. If you wish to terminate the "
