@@ -213,7 +213,7 @@ Sometimes, it is necessary to coordinate between pieces of code that live in dif
 REST API
 --------
 
-In some cases (i.e., when interacting with an external environment) it makes more sense to interact with RLlib as if were an independently running service, rather than RLlib hosting the simulations itself. This is possible via RLlib's serving env `interface <rllib-envs.html#serving>`__.
+In some cases (i.e., when interacting with an external environment) it makes more sense to interact with RLlib as if were an independently running service, rather than RLlib hosting the simulations itself. This is possible via RLlib's serving env `interface <rllib-env.html#agent-driven>`__.
 
 .. autoclass:: ray.rllib.utils.policy_client.PolicyClient
     :members:
