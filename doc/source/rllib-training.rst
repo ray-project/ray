@@ -94,7 +94,7 @@ You can run these with the ``train.py`` script as follows:
 Python API
 ----------
 
-The Python API provides the needed flexibility for applying RLlib to new problems. You will need to use this API if you wish to use custom environments, preprocesors, or models with RLlib.
+The Python API provides the needed flexibility for applying RLlib to new problems. You will need to use this API if you wish to use `custom environments, preprocessors, or models <rllib-models.html>`__ with RLlib.
 
 Here is an example of the basic usage:
 
@@ -185,7 +185,7 @@ You can also access just the "master" copy of the agent state through ``agent.lo
 
 Global Coordination
 ~~~~~~~~~~~~~~~~~~~
-Sometimes, it is necessary to coordinate between pieces of code that live in different processes managed by RLlib. For example, it can be useful to maintain a global average of a certain variable, or centrally control a hyperparameter used by policies. Ray provides a general way to achieve this through *named actors* (learn more about Ray actors `here <actors.html>`__. As an example, consider maintaining a shared global counter that is incremented by environments and read periodically from your driver program:
+Sometimes, it is necessary to coordinate between pieces of code that live in different processes managed by RLlib. For example, it can be useful to maintain a global average of a certain variable, or centrally control a hyperparameter used by policies. Ray provides a general way to achieve this through *named actors* (learn more about Ray actors `here <actors.html>`__). As an example, consider maintaining a shared global counter that is incremented by environments and read periodically from your driver program:
 
 .. code-block:: python
 
