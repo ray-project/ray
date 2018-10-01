@@ -212,7 +212,8 @@ class Trainable(object):
             checkpoint_path = checkpoint
         elif isinstance(checkpoint, dict):
             saved_as_dict = True
-            pickle.dump(checkpoint, open(checkpoint_path + ".tune_state", "wb"))
+            pickle.dump(checkpoint, open(checkpoint_path + ".tune_state",
+                                         "wb"))
         else:
             raise ValueError("Return value from `_save` must be dict or str.")
         pickle.dump([
@@ -333,7 +334,6 @@ class Trainable(object):
                 expected to be the checkpoint path that will be passed to
                 `_restore()`. If dict, the return value will be automatically
                 serialized by Tune and passed to `_restore()`.
-
 
         Examples:
             >>> checkpoint_data = trainable._save(checkpoint_dir)

@@ -33,8 +33,8 @@ TIME_TOTAL_S = "time_total_s"
 TRAINING_ITERATION = "training_iteration"
 
 # Where Tune writes result files by default
-DEFAULT_RESULTS_DIR = (
-    os.environ.get("TUNE_DEFAULT_DIR") or os.path.expanduser("~/ray_results"))
+DEFAULT_RESULTS_DIR = (os.environ.get("TUNE_DEFAULT_DIR")
+                       or os.path.expanduser("~/ray_results"))
 
 # Meta file about status under each experiment directory, can be
 # parsed by automlboard if exists.
