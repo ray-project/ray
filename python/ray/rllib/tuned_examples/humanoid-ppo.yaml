@@ -15,3 +15,4 @@ humanoid-ppo:
         use_gae: false
         num_workers: 64
         num_gpus: 4
+        batch_mode: complete_episodes

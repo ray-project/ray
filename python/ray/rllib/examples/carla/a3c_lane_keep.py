@@ -16,7 +16,7 @@ env_config.update({
     "x_res": 80,
     "y_res": 80,
     "use_depth_camera": False,
-    "discrete_actions": True,
+    "discrete_actions": False,
     "server_map": "/Game/Maps/Town02",
     "reward_function": "lane_keep",
     "enable_planner": False,
@@ -28,10 +28,9 @@ register_carla_model()
 
 ray.init()
 run_experiments({
-    "carla-dqn": {
-        "run": "DQN",
+    "carla-a3c": {
+        "run": "A3C",
         "env": "carla_env",
-        "trial_resources": {"cpu": 4, "gpu": 1},
         "config": {
             "env_config": env_config,
             "model": {
@@ -45,13 +44,8 @@ run_experiments({
                     [512, [10, 10], 1],
                 ],
             },
-            "timesteps_per_iteration": 100,
-            "learning_starts": 1000,
-            "schedule_max_timesteps": 100000,
             "gamma": 0.8,
-            "tf_session_args": {
-              "gpu_options": {"allow_growth": True},
-            },
+            "num_workers": 1,
         },
     },
 })

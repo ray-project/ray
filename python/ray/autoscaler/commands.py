@@ -210,7 +210,7 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
                                        provider.external_ip(head_node)))
 
 
-def attach_cluster(config_file, start, use_tmux, override_cluster_name):
+def attach_cluster(config_file, start, use_tmux, override_cluster_name, new):
     """Attaches to a screen for the specified cluster.
 
     Arguments:
@@ -218,8 +218,20 @@ def attach_cluster(config_file, start, use_tmux, override_cluster_name):
         start: whether to start the cluster if it isn't up
         use_tmux: whether to use tmux as multiplexer
         override_cluster_name: set the name of the cluster
+        new: whether to force a new screen
     """
-    cmd = "tmux attach || tmux new" if use_tmux else "screen -L -xRR"
+
+    if use_tmux:
+        if new:
+            cmd = "tmux new"
+        else:
+            cmd = "tmux attach || tmux new"
+    else:
+        if new:
+            cmd = "screen -L"
+        else:
+            cmd = "screen -L -xRR"
+
     exec_cluster(config_file, cmd, False, False, False, start,
                  override_cluster_name, None)
 

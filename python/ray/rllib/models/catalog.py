@@ -17,7 +17,6 @@ from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.models.fcnet import FullyConnectedNetwork
 from ray.rllib.models.visionnet import VisionNetwork
 from ray.rllib.models.lstm import LSTM
-from ray.rllib.models.multiagentfcnet import MultiAgentFullyConnectedNetwork
 
 MODEL_CONFIGS = [
     # === Built-in options ===
@@ -51,14 +50,15 @@ class ModelCatalog(object):
         >>> prep = ModelCatalog.get_preprocessor(env)
         >>> observation = prep.transform(raw_observation)
 
-        >>> dist_cls, dist_dim = ModelCatalog.get_action_dist(env.action_space)
-        >>> model = ModelCatalog.get_model(inputs, dist_dim)
+        >>> dist_cls, dist_dim = ModelCatalog.get_action_dist(
+                env.action_space, {})
+        >>> model = ModelCatalog.get_model(inputs, dist_dim, options)
         >>> dist = dist_cls(model.outputs)
         >>> action = dist.sample()
     """
 
     @staticmethod
-    def get_action_dist(action_space, config=None, dist_type=None):
+    def get_action_dist(action_space, config, dist_type=None):
         """Returns action distribution class and size for the given action space.
 
         Args:
@@ -90,7 +90,8 @@ class ModelCatalog(object):
             child_dist = []
             input_lens = []
             for action in action_space.spaces:
-                dist, action_size = ModelCatalog.get_action_dist(action)
+                dist, action_size = ModelCatalog.get_action_dist(
+                    action, config)
                 child_dist.append(dist)
                 input_lens.append(action_size)
             return partial(
@@ -139,11 +140,7 @@ class ModelCatalog(object):
                                       " not supported".format(action_space))
 
     @staticmethod
-    def get_model(inputs,
-                  num_outputs,
-                  options=None,
-                  state_in=None,
-                  seq_lens=None):
+    def get_model(inputs, num_outputs, options, state_in=None, seq_lens=None):
         """Returns a suitable model conforming to given input and output specs.
 
         Args:
@@ -157,7 +154,6 @@ class ModelCatalog(object):
             model (Model): Neural network model.
         """
 
-        options = options or {}
         model = ModelCatalog._get_model(inputs, num_outputs, options, state_in,
                                         seq_lens)
 
@@ -180,13 +176,6 @@ class ModelCatalog(object):
                 seq_lens=seq_lens)
 
         obs_rank = len(inputs.shape) - 1
-
-        # num_outputs > 1 used to avoid hitting this with the value function
-        if isinstance(
-                options.get("custom_options", {}).get(
-                    "multiagent_fcnet_hiddens", 1), list) and num_outputs > 1:
-            return MultiAgentFullyConnectedNetwork(inputs, num_outputs,
-                                                   options)
 
         if obs_rank > 1:
             return VisionNetwork(inputs, num_outputs, options)

@@ -125,7 +125,7 @@ class DiagGaussian(ActionDistribution):
 
     def entropy(self):
         return tf.reduce_sum(
-            self.log_std + .5 * np.log(2.0 * np.pi * np.e),
+            .5 * self.log_std + .5 * np.log(2.0 * np.pi * np.e),
             reduction_indices=[1])
 
     def sample(self):

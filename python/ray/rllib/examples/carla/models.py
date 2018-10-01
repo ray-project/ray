@@ -43,8 +43,8 @@ class CarlaModel(Model):
             (inputs.shape.as_list()[1:], expected_shape)
 
         # Reshape the input vector back into its components
-        vision_in = tf.reshape(
-            inputs[:, :image_size], [tf.shape(inputs)[0]] + image_shape)
+        vision_in = tf.reshape(inputs[:, :image_size],
+                               [tf.shape(inputs)[0]] + image_shape)
         metrics_in = inputs[:, image_size:]
         print("Vision in shape", vision_in)
         print("Metrics in shape", metrics_in)
@@ -53,18 +53,26 @@ class CarlaModel(Model):
         with tf.name_scope("carla_vision"):
             for i, (out_size, kernel, stride) in enumerate(convs[:-1], 1):
                 vision_in = slim.conv2d(
-                    vision_in, out_size, kernel, stride,
+                    vision_in,
+                    out_size,
+                    kernel,
+                    stride,
                     scope="conv{}".format(i))
             out_size, kernel, stride = convs[-1]
             vision_in = slim.conv2d(
-                vision_in, out_size, kernel, stride,
-                padding="VALID", scope="conv_out")
+                vision_in,
+                out_size,
+                kernel,
+                stride,
+                padding="VALID",
+                scope="conv_out")
             vision_in = tf.squeeze(vision_in, [1, 2])
 
         # Setup metrics layer
         with tf.name_scope("carla_metrics"):
             metrics_in = slim.fully_connected(
-                metrics_in, 64,
+                metrics_in,
+                64,
                 weights_initializer=xavier_initializer(),
                 activation_fn=activation,
                 scope="metrics_out")
@@ -79,15 +87,18 @@ class CarlaModel(Model):
             print("Shape of concatenated out is", last_layer.shape)
             for size in hiddens:
                 last_layer = slim.fully_connected(
-                    last_layer, size,
+                    last_layer,
+                    size,
                     weights_initializer=xavier_initializer(),
                     activation_fn=activation,
                     scope="fc{}".format(i))
                 i += 1
             output = slim.fully_connected(
-                last_layer, num_outputs,
+                last_layer,
+                num_outputs,
                 weights_initializer=normc_initializer(0.01),
-                activation_fn=None, scope="fc_out")
+                activation_fn=None,
+                scope="fc_out")
 
         return output, last_layer
 
