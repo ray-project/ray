@@ -24,7 +24,7 @@ class SimpleCorridor(gym.Env):
         self.cur_pos = 0
         self.action_space = Discrete(2)
         self.observation_space = Box(
-            0.0, self.end_pos, shape=(1,), dtype=np.float32)
+            0.0, self.end_pos, shape=(1, ), dtype=np.float32)
         self._spec = EnvSpec("SimpleCorridor-{}-v0".format(self.end_pos))
 
     def reset(self):
@@ -32,7 +32,7 @@ class SimpleCorridor(gym.Env):
         return [self.cur_pos]
 
     def step(self, action):
-        assert action in [0, 1]
+        assert action in [0, 1], action
         if action == 0 and self.cur_pos > 0:
             self.cur_pos -= 1
         elif action == 1:

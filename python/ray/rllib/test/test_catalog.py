@@ -69,12 +69,13 @@ class ModelCatalogTest(unittest.TestCase):
         ray.init()
 
         with tf.variable_scope("test1"):
-            p1 = ModelCatalog.get_model(np.zeros((10, 3), dtype=np.float32), 5)
+            p1 = ModelCatalog.get_model(
+                np.zeros((10, 3), dtype=np.float32), 5, {})
             self.assertEqual(type(p1), FullyConnectedNetwork)
 
         with tf.variable_scope("test2"):
             p2 = ModelCatalog.get_model(
-                np.zeros((10, 84, 84, 3), dtype=np.float32), 5)
+                np.zeros((10, 84, 84, 3), dtype=np.float32), 5, {})
             self.assertEqual(type(p2), VisionNetwork)
 
     def testCustomModel(self):

@@ -50,7 +50,7 @@ In the above example, note that the ``env_creator`` function takes in an ``env_c
 OpenAI Gym
 ----------
 
-RLlib uses Gym as its environment interface for single-agent training. For more information on how to implement a custom Gym environment, see the `gym.Env class definition <https://github.com/openai/gym/blob/master/gym/core.py>`__. You may also find the `SimpleCorridor <https://github.com/ray-project/ray/blob/master/examples/custom_env/custom_env.py>`__ and `Carla simulator <https://github.com/ray-project/ray/blob/master/examples/carla/env.py>`__ example env implementations useful as a reference.
+RLlib uses Gym as its environment interface for single-agent training. For more information on how to implement a custom Gym environment, see the `gym.Env class definition <https://github.com/openai/gym/blob/master/gym/core.py>`__. You may also find the `SimpleCorridor <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_env.py>`__ and `Carla simulator <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/carla/env.py>`__ example env implementations useful as a reference.
 
 Performance
 ~~~~~~~~~~~
