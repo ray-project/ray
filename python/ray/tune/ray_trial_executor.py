@@ -215,7 +215,7 @@ class RayTrialExecutor(TrialExecutor):
     def _update_avail_resources(self):
         if ray.worker.global_worker.use_raylet:
             # TODO(rliaw): Remove once raylet flag is swapped
-            resources = ray.global_state.available_resources()
+            resources = ray.global_state.cluster_resources()
             num_cpus = resources["CPU"]
             num_gpus = resources["GPU"]
         else:
