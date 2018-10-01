@@ -58,12 +58,17 @@ public class RayFunction {
   }
 
   public RayRemote getRayRemoteAnnotation() {
-    RayRemote rayRemote = executable.getAnnotation(RayRemote.class);
-    if (rayRemote == null) {
-      // If the method doesn't have a annotation, get the annotation from
-      // its wrapping class.
+    RayRemote rayRemote;
+
+    // If this method is a constructor, the task of this should be a actorCreationTask.
+    // And the annotation of actorCreationTask should extend from class.
+    // Otherwise, it's a normal method, and it shouldn't extends annotation from class.
+    if (isConstructor()) {
       rayRemote = executable.getDeclaringClass().getAnnotation(RayRemote.class);
+    } else {
+      rayRemote = executable.getAnnotation(RayRemote.class);
     }
+
     return rayRemote;
   }
 

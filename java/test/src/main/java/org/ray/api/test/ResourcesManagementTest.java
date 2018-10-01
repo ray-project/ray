@@ -45,6 +45,13 @@ public class ResourcesManagementTest {
     }
   }
 
+  @RayRemote(resources = {@ResourceItem(name = "RES-A", value = 4)})
+  public static class Echo3 {
+    public Integer echo(Integer number) {
+      return number;
+    }
+  }
+
   @Test
   public void testMethods() {
     // This is a case that can satisfy required resources.
@@ -75,5 +82,14 @@ public class ResourcesManagementTest {
     Assert.assertEquals(1, waitResult.getUnready().size());
   }
 
+  @Test
+  public void testActorAndMemberMethods() {
+    // Note(qwang): This case depends on  this line.
+    // https://github.com/ray-project/ray/blob/master/java/test/src/main/java/org/ray/api/test/TestListener.java#L13
+    // If we change the static resources configuration item, this case may not pass.
+    // Then we should change this case too.
+    RayActor<Echo3> echo3 = Ray.createActor(Echo3::new);
+    Assert.assertEquals(100, (int) Ray.call(Echo3::echo, echo3, 100).get());
+  }
 }
 

@@ -74,7 +74,7 @@ public class FunctionManagerTest {
     func = functionManager.getFunction(UniqueId.NIL, barFunc);
     Assert.assertFalse(func.isConstructor());
     Assert.assertEquals(func.getFunctionDescriptor(), barDescriptor);
-    Assert.assertNotNull(func.getRayRemoteAnnotation());
+    Assert.assertNull(func.getRayRemoteAnnotation());
 
     // Test actor constructor
     func = functionManager.getFunction(UniqueId.NIL, barConstructor);
@@ -95,7 +95,7 @@ public class FunctionManagerTest {
     func = functionManager.getFunction(UniqueId.NIL, barDescriptor);
     Assert.assertFalse(func.isConstructor());
     Assert.assertEquals(func.getFunctionDescriptor(), barDescriptor);
-    Assert.assertNotNull(func.getRayRemoteAnnotation());
+    Assert.assertNull(func.getRayRemoteAnnotation());
 
     // Test actor constructor
     func = functionManager.getFunction(UniqueId.NIL, barConstructorDescriptor);

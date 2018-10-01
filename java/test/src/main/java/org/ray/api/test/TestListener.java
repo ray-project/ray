@@ -10,7 +10,7 @@ public class TestListener extends RunListener {
   @Override
   public void testRunStarted(Description description) {
     System.setProperty("ray.home", "../..");
-    System.setProperty("ray.resources", "CPU:4");
+    System.setProperty("ray.resources", "CPU:4,RES-A:4");
     Ray.init();
   }
 
