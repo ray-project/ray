@@ -1056,8 +1056,6 @@ def start_raylet(redis_address,
     elif use_profiler:
         command = ["valgrind", "--tool=callgrind"] + command
 
-    import IPython
-    IPython.embed()
     pid = subprocess.Popen(command, stdout=stdout_file, stderr=stderr_file)
 
     if cleanup:
