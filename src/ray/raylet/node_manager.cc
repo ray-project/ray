@@ -852,7 +852,8 @@ void NodeManager::ProcessNodeManagerMessage(TcpClientConnection &node_manager_cl
                    << " spillback=" << task.GetTaskExecutionSpec().NumForwards();
     SubmitTask(task, uncommitted_lineage, /* forwarded = */ true);
   } break;
-  case protocol::MessageType::DisconnectClient: {
+  case protocol::MessageType::DisconnectClient:
+  case protocol::MessageType::IntentionalDisconnectClient: {
     // TODO(rkn): We need to do some cleanup here.
     RAY_LOG(DEBUG) << "Received disconnect message from remote node manager. "
                    << "We need to do some cleanup here.";
