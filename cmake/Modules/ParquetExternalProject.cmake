@@ -38,7 +38,7 @@ endif ()
 
 ExternalProject_Add(parquet_ep
   PREFIX external/parquet
-  DEPENDS arrow_ep
+  DEPENDS arrow
   GIT_REPOSITORY ${parquet_URL}
   GIT_TAG ${parquet_TAG}
   BUILD_COMMAND ${CMAKE_COMMAND} -E env ${parquet_ENV} $(MAKE)

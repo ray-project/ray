@@ -26,7 +26,7 @@ class TestAvailableResources(object):
 
     def test_no_tasks(self):
         cluster_resources = ray.global_state.cluster_resources()
-        available_resources = ray.global_state.cluster_resources()
+        available_resources = ray.global_state.available_resources()
         assert cluster_resources == available_resources
 
     def test_replenish_resources(self):
@@ -37,8 +37,8 @@ class TestAvailableResources(object):
         resources_reset = False
 
         while not resources_reset and time.time() - start < self.timeout:
-            resources_reset = (
-                cluster_resources == ray.global_state.available_resources())
+            available_resources = ray.global_state.available_resources()
+            resources_reset = (cluster_resources == available_resources)
 
         assert resources_reset
 

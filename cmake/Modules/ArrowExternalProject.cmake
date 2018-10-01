@@ -14,7 +14,10 @@
 #  - PLASMA_SHARED_LIB
 
 set(arrow_URL https://github.com/apache/arrow.git)
-set(arrow_TAG 927bd34aaad875e82beca2584d5d777839fa8bb0)
+# The PR for this commit is https://github.com/apache/arrow/pull/2522. We
+# include the link here to make it easier to find the right commit because
+# Arrow often rewrites git history and invalidates certain commits.
+set(arrow_TAG 7104d64ff2cd6c20e29d3cf4ec5c58bc10798f66)
 
 set(ARROW_INSTALL_PREFIX ${CMAKE_CURRENT_BINARY_DIR}/external/arrow-install)
 set(ARROW_HOME ${ARROW_INSTALL_PREFIX})
@@ -53,10 +56,26 @@ set(ARROW_CMAKE_ARGS
   -DARROW_JEMALLOC=off
   -DARROW_WITH_BROTLI=off
   -DARROW_WITH_LZ4=off
-  -DARROW_WITH_ZLIB=off
   -DARROW_WITH_ZSTD=off
   -DFLATBUFFERS_HOME=${FLATBUFFERS_HOME}
   -DBOOST_ROOT=${BOOST_ROOT})
+
+if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
+  # PyArrow needs following settings.
+  set(ARROW_CMAKE_ARGS ${ARROW_CMAKE_ARGS}
+    -DARROW_WITH_THRIFT=ON
+    -DARROW_PARQUET=ON
+    -DARROW_WITH_ZLIB=ON)
+else()
+  set(ARROW_CMAKE_ARGS ${ARROW_CMAKE_ARGS}
+    -DARROW_WITH_THRIFT=OFF
+    -DARROW_PARQUET=OFF
+    -DARROW_WITH_ZLIB=OFF)
+endif ()
+if (APPLE)
+  set(ARROW_CMAKE_ARGS ${ARROW_CMAKE_ARGS}
+    -DBISON_EXECUTABLE=/usr/local/opt/bison/bin/bison)
+endif()
 
 if ("${CMAKE_RAY_LANG_JAVA}" STREQUAL "YES")
   set(ARROW_CMAKE_ARGS ${ARROW_CMAKE_ARGS} -DARROW_PLASMA_JAVA_CLIENT=ON)
@@ -73,7 +92,7 @@ endif()
 
 ExternalProject_Add(arrow_ep
   PREFIX external/arrow
-  DEPENDS flatbuffers_ep boost_ep
+  DEPENDS flatbuffers boost
   GIT_REPOSITORY ${arrow_URL}
   GIT_TAG ${arrow_TAG}
   ${ARROW_CONFIGURE}

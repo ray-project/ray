@@ -96,7 +96,7 @@ class PolicyEvaluator(EvaluatorInterface):
                  compress_observations=False,
                  num_envs=1,
                  observation_filter="NoFilter",
-                 clip_rewards=False,
+                 clip_rewards=None,
                  env_config=None,
                  model_config=None,
                  policy_config=None,
@@ -124,16 +124,14 @@ class PolicyEvaluator(EvaluatorInterface):
                 in each sample batch returned from this evaluator.
             batch_mode (str): One of the following batch modes:
                 "truncate_episodes": Each call to sample() will return a batch
-                    of at most `batch_steps` in size. The batch will be exactly
-                    `batch_steps` in size if postprocessing does not change
-                    batch sizes. Episodes may be truncated in order to meet
-                    this size requirement. When `num_envs > 1`, episodes will
-                    be truncated to sequences of `batch_size / num_envs` in
-                    length.
+                    of at most `batch_steps * num_envs` in size. The batch will
+                    be exactly `batch_steps * num_envs` in size if
+                    postprocessing does not change batch sizes. Episodes may be
+                    truncated in order to meet this size requirement.
                 "complete_episodes": Each call to sample() will return a batch
-                    of at least `batch_steps in size. Episodes will not be
-                    truncated, but multiple episodes may be packed within one
-                    batch to meet the batch size. Note that when
+                    of at least `batch_steps * num_envs` in size. Episodes will
+                    not be truncated, but multiple episodes may be packed
+                    within one batch to meet the batch size. Note that when
                     `num_envs > 1`, episode steps will be buffered until the
                     episode completes, and hence batches may contain
                     significant amounts of off-policy data.
@@ -150,7 +148,8 @@ class PolicyEvaluator(EvaluatorInterface):
                 if the env already implements VectorEnv.
             observation_filter (str): Name of observation filter to use.
             clip_rewards (bool): Whether to clip rewards to [-1, 1] prior to
-                experience postprocessing.
+                experience postprocessing. Setting to None means clip for Atari
+                only.
             env_config (dict): Config to pass to the env creator.
             model_config (dict): Config to use when creating the policy model.
             policy_config (dict): Config to pass to the policy. In the
@@ -170,7 +169,7 @@ class PolicyEvaluator(EvaluatorInterface):
         policy_mapping_fn = (policy_mapping_fn
                              or (lambda agent_id: DEFAULT_POLICY_ID))
         self.env_creator = env_creator
-        self.batch_steps = batch_steps
+        self.sample_batch_size = batch_steps * num_envs
         self.batch_mode = batch_mode
         self.compress_observations = compress_observations
 
@@ -185,6 +184,9 @@ class PolicyEvaluator(EvaluatorInterface):
         elif is_atari(self.env) and \
                 "custom_preprocessor" not in model_config and \
                 preprocessor_pref == "deepmind":
+
+            if clip_rewards is None:
+                clip_rewards = True
 
             def wrap(env):
                 env = wrap_deepmind(
@@ -242,15 +244,10 @@ class PolicyEvaluator(EvaluatorInterface):
         self.num_envs = num_envs
 
         if self.batch_mode == "truncate_episodes":
-            if batch_steps % num_envs != 0:
-                raise ValueError(
-                    "In 'truncate_episodes' batch mode, `batch_steps` must be "
-                    "evenly divisible by `num_envs`. Got {} and {}.".format(
-                        batch_steps, num_envs))
-            batch_steps = batch_steps // num_envs
+            unroll_length = batch_steps
             pack_episodes = True
         elif self.batch_mode == "complete_episodes":
-            batch_steps = float("inf")  # never cut episodes
+            unroll_length = float("inf")  # never cut episodes
             pack_episodes = False  # sampler will return 1 episode per poll
         else:
             raise ValueError("Unsupported batch mode: {}".format(
@@ -262,7 +259,7 @@ class PolicyEvaluator(EvaluatorInterface):
                 policy_mapping_fn,
                 self.filters,
                 clip_rewards,
-                batch_steps,
+                unroll_length,
                 horizon=episode_horizon,
                 pack=pack_episodes,
                 tf_sess=self.tf_sess)
@@ -274,7 +271,7 @@ class PolicyEvaluator(EvaluatorInterface):
                 policy_mapping_fn,
                 self.filters,
                 clip_rewards,
-                batch_steps,
+                unroll_length,
                 horizon=episode_horizon,
                 pack=pack_episodes,
                 tf_sess=self.tf_sess)
@@ -306,7 +303,8 @@ class PolicyEvaluator(EvaluatorInterface):
         else:
             max_batches = float("inf")
 
-        while steps_so_far < self.batch_steps and len(batches) < max_batches:
+        while steps_so_far < self.sample_batch_size and len(
+                batches) < max_batches:
             batch = self.sampler.get_data()
             steps_so_far += batch.count
             batches.append(batch)

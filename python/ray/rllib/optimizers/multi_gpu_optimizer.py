@@ -108,7 +108,10 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
             value = samples[field]
             standardized = (value - value.mean()) / max(1e-4, value.std())
             samples[field] = standardized
-        samples.shuffle()
+
+        # Important: don't shuffle RNN sequence elements
+        if not self.policy._state_inputs:
+            samples.shuffle()
 
         with self.load_timer:
             tuples = self.policy._get_loss_inputs_dict(samples)

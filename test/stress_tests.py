@@ -12,11 +12,20 @@ import ray.tempfile_services
 import ray.ray_constants as ray_constants
 
 
-@pytest.fixture
-def ray_start_regular():
+@pytest.fixture(params=[1, 20])
+def ray_start_sharded(request):
+    num_redis_shards = request.param
+
+    if os.environ.get("RAY_USE_NEW_GCS") == "on":
+        num_redis_shards = 1
+        # For now, RAY_USE_NEW_GCS supports 1 shard, and credis supports
+        # 1-node chain for that shard only.
+
     # Start the Ray processes.
-    ray.init(num_cpus=10)
+    ray.init(num_cpus=10, num_redis_shards=num_redis_shards)
+
     yield None
+
     # The code after the yield will run as teardown code.
     ray.shutdown()
 
@@ -79,7 +88,7 @@ def test_dependencies(ray_start_combination):
     assert ray.services.all_processes_alive()
 
 
-def test_submitting_many_tasks(ray_start_regular):
+def test_submitting_many_tasks(ray_start_sharded):
     @ray.remote
     def f(x):
         return 1
@@ -94,7 +103,7 @@ def test_submitting_many_tasks(ray_start_regular):
     assert ray.services.all_processes_alive()
 
 
-def test_getting_and_putting(ray_start_regular):
+def test_getting_and_putting(ray_start_sharded):
     for n in range(8):
         x = np.zeros(10**n)
 
@@ -108,7 +117,7 @@ def test_getting_and_putting(ray_start_regular):
     assert ray.services.all_processes_alive()
 
 
-def test_getting_many_objects(ray_start_regular):
+def test_getting_many_objects(ray_start_sharded):
     @ray.remote
     def f():
         return 1

@@ -3,14 +3,13 @@
   xmlns="http://maven.apache.org/POM/4.0.0"
   xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
   <parent>
-    <groupId>org.ray.parent</groupId>
+    <groupId>org.ray</groupId>
     <artifactId>ray-superpom</artifactId>
-    <version>1.0</version>
+    <version>0.1-SNAPSHOT</version>
   </parent>
   <modelVersion>4.0.0</modelVersion>
-  <groupId>org.ray</groupId>
-  <artifactId>ray-runtime</artifactId>
 
+  <artifactId>ray-runtime</artifactId>
   <name>ray runtime</name>
   <description>ray runtime implementation</description>
 
@@ -21,6 +20,10 @@
       <groupId>org.ray</groupId>
       <artifactId>ray-api</artifactId>
       <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>com.typesafe</groupId>
+      <artifactId>config</artifactId>
     </dependency>
     <dependency>
       <groupId>org.apache.commons</groupId>
@@ -65,6 +68,13 @@
     <dependency>
       <groupId>org.ow2.asm</groupId>
       <artifactId>asm</artifactId>
+    </dependency>
+
+    <!-- test dependencies -->
+    <dependency>
+      <groupId>junit</groupId>
+      <artifactId>junit</artifactId>
+      <scope>test</scope>
     </dependency>
   </dependencies>
 </project>
