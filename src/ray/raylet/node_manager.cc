@@ -544,9 +544,9 @@ void NodeManager::ProcessClientMessage(
     // For a worker that is marked as dead (because the driver has died already),
     // all the messages are ignored except DisconnectClient.
     if ((static_cast<protocol::MessageType>(message_type) !=
-        protocol::MessageType::DisconnectClient) &&
+         protocol::MessageType::DisconnectClient) &&
         (static_cast<protocol::MessageType>(message_type) !=
-        protocol::MessageType::IntentionalDisconnectClient)) {
+         protocol::MessageType::IntentionalDisconnectClient)) {
       // Listen for more messages.
       client->ProcessMessages();
       return;
@@ -852,8 +852,7 @@ void NodeManager::ProcessNodeManagerMessage(TcpClientConnection &node_manager_cl
                    << " spillback=" << task.GetTaskExecutionSpec().NumForwards();
     SubmitTask(task, uncommitted_lineage, /* forwarded = */ true);
   } break;
-  case protocol::MessageType::DisconnectClient:
-  case protocol::MessageType::IntentionalDisconnectClient: {
+  case protocol::MessageType::DisconnectClient: {
     // TODO(rkn): We need to do some cleanup here.
     RAY_LOG(DEBUG) << "Received disconnect message from remote node manager. "
                    << "We need to do some cleanup here.";
