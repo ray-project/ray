@@ -9,8 +9,10 @@ import ray
 
 @pytest.fixture
 def ray_start_raylet_valgrind():
+    # TODO NEED TO MAKE SURE STDOUT/STDERR from VALGRID ARE CAPTURE!!!!!!!!!!!!!!!!!!!
+
     # Start the Ray processes.
-    ray.worker._init(num_cpus=1, raylet_valgrind=True)
+    ray.worker._init(start_ray_local=True, num_cpus=1, raylet_valgrind=True)
     yield None
     # The code after the yield will run as teardown code.
     ray.shutdown()
@@ -24,8 +26,7 @@ def kill_raylet_and_check_valgrind():
         p.send_signal(signal.SIGTERM)
         p.wait()
         if p.returncode != 0:
-            os._exit(-1)
-            # WHY NOT RAISE EXCEPTION INSTEAD?????????????????????????????????????????
+            raise Exception("Valgrind detected some errors.")
 
 
 def test_basic_task_api(ray_start_raylet_valgrind):
