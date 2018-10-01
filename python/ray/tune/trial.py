@@ -51,6 +51,7 @@ class Resources(
     def __new__(cls, cpu, gpu, extra_cpu=0, extra_gpu=0):
         for entry in [cpu, gpu, extra_cpu, extra_gpu]:
             assert isinstance(entry, Number), "Improper resource value."
+            assert entry >= 0, "Resource cannot be negative."
         return super(Resources, cls).__new__(cls, cpu, gpu, extra_cpu,
                                              extra_gpu)
 
