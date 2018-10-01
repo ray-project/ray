@@ -2,6 +2,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import signal
+
 import pytest
 
 import ray
@@ -29,5 +31,8 @@ def kill_raylet_and_check_valgrind():
             raise Exception("Valgrind detected some errors.")
 
 
+@pytest.mark.skipif(
+    os.environ.get("RAY_USE_XRAY") != "1",
+    reason="This test only works with xray.")
 def test_basic_task_api(ray_start_raylet_valgrind):
     kill_raylet_and_check_valgrind()
