@@ -17,7 +17,6 @@ from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.models.fcnet import FullyConnectedNetwork
 from ray.rllib.models.visionnet import VisionNetwork
 from ray.rllib.models.lstm import LSTM
-from ray.rllib.models.multiagentfcnet import MultiAgentFullyConnectedNetwork
 
 MODEL_CONFIGS = [
     # === Built-in options ===
@@ -177,13 +176,6 @@ class ModelCatalog(object):
                 seq_lens=seq_lens)
 
         obs_rank = len(inputs.shape) - 1
-
-        # num_outputs > 1 used to avoid hitting this with the value function
-        if isinstance(
-                options.get("custom_options", {}).get(
-                    "multiagent_fcnet_hiddens", 1), list) and num_outputs > 1:
-            return MultiAgentFullyConnectedNetwork(inputs, num_outputs,
-                                                   options)
 
         if obs_rank > 1:
             return VisionNetwork(inputs, num_outputs, options)
