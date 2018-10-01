@@ -8,8 +8,6 @@ from __future__ import print_function
 
 from collections import namedtuple
 import numpy as np
-import os
-import pickle
 import time
 
 import ray
@@ -27,18 +25,17 @@ Result = namedtuple("Result", [
 ])
 
 DEFAULT_CONFIG = with_common_config({
-    'noise_stdev': 0.02,  # std deviation of parameter noise
-    'num_deltas': 32,  # number of perturbations to try
-    'deltas_used': 32,  # number of perturbations to keep in gradient estimate
-    'num_workers': 2,
-    'stepsize': 0.01,  # sgd step-size
-    'observation_filter': "MeanStdFilter",
-    'noise_size': 250000000,
-    'eval_prob': 0.03,  # probability of evaluating the parameter rewards
-    'env_config': {},
-    'offset': 0,
-    'policy_type': "LinearPolicy",  # ["LinearPolicy", "MLPPolicy"]
-    "fcnet_hiddens": [32, 32],  # fcnet structure of MLPPolicy
+    "noise_stdev": 0.02,  # std deviation of parameter noise
+    "num_rollouts": 32,  # number of perturbs to try
+    "rollouts_used": 32,  # number of perturbs to keep in gradient estimate
+    "num_workers": 2,
+    "sgd_stepsize": 0.01,  # sgd step-size
+    "observation_filter": "MeanStdFilter",
+    "noise_size": 250000000,
+    "eval_prob": 0.03,  # probability of evaluating the parameter rewards
+    "report_length": 10,  # how many of the last rewards we average over
+    "env_config": {},
+    "offset": 0,
 })
 
 
@@ -68,15 +65,9 @@ class SharedNoiseTable(object):
 
 @ray.remote
 class Worker(object):
-    def __init__(self,
-                 config,
-                 policy_params,
-                 env_creator,
-                 noise,
-                 min_task_runtime=0.2):
+    def __init__(self, config, env_creator, noise, min_task_runtime=0.2):
         self.min_task_runtime = min_task_runtime
         self.config = config
-        self.policy_params = policy_params
         self.noise = SharedNoiseTable(noise)
 
         self.env = env_creator(config["env_config"])
@@ -84,15 +75,9 @@ class Worker(object):
         self.preprocessor = models.ModelCatalog.get_preprocessor(self.env)
 
         self.sess = utils.make_session(single_threaded=True)
-        if config["policy_type"] == "LinearPolicy":
-            self.policy = policies.LinearPolicy(
-                self.sess, self.env.action_space, self.preprocessor,
-                config["observation_filter"], **policy_params)
-        else:
-            self.policy = policies.MLPPolicy(
-                self.sess, self.env.action_space, self.preprocessor,
-                config["observation_filter"], config["fcnet_hiddens"],
-                **policy_params)
+        self.policy = policies.GenericPolicy(
+            self.sess, self.env.action_space, self.preprocessor,
+            config["observation_filter"], config["model"])
 
     def rollout(self, timestep_limit, add_noise=False):
         rollout_rewards, rollout_length = policies.rollout(
@@ -161,29 +146,20 @@ class ARSAgent(Agent):
         return Resources(cpu=1, gpu=0, extra_cpu=cf["num_workers"])
 
     def _init(self):
-        policy_params = {"action_noise_std": 0.0}
-
-        # register the linear network
-        utils.register_linear_network()
-
         env = self.env_creator(self.config["env_config"])
         from ray.rllib import models
         preprocessor = models.ModelCatalog.get_preprocessor(env)
 
         self.sess = utils.make_session(single_threaded=False)
-        if self.config["policy_type"] == "LinearPolicy":
-            self.policy = policies.LinearPolicy(
-                self.sess, env.action_space, preprocessor,
-                self.config["observation_filter"], **policy_params)
-        else:
-            self.policy = policies.MLPPolicy(
-                self.sess, env.action_space, preprocessor,
-                self.config["observation_filter"],
-                self.config["fcnet_hiddens"], **policy_params)
-        self.optimizer = optimizers.Adam(self.policy, self.config["stepsize"])
+        self.policy = policies.GenericPolicy(
+            self.sess, env.action_space, preprocessor,
+            self.config["observation_filter"], self.config["model"])
+        self.optimizer = optimizers.SGD(self.policy,
+                                        self.config["sgd_stepsize"])
 
-        self.deltas_used = self.config["deltas_used"]
-        self.num_deltas = self.config["num_deltas"]
+        self.rollouts_used = self.config["rollouts_used"]
+        self.num_rollouts = self.config["num_rollouts"]
+        self.report_length = self.config["report_length"]
 
         # Create the shared noise table.
         print("Creating shared noise table.")
@@ -193,12 +169,12 @@ class ARSAgent(Agent):
         # Create the actors.
         print("Creating actors.")
         self.workers = [
-            Worker.remote(self.config, policy_params, self.env_creator,
-                          noise_id) for _ in range(self.config["num_workers"])
+            Worker.remote(self.config, self.env_creator, noise_id)
+            for _ in range(self.config["num_workers"])
         ]
 
         self.episodes_so_far = 0
-        self.timesteps_so_far = 0
+        self.reward_list = []
         self.tstart = time.time()
 
     def _collect_results(self, theta_id, min_episodes):
@@ -224,7 +200,6 @@ class ARSAgent(Agent):
     def _train(self):
         config = self.config
 
-        step_tstart = time.time()
         theta = self.policy.get_weights()
         assert theta.dtype == np.float32
 
@@ -233,7 +208,7 @@ class ARSAgent(Agent):
         # Use the actors to do rollouts, note that we pass in the ID of the
         # policy weights.
         results, num_episodes, num_timesteps = self._collect_results(
-            theta_id, config["num_deltas"])
+            theta_id, config["num_rollouts"])
 
         all_noise_indices = []
         all_training_returns = []
@@ -255,7 +230,6 @@ class ARSAgent(Agent):
                 len(all_training_lengths))
 
         self.episodes_so_far += num_episodes
-        self.timesteps_so_far += num_timesteps
 
         # Assemble the results.
         eval_returns = np.array(all_eval_returns)
@@ -265,12 +239,12 @@ class ARSAgent(Agent):
         noisy_lengths = np.array(all_training_lengths)
 
         # keep only the best returns
-        # select top performing directions if deltas_used < num_deltas
+        # select top performing directions if rollouts_used < num_rollouts
         max_rewards = np.max(noisy_returns, axis=1)
-        if self.deltas_used > self.num_deltas:
-            self.deltas_used = self.num_deltas
+        if self.rollouts_used > self.num_rollouts:
+            self.rollouts_used = self.num_rollouts
 
-        percentile = 100 * (1 - (self.deltas_used / self.num_deltas))
+        percentile = 100 * (1 - (self.rollouts_used / self.num_rollouts))
         idx = np.arange(max_rewards.size)[
             max_rewards >= np.percentile(max_rewards, percentile)]
         noise_idx = noise_indices[idx]
@@ -293,11 +267,9 @@ class ARSAgent(Agent):
         theta, update_ratio = self.optimizer.update(-g)
         # Set the new weights in the local copy of the policy.
         self.policy.set_weights(theta)
-
-        step_tend = time.time()
-        tlogger.record_tabular("EvalEpRewMean", eval_returns.mean())
-        tlogger.record_tabular("EvalEpRewStd", eval_returns.std())
-        tlogger.record_tabular("EvalEpLenMean", eval_lengths.mean())
+        # update the reward list
+        if len(all_eval_returns) > 0:
+            self.reward_list.append(eval_returns.mean())
 
         tlogger.record_tabular("NoisyEpRewMean", noisy_returns.mean())
         tlogger.record_tabular("NoisyEpRewStd", noisy_returns.std())
@@ -315,13 +287,10 @@ class ARSAgent(Agent):
             "update_ratio": update_ratio,
             "episodes_this_iter": noisy_lengths.size,
             "episodes_so_far": self.episodes_so_far,
-            "timesteps_so_far": self.timesteps_so_far,
-            "time_elapsed_this_iter": step_tend - step_tstart,
-            "time_elapsed": step_tend - self.tstart
         }
-
         result = dict(
-            episode_reward_mean=eval_returns.mean(),
+            episode_reward_mean=np.mean(
+                self.reward_list[-self.report_length:]),
             episode_len_mean=eval_lengths.mean(),
             timesteps_this_iter=noisy_lengths.sum(),
             info=info)
@@ -333,19 +302,15 @@ class ARSAgent(Agent):
         for w in self.workers:
             w.__ray_terminate__.remote()
 
-    def _save(self, checkpoint_dir):
-        checkpoint_path = os.path.join(checkpoint_dir,
-                                       "checkpoint-{}".format(self.iteration))
-        weights = self.policy.get_weights()
-        objects = [weights, self.episodes_so_far, self.timesteps_so_far]
-        pickle.dump(objects, open(checkpoint_path, "wb"))
-        return checkpoint_path
+    def __getstate__(self):
+        return {
+            "weights": self.policy.get_weights(),
+            "episodes_so_far": self.episodes_so_far,
+        }
 
-    def _restore(self, checkpoint_path):
-        objects = pickle.load(open(checkpoint_path, "rb"))
-        self.policy.set_weights(objects[0])
-        self.episodes_so_far = objects[1]
-        self.timesteps_so_far = objects[2]
+    def __setstate__(self, state):
+        self.policy.set_weights(state["weights"])
+        self.episodes_so_far = state["episodes_so_far"]
 
     def compute_action(self, observation):
         return self.policy.compute(observation, update=True)[0]

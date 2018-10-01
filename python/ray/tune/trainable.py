@@ -18,7 +18,8 @@ import uuid
 import ray
 from ray.tune.logger import UnifiedLogger
 from ray.tune.result import (DEFAULT_RESULTS_DIR, TIME_THIS_ITER_S,
-                             TIMESTEPS_THIS_ITER, DONE, TIMESTEPS_TOTAL)
+                             TIMESTEPS_THIS_ITER, DONE, TIMESTEPS_TOTAL,
+                             EPISODES_THIS_ITER, EPISODES_TOTAL)
 from ray.tune.trial import Resources
 
 logger = logging.getLogger(__name__)
@@ -78,6 +79,7 @@ class Trainable(object):
         self._iteration = 0
         self._time_total = 0.0
         self._timesteps_total = None
+        self._episodes_total = None
         self._time_since_restore = 0.0
         self._timesteps_since_restore = 0
         self._iterations_since_restore = 0
@@ -165,8 +167,15 @@ class Trainable(object):
             self._timesteps_total += result[TIMESTEPS_THIS_ITER]
             self._timesteps_since_restore += result[TIMESTEPS_THIS_ITER]
 
+        # self._timesteps_total should only be tracked if increments provided
+        if result.get(EPISODES_THIS_ITER):
+            if self._episodes_total is None:
+                self._episodes_total = 0
+            self._episodes_total += result[EPISODES_THIS_ITER]
+
         # self._timesteps_total should not override user-provided total
         result.setdefault(TIMESTEPS_TOTAL, self._timesteps_total)
+        result.setdefault(EPISODES_TOTAL, self._episodes_total)
 
         # Provides auto-filled neg_mean_loss for avoiding regressions
         if result.get("mean_loss"):
@@ -218,7 +227,7 @@ class Trainable(object):
             raise ValueError("Return value from `_save` must be dict or str.")
         pickle.dump([
             self._experiment_id, self._iteration, self._timesteps_total,
-            self._time_total, saved_as_dict
+            self._time_total, self._episodes_total, saved_as_dict
         ], open(checkpoint_path + ".tune_metadata", "wb"))
         return checkpoint_path
 
@@ -268,7 +277,8 @@ class Trainable(object):
         self._iteration = metadata[1]
         self._timesteps_total = metadata[2]
         self._time_total = metadata[3]
-        saved_as_dict = metadata[4]
+        self._episodes_total = metadata[4]
+        saved_as_dict = metadata[5]
         if saved_as_dict:
             with open(checkpoint_path + ".tune_state", "rb") as loaded_state:
                 checkpoint_dict = pickle.load(loaded_state)

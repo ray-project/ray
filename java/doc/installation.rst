@@ -57,5 +57,4 @@ Run tests
 ::
 
   # in `ray/java` directory
-  export RAY_CONFIG=ray.config.ini
   mvn test
