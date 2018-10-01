@@ -84,7 +84,7 @@ public class ResourcesManagementTest {
 
   @Test
   public void testActorAndMemberMethods() {
-    // Note(qwang): This case depends on  this line.
+    // Note(qwang): This case depends on  the following line.
     // https://github.com/ray-project/ray/blob/master/java/test/src/main/java/org/ray/api/test/TestListener.java#L13
     // If we change the static resources configuration item, this case may not pass.
     // Then we should change this case too.
