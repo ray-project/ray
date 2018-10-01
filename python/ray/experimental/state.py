@@ -1310,6 +1310,11 @@ class GlobalState(object):
 
         return dict(resources)
 
+    def _live_client_ids(self):
+        """Returns a set of client IDs corresponding to clients still alive."""
+        return {client["ClientID"] for client in self.client_table()
+                if client["IsInsertion"]}
+
     def available_resources(self):
         """Get the current available cluster resources.
 
@@ -1364,6 +1369,7 @@ class GlobalState(object):
                     if local_scheduler_id not in local_scheduler_ids:
                         del available_resources_by_id[local_scheduler_id]
         else:
+            # TODO(rliaw): Is this a fair assumption?
             # Assumes the number of Redis clients does not change
             subscribe_clients = [
                 redis_client.pubsub(ignore_subscribe_messages=True)
@@ -1373,7 +1379,7 @@ class GlobalState(object):
                 subscribe_client.subscribe(
                     ray.gcs_utils.XRAY_HEARTBEAT_CHANNEL)
 
-            client_ids = {client["ClientID"] for client in self.client_table()}
+            client_ids = self._live_client_ids()
 
             while set(available_resources_by_id.keys()) != client_ids:
                 for subscribe_client in subscribe_clients:
@@ -1403,10 +1409,7 @@ class GlobalState(object):
                     available_resources_by_id[client_id] = dynamic_resources
 
                 # Update clients in cluster
-                client_ids = {
-                    client["ClientID"]
-                    for client in self.client_table()
-                }
+                client_ids = self._live_client_ids()
 
                 # Remove disconnected clients
                 for client_id in available_resources_by_id.keys():
