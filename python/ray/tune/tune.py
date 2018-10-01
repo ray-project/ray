@@ -39,7 +39,8 @@ def run_experiments(experiments=None,
                     server_port=TuneServer.DEFAULT_PORT,
                     verbose=True,
                     queue_trials=False,
-                    trial_executor=None):
+                    trial_executor=None,
+                    raise_on_failed_trial=True):
     """Runs and blocks until all trials finish.
 
     Args:
@@ -59,6 +60,8 @@ def run_experiments(experiments=None,
             be set to True when running on an autoscaling cluster to enable
             automatic scale-up.
         trial_executor (TrialExecutor): Manage the execution of trials.
+        raise_on_failed_trial (bool): Raise TuneError if there exists failed
+            trial (of ERROR state) when the experiments complete.
 
     Examples:
         >>> experiment_spec = Experiment("experiment", my_func)
@@ -109,13 +112,17 @@ def run_experiments(experiments=None,
 
     logger.info(runner.debug_string(max_debug=99999))
 
+    wait_for_log_sync()
+
     errored_trials = []
     for trial in runner.get_trials():
         if trial.status != Trial.TERMINATED:
             errored_trials += [trial]
 
     if errored_trials:
-        raise TuneError("Trials did not complete", errored_trials)
+        if raise_on_failed_trial:
+            raise TuneError("Trials did not complete", errored_trials)
+        else:
+            logger.error("Trials did not complete: %s", errored_trials)
 
-    wait_for_log_sync()
     return runner.get_trials()

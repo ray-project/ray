@@ -135,10 +135,7 @@ matrix:
         - python -m pytest -v python/ray/test/test_queue.py
         - python -m pytest -v test/xray_test.py
 
-        # The --assert=plain here is because pytest's assertion
-        # rewriting mechanism seems to mess up on this file,
-        # see https://github.com/ray-project/ray/issues/2514
-        - python -m pytest -v --assert=plain test/runtest.py
+        - python -m pytest -v test/runtest.py
         - python -m pytest -v test/array_test.py
         - python -m pytest -v test/actor_test.py
         - python -m pytest -v test/autoscaler_test.py
@@ -210,10 +207,7 @@ script:
   - python -m pytest -v python/ray/test/test_queue.py
   - python -m pytest -v test/xray_test.py
 
-  # The --assert=plain here is because pytest's assertion
-  # rewriting mechanism seems to mess up on this file,
-  # see https://github.com/ray-project/ray/issues/2514
-  - python -m pytest --assert=plain -v test/runtest.py
+  - python -m pytest -v test/runtest.py
   - python -m pytest -v test/array_test.py
   - python -m pytest -v test/actor_test.py
   - python -m pytest -v test/autoscaler_test.py

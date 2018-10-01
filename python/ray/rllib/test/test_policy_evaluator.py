@@ -169,7 +169,7 @@ class TestPolicyEvaluator(unittest.TestCase):
         ev.sample()
         ray.get(remote_ev.sample.remote())
         result = collect_metrics(ev, [remote_ev])
-        self.assertEqual(result["episodes"], 20)
+        self.assertEqual(result["episodes_this_iter"], 20)
         self.assertEqual(result["episode_reward_mean"], 10)
 
     def testAsync(self):
@@ -205,12 +205,12 @@ class TestPolicyEvaluator(unittest.TestCase):
             batch = ev.sample()
             self.assertEqual(batch.count, 16)
         result = collect_metrics(ev, [])
-        self.assertEqual(result["episodes"], 0)
+        self.assertEqual(result["episodes_this_iter"], 0)
         for _ in range(8):
             batch = ev.sample()
             self.assertEqual(batch.count, 16)
         result = collect_metrics(ev, [])
-        self.assertEqual(result["episodes"], 8)
+        self.assertEqual(result["episodes_this_iter"], 8)
         indices = []
         for env in ev.async_env.vector_env.envs:
             self.assertEqual(env.unwrapped.config.worker_index, 0)
@@ -227,10 +227,10 @@ class TestPolicyEvaluator(unittest.TestCase):
         batch = ev.sample()
         self.assertEqual(batch.count, 16)
         result = collect_metrics(ev, [])
-        self.assertEqual(result["episodes"], 0)
+        self.assertEqual(result["episodes_this_iter"], 0)
         batch = ev.sample()
         result = collect_metrics(ev, [])
-        self.assertEqual(result["episodes"], 4)
+        self.assertEqual(result["episodes_this_iter"], 4)
 
     def testVectorEnvSupport(self):
         ev = PolicyEvaluator(
@@ -242,12 +242,12 @@ class TestPolicyEvaluator(unittest.TestCase):
             batch = ev.sample()
             self.assertEqual(batch.count, 10)
         result = collect_metrics(ev, [])
-        self.assertEqual(result["episodes"], 0)
+        self.assertEqual(result["episodes_this_iter"], 0)
         for _ in range(8):
             batch = ev.sample()
             self.assertEqual(batch.count, 10)
         result = collect_metrics(ev, [])
-        self.assertEqual(result["episodes"], 8)
+        self.assertEqual(result["episodes_this_iter"], 8)
 
     def testTruncateEpisodes(self):
         ev = PolicyEvaluator(
