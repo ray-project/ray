@@ -2,12 +2,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import pytest
 import os
 import signal
 import time
 
+import pytest
+
 import ray
+from ray.test.test_utils import run_string_as_driver_nonblocking
 import pyarrow as pa
 
 
@@ -31,8 +33,8 @@ def shutdown_only():
     ray.shutdown()
 
 
-# This test checks that when a worker dies in the middle of a get, the
-# plasma store and raylet will not die.
+# This test checks that when a worker dies in the middle of a get, the plasma
+# store and raylet will not die.
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_XRAY") != "1",
     reason="This test only works with xray.")
@@ -62,18 +64,65 @@ def test_dying_worker_get_raylet(shutdown_only):
 
     # Have the worker wait in a get call.
     result_id = f.remote([x_id])
-
-    # Kill the worker.
     time.sleep(1)
 
     # Make sure the task hasn't finished.
     ready_ids, _ = ray.wait([result_id], timeout=0)
     assert len(ready_ids) == 0
 
+    # Kill the worker.
     os.kill(worker_pid, signal.SIGKILL)
-
     time.sleep(0.1)
 
+    # Make sure the sleep task hasn't finished.
+    ready_ids, _ = ray.wait([x_id], timeout=0)
+    assert len(ready_ids) == 0
+    # Seal the object so the store attempts to notify the worker that the
+    # get has been fulfilled.
+    ray.worker.global_worker.put_object(x_id, 1)
+    time.sleep(0.1)
+
+    # Make sure that nothing has died.
+    assert ray.services.all_processes_alive()
+
+
+# This test checks that when a driver dies in the middle of a get, the plasma
+# store and raylet will not die.
+@pytest.mark.skipif(
+    os.environ.get("RAY_USE_XRAY") != "1",
+    reason="This test only works with xray.")
+@pytest.mark.skipif(
+    os.environ.get("RAY_USE_NEW_GCS") == "on",
+    reason="Not working with new GCS API.")
+def test_dying_driver_get(shutdown_only):
+    # Start the Ray processes.
+    address_info = ray.init(num_cpus=1)
+
+    @ray.remote
+    def sleep_forever():
+        time.sleep(10**6)
+
+    x_id = sleep_forever.remote()
+
+    driver = """
+import ray
+ray.init("{}")
+ray.get(ray.ObjectID({}))
+""".format(address_info["redis_address"], x_id.id())
+
+    p = run_string_as_driver_nonblocking(driver)
+    # Make sure the driver is running.
+    time.sleep(1)
+    assert p.poll() is None
+
+    # Kill the driver process.
+    p.kill()
+    p.wait()
+    time.sleep(0.1)
+
+    # Make sure the original task hasn't finished.
+    ready_ids, _ = ray.wait([x_id], timeout=0)
+    assert len(ready_ids) == 0
     # Seal the object so the store attempts to notify the worker that the
     # get has been fulfilled.
     ray.worker.global_worker.put_object(x_id, 1)
@@ -119,8 +168,8 @@ def test_dying_worker_get(ray_start_workers_separate):
         exclude=[ray.services.PROCESS_TYPE_WORKER])
 
 
-# This test checks that when a worker dies in the middle of a wait, the
-# plasma store and raylet will not die.
+# This test checks that when a worker dies in the middle of a wait, the plasma
+# store and raylet will not die.
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_XRAY") != "1",
     reason="This test only works with xray.")
@@ -148,16 +197,61 @@ def test_dying_worker_wait_raylet(shutdown_only):
     def block_in_wait(object_id_in_list):
         ray.wait(object_id_in_list)
 
-    # Have the worker wait in a get call.
+    # Have the worker wait in a wait call.
     block_in_wait.remote([x_id])
-
-    # Kill the worker.
     time.sleep(0.1)
 
+    # Kill the worker.
     os.kill(worker_pid, signal.SIGKILL)
     time.sleep(0.1)
 
     # Create the object.
+    ray.worker.global_worker.put_object(x_id, 1)
+    time.sleep(0.1)
+
+    # Make sure that nothing has died.
+    assert ray.services.all_processes_alive()
+
+
+# This test checks that when a driver dies in the middle of a wait, the plasma
+# store and raylet will not die.
+@pytest.mark.skipif(
+    os.environ.get("RAY_USE_XRAY") != "1",
+    reason="This test only works with xray.")
+@pytest.mark.skipif(
+    os.environ.get("RAY_USE_NEW_GCS") == "on",
+    reason="Not working with new GCS API.")
+def test_dying_driver_wait(shutdown_only):
+    # Start the Ray processes.
+    address_info = ray.init(num_cpus=1)
+
+    @ray.remote
+    def sleep_forever():
+        time.sleep(10**6)
+
+    x_id = sleep_forever.remote()
+
+    driver = """
+import ray
+ray.init("{}")
+ray.wait([ray.ObjectID({})])
+""".format(address_info["redis_address"], x_id.id())
+
+    p = run_string_as_driver_nonblocking(driver)
+    # Make sure the driver is running.
+    time.sleep(1)
+    assert p.poll() is None
+
+    # Kill the driver process.
+    p.kill()
+    p.wait()
+    time.sleep(0.1)
+
+    # Make sure the original task hasn't finished.
+    ready_ids, _ = ray.wait([x_id], timeout=0)
+    assert len(ready_ids) == 0
+    # Seal the object so the store attempts to notify the worker that the
+    # wait can return.
     ray.worker.global_worker.put_object(x_id, 1)
     time.sleep(0.1)
 
