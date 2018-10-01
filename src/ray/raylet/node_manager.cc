@@ -647,6 +647,8 @@ void NodeManager::ProcessDisconnectClientMessage(
   // If both worker and driver are null, then this method has already been
   // called, so just return.
   if (worker == nullptr && driver == nullptr) {
+    RAY_LOG(INFO) << "Ignoring client disconnect because the client has already "
+                  << "been disconnected.";
     return;
   }
 
