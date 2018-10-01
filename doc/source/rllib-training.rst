@@ -56,7 +56,6 @@ Specifying Resources
 ~~~~~~~~~~~~~~~~~~~~
 
 You can control the degree of parallelism used by setting the ``num_workers`` hyperparameter for most agents. Many agents also provide a ``num_gpus`` or ``gpu`` option. In addition, you can allocate a fraction of a GPU by setting ``gpu_fraction: f``. For example, with DQN you can pack five agents onto one GPU by setting ``gpu_fraction: 0.2``. Note that fractional GPU support requires enabling the experimental Xray backend by setting the environment variable ``RAY_USE_XRAY=1``.
->>>>>>> 01b030bd57f014386aa5e4c67a2e069938528abb
 
 Evaluating Trained Agents
 ~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -95,7 +94,7 @@ You can run these with the ``train.py`` script as follows:
 Python API
 ----------
 
-The Python API provides the needed flexibility for applying RLlib to new problems. You will need to use this API if you wish to use custom environments, preprocesors, or models with RLlib.
+The Python API provides the needed flexibility for applying RLlib to new problems. You will need to use this API if you wish to use `custom environments, preprocessors, or models <rllib-models.html>`__ with RLlib.
 
 Here is an example of the basic usage:
 
@@ -184,11 +183,38 @@ You can also access just the "master" copy of the agent state through ``agent.lo
     agent.optimizer.foreach_evaluator_with_index(
         lambda ev, i: ev.for_policy(lambda p: p.get_weights()))
 
+Global Coordination
+~~~~~~~~~~~~~~~~~~~
+Sometimes, it is necessary to coordinate between pieces of code that live in different processes managed by RLlib. For example, it can be useful to maintain a global average of a certain variable, or centrally control a hyperparameter used by policies. Ray provides a general way to achieve this through *named actors* (learn more about Ray actors `here <actors.html>`__). As an example, consider maintaining a shared global counter that is incremented by environments and read periodically from your driver program:
+
+.. code-block:: python
+
+    from ray.experimental import named_actors
+
+    @ray.remote
+    class Counter:
+       def __init__(self):
+          self.count = 0
+       def inc(self, n):
+          self.count += n
+       def get(self):
+          return self.count
+
+    # on the driver
+    counter = Counter.remote()
+    named_actors.register_actor("global_counter", counter)
+    print(ray.get(counter.get.remote()))  # get the latest count
+
+    # in your envs
+    counter = named_actors.get_actor("global_counter")
+    counter.inc.remote(1)  # async call to increment the global count
+
+Ray actors provide high levels of performance, so in more complex cases they can be used implement communication patterns such as parameter servers and allreduce.
 
 REST API
 --------
 
-In some cases (i.e., when interacting with an external environment) it makes more sense to interact with RLlib as if were an independently running service, rather than RLlib hosting the simulations itself. This is possible via RLlib's serving env `interface <rllib-envs.html#serving>`__.
+In some cases (i.e., when interacting with an external environment) it makes more sense to interact with RLlib as if were an independently running service, rather than RLlib hosting the simulations itself. This is possible via RLlib's serving env `interface <rllib-env.html#agent-driven>`__.
 
 .. autoclass:: ray.rllib.utils.policy_client.PolicyClient
     :members:

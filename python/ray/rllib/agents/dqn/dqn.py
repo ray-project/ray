@@ -135,8 +135,8 @@ class DQNAgent(Agent):
 
     def _init(self):
         # Update effective batch size to include n-step
-        adjusted_batch_size = (
-            self.config["sample_batch_size"] + self.config["n_step"] - 1)
+        adjusted_batch_size = max(self.config["sample_batch_size"],
+                                  self.config["n_step"])
         self.config["sample_batch_size"] = adjusted_batch_size
 
         self.exploration0 = self._make_exploration_schedule(0)
