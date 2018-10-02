@@ -298,7 +298,8 @@ PyTypeObject PyObjectIDType = {
 // Define the PyTask class.
 
 int resource_map_from_python_dict(
-    PyObject *resource_map, std::unordered_map<std::string, double> &out) {
+    PyObject *resource_map,
+    std::unordered_map<std::string, double> &out) {
   RAY_CHECK(out.size() == 0);
 
   PyObject *key, *value;
@@ -309,7 +310,6 @@ int resource_map_from_python_dict(
   }
 
   while (PyDict_Next(resource_map, &position, &key, &value)) {
-    // Check that the resource names are strings.
 #if PY_MAJOR_VERSION >= 3
     if (!PyUnicode_Check(key)) {
       PyErr_SetString(PyExc_TypeError,
@@ -325,8 +325,7 @@ int resource_map_from_python_dict(
 #endif
 
     // Check that the resource quantities are numbers.
-    if (!(PyFloat_Check(value) || PyInt_Check(value) ||
-          PyLong_Check(value))) {
+    if (!(PyFloat_Check(value) || PyInt_Check(value) || PyLong_Check(value))) {
       PyErr_SetString(PyExc_TypeError,
                       "the values in resource_map must be floats");
       return -1;

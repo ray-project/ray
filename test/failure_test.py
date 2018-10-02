@@ -548,13 +548,6 @@ def test_warning_for_infeasible_tasks(ray_start_regular):
     wait_for_errors(ray_constants.INFEASIBLE_TASK_ERROR, 2)
 
 
-@pytest.fixture
-def shutdown_only():
-    yield None
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
-
-
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_XRAY") != "1",
     reason="This test only works with xray.")
