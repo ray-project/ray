@@ -286,4 +286,3 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     return functionManager;
   }
 }
-
