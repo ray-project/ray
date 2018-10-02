@@ -12,6 +12,8 @@ from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import TAG_RAY_NODE_TYPE
 
 logger = logging.getLogger(__name__)
+filelock_logger = logging.getLogger("filelock")
+filelock_logger.setLevel(logging.WARNING)
 
 
 class ClusterState(object):

@@ -17,6 +17,12 @@ NODE_IP = "node_ip"
 PID = "pid"
 
 # Number of timesteps in this iteration.
+EPISODES_THIS_ITER = "episodes_this_iter"
+
+# (Optional/Auto-filled) Accumulated time in seconds for this experiment.
+EPISODES_TOTAL = "episodes_total"
+
+# Number of timesteps in this iteration.
 TIMESTEPS_THIS_ITER = "timesteps_this_iter"
 
 # (Optional/Auto-filled) Accumulated time in seconds for this experiment.

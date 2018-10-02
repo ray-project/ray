@@ -5,9 +5,9 @@
   <modelVersion>4.0.0</modelVersion>
   <packaging>pom</packaging>
 
-  <groupId>org.ray.parent</groupId>
+  <groupId>org.ray</groupId>
   <artifactId>ray-superpom</artifactId>
-  <version>1.0</version>
+  <version>0.1-SNAPSHOT</version>
   <modules>
     <module>api</module>
     <module>runtime</module>
@@ -19,7 +19,7 @@
   <properties>
     <java.version>1.8</java.version>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <projetct.version>1.0</projetct.version>
+    <projetct.version>0.1-SNAPSHOT</projetct.version>
     <slf4j.version>1.7.25</slf4j.version>
   </properties>
 
@@ -96,6 +96,11 @@
         <version>${slf4j.version}</version>
       </dependency>
       <dependency>
+        <groupId>com.typesafe</groupId>
+        <artifactId>config</artifactId>
+        <version>1.3.2</version>
+      </dependency>
+      <dependency>
         <groupId>net.java.dev.jna</groupId>
         <artifactId>jna</artifactId>
         <version>4.1.0</version>
@@ -104,6 +109,11 @@
         <groupId>org.mockito</groupId>
         <artifactId>mockito-all</artifactId>
         <version>1.10.19</version>
+      </dependency>
+      <dependency>
+        <groupId>junit</groupId>
+        <artifactId>junit</artifactId>
+        <version>4.11</version>
       </dependency>
     </dependencies>
   </dependencyManagement>

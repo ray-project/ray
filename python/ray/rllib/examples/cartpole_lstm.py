@@ -166,11 +166,12 @@ if __name__ == "__main__":
     tune.run_experiments({
         "test": {
             "env": "cartpole_stateless",
-            "run": "PG",
+            "run": "PPO",
             "stop": {
                 "episode_reward_mean": args.stop
             },
             "config": {
+                "num_sgd_iter": 5,
                 "model": {
                     "use_lstm": True,
                 },

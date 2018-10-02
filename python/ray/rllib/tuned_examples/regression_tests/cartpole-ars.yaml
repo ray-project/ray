@@ -6,10 +6,10 @@ cartpole-ars:
         time_total_s: 600
     config:
         noise_stdev: 0.02
-        num_deltas: 50
-        deltas_used: 25
+        num_rollouts: 50
+        rollouts_used: 25
         num_workers: 2
-        stepsize: 0.01
+        sgd_stepsize: 0.01
         noise_size: 250000000
         eval_prob: 0.5
         policy_type: MLPPolicy
