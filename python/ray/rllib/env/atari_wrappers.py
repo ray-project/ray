@@ -103,7 +103,8 @@ class NoopResetEnv(gym.Wrapper):
         return obs
 
     def step(self, ac):
-        return self.env.step(ac)
+        result = self.env.step(ac)
+        return result
 
 
 class ClipRewardEnv(gym.RewardWrapper):
@@ -149,6 +150,8 @@ class EpisodicLifeEnv(gym.Wrapper):
 
     def step(self, action):
         obs, reward, done, info = self.env.step(action)
+        # print(type(self.env))
+        # print("=========================================================================")
         self.was_real_done = done
         # check current lives, make loss of life terminal,
         # then update lives to handle bonus lives

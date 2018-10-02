@@ -28,6 +28,11 @@ from ray.rllib.utils.tf_run_builder import TFRunBuilder
 import time
 _LOGGER = setup_custom_logger(__name__)
 
+# https://docs.python.org/3/library/profile.html
+import cProfile
+
+glob_count = 0
+
 class PolicyEvaluator(EvaluatorInterface):
     """Common ``PolicyEvaluator`` implementation that wraps a ``PolicyGraph``.
 
@@ -304,6 +309,20 @@ class PolicyEvaluator(EvaluatorInterface):
         """
         sample_start = time.time()
         batches = [self.sampler.get_data()]
+
+        # glob_sampler = self.sampler
+        # batches = []
+        # def wrapper(b):
+        #     b.append(self.sampler.get_data())
+        # _LOGGER.debug("Profiling sampler run: ")
+        # cProfile.runctx("wrapper(batches)", globals(), locals(), "/home/richard4912/temp/sampler.prof")
+
+        global glob_count
+        glob_count += 1
+        # if glob_count >= 15:
+        #     exit(0)
+
+        # _LOGGER.debug(self.sampler)
         steps_so_far = batches[0].count
 
         # In truncate_episodes mode, never pull more than 1 batch per env.

@@ -13,6 +13,7 @@ from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 from ray.rllib.env.async_vector_env import AsyncVectorEnv
 from ray.rllib.env.atari_wrappers import get_wrapper_by_cls, MonitorEnv
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
+from ray.rllib.utils.timer import setup_custom_logger
 
 RolloutMetrics = namedtuple(
     "RolloutMetrics", ["episode_length", "episode_reward", "agent_rewards"])
@@ -20,6 +21,9 @@ RolloutMetrics = namedtuple(
 PolicyEvalData = namedtuple("PolicyEvalData",
                             ["env_id", "agent_id", "obs", "rnn_state"])
 
+
+import time
+_LOGGER = setup_custom_logger(__name__)
 
 class SyncSampler(object):
     """This class interacts with the environment and tells it what to do.
@@ -54,8 +58,10 @@ class SyncSampler(object):
         self.metrics_queue = queue.Queue()
 
     def get_data(self):
+        _LOGGER.debug(self.rollout_provider)
         while True:
             item = next(self.rollout_provider)
+            _LOGGER.debug("Sampling item: {}".format(item))
             if isinstance(item, RolloutMetrics):
                 self.metrics_queue.put(item)
             else:
@@ -238,6 +244,7 @@ def _env_runner(async_vector_env,
 
     active_episodes = defaultdict(new_episode)
 
+    # TODO: poke around here
     while True:
         # Get observations from all ready agents
         unfiltered_obs, rewards, dones, infos, off_policy_actions = \
