@@ -1843,7 +1843,8 @@ def init(redis_address=None,
         logger.info("NOTE: Please run Ray with the environment variable "
                     "'RAY_USE_XRAY=1' to use the latest backend. If you are "
                     "using Ray on a cluster, 'ray start' must run with this "
-                    "environment variable as well.")
+                    "environment variable as well. The new backend will be "
+                    "the default in the 0.6 release.")
 
     # Convert hostnames to numerical IP address.
     if node_ip_address is not None:
