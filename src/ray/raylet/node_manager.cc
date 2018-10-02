@@ -652,8 +652,9 @@ void NodeManager::ProcessDisconnectClientMessage(
     return;
   }
 
-  // If the client is blocked, we need to process the fact that it is no longer
-  // blocked. This won't do anything if the client is not blocked.
+  // If the client is blocked, we need to treat it as unblocked. In particular,
+  // we are no longer waiting for its dependencies. If the client is not
+  // blocked, this won't do anything.
   HandleClientUnblocked(client);
 
   // Remove the dead client from the pool and stop listening for messages.
