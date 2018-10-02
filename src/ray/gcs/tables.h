@@ -353,9 +353,9 @@ class HeartbeatTable : public Table<ClientID, HeartbeatTableData> {
 
 class HeartbeatBatchTable : public Table<ClientID, HeartbeatBatchTableData> {
  public:
-  HeartbeatBatchTable(const std::shared_ptr<RedisContext> &context,
+  HeartbeatBatchTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
                       AsyncGcsClient *client)
-      : Table(context, client) {
+      : Table(contexts, client) {
     pubsub_channel_ = TablePubsub::HEARTBEAT_BATCH;
     prefix_ = TablePrefix::HEARTBEAT_BATCH;
   }

@@ -33,7 +33,7 @@ class Monitor {
   /// Handle a heartbeat from a Raylet.
   ///
   /// \param client_id The client ID of the Raylet that sent the heartbeat.
-  void HandleHeartbeat(const ClientID &client_id);
+  void HandleHeartbeat(const ClientID &client_id, const HeartbeatTableDataT &heartbeat_data);
 
  private:
   /// A client to the GCS, through which heartbeats are received.
@@ -47,6 +47,7 @@ class Monitor {
   std::unordered_map<ClientID, int64_t> heartbeats_;
   /// The Raylets that have been marked as dead in the client table.
   std::unordered_set<ClientID> dead_clients_;
+  std::unordered_map<ClientID, HeartbeatTableDataT> heartbeat_buffer_;
 };
 
 }  // namespace raylet

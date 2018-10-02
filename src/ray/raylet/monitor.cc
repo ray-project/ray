@@ -23,15 +23,17 @@ Monitor::Monitor(boost::asio::io_service &io_service, const std::string &redis_a
   RAY_CHECK_OK(gcs_client_.Attach(io_service));
 }
 
-void Monitor::HandleHeartbeat(const ClientID &client_id) {
+void Monitor::HandleHeartbeat(const ClientID &client_id, const HeartbeatTableDataT &heartbeat_data) {
   heartbeats_[client_id] = num_heartbeats_timeout_;
-  // TODO add to buffer
+
+  // Add to buffer.
+  heartbeat_buffer_[client_id] = heartbeat_data;
 }
 
 void Monitor::Start() {
   const auto heartbeat_callback = [this](gcs::AsyncGcsClient *client, const ClientID &id,
                                          const HeartbeatTableDataT &heartbeat_data) {
-    HandleHeartbeat(id);
+    HandleHeartbeat(id, heartbeat_data);
   };
   RAY_CHECK_OK(gcs_client_.heartbeat_table().Subscribe(
       UniqueID::nil(), UniqueID::nil(), heartbeat_callback, nullptr, nullptr));
@@ -65,6 +67,16 @@ void Monitor::Tick() {
     } else {
       it++;
     }
+  }
+
+  // Send any buffered heartbeats as a single publish.
+  if (!heartbeat_buffer_.empty()) {
+    auto batch = std::make_shared<HeartbeatBatchTableDataT>();
+    for (const auto &heartbeat : heartbeat_buffer_) {
+      batch->batch.push_back(std::unique_ptr<HeartbeatTableDataT>(new HeartbeatTableDataT(heartbeat.second)));
+    }
+    gcs_client_.heartbeat_batch_table().Add(UniqueID::nil(), UniqueID::nil(), batch, nullptr);
+    heartbeat_buffer_.clear();
   }
 
   auto heartbeat_period = boost::posix_time::milliseconds(

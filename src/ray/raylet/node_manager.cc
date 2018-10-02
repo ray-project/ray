@@ -450,9 +450,10 @@ void NodeManager::HeartbeatAdded(gcs::AsyncGcsClient *client, const ClientID &cl
 }
 
 void NodeManager::HeartbeatBatchAdded(gcs::AsyncGcsClient *client,
-                                      const ClientID &client_id,
+                                      const UniqueID &publish_key,
                                       const HeartbeatBatchTableDataT& heartbeat_batch) {
   for (auto& heartbeat_data : heartbeat_batch.batch) {
+    ClientID client_id = ClientID::from_binary(heartbeat_data->client_id);
     this->HeartbeatAdded(client, client_id, *heartbeat_data);
   }
 }
