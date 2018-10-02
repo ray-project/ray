@@ -5,6 +5,7 @@ import errno
 import logging
 import os
 import shutil
+import sys
 import tempfile
 
 import ray.utils
@@ -28,7 +29,13 @@ def make_inc_temp(suffix="", prefix="", directory_name="/tmp/ray"):
         "{directory_name}/{prefix}.{unique_index}{suffix}"
     """
     index = _incremental_dict[suffix, prefix, directory_name]
-    for seq in range(tempfile.TMP_MAX):
+    # `tempfile.TMP_MAX` could be extremely large,
+    # so we should use xrange in Python2.x
+    if sys.version_info[0] < 3:
+        _range = xrange
+    else:
+        _range = range
+    for _ in _range(tempfile.TMP_MAX):
         if index == 0:
             file = os.path.join(directory_name, prefix + suffix)
         else:
