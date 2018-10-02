@@ -1000,7 +1000,7 @@ void NodeManager::TreatTaskAsFailed(const TaskSpecification &spec) {
 
 void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineage,
                              bool forwarded) {
-  const TaskID task_id = task.GetTaskSpecification().TaskId();
+  const TaskID &task_id = task.GetTaskSpecification().TaskId();
   if (local_queues_.HasTask(task_id)) {
     RAY_LOG(WARNING) << "Submitted task " << task_id
                      << " is already queued and will not be reconstructed. This is most "

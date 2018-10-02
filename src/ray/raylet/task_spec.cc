@@ -50,7 +50,7 @@ TaskSpecification::TaskSpecification(
     : TaskSpecification(driver_id, parent_task_id, parent_counter, ActorID::nil(),
                         ObjectID::nil(), ActorID::nil(), ActorHandleID::nil(), -1,
                         function_id, task_arguments, num_returns, required_resources,
-                        language) {}
+                        std::unordered_map<std::string, double>(), language) {}
 
 TaskSpecification::TaskSpecification(
     const UniqueID &driver_id, const TaskID &parent_task_id, int64_t parent_counter,
@@ -59,6 +59,7 @@ TaskSpecification::TaskSpecification(
     const FunctionID &function_id,
     const std::vector<std::shared_ptr<TaskArgument>> &task_arguments, int64_t num_returns,
     const std::unordered_map<std::string, double> &required_resources,
+    const std::unordered_map<std::string, double> &required_placement_resources,
     const Language &language)
     : spec_() {
   flatbuffers::FlatBufferBuilder fbb;
@@ -99,7 +100,8 @@ TaskSpecification::TaskSpecification(
       to_flatbuf(fbb, actor_creation_dummy_object_id), to_flatbuf(fbb, actor_id),
       to_flatbuf(fbb, actor_handle_id), actor_counter, false,
       to_flatbuf(fbb, function_id), fbb.CreateVector(arguments),
-      fbb.CreateVector(returns), map_to_flatbuf(fbb, required_resources), task_language);
+      fbb.CreateVector(returns), map_to_flatbuf(fbb, required_resources),
+      map_to_flatbuf(fbb, required_placement_resources), task_language);
   fbb.Finish(spec);
   AssignSpecification(fbb.GetBufferPointer(), fbb.GetSize());
 }
@@ -181,17 +183,15 @@ const ResourceSet TaskSpecification::GetRequiredResources() const {
 
 const ResourceSet TaskSpecification::GetRequiredPlacementResources() const {
   auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
-  auto required_resources = map_from_flatbuf(*message->required_resources());
-
-  auto it = required_resources.find(kCPU_ResourceLabel);
-  RAY_CHECK(it != required_resources.end());
-  // Actor creation tasks require one more CPU for placement purposes than they
-  // actually acquire during execution in order to account for the resource
-  // requirements of subsequent actor methods.
-  if (IsActorCreationTask()) {
-    it->second += 1;
+  auto required_placement_resources =
+      map_from_flatbuf(*message->required_placement_resources());
+  // If the required_placement_resources field is empty, then the placement
+  // resources default to the required resources.
+  if (required_placement_resources.size() == 0) {
+    required_placement_resources = map_from_flatbuf(*message->required_resources());
   }
-  return ResourceSet(required_resources);
+
+  return ResourceSet(required_placement_resources);
 }
 
 bool TaskSpecification::IsDriverTask() const {
