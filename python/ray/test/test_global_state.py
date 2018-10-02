@@ -76,41 +76,27 @@ class TestAvailableResources(object):
         ray.get(task_id)  # clean up to reset resources
 
 
-class TestMultiNodeState(object):
-    @classmethod
-    def setup_class(cls):
-        subprocess.check_call("ray start --head --redis-port "
-                              "{port} --num-cpus 1 --use-raylet".format(
-                                  port=REDIS_PORT).split(" "))
-        ray.init(redis_address="localhost:{}".format(REDIS_PORT))
+@pytest.fixture
+def ray_start_two_nodes():
+    # Start the Ray processes.
+    ray.worker._init(start_ray_local=True, num_local_schedulers=2, num_cpus=1)
+    yield None
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
 
-    @classmethod
-    def teardown_class(cls):
-        subprocess.check_call("ray stop".split(" "))
-        ray.shutdown()
 
-    @pytest.mark.timeout(20)
-    def test_add_remove_client(self):
-        """Tests client table is correct after node removal."""
+@pytest.mark.timeout(10)
+def test_add_remove_client_table(ray_start_two_nodes):
+    """Tests client table is correct after node removal."""
+    clients = ray.global_state.client_table()
+    assert len(clients) == 2
+    assert sum(cl["Resources"].get("CPU") for cl in clients) == 2
+    def add_node():
+        ray.worker._start_local_scheduler()
+    ray.services.all_processes[ray.services.PROCESS_TYPE_RAYLET][1].kill()
+
+    # wait for heartbeat
+    while all(cl_entries["IsInsertion"] for cl_entries in clients):
         clients = ray.global_state.client_table()
-        assert len(clients) == 1
-        head_raylet_pid = _get_raylet_pid(clients[0]["RayletSocketName"])
-
-        subprocess.check_call(
-            "ray start --redis-address localhost:{port} "
-            "--num-cpus 1 --use-raylet".format(port=REDIS_PORT).split(" "))
-
-        clients = ray.global_state.client_table()
-        assert len(clients) == 2
-        assert sum(cl["Resources"].get("CPU") for cl in clients) == 2
-
-        worker_raylet_pid = _get_raylet_pid(clients[1]["RayletSocketName"])
-        assert head_raylet_pid != worker_raylet_pid
-
-        subprocess.check_output(["kill", str(worker_raylet_pid)])
-
-        # wait for heartbeat
-        while all(cl_entries["IsInsertion"] for cl_entries in clients):
-            clients = ray.global_state.client_table()
-            time.sleep(1)
-        assert sum(cl["Resources"].get("CPU", 0) for cl in clients) == 1
+        time.sleep(0.1)
+    assert sum(cl["Resources"].get("CPU", 0) for cl in clients) == 1
