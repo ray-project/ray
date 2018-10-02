@@ -939,7 +939,7 @@ void NodeManager::ScheduleTasks(
           << task.GetTaskSpecification().GetRequiredResources().ToString()
           << " for execution and "
           << task.GetTaskSpecification().GetRequiredPlacementResources().ToString()
-          << " for placement.";
+          << " for placement. Check the client table to view node resources.";
       RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
           task.GetTaskSpecification().DriverId(), type, error_message.str(),
           current_time_ms()));

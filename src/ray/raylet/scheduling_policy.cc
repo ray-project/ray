@@ -107,7 +107,8 @@ std::unordered_map<TaskID, ClientID> SchedulingPolicy::Schedule(
         RAY_LOG(INFO) << "This task requires " << spec.GetRequiredResources().ToString()
                       << " for execution and "
                       << spec.GetRequiredPlacementResources().ToString()
-                      << " for placement, but no nodes have the necessary resources.";
+                      << " for placement, but no nodes have the necessary resources. "
+                      << "Check the client table to view node resources.";
       }
     }
   }
