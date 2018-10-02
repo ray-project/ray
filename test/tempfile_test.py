@@ -72,48 +72,48 @@ def test_temp_plasma_store_socket():
 def test_raylet_tempfiles():
     ray.init(use_raylet=True, redirect_worker_output=False)
     top_levels = set(os.listdir(tempfile_services.get_temp_root()))
-    assert top_levels == {'ray_ui.ipynb', 'sockets', 'logs'}
+    assert top_levels == {"ray_ui.ipynb", "sockets", "logs"}
     log_files = set(os.listdir(tempfile_services.get_logs_dir_path()))
     assert log_files == {
-        'log_monitor.out', 'log_monitor.err', 'plasma_store_0.out',
-        'plasma_store_0.err', 'webui.out', 'webui.err', 'monitor.out',
-        'monitor.err', 'redis-shard_0.out', 'redis-shard_0.err', 'redis.out',
-        'redis.err'
+        "log_monitor.out", "log_monitor.err", "plasma_store_0.out",
+        "plasma_store_0.err", "webui.out", "webui.err", "monitor.out",
+        "monitor.err", "redis-shard_0.out", "redis-shard_0.err", "redis.out",
+        "redis.err"
     }  # without raylet logs
     socket_files = set(os.listdir(tempfile_services.get_sockets_dir_path()))
-    assert socket_files == {'plasma_store', 'raylet'}
+    assert socket_files == {"plasma_store", "raylet"}
     ray.shutdown()
 
     ray.init(use_raylet=True, redirect_worker_output=True, num_workers=0)
     top_levels = set(os.listdir(tempfile_services.get_temp_root()))
-    assert top_levels == {'ray_ui.ipynb', 'sockets', 'logs'}
+    assert top_levels == {"ray_ui.ipynb", "sockets", "logs"}
     log_files = set(os.listdir(tempfile_services.get_logs_dir_path()))
     assert log_files == {
-        'log_monitor.out', 'log_monitor.err', 'plasma_store_0.out',
-        'plasma_store_0.err', 'webui.out', 'webui.err', 'monitor.out',
-        'monitor.err', 'redis-shard_0.out', 'redis-shard_0.err', 'redis.out',
-        'redis.err', 'raylet_0.out', 'raylet_0.err'
+        "log_monitor.out", "log_monitor.err", "plasma_store_0.out",
+        "plasma_store_0.err", "webui.out", "webui.err", "monitor.out",
+        "monitor.err", "redis-shard_0.out", "redis-shard_0.err", "redis.out",
+        "redis.err", "raylet_0.out", "raylet_0.err"
     }  # with raylet logs
     socket_files = set(os.listdir(tempfile_services.get_sockets_dir_path()))
-    assert socket_files == {'plasma_store', 'raylet'}
+    assert socket_files == {"plasma_store", "raylet"}
     ray.shutdown()
 
     ray.init(use_raylet=True, redirect_worker_output=True, num_workers=2)
     top_levels = set(os.listdir(tempfile_services.get_temp_root()))
-    assert top_levels == {'ray_ui.ipynb', 'sockets', 'logs'}
+    assert top_levels == {"ray_ui.ipynb", "sockets", "logs"}
     time.sleep(3)  # wait workers to start
     log_files = set(os.listdir(tempfile_services.get_logs_dir_path()))
     assert log_files.issuperset({
-        'log_monitor.out', 'log_monitor.err', 'plasma_store_0.out',
-        'plasma_store_0.err', 'webui.out', 'webui.err', 'monitor.out',
-        'monitor.err', 'redis-shard_0.out', 'redis-shard_0.err', 'redis.out',
-        'redis.err', 'raylet_0.out', 'raylet_0.err'
+        "log_monitor.out", "log_monitor.err", "plasma_store_0.out",
+        "plasma_store_0.err", "webui.out", "webui.err", "monitor.out",
+        "monitor.err", "redis-shard_0.out", "redis-shard_0.err", "redis.out",
+        "redis.err", "raylet_0.out", "raylet_0.err"
     })  # with raylet logs
 
     # Check numbers of worker log file.
     assert sum(
-        1 for filename in log_files if filename.startswith('worker')) == 4
+        1 for filename in log_files if filename.startswith("worker")) == 4
 
     socket_files = set(os.listdir(tempfile_services.get_sockets_dir_path()))
-    assert socket_files == {'plasma_store', 'raylet'}
+    assert socket_files == {"plasma_store", "raylet"}
     ray.shutdown()
