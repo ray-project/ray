@@ -1312,8 +1312,10 @@ class GlobalState(object):
 
     def _live_client_ids(self):
         """Returns a set of client IDs corresponding to clients still alive."""
-        return {client["ClientID"] for client in self.client_table()
-                if client["IsInsertion"]}
+        return {
+            client["ClientID"]
+            for client in self.client_table() if client["IsInsertion"]
+        }
 
     def available_resources(self):
         """Get the current available cluster resources.
