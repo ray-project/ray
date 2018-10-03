@@ -32,7 +32,7 @@ def make_inc_temp(suffix="", prefix="", directory_name="/tmp/ray"):
     # `tempfile.TMP_MAX` could be extremely large,
     # so we should use xrange in Python2.x
     if sys.version_info[0] < 3:
-        _range = xrange
+        _range = xrange  # noqa: F821
     else:
         _range = range
     for _ in _range(tempfile.TMP_MAX):
@@ -255,7 +255,7 @@ def new_worker_log_file(local_scheduler_index, worker_index, redirect_output):
 def new_worker_redirected_log_file(worker_id):
     """Create new logging files for workers to redirect its output."""
     worker_stdout_file, worker_stderr_file = (new_log_files(
-        "worker-" + worker_id.hex(), True))
+        "worker-" + ray.utils.binary_to_hex(worker_id), True))
     return worker_stdout_file, worker_stderr_file
 
 
