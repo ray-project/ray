@@ -1267,7 +1267,7 @@ void NodeManager::AssignTask(Task &task) {
   fbb.Finish(message);
   worker->Connection()->WriteMessageAsync(
       static_cast<int64_t>(protocol::MessageType::ExecuteTask), fbb.GetSize(),
-      fbb.GetBufferPointer(), [this](ray::Status status) {
+      fbb.GetBufferPointer(), [this, worker, spec, &task](ray::Status status) {
           if (status.ok()) {
             // We successfully assigned the task to the worker.
             worker->AssignTaskId(spec.TaskId());
@@ -1318,7 +1318,6 @@ void NodeManager::AssignTask(Task &task) {
             DispatchTasks();
           }
       });
-  return ray::Status::OK();
 }
 
 void NodeManager::FinishAssignedTask(Worker &worker) {
@@ -1564,7 +1563,7 @@ ray::Status NodeManager::ForwardTask(const Task &task, const ClientID &node_id) 
   auto &server_conn = it->second;
   server_conn.WriteMessageAsync(
       static_cast<int64_t>(protocol::MessageType::ForwardTaskRequest), fbb.GetSize(),
-      fbb.GetBufferPointer(), [this](ray::Status status) {
+      fbb.GetBufferPointer(), [this, task_id, &node_id, &spec](ray::Status status) {
           // TODO(ekl) what do we do if this is not ok?
           if (status.ok()) {
             // If we were able to forward the task, remove the forwarded task from the
