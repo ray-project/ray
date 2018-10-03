@@ -541,7 +541,7 @@ void NodeManager::ProcessClientMessage(
   RAY_LOG(DEBUG) << "Message of type " << message_type;
 
   auto registered_worker = worker_pool_.GetRegisteredWorker(client);
-  casted_message = static_cast<protocol::MessageType>(message_type);
+  auto casted_message = static_cast<protocol::MessageType>(message_type);
   if (registered_worker && registered_worker->IsDead()) {
     // For a worker that is marked as dead (because the driver has died already),
     // all the messages are ignored except DisconnectClient.
