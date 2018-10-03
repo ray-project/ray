@@ -142,9 +142,8 @@ Status authenticate_redis(redisContext *context, const std::string &password) {
   if (password == "") {
     return Status::OK();
   }
-  std::string auth_command = "AUTH " + password;
   redisReply *reply =
-      reinterpret_cast<redisReply *>(redisCommand(context, auth_command.c_str()));
+      reinterpret_cast<redisReply *>(redisCommand(context, "AUTH %s", password.c_str()));
   REDIS_CHECK_ERROR(context, reply);
   freeReplyObject(reply);
   return Status::OK();
@@ -154,8 +153,7 @@ void authenticate_redis(redisAsyncContext *context, const std::string &password)
   if (password == "") {
     return;
   }
-  std::string auth_command = "AUTH " + password;
-  redisAsyncCommand(context, NULL, NULL, auth_command.c_str());
+  redisAsyncCommand(context, NULL, NULL, "AUTH %s", password.c_str());
 }
 
 Status RedisContext::Connect(const std::string &address, int port, bool sharding,
