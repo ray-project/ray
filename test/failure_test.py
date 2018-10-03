@@ -332,6 +332,11 @@ def test_actor_worker_dying(ray_start_regular):
     with pytest.raises(Exception):
         ray.get(consume.remote(obj))
     wait_for_errors(ray_constants.WORKER_DIED_PUSH_ERROR, 1)
+    wait_for_errors(ray_constants.ACTOR_DIED_PUSH_ERROR, 1)
+
+    error_info = ray.error_info()
+    assert len(error_info) == 1
+    assert "The actor with ID " in error_info[0]["message"]
 
 
 def test_actor_worker_dying_future_tasks(ray_start_regular):

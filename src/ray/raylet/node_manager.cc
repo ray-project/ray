@@ -667,6 +667,8 @@ void NodeManager::ProcessDisconnectClientMessage(
   // we are no longer waiting for its dependencies. If the client is not
   // blocked, this won't do anything.
   HandleClientUnblocked(client);
+  const ClientTableDataT &client_table = gcs_client_->client_table().GetLocalClient();
+  auto address = client_table.node_manager_address;
 
   // Remove the dead client from the pool and stop listening for messages.
 
@@ -676,6 +678,7 @@ void NodeManager::ProcessDisconnectClientMessage(
     // an error to the driver.
     // (See design_docs/task_states.rst for the state transition diagram.)
     const TaskID &task_id = worker->GetAssignedTaskId();
+    const JobID &job_id = worker->GetAssignedDriverId();
     if (!task_id.is_nil() && !worker->IsDead()) {
       // If the worker was killed intentionally, e.g., when the driver that created
       // the task that this worker is currently executing exits, the task for this
@@ -688,13 +691,12 @@ void NodeManager::ProcessDisconnectClientMessage(
       // application.
       TreatTaskAsFailed(spec);
 
-      const JobID &job_id = worker->GetAssignedDriverId();
-
       if (push_warning) {
         // TODO(rkn): Define this constant somewhere else.
         std::string type = "worker_died";
         std::ostringstream error_message;
-        error_message << "A worker died or was killed while executing task " << task_id
+        error_message << "A worker on " << address
+                      << " died or was killed while executing task " << task_id
                       << ".";
         RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
             job_id, type, error_message.str(), current_time_ms()));
@@ -708,7 +710,13 @@ void NodeManager::ProcessDisconnectClientMessage(
     if (!actor_id.is_nil()) {
       // TODO(rkn): Consider broadcasting a message to all of the other
       // node managers so that they can mark the actor as dead.
-      RAY_LOG(DEBUG) << "The actor with ID " << actor_id << " died.";
+      // TODO(rkn): Define this constant somewhere else.
+      std::string type = "actor_died";
+      std::ostringstream error_message;
+      error_message << "The actor on " << address
+                    << " with ID " << actor_id << " died.";
+      RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
+          job_id, type, error_message.str(), current_time_ms()));
       auto actor_entry = actor_registry_.find(actor_id);
       RAY_CHECK(actor_entry != actor_registry_.end());
       actor_entry->second.MarkDead();
