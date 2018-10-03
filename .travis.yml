@@ -107,11 +107,11 @@ matrix:
       env:
         - PYTHON=3.5
         - RAY_USE_NEW_GCS=on
-        - RAY_USE_XRAY=1
 
+    # Test legacy Ray.
     - os: linux
       dist: trusty
-      env: PYTHON=3.5 RAY_USE_XRAY=1
+      env: PYTHON=3.5 RAY_USE_XRAY=0
       install:
         - ./.travis/install-dependencies.sh
         - export PATH="$HOME/miniconda/bin:$PATH"
@@ -128,8 +128,8 @@ matrix:
         - python -m pytest -v python/ray/common/test/test.py
         - python -m pytest -v python/ray/common/redis_module/runtest.py
         - python -m pytest -v python/ray/plasma/test/test.py
-        # - python -m pytest -v python/ray/local_scheduler/test/test.py
-        # - python -m pytest -v python/ray/global_scheduler/test/test.py
+        - python -m pytest -v python/ray/local_scheduler/test/test.py
+        - python -m pytest -v python/ray/global_scheduler/test/test.py
 
         - python -m pytest -v python/ray/test/test_global_state.py
         - python -m pytest -v python/ray/test/test_queue.py
@@ -206,8 +206,8 @@ script:
   - python -m pytest -v python/ray/common/test/test.py
   - python -m pytest -v python/ray/common/redis_module/runtest.py
   - python -m pytest -v python/ray/plasma/test/test.py
-  - python -m pytest -v python/ray/local_scheduler/test/test.py
-  - python -m pytest -v python/ray/global_scheduler/test/test.py
+  # - python -m pytest -v python/ray/local_scheduler/test/test.py
+  # - python -m pytest -v python/ray/global_scheduler/test/test.py
 
   - python -m pytest -v python/ray/test/test_global_state.py
   - python -m pytest -v python/ray/test/test_queue.py

@@ -7,7 +7,6 @@ from collections import defaultdict
 import heapq
 import json
 import numbers
-import os
 import redis
 import sys
 import time
@@ -131,14 +130,8 @@ class GlobalState(object):
                                 num_redis_shards, ip_address_ports))
 
         use_raylet = self.redis_client.get("UseRaylet")
-        if use_raylet is not None:
-            self.use_raylet = int(use_raylet) == 1
-        elif os.environ.get("RAY_USE_XRAY") == "1":
-            # This environment variable is used in our testing setup.
-            print("Detected environment variable 'RAY_USE_XRAY'.")
-            self.use_raylet = True
-        else:
-            self.use_raylet = False
+        assert use_raylet is not None
+        self.use_raylet = not (int(use_raylet) == 0)
 
         # Get the rest of the information.
         self.redis_clients = []

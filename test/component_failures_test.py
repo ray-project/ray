@@ -36,7 +36,7 @@ def shutdown_only():
 # This test checks that when a worker dies in the middle of a get, the plasma
 # store and raylet will not die.
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") != "1",
+    os.environ.get("RAY_USE_XRAY") == "0",
     reason="This test only works with xray.")
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
@@ -89,7 +89,7 @@ def test_dying_worker_get_raylet(shutdown_only):
 # This test checks that when a driver dies in the middle of a get, the plasma
 # store and raylet will not die.
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") != "1",
+    os.environ.get("RAY_USE_XRAY") == "0",
     reason="This test only works with xray.")
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
@@ -171,7 +171,7 @@ def test_dying_worker_get(ray_start_workers_separate):
 # This test checks that when a worker dies in the middle of a wait, the plasma
 # store and raylet will not die.
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") != "1",
+    os.environ.get("RAY_USE_XRAY") == "0",
     reason="This test only works with xray.")
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
@@ -216,7 +216,7 @@ def test_dying_worker_wait_raylet(shutdown_only):
 # This test checks that when a driver dies in the middle of a wait, the plasma
 # store and raylet will not die.
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") != "1",
+    os.environ.get("RAY_USE_XRAY") == "0",
     reason="This test only works with xray.")
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
@@ -342,7 +342,7 @@ def test_worker_failed(ray_start_workers_separate_multinode):
 def _test_component_failed(component_type):
     """Kill a component on all worker nodes and check workload succeeds."""
     # Raylet is able to pass a harder failure test than legacy ray.
-    use_raylet = os.environ.get("RAY_USE_XRAY") == "1"
+    use_raylet = os.environ.get("RAY_USE_XRAY") != "0"
 
     # Start with 4 workers and 4 cores.
     num_local_schedulers = 4
@@ -452,7 +452,7 @@ def check_components_alive(component_type, check_component_alive):
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") != "1",
+    os.environ.get("RAY_USE_XRAY") == "0",
     reason="This test only makes sense with xray.")
 def test_raylet_failed():
     # Kill all local schedulers on worker nodes.
@@ -466,7 +466,7 @@ def test_raylet_failed():
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") == "1",
+    os.environ.get("RAY_USE_XRAY") != "0",
     reason="This test does not make sense with xray.")
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
@@ -485,7 +485,7 @@ def test_local_scheduler_failed():
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") == "1",
+    os.environ.get("RAY_USE_XRAY") != "0",
     reason="This test does not make sense with xray.")
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",

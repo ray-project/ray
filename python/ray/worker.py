@@ -1223,7 +1223,7 @@ def _initialize_serialization(driver_id, worker=global_worker):
 
 def get_address_info_from_redis_helper(redis_address,
                                        node_ip_address,
-                                       use_raylet=False,
+                                       use_raylet=True,
                                        redis_password=None):
     redis_ip_address, redis_port = redis_address.split(":")
     # For this command to work, some other client (on the same machine as
@@ -1333,7 +1333,7 @@ def get_address_info_from_redis_helper(redis_address,
 def get_address_info_from_redis(redis_address,
                                 node_ip_address,
                                 num_retries=5,
-                                use_raylet=False,
+                                use_raylet=True,
                                 redis_password=None):
     counter = 0
     while True:
@@ -1497,10 +1497,14 @@ def _init(address_info=None,
     else:
         driver_mode = SCRIPT_MODE
 
-    if use_raylet is None and os.environ.get("RAY_USE_XRAY") == "1":
-        # This environment variable is used in our testing setup.
-        logger.info("Detected environment variable 'RAY_USE_XRAY'.")
-        use_raylet = True
+    if use_raylet is None:
+        if os.environ.get("RAY_USE_XRAY") == "0":
+            # This environment variable is used in our testing setup.
+            logger.info("Detected environment variable 'RAY_USE_XRAY' with "
+                        "value {}.".format(os.environ.get("RAY_USE_XRAY")))
+            use_raylet = False
+        else:
+            use_raylet = True
 
     # Get addresses of existing services.
     if address_info is None:
@@ -1762,10 +1766,15 @@ def init(redis_address=None,
         else:
             raise Exception("Perhaps you called ray.init twice by accident?")
 
-    if use_raylet is None and os.environ.get("RAY_USE_XRAY") == "1":
-        # This environment variable is used in our testing setup.
-        logger.info("Detected environment variable 'RAY_USE_XRAY'.")
-        use_raylet = True
+    if use_raylet is None:
+        if os.environ.get("RAY_USE_XRAY") == "0":
+            # This environment variable is used in our testing setup.
+            logger.info("Detected environment variable 'RAY_USE_XRAY' with "
+                        "value {}.".format(os.environ.get("RAY_USE_XRAY")))
+            use_raylet = False
+        else:
+            use_raylet = True
+
     if not use_raylet and redis_password is not None:
         raise Exception("Setting the 'redis_password' argument is not "
                         "supported in legacy Ray. To run Ray with "
@@ -1993,7 +2002,7 @@ def connect(info,
             object_id_seed=None,
             mode=WORKER_MODE,
             worker=global_worker,
-            use_raylet=False,
+            use_raylet=True,
             redis_password=None):
     """Connect this worker to the local scheduler, to Plasma, and to Redis.
 
