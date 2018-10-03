@@ -5,6 +5,7 @@ from __future__ import print_function
 import binascii
 import functools
 import hashlib
+import inspect
 import numpy as np
 import os
 import subprocess
@@ -142,6 +143,23 @@ def is_cython(obj):
     # Check if function or method, respectively
     return check_cython(obj) or \
         (hasattr(obj, "__func__") and check_cython(obj.__func__))
+
+
+def is_function_or_method(obj):
+    """Check if an object is a function or method.
+
+    Args:
+        obj: The Python object in question.
+
+    Returns:
+        True if the object is an function or method.
+    """
+    return (inspect.isfunction(obj) or inspect.ismethod(obj) or is_cython(obj))
+
+
+def is_class_method(f):
+    """Returns whether the given method is a class_method."""
+    return hasattr(f, "__self__") and f.__self__ is not None
 
 
 def random_string():
