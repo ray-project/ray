@@ -541,12 +541,13 @@ void NodeManager::ProcessClientMessage(
   RAY_LOG(DEBUG) << "Message of type " << message_type;
 
   auto registered_worker = worker_pool_.GetRegisteredWorker(client);
+  casted_message = static_cast<protocol::MessageType>(message_type);
   if (registered_worker && registered_worker->IsDead()) {
     // For a worker that is marked as dead (because the driver has died already),
     // all the messages are ignored except DisconnectClient.
-    if ((static_cast<protocol::MessageType>(message_type) !=
+    if ((casted_message !=
          protocol::MessageType::DisconnectClient) &&
-        (static_cast<protocol::MessageType>(message_type) !=
+        (casted_message !=
          protocol::MessageType::IntentionalDisconnectClient)) {
       // Listen for more messages.
       client->ProcessMessages();
@@ -554,7 +555,7 @@ void NodeManager::ProcessClientMessage(
     }
   }
 
-  switch (static_cast<protocol::MessageType>(message_type)) {
+  switch (casted_message) {
   case protocol::MessageType::RegisterClientRequest: {
     ProcessRegisterClientRequestMessage(client, message_data);
   } break;
@@ -568,10 +569,7 @@ void NodeManager::ProcessClientMessage(
     return;
   } break;
   case protocol::MessageType::IntentionalDisconnectClient: {
-    if (registered_worker) {
-      registered_worker->MarkDead();
-    }
-    ProcessDisconnectClientMessage(client);
+    ProcessDisconnectClientMessage(client, /* push_warning = */ false);
     // We don't need to receive future messages from this client,
     // because it's already disconnected.
     return;
@@ -651,7 +649,7 @@ void NodeManager::ProcessGetTaskMessage(
 }
 
 void NodeManager::ProcessDisconnectClientMessage(
-    const std::shared_ptr<LocalClientConnection> &client) {
+    const std::shared_ptr<LocalClientConnection> &client, bool push_warning) {
   const std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
   const std::shared_ptr<Worker> driver = worker_pool_.GetRegisteredDriver(client);
   // This client can't be a worker and a driver.
@@ -691,13 +689,16 @@ void NodeManager::ProcessDisconnectClientMessage(
       TreatTaskAsFailed(spec);
 
       const JobID &job_id = worker->GetAssignedDriverId();
-      // TODO(rkn): Define this constant somewhere else.
-      std::string type = "worker_died";
-      std::ostringstream error_message;
-      error_message << "A worker died or was killed while executing task " << task_id
-                    << ".";
-      RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
-          job_id, type, error_message.str(), current_time_ms()));
+
+      if (push_warning) {
+        // TODO(rkn): Define this constant somewhere else.
+        std::string type = "worker_died";
+        std::ostringstream error_message;
+        error_message << "A worker died or was killed while executing task " << task_id
+                      << ".";
+        RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
+            job_id, type, error_message.str(), current_time_ms()));
+      }
     }
 
     worker_pool_.DisconnectWorker(worker);
