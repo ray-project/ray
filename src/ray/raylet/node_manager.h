@@ -174,10 +174,10 @@ class NodeManager {
   ///
   /// \param task The task to forward.
   /// \param node_id The ID of the node to forward the task to.
-  /// \return A status indicating whether the forward succeeded or not. Note
-  /// that a status of OK is not a reliable indicator that the forward succeeded
-  /// or even that the remote node is still alive.
-  ray::Status ForwardTask(const Task &task, const ClientID &node_id);
+  /// \param on_error Callback on run on non-ok status.
+  void ForwardTask(const Task &task, const ClientID &node_id,
+                   const std::function<void(const ray::Status&)> &on_error);
+
   /// Dispatch locally scheduled tasks. This attempts the transition from "scheduled" to
   /// "running" task state.
   void DispatchTasks();

@@ -1486,10 +1486,10 @@ void NodeManager::ForwardTaskOrResubmit(const Task &task,
                                         const ClientID &node_manager_id) {
   /// TODO(rkn): Should we check that the node manager is remote and not local?
   /// TODO(rkn): Should we check if the remote node manager is known to be dead?
-  const TaskID task_id = task.GetTaskSpecification().TaskId();
-
   // Attempt to forward the task.
-  if (!ForwardTask(task, node_manager_id).ok()) {
+  ForwardTask(task, node_manager_id, [this, &task, &node_manager_id](ray::Status error) {
+    const TaskID task_id = task.GetTaskSpecification().TaskId();
+
     RAY_LOG(INFO) << "Failed to forward task " << task_id << " to node manager "
                   << node_manager_id;
     // Mark the failed task as pending to let other raylets know that we still
@@ -1528,10 +1528,11 @@ void NodeManager::ForwardTaskOrResubmit(const Task &task,
       ScheduleTasks(cluster_resource_map_);
       DispatchTasks();
     }
-  }
+  });
 }
 
-ray::Status NodeManager::ForwardTask(const Task &task, const ClientID &node_id) {
+void NodeManager::ForwardTask(const Task &task, const ClientID &node_id,
+      const std::function<void(const ray::Status&)> &on_error) {
   const auto &spec = task.GetTaskSpecification();
   auto task_id = spec.TaskId();
 
@@ -1557,13 +1558,14 @@ ray::Status NodeManager::ForwardTask(const Task &task, const ClientID &node_id) 
   if (it == remote_server_connections_.end()) {
     // TODO(atumanov): caller must handle failure to ensure tasks are not lost.
     RAY_LOG(INFO) << "No NodeManager connection found for GCS client id " << node_id;
-    return ray::Status::IOError("NodeManager connection not found");
+    on_error(ray::Status::IOError("NodeManager connection not found"));
+    return;
   }
 
   auto &server_conn = it->second;
   server_conn.WriteMessageAsync(
       static_cast<int64_t>(protocol::MessageType::ForwardTaskRequest), fbb.GetSize(),
-      fbb.GetBufferPointer(), [this, task_id, &node_id, &spec](ray::Status status) {
+      fbb.GetBufferPointer(), [this, on_error, task_id, &node_id, &spec](ray::Status status) {
           // TODO(ekl) what do we do if this is not ok?
           if (status.ok()) {
             // If we were able to forward the task, remove the forwarded task from the
@@ -1599,10 +1601,10 @@ ray::Status NodeManager::ForwardTask(const Task &task, const ClientID &node_id) 
                 }
               }
             }
+          } else {
+            on_error(status);
           }
       });
-
-  return ray::Status::OK();
 }
 
 }  // namespace raylet
