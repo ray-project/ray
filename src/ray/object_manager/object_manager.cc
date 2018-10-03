@@ -24,17 +24,19 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
     : client_id_(gcs_client->client_table().GetLocalClientId()),
       config_(config),
       object_directory_(new ObjectDirectory(gcs_client)),
-      store_notification_(main_service, config_.store_socket_name),
+      main_service_(main_service),
+      store_notification_(main_service_, config_.store_socket_name),
       // release_delay of 2 * config_.max_sends is to ensure the pool does not release
       // an object prematurely whenever we reach the maximum number of sends.
       buffer_pool_(config_.store_socket_name, config_.object_chunk_size,
-                   /*release_delay=*/2 * config_.max_sends),
+                   /* release_delay */ 0),
       send_work_(send_service_),
       receive_work_(receive_service_),
-      connection_pool_() {
+      connection_pool_(),
+      object_directory_pull_callback_id_(UniqueID::from_random()),
+      gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {
   RAY_CHECK(config_.max_sends > 0);
   RAY_CHECK(config_.max_receives > 0);
-  main_service_ = &main_service;
   store_notification_.SubscribeObjAdded(
       [this](const object_manager::protocol::ObjectInfoT &object_info) {
         HandleObjectAdded(object_info);
@@ -46,21 +48,23 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
 
 ObjectManager::ObjectManager(asio::io_service &main_service,
                              const ObjectManagerConfig &config,
-                             std::unique_ptr<ObjectDirectoryInterface> od)
+                             std::unique_ptr<ObjectDirectoryInterface> object_directory)
     : config_(config),
-      object_directory_(std::move(od)),
-      store_notification_(main_service, config_.store_socket_name),
+      object_directory_(std::move(object_directory)),
+      main_service_(main_service),
+      store_notification_(main_service_, config_.store_socket_name),
       // release_delay of 2 * config_.max_sends is to ensure the pool does not release
       // an object prematurely whenever we reach the maximum number of sends.
       buffer_pool_(config_.store_socket_name, config_.object_chunk_size,
-                   /*release_delay=*/2 * config_.max_sends),
+                   /* release_delay */ 0),
       send_work_(send_service_),
       receive_work_(receive_service_),
-      connection_pool_() {
+      connection_pool_(),
+      object_directory_pull_callback_id_(UniqueID::from_random()),
+      gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {
   RAY_CHECK(config_.max_sends > 0);
   RAY_CHECK(config_.max_receives > 0);
   // TODO(hme) Client ID is never set with this constructor.
-  main_service_ = &main_service;
   store_notification_.SubscribeObjAdded(
       [this](const object_manager::protocol::ObjectInfoT &object_info) {
         HandleObjectAdded(object_info);
@@ -113,7 +117,7 @@ void ObjectManager::HandleObjectAdded(
   if (iter != unfulfilled_push_requests_.end()) {
     for (auto &pair : iter->second) {
       auto &client_id = pair.first;
-      main_service_->post([this, object_id, client_id]() { Push(object_id, client_id); });
+      main_service_.post([this, object_id, client_id]() { Push(object_id, client_id); });
       // When push timeout is set to -1, there will be an empty timer in pair.second.
       if (pair.second != nullptr) {
         pair.second->cancel();
@@ -176,7 +180,7 @@ ray::Status ObjectManager::Pull(const ObjectID &object_id) {
         it->second.client_locations = client_ids;
         if (it->second.client_locations.empty()) {
           // The object locations are now empty, so we should wait for the next
-          // notification about a new object location.  Cancel the timer until
+          // notification about a new object location. Cancel the timer until
           // the next Pull attempt since there are no more clients to try.
           if (it->second.retry_timer != nullptr) {
             it->second.retry_timer->cancel();
@@ -187,7 +191,7 @@ ray::Status ObjectManager::Pull(const ObjectID &object_id) {
           if (!it->second.timer_set) {
             // The timer was not set, which means that we weren't trying any
             // clients. We now have some clients to try, so begin trying to
-            // Pull from one.  If we fail to receive an object within the pull
+            // Pull from one. If we fail to receive an object within the pull
             // timeout, then this will try the rest of the clients in the list
             // in succession.
             TryPull(object_id);
@@ -202,32 +206,48 @@ void ObjectManager::TryPull(const ObjectID &object_id) {
     return;
   }
 
+  auto &client_vector = it->second.client_locations;
+
   // The timer should never fire if there are no expected client locations.
-  RAY_CHECK(!it->second.client_locations.empty());
+  RAY_CHECK(!client_vector.empty());
   RAY_CHECK(local_objects_.count(object_id) == 0);
 
-  // Get the next client to try.
-  const ClientID client_id = std::move(it->second.client_locations.back());
-  it->second.client_locations.pop_back();
-  if (client_id == client_id_) {
-    // If we're trying to pull from ourselves, skip this client and try the
-    // next one.
-    RAY_LOG(ERROR) << client_id_ << " attempted to pull an object from itself.";
-    const ClientID client_id = std::move(it->second.client_locations.back());
-    it->second.client_locations.pop_back();
-    RAY_CHECK(client_id != client_id_);
+  // Choose a random client to pull the object from.
+  ClientID client_id = ClientID::nil();
+  while (client_vector.size() > 0) {
+    // Generate a random index.
+    std::uniform_int_distribution<int> distribution(0, client_vector.size() - 1);
+    int client_index = distribution(gen_);
+    const ClientID candidate_client_id = client_vector[client_index];
+    // Remove this client from the list by swapping it with the last value and
+    // removing the last value.
+    std::iter_swap(client_vector.begin() + client_index, client_vector.end() - 1);
+    client_vector.pop_back();
+
+    // If we've found a remote node manager that isn't this current node
+    // manager, continue.
+    if (candidate_client_id != client_id_) {
+      client_id = candidate_client_id;
+      break;
+    } else {
+      RAY_LOG(ERROR) << "The node manager with client ID " << client_id_
+                     << " is trying to pull object " << object_id
+                     << " but the object table suggests that this node manager "
+                     << "already has the object.";
+    }
   }
+  RAY_CHECK(!client_id.is_nil());
 
   // Try pulling from the client.
   PullEstablishConnection(object_id, client_id);
 
   // If there are more clients to try, try them in succession, with a timeout
   // in between each try.
-  if (!it->second.client_locations.empty()) {
+  if (!client_vector.empty()) {
     if (it->second.retry_timer == nullptr) {
       // Set the timer if we haven't already.
       it->second.retry_timer = std::unique_ptr<boost::asio::deadline_timer>(
-          new boost::asio::deadline_timer(*main_service_));
+          new boost::asio::deadline_timer(main_service_));
     }
 
     // Wait for a timeout. If we receive the object or a caller Cancels the
@@ -325,10 +345,10 @@ void ObjectManager::Push(const ObjectID &object_id, const ClientID &client_id) {
       if (config_.push_timeout_ms == 0) {
         // The Push request fails directly when config_.push_timeout_ms == 0.
         RAY_LOG(WARNING) << "Invalid Push request ObjectID " << object_id
-                         << " due to direct timeout setting. ";
+                         << " due to direct timeout setting.";
       } else if (config_.push_timeout_ms > 0) {
         // Put the task into a queue and wait for the notification of Object added.
-        timer.reset(new boost::asio::deadline_timer(*main_service_));
+        timer.reset(new boost::asio::deadline_timer(main_service_));
         auto clean_push_period = boost::posix_time::milliseconds(config_.push_timeout_ms);
         timer->expires_from_now(clean_push_period);
         timer->async_wait(
@@ -365,8 +385,8 @@ void ObjectManager::Push(const ObjectID &object_id, const ClientID &client_id) {
             // will have already been evicted. It's also possible that the
             // object could be in the process of being transferred to this
             // object manager from another object manager.
-            ExecuteSendObject(client_id, object_id, data_size, metadata_size, chunk_index,
-                              info);
+            ray::Status status = ExecuteSendObject(client_id, object_id, data_size,
+                                                   metadata_size, chunk_index, info);
           });
         }
       },
@@ -377,10 +397,10 @@ void ObjectManager::Push(const ObjectID &object_id, const ClientID &client_id) {
       }));
 }
 
-void ObjectManager::ExecuteSendObject(const ClientID &client_id,
-                                      const ObjectID &object_id, uint64_t data_size,
-                                      uint64_t metadata_size, uint64_t chunk_index,
-                                      const RemoteConnectionInfo &connection_info) {
+ray::Status ObjectManager::ExecuteSendObject(
+    const ClientID &client_id, const ObjectID &object_id, uint64_t data_size,
+    uint64_t metadata_size, uint64_t chunk_index,
+    const RemoteConnectionInfo &connection_info) {
   RAY_LOG(DEBUG) << "ExecuteSendObject " << client_id << " " << object_id << " "
                  << chunk_index;
   ray::Status status;
@@ -392,13 +412,15 @@ void ObjectManager::ExecuteSendObject(const ClientID &client_id,
     connection_pool_.RegisterSender(ConnectionPool::ConnectionType::TRANSFER, client_id,
                                     conn);
     if (conn == nullptr) {
-      return;
+      return ray::Status::IOError("Could not connect to recipient.");
     }
   }
   status = SendObjectHeaders(object_id, data_size, metadata_size, chunk_index, conn);
   if (!status.ok()) {
     CheckIOError(status, "Push");
   }
+
+  return status;
 }
 
 ray::Status ObjectManager::SendObjectHeaders(const ObjectID &object_id,
@@ -491,7 +513,7 @@ ray::Status ObjectManager::AddWaitRequest(const UniqueID &wait_id,
   }
 
   // Initialize fields.
-  active_wait_requests_.emplace(wait_id, WaitState(*main_service_, timeout_ms, callback));
+  active_wait_requests_.emplace(wait_id, WaitState(main_service_, timeout_ms, callback));
   auto &wait_state = active_wait_requests_.find(wait_id)->second;
   wait_state.object_id_order = object_ids;
   wait_state.timeout_ms = timeout_ms;
@@ -640,7 +662,7 @@ void ObjectManager::WaitComplete(const UniqueID &wait_id) {
 std::shared_ptr<SenderConnection> ObjectManager::CreateSenderConnection(
     ConnectionPool::ConnectionType type, RemoteConnectionInfo info) {
   std::shared_ptr<SenderConnection> conn =
-      SenderConnection::Create(*main_service_, info.client_id, info.ip, info.port);
+      SenderConnection::Create(main_service_, info.client_id, info.ip, info.port);
   if (conn == nullptr) {
     RAY_LOG(ERROR) << "Failed to connect to remote object manager.";
     return conn;
@@ -696,7 +718,7 @@ void ObjectManager::ConnectClient(std::shared_ptr<TcpClientConnection> &conn,
   // TODO: trash connection on failure.
   auto info =
       flatbuffers::GetRoot<object_manager_protocol::ConnectClientMessage>(message);
-  ClientID client_id = ObjectID::from_binary(info->client_id()->str());
+  const ClientID client_id = ObjectID::from_binary(info->client_id()->str());
   bool is_transfer = info->is_transfer();
   conn->SetClientID(client_id);
   if (is_transfer) {
@@ -718,8 +740,8 @@ void ObjectManager::ReceivePullRequest(std::shared_ptr<TcpClientConnection> &con
                                        const uint8_t *message) {
   // Serialize and push object to requesting client.
   auto pr = flatbuffers::GetRoot<object_manager_protocol::PullRequestMessage>(message);
-  ObjectID object_id = ObjectID::from_binary(pr->object_id()->str());
-  ClientID client_id = ClientID::from_binary(pr->client_id()->str());
+  const ObjectID object_id = ObjectID::from_binary(pr->object_id()->str());
+  const ClientID client_id = ClientID::from_binary(pr->client_id()->str());
   Push(object_id, client_id);
   conn->ProcessMessages();
 }

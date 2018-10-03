@@ -6,6 +6,7 @@
 #include <deque>
 #include <map>
 #include <memory>
+#include <random>
 #include <thread>
 
 #include <boost/asio.hpp>
@@ -76,10 +77,11 @@ class ObjectManager : public ObjectManagerInterface {
   ///
   /// \param main_service The main asio io_service.
   /// \param config ObjectManager configuration.
-  /// \param od An object implementing the object directory interface.
+  /// \param object_directory An object implementing the object directory
+  /// interface.
   explicit ObjectManager(boost::asio::io_service &main_service,
                          const ObjectManagerConfig &config,
-                         std::unique_ptr<ObjectDirectoryInterface> od);
+                         std::unique_ptr<ObjectDirectoryInterface> object_directory);
 
   ~ObjectManager();
 
@@ -260,9 +262,10 @@ class ObjectManager : public ObjectManagerInterface {
 
   /// Begin executing a send.
   /// Executes on send_service_ thread pool.
-  void ExecuteSendObject(const ClientID &client_id, const ObjectID &object_id,
-                         uint64_t data_size, uint64_t metadata_size, uint64_t chunk_index,
-                         const RemoteConnectionInfo &connection_info);
+  ray::Status ExecuteSendObject(const ClientID &client_id, const ObjectID &object_id,
+                                uint64_t data_size, uint64_t metadata_size,
+                                uint64_t chunk_index,
+                                const RemoteConnectionInfo &connection_info);
   /// This method synchronously sends the object id and object size
   /// to the remote object manager.
   /// Executes on send_service_ thread pool.
@@ -303,6 +306,11 @@ class ObjectManager : public ObjectManagerInterface {
   ClientID client_id_;
   const ObjectManagerConfig config_;
   std::unique_ptr<ObjectDirectoryInterface> object_directory_;
+
+  /// Weak reference to main service. We ensure this object is destroyed before
+  /// main_service_ is stopped.
+  boost::asio::io_service &main_service_;
+
   ObjectStoreNotificationManager store_notification_;
   ObjectBufferPool buffer_pool_;
 
@@ -310,10 +318,6 @@ class ObjectManager : public ObjectManagerInterface {
   boost::asio::io_service send_service_;
   /// This runs on a thread pool dedicated to receiving objects.
   boost::asio::io_service receive_service_;
-
-  /// Weak reference to main service. We ensure this object is destroyed before
-  /// main_service_ is stopped.
-  boost::asio::io_service *main_service_;
 
   /// Used to create "work" for send_service_.
   /// Without this, if send_service_ has no more sends to process, it will stop.
@@ -336,21 +340,29 @@ class ObjectManager : public ObjectManagerInterface {
   std::unordered_map<ObjectID, object_manager::protocol::ObjectInfoT> local_objects_;
 
   /// This is used as the callback identifier in Pull for
-  /// SubscribeObjectLocations. We only need one identifier because we never need to
-  /// subscribe multiple times to the same object during Pull.
-  UniqueID object_directory_pull_callback_id_ = UniqueID::from_random();
+  /// SubscribeObjectLocations. We only need one identifier because we never
+  /// need to subscribe multiple times to the same object during Pull.
+  UniqueID object_directory_pull_callback_id_;
 
   /// A set of active wait requests.
   std::unordered_map<UniqueID, WaitState> active_wait_requests_;
 
-  /// Maintains a map of push requests that have not been fulfilled due to an object not
-  /// being local. Objects are removed from this map after push_timeout_ms have elapsed.
+  /// Maintains a map of push requests that have not been fulfilled due to an
+  /// object not being local. Object client pairs are removed from this map when
+  /// a send call is posted to the send service or after push_timeout_ms have
+  /// elapsed.
   std::unordered_map<
       ObjectID,
       std::unordered_map<ClientID, std::unique_ptr<boost::asio::deadline_timer>>>
       unfulfilled_push_requests_;
 
+  /// A mapping from the ID of objects this node manager is trying to fetch from
+  /// other node managers to relevant information (e.g., the remote node
+  /// managers to try getting the object from).
   std::unordered_map<ObjectID, PullRequest> pull_requests_;
+
+  /// Internally maintained random number generator.
+  std::mt19937_64 gen_;
 };
 
 }  // namespace ray
