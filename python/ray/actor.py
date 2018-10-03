@@ -8,15 +8,12 @@ import inspect
 import traceback
 
 import ray.cloudpickle as pickle
-from ray.function_manager import FunctionManager
+from ray.function_manager import FunctionActorManager
 import ray.local_scheduler
 import ray.ray_constants as ray_constants
 import ray.signature as signature
 import ray.worker
-from ray.utils import (
-    _random_string,
-    is_cython,
-)
+from ray.utils import _random_string
 
 DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS = 1
 
@@ -109,7 +106,8 @@ def set_actor_checkpoint(worker, actor_id, checkpoint_index, checkpoint,
 
 def save_and_log_checkpoint(worker, actor):
     """Save a checkpoint on the actor and log any errors.
-     Args:
+
+    Args:
         worker: The worker to use to log errors.
         actor: The actor to checkpoint.
         checkpoint_index: The number of tasks that have executed so far.
@@ -132,7 +130,8 @@ def save_and_log_checkpoint(worker, actor):
 
 def restore_and_log_checkpoint(worker, actor):
     """Restore an actor from a checkpoint and log any errors.
-     Args:
+
+    Args:
         worker: The worker to use to log errors.
         actor: The actor to restore.
     """
@@ -274,13 +273,8 @@ class ActorClass(object):
         self._actor_method_cpus = actor_method_cpus
         self._exported = False
 
-        # Get the actor methods of the given class.
-        def pred(x):
-            return (inspect.isfunction(x) or inspect.ismethod(x)
-                    or is_cython(x))
-
         self._actor_methods = inspect.getmembers(
-            self._modified_class, predicate=pred)
+            self._modified_class, FunctionActorManager.is_function_or_method)
         # Extract the signatures of each of the methods. This will be used
         # to catch some errors if the methods are called with inappropriate
         # arguments.
@@ -294,7 +288,7 @@ class ActorClass(object):
             signature.check_signature_supported(method, warn=True)
             self._method_signatures[method_name] = signature.extract_signature(
                 method,
-                ignore_first=not FunctionManager.is_classmethod(method))
+                ignore_first=not FunctionActorManager.is_classmethod(method))
 
             # Set the default number of return values for this method.
             if hasattr(method, "__ray_num_return_vals__"):
@@ -371,7 +365,7 @@ class ActorClass(object):
         else:
             # Export the actor.
             if not self._exported:
-                worker.function_manager.export_actor_class(
+                worker.function_actor_manager.export_actor_class(
                     self._class_id, self._modified_class,
                     self._actor_method_names, self._checkpoint_interval)
                 self._exported = True
@@ -558,7 +552,7 @@ class ActorHandle(object):
         else:
             actor_handle_id = self._ray_actor_handle_id
 
-        function_id = FunctionManager.compute_actor_method_function_id(
+        function_id = FunctionActorManager.compute_actor_method_function_id(
             self._ray_class_name, method_name)
         object_ids = worker.submit_task(
             function_id,

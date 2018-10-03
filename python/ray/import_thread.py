@@ -88,8 +88,8 @@ class ImportThread(object):
         if key.startswith(b"RemoteFunction"):
             with profiling.profile(
                     "register_remote_function", worker=self.worker):
-                self.worker.function_manager.fetch_and_register_remote_function(
-                    key)
+                (self.worker.function_actor_manager.
+                 fetch_and_register_remote_function(key))
         elif key.startswith(b"FunctionsToRun"):
             with profiling.profile(
                     "fetch_and_run_function", worker=self.worker):

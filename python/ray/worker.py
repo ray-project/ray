@@ -31,7 +31,7 @@ import ray.plasma
 import ray.ray_constants as ray_constants
 from ray import import_thread
 from ray import profiling
-from ray.function_manager import FunctionManager
+from ray.function_manager import FunctionActorManager
 from ray.utils import (
     binary_to_hex,
     check_oversized_pickle,
@@ -230,7 +230,7 @@ class Worker(object):
         self.serialization_context_map = {}
         # Identity of the driver that this worker is processing.
         self.task_driver_id = None
-        self.function_manager = FunctionManager(self)
+        self.function_actor_manager = FunctionActorManager(self)
 
     def mark_actor_init_failed(self, error):
         """Called to mark this actor as failed during initialization."""
@@ -895,7 +895,7 @@ class Worker(object):
             time.sleep(0.001)
 
         with self.lock:
-            self.function_manager.fetch_and_register_actor(key)
+            self.function_actor_manager.fetch_and_register_actor(key)
 
     def _wait_for_and_process_task(self, task):
         """Wait for a task to be ready and process the task.
@@ -912,7 +912,7 @@ class Worker(object):
             self._become_actor(task)
             return
 
-        execution_info = self.function_manager.get_execution_info(
+        execution_info = self.function_actor_manager.get_execution_info(
             driver_id, function_id)
 
         # Execute the task.
@@ -943,11 +943,11 @@ class Worker(object):
             self.profiler.flush_profile_data()
 
         # Increase the task execution counter.
-        self.function_manager.increase_task_counter(driver_id,
-                                                    function_id.id())
+        self.function_actor_manager.increase_task_counter(
+            driver_id, function_id.id())
 
-        reached_max_executions = (self.function_manager.get_task_counter(
-                driver_id, function_id.id()) == execution_info.max_calls)
+        reached_max_executions = (self.function_actor_manager.get_task_counter(
+            driver_id, function_id.id()) == execution_info.max_calls)
         if reached_max_executions:
             self.local_scheduler_client.disconnect()
             os._exit(0)
@@ -2189,7 +2189,7 @@ def connect(info,
         for function in worker.cached_functions_to_run:
             worker.run_function_on_all_workers(function)
         # Export cached remote functions and actors to the workers.
-        worker.function_manager.export_cached()
+        worker.function_actor_manager.export_cached()
     worker.cached_functions_to_run = None
 
 
@@ -2201,7 +2201,7 @@ def disconnect(worker=global_worker):
     # tests.
     worker.connected = False
     worker.cached_functions_to_run = []
-    worker.function_manager.reset_cache()
+    worker.function_actor_manager.reset_cache()
     worker.serialization_context_map.clear()
 
 

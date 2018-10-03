@@ -11,6 +11,7 @@ from collections import (
     namedtuple,
     defaultdict,
 )
+
 import ray
 from ray import profiling
 from ray import ray_constants
@@ -23,37 +24,43 @@ from ray.utils import (
     push_error_to_driver,
 )
 
-
 FunctionExecutionInfo = namedtuple("FunctionExecutionInfo",
                                    ["function", "function_name", "max_calls"])
 """FunctionExecutionInfo: A named tuple storing remote function information."""
 
 
-class FunctionManager(object):
-    """
-    A class used to export/load remote functions.
+class FunctionActorManager(object):
+    """A class used to export/load remote functions and actors.
 
     Attributes:
-
+        _worker: The associated worker that this manager related.
+        _functions_to_export: The remote functions to export when
+            the worker gets connected.
+        _actors_to_export: The actors to export when the worker gets
+            connected.
+        _function_execution_info: The map from driver_id to finction_id
+            and execution_info.
+        _num_task_executions: The map from driver_id to function
+            execution times.
     """
 
     def __init__(self, worker):
         self._worker = worker
         self._functions_to_export = []
-        self._actor_to_export = []
+        self._actors_to_export = []
         # This field is a dictionary that maps a driver ID to a dictionary of
         # functions (and information about those functions) that have been
         # registered for that driver (this inner dictionary maps function IDs
         # to a FunctionExecutionInfo object. This should only be used on
         # workers that execute remote functions.
-        self.function_execution_info = defaultdict(lambda: {})
-        self.num_task_executions = defaultdict(lambda: {})
+        self._function_execution_info = defaultdict(lambda: {})
+        self._num_task_executions = defaultdict(lambda: {})
 
     def increase_task_counter(self, driver_id, function_id):
-        self.num_task_executions[driver_id][function_id] += 1
+        self._num_task_executions[driver_id][function_id] += 1
 
     def get_task_counter(self, driver_id, function_id):
-        return self.num_task_executions[driver_id][function_id]
+        return self._num_task_executions[driver_id][function_id]
 
     def export_cached(self):
         """Export cached remote functions
@@ -63,13 +70,13 @@ class FunctionManager(object):
         for remote_function in self._functions_to_export:
             self._do_export(remote_function)
         self._functions_to_export = None
-        for info in self._actor_to_export:
+        for info in self._actors_to_export:
             (key, actor_class_info) = info
             self._publish_actor_class_to_key(key, actor_class_info)
 
     def reset_cache(self):
         self._functions_to_export = []
-        self._actor_to_export = []
+        self._actors_to_export = []
 
     def export(self, remote_function):
         """Export a remote function.
@@ -88,8 +95,7 @@ class FunctionManager(object):
         self._do_export(remote_function)
 
     def _do_export(self, remote_function):
-        """
-        Pickle a remote function and export it to redis.
+        """Pickle a remote function and export it to redis.
 
         Args:
             remote_function: the RemoteFunction object.
@@ -147,10 +153,10 @@ class FunctionManager(object):
         def f():
             raise Exception("This function was not imported properly.")
 
-        self.function_execution_info[driver_id][function_id.id()] = (
+        self._function_execution_info[driver_id][function_id.id()] = (
             FunctionExecutionInfo(
                 function=f, function_name=function_name, max_calls=max_calls))
-        self.num_task_executions[driver_id][function_id.id()] = 0
+        self._num_task_executions[driver_id][function_id.id()] = 0
 
         try:
             function = pickle.loads(serialized_function)
@@ -175,7 +181,7 @@ class FunctionManager(object):
             # However in the worker process, the `__main__` module is a
             # different module, which is `default_worker.py`
             function.__module__ = module
-            self.function_execution_info[driver_id][function_id.id()] = (
+            self._function_execution_info[driver_id][function_id.id()] = (
                 FunctionExecutionInfo(
                     function=function,
                     function_name=function_name,
@@ -185,12 +191,11 @@ class FunctionManager(object):
                 b"FunctionTable:" + function_id.id(), self._worker.worker_id)
 
     def get_execution_info(self, driver_id, function_id):
-        """
-        Get the FunctionExecutionInfo of a remote function.
+        """Get the FunctionExecutionInfo of a remote function.
 
         Args:
-            driver_id: id of the driver that the function belongs to.
-            function_id: id of the function to get.
+            driver_id: ID of the driver that the function belongs to.
+            function_id: ID of the function to get.
 
         Returns:
             A FunctionExecutionInfo object.
@@ -200,7 +205,7 @@ class FunctionManager(object):
         # long in this loop.
         with profiling.profile("wait_for_function", worker=self._worker):
             self._wait_for_function(function_id, driver_id)
-        return self.function_execution_info[driver_id][function_id.id()]
+        return self._function_execution_info[driver_id][function_id.id()]
 
     def _wait_for_function(self, function_id, driver_id, timeout=10):
         """Wait until the function to be executed is present on this worker.
@@ -224,7 +229,7 @@ class FunctionManager(object):
             with self._worker.lock:
                 if (self._worker.actor_id == ray.worker.NIL_ACTOR_ID
                         and (function_id.id() in
-                             self.function_execution_info[driver_id])):
+                             self._function_execution_info[driver_id])):
                     break
                 elif self._worker.actor_id != ray.worker.NIL_ACTOR_ID and (
                         self._worker.actor_id in self._worker.actors):
@@ -244,7 +249,7 @@ class FunctionManager(object):
             time.sleep(0.001)
 
     @classmethod
-    def function_predictor(cls, x):
+    def is_function_or_method(cls, x):
         return (inspect.isfunction(x) or inspect.ismethod(x) or is_cython(x))
 
     @classmethod
@@ -308,8 +313,8 @@ class FunctionManager(object):
             # This means that 'ray.init()' has not been called yet and so we
             # must cache the actor class definition and export it when
             # 'ray.init()' is called.
-            assert self._actor_to_export is not None
-            self._actor_to_export.append((key, actor_class_info))
+            assert self._actors_to_export is not None
+            self._actors_to_export.append((key, actor_class_info))
             # This caching code path is currently not used because we only
             # export actor class definitions lazily when we instantiate the
             # actor for the first time.
@@ -362,18 +367,19 @@ class FunctionManager(object):
 
         # Register the actor method executors.
         for actor_method_name in actor_method_names:
-            function_id = FunctionManager.compute_actor_method_function_id(
-                class_name, actor_method_name).id()
+            function_id = (
+                FunctionActorManager.compute_actor_method_function_id(
+                    class_name, actor_method_name).id())
             temporary_executor = self._make_actor_method_executor(
                 actor_method_name,
                 temporary_actor_method,
                 actor_imported=False)
-            self.function_execution_info[driver_id][function_id] = (
+            self._function_execution_info[driver_id][function_id] = (
                 FunctionExecutionInfo(
                     function=temporary_executor,
                     function_name=actor_method_name,
                     max_calls=0))
-            self.num_task_executions[driver_id][function_id] = 0
+            self._num_task_executions[driver_id][function_id] = 0
 
         try:
             unpickled_class = pickle.loads(pickled_class)
@@ -400,13 +406,15 @@ class FunctionManager(object):
                 unpickled_class)
 
             actor_methods = inspect.getmembers(
-                unpickled_class, predicate=FunctionManager.function_predictor)
+                unpickled_class,
+                predicate=FunctionActorManager.is_function_or_method)
             for actor_method_name, actor_method in actor_methods:
-                function_id = FunctionManager.compute_actor_method_function_id(
-                    class_name, actor_method_name).id()
+                function_id = (
+                    FunctionActorManager.compute_actor_method_function_id(
+                        class_name, actor_method_name).id())
                 executor = self._make_actor_method_executor(
                     actor_method_name, actor_method, actor_imported=True)
-                self.function_execution_info[driver_id][function_id] = (
+                self._function_execution_info[driver_id][function_id] = (
                     FunctionExecutionInfo(
                         function=executor,
                         function_name=actor_method_name,
@@ -467,7 +475,7 @@ class FunctionManager(object):
 
             # Execute the assigned method and save a checkpoint if necessary.
             try:
-                if FunctionManager.is_classmethod(method):
+                if FunctionActorManager.is_classmethod(method):
                     method_returns = method(*args)
                 else:
                     method_returns = method(actor, *args)
