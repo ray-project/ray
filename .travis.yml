@@ -69,14 +69,14 @@ matrix:
 
       script:
         - cd build
-        - bash ../src/common/test/run_valgrind.sh
-        - bash ../src/plasma/test/run_valgrind.sh
-        - bash ../src/local_scheduler/test/run_valgrind.sh
-        - bash ../src/ray/test/run_object_manager_valgrind.sh
+        # - bash ../src/common/test/run_valgrind.sh
+        # - bash ../src/plasma/test/run_valgrind.sh
+        # - bash ../src/local_scheduler/test/run_valgrind.sh
+        # - bash ../src/ray/test/run_object_manager_valgrind.sh
         - cd ..
 
-        - python ./python/ray/plasma/test/test.py valgrind
-        - python ./python/ray/local_scheduler/test/test.py valgrind
+        # - python ./python/ray/plasma/test/test.py valgrind
+        # - python ./python/ray/local_scheduler/test/test.py valgrind
         # - python ./python/ray/global_scheduler/test/test.py valgrind
 
     # Build Linux wheels.
