@@ -39,6 +39,15 @@ class ServerConnection {
   /// \return Status.
   ray::Status WriteMessage(int64_t type, int64_t length, const uint8_t *message);
 
+  /// Write a message to the client asynchronously.
+  ///
+  /// \param type The message type (e.g., a flatbuffer enum).
+  /// \param length The size in bytes of the message.
+  /// \param message A pointer to the message buffer.
+  /// \param handler A callback to run on write completion.
+  void WriteMessageAsync(int64_t type, int64_t length, const uint8_t *message,
+      const std::function<void(const ray::Status&)> &handler);
+
   /// Write a buffer to this connection.
   ///
   /// \param buffer The buffer.
@@ -53,8 +62,28 @@ class ServerConnection {
                   boost::system::error_code &ec);
 
  protected:
+  struct AsyncWriteData {
+    int64_t write_version;
+    int64_t write_type;
+    uint64_t write_length;
+    std::vector<uint8_t> write_message;
+    std::function<void(const ray::Status&)> handler;
+  };
+
   /// The socket connection to the server.
   boost::asio::basic_stream_socket<T> socket_;
+
+  // Max number of messages to write out at once.
+  const int async_write_max_messages_;
+
+  // List of pending messages to write.
+  std::list<std::unique_ptr<AsyncWriteData>> async_write_queue_;
+
+  // Whether we are in the middle of an async write.
+  bool async_write_in_flight_;
+
+ private:
+  void WriteSome();
 };
 
 template <typename T>

@@ -20,7 +20,10 @@ ray::Status TcpConnect(boost::asio::ip::tcp::socket &socket,
 
 template <class T>
 ServerConnection<T>::ServerConnection(boost::asio::basic_stream_socket<T> &&socket)
-    : socket_(std::move(socket)) {}
+    : socket_(std::move(socket)),
+      async_write_max_messages_(1),
+      async_write_queue_(),
+      async_write_in_flight_(false) {}
 
 template <class T>
 Status ServerConnection<T>::WriteBuffer(
@@ -78,9 +81,71 @@ ray::Status ServerConnection<T>::WriteMessage(int64_t type, int64_t length,
   message_buffers.push_back(boost::asio::buffer(&type, sizeof(type)));
   message_buffers.push_back(boost::asio::buffer(&length, sizeof(length)));
   message_buffers.push_back(boost::asio::buffer(message, length));
-  // Write the message and then wait for more messages.
-  // TODO(swang): Does this need to be an async write?
   return WriteBuffer(message_buffers);
+}
+
+template <class T>
+void ServerConnection<T>::WriteMessageAsync(int64_t type, int64_t length, const
+    uint8_t *message, const std::function<void(const ray::Status&)>
+    &handler) {
+  RAY_CHECK(connected_);
+
+  auto write_buffer = std::unique_ptr<AsyncWriteData>(new AsyncWriteData());
+  write_buffer->write_version = RayConfig::instance().ray_protocol_version();
+  write_buffer->write_type = type;
+  write_buffer->write_length = length;
+  write_buffer->write_message.resize(length);
+  write_buffer->write_message.assign(message, message + length);
+
+  // TODO(ekl) should we enforce a max number of async bytes outstanding here?
+  async_write_queue_.push_back(std::move(write_buffer));
+
+  if (!async_write_in_flight_) {
+    WriteSome();
+  }
+}
+
+template <class T>
+void ServerConnection<T>::WriteSome() {
+  RAY_CHECK(connected_);
+  // Make sure we were not writing to the socket.
+  RAY_CHECK(!async_write_in_flight_);
+  async_write_in_flight_ = true;
+
+  // Do an async write of everything currently in the queue to the socket.
+  std::vector<boost::asio::const_buffer> message_buffers;
+  size_t num_messages = 0;
+  for (const auto &write_buffer : async_write_queue_) {
+    message_buffers.push_back(boost::asio::buffer(&write_buffer->write_version, sizeof(write_buffer->write_version)));
+    message_buffers.push_back(boost::asio::buffer(&write_buffer->write_type, sizeof(write_buffer->write_type)));
+    message_buffers.push_back(boost::asio::buffer(&write_buffer->write_length, sizeof(write_buffer->write_length)));
+    message_buffers.push_back(boost::asio::buffer(write_buffer->write_message));
+    num_messages++;
+    if (num_messages >= async_write_max_messages_) {
+      break;
+    }
+  }
+  auto this_ptr = this->shared_from_this();
+  boost::asio::async_write(ServerConnection<T>::socket_, message_buffers,
+      [this, this_ptr, num_messages](const boost::system::error_code &error, size_t
+        bytes_transferred){
+    ray::Status status = ray::Status::OK();
+    if (error.value() != boost::system::errc::errc_t::success) {
+      status = boost_to_ray_status(error);
+    }
+    // Call the handlers for the written messages.
+    for (size_t i = 0; i < num_messages; i++) {
+      auto write_buffer = std::move(write_queue_.front());
+      write_buffer->handler(status);
+      write_queue_.pop_front();
+    }
+    // We finished writing, so mark that we're no longer doing an async write.
+    async_write_in_flight_ = false;
+    // If there is more to write, try to write the rest.
+    if (!async_write_queue_.empty()) {
+      WriteSome();
+    }
+  });
 }
 
 template <class T>
