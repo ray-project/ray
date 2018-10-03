@@ -31,7 +31,9 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
                    /*release_delay=*/2 * config_.max_sends),
       send_work_(send_service_),
       receive_work_(receive_service_),
-      connection_pool_() {
+      connection_pool_(),
+      object_directory_pull_callback_id_(UniqueID::from_random()),
+      gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {
   RAY_CHECK(config_.max_sends > 0);
   RAY_CHECK(config_.max_receives > 0);
   main_service_ = &main_service;
@@ -46,9 +48,9 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
 
 ObjectManager::ObjectManager(asio::io_service &main_service,
                              const ObjectManagerConfig &config,
-                             std::unique_ptr<ObjectDirectoryInterface> od)
+                             std::unique_ptr<ObjectDirectoryInterface> object_directory)
     : config_(config),
-      object_directory_(std::move(od)),
+      object_directory_(std::move(object_directory)),
       store_notification_(main_service, config_.store_socket_name),
       // release_delay of 2 * config_.max_sends is to ensure the pool does not release
       // an object prematurely whenever we reach the maximum number of sends.
@@ -56,7 +58,9 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
                    /*release_delay=*/2 * config_.max_sends),
       send_work_(send_service_),
       receive_work_(receive_service_),
-      connection_pool_() {
+      connection_pool_(),
+      object_directory_pull_callback_id_(UniqueID::from_random()),
+      gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {
   RAY_CHECK(config_.max_sends > 0);
   RAY_CHECK(config_.max_receives > 0);
   // TODO(hme) Client ID is never set with this constructor.
@@ -176,7 +180,7 @@ ray::Status ObjectManager::Pull(const ObjectID &object_id) {
         it->second.client_locations = client_ids;
         if (it->second.client_locations.empty()) {
           // The object locations are now empty, so we should wait for the next
-          // notification about a new object location.  Cancel the timer until
+          // notification about a new object location. Cancel the timer until
           // the next Pull attempt since there are no more clients to try.
           if (it->second.retry_timer != nullptr) {
             it->second.retry_timer->cancel();
@@ -187,7 +191,7 @@ ray::Status ObjectManager::Pull(const ObjectID &object_id) {
           if (!it->second.timer_set) {
             // The timer was not set, which means that we weren't trying any
             // clients. We now have some clients to try, so begin trying to
-            // Pull from one.  If we fail to receive an object within the pull
+            // Pull from one. If we fail to receive an object within the pull
             // timeout, then this will try the rest of the clients in the list
             // in succession.
             TryPull(object_id);
@@ -202,28 +206,44 @@ void ObjectManager::TryPull(const ObjectID &object_id) {
     return;
   }
 
+  auto &client_vector = it->second.client_locations;
+
   // The timer should never fire if there are no expected client locations.
-  RAY_CHECK(!it->second.client_locations.empty());
+  RAY_CHECK(!client_vector.empty());
   RAY_CHECK(local_objects_.count(object_id) == 0);
 
-  // Get the next client to try.
-  const ClientID client_id = std::move(it->second.client_locations.back());
-  it->second.client_locations.pop_back();
-  if (client_id == client_id_) {
-    // If we're trying to pull from ourselves, skip this client and try the
-    // next one.
-    RAY_LOG(ERROR) << client_id_ << " attempted to pull an object from itself.";
-    const ClientID client_id = std::move(it->second.client_locations.back());
-    it->second.client_locations.pop_back();
-    RAY_CHECK(client_id != client_id_);
+  // Choose a random client to pull the object from.
+  ClientID client_id = ClientID::nil();
+  while (client_vector.size() > 0) {
+    // Generate a random index.
+    std::uniform_int_distribution<int> distribution(0, client_vector.size() - 1);
+    int client_index = distribution(gen_);
+    const ClientID candidate_client_id = client_vector[client_index];
+    // Remove this client from the list by swapping it with the last value and
+    // removing the last value.
+    std::iter_swap(client_vector.begin() + client_index, client_vector.end() - 1);
+    client_vector.pop_back();
+
+    // If we've found a remote node manager that isn't this current node
+    // manager, continue.
+    if (candidate_client_id != client_id_) {
+      client_id = candidate_client_id;
+      break;
+    } else {
+      RAY_LOG(ERROR) << "The node manager with client ID " << client_id_
+                     << " is trying to pull object " << object_id
+                     << " but the object table suggests that this node manager "
+                     << "already has the object.";
+    }
   }
+  RAY_CHECK(!client_id.is_nil());
 
   // Try pulling from the client.
   PullEstablishConnection(object_id, client_id);
 
   // If there are more clients to try, try them in succession, with a timeout
   // in between each try.
-  if (!it->second.client_locations.empty()) {
+  if (!client_vector.empty()) {
     if (it->second.retry_timer == nullptr) {
       // Set the timer if we haven't already.
       it->second.retry_timer = std::unique_ptr<boost::asio::deadline_timer>(

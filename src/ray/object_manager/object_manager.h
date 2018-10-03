@@ -6,6 +6,7 @@
 #include <deque>
 #include <map>
 #include <memory>
+#include <random>
 #include <thread>
 
 #include <boost/asio.hpp>
@@ -76,10 +77,11 @@ class ObjectManager : public ObjectManagerInterface {
   ///
   /// \param main_service The main asio io_service.
   /// \param config ObjectManager configuration.
-  /// \param od An object implementing the object directory interface.
+  /// \param object_directory An object implementing the object directory
+  /// interface.
   explicit ObjectManager(boost::asio::io_service &main_service,
                          const ObjectManagerConfig &config,
-                         std::unique_ptr<ObjectDirectoryInterface> od);
+                         std::unique_ptr<ObjectDirectoryInterface> object_directory);
 
   ~ObjectManager();
 
@@ -336,9 +338,9 @@ class ObjectManager : public ObjectManagerInterface {
   std::unordered_map<ObjectID, object_manager::protocol::ObjectInfoT> local_objects_;
 
   /// This is used as the callback identifier in Pull for
-  /// SubscribeObjectLocations. We only need one identifier because we never need to
-  /// subscribe multiple times to the same object during Pull.
-  UniqueID object_directory_pull_callback_id_ = UniqueID::from_random();
+  /// SubscribeObjectLocations. We only need one identifier because we never
+  /// need to subscribe multiple times to the same object during Pull.
+  UniqueID object_directory_pull_callback_id_;
 
   /// A set of active wait requests.
   std::unordered_map<UniqueID, WaitState> active_wait_requests_;
@@ -350,7 +352,13 @@ class ObjectManager : public ObjectManagerInterface {
       std::unordered_map<ClientID, std::unique_ptr<boost::asio::deadline_timer>>>
       unfulfilled_push_requests_;
 
+  /// A mapping from the ID of objects this node manager is trying to fetch from
+  /// other node managers to relevant information (e.g., the remote node
+  /// managers to try getting the object from).
   std::unordered_map<ObjectID, PullRequest> pull_requests_;
+
+  /// Internally maintained random number generator.
+  std::mt19937_64 gen_;
 };
 
 }  // namespace ray
