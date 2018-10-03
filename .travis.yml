@@ -165,6 +165,9 @@ matrix:
         - python -m pytest -v python/ray/rllib/test/test_optimizers.py
         - python -m pytest -v python/ray/rllib/test/test_evaluators.py
 
+        # ray temp file tests
+        - python -m pytest -v test/tempfile_test.py
+
 
 install:
   - ./.travis/install-dependencies.sh
