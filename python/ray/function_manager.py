@@ -18,6 +18,8 @@ from ray import ray_constants
 from ray import cloudpickle as pickle
 from ray.utils import (
     is_cython,
+    is_function_or_method,
+    is_class_method,
     check_oversized_pickle,
     decode,
     format_error_message,
@@ -249,16 +251,6 @@ class FunctionActorManager(object):
             time.sleep(0.001)
 
     @classmethod
-    def is_function_or_method(cls, x):
-        return (inspect.isfunction(x) or inspect.ismethod(x) or is_cython(x))
-
-    @classmethod
-    def is_classmethod(cls, f):
-        """Returns whether the given method is a classmethod."""
-
-        return hasattr(f, "__self__") and f.__self__ is not None
-
-    @classmethod
     def compute_actor_method_function_id(cls, class_name, attr):
         """Get the function ID corresponding to an actor method.
 
@@ -352,7 +344,7 @@ class FunctionActorManager(object):
 
         # Create a temporary actor with some temporary methods so that if
         # the actor fails to be unpickled, the temporary actor can be used
-        # (just to produceerror messages and to prevent the driver from
+        # (just to produce error messages and to prevent the driver from
         # hanging).
         class TemporaryActor(object):
             pass
@@ -406,8 +398,7 @@ class FunctionActorManager(object):
                 unpickled_class)
 
             actor_methods = inspect.getmembers(
-                unpickled_class,
-                predicate=FunctionActorManager.is_function_or_method)
+                unpickled_class, predicate=is_function_or_method)
             for actor_method_name, actor_method in actor_methods:
                 function_id = (
                     FunctionActorManager.compute_actor_method_function_id(
@@ -475,7 +466,7 @@ class FunctionActorManager(object):
 
             # Execute the assigned method and save a checkpoint if necessary.
             try:
-                if FunctionActorManager.is_classmethod(method):
+                if is_class_method(method):
                     method_returns = method(*args)
                 else:
                     method_returns = method(actor, *args)

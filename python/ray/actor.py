@@ -274,7 +274,7 @@ class ActorClass(object):
         self._exported = False
 
         self._actor_methods = inspect.getmembers(
-            self._modified_class, FunctionActorManager.is_function_or_method)
+            self._modified_class, ray.utils.is_function_or_method)
         # Extract the signatures of each of the methods. This will be used
         # to catch some errors if the methods are called with inappropriate
         # arguments.
@@ -287,8 +287,7 @@ class ActorClass(object):
             # don't support, there may not be much the user can do about it.
             signature.check_signature_supported(method, warn=True)
             self._method_signatures[method_name] = signature.extract_signature(
-                method,
-                ignore_first=not FunctionActorManager.is_classmethod(method))
+                method, ignore_first=not ray.utils.is_class_method(method))
 
             # Set the default number of return values for this method.
             if hasattr(method, "__ray_num_return_vals__"):
