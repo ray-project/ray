@@ -117,6 +117,13 @@ matrix:
         - export PATH="$HOME/miniconda/bin:$PATH"
         - ./.travis/install-ray.sh
         - ./.travis/install-cython-examples.sh
+
+        - cd build
+        - bash ../src/common/test/run_tests.sh
+        - bash ../src/plasma/test/run_tests.sh
+        - bash ../src/local_scheduler/test/run_tests.sh
+        - cd ..
+
       script:
         - export PATH="$HOME/miniconda/bin:$PATH"
         # The following is needed so cloudpickle can find some of the
@@ -190,9 +197,6 @@ install:
   - ./src/ray/util/logging_test --gtest_filter=PrintLogTest*
   - ./src/ray/util/signal_test
 
-  - bash ../src/common/test/run_tests.sh
-  - bash ../src/plasma/test/run_tests.sh
-  - bash ../src/local_scheduler/test/run_tests.sh
   - cd ..
 
 script:
