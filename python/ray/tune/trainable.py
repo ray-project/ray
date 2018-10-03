@@ -77,6 +77,7 @@ class Trainable(object):
             self._result_logger = UnifiedLogger(self.config, self.logdir, None)
 
         self._iteration = 0
+        self._checkpoint_num = 0
         self._time_total = 0.0
         self._timesteps_total = None
         self._episodes_total = None
@@ -215,6 +216,8 @@ class Trainable(object):
         """
 
         checkpoint_path = checkpoint_dir or self.logdir
+        checkpoint_path = os.path.join(
+            checkpoint_path, "checkpoint_{}".format(self._checkpoint_num))
         checkpoint = self._save(checkpoint_path)
         saved_as_dict = False
         if isinstance(checkpoint, str):
@@ -225,10 +228,16 @@ class Trainable(object):
                                          "wb"))
         else:
             raise ValueError("Return value from `_save` must be dict or str.")
-        pickle.dump([
-            self._experiment_id, self._iteration, self._timesteps_total,
-            self._time_total, self._episodes_total, saved_as_dict
-        ], open(checkpoint_path + ".tune_metadata", "wb"))
+        pickle.dump({
+            "experiment_id": self._experiment_id,
+            "iteration": self._iteration,
+            "checkpoint_num": self._checkpoint_num,
+            "timesteps_total": self._timesteps_total,
+            "time_total": self._time_total,
+            "episodes_total": self._episodes_total,
+            "saved_as_dict": saved_as_dict
+        }, open(checkpoint_path + ".tune_metadata", "wb"))
+        self._checkpoint_num += 1
         return checkpoint_path
 
     def save_to_object(self):
@@ -273,12 +282,13 @@ class Trainable(object):
         """
 
         metadata = pickle.load(open(checkpoint_path + ".tune_metadata", "rb"))
-        self._experiment_id = metadata[0]
-        self._iteration = metadata[1]
-        self._timesteps_total = metadata[2]
-        self._time_total = metadata[3]
-        self._episodes_total = metadata[4]
-        saved_as_dict = metadata[5]
+        self._experiment_id = metadata["experiment_id"]
+        self._iteration = metadata["iteration"]
+        self._checkpoint_num = metadata["checkpoint_num"]
+        self._timesteps_total = metadata["timesteps_total"]
+        self._time_total = metadata["time_total"]
+        self._episodes_total = metadata["episodes_total"]
+        saved_as_dict = metadata["saved_as_dict"]
         if saved_as_dict:
             with open(checkpoint_path + ".tune_state", "rb") as loaded_state:
                 checkpoint_dict = pickle.load(loaded_state)
