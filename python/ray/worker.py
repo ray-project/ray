@@ -3,7 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 import atexit
-import collections
 import colorama
 import hashlib
 import inspect
@@ -33,6 +32,7 @@ import ray.plasma
 import ray.ray_constants as ray_constants
 from ray import import_thread
 from ray import profiling
+from ray.function_manager import FunctionActorManager
 from ray.utils import (
     binary_to_hex,
     check_oversized_pickle,
@@ -176,11 +176,6 @@ class RayGetArgumentError(Exception):
                     self.task_error))
 
 
-FunctionExecutionInfo = collections.namedtuple(
-    "FunctionExecutionInfo", ["function", "function_name", "max_calls"])
-"""FunctionExecutionInfo: A named tuple storing remote function information."""
-
-
 class Worker(object):
     """A class used to define the control flow of a worker process.
 
@@ -189,19 +184,9 @@ class Worker(object):
         functions outside of this class are considered exposed.
 
     Attributes:
-        function_execution_info (Dict[str, FunctionExecutionInfo]): A
-            dictionary mapping the name of a remote function to the remote
-            function itself. This is the set of remote functions that can be
-            executed by this worker.
         connected (bool): True if Ray has been started and False otherwise.
         mode: The mode of the worker. One of SCRIPT_MODE, LOCAL_MODE, and
             WORKER_MODE.
-        cached_remote_functions_and_actors: A list of information for exporting
-            remote functions and actor classes definitions that were defined
-            before the worker called connect. When the worker eventually does
-            call connect, if it is a driver, it will export these functions and
-            actors. If cached_remote_functions_and_actors is None, that means
-            that connect has been called already.
         cached_functions_to_run (List): A list of functions to run on all of
             the workers that should be exported as soon as connect is called.
         profiler: the profiler used to aggregate profiling information.
@@ -216,24 +201,15 @@ class Worker(object):
 
     def __init__(self):
         """Initialize a Worker object."""
-        # This field is a dictionary that maps a driver ID to a dictionary of
-        # functions (and information about those functions) that have been
-        # registered for that driver (this inner dictionary maps function IDs
-        # to a FunctionExecutionInfo object. This should only be used on
-        # workers that execute remote functions.
-        self.function_execution_info = collections.defaultdict(lambda: {})
         # This is a dictionary mapping driver ID to a dictionary that maps
         # remote function IDs for that driver to a counter of the number of
         # times that remote function has been executed on this worker. The
         # counter is incremented every time the function is executed on this
         # worker. When the counter reaches the maximum number of executions
         # allowed for a particular function, the worker is killed.
-        self.num_task_executions = collections.defaultdict(lambda: {})
         self.connected = False
         self.mode = None
-        self.cached_remote_functions_and_actors = []
         self.cached_functions_to_run = []
-        self.fetch_and_register_actor = None
         self.actor_init_error = None
         self.make_actor = None
         self.actors = {}
@@ -255,6 +231,7 @@ class Worker(object):
         self.serialization_context_map = {}
         # Identity of the driver that this worker is processing.
         self.task_driver_id = None
+        self.function_actor_manager = FunctionActorManager(self)
 
     def mark_actor_init_failed(self, error):
         """Called to mark this actor as failed during initialization."""
@@ -674,57 +651,6 @@ class Worker(object):
 
             return task.returns()
 
-    def export_remote_function(self, function_id, function_name, function,
-                               max_calls, decorated_function):
-        """Export a remote function.
-
-        Args:
-            function_id: The ID of the function.
-            function_name: The name of the function.
-            function: The raw undecorated function to export.
-            max_calls: The maximum number of times a given worker can execute
-                this function before exiting.
-            decorated_function: The decorated function (this is used to enable
-                the remote function to recursively call itself).
-        """
-        if self.mode != SCRIPT_MODE:
-            raise Exception("export_remote_function can only be called on a "
-                            "driver.")
-
-        key = (b"RemoteFunction:" + self.task_driver_id.id() + b":" +
-               function_id.id())
-
-        # Work around limitations of Python pickling.
-        function_name_global_valid = function.__name__ in function.__globals__
-        function_name_global_value = function.__globals__.get(
-            function.__name__)
-        # Allow the function to reference itself as a global variable
-        if not is_cython(function):
-            function.__globals__[function.__name__] = decorated_function
-        try:
-            pickled_function = pickle.dumps(function)
-        finally:
-            # Undo our changes
-            if function_name_global_valid:
-                function.__globals__[function.__name__] = (
-                    function_name_global_value)
-            else:
-                del function.__globals__[function.__name__]
-
-        check_oversized_pickle(pickled_function, function_name,
-                               "remote function", self)
-
-        self.redis_client.hmset(
-            key, {
-                "driver_id": self.task_driver_id.id(),
-                "function_id": function_id.id(),
-                "name": function_name,
-                "module": function.__module__,
-                "function": pickled_function,
-                "max_calls": max_calls
-            })
-        self.redis_client.rpush("Exports", key)
-
     def run_function_on_all_workers(self, function,
                                     run_on_other_drivers=False):
         """Run arbitrary code on all of the workers.
@@ -782,47 +708,6 @@ class Worker(object):
             # most likely hang. This could be fixed by making these three
             # operations into a transaction (or by implementing a custom
             # command that does all three things).
-
-    def _wait_for_function(self, function_id, driver_id, timeout=10):
-        """Wait until the function to be executed is present on this worker.
-
-        This method will simply loop until the import thread has imported the
-        relevant function. If we spend too long in this loop, that may indicate
-        a problem somewhere and we will push an error message to the user.
-
-        If this worker is an actor, then this will wait until the actor has
-        been defined.
-
-        Args:
-            function_id (str): The ID of the function that we want to execute.
-            driver_id (str): The ID of the driver to push the error message to
-                if this times out.
-        """
-        start_time = time.time()
-        # Only send the warning once.
-        warning_sent = False
-        while True:
-            with self.lock:
-                if (self.actor_id == NIL_ACTOR_ID
-                        and (function_id.id() in
-                             self.function_execution_info[driver_id])):
-                    break
-                elif self.actor_id != NIL_ACTOR_ID and (
-                        self.actor_id in self.actors):
-                    break
-                if time.time() - start_time > timeout:
-                    warning_message = ("This worker was asked to execute a "
-                                       "function that it does not have "
-                                       "registered. You may have to restart "
-                                       "Ray.")
-                    if not warning_sent:
-                        ray.utils.push_error_to_driver(
-                            self,
-                            ray_constants.WAIT_FOR_FUNCTION_PUSH_ERROR,
-                            warning_message,
-                            driver_id=driver_id)
-                    warning_sent = True
-            time.sleep(0.001)
 
     def _get_arguments_for_execution(self, function_name, serialized_args):
         """Retrieve the arguments for the remote function.
@@ -891,7 +776,7 @@ class Worker(object):
 
             self.put_object(object_ids[i], outputs[i])
 
-    def _process_task(self, task):
+    def _process_task(self, task, function_execution_info):
         """Execute a task assigned to this worker.
 
         This method deserializes a task from the scheduler, and attempts to
@@ -913,10 +798,8 @@ class Worker(object):
         return_object_ids = task.returns()
         if task.actor_id().id() != NIL_ACTOR_ID:
             dummy_return_id = return_object_ids.pop()
-        function_executor = self.function_execution_info[
-            self.task_driver_id.id()][function_id.id()].function
-        function_name = self.function_execution_info[self.task_driver_id.id()][
-            function_id.id()].function_name
+        function_executor = function_execution_info.function
+        function_name = function_execution_info.function_name
 
         # Get task arguments from the object store.
         try:
@@ -926,12 +809,12 @@ class Worker(object):
                 arguments = self._get_arguments_for_execution(
                     function_name, args)
         except (RayGetError, RayGetArgumentError) as e:
-            self._handle_process_task_failure(function_id, return_object_ids,
-                                              e, None)
+            self._handle_process_task_failure(function_id, function_name,
+                                              return_object_ids, e, None)
             return
         except Exception as e:
             self._handle_process_task_failure(
-                function_id, return_object_ids, e,
+                function_id, function_name, return_object_ids, e,
                 ray.utils.format_error_message(traceback.format_exc()))
             return
 
@@ -950,8 +833,9 @@ class Worker(object):
             task_exception = task.actor_id().id() == NIL_ACTOR_ID
             traceback_str = ray.utils.format_error_message(
                 traceback.format_exc(), task_exception=task_exception)
-            self._handle_process_task_failure(function_id, return_object_ids,
-                                              e, traceback_str)
+            self._handle_process_task_failure(function_id, function_name,
+                                              return_object_ids, e,
+                                              traceback_str)
             return
 
         # Store the outputs in the local object store.
@@ -966,13 +850,11 @@ class Worker(object):
                 self._store_outputs_in_objstore(return_object_ids, outputs)
         except Exception as e:
             self._handle_process_task_failure(
-                function_id, return_object_ids, e,
+                function_id, function_name, return_object_ids, e,
                 ray.utils.format_error_message(traceback.format_exc()))
 
-    def _handle_process_task_failure(self, function_id, return_object_ids,
-                                     error, backtrace):
-        function_name = self.function_execution_info[self.task_driver_id.id()][
-            function_id.id()].function_name
+    def _handle_process_task_failure(self, function_id, function_name,
+                                     return_object_ids, error, backtrace):
         failure_object = RayTaskError(function_name, error, backtrace)
         failure_objects = [
             failure_object for _ in range(len(return_object_ids))
@@ -1014,7 +896,7 @@ class Worker(object):
             time.sleep(0.001)
 
         with self.lock:
-            self.fetch_and_register_actor(key, self)
+            self.function_actor_manager.fetch_and_register_actor(key)
 
     def _wait_for_and_process_task(self, task):
         """Wait for a task to be ready and process the task.
@@ -1031,11 +913,8 @@ class Worker(object):
             self._become_actor(task)
             return
 
-        # Wait until the function to be executed has actually been registered
-        # on this worker. We will push warnings to the user if we spend too
-        # long in this loop.
-        with profiling.profile("wait_for_function", worker=self):
-            self._wait_for_function(function_id, driver_id)
+        execution_info = self.function_actor_manager.get_execution_info(
+            driver_id, function_id)
 
         # Execute the task.
         # TODO(rkn): Consider acquiring this lock with a timeout and pushing a
@@ -1043,9 +922,7 @@ class Worker(object):
         # because that may indicate that the system is hanging, and it'd be
         # good to know where the system is hanging.
         with self.lock:
-
-            function_name = (self.function_execution_info[driver_id][
-                function_id.id()]).function_name
+            function_name = execution_info.function_name
             if not self.use_raylet:
                 extra_data = {
                     "function_name": function_name,
@@ -1058,7 +935,7 @@ class Worker(object):
                     "task_id": task.task_id().hex()
                 }
             with profiling.profile("task", extra_data=extra_data, worker=self):
-                self._process_task(task)
+                self._process_task(task, execution_info)
 
         # In the non-raylet code path, push all of the log events to the global
         # state store. In the raylet code path, this is done periodically in a
@@ -1067,11 +944,11 @@ class Worker(object):
             self.profiler.flush_profile_data()
 
         # Increase the task execution counter.
-        self.num_task_executions[driver_id][function_id.id()] += 1
+        self.function_actor_manager.increase_task_counter(
+            driver_id, function_id.id())
 
-        reached_max_executions = (
-            self.num_task_executions[driver_id][function_id.id()] == self.
-            function_execution_info[driver_id][function_id.id()].max_calls)
+        reached_max_executions = (self.function_actor_manager.get_task_counter(
+            driver_id, function_id.id()) == execution_info.max_calls)
         if reached_max_executions:
             self.local_scheduler_client.disconnect()
             os._exit(0)
@@ -2112,7 +1989,6 @@ def connect(info,
     error_message = "Perhaps you called ray.init twice by accident?"
     assert not worker.connected, error_message
     assert worker.cached_functions_to_run is not None, error_message
-    assert worker.cached_remote_functions_and_actors is not None, error_message
     # Initialize some fields.
     worker.worker_id = random_string()
 
@@ -2350,18 +2226,9 @@ def connect(info,
         # Export cached functions_to_run.
         for function in worker.cached_functions_to_run:
             worker.run_function_on_all_workers(function)
-        # Export cached remote functions to the workers.
-        for cached_type, info in worker.cached_remote_functions_and_actors:
-            if cached_type == "remote_function":
-                info._export()
-            elif cached_type == "actor":
-                (key, actor_class_info) = info
-                ray.actor.publish_actor_class_to_key(key, actor_class_info,
-                                                     worker)
-            else:
-                assert False, "This code should be unreachable."
+        # Export cached remote functions and actors to the workers.
+        worker.function_actor_manager.export_cached()
     worker.cached_functions_to_run = None
-    worker.cached_remote_functions_and_actors = None
 
 
 def disconnect(worker=global_worker):
@@ -2372,7 +2239,7 @@ def disconnect(worker=global_worker):
     # tests.
     worker.connected = False
     worker.cached_functions_to_run = []
-    worker.cached_remote_functions_and_actors = []
+    worker.function_actor_manager.reset_cache()
     worker.serialization_context_map.clear()
 
 
