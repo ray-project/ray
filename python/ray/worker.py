@@ -27,6 +27,7 @@ import ray.remote_function
 import ray.serialization as serialization
 import ray.services as services
 import ray.signature
+import ray.tempfile_services as tempfile_services
 import ray.local_scheduler
 import ray.plasma
 import ray.ray_constants as ray_constants
@@ -1528,7 +1529,10 @@ def _init(address_info=None,
           plasma_directory=None,
           huge_pages=False,
           include_webui=True,
-          use_raylet=None):
+          use_raylet=None,
+          plasma_store_socket_name=None,
+          raylet_socket_name=None,
+          temp_dir=None):
     """Helper method to connect to an existing Ray cluster or start a new one.
 
     This method handles two cases. Either a Ray cluster already exists and we
@@ -1584,6 +1588,12 @@ def _init(address_info=None,
         include_webui: Boolean flag indicating whether to start the web
             UI, which is a Jupyter notebook.
         use_raylet: True if the new raylet code path should be used.
+        plasma_store_socket_name (str): If provided, it will specify the socket
+            name used by the plasma store.
+        raylet_socket_name (str): If provided, it will specify the socket path
+            used by the raylet process.
+        temp_dir (str): If provided, it will specify the root temporary
+            directory for the Ray process.
 
     Returns:
         Address information about the started processes.
@@ -1658,7 +1668,10 @@ def _init(address_info=None,
             plasma_directory=plasma_directory,
             huge_pages=huge_pages,
             include_webui=include_webui,
-            use_raylet=use_raylet)
+            use_raylet=use_raylet,
+            plasma_store_socket_name=plasma_store_socket_name,
+            raylet_socket_name=raylet_socket_name,
+            temp_dir=temp_dir)
     else:
         if redis_address is None:
             raise Exception("When connecting to an existing cluster, "
@@ -1690,6 +1703,15 @@ def _init(address_info=None,
         if huge_pages:
             raise Exception("When connecting to an existing cluster, "
                             "huge_pages must not be provided.")
+        if temp_dir is not None:
+            raise Exception("When connecting to an existing cluster, "
+                            "temp_dir must not be provided.")
+        if plasma_store_socket_name is not None:
+            raise Exception("When connecting to an existing cluster, "
+                            "plasma_store_socket_name must not be provided.")
+        if raylet_socket_name is not None:
+            raise Exception("When connecting to an existing cluster, "
+                            "raylet_socket_name must not be provided.")
         # Get the node IP address if one is not provided.
         if node_ip_address is None:
             node_ip_address = services.get_node_ip_address(redis_address)
@@ -1719,6 +1741,9 @@ def _init(address_info=None,
         else:
             driver_address_info["raylet_socket_name"] = (
                 address_info["raylet_socket_names"][0])
+
+    # We only pass `temp_dir` to a worker (WORKER_MODE).
+    # It can't be a worker here.
     connect(
         driver_address_info,
         object_id_seed=object_id_seed,
@@ -1750,7 +1775,10 @@ def init(redis_address=None,
          use_raylet=None,
          configure_logging=True,
          logging_level=logging.INFO,
-         logging_format=ray_constants.LOGGER_FORMAT):
+         logging_format=ray_constants.LOGGER_FORMAT,
+         plasma_store_socket_name=None,
+         raylet_socket_name=None,
+         temp_dir=None):
     """Connect to an existing Ray cluster or start one and connect to it.
 
     This method handles two cases. Either a Ray cluster already exists and we
@@ -1815,6 +1843,12 @@ def init(redis_address=None,
         logging_level: Logging level, default will be loging.INFO.
         logging_format: Logging format, default will be "%(message)s"
             which means only contains the message.
+        plasma_store_socket_name (str): If provided, it will specify the socket
+            name used by the plasma store.
+        raylet_socket_name (str): If provided, it will specify the socket path
+            used by the raylet process.
+        temp_dir (str): If provided, it will specify the root temporary
+            directory for the Ray process.
 
     Returns:
         Address information about the started processes.
@@ -1863,7 +1897,10 @@ def init(redis_address=None,
         huge_pages=huge_pages,
         include_webui=include_webui,
         object_store_memory=object_store_memory,
-        use_raylet=use_raylet)
+        use_raylet=use_raylet,
+        plasma_store_socket_name=plasma_store_socket_name,
+        raylet_socket_name=raylet_socket_name,
+        temp_dir=temp_dir)
     for hook in _post_init_hooks:
         hook()
     return ret
@@ -2135,8 +2172,9 @@ def connect(info,
         else:
             redirect_worker_output = 0
         if redirect_worker_output:
-            log_stdout_file, log_stderr_file = services.new_log_files(
-                "worker", True)
+            log_stdout_file, log_stderr_file = (
+                tempfile_services.new_worker_redirected_log_file(
+                    worker.worker_id))
             sys.stdout = log_stdout_file
             sys.stderr = log_stderr_file
             services.record_log_files_in_redis(
