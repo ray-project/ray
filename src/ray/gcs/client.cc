@@ -132,7 +132,8 @@ AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
 AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
                                const ClientID &client_id, bool is_test_client = false,
                                const std::string &password = "")
-    : AsyncGcsClient(address, port, client_id, CommandType::kChain, is_test_client) {}
+    : AsyncGcsClient(address, port, client_id, CommandType::kChain, is_test_client,
+                     password) {}
 #else
 AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
                                const ClientID &client_id, bool is_test_client = false,
