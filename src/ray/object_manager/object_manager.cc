@@ -288,13 +288,15 @@ ray::Status ObjectManager::PullSendRequest(const ObjectID &object_id,
   auto message = object_manager_protocol::CreatePullRequestMessage(
       fbb, fbb.CreateString(client_id_.binary()), fbb.CreateString(object_id.binary()));
   fbb.Finish(message);
-  Status status = conn->WriteMessage(
+  conn->WriteMessageAsync(
       static_cast<int64_t>(object_manager_protocol::MessageType::PullRequest),
-      fbb.GetSize(), fbb.GetBufferPointer());
-  if (status.ok()) {
-    connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::MESSAGE, conn);
-  }
-  return status;
+      fbb.GetSize(), fbb.GetBufferPointer(), [this](ray::Status status) {
+          // TODO(ekl) what do we do if this fails?
+          if (status.ok()) {
+            connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::MESSAGE, conn);
+          }
+      });
+  return ray::status::OK;
 }
 
 void ObjectManager::HandlePushTaskTimeout(const ObjectID &object_id,
