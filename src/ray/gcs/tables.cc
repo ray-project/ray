@@ -11,20 +11,20 @@ static const std::string kChainTableAppendCommand = "RAY.CHAIN.TABLE_APPEND";
 static const std::string kTableAddCommand = "RAY.TABLE_ADD";
 static const std::string kChainTableAddCommand = "RAY.CHAIN.TABLE_ADD";
 
-std::string GetLogAppendCommand(const ray::gcs::CommandType command_type) {
-  if (command_type == ray::gcs::CommandType::kRegular) {
+std::string GetLogAppendCommand(const GcsCommandType command_type) {
+  if (command_type == GcsCommandType::kRegular) {
     return kTableAppendCommand;
   } else {
-    RAY_CHECK(command_type == ray::gcs::CommandType::kChain);
+    RAY_CHECK(command_type == GcsCommandType::kChain);
     return kChainTableAppendCommand;
   }
 }
 
-std::string GetTableAddCommand(const ray::gcs::CommandType command_type) {
-  if (command_type == ray::gcs::CommandType::kRegular) {
+std::string GetTableAddCommand(const GcsCommandType command_type) {
+  if (command_type == GcsCommandType::kRegular) {
     return kTableAddCommand;
   } else {
-    RAY_CHECK(command_type == ray::gcs::CommandType::kChain);
+    RAY_CHECK(command_type == GcsCommandType::kChain);
     return kChainTableAddCommand;
   }
 }

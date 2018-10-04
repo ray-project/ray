@@ -10,18 +10,18 @@ killall plasma_store_server
 
 LaunchRedis() {
     port=$1
-    if [[ "${RAY_USE_NEW_GCS}" = "on" ]]; then
+    # if [[ "${RAY_USE_NEW_GCS}" = "on" ]]; then
         ./src/credis/redis/src/redis-server \
             --loglevel warning \
             --loadmodule ./src/credis/build/src/libmember.so \
             --loadmodule ./src/common/redis_module/libray_redis_module.so \
             --port $port &
-    else
-        ./src/common/thirdparty/redis/src/redis-server \
-            --loglevel warning \
-            --loadmodule ./src/common/redis_module/libray_redis_module.so \
-            --port $port &
-    fi
+    # else
+    #     ./src/common/thirdparty/redis/src/redis-server \
+    #         --loglevel warning \
+    #         --loadmodule ./src/common/redis_module/libray_redis_module.so \
+    #         --port $port &
+    # fi
 }
 
 # Start the Redis shards.

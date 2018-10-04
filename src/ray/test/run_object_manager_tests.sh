@@ -24,15 +24,15 @@ CORE_DIR="$RAY_ROOT/build"
 REDIS_MODULE="$CORE_DIR/src/common/redis_module/libray_redis_module.so"
 REDIS_DIR="$CORE_DIR/src/common/thirdparty/redis/src"
 
-if [[ "${RAY_USE_NEW_GCS}" = "on" ]]; then
+# if [[ "${RAY_USE_NEW_GCS}" = "on" ]]; then
     REDIS_SERVER="$CORE_DIR/src/credis/redis/src/redis-server"
 
     CREDIS_MODULE="$CORE_DIR/src/credis/build/src/libmember.so"
     LOAD_MODULE_ARGS="--loadmodule ${CREDIS_MODULE} --loadmodule ${REDIS_MODULE}"
-else
-    REDIS_SERVER="${REDIS_DIR}/redis-server"
-    LOAD_MODULE_ARGS="--loadmodule ${REDIS_MODULE}"
-fi
+# else
+#     REDIS_SERVER="${REDIS_DIR}/redis-server"
+#     LOAD_MODULE_ARGS="--loadmodule ${REDIS_MODULE}"
+# fi
 
 STORE_EXEC="$CORE_DIR/src/plasma/plasma_store_server"
 

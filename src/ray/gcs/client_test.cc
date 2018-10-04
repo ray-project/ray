@@ -27,7 +27,7 @@ static inline void flushall_redis(void) {
 
 class TestGcs : public ::testing::Test {
  public:
-  TestGcs(CommandType command_type) : num_callbacks_(0), command_type_(command_type) {
+  TestGcs(GcsCommandType command_type) : num_callbacks_(0), command_type_(command_type) {
     client_ = std::make_shared<gcs::AsyncGcsClient>("127.0.0.1", 6379, command_type_,
                                                     /*is_test_client=*/true);
     job_id_ = JobID::from_random();
@@ -48,7 +48,7 @@ class TestGcs : public ::testing::Test {
 
  protected:
   uint64_t num_callbacks_;
-  gcs::CommandType command_type_;
+  GcsCommandType command_type_;
   std::shared_ptr<gcs::AsyncGcsClient> client_;
   JobID job_id_;
 };
@@ -57,7 +57,7 @@ TestGcs *test;
 
 class TestGcsWithAe : public TestGcs {
  public:
-  TestGcsWithAe(CommandType command_type) : TestGcs(command_type) {
+  TestGcsWithAe(GcsCommandType command_type) : TestGcs(command_type) {
     loop_ = aeCreateEventLoop(1024);
     RAY_CHECK_OK(client_->primary_context()->AttachToEventLoop(loop_));
     for (auto &context : client_->shard_contexts()) {
@@ -65,7 +65,7 @@ class TestGcsWithAe : public TestGcs {
     }
   }
 
-  TestGcsWithAe() : TestGcsWithAe(CommandType::kRegular) {}
+  TestGcsWithAe() : TestGcsWithAe(GcsCommandType::kRegular) {}
 
   ~TestGcsWithAe() override {
     // Destroy the client first since it has a reference to the event loop.
@@ -81,17 +81,17 @@ class TestGcsWithAe : public TestGcs {
 
 class TestGcsWithChainAe : public TestGcsWithAe {
  public:
-  TestGcsWithChainAe() : TestGcsWithAe(gcs::CommandType::kChain){};
+  TestGcsWithChainAe() : TestGcsWithAe(GcsCommandType::kChain){};
 };
 
 class TestGcsWithAsio : public TestGcs {
  public:
-  TestGcsWithAsio(CommandType command_type)
+  TestGcsWithAsio(GcsCommandType command_type)
       : TestGcs(command_type), io_service_(), work_(io_service_) {
     RAY_CHECK_OK(client_->Attach(io_service_));
   }
 
-  TestGcsWithAsio() : TestGcsWithAsio(CommandType::kRegular) {}
+  TestGcsWithAsio() : TestGcsWithAsio(GcsCommandType::kRegular) {}
 
   ~TestGcsWithAsio() {
     // Destroy the client first since it has a reference to the event loop.
@@ -109,7 +109,7 @@ class TestGcsWithAsio : public TestGcs {
 
 class TestGcsWithChainAsio : public TestGcsWithAsio {
  public:
-  TestGcsWithChainAsio() : TestGcsWithAsio(gcs::CommandType::kChain){};
+  TestGcsWithChainAsio() : TestGcsWithAsio(GcsCommandType::kChain){};
 };
 
 void TestTableLookup(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> client) {
@@ -156,7 +156,7 @@ void TestTableLookup(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> c
 
 TEST_MACRO(TestGcsWithAe, TestTableLookup);
 TEST_MACRO(TestGcsWithAsio, TestTableLookup);
-#if RAY_USE_NEW_GCS
+#if 1
 TEST_MACRO(TestGcsWithChainAe, TestTableLookup);
 TEST_MACRO(TestGcsWithChainAsio, TestTableLookup);
 #endif
@@ -233,7 +233,7 @@ void TestTableLookupFailure(const JobID &job_id,
 
 TEST_MACRO(TestGcsWithAe, TestTableLookupFailure);
 TEST_MACRO(TestGcsWithAsio, TestTableLookupFailure);
-#if RAY_USE_NEW_GCS
+#if 1
 TEST_MACRO(TestGcsWithChainAe, TestTableLookupFailure);
 TEST_MACRO(TestGcsWithChainAsio, TestTableLookupFailure);
 #endif
@@ -369,7 +369,7 @@ void TestTaskTable(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> cli
 
 TEST_MACRO(TestGcsWithAe, TestTaskTable);
 TEST_MACRO(TestGcsWithAsio, TestTaskTable);
-#if RAY_USE_NEW_GCS
+#if 1
 TEST_MACRO(TestGcsWithChainAe, TestTaskTable);
 TEST_MACRO(TestGcsWithChainAsio, TestTaskTable);
 #endif
@@ -422,7 +422,7 @@ void TestTableSubscribeAll(const JobID &job_id,
 
 TEST_MACRO(TestGcsWithAe, TestTableSubscribeAll);
 TEST_MACRO(TestGcsWithAsio, TestTableSubscribeAll);
-#if RAY_USE_NEW_GCS
+#if 1
 TEST_MACRO(TestGcsWithChainAe, TestTableSubscribeAll);
 TEST_MACRO(TestGcsWithChainAsio, TestTableSubscribeAll);
 #endif
@@ -556,7 +556,7 @@ void TestTableSubscribeId(const JobID &job_id,
 
 TEST_MACRO(TestGcsWithAe, TestTableSubscribeId);
 TEST_MACRO(TestGcsWithAsio, TestTableSubscribeId);
-#if RAY_USE_NEW_GCS
+#if 1
 TEST_MACRO(TestGcsWithChainAe, TestTableSubscribeId);
 TEST_MACRO(TestGcsWithChainAsio, TestTableSubscribeId);
 #endif
@@ -711,7 +711,7 @@ void TestTableSubscribeCancel(const JobID &job_id,
 
 TEST_MACRO(TestGcsWithAe, TestTableSubscribeCancel);
 TEST_MACRO(TestGcsWithAsio, TestTableSubscribeCancel);
-#if RAY_USE_NEW_GCS
+#if 1
 TEST_MACRO(TestGcsWithChainAe, TestTableSubscribeCancel);
 TEST_MACRO(TestGcsWithChainAsio, TestTableSubscribeCancel);
 #endif

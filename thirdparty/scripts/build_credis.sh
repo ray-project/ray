@@ -26,7 +26,7 @@ else
     BUILD_LEVELDB_CONFIG="-DBUILD_SHARED_LIBS=on"
 fi
 
-if [[ "${RAY_USE_NEW_GCS}" = "on" ]]; then
+# if [[ "${RAY_USE_NEW_GCS}" = "on" ]]; then
   pushd "$TP_DIR/pkg/"
     if [[ ! -d "credis" ]]; then
       git clone -q --recursive https://github.com/ray-project/credis
@@ -71,4 +71,4 @@ if [[ "${RAY_USE_NEW_GCS}" = "on" ]]; then
     cp build/src/libmaster.so $ROOT_DIR/build/src/credis/build/src/libmaster.so
     cp build/src/libmember.so $ROOT_DIR/build/src/credis/build/src/libmember.so
   popd
-fi
+# fi

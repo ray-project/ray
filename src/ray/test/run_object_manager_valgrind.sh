@@ -26,15 +26,15 @@ REDIS_MODULE="$CORE_DIR/src/common/redis_module/libray_redis_module.so"
 STORE_EXEC="$CORE_DIR/src/plasma/plasma_store_server"
 VALGRIND_CMD="valgrind --track-origins=yes --leak-check=full --show-leak-kinds=all --leak-check-heuristics=stdstring --error-exitcode=1"
 
-if [[ "${RAY_USE_NEW_GCS}" = "on" ]]; then
+# if [[ "${RAY_USE_NEW_GCS}" = "on" ]]; then
     REDIS_SERVER="$CORE_DIR/src/credis/redis/src/redis-server"
 
     CREDIS_MODULE="$CORE_DIR/src/credis/build/src/libmember.so"
     LOAD_MODULE_ARGS="--loadmodule ${CREDIS_MODULE} --loadmodule ${REDIS_MODULE}"
-else
-    REDIS_SERVER="${REDIS_DIR}/redis-server"
-    LOAD_MODULE_ARGS="--loadmodule ${REDIS_MODULE}"
-fi
+# else
+#     REDIS_SERVER="${REDIS_DIR}/redis-server"
+#     LOAD_MODULE_ARGS="--loadmodule ${REDIS_MODULE}"
+# fi
 
 echo "$STORE_EXEC"
 echo "${REDIS_SERVER} --loglevel warning ${LOAD_MODULE_ARGS} --port 6379"

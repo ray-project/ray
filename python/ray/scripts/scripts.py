@@ -168,6 +168,11 @@ def cli(logging_level, logging_format):
     default=None,
     help="use the raylet code path")
 @click.option(
+    "--use-credis",
+    is_flag=True,
+    default=None,
+    help="use the credis code path")
+@click.option(
     "--no-redirect-worker-output",
     is_flag=True,
     default=False,
@@ -193,8 +198,9 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
           redis_max_clients, redis_shard_ports, object_manager_port,
           object_store_memory, num_workers, num_cpus, num_gpus, resources,
           head, no_ui, block, plasma_directory, huge_pages, autoscaling_config,
-          use_raylet, no_redirect_worker_output, no_redirect_output,
-          plasma_store_socket_name, raylet_socket_name, temp_dir):
+          use_raylet, use_credis, no_redirect_worker_output,
+          no_redirect_output, plasma_store_socket_name, raylet_socket_name,
+          temp_dir):
     # Convert hostnames to numerical IP address.
     if node_ip_address is not None:
         node_ip_address = services.address_to_ip(node_ip_address)
@@ -274,6 +280,7 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             huge_pages=huge_pages,
             autoscaling_config=autoscaling_config,
             use_raylet=use_raylet,
+            use_credis=use_credis,
             plasma_store_socket_name=plasma_store_socket_name,
             raylet_socket_name=raylet_socket_name,
             temp_dir=temp_dir)
@@ -346,6 +353,7 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             plasma_directory=plasma_directory,
             huge_pages=huge_pages,
             use_raylet=use_raylet,
+            use_credis=use_credis,
             plasma_store_socket_name=plasma_store_socket_name,
             raylet_socket_name=raylet_socket_name,
             temp_dir=temp_dir)

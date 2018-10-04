@@ -70,7 +70,7 @@ namespace ray {
 namespace gcs {
 
 AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
-                               const ClientID &client_id, CommandType command_type,
+                               const ClientID &client_id, GcsCommandType command_type,
                                bool is_test_client = false) {
   primary_context_ = std::make_shared<RedisContext>();
 
@@ -122,24 +122,27 @@ AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
   // testing, requires us to connect to Redis first.
 }
 
-#if RAY_USE_NEW_GCS
+// #if RAY_USE_NEW_GCS
 // Use of kChain currently only applies to Table::Add which affects only the
 // task table, and when RAY_USE_NEW_GCS is set at compile time.
+// TODO(zongheng): use RayConfig to pass a run-time flag?
 AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
                                const ClientID &client_id, bool is_test_client = false)
-    : AsyncGcsClient(address, port, client_id, CommandType::kChain, is_test_client) {}
-#else
-AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
-                               const ClientID &client_id, bool is_test_client = false)
-    : AsyncGcsClient(address, port, client_id, CommandType::kRegular, is_test_client) {}
-#endif  // RAY_USE_NEW_GCS
+    : AsyncGcsClient(address, port, client_id, GcsCommandType::kChain, is_test_client) {}
+// #else
+// AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
+//                                const ClientID &client_id, bool is_test_client = false)
+//     : AsyncGcsClient(address, port, client_id, GcsCommandType::kRegular,
+//     is_test_client)
+//     {}
+// #endif  // RAY_USE_NEW_GCS
 
 AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
-                               CommandType command_type)
+                               GcsCommandType command_type)
     : AsyncGcsClient(address, port, ClientID::from_random(), command_type) {}
 
 AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
-                               CommandType command_type, bool is_test_client)
+                               GcsCommandType command_type, bool is_test_client)
     : AsyncGcsClient(address, port, ClientID::from_random(), command_type,
                      is_test_client) {}
 

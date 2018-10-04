@@ -31,11 +31,11 @@ class RAY_EXPORT AsyncGcsClient {
   /// \param command_type GCS command type.  If CommandType::kChain, chain-replicated
   /// versions of the tables might be used, if available.
   AsyncGcsClient(const std::string &address, int port, const ClientID &client_id,
-                 CommandType command_type, bool is_test_client);
+                 GcsCommandType command_type, bool is_test_client);
   AsyncGcsClient(const std::string &address, int port, const ClientID &client_id,
                  bool is_test_client);
-  AsyncGcsClient(const std::string &address, int port, CommandType command_type);
-  AsyncGcsClient(const std::string &address, int port, CommandType command_type,
+  AsyncGcsClient(const std::string &address, int port, GcsCommandType command_type);
+  AsyncGcsClient(const std::string &address, int port, GcsCommandType command_type,
                  bool is_test_client);
   AsyncGcsClient(const std::string &address, int port);
   AsyncGcsClient(const std::string &address, int port, bool is_test_client);
@@ -97,7 +97,7 @@ class RAY_EXPORT AsyncGcsClient {
   std::unique_ptr<DriverTable> driver_table_;
   std::unique_ptr<RedisAsioClient> asio_async_auxiliary_client_;
   std::unique_ptr<RedisAsioClient> asio_subscribe_auxiliary_client_;
-  CommandType command_type_;
+  GcsCommandType command_type_;
 };
 
 class SyncGcsClient {

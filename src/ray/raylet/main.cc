@@ -1,6 +1,7 @@
 #include <iostream>
 
 #include "common/state/ray_config.h"
+// #include "ray/gcs/tables.h"
 #include "ray/raylet/raylet.h"
 #include "ray/status.h"
 
@@ -19,7 +20,7 @@ int main(int argc, char *argv[]) {
                                          ray::RayLog::ShutDownRayLog, argv[0], RAY_INFO,
                                          /*log_dir=*/"");
   ray::RayLog::InstallFailureSignalHandler();
-  RAY_CHECK(argc == 11);
+  RAY_CHECK(argc == 12);
 
   const std::string raylet_socket_name = std::string(argv[1]);
   const std::string store_socket_name = std::string(argv[2]);
@@ -31,6 +32,7 @@ int main(int argc, char *argv[]) {
   const std::string static_resource_list = std::string(argv[8]);
   const std::string python_worker_command = std::string(argv[9]);
   const std::string java_worker_command = std::string(argv[10]);
+  const std::string use_credis = std::string(argv[11]);
 
   // Configuration for the node manager.
   ray::raylet::NodeManagerConfig node_manager_config;
@@ -92,7 +94,12 @@ int main(int argc, char *argv[]) {
                  << "object_chunk_size = " << object_manager_config.object_chunk_size;
 
   //  initialize mock gcs & object directory
-  auto gcs_client = std::make_shared<ray::gcs::AsyncGcsClient>(redis_address, redis_port);
+  GcsCommandType command_type = GcsCommandType::kRegular;
+  if (use_credis == "true") {
+    command_type = GcsCommandType::kChain;
+  }
+  auto gcs_client =
+      std::make_shared<ray::gcs::AsyncGcsClient>(redis_address, redis_port, command_type);
   RAY_LOG(DEBUG) << "Initializing GCS client "
                  << gcs_client->client_table().GetLocalClientId();
 

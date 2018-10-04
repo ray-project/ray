@@ -8,7 +8,7 @@
 #include "redismodule.h"
 #include "task.h"
 
-#if RAY_USE_NEW_GCS
+// #if RAY_USE_NEW_GCS
 // Under this flag, ray-project/credis will be loaded.  Specifically, via
 // "path/redis-server --loadmodule <credis module> --loadmodule <current
 // libray_redis_module>" (dlopen() under the hood) will a definition of "module"
@@ -19,7 +19,7 @@
 // default.
 #include "chain_module.h"
 extern RedisChainModule module;
-#endif
+// #endif
 
 // Various tables are maintained in redis:
 //
@@ -644,7 +644,7 @@ int TableAdd_RedisCommand(RedisModuleCtx *ctx,
   return TableAdd_DoPublish(ctx, argv, argc);
 }
 
-#if RAY_USE_NEW_GCS
+// #if RAY_USE_NEW_GCS
 int ChainTableAdd_RedisCommand(RedisModuleCtx *ctx,
                                RedisModuleString **argv,
                                int argc) {
@@ -652,7 +652,7 @@ int ChainTableAdd_RedisCommand(RedisModuleCtx *ctx,
   return module.ChainReplicate(ctx, argv, argc, /*node_func=*/TableAdd_DoWrite,
                                /*tail_func=*/TableAdd_DoPublish);
 }
-#endif
+// #endif
 
 int TableAppend_DoWrite(RedisModuleCtx *ctx,
                         RedisModuleString **argv,
@@ -757,7 +757,7 @@ int TableAppend_RedisCommand(RedisModuleCtx *ctx,
   return TableAppend_DoPublish(ctx, argv, argc);
 }
 
-#if RAY_USE_NEW_GCS
+// #if RAY_USE_NEW_GCS
 int ChainTableAppend_RedisCommand(RedisModuleCtx *ctx,
                                   RedisModuleString **argv,
                                   int argc) {
@@ -766,7 +766,7 @@ int ChainTableAppend_RedisCommand(RedisModuleCtx *ctx,
                                /*node_func=*/TableAppend_DoWrite,
                                /*tail_func=*/TableAppend_DoPublish);
 }
-#endif
+// #endif
 
 /// A helper function to create and finish a GcsTableEntry, based on the
 /// current value or values at the given key.
@@ -1866,7 +1866,7 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx,
     return REDISMODULE_ERR;
   }
 
-#if RAY_USE_NEW_GCS
+  // #if RAY_USE_NEW_GCS
   // Chain-enabled commands that depend on ray-project/credis.
   if (RedisModule_CreateCommand(ctx, "ray.chain.table_add",
                                 ChainTableAdd_RedisCommand, "write pubsub", 0,
@@ -1878,7 +1878,7 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx,
                                 0, 0, 0) == REDISMODULE_ERR) {
     return REDISMODULE_ERR;
   }
-#endif
+  // #endif
 
   return REDISMODULE_OK;
 }

@@ -33,4 +33,8 @@ constexpr char kObjectTablePrefix[] = "ObjectTable";
 /// Prefix for the task table keys in redis.
 constexpr char kTaskTablePrefix[] = "TaskTable";
 
+/// Specifies whether commands issued to a table should be regular or
+/// chain-replicated (when available).
+enum class GcsCommandType { kRegular, kChain };
+
 #endif  // RAY_CONSTANTS_H_

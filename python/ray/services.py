@@ -421,11 +421,11 @@ def start_redis(node_ip_address,
                 num_redis_shards=1,
                 redis_max_clients=None,
                 use_raylet=False,
+                use_credis=False,
                 redirect_output=False,
                 redirect_worker_output=False,
                 cleanup=True,
-                protected_mode=False,
-                use_credis=None):
+                protected_mode=False):
     """Start the Redis global state store.
 
     Args:
@@ -467,31 +467,19 @@ def start_redis(node_ip_address,
         raise Exception("The number of Redis shard ports does not match the "
                         "number of Redis shards.")
 
-    if use_credis is None:
-        use_credis = ("RAY_USE_NEW_GCS" in os.environ)
-    if not use_credis:
-        assigned_port, _ = _start_redis_instance(
-            node_ip_address=node_ip_address,
-            port=port,
-            redis_max_clients=redis_max_clients,
-            stdout_file=redis_stdout_file,
-            stderr_file=redis_stderr_file,
-            cleanup=cleanup,
-            protected_mode=protected_mode)
-    else:
-        assigned_port, _ = _start_redis_instance(
-            node_ip_address=node_ip_address,
-            port=port,
-            redis_max_clients=redis_max_clients,
-            stdout_file=redis_stdout_file,
-            stderr_file=redis_stderr_file,
-            cleanup=cleanup,
-            protected_mode=protected_mode,
-            executable=CREDIS_EXECUTABLE,
-            # It is important to load the credis module BEFORE the ray module,
-            # as the latter contains an extern declaration that the former
-            # supplies.
-            modules=[CREDIS_MASTER_MODULE, REDIS_MODULE])
+    assigned_port, _ = _start_redis_instance(
+        node_ip_address=node_ip_address,
+        port=port,
+        redis_max_clients=redis_max_clients,
+        stdout_file=redis_stdout_file,
+        stderr_file=redis_stderr_file,
+        cleanup=cleanup,
+        protected_mode=protected_mode,
+        executable=CREDIS_EXECUTABLE,
+        # It is important to load the credis module BEFORE the ray module,
+        # as the latter contains an extern declaration that the former
+        # supplies.
+        modules=[CREDIS_MASTER_MODULE, REDIS_MODULE])
     if port is not None:
         assert assigned_port == port
     port = assigned_port
@@ -521,32 +509,23 @@ def start_redis(node_ip_address,
     for i in range(num_redis_shards):
         redis_stdout_file, redis_stderr_file = new_redis_log_file(
             redirect_output, shard_number=i)
-        if not use_credis:
-            redis_shard_port, _ = _start_redis_instance(
-                node_ip_address=node_ip_address,
-                port=redis_shard_ports[i],
-                redis_max_clients=redis_max_clients,
-                stdout_file=redis_stdout_file,
-                stderr_file=redis_stderr_file,
-                cleanup=cleanup,
-                protected_mode=protected_mode)
-        else:
-            assert num_redis_shards == 1, \
-                "For now, RAY_USE_NEW_GCS supports 1 shard, and credis "\
-                "supports 1-node chain for that shard only."
-            redis_shard_port, _ = _start_redis_instance(
-                node_ip_address=node_ip_address,
-                port=redis_shard_ports[i],
-                redis_max_clients=redis_max_clients,
-                stdout_file=redis_stdout_file,
-                stderr_file=redis_stderr_file,
-                cleanup=cleanup,
-                protected_mode=protected_mode,
-                executable=CREDIS_EXECUTABLE,
-                # It is important to load the credis module BEFORE the ray
-                # module, as the latter contains an extern declaration that the
-                # former supplies.
-                modules=[CREDIS_MEMBER_MODULE, REDIS_MODULE])
+
+        assert num_redis_shards == 1, \
+            "For now, RAY_USE_NEW_GCS supports 1 shard, and credis "\
+            "supports 1-node chain for that shard only."
+        redis_shard_port, _ = _start_redis_instance(
+            node_ip_address=node_ip_address,
+            port=redis_shard_ports[i],
+            redis_max_clients=redis_max_clients,
+            stdout_file=redis_stdout_file,
+            stderr_file=redis_stderr_file,
+            cleanup=cleanup,
+            protected_mode=protected_mode,
+            executable=CREDIS_EXECUTABLE,
+            # It is important to load the credis module BEFORE the ray
+            # module, as the latter contains an extern declaration that the
+            # former supplies.
+            modules=[CREDIS_MEMBER_MODULE, REDIS_MODULE])
 
         if redis_shard_ports[i] is not None:
             assert redis_shard_port == redis_shard_ports[i]
@@ -627,7 +606,7 @@ def _start_redis_instance(node_ip_address="127.0.0.1",
     Raises:
         Exception: An exception is raised if Redis could not be started.
     """
-    assert os.path.isfile(executable)
+    assert os.path.isfile(executable), executable
     if modules is None:
         modules = [REDIS_MODULE]
     for module in modules:
@@ -973,7 +952,8 @@ def start_raylet(redis_address,
                  use_profiler=False,
                  stdout_file=None,
                  stderr_file=None,
-                 cleanup=True):
+                 cleanup=True,
+                 use_credis=False):
     """Start a raylet, which is a combined local scheduler and object manager.
 
     Args:
@@ -1042,6 +1022,7 @@ def start_raylet(redis_address,
         resource_argument,
         start_worker_command,
         "",  # Worker command for Java, not needed for Python.
+        "true" if use_credis else "",
     ]
 
     if use_valgrind:
@@ -1327,6 +1308,7 @@ def start_ray_processes(address_info=None,
                         huge_pages=False,
                         autoscaling_config=None,
                         use_raylet=False,
+                        use_credis=False,
                         plasma_store_socket_name=None,
                         raylet_socket_name=None,
                         temp_dir=None):
@@ -1441,6 +1423,7 @@ def start_ray_processes(address_info=None,
             num_redis_shards=num_redis_shards,
             redis_max_clients=redis_max_clients,
             use_raylet=use_raylet,
+            use_credis=use_credis,
             redirect_output=True,
             redirect_worker_output=redirect_worker_output,
             cleanup=cleanup,
@@ -1599,7 +1582,8 @@ def start_ray_processes(address_info=None,
                     num_workers=workers_per_local_scheduler[i],
                     stdout_file=raylet_stdout_file,
                     stderr_file=raylet_stderr_file,
-                    cleanup=cleanup))
+                    cleanup=cleanup,
+                    use_credis=use_credis))
 
     if not use_raylet:
         # Start any workers that the local scheduler has not already started.
@@ -1653,6 +1637,7 @@ def start_ray_node(node_ip_address,
                    plasma_directory=None,
                    huge_pages=False,
                    use_raylet=False,
+                   use_credis=False,
                    plasma_store_socket_name=None,
                    raylet_socket_name=None,
                    temp_dir=None):
@@ -1690,6 +1675,7 @@ def start_ray_node(node_ip_address,
             Store with hugetlbfs support. Requires plasma_directory.
         use_raylet: True if the new raylet code path should be used. This is
             not supported yet.
+        use_credis: True if the new credis code path should be used.
         plasma_store_socket_name (str): If provided, it will specify the socket
             name used by the plasma store.
         raylet_socket_name (str): If provided, it will specify the socket path
@@ -1720,6 +1706,7 @@ def start_ray_node(node_ip_address,
         plasma_directory=plasma_directory,
         huge_pages=huge_pages,
         use_raylet=use_raylet,
+        use_credis=use_credis,
         plasma_store_socket_name=plasma_store_socket_name,
         raylet_socket_name=raylet_socket_name,
         temp_dir=temp_dir)
@@ -1746,6 +1733,7 @@ def start_ray_head(address_info=None,
                    huge_pages=False,
                    autoscaling_config=None,
                    use_raylet=False,
+                   use_credis=False,
                    plasma_store_socket_name=None,
                    raylet_socket_name=None,
                    temp_dir=None):
@@ -1836,6 +1824,7 @@ def start_ray_head(address_info=None,
         huge_pages=huge_pages,
         autoscaling_config=autoscaling_config,
         use_raylet=use_raylet,
+        use_credis=use_credis,
         plasma_store_socket_name=plasma_store_socket_name,
         raylet_socket_name=raylet_socket_name,
         temp_dir=temp_dir)

@@ -7,18 +7,18 @@ set -e
 set -x
 
 # Start Redis.
-if [[ "${RAY_USE_NEW_GCS}" = "on" ]]; then
+# if [[ "${RAY_USE_NEW_GCS}" = "on" ]]; then
     ./src/credis/redis/src/redis-server \
         --loglevel warning \
         --loadmodule ./src/credis/build/src/libmember.so \
         --loadmodule ./src/common/redis_module/libray_redis_module.so \
         --port 6379 &
-else
-    ./src/common/thirdparty/redis/src/redis-server \
-        --loglevel warning \
-        --loadmodule ./src/common/redis_module/libray_redis_module.so \
-        --port 6379 &
-fi
+# else
+#     ./src/common/thirdparty/redis/src/redis-server \
+#         --loglevel warning \
+#         --loadmodule ./src/common/redis_module/libray_redis_module.so \
+#         --port 6379 &
+# fi
 sleep 1s
 
 ./src/ray/gcs/client_test

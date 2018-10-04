@@ -31,10 +31,6 @@ class RedisContext;
 
 class AsyncGcsClient;
 
-/// Specifies whether commands issued to a table should be regular or chain-replicated
-/// (when available).
-enum class CommandType { kRegular, kChain };
-
 /// \class PubsubInterface
 ///
 /// The interface for a pubsub storage system. The client of a storage system
@@ -211,8 +207,8 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
   /// table, otherwise -1.
   int64_t subscribe_callback_index_;
 
-  /// Commands to a GCS table can either be regular (default) or chain-replicated.
-  CommandType command_type_ = CommandType::kRegular;
+  /// GcsCommands to a GCS table can either be regular (default) or chain-replicated.
+  GcsCommandType command_type_ = GcsCommandType::kRegular;
 };
 
 template <typename ID, typename Data>
@@ -319,7 +315,7 @@ class ObjectTable : public Log<ObjectID, ObjectTableData> {
   };
 
   ObjectTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
-              AsyncGcsClient *client, gcs::CommandType command_type)
+              AsyncGcsClient *client, GcsCommandType command_type)
       : ObjectTable(contexts, client) {
     command_type_ = command_type;
   };
@@ -426,7 +422,7 @@ class TaskTable : public Table<TaskID, ray::protocol::Task> {
   }
 
   TaskTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
-            AsyncGcsClient *client, gcs::CommandType command_type)
+            AsyncGcsClient *client, GcsCommandType command_type)
       : TaskTable(contexts, client) {
     command_type_ = command_type;
   };
@@ -444,7 +440,7 @@ class TaskTable : public Table<TaskID, TaskTableData> {
   };
 
   TaskTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
-            AsyncGcsClient *client, gcs::CommandType command_type)
+            AsyncGcsClient *client, GcsCommandType command_type)
       : TaskTable(contexts, client) {
     command_type_ = command_type;
   }

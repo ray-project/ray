@@ -49,12 +49,12 @@ ray_autoscaler_files = [
     "ray/autoscaler/gcp/example-full.yaml",
 ]
 
-if "RAY_USE_NEW_GCS" in os.environ and os.environ["RAY_USE_NEW_GCS"] == "on":
-    ray_files += [
-        "ray/core/src/credis/build/src/libmember.so",
-        "ray/core/src/credis/build/src/libmaster.so",
-        "ray/core/src/credis/redis/src/redis-server"
-    ]
+# if "RAY_USE_NEW_GCS" in os.environ and os.environ["RAY_USE_NEW_GCS"] == "on":
+ray_files += [
+    "ray/core/src/credis/build/src/libmember.so",
+    "ray/core/src/credis/build/src/libmaster.so",
+    "ray/core/src/credis/redis/src/redis-server"
+]
 
 # The UI files are mandatory if the INCLUDE_UI environment variable equals 1.
 # Otherwise, they are optional.
