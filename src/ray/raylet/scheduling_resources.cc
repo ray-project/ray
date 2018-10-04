@@ -145,7 +145,7 @@ const std::string ResourceSet::ToString() const {
   it++;
 
   // Add the remaining elements to the string (along with a comma).
-  for (; it != resource_capacity_.end() ; ++it) {
+  for (; it != resource_capacity_.end(); ++it) {
     return_string += ",{" + it->first + "," + std::to_string(it->second) + "}";
   }
 
@@ -420,7 +420,7 @@ std::string ResourceIdSet::ToString() const {
   it++;
 
   // Add the remaining elements to the string (along with a comma).
-  for (; it != available_resources_.end() ; ++it) {
+  for (; it != available_resources_.end(); ++it) {
     return_string += (", " + it->first + ": {" + it->second.ToString() + "}");
   }
 
