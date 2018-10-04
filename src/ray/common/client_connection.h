@@ -63,7 +63,7 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection<T>
                   boost::system::error_code &ec);
 
  protected:
-  struct AsyncWriteData {
+  struct AsyncWriteBuffer {
     int64_t write_version;
     int64_t write_type;
     uint64_t write_length;
@@ -78,7 +78,7 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection<T>
   const int async_write_max_messages_;
 
   // List of pending messages to write.
-  std::list<std::unique_ptr<AsyncWriteData>> async_write_queue_;
+  std::list<std::unique_ptr<AsyncWriteBuffer>> async_write_queue_;
 
   // Whether we are in the middle of an async write.
   bool async_write_in_flight_;

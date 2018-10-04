@@ -89,12 +89,13 @@ void ServerConnection<T>::WriteMessageAsync(int64_t type, int64_t length, const
     uint8_t *message, const std::function<void(const ray::Status&)>
     &handler) {
 
-  auto write_buffer = std::unique_ptr<AsyncWriteData>(new AsyncWriteData());
+  auto write_buffer = std::unique_ptr<AsyncWriteBuffer>(new AsyncWriteBuffer());
   write_buffer->write_version = RayConfig::instance().ray_protocol_version();
   write_buffer->write_type = type;
   write_buffer->write_length = length;
   write_buffer->write_message.resize(length);
   write_buffer->write_message.assign(message, message + length);
+  write_buffer->handler = handler;
 
   // TODO(ekl) should we enforce a max number of async bytes outstanding here?
   async_write_queue_.push_back(std::move(write_buffer));
