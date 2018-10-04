@@ -371,6 +371,19 @@ def test_actor_worker_dying_nothing_in_progress(ray_start_regular):
         ray.get(task2)
 
 
+def test_actor_scope_or_intentionally_killed_message(ray_start_regular):
+    @ray.remote
+    class Actor(object):
+        pass
+
+    a = Actor.remote()
+    a = Actor.remote()
+    a.__ray_terminate__.remote()
+    time.sleep(1)
+    assert len(ray.error_info()) == 0, (
+        "Should not have propogated an error - {}".format(ray.error_info()))
+
+
 @pytest.fixture
 def ray_start_object_store_memory():
     # Start the Ray processes.
