@@ -187,18 +187,21 @@ def cleanup():
         logger.warning("Ray did not shut down properly.")
 
 
-def all_processes_alive(exclude=[]):
+def all_processes_alive(exclude=None):
     """Check if all of the processes are still alive.
 
     Args:
         exclude: Don't check the processes whose types are in this list.
     """
+
+    if exclude is None:
+        exclude = []
     for process_type, processes in all_processes.items():
         # Note that p.poll() returns the exit code that the process exited
         # with, so an exit code of None indicates that the process is still
         # alive.
         processes_alive = [p.poll() is None for p in processes]
-        if (not all(processes_alive) and process_type not in exclude):
+        if not all(processes_alive) and process_type not in exclude:
             logger.warning(
                 "A process of type {} has died.".format(process_type))
             return False
@@ -358,7 +361,7 @@ def _compute_version_info():
     ray_version = ray.__version__
     python_version = ".".join(map(str, sys.version_info[:3]))
     pyarrow_version = pyarrow.__version__
-    return (ray_version, python_version, pyarrow_version)
+    return ray_version, python_version, pyarrow_version
 
 
 def _put_version_info_in_redis(redis_client):
