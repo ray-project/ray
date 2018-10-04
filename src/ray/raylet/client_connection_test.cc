@@ -1,4 +1,5 @@
 #include <list>
+#include <memory>
 
 #include <boost/asio.hpp>
 #include <boost/asio/error.hpp>
@@ -63,8 +64,10 @@ TEST_F(ClientConnectionTest, SimpleAsyncWrite) {
         std::shared_ptr<LocalClientConnection> client, int64_t message_type,
         const uint8_t *message) {};
 
+    std::shared_ptr<LocalClientConnection> reader = NULL;
+
     MessageHandler<boost::asio::local::stream_protocol> message_handler =
-        [&msg1, &msg2, &msg3, &num_messages](
+        [&msg1, &msg2, &msg3, &num_messages, &reader](
             std::shared_ptr<LocalClientConnection> client, int64_t message_type,
             const uint8_t *message) {
                 if (num_messages == 0) {
@@ -75,24 +78,25 @@ TEST_F(ClientConnectionTest, SimpleAsyncWrite) {
                     ASSERT_TRUE(!std::memcmp(msg3, message, 5));
                 }
                 num_messages += 1;
+                if (num_messages < 3) {
+                    reader->ProcessMessages();
+                }
             };
 
-    auto conn1 = LocalClientConnection::Create(
-        client_handler, noop_handler, std::move(in_), "conn1");
+    auto writer = LocalClientConnection::Create(
+        client_handler, noop_handler, std::move(in_), "writer");
 
-    auto conn2 = LocalClientConnection::Create(
-        client_handler, message_handler, std::move(out_), "conn2");
+    reader = LocalClientConnection::Create(
+        client_handler, message_handler, std::move(out_), "reader");
 
     std::function<void(const ray::Status&)> callback = [this](const ray::Status &status) {
         RAY_CHECK_OK(status);
     };
 
-    conn1->WriteMessageAsync(0, 5, msg1, callback);
-    conn1->WriteMessageAsync(0, 5, msg2, callback);
-    conn1->WriteMessageAsync(0, 5, msg3, callback);
-    conn2->ProcessMessages();
-    conn2->ProcessMessages();
-    conn2->ProcessMessages();
+    writer->WriteMessageAsync(0, 5, msg1, callback);
+    writer->WriteMessageAsync(0, 5, msg2, callback);
+    writer->WriteMessageAsync(0, 5, msg3, callback);
+    reader->ProcessMessages();
     io_service_.run();
     ASSERT_EQ(num_messages, 3);
 }
