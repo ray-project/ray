@@ -135,7 +135,7 @@ ray.get(ray.ObjectID({}))
 # This test checks that when a worker dies in the middle of a get, the
 # plasma store and manager will not die.
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY", False),
+    os.environ.get("RAY_USE_XRAY") != "0",
     reason="This test does not work with xray yet.")
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
@@ -262,7 +262,7 @@ ray.wait([ray.ObjectID({})])
 # This test checks that when a worker dies in the middle of a wait, the
 # plasma store and manager will not die.
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY", False),
+    os.environ.get("RAY_USE_XRAY") != "0",
     reason="This test does not work with xray yet.")
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
