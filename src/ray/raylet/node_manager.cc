@@ -945,17 +945,20 @@ void NodeManager::ScheduleTasks(
       // TODO(rkn): Define this constant somewhere else.
       std::string type = "infeasible_task";
       std::ostringstream error_message;
-      error_message << "The task with ID " << task.GetTaskSpecification().TaskId()
-                    << " is infeasible and cannot currently be executed. "
-                    << "It requested "
-                    << task.GetTaskSpecification().GetRequiredResources().ToString();
+      error_message
+          << "The task with ID " << task.GetTaskSpecification().TaskId()
+          << " is infeasible and cannot currently be executed. It requires "
+          << task.GetTaskSpecification().GetRequiredResources().ToString()
+          << " for execution and "
+          << task.GetTaskSpecification().GetRequiredPlacementResources().ToString()
+          << " for placement. Check the client table to view node resources.";
       RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
           task.GetTaskSpecification().DriverId(), type, error_message.str(),
           current_time_ms()));
     }
     // Assert that this placeable task is not feasible locally (necessary but not
     // sufficient).
-    RAY_CHECK(!task.GetTaskSpecification().GetRequiredResources().IsSubset(
+    RAY_CHECK(!task.GetTaskSpecification().GetRequiredPlacementResources().IsSubset(
         cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()]
             .GetTotalResources()));
   }
@@ -1009,7 +1012,7 @@ void NodeManager::TreatTaskAsFailed(const TaskSpecification &spec) {
 
 void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineage,
                              bool forwarded) {
-  const TaskID task_id = task.GetTaskSpecification().TaskId();
+  const TaskID &task_id = task.GetTaskSpecification().TaskId();
   if (local_queues_.HasTask(task_id)) {
     RAY_LOG(WARNING) << "Submitted task " << task_id
                      << " is already queued and will not be reconstructed. This is most "
@@ -1287,6 +1290,8 @@ void NodeManager::AssignTask(Task &task) {
       this->cluster_resource_map_[my_client_id].Acquire(spec.GetRequiredResources()));
 
   if (spec.IsActorCreationTask()) {
+    // Check that we are not placing an actor creation task on a node with 0 CPUs.
+    RAY_CHECK(cluster_resource_map_[my_client_id].GetTotalResources().GetNumCpus() != 0);
     worker->SetLifetimeResourceIds(acquired_resources);
   } else {
     worker->SetTaskResourceIds(acquired_resources);

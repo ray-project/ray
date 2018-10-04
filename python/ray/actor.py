@@ -373,6 +373,15 @@ class ActorClass(object):
                 self._num_cpus, self._num_gpus, self._resources, num_cpus,
                 num_gpus, resources)
 
+            # If the actor methods require CPU resources, then set the required
+            # placement resources. If actor_placement_resources is empty, then
+            # the required placement resources will be the same as resources.
+            actor_placement_resources = {}
+            assert self._actor_method_cpus in [0, 1]
+            if self._actor_method_cpus == 1:
+                actor_placement_resources = resources.copy()
+                actor_placement_resources["CPU"] += 1
+
             creation_args = [self._class_id]
             function_id = compute_actor_creation_function_id(self._class_id)
             [actor_cursor] = worker.submit_task(
@@ -380,7 +389,8 @@ class ActorClass(object):
                 creation_args,
                 actor_creation_id=actor_id,
                 num_return_vals=1,
-                resources=resources)
+                resources=resources,
+                placement_resources=actor_placement_resources)
 
         # We initialize the actor counter at 1 to account for the actor
         # creation task.
@@ -566,6 +576,7 @@ class ActorHandle(object):
             # We add one for the dummy return ID.
             num_return_vals=num_return_vals + 1,
             resources={"CPU": self._ray_actor_method_cpus},
+            placement_resources={},
             driver_id=self._ray_actor_driver_id)
         # Update the actor counter and cursor to reflect the most recent
         # invocation.

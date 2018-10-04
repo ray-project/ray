@@ -60,6 +60,9 @@ table TaskInfo {
   // The required_resources vector indicates the quantities of the different
   // resources required by this task.
   required_resources: [ResourcePair];
+  // The resources required for placing this task on a node. If this is empty,
+  // then the placement resources are equal to the required_resources.
+  required_placement_resources: [ResourcePair];
   // The language that this task belongs to
   language: TaskLanguage;
   // Function descriptor, which is a list of strings that can

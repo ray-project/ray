@@ -209,6 +209,11 @@ public class RayletClientImpl implements RayletClient {
           ResourcePair.createResourcePair(fbb, keyOffset, entry.getValue());
     }
     int requiredResourcesOffset = fbb.createVectorOfTables(requiredResourcesOffsets);
+
+    int[] requiredPlacementResourcesOffsets = new int[0];
+    int requiredPlacementResourcesOffset =
+        fbb.createVectorOfTables(requiredPlacementResourcesOffsets);
+
     int[] functionDescriptorOffsets = new int[]{
         fbb.createString(task.functionDescriptor.className),
         fbb.createString(task.functionDescriptor.name),
@@ -222,7 +227,8 @@ public class RayletClientImpl implements RayletClient {
         actorCreateIdOffset, actorCreateDummyIdOffset,
         actorIdOffset, actorHandleIdOffset, actorCounter,
         false, functionIdOffset,
-        argsOffset, returnsOffset, requiredResourcesOffset, TaskLanguage.JAVA,
+        argsOffset, returnsOffset, requiredResourcesOffset,
+        requiredPlacementResourcesOffset, TaskLanguage.JAVA,
         functionDescriptorOffset);
     fbb.finish(root);
     ByteBuffer buffer = fbb.dataBuffer();
