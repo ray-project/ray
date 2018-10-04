@@ -1268,55 +1268,56 @@ void NodeManager::AssignTask(Task &task) {
   worker->Connection()->WriteMessageAsync(
       static_cast<int64_t>(protocol::MessageType::ExecuteTask), fbb.GetSize(),
       fbb.GetBufferPointer(), [this, worker, spec, &task](ray::Status status) {
-          if (status.ok()) {
-            // We successfully assigned the task to the worker.
-            worker->AssignTaskId(spec.TaskId());
-            worker->AssignDriverId(spec.DriverId());
-            // If the task was an actor task, then record this execution to guarantee
-            // consistency in the case of reconstruction.
-            if (spec.IsActorTask()) {
-              auto actor_entry = actor_registry_.find(spec.ActorId());
-              RAY_CHECK(actor_entry != actor_registry_.end());
-              auto execution_dependency = actor_entry->second.GetExecutionDependency();
-              // The execution dependency is initialized to the actor creation task's
-              // return value, and is subsequently updated to the assigned tasks'
-              // return values, so it should never be nil.
-              RAY_CHECK(!execution_dependency.is_nil());
-              // Update the task's execution dependencies to reflect the actual
-              // execution order, to support deterministic reconstruction.
-              // NOTE(swang): The update of an actor task's execution dependencies is
-              // performed asynchronously. This means that if this node manager dies,
-              // we may lose updates that are in flight to the task table. We only
-              // guarantee deterministic reconstruction ordering for tasks whose
-              // updates are reflected in the task table.
-              task.SetExecutionDependencies({execution_dependency});
-              // Extend the frontier to include the executing task.
-              actor_entry->second.ExtendFrontier(spec.ActorHandleId(), spec.ActorDummyObject());
-            }
-            // We started running the task, so the task is ready to write to GCS.
-            if (!lineage_cache_.AddReadyTask(task)) {
-              RAY_LOG(WARNING)
-                  << "Task " << spec.TaskId()
-                  << " already in lineage cache. This is most likely due to reconstruction.";
-            }
-            // Mark the task as running.
-            // (See design_docs/task_states.rst for the state transition diagram.)
-            local_queues_.QueueRunningTasks(std::vector<Task>({task}));
-            // Notify the task dependency manager that we no longer need this task's
-            // object dependencies.
-            task_dependency_manager_.UnsubscribeDependencies(spec.TaskId());
-          } else {
-            RAY_LOG(WARNING) << "Failed to send task to worker, disconnecting client";
-            // We failed to send the task to the worker, so disconnect the worker.
-            ProcessClientMessage(worker->Connection(),
-                                 static_cast<int64_t>(protocol::MessageType::DisconnectClient),
-                                 nullptr);
-            // Queue this task for future assignment. The task will be assigned to a
-            // worker once one becomes available.
-            // (See design_docs/task_states.rst for the state transition diagram.)
-            local_queues_.QueueReadyTasks(std::vector<Task>({task}));
-            DispatchTasks();
+        if (status.ok()) {
+          // We successfully assigned the task to the worker.
+          worker->AssignTaskId(spec.TaskId());
+          worker->AssignDriverId(spec.DriverId());
+          // If the task was an actor task, then record this execution to guarantee
+          // consistency in the case of reconstruction.
+          if (spec.IsActorTask()) {
+            auto actor_entry = actor_registry_.find(spec.ActorId());
+            RAY_CHECK(actor_entry != actor_registry_.end());
+            auto execution_dependency = actor_entry->second.GetExecutionDependency();
+            // The execution dependency is initialized to the actor creation task's
+            // return value, and is subsequently updated to the assigned tasks'
+            // return values, so it should never be nil.
+            RAY_CHECK(!execution_dependency.is_nil());
+            // Update the task's execution dependencies to reflect the actual
+            // execution order, to support deterministic reconstruction.
+            // NOTE(swang): The update of an actor task's execution dependencies is
+            // performed asynchronously. This means that if this node manager dies,
+            // we may lose updates that are in flight to the task table. We only
+            // guarantee deterministic reconstruction ordering for tasks whose
+            // updates are reflected in the task table.
+            task.SetExecutionDependencies({execution_dependency});
+            // Extend the frontier to include the executing task.
+            actor_entry->second.ExtendFrontier(spec.ActorHandleId(),
+                                               spec.ActorDummyObject());
           }
+          // We started running the task, so the task is ready to write to GCS.
+          if (!lineage_cache_.AddReadyTask(task)) {
+            RAY_LOG(WARNING) << "Task " << spec.TaskId() << " already in lineage cache. "
+                                                            "This is most likely due to "
+                                                            "reconstruction.";
+          }
+          // Mark the task as running.
+          // (See design_docs/task_states.rst for the state transition diagram.)
+          local_queues_.QueueRunningTasks(std::vector<Task>({task}));
+          // Notify the task dependency manager that we no longer need this task's
+          // object dependencies.
+          task_dependency_manager_.UnsubscribeDependencies(spec.TaskId());
+        } else {
+          RAY_LOG(WARNING) << "Failed to send task to worker, disconnecting client";
+          // We failed to send the task to the worker, so disconnect the worker.
+          ProcessClientMessage(
+              worker->Connection(),
+              static_cast<int64_t>(protocol::MessageType::DisconnectClient), nullptr);
+          // Queue this task for future assignment. The task will be assigned to a
+          // worker once one becomes available.
+          // (See design_docs/task_states.rst for the state transition diagram.)
+          local_queues_.QueueReadyTasks(std::vector<Task>({task}));
+          DispatchTasks();
+        }
       });
 }
 
@@ -1532,7 +1533,7 @@ void NodeManager::ForwardTaskOrResubmit(const Task &task,
 }
 
 void NodeManager::ForwardTask(const Task &task, const ClientID &node_id,
-      const std::function<void(const ray::Status&)> &on_error) {
+                              const std::function<void(const ray::Status &)> &on_error) {
   const auto &spec = task.GetTaskSpecification();
   auto task_id = spec.TaskId();
 
@@ -1565,45 +1566,46 @@ void NodeManager::ForwardTask(const Task &task, const ClientID &node_id,
   auto &server_conn = it->second;
   server_conn.WriteMessageAsync(
       static_cast<int64_t>(protocol::MessageType::ForwardTaskRequest), fbb.GetSize(),
-      fbb.GetBufferPointer(), [this, on_error, task_id, &node_id, &spec](ray::Status status) {
-          // TODO(ekl) what do we do if this is not ok?
-          if (status.ok()) {
-            // If we were able to forward the task, remove the forwarded task from the
-            // lineage cache since the receiving node is now responsible for writing
-            // the task to the GCS.
-            if (!lineage_cache_.RemoveWaitingTask(task_id)) {
-              RAY_LOG(WARNING) << "Task " << task_id << " already removed from the lineage "
-                                                        "cache. This is most likely due to "
-                                                        "reconstruction.";
-            }
-            // Mark as forwarded so that the task and its lineage is not re-forwarded
-            // in the future to the receiving node.
-            lineage_cache_.MarkTaskAsForwarded(task_id, node_id);
+      fbb.GetBufferPointer(),
+      [this, on_error, task_id, &node_id, &spec](ray::Status status) {
+        // TODO(ekl) what do we do if this is not ok?
+        if (status.ok()) {
+          // If we were able to forward the task, remove the forwarded task from the
+          // lineage cache since the receiving node is now responsible for writing
+          // the task to the GCS.
+          if (!lineage_cache_.RemoveWaitingTask(task_id)) {
+            RAY_LOG(WARNING) << "Task " << task_id << " already removed from the lineage "
+                                                      "cache. This is most likely due to "
+                                                      "reconstruction.";
+          }
+          // Mark as forwarded so that the task and its lineage is not re-forwarded
+          // in the future to the receiving node.
+          lineage_cache_.MarkTaskAsForwarded(task_id, node_id);
 
-            // Notify the task dependency manager that we are no longer responsible
-            // for executing this task.
-            task_dependency_manager_.TaskCanceled(task_id);
-            // Preemptively push any local arguments to the receiving node. For now, we
-            // only do this with actor tasks, since actor tasks must be executed by a
-            // specific process and therefore have affinity to the receiving node.
-            if (spec.IsActorTask()) {
-              // Iterate through the object's arguments. NOTE(swang): We do not include
-              // the execution dependencies here since those cannot be transferred
-              // between nodes.
-              for (int i = 0; i < spec.NumArgs(); ++i) {
-                int count = spec.ArgIdCount(i);
-                for (int j = 0; j < count; j++) {
-                  ObjectID argument_id = spec.ArgId(i, j);
-                  // If the argument is local, then push it to the receiving node.
-                  if (task_dependency_manager_.CheckObjectLocal(argument_id)) {
-                    object_manager_.Push(argument_id, node_id);
-                  }
+          // Notify the task dependency manager that we are no longer responsible
+          // for executing this task.
+          task_dependency_manager_.TaskCanceled(task_id);
+          // Preemptively push any local arguments to the receiving node. For now, we
+          // only do this with actor tasks, since actor tasks must be executed by a
+          // specific process and therefore have affinity to the receiving node.
+          if (spec.IsActorTask()) {
+            // Iterate through the object's arguments. NOTE(swang): We do not include
+            // the execution dependencies here since those cannot be transferred
+            // between nodes.
+            for (int i = 0; i < spec.NumArgs(); ++i) {
+              int count = spec.ArgIdCount(i);
+              for (int j = 0; j < count; j++) {
+                ObjectID argument_id = spec.ArgId(i, j);
+                // If the argument is local, then push it to the receiving node.
+                if (task_dependency_manager_.CheckObjectLocal(argument_id)) {
+                  object_manager_.Push(argument_id, node_id);
                 }
               }
             }
-          } else {
-            on_error(status);
           }
+        } else {
+          on_error(status);
+        }
       });
 }
 

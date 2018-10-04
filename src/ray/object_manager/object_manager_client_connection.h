@@ -51,7 +51,7 @@ class SenderConnection : public boost::enable_shared_from_this<SenderConnection>
   /// \param message A pointer to the message buffer.
   /// \param handler A callback to run on write completion.
   void WriteMessageAsync(int64_t type, int64_t length, const uint8_t *message,
-      const std::function<void(const ray::Status&)> &handler) {
+                         const std::function<void(const ray::Status &)> &handler) {
     conn_->WriteMessageAsync(type, length, message, handler);
   }
 

@@ -47,7 +47,7 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection<T>
   /// \param message A pointer to the message buffer.
   /// \param handler A callback to run on write completion.
   void WriteMessageAsync(int64_t type, int64_t length, const uint8_t *message,
-      const std::function<void(const ray::Status&)> &handler);
+                         const std::function<void(const ray::Status &)> &handler);
 
   /// Write a buffer to this connection.
   ///
@@ -68,7 +68,7 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection<T>
     int64_t write_type;
     uint64_t write_length;
     std::vector<uint8_t> write_message;
-    std::function<void(const ray::Status&)> handler;
+    std::function<void(const ray::Status &)> handler;
   };
 
   /// The socket connection to the server.
