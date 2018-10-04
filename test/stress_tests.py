@@ -186,7 +186,8 @@ def ray_start_reconstruction(request):
                 store_stdout_file=store_stdout_file,
                 store_stderr_file=store_stderr_file,
                 manager_stdout_file=manager_stdout_file,
-                manager_stderr_file=manager_stderr_file))
+                manager_stderr_file=manager_stderr_file,
+                use_raylet=use_raylet))
 
     # Start the rest of the services in the Ray cluster.
     address_info = {
