@@ -285,11 +285,11 @@ void ObjectManager::PullSendRequest(const ObjectID &object_id,
   conn->WriteMessageAsync(
       static_cast<int64_t>(object_manager_protocol::MessageType::PullRequest),
       fbb.GetSize(), fbb.GetBufferPointer(), [this, &conn](ray::Status status) {
-          if (status.ok()) {
-            connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::MESSAGE, conn);
-          } else {
-            CheckIOError(status, "Pull");
-          }
+        if (status.ok()) {
+          connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::MESSAGE, conn);
+        } else {
+          CheckIOError(status, "Pull");
+        }
       });
 }
 

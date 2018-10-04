@@ -51,6 +51,13 @@ format_changed() {
         git diff --name-only --diff-filter=ACM "$MERGEBASE" -- '*.py' | xargs -P 5 \
              yapf --in-place "${YAPF_EXCLUDES[@]}" "${YAPF_FLAGS[@]}"
     fi
+
+    if which clang-format >/dev/null; then
+        if ! git diff --diff-filter=ACM --quiet --exit-code "$MERGEBASE" -- '*.cc' '*.h' &>/dev/null; then
+            git diff --name-only --diff-filter=ACM "$MERGEBASE" -- '*.cc' '*.h' | xargs -P 5 \
+                 clang-format -i
+        fi
+    fi
 }
 
 # Format all files, and print the diff to stdout for travis.
