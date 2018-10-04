@@ -289,8 +289,7 @@ class NodeManager {
   /// \param push_warning Propogate error message if true.
   /// \return Void.
   void ProcessDisconnectClientMessage(
-      const std::shared_ptr<LocalClientConnection> &client,
-      bool push_warning = true);
+      const std::shared_ptr<LocalClientConnection> &client, bool push_warning = true);
 
   /// Process client message of SubmitTask
   ///
