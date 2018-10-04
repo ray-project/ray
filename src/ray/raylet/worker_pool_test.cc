@@ -65,7 +65,7 @@ static inline TaskSpecification ExampleTaskSpec(
     const Language &language = Language::PYTHON) {
   return TaskSpecification(UniqueID::nil(), UniqueID::nil(), 0, ActorID::nil(),
                            ObjectID::nil(), actor_id, ActorHandleID::nil(), 0,
-                           FunctionID::nil(), {}, 0, {{}}, language);
+                           FunctionID::nil(), {}, 0, {{}}, {{}}, language);
 }
 
 TEST_F(WorkerPoolTest, HandleWorkerRegistration) {

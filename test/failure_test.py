@@ -561,6 +561,25 @@ def test_warning_for_infeasible_tasks(ray_start_regular):
     wait_for_errors(ray_constants.INFEASIBLE_TASK_ERROR, 2)
 
 
+@pytest.mark.skipif(
+    os.environ.get("RAY_USE_XRAY") != "1",
+    reason="This test only works with xray.")
+def test_warning_for_infeasible_zero_cpu_actor(shutdown_only):
+    # Check that we cannot place an actor on a 0 CPU machine and that we get an
+    # infeasibility warning (even though the actor creation task itself
+    # requires no CPUs).
+
+    ray.init(num_cpus=0)
+
+    @ray.remote
+    class Foo(object):
+        pass
+
+    # The actor creation should be infeasible.
+    Foo.remote()
+    wait_for_errors(ray_constants.INFEASIBLE_TASK_ERROR, 1)
+
+
 @pytest.fixture
 def ray_start_two_nodes():
     # Start the Ray processes.

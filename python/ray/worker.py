@@ -550,6 +550,7 @@ class Worker(object):
                     execution_dependencies=None,
                     num_return_vals=None,
                     resources=None,
+                    placement_resources=None,
                     driver_id=None):
         """Submit a remote task to the scheduler.
 
@@ -575,6 +576,9 @@ class Worker(object):
             num_return_vals: The number of return values this function should
                 have.
             resources: The resource requirements for this task.
+            placement_resources: The resources required for placing the task.
+                If this is not provided or if it is an empty dictionary, then
+                the placement resources will be equal to resources.
             driver_id: The ID of the relevant driver. This is almost always the
                 driver ID of the driver that is currently running. However, in
                 the exceptional case that an actor task is being dispatched to
@@ -628,6 +632,9 @@ class Worker(object):
                     raise ValueError(
                         "Resource quantities must all be whole numbers.")
 
+            if placement_resources is None:
+                placement_resources = {}
+
             with self.state_lock:
                 # Increment the worker's task index to track how many tasks
                 # have been submitted by the current task so far.
@@ -640,7 +647,8 @@ class Worker(object):
                 num_return_vals, self.current_task_id, task_index,
                 actor_creation_id, actor_creation_dummy_object_id, actor_id,
                 actor_handle_id, actor_counter, is_actor_checkpoint_method,
-                execution_dependencies, resources, self.use_raylet)
+                execution_dependencies, resources, placement_resources,
+                self.use_raylet)
             self.local_scheduler_client.submit(task)
 
             return task.returns()
@@ -2138,7 +2146,7 @@ def connect(info,
             worker.current_task_id, worker.task_index,
             ray.ObjectID(NIL_ACTOR_ID), ray.ObjectID(NIL_ACTOR_ID),
             ray.ObjectID(NIL_ACTOR_ID), ray.ObjectID(NIL_ACTOR_ID),
-            nil_actor_counter, False, [], {"CPU": 0}, worker.use_raylet)
+            nil_actor_counter, False, [], {"CPU": 0}, {}, worker.use_raylet)
 
         # Add the driver task to the task table.
         if not worker.use_raylet:
