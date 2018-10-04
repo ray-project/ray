@@ -201,12 +201,6 @@ class Worker(object):
 
     def __init__(self):
         """Initialize a Worker object."""
-        # This is a dictionary mapping driver ID to a dictionary that maps
-        # remote function IDs for that driver to a counter of the number of
-        # times that remote function has been executed on this worker. The
-        # counter is incremented every time the function is executed on this
-        # worker. When the counter reaches the maximum number of executions
-        # allowed for a particular function, the worker is killed.
         self.connected = False
         self.mode = None
         self.cached_functions_to_run = []
@@ -1645,7 +1639,6 @@ def init(redis_address=None,
          ignore_reinit_error=False,
          num_redis_shards=None,
          redis_max_clients=None,
-         redis_protected_mode=True,
          plasma_directory=None,
          huge_pages=False,
          include_webui=True,
@@ -1761,6 +1754,7 @@ def init(redis_address=None,
         address_info=info,
         start_ray_local=(redis_address is None),
         num_workers=num_workers,
+        object_id_seed=object_id_seed,
         local_mode=local_mode,
         driver_mode=driver_mode,
         redirect_worker_output=redirect_worker_output,
@@ -1823,9 +1817,9 @@ def shutdown(worker=global_worker):
         # besides possibly the worker itself.
         for process_type, processes in services.all_processes.items():
             if process_type == services.PROCESS_TYPE_WORKER:
-                assert (len(processes)) <= 1
+                assert len(processes) <= 1
             else:
-                assert (len(processes) == 0)
+                assert len(processes) == 0
 
     worker.set_mode(None)
 
