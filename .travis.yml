@@ -207,9 +207,9 @@ script:
   # module is only found if the test directory is in the PYTHONPATH.
   - export PYTHONPATH="$PYTHONPATH:./test/"
 
-  - python -m pytest -v python/ray/common/test/test.py
-  - python -m pytest -v python/ray/common/redis_module/runtest.py
-  - python -m pytest -v python/ray/plasma/test/test.py
+  # - python -m pytest -v python/ray/common/test/test.py
+  # - python -m pytest -v python/ray/common/redis_module/runtest.py
+  # - python -m pytest -v python/ray/plasma/test/test.py
   # - python -m pytest -v python/ray/local_scheduler/test/test.py
   # - python -m pytest -v python/ray/global_scheduler/test/test.py
 
