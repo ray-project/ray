@@ -94,7 +94,7 @@ std::unordered_map<TaskID, ClientID> SchedulingPolicy::Schedule(
         std::uniform_int_distribution<int> distribution(0, client_keys.size() - 1);
         int client_key_index = distribution(gen_);
         const ClientID &dst_client_id = client_keys[client_key_index];
-        decision[spec.TaskId()] = dst_client_id;
+        decision[task_id] = dst_client_id;
         // Update dst_client_id's load to keep track of remote task load until
         // the next heartbeat.
         ResourceSet new_load(cluster_resources[dst_client_id].GetLoadResources());
@@ -104,7 +104,7 @@ std::unordered_map<TaskID, ClientID> SchedulingPolicy::Schedule(
         // There are no nodes that can feasibly execute this task. The task remains
         // placeable until cluster capacity becomes available.
         // TODO(rkn): Propagate a warning to the user.
-        RAY_LOG(INFO) << "The task with ID " << spec.TaskId() << " requires "
+        RAY_LOG(INFO) << "The task with ID " << task_id << " requires "
                       << spec.GetRequiredResources().ToString() << " for execution and "
                       << spec.GetRequiredPlacementResources().ToString()
                       << " for placement, but no nodes have the necessary resources. "

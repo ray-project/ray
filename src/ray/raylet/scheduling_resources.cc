@@ -24,7 +24,7 @@ ResourceSet::ResourceSet(const std::vector<std::string> &resource_labels,
 ResourceSet::~ResourceSet() {}
 
 bool ResourceSet::operator==(const ResourceSet &rhs) const {
-  return (IsSubset(rhs) && rhs.IsSubset(*this));
+  return (this->IsSubset(rhs) && rhs.IsSubset(*this));
 }
 
 bool ResourceSet::IsEmpty() const {
@@ -62,7 +62,7 @@ bool ResourceSet::IsSuperset(const ResourceSet &other) const {
 }
 /// Test whether this ResourceSet is precisely equal to the other ResourceSet.
 bool ResourceSet::IsEqual(const ResourceSet &rhs) const {
-  return (IsSubset(rhs) && rhs.IsSubset(*this));
+  return (this->IsSubset(rhs) && rhs.IsSubset(*this));
 }
 
 bool ResourceSet::AddResource(const std::string &resource_name, double capacity) {
@@ -145,9 +145,8 @@ const std::string ResourceSet::ToString() const {
   it++;
 
   // Add the remaining elements to the string (along with a comma).
-  while (it != resource_capacity_.end()) {
+  for (; it != resource_capacity_.end() ; ++it) {
     return_string += ",{" + it->first + "," + std::to_string(it->second) + "}";
-    it++;
   }
 
   return return_string;
@@ -421,9 +420,8 @@ std::string ResourceIdSet::ToString() const {
   it++;
 
   // Add the remaining elements to the string (along with a comma).
-  while (it != available_resources_.end()) {
+  for (; it != available_resources_.end() ; ++it) {
     return_string += (", " + it->first + ": {" + it->second.ToString() + "}");
-    it++;
   }
 
   return return_string;
