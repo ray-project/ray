@@ -104,8 +104,8 @@ std::unordered_map<TaskID, ClientID> SchedulingPolicy::Schedule(
         // There are no nodes that can feasibly execute this task. The task remains
         // placeable until cluster capacity becomes available.
         // TODO(rkn): Propagate a warning to the user.
-        RAY_LOG(INFO) << "This task requires " << spec.GetRequiredResources().ToString()
-                      << " for execution and "
+        RAY_LOG(INFO) << "The task with ID " << spec.TaskId() << " requires "
+                      << spec.GetRequiredResources().ToString() << " for execution and "
                       << spec.GetRequiredPlacementResources().ToString()
                       << " for placement, but no nodes have the necessary resources. "
                       << "Check the client table to view node resources.";

@@ -17,14 +17,14 @@ ResourceSet::ResourceSet(const std::vector<std::string> &resource_labels,
                          const std::vector<double> resource_capacity) {
   RAY_CHECK(resource_labels.size() == resource_capacity.size());
   for (uint i = 0; i < resource_labels.size(); i++) {
-    RAY_CHECK(this->AddResource(resource_labels[i], resource_capacity[i]));
+    RAY_CHECK(AddResource(resource_labels[i], resource_capacity[i]));
   }
 }
 
 ResourceSet::~ResourceSet() {}
 
 bool ResourceSet::operator==(const ResourceSet &rhs) const {
-  return (this->IsSubset(rhs) && rhs.IsSubset(*this));
+  return (IsSubset(rhs) && rhs.IsSubset(*this));
 }
 
 bool ResourceSet::IsEmpty() const {
@@ -62,7 +62,7 @@ bool ResourceSet::IsSuperset(const ResourceSet &other) const {
 }
 /// Test whether this ResourceSet is precisely equal to the other ResourceSet.
 bool ResourceSet::IsEqual(const ResourceSet &rhs) const {
-  return (this->IsSubset(rhs) && rhs.IsSubset(*this));
+  return (IsSubset(rhs) && rhs.IsSubset(*this));
 }
 
 bool ResourceSet::AddResource(const std::string &resource_name, double capacity) {
@@ -119,11 +119,11 @@ bool ResourceSet::GetResource(const std::string &resource_name, double *value) c
   if (!value) {
     return false;
   }
-  if (this->resource_capacity_.count(resource_name) == 0) {
+  if (resource_capacity_.count(resource_name) == 0) {
     *value = std::nan("");
     return false;
   }
-  *value = this->resource_capacity_.at(resource_name);
+  *value = resource_capacity_.at(resource_name);
   return true;
 }
 
@@ -135,21 +135,26 @@ double ResourceSet::GetNumCpus() const {
 
 const std::string ResourceSet::ToString() const {
   std::string return_string = "";
-  bool first_time_through_loop = true;
-  for (const auto &resource_pair : this->resource_capacity_) {
-    if (!first_time_through_loop) {
-      return_string += ", ";
-    } else {
-      first_time_through_loop = false;
-    }
-    return_string +=
-        "{" + resource_pair.first + "," + std::to_string(resource_pair.second) + "}";
+
+  auto it = resource_capacity_.begin();
+
+  // Convert the first element to a string.
+  if (it != resource_capacity_.end()) {
+    return_string += "{" + it->first + "," + std::to_string(it->second) + "}";
   }
+  it++;
+
+  // Add the remaining elements to the string (along with a comma).
+  while (it != resource_capacity_.end()) {
+    return_string += ",{" + it->first + "," + std::to_string(it->second) + "}";
+    it++;
+  }
+
   return return_string;
 }
 
 const std::unordered_map<std::string, double> &ResourceSet::GetResourceMap() const {
-  return this->resource_capacity_;
+  return resource_capacity_;
 };
 
 /// ResourceIds class implementation
@@ -406,17 +411,21 @@ ResourceSet ResourceIdSet::ToResourceSet() const {
 
 std::string ResourceIdSet::ToString() const {
   std::string return_string = "AvailableResources: ";
-  bool first_time_through_loop = true;
-  for (auto const &resource_pair : available_resources_) {
-    if (!first_time_through_loop) {
-      return_string += ", ";
-    } else {
-      first_time_through_loop = false;
-    }
-    return_string += resource_pair.first + ": {";
-    return_string += resource_pair.second.ToString();
-    return_string += "}";
+
+  auto it = available_resources_.begin();
+
+  // Convert the first element to a string.
+  if (it != available_resources_.end()) {
+    return_string += (it->first + ": {" + it->second.ToString() + "}");
   }
+  it++;
+
+  // Add the remaining elements to the string (along with a comma).
+  while (it != available_resources_.end()) {
+    return_string += (", " + it->first + ": {" + it->second.ToString() + "}");
+    it++;
+  }
+
   return return_string;
 }
 
@@ -462,26 +471,26 @@ SchedulingResources::~SchedulingResources() {}
 
 ResourceAvailabilityStatus SchedulingResources::CheckResourcesSatisfied(
     ResourceSet &resources) const {
-  if (!resources.IsSubset(this->resources_total_)) {
+  if (!resources.IsSubset(resources_total_)) {
     return ResourceAvailabilityStatus::kInfeasible;
   }
   // Resource demand specified is feasible. Check if it's available.
-  if (!resources.IsSubset(this->resources_available_)) {
+  if (!resources.IsSubset(resources_available_)) {
     return ResourceAvailabilityStatus::kResourcesUnavailable;
   }
   return ResourceAvailabilityStatus::kFeasible;
 }
 
 const ResourceSet &SchedulingResources::GetAvailableResources() const {
-  return this->resources_available_;
+  return resources_available_;
 }
 
 void SchedulingResources::SetAvailableResources(ResourceSet &&newset) {
-  this->resources_available_ = newset;
+  resources_available_ = newset;
 }
 
 const ResourceSet &SchedulingResources::GetTotalResources() const {
-  return this->resources_total_;
+  return resources_total_;
 }
 
 void SchedulingResources::SetLoadResources(ResourceSet &&newset) {
@@ -494,12 +503,12 @@ const ResourceSet &SchedulingResources::GetLoadResources() const {
 
 // Return specified resources back to SchedulingResources.
 bool SchedulingResources::Release(const ResourceSet &resources) {
-  return this->resources_available_.AddResourcesStrict(resources);
+  return resources_available_.AddResourcesStrict(resources);
 }
 
 // Take specified resources from SchedulingResources.
 bool SchedulingResources::Acquire(const ResourceSet &resources) {
-  return this->resources_available_.SubtractResourcesStrict(resources);
+  return resources_available_.SubtractResourcesStrict(resources);
 }
 
 }  // namespace raylet
