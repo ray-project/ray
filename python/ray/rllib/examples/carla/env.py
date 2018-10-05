@@ -33,8 +33,8 @@ if CARLA_OUT_PATH and not os.path.exists(CARLA_OUT_PATH):
     os.makedirs(CARLA_OUT_PATH)
 
 # Set this to the path of your Carla binary
-SERVER_BINARY = os.environ.get(
-    "CARLA_SERVER", os.path.expanduser("~/CARLA_0.7.0/CarlaUE4.sh"))
+SERVER_BINARY = os.environ.get("CARLA_SERVER",
+                               os.path.expanduser("~/CARLA_0.7.0/CarlaUE4.sh"))
 
 assert os.path.exists(SERVER_BINARY)
 if "CARLA_PY_PATH" in os.environ:
@@ -97,7 +97,6 @@ ENV_CONFIG = {
     "squash_action_logits": False,
 }
 
-
 DISCRETE_ACTIONS = {
     # coast
     0: [0.0, 0.0],
@@ -119,7 +118,6 @@ DISCRETE_ACTIONS = {
     8: [-0.5, 0.5],
 }
 
-
 live_carla_processes = set()
 
 
@@ -133,7 +131,6 @@ atexit.register(cleanup)
 
 
 class CarlaEnv(gym.Env):
-
     def __init__(self, config=ENV_CONFIG):
         self.config = config
         self.city = self.config["server_map"].split("/")[-1]
@@ -143,21 +140,27 @@ class CarlaEnv(gym.Env):
         if config["discrete_actions"]:
             self.action_space = Discrete(len(DISCRETE_ACTIONS))
         else:
-            self.action_space = Box(-1.0, 1.0, shape=(2,), dtype=np.float32)
+            self.action_space = Box(-1.0, 1.0, shape=(2, ), dtype=np.float32)
         if config["use_depth_camera"]:
             image_space = Box(
-                -1.0, 1.0, shape=(
-                    config["y_res"], config["x_res"],
-                    1 * config["framestack"]), dtype=np.float32)
+                -1.0,
+                1.0,
+                shape=(config["y_res"], config["x_res"],
+                       1 * config["framestack"]),
+                dtype=np.float32)
         else:
             image_space = Box(
-                0, 255, shape=(
-                    config["y_res"], config["x_res"],
-                    3 * config["framestack"]), dtype=np.uint8)
+                0,
+                255,
+                shape=(config["y_res"], config["x_res"],
+                       3 * config["framestack"]),
+                dtype=np.uint8)
         self.observation_space = Tuple(  # forward_speed, dist to goal
-            [image_space,
-             Discrete(len(COMMANDS_ENUM)),  # next_command
-             Box(-128.0, 128.0, shape=(2,), dtype=np.float32)])
+            [
+                image_space,
+                Discrete(len(COMMANDS_ENUM)),  # next_command
+                Box(-128.0, 128.0, shape=(2, ), dtype=np.float32)
+            ])
 
         # TODO(ekl) this isn't really a proper gym spec
         self._spec = lambda: None
@@ -185,11 +188,13 @@ class CarlaEnv(gym.Env):
         # Create a new server process and start the client.
         self.server_port = random.randint(10000, 60000)
         self.server_process = subprocess.Popen(
-            [SERVER_BINARY, self.config["server_map"],
-             "-windowed", "-ResX=400", "-ResY=300",
-             "-carla-server",
-             "-carla-world-port={}".format(self.server_port)],
-            preexec_fn=os.setsid, stdout=open(os.devnull, "w"))
+            [
+                SERVER_BINARY, self.config["server_map"], "-windowed",
+                "-ResX=400", "-ResY=300", "-carla-server",
+                "-carla-world-port={}".format(self.server_port)
+            ],
+            preexec_fn=os.setsid,
+            stdout=open(os.devnull, "w"))
         live_carla_processes.add(os.getpgid(self.server_process.pid))
 
         for i in range(RETRIES_ON_ERROR):
@@ -257,14 +262,14 @@ class CarlaEnv(gym.Env):
 
         if self.config["use_depth_camera"]:
             camera1 = Camera("CameraDepth", PostProcessing="Depth")
-            camera1.set_image_size(
-                self.config["render_x_res"], self.config["render_y_res"])
+            camera1.set_image_size(self.config["render_x_res"],
+                                   self.config["render_y_res"])
             camera1.set_position(30, 0, 130)
             settings.add_sensor(camera1)
 
         camera2 = Camera("CameraRGB")
-        camera2.set_image_size(
-            self.config["render_x_res"], self.config["render_y_res"])
+        camera2.set_image_size(self.config["render_x_res"],
+                               self.config["render_y_res"])
         camera2.set_position(30, 0, 130)
         settings.add_sensor(camera2)
 
@@ -274,13 +279,14 @@ class CarlaEnv(gym.Env):
         self.start_pos = positions[self.scenario["start_pos_id"]]
         self.end_pos = positions[self.scenario["end_pos_id"]]
         self.start_coord = [
-            self.start_pos.location.x // 100, self.start_pos.location.y // 100]
+            self.start_pos.location.x // 100, self.start_pos.location.y // 100
+        ]
         self.end_coord = [
-            self.end_pos.location.x // 100, self.end_pos.location.y // 100]
-        print(
-            "Start pos {} ({}), end {} ({})".format(
-                self.scenario["start_pos_id"], self.start_coord,
-                self.scenario["end_pos_id"], self.end_coord))
+            self.end_pos.location.x // 100, self.end_pos.location.y // 100
+        ]
+        print("Start pos {} ({}), end {} ({})".format(
+            self.scenario["start_pos_id"], self.start_coord,
+            self.scenario["end_pos_id"], self.end_coord))
 
         # Notify the server that we want to start the episode at the
         # player_start index. This function blocks until the server is ready
@@ -300,11 +306,10 @@ class CarlaEnv(gym.Env):
             prev_image = image
         if self.config["framestack"] == 2:
             image = np.concatenate([prev_image, image], axis=2)
-        obs = (
-            image,
-            COMMAND_ORDINAL[py_measurements["next_command"]],
-            [py_measurements["forward_speed"],
-             py_measurements["distance_to_goal"]])
+        obs = (image, COMMAND_ORDINAL[py_measurements["next_command"]], [
+            py_measurements["forward_speed"],
+            py_measurements["distance_to_goal"]
+        ])
         self.last_obs = obs
         return obs
 
@@ -313,9 +318,8 @@ class CarlaEnv(gym.Env):
             obs = self._step(action)
             return obs
         except Exception:
-            print(
-                "Error during step, terminating episode early",
-                traceback.format_exc())
+            print("Error during step, terminating episode early",
+                  traceback.format_exc())
             self.clear_server_state()
             return (self.last_obs, 0.0, True, {})
 
@@ -336,12 +340,14 @@ class CarlaEnv(gym.Env):
         hand_brake = False
 
         if self.config["verbose"]:
-            print(
-                "steer", steer, "throttle", throttle, "brake", brake,
-                "reverse", reverse)
+            print("steer", steer, "throttle", throttle, "brake", brake,
+                  "reverse", reverse)
 
         self.client.send_control(
-            steer=steer, throttle=throttle, brake=brake, hand_brake=hand_brake,
+            steer=steer,
+            throttle=throttle,
+            brake=brake,
+            hand_brake=hand_brake,
             reverse=reverse)
 
         # Process observations
@@ -359,15 +365,14 @@ class CarlaEnv(gym.Env):
             "reverse": reverse,
             "hand_brake": hand_brake,
         }
-        reward = compute_reward(
-            self, self.prev_measurement, py_measurements)
+        reward = compute_reward(self, self.prev_measurement, py_measurements)
         self.total_reward += reward
         py_measurements["reward"] = reward
         py_measurements["total_reward"] = self.total_reward
-        done = (self.num_steps > self.scenario["max_steps"] or
-                py_measurements["next_command"] == "REACH_GOAL" or
-                (self.config["early_terminate_on_collision"] and
-                 collided_done(py_measurements)))
+        done = (self.num_steps > self.scenario["max_steps"]
+                or py_measurements["next_command"] == "REACH_GOAL"
+                or (self.config["early_terminate_on_collision"]
+                    and collided_done(py_measurements)))
         py_measurements["done"] = done
         self.prev_measurement = py_measurements
 
@@ -377,8 +382,7 @@ class CarlaEnv(gym.Env):
                 self.measurements_file = open(
                     os.path.join(
                         CARLA_OUT_PATH,
-                        "measurements_{}.json".format(self.episode_id)),
-                    "w")
+                        "measurements_{}.json".format(self.episode_id)), "w")
             self.measurements_file.write(json.dumps(py_measurements))
             self.measurements_file.write("\n")
             if done:
@@ -389,9 +393,8 @@ class CarlaEnv(gym.Env):
 
         self.num_steps += 1
         image = self.preprocess_image(image)
-        return (
-            self.encode_obs(image, py_measurements), reward, done,
-            py_measurements)
+        return (self.encode_obs(image, py_measurements), reward, done,
+                py_measurements)
 
     def images_to_video(self):
         videos_dir = os.path.join(CARLA_OUT_PATH, "Videos")
@@ -413,15 +416,15 @@ class CarlaEnv(gym.Env):
         if self.config["use_depth_camera"]:
             assert self.config["use_depth_camera"]
             data = (image.data - 0.5) * 2
-            data = data.reshape(
-                self.config["render_y_res"], self.config["render_x_res"], 1)
+            data = data.reshape(self.config["render_y_res"],
+                                self.config["render_x_res"], 1)
             data = cv2.resize(
                 data, (self.config["x_res"], self.config["y_res"]),
                 interpolation=cv2.INTER_AREA)
             data = np.expand_dims(data, 2)
         else:
-            data = image.data.reshape(
-                self.config["render_y_res"], self.config["render_x_res"], 3)
+            data = image.data.reshape(self.config["render_y_res"],
+                                      self.config["render_x_res"], 3)
             data = cv2.resize(
                 data, (self.config["x_res"], self.config["y_res"]),
                 interpolation=cv2.INTER_AREA)
@@ -448,36 +451,39 @@ class CarlaEnv(gym.Env):
         cur = measurements.player_measurements
 
         if self.config["enable_planner"]:
-            next_command = COMMANDS_ENUM[
-                self.planner.get_next_command(
-                    [cur.transform.location.x, cur.transform.location.y,
-                     GROUND_Z],
-                    [cur.transform.orientation.x, cur.transform.orientation.y,
-                     GROUND_Z],
-                    [self.end_pos.location.x, self.end_pos.location.y,
-                     GROUND_Z],
-                    [self.end_pos.orientation.x, self.end_pos.orientation.y,
-                     GROUND_Z])
-            ]
+            next_command = COMMANDS_ENUM[self.planner.get_next_command(
+                [cur.transform.location.x, cur.transform.location.y, GROUND_Z],
+                [
+                    cur.transform.orientation.x, cur.transform.orientation.y,
+                    GROUND_Z
+                ],
+                [self.end_pos.location.x, self.end_pos.location.y, GROUND_Z], [
+                    self.end_pos.orientation.x, self.end_pos.orientation.y,
+                    GROUND_Z
+                ])]
         else:
             next_command = "LANE_FOLLOW"
 
         if next_command == "REACH_GOAL":
             distance_to_goal = 0.0  # avoids crash in planner
         elif self.config["enable_planner"]:
-            distance_to_goal = self.planner.get_shortest_path_distance(
-                [cur.transform.location.x, cur.transform.location.y, GROUND_Z],
-                [cur.transform.orientation.x, cur.transform.orientation.y,
-                 GROUND_Z],
-                [self.end_pos.location.x, self.end_pos.location.y, GROUND_Z],
-                [self.end_pos.orientation.x, self.end_pos.orientation.y,
-                 GROUND_Z]) / 100
+            distance_to_goal = self.planner.get_shortest_path_distance([
+                cur.transform.location.x, cur.transform.location.y, GROUND_Z
+            ], [
+                cur.transform.orientation.x, cur.transform.orientation.y,
+                GROUND_Z
+            ], [self.end_pos.location.x, self.end_pos.location.y, GROUND_Z], [
+                self.end_pos.orientation.x, self.end_pos.orientation.y,
+                GROUND_Z
+            ]) / 100
         else:
             distance_to_goal = -1
 
-        distance_to_goal_euclidean = float(np.linalg.norm(
-            [cur.transform.location.x - self.end_pos.location.x,
-             cur.transform.location.y - self.end_pos.location.y]) / 100)
+        distance_to_goal_euclidean = float(
+            np.linalg.norm([
+                cur.transform.location.x - self.end_pos.location.x,
+                cur.transform.location.y - self.end_pos.location.y
+            ]) / 100)
 
         py_measurements = {
             "episode_id": self.episode_id,
@@ -513,8 +519,8 @@ class CarlaEnv(gym.Env):
                 if not os.path.exists(out_dir):
                     os.makedirs(out_dir)
                 out_file = os.path.join(
-                    out_dir,
-                    "{}_{:>04}.jpg".format(self.episode_id, self.num_steps))
+                    out_dir, "{}_{:>04}.jpg".format(self.episode_id,
+                                                    self.num_steps))
                 scipy.misc.imsave(out_file, image.data)
 
         assert observation is not None, sensor_data
@@ -621,8 +627,7 @@ REWARD_FUNCTIONS = {
 
 
 def compute_reward(env, prev, current):
-    return REWARD_FUNCTIONS[env.config["reward_function"]](
-        env, prev, current)
+    return REWARD_FUNCTIONS[env.config["reward_function"]](env, prev, current)
 
 
 def print_measurements(measurements):
@@ -654,9 +659,8 @@ def sigmoid(x):
 
 def collided_done(py_measurements):
     m = py_measurements
-    collided = (
-        m["collision_vehicles"] > 0 or m["collision_pedestrians"] > 0 or
-        m["collision_other"] > 0)
+    collided = (m["collision_vehicles"] > 0 or m["collision_pedestrians"] > 0
+                or m["collision_other"] > 0)
     return bool(collided or m["total_reward"] < -100)
 
 

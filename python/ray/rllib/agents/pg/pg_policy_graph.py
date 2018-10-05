@@ -24,8 +24,8 @@ class PGPolicyGraph(TFPolicyGraph):
         obs = tf.placeholder(tf.float32, shape=[None] + list(obs_space.shape))
         dist_class, self.logit_dim = ModelCatalog.get_action_dist(
             action_space, self.config["model"])
-        self.model = ModelCatalog.get_model(
-            obs, self.logit_dim, options=self.config["model"])
+        self.model = ModelCatalog.get_model(obs, self.logit_dim,
+                                            self.config["model"])
         action_dist = dist_class(self.model.outputs)  # logit for each action
 
         # Setup policy loss

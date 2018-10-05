@@ -28,7 +28,7 @@ public class FunctionManager {
    * Cache from a RayFunc object to its corresponding FunctionDescriptor. Because
    * `LambdaUtils.getSerializedLambda` is expensive.
    */
-  private static final ThreadLocal<WeakHashMap<Class<RayFunc>, FunctionDescriptor>>
+  private static final ThreadLocal<WeakHashMap<Class<? extends RayFunc>, FunctionDescriptor>>
       RAY_FUNC_CACHE = ThreadLocal.withInitial(WeakHashMap::new);
 
   /**
@@ -51,6 +51,7 @@ public class FunctionManager {
       final String methodName = serializedLambda.getImplMethodName();
       final String typeDescriptor = serializedLambda.getImplMethodSignature();
       functionDescriptor = new FunctionDescriptor(className, methodName, typeDescriptor);
+      RAY_FUNC_CACHE.get().put(func.getClass(),functionDescriptor);
     }
     return getFunction(driverId, functionDescriptor);
   }

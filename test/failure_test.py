@@ -371,6 +371,19 @@ def test_actor_worker_dying_nothing_in_progress(ray_start_regular):
         ray.get(task2)
 
 
+def test_actor_scope_or_intentionally_killed_message(ray_start_regular):
+    @ray.remote
+    class Actor(object):
+        pass
+
+    a = Actor.remote()
+    a = Actor.remote()
+    a.__ray_terminate__.remote()
+    time.sleep(1)
+    assert len(ray.error_info()) == 0, (
+        "Should not have propogated an error - {}".format(ray.error_info()))
+
+
 @pytest.fixture
 def ray_start_object_store_memory():
     # Start the Ray processes.
@@ -546,6 +559,25 @@ def test_warning_for_infeasible_tasks(ray_start_regular):
     # This actor placement task is infeasible.
     Foo.remote()
     wait_for_errors(ray_constants.INFEASIBLE_TASK_ERROR, 2)
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_USE_XRAY") != "1",
+    reason="This test only works with xray.")
+def test_warning_for_infeasible_zero_cpu_actor(shutdown_only):
+    # Check that we cannot place an actor on a 0 CPU machine and that we get an
+    # infeasibility warning (even though the actor creation task itself
+    # requires no CPUs).
+
+    ray.init(num_cpus=0)
+
+    @ray.remote
+    class Foo(object):
+        pass
+
+    # The actor creation should be infeasible.
+    Foo.remote()
+    wait_for_errors(ray_constants.INFEASIBLE_TASK_ERROR, 1)
 
 
 @pytest.fixture

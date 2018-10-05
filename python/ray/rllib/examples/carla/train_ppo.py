@@ -28,14 +28,14 @@ run_experiments({
     "carla": {
         "run": "PPO",
         "env": "carla_env",
-        "trial_resources": {"cpu": 4, "gpu": 1},
         "config": {
             "env_config": env_config,
             "model": {
                 "custom_model": "carla",
                 "custom_options": {
                     "image_shape": [
-                        env_config["x_res"], env_config["y_res"], 6],
+                        env_config["x_res"], env_config["y_res"], 6
+                    ],
                 },
                 "conv_filters": [
                     [16, [8, 8], 4],
@@ -44,17 +44,14 @@ run_experiments({
                 ],
             },
             "num_workers": 1,
-            "timesteps_per_batch": 2000,
-            "min_steps_per_task": 100,
+            "train_batch_size": 2000,
+            "sample_batch_size": 100,
             "lambda": 0.95,
             "clip_param": 0.2,
             "num_sgd_iter": 20,
-            "sgd_stepsize": 0.0001,
-            "sgd_batchsize": 32,
-            "devices": ["/gpu:0"],
-            "tf_session_args": {
-              "gpu_options": {"allow_growth": True}
-            }
+            "lr": 0.0001,
+            "sgd_minibatch_size": 32,
+            "num_gpus": 1,
         },
     },
 })
