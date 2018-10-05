@@ -107,8 +107,8 @@ def test_dying_driver_get(shutdown_only):
     driver = """
 import ray
 ray.init("{}")
-ray.get(ray.ObjectID({}))
-""".format(address_info["redis_address"], x_id.id())
+ray.get(ray.ObjectID(ray.utils.hex_to_binary("{}")))
+""".format(address_info["redis_address"], x_id.hex())
 
     p = run_string_as_driver_nonblocking(driver)
     # Make sure the driver is running.
@@ -234,8 +234,8 @@ def test_dying_driver_wait(shutdown_only):
     driver = """
 import ray
 ray.init("{}")
-ray.wait([ray.ObjectID({})])
-""".format(address_info["redis_address"], x_id.id())
+ray.wait([ray.ObjectID(ray.utils.hex_to_binary("{}"))])
+""".format(address_info["redis_address"], x_id.hex())
 
     p = run_string_as_driver_nonblocking(driver)
     # Make sure the driver is running.
