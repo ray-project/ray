@@ -30,6 +30,81 @@ FunctionExecutionInfo = namedtuple("FunctionExecutionInfo",
                                    ["function", "function_name", "max_calls"])
 """FunctionExecutionInfo: A named tuple storing remote function information."""
 
+# Avoid circle import of worker.py.
+NIL_FUNCTION_ID = ray_constants.NIL_JOB_ID
+
+
+class FunctionDescriptor(object):
+    def __init__(self,
+                 module_name,
+                 function_name,
+                 class_name="",
+                 function_id=NIL_FUNCTION_ID,
+                 is_driver_task=False):
+        self._module_name = module_name
+        self._class_name = class_name
+        self._function_name = function_name
+        assert isinstance(function_id, ray.ObjectID)
+        self._function_id = function_id
+        self._is_driver_task = is_driver_task
+
+    @classmethod
+    def from_bytes_list(cls, function_descriptor_list):
+        assert isinstance(function_descriptor_list, list)
+        if len(function_descriptor_list) == 0:
+            # This is a function descriptor of driver task.
+            return cls("", "", "", NIL_FUNCTION_ID, True)
+        elif len(function_descriptor_list) >= 3:
+            module_name = function_descriptor_list[0].decode()
+            class_name = function_descriptor_list[1].decode()
+            function_name = function_descriptor_list[2].decode()
+            if len(function_descriptor_list) == 3:
+                function_id = NIL_FUNCTION_ID
+            else:
+                function_id = ray.ObjectID(function_descriptor_list[3])
+            return cls(module_name, function_name, class_name, function_id)
+        else:
+            raise Exception(
+                "Invalid input for FunctionDescriptor.from_bytes_list")
+
+    @classmethod
+    def from_function_id(cls, function_id):
+        assert isinstance(function_id, ray.ObjectID)
+        return cls("", "", "", function_id)
+
+    @classmethod
+    def create_driver_task(cls):
+        return cls("", "", "", NIL_FUNCTION_ID, True)
+
+    @property
+    def module_name(self):
+        return self._module_name
+
+    @property
+    def class_name(self):
+        return self._class_name
+
+    @property
+    def function_name(self):
+        return self._function_name
+
+    @property
+    def function_id(self):
+        return self._function_id
+
+    def get_function_descriptor_list(self):
+        descriptor_list = []
+        if self._is_driver_task:
+            # Driver task returns an empty list.
+            return descriptor_list
+        else:
+            descriptor_list.append(self.module_name.encode("ascii"))
+            descriptor_list.append(self.class_name.encode("ascii"))
+            descriptor_list.append(self.function_name.encode("ascii"))
+            if self.function_id != NIL_FUNCTION_ID:
+                descriptor_list.append(self.function_id.id())
+            return descriptor_list
+
 
 class FunctionActorManager(object):
     """A class used to export/load remote functions and actors.

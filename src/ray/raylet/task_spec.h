@@ -160,8 +160,7 @@ class TaskSpecification {
   UniqueID DriverId() const;
   TaskID ParentTaskId() const;
   int64_t ParentCounter() const;
-  ray::FunctionDescriptor FunctionDescriptor() const;
-  FunctionID FunctionId() const;
+  std::vector<std::string> FunctionDescriptor() const;
   int64_t NumArgs() const;
   int64_t NumReturns() const;
   bool ArgByRef(int64_t arg_index) const;

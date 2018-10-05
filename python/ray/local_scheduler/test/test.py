@@ -10,6 +10,7 @@ import threading
 import time
 import unittest
 
+from ray.function_manager import FunctionDescriptor
 import ray.local_scheduler as local_scheduler
 from ray.local_scheduler import Task
 import ray.plasma as plasma
@@ -67,7 +68,8 @@ class TestLocalSchedulerClient(unittest.TestCase):
 
     def test_submit_and_get_task(self):
         function_id = random_function_id()
-        func_desc = Task.function_descriptor_from_id(function_id)
+        func_desc = FunctionDescriptor.from_function_id(random_function_id())
+        func_desc_list = func_desc.get_function_descriptor_list()
         object_ids = [random_object_id() for i in range(256)]
         # Create and seal the objects in the object store so that we can
         # schedule all of the subsequent tasks.
@@ -89,15 +91,15 @@ class TestLocalSchedulerClient(unittest.TestCase):
 
         for args in args_list:
             for num_return_vals in [0, 1, 2, 3, 5, 10, 100]:
-                task = local_scheduler.Task(random_driver_id(), func_desc,
+                task = local_scheduler.Task(random_driver_id(), func_desc_list,
                                             args, num_return_vals,
                                             random_task_id(), 0)
                 # Submit a task.
                 self.local_scheduler_client.submit(task)
                 # Get the task.
                 new_task = self.local_scheduler_client.get_task()
-                self.assertEqual(task.function_id().id(),
-                                 new_task.function_id().id())
+                self.assertEqual(task.function_descriptor_list(),
+                                 new_task.function_descriptor_list())
                 retrieved_args = new_task.arguments()
                 returns = new_task.returns()
                 self.assertEqual(len(args), len(retrieved_args))
@@ -111,7 +113,7 @@ class TestLocalSchedulerClient(unittest.TestCase):
         # Submit all of the tasks.
         for args in args_list:
             for num_return_vals in [0, 1, 2, 3, 5, 10, 100]:
-                task = local_scheduler.Task(random_driver_id(), func_desc,
+                task = local_scheduler.Task(random_driver_id(), func_desc_list,
                                             args, num_return_vals,
                                             random_task_id(), 0)
                 self.local_scheduler_client.submit(task)
@@ -124,8 +126,9 @@ class TestLocalSchedulerClient(unittest.TestCase):
         # Create a task and submit it.
         object_id = random_object_id()
         function_id = random_function_id()
-        func_desc = Task.function_descriptor_from_id(function_id)
-        task = local_scheduler.Task(random_driver_id(), func_desc,
+        func_desc = FunctionDescriptor.from_function_id(random_function_id())
+        func_desc_list = func_desc.get_function_descriptor_list()
+        task = local_scheduler.Task(random_driver_id(), func_desc_list,
                                     [object_id], 0, random_task_id(), 0)
         self.local_scheduler_client.submit(task)
 
@@ -150,8 +153,9 @@ class TestLocalSchedulerClient(unittest.TestCase):
         object_id1 = random_object_id()
         object_id2 = random_object_id()
         function_id = random_function_id()
-        func_desc = Task.function_descriptor_from_id(function_id)
-        task = local_scheduler.Task(random_driver_id(), func_desc,
+        func_desc = FunctionDescriptor.from_function_id(random_function_id())
+        func_desc_list = func_desc.get_function_descriptor_list()
+        task = local_scheduler.Task(random_driver_id(), func_desc_list,
                                     [object_id1, object_id2], 0,
                                     random_task_id(), 0)
         self.local_scheduler_client.submit(task)

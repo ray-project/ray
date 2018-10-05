@@ -223,17 +223,10 @@ TaskID TaskSpec_task_id(const TaskSpec *spec) {
   return from_flatbuf(*message->task_id());
 }
 
-FunctionID TaskSpec_function_id(TaskSpec *spec) {
-  return TaskSpec_function(spec).GetFunctionId();
-}
-
-ray::FunctionDescriptor TaskSpec_function(TaskSpec *spec) {
+std::vector<std::string> TaskSpec_function_descriptor(TaskSpec *spec) {
   RAY_CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskInfo>(spec);
-  ray::FunctionDescriptor function_descriptor;
-  function_descriptor.SetDescriptorVector(
-      string_vec_from_flatbuf(*message->function_descriptor()));
-  return function_descriptor;
+  return string_vec_from_flatbuf(*message->function_descriptor());
 }
 
 ActorID TaskSpec_actor_id(TaskSpec *spec) {

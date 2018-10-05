@@ -217,20 +217,12 @@ void TaskSpec_start_construct(
 TaskSpec *TaskSpec_finish_construct(TaskBuilder *builder, int64_t *size);
 
 /**
- * Return the function ID of the task.
- *
- * @param spec The task_spec in question.
- * @return The function ID of the function to execute in this task.
- */
-FunctionID TaskSpec_function_id(TaskSpec *spec);
-
-/**
  * Return the function descriptor of the task.
  *
  * @param spec The task_spec in question.
- * @return The function descriptor of the function to execute in this task.
+ * @return The vector of strings to represent the function descriptor.
  */
-ray::FunctionDescriptor TaskSpec_function(TaskSpec *spec);
+std::vector<std::string> TaskSpec_function_descriptor(TaskSpec *spec);
 
 /**
  * Return the actor ID of the task.

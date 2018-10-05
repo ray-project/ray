@@ -131,15 +131,9 @@ TaskID TaskSpecification::ParentTaskId() const {
 int64_t TaskSpecification::ParentCounter() const {
   throw std::runtime_error("Method not implemented");
 }
-FunctionID TaskSpecification::FunctionId() const {
-  return FunctionDescriptor().GetFunctionId();
-}
-FunctionDescriptor TaskSpecification::FunctionDescriptor() const {
+std::vector<std::string> TaskSpecification::FunctionDescriptor() const {
   auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
-  ray::FunctionDescriptor function_descriptor;
-  function_descriptor.SetDescriptorVector(
-      string_vec_from_flatbuf(*message->function_descriptor()));
-  return function_descriptor;
+  return string_vec_from_flatbuf(*message->function_descriptor());
 }
 
 int64_t TaskSpecification::NumArgs() const {
@@ -201,7 +195,7 @@ const ResourceSet TaskSpecification::GetRequiredPlacementResources() const {
 
 bool TaskSpecification::IsDriverTask() const {
   // Driver tasks are empty tasks that have no function ID set.
-  return FunctionDescriptor().IsDriverTask();
+  return FunctionDescriptor().empty();
 }
 
 Language TaskSpecification::GetLanguage() const {

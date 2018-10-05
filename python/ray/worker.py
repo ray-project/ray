@@ -32,7 +32,7 @@ import ray.plasma
 import ray.ray_constants as ray_constants
 from ray import import_thread
 from ray import profiling
-from ray.function_manager import FunctionActorManager
+from ray.function_manager import (FunctionActorManager, FunctionDescriptor)
 from ray.utils import (
     binary_to_hex,
     check_oversized_pickle,
@@ -641,10 +641,10 @@ class Worker(object):
                 task_index = self.task_index
                 self.task_index += 1
             # Submit the task to local scheduler.
-            func_desc = ray.local_scheduler.Task.function_descriptor_from_id(
-                function_id)
+            func_desc = FunctionDescriptor.from_function_id(function_id)
+            func_desc_list = func_desc.get_function_descriptor_list()
             task = ray.local_scheduler.Task(
-                driver_id, func_desc, args_for_local_scheduler,
+                driver_id, func_desc_list, args_for_local_scheduler,
                 num_return_vals, self.current_task_id, task_index,
                 actor_creation_id, actor_creation_dummy_object_id, actor_id,
                 actor_handle_id, actor_counter, is_actor_checkpoint_method,
@@ -796,7 +796,9 @@ class Worker(object):
         self.current_task_id = task.task_id()
         self.task_index = 0
         self.put_index = 1
-        function_id = task.function_id()
+        function_descriptor = FunctionDescriptor.from_bytes_list(
+            task.function_descriptor_list())
+        function_id = function_descriptor.function_id
         args = task.arguments()
         return_object_ids = task.returns()
         if task.actor_id().id() != NIL_ACTOR_ID:
@@ -907,7 +909,9 @@ class Worker(object):
         Args:
             task: The task to execute.
         """
-        function_id = task.function_id()
+        function_descriptor = FunctionDescriptor.from_bytes_list(
+            task.function_descriptor_list())
+        function_id = function_descriptor.function_id
         driver_id = task.driver_id().id()
 
         # TODO(rkn): It would be preferable for actor creation tasks to share
@@ -2142,10 +2146,10 @@ def connect(info,
         # rerun the driver.
         nil_actor_counter = 0
 
-        func_desc = ray.local_scheduler.Task.driver_task_function_descriptor()
+        func_desc = FunctionDescriptor.create_driver_task()
         driver_task = ray.local_scheduler.Task(
-            worker.task_driver_id, func_desc, [], 0,
-            worker.current_task_id, worker.task_index,
+            worker.task_driver_id, func_desc.get_function_descriptor_list(),
+            [], 0, worker.current_task_id, worker.task_index,
             ray.ObjectID(NIL_ACTOR_ID), ray.ObjectID(NIL_ACTOR_ID),
             ray.ObjectID(NIL_ACTOR_ID), ray.ObjectID(NIL_ACTOR_ID),
             nil_actor_counter, False, [], {"CPU": 0}, {}, worker.use_raylet)

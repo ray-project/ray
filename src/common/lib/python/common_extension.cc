@@ -90,8 +90,8 @@ int PyListStringToFunctionDescriptor(
     if (PyList_Size(object) == 0) {
       return 1;
     }
-    size_t size = PyList_Size(object);
-    for (int64_t i = 0; i < size; ++i) {
+    Py_ssize_t size = PyList_Size(object);
+    for (Py_ssize_t i = 0; i < size; ++i) {
       PyObject *item = PyList_GetItem(object, i);
       string_vector.emplace_back(PyBytes_AsString(item), PyBytes_Size(item));
     }
@@ -555,57 +555,27 @@ static void PyTask_dealloc(PyTask *self) {
   Py_TYPE(self)->tp_free(reinterpret_cast<PyObject *>(self));
 }
 
-static PyObject *PyTask_function_id(PyTask *self) {
-  FunctionID function_id;
-  if (!use_raylet(self)) {
-    function_id = TaskSpec_function_id(self->spec);
-  } else {
-    function_id = self->task_spec->FunctionId();
-  }
-  return PyObjectID_make(function_id);
-}
-
 // Helper function to change a function descriptr to Python list.
-static PyObject *FunctionDescriptorToPyList(
-    const ray::FunctionDescriptor &function_descriptor) {
-  const auto &vector = function_descriptor.GetDescriptorVector();
-  size_t size = vector.size();
+static PyObject *VectorStringToPyBytesList(
+    const std::vector<std::string> &function_descriptor) {
+  size_t size = function_descriptor.size();
   PyObject *return_list = PyList_New(static_cast<Py_ssize_t>(size));
   for (size_t i = 0; i < size; ++i) {
-    auto py_byte =
-        PyBytes_FromStringAndSize(vector[i].data(), vector[i].size());
-    PyList_SetItem(return_list, i, py_byte);
+    auto py_bytes =
+        PyBytes_FromStringAndSize(function_descriptor[i].data(), function_descriptor[i].size());
+    PyList_SetItem(return_list, i, py_bytes);
   }
   return return_list;
 }
 
 static PyObject *PyTask_function_descriptor_vector(PyTask *self) {
-  ray::FunctionDescriptor function_descriptor;
+  std::vector<std::string> function_descriptor;
   if (!use_raylet(self)) {
-    function_descriptor = TaskSpec_function(self->spec);
+    function_descriptor = TaskSpec_function_descriptor(self->spec);
   } else {
     function_descriptor = self->task_spec->FunctionDescriptor();
   }
-  return FunctionDescriptorToPyList(function_descriptor);
-}
-
-// Exposing this function will help to avoid mismatch behavior in python c++
-// for driver task creation.
-static PyObject *PyTask_driver_task_function_descriptor_vector(PyTask *self) {
-  auto function_descriptor = FunctionDescriptor::CreateDriverTask();
-  RAY_CHECK(function_descriptor.GetDescriptorVector().size() == 4);
-  auto ret = FunctionDescriptorToPyList(function_descriptor);
-  return ret;
-}
-
-static PyObject *PyTask_function_descriptor_from_id(PyTask *self,
-                                                    PyObject *args) {
-  FunctionID function_id;
-  if (!PyArg_ParseTuple(args, "O&", &PyObjectToUniqueID, &function_id)) {
-    return NULL;
-  }
-  FunctionDescriptor function_descriptor(function_id);
-  return FunctionDescriptorToPyList(function_descriptor);
+  return VectorStringToPyBytesList(function_descriptor);
 }
 
 static PyObject *PyTask_actor_id(PyTask *self) {
@@ -829,17 +799,8 @@ static PyObject *PyTask_to_serialized_flatbuf(PyTask *self) {
 }
 
 static PyMethodDef PyTask_methods[] = {
-    {"function_id", (PyCFunction) PyTask_function_id, METH_NOARGS,
-     "Return the function ID for this task."},
-    {"function_descriptor", (PyCFunction) PyTask_function_descriptor_vector,
+    {"function_descriptor_list", (PyCFunction) PyTask_function_descriptor_vector,
      METH_NOARGS, "Return the function descriptor for this task."},
-    {"driver_task_function_descriptor",
-     (PyCFunction) PyTask_driver_task_function_descriptor_vector,
-     METH_NOARGS | METH_STATIC, "Return a driver task function descriptor."},
-    {"function_descriptor_from_id",
-     (PyCFunction) PyTask_function_descriptor_from_id,
-     METH_VARARGS | METH_STATIC,
-     "Return a function descriptor according to a function id"},
     {"parent_task_id", (PyCFunction) PyTask_parent_task_id, METH_NOARGS,
      "Return the task ID of the parent task."},
     {"parent_counter", (PyCFunction) PyTask_parent_counter, METH_NOARGS,

@@ -12,6 +12,7 @@ import unittest
 
 # The ray import must come before the pyarrow import because ray modifies the
 # python path so that the right version of pyarrow is found.
+from ray.function_manager import FunctionDescriptor
 import ray.global_scheduler as global_scheduler
 import ray.local_scheduler as local_scheduler
 from ray.local_scheduler import Task
@@ -160,14 +161,16 @@ class TestGlobalScheduler(unittest.TestCase):
         return db_client_id
 
     def test_task_default_resources(self):
-        func_desc1 = Task.function_descriptor_from_id(random_function_id())
-        task1 = local_scheduler.Task(
-            random_driver_id(), func_desc1, [random_object_id()], 0,
-            random_task_id(), 0)
+        func_desc1 = FunctionDescriptor.from_function_id(random_function_id())
+        func_desc_list1 = func_desc1.get_function_descriptor_list()
+        task1 = local_scheduler.Task(random_driver_id(),
+                                     func_desc_list1, [random_object_id()], 0,
+                                     random_task_id(), 0)
         self.assertEqual(task1.required_resources(), {"CPU": 1})
-        func_desc2 = Task.function_descriptor_from_id(random_function_id())
+        func_desc2 = FunctionDescriptor.from_function_id(random_function_id())
+        func_desc_list2 = func_desc2.get_function_descriptor_list()
         task2 = local_scheduler.Task(
-            random_driver_id(), func_desc2, [random_object_id()], 0,
+            random_driver_id(), func_desc_list2, [random_object_id()], 0,
             random_task_id(), 0, local_scheduler.ObjectID(NIL_ACTOR_ID),
             local_scheduler.ObjectID(NIL_OBJECT_ID),
             local_scheduler.ObjectID(NIL_ACTOR_ID),
@@ -212,9 +215,10 @@ class TestGlobalScheduler(unittest.TestCase):
         # Sleep before submitting task to local scheduler.
         time.sleep(0.1)
         # Submit a task to Redis.
-        func_desc = Task.function_descriptor_from_id(random_function_id())
+        func_desc = FunctionDescriptor.from_function_id(random_function_id())
+        func_desc_list = func_desc.get_function_descriptor_list()
         task = local_scheduler.Task(
-            random_driver_id(), func_desc,
+            random_driver_id(), func_desc_list,
             [local_scheduler.ObjectID(object_dep.binary())],
             num_return_vals[0], random_task_id(), 0)
         self.local_scheduler_clients[0].submit(task)
@@ -266,9 +270,11 @@ class TestGlobalScheduler(unittest.TestCase):
                 # Give 10ms for object info handler to fire (long enough to
                 # yield CPU).
                 time.sleep(0.010)
-            func_desc = Task.function_descriptor_from_id(random_function_id())
+            func_desc = FunctionDescriptor.from_function_id(
+                random_function_id())
+            func_desc_list = func_desc.get_function_descriptor_list()
             task = local_scheduler.Task(
-                random_driver_id(), func_desc(),
+                random_driver_id(), func_desc_list,
                 [local_scheduler.ObjectID(object_dep.binary())],
                 num_return_vals[0], random_task_id(), 0)
             self.local_scheduler_clients[0].submit(task)

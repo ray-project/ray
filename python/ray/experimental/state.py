@@ -13,6 +13,7 @@ import sys
 import time
 
 import ray
+from ray.function_manager import FunctionDescriptor
 import ray.gcs_utils
 import ray.ray_constants as ray_constants
 from ray.utils import (decode, binary_to_object_id, binary_to_hex,
@@ -301,6 +302,9 @@ class GlobalState(object):
                 task_table_response, 0)
             task_spec = task_table_message.TaskSpec()
             task_spec = ray.local_scheduler.task_from_string(task_spec)
+            function_descriptor_list = task_spec.function_descriptor_list()
+            function_descriptor = FunctionDescriptor.from_bytes_list(
+                function_descriptor_list)
 
             task_spec_info = {
                 "DriverID": binary_to_hex(task_spec.driver_id().id()),
@@ -313,10 +317,14 @@ class GlobalState(object):
                 "ActorCreationDummyObjectID": binary_to_hex(
                     task_spec.actor_creation_dummy_object_id().id()),
                 "ActorCounter": task_spec.actor_counter(),
-                "FunctionID": binary_to_hex(task_spec.function_id().id()),
                 "Args": task_spec.arguments(),
                 "ReturnObjectIDs": task_spec.returns(),
-                "RequiredResources": task_spec.required_resources()
+                "RequiredResources": task_spec.required_resources(),
+                "FunctionID": binary_to_hex(
+                    function_descriptor.function_id.id()),
+                "ModuleName": function_descriptor.module_name,
+                "ClassName": function_descriptor.class_name,
+                "FunctionName": function_descriptor.function_name
             }
 
             execution_dependencies_message = (
@@ -362,6 +370,10 @@ class GlobalState(object):
                 execution_spec = task_table_message.TaskExecutionSpec()
                 task_spec = task_table_message.TaskSpecification()
                 task_spec = ray.local_scheduler.task_from_string(task_spec)
+                function_descriptor_list = task_spec.function_descriptor_list()
+                function_descriptor = FunctionDescriptor.from_bytes_list(
+                    function_descriptor_list)
+
                 task_spec_info = {
                     "DriverID": binary_to_hex(task_spec.driver_id().id()),
                     "TaskID": binary_to_hex(task_spec.task_id().id()),
@@ -374,10 +386,14 @@ class GlobalState(object):
                     "ActorCreationDummyObjectID": binary_to_hex(
                         task_spec.actor_creation_dummy_object_id().id()),
                     "ActorCounter": task_spec.actor_counter(),
-                    "FunctionID": binary_to_hex(task_spec.function_id().id()),
                     "Args": task_spec.arguments(),
                     "ReturnObjectIDs": task_spec.returns(),
-                    "RequiredResources": task_spec.required_resources()
+                    "RequiredResources": task_spec.required_resources(),
+                    "FunctionID": binary_to_hex(
+                        function_descriptor.function_id.id()),
+                    "ModuleName": function_descriptor.module_name,
+                    "ClassName": function_descriptor.class_name,
+                    "FunctionName": function_descriptor.function_name
                 }
 
                 info.append({
