@@ -6,10 +6,14 @@ from __future__ import print_function
 
 import argparse
 import yaml
+import logging
+import copy
 
 import ray
 from ray.tune.config_parser import make_parser, resources_to_json
 from ray.tune.tune import _make_scheduler, run_experiments
+
+logger = logging.getLogger(__name__)
 
 EXAMPLE_USAGE = """
 Training example via RLlib CLI:
@@ -23,6 +27,8 @@ Grid search example via executable:
 
 Note that -f overrides all other trial-specific command-line options.
 """
+
+DEFAULT_NAME = "default"
 
 
 def create_parser(parser_creator=None):
@@ -52,7 +58,7 @@ def create_parser(parser_creator=None):
         " This only has an affect in local mode.")
     parser.add_argument(
         "--experiment-name",
-        default="default",
+        default=DEFAULT_NAME,
         type=str,
         help="Name of the subdirectory under `local_dir` to put results in.")
     parser.add_argument(
@@ -73,28 +79,49 @@ def create_parser(parser_creator=None):
         "overrides any trial-specific options set via flags above.")
     return parser
 
+def _args_to_config(args):
+    """Converts parsed args to experiment dict.
+
+    Note: keep this in sync with tune/config_parser.py
+
+    Args:
+        args (Namespace): Parsed args from argparse.
+    """
+    return {
+        "run": args.run,
+        "checkpoint_freq": args.checkpoint_freq,
+        "local_dir": args.local_dir,
+        "trial_resources": (
+            args.trial_resources and
+            resources_to_json(args.trial_resources)),
+        "stop": args.stop,
+        "config": dict(args.config, env=args.env),
+        "restore": args.restore,
+        "num_samples": args.num_samples,
+        "upload_dir": args.upload_dir
+    }
+
 
 def run(args, parser):
     if args.config_file:
+        if args.experiment_name != DEFAULT_NAME:
+            logger.warn("Ignoring experiment-name since config is provided.")
         with open(args.config_file) as f:
-            experiments = yaml.load(f)
+            config_experiments = yaml.load(f)
+
+        experiments = {}
+        for name, values in config_experiments.items():
+            # Override config file settings with command-line settings.
+            # We do this by creating a new parser and setting the defaults
+            # of the parser to be the config file settings, and then
+            # overriding these defaults with `parse_known_args`.
+            new_parser = create_parser()
+            new_parser.set_defaults(**values)
+            overridden = new_parser.parse_known_args()[0]
+            experiments[name] = _args_to_config(overridden)
+
     else:
-        # Note: keep this in sync with tune/config_parser.py
-        experiments = {
-            args.experiment_name: {  # i.e. log to ~/ray_results/default
-                "run": args.run,
-                "checkpoint_freq": args.checkpoint_freq,
-                "local_dir": args.local_dir,
-                "trial_resources": (
-                    args.trial_resources and
-                    resources_to_json(args.trial_resources)),
-                "stop": args.stop,
-                "config": dict(args.config, env=args.env),
-                "restore": args.restore,
-                "num_samples": args.num_samples,
-                "upload_dir": args.upload_dir,
-            }
-        }
+        experiments = {args.experiment_name: _args_to_config(args)}
 
     for exp in experiments.values():
         if not exp.get("run"):
