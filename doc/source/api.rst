@@ -3,6 +3,8 @@ The Ray API
 
 .. autofunction:: ray.init
 
+.. autofunction:: ray.is_initialized
+
 .. autofunction:: ray.remote
 
 .. autofunction:: ray.get

@@ -60,8 +60,18 @@ table TaskInfo {
   // The required_resources vector indicates the quantities of the different
   // resources required by this task.
   required_resources: [ResourcePair];
+  // The resources required for placing this task on a node. If this is empty,
+  // then the placement resources are equal to the required_resources.
+  required_placement_resources: [ResourcePair];
   // The language that this task belongs to
   language: TaskLanguage;
+  // Function descriptor, which is a list of strings that can
+  // uniquely describe a function.
+  // For a Python function, it should be: [module_name, class_name, function_name]
+  // For a Java function, it should be: [class_name, method_name, type_descriptor]
+  // TODO(hchen): after changing Python worker to use function_descriptor,
+  // function_id can be removed.
+  function_descriptor: [string];
 }
 
 // Object information data structure.

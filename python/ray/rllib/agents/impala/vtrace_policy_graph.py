@@ -146,8 +146,7 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
             else:
                 # Important: chop the tensor into batches at known episode cut
                 # boundaries. TODO(ekl) this is kind of a hack
-                T = (self.config["sample_batch_size"] //
-                     self.config["num_envs_per_worker"])
+                T = self.config["sample_batch_size"]
                 B = tf.shape(tensor)[0] // T
             rs = tf.reshape(tensor,
                             tf.concat([[B, T], tf.shape(tensor)[1:]], axis=0))

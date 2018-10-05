@@ -7,7 +7,7 @@ import org.junit.Assert;
 import org.ray.api.Ray;
 import org.ray.api.RayObject;
 import org.ray.api.annotation.RayRemote;
-import org.ray.util.FileUtil;
+import org.ray.runtime.util.FileUtil;
 
 /**
  * given a directory of document files on each "machine", we would like to count the appearance of

@@ -35,6 +35,13 @@ def ray_start_regular():
     ray.shutdown()
 
 
+@pytest.fixture
+def shutdown_only():
+    yield None
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
+
+
 def test_failed_task(ray_start_regular):
     @ray.remote
     def throw_exception_fct1():
@@ -206,9 +213,6 @@ def test_failed_actor_init(ray_start_regular):
         def __init__(self):
             raise Exception(error_message1)
 
-        def get_val(self):
-            return 1
-
         def fail_method(self):
             raise Exception(error_message2)
 
@@ -223,7 +227,27 @@ def test_failed_actor_init(ray_start_regular):
     a.fail_method.remote()
     wait_for_errors(ray_constants.TASK_PUSH_ERROR, 2)
     assert len(ray.error_info()) == 2
-    assert error_message2 in ray.error_info()[1]["message"]
+    assert error_message1 in ray.error_info()[1]["message"]
+
+
+def test_failed_actor_method(ray_start_regular):
+    error_message2 = "actor method failed"
+
+    @ray.remote
+    class FailedActor(object):
+        def __init__(self):
+            pass
+
+        def fail_method(self):
+            raise Exception(error_message2)
+
+    a = FailedActor.remote()
+
+    # Make sure that we get errors from a failed method.
+    a.fail_method.remote()
+    wait_for_errors(ray_constants.TASK_PUSH_ERROR, 1)
+    assert len(ray.error_info()) == 1
+    assert error_message2 in ray.error_info()[0]["message"]
 
 
 def test_incorrect_method_calls(ray_start_regular):
@@ -347,6 +371,19 @@ def test_actor_worker_dying_nothing_in_progress(ray_start_regular):
         ray.get(task2)
 
 
+def test_actor_scope_or_intentionally_killed_message(ray_start_regular):
+    @ray.remote
+    class Actor(object):
+        pass
+
+    a = Actor.remote()
+    a = Actor.remote()
+    a.__ray_terminate__.remote()
+    time.sleep(1)
+    assert len(ray.error_info()) == 0, (
+        "Should not have propogated an error - {}".format(ray.error_info()))
+
+
 @pytest.fixture
 def ray_start_object_store_memory():
     # Start the Ray processes.
@@ -445,7 +482,7 @@ def test_put_error2(ray_start_object_store_memory):
     wait_for_errors(ray_constants.PUT_RECONSTRUCTION_PUSH_ERROR, 1)
 
 
-def test_version_mismatch():
+def test_version_mismatch(shutdown_only):
     ray_version = ray.__version__
     ray.__version__ = "fake ray version"
 
@@ -456,7 +493,26 @@ def test_version_mismatch():
     # Reset the version.
     ray.__version__ = ray_version
 
-    ray.shutdown()
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_USE_XRAY") != "1",
+    reason="This test only works with xray.")
+def test_warning_monitor_died(shutdown_only):
+    ray.init(num_cpus=0)
+
+    time.sleep(1)  # Make sure the monitor has started.
+
+    # Cause the monitor to raise an exception by pushing a malformed message to
+    # Redis. This will probably kill the raylets and the raylet_monitor in
+    # addition to the monitor.
+    fake_id = 20 * b"\x00"
+    malformed_message = "asdf"
+    redis_client = ray.worker.global_state.redis_clients[0]
+    redis_client.execute_command(
+        "RAY.TABLE_ADD", ray.gcs_utils.TablePrefix.HEARTBEAT,
+        ray.gcs_utils.TablePubsub.HEARTBEAT, fake_id, malformed_message)
+
+    wait_for_errors(ray_constants.MONITOR_DIED_ERROR, 1)
 
 
 def test_export_large_objects(ray_start_regular):
@@ -503,6 +559,25 @@ def test_warning_for_infeasible_tasks(ray_start_regular):
     # This actor placement task is infeasible.
     Foo.remote()
     wait_for_errors(ray_constants.INFEASIBLE_TASK_ERROR, 2)
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_USE_XRAY") != "1",
+    reason="This test only works with xray.")
+def test_warning_for_infeasible_zero_cpu_actor(shutdown_only):
+    # Check that we cannot place an actor on a 0 CPU machine and that we get an
+    # infeasibility warning (even though the actor creation task itself
+    # requires no CPUs).
+
+    ray.init(num_cpus=0)
+
+    @ray.remote
+    class Foo(object):
+        pass
+
+    # The actor creation should be infeasible.
+    Foo.remote()
+    wait_for_errors(ray_constants.INFEASIBLE_TASK_ERROR, 1)
 
 
 @pytest.fixture

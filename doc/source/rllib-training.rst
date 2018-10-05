@@ -50,6 +50,8 @@ In an example below, we train A2C by specifying 8 workers through the config fla
     python ray/python/ray/rllib/train.py --env=PongDeterministic-v4 \
         --run=A2C --config '{"num_workers": 8, "monitor": true}'
 
+.. image:: rllib-config.svg
+
 Specifying Resources
 ~~~~~~~~~~~~~~~~~~~~
 
@@ -92,7 +94,7 @@ You can run these with the ``train.py`` script as follows:
 Python API
 ----------
 
-The Python API provides the needed flexibility for applying RLlib to new problems. You will need to use this API if you wish to use custom environments, preprocesors, or models with RLlib.
+The Python API provides the needed flexibility for applying RLlib to new problems. You will need to use this API if you wish to use `custom environments, preprocessors, or models <rllib-models.html>`__ with RLlib.
 
 Here is an example of the basic usage:
 
@@ -159,16 +161,60 @@ Tune will schedule the trials to run in parallel on your Ray cluster:
      - PPO_CartPole-v0_0_sgd_stepsize=0.01:	RUNNING [pid=21940], 16 s, 4013 ts, 22 rew
      - PPO_CartPole-v0_1_sgd_stepsize=0.001:	RUNNING [pid=21942], 27 s, 8111 ts, 54.7 rew
 
-Accessing Global State
+Accessing Policy State
 ~~~~~~~~~~~~~~~~~~~~~~
 It is common to need to access an agent's internal state, e.g., to set or get internal weights. In RLlib an agent's state is replicated across multiple *policy evaluators* (Ray actors) in the cluster. However, you can easily get and update this state between calls to ``train()`` via ``agent.optimizer.foreach_evaluator()`` or ``agent.optimizer.foreach_evaluator_with_index()``. These functions take a lambda function that is applied with the evaluator as an arg. You can also return values from these functions and those will be returned as a list.
 
-You can also access just the "master" copy of the agent state through ``agent.optimizer.local_evaluator``, but note that updates here may not be reflected in remote replicas if you have configured ``num_workers > 0``.
+You can also access just the "master" copy of the agent state through ``agent.local_evaluator``, but note that updates here may not be immediately reflected in remote replicas if you have configured ``num_workers > 0``. For example, to access the weights of a local TF policy, you can run ``agent.local_evaluator.policy_map["default"].get_weights()``. This is also equivalent to ``agent.local_evaluator.for_policy(lambda p: p.get_weights())``:
+
+.. code-block:: python
+
+    # Get weights of the local policy
+    agent.local_evaluator.policy_map["default"].get_weights()
+
+    # Same as above
+    agent.local_evaluator.for_policy(lambda p: p.get_weights())
+
+    # Get list of weights of each evaluator, including remote replicas
+    agent.optimizer.foreach_evaluator(
+        lambda ev: ev.for_policy(lambda p: p.get_weights()))
+
+    # Same as above
+    agent.optimizer.foreach_evaluator_with_index(
+        lambda ev, i: ev.for_policy(lambda p: p.get_weights()))
+
+Global Coordination
+~~~~~~~~~~~~~~~~~~~
+Sometimes, it is necessary to coordinate between pieces of code that live in different processes managed by RLlib. For example, it can be useful to maintain a global average of a certain variable, or centrally control a hyperparameter used by policies. Ray provides a general way to achieve this through *named actors* (learn more about Ray actors `here <actors.html>`__). As an example, consider maintaining a shared global counter that is incremented by environments and read periodically from your driver program:
+
+.. code-block:: python
+
+    from ray.experimental import named_actors
+
+    @ray.remote
+    class Counter:
+       def __init__(self):
+          self.count = 0
+       def inc(self, n):
+          self.count += n
+       def get(self):
+          return self.count
+
+    # on the driver
+    counter = Counter.remote()
+    named_actors.register_actor("global_counter", counter)
+    print(ray.get(counter.get.remote()))  # get the latest count
+
+    # in your envs
+    counter = named_actors.get_actor("global_counter")
+    counter.inc.remote(1)  # async call to increment the global count
+
+Ray actors provide high levels of performance, so in more complex cases they can be used implement communication patterns such as parameter servers and allreduce.
 
 REST API
 --------
 
-In some cases (i.e., when interacting with an external environment) it makes more sense to interact with RLlib as if were an independently running service, rather than RLlib hosting the simulations itself. This is possible via RLlib's serving env `interface <rllib-envs.html#serving>`__.
+In some cases (i.e., when interacting with an external environment) it makes more sense to interact with RLlib as if were an independently running service, rather than RLlib hosting the simulations itself. This is possible via RLlib's serving env `interface <rllib-env.html#agent-driven>`__.
 
 .. autoclass:: ray.rllib.utils.policy_client.PolicyClient
     :members:

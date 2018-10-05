@@ -94,6 +94,7 @@ class ModelSupportedSpaces(unittest.TestCase):
     def testAll(self):
         ray.init()
         stats = {}
+        check_support("IMPALA", {"gpu": False}, stats)
         check_support("DDPG", {"timesteps_per_iteration": 1}, stats)
         check_support("DQN", {"timesteps_per_iteration": 1}, stats)
         check_support("A3C", {
@@ -106,22 +107,23 @@ class ModelSupportedSpaces(unittest.TestCase):
             "PPO", {
                 "num_workers": 1,
                 "num_sgd_iter": 1,
-                "timesteps_per_batch": 1,
-                "sgd_batchsize": 1
+                "train_batch_size": 10,
+                "sample_batch_size": 10,
+                "sgd_minibatch_size": 1
             }, stats)
         check_support(
             "ES", {
                 "num_workers": 1,
                 "noise_size": 10000000,
                 "episodes_per_batch": 1,
-                "timesteps_per_batch": 1
+                "train_batch_size": 1
             }, stats)
         check_support(
             "ARS", {
                 "num_workers": 1,
                 "noise_size": 10000000,
-                "num_deltas": 1,
-                "deltas_used": 1
+                "num_rollouts": 1,
+                "rollouts_used": 1
             }, stats)
         check_support("PG", {"num_workers": 1, "optimizer": {}}, stats)
         num_unexpected_errors = 0

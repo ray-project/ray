@@ -26,6 +26,7 @@ class PPOLoss(object):
                  cur_kl_coeff,
                  entropy_coeff=0,
                  clip_param=0.1,
+                 vf_clip_param=0.1,
                  vf_loss_coeff=1.0,
                  use_gae=True):
         """Constructs the loss for Proximal Policy Objective.
@@ -49,10 +50,11 @@ class PPOLoss(object):
                 coefficient.
             entropy_coeff (float): Coefficient of the entropy regularizer.
             clip_param (float): Clip parameter
+            vf_clip_param (float): Clip parameter for the value function
             vf_loss_coeff (float): Coefficient of the value function loss
             use_gae (bool): If true, use the Generalized Advantage Estimator.
         """
-        dist_cls, _ = ModelCatalog.get_action_dist(action_space)
+        dist_cls, _ = ModelCatalog.get_action_dist(action_space, {})
         prev_dist = dist_cls(logits)
         # Make loss functions.
         logp_ratio = tf.exp(
@@ -71,8 +73,8 @@ class PPOLoss(object):
 
         if use_gae:
             vf_loss1 = tf.square(value_fn - value_targets)
-            vf_clipped = vf_preds + tf.clip_by_value(value_fn - vf_preds,
-                                                     -clip_param, clip_param)
+            vf_clipped = vf_preds + tf.clip_by_value(
+                value_fn - vf_preds, -vf_clip_param, vf_clip_param)
             vf_loss2 = tf.square(vf_clipped - value_targets)
             vf_loss = tf.maximum(vf_loss1, vf_loss2)
             self.mean_vf_loss = tf.reduce_mean(vf_loss)
@@ -106,7 +108,8 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
         self.config = config
         self.kl_coeff_val = self.config["kl_coeff"]
         self.kl_target = self.config["kl_target"]
-        dist_cls, logit_dim = ModelCatalog.get_action_dist(action_space)
+        dist_cls, logit_dim = ModelCatalog.get_action_dist(
+            action_space, self.config["model"])
 
         if existing_inputs:
             obs_ph, value_targets_ph, adv_ph, act_ph, \
@@ -188,10 +191,11 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             self.kl_coeff,
             entropy_coeff=self.config["entropy_coeff"],
             clip_param=self.config["clip_param"],
+            vf_clip_param=self.config["vf_clip_param"],
             vf_loss_coeff=self.config["vf_loss_coeff"],
             use_gae=self.config["use_gae"])
 
-        LearningRateSchedule.__init__(self, self.config["sgd_stepsize"],
+        LearningRateSchedule.__init__(self, self.config["lr"],
                                       self.config["lr_schedule"])
         TFPolicyGraph.__init__(
             self,

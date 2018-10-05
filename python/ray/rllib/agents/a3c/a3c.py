@@ -2,15 +2,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import pickle
-import os
 import time
 
-import ray
 from ray.rllib.agents.a3c.a3c_tf_policy_graph import A3CPolicyGraph
 from ray.rllib.agents.agent import Agent, with_common_config
 from ray.rllib.optimizers import AsyncGradientsOptimizer
-from ray.rllib.utils import FilterManager, merge_dicts
+from ray.rllib.utils import merge_dicts
 from ray.tune.trial import Resources
 
 DEFAULT_CONFIG = with_common_config({
@@ -104,34 +101,7 @@ class A3CAgent(Agent):
         start = time.time()
         while time.time() - start < self.config["min_iter_time_s"]:
             self.optimizer.step()
-            FilterManager.synchronize(self.local_evaluator.filters,
-                                      self.remote_evaluators)
         result = self.optimizer.collect_metrics()
         result.update(timesteps_this_iter=self.optimizer.num_steps_sampled -
                       prev_steps)
         return result
-
-    def _stop(self):
-        # workaround for https://github.com/ray-project/ray/issues/1516
-        for ev in self.remote_evaluators:
-            ev.__ray_terminate__.remote()
-
-    def _save(self, checkpoint_dir):
-        checkpoint_path = os.path.join(checkpoint_dir,
-                                       "checkpoint-{}".format(self.iteration))
-        agent_state = ray.get(
-            [a.save.remote() for a in self.remote_evaluators])
-        extra_data = {
-            "remote_state": agent_state,
-            "local_state": self.local_evaluator.save()
-        }
-        pickle.dump(extra_data, open(checkpoint_path + ".extra_data", "wb"))
-        return checkpoint_path
-
-    def _restore(self, checkpoint_path):
-        extra_data = pickle.load(open(checkpoint_path + ".extra_data", "rb"))
-        ray.get([
-            a.restore.remote(o)
-            for a, o in zip(self.remote_evaluators, extra_data["remote_state"])
-        ])
-        self.local_evaluator.restore(extra_data["local_state"])

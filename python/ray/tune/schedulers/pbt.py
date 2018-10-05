@@ -5,11 +5,14 @@ from __future__ import print_function
 import random
 import math
 import copy
+import logging
 
 from ray.tune.error import TuneError
 from ray.tune.trial import Trial, Checkpoint
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.suggest.variant_generator import format_vars
+
+logger = logging.getLogger(__name__)
 
 # Parameters are transferred from the top PBT_QUANTILE fraction of trials to
 # the bottom PBT_QUANTILE fraction.
@@ -69,7 +72,7 @@ def explore(config, mutations, resample_probability, custom_explore_fn):
         new_config = custom_explore_fn(new_config)
         assert new_config is not None, \
             "Custom explore fn failed to return new config"
-    print("[explore] perturbed config from {} -> {}".format(
+    logger.info("[explore] perturbed config from {} -> {}".format(
         config, new_config))
     return new_config
 
@@ -210,23 +213,29 @@ class PopulationBasedTraining(FIFOScheduler):
         trial_state = self._trial_state[trial]
         new_state = self._trial_state[trial_to_clone]
         if not new_state.last_checkpoint:
-            print("[pbt] warn: no checkpoint for trial, skip exploit", trial)
+            logger.warning("[pbt]: no checkpoint for trial"
+                           "skip exploit for Trial {}".format(trial))
             return
         new_config = explore(trial_to_clone.config, self._hyperparam_mutations,
                              self._resample_probability,
                              self._custom_explore_fn)
-        print("[exploit] transferring weights from trial "
-              "{} (score {}) -> {} (score {})".format(
-                  trial_to_clone, new_state.last_score, trial,
-                  trial_state.last_score))
+        logger.warning("[exploit] transferring weights from trial "
+                       "{} (score {}) -> {} (score {})".format(
+                           trial_to_clone, new_state.last_score, trial,
+                           trial_state.last_score))
         # TODO(ekl) restarting the trial is expensive. We should implement a
         # lighter way reset() method that can alter the trial config.
-        trial_executor.stop_trial(trial, stop_logger=False)
-        trial.config = new_config
-        trial.experiment_tag = make_experiment_tag(
-            trial_state.orig_tag, new_config, self._hyperparam_mutations)
-        trial_executor.start_trial(
-            trial, Checkpoint.from_object(new_state.last_checkpoint))
+        new_tag = make_experiment_tag(trial_state.orig_tag, new_config,
+                                      self._hyperparam_mutations)
+        reset_successful = trial_executor.reset_trial(trial, new_config,
+                                                      new_tag)
+        if not reset_successful:
+            trial_executor.stop_trial(trial, stop_logger=False)
+            trial.config = new_config
+            trial.experiment_tag = new_tag
+            trial_executor.start_trial(
+                trial, Checkpoint.from_object(new_state.last_checkpoint))
+
         self._num_perturbations += 1
         # Transfer over the last perturbation time as well
         trial_state.last_perturbation_time = new_state.last_perturbation_time

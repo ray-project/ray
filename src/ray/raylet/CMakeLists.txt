@@ -1,5 +1,3 @@
-include(${CMAKE_CURRENT_LIST_DIR}/../../common/cmake/Common.cmake)
-
 set(NODE_MANAGER_FBS_SRC "${CMAKE_CURRENT_LIST_DIR}/format/node_manager.fbs")
 set(OUTPUT_DIR ${CMAKE_CURRENT_LIST_DIR}/format/)
 

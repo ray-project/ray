@@ -2,7 +2,6 @@ package org.ray.api;
 
 import java.util.List;
 import org.ray.api.id.UniqueId;
-import org.ray.api.runtime.DefaultRayRuntimeFactory;
 import org.ray.api.runtime.RayRuntime;
 import org.ray.api.runtime.RayRuntimeFactory;
 
@@ -17,7 +16,14 @@ public final class Ray extends RayCall {
    * Initialize Ray runtime with the default runtime implementation.
    */
   public static void init() {
-    init(new DefaultRayRuntimeFactory());
+    try {
+      Class clz = Class.forName("org.ray.runtime.DefaultRayRuntimeFactory");
+      RayRuntimeFactory factory = (RayRuntimeFactory) clz.newInstance();
+      init(factory);
+    } catch (Exception e) {
+      throw new RuntimeException("Failed to initialize Ray runtime.", e);
+    }
+
   }
 
   /**
@@ -106,19 +112,9 @@ public final class Ray extends RayCall {
   }
 
   /**
-   * Create an actor on a remote node.
-   *
-   * @param actorClass the class of the actor to be created.
-   * @return A handle to the newly created actor.
-   */
-  public static <T> RayActor<T> createActor(Class<T> actorClass) {
-    return runtime.createActor(actorClass);
-  }
-
-  /**
    * Get the underlying runtime instance.
    */
-  static RayRuntime internal() {
+  public static RayRuntime internal() {
     return runtime;
   }
 }

@@ -3,13 +3,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import logging
 import os
 import time
 import traceback
+
 import ray
 from ray.tune.logger import NoopLogger
 from ray.tune.trial import Trial, Resources, Checkpoint
 from ray.tune.trial_executor import TrialExecutor
+
+logger = logging.getLogger(__name__)
 
 
 class RayTrialExecutor(TrialExecutor):
@@ -17,7 +21,7 @@ class RayTrialExecutor(TrialExecutor):
 
     def __init__(self, queue_trials=False):
         super(RayTrialExecutor, self).__init__(queue_trials)
-        self._running = {}  # TODO
+        self._running = {}
         # Since trial resume after paused should not run
         # trial.train.remote(), thus no more new remote object id generated.
         # We use self._paused to store paused trials here.
@@ -58,11 +62,12 @@ class RayTrialExecutor(TrialExecutor):
         trial.runner = self._setup_runner(trial)
         if not self.restore(trial, checkpoint):
             return
-        if prior_status == Trial.PAUSED:
-            # If prev status is PAUSED, self._paused stores its remote_id.
-            remote_id = self._find_item(self._paused, trial)[0]
-            self._paused.pop(remote_id)
-            self._running[remote_id] = trial
+
+        previous_run = self._find_item(self._paused, trial)
+        if (prior_status == Trial.PAUSED and previous_run):
+            # If Trial was in flight when paused, self._paused stores result.
+            self._paused.pop(previous_run[0])
+            self._running[previous_run[0]] = trial
         else:
             self._train(trial)
 
@@ -95,7 +100,7 @@ class RayTrialExecutor(TrialExecutor):
                 _, unfinished = ray.wait(
                     stop_tasks, num_returns=2, timeout=250)
         except Exception:
-            print("Error stopping runner:", traceback.format_exc())
+            logger.exception("Error stopping runner.")
             trial.status = Trial.ERROR
         finally:
             trial.runner = None
@@ -110,15 +115,15 @@ class RayTrialExecutor(TrialExecutor):
         try:
             self._start_trial(trial, checkpoint_obj)
         except Exception:
+            logger.exception("Error stopping runner - retrying...")
             error_msg = traceback.format_exc()
-            print("Error starting runner, retrying:", error_msg)
             time.sleep(2)
             self._stop_trial(trial, error=True, error_msg=error_msg)
             try:
                 self._start_trial(trial)
             except Exception:
+                logger.exception("Error starting runner, aborting!")
                 error_msg = traceback.format_exc()
-                print("Error starting runner, abort:", error_msg)
                 self._stop_trial(trial, error=True, error_msg=error_msg)
                 # note that we don't return the resources, since they may
                 # have been lost
@@ -144,29 +149,56 @@ class RayTrialExecutor(TrialExecutor):
         self._train(trial)
 
     def pause_trial(self, trial):
-        """Pauses the trial."""
+        """Pauses the trial.
 
-        remote_id = self._find_item(self._running, trial)[0]
-        self._paused[remote_id] = trial
+        If trial is in-flight, preserves return value in separate queue
+        before pausing, which is restored when Trial is resumed.
+        """
+
+        trial_future = self._find_item(self._running, trial)
+        if trial_future:
+            self._paused[trial_future[0]] = trial
         super(RayTrialExecutor, self).pause_trial(trial)
+
+    def reset_trial(self, trial, new_config, new_experiment_tag):
+        """Tries to invoke `Trainable.reset_config()` to reset trial.
+
+        Args:
+            trial (Trial): Trial to be reset.
+            new_config (dict): New configuration for Trial
+                trainable.
+            new_experiment_tag (str): New experiment name
+                for trial.
+
+        Returns:
+            True if `reset_config` is successful else False.
+        """
+        trial.experiment_tag = new_experiment_tag
+        trial.config = new_config
+        trainable = trial.runner
+        reset_val = ray.get(trainable.reset_config.remote(new_config))
+        return reset_val
 
     def get_running_trials(self):
         """Returns the running trials."""
 
         return list(self._running.values())
 
-    def fetch_one_result(self):
-        """Fetches one result of the running trials."""
-
+    def get_next_available_trial(self):
         [result_id], _ = ray.wait(list(self._running))
-        trial = self._running.pop(result_id)
-        result = None
-        try:
-            result = ray.get(result_id)
-        except Exception:
-            print("fetch_one_result failed:", traceback.format_exc())
+        return self._running[result_id]
 
-        return trial, result
+    def fetch_result(self, trial):
+        """Fetches one result of the running trials.
+
+        Returns:
+            Result of the most recent trial training run."""
+        trial_future = self._find_item(self._running, trial)
+        if not trial_future:
+            raise ValueError("Trial was not running.")
+        self._running.pop(trial_future[0])
+        result = ray.get(trial_future[0])
+        return result
 
     def _commit_resources(self, resources):
         self._committed_resources = Resources(
@@ -181,12 +213,13 @@ class RayTrialExecutor(TrialExecutor):
         assert self._committed_resources.gpu >= 0
 
     def _update_avail_resources(self):
-        clients = ray.global_state.client_table()
         if ray.worker.global_worker.use_raylet:
             # TODO(rliaw): Remove once raylet flag is swapped
-            num_cpus = sum(cl['Resources']['CPU'] for cl in clients)
-            num_gpus = sum(cl['Resources'].get('GPU', 0) for cl in clients)
+            resources = ray.global_state.cluster_resources()
+            num_cpus = resources["CPU"]
+            num_gpus = resources["GPU"]
         else:
+            clients = ray.global_state.client_table()
             local_schedulers = [
                 entry for client in clients.values() for entry in client
                 if (entry['ClientType'] == 'local_scheduler'
@@ -216,12 +249,13 @@ class RayTrialExecutor(TrialExecutor):
             can_overcommit = False  # requested resource is already saturated
 
         if can_overcommit:
-            print("WARNING:tune:allowing trial to start even though the "
-                  "cluster does not have enough free resources. Trial actors "
-                  "may appear to hang until enough resources are added to the "
-                  "cluster (e.g., via autoscaling). You can disable this "
-                  "behavior by specifying `queue_trials=False` in "
-                  "ray.tune.run_experiments().")
+            logger.warning(
+                "Allowing trial to start even though the "
+                "cluster does not have enough free resources. Trial actors "
+                "may appear to hang until enough resources are added to the "
+                "cluster (e.g., via autoscaling). You can disable this "
+                "behavior by specifying `queue_trials=False` in "
+                "ray.tune.run_experiments().")
             return True
 
         return False
@@ -257,7 +291,7 @@ class RayTrialExecutor(TrialExecutor):
         if checkpoint is None or checkpoint.value is None:
             return True
         if trial.runner is None:
-            print("Unable to restore - no runner")
+            logger.error("Unable to restore - no runner.")
             trial.status = Trial.ERROR
             return False
         try:
@@ -269,6 +303,6 @@ class RayTrialExecutor(TrialExecutor):
                 ray.get(trial.runner.restore.remote(value))
             return True
         except Exception:
-            print("Error restoring runner:", traceback.format_exc())
+            logger.exception("Error restoring runner.")
             trial.status = Trial.ERROR
             return False

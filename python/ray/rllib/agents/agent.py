@@ -4,16 +4,20 @@ from __future__ import print_function
 
 import copy
 import json
-import numpy as np
 import os
 import pickle
-
+import tempfile
+from datetime import datetime
 import tensorflow as tf
+
+import ray
 from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
-from ray.rllib.utils import deep_update, merge_dicts
+from ray.rllib.utils import FilterManager, deep_update, merge_dicts
 from ray.tune.registry import ENV_CREATOR, _global_registry
 from ray.tune.trainable import Trainable
+from ray.tune.logger import UnifiedLogger
+from ray.tune.result import DEFAULT_RESULTS_DIR
 
 COMMON_CONFIG = {
     # Discount factor of the MDP
@@ -26,14 +30,20 @@ COMMON_CONFIG = {
     "num_workers": 2,
     # Default sample batch size
     "sample_batch_size": 200,
+    # Training batch size, if applicable. Should be >= sample_batch_size.
+    # Samples batches will be concatenated together to this size for training.
+    "train_batch_size": 200,
     # Whether to rollout "complete_episodes" or "truncate_episodes"
     "batch_mode": "truncate_episodes",
     # Whether to use a background thread for sampling (slightly off-policy)
     "sample_async": False,
     # Which observation filter to apply to the observation
     "observation_filter": "NoFilter",
-    # Whether to clip rewards prior to experience postprocessing
-    "clip_rewards": True,
+    # Whether to synchronize the statistics of remote filters.
+    "synchronize_filters": True,
+    # Whether to clip rewards prior to experience postprocessing. Setting to
+    # None means clip for Atari only.
+    "clip_rewards": None,
     # Whether to use rllib or deepmind preprocessors
     "preprocessor_pref": "deepmind",
     # Arguments to pass to the env creator
@@ -185,6 +195,24 @@ class Agent(Trainable):
 
         # Agents allow env ids to be passed directly to the constructor.
         self._env_id = env or config.get("env")
+
+        # Create a default logger creator if no logger_creator is specified
+        if logger_creator is None:
+            timestr = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
+            logdir_prefix = '_'.join([self._agent_name, self._env_id, timestr])
+
+            def default_logger_creator(config):
+                """Creates a Unified logger with a default logdir prefix
+                containing the agent name and the env id
+                """
+                if not os.path.exists(DEFAULT_RESULTS_DIR):
+                    os.makedirs(DEFAULT_RESULTS_DIR)
+                logdir = tempfile.mkdtemp(
+                    prefix=logdir_prefix, dir=DEFAULT_RESULTS_DIR)
+                return UnifiedLogger(config, logdir, None)
+
+            logger_creator = default_logger_creator
+
         Trainable.__init__(self, config, logger_creator)
 
     def train(self):
@@ -196,6 +224,13 @@ class Agent(Trainable):
             self.optimizer.local_evaluator.set_global_vars(self.global_vars)
             for ev in self.optimizer.remote_evaluators:
                 ev.set_global_vars.remote(self.global_vars)
+
+        if (self.config.get("observation_filter", "NoFilter") != "NoFilter"
+                and hasattr(self, "local_evaluator")):
+            FilterManager.synchronize(
+                self.local_evaluator.filters,
+                self.remote_evaluators,
+                update_remote=self.config["synchronize_filters"])
 
         return Trainable.train(self)
 
@@ -289,95 +324,39 @@ class Agent(Trainable):
         """
         self.local_evaluator.set_weights(weights)
 
+    def _stop(self):
+        # workaround for https://github.com/ray-project/ray/issues/1516
+        if hasattr(self, "remote_evaluators"):
+            for ev in self.remote_evaluators:
+                ev.__ray_terminate__.remote()
 
-class _MockAgent(Agent):
-    """Mock agent for use in tests"""
+    def __getstate__(self):
+        state = {}
+        if hasattr(self, "local_evaluator"):
+            state["evaluator"] = self.local_evaluator.save()
+        if hasattr(self, "optimizer") and hasattr(self.optimizer, "save"):
+            state["optimizer"] = self.optimizer.save()
+        return state
 
-    _agent_name = "MockAgent"
-    _default_config = {
-        "mock_error": False,
-        "persistent_error": False,
-        "test_variable": 1
-    }
-
-    def _init(self):
-        self.info = None
-        self.restored = False
-
-    def _train(self):
-        if self.config["mock_error"] and self.iteration == 1 \
-                and (self.config["persistent_error"] or not self.restored):
-            raise Exception("mock error")
-        return dict(
-            episode_reward_mean=10,
-            episode_len_mean=10,
-            timesteps_this_iter=10,
-            info={})
+    def __setstate__(self, state):
+        if "evaluator" in state:
+            self.local_evaluator.restore(state["evaluator"])
+            remote_state = ray.put(state["evaluator"])
+            for r in self.remote_evaluators:
+                r.restore.remote(remote_state)
+        if "optimizer" in state:
+            self.optimizer.restore(state["optimizer"])
 
     def _save(self, checkpoint_dir):
-        path = os.path.join(checkpoint_dir, "mock_agent.pkl")
-        with open(path, 'wb') as f:
-            pickle.dump(self.info, f)
-        return path
+        checkpoint_path = os.path.join(checkpoint_dir,
+                                       "checkpoint-{}".format(self.iteration))
+        pickle.dump(self.__getstate__(),
+                    open(checkpoint_path + ".agent_state", "wb"))
+        return checkpoint_path
 
     def _restore(self, checkpoint_path):
-        with open(checkpoint_path, 'rb') as f:
-            info = pickle.load(f)
-        self.info = info
-        self.restored = True
-
-    def set_info(self, info):
-        self.info = info
-        return info
-
-    def get_info(self):
-        return self.info
-
-
-class _SigmoidFakeData(_MockAgent):
-    """Agent that returns sigmoid learning curves.
-
-    This can be helpful for evaluating early stopping algorithms."""
-
-    _agent_name = "SigmoidFakeData"
-    _default_config = {
-        "width": 100,
-        "height": 100,
-        "offset": 0,
-        "iter_time": 10,
-        "iter_timesteps": 1,
-    }
-
-    def _train(self):
-        i = max(0, self.iteration - self.config["offset"])
-        v = np.tanh(float(i) / self.config["width"])
-        v *= self.config["height"]
-        return dict(
-            episode_reward_mean=v,
-            episode_len_mean=v,
-            timesteps_this_iter=self.config["iter_timesteps"],
-            time_this_iter_s=self.config["iter_time"],
-            info={})
-
-
-class _ParameterTuningAgent(_MockAgent):
-
-    _agent_name = "ParameterTuningAgent"
-    _default_config = {
-        "reward_amt": 10,
-        "dummy_param": 10,
-        "dummy_param2": 15,
-        "iter_time": 10,
-        "iter_timesteps": 1
-    }
-
-    def _train(self):
-        return dict(
-            episode_reward_mean=self.config["reward_amt"] * self.iteration,
-            episode_len_mean=self.config["reward_amt"],
-            timesteps_this_iter=self.config["iter_timesteps"],
-            time_this_iter_s=self.config["iter_time"],
-            info={})
+        extra_data = pickle.load(open(checkpoint_path + ".agent_state", "rb"))
+        self.__setstate__(extra_data)
 
 
 def get_agent_class(alg):
@@ -423,10 +402,13 @@ def get_agent_class(alg):
         from ray.tune import script_runner
         return script_runner.ScriptRunner
     elif alg == "__fake":
+        from ray.rllib.agents.mock import _MockAgent
         return _MockAgent
     elif alg == "__sigmoid_fake_data":
+        from ray.rllib.agents.mock import _SigmoidFakeData
         return _SigmoidFakeData
     elif alg == "__parameter_tuning":
+        from ray.rllib.agents.mock import _ParameterTuningAgent
         return _ParameterTuningAgent
     else:
         raise Exception(("Unknown algorithm {}.").format(alg))

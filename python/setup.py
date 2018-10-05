@@ -124,7 +124,7 @@ class BinaryDistribution(Distribution):
 setup(
     name="ray",
     # The version string is also in __init__.py. TODO(pcm): Fix this.
-    version="0.5.2",
+    version="0.5.3",
     packages=find_packages(),
     cmdclass={"build_ext": build_ext},
     # The BinaryDistribution argument triggers build_ext.
@@ -134,7 +134,6 @@ setup(
         "funcsigs",
         "click",
         "colorama",
-        "psutil",
         "pytest",
         "pyyaml",
         "redis",

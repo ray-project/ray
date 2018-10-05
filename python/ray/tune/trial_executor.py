@@ -3,9 +3,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import logging
 import traceback
 
 from ray.tune.trial import Trial, Checkpoint
+
+logger = logging.getLogger(__name__)
 
 
 class TrialExecutor(object):
@@ -66,14 +69,15 @@ class TrialExecutor(object):
             error_msg (str): Optional error message.
         """
         try:
-            print("Attempting to recover trial state from last checkpoint")
+            logger.info(
+                "Attempting to recover trial state from last checkpoint")
             self.stop_trial(
                 trial, error=True, error_msg=error_msg, stop_logger=False)
             trial.result_logger.flush()
             self.start_trial(trial)
         except Exception:
             error_msg = traceback.format_exc()
-            print("Error recovering trial from checkpoint, abort:", error_msg)
+            logger.exception("Error recovering trial from checkpoint, abort.")
             self.stop_trial(trial, error=True, error_msg=error_msg)
 
     def continue_training(self, trial):
@@ -92,7 +96,7 @@ class TrialExecutor(object):
             self.stop_trial(trial, stop_logger=False)
             trial.status = Trial.PAUSED
         except Exception:
-            print("Error pausing runner:", traceback.format_exc())
+            logger.exception("Error pausing runner.")
             trial.status = Trial.ERROR
 
     def unpause_trial(self, trial):
@@ -105,6 +109,21 @@ class TrialExecutor(object):
 
         assert trial.status == Trial.PAUSED, trial.status
         self.start_trial(trial)
+
+    def reset_trial(self, trial, new_config, new_experiment_tag):
+        """Tries to invoke `Trainable.reset_config()` to reset trial.
+
+        Args:
+            trial (Trial): Trial to be reset.
+            new_config (dict): New configuration for Trial
+                trainable.
+            new_experiment_tag (str): New experiment name
+                for trial.
+
+        Returns:
+            True if `reset_config` is successful else False.
+        """
+        raise NotImplementedError
 
     def get_running_trials(self):
         """Returns all running trials."""
@@ -119,17 +138,23 @@ class TrialExecutor(object):
         """A hook called after running one step of the trial event loop."""
         pass
 
-    def fetch_one_result(self):
-        """Fetches one result from running trials.
+    def get_next_available_trial(self):
+        """Blocking call that waits until one result is ready.
 
-        It's a blocking call waits until one result is ready.
+        Returns:
+            Trial object that is ready for intermediate processing.
+        """
+        raise NotImplementedError
+
+    def fetch_result(self, trial):
+        """Fetches one result for the trial.
+
+        Assumes the trial is running.
 
         Return:
-            A tuple of (trial, result). If fetch result failed,
-            return (trial, None) other than raise Exception.
+            Result object for the trial.
         """
-        raise NotImplementedError("Subclasses of TrialExecutor must provide "
-                                  "fetch_one_result() method")
+        raise NotImplementedError
 
     def debug_string(self):
         """Returns a human readable message for printing to the console."""

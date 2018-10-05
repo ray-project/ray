@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import csv
 import json
+import logging
 import numpy as np
 import os
 import yaml
@@ -12,11 +13,14 @@ from ray.tune.log_sync import get_syncer
 from ray.tune.result import NODE_IP, TRAINING_ITERATION, TIME_TOTAL_S, \
     TIMESTEPS_TOTAL
 
+logger = logging.getLogger(__name__)
+
 try:
     import tensorflow as tf
 except ImportError:
     tf = None
-    print("Couldn't import TensorFlow - this disables TensorBoard logging.")
+    logger.warning("Couldn't import TensorFlow - "
+                   "disabling TensorBoard logging.")
 
 
 class Logger(object):
@@ -60,7 +64,8 @@ class UnifiedLogger(Logger):
         self._loggers = []
         for cls in [_JsonLogger, _TFLogger, _VisKitLogger]:
             if cls is _TFLogger and tf is None:
-                print("TF not installed - cannot log with {}...".format(cls))
+                logger.info("TF not installed - "
+                            "cannot log with {}...".format(cls))
                 continue
             self._loggers.append(cls(self.config, self.logdir, self.uri))
         self._log_syncer = get_syncer(self.logdir, self.uri)
@@ -140,6 +145,7 @@ class _TFLogger(Logger):
         }, ["ray", "tune"])
         iteration_stats = tf.Summary(value=iteration_value)
         self._file_writer.add_summary(iteration_stats, t)
+        self._file_writer.flush()
 
     def flush(self):
         self._file_writer.flush()

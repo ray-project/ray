@@ -8,6 +8,7 @@ import logging
 import os
 import time
 from collections import Counter, defaultdict
+import traceback
 
 import redis
 
@@ -27,18 +28,6 @@ NIL_ID = b"\xff" * ray_constants.ID_SIZE
 
 # common/task.h
 TASK_STATUS_LOST = 32
-
-# common/state/redis.cc
-LOCAL_SCHEDULER_INFO_CHANNEL = b"local_schedulers"
-PLASMA_MANAGER_HEARTBEAT_CHANNEL = b"plasma_managers"
-DRIVER_DEATH_CHANNEL = b"driver_deaths"
-
-# xray heartbeats
-XRAY_HEARTBEAT_CHANNEL = str(
-    ray.gcs_utils.TablePubsub.HEARTBEAT).encode("ascii")
-
-# xray driver updates
-XRAY_DRIVER_CHANNEL = str(ray.gcs_utils.TablePubsub.DRIVER).encode("ascii")
 
 # common/redis_module/ray_redis_module.cc
 OBJECT_INFO_PREFIX = b"OI:"
@@ -316,8 +305,9 @@ class Monitor(object):
         if ip:
             self.load_metrics.update(ip, static_resources, dynamic_resources)
         else:
-            print("Warning: could not find ip for client {} in {}.".format(
-                client_id, self.local_scheduler_id_to_ip_map))
+            logger.warning(
+                "Warning: could not find ip for client {} in {}.".format(
+                    client_id, self.local_scheduler_id_to_ip_map))
 
     def xray_heartbeat_handler(self, unused_channel, data):
         """Handle an xray heartbeat message from Redis."""
@@ -605,23 +595,23 @@ class Monitor(object):
 
                 # Determine the appropriate message handler.
                 message_handler = None
-                if channel == PLASMA_MANAGER_HEARTBEAT_CHANNEL:
+                if channel == ray.gcs_utils.PLASMA_MANAGER_HEARTBEAT_CHANNEL:
                     # The message was a heartbeat from a plasma manager.
                     message_handler = self.plasma_manager_heartbeat_handler
-                elif channel == LOCAL_SCHEDULER_INFO_CHANNEL:
+                elif channel == ray.gcs_utils.LOCAL_SCHEDULER_INFO_CHANNEL:
                     # The message was a heartbeat from a local scheduler
                     message_handler = self.local_scheduler_info_handler
                 elif channel == DB_CLIENT_TABLE_NAME:
                     # The message was a notification from the db_client table.
                     message_handler = self.db_client_notification_handler
-                elif channel == DRIVER_DEATH_CHANNEL:
+                elif channel == ray.gcs_utils.DRIVER_DEATH_CHANNEL:
                     # The message was a notification that a driver was removed.
                     logger.info("message-handler: driver_removed_handler")
                     message_handler = self.driver_removed_handler
-                elif channel == XRAY_HEARTBEAT_CHANNEL:
+                elif channel == ray.gcs_utils.XRAY_HEARTBEAT_CHANNEL:
                     # Similar functionality as local scheduler info channel
                     message_handler = self.xray_heartbeat_handler
-                elif channel == XRAY_DRIVER_CHANNEL:
+                elif channel == ray.gcs_utils.XRAY_DRIVER_CHANNEL:
                     # Handles driver death.
                     message_handler = self.xray_driver_removed_handler
                 else:
@@ -684,11 +674,11 @@ class Monitor(object):
         """
         # Initialize the subscription channel.
         self.subscribe(DB_CLIENT_TABLE_NAME)
-        self.subscribe(LOCAL_SCHEDULER_INFO_CHANNEL)
-        self.subscribe(PLASMA_MANAGER_HEARTBEAT_CHANNEL)
-        self.subscribe(DRIVER_DEATH_CHANNEL)
-        self.subscribe(XRAY_HEARTBEAT_CHANNEL, primary=False)
-        self.subscribe(XRAY_DRIVER_CHANNEL)
+        self.subscribe(ray.gcs_utils.LOCAL_SCHEDULER_INFO_CHANNEL)
+        self.subscribe(ray.gcs_utils.PLASMA_MANAGER_HEARTBEAT_CHANNEL)
+        self.subscribe(ray.gcs_utils.DRIVER_DEATH_CHANNEL)
+        self.subscribe(ray.gcs_utils.XRAY_HEARTBEAT_CHANNEL, primary=False)
+        self.subscribe(ray.gcs_utils.XRAY_DRIVER_CHANNEL)
 
         # Scan the database table for dead database clients. NOTE: This must be
         # called before reading any messages from the subscription channel.
@@ -809,4 +799,17 @@ if __name__ == "__main__":
         autoscaling_config = None
 
     monitor = Monitor(redis_ip_address, redis_port, autoscaling_config)
-    monitor.run()
+
+    try:
+        monitor.run()
+    except Exception as e:
+        # Something went wrong, so push an error to all drivers.
+        redis_client = redis.StrictRedis(
+            host=redis_ip_address, port=redis_port)
+        traceback_str = ray.utils.format_error_message(traceback.format_exc())
+        message = "The monitor failed with the following error:\n{}".format(
+            traceback_str)
+        ray.utils.push_error_to_driver_through_redis(
+            redis_client, monitor.use_raylet, ray_constants.MONITOR_DIED_ERROR,
+            message)
+        raise e

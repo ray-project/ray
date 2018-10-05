@@ -1,4 +1,6 @@
-include(${CMAKE_CURRENT_LIST_DIR}/../../common/cmake/Common.cmake)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-error=unused-function")
+
+include_directories(${CMAKE_SOURCE_DIR}/src/common/thirdparty/ae)
 
 set(GCS_FBS_SRC "${CMAKE_CURRENT_LIST_DIR}/format/gcs.fbs")
 set(OUTPUT_DIR ${CMAKE_CURRENT_LIST_DIR}/format/)

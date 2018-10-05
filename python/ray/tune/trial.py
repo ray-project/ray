@@ -2,13 +2,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tempfile
 from collections import namedtuple
 from datetime import datetime
+import logging
 import time
-import ray
+import tempfile
 import os
 
+import ray
 from ray.tune import TuneError
 from ray.tune.logger import pretty_print, UnifiedLogger
 # NOTE(rkn): We import ray.tune.registry here instead of importing the names we
@@ -21,6 +22,7 @@ from ray.utils import random_string, binary_to_hex
 
 DEBUG_PRINT_INTERVAL = 5
 MAX_LEN_IDENTIFIER = 130
+logger = logging.getLogger(__name__)
 
 
 def date_str():
@@ -199,7 +201,9 @@ class Trial(object):
 
         for criteria, stop_value in self.stopping_criterion.items():
             if criteria not in result:
-                raise TuneError("Stopping Criteria not provided in result.")
+                raise TuneError(
+                    "Stopping criteria {} not provided in result {}.".format(
+                        criteria, result))
             if result[criteria] >= stop_value:
                 return True
 
@@ -272,8 +276,9 @@ class Trial(object):
             result.update(done=True)
         if self.verbose and (terminate or time.time() - self.last_debug >
                              DEBUG_PRINT_INTERVAL):
-            print("Result for {}:".format(self))
-            print("  {}".format(pretty_print(result).replace("\n", "\n  ")))
+            logger.info("Result for {}:".format(self))
+            logger.info("  {}".format(
+                pretty_print(result).replace("\n", "\n  ")))
             self.last_debug = time.time()
         self.last_result = result
         self.result_logger.on_result(self.last_result)
