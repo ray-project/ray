@@ -1267,8 +1267,9 @@ void NodeManager::AssignTask(Task &task) {
   fbb.Finish(message);
   worker->Connection()->WriteMessageAsync(
       static_cast<int64_t>(protocol::MessageType::ExecuteTask), fbb.GetSize(),
-      fbb.GetBufferPointer(), [this, worker, spec, &task](ray::Status status) {
+      fbb.GetBufferPointer(), [this, worker, task](ray::Status status) mutable {
         if (status.ok()) {
+          auto spec = task.GetTaskSpecification();
           // We successfully assigned the task to the worker.
           worker->AssignTaskId(spec.TaskId());
           worker->AssignDriverId(spec.DriverId());
@@ -1488,7 +1489,7 @@ void NodeManager::ForwardTaskOrResubmit(const Task &task,
   /// TODO(rkn): Should we check that the node manager is remote and not local?
   /// TODO(rkn): Should we check if the remote node manager is known to be dead?
   // Attempt to forward the task.
-  ForwardTask(task, node_manager_id, [this, &task, &node_manager_id](ray::Status error) {
+  ForwardTask(task, node_manager_id, [this, task, node_manager_id](ray::Status error) {
     const TaskID task_id = task.GetTaskSpecification().TaskId();
 
     RAY_LOG(INFO) << "Failed to forward task " << task_id << " to node manager "
@@ -1567,8 +1568,7 @@ void NodeManager::ForwardTask(const Task &task, const ClientID &node_id,
   server_conn.WriteMessageAsync(
       static_cast<int64_t>(protocol::MessageType::ForwardTaskRequest), fbb.GetSize(),
       fbb.GetBufferPointer(),
-      [this, on_error, task_id, &node_id, &spec](ray::Status status) {
-        // TODO(ekl) what do we do if this is not ok?
+      [this, on_error, task_id, node_id, spec](ray::Status status) {
         if (status.ok()) {
           // If we were able to forward the task, remove the forwarded task from the
           // lineage cache since the receiving node is now responsible for writing

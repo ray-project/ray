@@ -100,12 +100,12 @@ void ServerConnection<T>::WriteMessageAsync(
   async_write_queue_.push_back(std::move(write_buffer));
 
   if (!async_write_in_flight_) {
-    WriteSome();
+    DoAsyncWrites();
   }
 }
 
 template <class T>
-void ServerConnection<T>::WriteSome() {
+void ServerConnection<T>::DoAsyncWrites() {
   // Make sure we were not writing to the socket.
   RAY_CHECK(!async_write_in_flight_);
   async_write_in_flight_ = true;
@@ -145,7 +145,7 @@ void ServerConnection<T>::WriteSome() {
         async_write_in_flight_ = false;
         // If there is more to write, try to write the rest.
         if (!async_write_queue_.empty()) {
-          WriteSome();
+          DoAsyncWrites();
         }
       });
 }
@@ -189,7 +189,7 @@ void ClientConnection<T>::ProcessMessages() {
   header.push_back(boost::asio::buffer(&read_length_, sizeof(read_length_)));
   boost::asio::async_read(ServerConnection<T>::socket_, header,
                           boost::bind(&ClientConnection<T>::ProcessMessageHeader,
-                                      this->shared_ClientConnection_from_this(),
+                                      shared_ClientConnection_from_this(),
                                       boost::asio::placeholders::error));
 }
 
@@ -211,7 +211,7 @@ void ClientConnection<T>::ProcessMessageHeader(const boost::system::error_code &
   boost::asio::async_read(ServerConnection<T>::socket_,
                           boost::asio::buffer(read_message_),
                           boost::bind(&ClientConnection<T>::ProcessMessage,
-                                      this->shared_ClientConnection_from_this(),
+                                      shared_ClientConnection_from_this(),
                                       boost::asio::placeholders::error));
 }
 
@@ -222,7 +222,7 @@ void ClientConnection<T>::ProcessMessage(const boost::system::error_code &error)
   }
 
   uint64_t start_ms = current_time_ms();
-  message_handler_(this->shared_ClientConnection_from_this(), read_type_,
+  message_handler_(shared_ClientConnection_from_this(), read_type_,
                    read_message_.data());
   uint64_t interval = current_time_ms() - start_ms;
   if (interval > RayConfig::instance().handler_warning_timeout_ms()) {

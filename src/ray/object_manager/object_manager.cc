@@ -284,7 +284,7 @@ void ObjectManager::PullSendRequest(const ObjectID &object_id,
   fbb.Finish(message);
   conn->WriteMessageAsync(
       static_cast<int64_t>(object_manager_protocol::MessageType::PullRequest),
-      fbb.GetSize(), fbb.GetBufferPointer(), [this, &conn](ray::Status status) {
+      fbb.GetSize(), fbb.GetBufferPointer(), [this, conn](ray::Status status) mutable {
         if (status.ok()) {
           connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::MESSAGE, conn);
         } else {

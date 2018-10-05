@@ -63,6 +63,7 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection<T>
                   boost::system::error_code &ec);
 
  protected:
+   /// A message that is queued for writing asynchronously.
   struct AsyncWriteBuffer {
     int64_t write_version;
     int64_t write_type;
@@ -74,17 +75,20 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection<T>
   /// The socket connection to the server.
   boost::asio::basic_stream_socket<T> socket_;
 
-  // Max number of messages to write out at once.
+  /// Max number of messages to write out at once.
   const int async_write_max_messages_;
 
-  // List of pending messages to write.
+  /// List of pending messages to write.
   std::list<std::unique_ptr<AsyncWriteBuffer>> async_write_queue_;
 
-  // Whether we are in the middle of an async write.
+  /// Whether we are in the middle of an async write.
   bool async_write_in_flight_;
 
  private:
-  void WriteSome();
+  /// Asynchronously flushes the write queue. While async writes are running, the flag
+  /// async_write_in_flight_ will be set. This should only be called when no async writes
+  /// are currently in flight.
+  void DoAsyncWrites();
 };
 
 template <typename T>
