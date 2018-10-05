@@ -187,10 +187,10 @@ void ClientConnection<T>::ProcessMessages() {
   header.push_back(boost::asio::buffer(&read_version_, sizeof(read_version_)));
   header.push_back(boost::asio::buffer(&read_type_, sizeof(read_type_)));
   header.push_back(boost::asio::buffer(&read_length_, sizeof(read_length_)));
-  boost::asio::async_read(ServerConnection<T>::socket_, header,
-                          boost::bind(&ClientConnection<T>::ProcessMessageHeader,
-                                      shared_ClientConnection_from_this(),
-                                      boost::asio::placeholders::error));
+  boost::asio::async_read(
+      ServerConnection<T>::socket_, header,
+      boost::bind(&ClientConnection<T>::ProcessMessageHeader,
+                  shared_ClientConnection_from_this(), boost::asio::placeholders::error));
 }
 
 template <class T>
@@ -208,11 +208,10 @@ void ClientConnection<T>::ProcessMessageHeader(const boost::system::error_code &
   // Resize the message buffer to match the received length.
   read_message_.resize(read_length_);
   // Wait for the message to be read.
-  boost::asio::async_read(ServerConnection<T>::socket_,
-                          boost::asio::buffer(read_message_),
-                          boost::bind(&ClientConnection<T>::ProcessMessage,
-                                      shared_ClientConnection_from_this(),
-                                      boost::asio::placeholders::error));
+  boost::asio::async_read(
+      ServerConnection<T>::socket_, boost::asio::buffer(read_message_),
+      boost::bind(&ClientConnection<T>::ProcessMessage,
+                  shared_ClientConnection_from_this(), boost::asio::placeholders::error));
 }
 
 template <class T>
@@ -222,8 +221,7 @@ void ClientConnection<T>::ProcessMessage(const boost::system::error_code &error)
   }
 
   uint64_t start_ms = current_time_ms();
-  message_handler_(shared_ClientConnection_from_this(), read_type_,
-                   read_message_.data());
+  message_handler_(shared_ClientConnection_from_this(), read_type_, read_message_.data());
   uint64_t interval = current_time_ms() - start_ms;
   if (interval > RayConfig::instance().handler_warning_timeout_ms()) {
     RAY_LOG(WARNING) << "[" << debug_label_ << "]ProcessMessage with type " << read_type_

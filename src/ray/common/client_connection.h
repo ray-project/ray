@@ -63,7 +63,7 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection<T>
                   boost::system::error_code &ec);
 
  protected:
-   /// A message that is queued for writing asynchronously.
+  /// A message that is queued for writing asynchronously.
   struct AsyncWriteBuffer {
     int64_t write_version;
     int64_t write_type;
