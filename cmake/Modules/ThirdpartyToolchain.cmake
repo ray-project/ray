@@ -30,18 +30,16 @@ if(RAY_BUILD_TESTS OR RAY_BUILD_BENCHMARKS)
   add_dependencies(gmock_main googletest_ep)
 endif()
 
-if(RAY_USE_GLOG)
-  include(GlogExternalProject)
-  message(STATUS "Glog home: ${GLOG_HOME}")
-  message(STATUS "Glog include dir: ${GLOG_INCLUDE_DIR}")
-  message(STATUS "Glog static lib: ${GLOG_STATIC_LIB}")
+include(GlogExternalProject)
+message(STATUS "Glog home: ${GLOG_HOME}")
+message(STATUS "Glog include dir: ${GLOG_INCLUDE_DIR}")
+message(STATUS "Glog static lib: ${GLOG_STATIC_LIB}")
 
-  include_directories(${GLOG_INCLUDE_DIR})
-  ADD_THIRDPARTY_LIB(glog
-    STATIC_LIB ${GLOG_STATIC_LIB})
+include_directories(${GLOG_INCLUDE_DIR})
+ADD_THIRDPARTY_LIB(glog
+  STATIC_LIB ${GLOG_STATIC_LIB})
 
-  add_dependencies(glog glog_ep)
-endif()
+add_dependencies(glog glog_ep)
 
 # boost
 include(BoostExternalProject)
