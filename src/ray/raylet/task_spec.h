@@ -121,7 +121,7 @@ class TaskSpecification {
   /// task. If this is not an actor task, then this is nil.
   /// \param actor_counter The number of tasks submitted before this task from
   /// the same actor handle. If this is not an actor task, then this is 0.
-  /// \param function_id The ID of the function this task should execute.
+  /// \param function_descriptor The function descriptor.
   /// \param task_arguments The list of task arguments.
   /// \param num_returns The number of values returned by the task.
   /// \param required_resources The task's resource demands.
@@ -133,13 +133,12 @@ class TaskSpecification {
       const UniqueID &driver_id, const TaskID &parent_task_id, int64_t parent_counter,
       const ActorID &actor_creation_id, const ObjectID &actor_creation_dummy_object_id,
       const ActorID &actor_id, const ActorHandleID &actor_handle_id,
-      int64_t actor_counter, const FunctionID &function_id,
+      int64_t actor_counter,
       const std::vector<std::shared_ptr<TaskArgument>> &task_arguments,
       int64_t num_returns,
       const std::unordered_map<std::string, double> &required_resources,
       const std::unordered_map<std::string, double> &required_placement_resources,
-      const Language &language,
-      const FunctionDescriptor &function_descriptor);
+      const Language &language, const FunctionDescriptor &function_descriptor);
 
   /// Deserialize a task specification from a flatbuffer's string data.
   ///

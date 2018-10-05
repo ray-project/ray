@@ -523,8 +523,7 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
         driver_id, parent_task_id, parent_counter, actor_creation_id,
         actor_creation_dummy_object_id, actor_id, actor_handle_id,
         actor_counter, args, num_returns, required_resources,
-        required_placement_resources, Language::PYTHON,
-        function_descriptor);
+        required_placement_resources, Language::PYTHON, function_descriptor);
   }
 
   /* Set the task's execution dependencies. */

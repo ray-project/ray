@@ -119,7 +119,7 @@ class TaskBuilder {
         to_flatbuf(fbb, actor_id_), to_flatbuf(fbb, actor_handle_id_),
         actor_counter_, is_actor_checkpoint_method_, arguments,
         fbb.CreateVector(returns), map_to_flatbuf(fbb, resource_map_),
-        TaskLanguage::PYTHON,
+        /*required_placement_resources=*/0, TaskLanguage::PYTHON,
         string_vec_to_flatbuf(fbb, function_descriptor_.GetDescriptorVector()));
     /* Finish the TaskInfo. */
     fbb.Finish(message);
