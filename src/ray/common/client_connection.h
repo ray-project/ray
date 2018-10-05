@@ -62,6 +62,12 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection<T>
   void ReadBuffer(const std::vector<boost::asio::mutable_buffer> &buffer,
                   boost::system::error_code &ec);
 
+  /// Shuts down socket for this connection.
+  void Close() {
+    boost::system::error_code ec;
+    socket_.close(ec);
+  }
+
  protected:
   /// A message that is queued for writing asynchronously.
   struct AsyncWriteBuffer {

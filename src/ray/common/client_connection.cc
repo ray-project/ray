@@ -1,4 +1,5 @@
 #include "client_connection.h"
+#include <stdio.h>
 
 #include <boost/bind.hpp>
 
