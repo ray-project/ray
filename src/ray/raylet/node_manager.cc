@@ -1307,54 +1307,55 @@ void NodeManager::AssignTask(Task &task) {
   worker->Connection()->WriteMessageAsync(
       static_cast<int64_t>(protocol::MessageType::ExecuteTask), fbb.GetSize(),
       fbb.GetBufferPointer(), [this, worker, task](ray::Status status) mutable {
-          if (status.ok()) {
-            auto spec = task.GetTaskSpecification();
-            // We successfully assigned the task to the worker.
-            worker->AssignTaskId(spec.TaskId());
-            worker->AssignDriverId(spec.DriverId());
-            // If the task was an actor task, then record this execution to guarantee
-            // consistency in the case of reconstruction.
-            if (spec.IsActorTask()) {
-              auto actor_entry = actor_registry_.find(spec.ActorId());
-              RAY_CHECK(actor_entry != actor_registry_.end());
-              auto execution_dependency = actor_entry->second.GetExecutionDependency();
-              // The execution dependency is initialized to the actor creation task's
-              // return value, and is subsequently updated to the assigned tasks'
-              // return values, so it should never be nil.
-              RAY_CHECK(!execution_dependency.is_nil());
-              // Update the task's execution dependencies to reflect the actual
-              // execution order, to support deterministic reconstruction.
-              // NOTE(swang): The update of an actor task's execution dependencies is
-              // performed asynchronously. This means that if this node manager dies,
-              // we may lose updates that are in flight to the task table. We only
-              // guarantee deterministic reconstruction ordering for tasks whose
-              // updates are reflected in the task table.
-              task.SetExecutionDependencies({execution_dependency});
-              // Extend the frontier to include the executing task.
-              actor_entry->second.ExtendFrontier(spec.ActorHandleId(), spec.ActorDummyObject());
-            }
-            // We started running the task, so the task is ready to write to GCS.
-            if (!lineage_cache_.AddReadyTask(task)) {
-              RAY_LOG(WARNING)
-                  << "Task " << spec.TaskId()
-                  << " already in lineage cache. This is most likely due to reconstruction.";
-            }
-            // Mark the task as running.
-            // (See design_docs/task_states.rst for the state transition diagram.)
-            local_queues_.QueueRunningTasks(std::vector<Task>({task}));
-            // Notify the task dependency manager that we no longer need this task's
-            // object dependencies.
-            task_dependency_manager_.UnsubscribeDependencies(spec.TaskId());
-          } else {
-            RAY_LOG(WARNING) << "Failed to send task to worker, disconnecting client";
-            // We failed to send the task to the worker, so disconnect the worker.
-            ProcessDisconnectClientMessage(worker->Connection());
-            // Queue this task for future assignment. The task will be assigned to a
-            // worker once one becomes available.
-            // (See design_docs/task_states.rst for the state transition diagram.)
-            local_queues_.QueueReadyTasks(std::vector<Task>({task}));
-            DispatchTasks();
+        if (status.ok()) {
+          auto spec = task.GetTaskSpecification();
+          // We successfully assigned the task to the worker.
+          worker->AssignTaskId(spec.TaskId());
+          worker->AssignDriverId(spec.DriverId());
+          // If the task was an actor task, then record this execution to guarantee
+          // consistency in the case of reconstruction.
+          if (spec.IsActorTask()) {
+            auto actor_entry = actor_registry_.find(spec.ActorId());
+            RAY_CHECK(actor_entry != actor_registry_.end());
+            auto execution_dependency = actor_entry->second.GetExecutionDependency();
+            // The execution dependency is initialized to the actor creation task's
+            // return value, and is subsequently updated to the assigned tasks'
+            // return values, so it should never be nil.
+            RAY_CHECK(!execution_dependency.is_nil());
+            // Update the task's execution dependencies to reflect the actual
+            // execution order, to support deterministic reconstruction.
+            // NOTE(swang): The update of an actor task's execution dependencies is
+            // performed asynchronously. This means that if this node manager dies,
+            // we may lose updates that are in flight to the task table. We only
+            // guarantee deterministic reconstruction ordering for tasks whose
+            // updates are reflected in the task table.
+            task.SetExecutionDependencies({execution_dependency});
+            // Extend the frontier to include the executing task.
+            actor_entry->second.ExtendFrontier(spec.ActorHandleId(),
+                                               spec.ActorDummyObject());
           }
+          // We started running the task, so the task is ready to write to GCS.
+          if (!lineage_cache_.AddReadyTask(task)) {
+            RAY_LOG(WARNING) << "Task " << spec.TaskId() << " already in lineage cache. "
+                                                            "This is most likely due to "
+                                                            "reconstruction.";
+          }
+          // Mark the task as running.
+          // (See design_docs/task_states.rst for the state transition diagram.)
+          local_queues_.QueueRunningTasks(std::vector<Task>({task}));
+          // Notify the task dependency manager that we no longer need this task's
+          // object dependencies.
+          task_dependency_manager_.UnsubscribeDependencies(spec.TaskId());
+        } else {
+          RAY_LOG(WARNING) << "Failed to send task to worker, disconnecting client";
+          // We failed to send the task to the worker, so disconnect the worker.
+          ProcessDisconnectClientMessage(worker->Connection());
+          // Queue this task for future assignment. The task will be assigned to a
+          // worker once one becomes available.
+          // (See design_docs/task_states.rst for the state transition diagram.)
+          local_queues_.QueueReadyTasks(std::vector<Task>({task}));
+          DispatchTasks();
+        }
       });
 }
 
