@@ -97,7 +97,12 @@ void ServerConnection<T>::WriteMessageAsync(
   write_buffer->write_message.assign(message, message + length);
   write_buffer->handler = handler;
 
-  // TODO(ekl) should we enforce a max number of async bytes outstanding here?
+  auto size = async_write_queue_.size();
+  auto size_is_power_of_two = (size & (size - 1)) == 0;
+  if (size > 100 && size_is_power_of_two) {
+    RAY_LOG(WARNING) << "ServerConnection has " << size << " buffered async writes";
+  }
+
   async_write_queue_.push_back(std::move(write_buffer));
 
   if (!async_write_in_flight_) {
