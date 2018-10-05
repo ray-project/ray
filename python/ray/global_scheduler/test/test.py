@@ -15,7 +15,6 @@ import unittest
 from ray.function_manager import FunctionDescriptor
 import ray.global_scheduler as global_scheduler
 import ray.local_scheduler as local_scheduler
-from ray.local_scheduler import Task
 import ray.plasma as plasma
 from ray.plasma.utils import create_object
 from ray import services

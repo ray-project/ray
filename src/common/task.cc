@@ -43,7 +43,7 @@ class TaskBuilder {
              ActorHandleID actor_handle_id,
              int64_t actor_counter,
              bool is_actor_checkpoint_method,
-             const ray::FunctionDescriptor &function_descriptor,
+             const std::vector<std::string> &function_descriptor,
              int64_t num_returns) {
     driver_id_ = driver_id;
     parent_task_id_ = parent_task_id;
@@ -69,7 +69,7 @@ class TaskBuilder {
     sha256_update(&ctx, (BYTE *) &actor_counter, sizeof(actor_counter));
     sha256_update(&ctx, (BYTE *) &is_actor_checkpoint_method,
                   sizeof(is_actor_checkpoint_method));
-    for (auto const &str : function_descriptor.GetDescriptorVector()) {
+    for (auto const &str : function_descriptor) {
       if (!str.empty()) {
         sha256_update(&ctx, (BYTE *) str.c_str(), str.length());
       }
@@ -120,7 +120,7 @@ class TaskBuilder {
         actor_counter_, is_actor_checkpoint_method_, arguments,
         fbb.CreateVector(returns), map_to_flatbuf(fbb, resource_map_),
         /*required_placement_resources=*/0, TaskLanguage::PYTHON,
-        string_vec_to_flatbuf(fbb, function_descriptor_.GetDescriptorVector()));
+        string_vec_to_flatbuf(fbb, function_descriptor_));
     /* Finish the TaskInfo. */
     fbb.Finish(message);
     *size = fbb.GetSize();
@@ -147,7 +147,7 @@ class TaskBuilder {
   ActorID actor_handle_id_;
   int64_t actor_counter_;
   bool is_actor_checkpoint_method_;
-  ray::FunctionDescriptor function_descriptor_;
+  std::vector<std::string> function_descriptor_;
   int64_t num_returns_;
   std::unordered_map<std::string, double> resource_map_;
 };
@@ -185,7 +185,7 @@ void TaskSpec_start_construct(
     ActorID actor_handle_id,
     int64_t actor_counter,
     bool is_actor_checkpoint_method,
-    const ray::FunctionDescriptor &function_descriptor,
+    const std::vector<std::string> &function_descriptor,
     int64_t num_returns) {
   builder->Start(driver_id, parent_task_id, parent_counter, actor_creation_id,
                  actor_creation_dummy_object_id, actor_id, actor_handle_id,

@@ -12,7 +12,6 @@ import unittest
 
 from ray.function_manager import FunctionDescriptor
 import ray.local_scheduler as local_scheduler
-from ray.local_scheduler import Task
 import ray.plasma as plasma
 import ray.ray_constants as ray_constants
 import pyarrow as pa
@@ -67,7 +66,6 @@ class TestLocalSchedulerClient(unittest.TestCase):
             self.p2.kill()
 
     def test_submit_and_get_task(self):
-        function_id = random_function_id()
         func_desc = FunctionDescriptor.from_function_id(random_function_id())
         func_desc_list = func_desc.get_function_descriptor_list()
         object_ids = [random_object_id() for i in range(256)]
@@ -125,7 +123,6 @@ class TestLocalSchedulerClient(unittest.TestCase):
     def test_scheduling_when_objects_ready(self):
         # Create a task and submit it.
         object_id = random_object_id()
-        function_id = random_function_id()
         func_desc = FunctionDescriptor.from_function_id(random_function_id())
         func_desc_list = func_desc.get_function_descriptor_list()
         task = local_scheduler.Task(random_driver_id(), func_desc_list,
@@ -152,7 +149,6 @@ class TestLocalSchedulerClient(unittest.TestCase):
         # Create a task with two dependencies and submit it.
         object_id1 = random_object_id()
         object_id2 = random_object_id()
-        function_id = random_function_id()
         func_desc = FunctionDescriptor.from_function_id(random_function_id())
         func_desc_list = func_desc.get_function_descriptor_list()
         task = local_scheduler.Task(random_driver_id(), func_desc_list,

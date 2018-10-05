@@ -9,7 +9,6 @@
 
 #include "common.h"
 #include "format/common_generated.h"
-#include "function_descriptor.h"
 
 using namespace ray;
 
@@ -203,7 +202,7 @@ void TaskSpec_start_construct(
     ActorHandleID actor_handle_id,
     int64_t actor_counter,
     bool is_actor_checkpoint_method,
-    const ray::FunctionDescriptor &function_descriptor,
+    const std::vector<std::string> &function_descriptor,
     int64_t num_returns);
 
 /**

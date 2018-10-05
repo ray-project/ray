@@ -173,8 +173,8 @@ class TestTask(unittest.TestCase):
                      object_ids + 100 * ["a"] + object_ids]
         for args in args_list:
             for num_return_vals in [0, 1, 2, 3, 5, 10, 100]:
-                task = Task(driver_id, func_desc_list, args,
-                            num_return_vals, parent_id, 0)
+                task = Task(driver_id, func_desc_list, args, num_return_vals,
+                            parent_id, 0)
                 self.check_task(task, func_desc_list, num_return_vals, args)
                 data = local_scheduler.task_to_string(task)
                 task2 = local_scheduler.task_from_string(data)

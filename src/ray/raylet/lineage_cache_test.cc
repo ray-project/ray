@@ -112,7 +112,8 @@ static inline Task ExampleTask(const std::vector<ObjectID> &arguments,
     std::vector<ObjectID> references = {argument};
     task_arguments.emplace_back(std::make_shared<TaskArgumentByReference>(references));
   }
-  FunctionDescriptor function_descriptor(UniqueID::from_random());
+  std::vector<std::string> function_descriptor(3);
+  function_descriptor.push_back(UniqueID::from_random().binary());
   auto spec = TaskSpecification(UniqueID::nil(), UniqueID::from_random(), 0,
                                 task_arguments, num_returns, required_resources,
                                 Language::PYTHON, function_descriptor);

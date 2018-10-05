@@ -14,7 +14,8 @@ SUITE(task_tests);
 TEST task_test(void) {
   TaskID parent_task_id = TaskID::from_random();
   TaskBuilder *builder = make_task_builder();
-  FunctionDescriptor function_descriptor(UniqueID::from_random());
+  std::vector<std::string> function_descriptor(3);
+  function_descriptor.push_back(UniqueID::from_random().binary());
   TaskSpec_start_construct(builder, DriverID::nil(), parent_task_id, 0,
                            ActorID::nil(), ObjectID::nil(), ActorID::nil(),
                            ActorID::nil(), 0, false, function_descriptor, 2);
@@ -51,7 +52,8 @@ TEST deterministic_ids_test(void) {
   TaskID parent_task_id = TaskID::from_random();
   UniqueID arg1 = UniqueID::from_random();
   uint8_t *arg2 = (uint8_t *) "hello world";
-  FunctionDescriptor function_descriptor(UniqueID::from_random());
+  std::vector<std::string> function_descriptor(3);
+  function_descriptor.push_back(UniqueID::from_random().binary());
 
   /* Construct a first task. */
   TaskSpec_start_construct(builder, DriverID::nil(), parent_task_id, 0,
@@ -102,7 +104,8 @@ TEST deterministic_ids_test(void) {
   TaskSpec *spec4 = TaskSpec_finish_construct(builder, &size4);
 
   /* Construct a task with a different function ID. */
-  FunctionDescriptor function_descriptor2(UniqueID::from_random());
+  std::vector<std::string> function_descriptor2(3);
+  function_descriptor2.push_back(UniqueID::from_random().binary());
   TaskSpec_start_construct(builder, DriverID::nil(), parent_task_id, 0,
                            ActorID::nil(), ObjectID::nil(), ActorID::nil(),
                            ActorID::nil(), 0, false, function_descriptor2, 3);
@@ -166,7 +169,8 @@ TEST deterministic_ids_test(void) {
 TEST send_task(void) {
   TaskBuilder *builder = make_task_builder();
   TaskID parent_task_id = TaskID::from_random();
-  FunctionDescriptor function_descriptor(UniqueID::from_random());
+  std::vector<std::string> function_descriptor(3);
+  function_descriptor.push_back(UniqueID::from_random().binary());
   TaskSpec_start_construct(builder, DriverID::nil(), parent_task_id, 0,
                            ActorID::nil(), ObjectID::nil(), ActorID::nil(),
                            ActorID::nil(), 0, false, function_descriptor, 2);

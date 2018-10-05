@@ -226,8 +226,7 @@ public class RayletClientImpl implements RayletClient {
         parentTaskIdOffset, parentCounter,
         actorCreateIdOffset, actorCreateDummyIdOffset,
         actorIdOffset, actorHandleIdOffset, actorCounter,
-        false, functionIdOffset,
-        argsOffset, returnsOffset, requiredResourcesOffset,
+        false, argsOffset, returnsOffset, requiredResourcesOffset,
         requiredPlacementResourcesOffset, TaskLanguage.JAVA,
         functionDescriptorOffset);
     fbb.finish(root);

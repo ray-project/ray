@@ -35,6 +35,19 @@ NIL_FUNCTION_ID = ray_constants.NIL_JOB_ID
 
 
 class FunctionDescriptor(object):
+    """A class used to describe a python function.
+
+    Attributes:
+        _module_name: The module name of this function.
+        _class_name: The class name of the function, could be empty.
+        _function_name: The function name.
+        _function_id: The function id. If _function_id is not Nil,
+            this function can be loaded from GCS, otherwise,
+            from local.
+        _is_driver_task: Whether this is a driver task function
+            descriptor.
+    """
+
     def __init__(self,
                  module_name,
                  function_name,

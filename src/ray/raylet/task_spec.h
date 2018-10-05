@@ -6,7 +6,6 @@
 #include <unordered_map>
 #include <vector>
 
-#include "common/function_descriptor.h"
 #include "format/common_generated.h"
 #include "ray/id.h"
 #include "ray/raylet/scheduling_resources.h"
@@ -103,7 +102,7 @@ class TaskSpecification {
                     int64_t num_returns,
                     const std::unordered_map<std::string, double> &required_resources,
                     const Language &language,
-                    const FunctionDescriptor &function_descriptor);
+                    const std::vector<std::string> &function_descriptor);
 
   // TODO(swang): Define an actor task constructor.
   /// Create a task specification from the raw fields.
@@ -138,7 +137,7 @@ class TaskSpecification {
       int64_t num_returns,
       const std::unordered_map<std::string, double> &required_resources,
       const std::unordered_map<std::string, double> &required_placement_resources,
-      const Language &language, const FunctionDescriptor &function_descriptor);
+      const Language &language, const std::vector<std::string> &function_descriptor);
 
   /// Deserialize a task specification from a flatbuffer's string data.
   ///

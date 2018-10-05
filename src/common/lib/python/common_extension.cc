@@ -10,7 +10,6 @@
 #include "common.h"
 #include "common_extension.h"
 #include "common_protocol.h"
-#include "function_descriptor.h"
 #include "ray/raylet/task.h"
 #include "ray/raylet/task_execution_spec.h"
 #include "ray/raylet/task_spec.h"
@@ -79,12 +78,13 @@ int PyObjectToUniqueID(PyObject *object, ObjectID *objectid) {
 
 int PyListStringToFunctionDescriptor(
     PyObject *object,
-    ray::FunctionDescriptor *function_descriptor) {
+    std::vector<std::string> *function_descriptor) {
   if (function_descriptor == nullptr) {
     PyErr_SetString(PyExc_TypeError,
                     "function descriptor must be non-empty pointer");
     return 0;
   }
+  function_descriptor->clear();
   std::vector<std::string> string_vector;
   if (PyList_Check(object)) {
     if (PyList_Size(object) == 0) {
@@ -93,14 +93,9 @@ int PyListStringToFunctionDescriptor(
     Py_ssize_t size = PyList_Size(object);
     for (Py_ssize_t i = 0; i < size; ++i) {
       PyObject *item = PyList_GetItem(object, i);
-      string_vector.emplace_back(PyBytes_AsString(item), PyBytes_Size(item));
+      function_descriptor->emplace_back(PyBytes_AsString(item),
+                                        PyBytes_Size(item));
     }
-    if (!ray::FunctionDescriptor::IsValidVector(string_vector)) {
-      PyErr_SetString(PyExc_TypeError,
-                      "Invalid function discriptor string vector");
-      return 0;
-    }
-    function_descriptor->SetDescriptorVector(string_vector);
     return 1;
   } else {
     PyErr_SetString(PyExc_TypeError, "must be a list of strings");
@@ -411,7 +406,7 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
   // True if we should use the raylet code path and false otherwise.
   PyObject *use_raylet_object = nullptr;
   // Function descriptor.
-  ray::FunctionDescriptor function_descriptor;
+  std::vector<std::string> function_descriptor;
   if (!PyArg_ParseTuple(
           args, "O&O&OiO&i|O&O&O&O&iOOOOO", &PyObjectToUniqueID, &driver_id,
           &PyListStringToFunctionDescriptor, &function_descriptor, &arguments,
@@ -561,8 +556,8 @@ static PyObject *VectorStringToPyBytesList(
   size_t size = function_descriptor.size();
   PyObject *return_list = PyList_New(static_cast<Py_ssize_t>(size));
   for (size_t i = 0; i < size; ++i) {
-    auto py_bytes =
-        PyBytes_FromStringAndSize(function_descriptor[i].data(), function_descriptor[i].size());
+    auto py_bytes = PyBytes_FromStringAndSize(function_descriptor[i].data(),
+                                              function_descriptor[i].size());
     PyList_SetItem(return_list, i, py_bytes);
   }
   return return_list;
@@ -799,8 +794,9 @@ static PyObject *PyTask_to_serialized_flatbuf(PyTask *self) {
 }
 
 static PyMethodDef PyTask_methods[] = {
-    {"function_descriptor_list", (PyCFunction) PyTask_function_descriptor_vector,
-     METH_NOARGS, "Return the function descriptor for this task."},
+    {"function_descriptor_list",
+     (PyCFunction) PyTask_function_descriptor_vector, METH_NOARGS,
+     "Return the function descriptor for this task."},
     {"parent_task_id", (PyCFunction) PyTask_parent_task_id, METH_NOARGS,
      "Return the task ID of the parent task."},
     {"parent_counter", (PyCFunction) PyTask_parent_counter, METH_NOARGS,
