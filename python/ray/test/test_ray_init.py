@@ -24,6 +24,11 @@ def start_ray_with_password():
     return password, info, exception, use_raylet
 
 
+@ray.remote
+def f():
+    return 1
+
+
 class TestRedisPassword(object):
     def test_raylet_only(self, start_ray_with_password):
         password, info, exception, use_raylet = start_ray_with_password
@@ -50,3 +55,12 @@ class TestRedisPassword(object):
             host=redis_ip, port=redis_port, password=None)
         with pytest.raises(redis.ResponseError):
             redis_client.ping()
+
+    def test_task(self, start_ray_with_password):
+        password, info, exception, use_raylet = start_ray_with_password
+        if not use_raylet:
+            return
+
+        task_id = f.remote()
+        ready, running = ray.wait([task_id], timeout=1000)
+        assert len(ready) > 0, "Expected task to complete"
