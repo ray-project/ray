@@ -792,7 +792,8 @@ def start_global_scheduler(redis_address,
                            node_ip_address,
                            stdout_file=None,
                            stderr_file=None,
-                           cleanup=True):
+                           cleanup=True,
+                           redis_password=None):
     """Start a global scheduler process.
 
     Args:
@@ -806,6 +807,7 @@ def start_global_scheduler(redis_address,
         cleanup (bool): True if using Ray in local mode. If cleanup is true,
             then this process will be killed by services.cleanup() when the
             Python process that imported services exits.
+        redis_password (str): The password of the redis server.
     """
     p = global_scheduler.start_global_scheduler(
         redis_address,
@@ -814,8 +816,10 @@ def start_global_scheduler(redis_address,
         stderr_file=stderr_file)
     if cleanup:
         all_processes[PROCESS_TYPE_GLOBAL_SCHEDULER].append(p)
-    record_log_files_in_redis(redis_address, node_ip_address,
-                              [stdout_file, stderr_file])
+    record_log_files_in_redis(
+        redis_address,
+        node_ip_address, [stdout_file, stderr_file],
+        password=redis_password)
 
 
 def start_ui(redis_address, stdout_file=None, stderr_file=None, cleanup=True):
@@ -941,7 +945,8 @@ def start_local_scheduler(redis_address,
                           stderr_file=None,
                           cleanup=True,
                           resources=None,
-                          num_workers=0):
+                          num_workers=0,
+                          redis_password=None):
     """Start a local scheduler process.
 
     Args:
@@ -965,6 +970,7 @@ def start_local_scheduler(redis_address,
             quantity of that resource.
         num_workers (int): The number of workers that the local scheduler
             should start.
+        redis_password (str): The password of the redis server.
 
     Return:
         The name of the local scheduler socket.
@@ -987,8 +993,10 @@ def start_local_scheduler(redis_address,
         num_workers=num_workers)
     if cleanup:
         all_processes[PROCESS_TYPE_LOCAL_SCHEDULER].append(p)
-    record_log_files_in_redis(redis_address, node_ip_address,
-                              [stdout_file, stderr_file])
+    record_log_files_in_redis(
+        redis_address,
+        node_ip_address, [stdout_file, stderr_file],
+        password=redis_password)
     return local_scheduler_name
 
 
@@ -1550,7 +1558,8 @@ def start_ray_processes(address_info=None,
             node_ip_address,
             stdout_file=global_scheduler_stdout_file,
             stderr_file=global_scheduler_stderr_file,
-            cleanup=cleanup)
+            cleanup=cleanup,
+            redis_password=redis_password)
 
     # Initialize with existing services.
     if "object_store_addresses" not in address_info:
@@ -1633,7 +1642,8 @@ def start_ray_processes(address_info=None,
                 stderr_file=local_scheduler_stderr_file,
                 cleanup=cleanup,
                 resources=resources[i],
-                num_workers=num_local_scheduler_workers)
+                num_workers=num_local_scheduler_workers,
+                redis_password=redis_password)
             local_scheduler_socket_names.append(local_scheduler_name)
 
         # Make sure that we have exactly num_local_schedulers instances of
