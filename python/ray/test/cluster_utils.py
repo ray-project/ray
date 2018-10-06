@@ -95,7 +95,15 @@ class Cluster():
         nodes = list(self.worker_nodes)
         if self.head_node:
             nodes = [self.head_node] + nodes
-        return nodes
+        return
+
+    def shutdown(self):
+        # We create a list here as a copy because `remove_node`
+        # modifies `self.worker_nodes`.
+        all_nodes = list(self.worker_nodes)
+        for node in all_nodes:
+            self.remove_node(node)
+        self.remove_node(self.head_node)
 
 
 class Node():
@@ -106,12 +114,12 @@ class Node():
         self.process_dict = process_dict
 
     def kill_plasma_store(self):
-        self.process_dict["plasma_store"][0].kill()
-        self.process_dict["plasma_store"][0].wait()
+        self.process_dict[services.PROCESS_TYPE_PLASMA_STORE][0].kill()
+        self.process_dict[services.PROCESS_TYPE_PLASMA_STORE][0].wait()
 
     def kill_raylet(self):
-        self.process_dict["raylet"][0].kill()
-        self.process_dict["raylet"][0].wait()
+        self.process_dict[services.PROCESS_TYPE_RAYLET][0].kill()
+        self.process_dict[services.PROCESS_TYPE_RAYLET][0].wait()
 
     def kill_log_monitor(self):
         self.process_dict["log_monitor"][0].kill()
@@ -128,18 +136,22 @@ class Node():
             for process in process_list:
                 process.wait()
 
+    def live_processes(self):
+        return [(p_name, proc) for p_name, p_list in self.process_dict.items()
+        for proc in p_list if proc.poll() is None]
+
+    def dead_processes(self):
+        return [(p_name, proc) for p_name, p_list in self.process_dict.items()
+        for proc in p_list if proc.poll() is not None]
+
     def any_processes_alive(self):
-        return any(
-            any(process.poll() is None for process in process_list)
-            for process_list in self.process_dict.values())
+        return any(self.live_processes())
 
     def all_processes_alive(self):
-        return all(
-            all(process.poll() is None for process in process_list)
-            for process_list in self.process_dict.values())
+        return not any(self.dead_processes())
 
 
-if __name__ == '__main__':
+def basic_test():
     g = Cluster(initialize_head=False)
     node = g.add_node()
     node2 = g.add_node()
@@ -148,3 +160,17 @@ if __name__ == '__main__':
     g.remove_node(node2)
     g.remove_node(node)
     assert not any(node.any_processes_alive() for node in g.list_all_nodes())
+
+
+def test_worker_plasma_store_failure():
+    g = Cluster(initialize_head=True)
+    worker = g.add_node()
+    # Log monitor doesn't die for some reason
+    worker.kill_log_monitor()
+    worker.kill_plasma_store()
+    # TODO(rliaw): how to wait for raylet timeout?
+    assert not worker.any_processes_alive(), worker.live_processes()
+    g.shutdown()
+
+if __name__ == '__main__':
+    test_worker_plasma_store_failure()
