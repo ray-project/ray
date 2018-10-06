@@ -4,18 +4,23 @@ from __future__ import print_function
 
 import csv
 import json
+import logging
 import numpy as np
 import os
 import yaml
 
 from ray.tune.log_sync import get_syncer
-from ray.tune.result import NODE_IP, TRAINING_ITERATION, TIME_TOTAL_S
+from ray.tune.result import NODE_IP, TRAINING_ITERATION, TIME_TOTAL_S, \
+    TIMESTEPS_TOTAL
+
+logger = logging.getLogger(__name__)
 
 try:
     import tensorflow as tf
 except ImportError:
     tf = None
-    print("Couldn't import TensorFlow - this disables TensorBoard logging.")
+    logger.warning("Couldn't import TensorFlow - "
+                   "disabling TensorBoard logging.")
 
 
 class Logger(object):
@@ -59,7 +64,8 @@ class UnifiedLogger(Logger):
         self._loggers = []
         for cls in [_JsonLogger, _TFLogger, _VisKitLogger]:
             if cls is _TFLogger and tf is None:
-                print("TF not installed - cannot log with {}...".format(cls))
+                logger.info("TF not installed - "
+                            "cannot log with {}...".format(cls))
                 continue
             self._loggers.append(cls(self.config, self.logdir, self.uri))
         self._log_syncer = get_syncer(self.logdir, self.uri)
@@ -132,13 +138,14 @@ class _TFLogger(Logger):
             del tmp[k]  # not useful to tf log these
         values = to_tf_values(tmp, ["ray", "tune"])
         train_stats = tf.Summary(value=values)
-        self._file_writer.add_summary(train_stats, result[TRAINING_ITERATION])
+        t = result.get(TIMESTEPS_TOTAL) or result[TRAINING_ITERATION]
+        self._file_writer.add_summary(train_stats, t)
         iteration_value = to_tf_values({
             "training_iteration": result[TRAINING_ITERATION]
         }, ["ray", "tune"])
         iteration_stats = tf.Summary(value=iteration_value)
-        self._file_writer.add_summary(iteration_stats,
-                                      result[TRAINING_ITERATION])
+        self._file_writer.add_summary(iteration_stats, t)
+        self._file_writer.flush()
 
     def flush(self):
         self._file_writer.flush()
@@ -168,21 +175,6 @@ class _SafeFallbackEncoder(json.JSONEncoder):
     def __init__(self, nan_str="null", **kwargs):
         super(_SafeFallbackEncoder, self).__init__(**kwargs)
         self.nan_str = nan_str
-
-    def iterencode(self, o, _one_shot=False):
-        if self.ensure_ascii:
-            _encoder = json.encoder.encode_basestring_ascii
-        else:
-            _encoder = json.encoder.encode_basestring
-
-        def floatstr(o, allow_nan=self.allow_nan, nan_str=self.nan_str):
-            return repr(o) if not np.isnan(o) else nan_str
-
-        _iterencode = json.encoder._make_iterencode(
-            None, self.default, _encoder, self.indent, floatstr,
-            self.key_separator, self.item_separator, self.sort_keys,
-            self.skipkeys, _one_shot)
-        return _iterencode(o, 0)
 
     def default(self, value):
         try:

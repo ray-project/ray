@@ -22,21 +22,35 @@ class HyperOptSearch(SuggestionAlgorithm):
     added trials will not be tracked by HyperOpt.
 
     Parameters:
-        experiments (Experiment | list | dict): Experiments to run. Will be
-            used by SuggestionAlgorithm parent class to initialize Trials.
         space (dict): HyperOpt configuration. Parameters will be sampled
             from this configuration and will be used to override
             parameters generated in the variant generation process.
         max_concurrent (int): Number of maximum concurrent trials. Defaults
             to 10.
         reward_attr (str): The training result objective value attribute.
-            This refers to an increasing value, which is internally negated
-            when interacting with HyperOpt so that HyperOpt can "maximize"
-            this value.
+            This refers to an increasing value.
+
+    Example:
+        >>> space = {
+        >>>     'width': hp.uniform('width', 0, 20),
+        >>>     'height': hp.uniform('height', -100, 100),
+        >>>     'activation': hp.choice("activation", ["relu", "tanh"])
+        >>> }
+        >>> config = {
+        >>>     "my_exp": {
+        >>>         "run": "exp",
+        >>>         "num_samples": 10 if args.smoke_test else 1000,
+        >>>         "stop": {
+        >>>             "training_iteration": 100
+        >>>         },
+        >>>     }
+        >>> }
+        >>> algo = HyperOptSearch(
+        >>>     space, max_concurrent=4, reward_attr="neg_mean_loss")
+        >>> algo.add_configurations(config)
     """
 
     def __init__(self,
-                 experiments,
                  space,
                  max_concurrent=10,
                  reward_attr="episode_reward_mean",
@@ -51,7 +65,7 @@ class HyperOptSearch(SuggestionAlgorithm):
         self._live_trial_mapping = {}
         self.rstate = np.random.RandomState()
 
-        super(HyperOptSearch, self).__init__(experiments=experiments, **kwargs)
+        super(HyperOptSearch, self).__init__(**kwargs)
 
     def _suggest(self, trial_id):
         if self._num_live_trials() >= self._max_concurrent:
@@ -93,6 +107,11 @@ class HyperOptSearch(SuggestionAlgorithm):
                           result=None,
                           error=False,
                           early_terminated=False):
+        """Passes the result to HyperOpt unless early terminated or errored.
+
+        The result is internally negated when interacting with HyperOpt
+        so that HyperOpt can "maximize" this value, as it minimizes on default.
+        """
         ho_trial = self._get_hyperopt_trial(trial_id)
         if ho_trial is None:
             return

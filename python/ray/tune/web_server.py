@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import json
+import logging
 import sys
 import threading
 
@@ -15,12 +16,14 @@ if sys.version_info[0] == 2:
 elif sys.version_info[0] == 3:
     from http.server import SimpleHTTPRequestHandler, HTTPServer
 
+logger = logging.getLogger(__name__)
+
 try:
     import requests  # `requests` is not part of stdlib.
 except ImportError:
     requests = None
-    print("Couldn't import `requests` library. Be sure to install it on"
-          " the client side.")
+    logger.exception("Couldn't import `requests` library. "
+                     "Be sure to install it on the client side.")
 
 
 class TuneClient(object):
@@ -124,7 +127,8 @@ def RunnerHandler(runner):
                 elif command == TuneClient.ADD:
                     name = args["name"]
                     spec = args["spec"]
-                    trial_generator = BasicVariantGenerator({name: spec})
+                    trial_generator = BasicVariantGenerator()
+                    trial_generator.add_configurations({name: spec})
                     for trial in trial_generator.next_trials():
                         runner.add_trial(trial)
                 else:
@@ -148,7 +152,7 @@ class TuneServer(threading.Thread):
         threading.Thread.__init__(self)
         self._port = port if port else self.DEFAULT_PORT
         address = ('localhost', self._port)
-        print("Starting Tune Server...")
+        logger.info("Starting Tune Server...")
         self._server = HTTPServer(address, RunnerHandler(runner))
         self.start()
 

@@ -153,9 +153,10 @@ build
 
 # Java
 java/**/target
-java/run
 java/**/lib
 java/**/.settings
 java/**/.classpath
 java/**/.project
 
+# python virtual env
+venv

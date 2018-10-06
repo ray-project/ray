@@ -295,49 +295,100 @@ PyTypeObject PyObjectIDType = {
     PyType_GenericNew,                    /* tp_new */
 };
 
-/* Define the PyTask class. */
+// Define the PyTask class.
+
+int resource_map_from_python_dict(
+    PyObject *resource_map,
+    std::unordered_map<std::string, double> &out) {
+  RAY_CHECK(out.size() == 0);
+
+  PyObject *key, *value;
+  Py_ssize_t position = 0;
+  if (!PyDict_Check(resource_map)) {
+    PyErr_SetString(PyExc_TypeError, "resource_map must be a dictionary");
+    return -1;
+  }
+
+  while (PyDict_Next(resource_map, &position, &key, &value)) {
+#if PY_MAJOR_VERSION >= 3
+    if (!PyUnicode_Check(key)) {
+      PyErr_SetString(PyExc_TypeError,
+                      "the keys in resource_map must be strings");
+      return -1;
+    }
+#else
+    if (!PyBytes_Check(key)) {
+      PyErr_SetString(PyExc_TypeError,
+                      "the keys in resource_map must be strings");
+      return -1;
+    }
+#endif
+
+    // Check that the resource quantities are numbers.
+    if (!(PyFloat_Check(value) || PyInt_Check(value) || PyLong_Check(value))) {
+      PyErr_SetString(PyExc_TypeError,
+                      "the values in resource_map must be floats");
+      return -1;
+    }
+    // Handle the case where the key is a bytes object and the case where it
+    // is a unicode object.
+    std::string resource_name;
+    if (PyUnicode_Check(key)) {
+      PyObject *ascii_key = PyUnicode_AsASCIIString(key);
+      resource_name =
+          std::string(PyBytes_AsString(ascii_key), PyBytes_Size(ascii_key));
+      Py_DECREF(ascii_key);
+    } else {
+      resource_name = std::string(PyBytes_AsString(key), PyBytes_Size(key));
+    }
+    out[resource_name] = PyFloat_AsDouble(value);
+  }
+  return 0;
+}
 
 static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
-  /* ID of the driver that this task originates from. */
+  // ID of the driver that this task originates from.
   UniqueID driver_id;
-  /* ID of the actor this task should run on. */
+  // ID of the actor this task should run on.
   UniqueID actor_id = ActorID::nil();
-  /* ID of the actor handle used to submit this task. */
+  // ID of the actor handle used to submit this task.
   UniqueID actor_handle_id = ActorHandleID::nil();
-  /* How many tasks have been launched on the actor so far? */
+  // How many tasks have been launched on the actor so far?
   int actor_counter = 0;
-  /* True if this is an actor checkpoint task and false otherwise. */
+  // True if this is an actor checkpoint task and false otherwise.
   PyObject *is_actor_checkpoint_method_object = nullptr;
-  /* ID of the function this task executes. */
+  // ID of the function this task executes.
   FunctionID function_id;
-  /* Arguments of the task (can be PyObjectIDs or Python values). */
+  // Arguments of the task (can be PyObjectIDs or Python values).
   PyObject *arguments;
-  /* Number of return values of this task. */
+  // Number of return values of this task.
   int num_returns;
-  /* The ID of the task that called this task. */
+  // The ID of the task that called this task.
   TaskID parent_task_id;
-  /* The number of tasks that the parent task has called prior to this one. */
+  // The number of tasks that the parent task has called prior to this one.
   int parent_counter;
   // The actor creation ID.
   ActorID actor_creation_id = ActorID::nil();
   // The dummy object for the actor creation task (if this is an actor method).
   ObjectID actor_creation_dummy_object_id = ObjectID::nil();
-  /* Arguments of the task that are execution-dependent. These must be
-   * PyObjectIDs). */
+  // Arguments of the task that are execution-dependent. These must be
+  // PyObjectIDs).
   PyObject *execution_arguments = nullptr;
-  /* Dictionary of resource requirements for this task. */
+  // Dictionary of resource requirements for this task.
   PyObject *resource_map = nullptr;
+  // Dictionary of required placement resources for this task.
+  PyObject *placement_resource_map = nullptr;
   // True if we should use the raylet code path and false otherwise.
   PyObject *use_raylet_object = nullptr;
   if (!PyArg_ParseTuple(
-          args, "O&O&OiO&i|O&O&O&O&iOOOO", &PyObjectToUniqueID, &driver_id,
+          args, "O&O&OiO&i|O&O&O&O&iOOOOO", &PyObjectToUniqueID, &driver_id,
           &PyObjectToUniqueID, &function_id, &arguments, &num_returns,
           &PyObjectToUniqueID, &parent_task_id, &parent_counter,
           &PyObjectToUniqueID, &actor_creation_id, &PyObjectToUniqueID,
           &actor_creation_dummy_object_id, &PyObjectToUniqueID, &actor_id,
           &PyObjectToUniqueID, &actor_handle_id, &actor_counter,
           &is_actor_checkpoint_method_object, &execution_arguments,
-          &resource_map, &use_raylet_object)) {
+          &resource_map, &placement_resource_map, &use_raylet_object)) {
     return -1;
   }
 
@@ -349,46 +400,23 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
 
   // Parse the resource map.
   std::unordered_map<std::string, double> required_resources;
+  std::unordered_map<std::string, double> required_placement_resources;
 
-  bool found_CPU_requirements = false;
-  PyObject *key, *value;
-  Py_ssize_t position = 0;
   if (resource_map != nullptr) {
-    if (!PyDict_Check(resource_map)) {
-      PyErr_SetString(PyExc_TypeError, "resource_map must be a dictionary");
+    if (resource_map_from_python_dict(resource_map, required_resources) != 0) {
       return -1;
     }
-    while (PyDict_Next(resource_map, &position, &key, &value)) {
-      if (!(PyBytes_Check(key) || PyUnicode_Check(key))) {
-        PyErr_SetString(PyExc_TypeError,
-                        "the keys in resource_map must be strings");
-        return -1;
-      }
-      if (!(PyFloat_Check(value) || PyInt_Check(value) ||
-            PyLong_Check(value))) {
-        PyErr_SetString(PyExc_TypeError,
-                        "the values in resource_map must be floats");
-        return -1;
-      }
-      // Handle the case where the key is a bytes object and the case where it
-      // is a unicode object.
-      std::string resource_name;
-      if (PyUnicode_Check(key)) {
-        PyObject *ascii_key = PyUnicode_AsASCIIString(key);
-        resource_name =
-            std::string(PyBytes_AsString(ascii_key), PyBytes_Size(ascii_key));
-        Py_DECREF(ascii_key);
-      } else {
-        resource_name = std::string(PyBytes_AsString(key), PyBytes_Size(key));
-      }
-      if (resource_name == std::string("CPU")) {
-        found_CPU_requirements = true;
-      }
-      required_resources[resource_name] = PyFloat_AsDouble(value);
-    }
   }
-  if (!found_CPU_requirements) {
+
+  if (required_resources.count("CPU") == 0) {
     required_resources["CPU"] = 1.0;
+  }
+
+  if (placement_resource_map != nullptr) {
+    if (resource_map_from_python_dict(placement_resource_map,
+                                      required_placement_resources) != 0) {
+      return -1;
+    }
   }
 
   Py_ssize_t num_args = PyList_Size(arguments);
@@ -462,7 +490,8 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
     self->task_spec = new ray::raylet::TaskSpecification(
         driver_id, parent_task_id, parent_counter, actor_creation_id,
         actor_creation_dummy_object_id, actor_id, actor_handle_id,
-        actor_counter, function_id, args, num_returns, required_resources);
+        actor_counter, function_id, args, num_returns, required_resources,
+        required_placement_resources, Language::PYTHON);
   }
 
   /* Set the task's execution dependencies. */

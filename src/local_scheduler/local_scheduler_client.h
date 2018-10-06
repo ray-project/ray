@@ -46,7 +46,8 @@ LocalSchedulerConnection *LocalSchedulerConnection_init(
     const UniqueID &worker_id,
     bool is_worker,
     const JobID &driver_id,
-    bool use_raylet);
+    bool use_raylet,
+    const Language &language);
 
 /**
  * Disconnect from the local scheduler.
@@ -243,5 +244,17 @@ void local_scheduler_push_error(LocalSchedulerConnection *conn,
 void local_scheduler_push_profile_events(
     LocalSchedulerConnection *conn,
     const ProfileTableDataT &profile_events);
+
+/// Free a list of objects from object stores.
+///
+/// \param conn The connection information.
+/// \param object_ids A list of ObjectsIDs to be deleted.
+/// \param local_only Whether keep this request with local object store
+/// or send it to all the object stores.
+/// \return Void.
+void local_scheduler_free_objects_in_object_store(
+    LocalSchedulerConnection *conn,
+    const std::vector<ray::ObjectID> &object_ids,
+    bool local_only);
 
 #endif

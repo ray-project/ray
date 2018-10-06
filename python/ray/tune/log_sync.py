@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import distutils.spawn
+import logging
 import os
 import subprocess
 import time
@@ -16,6 +17,8 @@ import ray
 from ray.tune.cluster_info import get_ssh_key, get_ssh_user
 from ray.tune.error import TuneError
 from ray.tune.result import DEFAULT_RESULTS_DIR
+
+logger = logging.getLogger(__name__)
 
 # Map from (logdir, remote_dir) -> syncer
 _syncers = {}
@@ -73,7 +76,8 @@ class _LogSyncer(object):
         self.sync_process = None
         self.local_ip = ray.services.get_node_ip_address()
         self.worker_ip = None
-        print("Created LogSyncer for {} -> {}".format(local_dir, remote_dir))
+        logger.info("Created LogSyncer for {} -> {}".format(
+            local_dir, remote_dir))
 
     def set_worker_ip(self, worker_ip):
         """Set the worker ip to sync logs from."""
@@ -87,7 +91,7 @@ class _LogSyncer(object):
     def sync_now(self, force=False):
         self.last_sync_time = time.time()
         if not self.worker_ip:
-            print("Worker ip unknown, skipping log sync for {}".format(
+            logger.info("Worker ip unknown, skipping log sync for {}".format(
                 self.local_dir))
             return
 
@@ -97,11 +101,11 @@ class _LogSyncer(object):
             ssh_key = get_ssh_key()
             ssh_user = get_ssh_user()
             if ssh_key is None or ssh_user is None:
-                print("Error: log sync requires cluster to be setup with "
-                      "`ray create_or_update`.")
+                logger.error("Log sync requires cluster to be setup with "
+                             "`ray create_or_update`.")
                 return
             if not distutils.spawn.find_executable("rsync"):
-                print("Error: log sync requires rsync to be installed.")
+                logger.error("Log sync requires rsync to be installed.")
                 return
             source = '{}@{}:{}/'.format(ssh_user, self.worker_ip,
                                         self.local_dir)
@@ -127,7 +131,7 @@ class _LogSyncer(object):
                 if force:
                     self.sync_process.kill()
                 else:
-                    print("Warning: last sync is still in progress, skipping")
+                    logger.warning("Last sync is still in progress, skipping.")
                     return
 
         if worker_to_local_sync_cmd or local_to_remote_sync_cmd:
@@ -138,7 +142,7 @@ class _LogSyncer(object):
                 if final_cmd:
                     final_cmd += " && "
                 final_cmd += local_to_remote_sync_cmd
-            print("Running log sync: {}".format(final_cmd))
+            logger.info("Running log sync: {}".format(final_cmd))
             self.sync_process = subprocess.Popen(final_cmd, shell=True)
 
     def wait(self):

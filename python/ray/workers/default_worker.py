@@ -3,10 +3,13 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
+import logging
 import traceback
 
 import ray
 import ray.actor
+import ray.ray_constants as ray_constants
+import ray.tempfile_services as tempfile_services
 
 parser = argparse.ArgumentParser(
     description=("Parse addresses for the worker "
@@ -38,6 +41,25 @@ parser.add_argument(
     help="the local scheduler's name")
 parser.add_argument(
     "--raylet-name", required=False, type=str, help="the raylet's name")
+parser.add_argument(
+    "--logging-level",
+    required=False,
+    type=str,
+    default=ray_constants.LOGGER_LEVEL,
+    choices=ray_constants.LOGGER_LEVEL_CHOICES,
+    help=ray_constants.LOGGER_LEVEL_HELP)
+parser.add_argument(
+    "--logging-format",
+    required=False,
+    type=str,
+    default=ray_constants.LOGGER_FORMAT,
+    help=ray_constants.LOGGER_FORMAT_HELP)
+parser.add_argument(
+    "--temp-dir",
+    required=False,
+    type=str,
+    default=None,
+    help="Specify the path of the temporary directory use by Ray process.")
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -50,6 +72,13 @@ if __name__ == "__main__":
         "local_scheduler_socket_name": args.local_scheduler_name,
         "raylet_socket_name": args.raylet_name
     }
+
+    logging.basicConfig(
+        level=logging.getLevelName(args.logging_level.upper()),
+        format=args.logging_format)
+
+    # Override the temporary directory.
+    tempfile_services.set_temp_root(args.temp_dir)
 
     ray.worker.connect(
         info, mode=ray.WORKER_MODE, use_raylet=(args.raylet_name is not None))

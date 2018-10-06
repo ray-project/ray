@@ -1,4 +1,5 @@
 #include "ray/object_manager/object_manager.h"
+#include "common/common_protocol.h"
 #include "ray/util/util.h"
 
 namespace asio = boost::asio;
@@ -578,6 +579,13 @@ void ObjectManager::SubscribeRemainingWaitObjects(const UniqueID &wait_id) {
             if (error_code.value() != 0) {
               return;
             }
+            if (active_wait_requests_.find(wait_id) == active_wait_requests_.end()) {
+              // When a subscription callback is triggered first, WaitComplete will be
+              // called. The timer may at the same time goes off and may be an
+              // interruption will post WaitComplete to main_service_ the second time.
+              // This check will avoid the duplicated call of this function.
+              return;
+            }
             WaitComplete(wait_id);
           });
     }
@@ -585,7 +593,9 @@ void ObjectManager::SubscribeRemainingWaitObjects(const UniqueID &wait_id) {
 }
 
 void ObjectManager::WaitComplete(const UniqueID &wait_id) {
-  auto &wait_state = active_wait_requests_.find(wait_id)->second;
+  auto iter = active_wait_requests_.find(wait_id);
+  RAY_CHECK(iter != active_wait_requests_.end());
+  auto &wait_state = iter->second;
   // If we complete with outstanding requests, then timeout_ms should be non-zero or -1
   // (infinite wait time).
   if (!wait_state.requested_objects.empty()) {
@@ -653,6 +663,10 @@ void ObjectManager::ProcessClientMessage(std::shared_ptr<TcpClientConnection> &c
   }
   case static_cast<int64_t>(object_manager_protocol::MessageType::ConnectClient): {
     ConnectClient(conn, message);
+    break;
+  }
+  case static_cast<int64_t>(object_manager_protocol::MessageType::FreeRequest): {
+    ReceiveFreeRequest(conn, message);
     break;
   }
   case static_cast<int64_t>(protocol::MessageType::DisconnectClient): {
@@ -753,6 +767,53 @@ void ObjectManager::ExecuteReceiveObject(const ClientID &client_id,
   conn.ProcessMessages();
   RAY_LOG(DEBUG) << "ReceiveCompleted " << client_id_ << " " << object_id << " "
                  << "/" << config_.max_receives;
+}
+
+void ObjectManager::ReceiveFreeRequest(std::shared_ptr<TcpClientConnection> &conn,
+                                       const uint8_t *message) {
+  auto free_request =
+      flatbuffers::GetRoot<object_manager_protocol::FreeRequestMessage>(message);
+  std::vector<ObjectID> object_ids = from_flatbuf(*free_request->object_ids());
+  // This RPC should come from another Object Manager.
+  // Keep this request local.
+  bool local_only = true;
+  FreeObjects(object_ids, local_only);
+  conn->ProcessMessages();
+}
+
+void ObjectManager::FreeObjects(const std::vector<ObjectID> &object_ids,
+                                bool local_only) {
+  buffer_pool_.FreeObjects(object_ids);
+  if (!local_only) {
+    SpreadFreeObjectRequest(object_ids);
+  }
+}
+
+void ObjectManager::SpreadFreeObjectRequest(const std::vector<ObjectID> &object_ids) {
+  // This code path should be called from node manager.
+  flatbuffers::FlatBufferBuilder fbb;
+  flatbuffers::Offset<object_manager_protocol::FreeRequestMessage> request =
+      object_manager_protocol::CreateFreeRequestMessage(fbb, to_flatbuf(fbb, object_ids));
+  fbb.Finish(request);
+  auto function_on_client = [this, &fbb](const RemoteConnectionInfo &connection_info) {
+    std::shared_ptr<SenderConnection> conn;
+    connection_pool_.GetSender(ConnectionPool::ConnectionType::MESSAGE,
+                               connection_info.client_id, &conn);
+    if (conn == nullptr) {
+      conn = CreateSenderConnection(ConnectionPool::ConnectionType::MESSAGE,
+                                    connection_info);
+      connection_pool_.RegisterSender(ConnectionPool::ConnectionType::MESSAGE,
+                                      connection_info.client_id, conn);
+    }
+    ray::Status status = conn->WriteMessage(
+        static_cast<int64_t>(object_manager_protocol::MessageType::FreeRequest),
+        fbb.GetSize(), fbb.GetBufferPointer());
+    if (status.ok()) {
+      connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::MESSAGE, conn);
+    }
+    // TODO(Yuhong): Implement ConnectionPool::RemoveSender and call it in "else".
+  };
+  object_directory_->RunFunctionForEachClient(function_on_client);
 }
 
 }  // namespace ray

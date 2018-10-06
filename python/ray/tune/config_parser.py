@@ -6,6 +6,9 @@ import argparse
 import json
 import os
 
+# For compatibility under py2 to consider unicode as str
+from six import string_types
+
 from ray.tune import TuneError
 from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.trial import Resources, Trial
@@ -15,7 +18,7 @@ from ray.tune.logger import _SafeFallbackEncoder
 def json_to_resources(data):
     if data is None or data == "null":
         return None
-    if type(data) is str:
+    if isinstance(data, string_types):
         data = json.loads(data)
     for k in data:
         if k in ["driver_cpu_limit", "driver_gpu_limit"]:
@@ -88,7 +91,7 @@ def make_parser(parser_creator=None, **kwargs):
         "unless you specify them here. For RLlib, you probably want to "
         "leave this alone and use RLlib configs to control parallelism.")
     parser.add_argument(
-        "--repeat",
+        "--num-samples",
         default=1,
         type=int,
         help="Number of times to repeat each trial.")
@@ -109,6 +112,11 @@ def make_parser(parser_creator=None, **kwargs):
         type=int,
         help="How many training iterations between checkpoints. "
         "A value of 0 (default) disables checkpointing.")
+    parser.add_argument(
+        "--checkpoint-at-end",
+        action="store_true",
+        help="Whether to checkpoint at the end of the experiment. "
+        "Default is False.")
     parser.add_argument(
         "--max-failures",
         default=3,
@@ -143,9 +151,12 @@ def to_argv(config):
     for k, v in config.items():
         if "-" in k:
             raise ValueError("Use '_' instead of '-' in `{}`".format(k))
-        argv.append("--{}".format(k.replace("_", "-")))
-        if isinstance(v, str):
+        if not isinstance(v, bool) or v:  # for argparse flags
+            argv.append("--{}".format(k.replace("_", "-")))
+        if isinstance(v, string_types):
             argv.append(v)
+        elif isinstance(v, bool):
+            pass
         else:
             argv.append(json.dumps(v, cls=_SafeFallbackEncoder))
     return argv
@@ -168,12 +179,6 @@ def create_trial_from_spec(spec, output_path, parser, **trial_kwargs):
         A trial object with corresponding parameters to the specification.
     """
     try:
-        # Special case the `env` param for RLlib by automatically
-        # moving it into the `config` section.
-        if "env" in spec:
-            spec["config"] = spec.get("config", {})
-            spec["config"]["env"] = spec["env"]
-            del spec["env"]
         args = parser.parse_args(to_argv(spec))
     except SystemExit:
         raise TuneError("Error parsing args, see above message", spec)
@@ -189,6 +194,7 @@ def create_trial_from_spec(spec, output_path, parser, **trial_kwargs):
         # json.load leads to str -> unicode in py2.7
         stopping_criterion=spec.get("stop", {}),
         checkpoint_freq=args.checkpoint_freq,
+        checkpoint_at_end=args.checkpoint_at_end,
         # str(None) doesn't create None
         restore_path=spec.get("restore"),
         upload_dir=args.upload_dir,

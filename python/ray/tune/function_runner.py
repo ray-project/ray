@@ -2,18 +2,24 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import logging
 import time
 import threading
-import traceback
 
 from ray.tune import TuneError
 from ray.tune.trainable import Trainable
 from ray.tune.result import TIMESTEPS_TOTAL
-from ray.tune.util import _serve_get_pin_requests
+
+logger = logging.getLogger(__name__)
 
 
 class StatusReporter(object):
-    """Object passed into your main() that you can report status through."""
+    """Object passed into your main() that you can report status through.
+
+    Example:
+        >>> reporter = StatusReporter()
+        >>> reporter(timesteps_total=1)
+    """
 
     def __init__(self):
         self._latest_result = None
@@ -70,7 +76,7 @@ class _RunnerThread(threading.Thread):
             self._entrypoint(*self._entrypoint_args)
         except Exception as e:
             self._status_reporter._error = e
-            print("Runner thread raised: {}".format(traceback.format_exc()))
+            logger.exception("Runner Thread raised error.")
             raise e
         finally:
             self._status_reporter._done = True
@@ -108,15 +114,15 @@ class FunctionRunner(Trainable):
                             self._default_config["script_min_iter_time_s"]))
         result = self._status_reporter._get_and_clear_status()
         while result is None:
-            _serve_get_pin_requests()
             time.sleep(1)
             result = self._status_reporter._get_and_clear_status()
 
-        curr_ts_total = result.get(TIMESTEPS_TOTAL,
-                                   self._last_reported_timestep)
-        result.update(
-            timesteps_this_iter=(curr_ts_total - self._last_reported_timestep))
-        self._last_reported_timestep = curr_ts_total
+        curr_ts_total = result.get(TIMESTEPS_TOTAL)
+        if curr_ts_total is not None:
+            result.update(
+                timesteps_this_iter=(
+                    curr_ts_total - self._last_reported_timestep))
+            self._last_reported_timestep = curr_ts_total
 
         return result
 

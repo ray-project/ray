@@ -24,9 +24,8 @@ from tensorflow.python.keras.preprocessing.image import ImageDataGenerator
 
 import ray
 from ray.tune import grid_search, run_experiments
-from ray.tune import register_trainable
 from ray.tune import Trainable
-from ray.tune.pbt import PopulationBasedTraining
+from ray.tune.schedulers import PopulationBasedTraining
 
 num_classes = 10
 
@@ -111,7 +110,8 @@ class Cifar10Model(Trainable):
         x_train = self.train_data[0]
         model = self._build_model(x_train.shape[1:])
 
-        opt = tf.keras.optimizers.Adadelta()
+        opt = tf.keras.optimizers.Adadelta(
+            lr=self.config["lr"], decay=self.config["decay"])
         model.compile(
             loss="categorical_crossentropy",
             optimizer=opt,
@@ -179,9 +179,8 @@ if __name__ == "__main__":
         "--smoke-test", action="store_true", help="Finish quickly for testing")
     args, _ = parser.parse_known_args()
 
-    register_trainable("train_cifar10", Cifar10Model)
     train_spec = {
-        "run": "train_cifar10",
+        "run": Cifar10Model,
         "trial_resources": {
             "cpu": 1,
             "gpu": 1
@@ -197,7 +196,7 @@ if __name__ == "__main__":
             "decay": lambda spec: spec.config.lr / 100.0,
             "dropout": grid_search([0.25, 0.5]),
         },
-        "repeat": 4,
+        "num_samples": 4,
     }
 
     if args.smoke_test:

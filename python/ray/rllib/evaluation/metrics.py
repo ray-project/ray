@@ -6,24 +6,46 @@ import numpy as np
 import collections
 
 import ray
+from ray.rllib.evaluation.sample_batch import DEFAULT_POLICY_ID
 
 
 def collect_metrics(local_evaluator, remote_evaluators=[]):
     """Gathers episode metrics from PolicyEvaluator instances."""
 
-    episode_rewards = []
-    episode_lengths = []
-    policy_rewards = collections.defaultdict(list)
+    episodes = collect_episodes(local_evaluator, remote_evaluators)
+    return summarize_episodes(episodes, episodes)
+
+
+def collect_episodes(local_evaluator, remote_evaluators=[]):
+    """Gathers new episodes metrics tuples from the given evaluators."""
+
     metric_lists = ray.get([
         a.apply.remote(lambda ev: ev.sampler.get_metrics())
         for a in remote_evaluators
     ])
     metric_lists.append(local_evaluator.sampler.get_metrics())
+    episodes = []
     for metrics in metric_lists:
-        for episode in metrics:
-            episode_lengths.append(episode.episode_length)
-            episode_rewards.append(episode.episode_reward)
-            for (_, policy_id), reward in episode.agent_rewards.items():
+        episodes.extend(metrics)
+    return episodes
+
+
+def summarize_episodes(episodes, new_episodes):
+    """Summarizes a set of episode metrics tuples.
+
+    Arguments:
+        episodes: smoothed set of episodes including historical ones
+        new_episodes: just the new episodes in this iteration
+    """
+
+    episode_rewards = []
+    episode_lengths = []
+    policy_rewards = collections.defaultdict(list)
+    for episode in episodes:
+        episode_lengths.append(episode.episode_length)
+        episode_rewards.append(episode.episode_reward)
+        for (_, policy_id), reward in episode.agent_rewards.items():
+            if policy_id != DEFAULT_POLICY_ID:
                 policy_rewards[policy_id].append(reward)
     if episode_rewards:
         min_reward = min(episode_rewards)
@@ -42,5 +64,5 @@ def collect_metrics(local_evaluator, remote_evaluators=[]):
         episode_reward_min=min_reward,
         episode_reward_mean=avg_reward,
         episode_len_mean=avg_length,
-        episodes_total=len(episode_lengths),
+        episodes_this_iter=len(new_episodes),
         policy_reward_mean=dict(policy_rewards))

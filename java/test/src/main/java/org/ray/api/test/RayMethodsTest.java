@@ -1,14 +1,15 @@
 package org.ray.api.test;
 
+import com.google.common.collect.ImmutableList;
 import java.util.List;
+import java.util.stream.Collectors;
 import org.junit.Assert;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.ray.api.Ray;
-import org.ray.api.RayList;
 import org.ray.api.RayObject;
 import org.ray.api.WaitResult;
-import org.ray.util.logger.RayLog;
+import org.ray.runtime.util.logger.RayLog;
 
 /**
  * Integration test for Ray.*
@@ -24,12 +25,9 @@ public class RayMethodsTest {
     RayObject<String> s2Id = Ray.put(String.valueOf("World!"));
     RayObject<Object> n1Id = Ray.put(null);
 
-    RayList<String> waitIds = new RayList<>();
-    waitIds.add(s1Id);
-    waitIds.add(s2Id);
-    WaitResult<String> readys = Ray.wait(waitIds, 2);
+    WaitResult<String> res = Ray.wait(ImmutableList.of(s1Id, s2Id), 2, 1000);
 
-    List<String> ss = readys.getReadyOnes().get();
+    List<String> ss = res.getReady().stream().map(RayObject::get).collect(Collectors.toList());
     int i1 = i1Id.get();
     double f1 = f1Id.get();
     Object n1 = n1Id.get();
@@ -41,12 +39,5 @@ public class RayMethodsTest {
     Assert.assertEquals(3.14, f1, Double.MIN_NORMAL);
     Assert.assertNull(n1);
 
-    // metadata test
-    RayObject<Integer> vid = Ray.put(643, "test metadata");
-    Integer v = vid.get();
-    String m = vid.getMeta();
-
-    Assert.assertEquals(643L, v.longValue());
-    Assert.assertEquals("test metadata", m);
   }
 }

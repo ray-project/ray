@@ -114,7 +114,7 @@ static inline Task ExampleTask(const std::vector<ObjectID> &arguments,
   }
   auto spec = TaskSpecification(UniqueID::nil(), UniqueID::from_random(), 0,
                                 UniqueID::from_random(), task_arguments, num_returns,
-                                required_resources);
+                                required_resources, Language::PYTHON);
   auto execution_spec = TaskExecutionSpecification(std::vector<ObjectID>());
   execution_spec.IncrementNumForwards();
   Task task = Task(execution_spec, spec);
@@ -217,7 +217,7 @@ TEST_F(LineageCacheTest, TestMarkTaskAsForwarded) {
   // Check that lineage of requested task includes itself, regardless of whether
   // it has been forwarded before.
   auto uncommitted_lineage_forwarded =
-      lineage_cache_.GetUncommittedLineage(remaining_task_id, node_id);
+      lineage_cache_.GetUncommittedLineage(forwarded_task_id, node_id);
   ASSERT_EQ(1, uncommitted_lineage_forwarded.GetEntries().size());
 }
 
@@ -284,7 +284,6 @@ TEST_F(LineageCacheTest, TestWritebackPartiallyReady) {
     returns.push_back(task2.GetTaskSpecification().ReturnId(i));
   }
   auto dependent_task = ExampleTask(returns, 1);
-  auto dependencies = dependent_task.GetDependencies();
 
   // Insert all tasks as waiting for execution.
   ASSERT_TRUE(lineage_cache_.AddWaitingTask(task1, Lineage()));
@@ -413,8 +412,9 @@ TEST_F(LineageCacheTest, TestEviction) {
   // uncommitted lineage.
   ASSERT_EQ(uncommitted_lineage.GetEntries().size(), lineage_size);
 
-  // Simulate executing the rest of the tasks on a remote node and adding them
-  // to the GCS.
+  // Simulate executing all the rest of the tasks except the last one on a
+  // remote node and adding them to the GCS.
+  tasks.pop_back();
   for (; it != tasks.end(); it++) {
     RAY_CHECK_OK(mock_gcs_.RemoteAdd(it->GetTaskSpecification().TaskId(), task_data));
     // Check that the remote task is flushed.
@@ -426,7 +426,9 @@ TEST_F(LineageCacheTest, TestEviction) {
   // evicted that the uncommitted lineage is now less than the maximum size.
   uncommitted_lineage =
       lineage_cache_.GetUncommittedLineage(last_task_id, ClientID::nil());
-  ASSERT_TRUE(uncommitted_lineage.GetEntries().size() <= max_lineage_size_);
+  ASSERT_TRUE(uncommitted_lineage.GetEntries().size() < max_lineage_size_);
+  // The remaining task should have no uncommitted lineage.
+  ASSERT_EQ(uncommitted_lineage.GetEntries().size(), 1);
 }
 
 TEST_F(LineageCacheTest, TestOutOfOrderEviction) {
@@ -453,8 +455,10 @@ TEST_F(LineageCacheTest, TestOutOfOrderEviction) {
       lineage_cache_.GetUncommittedLineage(last_task_id, ClientID::nil());
   ASSERT_EQ(uncommitted_lineage.GetEntries().size(), lineage_size);
 
-  // Simulate executing the tasks at the remote node and receiving the
-  // notifications from the GCS in reverse order of execution.
+  // Simulate executing all the rest of the tasks except the last one at the
+  // remote node. Simulate receiving the notifications from the GCS in reverse
+  // order of execution.
+  tasks.pop_back();
   auto task_data = std::make_shared<protocol::TaskT>();
   auto it = tasks.rbegin();
   RAY_CHECK_OK(mock_gcs_.RemoteAdd(it->GetTaskSpecification().TaskId(), task_data));
@@ -480,7 +484,7 @@ TEST_F(LineageCacheTest, TestOutOfOrderEviction) {
   // evicted that the uncommitted lineage is now less than the maximum size.
   uncommitted_lineage =
       lineage_cache_.GetUncommittedLineage(last_task_id, ClientID::nil());
-  ASSERT_TRUE(uncommitted_lineage.GetEntries().size() <= max_lineage_size_);
+  ASSERT_TRUE(uncommitted_lineage.GetEntries().size() < max_lineage_size_);
 }
 
 TEST_F(LineageCacheTest, TestEvictionUncommittedChildren) {

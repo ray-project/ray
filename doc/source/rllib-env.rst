@@ -11,7 +11,7 @@ In the high-level agent APIs, environments are identified with string names. By 
 
     import ray
     from ray.tune.registry import register_env
-    from ray.rllib import ppo
+    from ray.rllib.agents import ppo
 
     def env_creator(env_config):
         import gym
@@ -50,7 +50,7 @@ In the above example, note that the ``env_creator`` function takes in an ``env_c
 OpenAI Gym
 ----------
 
-RLlib uses Gym as its environment interface for single-agent training. For more information on how to implement a custom Gym environment, see the `gym.Env class definition <https://github.com/openai/gym/blob/master/gym/core.py>`__. You may also find the `SimpleCorridor <https://github.com/ray-project/ray/blob/master/examples/custom_env/custom_env.py>`__ and `Carla simulator <https://github.com/ray-project/ray/blob/master/examples/carla/env.py>`__ example env implementations useful as a reference.
+RLlib uses Gym as its environment interface for single-agent training. For more information on how to implement a custom Gym environment, see the `gym.Env class definition <https://github.com/openai/gym/blob/master/gym/core.py>`__. You may also find the `SimpleCorridor <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_env.py>`__ and `Carla simulator <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/carla/env.py>`__ example env implementations useful as a reference.
 
 Performance
 ~~~~~~~~~~~
@@ -136,12 +136,12 @@ Here is a simple `example training script <https://github.com/ray-project/ray/bl
 
 To scale to hundreds of agents, MultiAgentEnv batches policy evaluations across multiple agents internally. It can also be auto-vectorized by setting ``num_envs_per_worker > 1``.
 
-Serving
--------
+Agent-Driven
+------------
 
-In many situations, it does not make sense for an environment to be "stepped" by RLlib. For example, if a policy is to be used in a web serving system, then it is more natural to instead *query* a service that serves policy decisions, and for that service to learn from experience over time.
+In many situations, it does not make sense for an environment to be "stepped" by RLlib. For example, if a policy is to be used in a web serving system, then it is more natural for an agent to query a service that serves policy decisions, and for that service to learn from experience over time.
 
-RLlib provides the `ServingEnv <https://github.com/ray-project/ray/blob/master/python/ray/rllib/env/serving_env.py>`__ class for this purpose. Unlike other envs, ServingEnv runs as its own thread of control. At any point, that thread can query the current policy for decisions via ``self.get_action()`` and reports rewards via ``self.log_returns()``. This can be done for multiple concurrent episodes as well.
+RLlib provides the `ServingEnv <https://github.com/ray-project/ray/blob/master/python/ray/rllib/env/serving_env.py>`__ class for this purpose. Unlike other envs, ServingEnv has its own thread of control. At any point, agents on that thread can query the current policy for decisions via ``self.get_action()`` and reports rewards via ``self.log_returns()``. This can be done for multiple concurrent episodes as well.
 
 For example, ServingEnv can be used to implement a simple REST policy `server <https://github.com/ray-project/ray/tree/master/python/ray/rllib/examples/serving>`__ that learns over time using RLlib. In this example RLlib runs with ``num_workers=0`` to avoid port allocation issues, but in principle this could be scaled by increasing ``num_workers``.
 

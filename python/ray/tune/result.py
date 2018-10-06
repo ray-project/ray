@@ -17,6 +17,12 @@ NODE_IP = "node_ip"
 PID = "pid"
 
 # Number of timesteps in this iteration.
+EPISODES_THIS_ITER = "episodes_this_iter"
+
+# (Optional/Auto-filled) Accumulated time in seconds for this experiment.
+EPISODES_TOTAL = "episodes_total"
+
+# Number of timesteps in this iteration.
 TIMESTEPS_THIS_ITER = "timesteps_this_iter"
 
 # (Optional/Auto-filled) Accumulated time in seconds for this experiment.
@@ -34,3 +40,20 @@ TRAINING_ITERATION = "training_iteration"
 
 # Where Tune writes result files by default
 DEFAULT_RESULTS_DIR = os.path.expanduser("~/ray_results")
+
+# Meta file about status under each experiment directory, can be
+# parsed by automlboard if exists.
+JOB_META_FILE = "job_status.json"
+
+# Meta file about status under each trial directory, can be parsed
+# by automlboard if exists.
+EXPR_META_FILE = "trial_status.json"
+
+# File that stores parameters of the trial.
+EXPR_PARARM_FILE = "params.json"
+
+# File that stores the progress of the trial.
+EXPR_PROGRESS_FILE = "progress.csv"
+
+# File that stores results of the trial.
+EXPR_RESULT_FILE = "result.json"

@@ -6,3 +6,4 @@ cartpole-ppo:
         time_total_s: 300
     config:
         num_workers: 1
+        batch_mode: complete_episodes

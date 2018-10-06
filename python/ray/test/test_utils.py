@@ -6,6 +6,7 @@ import json
 import os
 import redis
 import subprocess
+import sys
 import tempfile
 import time
 
@@ -141,9 +142,46 @@ def wait_for_pid_to_exit(pid, timeout=20):
 
 def run_and_get_output(command):
     with tempfile.NamedTemporaryFile() as tmp:
-        p = subprocess.Popen(command, stdout=tmp)
+        p = subprocess.Popen(command, stdout=tmp, stderr=tmp)
         if p.wait() != 0:
             raise RuntimeError("ray start did not terminate properly")
         with open(tmp.name, 'r') as f:
             result = f.readlines()
             return "\n".join(result)
+
+
+def run_string_as_driver(driver_script):
+    """Run a driver as a separate process.
+
+    Args:
+        driver_script: A string to run as a Python script.
+
+    Returns:
+        The script's output.
+    """
+    # Save the driver script as a file so we can call it using subprocess.
+    with tempfile.NamedTemporaryFile() as f:
+        f.write(driver_script.encode("ascii"))
+        f.flush()
+        out = ray.utils.decode(
+            subprocess.check_output([sys.executable, f.name]))
+    return out
+
+
+def run_string_as_driver_nonblocking(driver_script):
+    """Start a driver as a separate process and return immediately.
+
+    Args:
+        driver_script: A string to run as a Python script.
+
+    Returns:
+        A handle to the driver process.
+    """
+    # Save the driver script as a file so we can call it using subprocess. We
+    # do not delete this file because if we do then it may get removed before
+    # the Python process tries to run it.
+    with tempfile.NamedTemporaryFile(delete=False) as f:
+        f.write(driver_script.encode("ascii"))
+        f.flush()
+        return subprocess.Popen(
+            [sys.executable, f.name], stdout=subprocess.PIPE)

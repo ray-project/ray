@@ -4,17 +4,18 @@ import org.junit.runner.Description;
 import org.junit.runner.Result;
 import org.junit.runner.notification.RunListener;
 import org.ray.api.Ray;
-import org.ray.core.RayRuntime;
 
 public class TestListener extends RunListener {
 
   @Override
   public void testRunStarted(Description description) {
+    System.setProperty("ray.home", "../..");
+    System.setProperty("ray.resources", "CPU:4,RES-A:4");
     Ray.init();
   }
 
   @Override
   public void testRunFinished(Result result) {
-    RayRuntime.getInstance().cleanUp();
+    Ray.shutdown();
   }
 }

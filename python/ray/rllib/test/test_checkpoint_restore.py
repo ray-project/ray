@@ -22,17 +22,25 @@ ray.init(num_cpus=10)
 CONFIGS = {
     "ES": {
         "episodes_per_batch": 10,
-        "timesteps_per_batch": 100,
+        "train_batch_size": 100,
         "num_workers": 2
     },
     "DQN": {},
+    "APEX_DDPG": {
+        "observation_filter": "MeanStdFilter",
+        "num_workers": 2,
+        "min_iter_time_s": 1,
+        "optimizer": {
+            "num_replay_buffer_shards": 1,
+        },
+    },
     "DDPG": {
         "noise_scale": 0.0,
         "timesteps_per_iteration": 100
     },
     "PPO": {
         "num_sgd_iter": 5,
-        "timesteps_per_batch": 1000,
+        "train_batch_size": 1000,
         "num_workers": 2
     },
     "A3C": {
@@ -43,7 +51,7 @@ CONFIGS = {
 
 def test(use_object_store, alg_name, failures):
     cls = get_agent_class(alg_name)
-    if alg_name == "DDPG":
+    if "DDPG" in alg_name:
         alg1 = cls(config=CONFIGS[name], env="Pendulum-v0")
         alg2 = cls(config=CONFIGS[name], env="Pendulum-v0")
     else:
@@ -61,7 +69,7 @@ def test(use_object_store, alg_name, failures):
         alg2.restore(alg1.save())
 
     for _ in range(10):
-        if alg_name == "DDPG":
+        if "DDPG" in alg_name:
             obs = np.random.uniform(size=3)
         else:
             obs = np.random.uniform(size=4)
@@ -75,7 +83,7 @@ def test(use_object_store, alg_name, failures):
 if __name__ == "__main__":
     failures = []
     for use_object_store in [False, True]:
-        for name in ["ES", "DQN", "DDPG", "PPO", "A3C"]:
+        for name in ["ES", "DQN", "DDPG", "PPO", "A3C", "APEX_DDPG"]:
             test(use_object_store, name, failures)
 
     assert not failures, failures
