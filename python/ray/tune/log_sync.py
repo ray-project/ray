@@ -4,7 +4,6 @@ from __future__ import print_function
 
 import distutils.spawn
 import os
-import re
 import subprocess
 import time
 
@@ -24,8 +23,6 @@ _syncers = {}
 S3_PREFIX = "s3://"
 GCS_PREFIX = "gs://"
 ALLOWED_REMOTE_PREFIXES = (S3_PREFIX, GCS_PREFIX)
-
-RSYNC_LOCATION_ESCAPE_PATTERN = "(!|\$|\ |#|&|\"|\'|\(|\)|\||<|>|`|\\\|;)"
 
 
 def get_syncer(local_dir, remote_dir=None):
@@ -61,11 +58,6 @@ def get_syncer(local_dir, remote_dir=None):
 def wait_for_log_sync():
     for syncer in _syncers.values():
         syncer.wait()
-
-
-def escape_rsync_location(location):
-    escaped_location = re.sub(RSYNC_LOCATION_ESCAPE_PATTERN, r"\\\1", location)
-    return escaped_location
 
 
 class _LogSyncer(object):
@@ -112,10 +104,10 @@ class _LogSyncer(object):
                 print("Error: log sync requires rsync to be installed.")
                 return
             source = '{}@{}:{}/'.format(ssh_user, self.worker_ip,
-                                        escape_rsync_location(self.local_dir))
-            target = '{}/'.format(escape_rsync_location(self.local_dir))
+                                        self.local_dir)
+            target = '{}/'.format(self.local_dir)
             worker_to_local_sync_cmd = ((
-                """rsync -avz -e "ssh -i {} -o ConnectTimeout=120s """
+                """rsync -savz -e "ssh -i {} -o ConnectTimeout=120s """
                 """-o StrictHostKeyChecking=no" {} {}""").format(
                     quote(ssh_key), quote(source), quote(target)))
 
