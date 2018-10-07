@@ -24,7 +24,7 @@ class SGDWorker(object):
                  model_creator,
                  all_reduce_alg="simple",
                  num_devices=1,
-                 use_cpus=False,
+                 gpu=False,
                  max_bytes=60000000,
                  plasma_op=False):
         self.worker_index = worker_index
@@ -44,10 +44,10 @@ class SGDWorker(object):
         self.models = []
         grad_ops = []
 
-        if use_cpus:
-            device_tmpl = "/cpu:%d"
-        else:
+        if gpu:
             device_tmpl = "/gpu:%d"
+        else:
+            device_tmpl = "/cpu:%d"
         for device_idx in range(num_devices):
             device = device_tmpl % device_idx
             with tf.device(device):
@@ -252,12 +252,13 @@ class SGDWorker(object):
         return ray.services.get_node_ip_address()
 
 
+@ray.remote(num_cpus=0)
 class ParameterServer(object):
     def __init__(self, num_workers, tid):
         self.num_sgd_workers = num_workers
         self.acc_counter = 0
         self.timeline = Timeline(tid)
-        self.timeline.patch_ray()
+#        self.timeline.patch_ray()
 
     def set_tid(self, tid):
         self.timeline.tid = tid
@@ -338,7 +339,7 @@ def average_gradients(grads):
     return out
 
 
-def do_sgd_step(actors):
+def simple_sgd_step(actors):
     start = time.time()
     fetches = ray.get([a.compute_gradients.remote() for a in actors])
     losses = [f[0] for f in fetches]
@@ -410,26 +411,49 @@ class DistributedSGD(object):
                  model_creator,
                  num_workers,
                  devices_per_worker,
-                 use_cpus=False,
-                 use_plasma_op=False):
-        self.model_creator = model_creator
-        if use_cpus:
-            requests = {"num_cpus": devices_per_worker}
+                 gpu=True,
+                 strategy="ps"):
+        if strategy == "ps":
+            use_plasma_op = True
+        elif strategy == "simple":
+            use_plasma_op = False
         else:
+            raise ValueError("strategy must be one of 'ps', 'simple'")
+        self.strategy = strategy
+
+        self.model_creator = model_creator
+        if gpu:
             requests = {"num_gpus": devices_per_worker}
+        else:
+            requests = {"num_cpus": devices_per_worker}
+
         RemoteSGDWorker = ray.remote(**requests)(SGDWorker)
         self.workers = []
+        logger.info("Creating SGD workers ({} total)".format(num_workers))
         for worker_index in range(num_workers):
-            logger.info("Creating worker {}".format(worker_index))
             self.workers.append(
                 RemoteSGDWorker.remote(
                     worker_index,
                     model_creator,
                     num_devices=devices_per_worker,
                     plasma_op=use_plasma_op,
-                    use_cpus=use_cpus))
-        assert not use_plasma_op, \
-            "TODO: when use_plasma_op is true, we must run in PS mode"
+                    gpu=gpu))
+
+        logger.info("Waiting for gradient configuration")
+        shard_shapes = ray.get(self.workers[0].shard_shapes.remote())
+
+        logger.info("Waiting for actors to start")
+        ray.get([w.shard_shapes.remote() for w in self.workers])
+
+        if strategy == "ps":
+            logger.info("Starting parameter servers ({} shards)".format(
+                len(shard_shapes)))
+            self.ps_list = [
+                ParameterServer.remote(len(self.workers), i)
+                for i, s in enumerate(shard_shapes)
+            ]
+            ray.get([ps.get_time.remote() for ps in self.ps_list])
+            logger.info("Parameter servers started")
 
     def foreach_worker(self, fn):
         results = ray.get([w.foreach_worker.remote(fn) for w in self.workers])
@@ -443,4 +467,7 @@ class DistributedSGD(object):
         return r
 
     def step(self):
-        return do_sgd_step(self.workers)
+        if self.strategy == "ps":
+            return distributed_sgd_step(self.workers, self.ps_list, False)
+        else:
+            return simple_sgd_step(self.workers)

@@ -11,6 +11,11 @@ from ray.experimental.sgd.sgd import DistributedSGD
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "--num-iters", default=100, type=int, help="Number of iterations to run")
+parser.add_argument("--batch-size", default=1, type=int, help="SGD batch size")
+parser.add_argument(
+    "--strategy", default="simple", type=str, help="One of 'simple' or 'ps'")
+parser.add_argument(
+    "--gpu", action="store_true", help="Use GPUs for optimization")
 
 if __name__ == "__main__":
     ray.init()
@@ -18,15 +23,17 @@ if __name__ == "__main__":
     args, _ = parser.parse_known_args()
 
     model_creator = (
-        lambda worker_idx, device_idx: TFBenchModel(batch=1, use_cpus=True))
+        lambda worker_idx, device_idx: TFBenchModel(
+            batch=args.batch_size, use_cpus=True))
 
     sgd = DistributedSGD(
         model_creator,
         num_workers=2,
         devices_per_worker=2,
-        use_cpus=True,
-        use_plasma_op=False)
+        gpu=args.gpu,
+        strategy=args.strategy)
 
-    for _ in range(args.num_iters):
+    for i in range(args.num_iters):
+        print("Step", i)
         loss = sgd.step()
         print("Current loss", loss)
