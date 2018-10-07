@@ -311,7 +311,7 @@ class ParameterServer(object):
         client = ray.worker.global_worker.plasma_client
         assert self.acc_counter == self.num_sgd_workers, self.acc_counter
         oid = ray.pyarrow.plasma.ObjectID(object_id)
-        client.put(self.accumulate.flatten(), object_id=oid)
+        client.put(self.accumulated.flatten(), object_id=oid)
         self.accumulated = np.zeros_like(self.accumulated)
         self.acc_counter = 0
         self.timeline.end("get")
@@ -452,7 +452,10 @@ class DistributedSGD(object):
                 ParameterServer.remote(len(self.workers), i)
                 for i, s in enumerate(shard_shapes)
             ]
-            ray.get([ps.get_time.remote() for ps in self.ps_list])
+            ray.get([
+                ps.initialize.remote(s)
+                for ps, s in zip(self.ps_list, shard_shapes)
+            ])
             logger.info("Parameter servers started")
 
     def foreach_worker(self, fn):
