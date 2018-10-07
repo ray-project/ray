@@ -327,10 +327,10 @@ class TestMultiAgentEnv(unittest.TestCase):
             batch_steps=5)
         batch = ev.sample()
         self.assertEqual(batch.count, 5)
-        self.assertEqual(batch["state_in_0"], [{}])
-        self.assertEqual(batch["state_out_0"], [h])
-        self.assertEqual(batch["state_in_1"], [h])
-        self.assertEqual(batch["state_out_1"], [h])
+        self.assertEqual(batch["state_in_0"][0], {})
+        self.assertEqual(batch["state_out_0"][0], h)
+        self.assertEqual(batch["state_in_0"][1], h)
+        self.assertEqual(batch["state_out_0"][1], h)
 
     def testReturningModelBasedRolloutsData(self):
         class ModelBasedPolicyGraph(PGPolicyGraph):
