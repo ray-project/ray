@@ -123,6 +123,25 @@ TEST_F(ClientConnectionTest, SimpleAsyncError) {
   io_service_.run();
 }
 
+TEST_F(ClientConnectionTest, CallbackWithSharedRefDoesNotLeakConnection) {
+  const uint8_t msg1[5] = {1, 2, 3, 4, 5};
+
+  ClientHandler<boost::asio::local::stream_protocol> client_handler =
+      [](LocalClientConnection &client) {};
+
+  MessageHandler<boost::asio::local::stream_protocol> noop_handler = [](
+      std::shared_ptr<LocalClientConnection> client, int64_t message_type,
+      const uint8_t *message) {};
+
+  auto writer = LocalClientConnection::Create(client_handler, noop_handler,
+                                              std::move(in_), "writer");
+
+  std::function<void(const ray::Status &)> callback =
+      [this, writer](const ray::Status &status) { ASSERT_TRUE(status.ok()); };
+  writer->WriteMessageAsync(0, 5, msg1, callback);
+  io_service_.run();
+}
+
 }  // namespace raylet
 
 }  // namespace ray
