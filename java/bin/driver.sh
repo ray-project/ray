@@ -42,3 +42,5 @@ java -cp "${CONF_DIR}:${JAR_DIR}/${driver_jar}:${LIB_DIR}/*" \
   ${NATIVE_OPTS} \
   ${driver_class_name} ${driver_args} \
   > ${LOG_DIR}/${driver_name}.log 2>&1 &
+
+echo $! > ${RUN_DIR}/${driver_name}.pid

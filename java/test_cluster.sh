@@ -26,9 +26,16 @@ pushd ${assembly_file_name}
 
 # check the log
 result=$(cat "./logs/exercise-02.log")
-[[ ${result} =~ "hello,world!" ]] && exit 1
+if [[ ${result} =~ "hello,world!" ]]; then
+    echo "failed cluster test"
+    exit 1
+else
+    echo "success cluster test"
+fi
 
 popd
+
+sleep 1
 
 sh bin/clean.sh
 rm -rf ${assembly_file_name}

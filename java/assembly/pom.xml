@@ -19,17 +19,17 @@
     <dependency>
       <groupId>org.ray</groupId>
       <artifactId>ray-test</artifactId>
-      <version>0.1-SNAPSHOT</version>
+      <version>${projetct.version}</version>
     </dependency>
     <dependency>
       <groupId>org.ray</groupId>
       <artifactId>ray-tutorial</artifactId>
-      <version>0.1-SNAPSHOT</version>
+      <version>${projetct.version}</version>
     </dependency>
     <dependency>
       <groupId>org.ray</groupId>
       <artifactId>ray-cli</artifactId>
-      <version>0.1-SNAPSHOT</version>
+      <version>${projetct.version}</version>
     </dependency>
   </dependencies>
 
