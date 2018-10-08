@@ -8,7 +8,7 @@ import inspect
 import traceback
 
 import ray.cloudpickle as pickle
-from ray.function_manager import FunctionActorManager
+from ray.function_manager import FunctionDescriptor
 import ray.local_scheduler
 import ray.ray_constants as ray_constants
 import ray.signature as signature
@@ -70,18 +70,6 @@ def compute_actor_handle_id_non_forked(actor_id, actor_handle_id,
     handle_id = handle_id_hash.digest()
     assert len(handle_id) == ray_constants.ID_SIZE
     return ray.ObjectID(handle_id)
-
-
-def compute_actor_creation_function_id(class_id):
-    """Compute the function ID for an actor creation task.
-
-    Args:
-        class_id: The ID of the actor class.
-
-    Returns:
-        The function ID of the actor creation event.
-    """
-    return ray.ObjectID(class_id)
 
 
 def set_actor_checkpoint(worker, actor_id, checkpoint_index, checkpoint,
@@ -383,9 +371,11 @@ class ActorClass(object):
                 actor_placement_resources["CPU"] += 1
 
             creation_args = [self._class_id]
-            function_id = compute_actor_creation_function_id(self._class_id)
+            func_desc = FunctionDescriptor(self._modified_class.__module__,
+                                           self._modified_class.__name__,
+                                           self._modified_class.__name__)
             [actor_cursor] = worker.submit_task(
-                function_id,
+                func_desc,
                 creation_args,
                 actor_creation_id=actor_id,
                 num_return_vals=1,
@@ -396,10 +386,10 @@ class ActorClass(object):
         # creation task.
         actor_counter = 1
         actor_handle = ActorHandle(
-            actor_id, self._class_name, actor_cursor, actor_counter,
-            self._actor_method_names, self._method_signatures,
-            self._actor_method_num_return_vals, actor_cursor,
-            self._actor_method_cpus, worker.task_driver_id)
+            actor_id, self._modified_class.__module__, self._class_name,
+            actor_cursor, actor_counter, self._actor_method_names,
+            self._method_signatures, self._actor_method_num_return_vals,
+            actor_cursor, self._actor_method_cpus, worker.task_driver_id)
 
         # Call __init__ as a remote function.
         if "__init__" in actor_handle._ray_actor_method_names:
@@ -430,6 +420,7 @@ class ActorHandle(object):
 
     Attributes:
         _ray_actor_id: The ID of the corresponding actor.
+        _ray_module_name: The module name of this actor.
         _ray_actor_handle_id: The ID of this handle. If this is the "original"
             handle for an actor (as opposed to one created by passing another
             handle into a task), then this ID must be NIL_ID. If this
@@ -468,6 +459,7 @@ class ActorHandle(object):
 
     def __init__(self,
                  actor_id,
+                 module_name,
                  class_name,
                  actor_cursor,
                  actor_counter,
@@ -482,6 +474,7 @@ class ActorHandle(object):
         # False if this actor handle was created by forking or pickling. True
         # if it was created by the _serialization_helper function.
         self._ray_original_handle = previous_actor_handle_id is None
+        self._ray_module_name = module_name
 
         self._ray_actor_id = actor_id
         if self._ray_original_handle:
@@ -561,10 +554,10 @@ class ActorHandle(object):
         else:
             actor_handle_id = self._ray_actor_handle_id
 
-        function_id = FunctionActorManager.compute_actor_method_function_id(
-            self._ray_class_name, method_name)
+        func_desc = FunctionDescriptor(self._ray_module_name, method_name,
+                                       self._ray_class_name)
         object_ids = worker.submit_task(
-            function_id,
+            func_desc,
             args,
             actor_id=self._ray_actor_id,
             actor_handle_id=actor_handle_id,
@@ -655,6 +648,7 @@ class ActorHandle(object):
         """
         state = {
             "actor_id": self._ray_actor_id.id(),
+            "module_name": self._ray_module_name,
             "class_name": self._ray_class_name,
             "actor_forks": self._ray_actor_forks,
             "actor_cursor": self._ray_actor_cursor.id()
@@ -702,6 +696,7 @@ class ActorHandle(object):
 
         self.__init__(
             ray.ObjectID(state["actor_id"]),
+            state["module_name"],
             state["class_name"],
             ray.ObjectID(state["actor_cursor"])
             if state["actor_cursor"] is not None else None,

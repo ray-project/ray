@@ -51,7 +51,6 @@ ERROR_KEY_PREFIX = b"Error:"
 # This must match the definition of NIL_ACTOR_ID in task.h.
 NIL_ID = ray_constants.ID_SIZE * b"\xff"
 NIL_LOCAL_SCHEDULER_ID = NIL_ID
-NIL_FUNCTION_ID = NIL_ID
 NIL_ACTOR_ID = NIL_ID
 NIL_ACTOR_HANDLE_ID = NIL_ID
 NIL_CLIENT_ID = ray_constants.ID_SIZE * b"\xff"
@@ -539,7 +538,7 @@ class Worker(object):
         return final_results
 
     def submit_task(self,
-                    function_id,
+                    function_descriptor,
                     args,
                     actor_id=None,
                     actor_handle_id=None,
@@ -554,12 +553,12 @@ class Worker(object):
                     driver_id=None):
         """Submit a remote task to the scheduler.
 
-        Tell the scheduler to schedule the execution of the function with ID
-        function_id with arguments args. Retrieve object IDs for the outputs of
-        the function from the scheduler and immediately return them.
+        Tell the scheduler to schedule the execution of the function with
+        function_descriptor with arguments args. Retrieve object IDs for the
+        outputs of the function from the scheduler and immediately return them.
 
         Args:
-            function_id: The ID of the function to execute.
+            function_descriptor: The function descriptor to execute.
             args: The arguments to pass into the function. Arguments can be
                 object IDs or they can be values. If they are values, they must
                 be serializable objects.
@@ -641,8 +640,7 @@ class Worker(object):
                 task_index = self.task_index
                 self.task_index += 1
             # Submit the task to local scheduler.
-            func_desc = FunctionDescriptor.from_function_id(function_id)
-            func_desc_list = func_desc.get_function_descriptor_list()
+            func_desc_list = function_descriptor.get_function_descriptor_list()
             task = ray.local_scheduler.Task(
                 driver_id, func_desc_list, args_for_local_scheduler,
                 num_return_vals, self.current_task_id, task_index,
@@ -798,7 +796,6 @@ class Worker(object):
         self.put_index = 1
         function_descriptor = FunctionDescriptor.from_bytes_list(
             task.function_descriptor_list())
-        function_id = function_descriptor.function_id
         args = task.arguments()
         return_object_ids = task.returns()
         if task.actor_id().id() != NIL_ACTOR_ID:
@@ -814,12 +811,12 @@ class Worker(object):
                 arguments = self._get_arguments_for_execution(
                     function_name, args)
         except (RayGetError, RayGetArgumentError) as e:
-            self._handle_process_task_failure(function_id, function_name,
+            self._handle_process_task_failure(function_descriptor,
                                               return_object_ids, e, None)
             return
         except Exception as e:
             self._handle_process_task_failure(
-                function_id, function_name, return_object_ids, e,
+                function_descriptor, return_object_ids, e,
                 ray.utils.format_error_message(traceback.format_exc()))
             return
 
@@ -838,9 +835,8 @@ class Worker(object):
             task_exception = task.actor_id().id() == NIL_ACTOR_ID
             traceback_str = ray.utils.format_error_message(
                 traceback.format_exc(), task_exception=task_exception)
-            self._handle_process_task_failure(function_id, function_name,
-                                              return_object_ids, e,
-                                              traceback_str)
+            self._handle_process_task_failure(
+                function_descriptor, return_object_ids, e, traceback_str)
             return
 
         # Store the outputs in the local object store.
@@ -855,11 +851,13 @@ class Worker(object):
                 self._store_outputs_in_objstore(return_object_ids, outputs)
         except Exception as e:
             self._handle_process_task_failure(
-                function_id, function_name, return_object_ids, e,
+                function_descriptor, return_object_ids, e,
                 ray.utils.format_error_message(traceback.format_exc()))
 
-    def _handle_process_task_failure(self, function_id, function_name,
+    def _handle_process_task_failure(self, function_descriptor,
                                      return_object_ids, error, backtrace):
+        function_name = function_descriptor.function_name
+        function_id = function_descriptor.function_id
         failure_object = RayTaskError(function_name, error, backtrace)
         failure_objects = [
             failure_object for _ in range(len(return_object_ids))
@@ -873,7 +871,9 @@ class Worker(object):
             driver_id=self.task_driver_id.id(),
             data={
                 "function_id": function_id.id(),
-                "function_name": function_name
+                "function_name": function_name,
+                "module_name": function_descriptor.module_name,
+                "class_name": function_descriptor.class_name
             })
         # Mark the actor init as failed
         if self.actor_id != NIL_ACTOR_ID and function_name == "__init__":
@@ -911,7 +911,6 @@ class Worker(object):
         """
         function_descriptor = FunctionDescriptor.from_bytes_list(
             task.function_descriptor_list())
-        function_id = function_descriptor.function_id
         driver_id = task.driver_id().id()
 
         # TODO(rkn): It would be preferable for actor creation tasks to share
@@ -921,7 +920,7 @@ class Worker(object):
             return
 
         execution_info = self.function_actor_manager.get_execution_info(
-            driver_id, function_id)
+            driver_id, function_descriptor)
 
         # Execute the task.
         # TODO(rkn): Consider acquiring this lock with a timeout and pushing a
@@ -952,10 +951,10 @@ class Worker(object):
 
         # Increase the task execution counter.
         self.function_actor_manager.increase_task_counter(
-            driver_id, function_id.id())
+            driver_id, function_descriptor)
 
         reached_max_executions = (self.function_actor_manager.get_task_counter(
-            driver_id, function_id.id()) == execution_info.max_calls)
+            driver_id, function_descriptor) == execution_info.max_calls)
         if reached_max_executions:
             self.local_scheduler_client.disconnect()
             os._exit(0)

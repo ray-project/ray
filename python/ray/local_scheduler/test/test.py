@@ -66,7 +66,8 @@ class TestLocalSchedulerClient(unittest.TestCase):
             self.p2.kill()
 
     def test_submit_and_get_task(self):
-        func_desc = FunctionDescriptor.from_function_id(random_function_id())
+        func_desc = FunctionDescriptor(__name__, "test_submit_and_get_task",
+                                       self.__class__.__name__)
         func_desc_list = func_desc.get_function_descriptor_list()
         object_ids = [random_object_id() for i in range(256)]
         # Create and seal the objects in the object store so that we can
@@ -123,7 +124,9 @@ class TestLocalSchedulerClient(unittest.TestCase):
     def test_scheduling_when_objects_ready(self):
         # Create a task and submit it.
         object_id = random_object_id()
-        func_desc = FunctionDescriptor.from_function_id(random_function_id())
+        func_desc = FunctionDescriptor(__name__,
+                                       "test_scheduling_when_objects_ready",
+                                       self.__class__.__name__)
         func_desc_list = func_desc.get_function_descriptor_list()
         task = local_scheduler.Task(random_driver_id(), func_desc_list,
                                     [object_id], 0, random_task_id(), 0)
@@ -149,7 +152,9 @@ class TestLocalSchedulerClient(unittest.TestCase):
         # Create a task with two dependencies and submit it.
         object_id1 = random_object_id()
         object_id2 = random_object_id()
-        func_desc = FunctionDescriptor.from_function_id(random_function_id())
+        func_desc = FunctionDescriptor(__name__,
+                                       "test_scheduling_when_objects_evicted",
+                                       self.__class__.__name__)
         func_desc_list = func_desc.get_function_descriptor_list()
         task = local_scheduler.Task(random_driver_id(), func_desc_list,
                                     [object_id1, object_id2], 0,

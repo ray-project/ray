@@ -44,49 +44,71 @@ class FunctionDescriptor(object):
                  module_name,
                  function_name,
                  class_name="",
-                 function_id=NIL_FUNCTION_ID,
+                 function_source_hash=b"",
                  is_driver_task=False):
         self._module_name = module_name
         self._class_name = class_name
         self._function_name = function_name
-        assert isinstance(function_id, ray.ObjectID)
-        self._function_id = function_id
+        self._function_source_hash = function_source_hash
         self._is_driver_task = is_driver_task
+        self._function_id = self._get_function_id()
+
+    def __repr__(self):
+        return ("FunctionDescriptor:" + self._module_name + "." +
+                self._class_name + "." + self._function_name)
 
     @classmethod
     def from_bytes_list(cls, function_descriptor_list):
-        """Create a FunctionDescriptorm instance from list of bytes.
+        """Create a FunctionDescriptor instance from list of bytes.
         This function is used to load the function descriptor from
         backend data.
         """
         assert isinstance(function_descriptor_list, list)
         if len(function_descriptor_list) == 0:
             # This is a function descriptor of driver task.
-            return cls("", "", "", NIL_FUNCTION_ID, True)
-        elif len(function_descriptor_list) >= 3:
+            return cls("", "", "", b"", True)
+        elif len(function_descriptor_list) == 4:
             module_name = function_descriptor_list[0].decode()
             class_name = function_descriptor_list[1].decode()
             function_name = function_descriptor_list[2].decode()
-            if len(function_descriptor_list) == 3:
-                function_id = NIL_FUNCTION_ID
-            else:
-                function_id = ray.ObjectID(function_descriptor_list[3])
-            return cls(module_name, function_name, class_name, function_id)
+            function_source_hash = function_descriptor_list[3]
+            return cls(module_name, function_name, class_name,
+                       function_source_hash)
         else:
             raise Exception(
                 "Invalid input for FunctionDescriptor.from_bytes_list")
 
     @classmethod
-    def from_function_id(cls, function_id):
-        """Create a FunctionDescriptor instance from a function id.
-        This function can be loaded from GCS, so only function id is set.
+    def from_function(cls, function, function_class=None):
+        """Create a FunctionDescriptorm from a function instance.
+        function_class could be None if this function does not belong to
+        any Classes.
         """
-        assert isinstance(function_id, ray.ObjectID)
-        return cls("", "", "", function_id)
+        module_name = function.__module__
+        function_name = function.__name__
+        if function_class is not None:
+            class_name = function_class.__name__
+        else:
+            class_name = ""
+
+        function_source_hasher = hashlib.sha1()
+        try:
+            # If we are running a script or are in IPython, include the source
+            # code in the hash.
+            source = inspect.getsource(function).encode("ascii")
+            function_source_hasher.update(source)
+            function_source_hash = function_source_hasher.digest()
+        except (IOError, OSError, TypeError):
+            # Source code may not be available:
+            # e.g. Cython or Python interpreter.
+            function_source_hash = b""
+
+        return cls(module_name, function_name, class_name,
+                   function_source_hash)
 
     @classmethod
     def create_driver_task(cls):
-        return cls("", "", "", NIL_FUNCTION_ID, True)
+        return cls("", "", "", b"", True)
 
     @property
     def module_name(self):
@@ -102,17 +124,35 @@ class FunctionDescriptor(object):
 
     @property
     def function_name(self):
-        """str: the fucntion name of the function."""
+        """str: the function name of the function."""
         return self._function_name
 
     @property
+    def function_hash(self):
+        """str: the hash code of the function source code."""
+        return self._function_source_hash
+
+    @property
     def function_id(self):
-        """str: The fucntion id of the function.
-        If function_id is not Nil, this function can be deserialized from GCS.
-        Otherwise, this function could be loaded from local disk and the
-        other 3 properties should be able to descibe this function.
+        return ray.ObjectID(self._function_id)
+
+    def _get_function_id(self):
+        """str: The function id of the function.
+        This function id is calculated from all the fields of function
+        descriptor.
         """
-        return self._function_id
+        if self._is_driver_task:
+            return NIL_FUNCTION_ID.id()
+        function_id_hash = hashlib.sha1()
+        # Include the function module and name in the hash.
+        function_id_hash.update(self.module_name.encode("ascii"))
+        function_id_hash.update(self.function_name.encode("ascii"))
+        function_id_hash.update(self.class_name.encode("ascii"))
+        function_id_hash.update(self._function_source_hash)
+        # Compute the function ID.
+        function_id = function_id_hash.digest()
+        assert len(function_id) == ray_constants.ID_SIZE
+        return function_id
 
     def get_function_descriptor_list(self):
         """Return a list of bytes which is needed by the backend."""
@@ -124,8 +164,7 @@ class FunctionDescriptor(object):
             descriptor_list.append(self.module_name.encode("ascii"))
             descriptor_list.append(self.class_name.encode("ascii"))
             descriptor_list.append(self.function_name.encode("ascii"))
-            if self.function_id != NIL_FUNCTION_ID:
-                descriptor_list.append(self.function_id.id())
+            descriptor_list.append(self._function_source_hash)
             return descriptor_list
 
 
@@ -156,10 +195,12 @@ class FunctionActorManager(object):
         self._function_execution_info = defaultdict(lambda: {})
         self._num_task_executions = defaultdict(lambda: {})
 
-    def increase_task_counter(self, driver_id, function_id):
+    def increase_task_counter(self, driver_id, function_descriptor):
+        function_id = function_descriptor.function_id.id()
         self._num_task_executions[driver_id][function_id] += 1
 
-    def get_task_counter(self, driver_id, function_id):
+    def get_task_counter(self, driver_id, function_descriptor):
+        function_id = function_descriptor.function_id.id()
         return self._num_task_executions[driver_id][function_id]
 
     def export_cached(self):
@@ -223,11 +264,12 @@ class FunctionActorManager(object):
                                "remote function", self._worker)
 
         key = (b"RemoteFunction:" + self._worker.task_driver_id.id() + b":" +
-               remote_function._function_id)
+               remote_function._function_descriptor.function_id.id())
         self._worker.redis_client.hmset(
             key, {
                 "driver_id": self._worker.task_driver_id.id(),
-                "function_id": remote_function._function_id,
+                "function_id": remote_function._function_descriptor.
+                function_id.id(),
                 "name": remote_function._function_name,
                 "module": function.__module__,
                 "function": pickled_function,
@@ -290,12 +332,12 @@ class FunctionActorManager(object):
             self._worker.redis_client.rpush(
                 b"FunctionTable:" + function_id.id(), self._worker.worker_id)
 
-    def get_execution_info(self, driver_id, function_id):
+    def get_execution_info(self, driver_id, function_descriptor):
         """Get the FunctionExecutionInfo of a remote function.
 
         Args:
             driver_id: ID of the driver that the function belongs to.
-            function_id: ID of the function to get.
+            function_descriptor: The FunctionDescriptor of the function to get.
 
         Returns:
             A FunctionExecutionInfo object.
@@ -304,10 +346,11 @@ class FunctionActorManager(object):
         # on this worker. We will push warnings to the user if we spend too
         # long in this loop.
         with profiling.profile("wait_for_function", worker=self._worker):
-            self._wait_for_function(function_id, driver_id)
-        return self._function_execution_info[driver_id][function_id.id()]
+            self._wait_for_function(function_descriptor, driver_id)
+        return self._function_execution_info[driver_id][
+            function_descriptor.function_id.id()]
 
-    def _wait_for_function(self, function_id, driver_id, timeout=10):
+    def _wait_for_function(self, function_descriptor, driver_id, timeout=10):
         """Wait until the function to be executed is present on this worker.
 
         This method will simply loop until the import thread has imported the
@@ -318,7 +361,8 @@ class FunctionActorManager(object):
         been defined.
 
         Args:
-            function_id (str): The ID of the function that we want to execute.
+            function_descriptor : The FunctionDescriptor of the function that
+                we want to execute.
             driver_id (str): The ID of the driver to push the error message to
                 if this times out.
         """
@@ -328,7 +372,7 @@ class FunctionActorManager(object):
         while True:
             with self._worker.lock:
                 if (self._worker.actor_id == ray.worker.NIL_ACTOR_ID
-                        and (function_id.id() in
+                        and (function_descriptor.function_id.id() in
                              self._function_execution_info[driver_id])):
                     break
                 elif self._worker.actor_id != ray.worker.NIL_ACTOR_ID and (
@@ -347,24 +391,6 @@ class FunctionActorManager(object):
                             driver_id=driver_id)
                     warning_sent = True
             time.sleep(0.001)
-
-    @classmethod
-    def compute_actor_method_function_id(cls, class_name, attr):
-        """Get the function ID corresponding to an actor method.
-
-        Args:
-            class_name (str): The class name of the actor.
-            attr (str): The attribute name of the method.
-
-        Returns:
-            Function ID corresponding to the method.
-        """
-        function_id_hash = hashlib.sha1()
-        function_id_hash.update(class_name.encode("ascii"))
-        function_id_hash.update(attr.encode("ascii"))
-        function_id = function_id_hash.digest()
-        assert len(function_id) == ray_constants.ID_SIZE
-        return ray.ObjectID(function_id)
 
     def _publish_actor_class_to_key(self, key, actor_class_info):
         """Push an actor class definition to Redis.
@@ -457,9 +483,9 @@ class FunctionActorManager(object):
 
         # Register the actor method executors.
         for actor_method_name in actor_method_names:
-            function_id = (
-                FunctionActorManager.compute_actor_method_function_id(
-                    class_name, actor_method_name).id())
+            function_descriptor = FunctionDescriptor(module, actor_method_name,
+                                                     class_name)
+            function_id = function_descriptor.function_id.id()
             temporary_executor = self._make_actor_method_executor(
                 actor_method_name,
                 temporary_actor_method,
@@ -498,9 +524,9 @@ class FunctionActorManager(object):
             actor_methods = inspect.getmembers(
                 unpickled_class, predicate=is_function_or_method)
             for actor_method_name, actor_method in actor_methods:
-                function_id = (
-                    FunctionActorManager.compute_actor_method_function_id(
-                        class_name, actor_method_name).id())
+                function_descriptor = FunctionDescriptor(
+                    module, actor_method_name, class_name)
+                function_id = function_descriptor.function_id.id()
                 executor = self._make_actor_method_executor(
                     actor_method_name, actor_method, actor_imported=True)
                 self._function_execution_info[driver_id][function_id] = (

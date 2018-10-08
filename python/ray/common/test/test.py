@@ -17,10 +17,6 @@ def random_object_id():
     return local_scheduler.ObjectID(np.random.bytes(ray_constants.ID_SIZE))
 
 
-def random_function_id():
-    return local_scheduler.ObjectID(np.random.bytes(ray_constants.ID_SIZE))
-
-
 def random_driver_id():
     return local_scheduler.ObjectID(np.random.bytes(ray_constants.ID_SIZE))
 
@@ -156,8 +152,9 @@ class TestTask(unittest.TestCase):
         # ObjectID.
         driver_id = random_driver_id()
         parent_id = random_task_id()
-        function_id = random_function_id()
-        func_desc = FunctionDescriptor.from_function_id(function_id)
+        func_desc = FunctionDescriptor(__name__,
+                                       "test_create_and_serialize_task",
+                                       self.__class__.__name__)
         func_desc_list = func_desc.get_function_descriptor_list()
         object_ids = [random_object_id() for _ in range(256)]
         args_list = [[], 1 * [1], 10 * [1], 100 * [1], 1000 * [1], 1 * ["a"],

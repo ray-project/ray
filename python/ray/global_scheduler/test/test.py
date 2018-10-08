@@ -160,13 +160,15 @@ class TestGlobalScheduler(unittest.TestCase):
         return db_client_id
 
     def test_task_default_resources(self):
-        func_desc1 = FunctionDescriptor.from_function_id(random_function_id())
+        func_desc1 = FunctionDescriptor(
+            __name__, "test_task_default_resources1", self.__class__.__name__)
         func_desc_list1 = func_desc1.get_function_descriptor_list()
         task1 = local_scheduler.Task(random_driver_id(),
                                      func_desc_list1, [random_object_id()], 0,
                                      random_task_id(), 0)
         self.assertEqual(task1.required_resources(), {"CPU": 1})
-        func_desc2 = FunctionDescriptor.from_function_id(random_function_id())
+        func_desc2 = FunctionDescriptor(
+            __name__, "test_task_default_resources2", self.__class__.__name__)
         func_desc_list2 = func_desc2.get_function_descriptor_list()
         task2 = local_scheduler.Task(
             random_driver_id(), func_desc_list2, [random_object_id()], 0,
@@ -214,7 +216,8 @@ class TestGlobalScheduler(unittest.TestCase):
         # Sleep before submitting task to local scheduler.
         time.sleep(0.1)
         # Submit a task to Redis.
-        func_desc = FunctionDescriptor.from_function_id(random_function_id())
+        func_desc = FunctionDescriptor(
+            __name__, "test_integration_single_task", self.__class__.__name__)
         func_desc_list = func_desc.get_function_descriptor_list()
         task = local_scheduler.Task(
             random_driver_id(), func_desc_list,
@@ -269,8 +272,9 @@ class TestGlobalScheduler(unittest.TestCase):
                 # Give 10ms for object info handler to fire (long enough to
                 # yield CPU).
                 time.sleep(0.010)
-            func_desc = FunctionDescriptor.from_function_id(
-                random_function_id())
+            func_desc = FunctionDescriptor(__name__,
+                                           "integration_many_tasks_helper",
+                                           self.__class__.__name__)
             func_desc_list = func_desc.get_function_descriptor_list()
             task = local_scheduler.Task(
                 random_driver_id(), func_desc_list,
