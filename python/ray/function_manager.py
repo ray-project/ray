@@ -38,14 +38,6 @@ class FunctionDescriptor(object):
     """A class used to describe a python function.
 
     Attributes:
-        _module_name: The module name of this function.
-        _class_name: The class name of the function, could be empty.
-        _function_name: The function name.
-        _function_id: The function id. If _function_id is not Nil,
-            this function can be loaded from GCS, otherwise,
-            from local.
-        _is_driver_task: Whether this is a driver task function
-            descriptor.
     """
 
     def __init__(self,
@@ -63,6 +55,10 @@ class FunctionDescriptor(object):
 
     @classmethod
     def from_bytes_list(cls, function_descriptor_list):
+        """Create a FunctionDescriptorm instance from list of bytes.
+        This function is used to load the function descriptor from
+        backend data.
+        """
         assert isinstance(function_descriptor_list, list)
         if len(function_descriptor_list) == 0:
             # This is a function descriptor of driver task.
@@ -82,6 +78,9 @@ class FunctionDescriptor(object):
 
     @classmethod
     def from_function_id(cls, function_id):
+        """Create a FunctionDescriptor instance from a function id.
+        This function can be loaded from GCS, so only function id is set.
+        """
         assert isinstance(function_id, ray.ObjectID)
         return cls("", "", "", function_id)
 
@@ -91,21 +90,32 @@ class FunctionDescriptor(object):
 
     @property
     def module_name(self):
+        """str: the module name that the function belongs to."""
         return self._module_name
 
     @property
     def class_name(self):
+        """str: the class name that the function belongs to if exists.
+        It could be empty is the function is not a class method.
+        """
         return self._class_name
 
     @property
     def function_name(self):
+        """str: the fucntion name of the function."""
         return self._function_name
 
     @property
     def function_id(self):
+        """str: The fucntion id of the function.
+        If function_id is not Nil, this function can be deserialized from GCS.
+        Otherwise, this function could be loaded from local disk and the
+        other 3 properties should be able to descibe this function.
+        """
         return self._function_id
 
     def get_function_descriptor_list(self):
+        """Return a list of bytes which is needed by the backend."""
         descriptor_list = []
         if self._is_driver_task:
             # Driver task returns an empty list.

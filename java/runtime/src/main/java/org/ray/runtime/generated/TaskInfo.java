@@ -121,10 +121,14 @@ public final class TaskInfo extends Table {
     return o;
   }
 
-  //this is manually added to avoid encoding/decoding cost as our object
-  //id is a byte array instead of a string
+  /** This is manually added to avoid encoding/decoding cost as our object
+   * id is a byte array instead of a string.
+   * This function is error-prone. If the fields before `returns` changed,
+   * the offset number should be changed accordingly.
+   * TODO(yuhguo): fix this error-prone funciton.
+   */
   public ByteBuffer returnsAsByteBuffer(int j) {
-    int o = __offset(28);
+    int o = __offset(26);
     if (o == 0) {
       return null;
     }
