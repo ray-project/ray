@@ -9,14 +9,13 @@ import org.junit.runner.RunWith;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.util.UniqueIdHelper;
 
-@RunWith(MyRunner.class)
 public class UniqueIdTest {
 
   @Test
   public void testConstructUniqueId() {
     // Test `fromHexString()`
     UniqueId id1 = UniqueId.fromHexString("00000000123456789ABCDEF123456789ABCDEF00");
-    Assert.assertEquals("00000000123456789ABCDEF123456789ABCDEF00", id1.toString());
+    Assert.assertEquals("00000000123456789abcdef123456789abcdef00", id1.toString());
     Assert.assertFalse(id1.isNil());
 
     try {
@@ -40,12 +39,12 @@ public class UniqueIdTest {
     ByteBuffer byteBuffer = ByteBuffer.wrap(bytes, 0, 20);
     UniqueId id4 = UniqueId.fromByteBuffer(byteBuffer);
     Assert.assertTrue(Arrays.equals(bytes, id4.getBytes()));
-    Assert.assertEquals("0123456789ABCDEF0123456789ABCDEF01234567", id4.toString());
+    Assert.assertEquals("0123456789abcdef0123456789abcdef01234567", id4.toString());
 
 
     // Test `genNil()`
     UniqueId id6 = UniqueId.genNil();
-    Assert.assertEquals("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF", id6.toString());
+    Assert.assertEquals("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF".toLowerCase(), id6.toString());
     Assert.assertTrue(id6.isNil());
   }
 
@@ -55,10 +54,10 @@ public class UniqueIdTest {
     UniqueId taskId = UniqueId.fromHexString("00000000123456789ABCDEF123456789ABCDEF00");
 
     UniqueId returnId = UniqueIdHelper.computeReturnId(taskId, 1);
-    Assert.assertEquals("01000000123456789ABCDEF123456789ABCDEF00", returnId.toString());
+    Assert.assertEquals("01000000123456789abcdef123456789abcdef00", returnId.toString());
 
     returnId = UniqueIdHelper.computeReturnId(taskId, 0x01020304);
-    Assert.assertEquals("04030201123456789ABCDEF123456789ABCDEF00", returnId.toString());
+    Assert.assertEquals("04030201123456789abcdef123456789abcdef00", returnId.toString());
   }
 
   @Test
@@ -66,7 +65,7 @@ public class UniqueIdTest {
     UniqueId objId = UniqueId.fromHexString("34421980123456789ABCDEF123456789ABCDEF00");
     UniqueId taskId = UniqueIdHelper.computeTaskId(objId);
 
-    Assert.assertEquals("00000000123456789ABCDEF123456789ABCDEF00", taskId.toString());
+    Assert.assertEquals("00000000123456789abcdef123456789abcdef00", taskId.toString());
   }
 
   @Test
@@ -75,10 +74,10 @@ public class UniqueIdTest {
     UniqueId taskId = UniqueId.fromHexString("00000000123456789ABCDEF123456789ABCDEF00");
 
     UniqueId putId = UniqueIdHelper.computePutId(taskId, 1);
-    Assert.assertEquals("FFFFFFFF123456789ABCDEF123456789ABCDEF00", putId.toString());
+    Assert.assertEquals("FFFFFFFF123456789ABCDEF123456789ABCDEF00".toLowerCase(), putId.toString());
 
     putId = UniqueIdHelper.computePutId(taskId, 0x01020304);
-    Assert.assertEquals("FCFCFDFE123456789ABCDEF123456789ABCDEF00", putId.toString());
+    Assert.assertEquals("FCFCFDFE123456789ABCDEF123456789ABCDEF00".toLowerCase(), putId.toString());
   }
 
 }
