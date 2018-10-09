@@ -13,43 +13,42 @@ import org.slf4j.LoggerFactory;
  */
 public class RayCli {
 
-  private static final Logger LOGGER = LoggerFactory.getLogger(RayCli.class);
+  private static final Logger logger = LoggerFactory.getLogger(RayCli.class);
 
   private static RayCliArgs rayArgs = new RayCliArgs();
 
-  private static RunManager startRayHead() {
-    RayConfig rayConfig = RayConfig.create();
+  private static RunManager startRayHead(RayConfig rayConfig) {
     RunManager manager = new RunManager(rayConfig);
     try {
       manager.startRayProcesses(true);
     } catch (Exception e) {
-      LOGGER.error("Failed to start head node.", e);
+      logger.error("Failed to start head node.", e);
       throw new RuntimeException("Failed to start Ray head node.", e);
     }
-    LOGGER.info("Ray head node started. Redis address is {}", rayConfig.getRedisAddress());
+    logger.info("Ray head node started. Redis address is {}", rayConfig.getRedisAddress());
     return manager;
   }
 
-  private static RunManager startRayNode() {
-    RayConfig rayConfig = RayConfig.create();
+  private static RunManager startRayNode(RayConfig rayConfig) {
     RunManager manager = new RunManager(rayConfig);
     try {
       manager.startRayProcesses(false);
     } catch (Exception e) {
-      LOGGER.error("Failed to start work node.", e);
+      logger.error("Failed to start work node.", e);
       throw new RuntimeException("Failed to start work node.", e);
     }
 
-    LOGGER.info("Ray work node started.");
+    logger.info("Ray work node started.");
     return manager;
   }
 
   private static RunManager startProcess(CommandStart cmdStart) {
     RunManager manager;
+    RayConfig rayConfig = RayConfig.create(cmdStart.config);
     if (cmdStart.head) {
-      manager = startRayHead();
+      manager = startRayHead(rayConfig);
     } else {
-      manager = startRayNode();
+      manager = startRayNode(rayConfig);
     }
     return manager;
   }
@@ -65,7 +64,7 @@ public class RayCli {
     try {
       Runtime.getRuntime().exec(cmd);
     } catch (IOException e) {
-      LOGGER.error("Exception in killing ray processes.", e);
+      logger.error("Exception in killing ray processes.", e);
     }
   }
 

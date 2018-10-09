@@ -22,7 +22,7 @@ import org.slf4j.LoggerFactory;
  */
 public final class RayNativeRuntime extends AbstractRayRuntime {
 
-  private static final Logger LOGGER = LoggerFactory.getLogger(RayNativeRuntime.class);
+  private final Logger logger = LoggerFactory.getLogger(RayNativeRuntime.class);
 
   private KeyValueStoreLink kvStore = null;
   private RunManager manager = null;
@@ -52,7 +52,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
       sysPathsField.set(null, null);
     } catch (NoSuchFieldException | IllegalAccessException e) {
       e.printStackTrace();
-      LOGGER.error("Failed to set library path.", e);
+      logger.error("Failed to set library path.", e);
     }
   }
 
@@ -64,7 +64,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
       System.loadLibrary("local_scheduler_library_java");
       System.loadLibrary("plasma_java");
     } catch (Exception e) {
-      LOGGER.error("Failed to load native libraries.", e);
+      logger.error("Failed to load native libraries.", e);
       throw e;
     }
 
@@ -87,7 +87,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     // register
     registerWorker();
 
-    LOGGER.info("RayNativeRuntime started with store {}, raylet {}",
+    logger.info("RayNativeRuntime started with store {}, raylet {}",
         rayConfig.objectStoreSocketName, rayConfig.rayletSocketName);
   }
 

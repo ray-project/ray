@@ -1,13 +1,9 @@
 package org.ray.runtime;
 
-import com.google.common.base.Strings;
-import java.lang.reflect.Field;
-import java.util.stream.Collectors;
 import org.ray.api.runtime.RayRuntime;
 import org.ray.api.runtime.RayRuntimeFactory;
 import org.ray.runtime.config.RayConfig;
 import org.ray.runtime.config.RunMode;
-import org.ray.runtime.util.logger.RayLog;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -16,12 +12,11 @@ import org.slf4j.LoggerFactory;
  */
 public class DefaultRayRuntimeFactory implements RayRuntimeFactory {
 
-  private static final Logger LOGGER = LoggerFactory.getLogger(DefaultRayRuntimeFactory.class);
+  private final Logger logger = LoggerFactory.getLogger(DefaultRayRuntimeFactory.class);
 
   @Override
-  public RayRuntime createRayRuntime() {
-    RayLog.init();
-    RayConfig rayConfig = RayConfig.create();
+  public RayRuntime createRayRuntime(String config) {
+    RayConfig rayConfig = RayConfig.create(config);
     try {
       AbstractRayRuntime runtime;
       if (rayConfig.runMode == RunMode.SINGLE_PROCESS) {
@@ -33,7 +28,7 @@ public class DefaultRayRuntimeFactory implements RayRuntimeFactory {
       runtime.start();
       return runtime;
     } catch (Exception e) {
-      LOGGER.error("Failed to initialize ray runtime", e);
+      logger.error("Failed to initialize ray runtime", e);
       throw new RuntimeException("Failed to initialize ray runtime", e);
     }
   }

@@ -12,7 +12,7 @@ public class Exercise05 {
 
   public static void main(String[] args) {
     try {
-      Ray.init();
+      Ray.init("tutorial.conf");
       // `Ray.createActor` creates an actor instance.
       RayActor<Adder> adder = Ray.createActor(Adder::new, 0);
       // Use `Ray.call(actor, parameters)` to call an actor method.

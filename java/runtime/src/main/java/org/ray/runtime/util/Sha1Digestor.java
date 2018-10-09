@@ -2,7 +2,6 @@ package org.ray.runtime.util;
 
 import java.nio.ByteBuffer;
 import java.security.MessageDigest;
-import org.ray.runtime.util.logger.RayLog;
 
 public class Sha1Digestor {
 
@@ -10,7 +9,6 @@ public class Sha1Digestor {
     try {
       return MessageDigest.getInstance("SHA1");
     } catch (Exception e) {
-      RayLog.core.error("Cannot get SHA1 MessageDigest", e);
       throw new RuntimeException("Cannot get SHA1 digest", e);
     }
   });

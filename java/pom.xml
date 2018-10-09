@@ -14,6 +14,7 @@
     <module>cli</module>
     <module>test</module>
     <module>tutorial</module>
+    <module>assembly</module>
   </modules>
 
   <properties>
@@ -141,7 +142,7 @@
           <executions>
             <execution>
               <id>attach-sources</id>
-              <phase>deploy</phase>
+              <phase>package</phase>
               <goals>
                 <goal>jar</goal>
               </goals>
@@ -152,24 +153,27 @@
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-dependency-plugin</artifactId>
-          <version>2.10</version>
+          <version>3.1.1</version>
+          <executions>
+            <execution>
+              <id>copy-dependencies</id>
+              <phase>package</phase>
+              <goals>
+                <goal>copy-dependencies</goal>
+              </goals>
+              <configuration>
+                <outputDirectory>${project.basedir}/lib</outputDirectory>
+                <overWriteReleases>false</overWriteReleases>
+                <overWriteSnapshots>false</overWriteSnapshots>
+                <overWriteIfNewer>true</overWriteIfNewer>
+              </configuration>
+            </execution>
+          </executions>
         </plugin>
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-clean-plugin</artifactId>
           <version>3.0.0</version>
-        </plugin>
-
-        <plugin>
-          <groupId>org.mortbay.jetty</groupId>
-          <artifactId>maven-jetty-plugin</artifactId>
-          <version>6.1.26</version>
-        </plugin>
-
-        <plugin>
-          <groupId>org.apache.maven.plugins</groupId>
-          <artifactId>maven-assembly-plugin</artifactId>
-          <version>2.2</version>
         </plugin>
 
         <plugin>
@@ -202,7 +206,7 @@
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-checkstyle-plugin</artifactId>
-          <version>2.17</version>
+          <version>3.0.0</version>
           <dependencies>
             <dependency>
               <groupId>com.puppycrawl.tools</groupId>
@@ -224,18 +228,34 @@
             <suppressionsLocation>checkstyle-suppressions.xml</suppressionsLocation>
             <encoding>UTF-8</encoding>
             <consoleOutput>true</consoleOutput>
-            <failsOnError>false</failsOnError>
+            <failsOnError>true</failsOnError>
             <failOnViolation>true</failOnViolation>
             <violationSeverity>warning</violationSeverity>
-            <format>xml</format>
-            <format>html</format>
-            <outputFile>${project.build.directory}/checkstyle-errors.xml
-            </outputFile>
+            <outputFile>${project.build.directory}/checkstyle-errors.xml</outputFile>
             <linkXRef>false</linkXRef>
           </configuration>
         </plugin>
       </plugins>
     </pluginManagement>
+
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+      </plugin>
+
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-source-plugin</artifactId>
+      </plugin>
+
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-checkstyle-plugin</artifactId>
+      </plugin>
+
+    </plugins>
+
   </build>
 
 </project>

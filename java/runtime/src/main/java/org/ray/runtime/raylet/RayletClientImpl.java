@@ -19,9 +19,11 @@ import org.ray.runtime.generated.TaskLanguage;
 import org.ray.runtime.task.FunctionArg;
 import org.ray.runtime.task.TaskSpec;
 import org.ray.runtime.util.UniqueIdHelper;
-import org.ray.runtime.util.logger.RayLog;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class RayletClientImpl implements RayletClient {
+  private Logger logger = LoggerFactory.getLogger(RayletClientImpl.class);
 
   private static final int TASK_SPEC_BUFFER_SIZE = 2 * 1024 * 1024;
 
@@ -67,7 +69,7 @@ public class RayletClientImpl implements RayletClient {
 
   @Override
   public void submitTask(TaskSpec spec) {
-    RayLog.core.debug("Submitting task: {}", spec);
+    logger.debug("Submitting task: {}", spec);
     ByteBuffer info = convertTaskSpecToFlatbuffer(spec);
     byte[] cursorId = null;
     if (!spec.getExecutionDependencies().isEmpty()) {
@@ -87,10 +89,8 @@ public class RayletClientImpl implements RayletClient {
 
   @Override
   public void reconstructObjects(List<UniqueId> objectIds, boolean fetchOnly) {
-    if (RayLog.core.isInfoEnabled()) {
-      RayLog.core.info("Reconstructing objects for task {}, object IDs are {}",
-          UniqueIdHelper.computeTaskId(objectIds.get(0)), objectIds);
-    }
+    logger.info("Reconstructing objects for task {}, object IDs are {}",
+        UniqueIdHelper.computeTaskId(objectIds.get(0)), objectIds);
     nativeReconstructObjects(client, getIdBytes(objectIds), fetchOnly);
   }
 
@@ -111,7 +111,7 @@ public class RayletClientImpl implements RayletClient {
     nativeFreePlasmaObjects(client, objectIdsArray, localOnly);
   }
 
-  private static TaskSpec parseTaskSpecFromFlatbuffer(ByteBuffer bb) {
+  private TaskSpec parseTaskSpecFromFlatbuffer(ByteBuffer bb) {
     bb.order(ByteOrder.LITTLE_ENDIAN);
     TaskInfo info = TaskInfo.getRootAsTaskInfo(bb);
     UniqueId driverId = UniqueId.fromByteBuffer(info.driverIdAsByteBuffer());
@@ -158,7 +158,7 @@ public class RayletClientImpl implements RayletClient {
         actorHandleId, actorCounter, args, returnIds, resources, functionDescriptor);
   }
 
-  private static ByteBuffer convertTaskSpecToFlatbuffer(TaskSpec task) {
+  private ByteBuffer convertTaskSpecToFlatbuffer(TaskSpec task) {
     ByteBuffer bb = taskSpecBuffer.get();
     bb.clear();
 
@@ -234,7 +234,7 @@ public class RayletClientImpl implements RayletClient {
     ByteBuffer buffer = fbb.dataBuffer();
 
     if (buffer.remaining() > TASK_SPEC_BUFFER_SIZE) {
-      RayLog.core.error(
+      logger.error(
           "Allocated buffer is not enough to transfer the task specification: "
               + TASK_SPEC_BUFFER_SIZE + " vs " + buffer.remaining());
       assert (false);
@@ -242,7 +242,7 @@ public class RayletClientImpl implements RayletClient {
     return buffer;
   }
 
-  private static byte[][] getIdBytes(List<UniqueId> objectIds) {
+  private byte[][] getIdBytes(List<UniqueId> objectIds) {
     int size = objectIds.size();
     byte[][] ids = new byte[size][];
     for (int i = 0; i < size; i++) {

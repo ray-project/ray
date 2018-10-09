@@ -41,7 +41,7 @@ public class Exercise04 {
 
   public static void main(String[] args) throws Exception {
     try {
-      Ray.init();
+      Ray.init("tutorial.conf");
       List<RayObject<String>> waitList = ImmutableList.of(
           Ray.call(Exercise04::f1),
           Ray.call(Exercise04::f2),

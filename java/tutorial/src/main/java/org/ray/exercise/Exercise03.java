@@ -32,7 +32,7 @@ public class Exercise03 {
 
   public static void main(String[] args) throws Exception {
     try {
-      Ray.init();
+      Ray.init("tutorial.conf");
       String helloWithWorld = Ray.call(Exercise03::sayHelloWithWorld).get();
       System.out.println(helloWithWorld);
     } catch (Throwable t) {

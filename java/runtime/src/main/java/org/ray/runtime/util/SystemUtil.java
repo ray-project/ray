@@ -3,15 +3,14 @@ package org.ray.runtime.util;
 import java.lang.management.ManagementFactory;
 import java.lang.management.RuntimeMXBean;
 import java.util.concurrent.locks.ReentrantLock;
-import org.ray.runtime.util.logger.RayLog;
 
 /**
  * some utilities for system process.
  */
 public class SystemUtil {
 
-  static final ReentrantLock pidlock = new ReentrantLock();
-  static Integer pid;
+  private static final ReentrantLock pidlock = new ReentrantLock();
+  private static Integer pid;
 
   public static String userHome() {
     return System.getProperty("user.home");
@@ -19,24 +18,6 @@ public class SystemUtil {
 
   public static String userDir() {
     return System.getProperty("user.dir");
-  }
-
-  public static boolean startWithJar(Class<?> cls) {
-    return cls.getResource(cls.getSimpleName() + ".class").getFile().split("!")[0].endsWith(".jar");
-  }
-
-  public static boolean startWithJar(String clsName) {
-    Class<?> cls;
-    try {
-      cls = Class.forName(clsName);
-      return cls.getResource(cls.getSimpleName() + ".class").getFile().split("!")[0]
-          .endsWith(".jar");
-    } catch (ClassNotFoundException e) {
-      // TODO Auto-generated catch block
-      e.printStackTrace();
-      RayLog.core.error("error at SystemUtil startWithJar", e);
-      return false;
-    }
   }
 
   public static int pid() {
@@ -59,6 +40,6 @@ public class SystemUtil {
       }
     }
     return pid;
-
   }
+
 }

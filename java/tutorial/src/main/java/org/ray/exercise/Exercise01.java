@@ -31,7 +31,7 @@ public class Exercise01 implements Serializable {
   public static void main(String[] args) throws Exception {
     try {
       // Use `Ray.init` to initialize the Ray runtime.
-      Ray.init();
+      Ray.init("tutorial.conf");
       // Use `Ray.call` to call a remote function.
       RayObject<String> hello = Ray.call(Exercise01::sayHello);
       RayObject<String> world = Ray.call(Exercise01::sayWorld);

@@ -3,11 +3,14 @@ package org.ray.exercise;
 import org.ray.api.Ray;
 import org.ray.api.RayObject;
 import org.ray.api.annotation.RayRemote;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Execute remote functions in parallel with some dependencies.
  */
 public class Exercise02 {
+  private static Logger logger = LoggerFactory.getLogger(Exercise02.class);
 
   @RayRemote
   public static String sayHello() {
@@ -39,15 +42,9 @@ public class Exercise02 {
   }
 
   public static void main(String[] args) throws Exception {
-    try {
-      Ray.init();
-      String helloWorld = Exercise02.sayHelloWorld();
-      System.out.println(helloWorld);
-      assert helloWorld.equals("hello,world!");
-    } catch (Throwable t) {
-      t.printStackTrace();
-    } finally {
-      Ray.shutdown();
-    }
+    Ray.init("tutorial.conf");
+    String helloWorld = Exercise02.sayHelloWorld();
+    logger.info("result: {}", helloWorld);
+    Ray.shutdown();
   }
 }

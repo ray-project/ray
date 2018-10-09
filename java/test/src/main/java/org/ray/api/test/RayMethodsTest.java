@@ -9,13 +9,15 @@ import org.junit.runner.RunWith;
 import org.ray.api.Ray;
 import org.ray.api.RayObject;
 import org.ray.api.WaitResult;
-import org.ray.runtime.util.logger.RayLog;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Integration test for Ray.*
  */
 @RunWith(MyRunner.class)
 public class RayMethodsTest {
+  private Logger logger = LoggerFactory.getLogger(RayMethodsTest.class);
 
   @Test
   public void test() {
@@ -32,7 +34,7 @@ public class RayMethodsTest {
     double f1 = f1Id.get();
     Object n1 = n1Id.get();
 
-    RayLog.rapp.info("Strings: " + ss.get(0) + ss.get(1) + " int: " + i1 + " double: " + f1
+    logger.info("Strings: " + ss.get(0) + ss.get(1) + " int: " + i1 + " double: " + f1
         + " null: " + n1);
     Assert.assertEquals("Hello World!", ss.get(0) + ss.get(1));
     Assert.assertEquals(1, i1);

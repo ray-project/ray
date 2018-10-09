@@ -25,7 +25,7 @@ import redis.clients.jedis.Jedis;
  */
 public class RunManager {
 
-  private static final Logger LOGGER = LoggerFactory.getLogger(RunManager.class);
+  private final Logger logger = LoggerFactory.getLogger(RunManager.class);
 
   private static final DateTimeFormatter DATE_TIME_FORMATTER =
       DateTimeFormatter.ofPattern("Y-M-d_H-m-s");
@@ -63,22 +63,21 @@ public class RunManager {
    * @param name Process name.
    */
   private void startProcess(List<String> command, Map<String, String> env, String name) {
-    if (LOGGER.isDebugEnabled()) {
-      LOGGER.debug("Starting process {} with command: {}", name, command,
+    if (logger.isDebugEnabled()) {
+      logger.debug("Starting process {} with command: {}", name, command,
           Joiner.on(" ").join(command));
     }
 
     ProcessBuilder builder = new ProcessBuilder(command);
 
-    if (rayConfig.redirectOutput) {
-      // Set stdout and stderr paths.
-      int logId = random.nextInt(10000);
-      String date = DATE_TIME_FORMATTER.format(LocalDateTime.now());
-      String stdout = String.format("%s/%s-%s-%05d.out", rayConfig.logDir, name, date, logId);
-      String stderr = String.format("%s/%s-%s-%05d.err", rayConfig.logDir, name, date, logId);
-      builder.redirectOutput(new File(stdout));
-      builder.redirectError(new File(stderr));
-    }
+    // Set stdout and stderr paths.
+    int logId = random.nextInt(10000);
+    String date = DATE_TIME_FORMATTER.format(LocalDateTime.now());
+    String stdout = String.format("%s/%s-%s-%05d.out", rayConfig.logDir, name, date, logId);
+    String stderr = String.format("%s/%s-%s-%05d.err", rayConfig.logDir, name, date, logId);
+    builder.redirectOutput(new File(stdout));
+    builder.redirectError(new File(stderr));
+
     // Set environment variables.
     if (env != null && !env.isEmpty()) {
       builder.environment().putAll(env);
@@ -88,7 +87,7 @@ public class RunManager {
     try {
       p = builder.start();
     } catch (IOException e) {
-      LOGGER.error("Failed to start process " + name, e);
+      logger.error("Failed to start process " + name, e);
       throw new RuntimeException("Failed to start process " + name, e);
     }
     // Wait 200ms and check whether the process is alive.
@@ -101,7 +100,7 @@ public class RunManager {
       throw new RuntimeException("Failed to start " + name);
     }
     processes.add(p);
-    LOGGER.info("{} process started", name);
+    logger.info("{} process started", name);
   }
 
   /**
@@ -109,7 +108,7 @@ public class RunManager {
    * @param isHead Whether this node is the head node. If true, redis server will be started.
    */
   public void startRayProcesses(boolean isHead) {
-    LOGGER.info("Starting ray processes @ {}.", rayConfig.nodeIp);
+    logger.info("Starting ray processes @ {}.", rayConfig.nodeIp);
     try {
       createTempDirs();
       if (isHead) {
@@ -117,11 +116,11 @@ public class RunManager {
       }
       startObjectStore();
       startRaylet();
-      LOGGER.info("All processes started @ {}.", rayConfig.nodeIp);
+      logger.info("All processes started @ {}.", rayConfig.nodeIp);
     } catch (Exception e) {
       // Clean up started processes.
       cleanup();
-      LOGGER.error("Failed to start ray processes.", e);
+      logger.error("Failed to start ray processes.", e);
       throw new RuntimeException("Failed to start ray processes.", e);
     }
   }
@@ -204,10 +203,7 @@ public class RunManager {
     cmd.add("-classpath");
 
     // Generate classpath based on current classpath + user-defined classpath.
-    String classpath = concatPath(Stream.concat(
-        Stream.of(System.getProperty("java.class.path").split(":")),
-        rayConfig.classpath.stream()
-    ));
+    String classpath = concatPath(rayConfig.classpath.stream());
     cmd.add(classpath);
 
     // library path
@@ -215,14 +211,9 @@ public class RunManager {
     cmd.add("-Djava.library.path=" + libraryPath);
 
     // logging path
-    if (rayConfig.redirectOutput) {
-      cmd.add("-Dray.logging.stdout=org.apache.log4j.varia.NullAppender");
-      cmd.add("-Dray.logging.file=org.apache.log4j.FileAppender");
-      int logId = random.nextInt(10000);
-      String date = DATE_TIME_FORMATTER.format(LocalDateTime.now());
-      String logFile = String.format("%s/worker-%s-%05d.out", rayConfig.logDir, date, logId);
-      cmd.add("-Dray.logging.file.path=" + logFile);
-    }
+    // worker log will set pid in the ray.logging.file.name
+    cmd.add("-Dray.logging.file.name=worker-*pid_suffix*");
+    cmd.add("-Dray.logging.path=" + rayConfig.logDir);
 
     // Config overwrite
     cmd.add("-Dray.redis.address=" + rayConfig.getRedisAddress());
@@ -230,7 +221,7 @@ public class RunManager {
     // Main class
     cmd.add(WORKER_CLASS);
     String command = Joiner.on(" ").join(cmd);
-    LOGGER.debug("Worker command is: {}", command);
+    logger.debug("Worker command is: {}", command);
     return command;
   }
 

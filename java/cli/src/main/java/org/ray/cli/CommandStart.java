@@ -12,4 +12,7 @@ public class CommandStart {
   @Parameter(names = "--head", description = "start the head node")
   public boolean head;
 
+  @Parameter(names = "--config", description = "config file name")
+  public String config;
+
 }
