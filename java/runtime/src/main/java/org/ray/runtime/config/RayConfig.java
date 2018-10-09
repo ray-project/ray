@@ -169,7 +169,7 @@ public class RayConfig {
       localDriverResourcePath = config.getString("ray.driver.resource-path");
     } else {
       localDriverResourcePath = rayHome + "/driver/resource";
-      LOGGER.warn("Didn't configure ray.driver.resource-path, set it to default value: {}",
+      logger.warn("Didn't configure ray.driver.resource-path, set it to default value: {}",
           localDriverResourcePath);
     }
 
