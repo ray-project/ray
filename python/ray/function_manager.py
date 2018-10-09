@@ -412,7 +412,8 @@ class FunctionActorManager(object):
 
     def export_actor_class(self, class_id, Class, actor_method_names,
                            checkpoint_interval):
-        key = b"ActorClass:" + class_id
+        func_desc = FunctionDescriptor(Class.__module__, Class.__name__, Class.__name__)
+        key = b"ActorClass:" + func_desc.function_id.id()
         actor_class_info = {
             "class_name": Class.__name__,
             "module": Class.__module__,

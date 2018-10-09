@@ -886,10 +886,16 @@ class Worker(object):
             task: The actor creation task.
         """
         assert self.actor_id == NIL_ACTOR_ID
+        function_descriptor = FunctionDescriptor.from_bytes_list(
+            task.function_descriptor_list())
+        actor_descriptor = FunctionDescriptor(function_descriptor.module_name,
+                                              function_descriptor.class_name,
+                                              function_descriptor.class_name)
+        
         arguments = task.arguments()
         assert len(arguments) == 1
         self.actor_id = task.actor_creation_id().id()
-        class_id = arguments[0]
+        class_id = actor_descriptor.function_id.id()
 
         key = b"ActorClass:" + class_id
 
@@ -916,8 +922,15 @@ class Worker(object):
         # TODO(rkn): It would be preferable for actor creation tasks to share
         # more of the code path with regular task execution.
         if (task.actor_creation_id() != ray.ObjectID(NIL_ACTOR_ID)):
+            assert function_descriptor.function_name == "__init__"
+            print("Received actor __init__ task")
             self._become_actor(task)
-            return
+            #return
+        elif function_descriptor.function_name == "__init__":
+            print("Received actor __init__ task but actor_creation_id is NIL")
+        else:
+            print("_wait_for_and_process_task: %s" % function_descriptor)
+
 
         execution_info = self.function_actor_manager.get_execution_info(
             driver_id, function_descriptor)
