@@ -149,11 +149,15 @@ Status authenticate_redis(redisContext *context, const std::string &password) {
   return Status::OK();
 }
 
-void authenticate_redis(redisAsyncContext *context, const std::string &password) {
+Status authenticate_redis(redisAsyncContext *context, const std::string &password) {
   if (password == "") {
-    return;
+    return Status::OK();
   }
-  redisAsyncCommand(context, NULL, NULL, "AUTH %s", password.c_str());
+  int status = redisAsyncCommand(context, NULL, NULL, "AUTH %s", password.c_str());
+  if (status == REDIS_ERR) {
+    return Status::RedisError(std::string(context->errstr));
+  }
+  return Status::OK();
 }
 
 Status RedisContext::Connect(const std::string &address, int port, bool sharding,
@@ -190,7 +194,7 @@ Status RedisContext::Connect(const std::string &address, int port, bool sharding
     RAY_LOG(FATAL) << "Could not establish connection to redis " << address << ":"
                    << port;
   }
-  authenticate_redis(async_context_, password);
+  RAY_CHECK_OK(authenticate_redis(async_context_, password));
 
   // Connect to subscribe context
   subscribe_context_ = redisAsyncConnect(address.c_str(), port);
@@ -198,7 +202,7 @@ Status RedisContext::Connect(const std::string &address, int port, bool sharding
     RAY_LOG(FATAL) << "Could not establish subscribe connection to redis " << address
                    << ":" << port;
   }
-  authenticate_redis(subscribe_context_, password);
+  RAY_CHECK_OK(authenticate_redis(subscribe_context_, password));
 
   return Status::OK();
 }
