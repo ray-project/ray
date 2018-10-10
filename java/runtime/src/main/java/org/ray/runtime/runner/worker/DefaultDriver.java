@@ -29,19 +29,19 @@ public class DefaultDriver {
     String driverClassName = args[0];
     final int driverArgsLength = args.length - 1;
 
-    String[] dirverArgs;
+    String[] driverArgs;
     if (driverArgsLength > 0) {
-      dirverArgs = new String[args.length - 1];
-      System.arraycopy(args, 1, dirverArgs, 0, args.length - 1);
+      driverArgs = new String[args.length - 1];
+      System.arraycopy(args, 1, driverArgs, 0, args.length - 1);
     } else {
-      dirverArgs = new String [] {};
+      driverArgs = new String [] {};
     }
 
     try {
       System.setProperty("ray.worker.mode", "DRIVER");
 
       Class<?> cls = Class.forName(driverClassName);
-      cls.getMethod("main", String[].class).invoke(null, (Object) dirverArgs);
+      cls.getMethod("main", String[].class).invoke(null, (Object) driverArgs);
     } catch (Throwable e) {
       e.printStackTrace();
       System.exit(-1);
