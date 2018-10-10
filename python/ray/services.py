@@ -1133,7 +1133,7 @@ def start_plasma_store(node_ip_address,
                        plasma_directory=None,
                        huge_pages=False,
                        use_raylet=False,
-                       plasma_store_socket_name=None):
+                       plasma_store_socket_name=None,
                        redis_password=None):
     """This method starts an object store process.
 
@@ -1610,7 +1610,7 @@ def start_ray_processes(address_info=None,
             plasma_directory=plasma_directory,
             huge_pages=huge_pages,
             use_raylet=use_raylet,
-            plasma_store_socket_name=plasma_store_socket_name
+            plasma_store_socket_name=plasma_store_socket_name,
             redis_password=redis_password)
         object_store_addresses.append(object_store_address)
         time.sleep(0.1)
