@@ -229,8 +229,7 @@ class RayLogSpanRaylet(object):
             key: The attribute name.
             value: The attribute value.
         """
-        if (not isinstance(key, (str, unicode))
-                or not isinstance(value, (str, unicode))):
+        if not isinstance(key, str) or not isinstance(value, str):
             raise ValueError("The arguments 'key' and 'value' must both be "
                              "strings. Instead they are {} and {}.".format(
                                  key, value))
@@ -250,8 +249,7 @@ class RayLogSpanRaylet(object):
     def __exit__(self, type, value, tb):
         """Log the end of a span event. Log any exception that occurred."""
         for key, value in self.extra_data.items():
-            if (not isinstance(key, (str, unicode))
-                    or not isinstance(value, (str, unicode))):
+            if not isinstance(key, str) or not isinstance(value, str):
                 raise ValueError("The extra_data argument must be a "
                                  "dictionary mapping strings to strings. "
                                  "Instead it is {}.".format(self.extra_data))
