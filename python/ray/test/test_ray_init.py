@@ -25,26 +25,27 @@ def start_ray_with_password():
     return password, info, exception, use_raylet
 
 
+@pytest.fixture
+def use_credis():
+    return ("RAY_USE_NEW_GCS" in os.environ)
+
 @ray.remote
 def f():
     return 1
 
 
 class TestRedisPassword(object):
-    def setUp(self):
-        self.use_credis = ("RAY_USE_NEW_GCS" in os.environ)
-
-    def test_raylet_only(self, start_ray_with_password):
+    def test_raylet_only(self, start_ray_with_password, use_credis):
         password, info, exception, use_raylet = start_ray_with_password
-        if use_raylet and not self.use_credis:
+        if use_raylet and not use_credis:
             assert exception is None
         else:
             assert exception is not None
 
-    def test_redis_password(self, start_ray_with_password):
+    def test_redis_password(self, start_ray_with_password, use_credis):
         password, info, exception, use_raylet = start_ray_with_password
 
-        if not use_raylet or self.use_credis:
+        if not use_raylet or use_credis:
             return
 
         redis_address = info["redis_address"]
@@ -60,9 +61,9 @@ class TestRedisPassword(object):
         with pytest.raises(redis.ResponseError):
             redis_client.ping()
 
-    def test_task(self, start_ray_with_password):
+    def test_task(self, start_ray_with_password, use_credis):
         password, info, exception, use_raylet = start_ray_with_password
-        if not use_raylet or self.use_credis:
+        if not use_raylet or use_credis:
             return
 
         task_id = f.remote()
