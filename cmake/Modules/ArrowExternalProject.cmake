@@ -23,11 +23,6 @@ set(ARROW_INSTALL_PREFIX ${CMAKE_CURRENT_BINARY_DIR}/external/arrow-install)
 set(ARROW_HOME ${ARROW_INSTALL_PREFIX})
 set(ARROW_SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/external/arrow/src/arrow_ep)
 
-# The following is needed because in CentOS, the lib directory is named lib64
-if(EXISTS "/etc/redhat-release" AND CMAKE_SIZEOF_VOID_P EQUAL 8)
-  set(LIB_SUFFIX 64)
-endif()
-
 set(ARROW_INCLUDE_DIR ${ARROW_HOME}/include)
 set(ARROW_LIBRARY_DIR ${ARROW_HOME}/lib${LIB_SUFFIX})
 set(ARROW_SHARED_LIB ${ARROW_LIBRARY_DIR}/libarrow${CMAKE_SHARED_LIBRARY_SUFFIX})
@@ -58,7 +53,8 @@ set(ARROW_CMAKE_ARGS
   -DARROW_WITH_LZ4=off
   -DARROW_WITH_ZSTD=off
   -DFLATBUFFERS_HOME=${FLATBUFFERS_HOME}
-  -DBOOST_ROOT=${BOOST_ROOT})
+  -DBOOST_ROOT=${BOOST_ROOT}
+  -DGLOG_HOME=${GLOG_HOME})
 
 if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
   # PyArrow needs following settings.
@@ -92,7 +88,7 @@ endif()
 
 ExternalProject_Add(arrow_ep
   PREFIX external/arrow
-  DEPENDS flatbuffers boost
+  DEPENDS flatbuffers boost glog
   GIT_REPOSITORY ${arrow_URL}
   GIT_TAG ${arrow_TAG}
   ${ARROW_CONFIGURE}
