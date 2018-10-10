@@ -42,6 +42,11 @@ public class FunctionManager {
   private Map<UniqueId, DriverFunctionTable> driverFunctionTables = new HashMap<>();
 
   /**
+   * Whether load resources from local path.
+   */
+  private boolean loadResourcesfromLocal;
+
+  /**
    * The resource path which we can load the driver's jar resources.
    */
   private String driverResourcePath;
@@ -52,7 +57,8 @@ public class FunctionManager {
    * @param driverResourcePath The specified driver resource that
    *     can store the driver's resources.
    */
-  public FunctionManager(String driverResourcePath) {
+  public FunctionManager(boolean loadResourcesfromLocal, String driverResourcePath) {
+    this.loadResourcesfromLocal = loadResourcesfromLocal;
     this.driverResourcePath = driverResourcePath;
   }
 
@@ -89,13 +95,11 @@ public class FunctionManager {
       String resourcePath = driverResourcePath + "/" + driverId.toString() + "/";
       ClassLoader classLoader;
 
-      try {
+      if (loadResourcesfromLocal) {
         classLoader = JarLoader.loadJars(resourcePath, false);
         LOGGER.info("Succeeded to load driver({}) resource. Resource path is {}",
             driverId, resourcePath);
-      } catch (Exception e) {
-        LOGGER.error("Failed to load driver({}) resource. Resource path is {}",
-            driverId, resourcePath);
+      } else {
         classLoader = getClass().getClassLoader();
       }
 

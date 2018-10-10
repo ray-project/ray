@@ -45,9 +45,7 @@ public class FunctionManagerTest {
   private static FunctionDescriptor barDescriptor;
   private static FunctionDescriptor barConstructorDescriptor;
 
-  private final static String resourcePath = "/tmp/ray/test/resource";
-
-  private FunctionManager functionManager;
+  private final static String RESOURCE_PATH = "/tmp/ray/test/resource";
 
   @BeforeClass
   public static void beforeClass() {
@@ -63,13 +61,9 @@ public class FunctionManagerTest {
         "()V");
   }
 
-  @Before
-  public void before() {
-    functionManager = new FunctionManager(FunctionManagerTest.resourcePath);
-  }
-
   @Test
   public void testGetFunctionFromRayFunc() {
+    FunctionManager functionManager = new FunctionManager(false, FunctionManagerTest.RESOURCE_PATH);
     // Test normal function.
     RayFunction func = functionManager.getFunction(UniqueId.NIL, fooFunc);
     Assert.assertFalse(func.isConstructor());
@@ -91,6 +85,7 @@ public class FunctionManagerTest {
 
   @Test
   public void testGetFunctionFromFunctionDescriptor() {
+    FunctionManager functionManager = new FunctionManager(false, FunctionManagerTest.RESOURCE_PATH);
     // Test normal function.
     RayFunction func = functionManager.getFunction(UniqueId.NIL, fooDescriptor);
     Assert.assertFalse(func.isConstructor());
@@ -131,16 +126,17 @@ public class FunctionManagerTest {
     //TODO(qwang): We should use a independent app demo instead of `tutorial`.
     final String srcJarPath = System.getProperty("user.dir") +
                                   "/../tutorial/target/ray-tutorial-0.1-SNAPSHOT.jar";
-    final String destJarPath = resourcePath + "/" + driverId.toString() +
+    final String destJarPath = RESOURCE_PATH + "/" + driverId.toString() +
                                    "/ray-tutorial-0.1-SNAPSHOT.jar";
 
-    File file = new File(resourcePath + "/" + driverId.toString());
+    File file = new File(RESOURCE_PATH + "/" + driverId.toString());
     file.mkdirs();
 
     Files.copy(Paths.get(srcJarPath), Paths.get(destJarPath), StandardCopyOption.REPLACE_EXISTING);
 
     FunctionDescriptor sayHelloDescriptor = new FunctionDescriptor("org.ray.exercise.Exercise02",
         "sayHello", "()Ljava/lang/String;");
+    FunctionManager functionManager = new FunctionManager(true, FunctionManagerTest.RESOURCE_PATH);
     RayFunction func = functionManager.getFunction(driverId, sayHelloDescriptor);
     Assert.assertEquals(func.getFunctionDescriptor(), sayHelloDescriptor);
   }

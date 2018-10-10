@@ -51,6 +51,7 @@ public class RayConfig {
   public final String redisModulePath;
   public final String plasmaStoreExecutablePath;
   public final String rayletExecutablePath;
+  public final boolean loadResourcesFromLocal;
   public final String driverResourcePath;
 
   private void validate() {
@@ -157,10 +158,14 @@ public class RayConfig {
     plasmaStoreExecutablePath = rayHome + "/build/src/plasma/plasma_store_server";
     rayletExecutablePath = rayHome + "/build/src/ray/raylet/raylet";
 
+    // This flag represents whether a worker should
+    // load the driver resources from local path.
+    loadResourcesFromLocal = config.getBoolean("ray.driver.resource.from-local");
+
     // driver resource path
     String localDriverResourcePath;
-    if (config.hasPath("ray.driver.resource-path")) {
-      localDriverResourcePath = config.getString("ray.driver.resource-path");
+    if (config.hasPath("ray.driver.resource.path")) {
+      localDriverResourcePath = config.getString("ray.driver.resource.path");
     } else {
       localDriverResourcePath = rayHome + "/driver/resource";
       LOGGER.warn("Didn't configure ray.driver.resource-path, set it to default value: {}",
