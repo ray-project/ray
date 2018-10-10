@@ -482,6 +482,13 @@ def start_redis(node_ip_address,
 
     if use_credis is None:
         use_credis = ("RAY_USE_NEW_GCS" in os.environ)
+    if use_credis and password is not None:
+        # TODO(pschafhalter) remove this once credis supports
+        # authenticating Redis ports
+        raise Exception("Setting the `redis_password` argument is not "
+                        "supported in credis. To run Ray with "
+                        "password-protected Redis ports, ensure that "
+                        "the environment variable `RAY_USE_NEW_GCS=off`.")
     if not use_credis:
         assigned_port, _ = _start_redis_instance(
             node_ip_address=node_ip_address,

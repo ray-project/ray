@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import pytest
 import redis
 
@@ -30,9 +31,12 @@ def f():
 
 
 class TestRedisPassword(object):
+    def setUp(self):
+        self.use_credis = ("RAY_USE_NEW_GCS" in os.environ)
+
     def test_raylet_only(self, start_ray_with_password):
         password, info, exception, use_raylet = start_ray_with_password
-        if use_raylet:
+        if use_raylet and not self.use_credis:
             assert exception is None
         else:
             assert exception is not None
@@ -40,7 +44,7 @@ class TestRedisPassword(object):
     def test_redis_password(self, start_ray_with_password):
         password, info, exception, use_raylet = start_ray_with_password
 
-        if not use_raylet:
+        if not use_raylet or self.use_credis:
             return
 
         redis_address = info["redis_address"]
@@ -58,7 +62,7 @@ class TestRedisPassword(object):
 
     def test_task(self, start_ray_with_password):
         password, info, exception, use_raylet = start_ray_with_password
-        if not use_raylet:
+        if not use_raylet or self.use_credis:
             return
 
         task_id = f.remote()
