@@ -89,13 +89,11 @@ public class FunctionManager {
       String resourcePath = driverResourcePath + "/" + driverId.toString() + "/";
       ClassLoader classLoader;
 
-      try {
+      if (driverResourcePath != null && !driverResourcePath.isEmpty()) {
         classLoader = JarLoader.loadJars(resourcePath, false);
         LOGGER.info("Succeeded to load driver({}) resource. Resource path is {}",
             driverId, resourcePath);
-      } catch (Exception e) {
-        LOGGER.error("Failed to load driver({}) resource. Resource path is {}",
-            driverId, resourcePath);
+      } else {
         classLoader = getClass().getClassLoader();
       }
 
