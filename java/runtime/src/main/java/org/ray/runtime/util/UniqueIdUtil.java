@@ -3,6 +3,8 @@ package org.ray.runtime.util;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Arrays;
+import java.util.List;
+
 import org.ray.api.id.UniqueId;
 
 
@@ -11,7 +13,7 @@ import org.ray.api.id.UniqueId;
  * Note: any changes to these methods must be synced with C++ helper functions
  * in src/ray/id.h
  */
-public class UniqueIdHelper {
+public class UniqueIdUtil {
   public static final int OBJECT_INDEX_POS = 0;
   public static final int OBJECT_INDEX_LENGTH = 4;
 
@@ -37,7 +39,7 @@ public class UniqueIdHelper {
     System.arraycopy(taskId.getBytes(),0, objId, 0, UniqueId.LENGTH);
     ByteBuffer wbb = ByteBuffer.wrap(objId);
     wbb.order(ByteOrder.LITTLE_ENDIAN);
-    wbb.putInt(UniqueIdHelper.OBJECT_INDEX_POS, index);
+    wbb.putInt(UniqueIdUtil.OBJECT_INDEX_POS, index);
 
     return new UniqueId(objId);
   }
@@ -63,9 +65,18 @@ public class UniqueIdHelper {
   public static UniqueId computeTaskId(UniqueId objectId) {
     byte[] taskId = new byte[UniqueId.LENGTH];
     System.arraycopy(objectId.getBytes(), 0, taskId, 0, UniqueId.LENGTH);
-    Arrays.fill(taskId, UniqueIdHelper.OBJECT_INDEX_POS,
-        UniqueIdHelper.OBJECT_INDEX_POS + UniqueIdHelper.OBJECT_INDEX_LENGTH, (byte) 0);
+    Arrays.fill(taskId, UniqueIdUtil.OBJECT_INDEX_POS,
+        UniqueIdUtil.OBJECT_INDEX_POS + UniqueIdUtil.OBJECT_INDEX_LENGTH, (byte) 0);
 
     return new UniqueId(taskId);
+  }
+
+  public static byte[][] getIdBytes(List<UniqueId> objectIds) {
+    int size = objectIds.size();
+    byte[][] ids = new byte[size][];
+    for (int i = 0; i < size; i++) {
+      ids[i] = objectIds.get(i).getBytes();
+    }
+    return ids;
   }
 }
