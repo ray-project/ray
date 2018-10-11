@@ -5,9 +5,8 @@ import java.util.Arrays;
 import javax.xml.bind.DatatypeConverter;
 import org.junit.Assert;
 import org.junit.Test;
-import org.junit.runner.RunWith;
 import org.ray.api.id.UniqueId;
-import org.ray.runtime.util.UniqueIdHelper;
+import org.ray.runtime.util.UniqueIdUtil;
 
 public class UniqueIdTest {
 
@@ -53,17 +52,17 @@ public class UniqueIdTest {
     // Mock a taskId, and the lowest 4 bytes should be 0.
     UniqueId taskId = UniqueId.fromHexString("00000000123456789ABCDEF123456789ABCDEF00");
 
-    UniqueId returnId = UniqueIdHelper.computeReturnId(taskId, 1);
+    UniqueId returnId = UniqueIdUtil.computeReturnId(taskId, 1);
     Assert.assertEquals("01000000123456789abcdef123456789abcdef00", returnId.toString());
 
-    returnId = UniqueIdHelper.computeReturnId(taskId, 0x01020304);
+    returnId = UniqueIdUtil.computeReturnId(taskId, 0x01020304);
     Assert.assertEquals("04030201123456789abcdef123456789abcdef00", returnId.toString());
   }
 
   @Test
   public void testComputeTaskId() {
     UniqueId objId = UniqueId.fromHexString("34421980123456789ABCDEF123456789ABCDEF00");
-    UniqueId taskId = UniqueIdHelper.computeTaskId(objId);
+    UniqueId taskId = UniqueIdUtil.computeTaskId(objId);
 
     Assert.assertEquals("00000000123456789abcdef123456789abcdef00", taskId.toString());
   }
@@ -73,10 +72,10 @@ public class UniqueIdTest {
     // Mock a taskId, the lowest 4 bytes should be 0.
     UniqueId taskId = UniqueId.fromHexString("00000000123456789ABCDEF123456789ABCDEF00");
 
-    UniqueId putId = UniqueIdHelper.computePutId(taskId, 1);
+    UniqueId putId = UniqueIdUtil.computePutId(taskId, 1);
     Assert.assertEquals("FFFFFFFF123456789ABCDEF123456789ABCDEF00".toLowerCase(), putId.toString());
 
-    putId = UniqueIdHelper.computePutId(taskId, 0x01020304);
+    putId = UniqueIdUtil.computePutId(taskId, 0x01020304);
     Assert.assertEquals("FCFCFDFE123456789ABCDEF123456789ABCDEF00".toLowerCase(), putId.toString());
   }
 

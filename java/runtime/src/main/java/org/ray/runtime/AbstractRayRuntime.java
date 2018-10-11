@@ -22,7 +22,7 @@ import org.ray.runtime.raylet.RayletClient;
 import org.ray.runtime.task.ArgumentsBuilder;
 import org.ray.runtime.task.TaskSpec;
 import org.ray.runtime.util.ResourceUtil;
-import org.ray.runtime.util.UniqueIdHelper;
+import org.ray.runtime.util.UniqueIdUtil;
 import org.ray.runtime.util.exception.TaskExecutionException;
 import org.ray.runtime.util.logger.RayLog;
 
@@ -63,7 +63,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   @Override
   public <T> RayObject<T> put(T obj) {
-    UniqueId objectId = UniqueIdHelper.computePutId(
+    UniqueId objectId = UniqueIdUtil.computePutId(
         workerContext.getCurrentTask().taskId, workerContext.nextPutIndex());
 
     put(objectId, obj);
@@ -222,7 +222,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   private UniqueId[] genReturnIds(UniqueId taskId, int numReturns) {
     UniqueId[] ret = new UniqueId[numReturns];
     for (int i = 0; i < numReturns; i++) {
-      ret[i] = UniqueIdHelper.computeReturnId(taskId, i + 1);
+      ret[i] = UniqueIdUtil.computeReturnId(taskId, i + 1);
     }
     return ret;
   }
