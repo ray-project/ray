@@ -130,6 +130,7 @@ class TaskSpecification {
   TaskSpecification(
       const UniqueID &driver_id, const TaskID &parent_task_id, int64_t parent_counter,
       const ActorID &actor_creation_id, const ObjectID &actor_creation_dummy_object_id,
+      int64_t max_actor_reconstructions,
       const ActorID &actor_id, const ActorHandleID &actor_handle_id,
       int64_t actor_counter, const FunctionID &function_id,
       const std::vector<std::shared_ptr<TaskArgument>> &task_arguments,
@@ -192,6 +193,7 @@ class TaskSpecification {
   bool IsActorTask() const;
   ActorID ActorCreationId() const;
   ObjectID ActorCreationDummyObjectId() const;
+  int64_t MaxActorReconstructions() const;
   ActorID ActorId() const;
   ActorHandleID ActorHandleId() const;
   int64_t ActorCounter() const;

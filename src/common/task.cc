@@ -111,7 +111,7 @@ class TaskBuilder {
         fbb, to_flatbuf(fbb, driver_id_), to_flatbuf(fbb, task_id),
         to_flatbuf(fbb, parent_task_id_), parent_counter_,
         to_flatbuf(fbb, actor_creation_id_),
-        to_flatbuf(fbb, actor_creation_dummy_object_id_),
+        to_flatbuf(fbb, actor_creation_dummy_object_id_), 0,
         to_flatbuf(fbb, actor_id_), to_flatbuf(fbb, actor_handle_id_),
         actor_counter_, is_actor_checkpoint_method_,
         to_flatbuf(fbb, function_id_), arguments, fbb.CreateVector(returns),
