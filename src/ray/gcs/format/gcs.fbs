@@ -110,6 +110,8 @@ table ActorTableData {
   driver_id: string;
   // The ID of the node manager that created the actor.
   node_manager_id: string;
+  // TODO
+  remaining_reconstructions: int;
 }
 
 table ErrorTableData {
