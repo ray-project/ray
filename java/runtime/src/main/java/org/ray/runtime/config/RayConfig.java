@@ -158,16 +158,11 @@ public class RayConfig {
     rayletExecutablePath = rayHome + "/build/src/ray/raylet/raylet";
 
     // driver resource path
-    String localDriverResourcePath;
     if (config.hasPath("ray.driver.resource-path")) {
-      localDriverResourcePath = config.getString("ray.driver.resource-path");
+      driverResourcePath = config.getString("ray.driver.resource-path");
     } else {
-      localDriverResourcePath = rayHome + "/driver/resource";
-      LOGGER.warn("Didn't configure ray.driver.resource-path, set it to default value: {}",
-          localDriverResourcePath);
+      driverResourcePath = null;
     }
-
-    driverResourcePath = localDriverResourcePath;
 
     // validate config
     validate();
