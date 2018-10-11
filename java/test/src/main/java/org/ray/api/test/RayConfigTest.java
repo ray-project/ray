@@ -11,7 +11,7 @@ public class RayConfigTest {
   @Test
   public void testCreateRayConfig() {
     System.setProperty("ray.home", "/path/to/ray");
-    System.setProperty("ray.driver.resource-path", "path/to/ray/driver/resource/path");
+    System.setProperty("ray.driver.resource.path", "path/to/ray/driver/resource/path");
     RayConfig rayConfig = RayConfig.create();
 
     Assert.assertEquals("/path/to/ray", rayConfig.rayHome);
