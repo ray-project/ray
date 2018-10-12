@@ -168,8 +168,6 @@ class NestedSpacesTest(unittest.TestCase):
                 },
             })
         pg.train()
-        batch = pickle.loads(
-            ray.experimental.internal_kv._internal_kv_get("d_spy_in_5"))
 
         # Check that the model sees the correct reconstructed observations
         for i in range(4):
@@ -183,9 +181,6 @@ class NestedSpacesTest(unittest.TestCase):
             self.assertEqual(seen[0][0].tolist(), pos_i)
             self.assertEqual(seen[1][0].tolist(), cam_i)
             self.assertEqual(seen[2][0].tolist(), task_i)
-            self.assertEqual(batch[0][i].tolist(), pos_i)
-            self.assertEqual(batch[1][i].tolist(), cam_i)
-            self.assertEqual(batch[2][i].tolist(), task_i)
 
     def testNestedTuple(self):
         ModelCatalog.register_custom_model("composite2", TupleSpyModel)
@@ -200,8 +195,6 @@ class NestedSpacesTest(unittest.TestCase):
                 },
             })
         pg.train()
-        batch = pickle.loads(
-            ray.experimental.internal_kv._internal_kv_get("t_spy_in_5"))
 
         # Check that the model sees the correct reconstructed observations
         for i in range(4):
@@ -214,9 +207,6 @@ class NestedSpacesTest(unittest.TestCase):
             self.assertEqual(seen[0][0].tolist(), pos_i)
             self.assertEqual(seen[1][0].tolist(), cam_i)
             self.assertEqual(seen[2][0].tolist(), task_i)
-            self.assertEqual(batch[0][i].tolist(), pos_i)
-            self.assertEqual(batch[1][i].tolist(), cam_i)
-            self.assertEqual(batch[2][i].tolist(), task_i)
 
 
 if __name__ == "__main__":
