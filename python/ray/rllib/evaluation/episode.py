@@ -54,6 +54,8 @@ class MultiAgentEpisode(object):
         self._agent_to_last_obs = {}
         self._agent_to_last_action = {}
         self._agent_to_last_pi_info = {}
+        self._agent_to_prev_action = {}
+        self._agent_reward_history = defaultdict(list)
 
     def policy_for(self, agent_id):
         """Returns the policy graph for the specified agent.
@@ -74,17 +76,26 @@ class MultiAgentEpisode(object):
     def last_action_for(self, agent_id):
         """Returns the last action for the specified agent."""
 
-        action = self._agent_to_last_action[agent_id]
-        # Concatenate tuple actions
-        if isinstance(action, list):
-            expanded = []
-            for a in action:
-                if len(a.shape) == 1:
-                    expanded.append(np.expand_dims(a, 1))
-                else:
-                    expanded.append(a)
-            action = np.concatenate(expanded, axis=1).flatten()
-        return action
+        return _flatten_action(self._agent_to_last_action[agent_id])
+
+    def prev_action_for(self, agent_id):
+        """Returns the previous action for the specified agent."""
+
+        if agent_id in self._agent_to_prev_action:
+            return _flatten_action(self._agent_to_prev_action[agent_id])
+        else:
+            # We're at t=0, so return all zeros.
+            return np.zeros_like(self.last_action_for(agent_id))
+
+    def prev_reward_for(self, agent_id):
+        """Returns the previous reward for the specified agent."""
+
+        history = self._agent_reward_history[agent_id]
+        if len(history) >= 2:
+            return history[-2]
+        else:
+            # We're at t=0, so there is no previous reward, just return zero.
+            return 0.0
 
     def rnn_state_for(self, agent_id):
         """Returns the last RNN state for the specified agent."""
@@ -105,6 +116,7 @@ class MultiAgentEpisode(object):
                 self.agent_rewards[agent_id,
                                    self.policy_for(agent_id)] += reward
                 self.total_reward += reward
+                self._agent_reward_history[agent_id].append(reward)
 
     def _set_rnn_state(self, agent_id, rnn_state):
         self._agent_to_rnn_state[agent_id] = rnn_state
@@ -117,3 +129,16 @@ class MultiAgentEpisode(object):
 
     def _set_last_pi_info(self, agent_id, pi_info):
         self._agent_to_last_pi_info[agent_id] = pi_info
+
+
+def _flatten_action(action):
+    # Concatenate tuple actions
+    if isinstance(action, list):
+        expanded = []
+        for a in action:
+            if len(a.shape) == 1:
+                expanded.append(np.expand_dims(a, 1))
+            else:
+                expanded.append(a)
+        action = np.concatenate(expanded, axis=1).flatten()
+    return action

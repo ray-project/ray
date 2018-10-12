@@ -24,8 +24,13 @@ class PGPolicyGraph(TFPolicyGraph):
         obs = tf.placeholder(tf.float32, shape=[None] + list(obs_space.shape))
         dist_class, self.logit_dim = ModelCatalog.get_action_dist(
             action_space, self.config["model"])
-        self.model = ModelCatalog.get_model(obs, self.logit_dim,
-                                            self.config["model"])
+        prev_actions = ModelCatalog.get_action_placeholder(action_space)
+        prev_rewards = tf.placeholder(tf.float32, [None], name="prev_reward")
+        self.model = ModelCatalog.get_model({
+            "obs": obs,
+            "prev_actions": prev_actions,
+            "prev_rewards": prev_rewards
+        }, obs_space, self.logit_dim, self.config["model"])
         action_dist = dist_class(self.model.outputs)  # logit for each action
 
         # Setup policy loss
@@ -35,9 +40,12 @@ class PGPolicyGraph(TFPolicyGraph):
 
         # Initialize TFPolicyGraph
         sess = tf.get_default_session()
+        # Mapping from sample batch keys to placeholders
         loss_in = [
             ("obs", obs),
             ("actions", actions),
+            ("prev_actions", prev_actions),
+            ("prev_rewards", prev_rewards),
             ("advantages", advantages),
         ]
 

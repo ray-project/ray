@@ -29,6 +29,10 @@ class Preprocessor(object):
         """Returns the preprocessed observation."""
         raise NotImplementedError
 
+    @property
+    def size(self):
+        return int(np.product(self.shape))
+
 
 class AtariPixelPreprocessor(Preprocessor):
     def _init(self):
@@ -97,8 +101,7 @@ class NoPreprocessor(Preprocessor):
 class TupleFlatteningPreprocessor(Preprocessor):
     """Preprocesses each tuple element, then flattens it all into a vector.
 
-    If desired, the vector output can be unpacked via tf.reshape() within a
-    custom model to handle each component separately.
+    RLlib models will unpack the flattened output before _build_layers_v2().
     """
 
     def _init(self):
@@ -110,14 +113,40 @@ class TupleFlatteningPreprocessor(Preprocessor):
             print("Creating sub-preprocessor for", space)
             preprocessor = get_preprocessor(space)(space, self._options)
             self.preprocessors.append(preprocessor)
-            size += np.product(preprocessor.shape)
+            size += preprocessor.size
         self.shape = (size, )
 
     def transform(self, observation):
         assert len(observation) == len(self.preprocessors), observation
         return np.concatenate([
-            np.reshape(p.transform(o), [np.product(p.shape)])
+            np.reshape(p.transform(o), [p.size])
             for (o, p) in zip(observation, self.preprocessors)
+        ])
+
+
+class DictFlatteningPreprocessor(Preprocessor):
+    """Preprocesses each dict value, then flattens it all into a vector.
+
+    RLlib models will unpack the flattened output before _build_layers_v2().
+    """
+
+    def _init(self):
+        assert isinstance(self._obs_space, gym.spaces.Dict)
+        size = 0
+        self.preprocessors = []
+        for space in self._obs_space.spaces.values():
+            print("Creating sub-preprocessor for", space)
+            preprocessor = get_preprocessor(space)(space, self._options)
+            self.preprocessors.append(preprocessor)
+            size += preprocessor.size
+        self.shape = (size, )
+
+    def transform(self, observation):
+        assert len(observation) == len(self.preprocessors), \
+            (len(observation), len(self.preprocessors))
+        return np.concatenate([
+            np.reshape(p.transform(o), [p.size])
+            for (o, p) in zip(observation.values(), self.preprocessors)
         ])
 
 
@@ -135,6 +164,8 @@ def get_preprocessor(space):
         preprocessor = AtariRamPreprocessor
     elif isinstance(space, gym.spaces.Tuple):
         preprocessor = TupleFlatteningPreprocessor
+    elif isinstance(space, gym.spaces.Dict):
+        preprocessor = DictFlatteningPreprocessor
     else:
         preprocessor = NoPreprocessor
 

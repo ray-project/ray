@@ -53,6 +53,8 @@ DEFAULT_CONFIG = with_common_config({
     "observation_filter": "MeanStdFilter",
     # Use the sync samples optimizer instead of the multi-gpu one
     "simple_optimizer": False,
+    # Verbose logging during SGD.
+    "verbose": True,
     # Override model config
     "model": {
         # Whether to use LSTM model
@@ -92,7 +94,8 @@ class PPOAgent(Agent):
             self.optimizer = SyncSamplesOptimizer(
                 self.local_evaluator, self.remote_evaluators, {
                     "num_sgd_iter": self.config["num_sgd_iter"],
-                    "train_batch_size": self.config["train_batch_size"]
+                    "train_batch_size": self.config["train_batch_size"],
+                    "verbose": self.config["verbose"],
                 })
         else:
             self.optimizer = LocalMultiGPUOptimizer(
@@ -102,6 +105,7 @@ class PPOAgent(Agent):
                     "num_gpus": self.config["num_gpus"],
                     "train_batch_size": self.config["train_batch_size"],
                     "standardize_fields": ["advantages"],
+                    "verbose": self.config["verbose"],
                 })
 
     def _validate_config(self):

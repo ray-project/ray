@@ -13,7 +13,8 @@ from ray.tune.registry import RLLIB_MODEL, RLLIB_PREPROCESSOR, \
 from ray.rllib.models.action_dist import (
     Categorical, Deterministic, DiagGaussian, MultiActionDistribution,
     squash_to_range)
-from ray.rllib.models.preprocessors import get_preprocessor
+from ray.rllib.models.preprocessors import get_preprocessor, \
+    TupleFlatteningPreprocessor, DictFlatteningPreprocessor
 from ray.rllib.models.fcnet import FullyConnectedNetwork
 from ray.rllib.models.visionnet import VisionNetwork
 from ray.rllib.models.lstm import LSTM
@@ -140,11 +141,18 @@ class ModelCatalog(object):
                                       " not supported".format(action_space))
 
     @staticmethod
-    def get_model(inputs, num_outputs, options, state_in=None, seq_lens=None):
+    def get_model(input_dict,
+                  obs_space,
+                  num_outputs,
+                  options,
+                  state_in=None,
+                  seq_lens=None):
         """Returns a suitable model conforming to given input and output specs.
 
         Args:
-            inputs (Tensor): The input tensor to the model.
+            input_dict (dict): Dict of input tensors to the model, including
+                the observation under the "obs" key.
+            obs_space (Space): Observation space of the target gym env.
             num_outputs (int): The size of the output vector of the model.
             options (dict): Optional args to pass to the model constructor.
             state_in (list): Optional RNN state in tensors.
@@ -154,33 +162,39 @@ class ModelCatalog(object):
             model (Model): Neural network model.
         """
 
-        model = ModelCatalog._get_model(inputs, num_outputs, options, state_in,
-                                        seq_lens)
+        assert isinstance(input_dict, dict)
+        model = ModelCatalog._get_model(input_dict, obs_space, num_outputs,
+                                        options, state_in, seq_lens)
 
         if options.get("use_lstm"):
-            model = LSTM(model.last_layer, num_outputs, options, state_in,
+            copy = dict(input_dict)
+            copy["obs"] = model.last_layer
+            model = LSTM(copy, obs_space, num_outputs, options, state_in,
                          seq_lens)
 
         return model
 
     @staticmethod
-    def _get_model(inputs, num_outputs, options, state_in, seq_lens):
+    def _get_model(input_dict, obs_space, num_outputs, options, state_in,
+                   seq_lens):
         if "custom_model" in options:
             model = options["custom_model"]
             print("Using custom model {}".format(model))
             return _global_registry.get(RLLIB_MODEL, model)(
-                inputs,
+                input_dict,
+                obs_space,
                 num_outputs,
                 options,
                 state_in=state_in,
                 seq_lens=seq_lens)
 
-        obs_rank = len(inputs.shape) - 1
+        obs_rank = len(input_dict["obs"].shape) - 1
 
         if obs_rank > 1:
-            return VisionNetwork(inputs, num_outputs, options)
+            return VisionNetwork(input_dict, obs_space, num_outputs, options)
 
-        return FullyConnectedNetwork(inputs, num_outputs, options)
+        return FullyConnectedNetwork(input_dict, obs_space, num_outputs,
+                                     options)
 
     @staticmethod
     def get_torch_model(input_shape, num_outputs, options={}):
@@ -290,10 +304,17 @@ class _RLlibPreprocessorWrapper(gym.ObservationWrapper):
     def __init__(self, env, preprocessor):
         super(_RLlibPreprocessorWrapper, self).__init__(env)
         self.preprocessor = preprocessor
+        assert preprocessor.shape is not None, preprocessor
 
         from gym.spaces.box import Box
         self.observation_space = Box(
             -1.0, 1.0, preprocessor.shape, dtype=np.float32)
+
+        # Stash the unwrapped space so that we can unwrap dict and tuple spaces
+        # automatically in model.py
+        if (isinstance(preprocessor, TupleFlatteningPreprocessor)
+                or isinstance(preprocessor, DictFlatteningPreprocessor)):
+            self.observation_space.original_space = env.observation_space
 
     def observation(self, observation):
         return self.preprocessor.transform(observation)
