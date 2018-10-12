@@ -221,7 +221,7 @@ class NodeManager {
   /// \param actor_id The actor ID of the actor that was created.
   /// \param data Data associated with the actor creation event.
   /// \return Void.
-  void HandleActorCreation(const ActorID &actor_id,
+  void HandleActorNotification(const ActorID &actor_id,
                            const std::vector<ActorTableDataT> &data);
 
   /// When an actor dies, loop over all of the queued tasks for that actor and
@@ -318,6 +318,10 @@ class NodeManager {
   /// \param message_data A pointer to the message data.
   /// \return Void.
   void ProcessPushErrorRequestMessage(const uint8_t *message_data);
+
+  /// TODO
+  void HandleDeadActor(const ActorID &actor_id);
+  void ReconstructActor(const ActorID &actor_id, const ActorRegistration &actor_registration);
 
   boost::asio::io_service &io_service_;
   ObjectManager &object_manager_;

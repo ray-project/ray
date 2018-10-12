@@ -273,6 +273,31 @@ Status ProfileTable::AddProfileEventBatch(const ProfileTableData &profile_events
                 });
 }
 
+Status ActorTable::AppendDataAt(const ActorID &actor_id,
+                                const ObjectID &actor_creation_dummy_object_id,
+                                const DriverID &driver_id, const ClientID &node_manager_id,
+                                const ActorState &state, int64_t max_reconstructions,
+                                int64_t remaining_reconstructions, int log_length) {
+  RAY_LOG(DEBUG) << "Publishing actor update: " << actor_id << " driver_id: " << driver_id
+                 << "state: " << static_cast<int64_t>(state);
+  auto actor_notification = std::make_shared<ActorTableDataT>();
+  actor_notification->actor_id = actor_id.binary();
+  actor_notification->actor_creation_dummy_object_id =
+      actor_creation_dummy_object_id.binary();
+  actor_notification->driver_id = driver_id.binary();
+  actor_notification->node_manager_id = node_manager_id.binary();
+  actor_notification->state = state;
+  actor_notification->max_reconstructions = max_reconstructions;
+  actor_notification->remaining_reconstructions = remaining_reconstructions;
+
+  auto failure_callback = [](AsyncGcsClient *client, const ActorID &id,
+                             const ActorTableDataT &data) {
+    RAY_LOG(FATAL) << "Failed to update state for actor " << id.hex();
+  };
+  return AppendAt(JobID::nil(), actor_id, actor_notification, nullptr, failure_callback,
+                  log_length);
+}
+
 Status DriverTable::AppendDriverData(const JobID &driver_id, bool is_dead) {
   auto data = std::make_shared<DriverTableDataT>();
   data->driver_id = driver_id.binary();

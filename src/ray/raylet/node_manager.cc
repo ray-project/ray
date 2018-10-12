@@ -164,13 +164,13 @@ ray::Status NodeManager::RegisterGcs() {
       JobID::nil(), gcs_client_->client_table().GetLocalClientId(),
       task_lease_notification_callback, task_lease_empty_callback, nullptr));
 
-  // Register a callback for actor creation notifications.
-  auto actor_creation_callback = [this](
+  // Register a callback to handle actor notifications.
+  auto actor_notification_callback = [this](
       gcs::AsyncGcsClient *client, const ActorID &actor_id,
-      const std::vector<ActorTableDataT> &data) { HandleActorCreation(actor_id, data); };
+      const std::vector<ActorTableDataT> &data) { HandleActorNotification(actor_id, data); };
 
   RAY_RETURN_NOT_OK(gcs_client_->actor_table().Subscribe(
-      UniqueID::nil(), UniqueID::nil(), actor_creation_callback, nullptr));
+      UniqueID::nil(), UniqueID::nil(), actor_notification_callback, nullptr));
 
   // Register a callback on the client table for new clients.
   auto node_manager_client_added = [this](gcs::AsyncGcsClient *client, const UniqueID &id,
@@ -435,32 +435,30 @@ void NodeManager::HeartbeatAdded(gcs::AsyncGcsClient *client, const ClientID &cl
   }
 }
 
-void NodeManager::HandleActorCreation(const ActorID &actor_id,
-                                      const std::vector<ActorTableDataT> &data) {
-  RAY_LOG(DEBUG) << "Actor creation notification received: " << actor_id;
-
-  // TODO(swang): In presence of failures, data may have size > 1, since the
-  // actor will have been created multiple times. In that case, we should
-  // only consider the last entry as valid. All previous entries should have
-  // a dead node_manager_id.
-  RAY_CHECK(data.size() == 1);
-
-  // Register the new actor.
+void NodeManager::HandleActorNotification(const ActorID &actor_id,
+                                          const std::vector<ActorTableDataT> &data) {
+  // We only need the last entry, because it represents the latest state of this actor.
   ActorRegistration actor_registration(data.back());
-  ClientID received_node_manager_id = actor_registration.GetNodeManagerId();
-  // Extend the frontier to include the actor creation task. NOTE(swang): The
-  // creator of the actor is always assigned nil as the actor handle ID.
-  actor_registration.ExtendFrontier(ActorHandleID::nil(),
-                                    actor_registration.GetActorCreationDependency());
-  auto inserted = actor_registry_.emplace(actor_id, std::move(actor_registration));
-  if (!inserted.second) {
-    // If we weren't able to insert the actor's location, check that the
-    // existing entry is the same as the new one.
-    // TODO(swang): This is not true in the case of failures.
-    RAY_CHECK(received_node_manager_id == inserted.first->second.GetNodeManagerId())
-        << "Actor scheduled on " << inserted.first->second.GetNodeManagerId()
-        << ", but received notification for " << received_node_manager_id;
+  RAY_LOG(DEBUG) << "Actor notification received: actor_id = " << actor_id
+                 << ", node_manager_id = " << actor_registration.GetNodeManagerId().hex()
+                 << ", state = " << static_cast<int64_t>(actor_registration.GetState())
+                 << ", remaining_reconstructions = "
+                 << actor_registration.GetRemainingReconstructions();
+
+  // Update local registry.
+  auto it = actor_registry_.find(actor_id);
+  if (it == actor_registry_.end()) {
+    actor_registry_.emplace(actor_id, std::move(actor_registration));
   } else {
+    it->second = actor_registration;
+  }
+
+  if (actor_registration.GetState() == ActorState::ALIVE) {
+    // Extend the frontier to include the actor creation task. NOTE(swang): The
+    // creator of the actor is always assigned nil as the actor handle ID.
+    actor_registry_.find(actor_id)->second.ExtendFrontier(
+        ActorHandleID::nil(), actor_registration.GetActorCreationDependency());
+
     // The actor's location is now known. Dequeue any methods that were
     // submitted before the actor's location was known.
     // (See design_docs/task_states.rst for the state transition diagram.)
@@ -484,6 +482,14 @@ void NodeManager::HandleActorCreation(const ActorID &actor_id,
       // cache upon the initial submission, so it's okay to resubmit it with an
       // empty lineage this time.
       SubmitTask(method, Lineage());
+    }
+  } else if (actor_registration.GetState() == ActorState::DEAD) {
+    CleanUpTasksForDeadActor(actor_id);
+  } else {
+    // state == ActorState::BEING_RECONSTRUCTED
+    if (actor_registration.GetNodeManagerId() ==
+        gcs_client_->client_table().GetLocalClientId()) {
+      ReconstructActor(actor_id, actor_registration);
     }
   }
 }
@@ -628,6 +634,32 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   }
 }
 
+void NodeManager::HandleDeadActor(const ActorID &actor_id) {
+  auto actor_entry = actor_registry_.find(actor_id);
+  RAY_CHECK(actor_entry != actor_registry_.end());
+  auto actor_registration = actor_entry->second;
+  RAY_LOG(DEBUG) << "The actor with ID " << actor_id << " died, "
+                 << "remaining reconstructions = "
+                 << actor_registration.GetRemainingReconstructions();
+
+  // Check if this actor needs to be reconstructed.
+  ActorState new_state = actor_registration.GetRemainingReconstructions() > 0
+                             ? ActorState::BEING_RECONSTRUCTED
+                             : ActorState::DEAD;
+  int log_length = 1 + 2 * (actor_registration.GetMaxReconstructions() -
+                            actor_registration.GetRemainingReconstructions());
+  // Update ActorTable.
+  RAY_CHECK_OK(gcs_client_->actor_table().AppendDataAt(
+      actor_id, actor_registration.GetActorCreationDependency(),
+      actor_registration.GetDriverId(), gcs_client_->client_table().GetLocalClientId(),
+      new_state, actor_registration.GetMaxReconstructions(),
+      actor_registration.GetRemainingReconstructions(), log_length));
+}
+
+void NodeManager::ReconstructActor(const ActorID &actor_id, const ActorRegistration &actor_registration) {
+  RAY_LOG(DEBUG) << "Trying to reconstruction actor: " << actor_id;
+}
+
 void NodeManager::ProcessGetTaskMessage(
     const std::shared_ptr<LocalClientConnection> &client) {
   std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
@@ -704,15 +736,7 @@ void NodeManager::ProcessDisconnectClientMessage(
     // If the worker was an actor, add it to the list of dead actors.
     const ActorID &actor_id = worker->GetActorId();
     if (!actor_id.is_nil()) {
-      // TODO(rkn): Consider broadcasting a message to all of the other
-      // node managers so that they can mark the actor as dead.
-      RAY_LOG(DEBUG) << "The actor with ID " << actor_id << " died.";
-      auto actor_entry = actor_registry_.find(actor_id);
-      RAY_CHECK(actor_entry != actor_registry_.end());
-      actor_entry->second.MarkDead();
-      // For dead actors, if there are remaining tasks for this actor, we
-      // should handle them.
-      CleanUpTasksForDeadActor(actor_id);
+      HandleDeadActor(actor_id);
     }
 
     const ClientID &client_id = gcs_client_->client_table().GetLocalClientId();
@@ -1012,7 +1036,12 @@ void NodeManager::TreatTaskAsFailed(const TaskSpecification &spec) {
 
 void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineage,
                              bool forwarded) {
-  const TaskID &task_id = task.GetTaskSpecification().TaskId();
+  const TaskSpecification &spec = task.GetTaskSpecification();
+  const TaskID &task_id = spec.TaskId();
+  RAY_LOG(DEBUG) << "Submitting task: task_id = " << task_id
+                 << ", actor_id = " << spec.ActorId().hex()
+                 << ", actor_creation_id = " << spec.ActorCreationId().hex();
+
   if (local_queues_.HasTask(task_id)) {
     RAY_LOG(WARNING) << "Submitted task " << task_id
                      << " is already queued and will not be reconstructed. This is most "
@@ -1027,7 +1056,6 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
         << " already in lineage cache. This is most likely due to reconstruction.";
   }
 
-  const TaskSpecification &spec = task.GetTaskSpecification();
   if (spec.IsActorTask()) {
     // Check whether we know the location of the actor.
     const auto actor_entry = actor_registry_.find(spec.ActorId());
@@ -1036,7 +1064,7 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
       auto node_manager_id = actor_entry->second.GetNodeManagerId();
       if (node_manager_id == gcs_client_->client_table().GetLocalClientId()) {
         // The actor is local. Check if the actor is still alive.
-        if (!actor_entry->second.IsAlive()) {
+        if (actor_entry->second.GetState() == ActorState::DEAD) {
           // Handle the fact that this actor is dead.
           TreatTaskAsFailed(spec);
         } else {
@@ -1067,7 +1095,7 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
                                     const std::vector<ActorTableDataT> &data) {
         if (!data.empty()) {
           // The actor has been created.
-          HandleActorCreation(actor_id, data);
+          HandleActorNotification(actor_id, data);
         } else {
           // The actor has not yet been created.
           // TODO(swang): Set a timer for reconstructing the actor creation
@@ -1374,31 +1402,27 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
 
     // Publish the actor creation event to all other nodes so that methods for
     // the actor will be forwarded directly to this node.
-    auto actor_notification = std::make_shared<ActorTableDataT>();
-    actor_notification->actor_id = actor_id.binary();
-    actor_notification->actor_creation_dummy_object_id =
-        task.GetTaskSpecification().ActorDummyObject().binary();
-    actor_notification->driver_id = driver_id.binary();
-    actor_notification->node_manager_id =
-        gcs_client_->client_table().GetLocalClientId().binary();
-
-    actor_notification->state = ActorState::ALIVE;
-    actor_notification->max_reconstructions =
-        task.GetTaskSpecification().MaxActorReconstructions();
+    int remaining_reconstructions;
+    int log_length;
     const auto actor_entry = actor_registry_.find(task.GetTaskSpecification().ActorId());
     if (actor_entry == actor_registry_.end()) {
-      actor_notification->remaining_reconstructions =
-          task.GetTaskSpecification().MaxActorReconstructions();
+      remaining_reconstructions = task.GetTaskSpecification().MaxActorReconstructions();
+      log_length = 0;
     } else {
-      actor_notification->remaining_reconstructions =
-          actor_entry->second.GetRemainingReconstructions() - 1;
+      // If we've already seen this actor, it means that this actor was reconstructed.
+      // Thus, its previous state must be BEING_RECONSTRUCTED.
+      // Also, we should subtract its remaining_reconstructions by 1.
+      RAY_CHECK(actor_entry->second.GetState() != ActorState::BEING_RECONSTRUCTED);
+      remaining_reconstructions = actor_entry->second.GetRemainingReconstructions() - 1;
+      log_length = 2 * (actor_entry->second.GetMaxReconstructions() -
+                        actor_entry->second.GetRemainingReconstructions());
     }
-
-    auto driver_id = task.GetTaskSpecification().DriverId();
-    RAY_LOG(DEBUG) << "Publishing actor creation: " << actor_id
-                   << " driver_id: " << driver_id;
-    RAY_CHECK_OK(gcs_client_->actor_table().Append(JobID::nil(), actor_id,
-                                                   actor_notification, nullptr));
+    RAY_CHECK_OK(gcs_client_->actor_table().AppendDataAt(
+        actor_id, task.GetTaskSpecification().ActorDummyObject(),
+        task.GetTaskSpecification().DriverId(),
+        gcs_client_->client_table().GetLocalClientId(), ActorState::ALIVE,
+        task.GetTaskSpecification().MaxActorReconstructions(),
+        remaining_reconstructions, log_length));
 
     // Resources required by an actor creation task are acquired for the
     // lifetime of the actor, so we do not release any resources here.

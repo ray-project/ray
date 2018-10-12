@@ -377,6 +377,12 @@ class ActorTable : public Log<ActorID, ActorTableData> {
     pubsub_channel_ = TablePubsub::ACTOR;
     prefix_ = TablePrefix::ACTOR;
   }
+
+  Status AppendDataAt(const ActorID &actor_id,
+                      const ObjectID &actor_creation_dummy_object_id,
+                      const DriverID &driver_id, const ClientID &node_manager_id,
+                      const ActorState &state, int64_t max_reconstructions,
+                      int64_t remaining_reconstructions, int log_length);
 };
 
 class TaskReconstructionLog : public Log<TaskID, TaskReconstructionData> {

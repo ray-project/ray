@@ -141,8 +141,8 @@ const std::string ResourceSet::ToString() const {
   // Convert the first element to a string.
   if (it != resource_capacity_.end()) {
     return_string += "{" + it->first + "," + std::to_string(it->second) + "}";
+    it++;
   }
-  it++;
 
   // Add the remaining elements to the string (along with a comma).
   for (; it != resource_capacity_.end(); ++it) {
