@@ -15,6 +15,11 @@ def start_ray_with_password():
 
     password = "some_password"
     exception = None
+
+    # Fix for #3045
+    global f
+    f = ray.remote(f._function)
+
     try:
         info = ray.init(redis_password=password)
     except Exception as e:
