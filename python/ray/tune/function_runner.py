@@ -90,10 +90,10 @@ class FunctionRunner(Trainable):
     _name = "func"
     _default_config = DEFAULT_CONFIG
 
-    def _setup(self):
+    def _setup(self, config):
         entrypoint = self._trainable_func()
         self._status_reporter = StatusReporter()
-        scrubbed_config = self.config.copy()
+        scrubbed_config = config.copy()
         for k in self._default_config:
             if k in scrubbed_config:
                 del scrubbed_config[k]
