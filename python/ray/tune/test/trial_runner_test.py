@@ -437,6 +437,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
         class TestTrain(Trainable):
             def _setup(self, config):
                 self.state = {"hi": 1}
+
             def _train(self):
                 return dict(timesteps_this_iter=1, done=True)
 
