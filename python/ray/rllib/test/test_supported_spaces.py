@@ -49,7 +49,9 @@ def make_stub_env(action_space, obs_space):
             return sample
 
         def step(self, action):
-            if not self.action_space.contains(action):
+            # check only for small obs spaces to avoid action value blowup
+            if (isinstance(self.observation_space, Discrete)
+                    and not self.action_space.contains(action)):
                 raise ValueError("Illegal action for {}: {}".format(
                     self.action_space, action))
             return self.observation_space.sample(), 1, True, {}
