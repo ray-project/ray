@@ -111,6 +111,7 @@ table ActorTableData {
   // The ID of the node manager that created the actor.
   node_manager_id: string;
   // TODO
+  max_reconstructions: int;
   remaining_reconstructions: int;
 }
 

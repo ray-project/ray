@@ -20,6 +20,10 @@ const ObjectID ActorRegistration::GetActorCreationDependency() const {
   return ObjectID::from_binary(actor_table_data_.actor_creation_dummy_object_id);
 }
 
+const int64_t ActorRegistration::GetMaxReconstructions() const {
+  return actor_table_data_.max_reconstructions;
+}
+
 const int64_t ActorRegistration::GetRemainingReconstructions() const {
   return actor_table_data_.remaining_reconstructions;
 }

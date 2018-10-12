@@ -50,6 +50,9 @@ class ActorRegistration {
   const ObjectID GetActorCreationDependency() const;
 
   /// TODO
+
+  const int64_t GetMaxReconstructions() const;
+
   const int64_t GetRemainingReconstructions() const;
 
   /// Get the object that represents the actor's current state. This is the

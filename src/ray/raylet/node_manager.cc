@@ -1372,12 +1372,6 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
     worker.AssignActorId(actor_id);
     const auto driver_id = task.GetTaskSpecification().DriverId();
 
-    int64_t remaining_reconstructions = task.GetTaskSpecification().MaxActorReconstructions();
-    const auto actor_entry = actor_registry_.find(task.GetTaskSpecification().ActorId());
-    if (actor_entry != actor_registry_.end()) {
-      remaining_reconstructions = actor_entry->second.GetRemainingReconstructions() - 1;
-    }
-
     // Publish the actor creation event to all other nodes so that methods for
     // the actor will be forwarded directly to this node.
     auto actor_notification = std::make_shared<ActorTableDataT>();
@@ -1387,7 +1381,18 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
     actor_notification->driver_id = driver_id.binary();
     actor_notification->node_manager_id =
         gcs_client_->client_table().GetLocalClientId().binary();
-    actor_notification->remaining_reconstructions = remaining_reconstructions;
+
+    actor_notification->max_reconstructions =
+        task.GetTaskSpecification().MaxActorReconstructions();
+    const auto actor_entry = actor_registry_.find(task.GetTaskSpecification().ActorId());
+    if (actor_entry == actor_registry_.end()) {
+      actor_notification->remaining_reconstructions =
+          task.GetTaskSpecification().MaxActorReconstructions();
+    } else {
+      actor_notification->remaining_reconstructions =
+          actor_entry->second.GetRemainingReconstructions() - 1;
+    }
+
     auto driver_id = task.GetTaskSpecification().DriverId();
     RAY_LOG(DEBUG) << "Publishing actor creation: " << actor_id
                    << " driver_id: " << driver_id;
