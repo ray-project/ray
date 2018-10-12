@@ -30,7 +30,7 @@ Custom models should subclass the common RLlib `model class <https://github.com/
     from ray.rllib.models import ModelCatalog, Model
 
     class MyModelClass(Model):
-        def _build_layers(self, input_dict, num_outputs, options):
+        def _build_layers_v2(self, input_dict, num_outputs, options):
             layer1 = slim.fully_connected(input_dict["obs"], 64, ...)
             layer2 = slim.fully_connected(layer1, 64, ...)
             ...
