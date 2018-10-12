@@ -22,6 +22,8 @@ class MockPolicyGraph(PolicyGraph):
     def compute_actions(self,
                         obs_batch,
                         state_batches,
+                        prev_action_batch=None,
+                        prev_reward_batch=None,
                         is_training=False,
                         episodes=None):
         return [0] * len(obs_batch), [], {}
@@ -34,6 +36,8 @@ class BadPolicyGraph(PolicyGraph):
     def compute_actions(self,
                         obs_batch,
                         state_batches,
+                        prev_action_batch=None,
+                        prev_reward_batch=None,
                         is_training=False,
                         episodes=None):
         raise Exception("intentional error")

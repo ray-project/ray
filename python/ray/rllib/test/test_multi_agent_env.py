@@ -311,6 +311,8 @@ class TestMultiAgentEnv(unittest.TestCase):
             def compute_actions(self,
                                 obs_batch,
                                 state_batches,
+                                prev_action_batch=None,
+                                prev_reward_batch=None,
                                 is_training=False,
                                 episodes=None):
                 # Pretend we did a model-based rollout and want to return

@@ -225,9 +225,10 @@ class MultiActionDistribution(ActionDistribution):
 
     def sample(self):
         """Draw a sample from the action distribution.
-        
+
         IMPORTANT: the return here is a list of batches so that it can be
         fetched via tensorflow, but you'll want to convert it to a batch of
         lists with _unbatch_tuple_actions() prior to sending to envs.
         """
+
         return [s.sample() for s in self.child_distributions]
