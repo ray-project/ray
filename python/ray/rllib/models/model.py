@@ -76,7 +76,7 @@ class Model(object):
         try:
             out = tf.convert_to_tensor(self.outputs)
             shape = out.shape.as_list()
-        except Exception as e:
+        except Exception:
             raise ValueError("Output is not a tensor: {}".format(self.outputs))
         else:
             if len(shape) != 2 or shape[1] != num_outputs:

@@ -113,8 +113,9 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
 
         if existing_inputs:
             obs_ph, value_targets_ph, adv_ph, act_ph, \
-                logits_ph, vf_preds_ph = existing_inputs[:6]
-            existing_state_in = existing_inputs[6:-1]
+                logits_ph, vf_preds_ph, prev_actions_ph, prev_rewards_ph = \
+                existing_inputs[:8]
+            existing_state_in = existing_inputs[8:-1]
             existing_seq_lens = existing_inputs[-1]
         else:
             obs_ph = tf.placeholder(
@@ -130,6 +131,9 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
                 tf.float32, name="vf_preds", shape=(None, ))
             value_targets_ph = tf.placeholder(
                 tf.float32, name="value_targets", shape=(None, ))
+            prev_actions_ph = ModelCatalog.get_action_placeholder(action_space)
+            prev_rewards_ph = tf.placeholder(
+                tf.float32, [None], name="prev_reward")
             existing_state_in = None
             existing_seq_lens = None
         self.observations = obs_ph
@@ -141,9 +145,16 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             ("actions", act_ph),
             ("logits", logits_ph),
             ("vf_preds", vf_preds_ph),
+            ("prev_actions", prev_actions_ph),
+            ("prev_rewards", prev_rewards_ph),
         ]
         self.model = ModelCatalog.get_model(
-            obs_ph,
+            {
+                "obs": obs_ph,
+                "prev_actions": prev_actions_ph,
+                "prev_rewards": prev_rewards_ph
+            },
+            observation_space,
             logit_dim,
             self.config["model"],
             state_in=existing_state_in,
@@ -173,8 +184,11 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
                 vf_config["free_log_std"] = False
                 vf_config["use_lstm"] = False
                 with tf.variable_scope("value_function"):
-                    self.value_function = ModelCatalog.get_model(
-                        obs_ph, 1, vf_config).outputs
+                    self.value_function = ModelCatalog.get_model({
+                        "obs": obs_ph,
+                        "prev_actions": prev_actions_ph,
+                        "prev_rewards": prev_rewards_ph
+                    }, observation_space, 1, vf_config).outputs
                     self.value_function = tf.reshape(self.value_function, [-1])
         else:
             self.value_function = tf.zeros(shape=tf.shape(obs_ph)[:1])
@@ -208,6 +222,8 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             loss_inputs=self.loss_in,
             state_inputs=self.model.state_in,
             state_outputs=self.model.state_out,
+            prev_action_input=prev_actions_ph,
+            prev_reward_input=prev_rewards_ph,
             seq_lens=self.model.seq_lens,
             max_seq_len=config["model"]["max_seq_len"])
 

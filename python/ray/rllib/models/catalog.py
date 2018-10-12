@@ -36,6 +36,7 @@ MODEL_CONFIGS = [
     "use_lstm",  # Whether to wrap the model with a LSTM
     "max_seq_len",  # Max seq len for training the LSTM, defaults to 20
     "lstm_cell_size",  # Size of the LSTM cell
+    "lstm_use_prev_action_reward",  # Whether to feed a_{t-1}, r_{t-1} to LSTM
 
     # === Options for custom models ===
     "custom_preprocessor",  # Name of a custom preprocessor to use

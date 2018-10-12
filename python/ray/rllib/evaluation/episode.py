@@ -74,9 +74,13 @@ class MultiAgentEpisode(object):
         return self._agent_to_last_obs.get(agent_id)
 
     def last_action_for(self, agent_id):
-        """Returns the last action for the specified agent."""
+        """Returns the last action for the specified agent, or zeros."""
 
-        return _flatten_action(self._agent_to_last_action[agent_id])
+        if agent_id in self._agent_to_last_action:
+            return _flatten_action(self._agent_to_last_action[agent_id])
+        else:
+            policy = self._policies[self.policy_for(agent_id)]
+            return _flatten_action(np.zeros_like(policy.action_space.sample()))
 
     def prev_action_for(self, agent_id):
         """Returns the previous action for the specified agent."""

@@ -82,7 +82,8 @@ class A3CPolicyGraph(LearningRateSchedule, TFPolicyGraph):
         # Initialize TFPolicyGraph
         loss_in = [
             ("obs", self.observations),
-            ("actions", actions)("prev_actions", prev_actions),
+            ("actions", actions),
+            ("prev_actions", prev_actions),
             ("prev_rewards", prev_rewards),
             ("advantages", advantages),
             ("value_targets", self.v_target),
@@ -100,6 +101,8 @@ class A3CPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             loss_inputs=loss_in,
             state_inputs=self.model.state_in,
             state_outputs=self.model.state_out,
+            prev_action_input=prev_actions,
+            prev_reward_input=prev_rewards,
             seq_lens=self.model.seq_lens,
             max_seq_len=self.config["model"]["max_seq_len"])
 

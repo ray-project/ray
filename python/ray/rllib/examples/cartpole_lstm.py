@@ -14,6 +14,7 @@ import numpy as np
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--stop", type=int, default=200)
+parser.add_argument("--use-prev-action-reward", action="store_true")
 
 
 class CartPoleStatelessEnv(gym.Env):
@@ -174,6 +175,7 @@ if __name__ == "__main__":
                 "num_sgd_iter": 5,
                 "model": {
                     "use_lstm": True,
+                    "lstm_use_prev_action_reward": args.use_prev_action_reward,
                 },
             },
         }
