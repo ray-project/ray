@@ -102,8 +102,8 @@ class TFPolicyGraph(PolicyGraph):
         if len(self.get_initial_state()) != len(self._state_inputs):
             raise ValueError(
                 "Length of initial state must match number of state inputs, "
-                "got: {} vs {}".format(
-                    self.get_initial_state(), self._state_inputs))
+                "got: {} vs {}".format(self.get_initial_state(),
+                                       self._state_inputs))
         if self._state_inputs and self._seq_lens is None:
             raise ValueError(
                 "seq_lens tensor must be given if state inputs are defined")
