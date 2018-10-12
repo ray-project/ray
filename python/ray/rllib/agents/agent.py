@@ -175,7 +175,7 @@ class Agent(Trainable):
         return ("\n\nYou can adjust the resource requests of RLlib agents by "
                 "setting `num_workers` and other configs. See the "
                 "DEFAULT_CONFIG defined by each agent for more info.\n\n"
-                "The config of this agent is: " + json.dumps(config))
+                "The config of this agent is: {}".format(config))
 
     def __init__(self, config=None, env=None, logger_creator=None):
         """Initialize an RLLib agent.
