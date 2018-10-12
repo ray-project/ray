@@ -1382,6 +1382,7 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
     actor_notification->node_manager_id =
         gcs_client_->client_table().GetLocalClientId().binary();
 
+    actor_notification->state = ActorState::ALIVE;
     actor_notification->max_reconstructions =
         task.GetTaskSpecification().MaxActorReconstructions();
     const auto actor_entry = actor_registry_.find(task.GetTaskSpecification().ActorId());

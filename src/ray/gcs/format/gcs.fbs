@@ -99,6 +99,12 @@ table TaskTableTestAndUpdate {
 table ClassTableData {
 }
 
+enum ActorState:int {
+  ALIVE = 0,
+  DEAD = 1,
+  BEING_RECONSTRUCTED = 2
+}
+
 table ActorTableData {
   // The ID of the actor that was created.
   actor_id: string;
@@ -111,6 +117,7 @@ table ActorTableData {
   // The ID of the node manager that created the actor.
   node_manager_id: string;
   // TODO
+  state: ActorState;
   max_reconstructions: int;
   remaining_reconstructions: int;
 }

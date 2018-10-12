@@ -51,6 +51,8 @@ class ActorRegistration {
 
   /// TODO
 
+  const ActorState GetState() const;
+
   const int64_t GetMaxReconstructions() const;
 
   const int64_t GetRemainingReconstructions() const;
