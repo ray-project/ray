@@ -50,7 +50,10 @@ class HyperBandScheduler(FIFOScheduler):
     For example, to limit trials to 10 minutes and early stop based on the
     `episode_mean_reward` attr, construct:
 
-    ``HyperBand('time_total_s', 'episode_reward_mean', 600)``
+    ``HyperBand('time_total_s', 'episode_reward_mean', max_t=600)``
+
+    Note that Tune's stopping criteria will be applied in conjunction with
+    HyperBand's early stopping mechanisms.
 
     See also: https://people.eecs.berkeley.edu/~kjamieson/hyperband.html
 

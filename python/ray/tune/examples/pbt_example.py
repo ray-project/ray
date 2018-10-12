@@ -18,7 +18,7 @@ from ray.tune.schedulers import PopulationBasedTraining
 class MyTrainableClass(Trainable):
     """Fake agent whose learning rate is determined by dummy factors."""
 
-    def _setup(self):
+    def _setup(self, config):
         self.timestep = 0
         self.current_value = 0.0
 
