@@ -29,6 +29,7 @@ def start_ray_with_password():
 def use_credis():
     return ("RAY_USE_NEW_GCS" in os.environ)
 
+
 @ray.remote
 def f():
     return 1
