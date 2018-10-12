@@ -95,6 +95,8 @@ class DictSpyModel(Model):
 
     def _build_layers_v2(self, input_dict, num_outputs, options):
         def spy(pos, front_cam, task):
+            # TF runs this function in an isolated context, so we have to use
+            # redis to communicate back to our suite
             ray.experimental.internal_kv._internal_kv_put(
                 "d_spy_in_{}".format(DictSpyModel.capture_index),
                 pickle.dumps((pos, front_cam, task)))
@@ -121,6 +123,8 @@ class TupleSpyModel(Model):
 
     def _build_layers_v2(self, input_dict, num_outputs, options):
         def spy(pos, cam, task):
+            # TF runs this function in an isolated context, so we have to use
+            # redis to communicate back to our suite
             ray.experimental.internal_kv._internal_kv_put(
                 "t_spy_in_{}".format(TupleSpyModel.capture_index),
                 pickle.dumps((pos, cam, task)))

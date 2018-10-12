@@ -95,11 +95,29 @@ class Model(object):
     def _build_layers(self, inputs, num_outputs, options):
         """Builds and returns the output and last layer of the network.
 
-        Deprecated: use _build_layers_v2 instead.
+        Deprecated: use _build_layers_v2 instead, which has better support
+        for dict and tuple spaces.
         """
         raise NotImplementedError
 
     def _build_layers_v2(self, input_dict, num_outputs, options):
+        """Builds and returns the output and last layer of the network.
+
+        This is preferred over build_layers() since it allows access to
+        prev_action, prev_reward, and also unpacks tuple and dict observations
+        into individual tensors.
+
+        Arguments:
+            input_dict (dict): Dictionary of input tensors, including "obs",
+                "prev_action", "prev_reward".
+            num_outputs (int): Output tensor must be of size
+                [BATCH_SIZE, num_outputs].
+            options (dict): Model options.
+
+        Returns:
+            (outputs, feature_layer): Tensors of size [BATCH_SIZE, num_outputs]
+                and [BATCH_SIZE, desired_feature_size].
+        """
         raise NotImplementedError
 
 
