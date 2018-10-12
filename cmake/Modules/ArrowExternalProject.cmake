@@ -9,6 +9,7 @@
 #  - ARROW_INCLUDE_DIR
 #  - ARROW_SHARED_LIB
 #  - ARROW_STATIC_LIB
+#  - ARROW_LIBRARY_DIR
 #  - PLASMA_INCLUDE_DIR
 #  - PLASMA_STATIC_LIB
 #  - PLASMA_SHARED_LIB
@@ -95,12 +96,16 @@ ExternalProject_Add(arrow_ep
   BUILD_BYPRODUCTS "${ARROW_SHARED_LIB}" "${ARROW_STATIC_LIB}")
 
 if ("${CMAKE_RAY_LANG_JAVA}" STREQUAL "YES")
-  ExternalProject_Add_Step(arrow_ep arrow_ep_install_java_lib
-    COMMAND bash -c "cd ${ARROW_SOURCE_DIR}/java && mvn clean install -pl plasma -am -Dmaven.test.skip > /dev/null"
-    DEPENDEES build)
+  set_property(DIRECTORY APPEND PROPERTY ADDITIONAL_MAKE_CLEAN_FILES "${ARROW_SOURCE_DIR}/java/target/")
+
+  if(NOT EXISTS ${ARROW_SOURCE_DIR}/java/target/)
+    ExternalProject_Add_Step(arrow_ep arrow_ep_install_java_lib
+      COMMAND bash -c "cd ${ARROW_SOURCE_DIR}/java && mvn clean install -pl plasma -am -Dmaven.test.skip > /dev/null"
+      DEPENDEES build)
+  endif()
 
   # add install of library plasma_java, it is not configured in plasma CMakeLists.txt
   ExternalProject_Add_Step(arrow_ep arrow_ep_install_plasma_java
-    COMMAND bash -c "cp ${CMAKE_CURRENT_BINARY_DIR}/external/arrow/src/arrow_ep-build/release/libplasma_java.* ${ARROW_LIBRARY_DIR}/"
+    COMMAND bash -c "cp -rf ${CMAKE_CURRENT_BINARY_DIR}/external/arrow/src/arrow_ep-build/release/libplasma_java.* ${ARROW_LIBRARY_DIR}/"
     DEPENDEES install)
 endif ()
