@@ -37,7 +37,7 @@ OBSERVATION_SPACES_TO_TEST = {
 }
 
 
-def make_stub_env(action_space, obs_space):
+def make_stub_env(action_space, obs_space, check_action_bounds):
     class StubEnv(gym.Env):
         def __init__(self):
             self.action_space = action_space
@@ -49,21 +49,22 @@ def make_stub_env(action_space, obs_space):
             return sample
 
         def step(self, action):
-            # check only for small obs spaces to avoid action value blowup
-            if (isinstance(self.observation_space, Discrete)
-                    and not self.action_space.contains(action)):
+            if check_action_bounds and not self.action_space.contains(action):
                 raise ValueError("Illegal action for {}: {}".format(
                     self.action_space, action))
+            if (isinstance(self.action_space, Tuple) and len(action) != len(self.action_space.spaces)):
+                    raise ValueError("Illegal action for {}: {}".format(
+                        self.action_space, action))
             return self.observation_space.sample(), 1, True, {}
 
     return StubEnv
 
 
-def check_support(alg, config, stats):
+def check_support(alg, config, stats, check_bounds=False):
     for a_name, action_space in ACTION_SPACES_TO_TEST.items():
         for o_name, obs_space in OBSERVATION_SPACES_TO_TEST.items():
             print("=== Testing", alg, action_space, obs_space, "===")
-            stub_env = make_stub_env(action_space, obs_space)
+            stub_env = make_stub_env(action_space, obs_space, check_bounds)
             register_env("stub_env", lambda c: stub_env())
             stat = "ok"
             a = None
@@ -107,8 +108,9 @@ class ModelSupportedSpaces(unittest.TestCase):
                 "num_sgd_iter": 1,
                 "train_batch_size": 10,
                 "sample_batch_size": 10,
-                "sgd_minibatch_size": 1
-            }, stats)
+                "sgd_minibatch_size": 1,
+                "model": {"squash_to_range": True},
+            }, stats, check_bounds=True)
         check_support(
             "ES", {
                 "num_workers": 1,
