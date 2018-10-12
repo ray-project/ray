@@ -52,9 +52,10 @@ def make_stub_env(action_space, obs_space, check_action_bounds):
             if check_action_bounds and not self.action_space.contains(action):
                 raise ValueError("Illegal action for {}: {}".format(
                     self.action_space, action))
-            if (isinstance(self.action_space, Tuple) and len(action) != len(self.action_space.spaces)):
-                    raise ValueError("Illegal action for {}: {}".format(
-                        self.action_space, action))
+            if (isinstance(self.action_space, Tuple)
+                    and len(action) != len(self.action_space.spaces)):
+                raise ValueError("Illegal action for {}: {}".format(
+                    self.action_space, action))
             return self.observation_space.sample(), 1, True, {}
 
     return StubEnv
@@ -109,8 +110,12 @@ class ModelSupportedSpaces(unittest.TestCase):
                 "train_batch_size": 10,
                 "sample_batch_size": 10,
                 "sgd_minibatch_size": 1,
-                "model": {"squash_to_range": True},
-            }, stats, check_bounds=True)
+                "model": {
+                    "squash_to_range": True
+                },
+            },
+            stats,
+            check_bounds=True)
         check_support(
             "ES", {
                 "num_workers": 1,
