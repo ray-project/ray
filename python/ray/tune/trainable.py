@@ -214,9 +214,9 @@ class Trainable(object):
             Checkpoint path that may be passed to restore().
         """
 
-        checkpoint_path = checkpoint_dir or self.logdir
-        checkpoint_path = os.path.join(
-            checkpoint_path, "checkpoint_{}".format(self._iteration))
+        checkpoint_path = tempfile.mkdtemp(
+            prefix="checkpoint_{}".format(self._iteration),
+            dir=checkpoint_dir or self.logdir)
         checkpoint = self._save(checkpoint_path)
         saved_as_dict = False
         if isinstance(checkpoint, str):

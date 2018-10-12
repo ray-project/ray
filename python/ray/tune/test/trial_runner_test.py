@@ -480,7 +480,6 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
         test_trainable = TestTrain()
         checkpoint_1 = test_trainable.save()
-        import ipdb; ipdb.set_trace(context=5)
         test_trainable.train()
         checkpoint_2 = test_trainable.save()
         self.assertNotEqual(checkpoint_1, checkpoint_2)
