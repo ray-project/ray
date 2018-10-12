@@ -12,7 +12,8 @@ from ray.rllib.models.misc import normc_initializer, get_activation_fn
 class FullyConnectedNetwork(Model):
     """Generic fully connected network."""
 
-    def _build_layers(self, inputs, num_outputs, options):
+    def _build_layers_v2(self, input_dict, num_outputs, options):
+        inputs = input_dict["obs"]
         hiddens = options.get("fcnet_hiddens", [256, 256])
         activation = get_activation_fn(options.get("fcnet_activation", "tanh"))
 
