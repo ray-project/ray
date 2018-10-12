@@ -73,9 +73,6 @@ class ModelCatalog(object):
             dist_dim (int): The size of the input vector to the distribution.
         """
 
-        # TODO(ekl) are list spaces valid?
-        if isinstance(action_space, list):
-            action_space = gym.spaces.Tuple(action_space)
         config = config or {}
         if isinstance(action_space, gym.spaces.Box):
             if dist_type is None:
@@ -114,10 +111,6 @@ class ModelCatalog(object):
         Returns:
             action_placeholder (Tensor): A placeholder for the actions
         """
-
-        # TODO(ekl) are list spaces valid?
-        if isinstance(action_space, list):
-            action_space = gym.spaces.Tuple(action_space)
 
         if isinstance(action_space, gym.spaces.Box):
             return tf.placeholder(

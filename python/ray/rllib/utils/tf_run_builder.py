@@ -26,7 +26,8 @@ class TFRunBuilder(object):
     def add_feed_dict(self, feed_dict):
         assert not self._executed
         for k in feed_dict:
-            assert k not in self.feed_dict
+            if k in self.feed_dict:
+                raise ValueError("Key added twice: {}".format(k))
         self.feed_dict.update(feed_dict)
 
     def add_fetches(self, fetches):

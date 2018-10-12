@@ -7,7 +7,7 @@ import numpy as np
 import six.moves.queue as queue
 import threading
 
-from ray.rllib.evaluation.episode import MultiAgentEpisode
+from ray.rllib.evaluation.episode import MultiAgentEpisode, _flatten_action
 from ray.rllib.evaluation.sample_batch import MultiAgentSampleBatchBuilder, \
     MultiAgentBatch
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
@@ -340,8 +340,9 @@ def _env_runner(async_vector_env,
                             PolicyEvalData(
                                 env_id, agent_id, filtered_obs,
                                 episode.rnn_state_for(agent_id),
-                                np.zeros_like(policy.action_space.sample()),
-                                0.0))
+                                np.zeros_like(
+                                    _flatten_action(
+                                        policy.action_space.sample())), 0.0))
 
         # Batch eval policy actions if possible
         if tf_sess:
@@ -382,6 +383,7 @@ def _env_runner(async_vector_env,
             for f_i, column in enumerate(rnn_out_cols):
                 pi_info_cols["state_out_{}".format(f_i)] = column
             # Save output rows
+            actions = _unbatch_tuple_actions(actions)
             for i, action in enumerate(actions):
                 env_id = eval_data[i].env_id
                 agent_id = eval_data[i].agent_id
@@ -419,6 +421,16 @@ def _fetch_atari_metrics(async_vector_env):
         for eps_rew, eps_len in monitor.next_episode_results():
             atari_out.append(RolloutMetrics(eps_len, eps_rew, {}))
     return atari_out
+
+
+def _unbatch_tuple_actions(action_batch):
+    # convert list of batches -> batch of lists
+    if isinstance(action_batch, list):
+        out = []
+        for j in range(len(action_batch[0])):
+            out.append([action_batch[i][j] for i in range(len(action_batch))])
+        return out
+    return action_batch
 
 
 def _to_column_format(rnn_state_rows):

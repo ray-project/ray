@@ -76,8 +76,8 @@ class Worker(object):
 
         self.sess = utils.make_session(single_threaded=True)
         self.policy = policies.GenericPolicy(
-            self.sess, self.env.action_space, self.preprocessor,
-            config["observation_filter"], config["model"])
+            self.sess, self.env.action_space, self.env.observation_space,
+            self.preprocessor, config["observation_filter"], config["model"])
 
     def rollout(self, timestep_limit, add_noise=False):
         rollout_rewards, rollout_length = policies.rollout(
@@ -152,7 +152,7 @@ class ARSAgent(Agent):
 
         self.sess = utils.make_session(single_threaded=False)
         self.policy = policies.GenericPolicy(
-            self.sess, env.action_space, preprocessor,
+            self.sess, env.action_space, env.observation_space, preprocessor,
             self.config["observation_filter"], self.config["model"])
         self.optimizer = optimizers.SGD(self.policy,
                                         self.config["sgd_stepsize"])

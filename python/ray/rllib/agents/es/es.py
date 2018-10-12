@@ -81,8 +81,9 @@ class Worker(object):
 
         self.sess = utils.make_session(single_threaded=True)
         self.policy = policies.GenericPolicy(
-            self.sess, self.env.action_space, self.preprocessor,
-            config["observation_filter"], config["model"], **policy_params)
+            self.sess, self.env.action_space, self.env.observation_space,
+            self.preprocessor, config["observation_filter"], config["model"],
+            **policy_params)
 
     def rollout(self, timestep_limit, add_noise=True):
         rollout_rewards, rollout_length = policies.rollout(
@@ -161,7 +162,7 @@ class ESAgent(Agent):
 
         self.sess = utils.make_session(single_threaded=False)
         self.policy = policies.GenericPolicy(
-            self.sess, env.action_space, preprocessor,
+            self.sess, env.action_space, env.observation_space, preprocessor,
             self.config["observation_filter"], self.config["model"],
             **policy_params)
         self.optimizer = optimizers.Adam(self.policy, self.config["stepsize"])

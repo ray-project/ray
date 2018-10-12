@@ -122,9 +122,9 @@ class TFPolicyGraph(PolicyGraph):
         builder.add_feed_dict({self._obs_input: obs_batch})
         if state_batches:
             builder.add_feed_dict({self._seq_lens: np.ones(len(obs_batch))})
-        if prev_action_batch:
+        if self._prev_action_input is not None and prev_action_batch:
             builder.add_feed_dict({self._prev_action_input: prev_action_batch})
-        if prev_reward_batch:
+        if self._prev_reward_input is not None and prev_reward_batch:
             builder.add_feed_dict({self._prev_reward_input: prev_reward_batch})
         builder.add_feed_dict({self._is_training: is_training})
         builder.add_feed_dict(dict(zip(self._state_inputs, state_batches)))
@@ -135,11 +135,14 @@ class TFPolicyGraph(PolicyGraph):
     def compute_actions(self,
                         obs_batch,
                         state_batches=None,
+                        prev_action_batch=None,
+                        prev_reward_batch=None,
                         is_training=False,
                         episodes=None):
         builder = TFRunBuilder(self._sess, "compute_actions")
         fetches = self.build_compute_actions(builder, obs_batch, state_batches,
-                                             is_training)
+                                             prev_action_batch,
+                                             prev_reward_batch, is_training)
         return builder.get(fetches)
 
     def _get_loss_inputs_dict(self, batch):

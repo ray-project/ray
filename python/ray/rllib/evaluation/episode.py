@@ -80,7 +80,8 @@ class MultiAgentEpisode(object):
             return _flatten_action(self._agent_to_last_action[agent_id])
         else:
             policy = self._policies[self.policy_for(agent_id)]
-            return _flatten_action(np.zeros_like(policy.action_space.sample()))
+            flat = _flatten_action(policy.action_space.sample())
+            return np.zeros_like(flat)
 
     def prev_action_for(self, agent_id):
         """Returns the previous action for the specified agent."""
@@ -137,12 +138,12 @@ class MultiAgentEpisode(object):
 
 def _flatten_action(action):
     # Concatenate tuple actions
-    if isinstance(action, list):
+    if isinstance(action, list) or isinstance(action, tuple):
         expanded = []
         for a in action:
-            if len(a.shape) == 1:
+            if not hasattr(a, "shape") or len(a.shape) == 0:
                 expanded.append(np.expand_dims(a, 1))
             else:
                 expanded.append(a)
-        action = np.concatenate(expanded, axis=1).flatten()
+        action = np.concatenate(expanded, axis=0).flatten()
     return action

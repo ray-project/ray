@@ -225,4 +225,4 @@ class MultiActionDistribution(ActionDistribution):
 
     def sample(self):
         """Draw a sample from the action distribution."""
-        return [[s.sample() for s in self.child_distributions]]
+        return [s.sample() for s in self.child_distributions]
