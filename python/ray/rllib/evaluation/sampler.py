@@ -361,14 +361,16 @@ def _env_runner(async_vector_env,
                             TFPolicyGraph.compute_actions.__code__):
                 pending_fetches[policy_id] = policy.build_compute_actions(
                     builder, [t.obs for t in eval_data],
-                    rnn_in, [t.prev_action for t in eval_data],
-                    [t.prev_reward for t in eval_data],
+                    rnn_in,
+                    prev_action_batch=[t.prev_action for t in eval_data],
+                    prev_reward_batch=[t.prev_reward for t in eval_data],
                     is_training=True)
             else:
                 eval_results[policy_id] = policy.compute_actions(
                     [t.obs for t in eval_data],
-                    rnn_in, [t.prev_action for t in eval_data],
-                    [t.prev_reward for t in eval_data],
+                    rnn_in,
+                    prev_action_batch=[t.prev_action for t in eval_data],
+                    prev_reward_batch=[t.prev_reward for t in eval_data],
                     is_training=True,
                     episodes=[active_episodes[t.env_id] for t in eval_data])
         if builder:
