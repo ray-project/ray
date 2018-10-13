@@ -36,15 +36,18 @@ DEFAULT_CONFIG = with_common_config({
     "num_workers": 2,
     "num_cpus_per_worker": 1,
     "num_gpus_per_worker": 0,
-    # number of GPUs to use for optimization
+    # number of GPUs the learner should use.
     "num_gpus": 1,
-    # set >1 to load data into GPUs in parallel. Increases GPU memory usage.
+    # set >1 to load data into GPUs in parallel. Increases GPU memory usage
+    # proportionally with the number of loaders.
     "num_parallel_data_loaders": 1,
-    # level of queuing for sampling
+    # level of queuing for sampling.
     "max_sample_requests_in_flight_per_worker": 2,
-    # set >0 to enable experience replay
+    # set >0 to enable experience replay. Saved samples will be replayed with
+    # a p:1 proportion to new data samples.
     "replay_proportion": 0.0,
-    # number of sample batches to store for replay
+    # number of sample batches to store for replay. The number of transitions
+    # saved total will be (replay_buffer_num_slots * sample_batch_size).
     "replay_buffer_num_slots": 100,
 
     # Learning params.
