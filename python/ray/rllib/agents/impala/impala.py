@@ -16,11 +16,11 @@ OPTIMIZER_SHARED_CONFIGS = [
     "num_gpus",
     "sample_batch_size",
     "train_batch_size",
-    "replay_batch_slots",
-    "replay_proportion",
-    "gpu_queue_size",
+    "replay_buffer_num_slots",
+    "replay_fraction",
+    "num_parallel_data_loaders",
     "grad_clip",
-    "sample_queue_depth",
+    "max_sample_requests_in_flight_per_worker",
 ]
 
 DEFAULT_CONFIG = with_common_config({
@@ -33,14 +33,19 @@ DEFAULT_CONFIG = with_common_config({
     "sample_batch_size": 50,
     "train_batch_size": 500,
     "min_iter_time_s": 10,
-    "num_gpus": 1,
     "num_workers": 2,
     "num_cpus_per_worker": 1,
     "num_gpus_per_worker": 0,
-    "replay_batch_slots": 0,
-    "replay_proportion": 0.0,
-    "gpu_queue_size": 2,  # increases GPU mem usage by Nx to preload samples
-    "sample_queue_depth": 2,
+    # number of GPUs to use for optimization
+    "num_gpus": 1,
+    # set >1 to load data into GPUs in parallel. Increases GPU memory usage.
+    "num_parallel_data_loaders": 1,
+    # level of queuing for sampling
+    "max_sample_requests_in_flight_per_worker": 2,
+    # set >0 to enable experience replay
+    "replay_fraction": 0.0,
+    # number of sample batches to store for replay
+    "replay_buffer_num_slots": 100,
 
     # Learning params.
     "grad_clip": 40.0,

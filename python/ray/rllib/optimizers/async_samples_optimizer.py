@@ -73,7 +73,7 @@ class TFMultiGPULearner(LearnerThread):
                  lr=0.0005,
                  train_batch_size=500,
                  grad_clip=40,
-                 gpu_queue_size=1):
+                 num_parallel_data_loaders=1):
         import tensorflow as tf
 
         LearnerThread.__init__(self, local_evaluator)
@@ -104,7 +104,7 @@ class TFMultiGPULearner(LearnerThread):
                     else:
                         rnn_inputs = []
                     adam = tf.train.AdamOptimizer(self.lr)
-                    for _ in range(gpu_queue_size):
+                    for _ in range(num_parallel_data_loaders):
                         self.par_opt.append(
                             LocalSyncParallelOptimizer(
                                 adam,
@@ -197,16 +197,19 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
               lr=0.0005,
               debug=False,
               grad_clip=40,
-              replay_batch_slots=0,
-              replay_proportion=0.0,
-              gpu_queue_size=1,
-              sample_queue_depth=2):
+              replay_buffer_num_slots=0,
+              replay_fraction=0.0,
+              num_parallel_data_loaders=1,
+              max_sample_requests_in_flight_per_worker=2):
         self.debug = debug
         self.learning_started = False
         self.train_batch_size = train_batch_size
         self.sample_batch_size = sample_batch_size
 
-        if num_gpus > 1 or gpu_queue_size > 1:
+        if num_gpus > 1 or num_parallel_data_loaders > 1:
+            print(
+                "Enabling multi-GPU mode, {} GPUs, {} parallel loaders".format(
+                    num_gpus, num_parallel_data_loaders))
             if train_batch_size // num_gpus % (
                     sample_batch_size // num_envs_per_worker) != 0:
                 raise ValueError(
@@ -217,7 +220,7 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
                 num_gpus=num_gpus,
                 train_batch_size=train_batch_size,
                 grad_clip=grad_clip,
-                gpu_queue_size=gpu_queue_size)
+                num_parallel_data_loaders=num_parallel_data_loaders)
         else:
             self.learner = LearnerThread(self.local_evaluator)
         self.learner.start()
@@ -239,16 +242,16 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
         weights = self.local_evaluator.get_weights()
         for ev in self.remote_evaluators:
             ev.set_weights.remote(weights)
-            for _ in range(sample_queue_depth):
+            for _ in range(max_sample_requests_in_flight_per_worker):
                 self.sample_tasks.add(ev, ev.sample.remote())
 
         self.batch_buffer = []
 
-        assert not replay_proportion or replay_batch_slots > 0
-        assert not replay_batch_slots or \
-            replay_batch_slots * sample_batch_size > train_batch_size
-        self.replay_proportion = replay_proportion
-        self.replay_batch_slots = replay_batch_slots
+        assert not replay_fraction or replay_buffer_num_slots > 0
+        assert not replay_buffer_num_slots or \
+            replay_buffer_num_slots * sample_batch_size > train_batch_size
+        self.replay_fraction = replay_fraction
+        self.replay_buffer_num_slots = replay_buffer_num_slots
         self.replay_batches = []
 
     def step(self):
@@ -271,7 +274,7 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
             np.ceil(self.train_batch_size / self.sample_batch_size))
         if len(self.replay_batches) <= num_needed:
             return
-        f = self.replay_proportion
+        f = self.replay_fraction
         while random.random() < f:
             f -= 1
             samples = np.random.choice(
@@ -301,9 +304,9 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
                     self._replay_as_needed()
 
                 # Put in replay buffer if enabled
-                if self.replay_batch_slots > 0:
+                if self.replay_buffer_num_slots > 0:
                     self.replay_batches.append(sample_batch)
-                    if len(self.replay_batches) > self.replay_batch_slots:
+                    if len(self.replay_batches) > self.replay_buffer_num_slots:
                         self.replay_batches.pop(0)
 
                 # Note that it's important to pull new weights once
