@@ -273,10 +273,7 @@ class ModelCatalog(object):
         elif isinstance(env, VectorEnv):
             return _RLlibVectorPreprocessorWrapper(env, preprocessor)
         elif isinstance(env, ServingEnv):
-            wrapped = _ServingEnvToAsync(env, preprocessor)
-            wrapped.action_space = env.action_space
-            wrapped.observation_space = preprocessor.observation_space
-            return wrapped
+            return _ServingEnvToAsync(env, preprocessor)
         else:
             raise ValueError("Don't know how to wrap {}".format(env))
 

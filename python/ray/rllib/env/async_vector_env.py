@@ -152,7 +152,10 @@ class _ServingEnvToAsync(AsyncVectorEnv):
         self.serving_env = serving_env
         self.prep = preprocessor
         self.action_space = serving_env.action_space
-        self.observation_space = serving_env.observation_space
+        if preprocessor:
+            self.observation_space = preprocessor.observation_space
+        else:
+            self.observation_space = serving_env.observation_space
         serving_env.start()
 
     def poll(self):
