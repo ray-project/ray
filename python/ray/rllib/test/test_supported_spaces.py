@@ -14,24 +14,24 @@ from ray.tune.registry import register_env
 
 ACTION_SPACES_TO_TEST = {
     "discrete": Discrete(5),
-    "vector": Box(-100.0, 100.0, (5, ), dtype=np.float32),
+    "vector": Box(-1.0, 1.0, (5, ), dtype=np.float32),
     "tuple": Tuple([
         Discrete(2),
         Discrete(3),
-        Box(-100.0, 100.0, (5, ), dtype=np.float32)
+        Box(-1.0, 1.0, (5, ), dtype=np.float32)
     ]),
 }
 
 OBSERVATION_SPACES_TO_TEST = {
     "discrete": Discrete(5),
-    "vector": Box(-100.0, 100.0, (5, ), dtype=np.float32),
-    "image": Box(-100.0, 100.0, (84, 84, 1), dtype=np.float32),
-    "atari": Box(-100.0, 100.0, (210, 160, 3), dtype=np.float32),
+    "vector": Box(-1.0, 1.0, (5, ), dtype=np.float32),
+    "image": Box(-1.0, 1.0, (84, 84, 1), dtype=np.float32),
+    "atari": Box(-1.0, 1.0, (210, 160, 3), dtype=np.float32),
     "tuple": Tuple([Discrete(10),
-                    Box(-100.0, 100.0, (5, ), dtype=np.float32)]),
+                    Box(-1.0, 1.0, (5, ), dtype=np.float32)]),
     "dict": Dict({
         "task": Discrete(10),
-        "position": Box(-100.0, 100.0, (5, ), dtype=np.float32),
+        "position": Box(-1.0, 1.0, (5, ), dtype=np.float32),
     }),
 }
 
