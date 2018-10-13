@@ -195,13 +195,11 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
               num_envs_per_worker=1,
               num_gpus=0,
               lr=0.0005,
-              debug=False,
               grad_clip=40,
               replay_buffer_num_slots=0,
               replay_fraction=0.0,
               num_parallel_data_loaders=1,
               max_sample_requests_in_flight_per_worker=2):
-        self.debug = debug
         self.learning_started = False
         self.train_batch_size = train_batch_size
         self.sample_batch_size = sample_batch_size
@@ -346,14 +344,9 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
             "train_throughput": round(self.timers["train"].mean_throughput, 3),
             "num_weight_syncs": self.num_weight_syncs,
             "num_steps_replayed": self.num_replayed,
-        }
-        debug_stats = {
             "timing_breakdown": timing,
-            "pending_sample_tasks": self.sample_tasks.count,
             "learner_queue": self.learner.learner_queue_size.stats(),
         }
-        if self.debug:
-            stats.update(debug_stats)
         if self.learner.stats:
             stats["learner"] = self.learner.stats
         return dict(PolicyOptimizer.stats(self), **stats)
