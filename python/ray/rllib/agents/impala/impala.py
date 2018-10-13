@@ -17,7 +17,7 @@ OPTIMIZER_SHARED_CONFIGS = [
     "sample_batch_size",
     "train_batch_size",
     "replay_buffer_num_slots",
-    "replay_fraction",
+    "replay_proportion",
     "num_parallel_data_loaders",
     "grad_clip",
     "max_sample_requests_in_flight_per_worker",
@@ -43,7 +43,7 @@ DEFAULT_CONFIG = with_common_config({
     # level of queuing for sampling
     "max_sample_requests_in_flight_per_worker": 2,
     # set >0 to enable experience replay
-    "replay_fraction": 0.0,
+    "replay_proportion": 0.0,
     # number of sample batches to store for replay
     "replay_buffer_num_slots": 100,
 

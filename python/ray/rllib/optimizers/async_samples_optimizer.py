@@ -197,7 +197,7 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
               lr=0.0005,
               grad_clip=40,
               replay_buffer_num_slots=0,
-              replay_fraction=0.0,
+              replay_proportion=0.0,
               num_parallel_data_loaders=1,
               max_sample_requests_in_flight_per_worker=2):
         self.learning_started = False
@@ -208,7 +208,7 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
             print(
                 "Enabling multi-GPU mode, {} GPUs, {} parallel loaders".format(
                     num_gpus, num_parallel_data_loaders))
-            if train_batch_size // num_gpus % (
+            if train_batch_size // max(1, num_gpus) % (
                     sample_batch_size // num_envs_per_worker) != 0:
                 raise ValueError(
                     "Sample batches must evenly divide across GPUs.")
@@ -245,10 +245,10 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
 
         self.batch_buffer = []
 
-        assert not replay_fraction or replay_buffer_num_slots > 0
+        assert not replay_proportion or replay_buffer_num_slots > 0
         assert not replay_buffer_num_slots or \
             replay_buffer_num_slots * sample_batch_size > train_batch_size
-        self.replay_fraction = replay_fraction
+        self.replay_proportion = replay_proportion
         self.replay_buffer_num_slots = replay_buffer_num_slots
         self.replay_batches = []
 
@@ -272,7 +272,7 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
             np.ceil(self.train_batch_size / self.sample_batch_size))
         if len(self.replay_batches) <= num_needed:
             return
-        f = self.replay_fraction
+        f = self.replay_proportion
         while random.random() < f:
             f -= 1
             samples = np.random.choice(
