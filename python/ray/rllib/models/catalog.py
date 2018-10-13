@@ -10,11 +10,13 @@ from functools import partial
 from ray.tune.registry import RLLIB_MODEL, RLLIB_PREPROCESSOR, \
     _global_registry
 
+from ray.rllib.env.async_vector_env import _ServingEnvToAsync
+from ray.rllib.env.serving_env import ServingEnv
+from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.models.action_dist import (
     Categorical, Deterministic, DiagGaussian, MultiActionDistribution,
     squash_to_range)
-from ray.rllib.models.preprocessors import get_preprocessor, \
-    TupleFlatteningPreprocessor, DictFlatteningPreprocessor
+from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.models.fcnet import FullyConnectedNetwork
 from ray.rllib.models.visionnet import VisionNetwork
 from ray.rllib.models.lstm import LSTM
@@ -33,6 +35,7 @@ MODEL_CONFIGS = [
     "free_log_std",  # Documented in ray.rllib.models.Model
     "channel_major",  # Pytorch conv requires images to be channel-major
     "squash_to_range",  # Whether to squash the action output to space range
+    "no_framestack",  # Don't framestack Atari observations
     "use_lstm",  # Whether to wrap the model with a LSTM
     "max_seq_len",  # Max seq len for training the LSTM, defaults to 20
     "lstm_cell_size",  # Size of the LSTM cell
@@ -191,7 +194,7 @@ class ModelCatalog(object):
                                      options)
 
     @staticmethod
-    def get_torch_model(input_shape, num_outputs, options={}):
+    def get_torch_model(input_shape, num_outputs, options=None):
         """Returns a PyTorch suitable model. This is currently only supported
         in A3C.
 
@@ -208,6 +211,7 @@ class ModelCatalog(object):
         from ray.rllib.models.pytorch.visionnet import (VisionNetwork as
                                                         PyTorchVisionNet)
 
+        options = options or {}
         if "custom_model" in options:
             model = options["custom_model"]
             print("Using custom torch model {}".format(model))
@@ -225,16 +229,17 @@ class ModelCatalog(object):
         return PyTorchFCNet(input_shape[0], num_outputs, options)
 
     @staticmethod
-    def get_preprocessor(env, options={}):
+    def get_preprocessor(env, options=None):
         """Returns a suitable processor for the given environment.
 
         Args:
-            env (gym.Env): The gym environment to preprocess.
+            env (gym.Env|VectorEnv|ServingEnv): The environment to wrap.
             options (dict): Options to pass to the preprocessor.
 
         Returns:
             preprocessor (Preprocessor): Preprocessor for the env observations.
         """
+        options = options or {}
         for k in options.keys():
             if k not in MODEL_CONFIGS:
                 raise Exception("Unknown config key `{}`, all keys: {}".format(
@@ -250,19 +255,30 @@ class ModelCatalog(object):
         return preprocessor(env.observation_space, options)
 
     @staticmethod
-    def get_preprocessor_as_wrapper(env, options={}):
+    def get_preprocessor_as_wrapper(env, options=None):
         """Returns a preprocessor as a gym observation wrapper.
 
         Args:
-            env (gym.Env): The gym environment to wrap.
+            env (gym.Env|VectorEnv|ServingEnv): The environment to wrap.
             options (dict): Options to pass to the preprocessor.
 
         Returns:
-            wrapper (gym.ObservationWrapper): Preprocessor in wrapper form.
+            env (RLlib env): Wrapped environment
         """
 
+        options = options or {}
         preprocessor = ModelCatalog.get_preprocessor(env, options)
-        return _RLlibPreprocessorWrapper(env, preprocessor)
+        if isinstance(env, gym.Env):
+            return _RLlibPreprocessorWrapper(env, preprocessor)
+        elif isinstance(env, VectorEnv):
+            return _RLlibVectorPreprocessorWrapper(env, preprocessor)
+        elif isinstance(env, ServingEnv):
+            wrapped = _ServingEnvToAsync(env, preprocessor)
+            wrapped.action_space = env.action_space
+            wrapped.observation_space = preprocessor.observation_space
+            return wrapped
+        else:
+            raise ValueError("Don't know how to wrap {}".format(env))
 
     @staticmethod
     def register_custom_preprocessor(preprocessor_name, preprocessor_class):
@@ -298,17 +314,32 @@ class _RLlibPreprocessorWrapper(gym.ObservationWrapper):
     def __init__(self, env, preprocessor):
         super(_RLlibPreprocessorWrapper, self).__init__(env)
         self.preprocessor = preprocessor
-        assert preprocessor.shape is not None, preprocessor
-
-        from gym.spaces.box import Box
-        self.observation_space = Box(
-            -1.0, 1.0, preprocessor.shape, dtype=np.float32)
-
-        # Stash the unwrapped space so that we can unwrap dict and tuple spaces
-        # automatically in model.py
-        if (isinstance(preprocessor, TupleFlatteningPreprocessor)
-                or isinstance(preprocessor, DictFlatteningPreprocessor)):
-            self.observation_space.original_space = env.observation_space
+        self.observation_space = preprocessor.observation_space
 
     def observation(self, observation):
         return self.preprocessor.transform(observation)
+
+
+class _RLlibVectorPreprocessorWrapper(VectorEnv):
+    """Preprocessing wrapper for vector envs."""
+
+    def __init__(self, env, preprocessor):
+        self.env = env
+        self.prep = preprocessor
+        self.action_space = env.action_space
+        self.observation_space = preprocessor.observation_space
+        self.num_envs = env.num_envs
+
+    def vector_reset(self):
+        return [self.prep.transform(obs) for obs in self.env.vector_reset()]
+
+    def reset_at(self, index):
+        return self.prep.transform(self.env.reset_at(index))
+
+    def vector_step(self, actions):
+        obs, rewards, dones, infos = self.env.vector_step(actions)
+        obs = [self.prep.transform(o) for o in obs]
+        return obs, rewards, dones, infos
+
+    def get_unwrapped(self):
+        return self.env.get_unwrapped()

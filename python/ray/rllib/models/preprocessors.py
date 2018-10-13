@@ -16,14 +16,15 @@ class Preprocessor(object):
         shape (obj): Shape of the preprocessed output.
     """
 
-    def __init__(self, obs_space, options):
+    def __init__(self, obs_space, options=None):
         legacy_patch_shapes(obs_space)
         self._obs_space = obs_space
-        self._options = options
-        self._init()
+        self._options = options or {}
+        self.shape = self._init_shape(obs_space, options)
 
-    def _init(self):
-        pass
+    def _init_shape(self, obs_space, options):
+        """Returns the shape after preprocessing."""
+        raise NotImplementedError
 
     def transform(self, observation):
         """Returns the preprocessed observation."""
@@ -33,21 +34,32 @@ class Preprocessor(object):
     def size(self):
         return int(np.product(self.shape))
 
+    @property
+    def observation_space(self):
+        obs_space = gym.spaces.Box(-1.0, 1.0, self.shape, dtype=np.float32)
+        # Stash the unwrapped space so that we can unwrap dict and tuple spaces
+        # automatically in model.py
+        if (isinstance(self, TupleFlatteningPreprocessor)
+                or isinstance(self, DictFlatteningPreprocessor)):
+            obs_space.original_space = self._obs_space
+        return obs_space
+
 
 class AtariPixelPreprocessor(Preprocessor):
-    def _init(self):
-        self._grayscale = self._options.get("grayscale", False)
-        self._zero_mean = self._options.get("zero_mean", True)
-        self._dim = self._options.get("dim", 84)
-        self._channel_major = self._options.get("channel_major", False)
+    def _init_shape(self, obs_space, options):
+        self._grayscale = options.get("grayscale", False)
+        self._zero_mean = options.get("zero_mean", True)
+        self._dim = options.get("dim", 84)
+        self._channel_major = options.get("channel_major", False)
         if self._grayscale:
-            self.shape = (self._dim, self._dim, 1)
+            shape = (self._dim, self._dim, 1)
         else:
-            self.shape = (self._dim, self._dim, 3)
+            shape = (self._dim, self._dim, 3)
 
         # channel_major requires (# in-channels, row dim, col dim)
         if self._channel_major:
-            self.shape = self.shape[-1:] + self.shape[:-1]
+            shape = self.shape[-1:] + self.shape[:-1]
+        return shape
 
     def transform(self, observation):
         """Downsamples images from (210, 160, 3) by the configured factor."""
@@ -73,16 +85,16 @@ class AtariPixelPreprocessor(Preprocessor):
 
 
 class AtariRamPreprocessor(Preprocessor):
-    def _init(self):
-        self.shape = (128, )
+    def _init_shape(self, obs_space, options):
+        return (128, )
 
     def transform(self, observation):
         return (observation - 128) / 128
 
 
 class OneHotPreprocessor(Preprocessor):
-    def _init(self):
-        self.shape = (self._obs_space.n, )
+    def _init_shape(self, obs_space, options):
+        return (self._obs_space.n, )
 
     def transform(self, observation):
         arr = np.zeros(self._obs_space.n)
@@ -91,8 +103,8 @@ class OneHotPreprocessor(Preprocessor):
 
 
 class NoPreprocessor(Preprocessor):
-    def _init(self):
-        self.shape = self._obs_space.shape
+    def _init_shape(self, obs_space, options):
+        return self._obs_space.shape
 
     def transform(self, observation):
         return observation
@@ -104,7 +116,7 @@ class TupleFlatteningPreprocessor(Preprocessor):
     RLlib models will unpack the flattened output before _build_layers_v2().
     """
 
-    def _init(self):
+    def _init_shape(self, obs_space, options):
         assert isinstance(self._obs_space, gym.spaces.Tuple)
         size = 0
         self.preprocessors = []
@@ -114,7 +126,7 @@ class TupleFlatteningPreprocessor(Preprocessor):
             preprocessor = get_preprocessor(space)(space, self._options)
             self.preprocessors.append(preprocessor)
             size += preprocessor.size
-        self.shape = (size, )
+        return (size, )
 
     def transform(self, observation):
         assert len(observation) == len(self.preprocessors), observation
@@ -130,7 +142,7 @@ class DictFlatteningPreprocessor(Preprocessor):
     RLlib models will unpack the flattened output before _build_layers_v2().
     """
 
-    def _init(self):
+    def _init_shape(self, obs_space, options):
         assert isinstance(self._obs_space, gym.spaces.Dict)
         size = 0
         self.preprocessors = []
@@ -139,7 +151,7 @@ class DictFlatteningPreprocessor(Preprocessor):
             preprocessor = get_preprocessor(space)(space, self._options)
             self.preprocessors.append(preprocessor)
             size += preprocessor.size
-        self.shape = (size, )
+        return (size, )
 
     def transform(self, observation):
         assert len(observation) == len(self.preprocessors), \

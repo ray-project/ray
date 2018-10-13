@@ -13,8 +13,11 @@ import unittest
 
 import ray
 from ray.rllib.agents.pg import PGAgent
+from ray.rllib.env.async_vector_env import AsyncVectorEnv
+from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.model import Model
+from ray.rllib.test.test_serving_env import SimpleServing
 from ray.tune.registry import register_env
 
 DICT_SPACE = spaces.Dict({
@@ -155,9 +158,9 @@ class NestedSpacesTest(unittest.TestCase):
                 },
             }))
 
-    def testNestedDict(self):
+    def doTestNestedDict(self, make_env):
         ModelCatalog.register_custom_model("composite", DictSpyModel)
-        register_env("nested", lambda _: NestedDictEnv())
+        register_env("nested", make_env)
         pg = PGAgent(
             env="nested",
             config={
@@ -182,9 +185,9 @@ class NestedSpacesTest(unittest.TestCase):
             self.assertEqual(seen[1][0].tolist(), cam_i)
             self.assertEqual(seen[2][0].tolist(), task_i)
 
-    def testNestedTuple(self):
+    def doTestNestedTuple(self, make_env):
         ModelCatalog.register_custom_model("composite2", TupleSpyModel)
-        register_env("nested2", lambda _: NestedTupleEnv())
+        register_env("nested2", make_env)
         pg = PGAgent(
             env="nested2",
             config={
@@ -207,6 +210,38 @@ class NestedSpacesTest(unittest.TestCase):
             self.assertEqual(seen[0][0].tolist(), pos_i)
             self.assertEqual(seen[1][0].tolist(), cam_i)
             self.assertEqual(seen[2][0].tolist(), task_i)
+
+    def testNestedDictGym(self):
+        self.doTestNestedDict(lambda _: NestedDictEnv())
+
+    def testNestedDictVector(self):
+        self.doTestNestedDict(
+            lambda _: VectorEnv.wrap(lambda i: NestedDictEnv()))
+
+    def testNestedDictServing(self):
+        self.doTestNestedDict(lambda _: SimpleServing(NestedDictEnv()))
+
+    def testNestedDictAsync(self):
+        self.assertRaisesRegexp(
+            ValueError, "Found raw Dict space.*",
+            lambda: self.doTestNestedDict(
+                lambda _: AsyncVectorEnv.wrap_async(NestedDictEnv())))
+
+    def testNestedTupleGym(self):
+        self.doTestNestedTuple(lambda _: NestedTupleEnv())
+
+    def testNestedTupleVector(self):
+        self.doTestNestedTuple(
+            lambda _: VectorEnv.wrap(lambda i: NestedTupleEnv()))
+
+    def testNestedTupleServing(self):
+        self.doTestNestedTuple(lambda _: SimpleServing(NestedTupleEnv()))
+
+    def testNestedTupleAsync(self):
+        self.assertRaisesRegexp(
+            ValueError, "Found raw Tuple space.*",
+            lambda: self.doTestNestedTuple(
+                lambda _: AsyncVectorEnv.wrap_async(NestedTupleEnv())))
 
 
 if __name__ == "__main__":

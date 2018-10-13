@@ -22,6 +22,12 @@ class AsyncVectorEnv(object):
         rllib.MultiAgentEnv => rllib.AsyncVectorEnv
         rllib.ServingEnv => rllib.AsyncVectorEnv
 
+    Attributes:
+        action_space (gym.Space): Action space. This must be defined for
+            single-agent envs. Multi-agent envs can set this to None.
+        observation_space (gym.Space): Observation space. This must be defined
+            for single-agent envs. Multi-agent envs can set this to None.
+
     Examples:
         >>> env = MyAsyncVectorEnv()
         >>> obs, rewards, dones, infos, off_policy_actions = env.poll()
@@ -142,8 +148,11 @@ def _with_dummy_agent_id(env_id_to_values, dummy_id=_DUMMY_AGENT_ID):
 class _ServingEnvToAsync(AsyncVectorEnv):
     """Internal adapter of ServingEnv to AsyncVectorEnv."""
 
-    def __init__(self, serving_env):
+    def __init__(self, serving_env, preprocessor=None):
         self.serving_env = serving_env
+        self.prep = preprocessor
+        self.action_space = serving_env.action_space
+        self.observation_space = serving_env.observation_space
         serving_env.start()
 
     def poll(self):
@@ -168,7 +177,10 @@ class _ServingEnvToAsync(AsyncVectorEnv):
             if episode.cur_done:
                 del self.serving_env._episodes[eid]
             if data:
-                all_obs[eid] = data["obs"]
+                if self.prep:
+                    all_obs[eid] = self.prep.transform(data["obs"])
+                else:
+                    all_obs[eid] = data["obs"]
                 all_rewards[eid] = data["reward"]
                 all_dones[eid] = data["done"]
                 all_infos[eid] = data["info"]
@@ -196,6 +208,8 @@ class _VectorEnvToAsync(AsyncVectorEnv):
 
     def __init__(self, vector_env):
         self.vector_env = vector_env
+        self.action_space = vector_env.action_space
+        self.observation_space = vector_env.observation_space
         self.num_envs = vector_env.num_envs
         self.new_obs = self.vector_env.vector_reset()
         self.cur_rewards = [None for _ in range(self.num_envs)]
