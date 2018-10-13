@@ -132,7 +132,7 @@ def _restore_original_dimensions(input_dict, obs_space):
 def _unpack_obs(obs, space):
     if (isinstance(space, gym.spaces.Dict)
             or isinstance(space, gym.spaces.Tuple)):
-        prep = get_preprocessor(space)(space, {})
+        prep = get_preprocessor(space)(space)
         if len(obs.shape) != 2 or obs.shape[1] != prep.shape[0]:
             raise ValueError(
                 "Expected flattened obs shape of [None, {}], got {}".format(
