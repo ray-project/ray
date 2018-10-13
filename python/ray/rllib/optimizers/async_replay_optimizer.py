@@ -87,14 +87,14 @@ class ReplayActor(object):
             new_priorities = (np.abs(td_errors) + self.prioritized_replay_eps)
             self.replay_buffer.update_priorities(batch_indexes, new_priorities)
 
-    def stats(self):
+    def stats(self, debug=False):
         stat = {
             "add_batch_time_ms": round(1000 * self.add_batch_timer.mean, 3),
             "replay_time_ms": round(1000 * self.replay_timer.mean, 3),
             "update_priorities_time_ms": round(
                 1000 * self.update_priorities_timer.mean, 3),
         }
-        stat.update(self.replay_buffer.stats())
+        stat.update(self.replay_buffer.stats(debug=debug))
         return stat
 
 
@@ -274,7 +274,7 @@ class AsyncReplayOptimizer(PolicyOptimizer):
         return sample_timesteps, train_timesteps
 
     def stats(self):
-        replay_stats = ray.get(self.replay_actors[0].stats.remote())
+        replay_stats = ray.get(self.replay_actors[0].stats.remote(self.debug))
         timing = {
             "{}_time_ms".format(k): round(1000 * self.timers[k].mean, 3)
             for k in self.timers
@@ -288,13 +288,13 @@ class AsyncReplayOptimizer(PolicyOptimizer):
                                        3),
             "train_throughput": round(self.timers["train"].mean_throughput, 3),
             "num_weight_syncs": self.num_weight_syncs,
+            "learner_queue": self.learner.learner_queue_size.stats(),
+            "replay_shard_0": replay_stats,
         }
         debug_stats = {
-            "replay_shard_0": replay_stats,
             "timing_breakdown": timing,
             "pending_sample_tasks": self.sample_tasks.count,
             "pending_replay_tasks": self.replay_tasks.count,
-            "learner_queue": self.learner.learner_queue_size.stats(),
         }
         if self.debug:
             stats.update(debug_stats)
