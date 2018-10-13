@@ -18,7 +18,7 @@ import org.ray.runtime.generated.TaskInfo;
 import org.ray.runtime.generated.TaskLanguage;
 import org.ray.runtime.task.FunctionArg;
 import org.ray.runtime.task.TaskSpec;
-import org.ray.runtime.util.UniqueIdHelper;
+import org.ray.runtime.util.UniqueIdUtil;
 import org.ray.runtime.util.logger.RayLog;
 
 public class RayletClientImpl implements RayletClient {
@@ -50,7 +50,8 @@ public class RayletClientImpl implements RayletClient {
       ids.add(element.getId());
     }
 
-    boolean[] ready = nativeWaitObject(client, getIdBytes(ids), numReturns, timeoutMs, false);
+    boolean[] ready = nativeWaitObject(client, UniqueIdUtil.getIdBytes(ids),
+        numReturns, timeoutMs, false);
     List<RayObject<T>> readyList = new ArrayList<>();
     List<RayObject<T>> unreadyList = new ArrayList<>();
 
@@ -89,9 +90,9 @@ public class RayletClientImpl implements RayletClient {
   public void reconstructObjects(List<UniqueId> objectIds, boolean fetchOnly) {
     if (RayLog.core.isInfoEnabled()) {
       RayLog.core.info("Reconstructing objects for task {}, object IDs are {}",
-          UniqueIdHelper.computeTaskId(objectIds.get(0)), objectIds);
+          UniqueIdUtil.computeTaskId(objectIds.get(0)), objectIds);
     }
-    nativeReconstructObjects(client, getIdBytes(objectIds), fetchOnly);
+    nativeReconstructObjects(client, UniqueIdUtil.getIdBytes(objectIds), fetchOnly);
   }
 
   @Override
@@ -107,7 +108,7 @@ public class RayletClientImpl implements RayletClient {
 
   @Override
   public void freePlasmaObjects(List<UniqueId> objectIds, boolean localOnly) {
-    byte[][] objectIdsArray = getIdBytes(objectIds);
+    byte[][] objectIdsArray = UniqueIdUtil.getIdBytes(objectIds);
     nativeFreePlasmaObjects(client, objectIdsArray, localOnly);
   }
 
@@ -240,15 +241,6 @@ public class RayletClientImpl implements RayletClient {
       assert (false);
     }
     return buffer;
-  }
-
-  private static byte[][] getIdBytes(List<UniqueId> objectIds) {
-    int size = objectIds.size();
-    byte[][] ids = new byte[size][];
-    for (int i = 0; i < size; i++) {
-      ids[i] = objectIds.get(i).getBytes();
-    }
-    return ids;
   }
 
   public void destroy() {

@@ -380,6 +380,10 @@ def _env_runner(async_vector_env,
         # Record the policy eval results
         for policy_id, eval_data in to_eval.items():
             actions, rnn_out_cols, pi_info_cols = eval_results[policy_id]
+            if len(rnn_in_cols[policy_id]) != len(rnn_out_cols):
+                raise ValueError(
+                    "Length of RNN in did not match RNN out, got: "
+                    "{} vs {}".format(rnn_in_cols[policy_id], rnn_out_cols))
             # Add RNN state info
             for f_i, column in enumerate(rnn_in_cols[policy_id]):
                 pi_info_cols["state_in_{}".format(f_i)] = column
