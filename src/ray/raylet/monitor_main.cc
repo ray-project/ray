@@ -12,11 +12,7 @@ int main(int argc, char *argv[]) {
 
   const std::string redis_address = std::string(argv[1]);
   int redis_port = std::stoi(argv[2]);
-
-  std::string redis_password = "";
-  if (argc == 4) {
-    redis_password = std::string(argv[3]);
-  }
+  const std::string redis_password = (argc == 4 ? std::string(argv[3]) : "");
 
   // Initialize the monitor.
   boost::asio::io_service io_service;

@@ -1,6 +1,5 @@
 #include "ray/gcs/client.h"
 
-#include "ray/constants.h"
 #include "ray/gcs/redis_context.h"
 
 static void GetRedisShards(redisContext *context, std::vector<std::string> &addresses,
@@ -73,7 +72,7 @@ namespace gcs {
 AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
                                const ClientID &client_id, CommandType command_type,
                                bool is_test_client = false,
-                               const std::string &password = redis_default_password) {
+                               const std::string &password = "") {
   primary_context_ = std::make_shared<RedisContext>();
 
   RAY_CHECK_OK(
@@ -152,7 +151,7 @@ AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
                      is_test_client) {}
 
 AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
-                               const std::string &password = redis_default_password)
+                               const std::string &password = "")
     : AsyncGcsClient(address, port, ClientID::from_random(), false, password) {}
 
 AsyncGcsClient::AsyncGcsClient(const std::string &address, int port, bool is_test_client)

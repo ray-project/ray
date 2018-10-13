@@ -31,11 +31,7 @@ int main(int argc, char *argv[]) {
   const std::string static_resource_list = std::string(argv[8]);
   const std::string python_worker_command = std::string(argv[9]);
   const std::string java_worker_command = std::string(argv[10]);
-
-  std::string redis_password = "";
-  if (argc == 12) {
-    redis_password = std::string(argv[11]);
-  }
+  const std::string redis_password = (argc == 12 ? std::string(argv[11]) : "");
 
   // Configuration for the node manager.
   ray::raylet::NodeManagerConfig node_manager_config;

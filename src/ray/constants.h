@@ -33,6 +33,4 @@ constexpr char kObjectTablePrefix[] = "ObjectTable";
 /// Prefix for the task table keys in redis.
 constexpr char kTaskTablePrefix[] = "TaskTable";
 
-/// Default password for Redis
-static std::string redis_default_password = "";
 #endif  // RAY_CONSTANTS_H_
