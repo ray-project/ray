@@ -51,6 +51,7 @@ public class RayConfig {
   public final String redisModulePath;
   public final String plasmaStoreExecutablePath;
   public final String rayletExecutablePath;
+  public final String driverResourcePath;
 
   private void validate() {
     if (workerMode == WorkerMode.WORKER) {
@@ -155,6 +156,13 @@ public class RayConfig {
     redisModulePath = rayHome + "/build/src/common/redis_module/libray_redis_module.so";
     plasmaStoreExecutablePath = rayHome + "/build/src/plasma/plasma_store_server";
     rayletExecutablePath = rayHome + "/build/src/ray/raylet/raylet";
+
+    // driver resource path
+    if (config.hasPath("ray.driver.resource-path")) {
+      driverResourcePath = config.getString("ray.driver.resource-path");
+    } else {
+      driverResourcePath = null;
+    }
 
     // validate config
     validate();
