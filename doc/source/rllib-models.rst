@@ -31,6 +31,25 @@ Custom models should subclass the common RLlib `model class <https://github.com/
 
     class MyModelClass(Model):
         def _build_layers_v2(self, input_dict, num_outputs, options):
+            """Define the layers of a custom model.
+
+            When using dict or tuple observation spaces, you can access
+            the nested sub-observation batches here as well:
+
+            Examples:
+                >>> print(input_dict)
+                {'prev_actions': <tf.Tensor shape=(?,) dtype=int64>,
+                 'prev_rewards': <tf.Tensor shape=(?,) dtype=float32>,
+                 'obs': OrderedDict([
+                    ('sensors', OrderedDict([
+                        ('front_cam', [
+                            <tf.Tensor shape=(?, 10, 10, 3) dtype=float32>,
+                            <tf.Tensor shape=(?, 10, 10, 3) dtype=float32>]),
+                        ('position', <tf.Tensor shape=(?, 3) dtype=float32>),
+                        ('rear_cam', <tf.Tensor shape=(?, 10, 10, 3) dtype=float32>),
+                        ('velocity', <tf.Tensor shape=(?, 3) dtype=float32>)]))])}
+            """
+
             layer1 = slim.fully_connected(input_dict["obs"], 64, ...)
             layer2 = slim.fully_connected(layer1, 64, ...)
             ...
