@@ -73,5 +73,5 @@ class TestRedisPassword(object):
             return
 
         task_id = f.remote()
-        ready, running = ray.wait([task_id], timeout=1000)
+        ready, running = ray.wait([task_id], timeout=5000)
         assert len(ready) > 0, "Expected task to complete"
