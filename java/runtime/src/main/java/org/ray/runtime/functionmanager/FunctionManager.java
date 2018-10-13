@@ -15,12 +15,17 @@ import org.apache.commons.lang3.tuple.Pair;
 import org.objectweb.asm.Type;
 import org.ray.api.function.RayFunc;
 import org.ray.api.id.UniqueId;
+import org.ray.runtime.util.JarLoader;
 import org.ray.runtime.util.LambdaUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Manages functions by driver id.
  */
 public class FunctionManager {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(FunctionManager.class);
 
   static final String CONSTRUCTOR_NAME = "<init>";
 
@@ -28,13 +33,28 @@ public class FunctionManager {
    * Cache from a RayFunc object to its corresponding FunctionDescriptor. Because
    * `LambdaUtils.getSerializedLambda` is expensive.
    */
-  private static final ThreadLocal<WeakHashMap<Class<RayFunc>, FunctionDescriptor>>
+  private static final ThreadLocal<WeakHashMap<Class<? extends RayFunc>, FunctionDescriptor>>
       RAY_FUNC_CACHE = ThreadLocal.withInitial(WeakHashMap::new);
 
   /**
    * Mapping from the driver id to the functions that belong to this driver.
    */
   private Map<UniqueId, DriverFunctionTable> driverFunctionTables = new HashMap<>();
+
+  /**
+   * The resource path which we can load the driver's jar resources.
+   */
+  private String driverResourcePath;
+
+  /**
+   * Construct a FunctionManager with the specified driver resource path.
+   *
+   * @param driverResourcePath The specified driver resource that
+   *     can store the driver's resources.
+   */
+  public FunctionManager(String driverResourcePath) {
+    this.driverResourcePath = driverResourcePath;
+  }
 
   /**
    * Get the RayFunction from a RayFunc instance (a lambda).
@@ -51,6 +71,7 @@ public class FunctionManager {
       final String methodName = serializedLambda.getImplMethodName();
       final String typeDescriptor = serializedLambda.getImplMethodSignature();
       functionDescriptor = new FunctionDescriptor(className, methodName, typeDescriptor);
+      RAY_FUNC_CACHE.get().put(func.getClass(),functionDescriptor);
     }
     return getFunction(driverId, functionDescriptor);
   }
@@ -65,8 +86,17 @@ public class FunctionManager {
   public RayFunction getFunction(UniqueId driverId, FunctionDescriptor functionDescriptor) {
     DriverFunctionTable driverFunctionTable = driverFunctionTables.get(driverId);
     if (driverFunctionTable == null) {
-      //TODO(hchen): distinguish class loader by driver id.
-      ClassLoader classLoader = getClass().getClassLoader();
+      String resourcePath = driverResourcePath + "/" + driverId.toString() + "/";
+      ClassLoader classLoader;
+
+      if (driverResourcePath != null && !driverResourcePath.isEmpty()) {
+        classLoader = JarLoader.loadJars(resourcePath, false);
+        LOGGER.info("Succeeded to load driver({}) resource. Resource path is {}",
+            driverId, resourcePath);
+      } else {
+        classLoader = getClass().getClassLoader();
+      }
+
       driverFunctionTable = new DriverFunctionTable(classLoader);
       driverFunctionTables.put(driverId, driverFunctionTable);
     }

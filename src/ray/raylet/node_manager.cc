@@ -541,21 +541,19 @@ void NodeManager::ProcessClientMessage(
   RAY_LOG(DEBUG) << "Message of type " << message_type;
 
   auto registered_worker = worker_pool_.GetRegisteredWorker(client);
-  auto casted_message = static_cast<protocol::MessageType>(message_type);
+  auto message_type_value = static_cast<protocol::MessageType>(message_type);
   if (registered_worker && registered_worker->IsDead()) {
     // For a worker that is marked as dead (because the driver has died already),
     // all the messages are ignored except DisconnectClient.
-    if ((casted_message !=
-         protocol::MessageType::DisconnectClient) &&
-        (casted_message !=
-         protocol::MessageType::IntentionalDisconnectClient)) {
+    if ((message_type_value != protocol::MessageType::DisconnectClient) &&
+        (message_type_value != protocol::MessageType::IntentionalDisconnectClient)) {
       // Listen for more messages.
       client->ProcessMessages();
       return;
     }
   }
 
-  switch (casted_message) {
+  switch (message_type_value) {
   case protocol::MessageType::RegisterClientRequest: {
     ProcessRegisterClientRequestMessage(client, message_data);
   } break;
@@ -691,12 +689,13 @@ void NodeManager::ProcessDisconnectClientMessage(
       // application.
       TreatTaskAsFailed(spec);
 
+      const JobID &job_id = worker->GetAssignedDriverId();
+
       if (push_warning) {
         // TODO(rkn): Define this constant somewhere else.
         std::string type = "worker_died";
         std::ostringstream error_message;
-        error_message << "A worker on " << address
-                      << " died or was killed while executing task " << task_id
+        error_message << "A worker died or was killed while executing task " << task_id
                       << ".";
         RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
             job_id, type, error_message.str(), current_time_ms()));
@@ -955,17 +954,20 @@ void NodeManager::ScheduleTasks(
       // TODO(rkn): Define this constant somewhere else.
       std::string type = "infeasible_task";
       std::ostringstream error_message;
-      error_message << "The task with ID " << task.GetTaskSpecification().TaskId()
-                    << " is infeasible and cannot currently be executed. "
-                    << "It requested "
-                    << task.GetTaskSpecification().GetRequiredResources().ToString();
+      error_message
+          << "The task with ID " << task.GetTaskSpecification().TaskId()
+          << " is infeasible and cannot currently be executed. It requires "
+          << task.GetTaskSpecification().GetRequiredResources().ToString()
+          << " for execution and "
+          << task.GetTaskSpecification().GetRequiredPlacementResources().ToString()
+          << " for placement. Check the client table to view node resources.";
       RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
           task.GetTaskSpecification().DriverId(), type, error_message.str(),
           current_time_ms()));
     }
     // Assert that this placeable task is not feasible locally (necessary but not
     // sufficient).
-    RAY_CHECK(!task.GetTaskSpecification().GetRequiredResources().IsSubset(
+    RAY_CHECK(!task.GetTaskSpecification().GetRequiredPlacementResources().IsSubset(
         cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()]
             .GetTotalResources()));
   }
@@ -1019,7 +1021,7 @@ void NodeManager::TreatTaskAsFailed(const TaskSpecification &spec) {
 
 void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineage,
                              bool forwarded) {
-  const TaskID task_id = task.GetTaskSpecification().TaskId();
+  const TaskID &task_id = task.GetTaskSpecification().TaskId();
   if (local_queues_.HasTask(task_id)) {
     RAY_LOG(WARNING) << "Submitted task " << task_id
                      << " is already queued and will not be reconstructed. This is most "
@@ -1297,6 +1299,8 @@ void NodeManager::AssignTask(Task &task) {
       this->cluster_resource_map_[my_client_id].Acquire(spec.GetRequiredResources()));
 
   if (spec.IsActorCreationTask()) {
+    // Check that we are not placing an actor creation task on a node with 0 CPUs.
+    RAY_CHECK(cluster_resource_map_[my_client_id].GetTotalResources().GetNumCpus() != 0);
     worker->SetLifetimeResourceIds(acquired_resources);
   } else {
     worker->SetTaskResourceIds(acquired_resources);
