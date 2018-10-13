@@ -13,6 +13,7 @@ from ray.rllib.evaluation.sample_batch import MultiAgentSampleBatchBuilder, \
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 from ray.rllib.env.async_vector_env import AsyncVectorEnv
 from ray.rllib.env.atari_wrappers import get_wrapper_by_cls, MonitorEnv
+from ray.rllib.models.action_dist import TupleActions
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 
 RolloutMetrics = namedtuple(
@@ -425,10 +426,13 @@ def _fetch_atari_metrics(async_vector_env):
 
 def _unbatch_tuple_actions(action_batch):
     # convert list of batches -> batch of lists
-    if isinstance(action_batch, list):
+    if isinstance(action_batch, TupleActions):
         out = []
-        for j in range(len(action_batch[0])):
-            out.append([action_batch[i][j] for i in range(len(action_batch))])
+        for j in range(len(action_batch.batches[0])):
+            out.append([
+                action_batch.batches[i][j]
+                for i in range(len(action_batch.batches))
+            ])
         return out
     return action_batch
 

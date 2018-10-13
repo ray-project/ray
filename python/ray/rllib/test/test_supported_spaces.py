@@ -27,7 +27,6 @@ OBSERVATION_SPACES_TO_TEST = {
     "vector": Box(-100.0, 100.0, (5, ), dtype=np.float32),
     "image": Box(-100.0, 100.0, (84, 84, 1), dtype=np.float32),
     "atari": Box(-100.0, 100.0, (210, 160, 3), dtype=np.float32),
-    "atari_ram": Box(-100.0, 100.0, (128, ), dtype=np.float32),
     "tuple": Tuple([Discrete(10),
                     Box(-100.0, 100.0, (5, ), dtype=np.float32)]),
     "dict": Dict({
