@@ -267,28 +267,31 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
         self.num_steps_sampled += sample_timesteps
         self.num_steps_trained += train_timesteps
 
-    def _replay_as_needed(self):
-        num_needed = int(
-            np.ceil(self.train_batch_size / self.sample_batch_size))
-        if len(self.replay_batches) <= num_needed:
-            return
-        f = self.replay_proportion
-        while random.random() < f:
-            f -= 1
-            samples = np.random.choice(
-                self.replay_batches, num_needed, replace=False)
-            train_batch = samples[0].concat_samples(samples)
-            self.learner.inqueue.put(train_batch)
-            self.num_replayed += train_batch.count
+    def _augment_with_replay(self, sample_futures):
+        def can_replay():
+            num_needed = int(
+                np.ceil(self.train_batch_size / self.sample_batch_size))
+            return len(self.replay_batches) > num_needed
+
+        for ev, sample_batch in sample_futures:
+            sample_batch = ray.get(sample_batch)
+            yield ev, sample_batch
+
+            if can_replay():
+                f = self.replay_proportion
+                while random.random() < f:
+                    f -= 1
+                    replay_batch = random.choice(self.replay_batches)
+                    self.num_replayed += replay_batch.count
+                    yield None, replay_batch
 
     def _step(self):
         sample_timesteps, train_timesteps = 0, 0
         weights = None
 
         with self.timers["sample_processing"]:
-            for ev, sample_batch in self.sample_tasks.completed_prefetch():
-                sample_batch = ray.get(sample_batch)
-                sample_timesteps += sample_batch.count
+            for ev, sample_batch in self._augment_with_replay(
+                    self.sample_tasks.completed_prefetch()):
                 self.batch_buffer.append(sample_batch)
                 if sum(b.count
                        for b in self.batch_buffer) >= self.train_batch_size:
@@ -298,8 +301,11 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
                         self.learner.inqueue.put(train_batch)
                     self.batch_buffer = []
 
-                    # Replay with configured probability
-                    self._replay_as_needed()
+                # If the batch was replayed, skip the update below.
+                if ev is None:
+                    continue
+
+                sample_timesteps += sample_batch.count
 
                 # Put in replay buffer if enabled
                 if self.replay_buffer_num_slots > 0:
