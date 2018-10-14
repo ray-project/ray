@@ -6,10 +6,6 @@ import ray
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.utils.timer import TimerStat
 
-from ray.rllib.utils.timer import setup_custom_logger
-import time
-# _LOGGER = setup_custom_logger(__name__)
-
 class AsyncGradientsOptimizer(PolicyOptimizer):
     """An asynchronous RL optimizer, e.g. for implementing A3C.
 
@@ -44,7 +40,6 @@ class AsyncGradientsOptimizer(PolicyOptimizer):
         while pending_gradients:
             with self.wait_timer:
                 start = time.time()
-                # _LOGGER.info("Waiting for next ray result")
                 wait_results = ray.wait(list(pending_gradients.keys()), num_returns=1)
 
                 ready = wait_results[0]
@@ -54,8 +49,6 @@ class AsyncGradientsOptimizer(PolicyOptimizer):
 
                 e = pending_gradients.pop(future)
 
-                # _LOGGER.info("Got next result: {}".format(future))
-                # _LOGGER.info("Time: {}".format(time.time() - start))
                 if "stats" in info:
                     self.learner_stats = info["stats"]
 

@@ -11,13 +11,11 @@ from ray.rllib.agents.a3c.a3c_tf_policy_graph import A3CPolicyGraph
 from ray.rllib.agents.agent import Agent, with_common_config
 from ray.rllib.optimizers import AsyncGradientsOptimizer
 from ray.rllib.utils import merge_dicts
-from ray.rllib.utils.timer import setup_custom_logger
 from ray.tune.trial import Resources
 
 import logging, sys
 import datetime as dt
 
-# _LOGGER = setup_custom_logger(__name__)
 
 
 DEFAULT_CONFIG = with_common_config({
@@ -87,7 +85,6 @@ class A3CAgent(Agent):
             extra_gpu=cf["use_gpu_for_workers"] and cf["num_workers"] or 0)
 
     def _init(self):
-        _LOGGER.info("Constructing A3C agent")
         if self.config["use_pytorch"]:
             from ray.rllib.agents.a3c.a3c_torch_policy_graph import \
                 A3CTorchPolicyGraph
@@ -101,7 +98,6 @@ class A3CAgent(Agent):
             self.env_creator, policy_cls, self.config["num_workers"],
             {"num_gpus": 1 if self.config["use_gpu_for_workers"] else 0})
         self.optimizer = self._make_optimizer()
-        _LOGGER.info("Done constructing A3C agent")
 
     def _make_optimizer(self):
         return AsyncGradientsOptimizer(self.local_evaluator,
@@ -111,21 +107,15 @@ class A3CAgent(Agent):
     def _train(self):
         prev_steps = self.optimizer.num_steps_sampled
         start = time.time()
-        _LOGGER.info("Starting training iteration with {prev_count} past steps".format(prev_count=prev_steps))
         while time.time() - start < self.config["min_iter_time_s"]:
             self.optimizer.step()
-        _LOGGER.info("Ending training iteration. {et}s elapsed".format(et=time.time()-start))
 
         metric_start = time.time()
-        _LOGGER.info("Collecting metrics...")
         result = self.optimizer.collect_metrics()
-        _LOGGER.info("Collected metrics in {elapsed}s".format(elapsed=time.time()-metric_start))
 
         update_start = time.time()
-        _LOGGER.info("updating result...")
         result.update(timesteps_this_iter=self.optimizer.num_steps_sampled -
                       prev_steps)
-        _LOGGER.info("Updated results in {elapsed}s".format(elapsed=time.time()-update_start))
         return result
 
     def _stop(self):

@@ -11,10 +11,6 @@ from ray.rllib.models.lstm import chop_into_sequences
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
 
-import time
-from ray.rllib.utils.timer import setup_custom_logger
-# _LOGGER = setup_custom_logger(__name__)
-
 class TFPolicyGraph(PolicyGraph):
     """An agent policy and loss implemented in TensorFlow.
 
@@ -200,11 +196,9 @@ class TFPolicyGraph(PolicyGraph):
         build_start = time.time()
         builder = TFRunBuilder(self._sess, "compute_apply")
         fetches = self.build_compute_apply(builder, postprocessed_batch)
-        # _LOGGER.info("Built TF graph in {}s".format(time.time() - build_start))
 
         exec_start = time.time()
         result = builder.get(fetches)
-        # _LOGGER.info("Evaluated TF graph in {}s".format(time.time() - exec_start))
         
         return result
 

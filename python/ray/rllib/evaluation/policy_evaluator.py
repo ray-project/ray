@@ -20,18 +20,10 @@ from ray.rllib.evaluation.sample_batch import MultiAgentBatch, \
 from ray.rllib.evaluation.sampler import AsyncSampler, SyncSampler
 from ray.rllib.utils.compression import pack
 from ray.rllib.utils.filter import get_filter
-from ray.rllib.utils.timer import setup_custom_logger
 from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 
-import time
-# _LOGGER = setup_custom_logger(__name__)
-
-# https://docs.python.org/3/library/profile.html
-import cProfile
-
-glob_count = 0
 
 class PolicyEvaluator(EvaluatorInterface):
     """Common ``PolicyEvaluator`` implementation that wraps a ``PolicyGraph``.
@@ -310,19 +302,6 @@ class PolicyEvaluator(EvaluatorInterface):
         sample_start = time.time()
         batches = [self.sampler.get_data()]
 
-        # glob_sampler = self.sampler
-        # batches = []
-        # def wrapper(b):
-        #     b.append(self.sampler.get_data())
-        # # _LOGGER.debug("Profiling sampler run: ")
-        # cProfile.runctx("wrapper(batches)", globals(), locals(), "/home/richard4912/temp/sampler.prof")
-
-        global glob_count
-        glob_count += 1
-        # if glob_count >= 15:
-        #     exit(0)
-
-        # # _LOGGER.debug(self.sampler)
         steps_so_far = batches[0].count
 
         # In truncate_episodes mode, never pull more than 1 batch per env.
@@ -338,10 +317,8 @@ class PolicyEvaluator(EvaluatorInterface):
             batches.append(batch)
         batches.extend(self.sampler.get_extra_batches())
         batch = batches[0].concat_samples(batches)
-        # _LOGGER.debug("Sampled {} batches in {}s".format(len(batches), time.time()-sample_start))
 
         if self.compress_observations:
-            # _LOGGER.debug("Compressing sampled observations")
             compress_start= time.time()
             if isinstance(batch, MultiAgentBatch):
                 for data in batch.policy_batches.values():
@@ -350,7 +327,6 @@ class PolicyEvaluator(EvaluatorInterface):
             else:
                 batch["obs"] = [pack(o) for o in batch["obs"]]
                 batch["new_obs"] = [pack(o) for o in batch["new_obs"]]
-            # _LOGGER.debug("Compressed batches in {}s".format(time.time()-compress_start))
 
         return batch
 
@@ -477,9 +453,6 @@ class PolicyEvaluator(EvaluatorInterface):
                         self.policy_map[pid].compute_apply(batch))
             return info_out
         else:
-            # # _LOGGER.debug(self.policy_map)
-            # # _LOGGER.debug(self.policy_map[DEFAULT_POLICY_ID])
-            # # _LOGGER.debug(self.policy_map[DEFAULT_POLICY_ID].compute_apply)
             grad_fetch, apply_fetch = (
                 self.policy_map[DEFAULT_POLICY_ID].compute_apply(samples))
             return grad_fetch
