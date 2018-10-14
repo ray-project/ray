@@ -242,9 +242,10 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
 
         self.batch_buffer = []
 
-        assert not replay_proportion or replay_buffer_num_slots > 0
-        assert not replay_buffer_num_slots or \
-            replay_buffer_num_slots * sample_batch_size > train_batch_size
+        if replay_proportion:
+            assert replay_buffer_num_slots > 0
+            assert (replay_buffer_num_slots * sample_batch_size >
+                    train_batch_size)
         self.replay_proportion = replay_proportion
         self.replay_buffer_num_slots = replay_buffer_num_slots
         self.replay_batches = []
