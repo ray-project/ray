@@ -24,18 +24,18 @@ class MyFormatter(logging.Formatter):
 
 def setup_custom_logger(name):
     handler = logging.FileHandler('{fn}.txt'.format(fn=name), mode='w')
-    screen_handler = logging.StreamHandler(stream=sys.stdout)
+    # screen_handler = logging.StreamHandler(stream=sys.stdout)
     logger = logging.getLogger(name)
     logger.setLevel(logging.DEBUG)
     logger.addHandler(handler)
-    logger.addHandler(screen_handler)
+    # logger.addHandler(screen_handler)
 
     formatter = MyFormatter(fmt='[%(asctime)s %(filename)s] %(levelname)-8s %(message)s',datefmt='%Y-%m-%d,%H:%M:%S.%f')
     handler.setFormatter(formatter)
-    screen_handler.setFormatter(formatter)
+    # screen_handler.setFormatter(formatter)
     return logger
 
-_LOGGER = setup_custom_logger(__name__)
+# _LOGGER = setup_custom_logger(__name__)
 
 class TimerStat(object):
     """A running stat for conveniently logging the duration of a code block.

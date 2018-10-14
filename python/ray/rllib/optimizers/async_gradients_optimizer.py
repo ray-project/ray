@@ -6,6 +6,9 @@ import ray
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.utils.timer import TimerStat
 
+from ray.rllib.utils.timer import setup_custom_logger
+import time
+# _LOGGER = setup_custom_logger(__name__)
 
 class AsyncGradientsOptimizer(PolicyOptimizer):
     """An asynchronous RL optimizer, e.g. for implementing A3C.
@@ -27,21 +30,32 @@ class AsyncGradientsOptimizer(PolicyOptimizer):
 
     def step(self):
         weights = ray.put(self.local_evaluator.get_weights())
-        gradient_queue = []
+        pending_gradients = {}
         num_gradients = 0
 
         # Kick off the first wave of async tasks
         for e in self.remote_evaluators:
             e.set_weights.remote(weights)
-            fut = e.compute_gradients.remote(e.sample.remote())
-            gradient_queue.append((fut, e))
+            future = e.compute_gradients.remote(e.sample.remote())
+            pending_gradients[future] = e
             num_gradients += 1
 
         # Note: can't use wait: https://github.com/ray-project/ray/issues/1128
-        while gradient_queue:
+        while pending_gradients:
             with self.wait_timer:
-                fut, e = gradient_queue.pop(0)
-                gradient, info = ray.get(fut)
+                start = time.time()
+                # _LOGGER.info("Waiting for next ray result")
+                wait_results = ray.wait(list(pending_gradients.keys()), num_returns=1)
+
+                ready = wait_results[0]
+                future = ready[0]
+
+                gradient, info = ray.get(future)
+
+                e = pending_gradients.pop(future)
+
+                # _LOGGER.info("Got next result: {}".format(future))
+                # _LOGGER.info("Time: {}".format(time.time() - start))
                 if "stats" in info:
                     self.learner_stats = info["stats"]
 
@@ -54,8 +68,9 @@ class AsyncGradientsOptimizer(PolicyOptimizer):
             if num_gradients < self.grads_per_step:
                 with self.dispatch_timer:
                     e.set_weights.remote(self.local_evaluator.get_weights())
-                    fut = e.compute_gradients.remote(e.sample.remote())
-                    gradient_queue.append((fut, e))
+                    future = e.compute_gradients.remote(e.sample.remote())
+
+                    pending_gradients[future] = e
                     num_gradients += 1
 
     def stats(self):

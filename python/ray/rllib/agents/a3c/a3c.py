@@ -17,7 +17,7 @@ from ray.tune.trial import Resources
 import logging, sys
 import datetime as dt
 
-_LOGGER = setup_custom_logger(__name__)
+# _LOGGER = setup_custom_logger(__name__)
 
 
 DEFAULT_CONFIG = with_common_config({

@@ -23,7 +23,7 @@ PolicyEvalData = namedtuple("PolicyEvalData",
 
 
 import time
-_LOGGER = setup_custom_logger(__name__)
+# _LOGGER = setup_custom_logger(__name__)
 
 class SyncSampler(object):
     """This class interacts with the environment and tells it what to do.
@@ -58,10 +58,10 @@ class SyncSampler(object):
         self.metrics_queue = queue.Queue()
 
     def get_data(self):
-        _LOGGER.debug(self.rollout_provider)
+        # _LOGGER.debug(self.rollout_provider)
         while True:
             item = next(self.rollout_provider)
-            _LOGGER.debug("Sampling item: {}".format(item))
+            # _LOGGER.debug("Sampling item: {}".format(item))
             if isinstance(item, RolloutMetrics):
                 self.metrics_queue.put(item)
             else:
