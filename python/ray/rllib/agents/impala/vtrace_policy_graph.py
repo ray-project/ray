@@ -31,6 +31,7 @@ class VTraceLoss(object):
                  rewards,
                  values,
                  bootstrap_value,
+                 valid_mask,
                  vf_loss_coeff=0.5,
                  entropy_coeff=-0.01,
                  clip_rho_threshold=1.0,
@@ -52,6 +53,7 @@ class VTraceLoss(object):
             rewards: A float32 tensor of shape [T, B].
             values: A float32 tensor of shape [T, B].
             bootstrap_value: A float32 tensor of shape [B].
+            valid_mask: A bool tensor of valid RNN input elements.
         """
 
         # Compute vtrace on the CPU for better perf.
@@ -70,14 +72,16 @@ class VTraceLoss(object):
 
         # The policy gradients loss
         self.pi_loss = -tf.reduce_sum(
-            actions_logp * self.vtrace_returns.pg_advantages)
+            tf.boolean_mask(
+                actions_logp * self.vtrace_returns.pg_advantages, valid_mask))
 
         # The baseline loss
-        delta = values - self.vtrace_returns.vs
+        delta = tf.boolean_mask(values - self.vtrace_returns.vs, valid_mask)
         self.vf_loss = 0.5 * tf.reduce_sum(tf.square(delta))
 
         # The entropy loss
-        self.entropy = tf.reduce_sum(actions_entropy)
+        self.entropy = tf.reduce_sum(
+            tf.boolean_mask(actions_entropy, valid_mask))
 
         # The summed weighted loss
         self.total_loss = (self.pi_loss + self.vf_loss * vf_loss_coeff +
@@ -155,6 +159,10 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
                 rs,
                 [1, 0] + list(range(2, 1 + int(tf.shape(tensor).shape[0]))))
 
+        max_seq_len = tf.reduce_max(self.model.seq_lens) - 1
+        mask = tf.sequence_mask(self.model.seq_lens, max_seq_len)
+        mask = tf.reshape(mask, [-1])
+
         # Inputs are reshaped from [B * T] => [T - 1, B] for V-trace calc.
         self.loss = VTraceLoss(
             actions=to_batches(actions)[:-1],
@@ -167,6 +175,7 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
             rewards=to_batches(rewards)[:-1],
             values=to_batches(values)[:-1],
             bootstrap_value=to_batches(values)[-1],
+            valid_mask=to_batches(mask)[:-1],
             vf_loss_coeff=self.config["vf_loss_coeff"],
             entropy_coeff=self.config["entropy_coeff"],
             clip_rho_threshold=self.config["vtrace_clip_rho_threshold"],
