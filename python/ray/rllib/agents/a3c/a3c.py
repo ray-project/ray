@@ -110,10 +110,8 @@ class A3CAgent(Agent):
         while time.time() - start < self.config["min_iter_time_s"]:
             self.optimizer.step()
 
-        metric_start = time.time()
         result = self.optimizer.collect_metrics()
 
-        update_start = time.time()
         result.update(timesteps_this_iter=self.optimizer.num_steps_sampled -
                       prev_steps)
         return result

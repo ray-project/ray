@@ -193,11 +193,9 @@ class TFPolicyGraph(PolicyGraph):
         return fetches[1], fetches[2]
 
     def compute_apply(self, postprocessed_batch):
-        build_start = time.time()
         builder = TFRunBuilder(self._sess, "compute_apply")
         fetches = self.build_compute_apply(builder, postprocessed_batch)
 
-        exec_start = time.time()
         result = builder.get(fetches)
         
         return result

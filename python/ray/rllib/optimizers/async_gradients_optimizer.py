@@ -39,14 +39,11 @@ class AsyncGradientsOptimizer(PolicyOptimizer):
         # Note: can't use wait: https://github.com/ray-project/ray/issues/1128
         while pending_gradients:
             with self.wait_timer:
-                start = time.time()
                 wait_results = ray.wait(list(pending_gradients.keys()), num_returns=1)
-
-                ready = wait_results[0]
-                future = ready[0]
+                ready_list = wait_results[0]
+                future = ready_list[0]
 
                 gradient, info = ray.get(future)
-
                 e = pending_gradients.pop(future)
 
                 if "stats" in info:

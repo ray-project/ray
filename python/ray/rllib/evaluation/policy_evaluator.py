@@ -299,9 +299,7 @@ class PolicyEvaluator(EvaluatorInterface):
         Return:
             SampleBatch|MultiAgentBatch from evaluating the current policies.
         """
-        sample_start = time.time()
         batches = [self.sampler.get_data()]
-
         steps_so_far = batches[0].count
 
         # In truncate_episodes mode, never pull more than 1 batch per env.
@@ -319,7 +317,6 @@ class PolicyEvaluator(EvaluatorInterface):
         batch = batches[0].concat_samples(batches)
 
         if self.compress_observations:
-            compress_start= time.time()
             if isinstance(batch, MultiAgentBatch):
                 for data in batch.policy_batches.values():
                     data["obs"] = [pack(o) for o in data["obs"]]

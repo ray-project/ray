@@ -27,7 +27,6 @@ class SyncSamplesOptimizer(PolicyOptimizer):
         self.learner_stats = {}
 
     def step(self):
-        start = time.time()
         with self.update_weights_timer:
             if self.remote_evaluators:
                 weights = ray.put(self.local_evaluator.get_weights())
@@ -36,7 +35,6 @@ class SyncSamplesOptimizer(PolicyOptimizer):
 
         with self.sample_timer:
             samples = []
-            sample_start = time.time()
             while sum(s.count for s in samples) < self.train_batch_size: # inefficient bc count (?)
                 if self.remote_evaluators:
                     samples.extend(
@@ -48,7 +46,6 @@ class SyncSamplesOptimizer(PolicyOptimizer):
             samples = SampleBatch.concat_samples(samples)
             self.sample_timer.push_units_processed(samples.count)
 
-        grad_start = time.time()
         with self.grad_timer:
             for i in range(self.num_sgd_iter):
                 fetches = self.local_evaluator.compute_apply(samples)
