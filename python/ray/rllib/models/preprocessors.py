@@ -58,7 +58,7 @@ class AtariPixelPreprocessor(Preprocessor):
 
         # channel_major requires (# in-channels, row dim, col dim)
         if self._channel_major:
-            shape = self.shape[-1:] + self.shape[:-1]
+            shape = shape[-1:] + shape[:-1]
         return shape
 
     def transform(self, observation):
