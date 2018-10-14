@@ -88,7 +88,7 @@ class TFMultiGPULearner(LearnerThread):
             print("TFMultiGPULearner devices", self.devices)
         assert self.train_batch_size % len(self.devices) == 0
         assert self.train_batch_size >= len(self.devices), "batch too small"
-        self.per_device_batch_size = int(
+        self.max_per_device_batch_size = int(
             self.train_batch_size / len(self.devices))
         self.policy = self.local_evaluator.policy_map["default"]
 
@@ -113,7 +113,7 @@ class TFMultiGPULearner(LearnerThread):
                                 self.devices,
                                 [v for _, v in self.policy.loss_inputs()],
                                 rnn_inputs,
-                                self.per_device_batch_size // 20,
+                                self.max_per_device_batch_size,
                                 self.policy.copy,
                                 grad_norm_clipping=grad_clip))
 
@@ -178,7 +178,8 @@ class _LoaderThread(threading.Thread):
             tuples_per_device = opt.load_data(l.sess,
                                               [tuples[k] for k in data_keys],
                                               [tuples[k] for k in state_keys])
-            assert int(tuples_per_device) == int(l.per_device_batch_size)
+            assert int(tuples_per_device) == int(
+                opt._loaded_per_device_batch_size)
 
         l.ready_optimizers.put(opt)
 
