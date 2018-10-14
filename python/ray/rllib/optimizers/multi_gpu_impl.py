@@ -36,10 +36,11 @@ class LocalSyncParallelOptimizer(object):
             to define the per-device loss ops.
         rnn_inputs: Extra input placeholders for RNN inputs. These will have
             shape [BATCH_SIZE // MAX_SEQ_LEN, ...].
-        per_device_batch_size: Number of tuples to optimize over at a time per
-            device. In each call to `optimize()`,
+        max_per_device_batch_size: Number of tuples to optimize over at a time
+            per device. In each call to `optimize()`,
             `len(devices) * per_device_batch_size` tuples of data will be
-            processed.
+            processed. If this is larger than the total data size, it will be
+            clipped.
         build_graph: Function that takes the specified inputs and returns a
             TF Policy Graph instance.
         grad_norm_clipping: None or int stdev to clip grad norms by
