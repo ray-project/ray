@@ -9,6 +9,10 @@ the LSTM cell, we reshape the input to add the expected time dimension. During
 postprocessing, we dynamically pad the experience batches so that this
 reshaping is possible.
 
+Note that this padding strategy only works out if we assume zero inputs don't
+meaningfully affect the loss function. This happens to be true for all the
+current algorithms: https://github.com/ray-project/ray/issues/2992
+
 See the add_time_dimension() and chop_into_sequences() functions below for
 more info.
 """
