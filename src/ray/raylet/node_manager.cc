@@ -1059,51 +1059,54 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
   if (spec.IsActorTask()) {
     // Check whether we know the location of the actor.
     const auto actor_entry = actor_registry_.find(spec.ActorId());
-    if (actor_entry != actor_registry_.end()) {
-      // We have a known location for the actor.
-      auto node_manager_id = actor_entry->second.GetNodeManagerId();
-      if (node_manager_id == gcs_client_->client_table().GetLocalClientId()) {
-        // The actor is local. Check if the actor is still alive.
-        if (actor_entry->second.GetState() == ActorState::DEAD) {
-          // Handle the fact that this actor is dead.
-          TreatTaskAsFailed(spec);
-        } else {
-          // Queue the task for local execution, bypassing placement.
-          EnqueuePlaceableTask(task);
-        }
+    bool seen = actor_entry_ != actor_registry_.end();
+    // If we haven't seen this actor or the actor is being reconstructed,
+    // its location is unknown.
+    bool location_known = seen
+      && actor_entry_->second.GetState() != ActorState::BEING_RECONSTRUCTED();
+    if (location_known) {
+      if (actor_entry->second.GetState() == ActorState::DEAD) {
+        // If this actor is dead, either because the actor process is dead
+        // or because its residing node is dead, treat this task as failed.
+        TreatTaskAsFailed(spec);
       } else {
-        // The actor is remote. Forward the task to the node manager that owns
-        // the actor.
-        if (gcs_client_->client_table().IsRemoved(node_manager_id)) {
-          // The remote node manager is dead, so handle the fact that this actor
-          // is also dead.
-          TreatTaskAsFailed(spec);
+        // If this actor is alive, check whether this actor is local.
+        auto node_manager_id = actor_entry->second.GetNodeManagerId();
+        if (node_manager_id == gcs_client_->client_table().GetLocalClientId()) {
+          // If this actor is local, queue the task for local execution, bypassing placement.
+          EnqueuePlaceableTask(task);
         } else {
+          // The actor is remote. Forward the task to the node manager that owns
+          // the actor.
           // Attempt to forward the task. If this fails to forward the task,
           // the task will be resubmit locally.
           ForwardTaskOrResubmit(task, node_manager_id);
         }
       }
     } else {
-      // We do not have a registered location for the object, so either the
-      // actor has not yet been created or we missed the notification for the
-      // actor creation because this node joined the cluster after the actor
-      // was already created. Look up the actor's registered location in case
-      // we missed the creation notification.
-      // NOTE(swang): This codepath needs to be tested in a cluster setting.
-      auto lookup_callback = [this](gcs::AsyncGcsClient *client, const ActorID &actor_id,
-                                    const std::vector<ActorTableDataT> &data) {
-        if (!data.empty()) {
-          // The actor has been created.
-          HandleActorNotification(actor_id, data);
-        } else {
-          // The actor has not yet been created.
-          // TODO(swang): Set a timer for reconstructing the actor creation
-          // task.
-        }
-      };
-      RAY_CHECK_OK(gcs_client_->actor_table().Lookup(JobID::nil(), spec.ActorId(),
-                                                     lookup_callback));
+      if (!seen) {
+        // We do not have a registered location for the object, so either the
+        // actor has not yet been created or we missed the notification for the
+        // actor creation because this node joined the cluster after the actor
+        // was already created. Look up the actor's registered location in case
+        // we missed the creation notification.
+        // NOTE(swang): This codepath needs to be tested in a cluster setting.
+        auto lookup_callback = [this](gcs::AsyncGcsClient *client, const ActorID &actor_id,
+                                      const std::vector<ActorTableDataT> &data) {
+          if (!data.empty()) {
+            // The actor has been created.
+            if (actor_registry_.find(actor_id) == actor_registry_.end()) {
+              HandleActorNotification(actor_id, data);
+            }
+          } else {
+            // The actor has not yet been created.
+            // TODO(swang): Set a timer for reconstructing the actor creation
+            // task.
+          }
+        };
+        RAY_CHECK_OK(gcs_client_->actor_table().Lookup(JobID::nil(), spec.ActorId(),
+                                                       lookup_callback));
+      }
       // Keep the task queued until we discover the actor's location.
       // (See design_docs/task_states.rst for the state transition diagram.)
       local_queues_.QueueMethodsWaitingForActorCreation({task});
