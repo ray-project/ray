@@ -49,7 +49,7 @@ class PPOLoss(object):
             value_fn (Tensor): Current value function output Tensor.
             cur_kl_coeff (Variable): Variable holding the current PPO KL
                 coefficient.
-            valid_mask (Tensor): A bool tensor of valid RNN input elements.
+            valid_mask (Tensor): A bool mask of valid input elements (#2992).
             entropy_coeff (float): Coefficient of the entropy regularizer.
             clip_param (float): Clip parameter
             vf_clip_param (float): Clip parameter for the value function

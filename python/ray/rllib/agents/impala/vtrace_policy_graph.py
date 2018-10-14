@@ -53,7 +53,7 @@ class VTraceLoss(object):
             rewards: A float32 tensor of shape [T, B].
             values: A float32 tensor of shape [T, B].
             bootstrap_value: A float32 tensor of shape [B].
-            valid_mask: A bool tensor of valid RNN input elements.
+            valid_mask: A bool tensor of valid RNN input elements (#2992).
         """
 
         # Compute vtrace on the CPU for better perf.
