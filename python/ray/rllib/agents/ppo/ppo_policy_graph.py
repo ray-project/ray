@@ -24,6 +24,7 @@ class PPOLoss(object):
                  curr_action_dist,
                  value_fn,
                  cur_kl_coeff,
+                 valid_mask,
                  entropy_coeff=0,
                  clip_param=0.1,
                  vf_clip_param=0.1,
@@ -48,28 +49,33 @@ class PPOLoss(object):
             value_fn (Tensor): Current value function output Tensor.
             cur_kl_coeff (Variable): Variable holding the current PPO KL
                 coefficient.
+            valid_mask (Tensor): A bool tensor of valid RNN input elements.
             entropy_coeff (float): Coefficient of the entropy regularizer.
             clip_param (float): Clip parameter
             vf_clip_param (float): Clip parameter for the value function
             vf_loss_coeff (float): Coefficient of the value function loss
             use_gae (bool): If true, use the Generalized Advantage Estimator.
         """
+
+        def reduce_mean_valid(t):
+            return tf.reduce_mean(tf.boolean_mask(t, valid_mask))
+
         dist_cls, _ = ModelCatalog.get_action_dist(action_space, {})
         prev_dist = dist_cls(logits)
         # Make loss functions.
         logp_ratio = tf.exp(
             curr_action_dist.logp(actions) - prev_dist.logp(actions))
         action_kl = prev_dist.kl(curr_action_dist)
-        self.mean_kl = tf.reduce_mean(action_kl)
+        self.mean_kl = reduce_mean_valid(action_kl)
 
         curr_entropy = curr_action_dist.entropy()
-        self.mean_entropy = tf.reduce_mean(curr_entropy)
+        self.mean_entropy = reduce_mean_valid(curr_entropy)
 
         surrogate_loss = tf.minimum(
             advantages * logp_ratio,
             advantages * tf.clip_by_value(logp_ratio, 1 - clip_param,
                                           1 + clip_param))
-        self.mean_policy_loss = tf.reduce_mean(-surrogate_loss)
+        self.mean_policy_loss = reduce_mean_valid(-surrogate_loss)
 
         if use_gae:
             vf_loss1 = tf.square(value_fn - value_targets)
@@ -77,14 +83,15 @@ class PPOLoss(object):
                 value_fn - vf_preds, -vf_clip_param, vf_clip_param)
             vf_loss2 = tf.square(vf_clipped - value_targets)
             vf_loss = tf.maximum(vf_loss1, vf_loss2)
-            self.mean_vf_loss = tf.reduce_mean(vf_loss)
-            loss = tf.reduce_mean(-surrogate_loss + cur_kl_coeff * action_kl +
-                                  vf_loss_coeff * vf_loss -
-                                  entropy_coeff * curr_entropy)
+            self.mean_vf_loss = reduce_mean_valid(vf_loss)
+            loss = reduce_mean_valid(
+                -surrogate_loss + cur_kl_coeff * action_kl +
+                vf_loss_coeff * vf_loss - entropy_coeff * curr_entropy)
         else:
             self.mean_vf_loss = tf.constant(0.0)
-            loss = tf.reduce_mean(-surrogate_loss + cur_kl_coeff * action_kl -
-                                  entropy_coeff * curr_entropy)
+            loss = reduce_mean_valid(-surrogate_loss +
+                                     cur_kl_coeff * action_kl -
+                                     entropy_coeff * curr_entropy)
         self.loss = loss
 
 

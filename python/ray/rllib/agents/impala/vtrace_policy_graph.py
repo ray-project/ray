@@ -72,8 +72,8 @@ class VTraceLoss(object):
 
         # The policy gradients loss
         self.pi_loss = -tf.reduce_sum(
-            tf.boolean_mask(
-                actions_logp * self.vtrace_returns.pg_advantages, valid_mask))
+            tf.boolean_mask(actions_logp * self.vtrace_returns.pg_advantages,
+                            valid_mask))
 
         # The baseline loss
         delta = tf.boolean_mask(values - self.vtrace_returns.vs, valid_mask)
