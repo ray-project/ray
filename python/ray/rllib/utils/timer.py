@@ -31,7 +31,8 @@ def setup_custom_logger(name):
     logger.addHandler(screen_handler)
 
     formatter = MyFormatter(fmt='[%(asctime)s %(filename)s] %(levelname)-8s %(message)s',datefmt='%Y-%m-%d,%H:%M:%S.%f')
-    handler.setFormatter(formatter)
+    clean_formatter = MyFormatter(fmt='%(message)s')
+    handler.setFormatter(clean_formatter)
     screen_handler.setFormatter(formatter)
     return logger
 
