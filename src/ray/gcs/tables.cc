@@ -278,8 +278,10 @@ Status ActorTable::AppendDataAt(const ActorID &actor_id,
                                 const DriverID &driver_id, const ClientID &node_manager_id,
                                 const ActorState &state, int64_t max_reconstructions,
                                 int64_t remaining_reconstructions, int log_length) {
-  RAY_LOG(DEBUG) << "Publishing actor update: " << actor_id << " driver_id: " << driver_id
-                 << "state: " << static_cast<int64_t>(state);
+  RAY_LOG(DEBUG) << "Publishing actor update: " << actor_id << ", driver_id: " << driver_id
+                 << ", state: " << static_cast<int64_t>(state)
+                 << ", remaining_reconstructions: " << remaining_reconstructions
+                 << ", log_length: " << log_length;
   auto actor_notification = std::make_shared<ActorTableDataT>();
   actor_notification->actor_id = actor_id.binary();
   actor_notification->actor_creation_dummy_object_id =

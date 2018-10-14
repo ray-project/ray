@@ -448,7 +448,7 @@ void NodeManager::HandleActorNotification(const ActorID &actor_id,
   // Update local registry.
   auto it = actor_registry_.find(actor_id);
   if (it == actor_registry_.end()) {
-    actor_registry_.emplace(actor_id, std::move(actor_registration));
+    actor_registry_.emplace(actor_id, actor_registration);
   } else {
     it->second = actor_registration;
   }
@@ -1424,7 +1424,7 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
     // the actor will be forwarded directly to this node.
     int remaining_reconstructions;
     int log_length;
-    const auto actor_entry = actor_registry_.find(task.GetTaskSpecification().ActorId());
+    const auto actor_entry = actor_registry_.find(actor_id);
     if (actor_entry == actor_registry_.end()) {
       remaining_reconstructions = task.GetTaskSpecification().MaxActorReconstructions();
       log_length = 0;
@@ -1432,10 +1432,10 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
       // If we've already seen this actor, it means that this actor was reconstructed.
       // Thus, its previous state must be BEING_RECONSTRUCTED.
       // Also, we should subtract its remaining_reconstructions by 1.
-      RAY_CHECK(actor_entry->second.GetState() != ActorState::BEING_RECONSTRUCTED);
+      RAY_CHECK(actor_entry->second.GetState() == ActorState::BEING_RECONSTRUCTED);
       remaining_reconstructions = actor_entry->second.GetRemainingReconstructions() - 1;
       log_length = 2 * (actor_entry->second.GetMaxReconstructions() -
-                        actor_entry->second.GetRemainingReconstructions());
+                        remaining_reconstructions);
     }
     RAY_CHECK_OK(gcs_client_->actor_table().AppendDataAt(
         actor_id, task.GetTaskSpecification().ActorDummyObject(),
@@ -1505,12 +1505,7 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id) {
 }
 
 void NodeManager::ResubmitTask(const Task &task) {
-  // Actor reconstruction is turned off by default right now. If this is an
-  // actor task, treat the task as failed and do not resubmit it.
-  if (task.GetTaskSpecification().IsActorTask()) {
-    TreatTaskAsFailed(task.GetTaskSpecification());
-    return;
-  }
+  RAY_LOG(DEBUG) << "Resubmitting task " << task.GetTaskSpecification().TaskId();
 
   // Driver tasks cannot be reconstructed. If this is a driver task, push an
   // error to the driver and do not resubmit it.
