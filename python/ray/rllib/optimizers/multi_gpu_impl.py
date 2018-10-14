@@ -42,7 +42,6 @@ class LocalSyncParallelOptimizer(object):
             processed.
         build_graph: Function that takes the specified inputs and returns a
             TF Policy Graph instance.
-        logdir: Directory to place debugging output in.
         grad_norm_clipping: None or int stdev to clip grad norms by
     """
 
@@ -53,16 +52,13 @@ class LocalSyncParallelOptimizer(object):
                  rnn_inputs,
                  per_device_batch_size,
                  build_graph,
-                 logdir,
                  grad_norm_clipping=None):
-        # TODO(rliaw): remove logdir
         self.optimizer = optimizer
         self.devices = devices
         self.batch_size = per_device_batch_size * len(devices)
         self.per_device_batch_size = per_device_batch_size
         self.loss_inputs = input_placeholders + rnn_inputs
         self.build_graph = build_graph
-        self.logdir = logdir
 
         # First initialize the shared loss network
         with tf.name_scope(TOWER_SCOPE_NAME):

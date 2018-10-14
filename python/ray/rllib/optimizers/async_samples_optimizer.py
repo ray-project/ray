@@ -59,21 +59,23 @@ class LearnerThread(threading.Thread):
         with self.grad_timer:
             fetches = self.local_evaluator.compute_apply(batch)
             self.weights_updated = True
-            if "stats" in fetches:
-                self.stats = fetches["stats"]
+            self.stats = fetches.get("stats", {})
 
         self.outqueue.put(batch.count)
         self.learner_queue_size.push(self.inqueue.qsize())
 
 
 class TFMultiGPULearner(LearnerThread):
+    """Learner that can use multiple GPUs and parallel loading."""
+
     def __init__(self,
                  local_evaluator,
-                 num_gpus=2,
+                 num_gpus=1,
                  lr=0.0005,
                  train_batch_size=500,
                  grad_clip=40,
                  num_parallel_data_loaders=1):
+        # Multi-GPU requires TensorFlow to function.
         import tensorflow as tf
 
         LearnerThread.__init__(self, local_evaluator)
@@ -111,9 +113,8 @@ class TFMultiGPULearner(LearnerThread):
                                 self.devices,
                                 [v for _, v in self.policy.loss_inputs()],
                                 rnn_inputs,
-                                self.per_device_batch_size,
+                                self.per_device_batch_size // 20,
                                 self.policy.copy,
-                                os.getcwd(),
                                 grad_norm_clipping=grad_clip))
 
                 self.sess = self.local_evaluator.tf_sess
@@ -135,8 +136,7 @@ class TFMultiGPULearner(LearnerThread):
         with self.grad_timer:
             fetches = opt.optimize(self.sess, 0)
             self.weights_updated = True
-            if "stats" in fetches:
-                self.stats = fetches["stats"]
+            self.stats = fetches.get("stats", {})
 
         self.idle_optimizers.put(opt)
         self.outqueue.put(self.train_batch_size)
@@ -163,7 +163,8 @@ class _LoaderThread(threading.Thread):
         l = self.learner
         with self.queue_timer:
             batch = l.inqueue.get()
-            assert batch.count == l.train_batch_size, batch.count
+            assert batch.count == l.train_batch_size, \
+                (batch.count, l.train_batch_size)
 
         opt = l.idle_optimizers.get()
 
