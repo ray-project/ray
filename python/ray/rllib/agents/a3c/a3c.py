@@ -13,11 +13,6 @@ from ray.rllib.optimizers import AsyncGradientsOptimizer
 from ray.rllib.utils import merge_dicts
 from ray.tune.trial import Resources
 
-import logging, sys
-import datetime as dt
-
-
-
 DEFAULT_CONFIG = with_common_config({
     # Size of rollout batch
     "sample_batch_size": 10,
@@ -91,7 +86,7 @@ class A3CAgent(Agent):
             policy_cls = A3CTorchPolicyGraph
         else:
             policy_cls = self._policy_graph
-    
+
         self.local_evaluator = self.make_local_evaluator(
             self.env_creator, policy_cls)
         self.remote_evaluators = self.make_remote_evaluators(
@@ -109,9 +104,7 @@ class A3CAgent(Agent):
         start = time.time()
         while time.time() - start < self.config["min_iter_time_s"]:
             self.optimizer.step()
-
         result = self.optimizer.collect_metrics()
-
         result.update(timesteps_this_iter=self.optimizer.num_steps_sampled -
                       prev_steps)
         return result

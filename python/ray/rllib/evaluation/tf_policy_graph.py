@@ -195,10 +195,7 @@ class TFPolicyGraph(PolicyGraph):
     def compute_apply(self, postprocessed_batch):
         builder = TFRunBuilder(self._sess, "compute_apply")
         fetches = self.build_compute_apply(builder, postprocessed_batch)
-
-        result = builder.get(fetches)
-        
-        return result
+        return builder.get(fetches)
 
     def get_weights(self):
         return self._variables.get_flat()

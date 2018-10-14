@@ -299,6 +299,7 @@ class PolicyEvaluator(EvaluatorInterface):
         Return:
             SampleBatch|MultiAgentBatch from evaluating the current policies.
         """
+        
         batches = [self.sampler.get_data()]
         steps_so_far = batches[0].count
 

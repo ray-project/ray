@@ -35,7 +35,7 @@ class SyncSamplesOptimizer(PolicyOptimizer):
 
         with self.sample_timer:
             samples = []
-            while sum(s.count for s in samples) < self.train_batch_size: # inefficient bc count (?)
+            while sum(s.count for s in samples) < self.train_batch_size:
                 if self.remote_evaluators:
                     samples.extend(
                         ray.get([

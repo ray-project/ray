@@ -238,7 +238,7 @@ def _env_runner(async_vector_env,
 
     active_episodes = defaultdict(new_episode)
 
-    # TODO: poke around here
+    # TODO (richardl): poke around here, sampling is still slower than expected
     while True:
         # Get observations from all ready agents
         unfiltered_obs, rewards, dones, infos, off_policy_actions = \
