@@ -161,8 +161,6 @@ class _LoaderThread(threading.Thread):
         l = self.learner
         with self.queue_timer:
             batch = l.inqueue.get()
-            assert batch.count == l.train_batch_size, \
-                (batch.count, l.train_batch_size)
 
         opt = l.idle_optimizers.get()
 
