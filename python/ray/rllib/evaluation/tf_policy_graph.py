@@ -11,6 +11,7 @@ from ray.rllib.models.lstm import chop_into_sequences
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
 
+
 class TFPolicyGraph(PolicyGraph):
     """An agent policy and loss implemented in TensorFlow.
 

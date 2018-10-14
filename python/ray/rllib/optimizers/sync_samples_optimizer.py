@@ -57,7 +57,6 @@ class SyncSamplesOptimizer(PolicyOptimizer):
 
         self.num_steps_sampled += samples.count
         self.num_steps_trained += samples.count
-
         return fetches
 
     def stats(self):
