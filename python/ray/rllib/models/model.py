@@ -65,9 +65,10 @@ class Model(object):
             assert num_outputs % 2 == 0
             num_outputs = num_outputs // 2
         try:
-            self.outputs, self.last_layer = self._build_layers_v2(
-                _restore_original_dimensions(input_dict, obs_space),
-                num_outputs, options)
+            self.outputs, self.last_layer, self.state_init, self.state_out = \
+                self._build_layers_v2(
+                    _restore_original_dimensions(input_dict, obs_space),
+                    self.state_in, self.seq_lens, num_outputs, options)
         except NotImplementedError:
             self.outputs, self.last_layer = self._build_layers(
                 input_dict["obs"], num_outputs, options)
@@ -100,8 +101,9 @@ class Model(object):
         """
         raise NotImplementedError
 
-    def _build_layers_v2(self, input_dict, num_outputs, options):
-        """Builds and returns the output and last layer of the network.
+    def _build_layers_v2(self, input_dict, state_in, seq_lens, num_outputs,
+                         options):
+        """Define the layers of a custom model.
 
         This is preferred over build_layers() since it allows access to
         prev_action, prev_reward, and also unpacks tuple and dict observations
@@ -110,13 +112,30 @@ class Model(object):
         Arguments:
             input_dict (dict): Dictionary of input tensors, including "obs",
                 "prev_action", "prev_reward".
+            state_in (list): List of RNN input states of length M (or []).
+            seq_lens (Tensor): Tensor with the input sequence lengths of shape
+                [NUM_SEQUENCES].
             num_outputs (int): Output tensor must be of size
                 [BATCH_SIZE, num_outputs].
             options (dict): Model options.
 
         Returns:
-            (outputs, feature_layer): Tensors of size [BATCH_SIZE, num_outputs]
-                and [BATCH_SIZE, desired_feature_size].
+            (outputs, feature_layer, state_init, state_out): Tensors of size
+                [BATCH_SIZE, num_outputs], [BATCH_SIZE, desired_feature_size],
+                a list of initial RNN input states of length M, and a list of
+                RNN output state tensors of length M.
+
+        Examples:
+            >>> print(input_dict)
+            {'prev_actions': <tf.Tensor shape=(?,) dtype=int64>,
+             'prev_rewards': <tf.Tensor shape=(?,) dtype=float32>,
+             'obs': OrderedDict([
+                ('sensors', OrderedDict([
+                    ('front_cam', [
+                        <tf.Tensor shape=(?, 10, 10, 3) dtype=float32>,
+                        <tf.Tensor shape=(?, 10, 10, 3) dtype=float32>]),
+                    ('position', <tf.Tensor shape=(?, 3) dtype=float32>),
+                    ('velocity', <tf.Tensor shape=(?, 3) dtype=float32>)]))])}
         """
         raise NotImplementedError
 

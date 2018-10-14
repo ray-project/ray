@@ -89,14 +89,14 @@ class NestedTupleEnv(gym.Env):
 
 
 class InvalidModel(Model):
-    def _build_layers_v2(self, input_dict, num_outputs, options):
-        return "not", "valid"
+    def _build_layers_v2(self, input_dict, h, s, num_outputs, options):
+        return "not", "valid", [], []
 
 
 class DictSpyModel(Model):
     capture_index = 0
 
-    def _build_layers_v2(self, input_dict, num_outputs, options):
+    def _build_layers_v2(self, input_dict, h, s, num_outputs, options):
         def spy(pos, front_cam, task):
             # TF runs this function in an isolated context, so we have to use
             # redis to communicate back to our suite
@@ -118,13 +118,13 @@ class DictSpyModel(Model):
         with tf.control_dependencies([spy_fn]):
             output = slim.fully_connected(
                 input_dict["obs"]["sensors"]["position"], num_outputs)
-        return output, output
+        return output, output, [], []
 
 
 class TupleSpyModel(Model):
     capture_index = 0
 
-    def _build_layers_v2(self, input_dict, num_outputs, options):
+    def _build_layers_v2(self, input_dict, h, s, num_outputs, options):
         def spy(pos, cam, task):
             # TF runs this function in an isolated context, so we have to use
             # redis to communicate back to our suite
@@ -145,7 +145,7 @@ class TupleSpyModel(Model):
 
         with tf.control_dependencies([spy_fn]):
             output = slim.fully_connected(input_dict["obs"][0], num_outputs)
-        return output, output
+        return output, output, [], []
 
 
 class NestedSpacesTest(unittest.TestCase):
