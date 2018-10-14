@@ -86,6 +86,8 @@ class ActorRegistration {
   void ExtendFrontier(const ActorHandleID &handle_id,
                       const ObjectID &execution_dependency);
 
+  const std::vector<ObjectID> &GetDummyObjects() const;
+
  private:
   /// Information from the global actor table about this actor, including the
   /// node manager location.
@@ -98,6 +100,8 @@ class ActorRegistration {
   /// executed so far and which tasks may execute next, based on execution
   /// dependencies. This is indexed by handle.
   std::unordered_map<ActorHandleID, FrontierLeaf> frontier_;
+
+  std::vector<ObjectID> dummy_objects_;
 };
 
 }  // namespace raylet

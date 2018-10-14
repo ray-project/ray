@@ -320,7 +320,7 @@ class NodeManager {
   void ProcessPushErrorRequestMessage(const uint8_t *message_data);
 
   /// TODO
-  void HandleDeadActor(const ActorID &actor_id);
+  void HandleDeadActor(const ActorID &actor_id, bool was_local);
   void ReconstructActor(const ActorID &actor_id, const ActorRegistration &actor_registration);
 
   boost::asio::io_service &io_service_;

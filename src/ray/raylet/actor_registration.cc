@@ -54,6 +54,11 @@ void ActorRegistration::ExtendFrontier(const ActorHandleID &handle_id,
   frontier_entry.task_counter++;
   frontier_entry.execution_dependency = execution_dependency;
   execution_dependency_ = execution_dependency;
+  dummy_objects_.push_back(execution_dependency);
+}
+
+const std::vector<ObjectID> &ActorRegistration::GetDummyObjects() const {
+  return dummy_objects_;
 }
 
 }  // namespace raylet
