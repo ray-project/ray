@@ -25,7 +25,7 @@ EPISODES_TOTAL = "episodes_total"
 # Number of timesteps in this iteration.
 TIMESTEPS_THIS_ITER = "timesteps_this_iter"
 
-# (Optional/Auto-filled) Accumulated time in seconds for this experiment.
+# (Auto-filled) Accumulated number of timesteps for this entire experiment.
 TIMESTEPS_TOTAL = "timesteps_total"
 
 # (Auto-filled) Time in seconds this iteration took to run.
