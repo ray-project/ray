@@ -135,11 +135,10 @@ class LSTM(Model):
     Uses a linear layer at the end for output.
 
     Important: we assume inputs is a padded batch of sequences denoted by
-        seq_lens. See add_time_dimension() for more information.
+        self.seq_lens. See add_time_dimension() for more information.
     """
 
-    def _build_layers_v2(self, input_dict, state_in, seq_lens, num_outputs,
-                         options):
+    def _build_layers_v2(self, input_dict, num_outputs, options):
         cell_size = options.get("lstm_cell_size", 256)
         if options.get("lstm_use_prev_action_reward"):
             action_dim = int(
@@ -156,24 +155,24 @@ class LSTM(Model):
                 axis=1)
         else:
             features = input_dict["obs"]
-        last_layer = add_time_dimension(features, seq_lens)
+        last_layer = add_time_dimension(features, self.seq_lens)
 
         # Setup the LSTM cell
         lstm = rnn.BasicLSTMCell(cell_size, state_is_tuple=True)
-        state_init = [
+        self.state_init = [
             np.zeros(lstm.state_size.c, np.float32),
             np.zeros(lstm.state_size.h, np.float32)
         ]
 
         # Setup LSTM inputs
-        if state_in:
-            c_in, h_in = state_in
+        if self.state_in:
+            c_in, h_in = self.state_in
         else:
             c_in = tf.placeholder(
                 tf.float32, [None, lstm.state_size.c], name="c")
             h_in = tf.placeholder(
                 tf.float32, [None, lstm.state_size.h], name="h")
-            state_in = [c_in, h_in]
+            self.state_in = [c_in, h_in]
 
         # Setup LSTM outputs
         state_in = rnn.LSTMStateTuple(c_in, h_in)
@@ -181,14 +180,14 @@ class LSTM(Model):
             lstm,
             last_layer,
             initial_state=state_in,
-            sequence_length=seq_lens,
+            sequence_length=self.seq_lens,
             time_major=False,
             dtype=tf.float32)
 
-        state_out = list(lstm_state)
+        self.state_out = list(lstm_state)
 
         # Compute outputs
         last_layer = tf.reshape(lstm_out, [-1, cell_size])
         logits = linear(last_layer, num_outputs, "action",
                         normc_initializer(0.01))
-        return logits, last_layer, state_init, state_out
+        return logits, last_layer

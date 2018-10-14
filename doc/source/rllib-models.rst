@@ -21,7 +21,7 @@ For preprocessors, RLlib tries to pick one of its built-in preprocessor based on
 Custom Models
 -------------
 
-Custom models should subclass the common RLlib `model class <https://github.com/ray-project/ray/blob/master/python/ray/rllib/models/model.py>`__ and override the ``_build_layers_v2`` method. This method takes in a dict of tensor inputs (the observation ``obs``, ``prev_action``, and ``prev_reward``), and returns a feature layer and float vector of the specified output size. For recurrent models, RNN inputs and outputs are also handled here. The model can then be registered and used in place of a built-in model:
+Custom models should subclass the common RLlib `model class <https://github.com/ray-project/ray/blob/master/python/ray/rllib/models/model.py>`__ and override the ``_build_layers_v2`` method. This method takes in a dict of tensor inputs (the observation ``obs``, ``prev_action``, and ``prev_reward``), and returns a feature layer and float vector of the specified output size. The model can then be registered and used in place of a built-in model:
 
 .. code-block:: python
 
@@ -30,24 +30,22 @@ Custom models should subclass the common RLlib `model class <https://github.com/
     from ray.rllib.models import ModelCatalog, Model
 
     class MyModelClass(Model):
-        def _build_layers_v2(self, input_dict, state_in, seq_lens, num_outputs, options):
+        def _build_layers_v2(self, input_dict, num_outputs, options):
             """Define the layers of a custom model.
 
             Arguments:
                 input_dict (dict): Dictionary of input tensors, including "obs",
                     "prev_action", "prev_reward".
-                state_in (list): List of RNN input states of length M (or []).
-                seq_lens (Tensor): Tensor with the input sequence lengths of shape
-                    [NUM_SEQUENCES].
                 num_outputs (int): Output tensor must be of size
                     [BATCH_SIZE, num_outputs].
                 options (dict): Model options.
 
             Returns:
-                (outputs, feature_layer, state_init, state_out): Tensors of size
-                    [BATCH_SIZE, num_outputs], [BATCH_SIZE, desired_feature_size],
-                    a list of initial RNN input states of length M, and a list of
-                    RNN output state tensors of length M.
+                (outputs, feature_layer): Tensors of size [BATCH_SIZE, num_outputs]
+                    and [BATCH_SIZE, desired_feature_size].
+
+            When using dict or tuple observation spaces, you can access
+            the nested sub-observation batches here as well:
 
             Examples:
                 >>> print(input_dict)
@@ -65,7 +63,7 @@ Custom models should subclass the common RLlib `model class <https://github.com/
             layer1 = slim.fully_connected(input_dict["obs"], 64, ...)
             layer2 = slim.fully_connected(layer1, 64, ...)
             ...
-            return layerN, layerN_minus_1, [], []
+            return layerN, layerN_minus_1
 
     ModelCatalog.register_custom_model("my_model", MyModelClass)
 
