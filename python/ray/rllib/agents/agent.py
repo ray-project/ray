@@ -50,7 +50,8 @@ COMMON_CONFIG = {
     "env_config": {},
     # Environment name can also be passed via config
     "env": None,
-    # Arguments to pass to model
+    # Arguments to pass to model. See models/catalog.py for a full list of the
+    # available model options.
     "model": {
         "use_lstm": False,
         "max_seq_len": 20,
