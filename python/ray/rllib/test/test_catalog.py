@@ -15,11 +15,13 @@ from ray.rllib.models.visionnet import VisionNetwork
 
 
 class CustomPreprocessor(Preprocessor):
-    pass
+    def _init_shape(self, obs_space, options):
+        return None
 
 
 class CustomPreprocessor2(Preprocessor):
-    pass
+    def _init_shape(self, obs_space, options):
+        return None
 
 
 class CustomModel(Model):

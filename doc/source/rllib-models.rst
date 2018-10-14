@@ -89,8 +89,8 @@ Similarly, custom preprocessors should subclass the RLlib `preprocessor class <h
     from ray.rllib.models.preprocessors import Preprocessor
 
     class MyPreprocessorClass(Preprocessor):
-        def _init(self):
-            self.shape = ...  # perhaps varies depending on self._options 
+        def _init_shape(self, obs_space, options):
+            return new_shape  # can vary depending on inputs
 
         def transform(self, observation):
             return ...  # return the preprocessed observation
