@@ -36,8 +36,6 @@ def setup_custom_logger(name):
     screen_handler.setFormatter(formatter)
     return logger
 
-_LOGGER = setup_custom_logger(__name__)
-
 class TimerStat(object):
     """A running stat for conveniently logging the duration of a code block.
 
