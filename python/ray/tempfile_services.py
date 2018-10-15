@@ -138,7 +138,7 @@ def get_local_scheduler_socket_name(suffix=""):
     return raylet_socket_name
 
 
-def get_ipython_notebook_path(port):
+def get_ipython_notebook_path(ip, port):
     """Get a new ipython notebook path"""
 
     notebook_filepath = os.path.join(
@@ -151,8 +151,8 @@ def get_ipython_notebook_path(port):
     shutil.copy(notebook_filepath, new_notebook_filepath)
     new_notebook_directory = os.path.dirname(new_notebook_filepath)
     token = ray.utils.decode(binascii.hexlify(os.urandom(24)))
-    webui_url = ("http://localhost:{}/notebooks/{}?token={}".format(
-        port, os.path.basename(notebook_name), token))
+    webui_url = ("http://{}:{}/notebooks/{}?token={}".format(
+        ip, port, os.path.basename(notebook_name), token))
     return new_notebook_directory, webui_url, token
 
 

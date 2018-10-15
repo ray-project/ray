@@ -816,7 +816,7 @@ def start_ui(redis_address, stdout_file=None, stderr_file=None, cleanup=True):
     # We generate the token used for authentication ourselves to avoid
     # querying the jupyter server.
     new_notebook_directory, webui_url, token = (
-        get_ipython_notebook_path(port))
+        get_ipython_notebook_path(get_node_ip_address(), port))
     # The --ip=0.0.0.0 flag is intended to enable connecting to a notebook
     # running within a docker container (from the outside).
     command = [
