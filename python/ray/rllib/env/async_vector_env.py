@@ -268,17 +268,17 @@ class _MultiAgentEnvToAsync(AsyncVectorEnv):
                 raise ValueError("Env {} is already done".format(env_id))
             env = self.envs[env_id]
             obs, rewards, dones, infos = env.step(agent_dict)
-            assert isinstance(obs, dict), "not a multi-agent obs"
-            assert isinstance(rewards, dict), "not a multi-agent reward"
-            assert isinstance(dones, dict), "not a multi-agent return"
-            assert isinstance(infos, dict), "not a multi-agent info"
+            assert isinstance(obs, dict), "Not a multi-agent obs"
+            assert isinstance(rewards, dict), "Not a multi-agent reward"
+            assert isinstance(dones, dict), "Not a multi-agent return"
+            assert isinstance(infos, dict), "Not a multi-agent info"
             if dones["__all__"]:
                 self.dones.add(env_id)
             self.env_states[env_id].observe(obs, rewards, dones, infos)
 
     def try_reset(self, env_id):
         obs = self.env_states[env_id].reset()
-        assert isinstance(obs, dict), "not a multi-agent obs"
+        assert isinstance(obs, dict), "Not a multi-agent obs"
         if obs is not None and env_id in self.dones:
             self.dones.remove(env_id)
         return obs
