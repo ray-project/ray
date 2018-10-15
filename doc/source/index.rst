@@ -77,7 +77,7 @@ Ray comes with libraries that accelerate deep learning and reinforcement learnin
 
 .. toctree::
    :maxdepth: 1
-   :caption: Ray RLlib
+   :caption: RLlib
 
    rllib.rst
    rllib-training.rst
@@ -118,6 +118,7 @@ Ray comes with libraries that accelerate deep learning and reinforcement learnin
    plasma-object-store.rst
    resources.rst
    redis-memory-management.rst
+   tempfile.rst
 
 .. toctree::
    :maxdepth: 1

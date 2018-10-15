@@ -18,15 +18,16 @@ public class ResourceUtil {
    */
   public static Map<String, Double> getResourcesMapFromArray(RayRemote remoteAnnotation) {
     Map<String, Double> resourceMap = new HashMap<>();
-    if (remoteAnnotation == null) {
-      return resourceMap;
-    }
-    for (ResourceItem item : remoteAnnotation.resources()) {
-      if (!item.name().isEmpty()) {
-        resourceMap.put(item.name(), item.value());
+    if (remoteAnnotation != null) {
+      for (ResourceItem item : remoteAnnotation.resources()) {
+        if (!item.name().isEmpty()) {
+          resourceMap.put(item.name(), item.value());
+        }
       }
     }
-
+    if (!resourceMap.containsKey(CPU_LITERAL)) {
+      resourceMap.put(CPU_LITERAL, 0.0);
+    }
     return resourceMap;
   }
 
@@ -37,6 +38,9 @@ public class ResourceUtil {
    * @return The format resources string, like "{CPU:4, GPU:0}".
    */
   public static String getResourcesFromatStringFromMap(Map<String, Double> resources) {
+    if (resources == null) {
+      return "{}";
+    }
     StringBuilder builder = new StringBuilder();
     builder.append("{");
     int count = 1;
@@ -89,6 +93,9 @@ public class ResourceUtil {
       String[] items = resources.split(",");
       for (String item : items) {
         String trimItem = item.trim();
+        if (trimItem.isEmpty()) {
+          continue;
+        }
         String[] resourcePair = trimItem.split(":");
 
         if (resourcePair.length != 2) {

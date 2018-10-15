@@ -36,7 +36,7 @@ def _parse_results(res_path):
             for line in f:
                 pass
         res_dict = _flatten_dict(json.loads(line.strip()))
-    except Exception as e:
+    except Exception:
         logger.exception("Importing %s failed...Perhaps empty?" % res_path)
     return res_dict
 
@@ -45,7 +45,7 @@ def _parse_configs(cfg_path):
     try:
         with open(cfg_path) as f:
             cfg_dict = _flatten_dict(json.load(f))
-    except Exception as e:
+    except Exception:
         logger.exception("Config parsing failed.")
     return cfg_dict
 

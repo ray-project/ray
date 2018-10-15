@@ -3,16 +3,22 @@
   xmlns="http://maven.apache.org/POM/4.0.0"
   xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
   <parent>
-    <groupId>org.ray.parent</groupId>
+    <groupId>org.ray</groupId>
     <artifactId>ray-superpom</artifactId>
-    <version>1.0</version>
+    <version>0.1-SNAPSHOT</version>
   </parent>
   <modelVersion>4.0.0</modelVersion>
 
-  <groupId>org.ray</groupId>
   <artifactId>ray-api</artifactId>
   <name>ray api</name>
   <description>java api for ray</description>
 
   <packaging>jar</packaging>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-log4j12</artifactId>
+    </dependency>
+  </dependencies>
 </project>

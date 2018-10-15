@@ -59,10 +59,10 @@ class NodeManager {
   ///
   /// \param client The client that sent the message.
   /// \param message_type The message type (e.g., a flatbuffer enum).
-  /// \param message A pointer to the message data.
+  /// \param message_data A pointer to the message data.
   /// \return Void.
   void ProcessClientMessage(const std::shared_ptr<LocalClientConnection> &client,
-                            int64_t message_type, const uint8_t *message);
+                            int64_t message_type, const uint8_t *message_data);
 
   /// Handle a new node manager connection.
   ///
@@ -265,6 +265,59 @@ class NodeManager {
   ///
   /// \return True if the invariants are satisfied and false otherwise.
   bool CheckDependencyManagerInvariant() const;
+
+  /// Process client message of RegisterClientRequest
+  ///
+  /// \param client The client that sent the message.
+  /// \param message_data A pointer to the message data.
+  /// \return Void.
+  void ProcessRegisterClientRequestMessage(
+      const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data);
+
+  /// Process client message of GetTask
+  ///
+  /// \param client The client that sent the message.
+  /// \return Void.
+  void ProcessGetTaskMessage(const std::shared_ptr<LocalClientConnection> &client);
+
+  /// Handle a client that has disconnected. This can be called multiple times
+  /// on the same client because this is triggered both when a client
+  /// disconnects and when the node manager fails to write a message to the
+  /// client.
+  ///
+  /// \param client The client that sent the message.
+  /// \param push_warning Propogate error message if true.
+  /// \return Void.
+  void ProcessDisconnectClientMessage(
+      const std::shared_ptr<LocalClientConnection> &client, bool push_warning = true);
+
+  /// Process client message of SubmitTask
+  ///
+  /// \param message_data A pointer to the message data.
+  /// \return Void.
+  void ProcessSubmitTaskMessage(const uint8_t *message_data);
+
+  /// Process client message of ReconstructObjects
+  ///
+  /// \param client The client that sent the message.
+  /// \param message_data A pointer to the message data.
+  /// \return Void.
+  void ProcessReconstructObjectsMessage(
+      const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data);
+
+  /// Process client message of WaitRequest
+  ///
+  /// \param client The client that sent the message.
+  /// \param message_data A pointer to the message data.
+  /// \return Void.
+  void ProcessWaitRequestMessage(const std::shared_ptr<LocalClientConnection> &client,
+                                 const uint8_t *message_data);
+
+  /// Process client message of PushErrorRequest
+  ///
+  /// \param message_data A pointer to the message data.
+  /// \return Void.
+  void ProcessPushErrorRequestMessage(const uint8_t *message_data);
 
   boost::asio::io_service &io_service_;
   ObjectManager &object_manager_;

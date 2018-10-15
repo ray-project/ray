@@ -36,12 +36,12 @@ class SyncSampler(object):
                  policy_mapping_fn,
                  obs_filters,
                  clip_rewards,
-                 num_local_steps,
+                 unroll_length,
                  horizon=None,
                  pack=False,
                  tf_sess=None):
         self.async_vector_env = AsyncVectorEnv.wrap_async(env)
-        self.num_local_steps = num_local_steps
+        self.unroll_length = unroll_length
         self.horizon = horizon
         self.policies = policies
         self.policy_mapping_fn = policy_mapping_fn
@@ -49,7 +49,7 @@ class SyncSampler(object):
         self.extra_batches = queue.Queue()
         self.rollout_provider = _env_runner(
             self.async_vector_env, self.extra_batches.put, self.policies,
-            self.policy_mapping_fn, self.num_local_steps, self.horizon,
+            self.policy_mapping_fn, self.unroll_length, self.horizon,
             self._obs_filters, clip_rewards, pack, tf_sess)
         self.metrics_queue = queue.Queue()
 
@@ -92,7 +92,7 @@ class AsyncSampler(threading.Thread):
                  policy_mapping_fn,
                  obs_filters,
                  clip_rewards,
-                 num_local_steps,
+                 unroll_length,
                  horizon=None,
                  pack=False,
                  tf_sess=None):
@@ -104,7 +104,7 @@ class AsyncSampler(threading.Thread):
         self.queue = queue.Queue(5)
         self.extra_batches = queue.Queue()
         self.metrics_queue = queue.Queue()
-        self.num_local_steps = num_local_steps
+        self.unroll_length = unroll_length
         self.horizon = horizon
         self.policies = policies
         self.policy_mapping_fn = policy_mapping_fn
@@ -124,7 +124,7 @@ class AsyncSampler(threading.Thread):
     def _run(self):
         rollout_provider = _env_runner(
             self.async_vector_env, self.extra_batches.put, self.policies,
-            self.policy_mapping_fn, self.num_local_steps, self.horizon,
+            self.policy_mapping_fn, self.unroll_length, self.horizon,
             self._obs_filters, self.clip_rewards, self.pack, self.tf_sess)
         while True:
             # The timeout variable exists because apparently, if one worker
@@ -182,7 +182,7 @@ def _env_runner(async_vector_env,
                 extra_batch_callback,
                 policies,
                 policy_mapping_fn,
-                num_local_steps,
+                unroll_length,
                 horizon,
                 obs_filters,
                 clip_rewards,
@@ -197,14 +197,14 @@ def _env_runner(async_vector_env,
         policy_mapping_fn (func): Function that maps agent ids to policy ids.
             This is called when an agent first enters the environment. The
             agent is then "bound" to the returned policy for the episode.
-        num_local_steps (int): Number of episode steps before `SampleBatch` is
+        unroll_length (int): Number of episode steps before `SampleBatch` is
             yielded. Set to infinity to yield complete episodes.
         horizon (int): Horizon of the episode.
         obs_filters (dict): Map of policy id to filter used to process
             observations for the policy.
         clip_rewards (bool): Whether to clip rewards before postprocessing.
         pack (bool): Whether to pack multiple episodes into each batch. This
-            guarantees batches will be exactly `num_local_steps` in size.
+            guarantees batches will be exactly `unroll_length` in size.
         tf_sess (Session|None): Optional tensorflow session to use for batching
             TF policy evaluations.
 
@@ -306,7 +306,7 @@ def _env_runner(async_vector_env,
             # or if we've exceeded the requested batch size.
             if episode.batch_builder.has_pending_data():
                 if (all_done and not pack) or \
-                        episode.batch_builder.count >= num_local_steps:
+                        episode.batch_builder.count >= unroll_length:
                     yield episode.batch_builder.build_and_reset()
                 elif all_done:
                     # Make sure postprocessor stays within one episode
@@ -364,6 +364,10 @@ def _env_runner(async_vector_env,
         # Record the policy eval results
         for policy_id, eval_data in to_eval.items():
             actions, rnn_out_cols, pi_info_cols = eval_results[policy_id]
+            if len(rnn_in_cols[policy_id]) != len(rnn_out_cols):
+                raise ValueError(
+                    "Length of RNN in did not match RNN out, got: "
+                    "{} vs {}".format(rnn_in_cols[policy_id], rnn_out_cols))
             # Add RNN state info
             for f_i, column in enumerate(rnn_in_cols[policy_id]):
                 pi_info_cols["state_in_{}".format(f_i)] = column

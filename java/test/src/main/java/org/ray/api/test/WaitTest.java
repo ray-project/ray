@@ -28,8 +28,7 @@ public class WaitTest {
     return "hi";
   }
 
-  @Test
-  public void test() {
+  private static void testWait() {
     RayObject<String> obj1 = Ray.call(WaitTest::hi);
     RayObject<String> obj2 = Ray.call(WaitTest::delayedHi);
 
@@ -43,4 +42,20 @@ public class WaitTest {
     Assert.assertEquals("hi", readyList.get(0).get());
   }
 
+  @Test
+  public void testWaitInDriver() {
+    testWait();
+  }
+
+  @RayRemote
+  public static Object waitInWorker() {
+    testWait();
+    return null;
+  }
+
+  @Test
+  public void testWaitInWorker() {
+    RayObject<Object> res = Ray.call(WaitTest::waitInWorker);
+    res.get();
+  }
 }

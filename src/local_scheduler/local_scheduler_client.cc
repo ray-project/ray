@@ -56,8 +56,15 @@ void local_scheduler_disconnect_client(LocalSchedulerConnection *conn) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = ray::local_scheduler::protocol::CreateDisconnectClient(fbb);
   fbb.Finish(message);
-  write_message(conn->conn, static_cast<int64_t>(MessageType::DisconnectClient),
-                fbb.GetSize(), fbb.GetBufferPointer(), &conn->write_mutex);
+  if (conn->use_raylet) {
+    write_message(conn->conn, static_cast<int64_t>(
+                                  MessageType::IntentionalDisconnectClient),
+                  fbb.GetSize(), fbb.GetBufferPointer(), &conn->write_mutex);
+  } else {
+    write_message(conn->conn,
+                  static_cast<int64_t>(MessageType::DisconnectClient),
+                  fbb.GetSize(), fbb.GetBufferPointer(), &conn->write_mutex);
+  }
 }
 
 void local_scheduler_log_event(LocalSchedulerConnection *conn,

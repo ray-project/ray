@@ -5,8 +5,10 @@ from __future__ import print_function
 import binascii
 import functools
 import hashlib
+import inspect
 import numpy as np
 import os
+import subprocess
 import sys
 import threading
 import time
@@ -143,6 +145,23 @@ def is_cython(obj):
         (hasattr(obj, "__func__") and check_cython(obj.__func__))
 
 
+def is_function_or_method(obj):
+    """Check if an object is a function or method.
+
+    Args:
+        obj: The Python object in question.
+
+    Returns:
+        True if the object is an function or method.
+    """
+    return (inspect.isfunction(obj) or inspect.ismethod(obj) or is_cython(obj))
+
+
+def is_class_method(f):
+    """Returns whether the given method is a class_method."""
+    return hasattr(f, "__self__") and f.__self__ is not None
+
+
 def random_string():
     """Generate a random string to use as an ID.
 
@@ -264,6 +283,68 @@ def resources_from_resource_arguments(default_num_cpus, default_num_gpus,
         resources["GPU"] = default_num_gpus
 
     return resources
+
+
+# This function is copied and modified from
+# https://github.com/giampaolo/psutil/blob/5bd44f8afcecbfb0db479ce230c790fc2c56569a/psutil/tests/test_linux.py#L132-L138  # noqa: E501
+def vmstat(stat):
+    """Run vmstat and get a particular statistic.
+
+    Args:
+        stat: The statistic that we are interested in retrieving.
+
+    Returns:
+        The parsed output.
+    """
+    out = subprocess.check_output(["vmstat", "-s"])
+    stat = stat.encode("ascii")
+    for line in out.split(b"\n"):
+        line = line.strip()
+        if stat in line:
+            return int(line.split(b" ")[0])
+    raise ValueError("Can't find {} in 'vmstat' output.".format(stat))
+
+
+# This function is copied and modified from
+# https://github.com/giampaolo/psutil/blob/5e90b0a7f3fccb177445a186cc4fac62cfadb510/psutil/tests/test_osx.py#L29-L38  # noqa: E501
+def sysctl(command):
+    """Run a sysctl command and parse the output.
+
+    Args:
+        command: A sysctl command with an argument, for example,
+            ["sysctl", "hw.memsize"].
+
+    Returns:
+        The parsed output.
+    """
+    out = subprocess.check_output(command)
+    result = out.split(b" ")[1]
+    try:
+        return int(result)
+    except ValueError:
+        return result
+
+
+def get_system_memory():
+    """Return the total amount of system memory in bytes.
+
+    Returns:
+        The total amount of system memory in bytes.
+    """
+    # Use psutil if it is available.
+    try:
+        import psutil
+        return psutil.virtual_memory().total
+    except ImportError:
+        pass
+
+    if sys.platform == "linux" or sys.platform == "linux2":
+        # Handle Linux.
+        bytes_in_kilobyte = 1024
+        return vmstat("total memory") * bytes_in_kilobyte
+    else:
+        # Handle MacOS.
+        return sysctl(["sysctl", "hw.memsize"])
 
 
 def check_oversized_pickle(pickled, name, obj_type, worker):

@@ -1,51 +1,22 @@
-set(GFLAGS_VERSION "2.2.0")
-set(GTEST_VERSION "1.8.0")
-set(GBENCHMARK_VERSION "1.1.0")
+# include all ray third party dependencies
 
 # Because we use the old C++ ABI to be compatible with TensorFlow,
 # we have to turn it on for dependencies too
 set(EP_CXX_FLAGS "${EP_CXX_FLAGS} -D_GLIBCXX_USE_CXX11_ABI=0")
 
+# The following is needed because in CentOS, the lib directory is named lib64
+if(EXISTS "/etc/redhat-release" AND CMAKE_SIZEOF_VOID_P EQUAL 8)
+  set(LIB_SUFFIX 64)
+endif()
+
 if(RAY_BUILD_TESTS OR RAY_BUILD_BENCHMARKS)
   add_custom_target(unittest ctest -L unittest)
 
-  if(APPLE)
-    set(GTEST_CMAKE_CXX_FLAGS "-fPIC -DGTEST_USE_OWN_TR1_TUPLE=1 -Wno-unused-value -Wno-ignored-attributes")
-  elseif(NOT MSVC)
-    set(GTEST_CMAKE_CXX_FLAGS "-fPIC")
-  endif()
-  if(CMAKE_BUILD_TYPE)
-    string(TOUPPER ${CMAKE_BUILD_TYPE} UPPERCASE_BUILD_TYPE)
-  endif()
-  set(GTEST_CMAKE_CXX_FLAGS "${EP_CXX_FLAGS} ${CMAKE_CXX_FLAGS_${UPPERCASE_BUILD_TYPE}} ${GTEST_CMAKE_CXX_FLAGS}")
-
-  set(GTEST_PREFIX "${CMAKE_CURRENT_BINARY_DIR}/external/googletest/src/googletest_ep")
-  set(GTEST_INCLUDE_DIR "${GTEST_PREFIX}/include")
-  set(GTEST_STATIC_LIB
-    "${GTEST_PREFIX}/lib/${CMAKE_STATIC_LIBRARY_PREFIX}gtest${CMAKE_STATIC_LIBRARY_SUFFIX}")
-  set(GTEST_MAIN_STATIC_LIB
-    "${GTEST_PREFIX}/lib/${CMAKE_STATIC_LIBRARY_PREFIX}gtest_main${CMAKE_STATIC_LIBRARY_SUFFIX}")
-  set(GMOCK_MAIN_STATIC_LIB
-    "${GTEST_PREFIX}/lib/${CMAKE_STATIC_LIBRARY_PREFIX}gmock_main${CMAKE_STATIC_LIBRARY_SUFFIX}")
-  set(GTEST_CMAKE_ARGS -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
-                       -DCMAKE_INSTALL_PREFIX=${GTEST_PREFIX}
-                       -DCMAKE_CXX_FLAGS=${GTEST_CMAKE_CXX_FLAGS})
-  if (MSVC AND NOT ARROW_USE_STATIC_CRT)
-    set(GTEST_CMAKE_ARGS ${GTEST_CMAKE_ARGS} -Dgtest_force_shared_crt=ON)
-  endif()
-
-  set(GTEST_URL_MD5 "16877098823401d1bf2ed7891d7dce36")
-
-  ExternalProject_Add(googletest_ep
-    PREFIX external/googletest
-    URL "https://github.com/google/googletest/archive/release-${GTEST_VERSION}.tar.gz"
-    URL_MD5 ${GTEST_URL_MD5}
-    BUILD_BYPRODUCTS ${GTEST_STATIC_LIB} ${GTEST_MAIN_STATIC_LIB} ${GMOCK_MAIN_STATIC_LIB}
-    CMAKE_ARGS ${GTEST_CMAKE_ARGS}
-    ${EP_LOG_OPTIONS})
-
+  include(GtestExternalProject)
   message(STATUS "GTest include dir: ${GTEST_INCLUDE_DIR}")
   message(STATUS "GTest static library: ${GTEST_STATIC_LIB}")
+  message(STATUS "GTest static main library: ${GTEST_MAIN_STATIC_LIB}")
+  message(STATUS "GMock static main library: ${GMOCK_MAIN_STATIC_LIB}")
   include_directories(SYSTEM ${GTEST_INCLUDE_DIR})
   ADD_THIRDPARTY_LIB(gtest
     STATIC_LIB ${GTEST_STATIC_LIB})
@@ -59,49 +30,16 @@ if(RAY_BUILD_TESTS OR RAY_BUILD_BENCHMARKS)
   add_dependencies(gmock_main googletest_ep)
 endif()
 
-if(RAY_USE_GLOG)
-  message(STATUS "Starting to build glog")
-  set(GLOG_VERSION "0.3.5")
-  # keep the url md5 equals with the version, `md5 v0.3.5.tar.gz`
-  set(GLOG_URL_MD5 "5df6d78b81e51b90ac0ecd7ed932b0d4")
-  set(GLOG_CMAKE_CXX_FLAGS "${EP_CXX_FLAGS} -fPIC")
-  if(APPLE)
-    set(GLOG_CMAKE_CXX_FLAGS "${GLOG_CMAKE_CXX_FLAGS} -mmacosx-version-min=10.12")
-  endif()
+include(GlogExternalProject)
+message(STATUS "Glog home: ${GLOG_HOME}")
+message(STATUS "Glog include dir: ${GLOG_INCLUDE_DIR}")
+message(STATUS "Glog static lib: ${GLOG_STATIC_LIB}")
 
-  set(GLOG_URL "https://github.com/google/glog/archive/v${GLOG_VERSION}.tar.gz")
-  set(GLOG_PREFIX "${CMAKE_CURRENT_BINARY_DIR}/external/glog/src/glog_ep")
-  set(GLOG_HOME "${GLOG_PREFIX}")
-  set(GLOG_INCLUDE_DIR "${GLOG_PREFIX}/include")
-  set(GLOG_STATIC_LIB "${GLOG_PREFIX}/lib/libglog.a")
+include_directories(${GLOG_INCLUDE_DIR})
+ADD_THIRDPARTY_LIB(glog
+  STATIC_LIB ${GLOG_STATIC_LIB})
 
-
-  set(GLOG_CMAKE_ARGS -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
-                        -DCMAKE_INSTALL_PREFIX=${GLOG_PREFIX}
-                        -DBUILD_SHARED_LIBS=OFF
-                        -DBUILD_TESTING=OFF
-                        -DWITH_GFLAGS=OFF
-                        -DCMAKE_CXX_FLAGS_${UPPERCASE_BUILD_TYPE}=${GLOG_CMAKE_CXX_FLAGS}
-                        -DCMAKE_C_FLAGS_${UPPERCASE_BUILD_TYPE}=${EP_C_FLAGS}
-                        -DCMAKE_CXX_FLAGS=${GLOG_CMAKE_CXX_FLAGS})
-
-  ExternalProject_Add(glog_ep
-    PREFIX external/glog
-    URL ${GLOG_URL}
-    URL_MD5 ${GLOG_URL_MD5}
-    ${EP_LOG_OPTIONS}
-    BUILD_IN_SOURCE 1
-    BUILD_BYPRODUCTS "${GLOG_STATIC_LIB}"
-    CMAKE_ARGS ${GLOG_CMAKE_ARGS})
-
-  message(STATUS "GLog include dir: ${GLOG_INCLUDE_DIR}")
-  message(STATUS "GLog static library: ${GLOG_STATIC_LIB}")
-  include_directories(SYSTEM ${GLOG_INCLUDE_DIR})
-  ADD_THIRDPARTY_LIB(glog
-    STATIC_LIB ${GLOG_STATIC_LIB})
-
-  add_dependencies(glog glog_ep)
-endif()
+add_dependencies(glog glog_ep)
 
 # boost
 include(BoostExternalProject)
@@ -111,6 +49,16 @@ message(STATUS "Boost include dir: ${Boost_INCLUDE_DIR}")
 message(STATUS "Boost system library: ${Boost_SYSTEM_LIBRARY}")
 message(STATUS "Boost filesystem library: ${Boost_FILESYSTEM_LIBRARY}")
 include_directories(${Boost_INCLUDE_DIR})
+
+ADD_THIRDPARTY_LIB(boost_system
+  STATIC_LIB ${Boost_SYSTEM_LIBRARY})
+ADD_THIRDPARTY_LIB(boost_filesystem
+  STATIC_LIB ${Boost_FILESYSTEM_LIBRARY})
+
+add_dependencies(boost_system boost_ep)
+add_dependencies(boost_filesystem boost_ep)
+
+add_custom_target(boost DEPENDS boost_system boost_filesystem)
 
 # flatbuffers
 include(FlatBuffersExternalProject)
@@ -150,32 +98,6 @@ ADD_THIRDPARTY_LIB(plasma STATIC_LIB ${PLASMA_STATIC_LIB})
 add_dependencies(plasma plasma_ep)
 
 if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
-  # Apache parquet cpp
-  include(ParquetExternalProject)
-
-  message(STATUS "Parquet home: ${PARQUET_HOME}")
-  message(STATUS "Parquet include dir: ${PARQUET_INCLUDE_DIR}")
-  message(STATUS "Parquet static library: ${PARQUET_STATIC_LIB}")
-  message(STATUS "Parquet shared library: ${PARQUET_SHARED_LIB}")
-  include_directories(SYSTEM ${PARQUET_INCLUDE_DIR})
-
-  ADD_THIRDPARTY_LIB(parquet STATIC_LIB ${PARQUET_STATIC_LIB})
-
-  add_dependencies(parquet parquet_ep)
-
-  # pyarrow
-  find_package(PythonInterp REQUIRED)
-  message(STATUS "PYTHON_EXECUTABLE for pyarrow: ${PYTHON_EXECUTABLE}")
-
-  set(pyarrow_ENV
-    "PKG_CONFIG_PATH=${ARROW_LIBRARY_DIR}/pkgconfig"
-    "PYARROW_WITH_PLASMA=1"
-    "PYARROW_WITH_TENSORFLOW=1"
-    "PYARROW_BUNDLE_ARROW_CPP=1"
-    "PARQUET_HOME=${PARQUET_HOME}"
-    "PYARROW_WITH_PARQUET=1"
-  )
-
   # clean the arrow_ep/python/build/lib.xxxxx directory,
   # or when you build with another python version, it creates multiple lib.xxxx directories
   set_property(DIRECTORY APPEND PROPERTY ADDITIONAL_MAKE_CLEAN_FILES "${ARROW_SOURCE_DIR}/python/build/")
@@ -183,13 +105,33 @@ if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
 
   # here we use externalProject to process pyarrow building
   # add_custom_command would have problem with setup.py
-  ExternalProject_Add(pyarrow_ext
-    PREFIX external/pyarrow
-    DEPENDS parquet_ep
-    DOWNLOAD_COMMAND ""
-    BUILD_IN_SOURCE 1
-    CONFIGURE_COMMAND cd ${ARROW_SOURCE_DIR}/python && ${CMAKE_COMMAND} -E env ${pyarrow_ENV} ${PYTHON_EXECUTABLE} setup.py build
-    BUILD_COMMAND cd ${ARROW_SOURCE_DIR}/python && ${CMAKE_COMMAND} -E env ${pyarrow_ENV} ${PYTHON_EXECUTABLE} setup.py build_ext
-    INSTALL_COMMAND bash -c "cp -rf \$(find ${ARROW_SOURCE_DIR}/python/build/ -maxdepth 1 -type d -print | grep -m1 'lib')/pyarrow ${CMAKE_SOURCE_DIR}/python/ray/pyarrow_files/")
+  if(EXISTS ${ARROW_SOURCE_DIR}/python/build/)
+    # if we did not run `make clean`, skip the rebuild of pyarrow
+    add_custom_target(pyarrow_ext)
+  else()
+    # pyarrow
+    find_package(PythonInterp REQUIRED)
+    message(STATUS "PYTHON_EXECUTABLE for pyarrow: ${PYTHON_EXECUTABLE}")
+
+    # PYARROW_PARALLEL= , so it will add -j to pyarrow build
+    set(pyarrow_ENV
+      "PKG_CONFIG_PATH=${ARROW_LIBRARY_DIR}/pkgconfig"
+      "PYARROW_WITH_PLASMA=1"
+      "PYARROW_WITH_TENSORFLOW=1"
+      "PYARROW_BUNDLE_ARROW_CPP=1"
+      "PARQUET_HOME=${PARQUET_HOME}"
+      "PYARROW_WITH_PARQUET=1"
+      "PYARROW_PARALLEL=")
+
+    ExternalProject_Add(pyarrow_ext
+      PREFIX external/pyarrow
+      DEPENDS arrow_ep
+      DOWNLOAD_COMMAND ""
+      BUILD_IN_SOURCE 1
+      CONFIGURE_COMMAND cd ${ARROW_SOURCE_DIR}/python && ${CMAKE_COMMAND} -E env ${pyarrow_ENV} ${PYTHON_EXECUTABLE} setup.py build
+      BUILD_COMMAND cd ${ARROW_SOURCE_DIR}/python && ${CMAKE_COMMAND} -E env ${pyarrow_ENV} ${PYTHON_EXECUTABLE} setup.py build_ext
+      INSTALL_COMMAND bash -c "cp -rf \$(find ${ARROW_SOURCE_DIR}/python/build/ -maxdepth 1 -type d -print | grep -m1 'lib')/pyarrow ${CMAKE_SOURCE_DIR}/python/ray/pyarrow_files/")
+
+  endif()
 
 endif ()

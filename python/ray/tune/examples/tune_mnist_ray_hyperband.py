@@ -128,7 +128,7 @@ def bias_variable(shape):
 class TrainMNIST(Trainable):
     """Example MNIST trainable."""
 
-    def _setup(self):
+    def _setup(self, config):
         global activation_fn
 
         self.timestep = 0
@@ -148,7 +148,7 @@ class TrainMNIST(Trainable):
         self.x = tf.placeholder(tf.float32, [None, 784])
         self.y_ = tf.placeholder(tf.float32, [None, 10])
 
-        activation_fn = getattr(tf.nn, self.config['activation'])
+        activation_fn = getattr(tf.nn, config['activation'])
 
         # Build the graph for the deep net
         y_conv, self.keep_prob = setupCNN(self.x)
@@ -160,7 +160,7 @@ class TrainMNIST(Trainable):
 
         with tf.name_scope('adam_optimizer'):
             train_step = tf.train.AdamOptimizer(
-                self.config['learning_rate']).minimize(cross_entropy)
+                config['learning_rate']).minimize(cross_entropy)
 
         self.train_step = train_step
 

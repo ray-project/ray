@@ -17,9 +17,12 @@ enum MessageType:int {
   // Send a reply confirming the successful registration of a worker or driver.
   // This is sent from the local scheduler to a worker or driver.
   RegisterClientReply,
-  // Notify the local scheduler that this client is disconnecting gracefully.
+  // Notify the local scheduler that this client disconnected unexpectedly.
   // This is sent from a worker to a local scheduler.
   DisconnectClient,
+  // Notify the local scheduler that this client is disconnecting gracefully.
+  // This is sent from a worker to a local scheduler.
+  IntentionalDisconnectClient,
   // Get a new task from the local scheduler. This is sent from a worker to a
   // local scheduler.
   GetTask,

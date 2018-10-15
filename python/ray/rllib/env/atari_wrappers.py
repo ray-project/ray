@@ -7,6 +7,10 @@ cv2.ocl.setUseOpenCL(False)
 
 
 def is_atari(env):
+    if (hasattr(env.observation_space, "shape")
+            and env.observation_space.shape is not None
+            and len(env.observation_space.shape) <= 2):
+        return False
     return hasattr(env, "unwrapped") and hasattr(env.unwrapped, "ale")
 
 

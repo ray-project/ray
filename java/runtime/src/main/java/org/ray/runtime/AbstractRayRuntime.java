@@ -6,29 +6,23 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import org.apache.arrow.plasma.ObjectStoreLink;
 import org.apache.commons.lang3.tuple.Pair;
-import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.WaitResult;
 import org.ray.api.function.RayFunc;
 import org.ray.api.id.UniqueId;
 import org.ray.api.runtime.RayRuntime;
-import org.ray.runtime.config.PathConfig;
-import org.ray.runtime.config.RayParameters;
-import org.ray.runtime.functionmanager.LocalFunctionManager;
-import org.ray.runtime.functionmanager.RayMethod;
-import org.ray.runtime.functionmanager.RemoteFunctionManager;
+import org.ray.runtime.config.RayConfig;
+import org.ray.runtime.functionmanager.FunctionManager;
+import org.ray.runtime.functionmanager.RayFunction;
 import org.ray.runtime.objectstore.ObjectStoreProxy;
 import org.ray.runtime.objectstore.ObjectStoreProxy.GetStatus;
 import org.ray.runtime.raylet.RayletClient;
 import org.ray.runtime.task.ArgumentsBuilder;
 import org.ray.runtime.task.TaskSpec;
-import org.ray.runtime.util.MethodId;
 import org.ray.runtime.util.ResourceUtil;
-import org.ray.runtime.util.UniqueIdHelper;
-import org.ray.runtime.util.config.ConfigReader;
+import org.ray.runtime.util.UniqueIdUtil;
 import org.ray.runtime.util.exception.TaskExecutionException;
 import org.ray.runtime.util.logger.RayLog;
 
@@ -37,150 +31,47 @@ import org.ray.runtime.util.logger.RayLog;
  */
 public abstract class AbstractRayRuntime implements RayRuntime {
 
-  public static ConfigReader configReader;
-  protected static AbstractRayRuntime ins = null;
-  protected static RayParameters params = null;
-  private static boolean fromRayInit = false;
+  private static final int GET_TIMEOUT_MS = 1000;
+  private static final int FETCH_BATCH_SIZE = 1000;
+
+  protected RayConfig rayConfig;
+  protected WorkerContext workerContext;
   protected Worker worker;
   protected RayletClient rayletClient;
   protected ObjectStoreProxy objectStoreProxy;
-  protected LocalFunctionManager functions;
-  protected RemoteFunctionManager remoteFunctionManager;
-  protected PathConfig pathConfig;
+  protected FunctionManager functionManager;
 
   /**
    * Actor ID -> local actor instance.
    */
   Map<UniqueId, Object> localActors = new HashMap<>();
 
-  // app level Ray.init()
-  // make it private so there is no direct usage but only from Ray.init
-  private static AbstractRayRuntime init() {
-    if (ins == null) {
-      try {
-        fromRayInit = true;
-        AbstractRayRuntime.init(null, null);
-        fromRayInit = false;
-      } catch (Exception e) {
-        e.printStackTrace();
-        throw new RuntimeException("Ray.init failed", e);
-      }
-    }
-    return ins;
-  }
-
-  // engine level AbstractRayRuntime.init(xx, xx)
-  // updateConfigStr is sth like section1.k1=v1;section2.k2=v2
-  public static AbstractRayRuntime init(String configPath, String updateConfigStr)
-      throws Exception {
-    if (ins == null) {
-      if (configPath == null) {
-        configPath = System.getenv("RAY_CONFIG");
-        if (configPath == null) {
-          configPath = System.getProperty("ray.config");
-        }
-        if (configPath == null) {
-          throw new Exception(
-              "Please set config file path in env RAY_CONFIG or property ray.config");
-        }
-      }
-      configReader = new ConfigReader(configPath, updateConfigStr);
-      AbstractRayRuntime.params = new RayParameters(configReader);
-
-      RayLog.init(params.log_dir);
-      assert RayLog.core != null;
-
-      ins = instantiate(params);
-      assert (ins != null);
-
-      if (!fromRayInit) {
-        Ray.init(); // assign Ray._impl
-      }
-    }
-    return ins;
-  }
-
-  // init with command line args
-  // --config=ray.config.ini --overwrite=updateConfigStr
-  public static AbstractRayRuntime init(String[] args) throws Exception {
-    String config = null;
-    String updateConfig = null;
-    for (String arg : args) {
-      if (arg.startsWith("--config=")) {
-        config = arg.substring("--config=".length());
-      } else if (arg.startsWith("--overwrite=")) {
-        updateConfig = arg.substring("--overwrite=".length());
-      } else {
-        throw new RuntimeException("Input argument " + arg
-            + " is not recognized, please use --overwrite to merge it into config file");
-      }
-    }
-    return init(config, updateConfig);
-  }
-
-  protected void init(
-      RayletClient slink,
-      ObjectStoreLink plink,
-      RemoteFunctionManager remoteLoader,
-      PathConfig pathManager
-  ) {
-    remoteFunctionManager = remoteLoader;
-    pathConfig = pathManager;
-
-    functions = new LocalFunctionManager(remoteLoader);
-    rayletClient = slink;
-
-    objectStoreProxy = new ObjectStoreProxy(plink);
+  public AbstractRayRuntime(RayConfig rayConfig) {
+    this.rayConfig = rayConfig;
+    functionManager = new FunctionManager(rayConfig.driverResourcePath);
     worker = new Worker(this);
-  }
-
-  private static AbstractRayRuntime instantiate(RayParameters params) {
-    AbstractRayRuntime runtime;
-    if (params.run_mode.isNativeRuntime()) {
-      runtime = new RayNativeRuntime();
-    } else {
-      runtime = new RayDevRuntime();
-    }
-
-    RayLog.core
-        .info("Start " + runtime.getClass().getName() + " with " + params.run_mode.toString());
-    try {
-      runtime.start(params);
-    } catch (Exception e) {
-      RayLog.core.error("Failed to init RayRuntime", e);
-      System.exit(-1);
-    }
-
-    return runtime;
+    workerContext = new WorkerContext(rayConfig.workerMode, rayConfig.driverId);
   }
 
   /**
-   * start runtime.
+   * Start runtime.
    */
-  public abstract void start(RayParameters params) throws Exception;
-
-  public static AbstractRayRuntime getInstance() {
-    return ins;
-  }
-
-  public static RayParameters getParams() {
-    return params;
-  }
+  public abstract void start() throws Exception;
 
   @Override
   public abstract void shutdown();
 
   @Override
   public <T> RayObject<T> put(T obj) {
-    UniqueId objectId = UniqueIdHelper.computePutId(
-        WorkerContext.currentTask().taskId, WorkerContext.nextPutIndex());
+    UniqueId objectId = UniqueIdUtil.computePutId(
+        workerContext.getCurrentTask().taskId, workerContext.nextPutIndex());
 
     put(objectId, obj);
     return new RayObjectImpl<>(objectId);
   }
 
   public <T> void put(UniqueId objectId, T obj) {
-    UniqueId taskId = WorkerContext.currentTask().taskId;
+    UniqueId taskId = workerContext.getCurrentTask().taskId;
     RayLog.core.info("Putting object {}, for task {} ", objectId, taskId);
     objectStoreProxy.put(objectId, obj, null);
   }
@@ -194,21 +85,21 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   @Override
   public <T> List<T> get(List<UniqueId> objectIds) {
     boolean wasBlocked = false;
-    UniqueId taskId = WorkerContext.currentTask().taskId;
+    UniqueId taskId = workerContext.getCurrentTask().taskId;
 
     try {
       int numObjectIds = objectIds.size();
 
       // Do an initial fetch for remote objects.
       List<List<UniqueId>> fetchBatches =
-          splitIntoBatches(objectIds, params.worker_fetch_request_size);
+          splitIntoBatches(objectIds, FETCH_BATCH_SIZE);
       for (List<UniqueId> batch : fetchBatches) {
         rayletClient.reconstructObjects(batch, true);
       }
 
       // Get the objects. We initially try to get the objects immediately.
       List<Pair<T, GetStatus>> ret = objectStoreProxy
-          .get(objectIds, params.default_first_check_timeout_ms, false);
+          .get(objectIds, GET_TIMEOUT_MS, false);
       assert ret.size() == numObjectIds;
 
       // Mapping the object IDs that we haven't gotten yet to their original index in objectIds.
@@ -225,14 +116,14 @@ public abstract class AbstractRayRuntime implements RayRuntime {
       while (unreadys.size() > 0) {
         List<UniqueId> unreadyList = new ArrayList<>(unreadys.keySet());
         List<List<UniqueId>> reconstructBatches =
-            splitIntoBatches(unreadyList, params.worker_fetch_request_size);
+            splitIntoBatches(unreadyList, FETCH_BATCH_SIZE);
 
         for (List<UniqueId> batch : reconstructBatches) {
           rayletClient.reconstructObjects(batch, false);
         }
 
         List<Pair<T, GetStatus>> results = objectStoreProxy
-            .get(unreadyList, params.default_get_check_interval_ms, false);
+            .get(unreadyList, GET_TIMEOUT_MS, false);
 
         // Remove any entries for objects we received during this iteration so we
         // don't retrieve the same object twice.
@@ -308,6 +199,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     }
     RayActorImpl actorImpl = (RayActorImpl)actor;
     TaskSpec spec = createTaskSpec(func, actorImpl, args, false);
+    spec.getExecutionDependencies().add(((RayActorImpl) actor).getTaskCursor());
     actorImpl.setTaskCursor(spec.returnIds[1]);
     rayletClient.submitTask(spec);
     return new RayObjectImpl(spec.returnIds[0]);
@@ -330,7 +222,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   private UniqueId[] genReturnIds(UniqueId taskId, int numReturns) {
     UniqueId[] ret = new UniqueId[numReturns];
     for (int i = 0; i < numReturns; i++) {
-      ret[i] = UniqueIdHelper.computeReturnId(taskId, i + 1);
+      ret[i] = UniqueIdUtil.computeReturnId(taskId, i + 1);
     }
     return ret;
   }
@@ -345,10 +237,10 @@ public abstract class AbstractRayRuntime implements RayRuntime {
    */
   private TaskSpec createTaskSpec(RayFunc func, RayActorImpl actor, Object[] args,
       boolean isActorCreationTask) {
-    final TaskSpec current = WorkerContext.currentTask();
+    final TaskSpec current = workerContext.getCurrentTask();
     UniqueId taskId = rayletClient.generateTaskId(current.driverId,
         current.taskId,
-        WorkerContext.nextCallIndex());
+        workerContext.nextCallIndex());
     int numReturns = actor.getId().isNil() ? 1 : 2;
     UniqueId[] returnIds = genReturnIds(taskId, numReturns);
 
@@ -357,33 +249,20 @@ public abstract class AbstractRayRuntime implements RayRuntime {
       actorCreationId = returnIds[0];
     }
 
-    MethodId methodId = MethodId.fromSerializedLambda(func);
-
-    // NOTE: we append the class name at the end of arguments,
-    // so that we can look up the method based on the class name.
-    // TODO(hchen): move class name to task spec.
-    args = Arrays.copyOf(args, args.length + 1);
-    args[args.length - 1] = methodId.className;
-
-    RayMethod rayMethod = functions.getMethod(
-        current.driverId, actor.getId(), new UniqueId(methodId.getSha1Hash()), methodId.className
-    ).getRight();
-    UniqueId funcId = rayMethod.getFuncId();
-
+    RayFunction rayFunction = functionManager.getFunction(current.driverId, func);
     return new TaskSpec(
         current.driverId,
         taskId,
         current.taskId,
         -1,
+        actorCreationId,
         actor.getId(),
+        actor.getHandleId(),
         actor.increaseTaskCounter(),
-        funcId,
         ArgumentsBuilder.wrap(args),
         returnIds,
-        actor.getHandleId(),
-        actorCreationId,
-        ResourceUtil.getResourcesMapFromArray(rayMethod.remoteAnnotation),
-        actor.getTaskCursor()
+        ResourceUtil.getResourcesMapFromArray(rayFunction.getRayRemoteAnnotation()),
+        rayFunction.getFunctionDescriptor()
     );
   }
 
@@ -395,12 +274,15 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     return worker;
   }
 
+  public WorkerContext getWorkerContext() {
+    return workerContext;
+  }
+
   public RayletClient getRayletClient() {
     return rayletClient;
   }
 
-  public LocalFunctionManager getLocalFunctionManager() {
-    return functions;
+  public FunctionManager getFunctionManager() {
+    return functionManager;
   }
 }
-

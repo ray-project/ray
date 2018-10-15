@@ -177,11 +177,24 @@ def cli(logging_level, logging_format):
     is_flag=True,
     default=False,
     help="do not redirect non-worker stdout and stderr to files")
+@click.option(
+    "--plasma-store-socket-name",
+    default=None,
+    help="manually specify the socket name of the plasma store")
+@click.option(
+    "--raylet-socket-name",
+    default=None,
+    help="manually specify the socket path of the raylet process")
+@click.option(
+    "--temp-dir",
+    default=None,
+    help="manually specify the root temporary dir of the Ray process")
 def start(node_ip_address, redis_address, redis_port, num_redis_shards,
           redis_max_clients, redis_shard_ports, object_manager_port,
           object_store_memory, num_workers, num_cpus, num_gpus, resources,
           head, no_ui, block, plasma_directory, huge_pages, autoscaling_config,
-          use_raylet, no_redirect_worker_output, no_redirect_output):
+          use_raylet, no_redirect_worker_output, no_redirect_output,
+          plasma_store_socket_name, raylet_socket_name, temp_dir):
     # Convert hostnames to numerical IP address.
     if node_ip_address is not None:
         node_ip_address = services.address_to_ip(node_ip_address)
@@ -260,7 +273,10 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             plasma_directory=plasma_directory,
             huge_pages=huge_pages,
             autoscaling_config=autoscaling_config,
-            use_raylet=use_raylet)
+            use_raylet=use_raylet,
+            plasma_store_socket_name=plasma_store_socket_name,
+            raylet_socket_name=raylet_socket_name,
+            temp_dir=temp_dir)
         logger.info(address_info)
         logger.info(
             "\nStarted Ray on this node. You can add additional nodes to "
@@ -329,7 +345,10 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             resources=resources,
             plasma_directory=plasma_directory,
             huge_pages=huge_pages,
-            use_raylet=use_raylet)
+            use_raylet=use_raylet,
+            plasma_store_socket_name=plasma_store_socket_name,
+            raylet_socket_name=raylet_socket_name,
+            temp_dir=temp_dir)
         logger.info(address_info)
         logger.info("\nStarted Ray on this node. If you wish to terminate the "
                     "processes that have been started, run\n\n"
@@ -413,24 +432,24 @@ def stop():
     "--min-workers",
     required=False,
     type=int,
-    help=("Override the configured min worker node count for the cluster."))
+    help="Override the configured min worker node count for the cluster.")
 @click.option(
     "--max-workers",
     required=False,
     type=int,
-    help=("Override the configured max worker node count for the cluster."))
+    help="Override the configured max worker node count for the cluster.")
 @click.option(
     "--cluster-name",
     "-n",
     required=False,
     type=str,
-    help=("Override the configured cluster name."))
+    help="Override the configured cluster name.")
 @click.option(
     "--yes",
     "-y",
     is_flag=True,
     default=False,
-    help=("Don't ask for confirmation."))
+    help="Don't ask for confirmation.")
 def create_or_update(cluster_config_file, min_workers, max_workers, no_restart,
                      restart_only, yes, cluster_name):
     if restart_only or no_restart:
@@ -446,19 +465,19 @@ def create_or_update(cluster_config_file, min_workers, max_workers, no_restart,
     "--workers-only",
     is_flag=True,
     default=False,
-    help=("Only destroy the workers."))
+    help="Only destroy the workers.")
 @click.option(
     "--yes",
     "-y",
     is_flag=True,
     default=False,
-    help=("Don't ask for confirmation."))
+    help="Don't ask for confirmation.")
 @click.option(
     "--cluster-name",
     "-n",
     required=False,
     type=str,
-    help=("Override the configured cluster name."))
+    help="Override the configured cluster name.")
 def teardown(cluster_config_file, yes, workers_only, cluster_name):
     teardown_cluster(cluster_config_file, yes, workers_only, cluster_name)
 
@@ -469,15 +488,19 @@ def teardown(cluster_config_file, yes, workers_only, cluster_name):
     "--start",
     is_flag=True,
     default=False,
-    help=("Start the cluster if needed."))
+    help="Start the cluster if needed.")
+@click.option(
+    "--tmux", is_flag=True, default=False, help="Run the command in tmux.")
 @click.option(
     "--cluster-name",
     "-n",
     required=False,
     type=str,
-    help=("Override the configured cluster name."))
-def attach(cluster_config_file, start, cluster_name):
-    attach_cluster(cluster_config_file, start, cluster_name)
+    help="Override the configured cluster name.")
+@click.option(
+    "--new", "-N", is_flag=True, help="Force creation of a new screen.")
+def attach(cluster_config_file, start, tmux, cluster_name, new):
+    attach_cluster(cluster_config_file, start, tmux, cluster_name, new)
 
 
 @cli.command()
@@ -489,7 +512,7 @@ def attach(cluster_config_file, start, cluster_name):
     "-n",
     required=False,
     type=str,
-    help=("Override the configured cluster name."))
+    help="Override the configured cluster name.")
 def rsync_down(cluster_config_file, source, target, cluster_name):
     rsync(cluster_config_file, source, target, cluster_name, down=True)
 
@@ -503,7 +526,7 @@ def rsync_down(cluster_config_file, source, target, cluster_name):
     "-n",
     required=False,
     type=str,
-    help=("Override the configured cluster name."))
+    help="Override the configured cluster name.")
 def rsync_up(cluster_config_file, source, target, cluster_name):
     rsync(cluster_config_file, source, target, cluster_name, down=False)
 
@@ -515,29 +538,35 @@ def rsync_up(cluster_config_file, source, target, cluster_name):
     "--stop",
     is_flag=True,
     default=False,
-    help=("Stop the cluster after the command finishes running."))
+    help="Stop the cluster after the command finishes running.")
 @click.option(
     "--start",
     is_flag=True,
     default=False,
-    help=("Start the cluster if needed."))
+    help="Start the cluster if needed.")
 @click.option(
     "--screen",
     is_flag=True,
     default=False,
-    help=("Run the command in a screen."))
+    help="Run the command in a screen.")
+@click.option(
+    "--tmux", is_flag=True, default=False, help="Run the command in tmux.")
 @click.option(
     "--cluster-name",
     "-n",
     required=False,
     type=str,
-    help=("Override the configured cluster name."))
+    help="Override the configured cluster name.")
 @click.option(
-    "--port-forward", required=False, type=int, help=("Port to forward."))
-def exec_cmd(cluster_config_file, cmd, screen, stop, start, cluster_name,
+    "--port-forward", required=False, type=int, help="Port to forward.")
+def exec_cmd(cluster_config_file, cmd, screen, tmux, stop, start, cluster_name,
              port_forward):
-    exec_cluster(cluster_config_file, cmd, screen, stop, start, cluster_name,
-                 port_forward)
+    assert not (screen and tmux), "Can specify only one of `screen` or `tmux`."
+    exec_cluster(cluster_config_file, cmd, screen, tmux, stop, start,
+                 cluster_name, port_forward)
+    if tmux:
+        logger.info("Use `ray attach {} --tmux` "
+                    "to check on command status.".format(cluster_config_file))
 
 
 @cli.command()
@@ -547,7 +576,7 @@ def exec_cmd(cluster_config_file, cmd, screen, stop, start, cluster_name,
     "-n",
     required=False,
     type=str,
-    help=("Override the configured cluster name."))
+    help="Override the configured cluster name.")
 def get_head_ip(cluster_config_file, cluster_name):
     click.echo(get_head_node_ip(cluster_config_file, cluster_name))
 

@@ -217,12 +217,13 @@ class RayTrialExecutor(TrialExecutor):
         assert self._committed_resources.gpu >= 0
 
     def _update_avail_resources(self):
-        clients = ray.global_state.client_table()
         if ray.worker.global_worker.use_raylet:
             # TODO(rliaw): Remove once raylet flag is swapped
-            num_cpus = sum(cl['Resources']['CPU'] for cl in clients)
-            num_gpus = sum(cl['Resources'].get('GPU', 0) for cl in clients)
+            resources = ray.global_state.cluster_resources()
+            num_cpus = resources["CPU"]
+            num_gpus = resources["GPU"]
         else:
+            clients = ray.global_state.client_table()
             local_schedulers = [
                 entry for client in clients.values() for entry in client
                 if (entry['ClientType'] == 'local_scheduler'
