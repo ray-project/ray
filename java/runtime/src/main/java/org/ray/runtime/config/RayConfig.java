@@ -130,10 +130,10 @@ public class RayConfig {
     // custom classpath
     classpath = config.getStringList("ray.classpath");
     // custom worker jvm parameters
-    if (config.hasPath("ray.jvm-parameters")) {
-      jvmParameters = config.getStringList("ray.jvm-parameters");
+    if (config.hasPath("ray.worker.jvm-parameters")) {
+      jvmParameters = config.getStringList("ray.worker.jvm-parameters");
     } else {
-      jvmParameters = null;
+      jvmParameters = ImmutableList.of();
     }
 
     // redis configurations
