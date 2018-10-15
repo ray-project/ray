@@ -206,7 +206,7 @@ class ModelCatalog(object):
         return FullyConnectedNetwork(inputs, num_outputs, options)
 
     @staticmethod
-    def get_torch_model(input_shape, num_outputs, options={}):
+    def get_torch_model(input_shape, num_outputs, options=None):
         """Returns a PyTorch suitable model. This is currently only supported
         in A3C.
 
@@ -223,6 +223,7 @@ class ModelCatalog(object):
         from ray.rllib.models.pytorch.visionnet import (VisionNetwork as
                                                         PyTorchVisionNet)
 
+        options = options or MODEL_DEFAULTS
         if options.get("custom_model"):
             model = options["custom_model"]
             print("Using custom torch model {}".format(model))
@@ -240,7 +241,7 @@ class ModelCatalog(object):
         return PyTorchFCNet(input_shape[0], num_outputs, options)
 
     @staticmethod
-    def get_preprocessor(env, options={}):
+    def get_preprocessor(env, options=None):
         """Returns a suitable processor for the given environment.
 
         Args:
@@ -250,6 +251,7 @@ class ModelCatalog(object):
         Returns:
             preprocessor (Preprocessor): Preprocessor for the env observations.
         """
+        options = options or MODEL_DEFAULTS
         for k in options.keys():
             if k not in MODEL_DEFAULTS:
                 raise Exception("Unknown config key `{}`, all keys: {}".format(
@@ -265,7 +267,7 @@ class ModelCatalog(object):
         return preprocessor(env.observation_space, options)
 
     @staticmethod
-    def get_preprocessor_as_wrapper(env, options={}):
+    def get_preprocessor_as_wrapper(env, options=None):
         """Returns a preprocessor as a gym observation wrapper.
 
         Args:
@@ -276,6 +278,7 @@ class ModelCatalog(object):
             wrapper (gym.ObservationWrapper): Preprocessor in wrapper form.
         """
 
+        options = options or MODEL_DEFAULTS
         preprocessor = ModelCatalog.get_preprocessor(env, options)
         return _RLlibPreprocessorWrapper(env, preprocessor)
 

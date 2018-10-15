@@ -76,7 +76,8 @@ class Worker(object):
 
         self.env = env_creator(config["env_config"])
         from ray.rllib import models
-        self.preprocessor = models.ModelCatalog.get_preprocessor(self.env)
+        self.preprocessor = models.ModelCatalog.get_preprocessor(
+            self.env, config["model"])
 
         self.sess = utils.make_session(single_threaded=True)
         self.policy = policies.GenericPolicy(
