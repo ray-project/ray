@@ -227,6 +227,10 @@ public class RunManager {
     // Config overwrite
     cmd.add("-Dray.redis.address=" + rayConfig.getRedisAddress());
 
+    if (rayConfig.jvmParameters != null) {
+      cmd.addAll(rayConfig.jvmParameters);
+    }
+
     // Main class
     cmd.add(WORKER_CLASS);
     String command = Joiner.on(" ").join(cmd);
