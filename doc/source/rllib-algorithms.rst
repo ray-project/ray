@@ -38,7 +38,7 @@ SpaceInvaders  646                               ~300
 
     Ape-X using 32 workers in RLlib vs vanilla DQN (orange) and A3C (blue) on PongNoFrameskip-v4.
 
-**ApeX-specific configs**:
+**Ape-X specific configs**:
 
 .. literalinclude:: ../../python/ray/rllib/agents/dqn/apex.py
    :language: python
