@@ -13,13 +13,11 @@ class VisionNetwork(Model):
     """Generic vision network."""
 
     def _build_layers(self, inputs, num_outputs, options):
-        from ray.rllib.models.catalog import MODEL_DEFAULTS
         filters = options.get("conv_filters")
         if not filters:
             filters = get_filter_config(options)
 
-        activation = get_activation_fn(
-            options.get("conv_activation", MODEL_DEFAULTS["conv_activation"]))
+        activation = get_activation_fn(options.get("conv_activation"))
 
         with tf.name_scope("vision_net"):
             for i, (out_size, kernel, stride) in enumerate(filters[:-1], 1):
@@ -49,7 +47,6 @@ class VisionNetwork(Model):
 
 
 def get_filter_config(options):
-    from ray.rllib.models.catalog import MODEL_DEFAULTS
     filters_84x84 = [
         [16, [8, 8], 4],
         [32, [4, 4], 2],
@@ -60,7 +57,7 @@ def get_filter_config(options):
         [32, [4, 4], 2],
         [256, [11, 11], 1],
     ]
-    dim = options.get("dim", MODEL_DEFAULTS["dim"])
+    dim = options.get("dim")
     if dim == 84:
         return filters_84x84
     elif dim == 42:

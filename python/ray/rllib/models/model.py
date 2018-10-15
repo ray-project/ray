@@ -43,7 +43,6 @@ class Model(object):
                  options,
                  state_in=None,
                  seq_lens=None):
-        from ray.rllib.models.catalog import MODEL_DEFAULTS
         self.inputs = inputs
 
         # Default attribute values for the non-RNN case
@@ -56,7 +55,7 @@ class Model(object):
             self.seq_lens = tf.placeholder(
                 dtype=tf.int32, shape=[None], name="seq_lens")
 
-        if options.get("free_log_std", MODEL_DEFAULTS["free_log_std"]):
+        if options.get("free_log_std"):
             assert num_outputs % 2 == 0
             num_outputs = num_outputs // 2
         self.outputs, self.last_layer = self._build_layers(

@@ -13,11 +13,8 @@ class FullyConnectedNetwork(Model):
     """Generic fully connected network."""
 
     def _build_layers(self, inputs, num_outputs, options):
-        from ray.rllib.models.catalog import MODEL_DEFAULTS
-        hiddens = options.get("fcnet_hiddens", MODEL_DEFAULTS["fcnet_hiddens"])
-        activation = get_activation_fn(
-            options.get("fcnet_activation",
-                        MODEL_DEFAULTS["fcnet_activation"]))
+        hiddens = options.get("fcnet_hiddens")
+        activation = get_activation_fn(options.get("fcnet_activation"))
 
         with tf.name_scope("fc_net"):
             i = 1

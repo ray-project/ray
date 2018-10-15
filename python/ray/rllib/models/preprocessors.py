@@ -38,14 +38,10 @@ class GenericPixelPreprocessor(Preprocessor):
     """
 
     def _init(self):
-        from ray.rllib.models.catalog import MODEL_DEFAULTS
-        self._grayscale = self._options.get("grayscale",
-                                            MODEL_DEFAULTS["grayscale"])
-        self._zero_mean = self._options.get("zero_mean",
-                                            MODEL_DEFAULTS["zero_mean"])
-        self._dim = self._options.get("dim", MODEL_DEFAULTS["dim"])
-        self._channel_major = self._options.get(
-            "channel_major", MODEL_DEFAULTS["channel_major"])
+        self._grayscale = self._options.get("grayscale")
+        self._zero_mean = self._options.get("zero_mean")
+        self._dim = self._options.get("dim")
+        self._channel_major = self._options.get("channel_major")
         if self._grayscale:
             self.shape = (self._dim, self._dim, 1)
         else:

@@ -101,12 +101,11 @@ class ModelCatalog(object):
         if isinstance(action_space, gym.spaces.Box):
             if dist_type is None:
                 dist = DiagGaussian
-                if config.get("squash_to_range",
-                              MODEL_DEFAULTS["squash_to_range"]):
+                if config.get("squash_to_range"):
                     dist = squash_to_range(dist, action_space.low,
                                            action_space.high)
                 return dist, action_space.shape[0] * 2
-            elif dist_type == 'deterministic':
+            elif dist_type == "deterministic":
                 return Deterministic, action_space.shape[0]
         elif isinstance(action_space, gym.spaces.Discrete):
             return Categorical, action_space.n
@@ -181,7 +180,7 @@ class ModelCatalog(object):
         model = ModelCatalog._get_model(inputs, num_outputs, options, state_in,
                                         seq_lens)
 
-        if options.get("use_lstm", MODEL_DEFAULTS["use_lstm"]):
+        if options.get("use_lstm"):
             model = LSTM(model.last_layer, num_outputs, options, state_in,
                          seq_lens)
 

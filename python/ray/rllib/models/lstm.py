@@ -135,9 +135,7 @@ class LSTM(Model):
     """
 
     def _build_layers(self, inputs, num_outputs, options):
-        from ray.rllib.models.catalog import MODEL_DEFAULTS
-        cell_size = options.get("lstm_cell_size",
-                                MODEL_DEFAULTS["lstm_cell_size"])
+        cell_size = options.get("lstm_cell_size")
         last_layer = add_time_dimension(inputs, self.seq_lens)
 
         # Setup the LSTM cell
