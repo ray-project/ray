@@ -17,8 +17,8 @@ In addition, if you set ``"model": {"use_lstm": true}``, then the model output w
 
 For preprocessors, RLlib tries to pick one of its built-in preprocessor based on the environment's observation space. Discrete observations are one-hot encoded, Atari observations downscaled, and Tuple observations flattened (there isn't native tuple support yet, but you can reshape the flattened observation in a custom model). Note that for Atari, RLlib defaults to using the `DeepMind preprocessors <https://github.com/ray-project/ray/blob/master/python/ray/rllib/env/atari_wrappers.py>`__, which are also used by the OpenAI baselines library.
 
-Built-in Parameters
-~~~~~~~~~~~~~~~~~~~
+Built-in Model Parameters
+~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The following is a list of the built-in model hyperparameters:
 
