@@ -174,13 +174,6 @@ class PolicyEvaluator(EvaluatorInterface):
         self.compress_observations = compress_observations
 
         self.env = env_creator(env_context)
-        if isinstance(policy_graph,
-                      dict) and not (isinstance(self.env, MultiAgentEnv)
-                                     or isinstance(self.env, AsyncVectorEnv)):
-            raise ValueError("Multiple policy graphs specified, but the env "
-                             "{} is not a subclass of MultiAgentEnv?".format(
-                                 self.env))
-
         if isinstance(self.env, VectorEnv) or \
                 isinstance(self.env, ServingEnv) or \
                 isinstance(self.env, MultiAgentEnv) or \
@@ -238,6 +231,12 @@ class PolicyEvaluator(EvaluatorInterface):
                                                      policy_config)
 
         self.multiagent = self.policy_map.keys() != {DEFAULT_POLICY_ID}
+        if self.multiagent:
+            if not (isinstance(self.env, MultiAgentEnv)
+                    or isinstance(self.env, AsyncVectorEnv)):
+                raise ValueError(
+                    "Multiple policy graphs specified, but the env "
+                    "{} is not a subclass of MultiAgentEnv?".format(self.env))
 
         self.filters = {
             policy_id: get_filter(observation_filter,
