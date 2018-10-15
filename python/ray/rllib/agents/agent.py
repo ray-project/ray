@@ -23,7 +23,7 @@ from ray.tune.result import DEFAULT_RESULTS_DIR
 COMMON_CONFIG = {
     # Discount factor of the MDP
     "gamma": 0.99,
-    # Number of steps after which the rollout gets cut
+    # Number of steps after which the episode is forced to terminate
     "horizon": None,
     # Number of environments to evaluate vectorwise per worker.
     "num_envs_per_worker": 1,
