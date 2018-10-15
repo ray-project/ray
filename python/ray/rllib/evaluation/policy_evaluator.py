@@ -235,7 +235,8 @@ class PolicyEvaluator(EvaluatorInterface):
             if not (isinstance(self.env, MultiAgentEnv)
                     or isinstance(self.env, AsyncVectorEnv)):
                 raise ValueError(
-                    "Multiple policy graphs specified, but the env "
+                    "Have multiple policy graphs {}, but the env ".format(
+                        self.policy_map) +
                     "{} is not a subclass of MultiAgentEnv?".format(self.env))
 
         self.filters = {
