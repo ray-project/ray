@@ -63,8 +63,7 @@ if __name__ == "__main__":
             "config": {
                 "multiagent": {
                     "policy_graphs": policy_graphs,
-                    "policy_mapping_fn": tune.function(
-                        lambda agent_id: random.choice(policy_ids)),
+                    "policy_mapping_fn": lambda agent_id: random.choice(2),
                 },
             },
         }

@@ -155,6 +155,11 @@ def _resolve_lambda_vars(spec, lambda_vars):
                 value = fn(_UnresolvedAccessGuard(spec))
             except RecursiveDependencyError as e:
                 error = e
+            except Exception:
+                raise ValueError(
+                    "Failed to evaluate expression: {}: {}".format(path, fn) +
+                    ". If you meant to pass this as a function literal, use "
+                    "tune.function() to escape it.")
             else:
                 _assign_value(spec, path, value)
                 resolved[path] = value

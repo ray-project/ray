@@ -168,6 +168,11 @@ class PolicyEvaluator(EvaluatorInterface):
         model_config = model_config or {}
         policy_mapping_fn = (policy_mapping_fn
                              or (lambda agent_id: DEFAULT_POLICY_ID))
+        if not callable(policy_mapping_fn):
+            raise ValueError(
+                "Policy mapping function not callable. If you're using Tune, "
+                "make sure to escape the function with tune.function() "
+                "to prevent it from being evaluated as an expression.")
         self.env_creator = env_creator
         self.sample_batch_size = batch_steps * num_envs
         self.batch_mode = batch_mode
