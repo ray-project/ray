@@ -157,23 +157,23 @@ class _LoaderThread(threading.Thread):
             self.step()
 
     def step(self):
-        l = self.learner
+        s = self.learner
         with self.queue_timer:
-            batch = l.inqueue.get()
+            batch = s.inqueue.get()
 
-        opt = l.idle_optimizers.get()
+        opt = s.idle_optimizers.get()
 
         with self.load_timer:
-            tuples = l.policy._get_loss_inputs_dict(batch)
-            data_keys = [ph for _, ph in l.policy.loss_inputs()]
-            if l.policy._state_inputs:
-                state_keys = l.policy._state_inputs + [l.policy._seq_lens]
+            tuples = s.policy._get_loss_inputs_dict(batch)
+            data_keys = [ph for _, ph in s.policy.loss_inputs()]
+            if s.policy._state_inputs:
+                state_keys = s.policy._state_inputs + [s.policy._seq_lens]
             else:
                 state_keys = []
-            opt.load_data(l.sess, [tuples[k] for k in data_keys],
+            opt.load_data(s.sess, [tuples[k] for k in data_keys],
                           [tuples[k] for k in state_keys])
 
-        l.ready_optimizers.put(opt)
+        s.ready_optimizers.put(opt)
 
 
 class AsyncSamplesOptimizer(PolicyOptimizer):
