@@ -4,7 +4,6 @@ from __future__ import print_function
 
 import numpy as np
 from collections import defaultdict
-import os
 import tensorflow as tf
 
 import ray
@@ -81,8 +80,7 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
                     self.par_opt = LocalSyncParallelOptimizer(
                         self.policy.optimizer(), self.devices,
                         [v for _, v in self.policy.loss_inputs()], rnn_inputs,
-                        self.per_device_batch_size, self.policy.copy,
-                        os.getcwd())
+                        self.per_device_batch_size, self.policy.copy)
 
                 self.sess = self.local_evaluator.tf_sess
                 self.sess.run(tf.global_variables_initializer())
