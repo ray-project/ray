@@ -107,11 +107,7 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
             existing_state_in = existing_inputs[5:-1]
             existing_seq_lens = existing_inputs[-1]
         else:
-            if isinstance(action_space, gym.spaces.Box):
-                ac_size = action_space.shape[0]
-                actions = tf.placeholder(
-                    tf.float32, [None, ac_size], name="ac")
-            elif isinstance(action_space, gym.spaces.Discrete):
+            if isinstance(action_space, gym.spaces.Discrete):
                 ac_size = action_space.n
                 actions = tf.placeholder(tf.int64, [None], name="ac")
             else:
