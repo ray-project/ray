@@ -666,17 +666,6 @@ void NodeManager::HandleDeadActor(const ActorID &actor_id, bool was_local) {
       actor_registration.GetRemainingReconstructions(), log_length));
 }
 
-void NodeManager::ReconstructActor(const ActorID &actor_id, const ActorRegistration &actor_registration) {
-  // RAY_LOG(DEBUG) << "Trying to reconstruction actor: " << actor_id;
-
-  // for (auto &id: dummy_objects_) {
-  //   RAY_LOG(DEBUG) << "Removing dummy object: " << id.hex();
-  //   HandleObjectMissing(id);
-  // }
-  // const auto &creation_task_id = ComputeTaskId(actor_registration.GetActorCreationDependency());
-  // HandleTaskReconstruction(creation_task_id);
-}
-
 void NodeManager::ProcessGetTaskMessage(
     const std::shared_ptr<LocalClientConnection> &client) {
   std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);

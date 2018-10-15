@@ -41,7 +41,8 @@ table TaskInfo {
   actor_creation_id: string;
   // The dummy object ID of the actor creation task if this is an actor method.
   actor_creation_dummy_object_id: string;
-  // TODO
+  // The max number of times this actor should be recontructed.
+  // If this number of 0 or negative, the actor won't be reconstructed on failure.
   max_actor_reconstructions: int;
   // Actor ID of the task. This is the actor that this task is executed on
   // or NIL_ACTOR_ID if the task is just a normal task.

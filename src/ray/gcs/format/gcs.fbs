@@ -100,8 +100,12 @@ table ClassTableData {
 }
 
 enum ActorState:int {
+  // Actor is alive.
   ALIVE = 0,
+  // Actor is ready dead and won't be reconstructed.
   DEAD = 1,
+  // Actor is now being reconstructed.
+  // After reconstruction finishes, the state will become alive again.
   BEING_RECONSTRUCTED = 2
 }
 
@@ -116,9 +120,11 @@ table ActorTableData {
   driver_id: string;
   // The ID of the node manager that created the actor.
   node_manager_id: string;
-  // TODO
+  // Current state of this actor.
   state: ActorState;
+  // Max number of times this actor should be reconstructed.
   max_reconstructions: int;
+  // Remaining number of reconstructions.
   remaining_reconstructions: int;
 }
 

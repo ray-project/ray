@@ -321,7 +321,6 @@ class NodeManager {
 
   /// TODO
   void HandleDeadActor(const ActorID &actor_id, bool was_local);
-  void ReconstructActor(const ActorID &actor_id, const ActorRegistration &actor_registration);
 
   boost::asio::io_service &io_service_;
   ObjectManager &object_manager_;
