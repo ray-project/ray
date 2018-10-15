@@ -184,11 +184,13 @@ if __name__ == "__main__":
             "stop": {
                 "episode_reward_mean": args.stop
             },
-            "config": dict(configs[args.run], **{
-                "model": {
-                    "use_lstm": True,
-                    "lstm_use_prev_action_reward": args.use_prev_action_reward,
-                },
-            }),
+            "config": dict(
+                configs[args.run], **{
+                    "model": {
+                        "use_lstm": True,
+                        "lstm_use_prev_action_reward": args.
+                        use_prev_action_reward,
+                    },
+                }),
         }
     })

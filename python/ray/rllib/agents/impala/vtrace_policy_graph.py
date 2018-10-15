@@ -128,11 +128,15 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
             action_space, self.config["model"])
         prev_actions = ModelCatalog.get_action_placeholder(action_space)
         prev_rewards = tf.placeholder(tf.float32, [None], name="prev_reward")
-        self.model = ModelCatalog.get_model({
-            "obs": self.observations,
-            "prev_actions": prev_actions,
-            "prev_rewards": prev_rewards,
-        }, observation_space, logit_dim, self.config["model"],
+        self.model = ModelCatalog.get_model(
+            {
+                "obs": self.observations,
+                "prev_actions": prev_actions,
+                "prev_rewards": prev_rewards,
+            },
+            observation_space,
+            logit_dim,
+            self.config["model"],
             state_in=existing_state_in,
             seq_lens=existing_seq_lens)
         action_dist = dist_class(self.model.outputs)
@@ -189,13 +193,9 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
             ("dones", dones),
             ("behaviour_logits", behaviour_logits),
             ("rewards", rewards),
-<<<<<<< HEAD
-            ("obs", self.observations),
+            ("obs", observations),
             ("prev_actions", prev_actions),
             ("prev_rewards", prev_rewards),
-=======
-            ("obs", observations),
->>>>>>> 3c891c6ecec973a305e753fd8dcf8d374291e828
         ]
         LearningRateSchedule.__init__(self, self.config["lr"],
                                       self.config["lr_schedule"])
