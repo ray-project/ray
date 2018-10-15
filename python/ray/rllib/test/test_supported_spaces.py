@@ -92,7 +92,7 @@ class ModelSupportedSpaces(unittest.TestCase):
     def testAll(self):
         ray.init()
         stats = {}
-        check_support("IMPALA", {"gpu": False}, stats)
+        check_support("IMPALA", {"num_gpus": 0}, stats)
         check_support("DDPG", {"timesteps_per_iteration": 1}, stats)
         check_support("DQN", {"timesteps_per_iteration": 1}, stats)
         check_support("A3C", {

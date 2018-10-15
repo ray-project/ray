@@ -189,14 +189,28 @@ docker run  -e "RAY_USE_XRAY=1" --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     --env CartPole-v0 \
     --run IMPALA \
     --stop '{"training_iteration": 2}' \
-    --config '{"gpu": false, "num_workers": 2, "min_iter_time_s": 1}'
+    --config '{"num_gpus": 0, "num_workers": 2, "min_iter_time_s": 1}'
 
 docker run  -e "RAY_USE_XRAY=1" --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/train.py \
     --env CartPole-v0 \
     --run IMPALA \
     --stop '{"training_iteration": 2}' \
-    --config '{"gpu": false, "num_workers": 2, "min_iter_time_s": 1, "model": {"use_lstm": true}}'
+    --config '{"num_gpus": 0, "num_workers": 2, "min_iter_time_s": 1, "model": {"use_lstm": true}}'
+
+docker run  -e "RAY_USE_XRAY=1" --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/rllib/train.py \
+    --env CartPole-v0 \
+    --run IMPALA \
+    --stop '{"training_iteration": 2}' \
+    --config '{"num_gpus": 0, "num_workers": 2, "min_iter_time_s": 1, "num_parallel_data_loaders": 2, "replay_proportion": 1.0}'
+
+docker run  -e "RAY_USE_XRAY=1" --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/rllib/train.py \
+    --env CartPole-v0 \
+    --run IMPALA \
+    --stop '{"training_iteration": 2}' \
+    --config '{"num_gpus": 0, "num_workers": 2, "min_iter_time_s": 1, "num_parallel_data_loaders": 2, "replay_proportion": 1.0, "model": {"use_lstm": true}}'
 
 docker run  -e "RAY_USE_XRAY=1" --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/train.py \
@@ -298,7 +312,10 @@ docker run  -e "RAY_USE_XRAY=1" --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/examples/multiagent_two_trainers.py --num-iters=2
 
 docker run  -e "RAY_USE_XRAY=1" --rm --shm-size=10G --memory=10G $DOCKER_SHA \
-    python /ray/python/ray/rllib/examples/cartpole_lstm.py --stop=200
+    python /ray/python/ray/rllib/examples/cartpole_lstm.py --run=PPO --stop=200
+
+docker run  -e "RAY_USE_XRAY=1" --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/rllib/examples/cartpole_lstm.py --run=IMPALA --stop=100
 
 docker run  -e "RAY_USE_XRAY=1" --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/examples/cartpole_lstm.py --stop=200 --use-prev-action-reward
