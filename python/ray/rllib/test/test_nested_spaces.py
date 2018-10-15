@@ -12,7 +12,7 @@ import tensorflow as tf
 import unittest
 
 import ray
-from ray.rllib.agents.ppo import PPOAgent
+from ray.rllib.agents.pg import PGAgent
 from ray.rllib.env.async_vector_env import AsyncVectorEnv
 from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.models import ModelCatalog
@@ -151,7 +151,7 @@ class TupleSpyModel(Model):
 class NestedSpacesTest(unittest.TestCase):
     def testInvalidModel(self):
         ModelCatalog.register_custom_model("invalid", InvalidModel)
-        self.assertRaises(ValueError, lambda: PPOAgent(
+        self.assertRaises(ValueError, lambda: PGAgent(
             env="CartPole-v0", config={
                 "model": {
                     "custom_model": "invalid",
@@ -161,7 +161,7 @@ class NestedSpacesTest(unittest.TestCase):
     def doTestNestedDict(self, make_env):
         ModelCatalog.register_custom_model("composite", DictSpyModel)
         register_env("nested", make_env)
-        agent = PPOAgent(
+        pg = PGAgent(
             env="nested",
             config={
                 "num_workers": 0,
@@ -170,7 +170,7 @@ class NestedSpacesTest(unittest.TestCase):
                     "custom_model": "composite",
                 },
             })
-        agent.train()
+        pg.train()
 
         # Check that the model sees the correct reconstructed observations
         for i in range(4):
@@ -188,19 +188,16 @@ class NestedSpacesTest(unittest.TestCase):
     def doTestNestedTuple(self, make_env):
         ModelCatalog.register_custom_model("composite2", TupleSpyModel)
         register_env("nested2", make_env)
-        agent = PPOAgent(
+        pg = PGAgent(
             env="nested2",
             config={
                 "num_workers": 0,
                 "sample_batch_size": 5,
-                "train_batch_size": 5,
-                "sgd_minibatch_size": 5,
-                "num_sgd_iter": 1,
                 "model": {
                     "custom_model": "composite2",
                 },
             })
-        agent.train()
+        pg.train()
 
         # Check that the model sees the correct reconstructed observations
         for i in range(4):
