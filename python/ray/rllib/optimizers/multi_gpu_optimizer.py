@@ -4,7 +4,6 @@ from __future__ import print_function
 
 import numpy as np
 from collections import defaultdict
-import os
 import tensorflow as tf
 
 import ray
