@@ -38,7 +38,7 @@ COMMON_CONFIG = {
     "batch_mode": "truncate_episodes",
     # Whether to use a background thread for sampling (slightly off-policy)
     "sample_async": False,
-    # Which observation filter to apply to the observation
+    # Element-wise observation filter, either "NoFilter" or "MeanStdFilter"
     "observation_filter": "NoFilter",
     # Whether to synchronize the statistics of remote filters.
     "synchronize_filters": True,
@@ -53,10 +53,11 @@ COMMON_CONFIG = {
     "env": None,
     # Arguments to pass to model
     "model": MODEL_DEFAULTS,
-    # Arguments to pass to the rllib optimizer
+    # Arguments to pass to the policy optimizer. These vary by optimizer.
     "optimizer": {},
     # Configure TF for single-process operation by default
     "tf_session_args": {
+        # note: parallelism_threads is set to auto for the local evaluator
         "intra_op_parallelism_threads": 1,
         "inter_op_parallelism_threads": 1,
         "gpu_options": {
