@@ -23,6 +23,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
     this.maxReconstructions = NO_RECONSTRUCTION;
   }
 
+
   public ActorCreationOptions(Map<String, Double> resources, int maxReconstructions) {
     super(resources);
     this.maxReconstructions = maxReconstructions;
