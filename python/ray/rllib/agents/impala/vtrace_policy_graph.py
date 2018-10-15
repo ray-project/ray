@@ -159,9 +159,12 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
                 rs,
                 [1, 0] + list(range(2, 1 + int(tf.shape(tensor).shape[0]))))
 
-        max_seq_len = tf.reduce_max(self.model.seq_lens) - 1
-        mask = tf.sequence_mask(self.model.seq_lens, max_seq_len)
-        mask = tf.reshape(mask, [-1])
+        if self.model.state_in:
+            max_seq_len = tf.reduce_max(self.model.seq_lens) - 1
+            mask = tf.sequence_mask(self.model.seq_lens, max_seq_len)
+            mask = tf.reshape(mask, [-1])
+        else:
+            mask = tf.ones_like(rewards)
 
         # Inputs are reshaped from [B * T] => [T - 1, B] for V-trace calc.
         self.loss = VTraceLoss(

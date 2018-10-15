@@ -186,9 +186,12 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
         else:
             self.value_function = tf.zeros(shape=tf.shape(obs_ph)[:1])
 
-        max_seq_len = tf.reduce_max(self.model.seq_lens)
-        mask = tf.sequence_mask(self.model.seq_lens, max_seq_len)
-        mask = tf.reshape(mask, [-1])
+        if self.model.state_in:
+            max_seq_len = tf.reduce_max(self.model.seq_lens)
+            mask = tf.sequence_mask(self.model.seq_lens, max_seq_len)
+            mask = tf.reshape(mask, [-1])
+        else:
+            mask = tf.ones_like(adv_ph)
 
         self.loss_obj = PPOLoss(
             action_space,
