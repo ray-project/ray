@@ -24,6 +24,7 @@ Result = namedtuple("Result", [
     "eval_returns", "eval_lengths"
 ])
 
+# __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
     "noise_stdev": 0.02,  # std deviation of parameter noise
     "num_rollouts": 32,  # number of perturbs to try
@@ -34,9 +35,9 @@ DEFAULT_CONFIG = with_common_config({
     "noise_size": 250000000,
     "eval_prob": 0.03,  # probability of evaluating the parameter rewards
     "report_length": 10,  # how many of the last rewards we average over
-    "env_config": {},
     "offset": 0,
 })
+# __sphinx_doc_end__
 
 
 @ray.remote

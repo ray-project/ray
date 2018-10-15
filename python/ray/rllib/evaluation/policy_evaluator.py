@@ -7,7 +7,7 @@ import pickle
 import tensorflow as tf
 
 import ray
-from ray.rllib.models import ModelCatalog
+from ray.rllib.models import ModelCatalog, MODEL_DEFAULTS
 from ray.rllib.env.async_vector_env import AsyncVectorEnv
 from ray.rllib.env.atari_wrappers import wrap_deepmind, is_atari
 from ray.rllib.env.env_context import EnvContext
@@ -191,9 +191,9 @@ class PolicyEvaluator(EvaluatorInterface):
             def wrap(env):
                 env = wrap_deepmind(
                     env,
-                    dim=model_config.get("dim", 84),
-                    framestack=not model_config.get("use_lstm")
-                    and not model_config.get("no_framestack"))
+                    dim=model_config.get("dim", MODEL_DEFAULTS["dim"]),
+                    framestack=model_config.get("framestack",
+                                                MODEL_DEFAULTS["framestack"]))
                 if monitor_path:
                     env = _monitor(env, monitor_path)
                 return env

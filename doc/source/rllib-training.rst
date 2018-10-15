@@ -57,6 +57,17 @@ Specifying Resources
 
 You can control the degree of parallelism used by setting the ``num_workers`` hyperparameter for most agents. Many agents also provide a ``num_gpus`` or ``gpu`` option. In addition, you can allocate a fraction of a GPU by setting ``gpu_fraction: f``. For example, with DQN you can pack five agents onto one GPU by setting ``gpu_fraction: 0.2``. Note that fractional GPU support requires enabling the experimental Xray backend by setting the environment variable ``RAY_USE_XRAY=1``.
 
+Common Parameters
+~~~~~~~~~~~~~~~~~
+
+The following is a list of the common agent hyperparameters:
+
+.. literalinclude:: ../../python/ray/rllib/agents/agent.py
+   :language: python
+   :start-after: __sphinx_doc_begin__
+   :end-before: __sphinx_doc_end__
+
+
 Evaluating Trained Agents
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 

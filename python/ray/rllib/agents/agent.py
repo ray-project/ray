@@ -10,6 +10,7 @@ from datetime import datetime
 import tensorflow as tf
 
 import ray
+from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.utils import FilterManager, deep_update, merge_dicts
@@ -18,6 +19,7 @@ from ray.tune.trainable import Trainable
 from ray.tune.logger import UnifiedLogger
 from ray.tune.result import DEFAULT_RESULTS_DIR
 
+# __sphinx_doc_begin__
 COMMON_CONFIG = {
     # Discount factor of the MDP
     "gamma": 0.99,
@@ -50,10 +52,7 @@ COMMON_CONFIG = {
     # Environment name can also be passed via config
     "env": None,
     # Arguments to pass to model
-    "model": {
-        "use_lstm": False,
-        "max_seq_len": 20,
-    },
+    "model": MODEL_DEFAULTS,
     # Arguments to pass to the rllib optimizer
     "optimizer": {},
     # Configure TF for single-process operation by default
@@ -87,6 +86,8 @@ COMMON_CONFIG = {
         "policies_to_train": None,
     },
 }
+
+# __sphinx_doc_end__
 
 
 def with_common_config(extra_config):

@@ -15,6 +15,7 @@ OPTIMIZER_SHARED_CONFIGS = [
     "train_batch_size",
 ]
 
+# __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
     # V-trace params (see vtrace.py).
     "vtrace": True,
@@ -43,14 +44,9 @@ DEFAULT_CONFIG = with_common_config({
     # balancing the three losses
     "vf_loss_coeff": 0.5,
     "entropy_coeff": -0.01,
-
-    # Model and preprocessor options.
-    "model": {
-        "use_lstm": False,
-        "max_seq_len": 20,
-        "dim": 84,
-    },
 })
+
+# __sphinx_doc_end__
 
 
 class ImpalaAgent(Agent):
