@@ -189,7 +189,7 @@ class ModelCatalog(object):
 
     @staticmethod
     def _get_model(inputs, num_outputs, options, state_in, seq_lens):
-        if "custom_model" in options:
+        if options.get("custom_model"):
             model = options["custom_model"]
             print("Using custom model {}".format(model))
             return _global_registry.get(RLLIB_MODEL, model)(
@@ -224,7 +224,7 @@ class ModelCatalog(object):
         from ray.rllib.models.pytorch.visionnet import (VisionNetwork as
                                                         PyTorchVisionNet)
 
-        if "custom_model" in options:
+        if options.get("custom_model"):
             model = options["custom_model"]
             print("Using custom torch model {}".format(model))
             return _global_registry.get(RLLIB_MODEL, model)(
@@ -256,7 +256,7 @@ class ModelCatalog(object):
                 raise Exception("Unknown config key `{}`, all keys: {}".format(
                     k, list(MODEL_DEFAULTS)))
 
-        if "custom_preprocessor" in options:
+        if options.get("custom_preprocessor"):
             preprocessor = options["custom_preprocessor"]
             print("Using custom preprocessor {}".format(preprocessor))
             return _global_registry.get(RLLIB_PREPROCESSOR, preprocessor)(

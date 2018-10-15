@@ -182,7 +182,7 @@ class PolicyEvaluator(EvaluatorInterface):
             def wrap(env):
                 return env  # we can't auto-wrap these env types
         elif is_atari(self.env) and \
-                "custom_preprocessor" not in model_config and \
+                not model_config.get("custom_preprocessor") and \
                 preprocessor_pref == "deepmind":
 
             if clip_rewards is None:
