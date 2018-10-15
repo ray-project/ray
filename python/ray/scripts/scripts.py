@@ -93,7 +93,7 @@ def cli(logging_level, logging_format):
     "--redis-password",
     required=False,
     type=str,
-    help="If provided, configure Redis with this password")
+    help="If provided, secure Redis ports with this password")
 @click.option(
     "--redis-shard-ports",
     required=False,
@@ -211,6 +211,11 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
         # This environment variable is used in our testing setup.
         logger.info("Detected environment variable 'RAY_USE_XRAY'.")
         use_raylet = True
+    if not use_raylet and redis_password is not None:
+        raise Exception("Setting the 'redis-password' argument is not "
+                        "supported in legacy Ray. To run Ray with "
+                        "password-protected Redis ports, pass "
+                        "the '--use-raylet' flag.")
 
     try:
         resources = json.loads(resources)
@@ -288,16 +293,20 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
         logger.info(
             "\nStarted Ray on this node. You can add additional nodes to "
             "the cluster by calling\n\n"
-            "    ray start --redis-address {}\n\n"
+            "    ray start --redis-address {}{}{}\n\n"
             "from the node you wish to add. You can connect a driver to the "
             "cluster from Python by running\n\n"
             "    import ray\n"
-            "    ray.init(redis_address=\"{}\")\n\n"
+            "    ray.init(redis_address=\"{}{}{}\")\n\n"
             "If you have trouble connecting from a different machine, check "
             "that your firewall is configured properly. If you wish to "
             "terminate the processes that have been started, run\n\n"
-            "    ray stop".format(address_info["redis_address"],
-                                  address_info["redis_address"]))
+            "    ray stop".format(
+                address_info["redis_address"], " --redis-password "
+                if redis_password else "", redis_password if redis_password
+                else "", address_info["redis_address"], "\", redis_password=\""
+                if redis_password else "", redis_password
+                if redis_password else ""))
     else:
         # Start Ray on a non-head node.
         if redis_port is not None:
