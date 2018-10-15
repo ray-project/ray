@@ -243,7 +243,7 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
     def copy(self, existing_inputs):
         """Creates a copy of self using existing input placeholders."""
         return PPOPolicyGraph(
-            None,
+            self.observation_space,
             self.action_space,
             self.config,
             existing_inputs=existing_inputs)
