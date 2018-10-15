@@ -186,6 +186,10 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
         else:
             self.value_function = tf.zeros(shape=tf.shape(obs_ph)[:1])
 
+        max_seq_len = tf.reduce_max(self.model.seq_lens)
+        mask = tf.sequence_mask(self.model.seq_lens, max_seq_len)
+        mask = tf.reshape(mask, [-1])
+
         self.loss_obj = PPOLoss(
             action_space,
             value_targets_ph,
@@ -196,6 +200,7 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             curr_action_dist,
             self.value_function,
             self.kl_coeff,
+            mask,
             entropy_coeff=self.config["entropy_coeff"],
             clip_param=self.config["clip_param"],
             vf_clip_param=self.config["vf_clip_param"],
