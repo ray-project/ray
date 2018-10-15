@@ -168,6 +168,11 @@ class PolicyEvaluator(EvaluatorInterface):
         model_config = model_config or {}
         policy_mapping_fn = (policy_mapping_fn
                              or (lambda agent_id: DEFAULT_POLICY_ID))
+        if not callable(policy_mapping_fn):
+            raise ValueError(
+                "Policy mapping function not callable. If you're using Tune, "
+                "make sure to escape the function with tune.function() "
+                "to prevent it from being evaluated as an expression.")
         self.env_creator = env_creator
         self.sample_batch_size = batch_steps * num_envs
         self.batch_mode = batch_mode
@@ -230,7 +235,14 @@ class PolicyEvaluator(EvaluatorInterface):
             self.policy_map = self._build_policy_map(policy_dict,
                                                      policy_config)
 
-        self.multiagent = self.policy_map.keys() != {DEFAULT_POLICY_ID}
+        self.multiagent = set(self.policy_map.keys()) != {DEFAULT_POLICY_ID}
+        if self.multiagent:
+            if not (isinstance(self.env, MultiAgentEnv)
+                    or isinstance(self.env, AsyncVectorEnv)):
+                raise ValueError(
+                    "Have multiple policy graphs {}, but the env ".format(
+                        self.policy_map) +
+                    "{} is not a subclass of MultiAgentEnv?".format(self.env))
 
         self.filters = {
             policy_id: get_filter(observation_filter,
