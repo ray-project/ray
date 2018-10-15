@@ -230,7 +230,7 @@ class PolicyEvaluator(EvaluatorInterface):
             self.policy_map = self._build_policy_map(policy_dict,
                                                      policy_config)
 
-        self.multiagent = self.policy_map.keys() != {DEFAULT_POLICY_ID}
+        self.multiagent = set(self.policy_map.keys()) != {DEFAULT_POLICY_ID}
         if self.multiagent:
             if not (isinstance(self.env, MultiAgentEnv)
                     or isinstance(self.env, AsyncVectorEnv)):
