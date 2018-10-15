@@ -7,6 +7,7 @@ import pickle
 import tensorflow as tf
 
 import ray
+from ray.rllib.models import ModelCatalog
 from ray.rllib.env.async_vector_env import AsyncVectorEnv
 from ray.rllib.env.atari_wrappers import wrap_deepmind, is_atari
 from ray.rllib.env.env_context import EnvContext
