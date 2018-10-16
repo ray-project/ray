@@ -3,6 +3,7 @@ package org.ray.api.runtime;
 import java.util.List;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
+import org.ray.api.RayResources;
 import org.ray.api.WaitResult;
 import org.ray.api.function.RayFunc;
 import org.ray.api.id.UniqueId;
@@ -67,7 +68,7 @@ public interface RayRuntime {
    * @param args The arguments of the remote function.
    * @return The result object.
    */
-  RayObject call(RayFunc func, Object[] args);
+  RayObject call(RayFunc func, Object[] args, RayResources resources);
 
   /**
    * Invoke a remote function on an actor.
@@ -77,7 +78,7 @@ public interface RayRuntime {
    * @param args The arguments of the remote function.
    * @return The result object.
    */
-  RayObject call(RayFunc func, RayActor actor, Object[] args);
+  RayObject call(RayFunc func, RayActor actor, Object[] args, RayResources resources);
 
   /**
    * Create an actor on a remote node.
@@ -87,5 +88,5 @@ public interface RayRuntime {
    * @param <T> The type of the actor object.
    * @return A handle to the actor.
    */
-  <T> RayActor<T> createActor(RayFunc actorFactoryFunc, Object[] args);
+  <T> RayActor<T> createActor(RayFunc actorFactoryFunc, Object[] args, RayResources resources);
 }

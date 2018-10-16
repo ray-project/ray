@@ -9,6 +9,7 @@ import java.util.Map;
 import org.apache.commons.lang3.tuple.Pair;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
+import org.ray.api.RayResources;
 import org.ray.api.WaitResult;
 import org.ray.api.function.RayFunc;
 import org.ray.api.id.UniqueId;
@@ -186,19 +187,19 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   }
 
   @Override
-  public RayObject call(RayFunc func, Object[] args) {
-    TaskSpec spec = createTaskSpec(func, RayActorImpl.NIL, args, false);
+  public RayObject call(RayFunc func, Object[] args, RayResources resources) {
+    TaskSpec spec = createTaskSpec(func, RayActorImpl.NIL, args, false, resources);
     rayletClient.submitTask(spec);
     return new RayObjectImpl(spec.returnIds[0]);
   }
 
   @Override
-  public RayObject call(RayFunc func, RayActor actor, Object[] args) {
+  public RayObject call(RayFunc func, RayActor actor, Object[] args, RayResources resources) {
     if (!(actor instanceof RayActorImpl)) {
       throw new IllegalArgumentException("Unsupported actor type: " + actor.getClass().getName());
     }
     RayActorImpl actorImpl = (RayActorImpl)actor;
-    TaskSpec spec = createTaskSpec(func, actorImpl, args, false);
+    TaskSpec spec = createTaskSpec(func, actorImpl, args, false, resources);
     spec.getExecutionDependencies().add(((RayActorImpl) actor).getTaskCursor());
     actorImpl.setTaskCursor(spec.returnIds[1]);
     rayletClient.submitTask(spec);
@@ -207,8 +208,8 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   @Override
   @SuppressWarnings("unchecked")
-  public <T> RayActor<T> createActor(RayFunc actorFactoryFunc, Object[] args) {
-    TaskSpec spec = createTaskSpec(actorFactoryFunc, RayActorImpl.NIL, args, true);
+  public <T> RayActor<T> createActor(RayFunc actorFactoryFunc, Object[] args, RayResources resources) {
+    TaskSpec spec = createTaskSpec(actorFactoryFunc, RayActorImpl.NIL, args, true, resources);
     RayActorImpl<?> actor = new RayActorImpl(spec.returnIds[0]);
     actor.increaseTaskCounter();
     actor.setTaskCursor(spec.returnIds[0]);
@@ -236,11 +237,10 @@ public abstract class AbstractRayRuntime implements RayRuntime {
    * @return A TaskSpec object.
    */
   private TaskSpec createTaskSpec(RayFunc func, RayActorImpl actor, Object[] args,
-      boolean isActorCreationTask) {
+      boolean isActorCreationTask, RayResources resources) {
     final TaskSpec current = workerContext.getCurrentTask();
     UniqueId taskId = rayletClient.generateTaskId(current.driverId,
-        current.taskId,
-        workerContext.nextCallIndex());
+        current.taskId, workerContext.nextCallIndex());
     int numReturns = actor.getId().isNil() ? 1 : 2;
     UniqueId[] returnIds = genReturnIds(taskId, numReturns);
 
@@ -261,7 +261,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
         actor.increaseTaskCounter(),
         ArgumentsBuilder.wrap(args),
         returnIds,
-        ResourceUtil.getResourcesMapFromArray(rayFunction.getRayRemoteAnnotation()),
+        resources.getAll(),
         rayFunction.getFunctionDescriptor()
     );
   }

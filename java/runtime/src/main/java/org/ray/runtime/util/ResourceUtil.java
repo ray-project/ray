@@ -2,13 +2,12 @@ package org.ray.runtime.util;
 
 import java.util.HashMap;
 import java.util.Map;
+
+import org.ray.api.RayResources;
 import org.ray.api.annotation.RayRemote;
 import org.ray.api.annotation.ResourceItem;
 
 public class ResourceUtil {
-  public static final String CPU_LITERAL = "CPU";
-  public static final String GPU_LITERAL = "GPU";
-
   /**
    * Convert the array that contains resource items to a map.
    *
@@ -25,8 +24,8 @@ public class ResourceUtil {
         }
       }
     }
-    if (!resourceMap.containsKey(CPU_LITERAL)) {
-      resourceMap.put(CPU_LITERAL, 0.0);
+    if (!resourceMap.containsKey(RayResources.CPU_LITERAL)) {
+      resourceMap.put(RayResources.CPU_LITERAL, 0.0);
     }
     return resourceMap;
   }
@@ -37,7 +36,7 @@ public class ResourceUtil {
    * @param resources The resource map to be Converted.
    * @return The format resources string, like "{CPU:4, GPU:0}".
    */
-  public static String getResourcesFromatStringFromMap(Map<String, Double> resources) {
+  public static String getResourcesFormatStringFromMap(Map<String, Double> resources) {
     if (resources == null) {
       return "{}";
     }
@@ -99,7 +98,7 @@ public class ResourceUtil {
         String[] resourcePair = trimItem.split(":");
 
         if (resourcePair.length != 2) {
-          throw new IllegalArgumentException("Format of static resurces configure is invalid.");
+          throw new IllegalArgumentException("Format of static resources configure is invalid.");
         }
 
         final String resourceName = resourcePair[0].trim();
