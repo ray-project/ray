@@ -156,16 +156,16 @@ ray::Status NodeManager::RegisterGcs() {
   };
   gcs_client_->client_table().RegisterClientRemovedCallback(node_manager_client_removed);
 
-  // Subscribe to node manager heartbeat batch.
-  const auto heartbeat_batch_added =
-      [this](gcs::AsyncGcsClient *client, const ClientID &id,
-             const HeartbeatBatchTableDataT &heartbeat_batch) {
-    HeartbeatBatchAdded(client, id, heartbeat_batch);
+  // Subscribe to heartbeat batches from the monitor.
+  const auto &heartbeat_batch_added = [this](
+      gcs::AsyncGcsClient *client, const ClientID &id,
+      const HeartbeatBatchTableDataT &heartbeat_batch) {
+    HeartbeatBatchAdded(heartbeat_batch);
   };
   RAY_RETURN_NOT_OK(gcs_client_->heartbeat_batch_table().Subscribe(
       UniqueID::nil(), UniqueID::nil(), heartbeat_batch_added, nullptr,
       [](gcs::AsyncGcsClient *client) {
-        RAY_LOG(DEBUG) << "heartbeat table subscription done callback called.";
+        RAY_LOG(DEBUG) << "Heartbeat batch table subscription done.";
       }));
 
   // Subscribe to driver table updates.
@@ -400,7 +400,7 @@ void NodeManager::ClientRemoved(const ClientTableDataT &client_data) {
   remote_server_connections_.erase(client_id);
 }
 
-void NodeManager::HeartbeatAdded(gcs::AsyncGcsClient *client, const ClientID &client_id,
+void NodeManager::HeartbeatAdded(const ClientID &client_id,
                                  const HeartbeatTableDataT &heartbeat_data) {
   RAY_LOG(DEBUG) << "[HeartbeatAdded]: received heartbeat from client id " << client_id;
   const ClientID &local_client_id = gcs_client_->client_table().GetLocalClientId();
@@ -449,12 +449,10 @@ void NodeManager::HeartbeatAdded(gcs::AsyncGcsClient *client, const ClientID &cl
   }
 }
 
-void NodeManager::HeartbeatBatchAdded(gcs::AsyncGcsClient *client,
-                                      const UniqueID &publish_key,
-                                      const HeartbeatBatchTableDataT& heartbeat_batch) {
-  for (auto& heartbeat_data : heartbeat_batch.batch) {
+void NodeManager::HeartbeatBatchAdded(const HeartbeatBatchTableDataT &heartbeat_batch) {
+  for (const auto &heartbeat_data : heartbeat_batch.batch) {
     ClientID client_id = ClientID::from_binary(heartbeat_data->client_id);
-    this->HeartbeatAdded(client, client_id, *heartbeat_data);
+    HeartbeatAdded(client_id, *heartbeat_data);
   }
 }
 
