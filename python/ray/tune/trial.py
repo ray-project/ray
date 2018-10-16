@@ -8,6 +8,7 @@ import logging
 import time
 import tempfile
 import os
+import uuid
 from numbers import Number
 
 import ray
@@ -19,7 +20,6 @@ from ray.tune.logger import pretty_print, UnifiedLogger
 import ray.tune.registry
 from ray.tune.result import (DEFAULT_RESULTS_DIR, DONE, HOSTNAME, PID,
                              TIME_TOTAL_S, TRAINING_ITERATION, TIMESTEPS_TOTAL)
-from ray.utils import random_string, binary_to_hex
 
 DEBUG_PRINT_INTERVAL = 5
 MAX_LEN_IDENTIFIER = 130
@@ -168,7 +168,7 @@ class Trial(object):
 
     @classmethod
     def generate_id(cls):
-        return binary_to_hex(random_string())[:8]
+        return uuid.uuid4().hex[:8]
 
     def init_logger(self):
         """Init logger."""
@@ -176,10 +176,11 @@ class Trial(object):
         if not self.result_logger:
             if not os.path.exists(self.local_dir):
                 os.makedirs(self.local_dir)
-            self.logdir = tempfile.mkdtemp(
-                prefix="{}_{}".format(
-                    str(self)[:MAX_LEN_IDENTIFIER], date_str()),
-                dir=self.local_dir)
+            if not self.logdir:
+                self.logdir = tempfile.mkdtemp(
+                    prefix="{}_{}".format(
+                        str(self)[:MAX_LEN_IDENTIFIER], date_str()),
+                    dir=self.local_dir)
             self.result_logger = UnifiedLogger(self.config, self.logdir,
                                                self.upload_dir)
 
@@ -305,12 +306,17 @@ class Trial(object):
     def __getstate__(self):
         state = self.__dict__.copy()
         # Remove the unpicklable entries.
-        del state["result_logger"]
+        state["result_logger"].flush()
+        state["_result_logger"] = bool(state["result_logger"])
+        state["result_logger"] = None
+
         return state
 
     def __setstate__(self, state):
+        logger_started = state.pop("_result_logger")
         self.__dict__.update(state)
-        self.init_logger()
+        if logger_started:
+            self.init_logger()
 
     def __repr__(self):
         return str(self)
@@ -325,13 +331,3 @@ class Trial(object):
         if self.experiment_tag:
             identifier += "_" + self.experiment_tag
         return identifier
-
-
-if __name__ == '__main__':
-    t = Trial("__fake")
-    t.init_logger()
-
-    # ckpt = t.save()
-
-    # t2 = Trial()
-    # t2.restore(ckpt)
