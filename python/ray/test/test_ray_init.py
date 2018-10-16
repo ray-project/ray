@@ -20,18 +20,9 @@ def password():
 
 @pytest.fixture
 def shutdown_only():
-    # Fix for https://github.com/ray-project/ray/issues/3045
-    global f
-    f = ray.remote(f._function)
-
     yield None
     # The code after the yield will run as teardown code.
     ray.shutdown()
-
-
-@ray.remote
-def f():
-    return 1
 
 
 class TestRedisPassword(object):
@@ -50,6 +41,11 @@ class TestRedisPassword(object):
         not os.environ.get("RAY_USE_XRAY"),
         reason="Redis authentication is not supported in legacy Ray.")
     def test_redis_password(self, password, shutdown_only):
+        # Workaround for https://github.com/ray-project/ray/issues/3045
+        @ray.remote
+        def f():
+            return 1
+
         info = ray.init(redis_password=password)
         redis_address = info["redis_address"]
         redis_ip, redis_port = redis_address.split(":")
