@@ -24,6 +24,7 @@ Result = namedtuple("Result", [
     "eval_returns", "eval_lengths"
 ])
 
+# __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
     "l2_coeff": 0.005,
     "noise_stdev": 0.02,
@@ -36,10 +37,8 @@ DEFAULT_CONFIG = with_common_config({
     "observation_filter": "MeanStdFilter",
     "noise_size": 250000000,
     "report_length": 10,
-    "env": None,
-    "env_config": {},
-    "model": {},
 })
+# __sphinx_doc_end__
 
 
 @ray.remote
@@ -77,7 +76,8 @@ class Worker(object):
 
         self.env = env_creator(config["env_config"])
         from ray.rllib import models
-        self.preprocessor = models.ModelCatalog.get_preprocessor(self.env)
+        self.preprocessor = models.ModelCatalog.get_preprocessor(
+            self.env, config["model"])
 
         self.sess = utils.make_session(single_threaded=True)
         self.policy = policies.GenericPolicy(

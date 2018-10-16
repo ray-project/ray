@@ -187,7 +187,7 @@ class PolicyEvaluator(EvaluatorInterface):
             def wrap(env):
                 return env  # we can't auto-wrap these env types
         elif is_atari(self.env) and \
-                "custom_preprocessor" not in model_config and \
+                not model_config.get("custom_preprocessor") and \
                 preprocessor_pref == "deepmind":
 
             if clip_rewards is None:
@@ -196,9 +196,8 @@ class PolicyEvaluator(EvaluatorInterface):
             def wrap(env):
                 env = wrap_deepmind(
                     env,
-                    dim=model_config.get("dim", 84),
-                    framestack=not model_config.get("use_lstm")
-                    and not model_config.get("no_framestack"))
+                    dim=model_config.get("dim"),
+                    framestack=model_config.get("framestack"))
                 if monitor_path:
                     env = _monitor(env, monitor_path)
                 return env
