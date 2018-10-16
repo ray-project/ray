@@ -3,34 +3,7 @@ package org.ray.runtime.util;
 import java.util.HashMap;
 import java.util.Map;
 
-import org.ray.api.RayResources;
-import org.ray.api.annotation.RayRemote;
-
 public class ResourceUtil {
-
-  /**
-   * Convert the resources map to a format string.
-   *
-   * @param resources The resource map to be Converted.
-   * @return The format resources string, like "{CPU:4, GPU:0}".
-   */
-  public static String getResourcesFormatStringFromMap(Map<String, Double> resources) {
-    if (resources == null) {
-      return "{}";
-    }
-    StringBuilder builder = new StringBuilder();
-    builder.append("{");
-    int count = 1;
-    for (Map.Entry<String, Double> entry : resources.entrySet()) {
-      builder.append(entry.getKey()).append(":").append(entry.getValue());
-      count++;
-      if (count != resources.size()) {
-        builder.append(", ");
-      }
-    }
-    builder.append("}");
-    return builder.toString();
-  }
 
   /**
    * Convert resources map to a string that is used
