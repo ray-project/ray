@@ -52,8 +52,7 @@ class TestRedisPassword(object):
 
         # Check that we can run a task
         object_id = f.remote()
-        ready, running = ray.wait([object_id], timeout=5000)
-        assert len(ready) > 0, "Expected task to complete"
+        ray.get(object_id)
 
         # Check that Redis connections require a password
         redis_client = redis.StrictRedis(
