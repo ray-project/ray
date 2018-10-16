@@ -8,7 +8,7 @@ from ray.tune.trial import Resources
 
 # __sphinx_doc_begin__
 APEX_DEFAULT_CONFIG = merge_dicts(
-    DQN_CONFIG,
+    DQN_CONFIG,  # see also the options in dqn.py, which are also supported
     {
         "optimizer_class": "AsyncReplayOptimizer",
         "optimizer": merge_dicts(

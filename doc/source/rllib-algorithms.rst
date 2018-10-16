@@ -38,7 +38,7 @@ SpaceInvaders  646                               ~300
 
     Ape-X using 32 workers in RLlib vs vanilla DQN (orange) and A3C (blue) on PongNoFrameskip-v4.
 
-**Ape-X specific configs**:
+**Ape-X specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
 .. literalinclude:: ../../python/ray/rllib/agents/dqn/apex.py
    :language: python
@@ -80,7 +80,7 @@ SpaceInvaders  843                              ~300
 
    IMPALA solves Atari several times faster than A2C / A3C, with similar sample efficiency. Here IMPALA scales from 16 to 128 workers to solve PongNoFrameskip-v4 in ~8 minutes.
 
-**IMPALA-specific configs**:
+**IMPALA-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
 .. literalinclude:: ../../python/ray/rllib/agents/impala/impala.py
    :language: python
@@ -111,7 +111,7 @@ Qbert          3620                      ~1000
 SpaceInvaders  692                       ~600
 =============  ========================  ==============================
 
-**A3C-specific configs**:
+**A3C-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
 .. literalinclude:: ../../python/ray/rllib/agents/a3c/a3c.py
    :language: python
@@ -125,7 +125,7 @@ DDPG is implemented similarly to DQN (below). The algorithm can be scaled by inc
 
 Tuned examples: `Pendulum-v0 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tuned_examples/pendulum-ddpg.yaml>`__, `MountainCarContinuous-v0 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tuned_examples/mountaincarcontinuous-ddpg.yaml>`__, `HalfCheetah-v2 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tuned_examples/halfcheetah-ddpg.yaml>`__
 
-**DDPG-specific configs**:
+**DDPG-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
 .. literalinclude:: ../../python/ray/rllib/agents/ddpg/ddpg.py
    :language: python
@@ -153,7 +153,7 @@ Qbert          3921                      7968                           15780   
 SpaceInvaders  650                       1001                           1025                            ~500                           
 =============  ========================  =============================  ==============================  ===============================
 
-**DQN-specific configs**:
+**DQN-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
 .. literalinclude:: ../../python/ray/rllib/agents/dqn/dqn.py
    :language: python
@@ -166,7 +166,7 @@ Policy Gradients
 
 Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tuned_examples/regression_tests/cartpole-pg.yaml>`__
 
-**PG-specific configs**:
+**PG-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
 .. literalinclude:: ../../python/ray/rllib/agents/pg/pg.py
    :language: python
@@ -200,7 +200,7 @@ SpaceInvaders  671             944             ~800
 
    RLlib's multi-GPU PPO scales to multiple GPUs and hundreds of CPUs on solving the Humanoid-v1 task. Here we compare against a reference MPI-based implementation.
 
-**PPO-specific configs**:
+**PPO-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
 .. literalinclude:: ../../python/ray/rllib/agents/ppo/ppo.py
    :language: python
@@ -217,7 +217,7 @@ ARS is a random search method for training linear policies for continuous contro
 
 Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tuned_examples/regression_tests/cartpole-ars.yaml>`__, `Swimmer-v2 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tuned_examples/swimmer-ars.yaml>`__
 
-**ARS-specific configs**:
+**ARS-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
 .. literalinclude:: ../../python/ray/rllib/agents/ars/ars.py
    :language: python
@@ -238,7 +238,7 @@ Tuned examples: `Humanoid-v1 <https://github.com/ray-project/ray/blob/master/pyt
 
    RLlib's ES implementation scales further and is faster than a reference Redis implementation on solving the Humanoid-v1 task.
 
-**ES-specific configs**:
+**ES-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
 .. literalinclude:: ../../python/ray/rllib/agents/es/es.py
    :language: python
