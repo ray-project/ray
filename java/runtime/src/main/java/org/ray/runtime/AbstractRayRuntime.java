@@ -208,7 +208,8 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   @Override
   @SuppressWarnings("unchecked")
-  public <T> RayActor<T> createActor(RayFunc actorFactoryFunc, Object[] args, RayResources resources) {
+  public <T> RayActor<T> createActor(RayFunc actorFactoryFunc,
+      Object[] args, RayResources resources) {
     TaskSpec spec = createTaskSpec(actorFactoryFunc, RayActorImpl.NIL, args, true, resources);
     RayActorImpl<?> actor = new RayActorImpl(spec.returnIds[0]);
     actor.increaseTaskCounter();

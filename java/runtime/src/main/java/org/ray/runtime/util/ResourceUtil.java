@@ -5,30 +5,8 @@ import java.util.Map;
 
 import org.ray.api.RayResources;
 import org.ray.api.annotation.RayRemote;
-import org.ray.api.annotation.ResourceItem;
 
 public class ResourceUtil {
-  /**
-   * Convert the array that contains resource items to a map.
-   *
-   * @param remoteAnnotation The RayRemote annotation that contains the resource items.
-   * @return The map whose key represents the resource name
-   *     and the value represents the resource quantity.
-   */
-  public static Map<String, Double> getResourcesMapFromArray(RayRemote remoteAnnotation) {
-    Map<String, Double> resourceMap = new HashMap<>();
-    if (remoteAnnotation != null) {
-      for (ResourceItem item : remoteAnnotation.resources()) {
-        if (!item.name().isEmpty()) {
-          resourceMap.put(item.name(), item.value());
-        }
-      }
-    }
-    if (!resourceMap.containsKey(RayResources.CPU_LITERAL)) {
-      resourceMap.put(RayResources.CPU_LITERAL, 0.0);
-    }
-    return resourceMap;
-  }
 
   /**
    * Convert the resources map to a format string.
