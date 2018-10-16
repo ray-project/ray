@@ -10,6 +10,7 @@ from datetime import datetime
 import tensorflow as tf
 
 import ray
+from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.utils import FilterManager, deep_update, merge_dicts
@@ -18,10 +19,11 @@ from ray.tune.trainable import Trainable
 from ray.tune.logger import UnifiedLogger
 from ray.tune.result import DEFAULT_RESULTS_DIR
 
+# __sphinx_doc_begin__
 COMMON_CONFIG = {
     # Discount factor of the MDP
     "gamma": 0.99,
-    # Number of steps after which the rollout gets cut
+    # Number of steps after which the episode is forced to terminate
     "horizon": None,
     # Number of environments to evaluate vectorwise per worker.
     "num_envs_per_worker": 1,
@@ -36,7 +38,7 @@ COMMON_CONFIG = {
     "batch_mode": "truncate_episodes",
     # Whether to use a background thread for sampling (slightly off-policy)
     "sample_async": False,
-    # Which observation filter to apply to the observation
+    # Element-wise observation filter, either "NoFilter" or "MeanStdFilter"
     "observation_filter": "NoFilter",
     # Whether to synchronize the statistics of remote filters.
     "synchronize_filters": True,
@@ -51,14 +53,12 @@ COMMON_CONFIG = {
     "env": None,
     # Arguments to pass to model. See models/catalog.py for a full list of the
     # available model options.
-    "model": {
-        "use_lstm": False,
-        "max_seq_len": 20,
-    },
-    # Arguments to pass to the rllib optimizer
+    "model": MODEL_DEFAULTS,
+    # Arguments to pass to the policy optimizer. These vary by optimizer.
     "optimizer": {},
     # Configure TF for single-process operation by default
     "tf_session_args": {
+        # note: parallelism_threads is set to auto for the local evaluator
         "intra_op_parallelism_threads": 1,
         "inter_op_parallelism_threads": 1,
         "gpu_options": {
@@ -88,6 +88,8 @@ COMMON_CONFIG = {
         "policies_to_train": None,
     },
 }
+
+# __sphinx_doc_end__
 
 
 def with_common_config(extra_config):

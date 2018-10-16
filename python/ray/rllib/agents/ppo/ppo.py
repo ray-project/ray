@@ -8,6 +8,7 @@ from ray.rllib.utils import merge_dicts
 from ray.rllib.optimizers import SyncSamplesOptimizer, LocalMultiGPUOptimizer
 from ray.tune.trial import Resources
 
+# __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
     # If true, use the Generalized Advantage Estimator (GAE)
     # with a value function, see https://arxiv.org/pdf/1506.02438.pdf.
@@ -53,16 +54,11 @@ DEFAULT_CONFIG = with_common_config({
     "observation_filter": "MeanStdFilter",
     # Use the sync samples optimizer instead of the multi-gpu one
     "simple_optimizer": False,
-    # Verbose logging during SGD.
+    # Verbose logging during SGD
     "verbose": True,
-    # Override model config
-    "model": {
-        # Whether to use LSTM model
-        "use_lstm": False,
-        # Max seq length for LSTM training.
-        "max_seq_len": 20,
-    },
 })
+
+# __sphinx_doc_end__
 
 
 class PPOAgent(Agent):

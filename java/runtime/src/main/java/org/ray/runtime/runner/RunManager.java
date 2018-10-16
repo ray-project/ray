@@ -205,8 +205,8 @@ public class RunManager {
 
     // Generate classpath based on current classpath + user-defined classpath.
     String classpath = concatPath(Stream.concat(
-        Stream.of(System.getProperty("java.class.path").split(":")),
-        rayConfig.classpath.stream()
+        rayConfig.classpath.stream(),
+        Stream.of(System.getProperty("java.class.path").split(":"))
     ));
     cmd.add(classpath);
 
@@ -226,6 +226,8 @@ public class RunManager {
 
     // Config overwrite
     cmd.add("-Dray.redis.address=" + rayConfig.getRedisAddress());
+
+    cmd.addAll(rayConfig.jvmParameters);
 
     // Main class
     cmd.add(WORKER_CLASS);

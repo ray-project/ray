@@ -61,7 +61,7 @@ class Model(object):
             self.seq_lens = tf.placeholder(
                 dtype=tf.int32, shape=[None], name="seq_lens")
 
-        if options.get("free_log_std", False):
+        if options.get("free_log_std"):
             assert num_outputs % 2 == 0
             num_outputs = num_outputs // 2
         try:

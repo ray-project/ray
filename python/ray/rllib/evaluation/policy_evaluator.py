@@ -166,6 +166,11 @@ class PolicyEvaluator(EvaluatorInterface):
         model_config = model_config or {}
         policy_mapping_fn = (policy_mapping_fn
                              or (lambda agent_id: DEFAULT_POLICY_ID))
+        if not callable(policy_mapping_fn):
+            raise ValueError(
+                "Policy mapping function not callable. If you're using Tune, "
+                "make sure to escape the function with tune.function() "
+                "to prevent it from being evaluated as an expression.")
         self.env_creator = env_creator
         self.sample_batch_size = batch_steps * num_envs
         self.batch_mode = batch_mode
@@ -184,7 +189,7 @@ class PolicyEvaluator(EvaluatorInterface):
             def wrap(env):
                 return env  # we can't auto-wrap these env types
         elif is_atari(self.env) and \
-                "custom_preprocessor" not in model_config and \
+                not model_config.get("custom_preprocessor") and \
                 preprocessor_pref == "deepmind":
 
             if clip_rewards is None:
@@ -193,8 +198,8 @@ class PolicyEvaluator(EvaluatorInterface):
             def wrap(env):
                 env = wrap_deepmind(
                     env,
-                    dim=model_config.get("dim", 84),
-                    framestack=not model_config.get("no_framestack"))
+                    dim=model_config.get("dim"),
+                    framestack=model_config.get("framestack"))
                 if monitor_path:
                     env = _monitor(env, monitor_path)
                 return env
@@ -231,7 +236,14 @@ class PolicyEvaluator(EvaluatorInterface):
             self.policy_map = self._build_policy_map(policy_dict,
                                                      policy_config)
 
-        self.multiagent = self.policy_map.keys() != {DEFAULT_POLICY_ID}
+        self.multiagent = set(self.policy_map.keys()) != {DEFAULT_POLICY_ID}
+        if self.multiagent:
+            if not (isinstance(self.env, MultiAgentEnv)
+                    or isinstance(self.env, AsyncVectorEnv)):
+                raise ValueError(
+                    "Have multiple policy graphs {}, but the env ".format(
+                        self.policy_map) +
+                    "{} is not a subclass of MultiAgentEnv?".format(self.env))
 
         self.filters = {
             policy_id: get_filter(observation_filter,

@@ -45,12 +45,18 @@ class Preprocessor(object):
         return obs_space
 
 
-class AtariPixelPreprocessor(Preprocessor):
+class GenericPixelPreprocessor(Preprocessor):
+    """Generic image preprocessor.
+
+    Note: for Atari games, use config {"preprocessor_pref": "deepmind"}
+    instead for deepmind-style Atari preprocessing.
+    """
+
     def _init_shape(self, obs_space, options):
-        self._grayscale = options.get("grayscale", False)
-        self._zero_mean = options.get("zero_mean", True)
-        self._dim = options.get("dim", 84)
-        self._channel_major = options.get("channel_major", False)
+        self._grayscale = options.get("grayscale")
+        self._zero_mean = options.get("zero_mean")
+        self._dim = options.get("dim")
+        self._channel_major = options.get("channel_major")
         if self._grayscale:
             shape = (self._dim, self._dim, 1)
         else:
@@ -171,7 +177,7 @@ def get_preprocessor(space):
     if isinstance(space, gym.spaces.Discrete):
         preprocessor = OneHotPreprocessor
     elif obs_shape == ATARI_OBS_SHAPE:
-        preprocessor = AtariPixelPreprocessor
+        preprocessor = GenericPixelPreprocessor
     elif obs_shape == ATARI_RAM_OBS_SHAPE:
         preprocessor = AtariRamPreprocessor
     elif isinstance(space, gym.spaces.Tuple):

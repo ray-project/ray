@@ -37,26 +37,6 @@ with ``--env`` (any OpenAI gym environment including ones registered by the user
 can be used) and for choosing the algorithm with ``--run``
 (available options are ``PPO``, ``PG``, ``A2C``, ``A3C``, ``IMPALA``, ``ES``, ``DDPG``, ``DQN``, ``APEX``, and ``APEX_DDPG``).
 
-Specifying Parameters
-~~~~~~~~~~~~~~~~~~~~~
-
-Each algorithm has specific hyperparameters that can be set with ``--config``, in addition to a number of `common hyperparameters <https://github.com/ray-project/ray/blob/master/python/ray/rllib/agents/agent.py>`__. See the
-`algorithms documentation <rllib-algorithms.html>`__ for more information.
-
-In an example below, we train A2C by specifying 8 workers through the config flag. We also set ``"monitor": true`` to save episode videos to the result dir:
-
-.. code-block:: bash
-
-    python ray/python/ray/rllib/train.py --env=PongDeterministic-v4 \
-        --run=A2C --config '{"num_workers": 8, "monitor": true}'
-
-.. image:: rllib-config.svg
-
-Specifying Resources
-~~~~~~~~~~~~~~~~~~~~
-
-You can control the degree of parallelism used by setting the ``num_workers`` hyperparameter for most agents. Many agents also provide a ``num_gpus`` or ``gpu`` option. In addition, you can allocate a fraction of a GPU by setting ``gpu_fraction: f``. For example, with DQN you can pack five agents onto one GPU by setting ``gpu_fraction: 0.2``. Note that fractional GPU support requires enabling the experimental Xray backend by setting the environment variable ``RAY_USE_XRAY=1``.
-
 Evaluating Trained Agents
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -76,6 +56,39 @@ An example of evaluating a previously trained DQN agent is as follows:
 The ``rollout.py`` helper script reconstructs a DQN agent from the checkpoint
 located at ``~/ray_results/default/DQN_CartPole-v0_0upjmdgr0/checkpoint-1``
 and renders its behavior in the environment specified by ``--env``.
+
+Configuration
+-------------
+
+Specifying Parameters
+~~~~~~~~~~~~~~~~~~~~~
+
+Each algorithm has specific hyperparameters that can be set with ``--config``, in addition to a number of `common hyperparameters <https://github.com/ray-project/ray/blob/master/python/ray/rllib/agents/agent.py>`__. See the
+`algorithms documentation <rllib-algorithms.html>`__ for more information.
+
+In an example below, we train A2C by specifying 8 workers through the config flag. We also set ``"monitor": true`` to save episode videos to the result dir:
+
+.. code-block:: bash
+
+    python ray/python/ray/rllib/train.py --env=PongDeterministic-v4 \
+        --run=A2C --config '{"num_workers": 8, "monitor": true}'
+
+.. image:: rllib-config.svg
+
+Specifying Resources
+~~~~~~~~~~~~~~~~~~~~
+
+You can control the degree of parallelism used by setting the ``num_workers`` hyperparameter for most agents. Many agents also provide a ``num_gpus`` or ``gpu`` option. In addition, you can allocate a fraction of a GPU by setting ``gpu_fraction: f``. For example, with DQN you can pack five agents onto one GPU by setting ``gpu_fraction: 0.2``. Note that fractional GPU support requires enabling the experimental X-ray backend by setting the environment variable ``RAY_USE_XRAY=1``.
+
+Common Parameters
+~~~~~~~~~~~~~~~~~
+
+The following is a list of the common agent hyperparameters:
+
+.. literalinclude:: ../../python/ray/rllib/agents/agent.py
+   :language: python
+   :start-after: __sphinx_doc_begin__
+   :end-before: __sphinx_doc_end__
 
 Tuned Examples
 ~~~~~~~~~~~~~~
@@ -154,7 +167,7 @@ Tune will schedule the trials to run in parallel on your Ray cluster:
     == Status ==
     Using FIFO scheduling algorithm.
     Resources requested: 4/4 CPUs, 0/0 GPUs
-    Result logdir: /home/eric/ray_results/my_experiment
+    Result logdir: ~/ray_results/my_experiment
     PENDING trials:
      - PPO_CartPole-v0_2_sgd_stepsize=0.0001:	PENDING
     RUNNING trials:

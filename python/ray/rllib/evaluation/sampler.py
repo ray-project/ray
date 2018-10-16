@@ -221,7 +221,7 @@ def _env_runner(async_vector_env,
             horizon = (
                 async_vector_env.get_unwrapped()[0].spec.max_episode_steps)
     except Exception:
-        print("Warning, no horizon specified, assuming infinite")
+        print("*** WARNING ***: no episode horizon specified, assuming inf")
     if not horizon:
         horizon = float("inf")
 

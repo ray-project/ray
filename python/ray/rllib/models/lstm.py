@@ -139,7 +139,7 @@ class LSTM(Model):
     """
 
     def _build_layers_v2(self, input_dict, num_outputs, options):
-        cell_size = options.get("lstm_cell_size", 256)
+        cell_size = options.get("lstm_cell_size")
         if options.get("lstm_use_prev_action_reward"):
             action_dim = int(
                 np.product(

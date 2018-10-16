@@ -21,31 +21,54 @@ from ray.rllib.models.fcnet import FullyConnectedNetwork
 from ray.rllib.models.visionnet import VisionNetwork
 from ray.rllib.models.lstm import LSTM
 
-MODEL_CONFIGS = [
+# __sphinx_doc_begin__
+MODEL_DEFAULTS = {
     # === Built-in options ===
     # Filter config. List of [out_channels, kernel, stride] for each filter
-    "conv_filters",
-    "conv_activation",  # Nonlinearity for built-in convnet
-    "fcnet_activation",  # Nonlinearity for fully connected net (tanh, relu)
-    "fcnet_hiddens",  # Number of hidden layers for fully connected net
-    "dim",  # Dimension for ATARI
-    "grayscale",  # Converts ATARI frame to 1 Channel Grayscale image
-    "zero_mean",  # Changes frame to range from [-1, 1] if true
-    "extra_frameskip",  # (int) for number of frames to skip
-    "free_log_std",  # Documented in ray.rllib.models.Model
-    "channel_major",  # Pytorch conv requires images to be channel-major
-    "squash_to_range",  # Whether to squash the action output to space range
-    "no_framestack",  # Don't framestack Atari observations
-    "use_lstm",  # Whether to wrap the model with a LSTM
-    "max_seq_len",  # Max seq len for training the LSTM, defaults to 20
-    "lstm_cell_size",  # Size of the LSTM cell
-    "lstm_use_prev_action_reward",  # Whether to feed a_{t-1}, r_{t-1} to LSTM
+    "conv_filters": None,
+    # Nonlinearity for built-in convnet
+    "conv_activation": "relu",
+    # Nonlinearity for fully connected net (tanh, relu)
+    "fcnet_activation": "tanh",
+    # Number of hidden layers for fully connected net
+    "fcnet_hiddens": [256, 256],
+    # For control envs, documented in ray.rllib.models.Model
+    "free_log_std": False,
+    # Whether to squash the action output to space range
+    "squash_to_range": False,
+
+    # == LSTM ==
+    # Whether to wrap the model with a LSTM
+    "use_lstm": False,
+    # Max seq len for training the LSTM, defaults to 20
+    "max_seq_len": 20,
+    # Size of the LSTM cell
+    "lstm_cell_size": 256,
+    # Whether to feed a_{t-1}, r_{t-1} to LSTM
+    "lstm_use_prev_action_reward": False,
+
+    # == Atari ==
+    # Whether to enable framestack for Atari envs
+    "framestack": True,
+    # Final resized frame dimension
+    "dim": 84,
+    # Pytorch conv requires images to be channel-major
+    "channel_major": False,
+    # (deprecated) Converts ATARI frame to 1 Channel Grayscale image
+    "grayscale": False,
+    # (deprecated) Changes frame to range from [-1, 1] if true
+    "zero_mean": True,
 
     # === Options for custom models ===
-    "custom_preprocessor",  # Name of a custom preprocessor to use
-    "custom_model",  # Name of a custom model to use
-    "custom_options",  # Extra options to pass to the custom classes
-]
+    # Name of a custom preprocessor to use
+    "custom_preprocessor": None,
+    # Name of a custom model to use
+    "custom_model": None,
+    # Extra options to pass to the custom classes
+    "custom_options": {},
+}
+
+# __sphinx_doc_end__
 
 
 class ModelCatalog(object):
@@ -76,7 +99,7 @@ class ModelCatalog(object):
             dist_dim (int): The size of the input vector to the distribution.
         """
 
-        config = config or {}
+        config = config or MODEL_DEFAULTS
         if isinstance(action_space, gym.spaces.Box):
             if dist_type is None:
                 dist = DiagGaussian
@@ -84,7 +107,7 @@ class ModelCatalog(object):
                     dist = squash_to_range(dist, action_space.low,
                                            action_space.high)
                 return dist, action_space.shape[0] * 2
-            elif dist_type == 'deterministic':
+            elif dist_type == "deterministic":
                 return Deterministic, action_space.shape[0]
         elif isinstance(action_space, gym.spaces.Discrete):
             return Categorical, action_space.n
@@ -160,6 +183,7 @@ class ModelCatalog(object):
         """
 
         assert isinstance(input_dict, dict)
+        options = options or MODEL_DEFAULTS
         model = ModelCatalog._get_model(input_dict, obs_space, num_outputs,
                                         options, state_in, seq_lens)
 
@@ -174,7 +198,7 @@ class ModelCatalog(object):
     @staticmethod
     def _get_model(input_dict, obs_space, num_outputs, options, state_in,
                    seq_lens):
-        if "custom_model" in options:
+        if options.get("custom_model"):
             model = options["custom_model"]
             print("Using custom model {}".format(model))
             return _global_registry.get(RLLIB_MODEL, model)(
@@ -211,8 +235,8 @@ class ModelCatalog(object):
         from ray.rllib.models.pytorch.visionnet import (VisionNetwork as
                                                         PyTorchVisionNet)
 
-        options = options or {}
-        if "custom_model" in options:
+        options = options or MODEL_DEFAULTS
+        if options.get("custom_model"):
             model = options["custom_model"]
             print("Using custom torch model {}".format(model))
             return _global_registry.get(RLLIB_MODEL, model)(
@@ -239,13 +263,13 @@ class ModelCatalog(object):
         Returns:
             preprocessor (Preprocessor): Preprocessor for the env observations.
         """
-        options = options or {}
+        options = options or MODEL_DEFAULTS
         for k in options.keys():
-            if k not in MODEL_CONFIGS:
+            if k not in MODEL_DEFAULTS:
                 raise Exception("Unknown config key `{}`, all keys: {}".format(
-                    k, MODEL_CONFIGS))
+                    k, list(MODEL_DEFAULTS)))
 
-        if "custom_preprocessor" in options:
+        if options.get("custom_preprocessor"):
             preprocessor = options["custom_preprocessor"]
             print("Using custom preprocessor {}".format(preprocessor))
             return _global_registry.get(RLLIB_PREPROCESSOR, preprocessor)(
@@ -266,7 +290,7 @@ class ModelCatalog(object):
             env (RLlib env): Wrapped environment
         """
 
-        options = options or {}
+        options = options or MODEL_DEFAULTS
         preprocessor = ModelCatalog.get_preprocessor(env, options)
         if isinstance(env, gym.Env):
             return _RLlibPreprocessorWrapper(env, preprocessor)
