@@ -94,10 +94,7 @@ class ModelCatalog(object):
             dist_dim (int): The size of the input vector to the distribution.
         """
 
-        # TODO(ekl) are list spaces valid?
-        if isinstance(action_space, list):
-            action_space = gym.spaces.Tuple(action_space)
-        config = config or {}
+        config = config or MODEL_DEFAULTS
         if isinstance(action_space, gym.spaces.Box):
             if dist_type is None:
                 dist = DiagGaussian
@@ -177,6 +174,7 @@ class ModelCatalog(object):
             model (Model): Neural network model.
         """
 
+        options = options or MODEL_DEFAULTS
         model = ModelCatalog._get_model(inputs, num_outputs, options, state_in,
                                         seq_lens)
 
