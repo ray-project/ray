@@ -89,7 +89,7 @@ TEST_F(ClientConnectionTest, SimpleAsyncWrite) {
   reader = LocalClientConnection::Create(client_handler, message_handler, std::move(out_),
                                          "reader");
 
-  std::function<void(const ray::Status &)> callback = [this](const ray::Status &status) {
+  std::function<void(const ray::Status &)> callback = [](const ray::Status &status) {
     RAY_CHECK_OK(status);
   };
 
@@ -114,7 +114,7 @@ TEST_F(ClientConnectionTest, SimpleAsyncError) {
   auto writer = LocalClientConnection::Create(client_handler, noop_handler,
                                               std::move(in_), "writer");
 
-  std::function<void(const ray::Status &)> callback = [this](const ray::Status &status) {
+  std::function<void(const ray::Status &)> callback = [](const ray::Status &status) {
     ASSERT_TRUE(!status.ok());
   };
 
@@ -137,7 +137,7 @@ TEST_F(ClientConnectionTest, CallbackWithSharedRefDoesNotLeakConnection) {
                                               std::move(in_), "writer");
 
   std::function<void(const ray::Status &)> callback =
-      [this, writer](const ray::Status &status) { ASSERT_TRUE(status.ok()); };
+      [writer](const ray::Status &status) { ASSERT_TRUE(status.ok()); };
   writer->WriteMessageAsync(0, 5, msg1, callback);
   io_service_.run();
 }
