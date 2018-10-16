@@ -66,6 +66,7 @@ public interface RayRuntime {
    *
    * @param func The remote function to run.
    * @param args The arguments of the remote function.
+   * @param resources The resources this task required.
    * @return The result object.
    */
   RayObject call(RayFunc func, Object[] args, RayResources resources);
@@ -76,6 +77,7 @@ public interface RayRuntime {
    * @param func The remote function to run, it must be a method of the given actor.
    * @param actor A handle to the actor.
    * @param args The arguments of the remote function.
+   * @param resources The resources this task required.
    * @return The result object.
    */
   RayObject call(RayFunc func, RayActor actor, Object[] args, RayResources resources);
@@ -86,6 +88,7 @@ public interface RayRuntime {
    * @param actorFactoryFunc A remote function whose return value is the actor object.
    * @param args The arguments for the remote function.
    * @param <T> The type of the actor object.
+   * @param resources The resources this actor required.
    * @return A handle to the actor.
    */
   <T> RayActor<T> createActor(RayFunc actorFactoryFunc, Object[] args, RayResources resources);
