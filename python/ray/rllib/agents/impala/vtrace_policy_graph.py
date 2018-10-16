@@ -130,7 +130,7 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
         prev_rewards = tf.placeholder(tf.float32, [None], name="prev_reward")
         self.model = ModelCatalog.get_model(
             {
-                "obs": self.observations,
+                "obs": observations,
                 "prev_actions": prev_actions,
                 "prev_rewards": prev_rewards,
             },
