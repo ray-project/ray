@@ -7,7 +7,7 @@ Intended Use and Threat Model
 -----------------------------
 
 Ray instances should run on a secure network without public facing ports.
-The most common threat for Ray instances is unautherized access to Redis,
+The most common threat for Ray instances is unauthorized access to Redis,
 which can be exploited to gain shell access and run arbitray code.
 The best fix is to run Ray instances on a secure, trusted network.
 
