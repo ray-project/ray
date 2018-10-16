@@ -16,6 +16,7 @@
 
 namespace ray {
 
+// TODO(ekl) this class can be replaced with a plain ClientConnection
 class SenderConnection : public boost::enable_shared_from_this<SenderConnection> {
  public:
   /// Create a connection for sending data to other object managers.
