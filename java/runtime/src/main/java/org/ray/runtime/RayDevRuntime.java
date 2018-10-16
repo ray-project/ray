@@ -20,6 +20,6 @@ public class RayDevRuntime extends AbstractRayRuntime {
 
   @Override
   public void shutdown() {
-    // nothing to do
+      rayletClient.destroy();
   }
 }

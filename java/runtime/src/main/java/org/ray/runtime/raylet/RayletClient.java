@@ -24,4 +24,6 @@ public interface RayletClient {
   <T> WaitResult<T> wait(List<RayObject<T>> waitFor, int numReturns, int timeoutMs);
 
   void freePlasmaObjects(List<UniqueId> objectIds, boolean localOnly);
+
+  void destroy();
 }

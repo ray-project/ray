@@ -1,9 +1,11 @@
 package org.ray.runtime.raylet;
 
-import com.google.common.collect.ImmutableList;
+
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.*;
+
 import org.ray.api.RayObject;
 import org.ray.api.WaitResult;
 import org.ray.api.id.UniqueId;
@@ -11,6 +13,7 @@ import org.ray.runtime.RayDevRuntime;
 import org.ray.runtime.objectstore.MockObjectStore;
 import org.ray.runtime.task.FunctionArg;
 import org.ray.runtime.task.TaskSpec;
+import org.ray.runtime.util.logger.RayLog;
 
 /**
  * A mock implementation of RayletClient, used in single process mode.
@@ -20,11 +23,13 @@ public class MockRayletClient implements RayletClient {
   private final Map<UniqueId, Map<UniqueId, TaskSpec>> waitTasks = new ConcurrentHashMap<>();
   private final MockObjectStore store;
   private final RayDevRuntime runtime;
+  private final ExecutorService exec ;
 
   public MockRayletClient(RayDevRuntime runtime, MockObjectStore store) {
     this.runtime = runtime;
     this.store = store;
     store.registerScheduler(this);
+    exec  = Executors.newFixedThreadPool(5);
   }
 
   public void onObjectPut(UniqueId id) {
@@ -41,7 +46,9 @@ public class MockRayletClient implements RayletClient {
   public void submitTask(TaskSpec task) {
     UniqueId id = isTaskReady(task);
     if (id == null) {
-      runtime.getWorker().execute(task);
+        exec.submit(() -> {
+            runtime.getWorker().execute(task);
+        });
     } else {
       Map<UniqueId, TaskSpec> bucket = waitTasks
           .computeIfAbsent(id, id_ -> new ConcurrentHashMap<>());
@@ -82,14 +89,53 @@ public class MockRayletClient implements RayletClient {
 
   @Override
   public <T> WaitResult<T> wait(List<RayObject<T>> waitFor, int numReturns, int timeoutMs) {
-    return new WaitResult<T>(
-        waitFor,
-        ImmutableList.of()
-    );
+
+      List<UniqueId> ids = new ArrayList<>();
+      for (RayObject<T> element : waitFor) {
+          ids.add(element.getId());
+      }
+      boolean[] ready = new boolean[ids.size()];
+      try{
+          Future future = exec.submit(() -> {
+              int trueCount = 0;
+              while (true){
+                  for (int i = 0; i < ids.size(); i++) {
+                      if ( !ready[i] && store.isObjectReady(ids.get(i))) {
+                          ready[i] = true;
+                          ++trueCount;
+                      }
+                      if(trueCount == numReturns){
+                          return;
+                      }
+                  }
+              }
+          });
+          future.get(timeoutMs,TimeUnit.MILLISECONDS);
+      }  catch (TimeoutException e) {
+          RayLog.core.error("ray wait timeout, there may not be enough RayObject ready");
+      }catch (InterruptedException e) {
+          RayLog.core.error("ray wait is interrupted",e);
+      } catch (ExecutionException e) {
+          RayLog.core.error("ray wait error",e);
+      }
+      List<RayObject<T>> readyList = new ArrayList<>();
+      List<RayObject<T>> unreadyList = new ArrayList<>();
+      for (int i = 0; i < ready.length; i++) {
+          if (ready[i]) {
+              readyList.add(waitFor.get(i));
+          } else {
+              unreadyList.add(waitFor.get(i));
+          }
+      }
+      return new WaitResult<>( readyList,unreadyList );
   }
 
   @Override
   public void freePlasmaObjects(List<UniqueId> objectIds, boolean localOnly) {
     return;
+  }
+
+  public void destroy() {
+      exec.shutdown();
   }
 }
