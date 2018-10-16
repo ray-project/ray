@@ -37,7 +37,7 @@ public final class RayResources {
   }
 
   /**
-   * Get the all of the resource items.
+   * Get all of the resource items.
    *
    * @return the map which contains all of the resources items.
    */
