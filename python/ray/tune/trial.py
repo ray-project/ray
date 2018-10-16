@@ -302,6 +302,16 @@ class Trial(object):
     def is_finished(self):
         return self.status in [Trial.TERMINATED, Trial.ERROR]
 
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        # Remove the unpicklable entries.
+        del state["result_logger"]
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        self.init_logger()
+
     def __repr__(self):
         return str(self)
 
@@ -315,3 +325,13 @@ class Trial(object):
         if self.experiment_tag:
             identifier += "_" + self.experiment_tag
         return identifier
+
+
+if __name__ == '__main__':
+    t = Trial("__fake")
+    t.init_logger()
+
+    # ckpt = t.save()
+
+    # t2 = Trial()
+    # t2.restore(ckpt)

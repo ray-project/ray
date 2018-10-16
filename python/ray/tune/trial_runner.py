@@ -75,9 +75,9 @@ class TrialRunner(object):
         """
         self._search_alg = search_alg
         self._scheduler_alg = scheduler or FIFOScheduler()
-        self._trials = []
         self.trial_executor = trial_executor or \
             RayTrialExecutor(queue_trials=queue_trials)
+        self._trials = []
 
         # For debugging, it may be useful to halt trials after some time has
         # elapsed. TODO(ekl) consider exposing this in the API.
@@ -90,6 +90,32 @@ class TrialRunner(object):
         self._stop_queue = []
         self._verbose = verbose
         self._queue_trials = queue_trials
+
+
+    def save(self, checkpoint_dir):
+        search_alg_checkpoint = self._search_alg.save(checkpoint_dir)
+        scheduler_alg_checkpoint = self._scheduler_alg.save(checkpoint_dir)
+        # TODO(rliaw): we should not need an executor checkpoint -
+        # restoration should automatically repopulate the executor.
+        executor_checkpoint = self.trial_executor.save(checkpoint_dir)
+        runner_state = {
+            "trials": [pickle.dumps(t) for t in self._trials],
+            "total_time": self._total_time,
+            "stop_queue": self._stop_queue
+        }
+        with open(os.path.join(checkpoint_dir, "TEMP.p"), "wb") as f:
+            pickle.dump([runner_state,
+                         search_alg_checkpoint,
+                         scheduler_alg_checkpoint,
+                         executor_checkpoint],
+                         f)
+        return checkpoint_path
+
+
+    def restore(self, checkpoint_path):
+        self._search_alg.restore()
+        pass
+
 
     def is_finished(self):
         """Returns whether all trials have finished running."""
