@@ -137,7 +137,10 @@ TEST_F(ClientConnectionTest, CallbackWithSharedRefDoesNotLeakConnection) {
                                               std::move(in_), "writer");
 
   std::function<void(const ray::Status &)> callback =
-      [writer](const ray::Status &status) { ASSERT_TRUE(status.ok()); };
+      [writer](const ray::Status &status) {
+        static_cast<void>(writer);
+        ASSERT_TRUE(status.ok());
+      };
   writer->WriteMessageAsync(0, 5, msg1, callback);
   io_service_.run();
 }
