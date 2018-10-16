@@ -135,7 +135,7 @@ class LSTM(Model):
     """
 
     def _build_layers(self, inputs, num_outputs, options):
-        cell_size = options.get("lstm_cell_size", 256)
+        cell_size = options.get("lstm_cell_size")
         last_layer = add_time_dimension(inputs, self.seq_lens)
 
         # Setup the LSTM cell
