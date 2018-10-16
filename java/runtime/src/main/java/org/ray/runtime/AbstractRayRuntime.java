@@ -10,6 +10,7 @@ import org.apache.commons.lang3.tuple.Pair;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.WaitResult;
+import org.ray.api.exception.RayException;
 import org.ray.api.function.RayFunc;
 import org.ray.api.id.UniqueId;
 import org.ray.api.runtime.RayRuntime;
@@ -23,7 +24,6 @@ import org.ray.runtime.task.ArgumentsBuilder;
 import org.ray.runtime.task.TaskSpec;
 import org.ray.runtime.util.ResourceUtil;
 import org.ray.runtime.util.UniqueIdUtil;
-import org.ray.runtime.util.exception.TaskExecutionException;
 import org.ray.runtime.util.logger.RayLog;
 
 /**
@@ -77,7 +77,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   }
 
   @Override
-  public <T> T get(UniqueId objectId) throws TaskExecutionException {
+  public <T> T get(UniqueId objectId) throws RayException {
     List<T> ret = get(ImmutableList.of(objectId));
     return ret.get(0);
   }
@@ -146,7 +146,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
       }
 
       return finalRet;
-    } catch (TaskExecutionException e) {
+    } catch (RayException e) {
       RayLog.core.error("Task " + taskId + " Objects " + Arrays.toString(objectIds.toArray())
           + " get with Exception", e);
       throw e;
