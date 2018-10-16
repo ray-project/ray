@@ -1078,7 +1078,7 @@ class TrialRunnerTest(unittest.TestCase):
         runner.step()
         self.assertEqual(trials[0].status, Trial.RUNNING)
         self.assertEqual(ray.get(trials[0].runner.set_info.remote(1)), 1)
-        path = runner.trial_executor.save(trials[0])
+        path = runner.trial_executor.save_trial(trials[0])
         kwargs["restore_path"] = path
 
         runner.add_trial(Trial("__fake", **kwargs))
@@ -1106,7 +1106,7 @@ class TrialRunnerTest(unittest.TestCase):
         runner.step()
         self.assertEqual(trials[0].status, Trial.RUNNING)
         self.assertEqual(ray.get(trials[0].runner.set_info.remote(1)), 1)
-        path = runner.trial_executor.save(trials[0])
+        path = runner.trial_executor.save_trial(trials[0])
         runner.trial_executor.stop_trial(trials[0])
         kwargs["restore_path"] = path
 

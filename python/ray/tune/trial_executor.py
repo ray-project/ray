@@ -160,7 +160,7 @@ class TrialExecutor(object):
         """Returns a human readable message for printing to the console."""
         pass
 
-    def restore(self, trial, checkpoint=None):
+    def restore_trial(self, trial, checkpoint=None):
         """Restores training state from a checkpoint.
 
         If checkpoint is None, try to restore from trial._checkpoint.
@@ -176,7 +176,7 @@ class TrialExecutor(object):
         raise NotImplementedError("Subclasses of TrialExecutor must provide "
                                   "restore() method")
 
-    def save(self, trial, storage=Checkpoint.DISK):
+    def save_trial(self, trial, storage=Checkpoint.DISK):
         """Saves training state of this trial to a checkpoint.
 
         Args:

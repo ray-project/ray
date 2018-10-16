@@ -279,7 +279,7 @@ class RayTrialExecutor(TrialExecutor):
 
         self._update_avail_resources()
 
-    def save(self, trial, storage=Checkpoint.DISK):
+    def save_trial(self, trial, storage=Checkpoint.DISK):
         """Saves the trial's state to a checkpoint."""
         trial._checkpoint.storage = storage
         if storage == Checkpoint.MEMORY:
@@ -288,7 +288,7 @@ class RayTrialExecutor(TrialExecutor):
             trial._checkpoint.value = ray.get(trial.runner.save.remote())
         return trial._checkpoint.value
 
-    def restore(self, trial, checkpoint=None):
+    def restore_trial(self, trial, checkpoint=None):
         """Restores training state from a given model checkpoint."""
         if checkpoint is None or checkpoint.value is None:
             checkpoint = trial._checkpoint

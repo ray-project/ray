@@ -33,8 +33,8 @@ class RayTrialExecutorTest(unittest.TestCase):
         trial = Trial("__fake")
         self.trial_executor.start_trial(trial)
         self.assertEqual(Trial.RUNNING, trial.status)
-        self.trial_executor.save(trial, Checkpoint.DISK)
-        self.trial_executor.restore(trial)
+        self.trial_executor.save_trial(trial, Checkpoint.DISK)
+        self.trial_executor.restore_trial(trial)
         self.trial_executor.stop_trial(trial)
         self.assertEqual(Trial.TERMINATED, trial.status)
 
