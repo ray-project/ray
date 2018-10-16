@@ -51,8 +51,8 @@ class TestRedisPassword(object):
         redis_ip, redis_port = redis_address.split(":")
 
         # Check that we can run a task
-        task_id = f.remote()
-        ready, running = ray.wait([task_id], timeout=5000)
+        object_id = f.remote()
+        ready, running = ray.wait([object_id], timeout=5000)
         assert len(ready) > 0, "Expected task to complete"
 
         # Check that Redis connections require a password
