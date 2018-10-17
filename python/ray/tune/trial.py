@@ -331,3 +331,30 @@ class Trial(object):
         if self.experiment_tag:
             identifier += "_" + self.experiment_tag
         return identifier
+
+
+if __name__ == '__main__':
+    t = Trial("__fake", config={"param": 1})
+    t.init_logger()
+    t.update_last_result({"test": 1, "training_iteration": 1})
+    import pickle
+    string = pickle.dumps(t)
+    t.close_logger()
+
+    t2 = pickle.loads(string)
+    for i in range(2, 40):
+        t2.update_last_result({"test": i, "training_iteration": i})
+    t2.result_logger.flush()
+    t2.close_logger()
+
+
+    t3 = pickle.loads(string)
+    for i in range(42, 60):
+        t3.update_last_result({"test": i, "training_iteration": i})
+    t3.result_logger.flush()
+
+    import os
+    with open(os.path.join(t2.logdir, "progress.csv")) as f:
+        print(t2.logdir)
+        for line in f:
+            print(line)
