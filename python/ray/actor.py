@@ -563,7 +563,7 @@ class ActorHandle(object):
             # created, there should be a better way to handle pickled
             # actor handles.
             if (actor_handle_id !=
-                self._ray_previously_generated_actor_handle_id):
+                    self._ray_previously_generated_actor_handle_id):
                 self._ray_actor_counter = 0
                 self._ray_previously_generated_actor_handle_id = actor_handle_id
         else:
