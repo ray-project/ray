@@ -564,7 +564,7 @@ class ActorHandle(object):
             actor_handle_id = compute_actor_handle_id_non_forked(
                 self._ray_actor_id, self._ray_previous_actor_handle_id,
                 worker.current_task_id)
-            # Each invokation creates a new actor handle id, so we need to
+            # Each new task creates a new actor handle id, so we need to
             # reset the actor counter to 0
             if (actor_handle_id !=
                     self._ray_previously_generated_actor_handle_id):
