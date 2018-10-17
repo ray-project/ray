@@ -179,7 +179,8 @@ void MergeLineageHelper(const TaskID &task_id, const Lineage &lineage_from,
 
 /// A helper function to merge one lineage into another, in DFS order.
 void LineageCache::AddUncommittedLineage(const TaskID &task_id,
-                                         const Lineage &uncommitted_lineage) {
+                                         const Lineage &uncommitted_lineage,
+                                         std::unordered_set<TaskID> &subscribe_tasks) {
   // If the entry is not found in the lineage to merge, then we stop since
   // there is nothing to copy into the merged lineage.
   auto entry = uncommitted_lineage.GetEntry(task_id);
@@ -194,10 +195,10 @@ void LineageCache::AddUncommittedLineage(const TaskID &task_id,
   // if the new entry has an equal or lower GCS status than the current entry
   // in lineage_to. This also prevents us from traversing the same node twice.
   if (lineage_.SetEntry(entry->TaskData(), entry->GetStatus())) {
-    SubscribeTask(task_id);
+    subscribe_tasks.insert(task_id);
     for (const auto &parent_id : parent_ids) {
       children_[parent_id].insert(task_id);
-      AddUncommittedLineage(parent_id, uncommitted_lineage);
+      AddUncommittedLineage(parent_id, uncommitted_lineage, subscribe_tasks);
     }
   }
 }
@@ -206,8 +207,22 @@ bool LineageCache::AddWaitingTask(const Task &task, const Lineage &uncommitted_l
   auto task_id = task.GetTaskSpecification().TaskId();
   RAY_LOG(DEBUG) << "add waiting task " << task_id << " on " << client_id_;
 
-  // Merge the uncommitted lineage into the lineage cache.
-  AddUncommittedLineage(task_id, uncommitted_lineage);
+  // Merge the uncommitted lineage into the lineage cache. Collect the IDs of
+  // tasks that we should subscribe to. These are all of the tasks that were
+  // included in the uncommitted lineage that we did not already have in our
+  // stash.
+  std::unordered_set<TaskID> subscribe_tasks;
+  AddUncommittedLineage(task_id, uncommitted_lineage, subscribe_tasks);
+
+  // Do not subscribe to the waiting task.
+  subscribe_tasks.erase(task_id);
+  // Subscribe to all other tasks that were included in the uncommitted lineage
+  // and that were not already in the local stash. These tasks haven't been
+  // committed yet and will be committed by a different node, so we will not
+  // evict them until a notification for their commit is received.
+  for (const auto &task_id : subscribe_tasks) {
+    RAY_CHECK(SubscribeTask(task_id));
+  }
 
   // Add the submitted task to the lineage cache as UNCOMMITTED_WAITING. It
   // should be marked as UNCOMMITTED_READY once the task starts execution.
@@ -216,7 +231,7 @@ bool LineageCache::AddWaitingTask(const Task &task, const Lineage &uncommitted_l
   for (const auto &parent_id : entry->GetParentTaskIds()) {
     children_[parent_id].insert(task_id);
   }
-  UnsubscribeTask(task_id);
+
   return added;
 }
 

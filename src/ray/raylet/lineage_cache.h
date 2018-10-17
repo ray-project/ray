@@ -285,7 +285,9 @@ class LineageCache {
   /// Unsubscribe from notifications for a task. Returns whether the operation
   /// was successful (whether we were subscribed).
   bool UnsubscribeTask(const TaskID &task_id);
-  void AddUncommittedLineage(const TaskID &task_id, const Lineage &uncommitted_lineage);
+  /// Add a task and its uncommitted lineage to the local stash.
+  void AddUncommittedLineage(const TaskID &task_id, const Lineage &uncommitted_lineage,
+                             std::unordered_set<TaskID> &subscribe_tasks);
 
   /// The client ID, used to request notifications for specific tasks.
   /// TODO(swang): Move the ClientID into the generic Table implementation.
