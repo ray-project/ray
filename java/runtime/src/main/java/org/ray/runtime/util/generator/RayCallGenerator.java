@@ -21,8 +21,17 @@ public class RayCallGenerator extends BaseGenerator {
     newLine("");
     newLine("package org.ray.api;");
     newLine("");
-    newLine("import org.ray.api.options.*;");
-    newLine("import org.ray.api.function.*;");
+    newLine("import org.ray.api.function.RayFunc;");
+    newLine("import org.ray.api.function.RayFunc0;");
+    newLine("import org.ray.api.function.RayFunc1;");
+    newLine("import org.ray.api.function.RayFunc2;");
+    newLine("import org.ray.api.function.RayFunc3;");
+    newLine("import org.ray.api.function.RayFunc4;");
+    newLine("import org.ray.api.function.RayFunc5;");
+    newLine("import org.ray.api.function.RayFunc6;");
+    newLine("import org.ray.api.options.ActorCreationOptions;");
+    newLine("import org.ray.api.options.BaseTaskOptions;");
+    newLine("import org.ray.api.options.CallOptions;");
     newLine("");
 
     newLine("/**");
@@ -42,7 +51,6 @@ public class RayCallGenerator extends BaseGenerator {
     newLine(1, "// ===========================================");
     for (int i = 0; i <= MAX_PARAMETERS - 1; i++) {
       buildCalls(i, true, false, false);
-      buildCalls(i, true, false, true);
     }
     newLine(1, "// ===========================");
     newLine(1, "// Methods for actor creation.");

@@ -82,28 +82,5 @@ public class ResourcesManagementTest {
     Assert.assertEquals(1, waitResult.getUnready().size());
   }
 
-  @Test
-  public void testActorAndMemberMethods() {
-    // Note(qwang): This case depends on  the following line.
-    // https://github.com/ray-project/ray/blob/master/java/test/src/main/java/org/ray/api/test/TestListener.java#L13
-    // If we change the static resources configuration item, this case may not pass.
-    // Then we should change this case too.
-    ActorCreationOptions actorCreationOptions = new ActorCreationOptions();
-    actorCreationOptions.resources.put("RES-A", 4.0);
-
-    RayActor<Echo> echo3 = Ray.createActor(Echo::new, actorCreationOptions);
-    Assert.assertEquals(100, (int) Ray.call(Echo::echo, echo3, 100).get());
-    Assert.assertEquals(100, (int) Ray.call(Echo::echo, echo3, 100).get());
-
-    // This case shows that if we specify a required resource for an actor
-    // task(not actor creation task), it means this task need an additional resource.
-    CallOptions callOptions = new CallOptions();
-    callOptions.resources.put("RES-A", 4.0);
-    final RayObject<Integer> result = Ray.call(Echo::echo, echo3, 100, callOptions);
-    WaitResult<Integer> waitResult = Ray.wait(ImmutableList.of(result), 1, 1000);
-    Assert.assertEquals(0, waitResult.getReady().size());
-    Assert.assertEquals(1, waitResult.getUnready().size());
-  }
-
 }
 
