@@ -11,6 +11,7 @@ import java.util.Map;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.util.NetworkUtil;
 import org.ray.runtime.util.ResourceUtil;
+import org.ray.runtime.util.StringUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -228,7 +229,7 @@ public class RayConfig {
   public static RayConfig create() {
     ConfigFactory.invalidateCaches();
     Config config = ConfigFactory.systemProperties()
-        .withFallback(ConfigFactory.load(CUSTOM_CONFIG_FILE))
+        .withFallback(ConfigFactory.load(StringUtil.isNullOrEmpty(System.getProperty("ray.config")) ? CUSTOM_CONFIG_FILE : System.getProperty("ray.config")))
         .withFallback(ConfigFactory.load(DEFAULT_CONFIG_FILE));
     return new RayConfig(config);
   }
