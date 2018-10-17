@@ -501,7 +501,8 @@ class ActorHandle(object):
         self._ray_actor_method_cpus = actor_method_cpus
         self._ray_actor_driver_id = actor_driver_id
         self._ray_previous_actor_handle_id = previous_actor_handle_id
-        self._ray_previously_generated_actor_handle_id = self._ray_actor_handle_id
+        self._ray_previously_generated_actor_handle_id = (
+            self._ray_actor_handle_id)
 
     def _actor_method_call(self,
                            method_name,
@@ -565,7 +566,8 @@ class ActorHandle(object):
             if (actor_handle_id !=
                     self._ray_previously_generated_actor_handle_id):
                 self._ray_actor_counter = 0
-                self._ray_previously_generated_actor_handle_id = actor_handle_id
+                self._ray_previously_generated_actor_handle_id = (
+                    actor_handle_id)
         else:
             actor_handle_id = self._ray_actor_handle_id
 
