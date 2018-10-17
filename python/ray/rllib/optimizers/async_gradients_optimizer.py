@@ -39,7 +39,8 @@ class AsyncGradientsOptimizer(PolicyOptimizer):
 
         while pending_gradients:
             with self.wait_timer:
-                wait_results = ray.wait(list(pending_gradients.keys()), num_returns=1)
+                wait_results = ray.wait(list(pending_gradients.keys()),
+                                        num_returns=1)
                 ready_list = wait_results[0]
                 future = ready_list[0]
 
