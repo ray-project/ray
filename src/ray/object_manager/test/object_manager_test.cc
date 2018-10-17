@@ -34,7 +34,6 @@ class MockServer {
 
  private:
   ray::Status RegisterGcs(boost::asio::io_service &io_service) {
-    RAY_RETURN_NOT_OK(gcs_client_->Connect("127.0.0.1", 6379, /*sharding=*/false));
     RAY_RETURN_NOT_OK(gcs_client_->Attach(io_service));
 
     boost::asio::ip::tcp::endpoint endpoint = object_manager_acceptor_.local_endpoint();
@@ -65,8 +64,9 @@ class MockServer {
       object_manager_.ProcessClientMessage(client, message_type, message);
     };
     // Accept a new local client and dispatch it to the node manager.
-    auto new_connection = TcpClientConnection::Create(client_handler, message_handler,
-                                                      std::move(object_manager_socket_));
+    auto new_connection =
+        TcpClientConnection::Create(client_handler, message_handler,
+                                    std::move(object_manager_socket_), "object manager");
     DoAcceptObjectManager();
   }
 
@@ -114,7 +114,8 @@ class TestObjectManagerBase : public ::testing::Test {
     push_timeout_ms = 1000;
 
     // start first server
-    gcs_client_1 = std::shared_ptr<gcs::AsyncGcsClient>(new gcs::AsyncGcsClient());
+    gcs_client_1 = std::shared_ptr<gcs::AsyncGcsClient>(
+        new gcs::AsyncGcsClient("127.0.0.1", 6379, /*is_test_client=*/true));
     ObjectManagerConfig om_config_1;
     om_config_1.store_socket_name = store_id_1;
     om_config_1.pull_timeout_ms = pull_timeout_ms;
@@ -125,7 +126,8 @@ class TestObjectManagerBase : public ::testing::Test {
     server1.reset(new MockServer(main_service, om_config_1, gcs_client_1));
 
     // start second server
-    gcs_client_2 = std::shared_ptr<gcs::AsyncGcsClient>(new gcs::AsyncGcsClient());
+    gcs_client_2 = std::shared_ptr<gcs::AsyncGcsClient>(
+        new gcs::AsyncGcsClient("127.0.0.1", 6379, /*is_test_client=*/true));
     ObjectManagerConfig om_config_2;
     om_config_2.store_socket_name = store_id_2;
     om_config_2.pull_timeout_ms = pull_timeout_ms;
@@ -283,9 +285,11 @@ class TestObjectManager : public TestObjectManagerBase {
 
     RAY_CHECK_OK(server1->object_manager_.object_directory_->SubscribeObjectLocations(
         sub_id, object_1,
-        [this, sub_id, object_1, object_2](const std::vector<ray::ClientID> &,
+        [this, sub_id, object_1, object_2](const std::vector<ray::ClientID> &clients,
                                            const ray::ObjectID &object_id) {
-          TestWaitWhileSubscribed(sub_id, object_1, object_2);
+          if (!clients.empty()) {
+            TestWaitWhileSubscribed(sub_id, object_1, object_2);
+          }
         }));
   }
 
@@ -437,16 +441,7 @@ class TestObjectManager : public TestObjectManagerBase {
         }));
   }
 
-  void TestWaitComplete() { TestBufferPool(); }
-
-  void TestBufferPool() {
-    // Ensure the number of chunks generated do not exceed the number of send threads.
-    for (uint64_t i = object_chunk_size / 2; i < 10 * object_chunk_size; ++i) {
-      uint64_t num_chunks = server1->object_manager_.buffer_pool_.GetNumChunks(i);
-      ASSERT_LE(num_chunks, max_sends);
-    }
-    main_service.stop();
-  }
+  void TestWaitComplete() { main_service.stop(); }
 
   void TestConnections() {
     RAY_LOG(DEBUG) << "\n"

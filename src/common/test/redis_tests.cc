@@ -56,7 +56,7 @@ void async_redis_socket_test_callback(redisAsyncContext *ac,
 }
 
 TEST redis_socket_test(void) {
-  const char *socket_pathname = "redis-test-socket";
+  const char *socket_pathname = "/tmp/redis-test-socket";
   redisContext *context = redisConnect("127.0.0.1", 6379);
   ASSERT(context != NULL);
   int socket_fd = bind_ipc_sock(socket_pathname, true);
@@ -112,7 +112,7 @@ TEST async_redis_socket_test(void) {
   event_loop *loop = event_loop_create();
 
   /* Start IPC channel. */
-  const char *socket_pathname = "async-redis-test-socket";
+  const char *socket_pathname = "/tmp/async-redis-test-socket";
   int socket_fd = bind_ipc_sock(socket_pathname, true);
   ASSERT(socket_fd >= 0);
   connections.push_back(socket_fd);
@@ -186,7 +186,7 @@ TEST logging_test(void) {
   event_loop *loop = event_loop_create();
 
   /* Start IPC channel. */
-  const char *socket_pathname = "logging-test-socket";
+  const char *socket_pathname = "/tmp/logging-test-socket";
   int socket_fd = bind_ipc_sock(socket_pathname, true);
   ASSERT(socket_fd >= 0);
   connections.push_back(socket_fd);

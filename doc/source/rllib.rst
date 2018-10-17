@@ -10,7 +10,7 @@ Learn more about RLlib's design by reading the `ICML paper <https://arxiv.org/ab
 Installation
 ------------
 
-RLlib has extra dependencies on top of ``ray``. First, you'll need to install either `PyTorch <http://pytorch.org/>`__ or `TensorFlow <https://www.tensorflow.org>`__. Then, install the Ray RLlib module:
+RLlib has extra dependencies on top of ``ray``. First, you'll need to install either `PyTorch <http://pytorch.org/>`__ or `TensorFlow <https://www.tensorflow.org>`__. Then, install the RLlib module:
 
 .. code-block:: bash
 
@@ -27,6 +27,7 @@ You might also want to clone the Ray repo for convenient access to RLlib helper 
 Training APIs
 -------------
 * `Command-line <rllib-training.html>`__
+* `Configuration <rllib-training.html#configuration>`__
 * `Python API <rllib-training.html#python-api>`__
 * `REST API <rllib-training.html#rest-api>`__
 
@@ -36,19 +37,36 @@ Environments
 * `OpenAI Gym <rllib-env.html#openai-gym>`__
 * `Vectorized <rllib-env.html#vectorized>`__
 * `Multi-Agent <rllib-env.html#multi-agent>`__
-* `Serving (Agent-oriented) <rllib-env.html#serving>`__
+* `Agent-Driven <rllib-env.html#agent-driven>`__
 * `Offline Data Ingest <rllib-env.html#offline-data>`__ 
 * `Batch Asynchronous <rllib-env.html#batch-asynchronous>`__
 
 Algorithms
 ----------
-* `Ape-X Distributed Prioritized Experience Replay <rllib-algorithms.html#ape-x-distributed-prioritized-experience-replay>`__
-* `Asynchronous Advantage Actor-Critic <rllib-algorithms.html#asynchronous-advantage-actor-critic>`__
-* `Deep Deterministic Policy Gradients <rllib-algorithms.html#deep-deterministic-policy-gradients>`__
-* `Deep Q Networks <rllib-algorithms.html#deep-q-networks>`__
-* `Evolution Strategies <rllib-algorithms.html#evolution-strategies>`__
-* `Policy Gradients <rllib-algorithms.html#policy-gradients>`__
-* `Proximal Policy Optimization <rllib-algorithms.html#proximal-policy-optimization>`__
+
+*  High-throughput architectures
+
+   -  `Distributed Prioritized Experience Replay (Ape-X) <rllib-algorithms.html#distributed-prioritized-experience-replay-ape-x>`__
+
+   -  `Importance Weighted Actor-Learner Architecture (IMPALA) <rllib-algorithms.html#importance-weighted-actor-learner-architecture-impala>`__
+
+*  Gradient-based
+
+   -  `Advantage Actor-Critic (A2C, A3C) <rllib-algorithms.html#advantage-actor-critic-a2c-a3c>`__
+
+   -  `Deep Deterministic Policy Gradients (DDPG) <rllib-algorithms.html#deep-deterministic-policy-gradients-ddpg>`__
+
+   -  `Deep Q Networks (DQN, Rainbow) <rllib-algorithms.html#deep-q-networks-dqn-rainbow>`__
+
+   -  `Policy Gradients <rllib-algorithms.html#policy-gradients>`__
+
+   -  `Proximal Policy Optimization (PPO) <rllib-algorithms.html#proximal-policy-optimization-ppo>`__
+
+*  Derivative-free
+
+   -  `Augmented Random Search (ARS) <rllib-algorithms.html#augmented-random-search-ars>`__
+
+   -  `Evolution Strategies <rllib-algorithms.html#evolution-strategies>`__
 
 Models and Preprocessors
 ------------------------
@@ -57,6 +75,7 @@ Models and Preprocessors
 * `Custom Models <rllib-models.html#custom-models>`__
 * `Custom Preprocessors <rllib-models.html#custom-preprocessors>`__
 * `Customizing Policy Graphs <rllib-models.html#customizing-policy-graphs>`__
+* `Model-Based Rollouts <rllib-models.html#model-based-rollouts>`__
 
 RLlib Concepts
 --------------
@@ -72,3 +91,11 @@ Package Reference
 * `ray.rllib.models <rllib-package-ref.html#module-ray.rllib.models>`__
 * `ray.rllib.optimizers <rllib-package-ref.html#module-ray.rllib.optimizers>`__
 * `ray.rllib.utils <rllib-package-ref.html#module-ray.rllib.utils>`__
+
+Troubleshooting
+---------------
+
+If you encounter errors like
+`blas_thread_init: pthread_create: Resource temporarily unavailable` when using many workers,
+try setting ``OMP_NUM_THREADS=1``. Similarly, check configured system limits with
+`ulimit -a` for other resource limit errors.

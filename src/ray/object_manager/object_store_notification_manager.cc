@@ -9,6 +9,7 @@
 #include "common/common_protocol.h"
 
 #include "ray/object_manager/object_store_notification_manager.h"
+#include "ray/util/util.h"
 
 namespace ray {
 
@@ -46,8 +47,8 @@ void ObjectStoreNotificationManager::ProcessStoreLength(
 
 void ObjectStoreNotificationManager::ProcessStoreNotification(
     const boost::system::error_code &error) {
-  if (error) {
-    RAY_LOG(FATAL) << error.message();
+  if (error.value() != boost::system::errc::success) {
+    RAY_LOG(FATAL) << boost_to_ray_status(error).ToString();
   }
 
   const auto &object_info = flatbuffers::GetRoot<ObjectInfo>(notification_.data());

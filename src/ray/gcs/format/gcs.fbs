@@ -4,6 +4,7 @@ enum Language:int {
   JAVA = 2
 }
 
+// These indexes are mapped to strings in ray_redis_module.cc.
 enum TablePrefix:int {
   UNUSED = 0,
   TASK,
@@ -15,6 +16,7 @@ enum TablePrefix:int {
   TASK_RECONSTRUCTION,
   HEARTBEAT,
   ERROR_INFO,
+  DRIVER,
   PROFILE,
   TASK_LEASE,
 }
@@ -30,6 +32,7 @@ enum TablePubsub:int {
   HEARTBEAT,
   ERROR_INFO,
   TASK_LEASE,
+  DRIVER,
 }
 
 table GcsTableEntry {
@@ -55,7 +58,9 @@ table ObjectTableData {
 }
 
 table TaskReconstructionData {
-  num_executions: int;
+  // The number of times this task has been reconstructed so far.
+  num_reconstructions: int;
+  // The node manager that is trying to reconstruct the task.
   node_manager_id: string;
 }
 
@@ -189,6 +194,9 @@ table HeartbeatTableData {
   // Total resource capacity configured for this node manager.
   resources_total_label: [string];
   resources_total_capacity: [double];
+  // Aggregate outstanding resource load on this node manager.
+  resource_load_label: [string];
+  resource_load_capacity: [double];
 }
 
 // Data for a lease on task execution.
@@ -201,4 +209,11 @@ table TaskLeaseData {
   acquired_at: long;
   // The period that the lease is active for.
   timeout: long;
+}
+
+table DriverTableData {
+  // The driver ID.
+  driver_id: string;
+  // Whether it's dead.
+  is_dead: bool;
 }

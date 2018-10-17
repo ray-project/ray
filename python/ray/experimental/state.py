@@ -6,6 +6,7 @@ import copy
 from collections import defaultdict
 import heapq
 import json
+import numbers
 import os
 import redis
 import sys
@@ -77,6 +78,7 @@ class GlobalState(object):
     def _initialize_global_state(self,
                                  redis_ip_address,
                                  redis_port,
+                                 redis_password=None,
                                  timeout=20):
         """Initialize the GlobalState object by connecting to Redis.
 
@@ -88,9 +90,10 @@ class GlobalState(object):
             redis_ip_address: The IP address of the node that the Redis server
                 lives on.
             redis_port: The port that the Redis server is listening on.
+            redis_password: The password of the redis server.
         """
         self.redis_client = redis.StrictRedis(
-            host=redis_ip_address, port=redis_port)
+            host=redis_ip_address, port=redis_port, password=redis_password)
 
         start_time = time.time()
 
@@ -142,7 +145,10 @@ class GlobalState(object):
         for ip_address_port in ip_address_ports:
             shard_address, shard_port = ip_address_port.split(b":")
             self.redis_clients.append(
-                redis.StrictRedis(host=shard_address, port=shard_port))
+                redis.StrictRedis(
+                    host=shard_address,
+                    port=shard_port,
+                    password=redis_password))
 
     def _execute_command(self, key, *args):
         """Execute a Redis command on the appropriate Redis shard based on key.
@@ -169,7 +175,7 @@ class GlobalState(object):
         """
         result = []
         for client in self.redis_clients:
-            result.extend(client.keys(pattern))
+            result.extend(list(client.scan_iter(match=pattern)))
         return result
 
     def _object_table(self, object_id):
@@ -507,10 +513,12 @@ class GlobalState(object):
             if message is None:
                 return []
 
-            node_info = []
+            node_info = {}
             gcs_entry = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
                 message, 0)
 
+            # Since GCS entries are append-only, we override so that
+            # only the latest entries are kept.
             for i in range(gcs_entry.EntriesLength()):
                 client = (
                     ray.gcs_utils.ClientTableData.GetRootAsClientTableData(
@@ -521,8 +529,18 @@ class GlobalState(object):
                     client.ResourcesTotalCapacity(i)
                     for i in range(client.ResourcesTotalLabelLength())
                 }
-                node_info.append({
-                    "ClientID": ray.utils.binary_to_hex(client.ClientId()),
+                client_id = ray.utils.binary_to_hex(client.ClientId())
+
+                # If this client is being removed, then it must
+                # have previously been inserted, and
+                # it cannot have previously been removed.
+                if not client.IsInsertion():
+                    assert client_id in node_info, "Client removed not found!"
+                    assert node_info[client_id]["IsInsertion"], (
+                        "Unexpected duplicate removal of client.")
+
+                node_info[client_id] = {
+                    "ClientID": client_id,
                     "IsInsertion": client.IsInsertion(),
                     "NodeManagerAddress": decode(client.NodeManagerAddress()),
                     "NodeManagerPort": client.NodeManagerPort(),
@@ -531,8 +549,8 @@ class GlobalState(object):
                         client.ObjectStoreSocketName()),
                     "RayletSocketName": decode(client.RayletSocketName()),
                     "Resources": resources
-                })
-            return node_info
+                }
+            return list(node_info.values())
 
     def log_files(self):
         """Fetch and return a dictionary of log file names to outputs.
@@ -1277,7 +1295,7 @@ class GlobalState(object):
             A dictionary mapping resource name to the total quantity of that
                 resource in the cluster.
         """
-        resources = defaultdict(lambda: 0)
+        resources = defaultdict(int)
         if not self.use_raylet:
             local_schedulers = self.local_schedulers()
 
@@ -1296,6 +1314,125 @@ class GlobalState(object):
                     resources[key] += value
 
         return dict(resources)
+
+    def _live_client_ids(self):
+        """Returns a set of client IDs corresponding to clients still alive."""
+        return {
+            client["ClientID"]
+            for client in self.client_table() if client["IsInsertion"]
+        }
+
+    def available_resources(self):
+        """Get the current available cluster resources.
+
+        This is different from `cluster_resources` in that this will return
+        idle (available) resources rather than total resources.
+
+        Note that this information can grow stale as tasks start and finish.
+
+        Returns:
+            A dictionary mapping resource name to the total quantity of that
+                resource in the cluster.
+        """
+        available_resources_by_id = {}
+
+        if not self.use_raylet:
+            subscribe_client = self.redis_client.pubsub()
+            subscribe_client.subscribe(
+                ray.gcs_utils.LOCAL_SCHEDULER_INFO_CHANNEL)
+
+            local_scheduler_ids = {
+                local_scheduler["DBClientID"]
+                for local_scheduler in self.local_schedulers()
+            }
+
+            while set(available_resources_by_id.keys()) != local_scheduler_ids:
+                raw_message = subscribe_client.get_message()
+                if raw_message is None:
+                    continue
+                data = raw_message["data"]
+                # Ignore subscribtion success message from Redis
+                # This is a long in python 2 and an int in python 3
+                if isinstance(data, numbers.Number):
+                    continue
+                message = (ray.gcs_utils.LocalSchedulerInfoMessage.
+                           GetRootAsLocalSchedulerInfoMessage(data, 0))
+                num_resources = message.DynamicResourcesLength()
+                dynamic_resources = {}
+                for i in range(num_resources):
+                    dyn = message.DynamicResources(i)
+                    resource_id = decode(dyn.Key())
+                    dynamic_resources[resource_id] = dyn.Value()
+
+                # Update available resources for this local scheduler
+                client_id = binary_to_hex(message.DbClientId())
+                available_resources_by_id[client_id] = dynamic_resources
+
+                # Update local schedulers in cluster
+                local_scheduler_ids = {
+                    local_scheduler["DBClientID"]
+                    for local_scheduler in self.local_schedulers()
+                }
+
+                # Remove disconnected local schedulers
+                for local_scheduler_id in available_resources_by_id.keys():
+                    if local_scheduler_id not in local_scheduler_ids:
+                        del available_resources_by_id[local_scheduler_id]
+        else:
+            # TODO(rliaw): Is this a fair assumption?
+            # Assumes the number of Redis clients does not change
+            subscribe_clients = [
+                redis_client.pubsub(ignore_subscribe_messages=True)
+                for redis_client in self.redis_clients
+            ]
+            for subscribe_client in subscribe_clients:
+                subscribe_client.subscribe(
+                    ray.gcs_utils.XRAY_HEARTBEAT_CHANNEL)
+
+            client_ids = self._live_client_ids()
+
+            while set(available_resources_by_id.keys()) != client_ids:
+                for subscribe_client in subscribe_clients:
+                    # Parse client message
+                    raw_message = subscribe_client.get_message()
+                    if (raw_message is None or raw_message["channel"] !=
+                            ray.gcs_utils.XRAY_HEARTBEAT_CHANNEL):
+                        continue
+                    data = raw_message["data"]
+                    gcs_entries = (
+                        ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
+                            data, 0))
+                    heartbeat_data = gcs_entries.Entries(0)
+                    message = (ray.gcs_utils.HeartbeatTableData.
+                               GetRootAsHeartbeatTableData(heartbeat_data, 0))
+                    # Calculate available resources for this client
+                    num_resources = message.ResourcesAvailableLabelLength()
+                    dynamic_resources = {}
+                    for i in range(num_resources):
+                        resource_id = decode(
+                            message.ResourcesAvailableLabel(i))
+                        dynamic_resources[resource_id] = (
+                            message.ResourcesAvailableCapacity(i))
+
+                    # Update available resources for this client
+                    client_id = ray.utils.binary_to_hex(message.ClientId())
+                    available_resources_by_id[client_id] = dynamic_resources
+
+                # Update clients in cluster
+                client_ids = self._live_client_ids()
+
+                # Remove disconnected clients
+                for client_id in available_resources_by_id.keys():
+                    if client_id not in client_ids:
+                        del available_resources_by_id[client_id]
+
+        # Calculate total available resources
+        total_available_resources = defaultdict(int)
+        for available_resources in available_resources_by_id.values():
+            for resource_id, num_available in available_resources.items():
+                total_available_resources[resource_id] += num_available
+
+        return dict(total_available_resources)
 
     def _error_messages(self, job_id):
         """Get the error messages for a specific job.
@@ -1320,6 +1457,7 @@ class GlobalState(object):
         for i in range(gcs_entries.EntriesLength()):
             error_data = ray.gcs_utils.ErrorTableData.GetRootAsErrorTableData(
                 gcs_entries.Entries(i), 0)
+            assert job_id.id() == error_data.JobId()
             error_message = {
                 "type": decode(error_data.Type()),
                 "message": decode(error_data.ErrorMessage()),

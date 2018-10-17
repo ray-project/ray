@@ -91,15 +91,17 @@ class PolicyEvaluator(EvaluatorInterface):
                  batch_steps=100,
                  batch_mode="truncate_episodes",
                  episode_horizon=None,
-                 preprocessor_pref="rllib",
+                 preprocessor_pref="deepmind",
                  sample_async=False,
                  compress_observations=False,
                  num_envs=1,
                  observation_filter="NoFilter",
+                 clip_rewards=None,
                  env_config=None,
                  model_config=None,
                  policy_config=None,
-                 worker_index=0):
+                 worker_index=0,
+                 monitor_path=None):
         """Initialize a policy evaluator.
 
         Arguments:
@@ -122,16 +124,14 @@ class PolicyEvaluator(EvaluatorInterface):
                 in each sample batch returned from this evaluator.
             batch_mode (str): One of the following batch modes:
                 "truncate_episodes": Each call to sample() will return a batch
-                    of at most `batch_steps` in size. The batch will be exactly
-                    `batch_steps` in size if postprocessing does not change
-                    batch sizes. Episodes may be truncated in order to meet
-                    this size requirement. When `num_envs > 1`, episodes will
-                    be truncated to sequences of `batch_size / num_envs` in
-                    length.
+                    of at most `batch_steps * num_envs` in size. The batch will
+                    be exactly `batch_steps * num_envs` in size if
+                    postprocessing does not change batch sizes. Episodes may be
+                    truncated in order to meet this size requirement.
                 "complete_episodes": Each call to sample() will return a batch
-                    of at least `batch_steps in size. Episodes will not be
-                    truncated, but multiple episodes may be packed within one
-                    batch to meet the batch size. Note that when
+                    of at least `batch_steps * num_envs` in size. Episodes will
+                    not be truncated, but multiple episodes may be packed
+                    within one batch to meet the batch size. Note that when
                     `num_envs > 1`, episode steps will be buffered until the
                     episode completes, and hence batches may contain
                     significant amounts of off-policy data.
@@ -147,6 +147,9 @@ class PolicyEvaluator(EvaluatorInterface):
                 and vectorize the computation of actions. This has no effect if
                 if the env already implements VectorEnv.
             observation_filter (str): Name of observation filter to use.
+            clip_rewards (bool): Whether to clip rewards to [-1, 1] prior to
+                experience postprocessing. Setting to None means clip for Atari
+                only.
             env_config (dict): Config to pass to the env creator.
             model_config (dict): Config to use when creating the policy model.
             policy_config (dict): Config to pass to the policy. In the
@@ -155,6 +158,8 @@ class PolicyEvaluator(EvaluatorInterface):
             worker_index (int): For remote evaluators, this should be set to a
                 non-zero and unique value. This index is passed to created envs
                 through EnvContext so that envs can be configured per worker.
+            monitor_path (str): Write out episode stats and videos to this
+                directory if specified.
         """
 
         env_context = EnvContext(env_config or {}, worker_index)
@@ -163,8 +168,13 @@ class PolicyEvaluator(EvaluatorInterface):
         model_config = model_config or {}
         policy_mapping_fn = (policy_mapping_fn
                              or (lambda agent_id: DEFAULT_POLICY_ID))
+        if not callable(policy_mapping_fn):
+            raise ValueError(
+                "Policy mapping function not callable. If you're using Tune, "
+                "make sure to escape the function with tune.function() "
+                "to prevent it from being evaluated as an expression.")
         self.env_creator = env_creator
-        self.batch_steps = batch_steps
+        self.sample_batch_size = batch_steps * num_envs
         self.batch_mode = batch_mode
         self.compress_observations = compress_observations
 
@@ -177,21 +187,34 @@ class PolicyEvaluator(EvaluatorInterface):
             def wrap(env):
                 return env  # we can't auto-wrap these env types
         elif is_atari(self.env) and \
-                "custom_preprocessor" not in model_config and \
+                not model_config.get("custom_preprocessor") and \
                 preprocessor_pref == "deepmind":
 
+            if clip_rewards is None:
+                clip_rewards = True
+
             def wrap(env):
-                return wrap_deepmind(env, dim=model_config.get("dim", 80))
+                env = wrap_deepmind(
+                    env,
+                    dim=model_config.get("dim"),
+                    framestack=model_config.get("framestack"))
+                if monitor_path:
+                    env = _monitor(env, monitor_path)
+                return env
         else:
 
             def wrap(env):
-                return ModelCatalog.get_preprocessor_as_wrapper(
+                env = ModelCatalog.get_preprocessor_as_wrapper(
                     env, model_config)
+                if monitor_path:
+                    env = _monitor(env, monitor_path)
+                return env
 
         self.env = wrap(self.env)
 
-        def make_env():
-            return wrap(env_creator(env_context))
+        def make_env(vector_index):
+            return wrap(
+                env_creator(env_context.with_vector_index(vector_index)))
 
         self.tf_sess = None
         policy_dict = _validate_and_canonicalize(policy_graph, self.env)
@@ -211,7 +234,14 @@ class PolicyEvaluator(EvaluatorInterface):
             self.policy_map = self._build_policy_map(policy_dict,
                                                      policy_config)
 
-        self.multiagent = self.policy_map.keys() != set(DEFAULT_POLICY_ID)
+        self.multiagent = set(self.policy_map.keys()) != {DEFAULT_POLICY_ID}
+        if self.multiagent:
+            if not (isinstance(self.env, MultiAgentEnv)
+                    or isinstance(self.env, AsyncVectorEnv)):
+                raise ValueError(
+                    "Have multiple policy graphs {}, but the env ".format(
+                        self.policy_map) +
+                    "{} is not a subclass of MultiAgentEnv?".format(self.env))
 
         self.filters = {
             policy_id: get_filter(observation_filter,
@@ -225,15 +255,10 @@ class PolicyEvaluator(EvaluatorInterface):
         self.num_envs = num_envs
 
         if self.batch_mode == "truncate_episodes":
-            if batch_steps % num_envs != 0:
-                raise ValueError(
-                    "In 'truncate_episodes' batch mode, `batch_steps` must be "
-                    "evenly divisible by `num_envs`. Got {} and {}.".format(
-                        batch_steps, num_envs))
-            batch_steps = batch_steps // num_envs
+            unroll_length = batch_steps
             pack_episodes = True
         elif self.batch_mode == "complete_episodes":
-            batch_steps = float("inf")  # never cut episodes
+            unroll_length = float("inf")  # never cut episodes
             pack_episodes = False  # sampler will return 1 episode per poll
         else:
             raise ValueError("Unsupported batch mode: {}".format(
@@ -244,7 +269,8 @@ class PolicyEvaluator(EvaluatorInterface):
                 self.policy_map,
                 policy_mapping_fn,
                 self.filters,
-                batch_steps,
+                clip_rewards,
+                unroll_length,
                 horizon=episode_horizon,
                 pack=pack_episodes,
                 tf_sess=self.tf_sess)
@@ -255,7 +281,8 @@ class PolicyEvaluator(EvaluatorInterface):
                 self.policy_map,
                 policy_mapping_fn,
                 self.filters,
-                batch_steps,
+                clip_rewards,
+                unroll_length,
                 horizon=episode_horizon,
                 pack=pack_episodes,
                 tf_sess=self.tf_sess)
@@ -287,10 +314,12 @@ class PolicyEvaluator(EvaluatorInterface):
         else:
             max_batches = float("inf")
 
-        while steps_so_far < self.batch_steps and len(batches) < max_batches:
+        while steps_so_far < self.sample_batch_size and len(
+                batches) < max_batches:
             batch = self.sampler.get_data()
             steps_so_far += batch.count
             batches.append(batch)
+        batches.extend(self.sampler.get_extra_batches())
         batch = batches[0].concat_samples(batches)
 
         if self.compress_observations:
@@ -445,6 +474,9 @@ class PolicyEvaluator(EvaluatorInterface):
         for pid, state in objs["state"].items():
             self.policy_map[pid].set_state(state)
 
+    def set_global_vars(self, global_vars):
+        self.foreach_policy(lambda p, _: p.on_global_var_update(global_vars))
+
 
 def _validate_and_canonicalize(policy_graph, env):
     if isinstance(policy_graph, dict):
@@ -480,6 +512,10 @@ def _validate_and_canonicalize(policy_graph, env):
             DEFAULT_POLICY_ID: (policy_graph, env.observation_space,
                                 env.action_space, {})
         }
+
+
+def _monitor(env, path):
+    return gym.wrappers.Monitor(env, path, resume=True)
 
 
 def _has_tensorflow_graph(policy_dict):

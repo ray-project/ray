@@ -8,19 +8,15 @@ from ray.rllib.optimizers import SyncSamplesOptimizer
 from ray.rllib.utils import merge_dicts
 from ray.tune.trial import Resources
 
+# __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
     # No remote workers by default
     "num_workers": 0,
     # Learning rate
     "lr": 0.0004,
-    # Override model config
-    "model": {
-        # Use LSTM model.
-        "use_lstm": False,
-        # Max seq length for LSTM training.
-        "max_seq_len": 20,
-    },
 })
+
+# __sphinx_doc_end__
 
 
 class PGAgent(Agent):
@@ -32,6 +28,7 @@ class PGAgent(Agent):
 
     _agent_name = "PG"
     _default_config = DEFAULT_CONFIG
+    _policy_graph = PGPolicyGraph
 
     @classmethod
     def default_resource_request(cls, config):
@@ -40,9 +37,10 @@ class PGAgent(Agent):
 
     def _init(self):
         self.local_evaluator = self.make_local_evaluator(
-            self.env_creator, PGPolicyGraph)
+            self.env_creator, self._policy_graph)
         self.remote_evaluators = self.make_remote_evaluators(
-            self.env_creator, PGPolicyGraph, self.config["num_workers"], {})
+            self.env_creator, self._policy_graph, self.config["num_workers"],
+            {})
         self.optimizer = SyncSamplesOptimizer(self.local_evaluator,
                                               self.remote_evaluators,
                                               self.config["optimizer"])
@@ -50,5 +48,7 @@ class PGAgent(Agent):
     def _train(self):
         prev_steps = self.optimizer.num_steps_sampled
         self.optimizer.step()
-        return self.optimizer.collect_metrics()._replace(
-            timesteps_this_iter=self.optimizer.num_steps_sampled - prev_steps)
+        result = self.optimizer.collect_metrics()
+        result.update(timesteps_this_iter=self.optimizer.num_steps_sampled -
+                      prev_steps)
+        return result

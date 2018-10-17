@@ -7,12 +7,10 @@ from __future__ import print_function
 
 from collections import namedtuple
 import numpy as np
-import os
-import pickle
 import time
 
 import ray
-from ray.rllib.agents import Agent
+from ray.rllib.agents import Agent, with_common_config
 from ray.tune.trial import Resources
 
 from ray.rllib.agents.es import optimizers
@@ -26,20 +24,21 @@ Result = namedtuple("Result", [
     "eval_returns", "eval_lengths"
 ])
 
-DEFAULT_CONFIG = {
+# __sphinx_doc_begin__
+DEFAULT_CONFIG = with_common_config({
     "l2_coeff": 0.005,
     "noise_stdev": 0.02,
     "episodes_per_batch": 1000,
-    "timesteps_per_batch": 10000,
+    "train_batch_size": 10000,
     "eval_prob": 0.003,
     "return_proc_mode": "centered_rank",
     "num_workers": 10,
     "stepsize": 0.01,
     "observation_filter": "MeanStdFilter",
     "noise_size": 250000000,
-    "env": None,
-    "env_config": {},
-}
+    "report_length": 10,
+})
+# __sphinx_doc_end__
 
 
 @ray.remote
@@ -77,12 +76,13 @@ class Worker(object):
 
         self.env = env_creator(config["env_config"])
         from ray.rllib import models
-        self.preprocessor = models.ModelCatalog.get_preprocessor(self.env)
+        self.preprocessor = models.ModelCatalog.get_preprocessor(
+            self.env, config["model"])
 
         self.sess = utils.make_session(single_threaded=True)
         self.policy = policies.GenericPolicy(
             self.sess, self.env.action_space, self.preprocessor,
-            config["observation_filter"], **policy_params)
+            config["observation_filter"], config["model"], **policy_params)
 
     def rollout(self, timestep_limit, add_noise=True):
         rollout_rewards, rollout_length = policies.rollout(
@@ -162,8 +162,10 @@ class ESAgent(Agent):
         self.sess = utils.make_session(single_threaded=False)
         self.policy = policies.GenericPolicy(
             self.sess, env.action_space, preprocessor,
-            self.config["observation_filter"], **policy_params)
+            self.config["observation_filter"], self.config["model"],
+            **policy_params)
         self.optimizer = optimizers.Adam(self.policy, self.config["stepsize"])
+        self.report_length = self.config["report_length"]
 
         # Create the shared noise table.
         print("Creating shared noise table.")
@@ -178,7 +180,7 @@ class ESAgent(Agent):
         ]
 
         self.episodes_so_far = 0
-        self.timesteps_so_far = 0
+        self.reward_list = []
         self.tstart = time.time()
 
     def _collect_results(self, theta_id, min_episodes, min_timesteps):
@@ -204,7 +206,6 @@ class ESAgent(Agent):
     def _train(self):
         config = self.config
 
-        step_tstart = time.time()
         theta = self.policy.get_weights()
         assert theta.dtype == np.float32
 
@@ -213,8 +214,7 @@ class ESAgent(Agent):
         # Use the actors to do rollouts, note that we pass in the ID of the
         # policy weights.
         results, num_episodes, num_timesteps = self._collect_results(
-            theta_id, config["episodes_per_batch"],
-            config["timesteps_per_batch"])
+            theta_id, config["episodes_per_batch"], config["train_batch_size"])
 
         all_noise_indices = []
         all_training_returns = []
@@ -236,7 +236,6 @@ class ESAgent(Agent):
                 len(all_training_lengths))
 
         self.episodes_so_far += num_episodes
-        self.timesteps_so_far += num_timesteps
 
         # Assemble the results.
         eval_returns = np.array(all_eval_returns)
@@ -265,9 +264,10 @@ class ESAgent(Agent):
                                                     config["l2_coeff"] * theta)
         # Set the new weights in the local copy of the policy.
         self.policy.set_weights(theta)
+        # Store the rewards
+        if len(all_eval_returns) > 0:
+            self.reward_list.append(np.mean(eval_returns))
 
-        step_tend = time.time()
-        tlogger.record_tabular("EvalEpRewMean", eval_returns.mean())
         tlogger.record_tabular("EvalEpRewStd", eval_returns.std())
         tlogger.record_tabular("EvalEpLenMean", eval_lengths.mean())
 
@@ -281,11 +281,6 @@ class ESAgent(Agent):
 
         tlogger.record_tabular("EpisodesThisIter", noisy_lengths.size)
         tlogger.record_tabular("EpisodesSoFar", self.episodes_so_far)
-        tlogger.record_tabular("TimestepsThisIter", noisy_lengths.sum())
-        tlogger.record_tabular("TimestepsSoFar", self.timesteps_so_far)
-
-        tlogger.record_tabular("TimeElapsedThisIter", step_tend - step_tstart)
-        tlogger.record_tabular("TimeElapsed", step_tend - self.tstart)
         tlogger.dump_tabular()
 
         info = {
@@ -294,14 +289,11 @@ class ESAgent(Agent):
             "update_ratio": update_ratio,
             "episodes_this_iter": noisy_lengths.size,
             "episodes_so_far": self.episodes_so_far,
-            "timesteps_this_iter": noisy_lengths.sum(),
-            "timesteps_so_far": self.timesteps_so_far,
-            "time_elapsed_this_iter": step_tend - step_tstart,
-            "time_elapsed": step_tend - self.tstart
         }
 
-        result = ray.tune.result.TrainingResult(
-            episode_reward_mean=eval_returns.mean(),
+        reward_mean = np.mean(self.reward_list[-self.report_length:])
+        result = dict(
+            episode_reward_mean=reward_mean,
             episode_len_mean=eval_lengths.mean(),
             timesteps_this_iter=noisy_lengths.sum(),
             info=info)
@@ -313,19 +305,15 @@ class ESAgent(Agent):
         for w in self.workers:
             w.__ray_terminate__.remote()
 
-    def _save(self, checkpoint_dir):
-        checkpoint_path = os.path.join(checkpoint_dir,
-                                       "checkpoint-{}".format(self.iteration))
-        weights = self.policy.get_weights()
-        objects = [weights, self.episodes_so_far, self.timesteps_so_far]
-        pickle.dump(objects, open(checkpoint_path, "wb"))
-        return checkpoint_path
+    def __getstate__(self):
+        return {
+            "weights": self.policy.get_weights(),
+            "episodes_so_far": self.episodes_so_far,
+        }
 
-    def _restore(self, checkpoint_path):
-        objects = pickle.load(open(checkpoint_path, "rb"))
-        self.policy.set_weights(objects[0])
-        self.episodes_so_far = objects[1]
-        self.timesteps_so_far = objects[2]
+    def __setstate__(self, state):
+        self.policy.set_weights(state["weights"])
+        self.episodes_so_far = state["episodes_so_far"]
 
     def compute_action(self, observation):
         return self.policy.compute(observation, update=False)[0]

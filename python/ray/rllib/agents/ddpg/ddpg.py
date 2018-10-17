@@ -10,9 +10,10 @@ from ray.rllib.utils.schedules import ConstantSchedule, LinearSchedule
 OPTIMIZER_SHARED_CONFIGS = [
     "buffer_size", "prioritized_replay", "prioritized_replay_alpha",
     "prioritized_replay_beta", "prioritized_replay_eps", "sample_batch_size",
-    "train_batch_size", "learning_starts", "clip_rewards"
+    "train_batch_size", "learning_starts"
 ]
 
+# __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
     # === Model ===
     # Hidden layer sizes of the policy network
@@ -61,8 +62,6 @@ DEFAULT_CONFIG = with_common_config({
     "prioritized_replay_beta": 0.4,
     # Epsilon to add to the TD errors when updating priorities.
     "prioritized_replay_eps": 1e-6,
-    # Whether to clip rewards to [-1, 1] prior to adding to the replay buffer.
-    "clip_rewards": True,
     # Whether to LZ4 compress observations
     "compress_observations": False,
 
@@ -109,6 +108,8 @@ DEFAULT_CONFIG = with_common_config({
     # Prevent iterations from going lower than this time span
     "min_iter_time_s": 1,
 })
+
+# __sphinx_doc_end__
 
 
 class DDPGAgent(DQNAgent):

@@ -65,7 +65,7 @@ void TaskDependencyManager::HandleRemoteDependencyCanceled(const ObjectID &objec
   if (!required) {
     auto it = required_objects_.find(object_id);
     if (it != required_objects_.end()) {
-      RAY_CHECK_OK(object_manager_.Cancel(object_id));
+      object_manager_.CancelPull(object_id);
       reconstruction_policy_.Cancel(object_id);
       required_objects_.erase(it);
     }
@@ -106,7 +106,7 @@ std::vector<TaskID> TaskDependencyManager::HandleObjectLocal(
 
 std::vector<TaskID> TaskDependencyManager::HandleObjectMissing(
     const ray::ObjectID &object_id) {
-  // Add the object to the table of locally available objects.
+  // Remove the object from the table of locally available objects.
   auto erased = local_objects_.erase(object_id);
   RAY_CHECK(erased == 1);
 
@@ -124,6 +124,9 @@ std::vector<TaskID> TaskDependencyManager::HandleObjectMissing(
         // missing.
         if (task_entry.num_missing_dependencies == 0) {
           waiting_task_ids.push_back(dependent_task_id);
+          // During normal execution we should be able to include the check
+          // RAY_CHECK(pending_tasks_.count(dependent_task_id) == 1);
+          // However, this invariant will not hold during unit test execution.
         }
         task_entry.num_missing_dependencies++;
       }
@@ -171,6 +174,7 @@ void TaskDependencyManager::UnsubscribeDependencies(const TaskID &task_id) {
   // Remove the task from the table of subscribed tasks.
   auto it = task_dependencies_.find(task_id);
   RAY_CHECK(it != task_dependencies_.end());
+
   const TaskDependencies task_entry = std::move(it->second);
   task_dependencies_.erase(it);
 
@@ -202,6 +206,15 @@ void TaskDependencyManager::UnsubscribeDependencies(const TaskID &task_id) {
   for (const auto &object_id : task_entry.object_dependencies) {
     HandleRemoteDependencyCanceled(object_id);
   }
+}
+
+std::vector<TaskID> TaskDependencyManager::GetPendingTasks() const {
+  std::vector<TaskID> keys;
+  keys.reserve(pending_tasks_.size());
+  for (const auto &id_task_pair : pending_tasks_) {
+    keys.push_back(id_task_pair.first);
+  }
+  return keys;
 }
 
 void TaskDependencyManager::TaskPending(const Task &task) {
@@ -281,6 +294,33 @@ void TaskDependencyManager::TaskCanceled(const TaskID &task_id) {
       // This object created by the task will no longer appear locally since
       // the task is canceled.  Try to make the object local if necessary.
       HandleRemoteDependencyRequired(object_entry.first);
+    }
+  }
+}
+
+void TaskDependencyManager::RemoveTasksAndRelatedObjects(
+    const std::unordered_set<TaskID> &task_ids) {
+  if (task_ids.empty()) {
+    return;
+  }
+
+  for (auto it = task_ids.begin(); it != task_ids.end(); it++) {
+    task_dependencies_.erase(*it);
+    required_tasks_.erase(*it);
+    pending_tasks_.erase(*it);
+  }
+
+  // TODO: the size of required_objects_ could be large, consider to add
+  // an index if this turns out to be a perf problem.
+  for (auto it = required_objects_.begin(); it != required_objects_.end();) {
+    const auto object_id = *it;
+    TaskID creating_task_id = ComputeTaskId(object_id);
+    if (task_ids.find(creating_task_id) != task_ids.end()) {
+      object_manager_.CancelPull(object_id);
+      reconstruction_policy_.Cancel(object_id);
+      it = required_objects_.erase(it);
+    } else {
+      it++;
     }
   }
 }

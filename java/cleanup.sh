@@ -1,8 +1,6 @@
-pkill -9 python
-pkill -9 local_scheduler
-pkill -9 plasma_manager
-pkill -9 plasma_store
-pkill -9 global_scheduler
-pkill -9 redis-server
-pkill -9 redis
-ps aux | grep ray | awk '{system("kill "$2);}'
+# Stop backend processes
+ray stop
+# Kill Java workers
+ps aux | grep DefaultWorker | grep -v grep | awk '{print $2}' | xargs kill -9
+# Remove temp files
+rm -rf /tmp/ray

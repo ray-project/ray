@@ -5,8 +5,21 @@
 #include "ray/status.h"
 
 #ifndef RAYLET_TEST
+
+/// A helper function that parse the worker command string into a vector of arguments.
+static std::vector<std::string> parse_worker_command(std::string worker_command) {
+  std::istringstream iss(worker_command);
+  std::vector<std::string> result(std::istream_iterator<std::string>{iss},
+                                  std::istream_iterator<std::string>());
+  return result;
+}
+
 int main(int argc, char *argv[]) {
-  RAY_CHECK(argc == 9);
+  InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
+                                         ray::RayLog::ShutDownRayLog, argv[0], RAY_INFO,
+                                         /*log_dir=*/"");
+  ray::RayLog::InstallFailureSignalHandler();
+  RAY_CHECK(argc == 11 || argc == 12);
 
   const std::string raylet_socket_name = std::string(argv[1]);
   const std::string store_socket_name = std::string(argv[2]);
@@ -14,8 +27,11 @@ int main(int argc, char *argv[]) {
   const std::string redis_address = std::string(argv[4]);
   int redis_port = std::stoi(argv[5]);
   int num_initial_workers = std::stoi(argv[6]);
-  const std::string worker_command = std::string(argv[7]);
+  int maximum_startup_concurrency = std::stoi(argv[7]);
   const std::string static_resource_list = std::string(argv[8]);
+  const std::string python_worker_command = std::string(argv[9]);
+  const std::string java_worker_command = std::string(argv[10]);
+  const std::string redis_password = (argc == 12 ? std::string(argv[11]) : "");
 
   // Configuration for the node manager.
   ray::raylet::NodeManagerConfig node_manager_config;
@@ -37,12 +53,19 @@ int main(int argc, char *argv[]) {
   node_manager_config.num_initial_workers = num_initial_workers;
   node_manager_config.num_workers_per_process =
       RayConfig::instance().num_workers_per_process();
-  // Use a default worker that can execute empty tasks with dependencies.
+  node_manager_config.maximum_startup_concurrency = maximum_startup_concurrency;
 
-  std::stringstream worker_command_stream(worker_command);
-  std::string token;
-  while (getline(worker_command_stream, token, ' ')) {
-    node_manager_config.worker_command.push_back(token);
+  if (!python_worker_command.empty()) {
+    node_manager_config.worker_commands.emplace(
+        make_pair(Language::PYTHON, parse_worker_command(python_worker_command)));
+  }
+  if (!java_worker_command.empty()) {
+    node_manager_config.worker_commands.emplace(
+        make_pair(Language::JAVA, parse_worker_command(java_worker_command)));
+  }
+  if (python_worker_command.empty() && java_worker_command.empty()) {
+    RAY_CHECK(0)
+        << "Either Python worker command or Java worker command should be provided.";
   }
 
   node_manager_config.heartbeat_period_ms =
@@ -70,7 +93,8 @@ int main(int argc, char *argv[]) {
                  << "object_chunk_size = " << object_manager_config.object_chunk_size;
 
   //  initialize mock gcs & object directory
-  auto gcs_client = std::make_shared<ray::gcs::AsyncGcsClient>();
+  auto gcs_client = std::make_shared<ray::gcs::AsyncGcsClient>(redis_address, redis_port,
+                                                               redis_password);
   RAY_LOG(DEBUG) << "Initializing GCS client "
                  << gcs_client->client_table().GetLocalClientId();
 
@@ -78,14 +102,18 @@ int main(int argc, char *argv[]) {
   boost::asio::io_service main_service;
 
   ray::raylet::Raylet server(main_service, raylet_socket_name, node_ip_address,
-                             redis_address, redis_port, node_manager_config,
-                             object_manager_config, gcs_client);
+                             redis_address, redis_port, redis_password,
+                             node_manager_config, object_manager_config, gcs_client);
 
   // Destroy the Raylet on a SIGTERM. The pointer to main_service is
   // guaranteed to be valid since this function will run the event loop
   // instead of returning immediately.
-  auto handler = [&main_service](const boost::system::error_code &error,
-                                 int signal_number) { main_service.stop(); };
+  // We should stop the service and remove the local socket file.
+  auto handler = [&main_service, &raylet_socket_name](
+      const boost::system::error_code &error, int signal_number) {
+    main_service.stop();
+    remove(raylet_socket_name.c_str());
+  };
   boost::asio::signal_set signals(main_service, SIGTERM);
   signals.async_wait(handler);
 

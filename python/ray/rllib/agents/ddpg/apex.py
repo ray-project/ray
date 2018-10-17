@@ -7,9 +7,9 @@ from ray.rllib.utils import merge_dicts
 from ray.tune.trial import Resources
 
 APEX_DDPG_DEFAULT_CONFIG = merge_dicts(
-    DDPG_CONFIG,
+    DDPG_CONFIG,  # see also the options in ddpg.py, which are also supported
     {
-        "optimizer_class": "AsyncSamplesOptimizer",
+        "optimizer_class": "AsyncReplayOptimizer",
         "optimizer": merge_dicts(
             DDPG_CONFIG["optimizer"], {
                 "max_weight_sync_delay": 400,
@@ -48,7 +48,7 @@ class ApexDDPGAgent(DDPGAgent):
         cf = merge_dicts(cls._default_config, config)
         return Resources(
             cpu=1 + cf["optimizer"]["num_replay_buffer_shards"],
-            gpu=cf["gpu"] and 1 or 0,
+            gpu=cf["gpu"] and cf["gpu_fraction"] or 0,
             extra_cpu=cf["num_cpus_per_worker"] * cf["num_workers"],
             extra_gpu=cf["num_gpus_per_worker"] * cf["num_workers"])
 

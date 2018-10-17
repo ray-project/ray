@@ -17,12 +17,14 @@ class SyncSamplesOptimizer(PolicyOptimizer):
     model weights are then broadcast to all remote evaluators.
     """
 
-    def _init(self, num_sgd_iter=1):
+    def _init(self, num_sgd_iter=1, train_batch_size=1):
         self.update_weights_timer = TimerStat()
         self.sample_timer = TimerStat()
         self.grad_timer = TimerStat()
         self.throughput = RunningStat()
         self.num_sgd_iter = num_sgd_iter
+        self.train_batch_size = train_batch_size
+        self.learner_stats = {}
 
     def step(self):
         with self.update_weights_timer:
@@ -32,16 +34,23 @@ class SyncSamplesOptimizer(PolicyOptimizer):
                     e.set_weights.remote(weights)
 
         with self.sample_timer:
-            if self.remote_evaluators:
-                samples = SampleBatch.concat_samples(
-                    ray.get(
-                        [e.sample.remote() for e in self.remote_evaluators]))
-            else:
-                samples = self.local_evaluator.sample()
+            samples = []
+            while sum(s.count for s in samples) < self.train_batch_size:
+                if self.remote_evaluators:
+                    samples.extend(
+                        ray.get([
+                            e.sample.remote() for e in self.remote_evaluators
+                        ]))
+                else:
+                    samples.append(self.local_evaluator.sample())
+            samples = SampleBatch.concat_samples(samples)
+            self.sample_timer.push_units_processed(samples.count)
 
         with self.grad_timer:
             for i in range(self.num_sgd_iter):
                 fetches = self.local_evaluator.compute_apply(samples)
+                if "stats" in fetches:
+                    self.learner_stats = fetches["stats"]
                 if self.num_sgd_iter > 1:
                     print(i, fetches)
             self.grad_timer.push_units_processed(samples.count)
@@ -59,5 +68,8 @@ class SyncSamplesOptimizer(PolicyOptimizer):
                                         3),
                 "opt_peak_throughput": round(self.grad_timer.mean_throughput,
                                              3),
+                "sample_peak_throughput": round(
+                    self.sample_timer.mean_throughput, 3),
                 "opt_samples": round(self.grad_timer.mean_units_processed, 3),
+                "learner": self.learner_stats,
             })

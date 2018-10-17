@@ -24,6 +24,7 @@ from ray.core.generated.ClientTableData import ClientTableData
 from ray.core.generated.ErrorTableData import ErrorTableData
 from ray.core.generated.ProfileTableData import ProfileTableData
 from ray.core.generated.HeartbeatTableData import HeartbeatTableData
+from ray.core.generated.DriverTableData import DriverTableData
 from ray.core.generated.ObjectTableData import ObjectTableData
 from ray.core.generated.ray.protocol.Task import Task
 
@@ -34,9 +35,9 @@ __all__ = [
     "SubscribeToNotificationsReply", "ResultTableReply",
     "TaskExecutionDependencies", "TaskReply", "DriverTableMessage",
     "LocalSchedulerInfoMessage", "SubscribeToDBClientTableReply", "TaskInfo",
-    "GcsTableEntry", "ClientTableData", "ErrorTableData", "ProfileTableData",
-    "HeartbeatTableData", "ObjectTableData", "Task", "TablePrefix",
-    "TablePubsub", "construct_error_message"
+    "GcsTableEntry", "ClientTableData", "ErrorTableData", "HeartbeatTableData",
+    "DriverTableData", "ProfileTableData", "ObjectTableData", "Task",
+    "TablePrefix", "TablePubsub", "construct_error_message"
 ]
 
 # These prefixes must be kept up-to-date with the definitions in
@@ -48,6 +49,18 @@ OBJECT_INFO_PREFIX = "OI:"
 OBJECT_LOCATION_PREFIX = "OL:"
 FUNCTION_PREFIX = "RemoteFunction:"
 
+# These prefixes must be kept up-to-date with the definitions in
+# common/state/redis.cc
+LOCAL_SCHEDULER_INFO_CHANNEL = b"local_schedulers"
+PLASMA_MANAGER_HEARTBEAT_CHANNEL = b"plasma_managers"
+DRIVER_DEATH_CHANNEL = b"driver_deaths"
+
+# xray heartbeats
+XRAY_HEARTBEAT_CHANNEL = str(TablePubsub.HEARTBEAT).encode("ascii")
+
+# xray driver updates
+XRAY_DRIVER_CHANNEL = str(TablePubsub.DRIVER).encode("ascii")
+
 # These prefixes must be kept up-to-date with the TablePrefix enum in gcs.fbs.
 # TODO(rkn): We should use scoped enums, in which case we should be able to
 # just access the flatbuffer generated values.
@@ -57,10 +70,12 @@ TablePrefix_ERROR_INFO_string = "ERROR_INFO"
 TablePrefix_PROFILE_string = "PROFILE"
 
 
-def construct_error_message(error_type, message, timestamp):
+def construct_error_message(driver_id, error_type, message, timestamp):
     """Construct a serialized ErrorTableData object.
 
     Args:
+        driver_id: The ID of the driver that the error should go to. If this is
+            nil, then the error will go to all drivers.
         error_type: The type of the error.
         message: The error message.
         timestamp: The time of the error.
@@ -69,10 +84,13 @@ def construct_error_message(error_type, message, timestamp):
         The serialized object.
     """
     builder = flatbuffers.Builder(0)
+    driver_offset = builder.CreateString(driver_id)
     error_type_offset = builder.CreateString(error_type)
     message_offset = builder.CreateString(message)
 
     ray.core.generated.ErrorTableData.ErrorTableDataStart(builder)
+    ray.core.generated.ErrorTableData.ErrorTableDataAddJobId(
+        builder, driver_offset)
     ray.core.generated.ErrorTableData.ErrorTableDataAddType(
         builder, error_type_offset)
     ray.core.generated.ErrorTableData.ErrorTableDataAddErrorMessage(

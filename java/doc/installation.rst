@@ -17,7 +17,7 @@ For Ubuntu users, run the following commands:
 ::
 
   sudo apt-get update
-  sudo apt-get install -y maven cmake pkg-config build-essential autoconf curl libtool unzip flex bison python # we install python here because python2 is required to build the webui
+  sudo apt-get install -y maven cmake pkg-config build-essential autoconf curl libtool unzip flex bison psmisc python # we install python here because python2 is required to build the webui
 
   # If you are not using Anaconda, you need the following.
   sudo apt-get install python-dev  # For Python 2.
@@ -57,5 +57,4 @@ Run tests
 ::
 
   # in `ray/java` directory
-  export RAY_CONFIG=ray.config.ini
   mvn test

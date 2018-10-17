@@ -21,7 +21,8 @@ import setuptools.command.build_ext as _build_ext
 ray_files = [
     "ray/core/src/common/thirdparty/redis/src/redis-server",
     "ray/core/src/common/redis_module/libray_redis_module.so",
-    "ray/core/src/plasma/plasma_store", "ray/core/src/plasma/plasma_manager",
+    "ray/core/src/plasma/plasma_store_server",
+    "ray/core/src/plasma/plasma_manager",
     "ray/core/src/local_scheduler/local_scheduler",
     "ray/core/src/local_scheduler/liblocal_scheduler_library_python.so",
     "ray/core/src/global_scheduler/global_scheduler",
@@ -77,12 +78,10 @@ class build_ext(_build_ext.build_ext):
 
         # We also need to install pyarrow along with Ray, so make sure that the
         # relevant non-Python pyarrow files get copied.
-        pyarrow_files = [
-            os.path.join("ray/pyarrow_files/pyarrow", filename)
-            for filename in os.listdir("./ray/pyarrow_files/pyarrow")
-            if not os.path.isdir(
-                os.path.join("ray/pyarrow_files/pyarrow", filename))
-        ]
+        pyarrow_files = []
+        for (root, dirs, filenames) in os.walk("./ray/pyarrow_files/pyarrow"):
+            for name in filenames:
+                pyarrow_files.append(os.path.join(root, name))
 
         files_to_include = ray_files + pyarrow_files
 
@@ -125,7 +124,7 @@ class BinaryDistribution(Distribution):
 setup(
     name="ray",
     # The version string is also in __init__.py. TODO(pcm): Fix this.
-    version="0.5.0",
+    version="0.5.3",
     packages=find_packages(),
     cmdclass={"build_ext": build_ext},
     # The BinaryDistribution argument triggers build_ext.
@@ -135,7 +134,6 @@ setup(
         "funcsigs",
         "click",
         "colorama",
-        "psutil",
         "pytest",
         "pyyaml",
         "redis",

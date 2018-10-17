@@ -15,12 +15,6 @@ else
 fi
 echo "Using Python executable $PYTHON_EXECUTABLE."
 
-LANGUAGE="python"
-if [[ -n  "$2" ]]; then
-  LANGUAGE=$2
-fi
-echo "Build language is $LANGUAGE."
-
 unamestr="$(uname)"
 
 if [[ "$unamestr" == "Linux" ]]; then
@@ -40,20 +34,22 @@ else
   exit 1
 fi
 
-# The PR for this commit is https://github.com/apache/arrow/pull/2342. We
+# The PR for this commit is https://github.com/apache/arrow/pull/2482. We
 # include the link here to make it easier to find the right commit because
 # Arrow often rewrites git history and invalidates certain commits.
-TARGET_COMMIT_ID=26affd7b35a1bf3800ab08df3347fe07d220f87d
+TARGET_COMMIT_ID=927bd34aaad875e82beca2584d5d777839fa8bb0
 build_arrow() {
   echo "building arrow"
-
   # Make sure arrow will be built again when building ray for java later than python
-  if [[ "$LANGUAGE" == "java" ]]; then
+  if [[ "$RAY_BUILD_JAVA" == "YES" ]]; then
     rm -rf $TP_DIR/build/arrow/cpp/build/CMakeCache.txt
   fi
 
-  if [[ ! -d $TP_DIR/build/arrow ]]; then
-    git clone https://github.com/apache/arrow.git "$TP_DIR/build/arrow"
+  if [[ ! -d $TP_DIR/build/arrow/.git ]]; then
+    if [[ -d $TP_DIR/build/arrow ]]; then
+      rm -rf $TP_DIR/build/arrow
+    fi
+    git clone -q https://github.com/apache/arrow.git "$TP_DIR/build/arrow"
   fi
 
   if ! [ -x "$(command -v bison)" ]; then
@@ -78,7 +74,7 @@ build_arrow() {
   cd build
 
   BUILD_ARROW_PLASMA_JAVA_CLIENT=off
-  if [[ "$LANGUAGE" == "java" ]]; then
+  if [[ "$RAY_BUILD_JAVA" == "YES" ]]; then
     BUILD_ARROW_PLASMA_JAVA_CLIENT=on
   fi
 
@@ -147,8 +143,8 @@ build_arrow() {
   popd
 }
 # Download and compile arrow if it isn't already present or the commit-id mismatches.
-if [[ ! -d $TP_DIR/../python/ray/pyarrow_files/pyarrow ]] || \
-    [[ "$LANGUAGE" == "java" && ! -f $TP_DIR/build/arrow/cpp/build/release/libplasma_java.dylib ]]; then
+if [[ "$RAY_BUILD_PYTHON" == "YES" && ! -d $TP_DIR/../python/ray/pyarrow_files/pyarrow ]] || \
+    [[ "$RAY_BUILD_JAVA" == "YES" && ! -f $TP_DIR/build/arrow/cpp/build/release/libplasma_java.dylib ]]; then
   build_arrow
 else
   REBUILD=off

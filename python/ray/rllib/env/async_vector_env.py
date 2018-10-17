@@ -123,12 +123,12 @@ class AsyncVectorEnv(object):
         return None
 
     def get_unwrapped(self):
-        """Return a reference to some underlying gym env, if any.
+        """Return a reference to the underlying gym envs, if any.
 
         Returns:
-            env (gym.Env|None): Underlying gym env or None.
+            envs (list): Underlying gym envs or [].
         """
-        return None
+        return []
 
 
 # Fixed agent identifier when there is only the single agent in the env
@@ -251,7 +251,7 @@ class _MultiAgentEnvToAsync(AsyncVectorEnv):
         self.num_envs = num_envs
         self.dones = set()
         while len(self.envs) < self.num_envs:
-            self.envs.append(self.make_env())
+            self.envs.append(self.make_env(len(self.envs)))
         for env in self.envs:
             assert isinstance(env, MultiAgentEnv)
         self.env_states = [_MultiAgentEnvState(env) for env in self.envs]
@@ -268,13 +268,18 @@ class _MultiAgentEnvToAsync(AsyncVectorEnv):
                 raise ValueError("Env {} is already done".format(env_id))
             env = self.envs[env_id]
             obs, rewards, dones, infos = env.step(agent_dict)
+            assert isinstance(obs, dict), "Not a multi-agent obs"
+            assert isinstance(rewards, dict), "Not a multi-agent reward"
+            assert isinstance(dones, dict), "Not a multi-agent return"
+            assert isinstance(infos, dict), "Not a multi-agent info"
             if dones["__all__"]:
                 self.dones.add(env_id)
             self.env_states[env_id].observe(obs, rewards, dones, infos)
 
     def try_reset(self, env_id):
         obs = self.env_states[env_id].reset()
-        if obs is not None:
+        assert isinstance(obs, dict), "Not a multi-agent obs"
+        if obs is not None and env_id in self.dones:
             self.dones.remove(env_id)
         return obs
 

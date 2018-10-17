@@ -5,7 +5,7 @@ from __future__ import print_function
 
 import os
 
-import ray
+from ray.local_scheduler import ObjectID
 
 
 def env_integer(key, default):
@@ -15,7 +15,7 @@ def env_integer(key, default):
 
 
 ID_SIZE = 20
-NIL_JOB_ID = ray.ObjectID(ID_SIZE * b"\x00")
+NIL_JOB_ID = ObjectID(ID_SIZE * b"\xff")
 
 # If a remote function or actor (or some other export) has serialized size
 # greater than this quantity, print an warning.
@@ -42,6 +42,9 @@ WORKER_CRASH_PUSH_ERROR = "worker_crash"
 WORKER_DIED_PUSH_ERROR = "worker_died"
 PUT_RECONSTRUCTION_PUSH_ERROR = "put_reconstruction"
 HASH_MISMATCH_PUSH_ERROR = "object_hash_mismatch"
+INFEASIBLE_TASK_ERROR = "infeasible_task"
+REMOVED_NODE_ERROR = "node_removed"
+MONITOR_DIED_ERROR = "monitor_died"
 
 # Abort autoscaling if more than this number of errors are encountered. This
 # is a safety feature to prevent e.g. runaway node launches.
@@ -66,3 +69,11 @@ AUTOSCALER_HEARTBEAT_TIMEOUT_S = env_integer("AUTOSCALER_HEARTBEAT_TIMEOUT_S",
 
 # Max number of retries to AWS (default is 5, time increases exponentially)
 BOTO_MAX_RETRIES = env_integer("BOTO_MAX_RETRIES", 12)
+
+# Default logger format: only contains the message.
+LOGGER_FORMAT = "%(message)s"
+LOGGER_FORMAT_HELP = "The logging format. default='%(message)s'"
+LOGGER_LEVEL = "info"
+LOGGER_LEVEL_CHOICES = ['debug', 'info', 'warning', 'error', 'critical']
+LOGGER_LEVEL_HELP = ("The logging level threshold, choices=['debug', 'info',"
+                     " 'warning', 'error', 'critical'], default='info'")

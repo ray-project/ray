@@ -30,14 +30,14 @@ features but may be subject to more bugs. To install these wheels, run the follo
 ===================  ===================
 
 
-.. _`Linux Python 3.6`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.5.0-cp36-cp36m-manylinux1_x86_64.whl
-.. _`Linux Python 3.5`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.5.0-cp35-cp35m-manylinux1_x86_64.whl
-.. _`Linux Python 3.4`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.5.0-cp34-cp34m-manylinux1_x86_64.whl
-.. _`Linux Python 2.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.5.0-cp27-cp27mu-manylinux1_x86_64.whl
-.. _`MacOS Python 3.6`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.5.0-cp36-cp36m-macosx_10_6_intel.whl
-.. _`MacOS Python 3.5`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.5.0-cp35-cp35m-macosx_10_6_intel.whl
-.. _`MacOS Python 3.4`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.5.0-cp34-cp34m-macosx_10_6_intel.whl
-.. _`MacOS Python 2.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.5.0-cp27-cp27m-macosx_10_6_intel.whl
+.. _`Linux Python 3.6`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.5.3-cp36-cp36m-manylinux1_x86_64.whl
+.. _`Linux Python 3.5`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.5.3-cp35-cp35m-manylinux1_x86_64.whl
+.. _`Linux Python 3.4`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.5.3-cp34-cp34m-manylinux1_x86_64.whl
+.. _`Linux Python 2.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.5.3-cp27-cp27mu-manylinux1_x86_64.whl
+.. _`MacOS Python 3.6`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.5.3-cp36-cp36m-macosx_10_6_intel.whl
+.. _`MacOS Python 3.5`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.5.3-cp35-cp35m-macosx_10_6_intel.whl
+.. _`MacOS Python 3.4`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.5.3-cp34-cp34m-macosx_10_6_intel.whl
+.. _`MacOS Python 2.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.5.3-cp27-cp27m-macosx_10_6_intel.whl
 
 
 Building Ray from source
@@ -58,7 +58,7 @@ For Ubuntu, run the following commands:
 .. code-block:: bash
 
   sudo apt-get update
-  sudo apt-get install -y cmake pkg-config build-essential autoconf curl libtool unzip flex bison python # we install python here because python2 is required to build the webui
+  sudo apt-get install -y cmake pkg-config build-essential autoconf curl libtool unzip flex bison psmisc python # we install python here because python2 is required to build the webui
 
   # If you are not using Anaconda, you need the following.
   sudo apt-get install python-dev  # For Python 2.

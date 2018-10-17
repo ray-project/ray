@@ -135,70 +135,30 @@ RedisContext::~RedisContext() {
   }
 }
 
-static void GetRedisShards(redisContext *context, std::vector<std::string> *addresses,
-                           std::vector<int> *ports) {
-  // Get the total number of Redis shards in the system.
-  int num_attempts = 0;
-  redisReply *reply = nullptr;
-  while (num_attempts < RayConfig::instance().redis_db_connect_retries()) {
-    // Try to read the number of Redis shards from the primary shard. If the
-    // entry is present, exit.
-    reply = reinterpret_cast<redisReply *>(redisCommand(context, "GET NumRedisShards"));
-    if (reply->type != REDIS_REPLY_NIL) {
-      break;
-    }
-
-    // Sleep for a little, and try again if the entry isn't there yet. */
-    freeReplyObject(reply);
-    usleep(RayConfig::instance().redis_db_connect_wait_milliseconds() * 1000);
-    num_attempts++;
+Status AuthenticateRedis(redisContext *context, const std::string &password) {
+  if (password == "") {
+    return Status::OK();
   }
-  RAY_CHECK(num_attempts < RayConfig::instance().redis_db_connect_retries())
-      << "No entry found for NumRedisShards";
-  RAY_CHECK(reply->type == REDIS_REPLY_STRING) << "Expected string, found Redis type "
-                                               << reply->type << " for NumRedisShards";
-  int num_redis_shards = atoi(reply->str);
-  RAY_CHECK(num_redis_shards >= 1) << "Expected at least one Redis shard, "
-                                   << "found " << num_redis_shards;
+  redisReply *reply =
+      reinterpret_cast<redisReply *>(redisCommand(context, "AUTH %s", password.c_str()));
+  REDIS_CHECK_ERROR(context, reply);
   freeReplyObject(reply);
-
-  // Get the addresses of all of the Redis shards.
-  num_attempts = 0;
-  while (num_attempts < RayConfig::instance().redis_db_connect_retries()) {
-    // Try to read the Redis shard locations from the primary shard. If we find
-    // that all of them are present, exit.
-    reply =
-        reinterpret_cast<redisReply *>(redisCommand(context, "LRANGE RedisShards 0 -1"));
-    if (static_cast<int>(reply->elements) == num_redis_shards) {
-      break;
-    }
-
-    // Sleep for a little, and try again if not all Redis shard addresses have
-    // been added yet.
-    freeReplyObject(reply);
-    usleep(RayConfig::instance().redis_db_connect_wait_milliseconds() * 1000);
-    num_attempts++;
-  }
-  RAY_CHECK(num_attempts < RayConfig::instance().redis_db_connect_retries())
-      << "Expected " << num_redis_shards << " Redis shard addresses, found "
-      << reply->elements;
-
-  // Parse the Redis shard addresses.
-  for (size_t i = 0; i < reply->elements; ++i) {
-    // Parse the shard addresses and ports.
-    RAY_CHECK(reply->element[i]->type == REDIS_REPLY_STRING);
-    std::string addr;
-    std::stringstream ss(reply->element[i]->str);
-    getline(ss, addr, ':');
-    addresses->push_back(addr);
-    int port;
-    ss >> port;
-    ports->push_back(port);
-  }
-  freeReplyObject(reply);
+  return Status::OK();
 }
 
-Status RedisContext::Connect(const std::string &address, int port, bool sharding) {
+Status AuthenticateRedis(redisAsyncContext *context, const std::string &password) {
+  if (password == "") {
+    return Status::OK();
+  }
+  int status = redisAsyncCommand(context, NULL, NULL, "AUTH %s", password.c_str());
+  if (status == REDIS_ERR) {
+    return Status::RedisError(std::string(context->errstr));
+  }
+  return Status::OK();
+}
+
+Status RedisContext::Connect(const std::string &address, int port, bool sharding,
+                             const std::string &password = "") {
   int connection_attempts = 0;
   context_ = redisConnect(address.c_str(), port);
   while (context_ == nullptr || context_->err) {
@@ -218,37 +178,29 @@ Status RedisContext::Connect(const std::string &address, int port, bool sharding
     context_ = redisConnect(address.c_str(), port);
     connection_attempts += 1;
   }
+  RAY_CHECK_OK(AuthenticateRedis(context_, password));
+
   redisReply *reply = reinterpret_cast<redisReply *>(
       redisCommand(context_, "CONFIG SET notify-keyspace-events Kl"));
   REDIS_CHECK_ERROR(context_, reply);
   freeReplyObject(reply);
 
-  std::string redis_address;
-  int redis_port;
-  if (sharding) {
-    // Get the redis data shard
-    std::vector<std::string> addresses;
-    std::vector<int> ports;
-    GetRedisShards(context_, &addresses, &ports);
-    redis_address = addresses[0];
-    redis_port = ports[0];
-  } else {
-    redis_address = address;
-    redis_port = port;
-  }
-
   // Connect to async context
-  async_context_ = redisAsyncConnect(redis_address.c_str(), redis_port);
+  async_context_ = redisAsyncConnect(address.c_str(), port);
   if (async_context_ == nullptr || async_context_->err) {
-    RAY_LOG(FATAL) << "Could not establish connection to redis " << redis_address << ":"
-                   << redis_port;
+    RAY_LOG(FATAL) << "Could not establish connection to redis " << address << ":"
+                   << port;
   }
+  RAY_CHECK_OK(AuthenticateRedis(async_context_, password));
+
   // Connect to subscribe context
-  subscribe_context_ = redisAsyncConnect(redis_address.c_str(), redis_port);
+  subscribe_context_ = redisAsyncConnect(address.c_str(), port);
   if (subscribe_context_ == nullptr || subscribe_context_->err) {
-    RAY_LOG(FATAL) << "Could not establish subscribe connection to redis "
-                   << redis_address << ":" << redis_port;
+    RAY_LOG(FATAL) << "Could not establish subscribe connection to redis " << address
+                   << ":" << port;
   }
+  RAY_CHECK_OK(AuthenticateRedis(subscribe_context_, password));
+
   return Status::OK();
 }
 
@@ -301,13 +253,34 @@ Status RedisContext::RunAsync(const std::string &command, const UniqueID &id,
   return Status::OK();
 }
 
+Status RedisContext::RunArgvAsync(const std::vector<std::string> &args) {
+  // Build the arguments.
+  std::vector<const char *> argv;
+  std::vector<size_t> argc;
+  for (size_t i = 0; i < args.size(); ++i) {
+    argv.push_back(args[i].data());
+    argc.push_back(args[i].size());
+  }
+  // Run the Redis command.
+  int status;
+  status = redisAsyncCommandArgv(async_context_, nullptr, nullptr, args.size(),
+                                 argv.data(), argc.data());
+  if (status == REDIS_ERR) {
+    return Status::RedisError(std::string(async_context_->errstr));
+  }
+  return Status::OK();
+}
+
 Status RedisContext::SubscribeAsync(const ClientID &client_id,
                                     const TablePubsub pubsub_channel,
-                                    const RedisCallback &redisCallback) {
+                                    const RedisCallback &redisCallback,
+                                    int64_t *out_callback_index) {
   RAY_CHECK(pubsub_channel != TablePubsub::NO_PUBLISH)
       << "Client requested subscribe on a table that does not support pubsub";
 
   int64_t callback_index = RedisCallbackManager::instance().add(redisCallback);
+  RAY_CHECK(out_callback_index != nullptr);
+  *out_callback_index = callback_index;
   int status = 0;
   if (client_id.is_nil()) {
     // Subscribe to all messages.

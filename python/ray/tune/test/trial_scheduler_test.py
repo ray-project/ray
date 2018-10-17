@@ -7,20 +7,19 @@ import unittest
 import numpy as np
 
 import ray
-from ray.tune.hyperband import HyperBandScheduler
-from ray.tune.async_hyperband import AsyncHyperBandScheduler
-from ray.tune.pbt import PopulationBasedTraining, explore
-from ray.tune.median_stopping_rule import MedianStoppingRule
-from ray.tune.result import TrainingResult
-from ray.tune.trial import Trial, Resources
-from ray.tune.trial_scheduler import TrialScheduler
+from ray.tune.schedulers import (HyperBandScheduler, AsyncHyperBandScheduler,
+                                 PopulationBasedTraining, MedianStoppingRule,
+                                 TrialScheduler)
+from ray.tune.schedulers.pbt import explore
+from ray.tune.trial import Trial, Resources, Checkpoint
+from ray.tune.trial_executor import TrialExecutor
 
 from ray.rllib import _register_all
 _register_all()
 
 
 def result(t, rew):
-    return TrainingResult(
+    return dict(
         time_total_s=t, episode_reward_mean=rew, training_iteration=int(t))
 
 
@@ -126,7 +125,7 @@ class EarlyStoppingSuite(unittest.TestCase):
 
     def testAlternateMetrics(self):
         def result2(t, rew):
-            return TrainingResult(training_iteration=t, neg_mean_loss=rew)
+            return dict(training_iteration=t, neg_mean_loss=rew)
 
         rule = MedianStoppingRule(
             grace_period=0,
@@ -152,10 +151,32 @@ class EarlyStoppingSuite(unittest.TestCase):
             TrialScheduler.CONTINUE)
 
 
+class _MockTrialExecutor(TrialExecutor):
+    def start_trial(self, trial, checkpoint_obj=None):
+        trial.logger_running = True
+        trial.restored_checkpoint = checkpoint_obj.value
+        trial.status = Trial.RUNNING
+
+    def stop_trial(self, trial, error=False, error_msg=None, stop_logger=True):
+        trial.status = Trial.ERROR if error else Trial.TERMINATED
+        if stop_logger:
+            trial.logger_running = False
+
+    def restore(self, trial, checkpoint=None):
+        pass
+
+    def save(self, trial, type=Checkpoint.DISK):
+        return trial.trainable_name
+
+    def reset_trial(self, trial, new_config, new_experiment_tag):
+        return False
+
+
 class _MockTrialRunner():
     def __init__(self, scheduler):
         self._scheduler_alg = scheduler
         self.trials = []
+        self.trial_executor = _MockTrialExecutor()
 
     def process_action(self, trial, action):
         if action == TrialScheduler.CONTINUE:
@@ -163,7 +184,7 @@ class _MockTrialRunner():
         elif action == TrialScheduler.PAUSE:
             self._pause_trial(trial)
         elif action == TrialScheduler.STOP:
-            trial.stop()
+            self.trial_executor.stop_trial(trial)
 
     def stop_trial(self, trial):
         if trial.status in [Trial.ERROR, Trial.TERMINATED]:
@@ -171,7 +192,6 @@ class _MockTrialRunner():
         elif trial.status in [Trial.PENDING, Trial.PAUSED]:
             self._scheduler_alg.on_trial_remove(self, trial)
         else:
-
             self._scheduler_alg.on_trial_complete(self, trial, result(100, 10))
 
     def add_trial(self, trial):
@@ -199,8 +219,8 @@ class HyperbandSuite(unittest.TestCase):
         ray.shutdown()
         _register_all()  # re-register the evicted objects
 
-    def schedulerSetup(self, num_trials):
-        """Setup a scheduler and Runner with max Iter = 9
+    def schedulerSetup(self, num_trials, max_t=81):
+        """Setup a scheduler and Runner with max Iter = 9.
 
         Bracketing is placed as follows:
         (5, 81);
@@ -208,7 +228,7 @@ class HyperbandSuite(unittest.TestCase):
         (15, 9) -> (5, 27) -> (2, 45);
         (34, 3) -> (12, 9) -> (4, 27) -> (2, 42);
         (81, 1) -> (27, 3) -> (9, 9) -> (3, 27) -> (1, 41);"""
-        sched = HyperBandScheduler()
+        sched = HyperBandScheduler(max_t=max_t)
         for i in range(num_trials):
             t = Trial("__fake")
             sched.on_trial_add(None, t)
@@ -216,7 +236,7 @@ class HyperbandSuite(unittest.TestCase):
         return sched, runner
 
     def default_statistics(self):
-        """Default statistics for HyperBand"""
+        """Default statistics for HyperBand."""
         sched = HyperBandScheduler()
         res = {
             str(s): {
@@ -234,8 +254,8 @@ class HyperbandSuite(unittest.TestCase):
         return int(np.ceil(n / sched._eta))
 
     def basicSetup(self):
-        """Setup and verify full band.
-        """
+        """Setup and verify full band."""
+
         stats = self.default_statistics()
         sched, _ = self.schedulerSetup(stats["max_trials"])
 
@@ -301,6 +321,7 @@ class HyperbandSuite(unittest.TestCase):
     def testSuccessiveHalving(self):
         """Setup full band, then iterate through last bracket (n=81)
         to make sure successive halving is correct."""
+
         stats = self.default_statistics()
         sched, mock_runner = self.schedulerSetup(stats["max_trials"])
         big_bracket = sched._state["bracket"]
@@ -362,6 +383,7 @@ class HyperbandSuite(unittest.TestCase):
 
     def testTrialErrored(self):
         """If a trial errored, make sure successive halving still happens"""
+
         stats = self.default_statistics()
         trial_count = stats[str(0)]["n"] + 3
         sched, mock_runner = self.schedulerSetup(trial_count)
@@ -465,7 +487,7 @@ class HyperbandSuite(unittest.TestCase):
         """Checking that alternate metrics will pass."""
 
         def result2(t, rew):
-            return TrainingResult(time_total_s=t, neg_mean_loss=rew)
+            return dict(time_total_s=t, neg_mean_loss=rew)
 
         sched = HyperBandScheduler(
             time_attr='time_total_s', reward_attr='neg_mean_loss')
@@ -512,7 +534,7 @@ class HyperbandSuite(unittest.TestCase):
         self.assertLess(current_length, 27)
 
     def testRemove(self):
-        """Test with 4: start 1, remove 1 pending, add 2, remove 1 pending"""
+        """Test with 4: start 1, remove 1 pending, add 2, remove 1 pending."""
         sched, runner = self.schedulerSetup(4)
         trials = sorted(list(sched._trial_info), key=lambda t: t.trial_id)
         runner._launch_trial(trials[0])
@@ -534,6 +556,18 @@ class HyperbandSuite(unittest.TestCase):
         sched.on_trial_remove(runner, trial)  # where trial is not running
         self.assertFalse(trial in bracket._live_trials)
 
+    def testFilterNoneBracket(self):
+        sched, runner = self.schedulerSetup(100, 20)
+        # `sched' should contains None brackets
+        non_brackets = [
+            b for hyperband in sched._hyperbands for b in hyperband
+            if b is None
+        ]
+        self.assertTrue(non_brackets)
+        # Make sure `choose_trial_to_run' still works
+        trial = sched.choose_trial_to_run(runner)
+        self.assertIsNotNone(trial)
+
 
 class _MockTrial(Trial):
     def __init__(self, i, config):
@@ -543,17 +577,6 @@ class _MockTrial(Trial):
         self.logger_running = False
         self.restored_checkpoint = None
         self.resources = Resources(1, 0)
-
-    def checkpoint(self, to_object_store=False):
-        return self.trainable_name
-
-    def start(self, checkpoint=None):
-        self.logger_running = True
-        self.restored_checkpoint = checkpoint
-
-    def stop(self, stop_logger=False):
-        if stop_logger:
-            self.logger_running = False
 
 
 class PopulationBasedTestingSuite(unittest.TestCase):
@@ -855,7 +878,7 @@ class AsyncHyperBandSuite(unittest.TestCase):
 
     def testAlternateMetrics(self):
         def result2(t, rew):
-            return TrainingResult(training_iteration=t, neg_mean_loss=rew)
+            return dict(training_iteration=t, neg_mean_loss=rew)
 
         scheduler = AsyncHyperBandScheduler(
             grace_period=1,

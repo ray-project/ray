@@ -20,6 +20,7 @@ class AsyncGradientsOptimizer(PolicyOptimizer):
         self.wait_timer = TimerStat()
         self.dispatch_timer = TimerStat()
         self.grads_per_step = grads_per_step
+        self.learner_stats = {}
         if not self.remote_evaluators:
             raise ValueError(
                 "Async optimizer requires at least 1 remote evaluator")
@@ -41,6 +42,8 @@ class AsyncGradientsOptimizer(PolicyOptimizer):
             with self.wait_timer:
                 fut, e = gradient_queue.pop(0)
                 gradient, info = ray.get(fut)
+                if "stats" in info:
+                    self.learner_stats = info["stats"]
 
             if gradient is not None:
                 with self.apply_timer:
@@ -61,4 +64,5 @@ class AsyncGradientsOptimizer(PolicyOptimizer):
                 "wait_time_ms": round(1000 * self.wait_timer.mean, 3),
                 "apply_time_ms": round(1000 * self.apply_timer.mean, 3),
                 "dispatch_time_ms": round(1000 * self.dispatch_timer.mean, 3),
+                "learner": self.learner_stats,
             })

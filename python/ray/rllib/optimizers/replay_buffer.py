@@ -12,7 +12,7 @@ from ray.rllib.utils.window_stat import WindowStat
 
 
 class ReplayBuffer(object):
-    def __init__(self, size, clip_rewards):
+    def __init__(self, size):
         """Create Prioritized Replay buffer.
 
         Parameters
@@ -30,15 +30,11 @@ class ReplayBuffer(object):
         self._num_sampled = 0
         self._evicted_hit_stats = WindowStat("evicted_hit", 1000)
         self._est_size_bytes = 0
-        self._clip_rewards = clip_rewards
 
     def __len__(self):
         return len(self._storage)
 
     def add(self, obs_t, action, reward, obs_tp1, done, weight):
-        if self._clip_rewards:
-            reward = np.sign(reward)
-
         data = (obs_t, action, reward, obs_tp1, done)
         self._num_added += 1
 
@@ -97,19 +93,20 @@ class ReplayBuffer(object):
         self._num_sampled += batch_size
         return self._encode_sample(idxes)
 
-    def stats(self):
+    def stats(self, debug=False):
         data = {
             "added_count": self._num_added,
             "sampled_count": self._num_sampled,
             "est_size_bytes": self._est_size_bytes,
             "num_entries": len(self._storage),
         }
-        data.update(self._evicted_hit_stats.stats())
+        if debug:
+            data.update(self._evicted_hit_stats.stats())
         return data
 
 
 class PrioritizedReplayBuffer(ReplayBuffer):
-    def __init__(self, size, alpha, clip_rewards):
+    def __init__(self, size, alpha):
         """Create Prioritized Replay buffer.
 
         Parameters
@@ -125,7 +122,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         --------
         ReplayBuffer.__init__
         """
-        super(PrioritizedReplayBuffer, self).__init__(size, clip_rewards)
+        super(PrioritizedReplayBuffer, self).__init__(size)
         assert alpha > 0
         self._alpha = alpha
 
@@ -140,8 +137,6 @@ class PrioritizedReplayBuffer(ReplayBuffer):
 
     def add(self, obs_t, action, reward, obs_tp1, done, weight):
         """See ReplayBuffer.store_effect"""
-        if self._clip_rewards:
-            reward = np.sign(reward)
 
         idx = self._next_idx
         super(PrioritizedReplayBuffer, self).add(obs_t, action, reward,
@@ -155,8 +150,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         res = []
         for _ in range(batch_size):
             # TODO(szymon): should we ensure no repeats?
-            mass = random.random() * self._it_sum.sum(0,
-                                                      len(self._storage) - 1)
+            mass = random.random() * self._it_sum.sum(0, len(self._storage))
             idx = self._it_sum.find_prefixsum_idx(mass)
             res.append(idx)
         return res
@@ -240,7 +234,8 @@ class PrioritizedReplayBuffer(ReplayBuffer):
 
             self._max_priority = max(self._max_priority, priority)
 
-    def stats(self):
-        parent = ReplayBuffer.stats(self)
-        parent.update(self._prio_change_stats.stats())
+    def stats(self, debug=False):
+        parent = ReplayBuffer.stats(self, debug)
+        if debug:
+            parent.update(self._prio_change_stats.stats())
         return parent

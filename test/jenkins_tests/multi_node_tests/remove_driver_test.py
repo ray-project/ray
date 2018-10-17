@@ -208,14 +208,9 @@ def cleanup_driver(redis_address, driver_index):
 
     # Only one of the cleanup drivers should create more actors.
     if driver_index == 2:
-        # Create some actors that require two GPUs.
-        actors_two_gpus = []
-        for i in range(3):
-            actors_two_gpus.append(
-                try_to_create_actor(Actor2, driver_index, 10 + i))
         # Create some actors that require one GPU.
         actors_one_gpu = []
-        for i in range(4):
+        for i in range(10):
             actors_one_gpu.append(
                 try_to_create_actor(Actor1, driver_index, 10 + 3 + i))
 
@@ -256,7 +251,6 @@ def cleanup_driver(redis_address, driver_index):
     # Only one of the cleanup drivers should create and use more actors.
     if driver_index == 2:
         for _ in range(1000):
-            ray.get([actor.check_ids.remote() for actor in actors_two_gpus])
             ray.get([actor.check_ids.remote() for actor in actors_one_gpu])
             ray.get([actor.check_ids.remote() for actor in actors_no_gpus])
 

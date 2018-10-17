@@ -6,10 +6,11 @@ from ray.rllib.agents.dqn.dqn import DQNAgent, DEFAULT_CONFIG as DQN_CONFIG
 from ray.rllib.utils import merge_dicts
 from ray.tune.trial import Resources
 
+# __sphinx_doc_begin__
 APEX_DEFAULT_CONFIG = merge_dicts(
-    DQN_CONFIG,
+    DQN_CONFIG,  # see also the options in dqn.py, which are also supported
     {
-        "optimizer_class": "AsyncSamplesOptimizer",
+        "optimizer_class": "AsyncReplayOptimizer",
         "optimizer": merge_dicts(
             DQN_CONFIG["optimizer"], {
                 "max_weight_sync_delay": 400,
@@ -31,6 +32,8 @@ APEX_DEFAULT_CONFIG = merge_dicts(
     },
 )
 
+# __sphinx_doc_end__
+
 
 class ApexAgent(DQNAgent):
     """DQN variant that uses the Ape-X distributed policy optimizer.
@@ -47,7 +50,7 @@ class ApexAgent(DQNAgent):
         cf = merge_dicts(cls._default_config, config)
         return Resources(
             cpu=1 + cf["optimizer"]["num_replay_buffer_shards"],
-            gpu=cf["gpu"] and 1 or 0,
+            gpu=cf["gpu"] and cf["gpu_fraction"] or 0,
             extra_cpu=cf["num_cpus_per_worker"] * cf["num_workers"],
             extra_gpu=cf["num_gpus_per_worker"] * cf["num_workers"])
 

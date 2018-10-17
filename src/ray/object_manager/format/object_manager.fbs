@@ -4,7 +4,8 @@ namespace ray.object_manager.protocol;
 enum MessageType:int {
   ConnectClient = 1,
   PushRequest,
-  PullRequest
+  PullRequest,
+  FreeRequest
 }
 
 table PushRequestMessage {
@@ -30,4 +31,9 @@ table ConnectClientMessage {
   client_id: string;
   // Whether this is a transfer connection.
   is_transfer: bool;
+}
+
+table FreeRequestMessage {
+  // List of IDs to be deleted.
+  object_ids: [string];
 }

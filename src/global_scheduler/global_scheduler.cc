@@ -7,6 +7,7 @@
 #include "global_scheduler.h"
 #include "global_scheduler_algorithm.h"
 #include "net.h"
+#include "ray/util/util.h"
 #include "state/db_client_table.h"
 #include "state/local_scheduler_table.h"
 #include "state/object_table.h"
@@ -132,11 +133,6 @@ GlobalSchedulerState *GlobalSchedulerState_init(event_loop *loop,
                          "global_scheduler", node_ip_address,
                          std::vector<std::string>());
   db_attach(state->db, loop, false);
-
-  RAY_CHECK_OK(state->gcs_client.Connect(
-      std::string(redis_primary_addr), redis_primary_port, /*sharding=*/true));
-  RAY_CHECK_OK(state->gcs_client.context()->AttachToEventLoop(loop));
-  RAY_CHECK_OK(state->gcs_client.primary_context()->AttachToEventLoop(loop));
   state->policy_state = GlobalSchedulerPolicyState_init();
   return state;
 }
@@ -458,6 +454,10 @@ void start_server(const char *node_ip_address,
 }
 
 int main(int argc, char *argv[]) {
+  InitShutdownRAII ray_log_shutdown_raii(
+      ray::RayLog::StartRayLog, ray::RayLog::ShutDownRayLog, argv[0], RAY_INFO,
+      /*log_dir=*/"");
+  ray::RayLog::InstallFailureSignalHandler();
   signal(SIGTERM, signal_handler);
   /* IP address and port of the primary redis instance. */
   char *redis_primary_addr_port = NULL;

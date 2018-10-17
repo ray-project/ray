@@ -20,6 +20,14 @@ table ResourcePair {
   value: double;
 }
 
+// NOTE: This enum is duplicate with the `Language` enum in `gcs.fbs`,
+// because we cannot include this file in `gcs.fbs` due to cyclic dependency.
+// TODO(raulchen): remove it once we get rid of legacy ray.
+enum TaskLanguage:int {
+  PYTHON = 0,
+  JAVA = 1
+}
+
 table TaskInfo {
   // ID of the driver that created this task.
   driver_id: string;
@@ -52,9 +60,24 @@ table TaskInfo {
   // The required_resources vector indicates the quantities of the different
   // resources required by this task.
   required_resources: [ResourcePair];
+  // The resources required for placing this task on a node. If this is empty,
+  // then the placement resources are equal to the required_resources.
+  required_placement_resources: [ResourcePair];
+  // The language that this task belongs to
+  language: TaskLanguage;
+  // Function descriptor, which is a list of strings that can
+  // uniquely describe a function.
+  // For a Python function, it should be: [module_name, class_name, function_name]
+  // For a Java function, it should be: [class_name, method_name, type_descriptor]
+  // TODO(hchen): after changing Python worker to use function_descriptor,
+  // function_id can be removed.
+  function_descriptor: [string];
 }
 
 // Object information data structure.
+// NOTE(pcm): This structure is replicated in
+// https://github.com/apache/arrow/blob/master/cpp/src/plasma/format/common.fbs,
+// so if you modify it, you should also modify that one.
 table ObjectInfo {
   // Object ID of this object.
   object_id: string;
@@ -62,11 +85,14 @@ table ObjectInfo {
   data_size: long;
   // Number of bytes the metadata of this object occupies in memory.
   metadata_size: long;
+  // Number of clients using the objects.
+  ref_count: int;
   // Unix epoch of when this object was created.
   create_time: long;
   // How long creation of this object took.
   construct_duration: long;
-  // Hash of the object content.
+  // Hash of the object content. If the object is not sealed yet this is
+  // an empty string.
   digest: string;
   // Specifies if this object was deleted or added.
   is_deletion: bool;

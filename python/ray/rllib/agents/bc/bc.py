@@ -8,7 +8,6 @@ from ray.rllib.agents.bc.bc_evaluator import BCEvaluator, \
     GPURemoteBCEvaluator, RemoteBCEvaluator
 from ray.rllib.optimizers import AsyncGradientsOptimizer
 from ray.rllib.utils import merge_dicts
-from ray.tune.result import TrainingResult
 from ray.tune.trial import Resources
 
 DEFAULT_CONFIG = {
@@ -31,7 +30,7 @@ DEFAULT_CONFIG = {
         # (Image statespace) - Each pixel
         "zero_mean": False,
         # (Image statespace) - Converts image to (dim, dim, C)
-        "dim": 80,
+        "dim": 84,
         # (Image statespace) - Converts image shape to (C, dim, dim)
         "channel_major": False
     },
@@ -54,12 +53,12 @@ class BCAgent(Agent):
     def default_resource_request(cls, config):
         cf = merge_dicts(cls._default_config, config)
         if cf["use_gpu_for_workers"]:
-            num_gpus_per_worker = 1
+            num_gpus_per_worker = cf["gpu_fraction"]
         else:
             num_gpus_per_worker = 0
         return Resources(
             cpu=1,
-            gpu=cf["gpu"] and 1 or 0,
+            gpu=cf["gpu"] and cf["gpu_fraction"] or 0,
             extra_cpu=cf["num_workers"],
             extra_gpu=num_gpus_per_worker * cf["num_workers"])
 
@@ -89,7 +88,7 @@ class BCAgent(Agent):
             for m in ray.get(metrics):
                 total_samples += m["num_samples"]
                 total_loss += m["loss"]
-        result = TrainingResult(
+        result = dict(
             mean_loss=total_loss / total_samples,
             timesteps_this_iter=total_samples,
         )

@@ -15,6 +15,7 @@ from ray.rllib.optimizers import SyncSamplesOptimizer, \
 from ray.rllib.test.test_policy_evaluator import MockEnv, MockEnv2, \
     MockPolicyGraph
 from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
+from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.env.async_vector_env import _MultiAgentEnvToAsync
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
@@ -160,7 +161,7 @@ class TestMultiAgentEnv(unittest.TestCase):
         self.assertEqual(done["__all__"], True)
 
     def testVectorizeBasic(self):
-        env = _MultiAgentEnvToAsync(lambda: BasicMultiAgent(2), [], 2)
+        env = _MultiAgentEnvToAsync(lambda v: BasicMultiAgent(2), [], 2)
         obs, rew, dones, _, _ = env.poll()
         self.assertEqual(obs, {0: {0: 0, 1: 0}, 1: {0: 0, 1: 0}})
         self.assertEqual(rew, {0: {0: None, 1: None}, 1: {0: None, 1: None}})
@@ -236,7 +237,7 @@ class TestMultiAgentEnv(unittest.TestCase):
             })
 
     def testVectorizeRoundRobin(self):
-        env = _MultiAgentEnvToAsync(lambda: RoundRobinMultiAgent(2), [], 2)
+        env = _MultiAgentEnvToAsync(lambda v: RoundRobinMultiAgent(2), [], 2)
         obs, rew, dones, _, _ = env.poll()
         self.assertEqual(obs, {0: {0: 0}, 1: {0: 0}})
         self.assertEqual(rew, {0: {0: None}, 1: {0: None}})
@@ -265,6 +266,21 @@ class TestMultiAgentEnv(unittest.TestCase):
         self.assertEqual(batch.policy_batches["p0"]["t"].tolist(),
                          list(range(25)) * 6)
 
+    def testMultiAgentSampleWithHorizon(self):
+        act_space = gym.spaces.Discrete(2)
+        obs_space = gym.spaces.Discrete(2)
+        ev = PolicyEvaluator(
+            env_creator=lambda _: BasicMultiAgent(5),
+            policy_graph={
+                "p0": (MockPolicyGraph, obs_space, act_space, {}),
+                "p1": (MockPolicyGraph, obs_space, act_space, {}),
+            },
+            policy_mapping_fn=lambda agent_id: "p{}".format(agent_id % 2),
+            episode_horizon=10,  # test with episode horizon set
+            batch_steps=50)
+        batch = ev.sample()
+        self.assertEqual(batch.count, 50)
+
     def testMultiAgentSampleRoundRobin(self):
         act_space = gym.spaces.Discrete(2)
         obs_space = gym.spaces.Discrete(2)
@@ -291,6 +307,76 @@ class TestMultiAgentEnv(unittest.TestCase):
         self.assertEqual(batch.policy_batches["p0"]["t"].tolist()[:10],
                          [4, 9, 14, 19, 24, 5, 10, 15, 20, 25])
 
+    def testCustomRNNStateValues(self):
+        h = {"some": {"arbitrary": "structure", "here": [1, 2, 3]}}
+
+        class StatefulPolicyGraph(PolicyGraph):
+            def compute_actions(self,
+                                obs_batch,
+                                state_batches,
+                                is_training=False,
+                                episodes=None):
+                return [0] * len(obs_batch), [[h] * len(obs_batch)], {}
+
+            def get_initial_state(self):
+                return [{}]  # empty dict
+
+        ev = PolicyEvaluator(
+            env_creator=lambda _: gym.make("CartPole-v0"),
+            policy_graph=StatefulPolicyGraph,
+            batch_steps=5)
+        batch = ev.sample()
+        self.assertEqual(batch.count, 5)
+        self.assertEqual(batch["state_in_0"][0], {})
+        self.assertEqual(batch["state_out_0"][0], h)
+        self.assertEqual(batch["state_in_0"][1], h)
+        self.assertEqual(batch["state_out_0"][1], h)
+
+    def testReturningModelBasedRolloutsData(self):
+        class ModelBasedPolicyGraph(PGPolicyGraph):
+            def compute_actions(self,
+                                obs_batch,
+                                state_batches,
+                                is_training=False,
+                                episodes=None):
+                # Pretend we did a model-based rollout and want to return
+                # the extra trajectory.
+                builder = episodes[0].new_batch_builder()
+                rollout_id = random.randint(0, 10000)
+                for t in range(5):
+                    builder.add_values(
+                        agent_id="extra_0",
+                        policy_id="p1",  # use p1 so we can easily check it
+                        t=t,
+                        eps_id=rollout_id,  # new id for each rollout
+                        obs=obs_batch[0],
+                        actions=0,
+                        rewards=0,
+                        dones=t == 4,
+                        infos={},
+                        new_obs=obs_batch[0])
+                batch = builder.build_and_reset()
+                episodes[0].add_extra_batch(batch)
+
+                # Just return zeros for actions
+                return [0] * len(obs_batch), [], {}
+
+        single_env = gym.make("CartPole-v0")
+        obs_space = single_env.observation_space
+        act_space = single_env.action_space
+        ev = PolicyEvaluator(
+            env_creator=lambda _: MultiCartpole(2),
+            policy_graph={
+                "p0": (ModelBasedPolicyGraph, obs_space, act_space, {}),
+                "p1": (ModelBasedPolicyGraph, obs_space, act_space, {}),
+            },
+            policy_mapping_fn=lambda agent_id: "p0",
+            batch_steps=5)
+        batch = ev.sample()
+        self.assertEqual(batch.count, 5)
+        self.assertEqual(batch.policy_batches["p0"].count, 10)
+        self.assertEqual(batch.policy_batches["p1"].count, 25)
+
     def testTrainMultiCartpoleSinglePolicy(self):
         n = 10
         register_env("multi_cartpole", lambda _: MultiCartpole(n))
@@ -298,10 +384,50 @@ class TestMultiAgentEnv(unittest.TestCase):
         for i in range(100):
             result = pg.train()
             print("Iteration {}, reward {}, timesteps {}".format(
-                i, result.episode_reward_mean, result.timesteps_total))
-            if result.episode_reward_mean >= 50 * n:
+                i, result["episode_reward_mean"], result["timesteps_total"]))
+            if result["episode_reward_mean"] >= 50 * n:
                 return
         raise Exception("failed to improve reward")
+
+    def testTrainMultiCartpoleMultiPolicy(self):
+        n = 10
+        register_env("multi_cartpole", lambda _: MultiCartpole(n))
+        single_env = gym.make("CartPole-v0")
+
+        def gen_policy():
+            config = {
+                "gamma": random.choice([0.5, 0.8, 0.9, 0.95, 0.99]),
+                "n_step": random.choice([1, 2, 3, 4, 5]),
+            }
+            obs_space = single_env.observation_space
+            act_space = single_env.action_space
+            return (PGPolicyGraph, obs_space, act_space, config)
+
+        pg = PGAgent(
+            env="multi_cartpole",
+            config={
+                "num_workers": 0,
+                "multiagent": {
+                    "policy_graphs": {
+                        "policy_1": gen_policy(),
+                        "policy_2": gen_policy(),
+                    },
+                    "policy_mapping_fn": lambda agent_id: "policy_1",
+                },
+            })
+
+        # Just check that it runs without crashing
+        for i in range(10):
+            result = pg.train()
+            print("Iteration {}, reward {}, timesteps {}".format(
+                i, result["episode_reward_mean"], result["timesteps_total"]))
+        self.assertTrue(
+            pg.compute_action([0, 0, 0, 0], policy_id="policy_1") in [0, 1])
+        self.assertTrue(
+            pg.compute_action([0, 0, 0, 0], policy_id="policy_2") in [0, 1])
+        self.assertRaises(
+            KeyError,
+            lambda: pg.compute_action([0, 0, 0, 0], policy_id="policy_3"))
 
     def _testWithOptimizer(self, optimizer_cls):
         n = 3
@@ -352,9 +478,10 @@ class TestMultiAgentEnv(unittest.TestCase):
                 ev.foreach_policy(
                     lambda p, _: p.update_target()
                     if isinstance(p, DQNPolicyGraph) else None)
-                print("Iter {}, rew {}".format(i, result.policy_reward_mean))
-                print("Total reward", result.episode_reward_mean)
-            if result.episode_reward_mean >= 25 * n:
+                print("Iter {}, rew {}".format(i,
+                                               result["policy_reward_mean"]))
+                print("Total reward", result["episode_reward_mean"])
+            if result["episode_reward_mean"] >= 25 * n:
                 return
         print(result)
         raise Exception("failed to improve reward")
@@ -387,9 +514,10 @@ class TestMultiAgentEnv(unittest.TestCase):
         for i in range(100):
             optimizer.step()
             result = collect_metrics(ev)
-            print("Iteration {}, rew {}".format(i, result.policy_reward_mean))
-            print("Total reward", result.episode_reward_mean)
-            if result.episode_reward_mean >= 25 * n:
+            print("Iteration {}, rew {}".format(i,
+                                                result["policy_reward_mean"]))
+            print("Total reward", result["episode_reward_mean"])
+            if result["episode_reward_mean"] >= 25 * n:
                 return
         raise Exception("failed to improve reward")
 

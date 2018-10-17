@@ -1,6 +1,7 @@
 #include "ray/raylet/monitor.h"
 
 #include "ray/status.h"
+#include "ray/util/util.h"
 
 namespace ray {
 
@@ -14,16 +15,15 @@ namespace raylet {
 /// the Ray configuration), then the monitor will mark that Raylet as dead in
 /// the client table, which broadcasts the event to all other Raylets.
 Monitor::Monitor(boost::asio::io_service &io_service, const std::string &redis_address,
-                 int redis_port)
-    : gcs_client_(),
-      heartbeat_timeout_ms_(RayConfig::instance().num_heartbeats_timeout()),
+                 int redis_port, const std::string &redis_password)
+    : gcs_client_(redis_address, redis_port, redis_password),
+      num_heartbeats_timeout_(RayConfig::instance().num_heartbeats_timeout()),
       heartbeat_timer_(io_service) {
-  RAY_CHECK_OK(gcs_client_.Connect(redis_address, redis_port, /*sharding=*/true));
   RAY_CHECK_OK(gcs_client_.Attach(io_service));
 }
 
 void Monitor::HandleHeartbeat(const ClientID &client_id) {
-  heartbeats_[client_id] = heartbeat_timeout_ms_;
+  heartbeats_[client_id] = num_heartbeats_timeout_;
 }
 
 void Monitor::Start() {
@@ -44,6 +44,19 @@ void Monitor::Tick() {
       if (dead_clients_.count(it->first) == 0) {
         RAY_LOG(WARNING) << "Client timed out: " << it->first;
         RAY_CHECK_OK(gcs_client_.client_table().MarkDisconnected(it->first));
+
+        // Broadcast a warning to all of the drivers indicating that the node
+        // has been marked as dead.
+        // TODO(rkn): Define this constant somewhere else.
+        std::string type = "node_removed";
+        std::ostringstream error_message;
+        error_message << "The node with client ID " << it->first << " has been marked "
+                      << "dead because the monitor has missed too many heartbeats "
+                      << "from it.";
+        // We use the nil JobID to broadcast the message to all drivers.
+        RAY_CHECK_OK(gcs_client_.error_table().PushErrorToDriver(
+            JobID::nil(), type, error_message.str(), current_time_ms()));
+
         dead_clients_.insert(it->first);
       }
       it = heartbeats_.erase(it);
