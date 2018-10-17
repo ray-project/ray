@@ -3,10 +3,11 @@ package org.ray.api.runtime;
 import java.util.List;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
-import org.ray.api.RayResources;
 import org.ray.api.WaitResult;
 import org.ray.api.function.RayFunc;
 import org.ray.api.id.UniqueId;
+import org.ray.api.options.ActorCreationOptions;
+import org.ray.api.options.CallOptions;
 
 /**
  * Base interface of a Ray runtime.
@@ -66,10 +67,10 @@ public interface RayRuntime {
    *
    * @param func The remote function to run.
    * @param args The arguments of the remote function.
-   * @param resources The resources this task required.
+   * @param options The options for this call.
    * @return The result object.
    */
-  RayObject call(RayFunc func, Object[] args, RayResources resources);
+  RayObject call(RayFunc func, Object[] args, CallOptions options);
 
   /**
    * Invoke a remote function on an actor.
@@ -77,10 +78,10 @@ public interface RayRuntime {
    * @param func The remote function to run, it must be a method of the given actor.
    * @param actor A handle to the actor.
    * @param args The arguments of the remote function.
-   * @param resources The resources this task required.
+   * @param options The options for this call.
    * @return The result object.
    */
-  RayObject call(RayFunc func, RayActor actor, Object[] args, RayResources resources);
+  RayObject call(RayFunc func, RayActor actor, Object[] args, CallOptions options);
 
   /**
    * Create an actor on a remote node.
@@ -88,8 +89,9 @@ public interface RayRuntime {
    * @param actorFactoryFunc A remote function whose return value is the actor object.
    * @param args The arguments for the remote function.
    * @param <T> The type of the actor object.
-   * @param resources The resources this actor required.
+   * @param options The options for creating actor.
    * @return A handle to the actor.
    */
-  <T> RayActor<T> createActor(RayFunc actorFactoryFunc, Object[] args, RayResources resources);
+  <T> RayActor<T> createActor(RayFunc actorFactoryFunc, Object[] args,
+      ActorCreationOptions options);
 }

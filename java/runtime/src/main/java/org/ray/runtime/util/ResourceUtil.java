@@ -4,6 +4,8 @@ import java.util.HashMap;
 import java.util.Map;
 
 public class ResourceUtil {
+  public static final String CPU_LITERAL = "CPU";
+  public static final String GPU_LITERAL = "GPU";
 
   /**
    * Convert resources map to a string that is used

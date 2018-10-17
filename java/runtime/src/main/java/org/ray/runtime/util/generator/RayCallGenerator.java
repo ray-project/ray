@@ -21,6 +21,7 @@ public class RayCallGenerator extends BaseGenerator {
     newLine("");
     newLine("package org.ray.api;");
     newLine("");
+    newLine("import org.ray.api.options.*;");
     newLine("import org.ray.api.function.*;");
     newLine("");
 
@@ -61,7 +62,7 @@ public class RayCallGenerator extends BaseGenerator {
    * @param forActorCreation build `Ray.createActor` when true, otherwise build `Ray.call`.
    */
   private void buildCalls(int numParameters, boolean forActor,
-      boolean forActorCreation, boolean hasResourcesParam) {
+      boolean forActorCreation, boolean hasOptionsParam) {
     String genericTypes = "";
     String argList = "";
     for (int i = 0; i < numParameters; i++) {
@@ -86,18 +87,18 @@ public class RayCallGenerator extends BaseGenerator {
       paramPrefix += ", ";
     }
 
-    String resourceParam;
-    if (hasResourcesParam) {
-      resourceParam = ", RayResources resources";
+    String optionsParam;
+    if (hasOptionsParam) {
+      optionsParam = forActorCreation ? ", ActorCreationOptions options" : ", CallOptions options";
     } else {
-      resourceParam = "";
+      optionsParam = "";
     }
 
-    String resourceArg;
-    if (hasResourcesParam) {
-      resourceArg = ", resources";
+    String optionsArg;
+    if (hasOptionsParam) {
+      optionsArg = ", options";
     } else {
-      resourceArg = ", new RayResources()";
+      optionsArg = forActorCreation ? ", new ActorCreationOptions()" : ", new CallOptions()";
     }
 
     String returnType = !forActorCreation ? "RayObject<R>" : "RayActor<A>";
@@ -107,11 +108,11 @@ public class RayCallGenerator extends BaseGenerator {
       // method signature
       newLine(1, String.format(
           "public static <%s> %s %s(%s%s) {",
-          genericTypes, returnType, funcName, paramPrefix + param, resourceParam
+          genericTypes, returnType, funcName, paramPrefix + param, optionsParam
       ));
       // method body
       newLine(2, String.format("Object[] args = new Object[]{%s};", argList));
-      newLine(2, String.format("return Ray.internal().%s(%s%s);", funcName, funcArgs, resourceArg));
+      newLine(2, String.format("return Ray.internal().%s(%s%s);", funcName, funcArgs, optionsArg));
       newLine(1, "}");
     }
   }
