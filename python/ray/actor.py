@@ -559,7 +559,11 @@ class ActorHandle(object):
             actor_handle_id = compute_actor_handle_id_non_forked(
                 self._ray_actor_id, self._ray_previous_actor_handle_id,
                 worker.current_task_id)
-            if actor_handle_id != self._ray_previously_generated_actor_handle_id:
+            # TODO(pcm): This still leads to a lot of actor handles being
+            # created, there should be a better way to handle pickled
+            # actor handles.
+            if (actor_handle_id !=
+                self._ray_previously_generated_actor_handle_id):
                 self._ray_actor_counter = 0
                 self._ray_previously_generated_actor_handle_id = actor_handle_id
         else:
