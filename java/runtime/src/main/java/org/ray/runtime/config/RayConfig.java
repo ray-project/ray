@@ -6,6 +6,8 @@ import com.google.common.collect.ImmutableList;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigException;
 import com.typesafe.config.ConfigFactory;
+
+import java.io.File;
 import java.util.List;
 import java.util.Map;
 import org.ray.api.id.UniqueId;
@@ -229,8 +231,11 @@ public class RayConfig {
   public static RayConfig create() {
     ConfigFactory.invalidateCaches();
     Config config = ConfigFactory.systemProperties()
-        .withFallback(ConfigFactory.load(StringUtil.isNullOrEmpty(System.getProperty("ray.config")) ? CUSTOM_CONFIG_FILE : System.getProperty("ray.config")))
-        .withFallback(ConfigFactory.load(DEFAULT_CONFIG_FILE));
+        .withFallback(
+                StringUtil.isNullOrEmpty(System.getProperty("ray.config")) ?
+                        ConfigFactory.parseFile(new File(System.getProperty("ray.config"))) :
+                        ConfigFactory.load(CUSTOM_CONFIG_FILE ))
+        .withFallback(ConfigFactory.load(DEFAULT_CONFIG_FILE)) ;
     return new RayConfig(config);
   }
 
