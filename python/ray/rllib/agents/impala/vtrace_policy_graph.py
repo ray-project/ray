@@ -102,9 +102,9 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
 
         # Create input placeholders
         if existing_inputs:
-            actions, dones, behaviour_logits, rewards, observations = \
-                existing_inputs[:5]
-            existing_state_in = existing_inputs[5:-1]
+            actions, dones, behaviour_logits, rewards, observations, \
+                prev_actions, prev_rewards = existing_inputs[:7]
+            existing_state_in = existing_inputs[7:-1]
             existing_seq_lens = existing_inputs[-1]
         else:
             if isinstance(action_space, gym.spaces.Discrete):
