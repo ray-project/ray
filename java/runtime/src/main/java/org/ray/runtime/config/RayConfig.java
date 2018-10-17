@@ -233,8 +233,8 @@ public class RayConfig {
     Config config = ConfigFactory.systemProperties()
         .withFallback(
                 StringUtil.isNullOrEmpty(System.getProperty("ray.config")) ?
-                        ConfigFactory.parseFile(new File(System.getProperty("ray.config"))) :
-                        ConfigFactory.load(CUSTOM_CONFIG_FILE ))
+                        ConfigFactory.load(CUSTOM_CONFIG_FILE ):
+                        ConfigFactory.parseFile(new File(System.getProperty("ray.config"))))
         .withFallback(ConfigFactory.load(DEFAULT_CONFIG_FILE)) ;
     return new RayConfig(config);
   }
