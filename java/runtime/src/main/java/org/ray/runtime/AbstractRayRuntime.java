@@ -253,9 +253,10 @@ public abstract class AbstractRayRuntime implements RayRuntime {
       actorCreationId = returnIds[0];
     }
 
-    if (!taskOptions.resources.containsKey(ResourceUtil.CPU_LITERAL)
-            && !taskOptions.resources.containsKey(ResourceUtil.CPU_LITERAL.toLowerCase())) {
-      taskOptions.resources.put(ResourceUtil.CPU_LITERAL, 0.0);
+    Map<String, Double> resources = new HashMap<>(taskOptions.resources);
+    if (!resources.containsKey(ResourceUtil.CPU_LITERAL)
+            && !resources.containsKey(ResourceUtil.CPU_LITERAL.toLowerCase())) {
+      resources.put(ResourceUtil.CPU_LITERAL, 0.0);
     }
 
     RayFunction rayFunction = functionManager.getFunction(current.driverId, func);
@@ -270,7 +271,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
         actor.increaseTaskCounter(),
         ArgumentsBuilder.wrap(args),
         returnIds,
-        taskOptions.resources,
+        resources,
         rayFunction.getFunctionDescriptor()
     );
   }
