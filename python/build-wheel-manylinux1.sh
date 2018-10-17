@@ -13,7 +13,7 @@ rm -f /usr/bin/python2
 ln -s /opt/python/cp27-cp27m/bin/python2 /usr/bin/python2
 
 mkdir .whl
-for PYTHON in cp27-cp27mu cp34-cp34m cp35-cp35m cp36-cp36m cp37-37m; do
+for PYTHON in cp27-cp27mu cp34-cp34m cp35-cp35m cp36-cp36m cp37-cp37m; do
   # The -f flag is passed twice to also run git clean in the arrow subdirectory.
   # The -d flag removes directories. The -x flag ignores the .gitignore file,
   # and the -e flag ensures that we don't remove the .whl directory.
