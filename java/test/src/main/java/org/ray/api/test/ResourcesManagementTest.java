@@ -1,6 +1,8 @@
 package org.ray.api.test;
 
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
+import jdk.nashorn.internal.ir.annotations.Immutable;
 import org.junit.Assert;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -32,18 +34,14 @@ public class ResourcesManagementTest {
 
   @Test
   public void testMethods() {
-    CallOptions callOptions1 = new CallOptions();
-    callOptions1.resources.put("CPU", 4.0);
-    callOptions1.resources.put("GPU", 0.0);
+    CallOptions callOptions1 = new CallOptions(ImmutableMap.of("CPU", 4.0, "GPU", 0.0));
 
     // This is a case that can satisfy required resources.
     // The static resources for test are "CPU:4,RES-A:4".
     RayObject<Integer> result1 = Ray.call(ResourcesManagementTest::echo, 100, callOptions1);
     Assert.assertEquals(100, (int) result1.get());
 
-    CallOptions callOptions2 = new CallOptions();
-    callOptions2.resources.put("CPU", 4.0);
-    callOptions2.resources.put("GPU", 2.0);
+    CallOptions callOptions2 = new CallOptions(ImmutableMap.of("CPU", 4.0, "GPU", 2.0));
 
     // This is a case that can't satisfy required resources.
     // The static resources for test are "CPU:4,RES-A:4".
@@ -57,9 +55,8 @@ public class ResourcesManagementTest {
   @Test
   public void testActors() {
 
-    ActorCreationOptions actorCreationOptions1 = new ActorCreationOptions();
-    actorCreationOptions1.resources.put("CPU", 2.0);
-    actorCreationOptions1.resources.put("GPU", 0.0);
+    ActorCreationOptions actorCreationOptions1 =
+        new ActorCreationOptions(ImmutableMap.of("CPU", 2.0, "GPU", 0.0));
 
     // This is a case that can satisfy required resources.
     // The static resources for test are "CPU:4,RES-A:4".
@@ -69,9 +66,8 @@ public class ResourcesManagementTest {
 
     // This is a case that can't satisfy required resources.
     // The static resources for test are "CPU:4,RES-A:4".
-    ActorCreationOptions actorCreationOptions2 = new ActorCreationOptions();
-    actorCreationOptions2.resources.put("CPU", 8.0);
-    actorCreationOptions2.resources.put("GPU", 0.0);
+    ActorCreationOptions actorCreationOptions2 =
+        new ActorCreationOptions(ImmutableMap.of("CPU", 8.0, "GPU", 0.0));
 
     RayActor<ResourcesManagementTest.Echo> echo2 =
         Ray.createActor(Echo::new, actorCreationOptions2);
