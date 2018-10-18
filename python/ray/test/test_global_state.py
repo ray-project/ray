@@ -2,57 +2,57 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import pytest
 import time
 
 import ray
 
 
-def setup_module():
-    if not ray.worker.global_worker.connected:
-        ray.init(num_cpus=1)
-
-    # Finish initializing Ray. Otherwise available_resources() does not
-    # reflect resource use of submitted tasks
-    ray.get(cpu_task.remote(0))
-
-
-@ray.remote(num_cpus=1)
-def cpu_task(seconds):
-    time.sleep(seconds)
+@pytest.fixture
+def ray_start():
+    # Start the Ray processes.
+    ray.init(num_cpus=1)
+    yield None
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
 
 
-class TestAvailableResources(object):
+def test_replenish_resources(ray_start):
+    cluster_resources = ray.global_state.cluster_resources()
+    available_resources = ray.global_state.available_resources()
+    assert cluster_resources == available_resources
+
+    @ray.remote
+    def cpu_task():
+        pass
+
+    ray.get(cpu_task.remote())
+    start = time.time()
+    resources_reset = False
+
     timeout = 10
-
-    def test_no_tasks(self):
-        cluster_resources = ray.global_state.cluster_resources()
+    while not resources_reset and time.time() - start < timeout:
         available_resources = ray.global_state.available_resources()
-        assert cluster_resources == available_resources
+        resources_reset = (cluster_resources == available_resources)
 
-    def test_replenish_resources(self):
-        cluster_resources = ray.global_state.cluster_resources()
+    assert resources_reset
 
-        ray.get(cpu_task.remote(0))
-        start = time.time()
-        resources_reset = False
 
-        while not resources_reset and time.time() - start < self.timeout:
-            available_resources = ray.global_state.available_resources()
-            resources_reset = (cluster_resources == available_resources)
+def test_uses_resources(ray_start):
+    cluster_resources = ray.global_state.cluster_resources()
 
-        assert resources_reset
+    @ray.remote
+    def cpu_task():
+        time.sleep(1)
 
-    def test_uses_resources(self):
-        cluster_resources = ray.global_state.cluster_resources()
-        task_id = cpu_task.remote(1)
-        start = time.time()
-        resource_used = False
+    cpu_task.remote()
+    resource_used = False
 
-        while not resource_used and time.time() - start < self.timeout:
-            available_resources = ray.global_state.available_resources()
-            resource_used = available_resources[
-                "CPU"] == cluster_resources["CPU"] - 1
+    start = time.time()
+    timeout = 10
+    while not resource_used and time.time() - start < timeout:
+        available_resources = ray.global_state.available_resources()
+        resource_used = available_resources[
+            "CPU"] == cluster_resources["CPU"] - 1
 
-        assert resource_used
-
-        ray.get(task_id)  # clean up to reset resources
+    assert resource_used
