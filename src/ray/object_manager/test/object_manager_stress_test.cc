@@ -285,9 +285,11 @@ class StressTestObjectManager : public TestObjectManagerBase {
   }
 
   plasma::ObjectBuffer GetObject(plasma::PlasmaClient &client, ObjectID &object_id) {
-    plasma::ObjectBuffer object_buffer;
+    std::vector<plasma::ObjectBuffer> object_buffers;
     plasma::ObjectID plasma_id = object_id.to_plasma_id();
-    ARROW_CHECK_OK(client.Get(&plasma_id, 1, 0, &object_buffer));
+    ARROW_CHECK_OK(client.Get({plasma_id}, 0, &object_buffers));
+    RAY_CHECK(object_buffers.size() == 1);
+    plasma::ObjectBuffer object_buffer = object_buffers[0];
     return object_buffer;
   }
 
