@@ -1393,8 +1393,9 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
     local_available_resources_.Release(worker.GetTaskResourceIds());
     worker.ResetTaskResourceIds();
 
-    RAY_CHECK(cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()]
-              .Release(task.GetTaskSpecification().GetRequiredResources()));
+    RAY_CHECK(
+        cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].Release(
+            task.GetTaskSpecification().GetRequiredResources()));
   }
 
   // If the finished task was an actor task, mark the returned dummy object as
