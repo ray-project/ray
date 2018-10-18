@@ -1385,6 +1385,28 @@ class TrialRunnerTest(unittest.TestCase):
         self.assertTrue(searcher.is_finished())
         self.assertTrue(runner.is_finished())
 
+    def testSearchAlgFinishes(self):
+        """SearchAlg changing state in `next_trials` does not crash."""
+        class FinishFastAlg(SearchAlgorithm):
+            def next_trials(self):
+                self._finished = True
+                return []
+        ray.init(num_cpus=4, num_gpus=2)
+        experiment_spec = {
+            "run": "__fake",
+            "num_samples": 3,
+            "stop": {
+                "training_iteration": 1
+            }
+        }
+        searcher = FinishFastAlg()
+        experiments = [Experiment.from_json("test", experiment_spec)]
+        searcher.add_configurations(experiments)
+
+        runner = TrialRunner(search_alg=searcher)
+        runner.step()  # This should not fail
+        self.assertTrue(searcher.is_finished())
+        self.assertTrue(runner.is_finished())
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
