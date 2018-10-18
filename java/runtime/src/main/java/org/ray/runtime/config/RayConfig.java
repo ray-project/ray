@@ -14,6 +14,7 @@ import org.ray.api.id.UniqueId;
 import org.ray.runtime.util.NetworkUtil;
 import org.ray.runtime.util.ResourceUtil;
 import org.ray.runtime.util.StringUtil;
+import org.ray.runtime.util.logger.RayLog;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -230,12 +231,16 @@ public class RayConfig {
   */
   public static RayConfig create() {
     ConfigFactory.invalidateCaches();
-    Config config = ConfigFactory.systemProperties()
-        .withFallback(
-                StringUtil.isNullOrEmpty(System.getProperty("ray.config")) ?
-                        ConfigFactory.load(CUSTOM_CONFIG_FILE ):
-                        ConfigFactory.parseFile(new File(System.getProperty("ray.config"))))
-        .withFallback(ConfigFactory.load(DEFAULT_CONFIG_FILE)) ;
+    Config config = ConfigFactory.systemProperties();
+    String configPath = System.getProperty("ray.config");
+    if (StringUtil.isNullOrEmpty(configPath)) {
+      RayLog.core.info("load custom config file which is ray.conf under classpath");
+      config = config.withFallback(ConfigFactory.load(CUSTOM_CONFIG_FILE));
+    } else {
+      RayLog.core.info("load custom config file which is " + configPath);
+      config = config.withFallback(ConfigFactory.parseFile(new File(configPath)));
+    }
+    config.withFallback(ConfigFactory.load(DEFAULT_CONFIG_FILE));
     return new RayConfig(config);
   }
 
