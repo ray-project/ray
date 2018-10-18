@@ -160,6 +160,3 @@ java/**/.project
 
 # python virtual env
 venv
-
-# No private keys
-id_rsa
