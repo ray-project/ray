@@ -1367,7 +1367,7 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
     // If this was an actor creation task, then convert the worker to an actor.
     auto actor_id = task.GetTaskSpecification().ActorCreationId();
     worker.AssignActorId(actor_id);
-    auto driver_id = task.GetTaskSpecification().DriverId();
+    const auto driver_id = task.GetTaskSpecification().DriverId();
 
     // Publish the actor creation event to all other nodes so that methods for
     // the actor will be forwarded directly to this node.
