@@ -97,6 +97,7 @@ void ObjectManager::StopIOService() {
 void ObjectManager::HandleObjectAdded(const ObjectInfoT &object_info) {
   // Notify the object directory that the object has been added to this node.
   ObjectID object_id = ObjectID::from_binary(object_info.object_id);
+  RAY_CHECK(local_objects_.count(object_id) == 0);
   local_objects_[object_id] = object_info;
   ray::Status status =
       object_directory_->ReportObjectAdded(object_id, client_id_, object_info);
@@ -122,7 +123,9 @@ void ObjectManager::HandleObjectAdded(const ObjectInfoT &object_info) {
 }
 
 void ObjectManager::NotifyDirectoryObjectDeleted(const ObjectID &object_id) {
-  local_objects_.erase(object_id);
+  auto it = local_objects_.find(object_id);
+  RAY_CHECK(it != local_objects_.end());
+  local_objects_.erase(it);
   ray::Status status = object_directory_->ReportObjectRemoved(object_id, client_id_);
 }
 
@@ -352,6 +355,13 @@ void ObjectManager::Push(const ObjectID &object_id, const ClientID &client_id) {
         for (uint64_t chunk_index = 0; chunk_index < num_chunks; ++chunk_index) {
           send_service_.post([this, client_id, object_id, data_size, metadata_size,
                               chunk_index, info]() {
+            // If the object has been evicted already, don't send the object.
+            // This can happen if the object is evicted between the call to post
+            // and the execution of this callback.
+            if (local_objects_.count(object_id) == 0) {
+              return;
+            }
+
             ExecuteSendObject(client_id, object_id, data_size, metadata_size, chunk_index,
                               info);
           });

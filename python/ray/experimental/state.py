@@ -1311,8 +1311,10 @@ class GlobalState(object):
         else:
             clients = self.client_table()
             for client in clients:
-                for key, value in client["Resources"].items():
-                    resources[key] += value
+                # Only count resources from live clients.
+                if client["IsInsertion"]:
+                    for key, value in client["Resources"].items():
+                        resources[key] += value
 
         return dict(resources)
 
@@ -1380,8 +1382,6 @@ class GlobalState(object):
                     if local_scheduler_id not in local_scheduler_ids:
                         del available_resources_by_id[local_scheduler_id]
         else:
-            # TODO(rliaw): Is this a fair assumption?
-            # Assumes the number of Redis clients does not change
             subscribe_clients = [
                 redis_client.pubsub(ignore_subscribe_messages=True)
                 for redis_client in self.redis_clients
