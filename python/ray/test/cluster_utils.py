@@ -12,7 +12,10 @@ logger = logging.getLogger(__name__)
 
 
 class Cluster(object):
-    def __init__(self, initialize_head=False, connect=False, **head_node_args):
+    def __init__(self,
+                 initialize_head=False,
+                 connect=False,
+                 head_node_args=None):
         """Initializes the cluster.
 
         Args:
@@ -26,32 +29,45 @@ class Cluster(object):
         """
         self.head_node = None
         self.worker_nodes = {}
-        self.redis_address =None
+        self.redis_address = None
         if not initialize_head and connect:
             raise RuntimeError("Cannot connect to uninitialized cluster.")
 
         if initialize_head:
+            head_node_args = head_node_args or {}
             self.add_node(**head_node_args)
             if connect:
                 ray.init(redis_address=self.redis_address)
 
-    def add_node(self, **kwargs):
+    def add_node(self, **override_kwargs):
         """Adds a node to the local Ray Cluster.
 
+        All nodes are by default started with the following settings:
+            cleanup=True,
+            use_raylet=True,
+            resources={"CPU": 1},
+            object_store_memory=100 * (2**20) # 100 MB
+
         Args:
-            kwargs: Keyword arguments used in `start_ray_head`
-                and `start_ray_node`.
+            override_kwargs: Keyword arguments used in `start_ray_head`
+                and `start_ray_node`. Overrides defaults.
 
         Returns:
             Node object of the added Ray node.
         """
+        node_kwargs = dict(
+            cleanup=True,
+            use_raylet=True,
+            resources={"CPU": 1},
+            object_store_memory=100 * (2**20)  # 100 MB
+        )
+        node_kwargs.update(override_kwargs)
+
         if self.head_node is None:
             address_info = services.start_ray_head(
                 node_ip_address=services.get_node_ip_address(),
                 include_webui=False,
-                cleanup=True,
-                use_raylet=True,
-                **kwargs)
+                **node_kwargs)
             self.redis_address = address_info["redis_address"]
             # TODO(rliaw): Find a more stable way than modifying global state.
             process_dict_copy = services.all_processes.copy()
@@ -61,11 +77,8 @@ class Cluster(object):
             self.head_node = node
         else:
             address_info = services.start_ray_node(
-                services.get_node_ip_address(),
-                self.redis_address,
-                cleanup=True,
-                use_raylet=True,
-                **kwargs)
+                services.get_node_ip_address(), self.redis_address,
+                **node_kwargs)
             # TODO(rliaw): Find a more stable way than modifying global state.
             process_dict_copy = services.all_processes.copy()
             for key in services.all_processes:
@@ -102,7 +115,7 @@ class Cluster(object):
             retries (int): Number of times to retry checking client table.
         """
         for i in range(retries):
-            if not ray.is_connected() or not self._check_registered_nodes():
+            if not ray.is_initialized() or not self._check_registered_nodes():
                 time.sleep(0.3)
             else:
                 break
@@ -116,9 +129,8 @@ class Cluster(object):
         if registered == expected:
             logger.info("All nodes registered as expected.")
         else:
-            logger.info(
-                "Currently registering {} but expecting {}".format(
-                    registered, expected))
+            logger.info("Currently registering {} but expecting {}".format(
+                registered, expected))
         return registered == expected
 
     def list_all_nodes(self):
