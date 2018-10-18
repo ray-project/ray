@@ -26,18 +26,10 @@ def shutdown_only():
 
 class TestRedisPassword(object):
     @pytest.mark.skipif(
-        os.environ.get("RAY_USE_NEW_GCS") != "on"
-        and os.environ.get("RAY_USE_XRAY"),
-        reason="Redis authentication works for raylet and old GCS.")
-    def test_exceptions(self, password, shutdown_only):
-        with pytest.raises(Exception):
-            ray.init(redis_password=password)
-
-    @pytest.mark.skipif(
         os.environ.get("RAY_USE_NEW_GCS") == "on",
         reason="New GCS API doesn't support Redis authentication yet.")
     @pytest.mark.skipif(
-        not os.environ.get("RAY_USE_XRAY"),
+        os.environ.get("RAY_USE_XRAY") == "0",
         reason="Redis authentication is not supported in legacy Ray.")
     def test_redis_password(self, password, shutdown_only):
         # Workaround for https://github.com/ray-project/ray/issues/3045
