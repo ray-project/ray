@@ -138,7 +138,8 @@ bool RayLog::IsLevelEnabled(RayLogLevel log_level) {
 
 RayLog::RayLog(const char *file_name, int line_number, RayLogLevel severity)
     // glog does not have DEBUG level, we can handle it using is_enabled_.
-    : logging_provider_(nullptr), is_enabled_(severity >= severity_threshold_) {
+    : logging_provider_(nullptr),
+      is_enabled_(severity >= severity_threshold_) {
 #ifdef RAY_USE_GLOG
   if (is_enabled_) {
     logging_provider_ =
