@@ -19,6 +19,7 @@ import org.ray.runtime.RayDevRuntime;
 import org.ray.runtime.objectstore.MockObjectStore;
 import org.ray.runtime.task.FunctionArg;
 import org.ray.runtime.task.TaskSpec;
+import org.ray.runtime.util.Serializer;
 import org.ray.runtime.util.logger.RayLog;
 
 /**
@@ -26,48 +27,58 @@ import org.ray.runtime.util.logger.RayLog;
  */
 public class MockRayletClient implements RayletClient {
 
-  private final Map<UniqueId, Map<UniqueId, TaskSpec>> waitTasks = new ConcurrentHashMap<>();
+  // tasks wait to be executed
+  private final Map<UniqueId, TaskSpec> waitingTasks = new ConcurrentHashMap<>();
   private final MockObjectStore store;
   private final RayDevRuntime runtime;
   private final ExecutorService exec;
 
-  public MockRayletClient(RayDevRuntime runtime, MockObjectStore store, int nThreads) {
+  public MockRayletClient(RayDevRuntime runtime, MockObjectStore store, int numberThreads) {
     this.runtime = runtime;
     this.store = store;
     store.registerScheduler(this);
-    exec = Executors.newFixedThreadPool(nThreads);
+    // thread pool to execute tasks in parallel
+    exec = Executors.newFixedThreadPool(numberThreads);
   }
 
   public void onObjectPut(UniqueId id) {
-    Map<UniqueId, TaskSpec> bucket = waitTasks.get(id);
-    if (bucket != null) {
-      waitTasks.remove(id);
-      for (TaskSpec ts : bucket.values()) {
-        submitTask(ts);
-      }
+    TaskSpec ts = waitingTasks.get(id);
+    if (ts != null) {
+      waitingTasks.remove(id);
+      submitTask(ts);
     }
   }
 
   @Override
   public void submitTask(TaskSpec task) {
-    UniqueId id = isTaskReady(task);
+    UniqueId id = getUnreadyObject(task);
     if (id == null) {
       exec.submit(() -> {
         runtime.getWorker().execute(task);
+        //to simulate raylet's backend
+        UniqueId[] returnIds = task.returnIds;
+        store.put(returnIds[returnIds.length - 1].getBytes(), Serializer.encode(new Object()),null);
       });
     } else {
-      Map<UniqueId, TaskSpec> bucket = waitTasks
-              .computeIfAbsent(id, id_ -> new ConcurrentHashMap<>());
-      bucket.put(id, task);
+      waitingTasks.put(id,task);
     }
   }
 
-  private UniqueId isTaskReady(TaskSpec spec) {
+  //check is every object that this task needs is ready
+  private UniqueId getUnreadyObject(TaskSpec spec) {
+    //check whether the arguments which this task needs is ready
     for (FunctionArg arg : spec.args) {
       if (arg.id != null) {
         if (!store.isObjectReady(arg.id)) {
+          // is this objectId doesn't exist in store ,then return this objectId
           return arg.id;
         }
+      }
+    }
+    //check whether the dependencies which this task needs is ready
+    for (UniqueId id : spec.getExecutionDependencies()) {
+      if (!store.isObjectReady(id)) {
+        return id;
       }
     }
     return null;
