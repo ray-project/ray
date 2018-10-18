@@ -10,8 +10,9 @@ std::shared_ptr<SenderConnection> SenderConnection::Create(
   boost::asio::ip::tcp::socket socket(io_service);
   Status status = TcpConnect(socket, ip, port);
   if (status.ok()) {
-    std::shared_ptr<TcpServerConnection> conn = TcpServerConnection::Create(std::move(socket));
-    return std::make_shared<SenderConnection>(std::move(conn));
+    std::shared_ptr<TcpServerConnection> conn =
+        TcpServerConnection::Create(std::move(socket));
+    return std::make_shared<SenderConnection>(std::move(conn), client_id);
   } else {
     return nullptr;
   }

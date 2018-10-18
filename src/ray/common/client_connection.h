@@ -33,7 +33,8 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection<T>
   ///
   /// \param socket A reference to the server socket.
   /// \return std::shared_ptr<ServerConnection>.
-  static std::shared_ptr<ServerConnection<T>> Create(boost::asio::basic_stream_socket<T> &&socket);
+  static std::shared_ptr<ServerConnection<T>> Create(
+      boost::asio::basic_stream_socket<T> &&socket);
 
   /// Write a message to the client.
   ///
